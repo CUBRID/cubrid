@@ -353,8 +353,9 @@ static int btree_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID 
 			   BT_LOAD_PAGE_LOG_MODE mode);
 static int bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, PAGE_PTR page_ptr,
 			     BT_LOAD_PAGE_LOG_MODE mode, LOG_RCVINDEX rcvindex, int offset, int length);
-static LOG_PRIOR_NODE *bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
-					       LOG_RCVINDEX rcvindex, int offset, int length);
+static LOG_PRIOR_NODE *bt_load_make_log_record (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype, LOG_RCVINDEX rcvindex,
+						VFID * vfid, PAGE_PTR page_ptr, int offset, int length,
+						const char *data);
 static int bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, const VPID * vpid, LOG_PRIOR_NODE * node);
 static int bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider);
 static void bt_load_provider_fail_locked (BT_LOAD_PROVIDER * provider, int error);
@@ -2718,7 +2719,8 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
   else if (mode == BT_LOAD_LOG_BY_LEADER)
     {
       assert (load_args->provider != NULL && load_args->worker_idx >= 0);
-      node = bt_load_make_page_redo (thread_p, vfid, page_ptr, rcvindex, offset, length);
+      node = bt_load_make_log_record (thread_p, LOG_REDO_DATA, rcvindex, vfid, page_ptr, offset, length,
+				      (const char *) page_ptr);
       if (node == NULL)
 	{
 	  pgbuf_unfix_and_init (thread_p, page_ptr);
@@ -2768,49 +2770,56 @@ bt_load_log_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VFID * vfid, P
 }
 
 /*
- * bt_load_make_page_redo () - Make the content redo record of a page without appending it
+ * bt_load_make_log_record () - Make a log record as log_append_* would, without appending it
  *   return: the record, or NULL with an error set
- *   page_ptr(in): the page, still fixed: the record takes its position from it
- *   rcvindex(in), offset(in), length(in): as bt_load_log_page ()
+ *   rectype(in): LOG_REDO_DATA, or an undo type; data is then the redo, or the undo, of the record
+ *   page_ptr(in): the page of the record, still fixed, or NULL for a record without a page
+ *   offset(in), length(in), data(in): the record's position in the page and its data
  *
  * Note: The making (copy, compression, TDE mark) uses only the calling thread's buffers; the appending
  *       (prior_lsa_next_record ()) is the transaction thread's.
  */
 static LOG_PRIOR_NODE *
-bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, LOG_RCVINDEX rcvindex,
-			int offset, int length)
+bt_load_make_log_record (THREAD_ENTRY * thread_p, LOG_RECTYPE rectype, LOG_RCVINDEX rcvindex, VFID * vfid,
+			 PAGE_PTR page_ptr, int offset, int length, const char *data)
 {
   LOG_DATA_ADDR addr;
   LOG_CRUMB crumb;
+  int n_redo = rectype == LOG_REDO_DATA ? 1 : 0;
   LOG_PRIOR_NODE *node;
 
   addr.vfid = vfid;
   addr.pgptr = page_ptr;
   addr.offset = offset;
   crumb.length = length;
-  crumb.data = page_ptr;
-  /* prior_lsa_alloc_and_copy_data () takes no LOG_REDO_DATA */
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_REDO_DATA, rcvindex, &addr, 0, NULL, 1, &crumb);
+  crumb.data = data;
+  /* prior_lsa_alloc_and_copy_data () takes no LOG_REDO_DATA; the one crumb is the redo of a redo record and the
+   * undo of an undo record */
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, &addr, 1 - n_redo, &crumb, n_redo, &crumb);
   if (node == NULL)
     {
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
-	}
-      return NULL;
+      goto error;
     }
-  /* the TDE mark, as the inline append makes it */
-  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex) && pgbuf_get_tde_algorithm (page_ptr) != TDE_ALGORITHM_NONE
-      && prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
+
+  /* the TDE mark, as the inline append makes it: a record without a page is not marked there either */
+  if (page_ptr != NULL && LOG_MAY_CONTAIN_USER_DATA (rcvindex)
+      && pgbuf_get_tde_algorithm (page_ptr) != TDE_ALGORITHM_NONE)
     {
-      logpb_free_prior_node (node);
-      if (er_errid () == NO_ERROR)
+      if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+	  logpb_free_prior_node (node);
+	  goto error;
 	}
-      return NULL;
     }
   return node;
+
+error:
+  /* a record that could not be made leaves an error for the caller */
+  if (er_errid () == NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+    }
+  return NULL;
 }
 
 /*
@@ -5149,28 +5158,16 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 	{
 	  /* a shard worker shares the leader's transaction descriptor and cannot append to its log stream: it
 	   * makes the record and mails it to the leader, in chains of BT_LOAD_MAIL_CHAIN */
-	  LOG_DATA_ADDR addr;
-	  LOG_CRUMB crumb;
 	  LOG_PRIOR_NODE *node;
 
-	  addr.vfid = &load_args->btid->sys_btid->vfid;
-	  addr.pgptr = NULL;
-	  addr.offset = -1;
-	  crumb.data = *notify_vacuum_rv_data;
-	  crumb.length = notify_vacuum_rv_data_length;
-	  node = prior_lsa_alloc_and_copy_crumbs (thread_p, LOG_IS_MVCC_OPERATION (RVBT_MVCC_NOTIFY_VACUUM)
-						  ? LOG_MVCC_UNDO_DATA : LOG_UNDO_DATA, RVBT_MVCC_NOTIFY_VACUUM, &addr,
-						  1, &crumb, 0, NULL);
+	  node = bt_load_make_log_record (thread_p, LOG_IS_MVCC_OPERATION (RVBT_MVCC_NOTIFY_VACUUM)
+					  ? LOG_MVCC_UNDO_DATA : LOG_UNDO_DATA, RVBT_MVCC_NOTIFY_VACUUM,
+					  &load_args->btid->sys_btid->vfid, NULL, -1, notify_vacuum_rv_data_length,
+					  *notify_vacuum_rv_data);
 	  if (node == NULL)
 	    {
 	      /* e.g. no MVCCID, which only a release build lets pass with a notification */
-	      ret = er_errid ();
-	      if (ret == NO_ERROR)
-		{
-		  ret = ER_BTREE_LOAD_FAILED;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
-		}
-	      return ret;
+	      return er_errid ();
 	    }
 	  if (load_args->mail_chain == NULL)
 	    {
