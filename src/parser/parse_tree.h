@@ -4109,6 +4109,7 @@ struct parser_context
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
   int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
+  const char **static_sql_host_var_label;	/* label of each PL/CSQL variable replaced with a host variable */
   PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 

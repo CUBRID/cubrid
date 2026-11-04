@@ -12168,10 +12168,16 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 	{
 	  if (parser->static_sql_host_var_end[i] == name_node->buffer_pos)
 	    {
-	      hostvar->info.host_var.index = i;
-	      PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
-	      parser_free_tree (parser, name_node);
-	      return hostvar;
+	      /* a rewrite that gives a name the position of another one must not reach here; if it does, the name
+	       * gets its own index, and the text edits give up on the overlap and print the tree */
+	      assert (strcmp (parser->static_sql_host_var_label[i], host_expr_str) == 0);
+	      if (strcmp (parser->static_sql_host_var_label[i], host_expr_str) == 0)
+		{
+		  hostvar->info.host_var.index = i;
+		  PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
+		  parser_free_tree (parser, name_node);
+		  return hostvar;
+		}
 	    }
 	}
     }
@@ -12200,30 +12206,39 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   parser->host_variables = larger_host_variables;
   parser->host_var_expected_domains = larger_host_var_expected_domains;
 
-  /* keep the end of the replaced name or path expression in the source text
-   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()) */
+  /* keep the end and the label of the replaced name or path expression in the source text
+   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()), and for the copies above */
   {
     bool was_null = (parser->static_sql_host_var_end == NULL);
     int *larger_host_var_end = (int *) realloc (parser->static_sql_host_var_end, count_to_realloc * sizeof (int));
+    const char **larger_host_var_label;
 
-    if (larger_host_var_end != NULL)
+    if (larger_host_var_end == NULL)
       {
-	if (was_null)
+	PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	return NULL;
+      }
+    parser->static_sql_host_var_end = larger_host_var_end;
+
+    larger_host_var_label =
+      (const char **) realloc (parser->static_sql_host_var_label, count_to_realloc * sizeof (const char *));
+    if (larger_host_var_label == NULL)
+      {
+	PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	return NULL;
+      }
+    parser->static_sql_host_var_label = larger_host_var_label;
+
+    if (was_null)
+      {
+	for (int i = 0; i < parser->host_var_count; i++)
 	  {
-	    for (int i = 0; i < parser->host_var_count; i++)
-	      {
-		larger_host_var_end[i] = -1;
-	      }
+	    larger_host_var_end[i] = -1;
+	    larger_host_var_label[i] = NULL;
 	  }
-	larger_host_var_end[parser->host_var_count] = name_node->buffer_pos;
-	parser->static_sql_host_var_end = larger_host_var_end;
       }
-    else
-      {
-	/* the text edits can not be made; the rewritten query will be printed from the tree */
-	free_and_init (parser->static_sql_host_var_end);
-	parser->static_sql_edit_status = -1;
-      }
+    larger_host_var_end[parser->host_var_count] = name_node->buffer_pos;
+    larger_host_var_label[parser->host_var_count] = host_expr_str;
   }
 
   db_make_null (&parser->host_variables[parser->host_var_count]);
