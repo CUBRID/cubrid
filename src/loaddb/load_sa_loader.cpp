@@ -124,6 +124,25 @@ const std::size_t LDR_MAX_ARGS = 32;
   } while (0)
 
 /*
+ * CHECK_ERR_QUIET is CHECK_ERR without the message. A value that cannot be converted
+ * passes through several layers on its way out, and each CHECK_ERR () on that way
+ * prints the same sentence again - the engine's message carries no layer of its own,
+ * so the repeats are byte for byte identical and tell the reader nothing. The layer
+ * that answers for a row - ldr_act_attr (), ldr_act_meth () - says it once; the ones
+ * in between hand the error up with this.
+ */
+#define CHECK_ERR_QUIET(err, expr)                                      \
+  do {                                                                  \
+    int inner_err = (expr);                                             \
+    if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
+      goto error_exit;                                                  \
+    }                                                                   \
+    if (inner_err != NO_ERROR && err == NO_ERROR ) {                    \
+      skip_current_instance = true;                                     \
+    }                                                                   \
+  } while (0)
+
+/*
  * CHECK_PARSE_ERR is used by the element setters to output more information
  * about the source token and destination attribute being processed, if
  * an error occurs.
@@ -2648,12 +2667,12 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
 
   if (name_attr)
     {
-      display_error (0);
+      /*
+       * Name the token and the attribute. The engine's own message is left to the
+       * caller, which prints it once for the row; saying it here as well would only
+       * repeat it, since nothing between here and there adds to it.
+       */
       parse_error (context, dom_type, str);
-    }
-  else if (type == LDR_ELO_EXT)
-    {
-      display_error (0);
     }
 
   return err;
@@ -2737,13 +2756,13 @@ ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC 
 
   conv_err = ldr_convert_value (context, str, len, attdesc, type, slot->name_attr, &val);
 
-  CHECK_ERR (err, conv_err);
+  CHECK_ERR_QUIET (err, conv_err);
 
   if (conv_err != NO_ERROR)
     {
       /*
        * The conversion failed and the user asked for that error to be ignored, so
-       * CHECK_ERR above cleared err and marked the instance to be skipped.
+       * CHECK_ERR_QUIET above cleared err and marked the instance to be skipped.
        * There is still no value to store.
        * Going on to the sink would write the null that
        * ldr_convert_value () left behind, and a NOT NULL column answers that with
@@ -2754,7 +2773,7 @@ ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC 
       goto error_exit;
     }
 
-  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
+  CHECK_ERR_QUIET (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
 
 error_exit:
   /*
@@ -3621,11 +3640,8 @@ ldr_check_date_time_conversion (const char *str, data_type type)
     {
       if (err == ER_DATE_CONVERSION)
 	{
+	  /* Name the token and the type. The caller prints the engine's message. */
 	  ldr_date_time_conversion_error (str, current_type);
-	}
-      else
-	{
-	  display_error (0);
 	}
     }
 
