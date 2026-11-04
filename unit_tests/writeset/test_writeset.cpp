@@ -1117,6 +1117,22 @@ TEST_CASE ("a string key under an expansion collation hashes like its compare", 
       }
   }
 
+  SECTION ("a NUL inside the string: the compare skips it, the hash must follow")
+  {
+    const char with_nul[] = { 'a', '\0', 'b' };
+    DB_VALUE value;
+    UINT64 hash_nul;
+    int cmp;
+
+    cmp = lang_strmatch_utf8_uca_w_coll_data (&coll->coll, false, (const unsigned char *) with_nul, 3,
+	  (const unsigned char *) "ab", 2, NULL, false, NULL, false);
+    INFO ("compare('a\\0b', 'ab') = " << cmp);
+    REQUIRE (db_make_varchar (&value, 20, with_nul, 3, INTL_CODESET_UTF8, coll->coll.coll_id) == NO_ERROR);
+    hash_nul = write_key_hash (&class_oid, &value);
+    pr_clear_value (&value);
+    REQUIRE ((hash_nul == hash_of ("ab")) == (cmp == 0));
+  }
+
   SECTION ("a collation without expansions gives no weight key")
   {
     unsigned char *key = NULL;

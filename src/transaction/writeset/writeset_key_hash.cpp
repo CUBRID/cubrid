@@ -159,6 +159,42 @@ wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned cha
   int error;
   int i;
 
+  /* a collation with expansions compares by its full UCA weights, which its pseudo key does not follow
+   * (lang_uca_weight_key); the weights the compare looks at are hashed instead. The compare sees the bytes as
+   * they are: a NUL inside the string is a zero weight it skips, so the NUL-to-space rewrite below is not
+   * for this path; the trailing spaces the index ignores are cut here as for the pseudo key. */
+  {
+    int uca_size = size;
+
+    while (strip_space && uca_size > 0 && s[uca_size - 1] == ' ')
+      {
+	uca_size--;
+      }
+    error = lang_uca_weight_key (lc, s, uca_size, strip_space, &weights, &weights_size);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    if (weights != NULL)
+      {
+	/* FNV-1a over the weight sequence, in the 4 bytes the pseudo key takes */
+	pseudo = 2166136261u;
+	for (i = 0; i < weights_size; i++)
+	  {
+	    pseudo = (pseudo ^ weights[i]) * 16777619u;
+	  }
+	free_and_init (weights);
+
+	pbytes[0] = 0xC5;
+	pbytes[1] = (unsigned char) (pseudo & 0xff);
+	pbytes[2] = (unsigned char) ((pseudo >> 8) & 0xff);
+	pbytes[3] = (unsigned char) ((pseudo >> 16) & 0xff);
+	pbytes[4] = (unsigned char) ((pseudo >> 24) & 0xff);
+
+	return NO_ERROR;
+      }
+  }
+
   if (lc->codeset == INTL_CODESET_BINARY)
     {
       /* the binary collation compares raw bytes and ignores only trailing NULs (lang_fastcmp_binary) */
@@ -192,31 +228,7 @@ wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned cha
       size--;
     }
 
-  /* a collation with expansions compares by its full UCA weights, which its pseudo key does not follow
-   * (lang_uca_weight_key); the weights the compare looks at are hashed instead */
-  error = lang_uca_weight_key (lc, s, size, strip_space, &weights, &weights_size);
-  if (error != NO_ERROR)
-    {
-      if (copy != NULL)
-	{
-	  free_and_init (copy);
-	}
-      return error;
-    }
-  if (weights != NULL)
-    {
-      /* FNV-1a over the weight sequence, in the 4 bytes the pseudo key takes */
-      pseudo = 2166136261u;
-      for (i = 0; i < weights_size; i++)
-	{
-	  pseudo = (pseudo ^ weights[i]) * 16777619u;
-	}
-      free_and_init (weights);
-    }
-  else
-    {
-      pseudo = lc->mht2str (lc, s, size);
-    }
+  pseudo = lc->mht2str (lc, s, size);
 
   if (copy != NULL)
     {
