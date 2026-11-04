@@ -1458,6 +1458,9 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_H
 
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
 
+  /* a copy of a database with a Sidecar store keeps the level that makes older releases refuse it */
+  to_hdr->db_compatibility = from_hdr->db_compatibility;
+
   /* Add other attributes that need to be copied */
 
   return NO_ERROR;
@@ -11007,7 +11010,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	   * Make sure that the log is a log file and that it is compatible
 	   * with the running database and system
 	   */
-	  if (loghdr->db_compatibility != rel_disk_compatible ())
+	  if (rel_get_disk_compatible (loghdr->db_compatibility, NULL) != REL_FULLY_COMPATIBLE)
 	    {
 	      loghdr = NULL;
 	    }

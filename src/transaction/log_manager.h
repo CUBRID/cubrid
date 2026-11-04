@@ -68,6 +68,7 @@ extern LOG_LSA *log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
 extern int log_get_num_pages_for_creation (int db_npages);
+extern void log_raise_sidecar_compatibility (THREAD_ENTRY * thread_p);
 extern int log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 		       const char *prefix_logname, DKNPAGES npages);
 extern void log_initialize (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,

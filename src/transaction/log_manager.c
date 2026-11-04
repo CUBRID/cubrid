@@ -1627,6 +1627,36 @@ log_get_db_compatibility (void)
 {
   return log_Gl.hdr.db_compatibility;
 }
+
+/*
+ * log_raise_sidecar_compatibility () - raise the database to the Sidecar disk level and write the log header
+ *
+ * Note: The level is one-way.  The first Sidecar store creation calls this inside its system operation, before the
+ *       operation commits, so that a database with a store never has a log header that an older release accepts.
+ *       The caller holds no page latch.
+ */
+void
+log_raise_sidecar_compatibility (THREAD_ENTRY * thread_p)
+{
+  const float level = rel_sidecar_disk_compatible ();
+
+  if (log_Gl.hdr.db_compatibility == level)
+    {
+      return;
+    }
+
+#if defined (SERVER_MODE)
+  LOG_CS_ENTER (thread_p);
+#endif /* SERVER_MODE */
+  if (log_Gl.hdr.db_compatibility != level)
+    {
+      log_Gl.hdr.db_compatibility = level;
+      logpb_flush_header (thread_p);
+    }
+#if defined (SERVER_MODE)
+  LOG_CS_EXIT (thread_p);
+#endif /* SERVER_MODE */
+}
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined(SERVER_MODE)

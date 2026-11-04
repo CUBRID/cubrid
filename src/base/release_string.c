@@ -104,6 +104,11 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
  */
 static float disk_compatibility_level = 11.5f;
 
+/* The one-way level of a database whose heaps have a Sidecar store: the first store creation raises the log header
+ * to it (log_raise_sidecar_compatibility ()).  This release opens both levels.  A release without Sidecar finds no
+ * rule for it and refuses the database before recovery, which would replay records it cannot read. */
+static const float sidecar_disk_compatibility_level = 11.5625f;
+
 /*
  * rel_copy_version_string - version string of the product
  *   return: void
@@ -240,6 +245,16 @@ rel_disk_compatible (void)
 
 
 /*
+ * rel_sidecar_disk_compatible - the disk compatibility level of a database that has a Sidecar store
+ *   return:
+ */
+float
+rel_sidecar_disk_compatible (void)
+{
+  return sidecar_disk_compatibility_level;
+}
+
+/*
  * rel_set_disk_compatible - Change disk compatibility level
  *   return: none
  *   level(in):
@@ -298,7 +313,7 @@ rel_get_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
 
   func = NULL;
 
-  if (disk_compatibility_level == db_level)
+  if (disk_compatibility_level == db_level || sidecar_disk_compatibility_level == db_level)
     {
       compat = REL_FULLY_COMPATIBLE;
     }
