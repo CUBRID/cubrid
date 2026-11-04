@@ -35,7 +35,6 @@
 #include "query_planner.h"
 #include "parser.h"
 #include "parser_support.h"
-#include "set_object.h"
 #include "system_parameter.h"
 #include "xasl.h"
 #include "xasl_generation.h"
@@ -2508,103 +2507,27 @@ nl_inner_can_walk_partitions_per_row (XASL_NODE * scan)
  *   inner(in): the inner plan, a scan of a partitioned table
  *   terms(in): the join terms the inner scan evaluates besides the terms of its own plan
  *
- * Note: an equality of the partition key and an outer column of the same type picks one partition per outer row
- *	 (partition_prune_spec_for_row ()). The partition expression must be the key column itself. Only integer and
- *	 date / time keys: a hash partition hashes the outer value as it is, and a string under another collation, a
- *	 NUMERIC of another scale or a float zero of the other sign would hash apart from the key it is equal to.
+ * Note: as the optimizer costs the join (qo_nl_inner_prunes_per_row ()).
  */
 static bool
 nl_inner_prunes_per_row (QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
 {
-  QO_NODE *node;
-  QO_ENV *env;
-  QO_TERM *term;
-  SM_PARTITION *partition;
-  DB_VALUE attr_name;
-  const char *key_name;
-  PT_NODE *expr, *key, *other;
-  UINTPTR spec_id;
   BITSET scan_terms;
-  BITSET_ITERATOR bi;
-  int t, key_len;
-  bool prunes = false;
+  bool prunes;
 
   if (inner->plan_type != QO_PLANTYPE_SCAN || outer->info == NULL)
     {
       return false;
     }
 
-  node = inner->plan_un.scan.node;
-  if (!QO_NODE_IS_CLASS_PARTITIONED (node))
-    {
-      return false;
-    }
-
-  partition = QO_NODE_INFO_SMCLASS (node)->partition;
-  if (partition->values == NULL || set_get_element_nocopy (partition->values, 0, &attr_name) != NO_ERROR
-      || DB_IS_NULL (&attr_name) || (key_name = db_get_string (&attr_name)) == NULL)
-    {
-      return false;
-    }
-
-  /* the partition expression is kept as "SELECT [key] FROM ..." */
-  key_len = (int) strlen (key_name);
-  if (partition->expr == NULL || strncmp (partition->expr, "SELECT [", 8) != 0
-      || intl_identifier_ncasecmp (partition->expr + 8, key_name, key_len) != 0
-      || strncmp (partition->expr + 8 + key_len, "] FROM", 6) != 0)
-    {
-      return false;
-    }
-
-  env = QO_NODE_ENV (node);
-  spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
-
   /* an index join term is a key range of the inner plan, not one of the terms gen_inner () gets */
-  bitset_init (&scan_terms, env);
+  bitset_init (&scan_terms, outer->info->env);
   bitset_assign (&scan_terms, terms);
   bitset_union (&scan_terms, &(inner->sarged_terms));
   bitset_union (&scan_terms, &(inner->plan_un.scan.terms));
   bitset_union (&scan_terms, &(inner->plan_un.scan.kf_terms));
 
-  for (t = bitset_iterate (&scan_terms, &bi); t != -1 && !prunes; t = bitset_next_member (&bi))
-    {
-      term = QO_ENV_TERM (env, t);
-      expr = QO_TERM_PT_EXPR (term);
-      if (expr == NULL || expr->node_type != PT_EXPR || expr->info.expr.op != PT_EQ
-	  || !bitset_intersects (&(QO_TERM_NODES (term)), &(outer->info->nodes)))
-	{
-	  continue;
-	}
-
-      key = expr->info.expr.arg1;
-      other = expr->info.expr.arg2;
-      if (key == NULL || key->node_type != PT_NAME || key->info.name.spec_id != spec_id)
-	{
-	  key = expr->info.expr.arg2;
-	  other = expr->info.expr.arg1;
-	}
-      if (key == NULL || key->node_type != PT_NAME || key->info.name.spec_id != spec_id
-	  || intl_identifier_casecmp (key->info.name.original, key_name) != 0 || other == NULL
-	  || other->node_type != PT_NAME || other->info.name.spec_id == spec_id || other->type_enum != key->type_enum)
-	{
-	  continue;
-	}
-
-      switch (key->type_enum)
-	{
-	case PT_TYPE_SMALLINT:
-	case PT_TYPE_INTEGER:
-	case PT_TYPE_BIGINT:
-	case PT_TYPE_DATE:
-	case PT_TYPE_TIME:
-	case PT_TYPE_DATETIME:
-	case PT_TYPE_TIMESTAMP:
-	  prunes = true;
-	  break;
-	default:
-	  break;
-	}
-    }
+  prunes = qo_nl_inner_prunes_per_row (inner->plan_un.scan.node, &(outer->info->nodes), &scan_terms);
 
   bitset_delset (&scan_terms);
 
