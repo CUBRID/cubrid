@@ -363,6 +363,14 @@ struct lk_res_block
   int count;			/* # of entries in lock res block */
 };
 
+/* a transient request of a statement nested in another, kept apart from the outer statement's counts */
+typedef struct lk_nested_transient LK_NESTED_TRANSIENT;
+struct lk_nested_transient
+{
+  OID oid;
+  int scope;			/* the transient_scope depth that took it */
+};
+
 /*
  * Transaction Lock Entry Structure
  */
@@ -379,6 +387,9 @@ struct lk_tran_lock
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
   int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
+  LK_NESTED_TRANSIENT *nested_transient;	/* each scope's above its outer scopes', so a scope's are the last */
+  int nested_transient_count;
+  int nested_transient_size;
   int class_hold_count;		/* # of entries in class_hold_list */
 
   LK_ENTRY *waiting;		/* waiting lock entry */
@@ -561,6 +572,9 @@ static int lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, cons
 				  int cond_flag, bool mark_transient, bool ahead_of_waiters);
 static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
 static void lock_reset_transient_state (LK_TRAN_LOCK * tran_lock);
+static void lock_count_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid);
+static bool lock_uncount_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid);
+static void lock_end_nested_transient (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, bool release);
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
 static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
 						   const OID * class_oid, LOCK lock);
@@ -1126,6 +1140,7 @@ lock_reset_transient_state (LK_TRAN_LOCK * tran_lock)
 {
   tran_lock->transient_scope = 0;
   tran_lock->transient_total = 0;
+  tran_lock->nested_transient_count = 0;
 }
 
 /*
@@ -6005,6 +6020,10 @@ lock_finalize_tran_lock_table (void)
 	  tran_lock = &lk_Gl.tran_lock_table[i];
 	  pthread_mutex_destroy (&tran_lock->hold_mutex);
 	  pthread_mutex_destroy (&tran_lock->non2pl_mutex);
+	  if (tran_lock->nested_transient != NULL)
+	    {
+	      free_and_init (tran_lock->nested_transient);
+	    }
 	  while (tran_lock->lk_entry_pool != NULL)
 	    {
 	      LK_ENTRY *entry = tran_lock->lk_entry_pool;
@@ -6452,6 +6471,14 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
       if (mark_transient && granted == LK_GRANTED && inst_entry != NULL
 	  && inst_entry->transient_count < inst_entry->count)
 	{
+	  if (lk_Gl.tran_lock_table[tran_index].transient_scope > 1)
+	    {
+	      /* kept by OID: only an escalation to a class X frees an X entry, and that class lock covers any later
+	       * request on the object, so no other request can own an entry of the same OID by the scope end */
+	      assert (lock == X_LOCK);
+	      lock_count_nested_transient (&lk_Gl.tran_lock_table[tran_index], oid);
+	      goto end;
+	    }
 	  /* counted, not flagged: a repeated request only raises count, and the release gives back exactly what was
 	   * taken.  Never past count -- a request an earlier statement took is not this statement's to give back. */
 	  if (inst_entry->transient_count == 0 && inst_entry->count > 1)
@@ -6542,8 +6569,8 @@ lock_object_ahead_of_waiters (THREAD_ENTRY * thread_p, const OID * oid, const OI
  *   return: true when this is the outermost such statement
  *   thread_p(in): thread entry
  *
- * Note: the counts live on the transaction, so a nested statement must not give them back: only the outermost
- *	statement takes transient locks, and one nested in it keeps its own to commit.
+ * Note: the counts live on the transaction and are the outermost statement's.  A statement nested in it that takes
+ *	transient locks has them kept apart, and its own scope end gives back or keeps only those.
  */
 bool
 lock_transient_scope_start (THREAD_ENTRY * thread_p)
@@ -6577,7 +6604,7 @@ lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p)
 }
 
 /*
- * lock_transient_scope_end () - Leave such a statement, giving its locks back if it was the outermost
+ * lock_transient_scope_end () - Leave such a statement, giving back its own transient locks or keeping them to commit
  *   return: void
  *   thread_p(in): thread entry
  *   release(in): give the counted requests back, rather than only forgetting the counts
@@ -6591,11 +6618,16 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[LOG_FIND_THREAD_TRAN_INDEX (thread_p)];
 
   assert (tran_lock->transient_scope > 0);
-  if (tran_lock->transient_scope > 0 && --tran_lock->transient_scope > 0)
+  if (tran_lock->transient_scope > 1)
     {
-      /* an outer statement is still running and the counts are its to give back */
+      /* an outer statement is still running and the counts are its to give back; this one ends only its own */
+      lock_end_nested_transient (thread_p, tran_lock, release);
+      tran_lock->transient_scope--;
       return;
     }
+  tran_lock->transient_scope = 0;
+  assert (tran_lock->nested_transient_count == 0);
+  tran_lock->nested_transient_count = 0;
 
   if (release)
     {
@@ -6628,6 +6660,19 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
   int tran_index;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (lk_Gl.tran_lock_table[tran_index].transient_scope > 1)
+    {
+      if (lock_uncount_nested_transient (&lk_Gl.tran_lock_table[tran_index], oid))
+	{
+	  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
+	  if (entry_ptr != NULL)
+	    {
+	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+	    }
+	}
+      return;
+    }
+
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
   if (entry_ptr == NULL || entry_ptr->transient_count == 0)
     {
@@ -6725,6 +6770,94 @@ lock_forget_transient_object_locks (THREAD_ENTRY * thread_p)
   tran_lock->transient_total = 0;
 #endif /* !SERVER_MODE */
 }
+
+#if defined (SERVER_MODE)
+/*
+ * lock_count_nested_transient () - Count a transient request of a statement nested in another as its own
+ *   return: void
+ *   tran_lock(in/out): the transaction's lock list
+ *   oid(in): the object
+ *
+ * Note: without memory the request is not counted and stays to commit.
+ */
+static void
+lock_count_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid)
+{
+  LK_NESTED_TRANSIENT *grown;
+  int size;
+
+  if (tran_lock->nested_transient_count == tran_lock->nested_transient_size)
+    {
+      size = MAX (16, 2 * tran_lock->nested_transient_size);
+      grown = (LK_NESTED_TRANSIENT *) realloc (tran_lock->nested_transient, size * sizeof (LK_NESTED_TRANSIENT));
+      if (grown == NULL)
+	{
+	  return;
+	}
+      tran_lock->nested_transient = grown;
+      tran_lock->nested_transient_size = size;
+    }
+  tran_lock->nested_transient[tran_lock->nested_transient_count].oid = *oid;
+  tran_lock->nested_transient[tran_lock->nested_transient_count].scope = tran_lock->transient_scope;
+  tran_lock->nested_transient_count++;
+}
+
+/*
+ * lock_uncount_nested_transient () - Drop one request the current nested scope counted on the object
+ *   return: whether there was one
+ *   tran_lock(in/out): the transaction's lock list
+ *   oid(in): the object
+ */
+static bool
+lock_uncount_nested_transient (LK_TRAN_LOCK * tran_lock, const OID * oid)
+{
+  LK_NESTED_TRANSIENT *nested = tran_lock->nested_transient;
+  int last = tran_lock->nested_transient_count - 1;
+  int i;
+
+  for (i = last; i >= 0 && nested[i].scope >= tran_lock->transient_scope; i--)
+    {
+      if (OID_EQ (&nested[i].oid, oid))
+	{
+	  nested[i] = nested[last];
+	  tran_lock->nested_transient_count--;
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * lock_end_nested_transient () - Give back, or keep to commit, the requests the current nested scope counted
+ *   return: void
+ *   thread_p(in): thread entry
+ *   tran_lock(in/out): the transaction's lock list
+ *   release(in): give the requests back, rather than only forgetting them
+ */
+static void
+lock_end_nested_transient (THREAD_ENTRY * thread_p, LK_TRAN_LOCK * tran_lock, bool release)
+{
+  LK_NESTED_TRANSIENT *nested = tran_lock->nested_transient;
+  LK_ENTRY *entry_ptr;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  while (tran_lock->nested_transient_count > 0
+	 && nested[tran_lock->nested_transient_count - 1].scope >= tran_lock->transient_scope)
+    {
+      tran_lock->nested_transient_count--;
+      if (release)
+	{
+	  /* gone when an escalation reclaimed the class's instance locks */
+	  entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, &nested[tran_lock->nested_transient_count].oid,
+						 false);
+	  if (entry_ptr != NULL)
+	    {
+	      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+	    }
+	}
+    }
+}
+#endif /* SERVER_MODE */
 
 
 /*

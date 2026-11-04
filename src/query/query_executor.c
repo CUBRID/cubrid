@@ -10964,11 +10964,12 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   /* Whether these row locks end with the statement: yes for a READ COMMITTED DML target and for a click counter's
    * scope, not for SELECT ... FOR UPDATE.  The facts sit on the top node only, so the caller passes the answer in.  The
    * opener adds the per-class condition for a DML target (the pruned partition, after a switch).  A click counter
-   * (force_select_lock) needs neither condition: by the statement end its increments are committed, or have joined the
-   * transaction and keep the locks. */
+   * (force_select_lock) needs no condition, nested or not: by the statement end its increments are committed, or have
+   * joined the transaction and keep the locks. */
   upddel_target_scan = (mvcc_select_lock_needed && stmt_scoped_locks
-			&& lock_transient_scope_is_outermost (thread_p)
-			&& (force_select_lock || logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED));
+			&& (force_select_lock
+			    || (lock_transient_scope_is_outermost (thread_p)
+				&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED)));
 
   /* Finalize cached-scan activation once per open, before dispatching on access method. The
    * driving-scan gate is assigned next to fixed_scan in qexec_execute_mainblock_internal ();
@@ -20296,7 +20297,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     int m_attrid;
     int m_n_increment;
     DB_CLASS_PARTITION_TYPE m_ptype;
-    bool m_ours = false;	/* its last version is the transaction's, as the single-table branch reads it */
 
     incr_info () = default;
     incr_info (const incr_info & other) = default;
@@ -20428,7 +20428,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED, false, true);
+							     LOG_WARNING_IF_DELETED, true, true);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -20479,8 +20479,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 		{
 		  /* one tuple successfully reevaluated, do not clear list file */
 		  clear_list_id = false;
-		  crt_incr_info.m_ours = p_mvcc_reev_data->last_version_is_ours;
-		  joins_transaction = joins_transaction || crt_incr_info.m_ours;
+		  joins_transaction = joins_transaction || p_mvcc_reev_data->last_version_is_ours;
 		}
 	    }
 	  else
@@ -20573,20 +20572,6 @@ exit:
     {
       /* Release subtransaction MVCCID. */
       logtb_complete_sub_mvcc (thread_p, tdes);
-    }
-
-  if (p_mvcc_reev_data != NULL && !*joined)
-    {
-      /* A target not ours took one request here, or none under a class lock that covers it.  Given back here, not
-       * by a statement scope, whose counts a click counter nested in another statement could not give back. */
-      for (size_t i = 0; i < all_incr_info.size (); i++)
-	{
-	  if (!all_incr_info[i].m_ours)
-	    {
-	      lock_unlock_object_donot_move_to_non2pl (thread_p, &all_incr_info[i].m_oid,
-						       &all_incr_info[i].m_class_oid, X_LOCK);
-	    }
-	}
     }
 
   if (err != NO_ERROR)
@@ -21809,8 +21794,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (!QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
 	    {
-	      /* Reevaluate at select since can't reevaluate in execute_selupd_list.  Nested in another statement, the
-	       * scan's row locks are kept to commit; see lock_transient_scope_start (). */
+	      /* Reevaluate at select since can't reevaluate in execute_selupd_list. */
 	      lock_transient_scope_start (thread_p);
 	      selupd_transient_scope = true;
 	      force_select_lock = true;
@@ -22549,19 +22533,22 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, xasl->selected_upd_list->wait_msecs);
 		}
 
+	      if (!selupd_transient_scope)
+		{
+		  /* qexec_execute_selupd_list () takes the row locks itself */
+		  lock_transient_scope_start (thread_p);
+		  selupd_transient_scope = true;
+		}
 	      error = qexec_execute_selupd_list (thread_p, xasl, xasl_state, &selupd_joined);
 	      if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 		{
 		  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 		}
 
-	      if (selupd_transient_scope)
-		{
-		  /* Increments that went with the transaction keep their row locks to commit.  Given back, a writer
-		   * could take one and wait on us, and after a rollback to a savepoint we would wait on that writer. */
-		  lock_transient_scope_end (thread_p, !selupd_joined);
-		  selupd_transient_scope = false;
-		}
+	      /* Increments that went with the transaction keep their row locks to commit.  Given back, a writer could
+	       * take one and wait on us, and after a rollback to a savepoint we would wait on that writer. */
+	      lock_transient_scope_end (thread_p, !selupd_joined);
+	      selupd_transient_scope = false;
 
 	      if (error != NO_ERROR)
 		{
@@ -33916,8 +33903,8 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   int savepoint_used = 0;
   LOG_LSA lsa;
 
-  /* One scope around both halves runs them nested, so they take no statement-scoped lock and none is given back
-   * inside the system operation below, whose abort would undo a stamp that no longer has its row lock.
+  /* One scope around both halves runs them nested, so the halves take no statement-scoped lock and none of theirs is
+   * given back inside the system operation below, whose abort would undo a stamp that no longer has its row lock.
    * A MERGE the client executes (a target with a trigger, a view, any MERGE without PT_MERGE_INFO_SERVER_OP) never
    * comes here: the server runs only its SELECTs, which open no scope of their own, and its changes arrive as client
    * forces at LOCATOR_LOCK_AT_FORCE, so at top level all of its row locks are ordinary locks kept to commit. */
