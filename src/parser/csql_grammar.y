@@ -489,15 +489,18 @@ static int g_plcsql_text_pos;
 	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
 	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
-	  (Current).start_line   = 0;					\
-	  for (int yyi_ = 1; yyi_ <= (int) (N); yyi_++)			\
-	    {								\
-	      if (YYRHSLOC (Rhs, yyi_).start_line > 0)			\
-		{							\
-		  (Current).start_line = YYRHSLOC (Rhs, yyi_).start_line; \
-		  break;						\
-		}							\
-	    }								\
+          (Current).start_line   = YYRHSLOC (Rhs, 1).start_line;	\
+          if ((Current).start_line == 0)				\
+          {								\
+            for (int yyi_ = 2; yyi_ <= (int) (N); yyi_++)		\
+            	{							\
+                  if (YYRHSLOC (Rhs, yyi_).start_line > 0)		\
+                    {							\
+                      (Current).start_line = YYRHSLOC (Rhs, yyi_).start_line; \
+                      break;						\
+                    }							\
+                }							\
+            }								\
 	}								\
       else								\
 	{								\
