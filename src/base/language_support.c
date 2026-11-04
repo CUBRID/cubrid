@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <langinfo.h>
@@ -4145,7 +4146,7 @@ lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str,
   const COLL_DATA *coll_data = &(lang_coll->coll);
   const unsigned char *str_end = str + size;
   unsigned char *key;
-  int key_capacity;
+  size_t key_capacity;
   int out = 0;
   int level;
 
@@ -4158,12 +4159,18 @@ lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str,
       return NO_ERROR;
     }
 
-  /* every byte can start a character of at most uca_exp_num elements, three bytes each, per level */
-  key_capacity = coll_data->uca_opt.sett_strength * (size * coll_data->uca_exp_num * 3 + 1);
-  key = (unsigned char *) malloc ((size_t) key_capacity);
+  /* every byte can start a character of at most uca_exp_num elements, three bytes each, per level; the sizes
+   * are multiplied as size_t, and a sequence an int cannot measure is refused rather than allocated short */
+  key_capacity = (size_t) coll_data->uca_opt.sett_strength * ((size_t) size * (size_t) coll_data->uca_exp_num * 3 + 1);
+  if (size < 0 || key_capacity > (size_t) INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, key_capacity);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  key = (unsigned char *) malloc (key_capacity);
   if (key == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) key_capacity);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, key_capacity);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -4217,7 +4224,12 @@ lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str,
 	    }
 	  trailing_zero = 0;
 
-	  assert (out + 3 <= key_capacity);
+	  if ((size_t) out + 3 > key_capacity)
+	    {
+	      assert (false);
+	      free_and_init (key);
+	      return ER_FAILED;
+	    }
 	  key[out++] = 0x01;
 	  key[out++] = (unsigned char) ((w >> 8) & 0xff);
 	  key[out++] = (unsigned char) (w & 0xff);
@@ -4235,14 +4247,24 @@ lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str,
 	}
       else
 	{
-	  assert (out + trailing_zero <= key_capacity);
+	  if ((size_t) out + (size_t) trailing_zero > key_capacity)
+	    {
+	      assert (false);
+	      free_and_init (key);
+	      return ER_FAILED;
+	    }
 	  while (trailing_zero-- > 0)
 	    {
 	      key[out++] = 0x02;
 	    }
 	}
 
-      assert (out + 1 <= key_capacity);
+      if ((size_t) out + 1 > key_capacity)
+	{
+	  assert (false);
+	  free_and_init (key);
+	  return ER_FAILED;
+	}
       key[out++] = 0x00;
     }
 
