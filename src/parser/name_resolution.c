@@ -3266,10 +3266,24 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    {
 	      if (attr->info.name.meta_class == PT_PARAMETER)
 		{
+		  PT_NODE *ins_spec = node->info.insert.spec;
+		  const char *class_name;
+
+		  /* a remote target with its columns has its name in the derived dblink table, not in entity_name */
+		  if (ins_spec->info.spec.entity_name != NULL)
+		    {
+		      class_name = ins_spec->info.spec.entity_name->info.name.original;
+		    }
+		  else
+		    {
+		      assert (PT_SPEC_IS_DERIVED (ins_spec)
+			      && ins_spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE);
+		      class_name = ins_spec->info.spec.derived_table->info.dblink_table.remote_table_name;
+		    }
+
 		  /* this is not an attribute of insert spec */
 		  PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ATTRIBUTE_OF,
-			       attr->info.name.original,
-			       node->info.insert.spec->info.spec.entity_name->info.name.original);
+			       attr->info.name.original, class_name);
 		}
 	    }
 	}
@@ -3489,6 +3503,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  /* find the type of the method here */
 	  if (!pt_resolve_method_type (parser, node) && (node->info.method_call.call_or_expr != PT_IS_CALL_STMT))
 	    {
+	      if (PT_IS_HOSTVAR (node->info.method_call.on_call_target) && parser->flag.set_host_var == 0)
+		{
+		  /* m () ON ?: the class to look the method up in is that of the object bound at execute */
+		  parser->flag.needs_bound_hostvar = 1;
+		}
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_DOESNT_EXIST,
 			  node->info.method_call.method_name->info.name.original);
 	      break;
@@ -10378,6 +10397,11 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else if (obj_param->node_type == PT_HOST_VAR)
     {
+      if (parser->flag.set_host_var == 0)
+	{
+	  /* compiled before the values are bound: the object to update is known only at execute */
+	  parser->flag.needs_bound_hostvar = 1;
+	}
       val = pt_value_to_db (parser, obj_param);
     }
 
@@ -11864,6 +11888,11 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
       /* if derived from a set expression, it better have a set type */
       if (!pt_is_set_type (derived_table))
 	{
+	  if (PT_IS_HOSTVAR (derived_table) && parser->flag.set_host_var == 0)
+	    {
+	      /* TABLE (?): the collection type is known only from the value bound at execute */
+	      parser->flag.needs_bound_hostvar = 1;
+	    }
 	  PT_ERRORmf (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MUST_BE_SET_MSET_SEQ,
 		      pt_short_print (parser, derived_table));
 	  return;

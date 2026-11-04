@@ -78,6 +78,8 @@ extern "C"
 			    const char *preferred_hosts, int client_type);
   extern void db_set_server_session_key (const char *key);
   extern char *db_get_server_session_key (void);
+  extern void db_set_session_secret (const char *secret);
+  extern char *db_get_session_secret (void);
   extern SESSION_ID db_get_session_id (void);
   extern void db_set_session_id (const SESSION_ID session_id);
   extern bool db_get_keep_session (void);
@@ -646,6 +648,7 @@ extern "C"
   extern int db_get_start_line (DB_SESSION * session, int stmt);
 
   extern int db_get_statement_type (DB_SESSION * session, int stmt);
+  extern bool db_statement_needs_bound_values (DB_SESSION * session);
 
   extern void db_include_oid (DB_SESSION * session, int include_oid);
 

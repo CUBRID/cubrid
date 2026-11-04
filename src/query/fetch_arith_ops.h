@@ -90,9 +90,8 @@ arith_cast_value (const ARITH_TYPE * arith, int i, const DB_VALUE * value, DB_VA
 extern void fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a);
 extern int fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a);
 
-/* two of the interpreter's operand rules the generic step's emitter mirrors (fetch.c): the operand whose fetch error
- * a date/time function replaces with a conversion error, and WIDTH_BUCKET's two bounds out of its PT_BETWEEN operand */
-extern bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
+/* an interpreter's operand rule the generic step's emitter mirrors (fetch.c): WIDTH_BUCKET's two bounds out of its
+ * PT_BETWEEN operand (the other one, a cast operand's error, is is_argument_wrapped_with_cast_op () in regu_var.hpp) */
 extern int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							  val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tplrec,
 							  DB_VALUE ** min, DB_VALUE ** max);

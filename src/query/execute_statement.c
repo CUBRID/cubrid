@@ -1191,20 +1191,43 @@ update_auto_increment_error:
 }
 
 /*
- * do_flush_serial_restart () - write a _db_serial row that restarts the serial
+ * do_finish_serial_object () - finish a template of a _db_serial row, and write a restart at once
  *   return: Error code
- *   serial_object(in): the row, its current_val and started set by the restart
+ *   obj_tmpl(in/out): set to NULL once dbt_finish_object () has released it
+ *   serial_object(in): the row the template edits
+ *   restart(in): the template sets current_val and started to restart the serial
  *
- * Without the flag the server keeps the current_val and started on the page (serial_row_write_keep_value ()).
+ * Without serial_restart the server keeps the current_val and started on the page (serial_row_write_keep_value ()).
+ * The flag is set before dbt_finish_object (), which writes the row itself at REPEATABLE READ and above, and is
+ * cleared on return. On failure the row is decached: a failed write leaves it dirty, and a later flush would apply
+ * the statement that failed.
  */
 static int
-do_flush_serial_restart (MOP serial_object)
+do_finish_serial_object (DB_OTMPL ** obj_tmpl, MOP serial_object, bool restart)
 {
-  int error;
+  MOP finished;
+  int error = NO_ERROR;
 
-  serial_object->serial_restart = 1;
-  error = locator_flush_instance (serial_object);
+  serial_object->serial_restart = restart;
+  finished = dbt_finish_object (*obj_tmpl);
+  if (finished == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  else
+    {
+      assert (finished == serial_object);
+      *obj_tmpl = NULL;
+      if (restart)
+	{
+	  error = locator_flush_instance (serial_object);
+	}
+    }
   serial_object->serial_restart = 0;
+  if (error != NO_ERROR)
+    {
+      ws_decache (serial_object);
+    }
   return error;
 }
 
@@ -1218,7 +1241,6 @@ do_reset_auto_increment_serial (MOP serial_obj)
 {
   int error_code = NO_ERROR;
   DB_OBJECT *const serial_object = serial_obj;
-  DB_OBJECT *edit_serial_object = NULL;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE start_value;
   DB_VALUE started_flag;
@@ -1263,18 +1285,7 @@ do_reset_auto_increment_serial (MOP serial_obj)
       goto error_exit;
     }
 
-  edit_serial_object = dbt_finish_object (obj_tmpl);
-  if (edit_serial_object == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error_exit;
-    }
-
-  assert (edit_serial_object == serial_object);
-  obj_tmpl = NULL;
-
-  error_code = do_flush_serial_restart (edit_serial_object);
+  error_code = do_finish_serial_object (&obj_tmpl, serial_object, true);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -1310,7 +1321,6 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
 {
   int error_code = NO_ERROR;
   DB_OBJECT *const serial_object = serial_obj;
-  DB_OBJECT *edit_serial_object = NULL;
   DB_OTMPL *obj_tmpl = NULL;
 
   DB_VALUE max_val;
@@ -1438,18 +1448,7 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
       goto error_exit;
     }
 
-  edit_serial_object = dbt_finish_object (obj_tmpl);
-  if (edit_serial_object == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error_exit;
-    }
-
-  assert (edit_serial_object == serial_object);
-  obj_tmpl = NULL;
-
-  error_code = do_flush_serial_restart (edit_serial_object);
+  error_code = do_finish_serial_object (&obj_tmpl, serial_object, true);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -3306,24 +3305,10 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  serial_object = dbt_finish_object (obj_tmpl);
-  if (serial_object == NULL)
+  error = do_finish_serial_object (&obj_tmpl, serial_object, cur_val_change);
+  if (error != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
       goto end;
-    }
-
-  /* obj_tmpl has been released by dbt_finish_object */
-  obj_tmpl = NULL;
-
-  if (cur_val_change)
-    {
-      error = do_flush_serial_restart (serial_object);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
     }
 
 end:
@@ -3604,6 +3589,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
 
+	case PT_ALTER_SYNONYM:
+	case PT_CREATE_SYNONYM:
+	case PT_DROP_SYNONYM:
+	case PT_RENAME_SYNONYM:
+
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
 	  break;
@@ -3830,6 +3820,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = jsp_drop_stored_procedure (parser, statement);
 	  break;
 
+	case PT_SET_SESSION_VARIABLES:
+	  error = do_set_session_variables (parser, statement);
+	  break;
+
+	case PT_DROP_SESSION_VARIABLES:
+	  error = do_drop_session_variables (parser, statement);
+	  break;
+
 	case PT_SET_NAMES:
 	  error = do_set_names (parser, statement);
 	  break;
@@ -3856,6 +3854,30 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_ALTER_SERVER:
 	  error = do_alter_server (parser, statement);
+	  break;
+
+	case PT_VACUUM:
+	  error = do_vacuum (parser, statement);
+	  break;
+
+	case PT_KILL_STMT:
+	  error = do_kill (parser, statement);
+	  break;
+
+	case PT_ALTER_SYNONYM:
+	  error = do_alter_synonym (parser, statement);
+	  break;
+
+	case PT_CREATE_SYNONYM:
+	  error = do_create_synonym (parser, statement);
+	  break;
+
+	case PT_DROP_SYNONYM:
+	  error = do_drop_synonym (parser, statement);
+	  break;
+
+	case PT_RENAME_SYNONYM:
+	  error = do_rename_synonym (parser, statement);
 	  break;
 
 	default:
@@ -7684,12 +7706,23 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   const char *old_name, *new_name;
+  const char *old_qualifier_name, *new_qualifier_name;
   DB_OBJECT *trigger;
 
   CHECK_MODIFICATION_ERROR ();
 
   old_name = statement->info.rename_trigger.old_name->info.name.original;
   new_name = statement->info.rename_trigger.new_name->info.name.original;
+
+  old_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.old_name);
+  new_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.new_name);
+
+  if (old_qualifier_name == NULL || new_qualifier_name == NULL
+      || intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+    {
+      ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
+      return error;
+    }
 
   trigger = tr_find_trigger (old_name);
   if (trigger == NULL)
@@ -18792,9 +18825,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* generate MERGE XASL */
 	  /* Note: Autoparameterization is redundant as the merge XASL generation is already performed. Therefore, this step can be safely omitted. */
 	  bool backup_flag = parser->flag.is_skip_auto_parameterize;
+	  bool backup_merge_flag = parser->flag.is_generating_merge_xasl;
 	  parser->flag.is_skip_auto_parameterize = 1;
+	  parser->flag.is_generating_merge_xasl = 1;
 	  contextp->xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, default_expr_attrs);
 	  parser->flag.is_skip_auto_parameterize = backup_flag;
+	  parser->flag.is_generating_merge_xasl = backup_merge_flag;
 
 	  stream.buffer = NULL;
 

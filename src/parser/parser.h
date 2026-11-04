@@ -705,6 +705,8 @@ extern "C"
 
   extern bool pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_error);
   extern bool pt_expr_keep_uniqueness (const PT_NODE * expr);
+  extern bool pt_expr_keeps_distinct_values (const PT_NODE * expr);
+  extern bool pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_precision);
   extern PT_NODE *pt_function_index_skip_expr (PT_NODE * node);
   extern PT_NODE *pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
@@ -802,6 +804,8 @@ extern "C"
 					 void *arg);
   extern int pt_dblink_merge_check_keys (PARSER_CONTEXT * parser, PT_NODE * merge);
   extern bool pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * merge);
+  extern bool pt_dblink_odku_value_is_bound (PT_NODE * value);
+  extern bool pt_dblink_dml_is_remote_only_expr (PT_NODE * expr);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
