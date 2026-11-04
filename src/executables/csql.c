@@ -805,7 +805,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     }
 
   start_line_no = 1;
-  for (line_no = 1; true; line_no++)
+  /* a line longer than LINE_BUFFER_SIZE is read in pieces, and a read interrupted by EINTR is retried,
+   * so count a line only when the previous read reached its end */
+  for (line_no = 1; true; line_no += (read_whole_line ? 1 : 0))
     {
       if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
 	{
