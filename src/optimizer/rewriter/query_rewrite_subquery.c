@@ -820,9 +820,9 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 /*
  * qo_rewrite_unique_semi_inner () - turn a SEMI JOIN whose ON pins down one inner row per outer row into an
  *   INNER JOIN: same rows, and the planner is free to reorder it (a SEMI inner is frozen behind its outer,
- *   see QO_ADD_SEMI_ANTI_DEP_SET).  Called after qo_rewrite_outerjoin (), which reads the ON of a SEMI JOIN as
- *   a term that rejects the NULL-padded rows of an outer join before it, so that the conversion does not hide
- *   that term from it
+ *   see QO_ADD_SEMI_ANTI_DEP_SET).  Called after qo_rewrite_outerjoin (), which reads the ON of a SEMI JOIN with
+ *   no RIGHT OUTER JOIN connected behind it as a term that rejects the NULL-padded rows of an outer join before
+ *   it, so that the conversion does not hide that term from it
  *   return: none
  *   parser(in):
  *   node(in/out): a PT_SELECT node

@@ -10068,6 +10068,25 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      q = pt_append_nulstring (parser, q, ")");
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE && p->info.spec.remote_server_name != NULL
+		   && (parser->custom_print & PT_SHORT_PRINT))
+	    {
+	      /* A remote DML target takes this shape to get its columns. An error message ends with
+	       * the statement printed short, and there the target is printed as <table>@<server>
+	       * followed by its range variable. As for a local table, the range variable is the
+	       * table name when no alias is written. */
+	      q = pt_append_nulstring (parser, q, p->info.spec.derived_table->info.dblink_table.remote_table_name);
+	      q = pt_append_nulstring (parser, q, "@");
+	      if (p->info.spec.remote_server_name->next)
+		{
+		  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name->next));
+		  q = pt_append_nulstring (parser, q, ".");
+		}
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name));
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.range_var));
+	      goto print_join_cond;
+	    }
 	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
 	      q = pt_append_varchar (parser, q, r1);
@@ -13754,8 +13773,10 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
 
-  /* do not check attribute list for dblink */
-  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+  /* Walk the INSERT column list for a local target, and for a dblink target in the derived dblink table shape,
+   * which carries its columns. */
+  if (p->info.insert.spec && (p->info.insert.spec->info.spec.remote_server_name == NULL
+			      || PT_SPEC_IS_DERIVED (p->info.insert.spec)))
     {
       PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
     }
@@ -19464,7 +19485,7 @@ pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_p
 	{
 	  return true;
 	}
-      /* fall through */
+      [[fallthrough]];
     case PT_TYPE_BIGINT:
       return (PT_IS_DISCRETE_NUMBER_TYPE (to_type) || to_type == PT_TYPE_NUMERIC || PT_IS_CHAR_STRING_TYPE (to_type));
 
