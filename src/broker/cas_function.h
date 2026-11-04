@@ -92,5 +92,7 @@ extern FN_RETURN fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BU
 extern FN_RETURN fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern FN_RETURN fn_stream_upload_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 					   T_REQ_INFO * req_info);
+extern FN_RETURN fn_stream_upload_hold (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
+					T_REQ_INFO * req_info);
 
 #endif /* _CAS_FUNCTION_H_ */

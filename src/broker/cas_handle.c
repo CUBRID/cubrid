@@ -697,6 +697,35 @@ hm_srv_handle_release_uploads_for_free_all (bool free_holdable)
     }
 }
 
+/* The statement binds these uploads ahead of its execute: they count as its own, so closing another statement that
+ * binds them keeps them; its next execute or its close settles them like any other. */
+int
+hm_srv_handle_hold_internal_lob_uploads (T_SRV_HANDLE * srv_handle, const INT64 * tokens, int count)
+{
+  INT64 *held;
+  int i, j, n = srv_handle->internal_lob_upload_token_count;
+
+  held = (INT64 *) REALLOC (srv_handle->internal_lob_upload_tokens, sizeof (INT64) * (n + count));
+  if (held == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+    }
+  for (i = 0; i < count; i++)
+    {
+      for (j = 0; j < n && held[j] != tokens[i]; j++)
+	{
+	  ;
+	}
+      if (j == n && tokens[i] > 0)
+	{
+	  held[n++] = tokens[i];
+	}
+    }
+  srv_handle->internal_lob_upload_tokens = held;
+  srv_handle->internal_lob_upload_token_count = n;
+  return 0;
+}
+
 /* The driver discarded this upload: release it unless an open statement still binds it. */
 void
 hm_internal_lob_upload_release (INT64 token)

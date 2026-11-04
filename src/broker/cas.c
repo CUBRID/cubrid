@@ -125,7 +125,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
   fn_not_supported,		/* CAS_FC_STREAM_READ */
   fn_not_supported,		/* CAS_FC_STREAM_RELEASE */
-  fn_not_supported		/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_not_supported,		/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_not_supported		/* CAS_FC_STREAM_UPLOAD_HOLD */
 };
 #elif defined(CAS_FOR_CGW)
 static T_SERVER_FUNC server_fn_table[] = {
@@ -180,7 +181,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
   fn_not_supported,		/* CAS_FC_STREAM_READ */
   fn_not_supported,		/* CAS_FC_STREAM_RELEASE */
-  fn_not_supported		/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_not_supported,		/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_not_supported		/* CAS_FC_STREAM_UPLOAD_HOLD */
 };
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 /* ========================================================================
@@ -238,7 +240,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_stream_read_open,		/* CAS_FC_STREAM_READ_OPEN */
   fn_stream_read,		/* CAS_FC_STREAM_READ */
   fn_stream_release,		/* CAS_FC_STREAM_RELEASE */
-  fn_stream_upload_release	/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_stream_upload_release,	/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_stream_upload_hold		/* CAS_FC_STREAM_UPLOAD_HOLD */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -298,7 +301,8 @@ static const char *server_func_name[] = {
   "fn_stream_read_open",
   "fn_stream_read",
   "fn_stream_release",
-  "fn_stream_upload_release"
+  "fn_stream_upload_release",
+  "fn_stream_upload_hold"
 };
 
 /* process_request () indexes the names the same way, before the admission check can swap the function */
