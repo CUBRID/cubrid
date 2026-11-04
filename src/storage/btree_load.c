@@ -138,6 +138,11 @@ struct load_args
   SORT_ARGS *sort_args;		/* Leader's sort arguments; read by the parallel join to build the non-leaf levels. */
   BT_LOAD_PROVIDER *provider;	/* Shared page provider of the parallel build; NULL on the ordinary path. */
   int worker_idx;		/* Shard index of this worker; -1 for the transaction thread (serial or px leader). */
+  /* Vacuum notifications a shard worker made and has not mailed yet: a chain through LOG_PRIOR_NODE.next, oldest
+   * first, mailed as one when it reaches BT_LOAD_MAIL_CHAIN records and when the worker ends. */
+  LOG_PRIOR_NODE *mail_chain;
+  LOG_PRIOR_NODE *mail_chain_tail;
+  int mail_chain_count;
   BT_LOAD_NEW_PAGE_FUNC new_page_fn;	/* Page source: serial allocation, provider pool, or the leader's inline pool. */
   BT_LOAD_PX_OUTCOME px_outcome;	/* Why the parallel build was skipped, or that it ran. */
 
@@ -208,8 +213,8 @@ struct bt_load_vpid_pool
 };
 // *INDENT-ON*
 
-/* A log record a shard worker made for the leader to append: the content redo of a finished page, or a vacuum
- * notification (vpid NULL) */
+/* A log record a shard worker made for the leader to append: the content redo of a finished page (vpid set, one
+ * record), or a chain of vacuum notifications (vpid NULL, linked through LOG_PRIOR_NODE.next) */
 typedef struct bt_load_mail BT_LOAD_MAIL;
 struct bt_load_mail
 {
@@ -217,7 +222,8 @@ struct bt_load_mail
   LOG_PRIOR_NODE *node;
 };
 #define BT_LOAD_MAIL_PER_WORKER 4	/* mailbox capacity per shard worker */
-#define BT_LOAD_MAIL_BATCH 16	/* records the leader takes out per visit */
+#define BT_LOAD_MAIL_BATCH 16	/* mails the leader takes out per visit */
+#define BT_LOAD_MAIL_CHAIN 256	/* notifications a shard worker mails as one chain */
 
 typedef struct bt_load_worker_slot BT_LOAD_WORKER_SLOT;
 struct bt_load_worker_slot
@@ -351,6 +357,8 @@ static LOG_PRIOR_NODE *bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * v
 static int bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const VPID * vpid,
 				       LOG_PRIOR_NODE * node);
 static int bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider);
+static void bt_load_free_prior_chain (LOG_PRIOR_NODE * node);
+static int bt_load_mail_chain_flush (LOAD_ARGS * load_args);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 				VPID * vpid_new, PAGE_PTR * page_new, bool ovf_dir);
 static int bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
@@ -1343,6 +1351,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->build_mvccid = MVCCID_NULL;
   load_args->provider = NULL;
   load_args->worker_idx = -1;
+  load_args->mail_chain = NULL;
+  load_args->mail_chain_tail = NULL;
+  load_args->mail_chain_count = 0;
   load_args->new_page_fn = bt_load_new_page_serial;
   load_args->px_outcome = BT_PX_NOT_ATTEMPTED;
   load_args->sort_args = sort_args;
@@ -2804,8 +2815,8 @@ bt_load_make_page_redo (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
 /*
  * bt_load_provider_post_mail () - Hand a record to the leader; waits while the mailbox is full
  *   return: error code (the build failed elsewhere: the record is dropped and an error set)
- *   vpid(in): the page the record belongs to, NULL for a record without a page
- *   node(in): the record; the leader owns it from here on
+ *   vpid(in): the page the record belongs to, NULL for a chain of records without a page
+ *   node(in): the record, or the chain; the leader owns it from here on
  */
 static int
 bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const VPID * vpid, LOG_PRIOR_NODE * node)
@@ -2820,7 +2831,7 @@ bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const V
   if (provider->first_error != NO_ERROR)
     {
       pthread_mutex_unlock (&provider->mtx);
-      logpb_free_prior_node (node);
+      bt_load_free_prior_chain (node);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
       return ER_BTREE_LOAD_FAILED;
     }
@@ -2841,7 +2852,43 @@ bt_load_provider_post_mail (BT_LOAD_PROVIDER * provider, int worker_idx, const V
 }
 
 /*
- * bt_load_provider_drain_mail () - The leader appends every mailed record and stamps its page
+ * bt_load_free_prior_chain () - Drop records that were made but will never be appended
+ *   node(in): the first record of the chain, or NULL
+ */
+static void
+bt_load_free_prior_chain (LOG_PRIOR_NODE * node)
+{
+  while (node != NULL)
+    {
+      LOG_PRIOR_NODE *next = node->next;
+
+      logpb_free_prior_node (node);
+      node = next;
+    }
+}
+
+/*
+ * bt_load_mail_chain_flush () - Mail the vacuum notifications a shard worker has collected, as one chain
+ *   return: error code; the chain is the leader's, or dropped, either way
+ */
+static int
+bt_load_mail_chain_flush (LOAD_ARGS * load_args)
+{
+  LOG_PRIOR_NODE *chain = load_args->mail_chain;
+
+  if (chain == NULL)
+    {
+      return NO_ERROR;
+    }
+  load_args->mail_chain = NULL;
+  load_args->mail_chain_tail = NULL;
+  load_args->mail_chain_count = 0;
+  return bt_load_provider_post_mail (load_args->provider, load_args->worker_idx, NULL, chain);
+}
+
+/*
+ * bt_load_provider_drain_mail () - The leader appends every mailed record, chains included, and stamps the page of
+ *                                  a page record
  *   return: error code
  *
  * Note: Called without the provider mutex. On error the remaining records are dropped; the build fails.
@@ -2884,14 +2931,14 @@ bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provide
 
       for (i = 0; i < n; i++)
 	{
+	  LOG_PRIOR_NODE *node = batch[i].node;
 	  PAGE_PTR page = NULL;
-	  LOG_LSA start_lsa;
 
 	  if (error != NO_ERROR || failed || log_is_no_logging ())
 	    {
 	      /* the build failed: its file goes away with the rollback, nothing of it needs a log record; or the
 	       * server runs with no_logging, where log_append_* appends no record either */
-	      logpb_free_prior_node (batch[i].node);
+	      bt_load_free_prior_chain (node);
 	      continue;
 	    }
 	  if (!VPID_ISNULL (&batch[i].vpid))
@@ -2905,14 +2952,26 @@ bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provide
 		      error = ER_BTREE_LOAD_FAILED;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		    }
-		  logpb_free_prior_node (batch[i].node);
+		  bt_load_free_prior_chain (node);
 		  continue;
 		}
 	    }
-	  start_lsa = prior_lsa_next_record (thread_p, batch[i].node, tdes);
+	  while (node != NULL)
+	    {
+	      LOG_PRIOR_NODE *next = node->next;
+	      LOG_LSA start_lsa;
+
+	      /* prior_lsa_next_record () links the record by next and does not clear it: detach it first */
+	      node->next = NULL;
+	      start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+	      if (page != NULL)
+		{
+		  pgbuf_set_lsa (thread_p, page, &start_lsa);
+		}
+	      node = next;
+	    }
 	  if (page != NULL)
 	    {
-	      pgbuf_set_lsa (thread_p, page, &start_lsa);
 	      pgbuf_set_dirty (thread_p, page, DONT_FREE);
 	      pgbuf_unfix_and_init (thread_p, page);
 	    }
@@ -3687,7 +3746,7 @@ bt_load_provider_close (BT_LOAD_PROVIDER * provider)
   assert (provider->mail_count == 0 || provider->first_error != NO_ERROR);
   for (int i = 0; i < provider->mail_count; i++)
     {
-      logpb_free_prior_node (provider->mails[(provider->mail_head + i) % provider->mail_capacity].node);
+      bt_load_free_prior_chain (provider->mails[(provider->mail_head + i) % provider->mail_capacity].node);
     }
   free_and_init (provider->mails);
   free_and_init (provider->main_pool.vpids);
@@ -5080,7 +5139,7 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
       else
 	{
 	  /* a shard worker shares the leader's transaction descriptor and cannot append to its log stream: it
-	   * makes the record and mails it to the leader */
+	   * makes the record and mails it to the leader, in chains of BT_LOAD_MAIL_CHAIN */
 	  LOG_DATA_ADDR addr;
 	  LOG_CRUMB crumb;
 	  LOG_PRIOR_NODE *node;
@@ -5104,10 +5163,22 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 		}
 	      return ret;
 	    }
-	  ret = bt_load_provider_post_mail (load_args->provider, load_args->worker_idx, NULL, node);
-	  if (ret != NO_ERROR)
+	  if (load_args->mail_chain == NULL)
 	    {
-	      return ret;
+	      load_args->mail_chain = node;
+	    }
+	  else
+	    {
+	      load_args->mail_chain_tail->next = node;
+	    }
+	  load_args->mail_chain_tail = node;
+	  if (++load_args->mail_chain_count >= BT_LOAD_MAIL_CHAIN)
+	    {
+	      ret = bt_load_mail_chain_flush (load_args);
+	      if (ret != NO_ERROR)
+		{
+		  return ret;
+		}
 	    }
 	}
       pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
@@ -5495,6 +5566,9 @@ bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, B
    * build has the worker mail the redo of its pages to the leader. */
   assert (src->page_log_mode != BT_LOAD_LOG_BY_LEADER);
   load_args->page_log_mode = (src->page_log_mode == BT_LOAD_LOG_NO_REDO) ? BT_LOAD_LOG_NO_REDO : BT_LOAD_LOG_BY_LEADER;
+  load_args->mail_chain = NULL;
+  load_args->mail_chain_tail = NULL;
+  load_args->mail_chain_count = 0;
   /* CBRD-24094: the overflow OID directory state is per-chain, hence per-worker; ovf_dir itself is a property of the index and
    * is inherited from the leader. */
   VPID_SET_NULL (&load_args->ovf_dir_vpid);
@@ -5534,6 +5608,8 @@ bt_load_free_shard_load_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   os_free_and_init (load_args->ovf_recdes.data);
   free_and_init (load_args->ovf_dir_entries);
   bt_load_clear_keys (load_args);
+  /* bt_load_worker_epilogue () mailed or dropped the chain */
+  assert (load_args->mail_chain == NULL);
   free_and_init (load_args);
 }
 
@@ -5579,6 +5655,19 @@ bt_load_worker_epilogue (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int err
   pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
   pgbuf_unfix_and_init_after_check (thread_p, load_args->nleaf.pgptr);
   bt_load_clear_keys (load_args);
+  if (error == NO_ERROR)
+    {
+      /* the notifications still collected, before this worker reports done: the leader stops draining the mailbox
+       * once every worker has */
+      error = bt_load_mail_chain_flush (load_args);
+    }
+  else
+    {
+      bt_load_free_prior_chain (load_args->mail_chain);
+      load_args->mail_chain = NULL;
+      load_args->mail_chain_tail = NULL;
+      load_args->mail_chain_count = 0;
+    }
   load_args->report_first_error = error;
   pthread_mutex_lock (&provider->mtx);
   if (error == NO_ERROR)
