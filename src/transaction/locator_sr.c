@@ -7633,6 +7633,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   HFID class_hfid;
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
+  /* the UPDATE reads its old record as stored, so the transform keeps the Sidecar refs of unassigned values */
+  const bool stored_form = LC_IS_FLUSH_UPDATE (operation) && rec_descriptor == NULL && scan_cache != NULL;
 
   /*
    * While scanning objects, the given scancache does not fix the last
@@ -7653,11 +7655,13 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_UPDATE_PRUNE:
     case LC_FLUSH_UPDATE_PRUNE_VERIFY:
       /* MVCC snapshot no needed for now scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p); */
-      if (rec_descriptor == NULL && scan_cache != NULL)
+      if (stored_form)
 	{
-	  /* the old record is read as stored: the transform keeps the refs of unassigned values and the attribute layer
-	   * reads only the values it decodes, so an UPDATE of small columns reads no Sidecar store page */
-	  heap_scancache_allow_lazy_sidecar (scan_cache);
+	  /* only this last-version read under the row's X lock keeps refs; the attribute layer reads the values it
+	   * decodes through them until locator_update_force () returns, so an UPDATE of small columns reads no store
+	   * page in its write path */
+	  heap_scancache_allow_lazy_sidecar (scan_cache, true);
+	  sidecar_stored_form_begin ();
 	}
       if (rec_descriptor != NULL)
 	{
@@ -7697,6 +7701,11 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 	}
 
+      if (stored_form)
+	{
+	  heap_scancache_allow_lazy_sidecar (scan_cache, false);
+	}
+
       if (scan == S_SUCCESS)
 	{
 	  /* do nothing for the moment */
@@ -7704,7 +7713,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       else if (scan == S_ERROR || scan == S_DOESNT_FIT)
 	{
 	  /* Whenever an error including an interrupt was broken out, quit the update. */
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  break;
 	}
       else if (scan == S_DOESNT_EXIST)
 	{
@@ -7716,17 +7726,20 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 	  else
 	    {
-	      return ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
+	      error_code = (err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id;	/* other errors should return S_ERROR? */
+	      break;
 	    }
 	}
       else if (scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  break;
 	}
       else
 	{
 	  assert (false);
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  break;
 	}
 
       old_recdes = &copy_recdes;
@@ -7803,6 +7816,10 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       break;
     }
 
+  if (stored_form)
+    {
+      sidecar_stored_form_end ();
+    }
   return error_code;
 }
 

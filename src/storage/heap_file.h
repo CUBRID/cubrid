@@ -692,7 +692,7 @@ extern int heap_rv_sidecar_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern bool heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					      ATTR_ID * att_id, int n_att_id);
 extern int heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
-extern void heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache);
+extern void heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache, bool allow);
 extern int heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						      OID * class_oid);
 extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,

@@ -229,13 +229,22 @@ struct sidecar_plan
   }
 };
 
+struct sidecar_oid_less
+{
+  bool operator() (const OID &a, const OID &b) const
+  {
+    return oid_compare (&a, &b) < 0;
+  }
+};
+
 /* The attribute layer's view of a record with refs (HEAP_CACHE_ATTRINFO.sc): the bytes of each value it read
- * through a ref, by attribute id.  A DB_VALUE decoded from them points into them, so they live until the same
- * attribute is read again or the attribute information ends. */
+ * through a ref, by the store record's OID.  A DB_VALUE decoded from them points into them, so a buffer is never
+ * read into twice: a second read of the same ref, from the same record or from the new image that kept it, finds the
+ * bytes there.  They are freed when the attribute information's values are, in heap_attrinfo_clear_dbvalues () and
+ * heap_attrinfo_end (). */
 struct sidecar_attr_state
 {
-  std::map<int, std::vector<char>> values;
-  std::map<int, std::vector<char>> keys;
+  std::map<OID, std::vector<char>, sidecar_oid_less> values;
 };
 
 /* What the module did since the server started, for the tests: store records it read, of them the ones a fetch exit
@@ -243,6 +252,14 @@ struct sidecar_attr_state
  * lock fallbacks.  checkdb's verifier logs them (sidecar_verify_heap ()); P1c turns them into performance counters. */
 static std::atomic<UINT64> sidecar_Store_reads (0);
 static std::atomic<UINT64> sidecar_Expand_reads (0);
+static std::atomic<UINT64> sidecar_Expand_reads_last (0);	/* of them, by last-version reads */
+static std::atomic<UINT64> sidecar_Store_fixes (0);	/* store heap pages fixed by readers, overflow pages aside */
+
+#if !defined (NDEBUG)
+/* The stored-form window of the thread: from the old-record fetch of an UPDATE under its X lock to the end of
+ * locator_update_force ().  The attribute layer meets a record with refs only inside it. */
+static thread_local int sidecar_Stored_form_window = 0;
+#endif /* !NDEBUG */
 static std::atomic<UINT64> sidecar_Store_writes (0);
 static std::atomic<UINT64> sidecar_Retries (0);
 static std::atomic<UINT64> sidecar_Fallbacks (0);
@@ -453,6 +470,7 @@ sidecar_fix_store_page (THREAD_ENTRY *thread_p, const OID *oid, PAGE_PTR *page)
 
   vpid.volid = oid->volid;
   vpid.pageid = oid->pageid;
+  sidecar_Store_fixes++;
   *page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (*page == NULL)
     {
@@ -1709,6 +1727,7 @@ sidecar_on_fetch_body (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDE
 
       sidecar_hot_get_ref (&hot, i, &ref);
       sidecar_Expand_reads += (i == 0 && fault) ? 0 : 1;
+      sidecar_Expand_reads_last += (fetch == SIDECAR_FETCH_LAST_VERSION) ? 1 : 0;
       const sidecar_read_result result = ((i == 0 && fault) ? SIDECAR_READ_ABSENT
 					  : sidecar_read_value (thread_p, &ref, recdes->data + value_offsets[i]));
       if (result == SIDECAR_READ_FAILED)
@@ -1811,29 +1830,59 @@ sidecar_fetch_locked (THREAD_ENTRY *thread_p, const OID *oid, OID *class_oid, HE
  * kept refs of the row it locked; both are read as a row-lock holder (5.6 b).  A slot that holds a value is decoded
  * as usual.
  */
-static std::vector<char> *
-sidecar_attr_buffer (HEAP_CACHE_ATTRINFO *attr_info, bool for_key, int attrid)
+/* I-7 for the attribute layer: when it reads the store, the thread holds no page but at most the hot page of the
+ * row (a reader latches hot, then store) */
+static bool
+sidecar_attr_pages_ok (THREAD_ENTRY *thread_p)
 {
+#if !defined (NDEBUG)
+  PAGE_PTR page = NULL;
+  const int n_fixed = pgbuf_count_perm_pages_fixed (thread_p, &page);
+
+  return (n_fixed == 0
+	  || (n_fixed == 1 && pgbuf_get_page_ptype (thread_p, page) == PAGE_HEAP
+	      && !heap_page_is_sidecar_store (thread_p, page)));
+#else /* NDEBUG */
+  return true;
+#endif /* NDEBUG */
+}
+
+/* the value bytes a ref slot names, read from the store as a row-lock holder, or found from an earlier read of the
+ * same ref; NULL with the error set when the read fails */
+static const std::vector<char> *
+sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, const char *slot)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  SIDECAR_REF ref;
+  OID oid;
+
+  /* only the UPDATE's old record, read as stored under its X lock, and its new image carry refs here */
+  assert (sidecar_Stored_form_window > 0);
+
+  sidecar_ref_decode (slot, &ref);
+  oid.volid = ref.volid;
+  oid.pageid = ref.pageid;
+  oid.slotid = ref.slotid;
   if (attr_info->sc == NULL)
     {
       attr_info->sc = new sidecar_attr_state ();
     }
-  return for_key ? &attr_info->sc->keys[attrid] : &attr_info->sc->values[attrid];
-}
 
-static int
-sidecar_resolve_slot (THREAD_ENTRY *thread_p, const char *slot, std::vector<char> &bytes)
-{
-  SIDECAR_REF ref;
-
-  sidecar_ref_decode (slot, &ref);
-  bytes.resize (MAX (ref.length, 1));
-  const int error_code = sidecar_read_value_locked (thread_p, &ref, bytes.data ());
-  if (error_code == NO_ERROR)
+  auto found = attr_info->sc->values.find (oid);
+  if (found != attr_info->sc->values.end ())
     {
-      bytes.resize (ref.length);
+      assert ((int) found->second.size () == ref.length);
+      return &found->second;
     }
-  return error_code;
+
+  assert (sidecar_attr_pages_ok (thread_p));
+  std::vector<char> bytes (MAX (ref.length, 1));
+  if (sidecar_read_value_locked (thread_p, &ref, bytes.data ()) != NO_ERROR)
+    {
+      return NULL;
+    }
+  bytes.resize (ref.length);
+  return &attr_info->sc->values.emplace (oid, std::move (bytes)).first->second;
 }
 
 static bool
@@ -1842,6 +1891,7 @@ sidecar_point_variable_body (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO 
 {
   const char *end = layout->var_table + layout->trailer_end;
 
+  /* P1a D1: the trailer's count is the record's representation's */
   assert ((unsigned short) OR_GET_SHORT (end - 3 * OR_SHORT_SIZE) == attr_info->read_classrepr->n_variable);
   if (sidecar_trailer_find_from_end (end, attrepr->location) < 0)
     {
@@ -1850,16 +1900,16 @@ sidecar_point_variable_body (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO 
 
   const char *slot = layout->var_table + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout->var_table, attrepr->location,
 		     layout->offset_size);
-  std::vector<char> *bytes = sidecar_attr_buffer (attr_info, false, attrepr->id);
+  const std::vector<char> *bytes = sidecar_resolve_slot (attr_info, slot);
 
-  if (sidecar_resolve_slot (thread_get_thread_entry_info (), slot, *bytes) != NO_ERROR)
+  if (bytes == NULL)
     {
       /* heap_attrvalue_read () returns the error */
       raw->data = NULL;
       raw->length = -1;
       return true;
     }
-  raw->data = bytes->data ();
+  raw->data = (char *) bytes->data ();
   raw->length = (int) bytes->size ();
   return true;
 }
@@ -1885,17 +1935,14 @@ static char *
 sidecar_midxkey_point_body (HEAP_CACHE_ATTRINFO *attr_info, const RECDES *recdes, const OR_ATTRIBUTE *att,
 			    char *disk_data)
 {
+  assert (sidecar_trailer_n_variable (recdes) == attr_info->read_classrepr->n_variable);
   if (sidecar_trailer_find (recdes, att->location) < 0)
     {
       return disk_data;
     }
 
-  std::vector<char> *bytes = sidecar_attr_buffer (attr_info, true, att->id);
-  if (sidecar_resolve_slot (thread_get_thread_entry_info (), disk_data, *bytes) != NO_ERROR)
-    {
-      return NULL;
-    }
-  return bytes->data ();
+  const std::vector<char> *bytes = sidecar_resolve_slot (attr_info, disk_data);
+  return bytes == NULL ? NULL : (char *) bytes->data ();
 }
 
 __attribute__ ((noinline)) char *
@@ -1919,6 +1966,21 @@ sidecar_attr_state_free (HEAP_CACHE_ATTRINFO *attr_info)
   delete attr_info->sc;
   attr_info->sc = NULL;
 }
+
+#if !defined (NDEBUG)
+void
+sidecar_stored_form_begin (void)
+{
+  sidecar_Stored_form_window++;
+}
+
+void
+sidecar_stored_form_end (void)
+{
+  sidecar_Stored_form_window--;
+  assert (sidecar_Stored_form_window >= 0);
+}
+#endif /* !NDEBUG */
 
 __attribute__ ((noinline)) void
 sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache)
@@ -1979,14 +2041,6 @@ struct sidecar_verify_record
   int length;			/* of the value */
   bool live;
   int named;
-};
-
-struct sidecar_oid_less
-{
-  bool operator() (const OID &a, const OID &b) const
-  {
-    return oid_compare (&a, &b) < 0;
-  }
 };
 
 using sidecar_verify_records = std::map<OID, sidecar_verify_record, sidecar_oid_less>;
@@ -2390,11 +2444,12 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
 
   er_log_debug (ARG_FILE_LINE, "Sidecar verify heap %d|%d|%d: store live %d dead %d relocated %d bigone %d; hot rows "
 		"with refs %d, deleted %d; store reads %llu (fetch expansion %llu) writes %llu retries %llu fallbacks %llu; "
-		"%s", HFID_AS_ARGS (hfid), live, (int) v.records.size () - live, v.relocated, v.bigone, v.hot_rows,
-		v.hot_deleted, (unsigned long long) sidecar_Store_reads.load (),
-		(unsigned long long) sidecar_Expand_reads.load (), (unsigned long long) sidecar_Store_writes.load (),
-		(unsigned long long) sidecar_Retries.load (), (unsigned long long) sidecar_Fallbacks.load (),
-		v.valid ? "valid" : "INVALID");
+		"expansion by last-version reads %llu; store page fixes %llu; %s", HFID_AS_ARGS (hfid), live,
+		(int) v.records.size () - live, v.relocated, v.bigone, v.hot_rows, v.hot_deleted,
+		(unsigned long long) sidecar_Store_reads.load (), (unsigned long long) sidecar_Expand_reads.load (),
+		(unsigned long long) sidecar_Store_writes.load (), (unsigned long long) sidecar_Retries.load (),
+		(unsigned long long) sidecar_Fallbacks.load (), (unsigned long long) sidecar_Expand_reads_last.load (),
+		(unsigned long long) sidecar_Store_fixes.load (), v.valid ? "valid" : "INVALID");
   return v.valid ? DISK_VALID : DISK_INVALID;
 }
 

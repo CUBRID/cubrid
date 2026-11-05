@@ -11900,6 +11900,32 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
   return false;
 }
 
+#if !defined (NDEBUG)
+/*
+ * pgbuf_count_perm_pages_fixed () - how many pages other than query result pages the thread holds
+ *   return: the count
+ *   last_page(out): one of them, when the count is not zero
+ */
+int
+pgbuf_count_perm_pages_fixed (THREAD_ENTRY * thread_p, PAGE_PTR * last_page)
+{
+  int thrd_idx = thread_get_entry_index (thread_p);
+  PGBUF_HOLDER *holder = NULL;
+  int count = 0;
+
+  *last_page = NULL;
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype != PAGE_QRESULT)
+	{
+	  count++;
+	  CAST_BFPTR_TO_PGPTR (*last_page, holder->bufptr);
+	}
+    }
+  return count;
+}
+#endif /* !NDEBUG */
+
 #if defined (SERVER_MODE)
 /*
  * pgbuf_is_thread_high_priority () -

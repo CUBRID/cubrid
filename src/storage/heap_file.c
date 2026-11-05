@@ -11488,6 +11488,11 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
   OID_SET_NULL (&attr_info->inst_oid);
   attr_info->inst_chn = NULL_CHN;
   attr_info->lazy_recdes = NULL;	/* borrowed record the cleared values were read from - reset with them */
+  if (unlikely (attr_info->sc != NULL))
+    {
+      /* the values that pointed into the bytes read through Sidecar refs are cleared */
+      sidecar_attr_state_free (attr_info);
+    }
 
   return ret;
 }
@@ -21611,16 +21616,17 @@ heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
 
 /*
  * heap_scancache_allow_lazy_sidecar () - Let the last-version reads of a scan cache keep a record with Sidecar refs
- *					   as stored
- *   scan_cache(in/out): a scan cache whose caller decodes every record it reads through the attribute layer
+ *					   as stored, or stop it
+ *   scan_cache(in/out): a scan cache whose caller decodes the record it reads through the attribute layer
+ *   allow(in): true around the one read that may keep the stored form, false after it
  *
  * Note: Only a lock holder's read takes the lazy form (heap_get_last_version ()); the attribute layer then reads each
  *       value it decodes through its ref (sidecar_point_variable ()).  Every other read still expands.
  */
 void
-heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache)
+heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache, bool allow)
 {
-  scan_cache->sidecar_lazy_ok = true;
+  scan_cache->sidecar_lazy_ok = allow;
 }
 
 /*

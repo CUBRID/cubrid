@@ -118,8 +118,18 @@ extern bool sidecar_point_variable (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_AT
  * holds a ref; NULL when the store read failed, with the error set */
 extern char *sidecar_midxkey_point (HEAP_CACHE_ATTRINFO *attr_info, const RECDES *recdes,
 				    const OR_ATTRIBUTE *att, char *disk_data);
-/* heap_attrinfo_end (): the value bytes the attribute layer read through refs */
+/* heap_attrinfo_clear_dbvalues () and heap_attrinfo_end (): the value bytes the attribute layer read through refs */
 extern void sidecar_attr_state_free (HEAP_CACHE_ATTRINFO *attr_info);
+
+/* locator_attribute_info_force (): an UPDATE's old record is read as stored under its X lock and decoded until
+ * locator_update_force () returns.  Debug builds assert that the attribute layer meets refs only inside. */
+#if !defined (NDEBUG)
+extern void sidecar_stored_form_begin (void);
+extern void sidecar_stored_form_end (void);
+#else /* NDEBUG */
+#define sidecar_stored_form_begin() ((void) 0)
+#define sidecar_stored_form_end() ((void) 0)
+#endif /* NDEBUG */
 /* before a scan fixes another hot page: releases the store page its cursor keeps, since nobody fixes a hot page
  * while holding a store page */
 extern void sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache);
