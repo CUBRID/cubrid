@@ -11900,7 +11900,6 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
   return false;
 }
 
-#if !defined (NDEBUG)
 /*
  * pgbuf_count_perm_pages_fixed () - how many pages other than query result pages the thread holds
  *   return: the count
@@ -11930,6 +11929,7 @@ pgbuf_count_perm_pages_fixed (THREAD_ENTRY * thread_p, PAGE_PTR except, PAGE_PTR
   return count;
 }
 
+#if !defined (NDEBUG)
 /*
  * pgbuf_log_perm_pages_fixed () - log every page other than a query result page that the thread holds, with where
  *				    it was fixed
