@@ -1222,13 +1222,13 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 	      break;
 	    }
 	}
-      ret = repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA,
-			     RVREPL_DATA_UPDATE, key_val, serial_index, REPL_INFO_TYPE_RBR_NORMAL);
-      if (ret != NO_ERROR)
+      /* A replication record that cannot be made does not undo the serial update: the value stays
+       * advanced and this update goes unreplicated, as before the RK metadata was logged. */
+      if (repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE,
+			   key_val, serial_index, REPL_INFO_TYPE_RBR_NORMAL) == NO_ERROR)
 	{
-	  goto exit_on_error;
+	  repl_add_update_lsa (thread_p, serial_oidp);
 	}
-      repl_add_update_lsa (thread_p, serial_oidp);
     }
 
 #endif /* SERVER_MODE */
