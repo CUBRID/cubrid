@@ -6990,7 +6990,7 @@ locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const DB
 
       if (key_text != NULL)
 	{
-	  free_and_init (key_text);
+	  db_private_free (thread_p, key_text);
 	}
       if (class_name != NULL)
 	{
