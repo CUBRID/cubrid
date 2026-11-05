@@ -119,6 +119,8 @@ struct heap_cache_attrinfo
   INT64 lazy_deferred;		/* slots marked HEAP_LAZY_ATTRVALUE (reads lazy could have skipped) */
   INT64 lazy_decoded;		/* those actually read on demand (reads it did not skip) */
   bool lazy_disabled;		/* true: read predicate columns eagerly - nothing to defer, or not worth it */
+  struct sidecar_attr_state *sc;	/* value bytes read through Sidecar refs; NULL until a record with refs is
+					 * decoded (storage/sidecar.cpp) */
 };
 
 extern DB_VALUE *heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info);

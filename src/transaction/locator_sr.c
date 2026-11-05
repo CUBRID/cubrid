@@ -2335,6 +2335,11 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
 
   scan = locator_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, lock_mode, COPY,
 			     chn);
+  if (unlikely (scan == S_SIDECAR_LOCK_NEEDED))
+    {
+      /* xlocator_fetch ()'s committed-snapshot read of a row whose Sidecar store records kept vanishing (5.6 c) */
+      scan = sidecar_fetch_locked (thread_p, oid, class_oid, assign->ptr_scancache, &assign->recdes);
+    }
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END || scan == S_DOESNT_EXIST)
     {
       return scan;
@@ -7648,6 +7653,12 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_UPDATE_PRUNE:
     case LC_FLUSH_UPDATE_PRUNE_VERIFY:
       /* MVCC snapshot no needed for now scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p); */
+      if (rec_descriptor == NULL && scan_cache != NULL)
+	{
+	  /* the old record is read as stored: the transform keeps the refs of unassigned values and the attribute layer
+	   * reads only the values it decodes, so an UPDATE of small columns reads no Sidecar store page */
+	  heap_scancache_allow_lazy_sidecar (scan_cache);
+	}
       if (rec_descriptor != NULL)
 	{
 	  copy_recdes = *rec_descriptor;

@@ -94,6 +94,11 @@ typedef enum
   /* SIDECAR (storage/sidecar.cpp): defects that only the checkdb verifier can see */
   FI_TEST_SIDECAR_ORPHAN_STORE_RECORD = 700000,	/* each externalizing INSERT writes one store record no ref names */
   FI_TEST_SIDECAR_DANGLING_REF = 700001,	/* each externalizing INSERT writes a ref to the wrong slot */
+  /* SIDECAR: the retry rule and the lock fallback of a committed-snapshot fetch (5.6 c) */
+  FI_TEST_SIDECAR_ABSENT_ONCE = 700002,	/* the first store read of each such fetch finds its record absent */
+  FI_TEST_SIDECAR_ABSENT_ALWAYS = 700003,	/* every store read of such a fetch finds its record absent */
+  FI_TEST_SIDECAR_FAIL_AFTER_STORE_WRITES = 700005,	/* an UPDATE or DELETE fails after its store writes and
+							 * before its hot write */
 
   /* etc .... */
 

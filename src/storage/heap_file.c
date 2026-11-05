@@ -761,7 +761,7 @@ static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, int *kept_extra);
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
 static size_t heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
@@ -794,6 +794,8 @@ static PAGE_PTR heap_sidecar_fix_header (THREAD_ENTRY * thread_p, const HFID * h
 					 HEAP_HDR_STATS ** heap_hdr);
 static void heap_sidecar_log_link (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, HEAP_HDR_STATS * heap_hdr,
 				   const HFID * link);
+static SCAN_CODE heap_sidecar_fetch_exit (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan);
+static int heap_sidecar_plan (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 
 static int heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_index_info, int n_atts,
 				     int *att_ids, HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, int btid_index,
@@ -6920,6 +6922,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   scan_cache->sc_cursor = NULL;
+  scan_cache->sidecar_lazy_ok = false;
   if (copy_to_local_cache && is_queryscan)
     {
       scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
@@ -6956,6 +6959,7 @@ exit_on_error:
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   scan_cache->sc_cursor = NULL;
+  scan_cache->sidecar_lazy_ok = false;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -7249,6 +7253,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   scan_cache->sc_cursor = NULL;
+  scan_cache->sidecar_lazy_ok = false;
 
   return NO_ERROR;
 }
@@ -7307,6 +7312,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
       VPID_SET_NULL (&scan_cache->local_cache_vpid);
       scan_cache->read_mode = HEAP_SCAN_READ_COPY;
       scan_cache->sc_cursor = NULL;
+      scan_cache->sidecar_lazy_ok = false;
     }
 
   HFID_SET_NULL (&scan_cache->node.hfid);
@@ -10967,6 +10973,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
   attr_info->lazy_deferred = 0;
   attr_info->lazy_decoded = 0;
   attr_info->lazy_disabled = false;
+  attr_info->sc = NULL;
   attr_info->num_values = -1;	/* initialize attr_info */
 
   /*
@@ -11421,6 +11428,10 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
     }
   OID_SET_NULL (&attr_info->class_oid);
   attr_info->lazy_recdes = NULL;	/* borrowed from a caller's frame - leave no dangling record armed */
+  if (unlikely (attr_info->sc != NULL))
+    {
+      sidecar_attr_state_free (attr_info);
+    }
 
   /*
    * Bash this so that we ensure that heap_attrinfo_end is idempotent.
@@ -12038,6 +12049,12 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	   * test after it keeps layout and attr_info alive across it */
 	  heap_attrvalue_point_variable (layout, attr_info, attrepr, &raw);
 	}
+      else if (unlikely (raw.length < 0))
+	{
+	  /* the store read of a ref failed */
+	  ASSERT_ERROR ();
+	  return er_errid ();
+	}
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
@@ -12112,6 +12129,11 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 		  if (unlikely (sidecar_record_has_refs (recdes)))
 		    {
 		      disk_data = sidecar_midxkey_point (attr_info, recdes, att, disk_data);
+		      if (disk_data == NULL)
+			{
+			  ASSERT_ERROR ();
+			  return er_errid ();
+			}
 		    }
 		}
 	    }
@@ -13420,6 +13442,11 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
+	  if (unlikely (layoutp != NULL && layoutp->trailer_end != 0) && sidecar_keep_ref (value, recdes))
+	    {
+	      /* unassigned and held in the Sidecar store: the new image keeps the ref, no store page is read */
+	      continue;
+	    }
 	  ret = heap_attrvalue_read (recdes, value, attr_info, layoutp);
 	  if (ret != NO_ERROR)
 	    {
@@ -13484,9 +13511,10 @@ exit_on_error:
  *
  *   return: size of the payload size of record
  *   attr_info(in/out): the attribute information structure
+ *   kept_extra(out): the bytes the values with kept Sidecar refs would add inline, which the offset size must cover
  */
 static int
-heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, int *kept_extra)
 {
   HEAP_ATTRVALUE *value;
   int size;
@@ -13500,6 +13528,12 @@ heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
       if (value->last_attrepr->is_fixed != 0)
 	{
 	  size += tp_domain_disk_size (value->last_attrepr->domain);
+	}
+      else if (unlikely (value->state == HEAP_KEPT_REF_ATTRVALUE))
+	{
+	  /* the ref and at most 8 bytes of trailer per ref */
+	  size += SIDECAR_REF_SIZE + 8;
+	  *kept_extra += sidecar_kept_ref_length (value) - SIDECAR_REF_SIZE;
 	}
       else
 	{
@@ -13562,10 +13596,13 @@ static size_t
 heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr)
 {
   int payload_size, header_size;
+  int kept_extra = 0;
 
   /* calcuate the entire size of columns */
-  payload_size = heap_attrinfo_get_record_payload_size (attr_info);
-  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+  payload_size = heap_attrinfo_get_record_payload_size (attr_info, &kept_extra);
+  /* the offset size also fits the record with its kept values inline: expansion keeps it (sidecar_expand_frame ()) */
+  header_size =
+    heap_attrinfo_get_record_header_size (attr_info, payload_size + kept_extra, is_mvcc_class, offset_size_ptr);
 
   return header_size + payload_size;
 }
@@ -13963,6 +14000,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   char *bitmap_bound, *ptr_varvals;
   SCAN_CODE status;
   int i;
+  bool kept_refs = false;
 
   bitmap_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
 				    attr_info->last_classrepr->fixed_length);
@@ -13980,6 +14018,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
       else if (unlikely (attr_info->values[i].state == HEAP_KEPT_REF_ATTRVALUE))
 	{
 	  status = sidecar_write_kept_ref (attr_info, i, buf, &ptr_varvals, offset_size, header_size);
+	  kept_refs = true;
 	}
       else
 	{
@@ -14010,6 +14049,16 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
+    }
+
+  if (unlikely (kept_refs))
+    {
+      /* the image keeps refs, so it ends with their trailer, the Sidecar form sidecar_plan_update () checks */
+      status = sidecar_write_trailer (attr_info, buf, &ptr_varvals);
+      if (status != S_SUCCESS)
+	{
+	  return status;
+	}
     }
 
   if (ptr_varvals + mvcc_extra > buf->endptr)
@@ -14338,6 +14387,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       attr_info->lazy_deferred = 0;
       attr_info->lazy_decoded = 0;
       attr_info->lazy_disabled = false;
+      attr_info->sc = NULL;
       attr_info->num_values = num_found_attrs;
 
       if (num_found_attrs <= 0)
@@ -20802,7 +20852,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	}
       if (unlikely (scan == S_SUCCESS && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
 	{
-	  scan = sidecar_on_fetch (thread_p, scan_cache, recdes);
+	  scan = sidecar_on_fetch (thread_p, scan_cache, recdes, SIDECAR_FETCH_RECORD_INFO, 0);
 	}
       if (unlikely (page_watcher->pgptr != NULL))
 	{
@@ -21557,6 +21607,20 @@ heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
   scan_cache->page_latch = PGBUF_LATCH_READ;
 
   return NO_ERROR;
+}
+
+/*
+ * heap_scancache_allow_lazy_sidecar () - Let the last-version reads of a scan cache keep a record with Sidecar refs
+ *					   as stored
+ *   scan_cache(in/out): a scan cache whose caller decodes every record it reads through the attribute layer
+ *
+ * Note: Only a lock holder's read takes the lazy form (heap_get_last_version ()); the attribute layer then reads each
+ *       value it decodes through its ref (sidecar_point_variable ()).  Every other read still expands.
+ */
+void
+heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache)
+{
+  scan_cache->sidecar_lazy_ok = true;
 }
 
 /*
@@ -23247,15 +23311,6 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       return ER_FAILED;
     }
 
-  if (unlikely (sidecar_record_has_refs (&forward_recdes)))
-    {
-      rc = sidecar_plan_delete (thread_p, context, &forward_recdes);
-      if (rc != NO_ERROR)
-	{
-	  return rc;
-	}
-    }
-
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   if (is_mvcc_op)
@@ -24417,15 +24472,6 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       goto exit;
     }
 
-  if (unlikely (sidecar_record_has_refs (&forward_recdes)))
-    {
-      rc = sidecar_plan_update (thread_p, context, &forward_recdes);
-      if (rc != NO_ERROR)
-	{
-	  goto exit;
-	}
-    }
-
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
@@ -25014,6 +25060,57 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
 }
 
 /*
+ * heap_sidecar_plan () - Make the Sidecar plan of an UPDATE or DELETE from the stored version it replaces
+ *   return: error code
+ *   context(in/out): operation context whose home page is fixed and home record copied
+ *
+ * Note: The version is the home record, or the forward record of a relocated row, whose page this fixes in the
+ *       context's forward watcher, as heap_update_relocation () and heap_delete_relocation () do next.  A REC_BIGONE
+ *       row holds no refs.  The plan reads under the hot latch and writes nothing (I-7).
+ */
+static int __attribute__ ((noinline)) heap_sidecar_plan (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  RECDES forward_recdes;
+  const RECDES *old_stored = NULL;
+
+  if (context->record_type == REC_HOME)
+    {
+      old_stored = &context->home_recdes;
+    }
+  else if (context->record_type == REC_RELOCATION)
+    {
+      OID forward_oid = *((OID *) context->home_recdes.data);
+
+      if (heap_fix_forward_page (thread_p, context, &forward_oid) != NO_ERROR)
+	{
+	  int rc;
+
+	  ASSERT_ERROR_AND_SET (rc);
+	  return rc;
+	}
+      if (spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes,
+			    PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, forward_oid.volid, forward_oid.pageid,
+		  forward_oid.slotid);
+	  return ER_HEAP_BAD_OBJECT_TYPE;
+	}
+      old_stored = &forward_recdes;
+    }
+
+  if (context->type == HEAP_OPERATION_DELETE)
+    {
+      if (old_stored == NULL || !sidecar_record_has_refs (old_stored))
+	{
+	  return NO_ERROR;
+	}
+      return sidecar_plan_delete (thread_p, context, old_stored);
+    }
+  return sidecar_plan_update (thread_p, context, old_stored);
+}
+
+/*
  * heap_create_insert_context () - create an insertion context
  *   context(in): context to set up
  *   hfid_p(in): heap file identifier
@@ -25192,7 +25289,8 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 	}
     }
 
-  if (check_supplemental_log (thread_p, &context->class_oid) == true)
+  /* a store record is no row of the class: CDC and flashback never see the module's own store writes */
+  if (!context->sidecar_store_op && check_supplemental_log (thread_p, &context->class_oid) == true)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -25462,6 +25560,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /*
    * Fetch object's page and check record type
    */
+relocate:
   if (heap_get_record_location (thread_p, context) != NO_ERROR)
     {
       rc = ER_FAILED;
@@ -25489,16 +25588,28 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   if (unlikely (sidecar_delete_needs_plan (context)))
     {
-      rc = sidecar_plan_delete (thread_p, context, &context->home_recdes);
+      rc = heap_sidecar_plan (thread_p, context);
       if (rc != NO_ERROR)
 	{
 	  goto error;
+	}
+      if (sidecar_plan_writes_store (context))
+	{
+	  /* the stamps are written with no data page held (I-7); the row's X lock keeps it as the plan saw it */
+	  heap_unfix_watchers (thread_p, context);
+	  rc = sidecar_apply_plan (thread_p, context);
+	  if (rc != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  goto relocate;
 	}
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  if (check_supplemental_log (thread_p, &context->class_oid) == true)
+  /* a store record is no row of the class: CDC and flashback never see the module's own store writes */
+  if (!context->sidecar_store_op && check_supplemental_log (thread_p, &context->class_oid) == true)
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
@@ -25690,9 +25801,19 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   serial_row_write_begin (thread_p, &context->class_oid, &serial_write);
 
+  if (unlikely (sidecar_update_needs_prepare (context)) && !OID_IS_ROOTOID (&context->class_oid))
+    {
+      rc = sidecar_prepare_update (thread_p, context);
+      if (rc != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   /*
    * Get location
    */
+relocate:
   rc = heap_get_record_location (thread_p, context);
   if (rc != NO_ERROR)
     {
@@ -25731,10 +25852,21 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
       if (unlikely (sidecar_update_needs_plan (context)))
 	{
-	  rc = sidecar_plan_update (thread_p, context, context->record_type == REC_HOME ? &context->home_recdes : NULL);
+	  rc = heap_sidecar_plan (thread_p, context);
 	  if (rc != NO_ERROR)
 	    {
 	      goto exit;
+	    }
+	  if (sidecar_plan_writes_store (context))
+	    {
+	      /* the store is written with no data page held (I-7); the row's X lock keeps it as the plan saw it */
+	      heap_unfix_watchers (thread_p, context);
+	      rc = sidecar_apply_plan (thread_p, context);
+	      if (rc != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      goto relocate;
 	    }
 	}
       rc = heap_update_adjust_recdes_header (thread_p, context, is_mvcc_class);
@@ -27593,8 +27725,46 @@ exit:
   /* both the heap path and the log path end here */
   if (unlikely (scan == S_SUCCESS && context->recdes_p != NULL && sidecar_record_has_refs (context->recdes_p)))
     {
-      scan = sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
+      scan = heap_sidecar_fetch_exit (thread_p, context, is_heap_scan);
     }
+  return scan;
+}
+
+/*
+ * heap_sidecar_fetch_exit () - Expand a fetched record with Sidecar refs, reading the row again when a store record
+ *				is absent
+ *   return: SCAN_CODE of the read
+ *   context(in/out): get context whose record has refs; its pages are still fixed on the heap path
+ *   is_heap_scan(in): as heap_get_visible_version_internal ()
+ *
+ * Note: The retry rule of 5.6 (c): a committed-snapshot fetch that finds a store record absent while the version it
+ *       read has no committed DELID releases its pages and reads the row's current version again from its start.
+ *       The reread ends here again; past the bound sidecar_on_fetch () returns S_SIDECAR_LOCK_NEEDED.
+ */
+static SCAN_CODE __attribute__ ((noinline))
+heap_sidecar_fetch_exit (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
+{
+  SCAN_CODE scan = sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p, SIDECAR_FETCH_VISIBLE,
+				     context->sidecar_attempt);
+
+  if (scan != S_SIDECAR_RETRY)
+    {
+      return scan;
+    }
+
+  if (context->home_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+    }
+  if (context->fwd_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+    }
+  OID_SET_NULL (&context->forward_oid);
+  context->sidecar_attempt++;
+
+  scan = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
+  assert (scan != S_SIDECAR_RETRY);
   return scan;
 }
 
@@ -27770,7 +27940,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 exit:
   if (unlikely (scan == S_SUCCESS && sidecar_record_has_refs (context->recdes_p)))
     {
-      return sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
+      return sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p, SIDECAR_FETCH_LAST_VERSION, 0);
     }
 
   return scan;
@@ -27901,6 +28071,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
 
   context->scan_cache = scan_cache;
   context->ispeeking = ispeeking;
+  context->sidecar_attempt = 0;
   context->old_chn = old_chn;
   if (scan_cache != NULL && scan_cache->page_latch == PGBUF_LATCH_WRITE)
     {

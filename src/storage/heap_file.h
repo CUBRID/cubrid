@@ -164,6 +164,8 @@ struct heap_scancache
 				 * lets bestspace::update_freespace skip the sweep over all shards */
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
     struct sidecar_cursor *sc_cursor;	/* the Sidecar store page this scan keeps fixed; NULL when none */
+    bool sidecar_lazy_ok;	/* a lock holder's last-version read keeps a record with Sidecar refs as stored, for a
+				 * caller that decodes it through the attribute layer (heap_scancache_allow_lazy_sidecar ()) */
 
     void start_area ();
     void end_area ();
@@ -390,6 +392,7 @@ struct heap_get_context
 
   /* retrieving parameters */
   bool ispeeking;		/* PEEK or COPY */
+  char sidecar_attempt;		/* the reads of the row's current version a record with Sidecar refs took (5.6 c) */
   int old_chn;			/* Cache number coherency */
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
@@ -689,6 +692,7 @@ extern int heap_rv_sidecar_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern bool heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					      ATTR_ID * att_id, int n_att_id);
 extern int heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
+extern void heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						      OID * class_oid);
 extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,

@@ -54,37 +54,72 @@ extern void sidecar_refresh_parameters (void);
 
 /* before the INSERT image's header is adjusted, with no page held; a ref in an INSERT image is an error */
 extern int sidecar_plan_insert (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
-/* writes the plan's store records, then points context->recdes_p at the hot record; no data page held */
-extern int sidecar_apply_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
-/* under the hot page latch, reads only; old_stored is the version being replaced, the home record or the forward
- * record of a relocated row */
+/* before an UPDATE locates its row, with no page held, for an image that may move values out or holds kept refs:
+ * reads what the plan needs of the image's representation */
+extern int sidecar_prepare_update (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
+/* Under the hot page latch, reads only; old_stored is the version being replaced, the home record or the forward
+ * record of a relocated row, NULL for a REC_BIGONE row.  Checks the kept refs (I-3), compares equal-length values,
+ * lists the dropped refs and picks the values to move out.  A plan that writes no store record is applied here. */
 extern int sidecar_plan_update (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
 				const RECDES *old_stored);
+/* under the hot page latch: every store record of old_stored is to be stamped */
 extern int sidecar_plan_delete (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
 				const RECDES *old_stored);
+/* the plan writes the store, so the heap releases its pages, calls sidecar_apply_plan () and locates the row again */
+extern bool sidecar_plan_writes_store (const HEAP_OPERATION_CONTEXT *context);
+/* With no data page held: writes the plan's store records, fresh values first, then the stamps (I-4, I-7), and
+ * points context->recdes_p at the hot record.  Once applied, the plan hooks let the next location step through. */
+extern int sidecar_apply_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
 extern void sidecar_op_end_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, int rc);
+
+/* heap_attrinfo_set_uninitialized (): a value the UPDATE does not assign whose slot in old_recdes holds a ref keeps
+ * it, in state HEAP_KEPT_REF_ATTRVALUE; false reads the value as usual */
+extern bool sidecar_keep_ref (HEAP_ATTRVALUE *value, const RECDES *old_recdes);
+/* the inline length of a kept value, so that the offset size fits the record expanded */
+extern int sidecar_kept_ref_length (const HEAP_ATTRVALUE *value);
 /* the UPDATE column writer, for a value in state HEAP_KEPT_REF_ATTRVALUE: copies the old record's ref */
 extern SCAN_CODE sidecar_write_kept_ref (HEAP_CACHE_ATTRINFO *attr_info, int value_index,
     OR_BUF *buf, char **ptr_varvals, int offset_size, int header_size);
+/* after the variable area of an image with kept refs: the trailer and the flag */
+extern SCAN_CODE sidecar_write_trailer (HEAP_CACHE_ATTRINFO *attr_info, OR_BUF *buf, char **ptr_varvals);
 
 /*
  * Reads: the exits of the heap fetch functions and the attribute layer.  Only a record with
  * OR_MVCC_FLAG_HAS_SIDECAR reaches them.
  */
 
-/* A fetched record with refs: expands it into an inline record unless the reader may keep it lazy.  Asking the
- * caller to read the row's current version again is a scan code of its own, so the exits hold no out-parameter
- * (an address-taken local grows the frame of every function the exit is inlined into).  Returns S_SUCCESS,
- * S_DOESNT_FIT with recdes->length = -needed when the caller's area is too small, or S_ERROR. */
-extern SCAN_CODE sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes);
-/* a variable attribute of a record with refs: true when its slot holds a ref and raw now points at the value;
- * false leaves the attribute to the ordinary pointer */
+/* which fetch exit read the record: it decides the reader class of 5.6 */
+enum sidecar_fetch
+{
+  SIDECAR_FETCH_VISIBLE,	/* heap_get_visible_version_internal (): by the scan cache's snapshot */
+  SIDECAR_FETCH_LAST_VERSION,	/* heap_get_last_version (): a row-lock holder */
+  SIDECAR_FETCH_RECORD_INFO	/* heap_get_record_info (): under the hot latch, visible or not */
+};
+typedef enum sidecar_fetch SIDECAR_FETCH;
+
+/* A fetched record with refs: expands it into an inline record unless a lock holder's scan cache opted in to keep
+ * it as stored (heap_scancache_allow_lazy_sidecar ()).  Asking the caller to read the row's current version again
+ * is a scan code of its own, so the exits hold no out-parameter (an address-taken local grows the frame of every
+ * function the exit is inlined into).  Returns S_SUCCESS, S_DOESNT_FIT with recdes->length = -needed when the
+ * caller's area is too small, S_DOESNT_EXIST when the row's delete committed and a store record is gone, S_ERROR,
+ * and for a committed-snapshot fetch that found a store record absent, S_SIDECAR_RETRY while attempt is below the
+ * bound and S_SIDECAR_LOCK_NEEDED after it (5.6 c). */
+extern SCAN_CODE sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes,
+				   SIDECAR_FETCH fetch, int attempt);
+/* the lock fallback of xlocator_fetch (): the row read again under an S lock as a lock holder, expanded into recdes */
+extern SCAN_CODE sidecar_fetch_locked (THREAD_ENTRY *thread_p, const OID *oid, OID *class_oid,
+				       HEAP_SCANCACHE *scan_cache, RECDES *recdes);
+/* A variable attribute of a record with refs: true when its slot holds a ref and raw now points at the value, read
+ * from the store as a row-lock holder; raw->length is -1 when that read failed, with the error set.  False leaves
+ * the attribute to the ordinary pointer. */
 extern bool sidecar_point_variable (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO *attr_info,
 				    const OR_ATTRIBUTE *attrepr, RECDES *raw);
 /* a bound variable attribute of a record with refs, for a key: the bytes to decode, disk_data unless its slot
- * holds a ref */
+ * holds a ref; NULL when the store read failed, with the error set */
 extern char *sidecar_midxkey_point (HEAP_CACHE_ATTRINFO *attr_info, const RECDES *recdes,
 				    const OR_ATTRIBUTE *att, char *disk_data);
+/* heap_attrinfo_end (): the value bytes the attribute layer read through refs */
+extern void sidecar_attr_state_free (HEAP_CACHE_ATTRINFO *attr_info);
 /* before a scan fixes another hot page: releases the store page its cursor keeps, since nobody fixes a hot page
  * while holding a store page */
 extern void sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache);
@@ -124,20 +159,29 @@ sidecar_insert_needs_plan (const HEAP_OPERATION_CONTEXT *context)
   return !context->sidecar_store_op && sidecar_record_needs_policy (context->recdes_p);
 }
 
-/* The old home record has refs, or the new image needs the policy.  The forward record of a relocated row is
- * tested in heap_update_relocation (), where it is read. */
+/* the UPDATE image needs sidecar_prepare_update () before the row is located */
+STATIC_INLINE bool
+sidecar_update_needs_prepare (const HEAP_OPERATION_CONTEXT *context)
+{
+  return sidecar_record_needs_policy (context->recdes_p);
+}
+
+/* The prepared plan, an old home record with refs, or a relocated row, whose forward record the plan hook reads
+ * (heap_sidecar_plan ()).  A relocated row already costs a forward page fix; the hook takes it earlier. */
 STATIC_INLINE bool
 sidecar_update_needs_plan (const HEAP_OPERATION_CONTEXT *context)
 {
-  return ((context->record_type == REC_HOME && sidecar_record_has_refs (&context->home_recdes))
-	  || sidecar_record_needs_policy (context->recdes_p));
+  return (context->sc_plan != NULL || context->record_type == REC_RELOCATION
+	  || (context->record_type == REC_HOME && sidecar_record_has_refs (&context->home_recdes)));
 }
 
-/* the old home record has refs; heap_delete_relocation () tests a relocated row's forward record */
+/* an old home record with refs, or a relocated row; the module's own stamps pass through */
 STATIC_INLINE bool
 sidecar_delete_needs_plan (const HEAP_OPERATION_CONTEXT *context)
 {
-  return context->record_type == REC_HOME && sidecar_record_has_refs (&context->home_recdes);
+  return (!context->sidecar_store_op
+	  && (context->record_type == REC_RELOCATION
+	      || (context->record_type == REC_HOME && sidecar_record_has_refs (&context->home_recdes))));
 }
 
 STATIC_INLINE void

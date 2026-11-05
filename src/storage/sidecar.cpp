@@ -20,7 +20,11 @@
  * sidecar.cpp - the bodies behind the Sidecar hooks of the heap (sidecar.hpp)
  *
  * P1a: an INSERT moves values to the store under the AUTO policy, every fetch exit expands a record with refs into
- * an inline record, UPDATE and DELETE of such a record fail, and checkdb verifies both directions of the link.
+ * an inline record, and checkdb verifies both directions of the link.
+ * P1b1: a DELETE stamps the row's store records and an UPDATE keeps, compares, drops and moves out values, both with
+ * no data page held while the store is written; an UPDATE reads the old record as stored, and the attribute layer
+ * reads the values it decodes through their refs; a committed-snapshot fetch that finds a store record absent retries
+ * and then reads the row under an S lock.
  */
 
 #include "config.h"
@@ -28,6 +32,7 @@
 #include "sidecar.hpp"
 
 #include "connection_defs.h"
+#include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "fault_injection.h"
@@ -48,7 +53,11 @@
 #include "thread_lockfree_hash_map.hpp"
 #include "vacuum.h"
 
+#include <algorithm>
+#include <atomic>
+#include <climits>
 #include <map>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -147,18 +156,100 @@ static sidecar_store_map sidecar_Stores;
 static bool sidecar_Stores_initialized = false;
 
 /*
- * The write plan of one INSERT: the values that move to the store, and the hot record the heap stores instead of
- * the caller's image.  context->sc_plan points at it from sidecar_plan_insert () to sidecar_op_end ().
+ * A write plan: the store records an INSERT, UPDATE or DELETE writes, and the hot record the heap writes instead of
+ * the caller's image.  context->sc_plan points at it from the first plan hook to sidecar_op_end ().
+ *
+ *   INSERT  sidecar_plan_insert () decides with no page held; sidecar_apply_plan () applies at once.
+ *   UPDATE  sidecar_prepare_update () reads the image's representation with no page held, when the image may move
+ *           values out; sidecar_plan_update () decides under the hot latch.  A plan that writes no store record is
+ *           applied there and then.  Otherwise the heap releases its pages, sidecar_apply_plan () applies, and the heap
+ *           locates the row again; the plan hook then finds the plan applied.
+ *   DELETE  sidecar_plan_delete () decides under the hot latch; the heap releases its pages, sidecar_apply_plan ()
+ *           stamps, and the heap locates the row again.
+ *
+ * The row's X lock keeps the row as the plan saw it while no latch is held.
  */
+enum sidecar_plan_state
+{
+  SIDECAR_PLAN_PREPARED,
+  SIDECAR_PLAN_DECIDED,
+  SIDECAR_PLAN_APPLIED
+};
+
+/* a ref of the hot record: a value that moves to the store in this operation (fresh), whose ref the apply fills, or
+ * a store record that the replaced version names and the new one keeps */
+struct sidecar_plan_slot
+{
+  SIDECAR_SLOT slot;
+  int attrid;			/* of a fresh value */
+  bool fresh;
+};
+
 struct sidecar_plan
 {
-  RECDES *client_recdes;	/* the caller's inline image, which context->recdes_p points at again at the end */
-  int n_variable;		/* of the image's representation */
-  int n_slots;
-  SIDECAR_SLOT *slots;		/* ascending locations; sidecar_apply_plan () fills the refs */
-  int *attrids;			/* the attribute of each slot */
+  sidecar_plan_state state;
+  RECDES *client_recdes;	/* the caller's image, which context->recdes_p points at again at the end */
+
+  /* the image's representation, read with no page held; what a fresh value needs */
+  bool admits;			/* the policy gates let values of this image move out */
+  SIDECAR_IMAGE_FACTS facts;
+  int n_variable;		/* of the hot record; -1 while unknown */
+  std::vector<int> attrids;	/* by variable location */
+  std::vector<char> eligible;	/* by variable location */
+
+  std::vector<sidecar_plan_slot> slots;	/* every ref of the hot record, by ascending location */
+  std::vector<SIDECAR_REF> stamps;	/* store records the new version no longer names (I-4) */
+  bool inline_all;		/* the new version keeps no ref, because its hot record would pass the headroom (I-9) */
+  bool rebuild;			/* the hot record is not the image as it is */
+
+  std::vector<char> hot_bytes;
   RECDES hot;
+
+  sidecar_plan ()
+    : state (SIDECAR_PLAN_PREPARED), client_recdes (NULL), admits (false), facts (), n_variable (-1), attrids (),
+      eligible (), slots (), stamps (), inline_all (false), rebuild (false), hot_bytes (), hot ()
+  {
+  }
+
+  bool has_fresh () const
+  {
+    for (const sidecar_plan_slot &s : slots)
+      {
+	if (s.fresh)
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
+  bool writes_store () const
+  {
+    return !stamps.empty () || has_fresh ();
+  }
 };
+
+/* The attribute layer's view of a record with refs (HEAP_CACHE_ATTRINFO.sc): the bytes of each value it read
+ * through a ref, by attribute id.  A DB_VALUE decoded from them points into them, so they live until the same
+ * attribute is read again or the attribute information ends. */
+struct sidecar_attr_state
+{
+  std::map<int, std::vector<char>> values;
+  std::map<int, std::vector<char>> keys;
+};
+
+/* What the module did since the server started, for the tests: store records it read, of them the ones a fetch exit
+ * read to expand a record, store records it wrote (inserts and stamps), committed-snapshot fetches it read again, and
+ * lock fallbacks.  checkdb's verifier logs them (sidecar_verify_heap ()); P1c turns them into performance counters. */
+static std::atomic<UINT64> sidecar_Store_reads (0);
+static std::atomic<UINT64> sidecar_Expand_reads (0);
+static std::atomic<UINT64> sidecar_Store_writes (0);
+static std::atomic<UINT64> sidecar_Retries (0);
+static std::atomic<UINT64> sidecar_Fallbacks (0);
+
+/* the retry bound of 5.6 (c): a committed-snapshot fetch reads the row's current version at most this many times
+ * more before it asks its locator-level caller for the lock fallback (guess) */
+#define SIDECAR_RETRY_BOUND 3
 
 int
 sidecar_initialize (void)
@@ -311,314 +402,75 @@ sidecar_set_dangling (const SIDECAR_REF *ref, int attrid)
   return ER_SIDECAR_DANGLING_REF;
 }
 
-__attribute__ ((noinline)) int
-sidecar_plan_insert (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+static int
+sidecar_set_store_invalid (const char *reason)
 {
-  const RECDES *image = context->recdes_p;
-  SIDECAR_IMAGE_FACTS facts;
-
-  assert (context->type == HEAP_OPERATION_INSERT && context->sc_plan == NULL);
-
-  if (sidecar_record_has_refs (image))
-    {
-      /* I-3: refs come only from the module */
-      return sidecar_set_bad_ref (&context->class_oid);
-    }
-
-  facts.length = image->length;
-  facts.header_size = OR_HEADER_SIZE (image->data);
-  facts.mvcc_user_class = (!mvcc_is_mvcc_disabled_class (&context->class_oid)
-			   && !oid_is_system_class (&context->class_oid));
-  facts.supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0;
-  facts.ha_enabled = !HA_DISABLED ();
-  facts.has_delid = (OR_GET_MVCC_FLAG (image->data) & OR_MVCC_FLAG_VALID_DELID) != 0;
-  facts.page_held = pgbuf_has_perm_pages_fixed (thread_p);
-  if (!sidecar_policy_admits (&facts))
-    {
-      return NO_ERROR;
-    }
-
-  int idx_incache = -1;
-  OR_CLASSREP *rep = heap_classrepr_get (thread_p, &context->class_oid, NULL, OR_GET_MVCC_REPID (image->data),
-					 &idx_incache);
-  if (rep == NULL)
-    {
-      int error_code;
-
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-  if (rep->n_variable == 0)
-    {
-      heap_classrepr_free_and_init (rep, &idx_incache);
-      return NO_ERROR;
-    }
-
-  const SIDECAR_POLICY policy = sidecar_policy_now ();
-  std::vector<SIDECAR_CANDIDATE> candidates;
-  std::vector<int> chosen (rep->n_variable);
-
-  for (int i = 0; i < rep->n_attributes; i++)
-    {
-      const OR_ATTRIBUTE *att = &rep->attributes[i];
-
-      if (!att->is_fixed)
-	{
-	  const int length = sidecar_var_slot_length (image, att->location);
-
-	  if (length > 0)
-	    {
-	      candidates.push_back ({ att->location, length, sidecar_type_is_eligible (att->type), false });
-	    }
-	}
-    }
-
-  const int n_chosen = sidecar_policy_choose (&policy, &facts, candidates.data (), (int) candidates.size (),
-		       chosen.data ());
-  if (n_chosen == 0)
-    {
-      heap_classrepr_free_and_init (rep, &idx_incache);
-      return NO_ERROR;
-    }
-
-  const size_t size = sizeof (sidecar_plan) + n_chosen * (sizeof (SIDECAR_SLOT) + sizeof (int));
-  sidecar_plan *plan = (sidecar_plan *) db_private_alloc (thread_p, size);
-  if (plan == NULL)
-    {
-      heap_classrepr_free_and_init (rep, &idx_incache);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  plan->client_recdes = NULL;
-  plan->n_variable = rep->n_variable;
-  plan->n_slots = n_chosen;
-  plan->slots = (SIDECAR_SLOT *) (plan + 1);
-  plan->attrids = (int *) (plan->slots + n_chosen);
-  plan->hot.data = NULL;
-  plan->hot.area_size = plan->hot.length = 0;
-  for (int k = 0; k < n_chosen; k++)
-    {
-      plan->slots[k].location = chosen[k];
-      for (int i = 0; i < rep->n_attributes; i++)
-	{
-	  if (!rep->attributes[i].is_fixed && rep->attributes[i].location == chosen[k])
-	    {
-	      plan->attrids[k] = rep->attributes[i].id;
-	      break;
-	    }
-	}
-    }
-  heap_classrepr_free_and_init (rep, &idx_incache);
-
-  context->sc_plan = plan;
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_STORE_INVALID, 5, NULL_VOLID, NULL_FILEID, NULL_VOLID,
+	  NULL_FILEID, reason);
+  return ER_SIDECAR_STORE_INVALID;
 }
 
-/* I-1 and I-7: each value becomes a store record of its own, written through heap_insert_logical () with no data
- * page held, before the hot record */
+/* the STL containers of this module throw on allocation failure; the entry points catch it here and return the
+ * engine's error, since the heap frames above them hold page latches and have no unwinding cleanup */
 static int
-sidecar_insert_values (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, sidecar_plan *plan,
-		       HFID *store_hfid)
+sidecar_out_of_memory (void)
 {
-  const RECDES *image = context->recdes_p;
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  const LOG_LSA saved_insert_lsa = tdes->repl_insert_lsa;
-  const LOG_LSA saved_update_lsa = tdes->repl_update_lsa;
-  OID class_oid = context->class_oid;
-  int max_length = 0;
-  int error_code = NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+  return ER_OUT_OF_VIRTUAL_MEMORY;
+}
 
-  for (int k = 0; k < plan->n_slots; k++)
+static bool
+sidecar_ref_equal (const SIDECAR_REF *a, const SIDECAR_REF *b)
+{
+  return (a->pageid == b->pageid && a->volid == b->volid && a->slotid == b->slotid && a->length == b->length
+	  && a->flags == b->flags && a->attrid_check == b->attrid_check);
+}
+
+/*
+ * Reading the store.  Readers fix the hot page, then store pages with plain fixes (I-7).  A store record that is
+ * REC_BIGONE is read with its home page held, as every reader and writer of an overflow record fixes the home page
+ * first; vacuum and the undo of a stamp need that page exclusively before they free its overflow pages.  A store
+ * record that a stamp relocated is read through its forward page after its home page is released, one store page at a
+ * time, since a reader holding two store pages can close a cycle with store vacuum (12A).  Its home page is then read
+ * once more: vacuum frees the forward slot in the same operation that makes the home slot REC_MARKDELETED, and the
+ * undo of the stamp writes the record back home, so a home that still forwards to the same place shows that the
+ * bytes read were the record's.  A home that changed but still holds the record is read again.
+ */
+enum sidecar_read_result
+{
+  SIDECAR_READ_PRESENT,
+  SIDECAR_READ_ABSENT,		/* no record of the ref at its slot: vacuum removed it, or a bug */
+  SIDECAR_READ_FAILED		/* an error is set */
+};
+
+/* how many times a reader follows a relocated store record that moves while it reads (guess) */
+#define SIDECAR_REREAD_BOUND 8
+
+static sidecar_read_result
+sidecar_fix_store_page (THREAD_ENTRY *thread_p, const OID *oid, PAGE_PTR *page)
+{
+  VPID vpid;
+
+  vpid.volid = oid->volid;
+  vpid.pageid = oid->pageid;
+  *page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (*page == NULL)
     {
-      max_length = MAX (max_length, sidecar_var_slot_length (image, plan->slots[k].location));
-    }
-
-  /* room for the header the heap grows: an INSID, or the maximum header of a REC_BIGONE record */
-  const int area_size = SIDECAR_STORE_RECORD_LENGTH (max_length) + OR_MVCC_MAX_HEADER_SIZE;
-  char *area = (char *) db_private_alloc (thread_p, area_size);
-  HEAP_OPERATION_CONTEXT *store_context =
-	  (HEAP_OPERATION_CONTEXT *) db_private_alloc (thread_p, sizeof (HEAP_OPERATION_CONTEXT));
-  if (area == NULL || store_context == NULL)
-    {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, (size_t) area_size);
-      goto end;
-    }
-
-  for (int k = 0; k < plan->n_slots + (FI_INSERTED (FI_TEST_SIDECAR_ORPHAN_STORE_RECORD) ? 1 : 0); k++)
-    {
-      const int slot = k < plan->n_slots ? k : 0;
-      const int location = plan->slots[slot].location;
-      const int length = sidecar_var_slot_length (image, location);
-      RECDES record;
-
-      record.data = area;
-      record.area_size = area_size;
-      sidecar_store_record_build (plan->attrids[slot], image->data + OR_VAR_OFFSET (image->data, location), length,
-				  &record);
-
-      heap_create_insert_context (store_context, store_hfid, &class_oid, &record, NULL);
-      store_context->sidecar_store_op = true;
-      store_context->is_bulk_op = context->is_bulk_op;
-      store_context->use_bulk_logging = context->use_bulk_logging;
-
-      assert (!pgbuf_has_perm_pages_fixed (thread_p));
-      error_code = heap_insert_logical (thread_p, store_context, NULL);
-      if (error_code != NO_ERROR)
+      if (er_errid () != ER_PB_BAD_PAGEID)
 	{
 	  ASSERT_ERROR ();
-	  goto end;
+	  return SIDECAR_READ_FAILED;
 	}
-      if (k >= plan->n_slots)
-	{
-	  /* the fault injection's orphan: no ref names it */
-	  continue;
-	}
-
-      SIDECAR_REF *ref = &plan->slots[k].ref;
-      ref->pageid = store_context->res_oid.pageid;
-      ref->volid = store_context->res_oid.volid;
-      ref->slotid = store_context->res_oid.slotid;
-      ref->length = length;
-      ref->flags = store_context->recdes_p->type == REC_BIGONE ? SIDECAR_REF_BIGONE : 0;
-      ref->attrid_check = (UINT16) (plan->attrids[k] & 0xFFFF);
+      /* a ref to a page the store never had */
+      er_clear ();
+      return SIDECAR_READ_ABSENT;
     }
-
-  if (FI_INSERTED (FI_TEST_SIDECAR_DANGLING_REF))
+  if (pgbuf_get_page_ptype (thread_p, *page) != PAGE_HEAP)
     {
-      plan->slots[0].ref.slotid = SHRT_MAX;
+      pgbuf_unfix_and_init (thread_p, *page);
+      return SIDECAR_READ_ABSENT;
     }
-
-end:
-  tdes->repl_insert_lsa = saved_insert_lsa;
-  tdes->repl_update_lsa = saved_update_lsa;
-  if (area != NULL)
-    {
-      db_private_free (thread_p, area);
-    }
-  if (store_context != NULL)
-    {
-      db_private_free (thread_p, store_context);
-    }
-  return error_code;
-}
-
-__attribute__ ((noinline)) int
-sidecar_apply_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
-{
-  sidecar_plan *plan = context->sc_plan;
-  HFID store_hfid;
-  int error_code;
-
-  if (plan == NULL)
-    {
-      return NO_ERROR;
-    }
-  assert (context->type == HEAP_OPERATION_INSERT);
-
-  error_code = sidecar_store_for (thread_p, &context->hfid, &context->class_oid, &store_hfid);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  error_code = sidecar_insert_values (thread_p, context, plan, &store_hfid);
-  if (error_code != NO_ERROR)
-    {
-      return error_code;
-    }
-
-  const int length = sidecar_hot_length (context->recdes_p, plan->n_variable, plan->n_slots, plan->slots);
-  if (length < 0)
-    {
-      assert_release (false);
-      return sidecar_set_bad_ref (&context->class_oid);
-    }
-
-  /* heap_insert_adjust_recdes_header () may grow the header in place */
-  plan->hot.area_size = length + OR_MVCC_MAX_HEADER_SIZE;
-  plan->hot.data = (char *) db_private_alloc (thread_p, plan->hot.area_size);
-  if (plan->hot.data == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) plan->hot.area_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  if (sidecar_build_hot (context->recdes_p, plan->n_variable, plan->n_slots, plan->slots, &plan->hot) != NO_ERROR)
-    {
-      assert_release (false);
-      return sidecar_set_bad_ref (&context->class_oid);
-    }
-
-  plan->client_recdes = context->recdes_p;
-  context->recdes_p = &plan->hot;
-  return NO_ERROR;
-}
-
-/* P1a has no UPDATE or DELETE plan, so neither may rewrite a row with refs: that would orphan its store records */
-__attribute__ ((noinline)) int
-sidecar_plan_update (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const RECDES *old_stored)
-{
-  if (old_stored != NULL && sidecar_record_has_refs (old_stored))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_NOT_SUPPORTED, 1, "UPDATE");
-      return ER_SIDECAR_NOT_SUPPORTED;
-    }
-  if (sidecar_record_has_refs (context->recdes_p))
-    {
-      return sidecar_set_bad_ref (&context->class_oid);
-    }
-  return NO_ERROR;
-}
-
-__attribute__ ((noinline)) int
-sidecar_plan_delete (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const RECDES *old_stored)
-{
-  assert (sidecar_record_has_refs (old_stored));
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_NOT_SUPPORTED, 1, "DELETE");
-  return ER_SIDECAR_NOT_SUPPORTED;
-}
-
-__attribute__ ((noinline)) void
-sidecar_op_end_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, int rc)
-{
-  sidecar_plan *plan = context->sc_plan;
-
-  if (plan->client_recdes != NULL)
-    {
-      context->recdes_p = plan->client_recdes;
-    }
-  if (plan->hot.data != NULL)
-    {
-      db_private_free (thread_p, plan->hot.data);
-    }
-  db_private_free (thread_p, plan);
-  context->sc_plan = NULL;
-}
-
-/* nothing marks a value HEAP_KEPT_REF_ATTRVALUE while no record has refs */
-__attribute__ ((noinline)) SCAN_CODE
-sidecar_write_kept_ref (HEAP_CACHE_ATTRINFO *attr_info, int value_index, OR_BUF *buf, char **ptr_varvals,
-			int offset_size, int header_size)
-{
-  assert (false);
-  return S_ERROR;
-}
-
-/* the value bytes of a store record, when it is the record the ref names */
-static const char *
-sidecar_store_value (const RECDES *record, const SIDECAR_REF *ref)
-{
-  SIDECAR_VALUE_HEADER header;
-  const char *value;
-  int length;
-
-  if (sidecar_store_record_parse (record, &header, &value, &length) != NO_ERROR
-      || (UINT16) (header.attrid & 0xFFFF) != ref->attrid_check || length != ref->length)
-    {
-      return NULL;
-    }
-  return value;
+  return SIDECAR_READ_PRESENT;
 }
 
 /* the whole store record a REC_BIGONE home slot forwards to, read from the store's overflow file */
@@ -641,91 +493,1177 @@ sidecar_read_bigone (THREAD_ENTRY *thread_p, const VPID *ovf_vpid, std::vector<c
   return NO_ERROR;
 }
 
-/*
- * Copies the value a ref names to out.  Readers latch the hot page, then the store page with a plain fix, and hold
- * one store page at most (I-7): a REC_BIGONE home page is released before its overflow pages are read.  A store
- * record that is absent or holds another value is ER_SIDECAR_DANGLING_REF; without stamps nothing removes a store
- * record that a hot record names, so the retry rule of 5.6 (c) waits for P1b.
- */
-static int
-sidecar_read_value_into (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, int attrid, char *out)
+static void
+sidecar_copy_record (const RECDES *peeked, std::vector<char> &bytes, RECDES *record)
 {
-  VPID vpid;
-  RECDES record;
-  PAGE_PTR page;
+  bytes.assign (peeked->data, peeked->data + peeked->length);
+  record->data = bytes.data ();
+  record->area_size = record->length = (int) bytes.size ();
+  record->type = REC_HOME;
+}
 
-  vpid.volid = ref->volid;
-  vpid.pageid = ref->pageid;
-  page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page == NULL)
+/* the store record at oid, into bytes; record points into them */
+static sidecar_read_result
+sidecar_read_store_record (THREAD_ENTRY *thread_p, const OID *oid, std::vector<char> &bytes, RECDES *record)
+{
+  sidecar_Store_reads++;
+
+  for (int round = 0; round < SIDECAR_REREAD_BOUND; round++)
     {
-      if (er_errid () == ER_INTERRUPTED)
+      PAGE_PTR page;
+      RECDES peeked;
+      sidecar_read_result result = sidecar_fix_store_page (thread_p, oid, &page);
+
+      if (result != SIDECAR_READ_PRESENT)
 	{
-	  return ER_INTERRUPTED;
+	  return result;
 	}
-      er_clear ();
-      return sidecar_set_dangling (ref, attrid);
-    }
 
-  const INT16 type = (pgbuf_get_page_ptype (thread_p, page) == PAGE_HEAP
-		      ? spage_get_record_type (page, ref->slotid) : (INT16) REC_UNKNOWN);
-  const bool bigone = (ref->flags & SIDECAR_REF_BIGONE) != 0;
-
-  if (type == REC_HOME && !bigone && spage_get_record (thread_p, page, ref->slotid, &record, PEEK) == S_SUCCESS)
-    {
-      const char *value = sidecar_store_value (&record, ref);
-
-      if (value != NULL)
+      const INT16 type = spage_get_record_type (page, oid->slotid);
+      if ((type != REC_HOME && type != REC_RELOCATION && type != REC_BIGONE)
+	  || spage_get_record (thread_p, page, oid->slotid, &peeked, PEEK) != S_SUCCESS)
 	{
-	  memcpy (out, value, ref->length);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  return SIDECAR_READ_ABSENT;
 	}
+      if (type == REC_HOME)
+	{
+	  sidecar_copy_record (&peeked, bytes, record);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  return SIDECAR_READ_PRESENT;
+	}
+
+      OID forward;
+      COPY_OID (&forward, (OID *) peeked.data);
+
+      if (type == REC_BIGONE)
+	{
+	  VPID ovf_vpid;
+
+	  ovf_vpid.volid = forward.volid;
+	  ovf_vpid.pageid = forward.pageid;
+	  const int error_code = sidecar_read_bigone (thread_p, &ovf_vpid, bytes, record);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return SIDECAR_READ_FAILED;
+	    }
+	  record->type = REC_HOME;
+	  return SIDECAR_READ_PRESENT;
+	}
+
       pgbuf_unfix_and_init (thread_p, page);
-      return value != NULL ? NO_ERROR : sidecar_set_dangling (ref, attrid);
+      result = sidecar_fix_store_page (thread_p, &forward, &page);
+      if (result == SIDECAR_READ_FAILED)
+	{
+	  return result;
+	}
+      bool read = false;
+      if (result == SIDECAR_READ_PRESENT)
+	{
+	  if (spage_get_record_type (page, forward.slotid) == REC_NEWHOME
+	      && spage_get_record (thread_p, page, forward.slotid, &peeked, PEEK) == S_SUCCESS)
+	    {
+	      sidecar_copy_record (&peeked, bytes, record);
+	      read = true;
+	    }
+	  pgbuf_unfix_and_init (thread_p, page);
+	}
+
+      /* the home still forwards to what was read */
+      result = sidecar_fix_store_page (thread_p, oid, &page);
+      if (result != SIDECAR_READ_PRESENT)
+	{
+	  return result;
+	}
+      const bool same = (read && spage_get_record_type (page, oid->slotid) == REC_RELOCATION
+			 && spage_get_record (thread_p, page, oid->slotid, &peeked, PEEK) == S_SUCCESS
+			 && OID_EQ ((OID *) peeked.data, &forward));
+      pgbuf_unfix_and_init (thread_p, page);
+      if (same)
+	{
+	  return SIDECAR_READ_PRESENT;
+	}
     }
-  if (type != REC_BIGONE || !bigone || spage_get_record (thread_p, page, ref->slotid, &record, PEEK) != S_SUCCESS)
+  return SIDECAR_READ_ABSENT;
+}
+
+/* the value bytes of a store record, when it is the record the ref names */
+static const char *
+sidecar_store_value (const RECDES *record, const SIDECAR_REF *ref)
+{
+  SIDECAR_VALUE_HEADER header;
+  const char *value;
+  int length;
+
+  if (sidecar_store_record_parse (record, &header, &value, &length) != NO_ERROR
+      || (UINT16) (header.attrid & 0xFFFF) != ref->attrid_check || length != ref->length)
     {
-      pgbuf_unfix_and_init (thread_p, page);
-      return sidecar_set_dangling (ref, attrid);
+      return NULL;
     }
+  return value;
+}
 
-  OID ovf_oid;
-  VPID ovf_vpid;
-
-  COPY_OID (&ovf_oid, (OID *) record.data);
-  pgbuf_unfix_and_init (thread_p, page);
-  ovf_vpid.volid = ovf_oid.volid;
-  ovf_vpid.pageid = ovf_oid.pageid;
-
+/* the value a ref names, into out (ref->length bytes) */
+static sidecar_read_result
+sidecar_read_value (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, char *out)
+{
+  OID oid;
   std::vector<char> bytes;
-  if (sidecar_read_bigone (thread_p, &ovf_vpid, bytes, &record) != NO_ERROR)
+  RECDES record;
+
+  oid.volid = ref->volid;
+  oid.pageid = ref->pageid;
+  oid.slotid = ref->slotid;
+
+  const sidecar_read_result result = sidecar_read_store_record (thread_p, &oid, bytes, &record);
+  if (result != SIDECAR_READ_PRESENT)
     {
-      if (er_errid () == ER_INTERRUPTED)
-	{
-	  return ER_INTERRUPTED;
-	}
-      er_clear ();
-      return sidecar_set_dangling (ref, attrid);
+      return result;
     }
 
   const char *value = sidecar_store_value (&record, ref);
   if (value == NULL)
     {
-      return sidecar_set_dangling (ref, attrid);
+      return SIDECAR_READ_ABSENT;
     }
   memcpy (out, value, ref->length);
+  return SIDECAR_READ_PRESENT;
+}
+
+/* a value read by a row-lock holder: every stamp of the row's store records needs the row's X lock (I-4), so an
+ * absent record is a bug */
+static int
+sidecar_read_value_locked (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, char *out)
+{
+  switch (sidecar_read_value (thread_p, ref, out))
+    {
+    case SIDECAR_READ_PRESENT:
+      return NO_ERROR;
+    case SIDECAR_READ_ABSENT:
+      return sidecar_set_dangling (ref, ref->attrid_check);
+    default:
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+    }
+}
+
+/* the inline record of a hot record, every value read by a row-lock holder */
+static int
+sidecar_expand_locked (THREAD_ENTRY *thread_p, const RECDES *hot, std::vector<char> &bytes, RECDES *out)
+{
+  const int length = sidecar_expanded_length (hot);
+
+  if (length < 0)
+    {
+      assert_release (false);
+      return sidecar_set_store_invalid ("a hot record with refs does not expand");
+    }
+
+  const int n_refs = sidecar_trailer_n_refs (hot);
+  std::vector<int> value_offsets (n_refs);
+
+  bytes.resize (length + OR_MVCC_MAX_HEADER_SIZE);
+  out->data = bytes.data ();
+  out->area_size = (int) bytes.size ();
+  if (sidecar_expand_frame (hot, out, value_offsets.data ()) != NO_ERROR)
+    {
+      assert_release (false);
+      return sidecar_set_store_invalid ("a hot record with refs does not expand");
+    }
+  for (int i = 0; i < n_refs; i++)
+    {
+      SIDECAR_REF ref;
+
+      sidecar_hot_get_ref (hot, i, &ref);
+      const int error_code = sidecar_read_value_locked (thread_p, &ref, out->data + value_offsets[i]);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
   return NO_ERROR;
 }
 
 /*
- * No reader opts in to lazy refs in P1a, so every fetch exit expands.  The expanded record goes where a REC_BIGONE
- * record would: into the scan cache area for PEEK or when the record is already there, else into the caller's
- * area, which returns S_DOESNT_FIT with -needed when it is too small.  The trailer says how many variable attributes
- * the record has, so the expansion needs no class representation and fixes no page but one store page at a time.
+ * Plans
  */
+
+/* the policy facts of an image, and with them, when the gates admit it, the representation facts a fresh value
+ * needs; no page is held, as the class representation may have to be read */
+static int
+sidecar_plan_read_facts (THREAD_ENTRY *thread_p, const HEAP_OPERATION_CONTEXT *context, sidecar_plan *plan)
+{
+  const RECDES *image = context->recdes_p;
+  SIDECAR_IMAGE_FACTS &facts = plan->facts;
+
+  facts.length = image->length;
+  facts.header_size = OR_HEADER_SIZE (image->data);
+  facts.mvcc_user_class = (!mvcc_is_mvcc_disabled_class (&context->class_oid)
+			   && !oid_is_system_class (&context->class_oid));
+  facts.supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0;
+  facts.ha_enabled = !HA_DISABLED ();
+  facts.has_delid = (OR_GET_MVCC_FLAG (image->data) & OR_MVCC_FLAG_VALID_DELID) != 0;
+  facts.page_held = pgbuf_has_perm_pages_fixed (thread_p);
+  plan->admits = sidecar_policy_admits (&facts);
+  if (!plan->admits)
+    {
+      return NO_ERROR;
+    }
+
+  int idx_incache = -1;
+  OR_CLASSREP *rep = heap_classrepr_get (thread_p, &context->class_oid, NULL, OR_GET_MVCC_REPID (image->data),
+					 &idx_incache);
+  if (rep == NULL)
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  plan->n_variable = rep->n_variable;
+  plan->attrids.assign (rep->n_variable, NULL_ATTRID);
+  plan->eligible.assign (rep->n_variable, 0);
+  for (int i = 0; i < rep->n_attributes; i++)
+    {
+      const OR_ATTRIBUTE *att = &rep->attributes[i];
+
+      if (!att->is_fixed && att->location < rep->n_variable)
+	{
+	  plan->attrids[att->location] = att->id;
+	  plan->eligible[att->location] = sidecar_type_is_eligible (att->type) ? 1 : 0;
+	}
+    }
+  heap_classrepr_free_and_init (rep, &idx_incache);
+  plan->admits = plan->n_variable > 0;
+  return NO_ERROR;
+}
+
+static bool
+sidecar_plan_has_slot (const sidecar_plan *plan, int location)
+{
+  for (const sidecar_plan_slot &s : plan->slots)
+    {
+      if (s.slot.location == location)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* the AUTO policy over the inline values of the image that are not refs of the plan yet; the chosen ones become
+ * fresh slots */
+static void
+sidecar_plan_choose_fresh (sidecar_plan *plan, const RECDES *image, int hot_length)
+{
+  const SIDECAR_POLICY policy = sidecar_policy_now ();
+  std::vector<SIDECAR_CANDIDATE> candidates;
+
+  for (int location = 0; location < plan->n_variable; location++)
+    {
+      if (sidecar_plan_has_slot (plan, location))
+	{
+	  continue;
+	}
+
+      const int length = sidecar_var_slot_length (image, location);
+      if (length > 0)
+	{
+	  candidates.push_back ({ location, length, plan->eligible[location] != 0, false });
+	}
+    }
+  if (candidates.empty ())
+    {
+      return;
+    }
+
+  SIDECAR_IMAGE_FACTS facts = plan->facts;
+  std::vector<int> chosen (candidates.size ());
+
+  facts.length = hot_length;
+  const int n_chosen = sidecar_policy_choose (&policy, &facts, candidates.data (), (int) candidates.size (),
+		       chosen.data ());
+  for (int k = 0; k < n_chosen; k++)
+    {
+      sidecar_plan_slot s;
+
+      s.slot.location = chosen[k];
+      memset (&s.slot.ref, 0, sizeof (s.slot.ref));
+      s.attrid = plan->attrids[chosen[k]];
+      s.fresh = true;
+      plan->slots.push_back (s);
+    }
+  if (n_chosen > 0)
+    {
+      plan->rebuild = true;
+    }
+}
+
+static void
+sidecar_plan_sort_slots (sidecar_plan *plan)
+{
+  std::sort (plan->slots.begin (), plan->slots.end (),[] (const sidecar_plan_slot & a, const sidecar_plan_slot & b)
+  {
+    return a.slot.location < b.slot.location;
+  });
+}
+
+/* the length of the hot record the plan's slots make of image, or SIDECAR_FORMAT_ERROR */
+static int
+sidecar_plan_hot_length (const sidecar_plan *plan, const RECDES *image)
+{
+  std::vector<SIDECAR_SLOT> slots;
+
+  for (const sidecar_plan_slot &s : plan->slots)
+    {
+      slots.push_back (s.slot);
+    }
+  return sidecar_hot_length (image, plan->n_variable, (int) slots.size (), slots.data ());
+}
+
+/* builds plan->hot from image with the plan's slots; the area leaves room for the header the heap grows */
+static int
+sidecar_plan_build_hot (sidecar_plan *plan, const RECDES *image, const OID *class_oid)
+{
+  std::vector<SIDECAR_SLOT> slots;
+
+  for (const sidecar_plan_slot &s : plan->slots)
+    {
+      slots.push_back (s.slot);
+    }
+
+  const int length = sidecar_hot_length (image, plan->n_variable, (int) slots.size (), slots.data ());
+  if (length < 0)
+    {
+      assert_release (false);
+      return sidecar_set_bad_ref (class_oid);
+    }
+  plan->hot_bytes.resize (length + OR_MVCC_MAX_HEADER_SIZE);
+  plan->hot.data = plan->hot_bytes.data ();
+  plan->hot.area_size = (int) plan->hot_bytes.size ();
+  if (sidecar_build_hot (image, plan->n_variable, (int) slots.size (), slots.data (), &plan->hot) != NO_ERROR)
+    {
+      assert_release (false);
+      return sidecar_set_bad_ref (class_oid);
+    }
+  return NO_ERROR;
+}
+
+/* the heap writes plan->hot instead of the caller's image from here on */
+static void
+sidecar_plan_use_hot (HEAP_OPERATION_CONTEXT *context, sidecar_plan *plan)
+{
+  if (plan->client_recdes == NULL)
+    {
+      plan->client_recdes = context->recdes_p;
+    }
+  context->recdes_p = &plan->hot;
+}
+
+static int
+sidecar_plan_insert_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  const RECDES *image = context->recdes_p;
+
+  assert (context->type == HEAP_OPERATION_INSERT && context->sc_plan == NULL);
+
+  if (sidecar_record_has_refs (image))
+    {
+      /* I-3: refs come only from the module */
+      return sidecar_set_bad_ref (&context->class_oid);
+    }
+
+  sidecar_plan *plan = new sidecar_plan ();
+  int error_code = sidecar_plan_read_facts (thread_p, context, plan);
+  if (error_code != NO_ERROR || !plan->admits)
+    {
+      delete plan;
+      return error_code;
+    }
+
+  sidecar_plan_choose_fresh (plan, image, image->length);
+  if (plan->slots.empty ())
+    {
+      delete plan;
+      return NO_ERROR;
+    }
+
+  plan->state = SIDECAR_PLAN_DECIDED;
+  context->sc_plan = plan;
+  return NO_ERROR;
+}
+
+__attribute__ ((noinline)) int
+sidecar_plan_insert (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  try
+    {
+      return sidecar_plan_insert_body (thread_p, context);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return sidecar_out_of_memory ();
+    }
+}
+
+static int
+sidecar_prepare_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  assert (context->type == HEAP_OPERATION_UPDATE && context->sc_plan == NULL);
+  assert (!OID_ISNULL (&context->class_oid));
+
+  sidecar_plan *plan = new sidecar_plan ();
+  const int error_code = sidecar_plan_read_facts (thread_p, context, plan);
+
+  if (error_code != NO_ERROR || (!plan->admits && !sidecar_record_has_refs (context->recdes_p)))
+    {
+      /* the plan hook decides from the old version alone */
+      delete plan;
+      return error_code;
+    }
+  context->sc_plan = plan;
+  return NO_ERROR;
+}
+
+__attribute__ ((noinline)) int
+sidecar_prepare_update (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  try
+    {
+      return sidecar_prepare_update_body (thread_p, context);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return sidecar_out_of_memory ();
+    }
+}
+
+/* the old version's refs, with whether the new version keeps them */
+struct sidecar_old_ref
+{
+  int location;
+  SIDECAR_REF ref;
+  bool kept;
+};
+
+/*
+ * The equal-length compare: an inline value of the image in a slot where the old version held a ref of the same
+ * length is read from the store and compared; equal bytes keep the ref, so an image with no kept-ref information
+ * (a client flush) rewrites only the values that changed.  Under the hot latch, one store page at a time (I-7).
+ */
+static int
+sidecar_plan_compare (THREAD_ENTRY *thread_p, const RECDES *image, int location, const SIDECAR_REF *ref, bool *equal)
+{
+  std::vector<char> value (ref->length);
+  const int error_code = sidecar_read_value_locked (thread_p, ref, value.data ());
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  *equal = memcmp (image->data + OR_VAR_OFFSET (image->data, location), value.data (), ref->length) == 0;
+  return NO_ERROR;
+}
+
+static int
+sidecar_plan_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const RECDES *old_stored)
+{
+  sidecar_plan *plan = context->sc_plan;
+  const RECDES *image = context->recdes_p;
+
+  if (plan != NULL && plan->state == SIDECAR_PLAN_APPLIED)
+    {
+      /* the location step after the store writes */
+      return NO_ERROR;
+    }
+
+  const bool old_has_refs = old_stored != NULL && sidecar_record_has_refs (old_stored);
+  const bool image_has_refs = sidecar_record_has_refs (image);
+
+  if (!old_has_refs)
+    {
+      if (image_has_refs)
+	{
+	  /* I-3: a kept ref must be one of the current version's */
+	  return sidecar_set_bad_ref (&context->class_oid);
+	}
+      if (plan == NULL || !plan->admits)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (context->update_in_place != UPDATE_INPLACE_NONE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_NOT_SUPPORTED, 1,
+	      "An in-place UPDATE (the FK cached object, compactdb or a domain change)");
+      return ER_SIDECAR_NOT_SUPPORTED;
+    }
+
+  if (plan == NULL)
+    {
+      plan = new sidecar_plan ();
+      context->sc_plan = plan;
+    }
+  plan->state = SIDECAR_PLAN_DECIDED;
+
+  std::vector<sidecar_old_ref> olds;
+  if (old_has_refs)
+    {
+      if (!sidecar_hot_is_well_formed (old_stored))
+	{
+	  assert_release (false);
+	  return sidecar_set_store_invalid ("the replaced version has the Sidecar flag and no well-formed trailer");
+	}
+      for (int i = 0; i < sidecar_trailer_n_refs (old_stored); i++)
+	{
+	  sidecar_old_ref o;
+
+	  o.location = sidecar_trailer_location (old_stored, i);
+	  sidecar_hot_get_ref (old_stored, i, &o.ref);
+	  o.kept = false;
+	  olds.push_back (o);
+	}
+    }
+
+  const bool same_repid = old_stored != NULL && OR_GET_MVCC_REPID (image->data) == OR_GET_MVCC_REPID (old_stored->data);
+  if (image_has_refs)
+    {
+      if (!sidecar_hot_is_well_formed (image))
+	{
+	  return sidecar_set_bad_ref (&context->class_oid);
+	}
+      assert (plan->n_variable < 0 || plan->n_variable == sidecar_trailer_n_variable (image));
+      plan->n_variable = sidecar_trailer_n_variable (image);
+    }
+  else if (plan->n_variable < 0 && old_has_refs && same_repid)
+    {
+      plan->n_variable = sidecar_trailer_n_variable (old_stored);
+    }
+
+  /* each kept ref is a ref of the current version, and no two slots keep the same one (I-3, I-2) */
+  for (int i = 0; image_has_refs && i < sidecar_trailer_n_refs (image); i++)
+    {
+      sidecar_plan_slot s;
+      bool found = false;
+
+      s.slot.location = sidecar_trailer_location (image, i);
+      sidecar_hot_get_ref (image, i, &s.slot.ref);
+      s.attrid = NULL_ATTRID;
+      s.fresh = false;
+      for (sidecar_old_ref &o : olds)
+	{
+	  if (!o.kept && sidecar_ref_equal (&o.ref, &s.slot.ref))
+	    {
+	      o.kept = found = true;
+	      break;
+	    }
+	}
+      if (!found || (!plan->attrids.empty ()
+		     && (UINT16) (plan->attrids[s.slot.location] & 0xFFFF) != s.slot.ref.attrid_check))
+	{
+	  return sidecar_set_bad_ref (&context->class_oid);
+	}
+      plan->slots.push_back (s);
+    }
+
+  if (same_repid && plan->n_variable > 0)
+    {
+      for (sidecar_old_ref &o : olds)
+	{
+	  if (o.kept || o.location >= plan->n_variable
+	      || (image_has_refs && sidecar_trailer_find (image, o.location) >= 0)
+	      || sidecar_var_slot_length (image, o.location) != o.ref.length)
+	    {
+	      continue;
+	    }
+
+	  bool equal = false;
+	  const int error_code = sidecar_plan_compare (thread_p, image, o.location, &o.ref, &equal);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (equal)
+	    {
+	      sidecar_plan_slot s;
+
+	      s.slot.location = o.location;
+	      s.slot.ref = o.ref;
+	      s.attrid = NULL_ATTRID;
+	      s.fresh = false;
+	      plan->slots.push_back (s);
+	      plan->rebuild = true;
+	      o.kept = true;
+	    }
+	}
+    }
+  sidecar_plan_sort_slots (plan);
+
+  if (plan->admits)
+    {
+      int hot_length = image->length;
+
+      if (!plan->slots.empty ())
+	{
+	  hot_length = sidecar_plan_hot_length (plan, image);
+	  if (hot_length < 0)
+	    {
+	      assert_release (false);
+	      return sidecar_set_bad_ref (&context->class_oid);
+	    }
+	  hot_length -= SIDECAR_TRAILER_SIZE ((int) plan->slots.size ());
+	}
+      sidecar_plan_choose_fresh (plan, image, hot_length);
+      sidecar_plan_sort_slots (plan);
+    }
+
+  /* I-9: a hot record with refs never passes the headroom; above it the row keeps no ref and takes the stock path */
+  if (!plan->slots.empty ())
+    {
+      const int hot_length = sidecar_plan_hot_length (plan, image);
+      if (hot_length < 0)
+	{
+	  assert_release (false);
+	  return sidecar_set_bad_ref (&context->class_oid);
+	}
+      if (hot_length - OR_HEADER_SIZE (image->data) > sidecar_policy_now ().headroom)
+	{
+	  plan->slots.clear ();
+	  plan->inline_all = image_has_refs;
+	  plan->rebuild = false;
+	  for (sidecar_old_ref &o : olds)
+	    {
+	      o.kept = false;
+	    }
+	}
+      else if (!image_has_refs)
+	{
+	  plan->rebuild = true;
+	}
+    }
+
+  for (const sidecar_old_ref &o : olds)
+    {
+      if (!o.kept)
+	{
+	  plan->stamps.push_back (o.ref);
+	}
+    }
+
+  if (!plan->writes_store () && !plan->inline_all)
+    {
+      /* a small-column UPDATE, or an image whose values all compared equal: the hot latch stays held */
+      if (plan->rebuild)
+	{
+	  const int error_code = sidecar_plan_build_hot (plan, image, &context->class_oid);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  sidecar_plan_use_hot (context, plan);
+	}
+      plan->state = SIDECAR_PLAN_APPLIED;
+    }
+  return NO_ERROR;
+}
+
+__attribute__ ((noinline)) int
+sidecar_plan_update (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const RECDES *old_stored)
+{
+  try
+    {
+      return sidecar_plan_update_body (thread_p, context, old_stored);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return sidecar_out_of_memory ();
+    }
+}
+
+static int
+sidecar_plan_delete_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const RECDES *old_stored)
+{
+  sidecar_plan *plan = context->sc_plan;
+
+  if (plan != NULL && plan->state == SIDECAR_PLAN_APPLIED)
+    {
+      return NO_ERROR;
+    }
+  assert (plan == NULL && sidecar_record_has_refs (old_stored));
+  if (!sidecar_hot_is_well_formed (old_stored))
+    {
+      assert_release (false);
+      return sidecar_set_store_invalid ("the deleted version has the Sidecar flag and no well-formed trailer");
+    }
+
+  plan = new sidecar_plan ();
+  plan->state = SIDECAR_PLAN_DECIDED;
+  for (int i = 0; i < sidecar_trailer_n_refs (old_stored); i++)
+    {
+      SIDECAR_REF ref;
+
+      sidecar_hot_get_ref (old_stored, i, &ref);
+      plan->stamps.push_back (ref);
+    }
+  context->sc_plan = plan;
+  return NO_ERROR;
+}
+
+__attribute__ ((noinline)) int
+sidecar_plan_delete (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, const RECDES *old_stored)
+{
+  try
+    {
+      return sidecar_plan_delete_body (thread_p, context, old_stored);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return sidecar_out_of_memory ();
+    }
+}
+
+__attribute__ ((noinline)) bool
+sidecar_plan_writes_store (const HEAP_OPERATION_CONTEXT *context)
+{
+  const sidecar_plan *plan = context->sc_plan;
+
+  return plan != NULL && plan->state == SIDECAR_PLAN_DECIDED && (plan->writes_store () || plan->inline_all);
+}
+
+/* I-1 and I-7: each fresh value becomes a store record of its own, written through heap_insert_logical () with no
+ * data page held, before the hot record */
+static int
+sidecar_insert_values (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, sidecar_plan *plan,
+		       HFID *store_hfid, HEAP_OPERATION_CONTEXT *store_context)
+{
+  const RECDES *image = context->recdes_p;
+  OID class_oid = context->class_oid;
+  std::vector<char> area;
+  bool orphan = FI_INSERTED (FI_TEST_SIDECAR_ORPHAN_STORE_RECORD) && context->type == HEAP_OPERATION_INSERT;
+  bool dangling = FI_INSERTED (FI_TEST_SIDECAR_DANGLING_REF) && context->type == HEAP_OPERATION_INSERT;
+
+  for (size_t k = 0; k < plan->slots.size (); k++)
+    {
+      sidecar_plan_slot &s = plan->slots[k];
+
+      if (!s.fresh)
+	{
+	  continue;
+	}
+
+      const int location = s.slot.location;
+      const int length = sidecar_var_slot_length (image, location);
+      RECDES record;
+
+      /* room for the header the heap grows: an INSID, or the maximum header of a REC_BIGONE record */
+      area.resize (SIDECAR_STORE_RECORD_LENGTH (length) + OR_MVCC_MAX_HEADER_SIZE);
+      record.data = area.data ();
+      record.area_size = (int) area.size ();
+      sidecar_store_record_build (s.attrid, image->data + OR_VAR_OFFSET (image->data, location), length, &record);
+
+      /* the fault injection's orphan is a second copy of the first value, which no ref names */
+      for (int copy = 0; copy < (orphan ? 2 : 1); copy++)
+	{
+	  heap_create_insert_context (store_context, store_hfid, &class_oid, &record, NULL);
+	  store_context->sidecar_store_op = true;
+	  store_context->is_bulk_op = context->is_bulk_op;
+	  store_context->use_bulk_logging = context->use_bulk_logging;
+
+	  assert (!pgbuf_has_perm_pages_fixed (thread_p));
+	  sidecar_Store_writes++;
+	  const int error_code = heap_insert_logical (thread_p, store_context, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  if (copy > 0)
+	    {
+	      continue;
+	    }
+
+	  SIDECAR_REF *ref = &s.slot.ref;
+	  ref->pageid = store_context->res_oid.pageid;
+	  ref->volid = store_context->res_oid.volid;
+	  ref->slotid = store_context->res_oid.slotid;
+	  ref->length = length;
+	  ref->flags = store_context->recdes_p->type == REC_BIGONE ? SIDECAR_REF_BIGONE : 0;
+	  ref->attrid_check = (UINT16) (s.attrid & 0xFFFF);
+	}
+      if (dangling)
+	{
+	  s.slot.ref.slotid = SHRT_MAX;
+	}
+      orphan = dangling = false;
+    }
+  return NO_ERROR;
+}
+
+/* I-4: each store record the new version no longer names gets the transaction's DELID, through
+ * heap_delete_logical () with no data page held, before the hot record.  Vacuum removes it from its own DELID
+ * (I-5); in SA mode the delete is physical and its undo holds the record. */
+static int
+sidecar_stamp_values (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, sidecar_plan *plan, HFID *store_hfid,
+		      HEAP_OPERATION_CONTEXT *store_context)
+{
+  OID class_oid = context->class_oid;
+
+  for (const SIDECAR_REF &ref : plan->stamps)
+    {
+      OID oid;
+
+      oid.volid = ref.volid;
+      oid.pageid = ref.pageid;
+      oid.slotid = ref.slotid;
+      heap_create_delete_context (store_context, store_hfid, &oid, &class_oid, NULL);
+      store_context->sidecar_store_op = true;
+
+      assert (!pgbuf_has_perm_pages_fixed (thread_p));
+      sidecar_Store_writes++;
+      const int error_code = heap_delete_logical (thread_p, store_context);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
+}
+
+static int
+sidecar_apply_plan_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  sidecar_plan *plan = context->sc_plan;
+  HFID store_hfid;
+
+  if (plan == NULL || plan->state == SIDECAR_PLAN_APPLIED)
+    {
+      return NO_ERROR;
+    }
+  assert (plan->state == SIDECAR_PLAN_DECIDED);
+
+  int error_code = sidecar_store_for (thread_p, &context->hfid, &context->class_oid, &store_hfid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (plan->inline_all)
+    {
+      /* the kept values come back into the image before their store records are stamped */
+      error_code = sidecar_expand_locked (thread_p, context->recdes_p, plan->hot_bytes, &plan->hot);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  /* the store writes are not this row's replication targets */
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  const LOG_LSA saved_insert_lsa = tdes->repl_insert_lsa;
+  const LOG_LSA saved_update_lsa = tdes->repl_update_lsa;
+  HEAP_OPERATION_CONTEXT *store_context =
+	  (HEAP_OPERATION_CONTEXT *) db_private_alloc (thread_p, sizeof (HEAP_OPERATION_CONTEXT));
+
+  if (store_context == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HEAP_OPERATION_CONTEXT));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  error_code = sidecar_insert_values (thread_p, context, plan, &store_hfid, store_context);
+  if (error_code == NO_ERROR)
+    {
+      error_code = sidecar_stamp_values (thread_p, context, plan, &store_hfid, store_context);
+    }
+  if (error_code == NO_ERROR && context->type != HEAP_OPERATION_INSERT
+      && FI_INSERTED (FI_TEST_SIDECAR_FAIL_AFTER_STORE_WRITES))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_FAULT_INJECTED, 1, FI_TEST_SIDECAR_FAIL_AFTER_STORE_WRITES);
+      error_code = ER_SIDECAR_FAULT_INJECTED;
+    }
+  tdes->repl_insert_lsa = saved_insert_lsa;
+  tdes->repl_update_lsa = saved_update_lsa;
+  db_private_free (thread_p, store_context);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (plan->inline_all)
+    {
+      sidecar_plan_use_hot (context, plan);
+    }
+  else if (plan->rebuild)
+    {
+      error_code = sidecar_plan_build_hot (plan, context->recdes_p, &context->class_oid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+      sidecar_plan_use_hot (context, plan);
+    }
+  plan->state = SIDECAR_PLAN_APPLIED;
+  return NO_ERROR;
+}
+
+__attribute__ ((noinline)) int
+sidecar_apply_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  try
+    {
+      return sidecar_apply_plan_body (thread_p, context);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return sidecar_out_of_memory ();
+    }
+}
+
+__attribute__ ((noinline)) void
+sidecar_op_end_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, int rc)
+{
+  sidecar_plan *plan = context->sc_plan;
+
+  if (plan->client_recdes != NULL)
+    {
+      context->recdes_p = plan->client_recdes;
+    }
+  delete plan;
+  context->sc_plan = NULL;
+}
+
+/*
+ * Kept refs.  An UPDATE that does not assign an attribute whose slot in the old record holds a ref keeps the ref:
+ * heap_attrinfo_set_uninitialized () marks the value HEAP_KEPT_REF_ATTRVALUE with the ref's 16 bytes in its
+ * dbvalue, so HEAP_ATTRVALUE gains no field, and the column writer copies them into the new image with a trailer.
+ * No store page is read.  sidecar_plan_update () checks each kept ref against the current version (I-3).
+ */
+__attribute__ ((noinline)) bool
+sidecar_keep_ref (HEAP_ATTRVALUE *value, const RECDES *old_recdes)
+{
+  const OR_ATTRIBUTE *read = value->read_attrepr;
+
+  if (read == NULL || read->is_fixed || value->attr_type != HEAP_INSTANCE_ATTR || value->last_attrepr == NULL
+      || value->last_attrepr->is_fixed || tp_domain_match (read->domain, value->last_attrepr->domain,
+	  TP_EXACT_MATCH) == 0
+      || sidecar_trailer_find (old_recdes, read->location) < 0)
+    {
+      return false;
+    }
+
+  char *bytes = (char *) db_private_alloc (NULL, SIDECAR_REF_SIZE);
+  if (bytes == NULL)
+    {
+      /* the value is read through the ref instead: slower, as correct */
+      er_clear ();
+      return false;
+    }
+  memcpy (bytes, old_recdes->data + OR_VAR_OFFSET (old_recdes->data, read->location), SIDECAR_REF_SIZE);
+  db_make_varbit (&value->dbvalue, SIDECAR_REF_SIZE * CHAR_BIT, bytes, SIDECAR_REF_SIZE * CHAR_BIT);
+  value->dbvalue.need_clear = true;
+  value->state = HEAP_KEPT_REF_ATTRVALUE;
+  return true;
+}
+
+static void
+sidecar_kept_ref_decode (const HEAP_ATTRVALUE *value, SIDECAR_REF *ref)
+{
+  int bits;
+
+  sidecar_ref_decode (db_get_bit (&value->dbvalue, &bits), ref);
+}
+
+/* the inline length of a kept value, so that the offset size the writer picks also fits the record expanded
+ * (sidecar_expand_frame () keeps the offset size) */
+__attribute__ ((noinline)) int
+sidecar_kept_ref_length (const HEAP_ATTRVALUE *value)
+{
+  SIDECAR_REF ref;
+
+  sidecar_kept_ref_decode (value, &ref);
+  return ref.length;
+}
+
 __attribute__ ((noinline)) SCAN_CODE
-sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes)
+sidecar_write_kept_ref (HEAP_CACHE_ATTRINFO *attr_info, int value_index, OR_BUF *buf, char **ptr_varvals,
+			int offset_size, int header_size)
+{
+  const HEAP_ATTRVALUE *value = &attr_info->values[value_index];
+  int bits;
+
+  buf->ptr = (char *) (OR_VAR_ELEMENT_PTR (buf->buffer, value->last_attrepr->location));
+  if (buf->ptr + offset_size > buf->endptr)
+    {
+      return S_DOESNT_FIT;
+    }
+  or_put_offset_internal (buf, CAST_BUFLEN (*ptr_varvals - buf->buffer - header_size), offset_size);
+
+  if (*ptr_varvals + SIDECAR_REF_SIZE > buf->endptr)
+    {
+      return S_DOESNT_FIT;
+    }
+  memcpy (*ptr_varvals, db_get_bit (&value->dbvalue, &bits), SIDECAR_REF_SIZE);
+  *ptr_varvals += SIDECAR_REF_SIZE;
+  return S_SUCCESS;
+}
+
+/* after the variable area of an image with kept refs: the trailer, and the flag in the header word */
+static SCAN_CODE
+sidecar_write_trailer_body (HEAP_CACHE_ATTRINFO *attr_info, OR_BUF *buf, char **ptr_varvals)
+{
+  std::vector<int> locations;
+
+  for (int i = 0; i < attr_info->num_values; i++)
+    {
+      if (attr_info->values[i].state == HEAP_KEPT_REF_ATTRVALUE)
+	{
+	  locations.push_back (attr_info->values[i].last_attrepr->location);
+	}
+    }
+  std::sort (locations.begin (), locations.end ());
+
+  const int n_refs = (int) locations.size ();
+  const int size = SIDECAR_TRAILER_SIZE (n_refs);
+  if (n_refs == 0 || *ptr_varvals + size > buf->endptr)
+    {
+      return n_refs == 0 ? S_SUCCESS : S_DOESNT_FIT;
+    }
+
+  for (int i = 0; i < SIDECAR_TRAILER_N_PAD (n_refs); i++)
+    {
+      OR_PUT_SHORT (*ptr_varvals + i * OR_SHORT_SIZE, i < n_refs ? locations[i] : SIDECAR_TRAILER_PAD);
+    }
+  sidecar_trailer_put_counts (*ptr_varvals + size, attr_info->last_classrepr->n_variable, n_refs);
+  *ptr_varvals += size;
+  OR_PUT_INT (buf->buffer, OR_GET_INT (buf->buffer) | (OR_MVCC_FLAG_HAS_SIDECAR << OR_MVCC_FLAG_SHIFT_BITS));
+  return S_SUCCESS;
+}
+
+__attribute__ ((noinline)) SCAN_CODE
+sidecar_write_trailer (HEAP_CACHE_ATTRINFO *attr_info, OR_BUF *buf, char **ptr_varvals)
+{
+  try
+    {
+      return sidecar_write_trailer_body (attr_info, buf, ptr_varvals);
+    }
+  catch (const std::bad_alloc &)
+    {
+      (void) sidecar_out_of_memory ();
+      return S_ERROR;
+    }
+}
+
+/*
+ * Fetches.  A reader of a record with refs is one of the classes of 5.6:
+ *   PROTECTED  its scan cache holds the transaction's registered snapshot (a);
+ *   HOLDER     it reads the last version under the row lock (b);
+ *   COMMITTED  a snapshot that may take a version from the undo log after the hot latch was released (c), the
+ *              committed snapshot of xlocator_fetch () or a snapshot struct nobody registered;
+ *   LATCHED    a dirty or NULL snapshot, which resolves the current version under the hot latch (c).
+ */
+enum sidecar_reader
+{
+  SIDECAR_READER_PROTECTED,
+  SIDECAR_READER_HOLDER,
+  SIDECAR_READER_COMMITTED,
+  SIDECAR_READER_LATCHED
+};
+
+static sidecar_reader
+sidecar_classify (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, SIDECAR_FETCH fetch)
+{
+  if (fetch == SIDECAR_FETCH_LAST_VERSION)
+    {
+      return SIDECAR_READER_HOLDER;
+    }
+  if (fetch == SIDECAR_FETCH_RECORD_INFO)
+    {
+      /* the record-info scan reads every record of a page, visible or not, under the hot latch */
+      return SIDECAR_READER_LATCHED;
+    }
+
+  const MVCC_SNAPSHOT *snapshot = scan_cache != NULL ? scan_cache->mvcc_snapshot : NULL;
+  if (snapshot == NULL || snapshot->snapshot_fnc == NULL || snapshot->snapshot_fnc == mvcc_satisfies_dirty)
+    {
+      return SIDECAR_READER_LATCHED;
+    }
+  if (snapshot->snapshot_fnc == mvcc_satisfies_snapshot)
+    {
+      const LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      if (tdes != NULL && snapshot == &tdes->mvccinfo.snapshot && tdes->mvccinfo.snapshot.valid)
+	{
+	  return SIDECAR_READER_PROTECTED;
+	}
+    }
+  return SIDECAR_READER_COMMITTED;
+}
+
+/* the retry rule of 5.6 (c), for a version of which a store record was found absent */
+static SCAN_CODE
+sidecar_on_absent (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, const RECDES *hot, sidecar_reader reader,
+		   int attempt, const SIDECAR_REF *ref)
+{
+  MVCC_REC_HEADER header;
+  RECDES copy = *hot;
+
+  if (reader != SIDECAR_READER_PROTECTED && or_mvcc_get_header (&copy, &header) == NO_ERROR
+      && MVCC_IS_HEADER_DELID_VALID (&header) && !log_Gl.mvcc_table.is_active (MVCC_GET_DELID (&header)))
+    {
+      /* the row's delete committed, and vacuum may remove the row at any moment, as on develop */
+      return S_DOESNT_EXIST;
+    }
+  if (reader != SIDECAR_READER_COMMITTED)
+    {
+      /* a protected reader, a lock holder and a latched reader always find the records (5.6) */
+      (void) sidecar_set_dangling (ref, ref->attrid_check);
+      return S_ERROR;
+    }
+  if (attempt < SIDECAR_RETRY_BOUND)
+    {
+      sidecar_Retries++;
+      er_log_debug (ARG_FILE_LINE, "Sidecar: retry %d of a committed-snapshot fetch, store record %d|%d|%d absent",
+		    attempt + 1, ref->volid, ref->pageid, ref->slotid);
+      return S_SIDECAR_RETRY;
+    }
+  if (scan_cache->mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed)
+    {
+      /* only xlocator_fetch () reads with the committed snapshot, and it reads the row again under an S lock */
+      er_log_debug (ARG_FILE_LINE, "Sidecar: retries exhausted after %d reads, the fetch takes the lock fallback",
+		    attempt + 1);
+      return S_SIDECAR_LOCK_NEEDED;
+    }
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_RESOLVE_RETRY, 1, attempt + 1);
+  return S_ERROR;
+}
+
+/*
+ * The fetch exits.  A lock holder whose scan cache opted in keeps the record as stored, and the attribute layer
+ * reads the values it decodes (sidecar_point_variable ()).  Every other reader gets the record expanded where a
+ * REC_BIGONE record would go: into the scan cache area for PEEK or when the record is already there, else into the
+ * caller's area, which returns S_DOESNT_FIT with -needed when it is too small.  The trailer says how many variable
+ * attributes the record has, so the expansion fixes no page but one store page at a time.
+ */
+static SCAN_CODE
+sidecar_on_fetch_body (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes, SIDECAR_FETCH fetch,
+		       int attempt)
 {
   const OID *class_oid = scan_cache != NULL ? &scan_cache->node.class_oid : &oid_Null_oid;
+  const sidecar_reader reader = sidecar_classify (thread_p, scan_cache, fetch);
+
+  if (reader == SIDECAR_READER_HOLDER && scan_cache != NULL && scan_cache->sidecar_lazy_ok)
+    {
+      return S_SUCCESS;
+    }
 
   std::vector<char> hot_bytes (recdes->data, recdes->data + recdes->length);
   RECDES hot;
@@ -760,34 +1698,226 @@ sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *re
       return S_ERROR;
     }
 
+  /* debug: the first store read of a committed-snapshot fetch, or every one, finds its record absent */
+  const bool fault = (reader == SIDECAR_READER_COMMITTED
+		      && ((attempt == 0 && FI_INSERTED (FI_TEST_SIDECAR_ABSENT_ONCE))
+			  || FI_INSERTED (FI_TEST_SIDECAR_ABSENT_ALWAYS)));
+
   for (int i = 0; i < n_refs; i++)
     {
       SIDECAR_REF ref;
 
       sidecar_hot_get_ref (&hot, i, &ref);
-      if (sidecar_read_value_into (thread_p, &ref, ref.attrid_check, recdes->data + value_offsets[i]) != NO_ERROR)
+      sidecar_Expand_reads += (i == 0 && fault) ? 0 : 1;
+      const sidecar_read_result result = ((i == 0 && fault) ? SIDECAR_READ_ABSENT
+					  : sidecar_read_value (thread_p, &ref, recdes->data + value_offsets[i]));
+      if (result == SIDECAR_READ_FAILED)
 	{
 	  return S_ERROR;
+	}
+      if (result == SIDECAR_READ_ABSENT)
+	{
+	  return sidecar_on_absent (thread_p, scan_cache, &hot, reader, attempt, &ref);
 	}
     }
   return S_SUCCESS;
 }
 
-/* no reader keeps refs lazy in P1a, so the attribute layer never meets a record with refs */
+__attribute__ ((noinline)) SCAN_CODE
+sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes, SIDECAR_FETCH fetch,
+		  int attempt)
+{
+  try
+    {
+      return sidecar_on_fetch_body (thread_p, scan_cache, recdes, fetch, attempt);
+    }
+  catch (const std::bad_alloc &)
+    {
+      (void) sidecar_out_of_memory ();
+      return S_ERROR;
+    }
+}
+
+/*
+ * The lock fallback of 5.6 (c): a committed-snapshot fetch that found a store record absent after the retry bound.
+ * Each retry was paid for by a distinct stamping commit, so the row may well be live.  Read it as a lock holder: the
+ * S lock waits until no writer holds the row, and every stamp needs its X lock (I-4), so the read needs no retry.
+ * The lock is released unless the transaction held a lock on the row before.
+ */
+SCAN_CODE
+sidecar_fetch_locked (THREAD_ENTRY *thread_p, const OID *oid, OID *class_oid, HEAP_SCANCACHE *scan_cache,
+		      RECDES *recdes)
+{
+  const MVCC_SNAPSHOT *snapshot = scan_cache->mvcc_snapshot;
+  const bool held = lock_get_object_lock (oid, class_oid) != NULL_LOCK;
+  HEAP_GET_CONTEXT context;
+  SCAN_CODE scan;
+
+  assert (snapshot != NULL && snapshot->snapshot_fnc == mvcc_satisfies_committed);
+
+  if (lock_object (thread_p, oid, class_oid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      return S_ERROR;
+    }
+  sidecar_Fallbacks++;
+
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, COPY, NULL_CHN);
+  scan = heap_get_last_version (thread_p, &context);
+  heap_clean_get_context (thread_p, &context);
+
+  if (scan == S_SUCCESS)
+    {
+      MVCC_REC_HEADER header;
+
+      if (or_mvcc_get_header (recdes, &header) != NO_ERROR)
+	{
+	  scan = S_ERROR;
+	}
+      else
+	{
+	  switch (snapshot->snapshot_fnc (thread_p, &header, (MVCC_SNAPSHOT *) snapshot))
+	    {
+	    case SNAPSHOT_SATISFIED:
+	      break;
+	    case TOO_OLD_FOR_SNAPSHOT:
+	      scan = S_DOESNT_EXIST;
+	      break;
+	    default:
+	      /* the last version is this transaction's own; the committed one is in the log, and only this transaction
+	       * can have stamped its store records */
+	      scan = heap_get_visible_version (thread_p, oid, class_oid, recdes, scan_cache, COPY, NULL_CHN);
+	      if (scan == S_SIDECAR_LOCK_NEEDED)
+		{
+		  assert (false);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_RESOLVE_RETRY, 1, SIDECAR_RETRY_BOUND + 1);
+		  scan = S_ERROR;
+		}
+	      break;
+	    }
+	}
+    }
+
+  if (!held)
+    {
+      lock_unlock_object (thread_p, oid, class_oid, S_LOCK, true);
+    }
+  er_log_debug (ARG_FILE_LINE, "Sidecar: lock fallback read %d|%d|%d under an S lock: scan code %d",
+		OID_AS_ARGS (oid), (int) scan);
+  return scan;
+}
+
+/*
+ * The attribute layer.  A record that reaches it with refs is one a lock holder read lazily, or an UPDATE image with
+ * kept refs of the row it locked; both are read as a row-lock holder (5.6 b).  A slot that holds a value is decoded
+ * as usual.
+ */
+static std::vector<char> *
+sidecar_attr_buffer (HEAP_CACHE_ATTRINFO *attr_info, bool for_key, int attrid)
+{
+  if (attr_info->sc == NULL)
+    {
+      attr_info->sc = new sidecar_attr_state ();
+    }
+  return for_key ? &attr_info->sc->keys[attrid] : &attr_info->sc->values[attrid];
+}
+
+static int
+sidecar_resolve_slot (THREAD_ENTRY *thread_p, const char *slot, std::vector<char> &bytes)
+{
+  SIDECAR_REF ref;
+
+  sidecar_ref_decode (slot, &ref);
+  bytes.resize (MAX (ref.length, 1));
+  const int error_code = sidecar_read_value_locked (thread_p, &ref, bytes.data ());
+  if (error_code == NO_ERROR)
+    {
+      bytes.resize (ref.length);
+    }
+  return error_code;
+}
+
+static bool
+sidecar_point_variable_body (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO *attr_info,
+			     const OR_ATTRIBUTE *attrepr, RECDES *raw)
+{
+  const char *end = layout->var_table + layout->trailer_end;
+
+  assert ((unsigned short) OR_GET_SHORT (end - 3 * OR_SHORT_SIZE) == attr_info->read_classrepr->n_variable);
+  if (sidecar_trailer_find_from_end (end, attrepr->location) < 0)
+    {
+      return false;
+    }
+
+  const char *slot = layout->var_table + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout->var_table, attrepr->location,
+		     layout->offset_size);
+  std::vector<char> *bytes = sidecar_attr_buffer (attr_info, false, attrepr->id);
+
+  if (sidecar_resolve_slot (thread_get_thread_entry_info (), slot, *bytes) != NO_ERROR)
+    {
+      /* heap_attrvalue_read () returns the error */
+      raw->data = NULL;
+      raw->length = -1;
+      return true;
+    }
+  raw->data = bytes->data ();
+  raw->length = (int) bytes->size ();
+  return true;
+}
+
 __attribute__ ((noinline)) bool
 sidecar_point_variable (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO *attr_info,
 			const OR_ATTRIBUTE *attrepr, RECDES *raw)
 {
-  assert (false);
-  return false;
+  try
+    {
+      return sidecar_point_variable_body (layout, attr_info, attrepr, raw);
+    }
+  catch (const std::bad_alloc &)
+    {
+      (void) sidecar_out_of_memory ();
+      raw->data = NULL;
+      raw->length = -1;
+      return true;
+    }
+}
+
+static char *
+sidecar_midxkey_point_body (HEAP_CACHE_ATTRINFO *attr_info, const RECDES *recdes, const OR_ATTRIBUTE *att,
+			    char *disk_data)
+{
+  if (sidecar_trailer_find (recdes, att->location) < 0)
+    {
+      return disk_data;
+    }
+
+  std::vector<char> *bytes = sidecar_attr_buffer (attr_info, true, att->id);
+  if (sidecar_resolve_slot (thread_get_thread_entry_info (), disk_data, *bytes) != NO_ERROR)
+    {
+      return NULL;
+    }
+  return bytes->data ();
 }
 
 __attribute__ ((noinline)) char *
 sidecar_midxkey_point (HEAP_CACHE_ATTRINFO *attr_info, const RECDES *recdes, const OR_ATTRIBUTE *att,
 		       char *disk_data)
 {
-  assert (false);
-  return disk_data;
+  try
+    {
+      return sidecar_midxkey_point_body (attr_info, recdes, att, disk_data);
+    }
+  catch (const std::bad_alloc &)
+    {
+      (void) sidecar_out_of_memory ();
+      return NULL;
+    }
+}
+
+void
+sidecar_attr_state_free (HEAP_CACHE_ATTRINFO *attr_info)
+{
+  delete attr_info->sc;
+  attr_info->sc = NULL;
 }
 
 __attribute__ ((noinline)) void
@@ -837,15 +1967,16 @@ sidecar_store_drop (THREAD_ENTRY *thread_p, const HFID *hfid)
 }
 
 /*
- * The verifier.  G13: a live store record (no DELID) must be named by exactly one current hot record, and every
- * ref of a current hot record must name a live store record of the same attribute and length.  The store is read
- * into a map first, so the hot scan never holds a store page.
+ * The verifier.  G13: a live store record, one without a committed DELID, must be named by exactly one current hot
+ * record, and every ref of a current hot record must name a live store record of the same attribute and length.  A
+ * dead store record, stamped by a committed transaction, waits for vacuum and may be named by nothing.  A hot record
+ * whose delete committed is not current: vacuum may already have removed its store records.  The store is read into
+ * a map first, so the hot scan never holds a store page.
  */
 struct sidecar_verify_record
 {
   int attrid;
   int length;			/* of the value */
-  bool bigone;
   bool live;
   int named;
 };
@@ -867,6 +1998,10 @@ struct sidecar_verify
   OID class_oid;
   sidecar_verify_records records;
   bool valid;
+  int relocated;		/* store records a stamp relocated */
+  int bigone;			/* REC_BIGONE store records */
+  int hot_rows;			/* hot records with refs */
+  int hot_deleted;		/* of them, the ones whose delete committed */
 
   void invalid (const char *reason, const OID *oid)
   {
@@ -884,10 +2019,11 @@ struct sidecar_verify
 };
 
 /* visits every record of a heap's pages, header page included, one page fixed at a time; like every heap scan it
- * skips the pages that hold the heap's bestspace storage */
+ * skips the pages that hold the heap's bestspace storage.  Every page of a store says it is one, and no page of a
+ * hot heap does (heap_page_is_sidecar_store ()). */
 template <typename Visit>
 static int
-sidecar_verify_walk (THREAD_ENTRY *thread_p, const HFID *hfid, Visit &&visit)
+sidecar_verify_walk (THREAD_ENTRY *thread_p, sidecar_verify &v, const HFID *hfid, bool store, Visit &&visit)
 {
   VPID vpid;
 
@@ -913,6 +2049,17 @@ sidecar_verify_walk (THREAD_ENTRY *thread_p, const HFID *hfid, Visit &&visit)
       RECDES record;
       const bool is_bestspace = heap_page_is_bestspace (thread_p, page);
 
+      if (!is_bestspace && heap_page_is_sidecar_store (thread_p, page) != store)
+	{
+	  OID page_oid;
+
+	  page_oid.volid = vpid.volid;
+	  page_oid.pageid = vpid.pageid;
+	  page_oid.slotid = NULL_SLOTID;
+	  v.invalid (store ? "a page of the store does not say it is a store page"
+		     : "a page of the heap says it is a store page", &page_oid);
+	}
+
       while (!is_bestspace && spage_next_record (page, &slotid, &record, PEEK) == S_SUCCESS)
 	{
 	  if (slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
@@ -933,18 +2080,20 @@ sidecar_verify_walk (THREAD_ENTRY *thread_p, const HFID *hfid, Visit &&visit)
   return NO_ERROR;
 }
 
-/* the record carries the DELID of a transaction; a REC_BIGONE header always has the field, MVCCID_NULL until then */
+/* the record carries the DELID of a transaction that committed: a hot row whose delete committed, or a dead store
+ * record.  A REC_BIGONE header always has the field, MVCCID_NULL until a delete. */
 static bool
-sidecar_record_is_deleted (const RECDES *record)
+sidecar_record_delete_committed (const RECDES *record)
 {
   MVCC_REC_HEADER header;
   RECDES copy = *record;
 
-  return or_mvcc_get_header (&copy, &header) == NO_ERROR && MVCC_IS_HEADER_DELID_VALID (&header);
+  return (or_mvcc_get_header (&copy, &header) == NO_ERROR && MVCC_IS_HEADER_DELID_VALID (&header)
+	  && !log_Gl.mvcc_table.is_active (MVCC_GET_DELID (&header)));
 }
 
 static void
-sidecar_verify_add_store_record (sidecar_verify &v, const OID &oid, const RECDES &record, bool bigone)
+sidecar_verify_add_store_record (sidecar_verify &v, const OID &oid, const RECDES &record)
 {
   SIDECAR_VALUE_HEADER header;
   const char *value;
@@ -955,28 +2104,56 @@ sidecar_verify_add_store_record (sidecar_verify &v, const OID &oid, const RECDES
       v.invalid ("a record of the store is not a store record", &oid);
       return;
     }
-  v.records[oid] = { header.attrid, length, bigone, !sidecar_record_is_deleted (&record), 0 };
+  v.records[oid] = { header.attrid, length, !sidecar_record_delete_committed (&record), 0 };
+}
+
+/* the type of a store slot now, after the walk: vacuum, which the class lock does not keep out, may have removed
+ * the record since */
+static INT16
+sidecar_verify_slot_type (THREAD_ENTRY *thread_p, const OID &oid)
+{
+  PAGE_PTR page;
+
+  if (sidecar_fix_store_page (thread_p, &oid, &page) != SIDECAR_READ_PRESENT)
+    {
+      er_clear ();
+      return REC_UNKNOWN;
+    }
+  const INT16 type = spage_get_record_type (page, oid.slotid);
+  pgbuf_unfix_and_init (thread_p, page);
+  return type;
 }
 
 static int
 sidecar_verify_scan_store (THREAD_ENTRY *thread_p, sidecar_verify &v)
 {
-  std::vector<std::pair<OID, OID>> bigones;
+  struct forwarded
+  {
+    OID home;
+    INT16 type;
+    OID forward;
+  };
+  std::vector<forwarded> forwards;
+  std::map<OID, int, sidecar_oid_less> newhomes;	/* REC_NEWHOME records, and how many homes forward to each */
 
-  int error_code = sidecar_verify_walk (thread_p, v.store_hfid,[&] (const OID & oid, INT16 type, const RECDES & record)
+  int error_code = sidecar_verify_walk (thread_p, v, v.store_hfid, true,
+					[&] (const OID & oid, INT16 type, const RECDES & record)
   {
     if (type == REC_HOME)
       {
-	sidecar_verify_add_store_record (v, oid, record, false);
+	sidecar_verify_add_store_record (v, oid, record);
       }
-    else if (type == REC_BIGONE)
+    else if (type == REC_RELOCATION || type == REC_BIGONE)
       {
-	bigones.push_back ({ oid, * (OID *) record.data});
+	forwards.push_back ({ oid, type, * (OID *) record.data});
+      }
+    else if (type == REC_NEWHOME)
+      {
+	newhomes.emplace (oid, 0);
       }
     else if (type != REC_UNKNOWN)
       {
-	/* a store record is written once and, in P1a, never deleted, so it is never relocated */
-	v.invalid ("the store holds a record of a type P1a never writes", &oid);
+	v.invalid ("the store holds a record of a type a store never has", &oid);
       }
   });
   if (error_code != NO_ERROR)
@@ -984,20 +2161,46 @@ sidecar_verify_scan_store (THREAD_ENTRY *thread_p, sidecar_verify &v)
       return error_code;
     }
 
-  for (const auto &bigone : bigones)
+  /* read as a reader does, one store page at a time; a record that vanished since the walk was vacuumed */
+  for (const forwarded &f : forwards)
     {
       std::vector<char> bytes;
       RECDES record;
-      VPID ovf_vpid;
 
-      ovf_vpid.volid = bigone.second.volid;
-      ovf_vpid.pageid = bigone.second.pageid;
-      if (sidecar_read_bigone (thread_p, &ovf_vpid, bytes, &record) != NO_ERROR)
+      switch (sidecar_read_store_record (thread_p, &f.home, bytes, &record))
 	{
+	case SIDECAR_READ_PRESENT:
+	  (f.type == REC_RELOCATION ? v.relocated : v.bigone)++;
+	  if (f.type == REC_RELOCATION)
+	    {
+	      auto newhome = newhomes.find (f.forward);
+	      if (newhome != newhomes.end ())
+		{
+		  newhome->second++;
+		}
+	    }
+	  sidecar_verify_add_store_record (v, f.home, record);
+	  break;
+	case SIDECAR_READ_ABSENT:
+	  if (sidecar_verify_slot_type (thread_p, f.home) == f.type)
+	    {
+	      v.invalid ("a store record forwards to nothing", &f.home);
+	    }
+	  break;
+	default:
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
-      sidecar_verify_add_store_record (v, bigone.first, record, true);
+    }
+
+  for (const auto &newhome : newhomes)
+    {
+      if (newhome.second != 1 && (newhome.second > 1
+				  || sidecar_verify_slot_type (thread_p, newhome.first) == REC_NEWHOME))
+	{
+	  v.invalid ("a REC_NEWHOME record of the store is not the forward record of exactly one home",
+		     &newhome.first);
+	}
     }
   return NO_ERROR;
 }
@@ -1008,7 +2211,7 @@ struct sidecar_verify_hot
   OID oid;
   int repid;
   int n_variable;		/* from the trailer */
-  bool deleted;
+  bool deleted;			/* its delete committed: not a current version */
   std::vector<std::pair<int, SIDECAR_REF>> refs;	/* location and ref */
 };
 
@@ -1017,7 +2220,8 @@ sidecar_verify_scan_hot (THREAD_ENTRY *thread_p, sidecar_verify &v)
 {
   std::vector<sidecar_verify_hot> hots;
 
-  int error_code = sidecar_verify_walk (thread_p, v.hfid,[&] (const OID & oid, INT16 type, const RECDES & record)
+  int error_code = sidecar_verify_walk (thread_p, v, v.hfid, false,
+					[&] (const OID & oid, INT16 type, const RECDES & record)
   {
     if ((type != REC_HOME && type != REC_NEWHOME) || !sidecar_record_has_refs (&record))
       {
@@ -1033,7 +2237,7 @@ sidecar_verify_scan_hot (THREAD_ENTRY *thread_p, sidecar_verify &v)
     hot.oid = oid;
     hot.repid = OR_GET_MVCC_REPID (record.data);
     hot.n_variable = sidecar_trailer_n_variable (&record);
-    hot.deleted = sidecar_record_is_deleted (&record);
+    hot.deleted = sidecar_record_delete_committed (&record);
     for (int i = 0; i < sidecar_trailer_n_refs (&record); i++)
       {
 	SIDECAR_REF ref;
@@ -1054,6 +2258,8 @@ sidecar_verify_scan_hot (THREAD_ENTRY *thread_p, sidecar_verify &v)
 
   for (const sidecar_verify_hot &hot : hots)
     {
+      v.hot_rows++;
+      v.hot_deleted += hot.deleted ? 1 : 0;
       auto found = attrids_by_repid.find (hot.repid);
       if (found == attrids_by_repid.end ())
 	{
@@ -1082,6 +2288,10 @@ sidecar_verify_scan_hot (THREAD_ENTRY *thread_p, sidecar_verify &v)
 	  v.invalid ("the trailer's count of variable attributes is not its representation's", &hot.oid);
 	  continue;
 	}
+      if (hot.deleted)
+	{
+	  continue;
+	}
 
       for (const auto &slot : hot.refs)
 	{
@@ -1096,8 +2306,7 @@ sidecar_verify_scan_hot (THREAD_ENTRY *thread_p, sidecar_verify &v)
 	  auto named = v.records.find (store_oid);
 	  if (named == v.records.end () || named->second.attrid != attrid
 	      || (UINT16) (attrid & 0xFFFF) != ref.attrid_check || named->second.length != ref.length
-	      || named->second.bigone != ((ref.flags & SIDECAR_REF_BIGONE) != 0)
-	      || (!named->second.live && !hot.deleted))
+	      || !named->second.live)
 	    {
 	      (void) sidecar_set_dangling (&ref, attrid);
 	      v.valid = false;
@@ -1128,6 +2337,7 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
   v.hfid = hfid;
   v.store_hfid = &store_hfid;
   v.valid = true;
+  v.relocated = v.bigone = v.hot_rows = v.hot_deleted = 0;
 
   if (heap_sidecar_get_owner (thread_p, &store_hfid, &owner_vfid) != NO_ERROR)
     {
@@ -1145,10 +2355,18 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
       return DISK_ERROR;
     }
 
-  int error_code = sidecar_verify_scan_store (thread_p, v);
-  if (error_code == NO_ERROR)
+  int error_code;
+  try
     {
-      error_code = sidecar_verify_scan_hot (thread_p, v);
+      error_code = sidecar_verify_scan_store (thread_p, v);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = sidecar_verify_scan_hot (thread_p, v);
+	}
+    }
+  catch (const std::bad_alloc &)
+    {
+      error_code = sidecar_out_of_memory ();
     }
   lock_unlock_object (thread_p, &v.class_oid, oid_Root_class_oid, S_LOCK, true);
   if (error_code != NO_ERROR)
@@ -1156,10 +2374,12 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
       return DISK_ERROR;
     }
 
+  int live = 0;
   for (const auto &entry : v.records)
     {
       const sidecar_verify_record &r = entry.second;
 
+      live += r.live ? 1 : 0;
       if (r.live && r.named != 1)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_ORPHAN_RECORD, 5, entry.first.volid, entry.first.pageid,
@@ -1168,6 +2388,13 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
 	}
     }
 
+  er_log_debug (ARG_FILE_LINE, "Sidecar verify heap %d|%d|%d: store live %d dead %d relocated %d bigone %d; hot rows "
+		"with refs %d, deleted %d; store reads %llu (fetch expansion %llu) writes %llu retries %llu fallbacks %llu; "
+		"%s", HFID_AS_ARGS (hfid), live, (int) v.records.size () - live, v.relocated, v.bigone, v.hot_rows,
+		v.hot_deleted, (unsigned long long) sidecar_Store_reads.load (),
+		(unsigned long long) sidecar_Expand_reads.load (), (unsigned long long) sidecar_Store_writes.load (),
+		(unsigned long long) sidecar_Retries.load (), (unsigned long long) sidecar_Fallbacks.load (),
+		v.valid ? "valid" : "INVALID");
   return v.valid ? DISK_VALID : DISK_INVALID;
 }
 

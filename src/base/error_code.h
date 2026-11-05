@@ -1797,8 +1797,10 @@
 #define ER_SIDECAR_NOT_SUPPORTED                    -1392
 #define ER_SIDECAR_ORPHAN_RECORD                    -1393
 #define ER_SIDECAR_STORE_INVALID                    -1394
+#define ER_SIDECAR_RESOLVE_RETRY                    -1395
+#define ER_SIDECAR_FAULT_INJECTED                   -1396
 
-#define ER_LAST_ERROR                               -1395
+#define ER_LAST_ERROR                               -1397
 
 
 /*
