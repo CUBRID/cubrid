@@ -40,26 +40,17 @@ import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
 public abstract class DeclRoutine extends Decl {
 
     public static final int DIRECTIVE_AUTHID_CALLER = 1;
     public static final int DIRECTIVE_DETERMINISTIC = (1 << 1);
     public static final int DIRECTIVE_PARALLEL_ENABLE = (1 << 2);
-
-    public String getHeaderString() {
-
-        if (ctx == null) {
-            return null;
-        }
-
-        assert ctx instanceof PlcParser.Routine_declContext;
-        return Misc.getNormalizedText(((PlcParser.Routine_declContext) ctx).routine_header());
-    }
 
     // not contained in a loop but reachable from it including the case of (mutually) recursive
     // calls
@@ -296,6 +287,42 @@ public abstract class DeclRoutine extends Decl {
         return ((PlcParser.Routine_declContext) ctx).body() != null;
     }
 
+    // the normalized text of the routine header without the comments of the parameters, which,
+    // like the comment of the routine, need not match between the specification and the body
+    private String getHeaderText() {
+        return normalizeHeader(((PlcParser.Routine_declContext) ctx).routine_header());
+    }
+
+    private static String normalizeHeader(ParseTree t) {
+
+        if (t instanceof TerminalNode) {
+            return Misc.getNormalizedText(t);
+        }
+
+        TerminalNode comment = null;
+        TerminalNode commentStr = null;
+        if (t instanceof PlcParser.Parameter_inContext) {
+            comment = ((PlcParser.Parameter_inContext) t).COMMENT();
+            commentStr = ((PlcParser.Parameter_inContext) t).CHAR_STRING();
+        } else if (t instanceof PlcParser.Parameter_outContext) {
+            comment = ((PlcParser.Parameter_outContext) t).COMMENT();
+            commentStr = ((PlcParser.Parameter_outContext) t).CHAR_STRING();
+        }
+
+        StringBuilder sbuf = new StringBuilder();
+        for (int i = 0; i < t.getChildCount(); i++) {
+            ParseTree child = t.getChild(i);
+            if (child == comment || child == commentStr) {
+                continue;
+            }
+            if (sbuf.length() > 0) {
+                sbuf.append(' ');
+            }
+            sbuf.append(normalizeHeader(child));
+        }
+        return sbuf.toString();
+    }
+
     @Override
     public boolean givesBodyOf(Decl d) {
 
@@ -310,7 +337,7 @@ public abstract class DeclRoutine extends Decl {
             return false;
         }
 
-        if (!Objects.equals(this.getHeaderString(), other.getHeaderString())) {
+        if (!this.getHeaderText().equals(other.getHeaderText())) {
             throw new SemanticError(
                     Misc.getLineColumnOf(this.ctx), // s114
                     String.format(
