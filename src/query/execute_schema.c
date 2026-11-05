@@ -4549,7 +4549,13 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
 	      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
 		{
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, or the caller
+		   * takes a class whose statistics were never updated (they are updated after this loop) for a
+		   * finished one */
+		  if (!quiet)
+		    {
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
+		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}

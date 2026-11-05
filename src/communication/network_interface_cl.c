@@ -6400,7 +6400,8 @@ update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip
 	  n_hist_skipped += hist_skipped;
 	  if (error == ER_OBJ_INVALID_ARGUMENTS)
 	    {
-	      /* nothing histogrammable on this class; update the statistics only, as do_update_stats () does */
+	      /* kept for parity with UPDATE STATISTICS ON <class>; the all-columns build does not return this today
+	       * (a class with no histogrammable column is handled inside the helper, which updates its statistics) */
 	      error = sm_update_statistics (obj, with_fullscan);
 	    }
 	}
