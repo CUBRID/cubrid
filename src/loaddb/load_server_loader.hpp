@@ -63,9 +63,8 @@ namespace cubload
 
       class_id m_clsid;
 
-      int locate_class_for_load (const char *class_name, OID &class_oid, LC_FIND_CLASSNAME &found);
-      LC_FIND_CLASSNAME locate_class (const char *class_name, OID &class_oid, LOCK lock = BU_LOCK);
-      LC_FIND_CLASSNAME locate_class_for_all_users (const char *class_name, OID &class_oid, LOCK lock = BU_LOCK);
+      LC_FIND_CLASSNAME locate_class (const char *class_name, OID &class_oid);
+      LC_FIND_CLASSNAME locate_class_for_all_users (const char *class_name, OID &class_oid);
       void register_class_with_attributes (const char *class_name, class_command_spec_type *cmd_spec);
       void get_class_attributes (heap_cache_attrinfo &attrinfo, attribute_type attr_type, or_attribute *&or_attributes,
 				 int *n_attributes);
@@ -118,10 +117,12 @@ namespace cubload
       bool m_scancache_started;
       heap_scancache m_scancache;
 
-      // context of the partitioned class when the target class is one of its partitions; it is loaded once per batch
-      // and is only valid while the session holds SCH_S on the partitioned class (see register_class_with_attributes)
+      // private copy of the context of the partitioned class when the target class is one of its partitions; it is
+      // loaded for each batch (see init)
       PRUNING_CONTEXT m_pcontext;
       bool m_pcontext_loaded;
+      // the target class is a partitioned class, whose rows the loader cannot route to its partitions
+      bool m_is_partitioned_class;
 
       std::size_t m_rows;
   };

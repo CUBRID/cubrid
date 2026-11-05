@@ -4044,6 +4044,153 @@ cleanup:
 }
 
 /*
+ * partition_load_uncached_pruning_context () - load the pruning context that
+ *						 server-side loaddb uses to
+ *						 check the rows loaded into a
+ *						 class, without the partition
+ *						 cache
+ * return : error code or NO_ERROR
+ * thread_p (in)      : thread entry
+ * class_oid (in)     : OID of the class the rows are loaded into
+ * pruning_type (out) : DB_PARTITION_CLASS if class_oid is a partition; pinfo
+ *			then holds the context of its partitioned class, with
+ *			class_oid as the selected partition.
+ *			DB_PARTITIONED_CLASS if class_oid is a partitioned
+ *			class, DB_NOT_PARTITIONED_CLASS otherwise; pinfo holds
+ *			nothing then.
+ * pinfo (in/out)     : pruning context
+ *
+ * Note: The caller holds no lock on the partitioned class, so the definition
+ * read here may include the uncommitted changes of a concurrent DDL. It is
+ * therefore never read from or written to the partition cache, which is
+ * shared by all transactions; pinfo owns a private copy, which the caller
+ * frees with partition_clear_pruning_context.
+ * A definition that does not include class_oid, or a hash definition whose
+ * partition count does not match its size (an ADD or COALESCE PARTITION in
+ * progress), fails with ER_PARTITION_WORK_FAILED.
+ */
+int
+partition_load_uncached_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid, int *pruning_type,
+					 PRUNING_CONTEXT * pinfo)
+{
+  OR_PARTITION *master = NULL;
+  DB_VALUE hash_size;
+  int error = NO_ERROR;
+  int i;
+
+  assert (class_oid != NULL && pruning_type != NULL && pinfo != NULL);
+
+  *pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+  partition_init_pruning_context (pinfo);
+  pinfo->thread_p = thread_p;
+  pinfo->pruning_type = DB_PARTITION_CLASS;
+
+  error = partition_find_root_class_oid (thread_p, class_oid, &pinfo->root_oid);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (OID_ISNULL (&pinfo->root_oid))
+    {
+      /* several superclasses: class_oid is not a partition */
+      partition_init_pruning_context (pinfo);
+      return NO_ERROR;
+    }
+
+  error = heap_get_class_partitions (thread_p, &pinfo->root_oid, &pinfo->partitions, &pinfo->count);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (pinfo->partitions == NULL)
+    {
+      /* the class, or its superclass, is not partitioned */
+      partition_init_pruning_context (pinfo);
+      return NO_ERROR;
+    }
+
+  if (OID_EQ (&pinfo->root_oid, class_oid))
+    {
+      *pruning_type = DB_PARTITIONED_CLASS;
+      partition_clear_pruning_context (pinfo);
+      partition_init_pruning_context (pinfo);
+      return NO_ERROR;
+    }
+
+  /* partitions[0] describes the partitioned class itself; the actual partitions follow */
+  for (i = 1; i < pinfo->count; i++)
+    {
+      if (OID_EQ (&pinfo->partitions[i].class_oid, class_oid))
+	{
+	  pinfo->selected_partition = &pinfo->partitions[i];
+	  break;
+	}
+    }
+
+  if (pinfo->selected_partition == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      error = ER_PARTITION_WORK_FAILED;
+      goto error_return;
+    }
+
+  master = &pinfo->partitions[0];
+  error = partition_load_partition_predicate (pinfo, master);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (master->partition_type == DB_PARTITION_HASH)
+    {
+      /* A DDL that adds or coalesces hash partitions changes the subclass list of the partitioned class before its
+       * size, and can only finish (with the size changed in the class record) after locking every partition, including
+       * class_oid. So, while the caller holds its lock on class_oid, a count that does not match the size means that
+       * such a DDL is in progress. */
+      db_make_null (&hash_size);
+      error = db_set_get (master->values, 1, &hash_size);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+
+      if (DB_VALUE_TYPE (&hash_size) != DB_TYPE_INTEGER || db_get_int (&hash_size) != PARTITIONS_COUNT (pinfo))
+	{
+	  pr_clear_value (&hash_size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+	  error = ER_PARTITION_WORK_FAILED;
+	  goto error_return;
+	}
+      pr_clear_value (&hash_size);
+    }
+
+  pinfo->partition_type = (DB_PARTITION_TYPE) master->partition_type;
+  pinfo->root_repr_id = master->rep_id;
+  pinfo->attr_id = partition_get_attribute_id (pinfo->partition_pred->func_regu);
+  pinfo->is_from_cache = false;
+
+  *pruning_type = DB_PARTITION_CLASS;
+
+  return NO_ERROR;
+
+error_return:
+  /* reading a class record returns ER_FAILED without setting an error, and may leave a warning */
+  if (!er_has_error ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      error = ER_PARTITION_WORK_FAILED;
+    }
+
+  partition_clear_pruning_context (pinfo);
+  partition_init_pruning_context (pinfo);
+
+  return error;
+}
+
+/*
  * partition_check_record_for_partition () - check that a record belongs to
  *					      the partition a pruning context
  *					      was loaded for
@@ -4055,12 +4202,18 @@ cleanup:
  * Note: Unlike partition_prune_insert, this function never clears the
  * pruning context, so the caller can check many records with one context
  * and must clear it itself.
+ * A range or list record is checked against the definition of the selected
+ * partition alone, because that is the only definition that cannot change
+ * while the caller holds a lock on the partition; the other partitions are
+ * only used to choose the error code of a record that does not belong to it.
  */
 int
 partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * class_oid, RECDES * recdes)
 {
+  OR_PARTITION *partitions = NULL;
   OID pruned_class_oid;
   HFID pruned_hfid;
+  int count = 0;
   int error = NO_ERROR;
 
   assert (pcontext != NULL && class_oid != NULL && recdes != NULL);
@@ -4076,19 +4229,55 @@ partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * cl
   /* a previous record may have left an internal pruning error in the reused context */
   pcontext->error_code = NO_ERROR;
 
+  if (pcontext->partition_type != DB_PARTITION_HASH)
+    {
+      /* Prune with the selected partition as the only partition: partitions[0] is not read by pruning, so it may be
+       * any element. The context must be restored before returning, since it is freed through partitions. */
+      partitions = pcontext->partitions;
+      count = pcontext->count;
+      pcontext->partitions = pcontext->selected_partition - 1;
+      pcontext->count = 2;
+
+      OID_SET_NULL (&pruned_class_oid);
+      HFID_SET_NULL (&pruned_hfid);
+      error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid);
+
+      pcontext->partitions = partitions;
+      pcontext->count = count;
+
+      if (error == NO_ERROR)
+	{
+	  assert (OID_EQ (&pruned_class_oid, &pcontext->selected_partition->class_oid));
+	  return NO_ERROR;
+	}
+
+      if (pcontext->error_code != NO_ERROR)
+	{
+	  goto internal_error;
+	}
+
+      if (error != ER_PARTITION_NOT_EXIST)
+	{
+	  goto error_return;
+	}
+
+      /* the record does not belong to the partition; find out whether it belongs to another one */
+      er_clear ();
+      pcontext->error_code = NO_ERROR;
+    }
+
   OID_SET_NULL (&pruned_class_oid);
   HFID_SET_NULL (&pruned_hfid);
 
   error = partition_find_partition_for_record (pcontext, class_oid, recdes, &pruned_class_oid, &pruned_hfid);
+  if (pcontext->error_code != NO_ERROR)
+    {
+      goto internal_error;
+    }
+
   if (error != NO_ERROR)
     {
-      if (er_errid () == NO_ERROR)
-	{
-	  /* some pruning failures return an error code without setting an error */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-	  error = ER_PARTITION_WORK_FAILED;
-	}
-      return error;
+      goto error_return;
     }
 
   if (!OID_EQ (&pruned_class_oid, &pcontext->selected_partition->class_oid))
@@ -4097,7 +4286,29 @@ partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * cl
       return ER_INVALID_DATA_FOR_PARTITION;
     }
 
+  if (pcontext->partition_type != DB_PARTITION_HASH)
+    {
+      /* the definitions of the selected partition and of all partitions disagree */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      return ER_PARTITION_WORK_FAILED;
+    }
+
   return NO_ERROR;
+
+internal_error:
+  /* pruning failed internally, but may have reported it as ER_PARTITION_NOT_EXIST; the record was not checked */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+  return ER_PARTITION_WORK_FAILED;
+
+error_return:
+  if (!er_has_error ())
+    {
+      /* some pruning failures return an error code without setting an error */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
+      error = ER_PARTITION_WORK_FAILED;
+    }
+
+  return error;
 }
 
 /*

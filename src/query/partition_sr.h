@@ -115,6 +115,8 @@ extern int partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oi
 				   HEAP_SCANCACHE * scan_cache, PRUNING_CONTEXT * pcontext, int op_type,
 				   OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid);
 
+extern int partition_load_uncached_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid,
+						    int *pruning_type, PRUNING_CONTEXT * pinfo);
 extern int partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * class_oid, RECDES * recdes);
 
 extern int partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
