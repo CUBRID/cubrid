@@ -239,7 +239,7 @@ static void csql_print_buffer (void);
 static void csql_change_working_directory (const char *dirname);
 static void csql_exit_session (int error, bool exit_flag);
 
-static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream);
+static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, bool is_single_line);
 
 static char *csql_get_external_command (SESSION_CMD cmd_no);
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
@@ -746,12 +746,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   if (csql_arg->command)
     {
       /* command input */
-      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command), true);
+      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, false), true);
     }
 
   if (!csql_Is_interactive && !csql_arg->single_line_execution)
     {
-      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp), true);
+      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, false), true);
     }
 
   /* Start interactive conversation or single line execution */
@@ -877,7 +877,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      && feof (csql_Input_fp) && check_contents_has_noncomment ())
 	    {
 	      /* single-line-oriented execution */
-	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL);
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, true);
 	      csql_edit_contents_clear ();
 	    }
 
@@ -1016,7 +1016,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (csql_execute)
 	    {
 	      /* single-line-oriented execution */
-	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL);
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, true);
 	      csql_edit_contents_clear ();
 	    }
 	}
@@ -1202,11 +1202,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
       /* Command stuffs */
     case S_CMD_RUN:
-      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL);
+      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, false);
       break;
 
     case S_CMD_XRUN:
-      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL);
+      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, false);
       csql_edit_contents_clear ();
       break;
 
@@ -2157,6 +2157,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
  *   csql_arg(in)
  *   type(in)
  *   stream(in)
+ *   is_single_line(in): true if the buffer holds one statement that the single-line-oriented execution runs
  *
  * Note:
  *   If `type' is STRING_INPUT, it regards `stream' points to command string.
@@ -2165,13 +2166,11 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
  *   buffer.
  */
 static int
-csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream)
+csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, bool is_single_line)
 {
   char *stmts = NULL;		/* statements string */
   int num_stmts = 0;		/* # of stmts executed */
-  /* starting line no of each stmt; until a statement is parsed, the line the lexer starts at.
-   * a statement that fails while it is parsed, e.g. SHOW THREADS of a non-DBA user, has no node to read it from. */
-  int stmt_start_line_no = 0;
+  int stmt_start_line_no = 0;	/* starting line no of each stmt */
   DB_SESSION *session = NULL;	/* query compilation session id */
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
@@ -2184,7 +2183,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   if (csql_Is_interactive)
     {
       csql_yyset_lineno (1);
-      stmt_start_line_no = 1;
     }
   else if (type == EDITOR_INPUT)
     {
@@ -2193,6 +2191,14 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       int buffer_start_line_no = csql_edit_contents_get_start_line ();
 
       csql_yyset_lineno (buffer_start_line_no > 0 ? buffer_start_line_no : 1);
+    }
+
+  if (is_single_line)
+    {
+      /* the buffer holds one statement: its first line is shown for an error raised before the statement is parsed
+       * into a node, e.g. by SHOW THREADS of a non-DBA user */
+      int buffer_start_line_no = csql_Is_interactive ? 0 : csql_edit_contents_get_start_line ();
+
       stmt_start_line_no = (buffer_start_line_no > 0) ? buffer_start_line_no : 1;
     }
 
@@ -2301,11 +2307,13 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       /* the line of the first token of the statement, counted by the lexer.
-       * read it before checking the compilation: its errors may have no position of their own */
+       * read it before checking the compilation: its errors may have no position of their own.
+       * for a failed compilation, the line only corrects one that is shown anyway: none is shown for the first
+       * statement of -c, -i without single-line execution, ;run or ;xrun. */
       if (session->statements != NULL && num_stmts < session->dimension && session->statements[num_stmts] != NULL)
 	{
 	  parsed_line_no = db_get_start_line (session, num_stmts + 1);
-	  if (parsed_line_no > 0)
+	  if (parsed_line_no > 0 && (stmt_id > 0 || stmt_start_line_no > 0))
 	    {
 	      /* add the session command lines that are not in the buffer */
 	      stmt_start_line_no =
