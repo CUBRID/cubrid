@@ -155,7 +155,8 @@ namespace parallel_query
 	  page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
 	  if (page == nullptr)
 	    {
-	      if (er_errid () != NO_ERROR)
+	      /* a failed fetch, not the end: the iterator says which (a stale error on the thread would not) */
+	      if (m_page_iter.failed ())
 		{
 		  m_task_manager.handle_error (thread_ref);
 		  has_error = true;
@@ -904,7 +905,8 @@ cleanup:
 	  page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
 	  if (page == nullptr)
 	    {
-	      if (er_errid () != NO_ERROR)
+	      /* a failed fetch, not the end: the iterator says which (a stale error on the thread would not) */
+	      if (m_page_iter.failed ())
 		{
 		  m_task_manager.handle_error (thread_ref);
 		  has_error = true;
@@ -1193,7 +1195,8 @@ cleanup:
 	  page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
 	  if (page == nullptr)
 	    {
-	      if (er_errid () != NO_ERROR)
+	      /* a failed fetch, not the end: the iterator says which (a stale error on the thread would not) */
+	      if (m_page_iter.failed ())
 		{
 		  m_task_manager.handle_error (thread_ref);
 		  has_error = true;
