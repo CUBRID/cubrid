@@ -1262,7 +1262,14 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    assert (str[0] == 'B' || str[0] == 'C');
+    if (str[0] != 'B' && str[0] != 'C')
+      {
+	assert (0);
+	error_code = ER_LDR_ELO_INPUT_FILE;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, str);
+
+	return error_code;
+      }
 
     if (str[0] == 'B')
       {
