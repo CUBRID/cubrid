@@ -11142,7 +11142,18 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   /* in given partition, collect terms connected to tail_info */
   {
     int retry_cnt, edge_cnt, path_cnt;
-    bool found_edge, skip_term;
+    bool found_edge, skip_term, only_anti_left;
+
+    /* check whether the nodes left to join are all ANTI JOIN inners (or none is left) */
+    only_anti_left = true;
+    for (i = bitset_iterate (remaining_nodes, &bi); i != -1; i = bitset_next_member (&bi))
+      {
+	if (QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (planner->env, i)) != PT_JOIN_ANTI)
+	  {
+	    only_anti_left = false;
+	    break;
+	  }
+      }
 
     /* set visited segs for removing join terms already logically evaluated. */
     for (i = bitset_iterate (visited_terms, &bi); i != -1; i = bitset_next_member (&bi))
@@ -11168,6 +11179,15 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 	/* check term nodes */
 	if (!bitset_subset (visited_nodes, &(QO_TERM_NODES (term))))
+	  {
+	    continue;
+	  }
+
+	/* The terms of an ANTI JOIN decide only whether an outer row has a match. A WHERE term reads no column of
+	 * the ANTI JOIN inner; leave it to a join of the outer rows, or to qo_combine_partitions () if it reads no
+	 * table. */
+	if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_ANTI && !QO_ON_COND_TERM (term)
+	    && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (tail_node)))
 	  {
 	    continue;
 	  }
@@ -11361,9 +11381,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 		/* If visited_nodes is the same as partition's nodes, then we have successfully generated one of the
 		 * graph permutations(i.e., we have considered every one of the nodes). only include after-join term
-		 * for this plan.
+		 * for this plan. An ANTI JOIN left to join only drops outer rows and the term reads none of its
+		 * columns, so include the term before the ANTI JOIN, not in it.
 		 */
-		if (!bitset_is_equivalent (visited_nodes, &(QO_PARTITION_NODES (partition))))
+		if (!only_anti_left)
 		  {
 		    continue;
 		  }
@@ -13854,6 +13875,25 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
   if (t_plan)
     {
       bitset_union (&(t_plan->sarged_terms), &sarged_terms);
+
+      /* The inner scan of a NL ANTI JOIN evaluates the terms of the join, and they decide only whether an outer row
+       * has a match. Move the terms that read no table to the outer plan; inst_num () terms stay, since
+       * make_outer_instnum () takes them down. */
+      while (t_plan->plan_type == QO_PLANTYPE_JOIN
+	     && (t_plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN
+		 || t_plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+	     && qo_plan_semi_anti_join_type (t_plan->plan_un.join.inner) == PT_JOIN_ANTI)
+	{
+	  for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
+	    {
+	      if (QO_TERM_CLASS (&planner->term[i]) != QO_TC_TOTALLY_AFTER_JOIN)
+		{
+		  bitset_remove (&(t_plan->sarged_terms), i);
+		  bitset_add (&(t_plan->plan_un.join.outer->sarged_terms), i);
+		}
+	    }
+	  t_plan = t_plan->plan_un.join.outer;
+	}
     }
   else if (plan != NULL)
     {
