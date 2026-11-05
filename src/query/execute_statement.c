@@ -3462,6 +3462,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
+  unsigned save_compile_uncached = parser->flag.compile_uncached;
+
+  /* what compiles here is not cached: a trigger action at every firing, a statement that cannot be prepared */
+  parser->flag.compile_uncached = 1;
 
   /* save old read fetch instance version */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
@@ -3955,6 +3959,7 @@ end:
 	  error = ER_GENERIC_ERROR;
 	}
     }
+  parser->flag.compile_uncached = save_compile_uncached;
   return error;
 }
 

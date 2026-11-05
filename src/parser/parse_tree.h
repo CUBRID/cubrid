@@ -1318,6 +1318,9 @@ typedef UINT64 PT_HINT_ENUM;
 							 * different histogram territory (per-statement form of
 							 * plan_cache_bind_sensitivity) */
 #define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
+#define  PT_HINT_ROW_SNAPSHOT			(1ULL << 48)	/* read the rows a constant filter selects while planning,
+								 * even with row_snapshot_max_rows=0 (CBRD-27478) */
+#define  PT_HINT_NO_ROW_SNAPSHOT		(1ULL << 49)	/* do not read them (CBRD-27478) */
 
 /* Codes for error messages */
 typedef enum
@@ -3894,6 +3897,8 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned is_dblink_odku_value:1;	/* a remote INSERT ... SELECT ODKU value bound from the source row, and its copy
+					 * at the end of the source select list */
     unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
 					 * target selection for bind-value plan variants, so its
 					 * executions choose among the query's plans by fingerprint */
@@ -4153,6 +4158,9 @@ struct parser_context
     unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
+    unsigned compile_uncached:1;	/* CBRD-27478: the statement compiles through do_statement (), outside the XASL
+					 * cache, so it compiles again at every execution: the planner reads no rows
+					 * (row snapshot) for a plan nothing keeps */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned is_verifying_static_sql_text:1;	/* compile the edited text of a PL/CSQL static SQL without preparing it, so that
 						 * the verification leaves no XASL cache entry (see make_static_sql_text ()) */

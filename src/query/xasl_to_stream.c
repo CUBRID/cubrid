@@ -3634,7 +3634,7 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
 
   ptr = or_pack_int (ptr, build_list_proc->g_hash_eligible);
 
-  ptr = or_pack_int (ptr, build_list_proc->g_output_first_tuple);
+  ptr = or_pack_int (ptr, build_list_proc->g_first_tuple);
   ptr = or_pack_int (ptr, build_list_proc->g_hkey_size);
 
   offset = xts_save_regu_variable_list (build_list_proc->g_hk_scan_regu_list);
@@ -4631,6 +4631,8 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
     }
 
   ptr = or_pack_int (ptr, insert_info->remote_num_odku);
+  ptr = or_pack_int (ptr, insert_info->remote_odku_val_start);
+  ptr = or_pack_int (ptr, insert_info->remote_num_odku_bound);
 
   /* Column and value go out as a pair, so the two arrays cannot drift apart across the stream. */
   for (i = 0; i < insert_info->remote_num_odku; i++)
@@ -6829,7 +6831,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + OR_INT_SIZE	/* g_grbynum_flag */
 	   + OR_INT_SIZE	/* g_with_rollup */
 	   + OR_INT_SIZE	/* g_hash_eligible */
-	   + OR_INT_SIZE	/* g_output_first_tuple */
+	   + OR_INT_SIZE	/* g_first_tuple */
 	   + OR_INT_SIZE	/* g_hkey_size */
 	   + OR_INT_SIZE	/* g_func_count */
 	   + PTR_SIZE		/* g_agg_list */
@@ -7136,6 +7138,8 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* remote_num_attrs */
 	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
 	   + OR_INT_SIZE	/* remote_num_odku */
+	   + OR_INT_SIZE	/* remote_odku_val_start */
+	   + OR_INT_SIZE	/* remote_num_odku_bound */
 	   + (insert_info->remote_num_odku * 2 * PTR_SIZE)	/* remote_odku_cols + remote_odku_exprs */
 	   + PTR_SIZE		/* att_domains */
 	   + PTR_SIZE);		/* default_types */
