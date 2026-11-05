@@ -123,12 +123,14 @@ env:
         awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
       elif ls "$1"/test-results/*.xml > /dev/null 2>&1; then
-        # CDATA is text, never markup: a log can hold a literal <testcase or <error.
+        # Reads CTP's layout as collect's FAILED_AWK does: one element per line, <![CDATA[ on its tag's
+        # line, ]]></ after the last text. CDATA is text, never markup: a log can hold a literal
+        # <testcase or <error, and CTP writes a ]]> in it as ]]]]><![CDATA[>.
         awk 'FNR == 1 {in_cdata = 0}
-          in_cdata { if (index($0, "]]>")) in_cdata = 0; next }
+          in_cdata { if (index($0, "]]></")) in_cdata = 0; next }
           { c = index($0, "<![CDATA["); tags = c ? substr($0, 1, c - 1) : $0
-            if (c && !index(substr($0, c + 9), "]]>")) in_cdata = 1 }
-          tags ~ /<testcase[ >\/]/ {e++} tags ~ /<(failure|error)[ >\/]/ {f++} tags ~ /<skipped[ >\/]/ {k++}
+            if (c && !index($0, "]]></")) in_cdata = 1 }
+          tags ~ /<testcase/ {e++} tags ~ /<(failure|error)[ >\/]/ {f++} tags ~ /<skipped[ >\/]/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", e - k, e - k - f, f, k}' "$1"/test-results/*.xml
       else
         echo "found=no exec=0 pass=0 fail=0 skip=0"
@@ -1061,7 +1063,9 @@ jobs:
               prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
               [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
-              if [ "$prev_recipe" != "$recipe" ]; then
+              # No usable build in either run means no shard read one: there is no build to keep the same.
+              if [ -n "$recipe" ] && ! grep -qx "build_recipe=''" "$srcdir/plan/split.meta" 2>/dev/null \
+                 && [ "$prev_recipe" != "$recipe" ]; then
                 echo "::error::run $RERUN_FROM tested a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
