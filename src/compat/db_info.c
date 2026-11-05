@@ -1394,6 +1394,18 @@ db_attribute_is_oos_force_outline (DB_ATTRIBUTE * attribute)
   return attribute != NULL && (attribute->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) != 0;
 }
 
+/*
+ * db_attribute_is_oos_force_inline() - This function tests if attribute forbids
+ *     moving its value to OOS.
+ * return : non-zero if the STORAGE FORCE_INLINE option is set.
+ * attribute(in): attribute descriptor
+ */
+int
+db_attribute_is_oos_force_inline (DB_ATTRIBUTE * attribute)
+{
+  return attribute != NULL && (attribute->flags & SM_ATTFLAG_OOS_FORCE_INLINE) != 0;
+}
+
 
 /*
  * db_attribute_is_reverse_unique() - This function tests the status of the

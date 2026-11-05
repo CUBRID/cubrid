@@ -2023,7 +2023,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 The partition name is too long.
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 339 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
-340 STORAGE options can be set only on variable-type normal attributes of a class: '%1$s'.
+340 STORAGE option is not allowed on '%1$s'. STORAGE options apply only to normal attributes of a class, and fixed-type attributes accept only DEFAULT and FORCE_INLINE.
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
