@@ -182,7 +182,7 @@ TEST (OosReferenceErrors, DebugFormattingFailureDiscardsCollectedOutput)
 }
 #endif
 
-TEST (OosReferenceErrors, VacuumReturnsOomWithoutChangingCommittedPageList)
+TEST (OosReferenceErrors, VacuumReturnsOomBeforeRecordingReclaimIntent)
 {
   alignas (MAX_ALIGNMENT) char bytes[256];
   RECDES record;
@@ -190,17 +190,15 @@ TEST (OosReferenceErrors, VacuumReturnsOomWithoutChangingCommittedPageList)
   VFID vfid = {};
   vfid.volid = 1;
   vfid.fileid = 1;
-  VPID page = {};
-  page.volid = 1;
-  page.pageid = 2;
-  VACUUM_OOS_EMPTIED_PAGES emptied_pages = { page };
-  // Collection fails before thread, page, or sysop access. An enclosing live sysop is not exercised here.
+  OID owner = {};
+  owner.volid = 1;
+  owner.pageid = 1;
+  owner.slotid = 1;
+  // Collection fails before thread, sysop or log access, so no intent is recorded and the caller aborts its sysop.
   expect_allocation_error (1, [&]
   {
-    return vacuum_heap_oos_delete_within_sysop (nullptr, &vfid, &record, &emptied_pages);
+    return vacuum_heap_oos_log_reclaim_intent (nullptr, &vfid, &record, &owner);
   });
-  ASSERT_EQ (emptied_pages.size (), 1u);
-  EXPECT_TRUE (VPID_EQ (&emptied_pages[0], &page));
 }
 
 TEST (OosReferenceErrors, EagerCleanupReturnsOldRecordOom)

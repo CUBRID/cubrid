@@ -42,6 +42,7 @@ FetchContent_MakeAvailable(googletest)
 set(SA_MODE_TESTS
   test_oos
   test_oos_delete
+  test_oos_reclaim
   test_oos_identity_stamp
   test_oos_eager_diagnostics
   test_oos_no_logging
@@ -259,6 +260,8 @@ set_tests_properties(test_oos_concurrent_insert_driver PROPERTIES TIMEOUT 30)
 # =============================================================================
 add_test(NAME test_oos COMMAND test_oos)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
+# the OOS reclaimer and reclaim intents (ADR-0008, CBRD-27781): redo-only, tail first, link stamps, fail-stop.
+add_test(NAME test_oos_reclaim COMMAND test_oos_reclaim)
 # identity stamp contract: insert issues it, reads verify it, deletes require it (CBRD-26950).
 add_test(NAME test_oos_identity_stamp COMMAND test_oos_identity_stamp)
 # eager (non-MVCC) DML completes and diagnoses skipped OOS reclamation (CBRD-26950); the SQL-level
@@ -282,7 +285,7 @@ add_test(NAME test_oos_reference_errors COMMAND test_oos_reference_errors)
 set_tests_properties(test_oos_reference_errors PROPERTIES TIMEOUT 30)
 # pure-logic test for the bounded writer used by oos_read; no DB fixture.
 add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
-# pure-logic guard that the OOS forward-delete rcvindex is TDE-gated (CBRD-26668); no DB fixture.
+# pure-logic guard over the TDE user-data gate of the heap and OOS reclaim rcvindexes (CBRD-26668); no DB fixture.
 add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
 set_tests_properties(test_oos_record_flags test_byte_span_writer test_oos_tde_gate PROPERTIES TIMEOUT 30)
 
@@ -290,7 +293,7 @@ set_tests_properties(
   test_oos_delete test_oos_remove_file test_oos_bestspace test_oos_growth_sweep
   PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 30
 )
-set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics
+set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics test_oos_reclaim
   PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 60
 )
 

@@ -160,8 +160,7 @@ TEST (OosFileDestroyServerTest, OosPageReclaimBasic)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_TRUE (exists);
 
-  // Commit before reclaiming: reclaim requires committed deletes, or this transaction's teardown
-  // rollback replays the RVOOS_DELETE undo onto a deallocated page. {vpid, vpid} exercises dedupe.
+  // The chunk delete is redo-only (ADR-0008); the commit only ends the test's transaction. {vpid, vpid} exercises dedupe.
   err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
@@ -188,18 +187,20 @@ TEST (OosFileDestroyServerTest, OosPageReclaimBasic)
 }
 
 // ============================================================================
-// TC: LSA gate defers a page emptied by an uncommitted delete
+// TC: ADR-0008 removed the LSA reclaim gate: a page that a redo-only chunk delete emptied is reclaimed at
+// once, before the reclaiming transaction ends, and stays reclaimed when that transaction aborts
 // ============================================================================
-TEST (OosFileDestroyServerTest, OosPageReclaimLsaGateDefersUncommitted)
+TEST (OosFileDestroyServerTest, OosPageReclaimDoesNotWaitForTheReclaimingTransaction)
 {
   int err;
   VFID oos_vfid;
 
   err = oos_create_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
   RECDES rec_in {};
-  err = test_oos_utils::from_string_into_recdes ("LSA gate test data", rec_in);
+  err = test_oos_utils::from_string_into_recdes ("reclaim without a gate test data", rec_in);
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
 
@@ -210,7 +211,7 @@ TEST (OosFileDestroyServerTest, OosPageReclaimLsaGateDefersUncommitted)
 
   VPID vpid = {oid.pageid, oid.volid};
 
-  // Deliberately uncommitted: this transaction is still a live undo source.
+  // The transaction stays uncommitted: under the old design it was a live undo source.
   err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
@@ -221,18 +222,13 @@ TEST (OosFileDestroyServerTest, OosPageReclaimLsaGateDefersUncommitted)
   PAGE_PTR page_ptr = NULL;
   err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
   ASSERT_EQ (err, NO_ERROR);
-  ASSERT_NE (page_ptr, nullptr);	// still allocated — deferred, not reclaimed
-  pgbuf_unfix (thread_p, page_ptr);
+  ASSERT_EQ (page_ptr, nullptr);	// reclaimed without waiting for the transaction
 
-  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
-
-  candidates = {vpid};
-  err = oos_reclaim_empty_pages (thread_p, oos_vfid, candidates);
-  ASSERT_EQ (err, NO_ERROR);
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
 
   err = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH, &page_ptr);
   ASSERT_EQ (err, NO_ERROR);
-  ASSERT_EQ (page_ptr, nullptr);	// now really deallocated
+  ASSERT_EQ (page_ptr, nullptr);	// still deallocated after the abort
 
   // Leave no committed orphan file behind (see OosPageReclaimBasic).
   err = oos_remove_file (thread_p, oos_vfid);
