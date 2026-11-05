@@ -484,13 +484,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        image: [cubridci/cubridci:build_cl6.10]
+        mode: [release, debug]
         include:
           - mode: release
             args: ""
           - mode: debug
             args: "-m optdebug"
     container:
-      image: cubridci/cubridci:build_cl6.10
+      image: ${{ matrix.image }}
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
@@ -500,6 +502,8 @@ jobs:
       BUILD_LOG_DIR: /home/ci/shared/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
+      # A published build is reused only when it was built the same way.
+      BUILD_ENV: ${{ matrix.image }} args=${{ matrix.args }}
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
       # The default is mtime, which a fresh checkout always misses.
@@ -517,10 +521,6 @@ jobs:
         run: |
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
-          # An artifact is reused only when the same toolchain binaries and arguments built it.
-          key=$( { sha256sum $(command -v gcc g++ cmake bison flex) $(for p in cc1 cc1plus as ld; do gcc -print-prog-name="$p"; done)
-                   echo "$BUILD_ARGS"; } | sha256sum | cut -c1-16 )
-          echo "BUILD_ENV_KEY=$key" >> "$GITHUB_ENV"
           for d in "$BUILD_MIRROR/cubrid/.git" "$BUILD_MIRROR/cubrid.git"; do
             [ -d "$d" ] || {
               echo "::error::the node copy is not visible: $d. The pod template did not reach the pod, or gha-node-seed has not run"
@@ -539,7 +539,7 @@ jobs:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
-          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqx "env=$BUILD_ENV_KEY" "$dir/build.meta"; then
+          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqxF "env=$BUILD_ENV" "$dir/build.meta"; then
             echo "reuse=reused" >> "$GITHUB_OUTPUT"
           else
             echo "reuse=built" >> "$GITHUB_OUTPUT"
@@ -624,7 +624,7 @@ jobs:
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
-          same_env() { [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqx "env=$BUILD_ENV_KEY" "$dir/build.meta"; }
+          same_env() { [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqxF "env=$BUILD_ENV" "$dir/build.meta"; }
           # Another run on this SHA may have published since the reuse check; the rename decides.
           if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && same_env; then
             REUSE=reused
@@ -634,7 +634,7 @@ jobs:
             rm -rf "$tmp"
             mkdir -p "$tmp"
             meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nenv=%s\nworkflow=gha-ci\n' \
-              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)" "$BUILD_ENV_KEY")
+              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)" "$BUILD_ENV")
             # Inside the archive too: the shard reads it back out of what it unpacked.
             printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
             # An archive: a published tree made every process launch read the build over GlusterFS.
