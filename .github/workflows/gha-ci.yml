@@ -1533,33 +1533,36 @@ jobs:
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
-          # A failure body is read through first: a log can hold a literal <testcase or <failure.
+          # A failed case is a <failure> (wrong answer) or an <error> (timeout, core).
+          # Every CDATA body is read through first: a log can hold a literal <testcase, <failure or <error.
           FAILED_AWK='
             BEGIN { while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
             body != "" {
-              if (/\]\]><\/failure>/) { sub(/\]\]><\/failure>.*$/, ""); print > body; close(body); body = ""; next }
+              if (/\]\]><\/(failure|error)>/) { sub(/\]\]><\/(failure|error)>.*$/, ""); print > body; close(body); body = ""; next }
               print > body
               next
             }
+            skip { if (/\]\]><\//) skip = 0; next }
             /<testcase/ { cur = ""; if (match($0, / name="[^"]*"/)) cur = substr($0, RSTART + 7, RLENGTH - 8) }
-            /<failure/ && cur != "" {
+            /<(failure|error)[ >\/]/ && cur != "" {
               if (idx == "") { print cur; n = ++k }
               else if (cur in want) { n = want[cur] }
-              else { cur = ""; next }
+              else { cur = ""; skip = /<!\[CDATA\[/ && !/\]\]><\//; next }
               body = dir "/" n ".log"
               rest = $0
-              sub(/^.*<!\[CDATA\[/, "", rest)
-              if (rest ~ /\]\]><\/failure>/) { sub(/\]\]><\/failure>.*$/, "", rest); print rest > body; close(body); body = "" }
+              if (!sub(/^.*<!\[CDATA\[/, "", rest)) body = ""
+              else if (rest ~ /\]\]><\/(failure|error)>/) { sub(/\]\]><\/(failure|error)>.*$/, "", rest); print rest > body; close(body); body = "" }
               else if (rest != "") print rest > body
               cur = ""
               next
             }
+            /<!\[CDATA\[/ && !/\]\]><\// { skip = 1; next }
             /<\/testcase>/ { cur = "" }
           '
           failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log
             mkdir -p "$2"
             if [ -f "$1/test_status.data" ]; then
-              find "$1" -type f -name test-shell.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
+              find "$1" -type f -name '*.xml' ! -name summary.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
             elif [ -f "$1/summary_info" ]; then
               { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
                 | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" > "$2/failed.list"
@@ -1853,7 +1856,7 @@ jobs:
             {
               echo "### $suite: the log of each failed case"
               echo
-              echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`$xml_name\`."
+              echo "What CTP wrote in the case's \`<failure>\` or \`<error>\`, trimmed to fit. Untrimmed, it is in the shard's \`$xml_name\`."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
 
