@@ -72,6 +72,12 @@ extern bool sidecar_plan_writes_store (const HEAP_OPERATION_CONTEXT *context);
 extern int sidecar_apply_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
 extern void sidecar_op_end_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, int rc);
 
+/* locator_move_record (): a row that moves to another heap takes no ref along (I-3).  image holds kept refs, each one
+ * of old_stored, the version the move replaces; out gets the image with their values read back as a row-lock holder,
+ * in a buffer the caller frees with db_private_free () */
+extern int sidecar_inline_kept (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *old_stored,
+				const RECDES *image, RECDES *out);
+
 /* heap_attrinfo_set_uninitialized (): a value the UPDATE does not assign whose slot in old_recdes holds a ref keeps
  * it, in state HEAP_KEPT_REF_ATTRVALUE; false reads the value as usual */
 extern bool sidecar_keep_ref (HEAP_ATTRVALUE *value, const RECDES *old_recdes);
@@ -154,6 +160,10 @@ extern void sidecar_assert_record_format (const RECDES *recdes);
 #else /* NDEBUG */
 #define SIDECAR_ASSERT_RECORD_FORMAT(recdes) ((void) 0)
 #endif /* NDEBUG */
+
+/* locator_multi_insert_force (), once per call: the class-wide gates of the write policy (an MVCC user class, no
+ * supplemental logging, no HA), so that a long record leaves the batch only when the policy could plan it */
+extern bool sidecar_class_may_externalize (const OID *class_oid);
 
 /* an image the write policy must see: long enough to move a value out of, or holding refs already */
 STATIC_INLINE bool

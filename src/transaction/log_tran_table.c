@@ -4158,6 +4158,13 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
        * to serialize with. Shared by both entry points (the choke-point wrapper and the heap-site ensure). */
       return NO_ERROR;
     }
+  if ((thread_p != NULL ? thread_p : thread_get_thread_entry_info ())->type == TT_LOADDB)
+    {
+      /* Load workers take no locks; they rely on the session's BU_LOCK, under which their inserts are bulk inserts
+       * that stamp no INSID, so no waiter can key on this MVCCID.  A load worker gets one only to create a file,
+       * a Sidecar store heap (file_create). */
+      return NO_ERROR;
+    }
 
   if (lock_transaction_mvccid (thread_p, mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {

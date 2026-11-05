@@ -156,7 +156,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
 				 LOCATOR_LOCK_POLICY lock_policy);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
-				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
+				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes, const RECDES * oldrecdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
 				PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data,
 				LOCATOR_LOCK_POLICY lock_policy);
@@ -2180,6 +2180,13 @@ locator_return_object_assign (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * as
   switch (scan)
     {
     case S_SUCCESS:
+      if (unlikely (sidecar_record_has_refs (&assign->recdes)))
+	{
+	  /* I-8: a copy area never opts in to the stored form, so the fetch exits expand every record with refs */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_UNEXPANDED_RECORD, 3, OID_AS_ARGS (oid));
+	  return S_ERROR;
+	}
       /*
        * The cached object was obsolete.
        */
@@ -2921,6 +2928,14 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 
       while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
 	{
+	  if (unlikely (sidecar_record_has_refs (&recdes)))
+	    {
+	      /* I-8: the scan never opts in to the stored form, so heap_next () expands every record with refs */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_UNEXPANDED_RECORD, 3, OID_AS_ARGS (&oid));
+	      scan = S_ERROR;
+	      break;
+	    }
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
@@ -5260,6 +5275,7 @@ error2:
  * new_class_oid (in)	: destination class
  * new_class_hfid (in)	: destination hfid
  * recdes (in)		: record
+ * oldrecdes (in)	: the version the record replaces; when recdes keeps Sidecar refs, that version as stored
  * scan_cache (in)	: scan cache
  * op_type (in)		: operation type
  * has_index (in)	: true if the class has indexes
@@ -5275,15 +5291,26 @@ error2:
  */
 static int
 locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid, OID * new_class_oid,
-		     HFID * new_class_hfid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int op_type, int has_index,
-		     int *force_count, PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data,
-		     LOCATOR_LOCK_POLICY lock_policy)
+		     HFID * new_class_hfid, RECDES * recdes, const RECDES * oldrecdes, HEAP_SCANCACHE * scan_cache,
+		     int op_type, int has_index, int *force_count, PRUNING_CONTEXT * context,
+		     MVCC_REEV_DATA * mvcc_reev_data, LOCATOR_LOCK_POLICY lock_policy)
 {
   int error = NO_ERROR;
   OID new_obj_oid;
+  RECDES moved = *recdes;
 
   assert (!OID_IS_ROOTOID (old_class_oid));
   assert (!OID_IS_ROOTOID (new_class_oid));
+
+  if (unlikely (sidecar_record_has_refs (recdes)))
+    {
+      /* the kept Sidecar refs name the store of the heap the row leaves; the new heap gets the values inline */
+      error = sidecar_inline_kept (thread_p, old_class_oid, oldrecdes, recdes, &moved);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
 
   if (context != NULL)
     {
@@ -5295,15 +5322,20 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  return (error != NO_ERROR) ? error : ER_FAILED;
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	    }
 	}
+      else
+	{
+	  insert_cache = &ins_cache->scan_cache;
 
-      insert_cache = &ins_cache->scan_cache;
-
-      error =
-	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
-			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL,
-			      false, false);
+	  error =
+	    locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, &moved, has_index, op_type,
+				  insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE,
+				  NULL, false, false);
+	}
     }
   else
     {
@@ -5311,19 +5343,21 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 
       error =
 	locator_start_force_scan_cache (thread_p, &insert_cache, new_class_hfid, new_class_oid, SINGLE_ROW_INSERT);
-      if (error != NO_ERROR)
+      if (error == NO_ERROR)
 	{
-	  return error;
+	  /* insert the new record */
+	  error =
+	    locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, &moved, has_index, op_type,
+				  &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
+				  UPDATE_INPLACE_NONE, NULL, false, false);
+	  heap_scancache_end (thread_p, &insert_cache);
 	}
-
-      /* insert the new record */
-      error =
-	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
-			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE,
-			      NULL, false, false);
-      heap_scancache_end (thread_p, &insert_cache);
     }
 
+  if (moved.data != recdes->data)
+    {
+      db_private_free (thread_p, moved.data);
+    }
   if (error != NO_ERROR)
     {
       return error;
@@ -5936,8 +5970,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 
 	      error_code =
-		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid, recdes, scan_cache,
-				     op_type, has_index, force_count, pcontext, mvcc_reev_data, lock_policy);
+		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid, recdes, oldrecdes,
+				     scan_cache, op_type, has_index, force_count, pcontext, mvcc_reev_data,
+				     lock_policy);
 	      if (error_code == NO_ERROR)
 		{
 		  COPY_OID (class_oid, &real_class_oid);
@@ -12172,6 +12207,14 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		}
 	    }
 
+	  if (unlikely (sidecar_record_has_refs (&recdes)))
+	    {
+	      /* I-8: the fetches never opt in to the stored form, so they expand every record with refs */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_UNEXPANDED_RECORD, 3, OID_AS_ARGS (&oid));
+	      scan = S_ERROR;
+	      break;
+	    }
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
@@ -14184,6 +14227,10 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   RECDES local_record;
   bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
   size_t record_overhead = SPAGE_SLOT_SIZE;
+  const bool sidecar_may_plan = sidecar_class_may_externalize (class_oid);
+#if !defined (NDEBUG)
+  int n_policy = 0, n_paged = 0;	/* the records the Sidecar policy took out of the batch, those in batch pages */
+#endif
 
   // Early-out
   if (recdes.size () == 0)
@@ -14203,8 +14250,12 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       // Loop until we insert all records.
 
       // a record the Sidecar policy must see is planned in heap_insert_logical with no page held, not in the batch
-      if (heap_is_big_length (local_record.length) || sidecar_record_needs_policy (&local_record))
+      if (heap_is_big_length (local_record.length)
+	  || (sidecar_may_plan && sidecar_record_needs_policy (&local_record)))
 	{
+#if !defined (NDEBUG)
+	  n_policy += heap_is_big_length (local_record.length) ? 0 : 1;
+#endif
 	  scan_cache->cache_last_fix_page = false;
 	  // We insert other records normally.
 	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &local_record, has_index,
@@ -14267,6 +14318,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 	      // Now log the whole page.
 	      pgbuf_log_redo_new_page (thread_p, home_hint_p.pgptr, DB_PAGESIZE, PAGE_HEAP);
+#if !defined (NDEBUG)
+	      n_paged += (int) recdes_array.size ();
+#endif
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));
@@ -14306,6 +14360,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   // Log the postpone operation
   heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
+#if !defined (NDEBUG)
+  if (n_policy > 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "Sidecar: multi-row insert of %d records: %d in batch pages, %d one by one for the "
+		    "policy", (int) recdes.size (), n_paged, n_policy);
+    }
+#endif
   return error_code;
 }
 

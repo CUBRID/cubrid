@@ -25,8 +25,9 @@
  * no data page held while the store is written; an UPDATE reads the old record as stored, and the attribute layer
  * reads the values it decodes through their refs; a committed-snapshot fetch that finds a store record absent retries
  * and then reads the row under an S lock.
- * P1b2: debug builds check where every record with refs that the attribute layer decodes came from and which pages
- * its store reads find fixed.
+ * P1b2: the in-place UPDATEs of compactdb and domain changes compare values across representations by attribute id,
+ * a row that moves to another partition takes its values inline, and debug builds check where every record with refs
+ * that the attribute layer decodes came from and which pages its store reads find fixed.
  */
 
 #include "config.h"
@@ -169,11 +170,17 @@ static bool sidecar_Stores_initialized = false;
  *   DELETE  sidecar_plan_delete () decides under the hot latch; the heap releases its pages, sidecar_apply_plan ()
  *           stamps, and the heap locates the row again.
  *
+ * An UPDATE whose image has another representation than the old version, from compactdb or a domain change, needs
+ * the image's attribute ids to compare values.  When the prepare step did not read them, the plan asks for them:
+ * the heap releases its pages as for a store write, sidecar_apply_plan () reads the representation, and the plan
+ * hook decides on the next location step.
+ *
  * The row's X lock keeps the row as the plan saw it while no latch is held.
  */
 enum sidecar_plan_state
 {
   SIDECAR_PLAN_PREPARED,
+  SIDECAR_PLAN_NEEDS_LAYOUT,
   SIDECAR_PLAN_DECIDED,
   SIDECAR_PLAN_APPLIED
 };
@@ -195,6 +202,7 @@ struct sidecar_plan
   /* the image's representation, read with no page held; what a fresh value needs */
   bool admits;			/* the policy gates let values of this image move out */
   SIDECAR_IMAGE_FACTS facts;
+  bool layout_read;		/* n_variable, attrids and eligible come from the image's representation */
   int n_variable;		/* of the hot record; -1 while unknown */
   std::vector<int> attrids;	/* by variable location */
   std::vector<char> eligible;	/* by variable location */
@@ -208,8 +216,9 @@ struct sidecar_plan
   RECDES hot;
 
   sidecar_plan ()
-    : state (SIDECAR_PLAN_PREPARED), client_recdes (NULL), admits (false), facts (), n_variable (-1), attrids (),
-      eligible (), slots (), stamps (), inline_all (false), rebuild (false), hot_bytes (), hot ()
+    : state (SIDECAR_PLAN_PREPARED), client_recdes (NULL), admits (false), facts (), layout_read (false),
+      n_variable (-1), attrids (), eligible (), slots (), stamps (), inline_all (false), rebuild (false), hot_bytes (),
+      hot ()
   {
   }
 
@@ -451,6 +460,17 @@ sidecar_store_for (THREAD_ENTRY *thread_p, const HFID *hfid, const OID *class_oi
   return NO_ERROR;
 }
 
+__attribute__ ((noinline)) bool
+sidecar_class_may_externalize (const OID *class_oid)
+{
+  SIDECAR_IMAGE_FACTS facts = SIDECAR_IMAGE_FACTS ();
+
+  facts.mvcc_user_class = !mvcc_is_mvcc_disabled_class (class_oid) && !oid_is_system_class (class_oid);
+  facts.supplemental_log = prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0;
+  facts.ha_enabled = !HA_DISABLED ();
+  return sidecar_policy_admits (&facts);
+}
+
 static bool
 sidecar_type_is_eligible (DB_TYPE type)
 {
@@ -572,15 +592,13 @@ sidecar_copy_record (const RECDES *peeked, std::vector<char> &bytes, RECDES *rec
   record->type = REC_HOME;
 }
 
-/* the store record at oid, into bytes; record points into them */
+/* the store record at oid, into bytes; record points into them; page is the store page fixed at each moment */
 static sidecar_read_result
-sidecar_read_store_record (THREAD_ENTRY *thread_p, const OID *oid, std::vector<char> &bytes, RECDES *record)
+sidecar_read_store_record_at (THREAD_ENTRY *thread_p, const OID *oid, std::vector<char> &bytes, RECDES *record,
+			      PAGE_PTR &page)
 {
-  sidecar_Store_reads++;
-
   for (int round = 0; round < SIDECAR_REREAD_BOUND; round++)
     {
-      PAGE_PTR page;
       RECDES peeked;
       sidecar_read_result result = sidecar_fix_store_page (thread_p, oid, &page);
 
@@ -657,6 +675,28 @@ sidecar_read_store_record (THREAD_ENTRY *thread_p, const OID *oid, std::vector<c
 	}
     }
   return SIDECAR_READ_ABSENT;
+}
+
+/* the copies into bytes may throw while a store page is fixed; the page is released before the exception goes on to
+ * the entry point's catch */
+static sidecar_read_result
+sidecar_read_store_record (THREAD_ENTRY *thread_p, const OID *oid, std::vector<char> &bytes, RECDES *record)
+{
+  PAGE_PTR page = NULL;
+
+  sidecar_Store_reads++;
+  try
+    {
+      return sidecar_read_store_record_at (thread_p, oid, bytes, record, page);
+    }
+  catch (const std::bad_alloc &)
+    {
+      if (page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page);
+	}
+      throw;
+    }
 }
 
 /* the value bytes of a store record, when it is the record the ref names */
@@ -764,10 +804,12 @@ sidecar_expand_locked (THREAD_ENTRY *thread_p, const RECDES *hot, std::vector<ch
  * Plans
  */
 
-/* the policy facts of an image, and with them, when the gates admit it, the representation facts a fresh value
- * needs; no page is held, as the class representation may have to be read */
+/* the policy facts of an image, and with them, when the gates admit it or need_layout asks for it, the
+ * representation facts a fresh value or the compare by attribute id needs; no page is held, as the class
+ * representation may have to be read */
 static int
-sidecar_plan_read_facts (THREAD_ENTRY *thread_p, const HEAP_OPERATION_CONTEXT *context, sidecar_plan *plan)
+sidecar_plan_read_facts (THREAD_ENTRY *thread_p, const HEAP_OPERATION_CONTEXT *context, sidecar_plan *plan,
+			 bool need_layout)
 {
   const RECDES *image = context->recdes_p;
   SIDECAR_IMAGE_FACTS &facts = plan->facts;
@@ -781,7 +823,7 @@ sidecar_plan_read_facts (THREAD_ENTRY *thread_p, const HEAP_OPERATION_CONTEXT *c
   facts.has_delid = (OR_GET_MVCC_FLAG (image->data) & OR_MVCC_FLAG_VALID_DELID) != 0;
   facts.page_held = pgbuf_has_perm_pages_fixed (thread_p);
   plan->admits = sidecar_policy_admits (&facts);
-  if (!plan->admits)
+  if (!plan->admits && ! (need_layout && facts.mvcc_user_class))
     {
       return NO_ERROR;
     }
@@ -811,8 +853,24 @@ sidecar_plan_read_facts (THREAD_ENTRY *thread_p, const HEAP_OPERATION_CONTEXT *c
 	}
     }
   heap_classrepr_free_and_init (rep, &idx_incache);
-  plan->admits = plan->n_variable > 0;
+  plan->admits = plan->admits && plan->n_variable > 0;
+  plan->layout_read = true;
   return NO_ERROR;
+}
+
+/* the image's variable location of the eligible attribute whose id ends in attrid_check, or -1 */
+static int
+sidecar_plan_attr_location (const sidecar_plan *plan, UINT16 attrid_check)
+{
+  for (int location = 0; location < (int) plan->attrids.size (); location++)
+    {
+      if (plan->attrids[location] != NULL_ATTRID && plan->eligible[location] != 0
+	  && (UINT16) (plan->attrids[location] & 0xFFFF) == attrid_check)
+	{
+	  return location;
+	}
+    }
+  return -1;
 }
 
 static bool
@@ -951,7 +1009,7 @@ sidecar_plan_insert_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
     }
 
   sidecar_plan *plan = new sidecar_plan ();
-  int error_code = sidecar_plan_read_facts (thread_p, context, plan);
+  int error_code = sidecar_plan_read_facts (thread_p, context, plan, false);
   if (error_code != NO_ERROR || !plan->admits)
     {
       delete plan;
@@ -990,7 +1048,7 @@ sidecar_prepare_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *con
   assert (!OID_ISNULL (&context->class_oid));
 
   sidecar_plan *plan = new sidecar_plan ();
-  const int error_code = sidecar_plan_read_facts (thread_p, context, plan);
+  const int error_code = sidecar_plan_read_facts (thread_p, context, plan, false);
 
   if (error_code != NO_ERROR || (!plan->admits && !sidecar_record_has_refs (context->recdes_p)))
     {
@@ -1069,17 +1127,35 @@ sidecar_plan_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
 	  return NO_ERROR;
 	}
     }
-  else if (context->update_in_place != UPDATE_INPLACE_NONE)
+  else if ((OR_GET_MVCC_FLAG (old_stored->data) & OR_MVCC_FLAG_VALID_DELID) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_NOT_SUPPORTED, 1,
-	      "An in-place UPDATE (the FK cached object, compactdb or a domain change)");
-      return ER_SIDECAR_NOT_SUPPORTED;
+      /* A version whose delete is stamped, which only a domain change rewrites (UPDATE_INPLACE_OLD_MVCCID keeps the
+       * DELID): its deleter stamped every store record it names (I-4).  Stamping them again would replace that DELID
+       * with one that a rollback clears, leaving records no version names.  The image goes in inline, and the store
+       * records wait for vacuum. */
+      if (image_has_refs)
+	{
+	  return sidecar_set_bad_ref (&context->class_oid);
+	}
+      if (plan != NULL)
+	{
+	  plan->state = SIDECAR_PLAN_APPLIED;
+	}
+      return NO_ERROR;
     }
 
   if (plan == NULL)
     {
       plan = new sidecar_plan ();
       context->sc_plan = plan;
+    }
+
+  const bool same_repid = old_stored != NULL && OR_GET_MVCC_REPID (image->data) == OR_GET_MVCC_REPID (old_stored->data);
+  if (old_has_refs && !same_repid && !plan->layout_read)
+    {
+      /* the compare by attribute id needs the image's representation, which is read with no page held */
+      plan->state = SIDECAR_PLAN_NEEDS_LAYOUT;
+      return NO_ERROR;
     }
   plan->state = SIDECAR_PLAN_DECIDED;
 
@@ -1102,7 +1178,6 @@ sidecar_plan_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
 	}
     }
 
-  const bool same_repid = old_stored != NULL && OR_GET_MVCC_REPID (image->data) == OR_GET_MVCC_REPID (old_stored->data);
   if (image_has_refs)
     {
       if (!sidecar_hot_is_well_formed (image))
@@ -1143,19 +1218,25 @@ sidecar_plan_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
       plan->slots.push_back (s);
     }
 
-  if (same_repid && plan->n_variable > 0)
+  /* An image of the old version's representation names an attribute by the same location.  An image of another one,
+   * from compactdb or a domain change, is matched by attribute id, which the image's representation gives for the
+   * image and the ref's tripwire for the old value. */
+  const bool by_attrid = !same_repid && plan->layout_read;
+  if ((same_repid || by_attrid) && plan->n_variable > 0)
     {
       for (sidecar_old_ref &o : olds)
 	{
-	  if (o.kept || o.location >= plan->n_variable
-	      || (image_has_refs && sidecar_trailer_find (image, o.location) >= 0)
-	      || sidecar_var_slot_length (image, o.location) != o.ref.length)
+	  const int location = same_repid ? o.location : sidecar_plan_attr_location (plan, o.ref.attrid_check);
+
+	  if (o.kept || location < 0 || location >= plan->n_variable || sidecar_plan_has_slot (plan, location)
+	      || (image_has_refs && sidecar_trailer_find (image, location) >= 0)
+	      || sidecar_var_slot_length (image, location) != o.ref.length)
 	    {
 	      continue;
 	    }
 
 	  bool equal = false;
-	  const int error_code = sidecar_plan_compare (thread_p, image, o.location, &o.ref, &equal);
+	  const int error_code = sidecar_plan_compare (thread_p, image, location, &o.ref, &equal);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
@@ -1164,7 +1245,7 @@ sidecar_plan_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
 	    {
 	      sidecar_plan_slot s;
 
-	      s.slot.location = o.location;
+	      s.slot.location = location;
 	      s.slot.ref = o.ref;
 	      s.attrid = NULL_ATTRID;
 	      s.fresh = false;
@@ -1304,7 +1385,8 @@ sidecar_plan_writes_store (const HEAP_OPERATION_CONTEXT *context)
 {
   const sidecar_plan *plan = context->sc_plan;
 
-  return plan != NULL && plan->state == SIDECAR_PLAN_DECIDED && (plan->writes_store () || plan->inline_all);
+  return plan != NULL && ((plan->state == SIDECAR_PLAN_DECIDED && (plan->writes_store () || plan->inline_all))
+			  || plan->state == SIDECAR_PLAN_NEEDS_LAYOUT);
 }
 
 /* I-1 and I-7: each fresh value becomes a store record of its own, written through heap_insert_logical () with no
@@ -1418,7 +1500,7 @@ sidecar_apply_plan_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context
       return NO_ERROR;
     }
 
-  /* I-7: the store is written with no data page held.  The heap released its own pages,
+  /* I-7: the store is written, and a representation read, with no data page held.  The heap released its own pages,
    * and an INSERT keeps its values inline when its caller holds one (P1a D8).  A caller of an UPDATE or DELETE that
    * holds a page in this thread fails instead, with an assertion in debug builds and ER_SIDECAR_NOT_SUPPORTED in
    * release builds: an ordered fix of a store page may release and fix again a page the caller watches, which would
@@ -1433,6 +1515,17 @@ sidecar_apply_plan_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_NOT_SUPPORTED, 1,
 	      "A store write while the caller holds a data page");
       return ER_SIDECAR_NOT_SUPPORTED;
+    }
+
+  if (plan->state == SIDECAR_PLAN_NEEDS_LAYOUT)
+    {
+      /* the plan hook decides on the next location step, with the image's attribute ids; it asks once, and without
+       * them it rewrites the values instead of comparing them */
+      const int error_code = sidecar_plan_read_facts (thread_p, context, plan, true);
+
+      plan->state = SIDECAR_PLAN_PREPARED;
+      plan->layout_read = true;
+      return error_code;
     }
   assert (plan->state == SIDECAR_PLAN_DECIDED);
 
@@ -1525,6 +1618,108 @@ sidecar_op_end_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, in
     }
   delete plan;
   context->sc_plan = NULL;
+}
+
+/*
+ * A row that moves to another heap takes no ref along (I-3): the store it names belongs to the heap it leaves.  Each
+ * kept ref of the moved image must be a ref of the version the move replaces, which the mover's X lock keeps current,
+ * and its value is read back as a row-lock holder (5.6 b), one store page at a time (I-7).
+ * The INSERT hook of the new heap then applies that heap's own policy, and the DELETE of the old row stamps every
+ * store record the old version names.
+ */
+static int
+sidecar_inline_kept_body (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *old_stored, const RECDES *image,
+			  RECDES *out)
+{
+  if (old_stored == NULL || !sidecar_record_has_refs (old_stored) || !sidecar_hot_is_well_formed (old_stored)
+      || !sidecar_hot_is_well_formed (image))
+    {
+      return sidecar_set_bad_ref (class_oid);
+    }
+
+  const int n_old = sidecar_trailer_n_refs (old_stored);
+  const int n_refs = sidecar_trailer_n_refs (image);
+  std::vector<char> matched (n_old, 0);
+
+  for (int i = 0; i < n_refs; i++)
+    {
+      SIDECAR_REF ref;
+      int j;
+
+      sidecar_hot_get_ref (image, i, &ref);
+      for (j = 0; j < n_old; j++)
+	{
+	  SIDECAR_REF old_ref;
+
+	  sidecar_hot_get_ref (old_stored, j, &old_ref);
+	  if (matched[j] == 0 && sidecar_ref_equal (&old_ref, &ref))
+	    {
+	      matched[j] = 1;
+	      break;
+	    }
+	}
+      if (j == n_old)
+	{
+	  return sidecar_set_bad_ref (class_oid);
+	}
+    }
+
+  const int length = sidecar_expanded_length (image);
+  if (length < 0)
+    {
+      assert_release (false);
+      return sidecar_set_store_invalid ("a moved image with kept refs does not expand");
+    }
+
+  std::vector<char> bytes (length + OR_MVCC_MAX_HEADER_SIZE);
+  std::vector<int> value_offsets (n_refs);
+  RECDES expanded;
+
+  expanded.data = bytes.data ();
+  expanded.area_size = (int) bytes.size ();
+  if (sidecar_expand_frame (image, &expanded, value_offsets.data ()) != NO_ERROR)
+    {
+      assert_release (false);
+      return sidecar_set_store_invalid ("a moved image with kept refs does not expand");
+    }
+
+  /* the mover holds no page here */
+  assert (!pgbuf_has_perm_pages_fixed (thread_p));
+  for (int i = 0; i < n_refs; i++)
+    {
+      SIDECAR_REF ref;
+
+      sidecar_hot_get_ref (image, i, &ref);
+      const int error_code = sidecar_read_value_locked (thread_p, &ref, expanded.data + value_offsets[i]);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  /* the caller frees it, so it is allocated last, after everything that may throw */
+  *out = expanded;
+  out->data = (char *) db_private_alloc (thread_p, expanded.area_size);
+  if (out->data == NULL)
+    {
+      return sidecar_out_of_memory ();
+    }
+  memcpy (out->data, expanded.data, expanded.length);
+  return NO_ERROR;
+}
+
+__attribute__ ((noinline)) int
+sidecar_inline_kept (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *old_stored, const RECDES *image,
+		     RECDES *out)
+{
+  try
+    {
+      return sidecar_inline_kept_body (thread_p, class_oid, old_stored, image, out);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return sidecar_out_of_memory ();
+    }
 }
 
 /*
