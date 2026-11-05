@@ -90,6 +90,13 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitDeclPackage(DeclPackage node) {
         visitNodeList(node.pkgItems);
         if (node.initializer != null) {
+            // the package initializer is treated as a top level routine: see visitDeclRoutine()
+            Stack<DeclRoutine> calls = new Stack<>();
+            for (LocalRoutineCall n : node.pkgInitLoopOptimizables.localRoutineCalls) {
+                n.getDecl().visitToFindRecursiveCalls(calls);
+                assert calls.size() == 0;
+            }
+
             visitBody(node.initializer);
         }
         return null;

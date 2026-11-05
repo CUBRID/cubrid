@@ -381,13 +381,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             pkgInitCode = "";
         } else {
             dccVar = "dccInit"; // runs in the class initialization
+            CodeToResolve initBody = visitBody(node.pkg.initializer);
+
+            // the package initializer is treated as a top level routine: see visitDeclRoutine()
+            Set<SqlUse> loopOptimizableSqlUses =
+                    node.pkg.pkgInitSqlUses.stream()
+                            .filter(n -> n.reachableFromLoop())
+                            .collect(Collectors.toSet());
+            if (!loopOptimizableSqlUses.isEmpty()) {
+                initBody = wrapWithStmtDeclareAndClose(loopOptimizableSqlUses, initBody);
+            }
+
             pkgInitCode =
                     new CodeTemplate(
                             "package initializer",
                             Misc.UNKNOWN_LINE_COLUMN,
                             tmplPkgInit,
                             "%'+BODY'%",
-                            visitBody(node.pkg.initializer));
+                            initBody);
             dccVar = "dcc";
         }
         String[] recordDefs = getRecordDefs();

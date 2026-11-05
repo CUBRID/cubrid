@@ -145,6 +145,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         Body initializer = null;
+        StmtLoop.LoopOptimizables pkgInitLoopOptimizables = null;
+        Set<SqlUse> pkgInitSqlUses = null;
         NodeList<Decl> pkgBodyItems = null;
         if (bodyTree == null) {
             symbolStack.getCurrentScope().setDeclDone();
@@ -176,9 +178,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             if (bodyContext.body() != null) {
                 boolean saved = enterPkgInit();
+
+                // the package initializer is treated as a top level routine in the loop
+                // optimization: see previsitRoutine_decl() and visitRoutine_decl()
+                pkgInitLoopOptimizables = new StmtLoop.LoopOptimizables();
+                pkgInitSqlUses = new HashSet<>();
+                routineLoopOptimizablesStack.push(pkgInitLoopOptimizables);
+                sqlUsesOfTopLevelRoutine = pkgInitSqlUses;
+                routineDefNestLevel++;
                 try {
                     initializer = visitBody(bodyContext.body());
                 } finally {
+                    routineDefNestLevel--;
+                    sqlUsesOfTopLevelRoutine = null;
+                    routineLoopOptimizablesStack.pop();
                     exitPkgInit(saved);
                 }
                 if (bodyContext.body().label_name() != null) {
@@ -200,7 +213,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             pkgItems.nodes.addAll(pkgBodyItems.nodes);
         }
 
-        DeclPackage declPkg = new DeclPackage(specContext, name, comment, pkgItems, initializer);
+        DeclPackage declPkg =
+                new DeclPackage(
+                        specContext,
+                        name,
+                        comment,
+                        pkgItems,
+                        initializer,
+                        pkgInitLoopOptimizables,
+                        pkgInitSqlUses);
         // package is not put into the symbol table because it is never referenced in its own
         // definition,
         // but its scope must be set as other declarations
