@@ -805,6 +805,19 @@ serial_fast_draw_locked (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, in
 	  *drawn = -1;
 	  return NO_ERROR;
 	}
+      /* as in the SLOW path, a draw past the range end from the last issued value fails without a refill */
+      if (!taken)
+	{
+	  DB_VALUE last, next;
+
+	  serial_bigint_to_value (serial_fast_last_issued (entry, cur), &last);
+	  error = serial_get_nth_value (&entry->inc_val, &last, &entry->min_val, &entry->max_val, &entry->cyclic,
+					num_alloc, &next);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
 
       error = serial_fast_refill (thread_p, entry, num_alloc, row_moved);
       if (error != NO_ERROR || *row_moved)
