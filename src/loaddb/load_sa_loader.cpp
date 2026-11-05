@@ -2728,9 +2728,15 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
  *    bound_bit(in): for a direct write, whether the attribute carries a bound
  *                   bit. Variable length attributes do not.
  * Note:
- *    ldr_act_add_attr () picks direct per (attribute domain, token type):
- *    the token type that matches the domain exactly gets the direct write,
- *    every other one goes through the template.
+ *    ldr_act_add_attr () sets direct per (attribute domain, token type), and it is not
+ *    "the token type that names the attribute's type". It keeps the write each pair
+ *    already had: the ldr_*_db_* functions that called setmem () are the direct slots,
+ *    and the ones that went through ldr_generic () are the rest.
+ *
+ *    So a FLOAT or DOUBLE column takes LDR_INT, LDR_NUMERIC, LDR_DOUBLE and LDR_FLOAT
+ *    alike, because ldr_real_db_float () and ldr_real_db_double () served all four and
+ *    wrote the image. A NUMERIC column takes none of them, and BIT and VARBIT take
+ *    neither of their own literals, because those went through the template.
  */
 static int
 ldr_sink_instance (LDR_CONTEXT *context, LDR_ATTDESC *attdesc, DB_VALUE *val, bool direct, bool bound_bit)
