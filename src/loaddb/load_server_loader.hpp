@@ -94,8 +94,8 @@ namespace cubload
        *
        * The server side's one destination for a converted value, named to
        * match the two the standalone loader has (ldr_sink_instance () and
-       * ldr_sink_class_object () in load_sa_loader.cpp). A row decoder hands a
-       * value to a sink and stops there.
+       * ldr_sink_class_object () in load_sa_loader.cpp, where the rule the
+       * three of them share is written out).
        */
       int sink_heap (const attribute &attr, db_value &val);
       bool report_value_error ();
