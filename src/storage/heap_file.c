@@ -21221,6 +21221,10 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, b
 {
   SCAN_CODE scan = S_SUCCESS;
 
+  /* the overflow pages of a hot REC_BIGONE row are fixed under its home page, which a fixed scan may already hold:
+   * the store page the cursor keeps goes first (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
+
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
   if (scan_cache != NULL
       && (ispeeking == PEEK || recdes->data == NULL || scan_cache->is_recdes_assigned_to_area (*recdes)))
