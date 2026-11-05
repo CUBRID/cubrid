@@ -4741,7 +4741,7 @@ pt_cast_limit_string_operands (PARSER_CONTEXT * parser, PT_NODE * limit)
 	    {
 	      pt_cast_limit_operand (parser, &node->info.expr.arg1);
 	    }
-	
+
 	  if (pt_limit_is_string (parser, node->info.expr.arg2))
 	    {
 	      pt_cast_limit_operand (parser, &node->info.expr.arg2);
