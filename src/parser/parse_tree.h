@@ -3906,9 +3906,8 @@ struct parser_node
 					 * Set in do_prepare_select () -- the driver-neutral prepare path --
 					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
 					 * is not reached by CCI/JDBC prepared statements. */
-    unsigned has_sp_call:1;	/* a stored procedure is called somewhere in this statement, directly or through a
-				 * view; view translation carries it up so that a statement calling one through a view
-				 * is not plan-cached */
+    unsigned has_sp_call:1;	/* the semantic check found a stored procedure call in this query, and the root of a
+				 * view cache also gets it from a view under it, which mq_mark_sp_call () reads */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -4176,8 +4175,8 @@ struct parser_context
 					 * only place one is made: only then can type checking mark a STR_TO_DATE
 					 * format or ELT index position, and pt_set_host_var_format_classes computes
 					 * the values' format classes and ELT indexes */
-    unsigned view_has_sp_call:1;	/* a view expanded by the running mq_translate () calls a stored procedure; mq_translate ()
-					 * moves it to the statement's has_sp_call */
+    unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
+					 * and mq_translate () sets cannot_prepare on the statement at its end */
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
   } flag;

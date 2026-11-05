@@ -6449,7 +6449,6 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   new_query->info.query.q.select.from = new_spec;
   new_query->info.query.is_subquery = PT_IS_SUBQUERY;
   new_query->flag.cannot_prepare = statement->flag.cannot_prepare;
-  new_query->flag.has_sp_call = statement->flag.has_sp_call;
 
   /* free path entities, which will be handled by push_path */
   parser_free_tree (parser, new_spec->info.spec.path_entities);
@@ -10250,7 +10249,6 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
   if (return_node != NULL && parser->flag.view_has_sp_call)
     {
       /* a view expanded somewhere in the statement calls a stored procedure (see mq_mark_sp_call ()) */
-      return_node->flag.has_sp_call = 1;
       return_node->flag.cannot_prepare = 1;
     }
   parser->flag.view_has_sp_call |= save_view_has_sp_call;
