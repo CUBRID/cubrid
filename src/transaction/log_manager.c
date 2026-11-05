@@ -8432,7 +8432,10 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  nxtop_count--;
 	  nxtop_range = &(nxtop_stack[nxtop_count]);
 
-	  if (LSA_LT (&start_seek_lsa, &(nxtop_range->start_lsa)))
+	  /* The range starts at the system operation's last parent, the record just before the operation, which
+	   * belongs to the outer level. A postpone at that LSA, such as one appended right before the system
+	   * operation started, must run here, so equality is not inside the range. */
+	  if (LSA_LE (&start_seek_lsa, &(nxtop_range->start_lsa)))
 	    {
 	      end_seek_lsa = &(nxtop_range->start_lsa);
 	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));
