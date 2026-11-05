@@ -285,7 +285,8 @@ jobs:
               if [[ "$req" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
                 rerun="${BASH_REMATCH[1]}"
                 # No run directory here: the source run's job names carry the suites. Every suite, as
-                # a passed one may have changed cases; one that had nothing to re-run left only a status job.
+                # a passed one may have changed cases; one that had nothing to re-run, or no usable build,
+                # left only a status job.
                 runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/${rerun}/jobs?per_page=100" \
                   --jq '.jobs[] | select(.name | test("^(shard|status) ")) | .name') || {
                   echo "::error::could not read the jobs of run ${rerun}"; exit 1; }
@@ -846,7 +847,7 @@ jobs:
             elif [ "$mode" = debug ]; then
               echo "::error::$why"; exit 1
             else
-              # A red release leg must not stop the debug suites. Its own suites' shards fail on it.
+              # A red release leg must not stop the debug suites. Its own suites get no shard, and collect fails them.
               echo "::warning::$why"
             fi
           done
@@ -1071,7 +1072,7 @@ jobs:
                 echo "::error::run $RERUN_FROM tested a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
-              # A shard that died whole left no result file for failed.list: carry its share.
+              # A shard that died whole, or never started, left no result file for failed.list: carry its share.
               : > /tmp/unrun.list
               for sf in "$srcdir"/plan/shards/*.list; do
                 [ -f "$sf" ] || continue
@@ -1738,7 +1739,7 @@ jobs:
                 echo "> **Only what run \`$RERUN_FROM\` left unhandled, and the cases \`$tc_branch\` changed since, were re-run. This is not a full run.**"
                 echo ">"
                 if [ "$total" -gt 0 ]; then
-                  echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because a shard died whole, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
+                  echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because their shard died whole or never started, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
                 elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
                   echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. The verdict of run \`$RERUN_FROM\` stands.**"
                 elif [ "${rerun_gone:-0}" -eq 0 ]; then
@@ -1773,7 +1774,8 @@ jobs:
               echo "| skipped | $skip_sum |"
               echo "| handled | $covered / $total $v_cov |"
               s_dead=shards; [ "$dead_n" -eq 1 ] && s_dead=shard
-              [ "$unrun_n" -eq 0 ] || echo "| **never run** | **$unrun_n** cases in $dead_n $s_dead that died whole |"
+              how="that died whole"; [ -n "$brid" ] || how="that plan never started"
+              [ "$unrun_n" -eq 0 ] || echo "| **never run** | **$unrun_n** cases in $dead_n $s_dead $how |"
               echo "| passed | $succ_sum |"
               echo "| **failed** | **$fail_sum** |"
               [ "$timed" -eq 0 ] || echo "| cases split by measured timings | $timed |"
