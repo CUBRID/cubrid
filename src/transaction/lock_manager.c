@@ -75,6 +75,7 @@
 #include "wait_for_graph.h"
 #include "xserver_interface.h"
 #include "xasl.h"
+#include "sidecar.hpp"
 
 #include <array>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -3573,6 +3574,9 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   LK_ENTRY *entry_ptr = NULL;
   LK_ENTRY *wait_entry_ptr = NULL;
   LK_ENTRY *prev, *curr, *i;
+
+  /* a lock request may wait, and no thread waits for a lock while it holds a store page its cursor kept */
+  sidecar_cursor_before_hot_fix (thread_p);
   bool lock_conversion = false;
   THREAD_ENTRY *thrd_entry;
   LK_TRAN_LOCK *tran_lock;

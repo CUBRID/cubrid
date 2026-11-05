@@ -5162,6 +5162,13 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
     }
 
+  /* the store page a heap scan's cursor keeps is for that scan's next rows: any other scan fixes other pages */
+  if (unlikely (thread_p->sidecar_cursor_page != NULL)
+      && (scan_id->type != S_HEAP_SCAN || thread_p->sidecar_cursor_owner != &scan_id->s.hsid.scan_cache))
+    {
+      sidecar_cursor_release (thread_p);
+    }
+
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
