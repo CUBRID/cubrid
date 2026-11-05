@@ -99,6 +99,8 @@ typedef enum
   FI_TEST_SIDECAR_ABSENT_ALWAYS = 700003,	/* every store read of such a fetch finds its record absent */
   FI_TEST_SIDECAR_FAIL_AFTER_STORE_WRITES = 700005,	/* an UPDATE or DELETE fails after its store writes and
 							 * before its hot write */
+  FI_TEST_SIDECAR_PAGE_HELD_AT_APPLY = 700006,	/* an UPDATE or DELETE that would write the store finds the
+						 * thread holding a data page, and fails as a release build does */
 
   /* etc .... */
 

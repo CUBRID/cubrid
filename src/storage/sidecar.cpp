@@ -1505,13 +1505,17 @@ sidecar_apply_plan_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context
    * holds a page in this thread fails instead, with an assertion in debug builds and ER_SIDECAR_NOT_SUPPORTED in
    * release builds: an ordered fix of a store page may release and fix again a page the caller watches, which would
    * invalidate the record the caller peeked (P1b2 decision C5).  A stored procedure's statements run on a worker of
-   * their own, with no page of the calling scan. */
-  if (pgbuf_has_perm_pages_fixed (thread_p))
+   * their own, with no page of the calling scan.  Fault 700006 takes the release path in a debug build. */
+  const bool page_held = pgbuf_has_perm_pages_fixed (thread_p);
+  if (page_held || (context->type != HEAP_OPERATION_INSERT && FI_INSERTED (FI_TEST_SIDECAR_PAGE_HELD_AT_APPLY)))
     {
 #if !defined (NDEBUG)
-      pgbuf_log_perm_pages_fixed (thread_p, "Sidecar: a store write");
+      if (page_held)
+	{
+	  pgbuf_log_perm_pages_fixed (thread_p, "Sidecar: a store write");
+	}
 #endif /* !NDEBUG */
-      assert (false);
+      assert (!page_held);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_NOT_SUPPORTED, 1,
 	      "A store write while the caller holds a data page");
       return ER_SIDECAR_NOT_SUPPORTED;
