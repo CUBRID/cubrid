@@ -9326,14 +9326,15 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	  QO_PLAN *planp;
 
 	  planp = qo_find_best_plan_on_planvec (&info->best_no_order, n);
-	  if (info->is_distinct && planp != NULL)
+	  if (info->is_distinct && planp != NULL && planp->plan_type == QO_PLANTYPE_SORT)
 	    {
 	      /* qo_sort_new () would skip the DISTINCT plan below it and the removal with it */
-	      assert (planp->plan_type == QO_PLANTYPE_SORT && planp->plan_un.sort.sort_type == SORT_DISTINCT);
+	      assert (planp->plan_un.sort.sort_type == SORT_DISTINCT);
 	      planp = qo_distinct_new (planp->plan_un.sort.subplan, info, order);
 	    }
 	  else
 	    {
+	      /* a derived table built DISTINCT is read as it is (qo_prepare_distinct_info ()): sorted as any scan */
 	      planp = qo_sort_new (planp, order, SORT_TEMP);
 	    }
 
@@ -9439,6 +9440,9 @@ exit:
  *       ready, once, before the search starts.  It wins when reading the inner out once is cheaper than
  *       searching it for every outer row, a small or empty inner most plainly.  ANTI JOIN has no such form.
  *
+ *       A derived table built DISTINCT (an IN form, qo_rewrite_inner_as_derived ()) holds one row per value already:
+ *       joined on every column of its select list, the form is the table read as it is, with no second removal.
+ *
  *       merge join a SEMI JOIN inner in that form only and never an ANTI JOIN inner, so USE_MERGE on a SEMI/ANTI JOIN
  *       inner left without it is dropped here: it would leave the node no plan.  USE_HASH stays: a hash join takes a
  *       SEMI/ANTI JOIN inner as it is.
@@ -9454,14 +9458,18 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
   QO_TERM *term;
   QO_SEGMENT *seg;
   BITSET_ITERATOR si;
+  PT_NODE *spec, *derived;
+  BITSET join_segs;
   double distinct_rows;
-  bool ndv_known, eligible;
+  bool ndv_known, eligible, derived_distinct;
   int i, j, t, sg;
 
   if (planner->distinct_info == NULL)
     {
       return;
     }
+
+  bitset_init (&join_segs, env);
 
   /* A hint that fixes the join order rules the other way round out -- the same thing qo_examine_nl_join () and
    * qo_examine_idx_join () do where they swap the two sides.  ORDERED and LEADING are read from the statement
@@ -9499,6 +9507,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
       distinct_rows = 1.0;
       ndv_known = true;
       eligible = true;
+      BITSET_CLEAR (join_segs);
       for (t = 0; t < (signed) planner->T && eligible; t++)
 	{
 	  bool has_own_seg = false;
@@ -9539,6 +9548,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 		  distinct_rows *= (double) QO_SEG_INFO (seg)->ndv;
 		}
 	      has_own_seg = true;
+	      bitset_add (&join_segs, sg);
 	    }
 	  if (!has_own_seg)
 	    {
@@ -9557,8 +9567,22 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 	  continue;
 	}
 
-      /* the columns are taken as independent, which can put the product above the rows there are to draw from */
-      distinct_rows = MAX (1.0, ndv_known ? MIN (distinct_rows, node_info->cardinality) : node_info->cardinality);
+      /* a derived table built DISTINCT, joined on every column of its select list (a segment each,
+       * get_referenced_attrs ()), is read as it is, with the rows it holds */
+      spec = QO_NODE_ENTITY_SPEC (node);
+      derived = spec->info.spec.derived_table;
+      derived_distinct = (derived != NULL && PT_IS_QUERY_NODE_TYPE (derived->node_type)
+			  && derived->info.query.all_distinct == PT_DISTINCT
+			  && bitset_cardinality (&join_segs) == pt_length_of_list (spec->info.spec.as_attr_list));
+      if (derived_distinct)
+	{
+	  distinct_rows = node_info->cardinality;
+	}
+      else
+	{
+	  /* the columns are taken as independent, which can put the product above the rows there are to draw from */
+	  distinct_rows = MAX (1.0, ndv_known ? MIN (distinct_rows, node_info->cardinality) : node_info->cardinality);
+	}
 
       /* This side read with the duplicates removed holds fewer rows than the side itself, so it needs an info of
        * its own to say so and to own the plan that reads it that way.  node_info keeps the rows and the plans of
@@ -9571,7 +9595,8 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 	  continue;
 	}
 
-      distinct_plan = qo_distinct_new (node_plan, distinct_info, QO_UNORDERED);
+      distinct_plan = (derived_distinct ? qo_seq_scan_new (distinct_info, node)
+		       : qo_distinct_new (node_plan, distinct_info, QO_UNORDERED));
       if (distinct_plan == NULL)
 	{
 	  continue;
@@ -9595,6 +9620,7 @@ exit:
 	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) & ~PT_HINT_USE_MERGE);
 	}
     }
+  bitset_delset (&join_segs);
 }
 
 /*
