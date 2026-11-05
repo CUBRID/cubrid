@@ -247,6 +247,7 @@ static void qo_discover_edges (QO_ENV *);
 static void qo_add_null_supplier_dep_set (QO_ENV *);
 static void qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers);
 static void qo_get_null_suppliers_of (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers);
+static void qo_add_where_term_dep_set (QO_ENV * env);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -589,6 +590,7 @@ qo_optimize_helper (QO_ENV * env)
 
   /* order each on_node after the outer joins that null-supply what its ON clause reads */
   qo_add_null_supplier_dep_set (env);
+  qo_add_where_term_dep_set (env);
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
@@ -6473,7 +6475,7 @@ qo_discover_edges (QO_ENV * env)
  *   can null-pad a node in REFS: a LEFT OUTER on_node that is itself in REFS,
  *   or a RIGHT/FULL OUTER on_node whose own outer_dep_set holds a node in REFS.
  *   env(in):
- *   node(in):
+ *   node(in): on_node whose ON clause reads REFS; NULL for a WHERE term (no location bound)
  *   refs(in): nodes read by NODE's ON clause or by one of its terms
  *   suppliers(out): caller-initialized bitset; this adds the index of each
  *	  such outer join on_node to it.
@@ -6495,7 +6497,7 @@ qo_get_null_suppliers_of (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * 
   for (k = 1; k < env->nnodes; k++)
     {
       k_node = QO_ENV_NODE (env, k);
-      if (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node))
+      if (node != NULL && (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node)))
 	{
 	  continue;
 	}
@@ -6625,6 +6627,51 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
     }
 
   bitset_delset (&refs);
+  bitset_delset (&suppliers);
+}
+
+/*
+ * qo_add_where_term_dep_set () - Join the later nodes of a WHERE join/other
+ *   term after every preceding outer join on_node that can null-pad a node
+ *   the term reads, so the term is not evaluated before that padding.
+ *   return:
+ *   env(in):
+ */
+static void
+qo_add_where_term_dep_set (QO_ENV * env)
+{
+  int i, k, t;
+  QO_TERM *term;
+  QO_NODE *k_node;
+  BITSET suppliers;
+  BITSET_ITERATOR bi, ti;
+
+  bitset_init (&suppliers, env);
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (QO_ON_COND_TERM (term) || (QO_TERM_CLASS (term) != QO_TC_JOIN && QO_TERM_CLASS (term) != QO_TC_OTHER))
+	{
+	  continue;
+	}
+
+      BITSET_CLEAR (suppliers);
+      qo_get_null_suppliers_of (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
+
+      for (k = bitset_iterate (&suppliers, &bi); k != -1; k = bitset_next_member (&bi))
+	{
+	  k_node = QO_ENV_NODE (env, k);
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &ti); t != -1; t = bitset_next_member (&ti))
+	    {
+	      if (t > k)
+		{
+		  QO_ADD_OUTER_DEP_SET (QO_ENV_NODE (env, t), k_node);
+		}
+	    }
+	}
+    }
+
   bitset_delset (&suppliers);
 }
 
