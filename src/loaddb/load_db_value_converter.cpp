@@ -296,6 +296,39 @@ namespace cubload
   }
 
   /*
+   * check_not_null - refuse a null the column cannot take
+   *    return: NO_ERROR, or ER_OBJ_ATTRIBUTE_CANT_BE_NULL
+   *    attr(in): attribute the value is going into
+   *    val(in): the converted value
+   * Note:
+   *    A conversion can hand back a null without failing. Under
+   *    oracle_style_empty_string an empty string is a null, so '' arrives here as one
+   *    whichever converter built it: tp_value_cast () calls it DOMAIN_COMPATIBLE for a
+   *    numeric column, and to_db_generic_char () builds a char of length zero for a
+   *    CHAR or VARCHAR one. A NOT NULL column cannot take either.
+   *
+   *    Say so here rather than leaving it to whoever stores the value. The standalone
+   *    loader's object template refuses a null a second time, but the server loader
+   *    tests NOT NULL only on a NULL token, so nothing downstream would catch it and
+   *    the row would be written with the constraint broken.
+   *
+   *    Both loaders ask this of an attribute's value, once, right after the conversion.
+   *    A collection element does not come here: the constraint belongs to the column,
+   *    not to what the collection holds.
+   */
+  int
+  check_not_null (const attribute *attr, const db_value *val)
+  {
+    if (attr->is_not_null () && DB_IS_NULL (val))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr->get_name ());
+	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+      }
+
+    return NO_ERROR;
+  }
+
+  /*
    * fallback_convert - convert through the literal's natural type and let the engine cast
    *    return: NO_ERROR or an error code
    *    ldr_type(in): parser type of the token
@@ -384,24 +417,7 @@ namespace cubload
 
     db_value_clear (&natural);
 
-    /*
-     * The cast can hand back a null without failing. Under
-     * oracle_style_empty_string an empty string is a null, so '' into a numeric
-     * column arrives here as one and tp_value_cast () calls that DOMAIN_COMPATIBLE.
-     * A NOT NULL column cannot take it.
-     *
-     * Say so here rather than leaving it to whoever stores the value. The standalone
-     * loader's object template refuses it a second time, but the server loader tests
-     * NOT NULL only on a NULL token, so nothing downstream would catch it and the row
-     * would be written with the constraint broken.
-     */
-    if (attr->is_not_null () && DB_IS_NULL (val))
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr->get_name ());
-	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
-      }
-
-    return NO_ERROR;
+    return check_not_null (attr, val);
   }
 
   /* template for fallback_convert () */

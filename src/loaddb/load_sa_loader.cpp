@@ -2602,7 +2602,18 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
   err = cubload::get_conv_func (type, dom_type) (str, len, attdesc->conv_att, val);
   if (err == NO_ERROR)
     {
-      return NO_ERROR;
+      /*
+       * A conversion that succeeded can still have built a null, and a NOT NULL column
+       * cannot take it. Ask here rather than inside the conversion: only the pairs that
+       * fall back to the engine's cast went through check_not_null () before, so a
+       * CHAR or VARCHAR column - which has a converter of its own - took the empty
+       * string as a null and stored it.
+       */
+      err = cubload::check_not_null (attdesc->conv_att, val);
+      if (err == NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
     }
 
   ENSURE_ERR_SET (err);
@@ -2632,12 +2643,16 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
       return err;
     }
 
-  if (name_attr)
+  if (name_attr && err != ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
     {
       /*
        * Name the token and the attribute. The engine's own message is left to the
        * caller, which prints it once for the row; saying it here as well would only
        * repeat it, since nothing between here and there adds to it.
+       *
+       * Not for a null the column refuses. The token parsed; it is the constraint that
+       * turned it down, and "Error parsing '' as a 'character' value" would say the
+       * opposite. The caller's message names the attribute anyway.
        */
       parse_error (context, dom_type, str);
     }

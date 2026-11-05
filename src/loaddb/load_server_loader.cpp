@@ -975,6 +975,17 @@ namespace cubload
     conv_func &func = conv_func_for (cons, attr, is_element);
 
     int error_code = func (tok.text (), tok.size (), &attr, &db_val);
+    if (error_code == NO_ERROR && !is_element)
+      {
+	/*
+	 * A conversion that succeeded can still have built a null - the empty string is
+	 * one under oracle_style_empty_string - and a NOT NULL column cannot take it.
+	 * Not for an element: the constraint belongs to the column, not to what the
+	 * collection holds.
+	 */
+	error_code = check_not_null (&attr, &db_val);
+      }
+
     if (error_code == ER_DATE_CONVERSION)
       {
 	/*
