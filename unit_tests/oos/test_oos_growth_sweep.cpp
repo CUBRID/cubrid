@@ -217,7 +217,7 @@ TEST (OosGrowthSweepTest, ConcurrentGrowerWaitsForActiveSweep)
   remove_file_and_commit (oos_vfid);
 }
 
-TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
+TEST (OosGrowthSweepTest, SweepLeavesTheChainOfAnAbortedReclaimIntentAlone)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -227,8 +227,10 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), 2);
 
-  // Delete, then abort: undo restores the chunks; the pending-delete count is now stale.
-  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  // Decide the chain is dead, then abort: the intent is discarded and nothing was deleted (ADR-0008).
+  oos_chain_ref ref;
+  ASSERT_EQ (test_oos_utils::oos_current_chain_ref (thread_p, oid1, ref), NO_ERROR);
+  ASSERT_EQ (oos_log_reclaim_intent (thread_p, oos_vfid, oid_Null_oid, 0, "unit test", {ref}), NO_ERROR);
   ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
 
   bool exists = false;
@@ -237,7 +239,7 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
 
   simulate_hint_loss (oos_vfid);
 
-  // The wasted lap reclaims nothing, so growth proceeds and the count rises by one.
+  // The boot-rule lap finds no empty page, so growth proceeds and the count rises by one.
   OID oid2 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
@@ -410,7 +412,9 @@ TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
   remove_file_and_commit (oos_vfid);
 }
 
-TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
+// ADR-0008 removed the LSA reclaim gate: a reclaim is redo-only and never undone, so the pages it empties are
+// reclaimable at once, even while the reclaiming transaction is still running.
+TEST (OosGrowthSweepTest, SweepReusesPagesAReclaimEmptiedBeforeItsTransactionEnds)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -421,24 +425,20 @@ TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
 
-  // Empty both pages but stay uncommitted: this transaction is a live undo source.
   ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
   ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid2), NO_ERROR);
   simulate_hint_loss (oos_vfid);
 
   OID oid3 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
-  ASSERT_EQ (count_user_pages (oos_vfid), 4)
-      << "an uncommitted deleter's page was reclaimed, or growth was blocked";
+  ASSERT_EQ (count_user_pages (oos_vfid), 3) << "growth reserved a page while a reclaimed one was empty";
 
-  // The commit ends the undo source; the kept (deferred) count arms the next growth to reclaim.
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 
   OID oid4 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid4), NO_ERROR);
-  ASSERT_EQ (count_user_pages (oos_vfid), 4)
-      << "deferred page was not reclaimed after its deleter committed";
+  ASSERT_EQ (count_user_pages (oos_vfid), 3) << "the second emptied page was not reused";
   assert_value_intact (oid3);
   assert_value_intact (oid4);
 

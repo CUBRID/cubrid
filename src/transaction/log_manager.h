@@ -96,6 +96,8 @@ extern void log_append_redo_data2 (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvinde
 extern void log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 					int num_undo_crumbs, int num_redo_crumbs, const LOG_CRUMB * undo_crumbs,
 					const LOG_CRUMB * redo_crumbs);
+extern void log_append_mvcc_undo_data_with_mvccid (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex,
+						   LOG_DATA_ADDR * addr, int length, const void *data, MVCCID mvccid);
 extern void log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
 				    int num_crumbs, const LOG_CRUMB * crumbs);
 extern void log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,

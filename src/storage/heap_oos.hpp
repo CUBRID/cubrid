@@ -113,17 +113,25 @@ extern void heap_oos_test_fail_before_vfid_lookup_once ();
 extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
 #endif
 
-/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS value
- * chains referenced by old_recdes and not referenced by new_recdes (NULL = delete all). A reference
- * whose target is gone or reused (deallocated or retyped head page, empty head slot, identity stamp
- * mismatch) is skipped: the DML completes and the error stack stays clean. Skips are reported once per
- * call as a notification in the server error log, naming how many chains were skipped and describing
- * the first. A stamp-matching non-head target and operational failures are errors (CBRD-26950). */
+/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Records, as a postpone of
+ * the current unit, the reclaim of the OOS value chains referenced by old_recdes and not referenced by
+ * new_recdes (NULL = delete all); the chains are deleted when the unit commits (ADR-0008). A reference
+ * whose target is gone or reused by then (deallocated or retyped head page, empty head slot, identity
+ * stamp mismatch) is skipped: the commit completes and the error stack stays clean. Skips are reported
+ * once per record as a notification in the server error log, naming how many chains were skipped and
+ * describing the first (CBRD-26950). */
 extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
     const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx);
+/* MVCC UPDATE: records the chains old_recdes references and new_recdes does not, for vacuum to reclaim
+ * after the UPDATE commits and no snapshot can read the old version (A', ADR-0008). */
+extern int heap_oos_log_update_drop (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+				     const RECDES *old_recdes, const RECDES *new_recdes);
+/* Notification for a committed eager reclaim that skipped chains; see heap_oos_delete_unreferenced. */
+extern void heap_oos_diagnose_skipped_cleanup (const OID &owner_oid, const char *op_ctx,
+    const oos_chain_ref &first_ref, oos_delete_outcome first_outcome, int skipped_count);
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
-/* Observability of the skipped-cleanup diagnostic: how many notifications heap_oos_delete_unreferenced
+/* Observability of the skipped-cleanup diagnostic: how many notifications committed eager reclaims
  * emitted since the last reset, and the first outcome (-1 when none) and chain count (0 when none) the
  * last one carried. */
 extern int heap_oos_test_skipped_cleanup_notifications ();
