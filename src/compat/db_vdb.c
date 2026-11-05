@@ -107,7 +107,6 @@ static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, i
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
-static void db_untype_null_host_variables (PARSER_CONTEXT * parser);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -131,7 +130,8 @@ static int db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
 							   bool force_replan, bool * signature_miss);
-static DB_SESSION *db_prepared_tree_lookup (const char *name, const char *text);
+static DB_SESSION *db_prepared_tree_take (const char *name, const char *text);
+static void db_prepared_tree_put_back (DB_SESSION * kept);
 static bool db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * subsession);
 static void db_prepared_tree_remove (const char *name);
 static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
@@ -303,6 +303,13 @@ db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
   replan = histogram_bind_watch_check (parser, statement, ws, hinted ? BIND_WATCH_HINT_BAND : BIND_WATCH_BAND, &usable);
   if (!usable)
     {
+      if (statement->flag.hv_pred_plan_unpeeked && histogram_stmt_has_having_hv_predicate (parser, statement))
+	{
+	  /* the plan was chosen with unbound markers on HAVING aggregates the planner prices with a value
+	   * but the fingerprint cannot watch -- COUNT (*) > ? or SUM (x) > ? (CBRD-27811): price them
+	   * once with the first values */
+	  return BIND_WATCH_REPLAN;
+	}
       /* nothing in this statement is priced by a histogram, and that cannot change while this
        * plan lives -- the plan is invalidated together with the statistics */
       return BIND_WATCH_STOP;
@@ -771,11 +778,19 @@ int g_open_buffer_control_flags = 0;
  * session's: an entry carries the server session it was prepared in (`kept_session_id`) and
  * matches only in that session and for the statement text the server holds for the name
  * (another CAS sharing the server session may have prepared it again). A change of server
- * session (db_set_session_id) and db_shutdown release every entry; DROP PREPARE, re-PREPARE
- * of the same name and a stale kept tree release its own. The client library runs one
- * thread per connection, so the list takes no lock.
+ * session (db_set_session_id), db_shutdown, a restart and a shutdown without the server
+ * release every entry; DROP PREPARE, re-PREPARE of the same name and a stale kept tree
+ * release its own -- except while the tree is checked out (below): then the next lookup
+ * finds the text changed and releases it.
+ *
+ * A tree being executed is off the list (db_prepared_tree_take): SQL nested in that execution
+ * -- a stored procedure or a method running DEALLOCATE PREPARE or PREPARE on the same name --
+ * would otherwise free the tree under the execution. The list has the scope of the server
+ * session id it is matched by (db_Session_id, CUB_THREAD_LOCAL): one per process, or one per
+ * sub-client thread of a multi-connection client, so it takes no lock and a sub-client sees
+ * only its own entries.
  */
-static DB_SESSION *db_Kept_trees = NULL;
+static CUB_THREAD_LOCAL DB_SESSION *db_Kept_trees = NULL;
 
 /*
  * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from the
@@ -816,15 +831,17 @@ db_prepared_tree_close (DB_SESSION * kept)
 }
 
 /*
- * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
- * return     : the kept session or NULL
+ * db_prepared_tree_take() - check out the kept subsession of a prepared statement
+ * return     : the kept session, now off the list, or NULL
  * name (in)  : prepared statement name
  * text (in)  : the statement text the server holds for the name
  *
- * Note: CBRD-27583: a tree kept in another server session or for another text is closed: the name was prepared again
+ * Note: the caller owns the returned session until it hands it back with
+ *       db_prepared_tree_put_back () or releases it with db_prepared_tree_close ().
+ *       CBRD-27583: a tree kept in another server session or for another text is closed: the name was prepared again
  */
 static DB_SESSION *
-db_prepared_tree_lookup (const char *name, const char *text)
+db_prepared_tree_take (const char *name, const char *text)
 {
   DB_SESSION *s = db_prepared_tree_unlink (name);
 
@@ -834,12 +851,35 @@ db_prepared_tree_lookup (const char *name, const char *text)
       db_prepared_tree_close (s);
       return NULL;
     }
-  if (s != NULL)
-    {
-      s->next = db_Kept_trees;
-      db_Kept_trees = s;
-    }
   return s;
+}
+
+/*
+ * db_prepared_tree_put_back() - return a checked-out kept subsession to the list
+ * kept (in) : subsession obtained from db_prepared_tree_take ()
+ *
+ * Note: if SQL nested in the execution kept the name anew (its own EXECUTE compiled and
+ *       registered a tree), the newer tree wins: a name has at most one entry. A tree whose
+ *       name the nested SQL deallocated or prepared again comes back too, since the nested
+ *       DEALLOCATE / PREPARE found nothing to remove: an EXECUTE of a deallocated name fails
+ *       on the server before any lookup and a later PREPARE removes the entry, and an
+ *       EXECUTE of a new text makes db_prepared_tree_take () find the text changed and
+ *       close it (prepared again with the same text, the tree is the one that text compiles
+ *       to and stays).
+ */
+static void
+db_prepared_tree_put_back (DB_SESSION * kept)
+{
+  for (DB_SESSION * s = db_Kept_trees; s != NULL; s = s->next)
+    {
+      if (strcmp (s->kept_stmt_name, kept->kept_stmt_name) == 0)
+	{
+	  db_prepared_tree_close (kept);
+	  return;
+	}
+    }
+  kept->next = db_Kept_trees;
+  db_Kept_trees = kept;
 }
 
 /*
@@ -1626,6 +1666,7 @@ db_compile_statement_local (DB_SESSION * session)
   stmt_ndx = session->stmt_ndx++;
   statement = session->statements[stmt_ndx];
   statement->flag.use_plan_cache = 0;
+  parser->flag.needs_bound_hostvar = 0;
   statement->flag.use_query_cache = 0;
 
   statement->flag.is_system_generated_stmt = parser->flag.is_system_generated_stmt;
@@ -1655,7 +1696,6 @@ db_compile_statement_local (DB_SESSION * session)
 	{
 	  return err;
 	}
-      db_untype_null_host_variables (parser);
     }
 
   /*
@@ -2685,6 +2725,30 @@ db_get_statement_type (DB_SESSION * session, int stmt)
 }
 
 /*
+ * db_statement_needs_bound_values() - tell whether the last compile failed only because a host variable has no value
+ *                                     yet
+ * return : true if so
+ * session(in): the session whose db_compile_statement () just failed
+ *
+ * Note: callers that defer a failed prepare to execute time (CAS ux_prepare) defer only such statements and report
+ *       the error of any other at prepare time. Name resolution marks the constructs that need the type of the bound
+ *       value (parser->flag.needs_bound_hostvar):
+ *       1) UPDATE OBJECT ? SET ... (pt_resolve_object)
+ *       2) a method call in an expression whose ON target is ?, e.g. m () ON ? (pt_bind_names)
+ *       3) a derived table of a collection, TABLE (?) (pt_set_attr_list_types)
+ */
+bool
+db_statement_needs_bound_values (DB_SESSION * session)
+{
+  if (session == NULL || session->parser == NULL)
+    {
+      return false;
+    }
+
+  return session->parser->flag.needs_bound_hostvar;
+}
+
+/*
  * db_include_oid() - This function set the session->parser->oid_included flag
  * return : void
  * session(in): the current session context
@@ -2955,7 +3019,6 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
       /* DML compiles with the values bound: a client-side trigger UPDATE evaluates them at compile */
       pt_set_host_variables (typed->parser, count, values);
       typed->parser->flag.set_host_var = 0;
-      db_untype_null_host_variables (typed->parser);
     }
   /* the statements the session has compiled so far (a prefix: the CAS compiles each one just before it executes it);
    * a later one may read a table an earlier one creates, so it compiles at its turn, in this compilation */
@@ -3299,27 +3362,32 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * db_execute_and_keep_statement_local () replans (plan + XASL only) when the new
 	   * values fall in a different histogram bucket; with it off the plan stays fixed. */
 	  const PT_NODE *text = statement->info.execute.query;
-	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original,
-						      (const char *) text->info.value.data_value.str->bytes);
+	  DB_SESSION *kept = db_prepared_tree_take (statement->info.execute.name->info.name.original,
+						    (const char *) text->info.value.data_value.str->bytes);
 
 	  if (kept != NULL)
 	    {
 	      bool signature_miss = false;
 
-	      /* do_recompile carries the compile-stage verdicts that made the cached XASL
-	       * unusable as-is: the LIKE / MRO / SORT-LIMIT checks and the UNPEEKED flag
-	       * null the XASL id when this execution's values require a fresh plan. The
-	       * kept tree exists precisely to serve that replan without re-parsing, so the
-	       * verdict must ride along -- otherwise a LIMIT value crossing the MRO
+	      /* Only the verdicts this execution's values made ride along: the LIKE and
+	       * MRO / SORT-LIMIT checks of do_get_prepared_statement_info (), which set
+	       * bind_before_compile when they null the XASL id. The kept tree exists to serve
+	       * that replan without re-parsing -- otherwise a LIMIT value crossing the MRO
 	       * threshold would silently keep the previous plan (review report: with the
 	       * kept tree alive, limit 50 -> 500 stayed on the MRO plan instead of
-	       * recompiling to SORT). CBRD-27583: a PREPARE that made no plan leaves no XASL id, which is no verdict. */
+	       * recompiling to SORT). The UNPEEKED and BIND_WATCH_CANDIDATE flags also null
+	       * the XASL id, but they are the PREPARE's stored header and so hold on every
+	       * EXECUTE; a kept tree exists only once the first execution fixed its plan
+	       * under bound values (do_recompile_and_execute_prepared_statement), and the
+	       * variant step and bind watch run below on the kept tree. Passing them on
+	       * would recompile every execution. A PREPARE that made no plan leaves no
+	       * XASL id, which is no verdict either. */
 	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result,
-								    do_recompile
-								    && !statement->info.execute.plan_at_execute,
+								    statement->info.execute.bind_before_compile != 0,
 								    &signature_miss);
 	      if (err >= 0)
 		{
+		  db_prepared_tree_put_back (kept);
 		  return err;
 		}
 	      if (err != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && err != ER_QPROC_INVALID_XASLNODE
@@ -3331,14 +3399,21 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		   * (serials, methods) must not evaluate twice, and the first error must
 		   * not be masked by a retry (same whitelist as the prepared-statement
 		   * retry below) */
+		  db_prepared_tree_put_back (kept);
 		  return err;
 		}
 	      /* the kept tree is stale (schema change / cache invalidation); discard it
 	       * and fall back to a fresh compilation of the stored statement text. CBRD-27583: a signature it has no
-	       * compilation of is compiled from the text too, and the kept tree stays for its own ones. */
-	      if (!signature_miss)
+	       * compilation of is compiled from the text too, and the kept tree stays for its own ones -- back on
+	       * the list before that compilation, which may keep a tree of its own under the name. The stale one is
+	       * closed as held: removing it by name could hit a tree nested SQL kept meanwhile. */
+	      if (signature_miss)
 		{
-		  db_prepared_tree_remove (statement->info.execute.name->info.name.original);
+		  db_prepared_tree_put_back (kept);
+		}
+	      else
+		{
+		  db_prepared_tree_close (kept);
 		}
 	      er_clear ();
 	      pt_reset_error (parser);
@@ -4507,9 +4582,9 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 
 /*
  * db_bind_value_types () - CBRD-27583: bind the TYPES of an execution's values, not the values: each host variable
- *   becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a NULL value a
- *   plain NULL. The compilation of their bind type signature reads the types; the code the set_host_var flag does not
- *   guard reads NULLs and bakes no value into a plan the cache keys by type.
+ *   becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a NULL the
+ *   driver sent without a type a plain NULL. The compilation of their bind type signature reads the types; the code
+ *   the set_host_var flag does not guard reads NULLs and bakes no value into a plan the cache keys by type.
  */
 static void
 db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
@@ -4518,7 +4593,7 @@ db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values
     {
       const DB_VALUE *val = &values[i];
       DB_VALUE *hv = &parser->host_variables[i];
-      const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
       pr_clear_value (hv);
       if (type == DB_TYPE_NULL)
 	{
@@ -4531,25 +4606,6 @@ db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values
       if (TP_IS_CHAR_TYPE (type))
 	{
 	  db_string_put_cs_and_collation (hv, db_get_string_codeset (val), db_get_string_collation (val));
-	}
-    }
-}
-
-/*
- * db_untype_null_host_variables () - CBRD-27583: a NULL value bound for a compilation is a plain NULL, whatever type
- *   header the driver gave it: the signature of a NULL is NULL (pt_value_has_domain_type), and a typed NULL in
- *   the host variables of a compilation stands for a value of that type (db_bind_value_types)
- */
-static void
-db_untype_null_host_variables (PARSER_CONTEXT * parser)
-{
-  for (int i = 0; i < parser->host_var_count; i++)
-    {
-      DB_VALUE *hv = &parser->host_variables[i];
-      if (DB_IS_NULL (hv) && DB_VALUE_DOMAIN_TYPE (hv) != DB_TYPE_NULL)
-	{
-	  pr_clear_value (hv);
-	  db_make_null (hv);
 	}
     }
 }
@@ -5094,6 +5150,22 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
+  /* CBRD-27852: close the subsessions the earlier executions of this session compiled; a client that executes the
+   * same EXECUTE handle again (a driver statement, db_execute_and_keep_statement) would otherwise keep one per
+   * execution until it closes the handle. Their executions are over: a result holds copies of what it reads (its
+   * list id, column types and values), and a kept one is off this chain (db_prepared_tree_register). A subsession
+   * links through next on another list (the kept trees, a signature's plans): only a client's own session owns its
+   * chain. */
+  while (!session->is_subsession_for_prepared && session->next != NULL)
+    {
+      DB_SESSION *done = session->next;
+
+      assert (done->is_subsession_for_prepared);
+      session->next = done->next;
+      done->next = NULL;
+      db_close_session_local (done);
+    }
+
 compile_text:
   /* CBRD-27583: a kept compilation outlives this statement's text, so it parses a copy */
   new_session =
@@ -5165,7 +5237,6 @@ compile_text:
 	{
 	  return err;
 	}
-      db_untype_null_host_variables (new_session->parser);
 
       idx = db_compile_statement (new_session);
       if (idx < 0)

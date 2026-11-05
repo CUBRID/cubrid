@@ -5600,7 +5600,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		    }
 		  break;
 		case PT_TYPE_NUMERIC:
-		  /* either all elements are numeric or all are discrete numbers */
+		  /* each element is numeric, a discrete number or an ENUM */
 		  if (temp->type_enum == PT_TYPE_NUMERIC)
 		    {
 		      if (precision < temp->info.data_type.precision)
@@ -5612,7 +5612,7 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 			  scale = temp->info.data_type.dec_precision;
 			}
 		    }
-		  else if (PT_IS_DISCRETE_NUMBER_TYPE (temp->type_enum))
+		  else if (PT_IS_DISCRETE_NUMBER_TYPE (temp->type_enum) || temp->type_enum == PT_TYPE_ENUMERATION)
 		    {
 		      if (precision < TP_BIGINT_PRECISION)
 			{
