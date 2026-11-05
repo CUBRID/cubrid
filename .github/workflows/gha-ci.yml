@@ -1564,16 +1564,15 @@ jobs:
           # <shard dir> <log dir>: prints the failed cases; the n-th one's log is <log dir>/<n>.log, and
           # <log dir>/xml names the reports read, relative to the shard dir. Only here is it known where they are.
           failed() {
+            [ -f "$1/test_status.data" ] || [ -f "$1/summary_info" ] || return 0
             mkdir -p "$2"
             (cd "$1" && find test-results -maxdepth 1 -type f -name '*.xml' ! -name summary.xml 2>/dev/null) > "$2/xml" || :
             local idx=
-            if [ -f "$1/summary_info" ] && [ ! -f "$1/test_status.data" ]; then
+            if [ ! -f "$1/test_status.data" ]; then
               { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
                 | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" > "$2/failed.list"
               awk '{printf "%s\t%d\n", $0, NR}' "$2/failed.list" > "$2/failed.idx"
               idx="$2/failed.idx"
-            elif [ ! -f "$1/test_status.data" ]; then
-              return 0
             fi
             if [ -s "$2/xml" ]; then
               (cd "$1" && xargs -d '\n' awk -v dir="$2" -v idx="$idx" "$FAILED_AWK" < "$2/xml")
@@ -1877,9 +1876,10 @@ jobs:
               k[$shard]=$(( ${k[$shard]:-0} + 1 ))
               [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
               log="/tmp/failed-logs/$suite/$shard/${k[$shard]}.log"
+              rel=$(head -1 "/tmp/failed-logs/$suite/$shard/xml" 2>/dev/null || :)
               {
                 echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/$xml_rel\">full log</a></summary>"
+                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/${rel:-$xml_rel}\">full log</a></summary>"
                 echo
                 # <pre> on its own line: a blank line in the log would end the HTML block.
                 echo "<pre>"
