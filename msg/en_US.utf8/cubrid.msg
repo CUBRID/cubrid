@@ -1504,7 +1504,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1390 A record of class %1$d|%2$d|%3$d holds a Sidecar ref that the Sidecar module did not write.
 1391 A Sidecar ref names the store record %1$d|%2$d|%3$d of attribute %4$d, which is missing or holds another value.
-1392 %1$s of a row whose values live in the Sidecar store is not supported before Sidecar P1b2.
+1392 %1$s of a row whose values live in the Sidecar store is not supported.
 1393 The live Sidecar store record %1$d|%2$d|%3$d of attribute %4$d is named by %5$d current rows instead of one.
 1394 The Sidecar store %1$d|%2$d of heap %3$d|%4$d is not consistent: %5$s.
 1395 A fetch of a row whose values live in the Sidecar store found a store record missing %1$d times in a row.

@@ -25,6 +25,8 @@
  * no data page held while the store is written; an UPDATE reads the old record as stored, and the attribute layer
  * reads the values it decodes through their refs; a committed-snapshot fetch that finds a store record absent retries
  * and then reads the row under an S lock.
+ * P1b2: debug builds check where every record with refs that the attribute layer decodes came from and which pages
+ * its store reads find fixed.
  */
 
 #include "config.h"
@@ -255,10 +257,56 @@ static std::atomic<UINT64> sidecar_Expand_reads (0);
 static std::atomic<UINT64> sidecar_Expand_reads_last (0);	/* of them, by last-version reads */
 static std::atomic<UINT64> sidecar_Store_fixes (0);	/* store heap pages fixed by readers, overflow pages aside */
 
+static std::atomic<UINT64> sidecar_Attr_reads (0);	/* store records the attribute layer read */
+static std::atomic<UINT64> sidecar_Attr_reads_page_held (0);	/* of them, with a data page fixed */
+
 #if !defined (NDEBUG)
 /* The stored-form window of the thread: from the old-record fetch of an UPDATE under its X lock to the end of
- * locator_update_force ().  The attribute layer meets a record with refs only inside it. */
+ * locator_update_force ().  The attribute layer meets a record with refs only inside it, and only one of the records
+ * admitted below: the old record that fetch kept as stored (B6), or the UPDATE image the column writer gave kept
+ * refs.  A record with refs from anywhere else fails the hooks' asserts even inside the window. */
 static thread_local int sidecar_Stored_form_window = 0;
+
+struct sidecar_stored_form_record
+{
+  const char *begin;
+  const char *end;
+};
+
+/* An UPDATE admits two records.  No caller nests windows today: an FK update cascade hands its record to
+ * locator_attribute_info_force (), so it does not open one.  Past this many, the oldest is overwritten, which only
+ * weakens the assert. */
+#define SIDECAR_STORED_FORM_RECORDS 16
+static thread_local sidecar_stored_form_record sidecar_Stored_form_records[SIDECAR_STORED_FORM_RECORDS];
+static thread_local int sidecar_Stored_form_admitted = 0;
+
+static void
+sidecar_stored_form_admit (const char *data, int length)
+{
+  sidecar_stored_form_record &r = sidecar_Stored_form_records[sidecar_Stored_form_admitted
+				  % SIDECAR_STORED_FORM_RECORDS];
+
+  assert (sidecar_Stored_form_window > 0);
+  r.begin = data;
+  r.end = data + length;
+  sidecar_Stored_form_admitted++;
+}
+
+/* inside one of the admitted records */
+static bool
+sidecar_stored_form_is_admitted (const char *p)
+{
+  const int n = MIN (sidecar_Stored_form_admitted, SIDECAR_STORED_FORM_RECORDS);
+
+  for (int i = 0; i < n; i++)
+    {
+      if (sidecar_Stored_form_records[i].begin <= p && p < sidecar_Stored_form_records[i].end)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
 #endif /* !NDEBUG */
 static std::atomic<UINT64> sidecar_Store_writes (0);
 static std::atomic<UINT64> sidecar_Retries (0);
@@ -289,6 +337,10 @@ sidecar_initialize (void)
 void
 sidecar_finalize (void)
 {
+  /* a stand-alone utility such as compactdb -S leaves no server to ask */
+  er_log_debug (ARG_FILE_LINE, "Sidecar counters at shutdown: store reads %llu (fetch expansion %llu) writes %llu",
+		(unsigned long long) sidecar_Store_reads.load (), (unsigned long long) sidecar_Expand_reads.load (),
+		(unsigned long long) sidecar_Store_writes.load ());
   if (sidecar_Stores_initialized)
     {
       sidecar_Stores.destroy ();
@@ -1365,6 +1417,23 @@ sidecar_apply_plan_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context
     {
       return NO_ERROR;
     }
+
+  /* I-7: the store is written with no data page held.  The heap released its own pages,
+   * and an INSERT keeps its values inline when its caller holds one (P1a D8).  A caller of an UPDATE or DELETE that
+   * holds a page in this thread fails instead, with an assertion in debug builds and ER_SIDECAR_NOT_SUPPORTED in
+   * release builds: an ordered fix of a store page may release and fix again a page the caller watches, which would
+   * invalidate the record the caller peeked (P1b2 decision C5).  A stored procedure's statements run on a worker of
+   * their own, with no page of the calling scan. */
+  if (pgbuf_has_perm_pages_fixed (thread_p))
+    {
+#if !defined (NDEBUG)
+      pgbuf_log_perm_pages_fixed (thread_p, "Sidecar: a store write");
+#endif /* !NDEBUG */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_NOT_SUPPORTED, 1,
+	      "A store write while the caller holds a data page");
+      return ER_SIDECAR_NOT_SUPPORTED;
+    }
   assert (plan->state == SIDECAR_PLAN_DECIDED);
 
   int error_code = sidecar_store_for (thread_p, &context->hfid, &context->class_oid, &store_hfid);
@@ -1469,6 +1538,7 @@ sidecar_keep_ref (HEAP_ATTRVALUE *value, const RECDES *old_recdes)
 {
   const OR_ATTRIBUTE *read = value->read_attrepr;
 
+  assert (sidecar_Stored_form_window > 0 && sidecar_stored_form_is_admitted (old_recdes->data));
   if (read == NULL || read->is_fixed || value->attr_type != HEAP_INSTANCE_ATTR || value->last_attrepr == NULL
       || value->last_attrepr->is_fixed || tp_domain_match (read->domain, value->last_attrepr->domain,
 	  TP_EXACT_MATCH) == 0
@@ -1562,6 +1632,9 @@ sidecar_write_trailer_body (HEAP_CACHE_ATTRINFO *attr_info, OR_BUF *buf, char **
   sidecar_trailer_put_counts (*ptr_varvals + size, attr_info->last_classrepr->n_variable, n_refs);
   *ptr_varvals += size;
   OR_PUT_INT (buf->buffer, OR_GET_INT (buf->buffer) | (OR_MVCC_FLAG_HAS_SIDECAR << OR_MVCC_FLAG_SHIFT_BITS));
+#if !defined (NDEBUG)
+  sidecar_stored_form_admit (buf->buffer, CAST_BUFLEN (*ptr_varvals - buf->buffer));
+#endif /* !NDEBUG */
   return S_SUCCESS;
 }
 
@@ -1680,6 +1753,9 @@ sidecar_on_fetch_body (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDE
 
   if (reader == SIDECAR_READER_HOLDER && scan_cache != NULL && scan_cache->sidecar_lazy_ok)
     {
+#if !defined (NDEBUG)
+      sidecar_stored_form_admit (recdes->data, recdes->length);
+#endif /* !NDEBUG */
       return S_SUCCESS;
     }
 
@@ -1830,18 +1906,29 @@ sidecar_fetch_locked (THREAD_ENTRY *thread_p, const OID *oid, OID *class_oid, HE
  * kept refs of the row it locked; both are read as a row-lock holder (5.6 b).  A slot that holds a value is decoded
  * as usual.
  */
-/* I-7 for the attribute layer: when it reads the store, the thread holds no page but at most the hot page of the
- * row (a reader latches hot, then store) */
+/* I-7 for the attribute layer: when it reads the store, the thread holds no page but at most one page of the row's
+ * own hot heap (a reader latches hot, then store).  An index page or a page of another file would be a latch order
+ * I-7 does not cover. */
 static bool
-sidecar_attr_pages_ok (THREAD_ENTRY *thread_p)
+sidecar_attr_pages_ok (THREAD_ENTRY *thread_p, const HEAP_CACHE_ATTRINFO *attr_info)
 {
 #if !defined (NDEBUG)
   PAGE_PTR page = NULL;
+  OID page_class;
   const int n_fixed = pgbuf_count_perm_pages_fixed (thread_p, &page);
 
-  return (n_fixed == 0
-	  || (n_fixed == 1 && pgbuf_get_page_ptype (thread_p, page) == PAGE_HEAP
-	      && !heap_page_is_sidecar_store (thread_p, page)));
+  if (n_fixed == 0)
+    {
+      return true;
+    }
+  if (n_fixed == 1 && pgbuf_get_page_ptype (thread_p, page) == PAGE_HEAP && !heap_page_is_sidecar_store (thread_p, page)
+      && heap_get_class_oid_from_page (thread_p, page, &page_class) == NO_ERROR
+      && OID_EQ (&page_class, &attr_info->class_oid))
+    {
+      return true;
+    }
+  pgbuf_log_perm_pages_fixed (thread_p, "Sidecar: an attribute-layer store read");
+  return false;
 #else /* NDEBUG */
   return true;
 #endif /* NDEBUG */
@@ -1855,9 +1942,6 @@ sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, const char *slot)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   SIDECAR_REF ref;
   OID oid;
-
-  /* only the UPDATE's old record, read as stored under its X lock, and its new image carry refs here */
-  assert (sidecar_Stored_form_window > 0);
 
   sidecar_ref_decode (slot, &ref);
   oid.volid = ref.volid;
@@ -1875,7 +1959,12 @@ sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, const char *slot)
       return &found->second;
     }
 
-  assert (sidecar_attr_pages_ok (thread_p));
+  sidecar_Attr_reads++;
+  if (pgbuf_has_perm_pages_fixed (thread_p))
+    {
+      sidecar_Attr_reads_page_held++;
+    }
+  assert (sidecar_attr_pages_ok (thread_p, attr_info));
   std::vector<char> bytes (MAX (ref.length, 1));
   if (sidecar_read_value_locked (thread_p, &ref, bytes.data ()) != NO_ERROR)
     {
@@ -1891,6 +1980,8 @@ sidecar_point_variable_body (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO 
 {
   const char *end = layout->var_table + layout->trailer_end;
 
+  /* only the UPDATE's old record, read as stored under its X lock, and its new image carry refs here */
+  assert (sidecar_Stored_form_window > 0 && sidecar_stored_form_is_admitted (layout->var_table));
   /* P1a D1: the trailer's count is the record's representation's */
   assert ((unsigned short) OR_GET_SHORT (end - 3 * OR_SHORT_SIZE) == attr_info->read_classrepr->n_variable);
   if (sidecar_trailer_find_from_end (end, attrepr->location) < 0)
@@ -1935,6 +2026,7 @@ static char *
 sidecar_midxkey_point_body (HEAP_CACHE_ATTRINFO *attr_info, const RECDES *recdes, const OR_ATTRIBUTE *att,
 			    char *disk_data)
 {
+  assert (sidecar_Stored_form_window > 0 && sidecar_stored_form_is_admitted (recdes->data));
   assert (sidecar_trailer_n_variable (recdes) == attr_info->read_classrepr->n_variable);
   if (sidecar_trailer_find (recdes, att->location) < 0)
     {
@@ -1979,6 +2071,10 @@ sidecar_stored_form_end (void)
 {
   sidecar_Stored_form_window--;
   assert (sidecar_Stored_form_window >= 0);
+  if (sidecar_Stored_form_window == 0)
+    {
+      sidecar_Stored_form_admitted = 0;
+    }
 }
 #endif /* !NDEBUG */
 
@@ -2444,12 +2540,14 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
 
   er_log_debug (ARG_FILE_LINE, "Sidecar verify heap %d|%d|%d: store live %d dead %d relocated %d bigone %d; hot rows "
 		"with refs %d, deleted %d; store reads %llu (fetch expansion %llu) writes %llu retries %llu fallbacks %llu; "
-		"expansion by last-version reads %llu; store page fixes %llu; %s", HFID_AS_ARGS (hfid), live,
-		(int) v.records.size () - live, v.relocated, v.bigone, v.hot_rows, v.hot_deleted,
-		(unsigned long long) sidecar_Store_reads.load (), (unsigned long long) sidecar_Expand_reads.load (),
-		(unsigned long long) sidecar_Store_writes.load (), (unsigned long long) sidecar_Retries.load (),
-		(unsigned long long) sidecar_Fallbacks.load (), (unsigned long long) sidecar_Expand_reads_last.load (),
-		(unsigned long long) sidecar_Store_fixes.load (), v.valid ? "valid" : "INVALID");
+		"expansion by last-version reads %llu; store page fixes %llu; %s; attribute-layer reads %llu, with a page "
+		"held %llu", HFID_AS_ARGS (hfid), live, (int) v.records.size () - live, v.relocated, v.bigone, v.hot_rows,
+		v.hot_deleted, (unsigned long long) sidecar_Store_reads.load (),
+		(unsigned long long) sidecar_Expand_reads.load (), (unsigned long long) sidecar_Store_writes.load (),
+		(unsigned long long) sidecar_Retries.load (), (unsigned long long) sidecar_Fallbacks.load (),
+		(unsigned long long) sidecar_Expand_reads_last.load (), (unsigned long long) sidecar_Store_fixes.load (),
+		v.valid ? "valid" : "INVALID", (unsigned long long) sidecar_Attr_reads.load (),
+		(unsigned long long) sidecar_Attr_reads_page_held.load ());
   return v.valid ? DISK_VALID : DISK_INVALID;
 }
 

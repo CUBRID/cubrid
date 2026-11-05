@@ -11924,6 +11924,31 @@ pgbuf_count_perm_pages_fixed (THREAD_ENTRY * thread_p, PAGE_PTR * last_page)
     }
   return count;
 }
+
+/*
+ * pgbuf_log_perm_pages_fixed () - log every page other than a query result page that the thread holds, with where
+ *				    it was fixed
+ *   return: void
+ *   who(in): what the thread was about to do
+ */
+void
+pgbuf_log_perm_pages_fixed (THREAD_ENTRY * thread_p, const char *who)
+{
+  int thrd_idx = thread_get_entry_index (thread_p);
+  PGBUF_HOLDER *holder = NULL;
+
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      const FILEIO_PAGE *iopage = &holder->bufptr->iopage_buffer->iopage;
+
+      if (iopage->prv.ptype != PAGE_QRESULT)
+	{
+	  er_log_debug (ARG_FILE_LINE, "%s holds page %d|%d of type %d, fixed %d times, at %.*s", who,
+			holder->bufptr->vpid.volid, holder->bufptr->vpid.pageid, (int) iopage->prv.ptype,
+			holder->fix_count, MIN (holder->fixed_at_size, 400), holder->fixed_at);
+	}
+    }
+}
 #endif /* !NDEBUG */
 
 #if defined (SERVER_MODE)
