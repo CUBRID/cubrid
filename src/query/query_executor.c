@@ -942,6 +942,10 @@ static int qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr,
 static int qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static void qexec_clear_a_eval_values (THREAD_ENTRY * thread_p, ANALYTIC_EVAL_TYPE * a_eval_list);
 
+#if !defined (NDEBUG)
+static void qexec_verify_pass_through_wrapper (XASL_NODE * xasl);
+#endif /* !NDEBUG */
+
 /*
  * Utility routines
  */
@@ -21877,6 +21881,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  GOTO_EXIT_ON_ERROR;
 	}
 
+      if (XASL_IS_FLAGED (xasl, XASL_PASS_THROUGH_WRAPPER) && XASL_LIST_BACKWARD_FLAG (xasl) != 0)
+	{
+	  /* the list file this node's scan would read becomes its result and must scroll like the list file it would
+	   * write. Set before the aptrs below open it. */
+	  XASL_SET_FLAG (xasl->spec_list->s.list_node.xasl_node, XASL_LIST_BACKWARD);
+	}
+
       /* evaluate all the aptr lists in all scans */
       for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
 	{
@@ -22114,6 +22125,40 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 #endif
+
+      /* only after run_jobs (): a parallel subquery executor may run the producer on a worker */
+      if (XASL_IS_FLAGED (xasl, XASL_PASS_THROUGH_WRAPPER))
+	{
+	  XASL_NODE *producer = xasl->spec_list->s.list_node.xasl_node;
+
+#if !defined (NDEBUG)
+	  qexec_verify_pass_through_wrapper (xasl);
+#endif /* !NDEBUG */
+
+	  /* a join that left no list file, as on an empty input, and a join without has_pass_through, which wrote its
+	   * own columns: leave the result to the scan below */
+	  if (producer->list_id->type_list.type_cnt > 0 && producer->proc.hashjoin.has_pass_through)
+	    {
+	      qfile_destroy_list (thread_p, xasl->list_id);
+	      if (qfile_copy_list_id (xasl->list_id, producer->list_id, false, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+		{
+		  qexec_failure_line (__LINE__, xasl_state);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      qfile_clear_list_id (producer->list_id);
+
+	      /* the scan below never opens: make the trace show a list scan with the rows taken over */
+	      xasl->spec_list->s_id.type = S_LIST_SCAN;
+	      xasl->spec_list->s_id.scan_stats.read_rows = 0;
+	      xasl->spec_list->s_id.scan_stats.qualified_rows = xasl->list_id->tuple_cnt;
+
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SELECTS);
+
+	      /* skip the main block iterations and their post processing and leave switch (xasl->type) for
+	       * if (xasl->is_single_tuple) and the cleanup */
+	      break;
+	    }
+	}
 
       /* precompute uncorrelated scalar subqueries (precomp_owner_regu set) once on the main thread before the consuming scan opens; workers inject instead of re-executing (px_scan_task.cpp). fetch_peek_dbval reuses the lazy TYPE_CONSTANT path (SQ-/result-cache + owning regu dbvalptr preserved); errors propagate as in lazy eval. aptr_list only -- dptr_list (correlated) must never be precomputed. */
       for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
@@ -24706,12 +24751,18 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
+
+	      /* destroyed rather than cleared: the partition result lists of the hash join, moved in as its dependent
+	       * lists, would otherwise stay until the end of the query */
+	      qfile_destroy_list (thread_p, non_recursive_part->list_id);
 	    }
 
+	  /* a pass-through wrapper that took over the list file of a hash join keeps the partition result lists of the
+	   * join as dependent lists of that list file, which the copy below moves */
 	  qfile_clear_list_id (non_recursive_part->list_id);
 	  if (recursive_part->list_id->tuple_cnt > 0
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
-				     QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+				     QFILE_MOVE_DEPENDENT) != NO_ERROR)
 	    {
 	      /* the list id is part of the XASL tree, and the failed copy left it empty */
 	      GOTO_EXIT_ON_ERROR;
@@ -35913,3 +35964,82 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
 
   return NO_ERROR;
 }
+
+#if !defined (NDEBUG)
+/*
+ * qexec_verify_pass_through_wrapper () - verify that a pass-through wrapper leaves no work to the steps it skips
+ *   return:
+ *   xasl(in): an XASL_PASS_THROUGH_WRAPPER node
+ */
+static void
+qexec_verify_pass_through_wrapper (XASL_NODE * xasl)
+{
+  XASL_NODE *last_aptr;
+
+  assert (xasl != NULL);
+
+  /* The shape the planner builds. */
+
+  /* the node: a BUILDLIST_PROC with the one list scan gen_hashjoin () built */
+  assert (xasl->type == BUILDLIST_PROC);
+  assert (xasl->spec_list != NULL);
+  assert (xasl->spec_list->next == NULL);
+
+  /* the producer: gen_hashjoin () appends it last with add_uncorrelated (), so it runs after the uncorrelated
+   * subqueries it reads */
+  for (last_aptr = xasl->aptr_list; last_aptr != NULL && last_aptr->next != NULL; last_aptr = last_aptr->next)
+    {
+      ;
+    }
+  assert (last_aptr == xasl->spec_list->s.list_node.xasl_node);
+
+  /* a producer kept for the next execution (XASL_ZERO_CORR_LEVEL, skipped by qexec_clear_head_lists ()) needs a wrapper
+   * that does not run again either, since a later execution would read the list file this execution took over */
+  assert (!XASL_IS_FLAGED (last_aptr, XASL_ZERO_CORR_LEVEL) || XASL_IS_FLAGED (xasl, XASL_ZERO_CORR_LEVEL));
+
+  /* the list file it takes over: no index scan order to record as the list's sort order */
+  assert (xasl->after_iscan_list == NULL);
+
+  /* The steps it skips, in execution order. */
+
+  /* before the scan: LIMIT. qexec_check_limit_clause () still runs, but the scan_immediately_stop it sets is read
+   * only by the scan the takeover skips */
+  assert (xasl->limit_offset == NULL);
+  assert (xasl->limit_row_count == NULL);
+
+  /* the scan: the filters of its list scan and a during-join predicate */
+  assert (xasl->spec_list->where_key == NULL);
+  assert (xasl->spec_list->where_pred == NULL);
+  assert (xasl->spec_list->where_range == NULL);
+  assert (xasl->during_join_pred == NULL);
+
+  /* each row, in qexec_intprt_fnc () order: object fetches, correlated subqueries, predicates, path fetches, nested
+   * scans and ROWNUM */
+  assert (xasl->bptr_list == NULL);
+  assert (xasl->dptr_list == NULL);
+  assert (xasl->after_join_pred == NULL);
+  assert (xasl->if_pred == NULL);
+  assert (xasl->fptr_list == NULL);
+  assert (xasl->scan_ptr == NULL);
+  assert (xasl->instnum_pred == NULL);
+
+  /* after the scan: CONNECT BY */
+  assert (xasl->connect_by_ptr == NULL);
+
+  /* after the scan: the click counter */
+  assert (xasl->selected_upd_list == NULL);
+
+  /* post processing: GROUP BY and aggregates */
+  assert (xasl->proc.buildlist.groupby_list == NULL);
+  assert (xasl->proc.buildlist.g_agg_list == NULL);
+
+  /* post processing: analytic functions */
+  assert (xasl->proc.buildlist.a_eval_list == NULL);
+
+  /* post processing: ORDER BY and DISTINCT */
+  assert (xasl->orderby_list == NULL);
+  assert (xasl->ordbynum_pred == NULL);
+  assert (xasl->orderby_limit == NULL);
+  assert (xasl->option != Q_DISTINCT);
+}
+#endif /* !NDEBUG */
