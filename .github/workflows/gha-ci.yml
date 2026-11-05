@@ -1606,7 +1606,7 @@ jobs:
           failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log
             mkdir -p "$2"
             if [ -f "$1/test_status.data" ]; then
-              find "$1" -type f -name test-shell.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
+              find "$1" -type f -name '*.xml' ! -name summary.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
             elif [ -f "$1/summary_info" ] || [ -f "$1/summary.info" ]; then
               if [ -f "$1/summary_info" ]; then
                 { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
