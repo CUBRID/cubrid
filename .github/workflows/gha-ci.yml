@@ -1533,42 +1533,52 @@ jobs:
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
-          # A failed case is a <failure> (wrong answer) or an <error> (timeout, core).
-          # Every CDATA body is read through first: a log can hold a literal <testcase, <failure or <error.
+          # A failed case is a <failure> or an <error>. CDATA is never read as markup: a log can hold a
+          # literal <testcase, <failure or <error. CTP's JunitXml ends each CDATA with "]]></" on one line.
           FAILED_AWK='
             BEGIN { while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
+            FNR == 1 { if (body != "") close(body); body = ""; in_cdata = 0; cur = "" }
             body != "" {
               if (/\]\]><\/(failure|error)>/) { sub(/\]\]><\/(failure|error)>.*$/, ""); print > body; close(body); body = ""; next }
               print > body
               next
             }
-            skip { if (/\]\]><\//) skip = 0; next }
-            /<testcase/ { cur = ""; if (match($0, / name="[^"]*"/)) cur = substr($0, RSTART + 7, RLENGTH - 8) }
-            /<(failure|error)[ >\/]/ && cur != "" {
+            in_cdata { if (/\]\]><\//) in_cdata = 0; next }
+            { c = index($0, "<![CDATA["); tags = c ? substr($0, 1, c - 1) : $0; opened = c && !/\]\]><\//; }
+            tags ~ /<testcase/ { cur = ""; if (match(tags, / name="[^"]*"/)) cur = substr(tags, RSTART + 7, RLENGTH - 8) }
+            tags ~ /<(failure|error)[ >\/]/ && cur != "" {
               if (idx == "") { print cur; n = ++k }
               else if (cur in want) { n = want[cur] }
-              else { cur = ""; skip = /<!\[CDATA\[/ && !/\]\]><\//; next }
-              body = dir "/" n ".log"
-              rest = $0
-              if (!sub(/^.*<!\[CDATA\[/, "", rest)) body = ""
-              else if (rest ~ /\]\]><\/(failure|error)>/) { sub(/\]\]><\/(failure|error)>.*$/, "", rest); print rest > body; close(body); body = "" }
-              else if (rest != "") print rest > body
+              else { cur = ""; in_cdata = opened; next }
               cur = ""
+              if (!c) next
+              body = dir "/" n ".log"
+              rest = substr($0, c + 9)
+              if (rest ~ /\]\]><\/(failure|error)>/) { sub(/\]\]><\/(failure|error)>.*$/, "", rest); print rest > body; close(body); body = "" }
+              else if (rest != "") print rest > body
               next
             }
-            /<!\[CDATA\[/ && !/\]\]><\// { skip = 1; next }
-            /<\/testcase>/ { cur = "" }
+            opened { in_cdata = 1; next }
+            tags ~ /<\/testcase>/ { cur = "" }
           '
-          failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log
+          # <shard dir> <log dir>: prints the failed cases; the n-th one's log is <log dir>/<n>.log, and
+          # <log dir>/xml names the reports read, relative to the shard dir. Only here is it known where they are.
+          failed() {
             mkdir -p "$2"
-            if [ -f "$1/test_status.data" ]; then
-              find "$1" -type f -name '*.xml' ! -name summary.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
-            elif [ -f "$1/summary_info" ]; then
+            (cd "$1" && find test-results -maxdepth 1 -type f -name '*.xml' ! -name summary.xml 2>/dev/null) > "$2/xml" || :
+            local idx=
+            if [ -f "$1/summary_info" ] && [ ! -f "$1/test_status.data" ]; then
               { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
                 | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" > "$2/failed.list"
               awk '{printf "%s\t%d\n", $0, NR}' "$2/failed.list" > "$2/failed.idx"
-              find "$1" -type f -name '*.xml' ! -name summary.xml \
-                -exec awk -v dir="$2" -v idx="$2/failed.idx" "$FAILED_AWK" {} +
+              idx="$2/failed.idx"
+            elif [ ! -f "$1/test_status.data" ]; then
+              return 0
+            fi
+            if [ -s "$2/xml" ]; then
+              (cd "$1" && xargs -d '\n' awk -v dir="$2" -v idx="$idx" "$FAILED_AWK" < "$2/xml")
+            fi
+            if [ -n "$idx" ]; then
               cat "$2/failed.list"
               rm -f "$2/failed.list" "$2/failed.idx"
             fi
@@ -1840,7 +1850,9 @@ jobs:
           for suite in $SUITES_RUN; do
             list="/tmp/failed.$suite.list"
             [ -s "$list" ] || continue
-            [ -n "$(find "/tmp/failed-logs/$suite" -name '*.log' -print -quit 2>/dev/null)" ] || continue
+            xml_rel=$(cat "/tmp/failed-logs/$suite"/*/xml 2>/dev/null | head -1)
+            [ -n "$xml_rel" ] || continue
+            xml_name=$(basename "$xml_rel")
             n=$(wc -l < "$list")
             shown=$n
             [ "$shown" -gt 50 ] && shown=50
@@ -1851,8 +1863,6 @@ jobs:
             tail_b=$((case_max - head_b))
             esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
             base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$suite"
-            xml_name=$(basename "$(ls "$RUNDIR/$suite"/shard/*/test-results/*.xml 2>/dev/null | head -1)" 2>/dev/null || :)
-            xml_name=${xml_name:-test-shell.xml}
             {
               echo "### $suite: the log of each failed case"
               echo
@@ -1869,7 +1879,7 @@ jobs:
               log="/tmp/failed-logs/$suite/$shard/${k[$shard]}.log"
               {
                 echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/$xml_name\">full log</a></summary>"
+                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/$xml_rel\">full log</a></summary>"
                 echo
                 # <pre> on its own line: a blank line in the log would end the HTML block.
                 echo "<pre>"
