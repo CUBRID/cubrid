@@ -176,6 +176,7 @@ static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, b
 /* scan_regu_key_to_index_key is declared in scan_manager.h (used by parallel index scan) */
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
+static void scan_release_sidecar_cursor (THREAD_ENTRY * thread_p, const SCAN_ID * scan_id);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 			       val_list_node * val_list, VAL_DESCR * vd);
@@ -2586,11 +2587,33 @@ exit_on_error:
  *
  * Note: If you feel the need
  */
+/*
+ * scan_release_sidecar_cursor () - release the store page the thread's Sidecar cursor keeps, unless it is kept for
+ *				    this heap scan's next rows
+ *
+ * Note: the page is kept only while the owning heap scan fixes its own hot pages; any other scan opens, starts,
+ *	 resets or steps with other pages to fix (I-7, decision E17).  Debug builds assert in pgbuf_fix () at a site
+ *	 that misses it.
+ */
+static void
+scan_release_sidecar_cursor (THREAD_ENTRY * thread_p, const SCAN_ID * scan_id)
+{
+  if (unlikely (thread_p != NULL && thread_p->sidecar_cursor_page != NULL)
+      && (scan_id == NULL || scan_id->type != S_HEAP_SCAN
+	  || thread_p->sidecar_cursor_owner != &scan_id->s.hsid.scan_cache))
+    {
+      sidecar_cursor_release (thread_p);
+    }
+}
+
 static void
 scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 		   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		   VAL_DESCR * vd)
 {
+  /* a scan being opened fixes pages of its own */
+  scan_release_sidecar_cursor (thread_get_thread_entry_info (), NULL);
+
   scan_id->status = S_OPENED;
   scan_id->position = S_BEFORE;
   scan_id->direction = S_FORWARD;
@@ -3980,6 +4003,8 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   INDX_SCAN_ID *isidp = NULL;
   INDEX_NODE_SCAN_ID *insidp = NULL;
   LLIST_SCAN_ID *llsidp = NULL;
+
+  scan_release_sidecar_cursor (thread_p, scan_id);
   SET_SCAN_ID *ssidp = NULL;
   REGU_VALUES_SCAN_ID *rvsidp = NULL;
   REGU_VALUE_LIST *regu_value_list = NULL;
@@ -4319,6 +4344,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 {
   SCAN_CODE status = S_SUCCESS;
 
+  scan_release_sidecar_cursor (thread_p, s_id);
   s_id->single_fetched = false;
   s_id->null_fetched = false;
 
@@ -5162,12 +5188,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
     }
 
-  /* the store page a heap scan's cursor keeps is for that scan's next rows: any other scan fixes other pages */
-  if (unlikely (thread_p->sidecar_cursor_page != NULL)
-      && (scan_id->type != S_HEAP_SCAN || thread_p->sidecar_cursor_owner != &scan_id->s.hsid.scan_cache))
-    {
-      sidecar_cursor_release (thread_p);
-    }
+  scan_release_sidecar_cursor (thread_p, scan_id);
 
   switch (scan_id->type)
     {
