@@ -43,7 +43,7 @@
    | PT_HINT_NO_INDEX_LS | PT_HINT_NO_ELIMINATE_JOIN | PT_HINT_NO_PUSH_PRED | PT_HINT_NO_PARALLEL_SCAN \
    | PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ \
    | PT_HINT_SELECT_BTREE_NODE_INFO | PT_HINT_SELECT_RECORD_INFO | PT_HINT_SELECT_PAGE_INFO \
-   | PT_HINT_SELECT_KEY_INFO)
+   | PT_HINT_SELECT_KEY_INFO | PT_HINT_ROW_SNAPSHOT | PT_HINT_NO_ROW_SNAPSHOT)
 
 static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM outer_hint,
 				       bool require_where);
@@ -820,9 +820,9 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 /*
  * qo_rewrite_unique_semi_inner () - turn a SEMI JOIN whose ON pins down one inner row per outer row into an
  *   INNER JOIN: same rows, and the planner is free to reorder it (a SEMI inner is frozen behind its outer,
- *   see QO_ADD_SEMI_ANTI_DEP_SET).  Called after qo_rewrite_outerjoin (), which reads the ON of a SEMI JOIN as
- *   a term that rejects the NULL-padded rows of an outer join before it, so that the conversion does not hide
- *   that term from it
+ *   see QO_ADD_SEMI_ANTI_DEP_SET).  Called after qo_rewrite_outerjoin (), which reads the ON of a SEMI JOIN with
+ *   no RIGHT OUTER JOIN connected behind it as a term that rejects the NULL-padded rows of an outer join before
+ *   it, so that the conversion does not hide that term from it
  *   return: none
  *   parser(in):
  *   node(in/out): a PT_SELECT node

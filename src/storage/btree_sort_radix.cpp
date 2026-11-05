@@ -906,7 +906,8 @@ byte_string_of (const RADIX_KEY_ENCODING *encoding, const unsigned char *key)
 }
 
 /* a radix word in the low bytes of a 16 byte vector, where each operator works on every byte at once. A vector of 8
- * bytes would be split into single bytes by GCC 8 */
+ * bytes would be split into single bytes by GCC 8. The vector a word is loaded into is not const: G++ before 8.4
+ * reads a const vector set from a run-time value as its zero constant part (GCC PR c++/90810) */
 typedef unsigned char radix_byte_vector __attribute__ ((vector_size (16)));
 typedef UINT64 radix_word_vector __attribute__ ((vector_size (16)));
 
@@ -915,7 +916,7 @@ template <int WORD_WIDTH>
 static inline radix_word<WORD_WIDTH>
 spaces_to_zero (radix_word<WORD_WIDTH> word)
 {
-  const radix_word_vector words = { word, 0 };
+  radix_word_vector words = { word, 0 };
   radix_byte_vector bytes = (radix_byte_vector) words;
 
   bytes &= (radix_byte_vector) (bytes != ' ');	/* a comparison gives 0xff in each byte it holds for, 0 in the rest */
@@ -927,7 +928,7 @@ template <int WORD_WIDTH>
 static inline radix_word<WORD_WIDTH>
 lower_to_upper (radix_word<WORD_WIDTH> word)
 {
-  const radix_word_vector words = { word, 0 };
+  radix_word_vector words = { word, 0 };
   radix_byte_vector bytes = (radix_byte_vector) words;
 
   bytes -= (radix_byte_vector) ((bytes >= 'a') & (bytes <= 'z')) & (unsigned char) ('a' - 'A');
