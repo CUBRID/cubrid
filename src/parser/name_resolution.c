@@ -1186,7 +1186,10 @@ pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec)
     {
       /* tag it as resolved */
       col->info.name.spec_id = spec->info.spec.id;
-      col->info.name.meta_class = PT_NORMAL;
+      if (col->info.name.meta_class != PT_OID_ATTR)
+	{
+	  col->info.name.meta_class = PT_NORMAL;
+	}
     }
 }
 
