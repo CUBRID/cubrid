@@ -7323,12 +7323,19 @@ qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 
   if (!info->in_subquery && pt_is_function_index_expr (parser, tree, false))
     {
-      char *expr_str = parser_print_function_index_expr (parser, tree);
+      UINTPTR expr_spec_id = 0;
 
-      if (expr_str != NULL && info->func_expr_str != NULL && !intl_identifier_casecmp (expr_str, info->func_expr_str))
+      /* the printed expression omits aliases, so skip only what pt_get_func_index_result_attr () routes */
+      if (!pt_is_join_expr (tree, &expr_spec_id) && expr_spec_id == info->spec_id)
 	{
-	  *continue_walk = PT_LIST_WALK;
-	  return tree;
+	  char *expr_str = parser_print_function_index_expr (parser, tree);
+
+	  if (expr_str != NULL && info->func_expr_str != NULL
+	      && !intl_identifier_casecmp (expr_str, info->func_expr_str))
+	    {
+	      *continue_walk = PT_LIST_WALK;
+	      return tree;
+	    }
 	}
     }
 
@@ -7608,6 +7615,10 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 
       if (QO_SEG_FUNC_INDEX (seg))
 	{
+	  if (index_entry->constraints == NULL || index_entry->constraints->func_index_info == NULL)
+	    {
+	      return false;
+	    }
 	  continue;
 	}
 
@@ -7628,12 +7639,20 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	}
     }
 
-  /* pt_to_index_info drops coverage on these gates after the function result has already been routed */
   if (index_entry->constraints != NULL && index_entry->constraints->func_index_info != NULL)
     {
       COLL_OPT coll_opt;
-      const char *expr_str = index_entry->constraints->func_index_info->expr_str;
+      SM_FUNCTION_INFO *fi_info = index_entry->constraints->func_index_info;
+      TP_DOMAIN *fi_domain = fi_info->fi_domain;
+      QO_SEGMENT *fi_seg = qo_find_func_index_seg (env, nodep, fi_info->expr_str);
 
+      /* the function result is not read from the key */
+      if (fi_seg == NULL)
+	{
+	  return true;
+	}
+
+      /* pt_to_index_info drops coverage on these gates after the function result has already been routed */
       if (!qo_is_func_index_routable (env, nodep))
 	{
 	  return false;
@@ -7649,26 +7668,26 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	  return false;
 	}
 
-      /* join and subquery terms are evaluated from the raw argument, not from the routed result */
-      seg = NULL;
+      /* equal keys keep the value of one row only, so the result must be identical whenever it compares equal */
+      if (fi_domain == NULL || TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE (fi_domain))
+	  || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (fi_domain))
+	      && !lang_get_collation (TP_DOMAIN_COLLATION (fi_domain))->options.allow_index_opt))
+	{
+	  return false;
+	}
+
+      /* only a sarg of this node is evaluated by its own scan where the result is routed; join, subquery and
+       * during/after-join terms of an outer join are built from the raw argument */
       for (i = 0; i < env->nterms; i++)
 	{
 	  qo_termp = QO_ENV_TERM (env, i);
 	  if (bitset_is_empty (&(QO_TERM_SUBQUERIES (qo_termp)))
-	      && bitset_cardinality (&(QO_TERM_NODES (qo_termp))) <= 1)
+	      && bitset_cardinality (&(QO_TERM_NODES (qo_termp))) <= 1 && QO_TERM_CLASS (qo_termp) == QO_TC_SARG)
 	    {
 	      continue;
 	    }
 
-	  if (seg == NULL)
-	    {
-	      seg = qo_find_func_index_seg (env, nodep, expr_str);
-	      if (seg == NULL)
-		{
-		  break;
-		}
-	    }
-	  if (BITSET_MEMBER (QO_TERM_SEGS (qo_termp), QO_SEG_IDX (seg)))
+	  if (BITSET_MEMBER (QO_TERM_SEGS (qo_termp), QO_SEG_IDX (fi_seg)))
 	    {
 	      return false;
 	    }

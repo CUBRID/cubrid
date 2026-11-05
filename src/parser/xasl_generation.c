@@ -9919,7 +9919,9 @@ pt_uncover_func_index_scans (QO_PLAN * plan)
 	    }
 	  if (j == index_entry->col_num)
 	    {
+	      /* a loose scan is made only of a covering scan */
 	      plan->plan_un.scan.index_cover = false;
+	      plan->plan_un.scan.index_loose = false;
 	      break;
 	    }
 	}
