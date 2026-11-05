@@ -11814,11 +11814,13 @@ cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, I
  *   return: NO_ERROR, ER_AU_AUTHORIZATION_FAILURE if a lookup is already running
  *           on this connection, ER_AU_INVALID_USER if there is no such account,
  *           or another error if the account could not be read.
+ *   is_loginable (out): whether the account may log in; may be NULL
  *
  * Shared by the CDC handshake and the login password proof.
  */
 static int
-cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba)
+cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba,
+		 bool *is_loginable)
 {
   int error;
 
@@ -11828,7 +11830,7 @@ cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, in
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
-  error = cdc_find_user_info (thread_p, user_name, stored, stored_size, is_dba);
+  error = cdc_find_user_info (thread_p, user_name, stored, stored_size, is_dba, is_loginable);
   (void) ATOMIC_TAS (&thread_p->conn_entry->cdc_auth_busy, 0);
 
   return error;
@@ -11870,7 +11872,7 @@ scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     }
   str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
 
-  if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) == NO_ERROR)
+  if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) == NO_ERROR)
     {
       scheme = IS_ENCODED_ANY (stored) ? (int) stored[0] : 0;
     }
@@ -11976,7 +11978,7 @@ scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     {
       /* not a challenge this server issued to this connection for this account, or expired */
     }
-  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) != NO_ERROR
+  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) != NO_ERROR
 	   || cdc_auth_make_response (thread_p, nonce, stored, expected) != NO_ERROR
 	   || !cdc_auth_response_matches (expected, answer))
     {
@@ -12037,7 +12039,9 @@ auth_may_switch_user (THREAD_ENTRY *thread_p, const char *user_name)
  *
  * Sends a fresh nonce, the scheme the password is stored under, the issue time
  * and a tag over them; nothing is kept on the server. Unlike the CDC channel, an
- * unknown account is reported (ER_AU_INVALID_USER), as a client login always did.
+ * unknown account is reported (ER_AU_INVALID_USER), as a client login always did,
+ * and so is an account that may not log in (ER_AU_LOGIN_DISABLED), before any
+ * password, the order perform_login () checks them in.
  */
 void
 sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
@@ -12053,7 +12057,7 @@ sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   char salt[CSS_AU_SALT_SIZE] = { '\0' };
   char stored_name[CSS_AU_NAME_SIZE] = { '\0' };
   INT64 issued_at = 0;
-  bool is_dba = false;
+  bool is_dba = false, is_loginable = true;
   int scheme = 0, error;
 
   if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) == NULL
@@ -12070,10 +12074,15 @@ sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
 
-      error = cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba);
+      error = cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, &is_loginable);
       if (error == ER_AU_INVALID_USER)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, user_name);
+	}
+      else if (error == NO_ERROR && !is_loginable)
+	{
+	  error = ER_AU_LOGIN_DISABLED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
 	}
       else if (error == NO_ERROR)
 	{
@@ -12159,7 +12168,7 @@ sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
     {
       /* not a challenge this server issued to this connection for this account, or expired */
     }
-  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) != NO_ERROR
+  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) != NO_ERROR
 	   || cdc_auth_make_response (thread_p, nonce, stored, expected) != NO_ERROR
 	   || !cdc_auth_response_matches (expected, answer))
     {

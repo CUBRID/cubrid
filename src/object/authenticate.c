@@ -97,8 +97,9 @@ au_login (const char *name, const char *password, bool ignore_dba_privilege)
 /*
  * au_prove_password () - prove a password to the server by answering a one-time
  *   challenge. The password never leaves the client.
- *   return: NO_ERROR, ER_AU_REJECT_LOGIN for an unknown account or a wrong
- *           password (as perform_login () reports them), or another error
+ *   return: NO_ERROR, ER_AU_LOGIN_DISABLED for an account that may not log in,
+ *           ER_AU_REJECT_LOGIN for an unknown account or a wrong password (as
+ *           perform_login () reports them, in its order), or another error
  *   user_name (in)      : account to prove
  *   des/sha1/sha2 (in)  : the password in each form it may be stored in
  */

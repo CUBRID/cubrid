@@ -5342,7 +5342,8 @@ cau_copy_reply_string (char *ptr, char *reply, int reply_size, char *out, int ou
 
 /*
  * cau_challenge () - ask the server for a one-time password challenge.
- *   return: NO_ERROR, or the server's error (ER_AU_INVALID_USER for an unknown account)
+ *   return: NO_ERROR, or the server's error (ER_AU_INVALID_USER for an unknown account,
+ *           ER_AU_LOGIN_DISABLED for one that may not log in)
  *   user_name (in) : account to prove
  *   scheme (out)   : form its password is stored in, 0 if none
  *   nonce (out)    : the challenge

@@ -14757,6 +14757,7 @@ cdc_wakeup_consumer ()
  */
 static int cdc_User_attr_password = -1;
 static int cdc_User_attr_groups = -1;
+static int cdc_User_attr_is_loginable = -1;	/* -2 when the catalog has no such attribute */
 
 /*
  * cdc_load_user_attr_ids () - resolve the db_user attribute ids read below.
@@ -14774,10 +14775,10 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
   char *attr_name;
   int alloced;
   int i, error = NO_ERROR;
-  int password_id = -1, groups_id = -1;
+  int password_id = -1, groups_id = -1, is_loginable_id = -1;
   bool scan_started = false, attrinfo_started = false;
 
-  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1)
+  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1 && cdc_User_attr_is_loginable != -1)
     {
       return NO_ERROR;
     }
@@ -14822,6 +14823,10 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
 	{
 	  groups_id = attr_info.values[i].attrid;
 	}
+      else if (strcmp (attr_name, "is_loginable") == 0)
+	{
+	  is_loginable_id = attr_info.values[i].attrid;
+	}
 
       if (alloced)
 	{
@@ -14835,6 +14840,7 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
       goto end;
     }
 
+  cdc_User_attr_is_loginable = (is_loginable_id != -1) ? is_loginable_id : -2;
   cdc_User_attr_password = password_id;
   cdc_User_attr_groups = groups_id;
 
@@ -15130,13 +15136,16 @@ cdc_set_contains_oid (DB_VALUE * set_value, const OID * oid)
  *   password (out)     : the stored (already encrypted) password, empty if none
  *   password_size (in) : size of the password buffer
  *   is_dba_group (out) : whether the account is DBA or a member of the DBA group
+ *   is_loginable (out) : whether the account may log in (NOLOGIN clears it); may be
+ *                        NULL. Reported true when the catalog has no such attribute.
+ *                        When false, the password and groups are not read.
  *
  * "groups" is the flattened membership set, so nested groups need no extra walk.
  * The CDC thread has no transaction index of its own; one is borrowed here.
  */
 int
 cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
-		    bool * is_dba_group)
+		    bool * is_dba_group, bool * is_loginable)
 {
   HEAP_SCANCACHE scan;
   RECDES recdes;
@@ -15152,6 +15161,10 @@ cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwo
 
   password[0] = '\0';
   *is_dba_group = false;
+  if (is_loginable != NULL)
+    {
+      *is_loginable = true;
+    }
 
   if (saved_tran_index == NULL_TRAN_INDEX)
     {
@@ -15204,6 +15217,21 @@ cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwo
   if (heap_attrinfo_read_dbvalues (thread_p, &user_oid, &recdes, &attr_info) != NO_ERROR)
     {
       goto end;
+    }
+
+  if (is_loginable != NULL && cdc_User_attr_is_loginable >= 0)
+    {
+      /* as is_loginable_user () on the client: only an integer 1 allows the login */
+      value = heap_attrinfo_access (cdc_User_attr_is_loginable, &attr_info);
+      *is_loginable = (value != NULL && !DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_INTEGER
+		       && db_get_int (value) == 1);
+      if (!*is_loginable)
+	{
+	  /* refused before its password is looked at, as perform_login () does */
+	  *is_dba_group = false;
+	  result = NO_ERROR;
+	  goto end;
+	}
     }
 
   /* "password" references a db_password instance, it is not the string itself. A
@@ -15259,7 +15287,7 @@ bool
 cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
 		   bool * is_dba_group)
 {
-  return cdc_find_user_info (thread_p, user_name, password, password_size, is_dba_group) == NO_ERROR;
+  return cdc_find_user_info (thread_p, user_name, password, password_size, is_dba_group, NULL) == NO_ERROR;
 }
 
 /*
