@@ -760,7 +760,7 @@ jobs:
   plan:
     name: plan
     needs: [gate, build]
-    # Not success(): a red release leg must not block the suites; the debug leg is checked below.
+    # Not success(): a red release leg must not block the debug suites; plan checks each leg below.
     if: ${{ !cancelled() && needs.gate.outputs.test == 'true' }}
     permissions: {}
     runs-on: cubrid-arc-light
@@ -1063,7 +1063,7 @@ jobs:
               prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
               [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
-              # No usable build in either run means no shard read one: there is no build to keep the same.
+              # When one of the two runs had no usable build, its shards read none: there is no build to keep the same.
               if [ -n "$recipe" ] && ! grep -qx "build_recipe=''" "$srcdir/plan/split.meta" 2>/dev/null \
                  && [ "$prev_recipe" != "$recipe" ]; then
                 echo "::error::run $RERUN_FROM tested a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
