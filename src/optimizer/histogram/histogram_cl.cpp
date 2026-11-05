@@ -3150,6 +3150,13 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
   PT_NODE *a1 = node->info.expr.arg1;
   PT_NODE *a2 = node->info.expr.arg2;
 
+  if ((op == PT_LIKE || op == PT_NOT_LIKE) && a1 != NULL && a1->node_type == PT_FUNCTION)
+    {
+      /* HAVING prices no LIKE of an aggregate (qo_having_aggregate_term () takes the default for it), so
+       * MAX (c) LIKE ? is not c LIKE ?: the pattern's estimate on c would never reach the plan */
+      return false;
+    }
+
   if (a2 != NULL && a2->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a2)
       && (a1 = histogram_hv_operand_column (a1)) != NULL)
     {
