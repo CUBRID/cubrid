@@ -94,6 +94,7 @@ struct or_attribute
   OR_ATTRIBUTE *next;		/* obsolete : use array for accessing elements */
 
   int id;			/* unique id */
+  char *name;			/* name in this class metadata snapshot */
   DB_TYPE type;			/* basic type */
   int def_order;		/* order of attributes in class */
   int location;			/* fixed offset or variable table index */

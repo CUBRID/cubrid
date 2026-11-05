@@ -23,6 +23,9 @@
 #ident "$Id$"
 
 #include "replication.h"
+#include "replication_key.h"
+#include "object_representation_sr.h"
+#include "object_domain.h"
 
 #include "dbtype.h"
 #include "heap_file.h"
@@ -67,14 +70,26 @@ static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc
 void
 repl_data_insert_log_dump (FILE * fp, int length, void *data)
 {
-  char *class_name;
+  const char *class_name, *key_bytes, *metadata;
+  int key_length, metadata_length;
   DB_VALUE key;
-  char *ptr;
-
-  ptr = or_unpack_string_nocopy ((char *) data, &class_name);
-  ptr = or_unpack_mem_value (ptr, &key);
-  fprintf (fp, "      class_name: %s\n", class_name);
-  fprintf (fp, "      pk_value: ");
+  char description[64];
+  if (!repl_key_unpack_log ((const char *) data, length, &class_name, &key_bytes, &key_length,
+			    &metadata, &metadata_length))
+    {
+      fprintf (fp, "Invalid replication-key metadata log\n");
+      return;
+    }
+  or_unpack_mem_value ((char *) key_bytes, &key);
+  if (metadata == NULL)
+    {
+      snprintf (description, sizeof (description), "(no digest: written before the RK digest was logged)");
+    }
+  else
+    {
+      repl_key_describe_digest (metadata, metadata_length, description, sizeof (description));
+    }
+  fprintf (fp, "      class_name: %s\n      RK: %s\n      key_value: ", class_name, description);
   db_value_print (&key);
   pr_clear_value (&key);
   fprintf (fp, "\n");
@@ -277,6 +292,79 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 }
 
 /*
+ * repl_pack_key_metadata() - serialize the cached RK used for the logged key value
+ *   return: NO_ERROR or an error code
+ *   thread_p(in): thread entry
+ *   index(in): selected RK index
+ *   data(out): allocated descriptor owned by the caller
+ *   length(out): descriptor length in bytes
+ */
+int
+repl_pack_key_metadata (THREAD_ENTRY * thread_p, const OR_INDEX * index, char **data, int *length)
+{
+  *data = NULL;
+  *length = 0;
+
+  if (index == NULL || !or_is_replication_candidate_key (index) || index->n_atts <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "Cannot describe the selected replication key.");
+      return ER_HA_GENERIC_ERROR;
+    }
+
+  REPL_KEY_COLUMN *columns = (REPL_KEY_COLUMN *) calloc (index->n_atts, sizeof (*columns));
+  if (columns == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, index->n_atts * sizeof (*columns));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  int error = NO_ERROR;
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      OR_ATTRIBUTE *a = index->atts[i];
+
+      if (a == NULL || a->domain == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "Missing replication key attribute domain.");
+	  error = ER_HA_GENERIC_ERROR;
+	  goto end;
+	}
+
+      columns[i].id = a->id;
+      columns[i].name = a->name;
+      columns[i].domain = a->domain;
+      columns[i].descending = index->asc_desc ? index->asc_desc[i] : 0;
+      columns[i].not_null = a->is_notnull;
+
+      if (TP_DOMAIN_TYPE (a->domain) == DB_TYPE_OBJECT && !OID_ISNULL (&a->domain->class_oid))
+	{
+	  char *class_name = NULL;
+	  error = heap_get_class_name (thread_p, &a->domain->class_oid, &class_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  columns[i].domain_class_name = class_name;
+	}
+    }
+
+  error = repl_key_pack (index->btname, index->type, index->n_atts, columns, data, length);
+end:
+  for (int i = 0; i < index->n_atts; i++)
+    {
+      if (columns[i].domain_class_name != NULL)
+	{
+	  free_and_init (columns[i].domain_class_name);
+	}
+    }
+
+  free_and_init (columns);
+  return error;
+}
+
+/*
  * repl_log_insert - insert a replication info to the transaction descriptor
  *
  * return: NO_ERROR or error code
@@ -291,7 +379,7 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  */
 int
 repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX * index, REPL_INFO_TYPE repl_info)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -364,6 +452,9 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
     {
       char *ptr_to_packed_key_value_size = NULL;
       int packed_key_len = 0;
+      char *key_metadata = NULL;
+      int metadata_length = 0;
+      char key_digest[REPL_KEY_DIGEST_SIZE];
 
       if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR || class_name == NULL)
 	{
@@ -383,14 +474,29 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	    {
 	      error = ER_REPL_ERROR;
 	    }
+	  free_and_init (class_name);
 	  return error;
 	}
+
+      error = repl_pack_key_metadata (thread_p, index, &key_metadata, &metadata_length);
+      if (error != NO_ERROR)
+	{
+	  free_and_init (class_name);
+	  return error;
+	}
+
+      /* the row log carries the digest of the descriptor, not the descriptor: the slave only needs to know
+       * whether its own descriptor is the same one */
+      repl_key_digest (key_metadata, metadata_length, key_digest);
+      free_and_init (key_metadata);
+      metadata_length = REPL_KEY_DIGEST_SIZE;
 
       repl_rec->tde_encrypted = tde_algo != TDE_ALGORITHM_NONE;
 
       repl_rec->length = OR_INT_SIZE;	/* packed_key_value_size */
       repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
+      repl_rec->length += metadata_length + OR_INT_SIZE + MAX_ALIGNMENT;
 
       ptr = (char *) malloc (repl_rec->length);
       if (ptr == NULL)
@@ -414,6 +520,10 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 
       ptr = or_pack_string_with_length (ptr, class_name, strlen);
       ptr = or_pack_mem_value (ptr, key_dbvalue, &packed_key_len);
+      ptr = or_pack_int (ptr, metadata_length);
+      memcpy (ptr, key_digest, metadata_length);
+      ptr += metadata_length;
+      repl_rec->length = CAST_BUFLEN (ptr - repl_rec->repl_data);
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
