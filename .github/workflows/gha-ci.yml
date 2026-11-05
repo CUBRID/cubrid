@@ -802,6 +802,7 @@ jobs:
           [ "$meta_sha" = "$SHA" ] || {
             echo "::error::meta sha($meta_sha) differs from the sha gate resolved($SHA)"; exit 1; }
           echo "build_run_id=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")" >> "$GITHUB_OUTPUT"
+          echo "build_env=$(sed -n 's/^env=//p' "$dir/build.meta")" >> "$GITHUB_OUTPUT"
 
       - name: GitHub App token
         id: app-token
@@ -955,6 +956,7 @@ jobs:
           SABOTAGE: ${{ needs.gate.outputs.sabotage }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           SHA: ${{ needs.gate.outputs.sha }}
+          BUILD_ENV: ${{ steps.build.outputs.build_env }}
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
@@ -1006,6 +1008,13 @@ jobs:
               [ -n "$prev_sha" ] || prev_sha=$(awk -F= '/^sha=/ {print $2}' "$srcdir/plan/split.meta" 2>/dev/null) || prev_sha=''
               if [ "$(printf '%s' "$prev_sha" | grep -c . || :)" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
                 echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA. A re-run only re-runs the same commit"
+                exit 1
+              fi
+              prev_env=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
+                -exec sed -n 's/^env=//p' {} + 2>/dev/null | sort -u) || prev_env=''
+              [ -n "$prev_env" ] || prev_env=$(sed -n "s/^build_env='\(.*\)'$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_env=''
+              if [ "$prev_env" != "$BUILD_ENV" ]; then
+                echo "::error::run $RERUN_FROM tested a build made with '${prev_env:-no recorded environment}', not '$BUILD_ENV'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
               # A shard that died whole left no result file for failed.list: carry its share.
@@ -1172,6 +1181,7 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
+              echo "build_env='$BUILD_ENV'"
             } > "$out/plan/split.meta"
 
             case "$SABOTAGE" in
