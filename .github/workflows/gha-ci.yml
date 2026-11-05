@@ -1393,11 +1393,15 @@ jobs:
           TEST_RC: ${{ steps.ctp.outputs.rc }}
         run: |
           if [ "$SUITE" = sql_by_cci ]; then
-            # The image's results verb has no rule for the summary.info the cci runner writes.
-            mkdir -p "$SHARD_DIR/artifacts"
-            find "$CTP_HOME/result/sql_by_cci" -type f -name summary.info -exec cat {} + > "$SHARD_DIR/summary.info" \
+            # The image's results verb has no rule for what the cci runner writes: summary.info, and
+            # the JUnit XML of a CTP that has one.
+            r="$CTP_HOME/result/sql_by_cci"
+            mkdir -p "$SHARD_DIR/artifacts" "$SHARD_DIR/test-results"
+            find "$r" -type f -name summary.info -exec cat {} + > "$SHARD_DIR/summary.info" \
               || echo "::warning::could not copy all of the results"
             [ -s "$SHARD_DIR/summary.info" ] || rm -f "$SHARD_DIR/summary.info"
+            find "$r" -type f -name '*.xml' ! -name summary.xml -exec cp -f -t "$SHARD_DIR/test-results" {} + \
+              || echo "::warning::could not copy the JUnit XML"
           else
             /entrypoint.sh results "$SUITE" "$SHARD_DIR" || echo "::warning::could not copy all of the results"
           fi
@@ -1603,16 +1607,18 @@ jobs:
             mkdir -p "$2"
             if [ -f "$1/test_status.data" ]; then
               find "$1" -type f -name test-shell.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
-            elif [ -f "$1/summary_info" ]; then
-              { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
-                | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" > "$2/failed.list"
+            elif [ -f "$1/summary_info" ] || [ -f "$1/summary.info" ]; then
+              if [ -f "$1/summary_info" ]; then
+                { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
+                  | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##"
+              else
+                { grep -E $'\t:NOK:-?[0-9]+$' "$1/summary.info" || :; } | sed -e 's/^TestCase: //' -e $'s/\t:NOK:.*$//'
+              fi > "$2/failed.list"
               awk '{printf "%s\t%d\n", $0, NR}' "$2/failed.list" > "$2/failed.idx"
               find "$1" -type f -name '*.xml' ! -name summary.xml \
                 -exec awk -v dir="$2" -v idx="$2/failed.idx" "$FAILED_AWK" {} +
               cat "$2/failed.list"
               rm -f "$2/failed.list" "$2/failed.idx"
-            elif [ -f "$1/summary.info" ]; then
-              { grep -E $'\t:NOK:-?[0-9]+$' "$1/summary.info" || :; } | sed -e 's/^TestCase: //' -e $'s/\t:NOK:.*$//'
             fi
           }
           rc=0
