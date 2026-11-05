@@ -19764,7 +19764,7 @@ end:
 }
 
 /*
- * pt_semantic_type_in_place () - same as pt_semantic_type, but keeps *tree pointing to the resulting tree even on error
+ * pt_semantic_type_in_place () - pt_semantic_type () that keeps *tree pointing to the resulting tree even on error
  *   return: NO_ERROR or ER_FAILED
  *   parser(in):
  *   tree(in/out): replaced with the resulting tree, which may differ from the input tree; kept if the result is NULL
@@ -19858,61 +19858,9 @@ pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CH
 PT_NODE *
 pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  PT_NODE *spec = NULL;
-  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, false };
-
-  if (pt_has_error (parser))
+  if (pt_semantic_type_in_place (parser, &tree, sc_info_ptr) != NO_ERROR)
     {
       return NULL;
-    }
-  if (sc_info_ptr == NULL)
-    {
-      sc_info_ptr = &sc_info;
-    }
-
-  sc_info_ptr->has_dblink = false;
-
-  if (tree)
-    {
-      switch (tree->node_type)
-	{
-	case PT_DELETE:
-	  spec = tree->info.delete_.spec;
-	  break;
-	case PT_INSERT:
-	  spec = tree->info.insert.spec;
-	  break;
-	case PT_UPDATE:
-	  spec = tree->info.update.spec;
-	  break;
-	default:
-	  break;
-	}
-    }
-
-  if (spec && spec->info.spec.remote_server_name)
-    {
-      sc_info_ptr->has_dblink = true;
-    }
-
-  /* do type checking */
-  tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
-  if (pt_has_error (parser))
-    {
-      tree = NULL;
-      return tree;
-    }
-
-  /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
-  if (!parser->flag.is_parsing_static_sql)
-    {
-      PT_NODE *spec_list = NULL;
-      /* do constant folding */
-      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, &spec_list, pt_fold_constants_post, sc_info_ptr);
-      if (pt_has_error (parser))
-	{
-	  tree = NULL;
-	}
     }
 
   return tree;
