@@ -11475,7 +11475,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       double fk_floor_product;
-      double key_factor, key_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
+      double key_factor, key_sel, on_sel, during_sel;	/* semi/anti only */
+      double filter_sel;	/* semi/anti WHERE-clause terms, or after-join terms */
       bool is_semi_anti;
       BITSET eqclasses;
       BITSET fk_excluded_terms;
@@ -11767,7 +11768,12 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			{
 			  /* not a semi/anti join */
 
-			  if (!BITSET_MEMBER (fk_excluded_terms, i))
+			  if (BITSET_MEMBER (afj_terms, i))
+			    {
+			      /* after-join term: filters the join result, applied after the lower bound below */
+			      filter_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else if (!BITSET_MEMBER (fk_excluded_terms, i))
 			    {
 			      /* Terms identified above as standing for a composite PK-FK relationship's
 			       * columns are excluded here: their independent product ignores the
@@ -11865,7 +11871,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      total_rows = MAX (1.0, total_rows);
 	    }
 
-	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
+	  if (IS_OUTER_JOIN_TYPE (join_type))
 	    {
 	      /* set lower bound of outer join result */
 	      if (join_type == JOIN_RIGHT)
@@ -11876,6 +11882,17 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		{
 		  cardinality = MAX (cardinality, head_info->cardinality);
 		}
+	    }
+
+	  if (!is_semi_anti)
+	    {
+	      /* the after-join terms filter the join result, so an outer join's lower bound comes before them
+	       * (cf. PostgreSQL's calc_joinrel_size_estimate ())
+	       */
+	      cardinality *= filter_sel;
+	      cardinality = MAX (1.0, cardinality);
+	      total_rows *= filter_sel;
+	      total_rows = MAX (1.0, total_rows);
 	    }
 	}
 
