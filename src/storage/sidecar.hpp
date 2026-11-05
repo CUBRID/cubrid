@@ -151,6 +151,13 @@ extern bool sidecar_scan_keeps_lazy (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *sca
 extern bool sidecar_scan_is_protected (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache);
 /* heap_page_collect_visible (): a row with refs that stays in the batch of a plan reading no variable column */
 extern void sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PTR page);
+/* scan_batch_copy_kept (): the batch's kept rows go out from copies of their records, which debug builds admit as
+ * stored form like the page they were copied from (sidecar_batch_keeps ()) */
+#if !defined (NDEBUG)
+extern void sidecar_batch_copied (const char *data, size_t length);
+#else /* NDEBUG */
+#define sidecar_batch_copied(data, length) ((void) 0)
+#endif /* NDEBUG */
 /* heap_scancache_quick_end () of an opted-in scan: the store page its decodes kept is released */
 extern void sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache);
 /* releases the store page the thread's cursor keeps */

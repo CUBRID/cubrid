@@ -8193,6 +8193,8 @@ scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       rec->area_size = rec->length;
       off += DB_ALIGN (rec->length, MAX_ALIGNMENT);
     }
+  /* rows with Sidecar refs among them are read from the copies through the attribute layer */
+  sidecar_batch_copied (hsidp->batch_copy, off);
   return NO_ERROR;
 }
 

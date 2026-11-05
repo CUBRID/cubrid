@@ -1993,6 +1993,17 @@ sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PT
   sidecar_count (thread_p, PSTAT_SC_BATCH_ROWS);
 }
 
+#if !defined (NDEBUG)
+void
+sidecar_batch_copied (const char *data, size_t length)
+{
+  if (length > 0)
+    {
+      sidecar_stored_form_admit (data, (int) length);
+    }
+}
+#endif /* !NDEBUG */
+
 /*
  * The store cursor (I-7).  Per thread, since the rule it keeps is per thread: a reader holds at most one store page,
  * releases it before it fixes another, and nobody fixes a hot page while holding one.  The attribute layer reads a
