@@ -2460,7 +2460,7 @@ ldr_mismatch (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *at
   int err;
 
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, att->header.name);
-  CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
+  CHECK_ERR_QUIET (err, ER_OBJ_DOMAIN_CONFLICT);
 error_exit:
   return err;
 }
@@ -2496,7 +2496,7 @@ ldr_generic (LDR_CONTEXT *context, DB_VALUE *value)
 {
   int err;
 
-  CHECK_ERR (err, obj_desc_set (context->obj, context->attrs[context->next_attr].attdesc, value));
+  CHECK_ERR_QUIET (err, obj_desc_set (context->obj, context->attrs[context->next_attr].attdesc, value));
 error_exit:
   return err;
 }
@@ -2857,12 +2857,12 @@ ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTD
 
       snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, att->header.name);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, class_attr);
-      CHECK_ERR (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
+      CHECK_ERR_QUIET (err, ER_OBJ_ATTRIBUTE_CANT_BE_NULL);
     }
   else
     {
       mem = context->mobj + att->offset;
-      CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, NULL));
+      CHECK_ERR_QUIET (err, att->domain->type->setmem (mem, att->domain, NULL));
       if (!att->domain->type->variable_p)
 	{
 	  OBJ_CLEAR_BOUND_BIT (context->mobj, att->storage_order);
@@ -2891,15 +2891,15 @@ ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val)
 
   if (att->header.name_space == ID_SHARED_ATTRIBUTE)
     {
-      CHECK_ERR (err, obj_set_shared (context->cls, att->header.name, val));
+      CHECK_ERR_QUIET (err, obj_set_shared (context->cls, att->header.name, val));
     }
   else if (att->header.name_space == ID_CLASS_ATTRIBUTE)
     {
-      CHECK_ERR (err, obj_set (context->cls, att->header.name, val));
+      CHECK_ERR_QUIET (err, obj_set (context->cls, att->header.name, val));
     }
   else if (context->attr_type == LDR_ATTRIBUTE_DEFAULT)
     {
-      CHECK_ERR (err, db_change_default (context->cls, att->header.name, val));
+      CHECK_ERR_QUIET (err, db_change_default (context->cls, att->header.name, val));
     }
 
 error_exit:
@@ -4234,7 +4234,12 @@ ldr_class_oid_db_object (LDR_CONTEXT *context, const char *str, size_t len, LDR_
    */
   if (att->header.name_space == ID_SHARED_ATTRIBUTE)
     {
-      ldr_generic (context, &val);
+      /*
+       * Take the error. ldr_generic () says nothing of its own now, so dropping what
+       * it returns would lose the failure altogether: err would stay NO_ERROR and
+       * ldr_increment_err_count () below would not count the row either.
+       */
+      CHECK_ERR_QUIET (err, ldr_generic (context, &val));
     }
   else
     {
