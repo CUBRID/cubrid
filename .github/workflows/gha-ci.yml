@@ -123,7 +123,12 @@ env:
         awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
       elif ls "$1"/test-results/*.xml > /dev/null 2>&1; then
-        awk '/<testcase / {e++} /<(failure|error)[ >\/]/ {f++} /<skipped[ >\/]/ {k++}
+        # CDATA is text, never markup: a log can hold a literal <testcase or <error.
+        awk 'FNR == 1 {in_cdata = 0}
+          in_cdata { if (index($0, "]]>")) in_cdata = 0; next }
+          { c = index($0, "<![CDATA["); tags = c ? substr($0, 1, c - 1) : $0
+            if (c && !index(substr($0, c + 9), "]]>")) in_cdata = 1 }
+          tags ~ /<testcase[ >\/]/ {e++} tags ~ /<(failure|error)[ >\/]/ {f++} tags ~ /<skipped[ >\/]/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", e - k, e - k - f, f, k}' "$1"/test-results/*.xml
       else
         echo "found=no exec=0 pass=0 fail=0 skip=0"
