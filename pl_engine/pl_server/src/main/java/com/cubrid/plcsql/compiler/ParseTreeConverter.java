@@ -120,12 +120,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         // the package initializer) runs when the package class is used first, which can be in a
         // call to a PARALLEL_ENABLE function, where the server-side SQL is forbidden. So, if the
         // spec has a PARALLEL_ENABLE function, the initialization follows the same restrictions.
-        pkgInitRestricted = false;
+        isPkgInitUnderParallelEnable = false;
         if (specContext.seq_of_declare_specs() != null) {
             for (Declare_specContext ds : specContext.seq_of_declare_specs().declare_spec()) {
                 Routine_declContext rd = ds.routine_decl();
                 if (rd != null && !rd.routine_header().parallel_enable_spec().isEmpty()) {
-                    pkgInitRestricted = true;
+                    isPkgInitUnderParallelEnable = true;
                     break;
                 }
             }
@@ -2977,7 +2977,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     if (parallelEnabled) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx),
-                                getParallelRestricted() + " cannot use DBMS_OUTPUT package");
+                                getDescOfCodeUnderParallelEnable()
+                                        + " cannot use DBMS_OUTPUT package");
                     }
 
                     // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
@@ -3318,8 +3319,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private boolean connectionRequired = false;
     private boolean parallelEnabled = false;
-    private boolean pkgInitRestricted = false;
-    private boolean visitingPkgInitCode = false;
+    private boolean isPkgInitUnderParallelEnable = false;
+    private boolean visitingPkgInitCodeUnderParallelEnable = false;
 
     private boolean controlFlowBlocked;
 
@@ -3342,7 +3343,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (parallelEnabled) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx),
-                    getParallelRestricted() + " cannot use a feature that calls DB server");
+                    getDescOfCodeUnderParallelEnable()
+                            + " cannot use a feature that calls DB server");
         }
     }
 
@@ -3354,7 +3356,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private void rememberParallelRestriction(AstNode globalCall) {
         if (parallelEnabled) {
-            parallelRestrictedCalls.put(globalCall, getParallelRestricted());
+            parallelRestrictedCalls.put(globalCall, getDescOfCodeUnderParallelEnable());
         }
     }
 
@@ -3379,30 +3381,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 && (decl.directive & DeclRoutine.DIRECTIVE_PARALLEL_ENABLE) == 0) {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx), // s444
-                    getParallelRestricted()
+                    getDescOfCodeUnderParallelEnable()
                             + " can call only local routines and PARALLEL_ENABLE functions in the same package");
         }
     }
 
-    private String getParallelRestricted() {
-        return visitingPkgInitCode
+    private String getDescOfCodeUnderParallelEnable() {
+        return visitingPkgInitCodeUnderParallelEnable
                 ? "the initialization of a package having PARALLEL_ENABLE functions" // s446
                 : "Stored functions declared with PARALLEL_ENABLE";
     }
 
-    // the package initialization code is visited: see pkgInitRestricted
+    // the package initialization code is visited: see isPkgInitUnderParallelEnable
     private boolean enterPkgInit() {
         boolean saved = parallelEnabled;
-        if (pkgInitRestricted && routineDefNestLevel == 0 && topLevelStmt != CREATE_SP) {
+        if (isPkgInitUnderParallelEnable && routineDefNestLevel == 0 && topLevelStmt != CREATE_SP) {
             parallelEnabled = true;
-            visitingPkgInitCode = true;
+            visitingPkgInitCodeUnderParallelEnable = true;
         }
         return saved;
     }
 
     private void exitPkgInit(boolean saved) {
         parallelEnabled = saved;
-        visitingPkgInitCode = false;
+        visitingPkgInitCodeUnderParallelEnable = false;
     }
 
     private void checkRedefinitionOfUsedName(String name, ParserRuleContext declCtx) {
