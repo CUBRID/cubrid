@@ -13775,6 +13775,80 @@ locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 }
 
 /*
+ * locator_version_is_ours () - Whether a version was inserted by this transaction, still active
+ *   return: the answer; also true where no MVCC version can tell, in SA mode and for a class without MVCC, whose rows
+ *	     a transaction changes in place
+ *   thread_p(in): thread entry
+ *   class_oid(in): class of the object
+ *   header(in): the version's MVCC header
+ */
+static bool
+locator_version_is_ours (THREAD_ENTRY * thread_p, const OID * class_oid, const MVCC_REC_HEADER * header)
+{
+#if defined (SERVER_MODE)
+  return (mvcc_is_mvcc_disabled_class (class_oid)
+	  || (MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (header)
+	      && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (header))));
+#else /* SERVER_MODE */
+  return true;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * locator_object_is_ours () - Whether the object's last version is this transaction's; see locator_version_is_ours ()
+ *   return: error code
+ *   thread_p(in): thread entry
+ *   oid(in): object identifier
+ *   class_oid(in): class of the object
+ *   class_hfid(in): heap of the class
+ *   is_ours(out): the answer; also true for a row that cannot be read, the side that keeps its lock to commit
+ */
+int
+locator_object_is_ours (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, const HFID * class_hfid,
+			bool * is_ours)
+{
+#if defined (SERVER_MODE)
+  HEAP_SCANCACHE scan_cache;
+  HEAP_GET_CONTEXT context;
+  MVCC_REC_HEADER header;
+  OID class_oid_local = *class_oid;
+  SCAN_CODE scan;
+  int error = NO_ERROR;
+#endif /* SERVER_MODE */
+
+  *is_ours = true;
+
+#if defined (SERVER_MODE)
+  if (mvcc_is_mvcc_disabled_class (class_oid))
+    {
+      return NO_ERROR;
+    }
+
+  (void) heap_scancache_quick_start_with_class_hfid (thread_p, &scan_cache, class_hfid);
+  heap_init_get_context (thread_p, &context, oid, &class_oid_local, NULL, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_prepare_get_context (thread_p, &context, false, LOG_WARNING_IF_DELETED);
+  if (scan == S_SUCCESS)
+    {
+      scan = heap_get_mvcc_header (thread_p, &context, &header);
+    }
+  if (scan == S_SUCCESS)
+    {
+      *is_ours = locator_version_is_ours (thread_p, class_oid, &header);
+    }
+  else if (scan == S_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  heap_clean_get_context (thread_p, &context);
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return error;
+#else /* SERVER_MODE */
+  return NO_ERROR;
+#endif /* SERVER_MODE */
+}
+
+/*
  * locator_lock_and_get_object_internal () - Internal function: aquire lock and return object
  *
  * return : Scan code; S_SUCCESS_CHN_UPTODATE from heap_get_last_version () is preserved to the caller.
@@ -13865,15 +13939,6 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   if (is_mvcc_class && locator_has_isolation_conflict (thread_p, context, &recdes_header, &scan))
     {
       goto error;
-    }
-
-  if (is_mvcc_class && lock_is_instant_lock_mode (LOG_FIND_THREAD_TRAN_INDEX (thread_p))
-      && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&recdes_header)
-      && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&recdes_header)))
-    {
-      /* A click counter commits its change on its own unless the row is already ours.  The lock manager tells that
-       * from an X lock we still hold, which an earlier statement may have given back; tell it from the stamp. */
-      lock_stop_instant_lock_mode (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), false);
     }
 
   if (lock_acquired_p != NULL)
@@ -14002,6 +14067,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  scan = S_ERROR;
 	  goto exit;
 	}
+      mvcc_reev_data->last_version_is_ours = locator_version_is_ours (thread_p, class_oid, &mvcc_header);
 
       if (scan_cache->mvcc_snapshot)
 	{
