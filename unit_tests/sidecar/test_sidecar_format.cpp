@@ -369,10 +369,15 @@ TEST_CASE ("the codec rejects what it cannot build or expand", "[sidecar]")
   hot_result h = build (im, { 1 });
   REQUIRE (h.rc == NO_ERROR);
 
-  SECTION ("an image that already has refs")
+  SECTION ("an image with refs that the slots do not all name again")
   {
     SIDECAR_SLOT slot[] = { { 0, ref_for (0, 300) } };
     CHECK (sidecar_hot_length (&h.recdes, im.n_variable, 1, slot) == SIDECAR_FORMAT_ERROR);
+  }
+  SECTION ("an image with refs read with another count of variable attributes")
+  {
+    SIDECAR_SLOT slot[] = { { 1, ref_for (1, 300) } };
+    CHECK (sidecar_hot_length (&h.recdes, im.n_variable + 1, 1, slot) == SIDECAR_FORMAT_ERROR);
   }
   SECTION ("an area too small")
   {
@@ -624,4 +629,65 @@ TEST_CASE ("the policy's estimate is the length of the hot record the codec buil
   CHECK (h.recdes.length == src.length - (3000 - 16) - (2500 - 16) + SIDECAR_TRAILER_SIZE (2));
   CHECK (h.recdes.length <= p.inline_target);
   CHECK (expand (h.recdes, im) == im.bytes);
+}
+
+TEST_CASE ("a hot record with refs is rebuilt with more refs as if built at once from the inline image", "[sidecar]")
+{
+  /* an UPDATE image keeps the refs of unchanged values and moves another value out */
+  const std::vector<std::string> vars = { value_of (300, 21), value_of (4000, 22), "", value_of (900, 23) };
+  image im = make_image (OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION, 2, "fixed", vars);
+  hot_result kept = build (im, { 1 });
+  REQUIRE (kept.rc == NO_ERROR);
+
+  hot_result at_once = build (im, { 1, 3 });
+  REQUIRE (at_once.rc == NO_ERROR);
+
+  RECDES src = im.recdes ();
+  std::vector<SIDECAR_SLOT> slots = { { 1, ref_for (1, sidecar_var_slot_length (&src, 1)) },
+    { 3, ref_for (3, sidecar_var_slot_length (&src, 3)) }
+  };
+  const int length = sidecar_hot_length (&kept.recdes, im.n_variable, 2, slots.data ());
+  REQUIRE (length == at_once.recdes.length);
+
+  std::vector<char> bytes (length);
+  RECDES rebuilt;
+  rebuilt.data = bytes.data ();
+  rebuilt.area_size = length;
+  REQUIRE (sidecar_build_hot (&kept.recdes, im.n_variable, 2, slots.data (), &rebuilt) == NO_ERROR);
+  CHECK (rebuilt.length == length);
+  CHECK (bytes == std::vector<char> (at_once.recdes.data, at_once.recdes.data + length));
+  CHECK (expand (rebuilt, im) == im.bytes);
+
+  SECTION ("the same refs rebuild the same record")
+  {
+    std::vector<SIDECAR_SLOT> same = { slots[0] };
+    std::vector<char> copy (kept.recdes.length);
+    RECDES again;
+    again.data = copy.data ();
+    again.area_size = (int) copy.size ();
+    REQUIRE (sidecar_build_hot (&kept.recdes, im.n_variable, 1, same.data (), &again) == NO_ERROR);
+    CHECK (copy == std::vector<char> (kept.recdes.data, kept.recdes.data + kept.recdes.length));
+  }
+}
+
+TEST_CASE ("the trailer is found and written from the record end alone", "[sidecar]")
+{
+  image im = make_image (0, 2, "", { value_of (300, 1), "", value_of (300, 2), value_of (8, 3), value_of (300, 4) });
+  hot_result h = build (im, { 0, 2, 4 });
+  REQUIRE (h.rc == NO_ERROR);
+
+  const char *end = h.recdes.data + h.recdes.length;
+  for (int location = 0; location < im.n_variable; location++)
+    {
+      INFO ("location " << location);
+      CHECK (sidecar_trailer_find_from_end (end, location) == sidecar_trailer_find (&h.recdes, location));
+    }
+
+  std::vector<char> tail (SIDECAR_TRAILER_SIZE (3), 0);
+  for (int i = 0; i < SIDECAR_TRAILER_N_PAD (3); i++)
+    {
+      OR_PUT_SHORT (tail.data () + i * OR_SHORT_SIZE, sidecar_trailer_location (&h.recdes, i));
+    }
+  sidecar_trailer_put_counts (tail.data () + tail.size (), im.n_variable, 3);
+  CHECK (tail == std::vector<char> (end - tail.size (), end));
 }

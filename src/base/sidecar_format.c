@@ -153,6 +153,36 @@ sidecar_trailer_n_variable (const RECDES * recdes)
   return (unsigned short) OR_GET_SHORT (recdes->data + recdes->length - 3 * OR_SHORT_SIZE);
 }
 
+void
+sidecar_trailer_put_counts (char *end, int n_variable, int n_refs)
+{
+  OR_PUT_SHORT (end - 3 * OR_SHORT_SIZE, n_variable);
+  OR_PUT_SHORT (end - 2 * OR_SHORT_SIZE, n_refs);
+  OR_PUT_SHORT (end - OR_SHORT_SIZE, SIDECAR_TRAILER_MAGIC);
+}
+
+int
+sidecar_trailer_find_from_end (const char *end, int location)
+{
+  const int n_refs = (unsigned short) OR_GET_SHORT (end - 2 * OR_SHORT_SIZE);
+  const char *locations = end - SIDECAR_TRAILER_SIZE (n_refs);
+
+  for (int i = 0; i < n_refs; i++)
+    {
+      const int ref_location = (unsigned short) OR_GET_SHORT (locations + i * OR_SHORT_SIZE);
+
+      if (ref_location == location)
+	{
+	  return i;
+	}
+      if (ref_location > location)
+	{
+	  break;
+	}
+    }
+  return -1;
+}
+
 int
 sidecar_trailer_location (const RECDES * recdes, int index)
 {
@@ -250,13 +280,47 @@ sidecar_var_slot_length (const RECDES * recdes, int location)
   return OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL (var_table, location, offset_size);
 }
 
+/* the slots of a hot record built from image: an image with refs must be a well-formed hot record of the same
+ * n_variable, and slots[] must name each of its refs, so that the build loses none */
+static bool
+sidecar_slots_cover_refs (const RECDES * image, int n_variable, int n_slots, const SIDECAR_SLOT * slots)
+{
+  if (!sidecar_record_has_refs (image))
+    {
+      return true;
+    }
+  if (!sidecar_hot_is_well_formed (image) || sidecar_trailer_n_variable (image) != n_variable)
+    {
+      return false;
+    }
+
+  const int n_refs = sidecar_trailer_n_refs (image);
+  int k = 0;
+
+  for (int i = 0; i < n_refs; i++)
+    {
+      const int location = sidecar_trailer_location (image, i);
+
+      while (k < n_slots && slots[k].location < location)
+	{
+	  k++;
+	}
+      if (k == n_slots || slots[k].location != location)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 int
 sidecar_hot_length (const RECDES * image, int n_variable, int n_slots, const SIDECAR_SLOT * slots)
 {
   SIDECAR_LAYOUT layout;
 
-  if (n_slots < 1 || n_slots > n_variable || n_variable > SIDECAR_TRAILER_PAD - 1 || sidecar_record_has_refs (image)
-      || sidecar_layout_init (image, n_variable, &layout) != NO_ERROR)
+  if (n_slots < 1 || n_slots > n_variable || n_variable > SIDECAR_TRAILER_PAD - 1
+      || sidecar_layout_init (image, n_variable, &layout) != NO_ERROR
+      || !sidecar_slots_cover_refs (image, n_variable, n_slots, slots))
     {
       return SIDECAR_FORMAT_ERROR;
     }
@@ -325,9 +389,7 @@ sidecar_build_hot (const RECDES * image, int n_variable, int n_slots, const SIDE
     {
       OR_PUT_SHORT (trailer + i * OR_SHORT_SIZE, i < n_slots ? slots[i].location : SIDECAR_TRAILER_PAD);
     }
-  OR_PUT_SHORT (hot->data + length - 3 * OR_SHORT_SIZE, n_variable);
-  OR_PUT_SHORT (hot->data + length - 2 * OR_SHORT_SIZE, n_slots);
-  OR_PUT_SHORT (hot->data + length - OR_SHORT_SIZE, SIDECAR_TRAILER_MAGIC);
+  sidecar_trailer_put_counts (hot->data + length, n_variable, n_slots);
 
   hot->length = length;
   hot->type = image->type;

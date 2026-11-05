@@ -136,6 +136,12 @@ extern int sidecar_trailer_n_variable (const RECDES * recdes);
 extern int sidecar_trailer_location (const RECDES * recdes, int index);
 /* the index of the ref that the slot at location holds, or -1 when the slot holds a value */
 extern int sidecar_trailer_find (const RECDES * recdes, int location);
+/* the same, for a record with a trailer accepted before, from the end of the record only (the attribute layer
+ * keeps the record's variable table and end, not its start) */
+extern int sidecar_trailer_find_from_end (const char *end, int location);
+/* Writes n_variable, n_refs and the magic, the last 6 bytes of a trailer that ends at end; the writer puts
+ * the n_pad locations before them */
+extern void sidecar_trailer_put_counts (char *end, int n_variable, int n_refs);
 /* The whole form of a hot record: trailer, ascending locations below the trailer's n_variable, a SIDECAR_REF_SIZE
  * slot for each ref, and the trailer right after entry[n_variable] of the offset table */
 extern bool sidecar_hot_is_well_formed (const RECDES * recdes);
@@ -148,9 +154,11 @@ extern int sidecar_var_slot_length (const RECDES * recdes, int location);
 /* The length of the hot record that sidecar_build_hot () makes of image with a ref in each slot of slots[]
  * (ascending, distinct locations below n_variable), or SIDECAR_FORMAT_ERROR */
 extern int sidecar_hot_length (const RECDES * image, int n_variable, int n_slots, const SIDECAR_SLOT * slots);
-/* Builds into hot->data (hot->area_size at least sidecar_hot_length ()) the hot record of an inline image without
- * refs, whose representation has n_variable variable attributes: each slot of slots[] (ascending locations) gets its
- * ref, the trailer is appended and the flag set.  NO_ERROR or SIDECAR_FORMAT_ERROR. */
+/* Builds into hot->data (hot->area_size at least sidecar_hot_length ()) the hot record of an image whose
+ * representation has n_variable variable attributes: each slot of slots[] (ascending locations) gets its ref, the
+ * trailer is appended and the flag set.  An image that has refs already (an UPDATE image with kept refs) must be a
+ * well-formed hot record of the same n_variable whose every ref slots[] names again, with its ref; the build then
+ * replaces its trailer.  NO_ERROR or SIDECAR_FORMAT_ERROR. */
 extern int sidecar_build_hot (const RECDES * image, int n_variable, int n_slots, const SIDECAR_SLOT * slots,
 			      RECDES * hot);
 
