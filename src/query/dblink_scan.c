@@ -31,6 +31,7 @@
 
 #include "dbtype.h"
 #include "object_domain.h"
+#include "object_domain_convert.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "query_list.h"
@@ -730,12 +731,8 @@ dblink_bind_param (int conn_handle, int stmt_handle, VAL_DESCR * vd, DBLINK_HOST
   for (n = 0; n < host_vars->count; n++)
     {
       i = host_vars->index[n];
-      /* The remote server binds the original value, not resolve_domains' converted one. `in` is read-only and shared
-       * with the PX workers' copies: dblink_bind_dbval_to_param only reads its value (its parameter is not const
-       * because of the develop helpers it calls). */
-      ret =
-	dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1,
-				    (DB_VALUE *) & vd->xasl_state->resolved_domain.in[i]);
+      /* the binding reads the bound value (val_descr.dbval_ptr is const) */
+      ret = dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1, (DB_VALUE *) & vd->dbval_ptr[i]);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -1206,6 +1203,121 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
   return NO_ERROR;
 }
 
+/* CBRD-27583: a remote column's conversion into its declared column, decided once at the scan's open */
+typedef struct dblink_column_plan DBLINK_COLUMN_PLAN;
+struct dblink_column_plan
+{
+  DB_TYPE src_type;		/* the type of the value the row builds from the driver's (DB_TYPE_NULL: none) */
+  TP_DOMAIN *domain;		/* the declared column's domain */
+  TP_VALUE_CONVERTER conv;	/* src_type into domain (ASSIGN); NULL: nothing to convert */
+};
+
+/*
+ * dblink_value_type () - the type of the value dblink_scan_next builds for a column of a driver type
+ *   return: the type; DB_TYPE_NULL for a NULL column or a type the row refuses (ER_DBLINK_UNSUPPORTED_TYPE)
+ *   utype(in): the column's basic driver type (dblink_get_basic_utype)
+ */
+static DB_TYPE
+dblink_value_type (T_CCI_U_TYPE utype)
+{
+  switch (utype)
+    {
+    case CCI_U_TYPE_SHORT:
+      return DB_TYPE_SHORT;
+    case CCI_U_TYPE_INT:
+      return DB_TYPE_INTEGER;
+    case CCI_U_TYPE_BIGINT:
+      return DB_TYPE_BIGINT;
+    case CCI_U_TYPE_FLOAT:
+      return DB_TYPE_FLOAT;
+    case CCI_U_TYPE_DOUBLE:
+      return DB_TYPE_DOUBLE;
+    case CCI_U_TYPE_MONETARY:
+      return DB_TYPE_MONETARY;
+    case CCI_U_TYPE_NUMERIC:
+      return DB_TYPE_NUMERIC;
+    case CCI_U_TYPE_STRING:
+      return DB_TYPE_VARCHAR;
+    case CCI_U_TYPE_CHAR:
+      return DB_TYPE_CHAR;
+    case CCI_U_TYPE_JSON:
+      return DB_TYPE_JSON;
+    case CCI_U_TYPE_BIT:
+      return DB_TYPE_BIT;
+    case CCI_U_TYPE_VARBIT:
+      return DB_TYPE_VARBIT;
+    case CCI_U_TYPE_DATE:
+      return DB_TYPE_DATE;
+    case CCI_U_TYPE_TIME:
+      return DB_TYPE_TIME;
+    case CCI_U_TYPE_TIMESTAMP:
+      return DB_TYPE_TIMESTAMP;
+    case CCI_U_TYPE_DATETIME:
+      return DB_TYPE_DATETIME;
+    case CCI_U_TYPE_TIMESTAMPTZ:
+      return DB_TYPE_TIMESTAMPTZ;
+    case CCI_U_TYPE_DATETIMETZ:
+      return DB_TYPE_DATETIMETZ;
+    case CCI_U_TYPE_TIMESTAMPLTZ:
+      return DB_TYPE_TIMESTAMPLTZ;
+    case CCI_U_TYPE_DATETIMELTZ:
+      return DB_TYPE_DATETIMELTZ;
+    default:
+      return DB_TYPE_NULL;
+    }
+}
+
+/*
+ * dblink_plan_columns () - CBRD-27583: each column's conversion of the remote value into the declared column,
+ *   from the column's driver type (col_info, fixed at the prepare) and the output value's domain, which the rows
+ *   read every time before: the rows convert with it and look nothing up
+ *   return: NO_ERROR or an error code
+ *   scan_info(in/out): an opened scan's; planned already (a cursor rewind or a correlated reopen) is kept
+ *   val_list(in): the scan's output values; a count other than the columns' is the row's error, so no plan
+ */
+int
+dblink_plan_columns (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
+{
+  T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
+  QPROC_DB_VALUE_LIST valptrp;
+  int col_no, error;
+
+  if (scan_info->col_plan != NULL || col_info == NULL || val_list == NULL || val_list->val_cnt != scan_info->col_cnt)
+    {
+      return NO_ERROR;
+    }
+
+  /* malloc, not the private heap: the plan lives as long as the statement, which the XASL clear may close */
+  scan_info->col_plan = (DBLINK_COLUMN_PLAN *) malloc (sizeof (DBLINK_COLUMN_PLAN) * scan_info->col_cnt);
+  if (scan_info->col_plan == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (DBLINK_COLUMN_PLAN) * scan_info->col_cnt);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (valptrp = val_list->valp, col_no = 0; col_no < scan_info->col_cnt; col_no++, valptrp = valptrp->next)
+    {
+      DBLINK_COLUMN_PLAN *plan = &scan_info->col_plan[col_no];
+      const DB_TYPE declared = (DB_TYPE) db_value_domain_type (valptrp->val);
+
+      plan->src_type = dblink_value_type (dblink_get_basic_utype (CCI_GET_RESULT_INFO_TYPE (col_info, col_no + 1)));
+      /* the declared column: the output value's type, precision, scale and collation, as the rows read them */
+      plan->domain =
+	tp_domain_resolve (declared, NULL, db_value_precision (valptrp->val), db_value_scale (valptrp->val), NULL,
+			   TP_IS_CHAR_TYPE (declared) ? db_get_string_collation (valptrp->val) : 0);
+      if (plan->domain == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      plan->conv = plan->src_type == DB_TYPE_NULL ? NULL
+	: tp_value_find_converter (plan->src_type, plan->domain, DOMAIN_CONVERT_ASSIGN);
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * dblink_close_scan () -
  *   return: int
@@ -1244,6 +1356,9 @@ dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final)
     {
       return NO_ERROR;
     }
+
+  /* the columns' plan goes with the statement: closed below (whether that fails or not) or already gone */
+  free_and_init (scan_info->col_plan);
 
   /* sentinel: already closed (set below on success) */
   if (scan_info->stmt_handle <= 0)
@@ -1460,7 +1575,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  break;
 	}
 
-      if (ind == -1)
+      /* a NULL the row built (an empty string under oracle_style_empty_string) keeps the declared type like ind -1 */
+      if (ind == -1 || DB_IS_NULL (&cci_value))
 	{
 	  valptrp->val->domain.general_info.is_null = 1;
 	}
@@ -1474,20 +1590,25 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	   * INVARIANT: the parse-tree column type (pt_dblink_table_fill_attr_def in
 	   * name_resolution.c) must be declared with this SAME local codeset/collation,
 	   * or compile-time type/collation checks diverge from this run-time value. */
-	  TP_DOMAIN dom;
+	  const DBLINK_COLUMN_PLAN *plan;
 	  TP_DOMAIN_STATUS status;
 
-	  tp_domain_init (&dom, (DB_TYPE) db_value_domain_type (valptrp->val));
-
-	  dom.precision = db_value_precision (valptrp->val);
-	  dom.collation_id = db_get_string_collation (valptrp->val);
-	  dom.codeset = db_get_string_codeset (valptrp->val);
-	  dom.scale = db_value_scale (valptrp->val);
-
-	  if ((status =
-	       tp_value_cast_preserve_domain (&cci_value, valptrp->val, &dom, false, true)) != DOMAIN_COMPATIBLE)
+	  /* CBRD-27583: the column's conversion planned at the open (dblink_plan_columns) */
+	  assert (scan_info->col_plan != NULL);
+	  plan = &scan_info->col_plan[col_no - 1];
+	  status = tp_value_cast_with_converter (&cci_value, valptrp->val, plan->domain, false, plan->src_type,
+						 plan->conv);
+	  if (status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, &cci_value, &dom);
+	      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, &cci_value, plan->domain);
+	      /* the output keeps the declared column: the next open plans from it (dblink_plan_columns) */
+	      db_value_domain_init (valptrp->val, TP_DOMAIN_TYPE (plan->domain), plan->domain->precision,
+				    plan->domain->scale);
+	      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (plan->domain)))
+		{
+		  db_string_put_cs_and_collation (valptrp->val, plan->domain->codeset, plan->domain->collation_id);
+		}
+	      db_value_put_null (valptrp->val);
 	      goto close_exit;
 	    }
 	}
@@ -1539,16 +1660,17 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 
 /*
  * dblink_dml_build_insert_sql () - Build "INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...)",
- *   optionally followed by "ON DUPLICATE KEY UPDATE c = <value>, ...". A REPLACE is the same statement
- *   under a different prefix -- the column list, the placeholders and the values the caller binds are
- *   what an INSERT sends -- and never carries the clause: the grammar makes the two exclusive.
+ *   optionally followed by "ON DUPLICATE KEY UPDATE c = <value>, ...". A value is printed text, or "?" when
+ *   the caller binds it after the INSERT values. A REPLACE is the same statement under a different prefix --
+ *   the column list, the placeholders and the values the caller binds are what an INSERT sends -- and never
+ *   carries the clause: the grammar makes the two exclusive.
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
  *           db_private_free), error code on failure.
  *   thread_p(in)   : thread entry
  *   table_name(in) : remote table name
  *   attr_names(in) : explicit column names (NULL for positional INSERT)
  *   num_attrs(in)  : length of attr_names (0 when positional)
- *   num_bind(in)   : number of ? placeholders (= SELECT column count)
+ *   num_bind(in)   : number of ? placeholders in VALUES (= INSERT column count)
  *   do_replace(in) : true to head the statement with REPLACE INTO instead of INSERT INTO
  *   odku(in)       : ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means no clause
  *   sql_out(out)   : set to the built SQL text on success
@@ -1603,8 +1725,8 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	  return ER_DBLINK;
 	}
 
-      /* guard: this path can only carry text, so a slot with nothing to print would go out as " = 'x'"
-       * or "c = " -- a different statement, not an error */
+      /* guard: a column with no name would go out as " = 'x'", and an empty value as "c = ". Either is a
+       * different statement, not an error. A NULL exprs[i] is a bound value and goes out as "?". */
       if (odku->cols == NULL || odku->exprs == NULL)
 	{
 	  snprintf (errmsg, sizeof (errmsg), "%s: odku assignment array is NULL", errctx);
@@ -1613,9 +1735,15 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	}
       for (i = 0; i < num_odku; i++)
 	{
-	  if (odku->cols[i] == NULL || odku->cols[i][0] == '\0' || odku->exprs[i] == NULL || odku->exprs[i][0] == '\0')
+	  if (odku->cols[i] == NULL || odku->cols[i][0] == '\0')
 	    {
-	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d is NULL or empty", errctx, i);
+	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d has no column name", errctx, i);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+	      return ER_DBLINK;
+	    }
+	  if (odku->exprs[i] != NULL && odku->exprs[i][0] == '\0')
+	    {
+	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d has an empty value", errctx, i);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
 	      return ER_DBLINK;
 	    }
@@ -1644,7 +1772,8 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
       sql_len += DBLINK_INSERT_SQL_ODKU_OVERHEAD;
       for (i = 0; i < num_odku; i++)
 	{
-	  sql_len += strlen (odku->cols[i]) + strlen (odku->exprs[i]) + DBLINK_INSERT_SQL_PER_ASSIGN;
+	  sql_len += strlen (odku->cols[i]) + (odku->exprs[i] != NULL ? strlen (odku->exprs[i]) : 1)
+	    + DBLINK_INSERT_SQL_PER_ASSIGN;
 	}
     }
 
@@ -1738,7 +1867,7 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
     }
   DBLINK_INSERT_SQL_APPEND_CHAR (')');
 
-  /* Text, not binds: the values are constants, so no per-row value exists for a placeholder to carry */
+  /* A constant goes out as text. A value from the source row is a placeholder, bound after the INSERT values. */
   if (num_odku > 0)
     {
       DBLINK_INSERT_SQL_APPEND_LIT (" ON DUPLICATE KEY UPDATE ");
@@ -1746,7 +1875,14 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	{
 	  DBLINK_INSERT_SQL_APPEND_N (odku->cols[i], strlen (odku->cols[i]));
 	  DBLINK_INSERT_SQL_APPEND_LIT (" = ");
-	  DBLINK_INSERT_SQL_APPEND_N (odku->exprs[i], strlen (odku->exprs[i]));
+	  if (odku->exprs[i] != NULL)
+	    {
+	      DBLINK_INSERT_SQL_APPEND_N (odku->exprs[i], strlen (odku->exprs[i]));
+	    }
+	  else
+	    {
+	      DBLINK_INSERT_SQL_APPEND_CHAR ('?');
+	    }
 	  if (i < num_odku - 1)
 	    {
 	      DBLINK_INSERT_SQL_APPEND_LIT (", ");
@@ -2289,7 +2425,7 @@ dblink_dml_reprepare_with_key_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * 
  *                     operator when the statement sends a WHERE
  *   attr_names(in)  : INSERT and REPLACE only -- explicit column names (NULL for positional INSERT)
  *   num_attrs(in)   : INSERT and REPLACE only -- length of attr_names (0 when positional)
- *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders (= SELECT column count)
+ *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders in VALUES (= INSERT column count)
  *   set_text(in)    : UPDATE only -- the SET clause, with a placeholder per bound value
  *   num_set(in)     : UPDATE only -- number of placeholders in set_text. The WHERE key's placeholder comes
  *                     after them
@@ -2474,7 +2610,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)      : thread entry
  *   state(in)         : open DML sink state (conn_handle, stmt_handle)
- *   vals(in)          : array of DB_VALUE* (one per SELECT output column)
+ *   vals(in)          : array of DB_VALUE*, one per "?" -- for an INSERT, the INSERT values and then the bound
+ *                       ON DUPLICATE KEY UPDATE values
  *   num_vals(in)      : length of vals
  *   affected_rows(out): remote-reported affected row count for this execute (cci_execute's return
  *                        value); NULL when the caller does not use the count.

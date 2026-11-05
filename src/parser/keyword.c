@@ -966,12 +966,12 @@ verify_test (bool is_keywords, KEYWORDS_TABLE_SRCH_INFO & info)
 static KEYWORD_RECORD *
 pt_find_keyword (const char *text)
 {
-  static bool keyword_sorted = false;
   static KEYWORDS_TABLE_SRCH_INFO kinfo;
-  int i, len, cmp;
   KEYWORD_RECORD dummy;
 
-  if (keyword_sorted == false)
+  /* sort the keyword table only once (thread-safe initialization of a function-local static variable) */
+  /* *INDENT-OFF* */
+  static bool is_initialized = [] ()
     {
       kinfo.min_len = MAX_KEYWORD_SIZE;
       kinfo.max_len = 0;
@@ -981,12 +981,24 @@ pt_find_keyword (const char *text)
 
       init_keyword_tables (keywords, kinfo, keyword_hash_comparator < KEYWORD_RECORD >);
 
-      keyword_sorted = true;
+      return true;
+    } ();
+  /* *INDENT-ON* */
+  /* Notice:
+   * This ensures the variable is not optimized away, even though it does not change the functional logic of the code
+   * Please do not delete the following line.
+   */
+  (void) is_initialized;
 
 #ifndef NDEBUG
+  /* verify the table once after the initialization; set the flag first, since verify_test () calls this function */
+  static bool keyword_sorted_verified = false;
+  if (keyword_sorted_verified == false)
+    {
+      keyword_sorted_verified = true;
       verify_test (true, kinfo);
-#endif
     }
+#endif
 
   return (KEYWORD_RECORD *) find_keyword_tables (keywords, dummy, kinfo, keyword_hash_comparator < KEYWORD_RECORD >,
 						 text);
@@ -1093,12 +1105,12 @@ pt_get_keyword_rec (int *rec_count)
 FUNCTION_MAP *
 pt_find_function_name (const char *text)
 {
-  static bool function_keyword_sorted = false;
   static KEYWORDS_TABLE_SRCH_INFO finfo;
-  int i, len, cmp;
   FUNCTION_MAP dummy;
 
-  if (function_keyword_sorted == false)
+  /* sort the function table only once (thread-safe initialization of a function-local static variable) */
+  /* *INDENT-OFF* */
+  static bool is_initialized = [] ()
     {
       finfo.min_len = MAX_KEYWORD_SIZE;
       finfo.max_len = 0;
@@ -1108,12 +1120,25 @@ pt_find_function_name (const char *text)
 
       init_keyword_tables (functions, finfo, keyword_hash_comparator < FUNCTION_MAP >);
 
-      function_keyword_sorted = true;
+      return true;
+    } ();
+  /* *INDENT-ON* */
+
+  /* Notice:
+   * This ensures the variable is not optimized away, even though it does not change the functional logic of the code
+   * Please do not delete the following line.
+   */
+  (void) is_initialized;
 
 #ifndef NDEBUG
+  /* verify the table once after the initialization; set the flag first, since verify_test () calls this function */
+  static bool function_keyword_sorted_verified = false;
+  if (function_keyword_sorted_verified == false)
+    {
+      function_keyword_sorted_verified = true;
       verify_test (false, finfo);
-#endif
     }
+#endif
 
   char temp[DB_MAX_IDENTIFIER_LENGTH];
 

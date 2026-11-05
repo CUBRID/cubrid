@@ -15,7 +15,7 @@ on:
   issue_comment:
     types: [created, edited]
   push:
-    branches: [develop, 'feature/**']
+    branches: [develop]
   # After the day's last develop merge (13Z), off the hour where cron queues longest.
   schedule:
     - cron: '20 15 * * *'
@@ -126,6 +126,8 @@ env:
         echo "found=no exec=0 pass=0 fail=0 skip=0"
       fi
     }
+  SAME_RECIPE: |
+    same_recipe() { [ -f "$1/$BUILD_SENTINEL" ] && grep -sqxF "recipe=$BUILD_RECIPE" "$1/build.meta"; }
   OVERLAY: |
     overlay() {   # <lower> <rw dir> <mount point>
       mkdir -p "$2/upper" "$2/work" "$3"
@@ -484,13 +486,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        image: [cubridci/cubridci:build_cl6.10]
+        mode: [release, debug]
         include:
           - mode: release
             args: ""
           - mode: debug
             args: "-m optdebug"
     container:
-      image: cubridci/cubridci:build_rl8.10
+      image: ${{ matrix.image }}
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
@@ -500,11 +504,15 @@ jobs:
       BUILD_LOG_DIR: /home/ci/shared/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
+      # A build from another image or other args sits at the same $SHA/$MODE path.
+      BUILD_RECIPE: ${{ matrix.image }}|${{ matrix.args }}
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
       # The default is mtime, which a fresh checkout always misses.
       CCACHE_COMPILERCHECK: content
       CCACHE_MAXSIZE: 10G
+      # A /* fall through */ comment changes -Werror results, so it must change the cache key.
+      CCACHE_COMMENTS: 1
       # No CCACHE_HARDLINK: a hardlinked entry is one bad build away from a poisoned cache.
       CACHE_WRITE: ${{ needs.gate.outputs.cache_write }}
 
@@ -515,6 +523,8 @@ jobs:
         run: |
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
+          { mkdir -p "$BUILD_LOG_DIR" && printf '%s\n' "$BUILD_RECIPE" > "$BUILD_LOG_DIR/recipe"; } ||
+            echo "::warning::could not write $BUILD_LOG_DIR/recipe, so plan will refuse to test this run's build"
           for d in "$BUILD_MIRROR/cubrid/.git" "$BUILD_MIRROR/cubrid.git"; do
             [ -d "$d" ] || {
               echo "::error::the node copy is not visible: $d. The pod template did not reach the pod, or gha-node-seed has not run"
@@ -532,7 +542,8 @@ jobs:
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
-          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE/$BUILD_SENTINEL" ]; then
+          eval "$SAME_RECIPE"
+          if [ "$INPUT_FORCE" != 'true' ] && same_recipe "$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"; then
             echo "reuse=reused" >> "$GITHUB_OUTPUT"
           else
             echo "reuse=built" >> "$GITHUB_OUTPUT"
@@ -554,12 +565,62 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           [ "$CACHE_WRITE" = 'true' ] || export CCACHE_READONLY=1 CCACHE_NOSTATS=1
           export CCACHE_TEMPDIR="$RUNNER_TEMP/ccache-tmp"
+          # The node's counters are shared by concurrent builds and off in PR builds: a build counts its own in this log.
+          export CCACHE_LOGFILE="$RUNNER_TEMP/ccache.log"
           mkdir -p "$CCACHE_TEMPDIR"
           [ -d "$CCACHE_DIR" ] || echo "::warning::no ccache at $CCACHE_DIR yet, so this is a cold build"
           # No -j: ninja reads the cgroup quota.
           # shellcheck disable=SC2086
           /entrypoint.sh build $BUILD_ARGS
+          echo "ccache, the node's cache, cumulative over develop pushes:"
           ccache -s
+          # Parallel compiles share the log, so one line can land inside another: read from every "[time pid] ".
+          tally='
+            BEGIN { if (results != "") printf "" > results }
+            function entry(s,   pid, f, part, k) {
+              if (!match(s, /^\[[^ ]+ [0-9]+ *\] /)) return
+              pid = substr(s, 1, RLENGTH); gsub(/^\[[^ ]+ | *\] $/, "", pid)
+              s = substr(s, RLENGTH + 1)
+              if (s ~ /^=== CCACHE .* STARTED/) { delete cwd[pid]; delete src[pid] }
+              else if (sub(/^Working directory: /, "", s)) cwd[pid] = s
+              else if (sub(/^Source file: /, "", s)) src[pid] = s
+              else if (sub(/^Result: /, "", s)) {
+                if (results != "") print s "\t" cwd[pid] "\t" src[pid] > results
+                k = s ~ /^cache hit \(direct\)/ ? 1 : s ~ /^cache hit \(preprocessed\)/ ? 2 : s ~ /^cache miss/ ? 3 : 0
+                if (!k) return
+                f = src[pid] ~ /^\// ? src[pid] : cwd[pid] "/" src[pid]
+                part = "CUBRID source"
+                if (cwd[pid] ~ /\/CMakeFiles\/CMakeScratch\//) part = "CMake checks"
+                if (cwd[pid] ~ /\/3rdparty\// || f ~ /\/3rdparty\//) part = "external libraries"
+                n[part, k]++; all[k]++
+              }
+            }
+            function rate(d, p, m) { return d + p + m ? sprintf("%.2f %%", 100 * (d + p) / (d + p + m)) : "-" }
+            {
+              s = $0
+              # entry() resets RSTART: cut both pieces before calling it, or the loop never moves on.
+              while (match(substr(s, 2), /\[[0-9-]+T[0-9:.]+ [0-9]+ *\] /)) { head = substr(s, 1, RSTART); s = substr(s, RSTART + 1); entry(head) }
+              entry(s)
+            }
+            END {
+              if (!(all[1] + all[2] + all[3])) {
+                print "::warning::no cache hit or miss in " FILENAME ", so ccache changed its log wording or no compile went through it"; exit
+              }
+              printf "ccache, this build: cache hit (direct) %d, cache hit (preprocessed) %d, cache miss %d, cache hit rate %s\n", all[1], all[2], all[3], rate(all[1], all[2], all[3])
+              split("CUBRID source|external libraries|CMake checks", parts, "|")
+              for (i = 1; i <= 3; i++)
+                printf "  %-19s hit (direct) %d, hit (preprocessed) %d, miss %d, hit rate %s\n", parts[i] ":", n[parts[i], 1], n[parts[i], 2], n[parts[i], 3], rate(n[parts[i], 1], n[parts[i], 2], n[parts[i], 3])
+            }'
+          # Only the second pass writes a file, so a table that cannot be written leaves the counts in place.
+          if awk "$tally" "$CCACHE_LOGFILE"; then
+            results="$RUNNER_TEMP/ccache-results.tsv"
+            { awk -v results="$results" "$tally" "$CCACHE_LOGFILE" > /dev/null && mkdir -p "$BUILD_LOG_DIR" &&
+              gzip -c "$results" > "$BUILD_LOG_DIR/ccache-results.tsv.gz" &&
+              echo "ccache, per-file results: $ARTIFACT_URL_BASE/${BUILD_LOG_DIR#"$CI_ROOT"/}/ccache-results.tsv.gz"; } ||
+              echo "::warning::could not write the per-file ccache results to $results or $BUILD_LOG_DIR"
+          else
+            echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
+          fi
 
       - name: 4. Publish, staged then moved in with one rename
         env:
@@ -567,16 +628,17 @@ jobs:
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
+          eval "$SAME_RECIPE"
           # Another run on this SHA may have published since the reuse check; the rename decides.
-          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ]; then
+          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && same_recipe "$dir"; then
             REUSE=reused
           fi
           if [ "$REUSE" != 'reused' ]; then
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
-            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
-              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
+            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nrecipe=%s\nworkflow=gha-ci\n' \
+              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)" "$BUILD_RECIPE")
             # Inside the archive too: the shard reads it back out of what it unpacked.
             printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
             # An archive: a published tree made every process launch read the build over GlusterFS.
@@ -588,7 +650,7 @@ jobs:
             # rename(2) is the one atomic arbiter on shared storage; check-then-act lost this race.
             if mv -T "$tmp" "$dir" 2>/dev/null; then
               :
-            elif [ -f "$dir/$BUILD_SENTINEL" ] && [ "$INPUT_FORCE" != 'true' ]; then
+            elif same_recipe "$dir" && [ "$INPUT_FORCE" != 'true' ]; then
               echo "another run published this build first, keeping theirs: $dir"
               rm -rf "$tmp"
             else
@@ -744,6 +806,11 @@ jobs:
           [ "$meta_sha" = "$SHA" ] || {
             echo "::error::meta sha($meta_sha) differs from the sha gate resolved($SHA)"; exit 1; }
           echo "build_run_id=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")" >> "$GITHUB_OUTPUT"
+          want=$(cat "$CI_ROOT/runs/$GITHUB_RUN_ID/build/debug/recipe" 2>/dev/null) || want=''
+          got=$(sed -n 's/^recipe=//p' "$dir/build.meta")
+          [ -n "$want" ] && [ "$got" = "$want" ] || {
+            echo "::error::the published build was made with '${got:-no recorded recipe}', not this run's '${want:-unknown}'. Re-run the failed build job"; exit 1; }
+          echo "build_recipe=$want" >> "$GITHUB_OUTPUT"
 
       - name: GitHub App token
         id: app-token
@@ -897,6 +964,7 @@ jobs:
           SABOTAGE: ${{ needs.gate.outputs.sabotage }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           SHA: ${{ needs.gate.outputs.sha }}
+          BUILD_RECIPE: ${{ steps.build.outputs.build_recipe }}
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
@@ -948,6 +1016,13 @@ jobs:
               [ -n "$prev_sha" ] || prev_sha=$(awk -F= '/^sha=/ {print $2}' "$srcdir/plan/split.meta" 2>/dev/null) || prev_sha=''
               if [ "$(printf '%s' "$prev_sha" | grep -c . || :)" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
                 echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA. A re-run only re-runs the same commit"
+                exit 1
+              fi
+              prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
+                -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
+              [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
+              if [ "$prev_recipe" != "$BUILD_RECIPE" ]; then
+                echo "::error::run $RERUN_FROM tested a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$BUILD_RECIPE'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
               # A shard that died whole left no result file for failed.list: carry its share.
@@ -1114,6 +1189,7 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
+              echo "build_recipe='$BUILD_RECIPE'"
             } > "$out/plan/split.meta"
 
             case "$SABOTAGE" in
@@ -1483,43 +1559,46 @@ jobs:
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
-          # A failure body is read through first: a log can hold a literal <testcase or <failure.
+          # Reads CTP's layout: one element per line, <![CDATA[ on its tag's line, ]]></ after the last text. CDATA is text, never markup: a log can hold a literal <testcase or <error.
           FAILED_AWK='
-            BEGIN { while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
-            body != "" {
-              if (/\]\]><\/failure>/) { sub(/\]\]><\/failure>.*$/, ""); print > body; close(body); body = ""; next }
-              print > body
-              next
-            }
-            /<testcase/ { cur = ""; if (match($0, / name="[^"]*"/)) cur = substr($0, RSTART + 7, RLENGTH - 8) }
-            /<failure/ && cur != "" {
+            function finish_body(s) { sub(body_end ".*$", "", s); print s > body; close(body); body = "" }
+            BEGIN { cdata_start = "<![CDATA["; cdata_end = "]]></"; body_end = cdata_end "(failure|error)>"; while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
+            FNR == 1 { if (body != "") close(body); body = ""; in_cdata = 0; cur = "" }
+            body != "" { if ($0 ~ body_end) finish_body($0); else print > body; next }
+            in_cdata { if ($0 ~ cdata_end) in_cdata = 0; next }
+            { cdata_at = index($0, cdata_start); tags = cdata_at ? substr($0, 1, cdata_at - 1) : $0; unclosed = cdata_at && $0 !~ cdata_end }
+            tags ~ /<testcase/ { cur = ""; if (match(tags, / name="[^"]*"/)) cur = substr(tags, RSTART + 7, RLENGTH - 8) }
+            tags ~ /<(failure|error)[ >\/]/ && cur != "" {
               if (idx == "") { print cur; n = ++k }
               else if (cur in want) { n = want[cur] }
-              else { cur = ""; next }
-              body = dir "/" n ".log"
-              rest = $0
-              sub(/^.*<!\[CDATA\[/, "", rest)
-              if (rest ~ /\]\]><\/failure>/) { sub(/\]\]><\/failure>.*$/, "", rest); print rest > body; close(body); body = "" }
-              else if (rest != "") print rest > body
+              else { cur = ""; in_cdata = unclosed; next }
               cur = ""
+              if (!cdata_at) next
+              body = dir "/" n ".log"
+              rest = substr($0, cdata_at + length(cdata_start))
+              if (rest ~ body_end) finish_body(rest); else if (rest != "") print rest > body
               next
             }
-            /<\/testcase>/ { cur = "" }
+            unclosed { in_cdata = 1; next }
+            tags ~ /<\/testcase>/ { cur = "" }
           '
-          failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log
+          failed() (   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log; the case-log step also reads <log dir>/xml.list
             mkdir -p "$2"
-            if [ -f "$1/test_status.data" ]; then
-              find "$1" -type f -name test-shell.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
-            elif [ -f "$1/summary_info" ]; then
-              { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
+            cd "$1"
+            find test-results -maxdepth 1 -type f -name '*.xml' ! -name summary.xml > "$2/xml.list" 2>/dev/null || :
+            idx=
+            if [ ! -f test_status.data ]; then
+              { grep -E ':nok[[:space:]]+[0-9]+ms$' summary_info || :; } \
                 | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" > "$2/failed.list"
               awk '{printf "%s\t%d\n", $0, NR}' "$2/failed.list" > "$2/failed.idx"
-              find "$1" -type f -name '*.xml' ! -name summary.xml \
-                -exec awk -v dir="$2" -v idx="$2/failed.idx" "$FAILED_AWK" {} +
+              idx="$2/failed.idx"
+            fi
+            xargs -r -d '\n' awk -v dir="$2" -v idx="$idx" "$FAILED_AWK" < "$2/xml.list"
+            if [ -n "$idx" ]; then
               cat "$2/failed.list"
               rm -f "$2/failed.list" "$2/failed.idx"
             fi
-          }
+          )
           rc=0
           rm -rf /tmp/failed-logs; mkdir -p /tmp/failed-logs
 
@@ -1787,7 +1866,7 @@ jobs:
           for suite in $SUITES_RUN; do
             list="/tmp/failed.$suite.list"
             [ -s "$list" ] || continue
-            [ -n "$(find "/tmp/failed-logs/$suite" -name '*.log' -print -quit 2>/dev/null)" ] || continue
+            grep -qs . "/tmp/failed-logs/$suite"/*/xml.list || continue
             n=$(wc -l < "$list")
             shown=$n
             [ "$shown" -gt 50 ] && shown=50
@@ -1798,12 +1877,10 @@ jobs:
             tail_b=$((case_max - head_b))
             esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
             base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$suite"
-            xml_name=$(basename "$(ls "$RUNDIR/$suite"/shard/*/test-results/*.xml 2>/dev/null | head -1)" 2>/dev/null || :)
-            xml_name=${xml_name:-test-shell.xml}
             {
               echo "### $suite: the log of each failed case"
               echo
-              echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`$xml_name\`."
+              echo "What CTP wrote in the case's \`<failure>\` or \`<error>\`, trimmed to fit. Untrimmed, it is in the XML behind the case's full log link."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
 
@@ -1813,10 +1890,12 @@ jobs:
               i=$((i + 1))
               k[$shard]=$(( ${k[$shard]:-0} + 1 ))
               [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
-              log="/tmp/failed-logs/$suite/$shard/${k[$shard]}.log"
+              log_dir="/tmp/failed-logs/$suite/$shard"
+              log="$log_dir/${k[$shard]}.log"
+              rel=$(head -1 "$log_dir/xml.list")
               {
                 echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/$xml_name\">full log</a></summary>"
+                echo "<summary>shard $shard &middot; <code>$name</code>${rel:+ &middot; <a href=\"$base/shard/$shard/$rel\">full log</a>}</summary>"
                 echo
                 # <pre> on its own line: a blank line in the log would end the HTML block.
                 echo "<pre>"
@@ -1845,7 +1924,7 @@ jobs:
               used=$((used + size))
             done < "$list"
             unset k
-            [ "$left" -eq 0 ] || echo "_$left more cases failed. Their logs are in each shard's \`$xml_name\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
+            [ "$left" -eq 0 ] || echo "_$left more cases failed. Their logs are in each shard's JUnit XML, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
           done
 
   # always(), not success(): a red verdict is what the gate exists to show.

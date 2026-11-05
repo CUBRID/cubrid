@@ -74,6 +74,8 @@ struct dblink_scan_info
   int corr_key_count;		/* copy of spec->s.dblink_node.corr_key_count */
   struct regu_variable_list_node *corr_key_regu_list;	/* non-owning; same chain as in access spec */
   bool corr_skip_result_fetch;	/* corr key NULL — no cci_execute; scan_next returns S_END */
+  struct dblink_column_plan *col_plan;	/* CBRD-27583: each column's conversion, planned at the open
+					 * (dblink_plan_columns); NULL until then, freed with the statement */
 };
 
 #define MAX_LEN_CONNECTION_URL 512
@@ -118,6 +120,7 @@ extern int dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_nod
 				 DBLINK_HOST_VARS * host_vars);
 extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 			     VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars);
+extern int dblink_plan_columns (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern int dblink_corr_prepare (THREAD_ENTRY * thread_p, struct access_spec_node *spec, DBLINK_SCAN_INFO * scan_info);
 extern int dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd);
 extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
@@ -139,9 +142,9 @@ struct dblink_dml_state
   bool rows_sent;		/* this statement has executed at least one row on the remote */
 };
 
-/* Assignments a remote ON DUPLICATE KEY UPDATE clause carries: cols[i] is the remote column name and
- * exprs[i] is its new value, already printed as remote SQL. Both arrays are num_assigns long and every
- * element is a non-empty string -- the clause goes out as statement text, not as binds. */
+/* Assignments a remote ON DUPLICATE KEY UPDATE clause carries. cols[i] is the remote column name. exprs[i] is
+ * its new value, printed as remote SQL, or NULL for a value bound per row. A NULL exprs[i] goes out as "?" and
+ * is bound after the INSERT values, in clause order. Both arrays are num_assigns long. */
 typedef struct dblink_odku_assigns DBLINK_ODKU_ASSIGNS;
 struct dblink_odku_assigns
 {
