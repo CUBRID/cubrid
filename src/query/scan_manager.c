@@ -4134,7 +4134,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       isidp->scancache_inited = true;
       /* the scan decodes its records through the attribute layer only */
-      heap_scancache_allow_lazy_sidecar (&isidp->scan_cache, HEAP_SIDECAR_LAZY_SCAN);
+      heap_scancache_allow_lazy_sidecar (&isidp->scan_cache, HEAP_SIDECAR_LAZY_INDEX_SCAN);
       if (isidp->caches_inited != true)
 	{
 	  if (isidp->range_pred.regu_list != NULL)

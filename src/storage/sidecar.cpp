@@ -1958,14 +1958,24 @@ sidecar_keep_lazy (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, con
 #if !defined (NDEBUG)
   sidecar_stored_form_admit (recdes->data, recdes->length);
 #endif /* !NDEBUG */
-  thread_p->sidecar_cursor_owner = scan_cache;
+  if (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN)
+    {
+      thread_p->sidecar_cursor_owner = scan_cache;
+    }
+  else
+    {
+      /* an index scan's rows are not on one page: its reads keep no store page (E7) */
+      sidecar_cursor_release (thread_p);
+      thread_p->sidecar_cursor_owner = NULL;
+    }
   sidecar_count (thread_p, PSTAT_SC_LAZY_RECORDS);
 }
 
 __attribute__ ((noinline)) bool
 sidecar_scan_is_protected (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache)
 {
-  return (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+  return ((scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+	   || scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_INDEX_SCAN)
 	  && sidecar_classify (thread_p, scan_cache, SIDECAR_FETCH_VISIBLE) == SIDECAR_READER_PROTECTED);
 }
 
@@ -2168,7 +2178,9 @@ sidecar_on_fetch_body (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDE
   const OID *class_oid = scan_cache != NULL ? &scan_cache->node.class_oid : &oid_Null_oid;
   const sidecar_reader reader = sidecar_classify (thread_p, scan_cache, fetch);
 
-  if (scan_cache != NULL && scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+  if (scan_cache != NULL
+      && (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+	  || scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_INDEX_SCAN)
       && (reader == SIDECAR_READER_PROTECTED || reader == SIDECAR_READER_HOLDER))
     {
       /* a query scan's protected read: the attribute layer reads the values the query decodes (5.6 a and b) */

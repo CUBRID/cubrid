@@ -145,7 +145,10 @@ typedef enum
 {
   HEAP_SIDECAR_EXPAND = 0,	/* none */
   HEAP_SIDECAR_LAZY_LOCKED,	/* the last-version read of an UPDATE under the row's X lock (P1b1) */
-  HEAP_SIDECAR_LAZY_SCAN	/* a query scan: reads by the transaction's registered snapshot and by a row-lock holder */
+  HEAP_SIDECAR_LAZY_SCAN,	/* a query's heap scan: reads by the transaction's registered snapshot and by a row-lock
+				 * holder; the store cursor may keep its page between the scan's rows */
+  HEAP_SIDECAR_LAZY_INDEX_SCAN	/* a query's index scan: lazy as a heap scan, but the store cursor keeps no page, since
+				 * each row's fetch fixes its hot page again and the index fixes its own pages */
 } HEAP_SIDECAR_LAZY;
 
 struct heap_scancache
