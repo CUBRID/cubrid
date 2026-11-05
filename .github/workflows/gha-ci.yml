@@ -134,35 +134,35 @@ env:
       mkdir -p "$2/upper" "$2/work" "$3"
       mount -t overlay overlay -o "lowerdir=$1,upperdir=$2/upper,workdir=$2/work" "$3"
     }
-  # A new suite also needs a row in the test image's resolve_category. tc_dir is the directory
-  # under tc_repo, and the image lists its cases by that name: it has no case rule for sql_by_cci.
+  # A new suite also needs a row in the test image's resolve_category. The image's cases verb gets
+  # tc_subdir, not the suite: it has no case rule for sql_by_cci.
   SUITES: |-
     {
       "shell": {
         "tc_repo": "cubrid-testcases-private-ex", "tc_private": "yes",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases-private-ex",
-        "tc_dir": "shell", "build": "debug",
+        "tc_subdir": "shell", "build": "debug",
         "unit": "case", "par_default": "50", "runner": "cubrid-arc",
         "exclude": "_25_unstable", "status_ctx": "gha-ci: test_shell"
       },
       "sql": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "tc_dir": "sql", "build": "debug",
+        "tc_subdir": "sql", "build": "debug",
         "unit": "dir", "par_default": "10", "runner": "cubrid-arc",
         "exclude": "", "status_ctx": "gha-ci: test_sql"
       },
       "medium": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "tc_dir": "medium", "build": "debug",
+        "tc_subdir": "medium", "build": "debug",
         "unit": "dir", "par_default": "1", "runner": "cubrid-arc-light",
         "exclude": "", "status_ctx": "gha-ci: test_medium"
       },
       "sql_by_cci": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "tc_dir": "sql", "build": "release",
+        "tc_subdir": "sql", "build": "release",
         "unit": "dir", "par_default": "10", "runner": "cubrid-arc",
         "exclude": "", "status_ctx": "gha-ci: test_sql_by_cci"
       }
@@ -290,7 +290,7 @@ jobs:
                   exit 0
                 fi
                 test_run=true
-              # comment_trigger.yml takes the same words but sql_by_cci, which CircleCI never ran.
+              # comment_trigger.yml takes the same words but sql_by_cci: CircleCI has no sql_by_cci job.
               elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium|sql_by_cci)){1,5}[[:space:]]*$ ]]; then
                 for w in $req; do
                   case "$w" in
@@ -957,7 +957,7 @@ jobs:
                 git -C "$dir" fetch -q --depth 1 "https://github.com/CUBRID/${repo}.git" "$since" || {
                   echo "::error::could not fetch $repo $since, the tc commit run $RERUN_FROM read"; exit 1; }
               fi
-              git -C "$dir" diff --name-status -M "$since" HEAD -- "$(attr "$suite" tc_dir)/" > "/tmp/tc.$suite.diff"
+              git -C "$dir" diff --name-status -M "$since" HEAD -- "$(attr "$suite" tc_subdir)/" > "/tmp/tc.$suite.diff"
               echo "$since" > "/tmp/tc.$suite.since"
               echo "$suite: $(wc -l < "/tmp/tc.$suite.diff") paths changed in $(cat "/tmp/tc.$repo.branch") since $since"
             done
@@ -990,15 +990,15 @@ jobs:
             par="${PAR:-$(attr "$suite" par_default)}"
             # One light-lane shard for a re-run: spread out, it would delay other PRs' first runs.
             if [ -n "$RERUN_FROM" ]; then par=1; runner=cubrid-arc-light; fi
-            tcdir=$(attr "$suite" tc_dir)
+            subdir=$(attr "$suite" tc_subdir)
             dir="$WORKDIR/$repo"
-            root="$dir/$tcdir"
+            root="$dir/$subdir"
             out="$rundir/$suite"
             unrun=0; short=0; gone=0; nfail=0; changed=0
 
             # After the previous step's checkout: its reset --hard brings $excl back.
             [ -z "$excl" ] || rm -rf "${root:?}/$excl"
-            /entrypoint.sh cases "$tcdir" "$root" | sed "s#^$WORKDIR/##" | sort > /tmp/cases.list
+            /entrypoint.sh cases "$subdir" "$root" | sed "s#^$WORKDIR/##" | sort > /tmp/cases.list
             case "$unit" in
               case) cp /tmp/cases.list /tmp/all.list ;;
               dir)
@@ -1052,14 +1052,14 @@ jobs:
               cut -f2 "$src" | sed "s#^#$repo/#" > /tmp/want.list
               nfail=$(wc -l < /tmp/want.list)
               # The whole directory: a case is not known to be safe on its own.
-              [ "$unit" != dir ] || sed -i "s#^\($repo/$tcdir/[^/]*\)/.*#\1#" /tmp/want.list
+              [ "$unit" != dir ] || sed -i "s#^\($repo/$subdir/[^/]*\)/.*#\1#" /tmp/want.list
               cat /tmp/unrun.list >> /tmp/want.list
               sort -u -o /tmp/want.list /tmp/want.list
               [ "$short" -eq 0 ] || echo "::warning::run $RERUN_FROM left $short more cases assigned but never handled. Nothing names them, so this re-run cannot pass"
               # A re-run's shards list cases even where the suite's unit is a directory.
               sort -u /tmp/all.list /tmp/cases.list | grep -xF -f /tmp/want.list > /tmp/sel.list || : > /tmp/sel.list
               # Deleted or renamed by the tc branch since, or a top-level directory it emptied: gone on purpose.
-              awk -F'\t' -v r="$repo/" -v s="$tcdir" '$1 ~ /^[DR]/ {
+              awk -F'\t' -v r="$repo/" -v s="$subdir" '$1 ~ /^[DR]/ {
                   print r $2; if (match($2, "^" s "/[^/]+/")) print r substr($2, 1, RLENGTH - 1) }' \
                 "/tmp/tc.$suite.diff" > /tmp/left.list
               { grep -vxF -f /tmp/sel.list /tmp/want.list || :; } | { grep -vxF -f /tmp/left.list || :; } > /tmp/gone.list
@@ -1071,7 +1071,7 @@ jobs:
               # By case, so keep holds just the cases/ directories named: a failed directory becomes its cases.
               awk -F/ 'NR == FNR {d[$0]; next} $0 in d || ($1 "/" $2 "/" $3) in d' /tmp/sel.list /tmp/cases.list > /tmp/sel.cases
               awk -F'\t' '$1 !~ /^D/ {print $NF}' "/tmp/tc.$suite.diff" \
-                | sed -nE "s#^(${tcdir}/.*)/(cases|answers)/[^/]+\$#${repo}/\1/cases#p" | sort -u > /tmp/changed.dirs
+                | sed -nE "s#^(${subdir}/.*)/(cases|answers)/[^/]+\$#${repo}/\1/cases#p" | sort -u > /tmp/changed.dirs
               awk 'NR == FNR {d[$0]; next} {p = $0; sub(/\/[^\/]*$/, "", p)} p in d' /tmp/changed.dirs /tmp/cases.list > /tmp/changed.list
               changed=$(wc -l < /tmp/changed.list)
               sort -u /tmp/sel.cases /tmp/changed.list > /tmp/sel.list
@@ -1273,7 +1273,7 @@ jobs:
           attr() { jq -r --arg s "$SUITE" --arg k "$1" '.[$s][$k] // ""' <<<"$SUITES"; }
           {
             echo "TC_DIR=$WORKDIR/$(attr tc_repo)"
-            echo "TC_ROOT=$WORKDIR/$(attr tc_repo)/$(attr tc_dir)"
+            echo "TC_ROOT=$WORKDIR/$(attr tc_repo)/$(attr tc_subdir)"
             echo "BUILD_MODE=$(attr build)"
             echo "TC_SEED=$(attr tc_seed)"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
@@ -1396,11 +1396,11 @@ jobs:
             # The image's results verb has no rule for what the cci runner writes: summary.info, and
             # the JUnit XML of a CTP that has one.
             r="$CTP_HOME/result/sql_by_cci"
-            mkdir -p "$SHARD_DIR/artifacts" "$SHARD_DIR/test-results"
             find "$r" -type f -name summary.info -exec cat {} + > "$SHARD_DIR/summary.info" \
               || echo "::warning::could not copy all of the results"
-            [ -s "$SHARD_DIR/summary.info" ] || rm -f "$SHARD_DIR/summary.info"
-            find "$r" -type f -name '*.xml' ! -name summary.xml -exec cp -f -t "$SHARD_DIR/test-results" {} + \
+            [ -s "$SHARD_DIR/summary.info" ] || rm -f "$SHARD_DIR/summary.info" || :
+            { mkdir -p "$SHARD_DIR/test-results" \
+                && find "$r" -type f -name '*.xml' ! -name summary.xml -exec cp -f -t "$SHARD_DIR/test-results" {} +; } \
               || echo "::warning::could not copy the JUnit XML"
           else
             /entrypoint.sh results "$SUITE" "$SHARD_DIR" || echo "::warning::could not copy all of the results"
