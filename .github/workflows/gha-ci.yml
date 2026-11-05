@@ -122,9 +122,9 @@ env:
       elif [ -f "$1/summary_info" ]; then
         awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
-      elif [ -f "$1/summary.info" ]; then
-        awk '/\t:NOK:-?[0-9]+$/ {f++; next} /\t:OK:-?[0-9]+$/ {s++}
-          END {printf "found=yes exec=%d pass=%d fail=%d skip=0\n", s + f, s, f}' "$1/summary.info"
+      elif ls "$1"/test-results/*.xml > /dev/null 2>&1; then
+        awk '/<testcase / {e++} /<failure[ >]/ {f++}
+          END {printf "found=yes exec=%d pass=%d fail=%d skip=0\n", e, e - f, f}' "$1"/test-results/*.xml
       else
         echo "found=no exec=0 pass=0 fail=0 skip=0"
       fi
@@ -1393,19 +1393,7 @@ jobs:
           WANT: ${{ steps.mine.outputs.n }}
           TEST_RC: ${{ steps.ctp.outputs.rc }}
         run: |
-          if [ "$SUITE" = sql_by_cci ]; then
-            # The image's results verb has no rule for what the cci runner writes: summary.info, and
-            # the JUnit XML of a CTP that has one.
-            r="$CTP_HOME/result/sql_by_cci"
-            find "$r" -type f -name summary.info -exec cat {} + > "$SHARD_DIR/summary.info" \
-              || echo "::warning::could not copy all of the results"
-            [ -s "$SHARD_DIR/summary.info" ] || rm -f "$SHARD_DIR/summary.info" || :
-            { mkdir -p "$SHARD_DIR/test-results" \
-                && find "$r" -type f -name '*.xml' ! -name summary.xml -exec cp -f -t "$SHARD_DIR/test-results" {} +; } \
-              || echo "::warning::could not copy the JUnit XML"
-          else
-            /entrypoint.sh results "$SUITE" "$SHARD_DIR" || echo "::warning::could not copy all of the results"
-          fi
+          /entrypoint.sh results "$SUITE" "$SHARD_DIR" || echo "::warning::could not copy all of the results"
           eval "$COUNT_RESULTS"
           eval "$(count "$SHARD_DIR")"
           # Only on failure: a green 50-shard run would write 50 archives nobody reads.
@@ -1606,20 +1594,16 @@ jobs:
           '
           failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log
             mkdir -p "$2"
-            if [ -f "$1/test_status.data" ]; then
-              find "$1" -type f -name '*.xml' ! -name summary.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
-            elif [ -f "$1/summary_info" ] || [ -f "$1/summary.info" ]; then
-              if [ -f "$1/summary_info" ]; then
-                { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
-                  | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##"
-              else
-                { grep -E $'\t:NOK:-?[0-9]+$' "$1/summary.info" || :; } | sed -e 's/^TestCase: //' -e $'s/\t:NOK:.*$//'
-              fi > "$2/failed.list"
+            if [ -f "$1/summary_info" ]; then
+              { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
+                | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" > "$2/failed.list"
               awk '{printf "%s\t%d\n", $0, NR}' "$2/failed.list" > "$2/failed.idx"
               find "$1" -type f -name '*.xml' ! -name summary.xml \
                 -exec awk -v dir="$2" -v idx="$2/failed.idx" "$FAILED_AWK" {} +
               cat "$2/failed.list"
               rm -f "$2/failed.list" "$2/failed.idx"
+            else
+              find "$1" -type f -name '*.xml' ! -name summary.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
             fi
           }
           rc=0
