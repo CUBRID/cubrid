@@ -50,9 +50,12 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <thread>
 
+#include "fault_injection.h"
 #include "mvcc.h"
 #include "object_representation.h"
 #include "object_representation_sr.h"
@@ -1074,19 +1077,32 @@ struct unrelated_row
   bool removed_after_release = false;
 };
 
+static int
+count_occurrences (const std::string &text, const std::string &needle)
+{
+  int n = 0;
+  for (size_t pos = text.find (needle); pos != std::string::npos; pos = text.find (needle, pos + needle.size ()))
+    {
+      n++;
+    }
+  return n;
+}
+
 // ============================================================================
 // TC-R12: A failed heap header lookup must not leak the OOS value of a deleted row (CBRD-27933)
 //
 // Runs with a short page latch timeout (CTest test_oos_real_vacuum_latch_timeout). The test thread holds the
 // heap header past that timeout, so the vacuum worker's wait for the header fails while it prepares the
 // deleted row. Vacuum must not remove the row's heap slot while it keeps the OOS value. Once the header is free
-// again, both must be gone. Debug builds abort at that timeout instead, because pgbuf_timed_sleep asserts when a
-// thread with an infinite lock wait times out, so these cases reach the lookup failure only in release builds.
+// again, both must be gone. Debug builds stop at a page latch timeout, because pgbuf_timed_sleep asserts when a
+// thread with an infinite lock wait times out. There the fault injection FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT
+// makes the wait for the held header fail at once instead.
 // ============================================================================
 class OosRealVacuumHeaderHeld : public OosRealVacuum
 {
   protected:
     int latch_timeout_msecs = 0;
+    size_t server_log_start = 0;
 
     void SetUp () override
     {
@@ -1096,6 +1112,37 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
 	{
 	  GTEST_SKIP () << "page latch timeout " << latch_timeout_msecs << " ms; set CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS";
 	}
+#if !defined (NDEBUG)
+      ASSERT_TRUE (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))
+	  << "a debug build stops at the page latch timeout; set CUBRID_FAULT_INJECTION_IDS="
+	  << FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT;
+#endif
+      server_log_start = server_log ().size ();
+    }
+
+    /* The server error log written since this case started. A boot in the same minute appends to the same file. */
+    std::string server_log ()
+    {
+      std::ifstream in (er_get_msglog_filename ());
+      std::string text ((std::istreambuf_iterator<char> (in)), std::istreambuf_iterator<char> ());
+      return text.size () >= server_log_start ? text.substr (server_log_start) : text;
+    }
+
+    /* Each failed OOS file lookup of a vacuum worker logs one ER_VACUUM_OOS_LOOKUP_DEFERRED. */
+    int deferrals ()
+    {
+      return count_occurrences (server_log (), "CODE = " + std::to_string (ER_VACUUM_OOS_LOOKUP_DEFERRED) + ",");
+    }
+
+    /* Release builds see vacuum queue on the held header. Debug builds never wait there, so they see the first
+     * deferral instead. */
+    bool vacuum_met_header (PAGE_PTR header_page, int deferrals_before)
+    {
+#if defined (NDEBUG)
+      return pgbuf_has_any_waiters (header_page);
+#else
+      return deferrals () > deferrals_before;
+#endif
     }
 
     /* Inserts a row with a new OOS value on a new heap page. The header page also stores rows, and holding the
@@ -1178,6 +1225,9 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
 	}
       test_oos_utils::auto_freed_recdes_ptr defer_filler (&filler_rec, recdes_free_data_area);
 
+      /* Read before the delete. With an unrelated row in the next block, vacuum can take the delete's block as soon as
+       * it commits, so nothing slow may run between the commit and the header fix. */
+      const int deferrals_before = deferrals ();
       if (heap_delete_mvcc (hfid, class_oid, scan_cache, heap_oid) != NO_ERROR)
 	{
 	  return obs;
@@ -1228,8 +1278,10 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
 	  logpb_flush_pages (thread_p, &flush_lsa);
 	}
 
-      obs.vacuum_queued = obs.log_advanced
-			  && wait_for_vacuum ([&header_watcher] { return pgbuf_has_any_waiters (header_watcher.pgptr); }, 60);
+      obs.vacuum_queued = obs.log_advanced && wait_for_vacuum ([this, &header_watcher, deferrals_before]
+      {
+	return vacuum_met_header (header_watcher.pgptr, deferrals_before);
+      }, 60);
       obs.page_status_while_held = page_vacuum_status (heap_oid);
       printf ("[CBRD-27933] %s: page latch timeout %d ms; vacuum workers %d; delete log block %lld; "
 	      "page vacuum status %d; vacuum queued on heap header %d|%d: %d\n", label, latch_timeout_msecs,

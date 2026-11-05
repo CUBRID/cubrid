@@ -23,6 +23,7 @@
 #include "vacuum_oos.hpp"
 
 #include "error_manager.h"
+#include "fault_injection.h"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "log_manager.h"
@@ -390,7 +391,22 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
       return NO_ERROR;
     }
 
-  if (heap_oos_find_vfid (thread_p, hfid, oos_vfid, false))
+  bool found;
+  if (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))
+    {
+      /* A latch timeout stops debug builds in pgbuf_timed_sleep, so a busy header fails here at once instead. */
+      found = heap_oos_find_vfid_nowait (thread_p, hfid, oos_vfid);
+      if (!found)
+	{
+	  VPID header_vpid = { hfid->hpgid, hfid->vfid.volid };
+	  (void) FI_TEST_ARG (thread_p, FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, &header_vpid, 0);
+	}
+    }
+  else
+    {
+      found = heap_oos_find_vfid (thread_p, hfid, oos_vfid, false);
+    }
+  if (found)
     {
       return NO_ERROR;
     }
