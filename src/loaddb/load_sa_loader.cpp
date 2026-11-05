@@ -2597,7 +2597,7 @@ ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_
 
   db_make_null (val);
   CHECK_PARSE_ERR_QUIET (err, cubload::get_elem_conv_func (type) (str, len, attdesc->conv_att, val), context,
-		   get_token_db_type (type), str);
+			 get_token_db_type (type), str);
 
 error_exit:
   return err;
@@ -3193,12 +3193,12 @@ ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   if (domain == NULL)
     {
       CHECK_PARSE_ERR_QUIET (err, db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE), context,
-		       DB_TYPE_BIT, str);
+			     DB_TYPE_BIT, str);
     }
   else
     {
       CHECK_PARSE_ERR_QUIET (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
-		       context, DB_TYPE_BIT, str);
+			     context, DB_TYPE_BIT, str);
     }
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
   if (tp_value_cast (&temp, val, domain_ptr, false))
@@ -3258,7 +3258,7 @@ ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   else
     {
       CHECK_PARSE_ERR_QUIET (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
-		       context, DB_TYPE_BIT, str);
+			     context, DB_TYPE_BIT, str);
     }
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
   if (tp_value_cast (&temp, val, domain_ptr, false))
@@ -3312,7 +3312,7 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
   // Only a %constructor argument reaches here, and only since integer literals
   // past BIGINT started arriving as LDR_NUMERIC.
   CHECK_PARSE_ERR_QUIET (err, cubload::get_elem_conv_func (LDR_NUMERIC) (str, len, NULL, val), context,
-		   DB_TYPE_NUMERIC, str);
+			 DB_TYPE_NUMERIC, str);
 
 error_exit:
   return err;
@@ -3485,8 +3485,8 @@ ldr_timestamptz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALU
   bool has_zone;
 
   val->domain = ldr_timestamptz_tmpl.domain;
-  CHECK_PARSE_ERR_QUIET (err, db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone), context, DB_TYPE_TIMESTAMPTZ,
-		   str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone), context,
+			 DB_TYPE_TIMESTAMPTZ, str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -3549,8 +3549,8 @@ ldr_datetimetz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE
   bool has_zone;
 
   val->domain = ldr_datetimetz_tmpl.domain;
-  CHECK_PARSE_ERR_QUIET (err, db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone), context, DB_TYPE_DATETIMETZ,
-		   str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone), context,
+			 DB_TYPE_DATETIMETZ, str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -4334,7 +4334,7 @@ ldr_monetary_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *
   // same with to_db_monetary(), which reads no attribute - a %constructor
   // argument slot has none (att and conv_att are both NULL on it)
   CHECK_PARSE_ERR_QUIET (err, cubload::get_elem_conv_func (LDR_MONETARY) (str, len, NULL, val), context,
-		   DB_TYPE_MONETARY, str);
+			 DB_TYPE_MONETARY, str);
 
 error_exit:
   return err;
