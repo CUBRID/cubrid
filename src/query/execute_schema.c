@@ -292,7 +292,6 @@ static int do_copy_indexes (PARSER_CONTEXT * parser, MOP classmop, SM_CLASS * sr
 static int do_recreate_renamed_class_indexes (const PARSER_CONTEXT * parser, const char *const old_class_name,
 					      const char *const class_name);
 
-static bool has_new_primary_key_constraint (const SM_CONSTRAINT_INFO * new_constr_info);
 static int do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 
 static int do_alter_change_owner (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -11270,27 +11269,6 @@ do_truncate (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * has_new_primary_key_constraint() - whether a CHANGE/MODIFY clause adds a PRIMARY KEY
- *   return: true when the new constraints of the clause include a PRIMARY KEY
- *   new_constr_info(in): constraints the clause adds, or NULL
- */
-static bool
-has_new_primary_key_constraint (const SM_CONSTRAINT_INFO * new_constr_info)
-{
-  const SM_CONSTRAINT_INFO *ci;
-
-  for (ci = new_constr_info; ci != NULL; ci = ci->next)
-    {
-      if (ci->constraint_type == DB_CONSTRAINT_PRIMARY_KEY)
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * do_alter_clause_change_attribute() - Executes an ALTER CHANGE or
  *				        ALTER MODIFY clause
  *   return: Error code
@@ -11475,7 +11453,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
    * that follows the whole statement. */
   if (is_srv_update_needed && alter->next == NULL
       && is_att_prop_set (attr_chg_prop.p[P_NOT_NULL], ATT_CHG_PROPERTY_LOST)
-      && !has_new_primary_key_constraint (attr_chg_prop.new_constr_info))
+      && !is_att_prop_set (attr_chg_prop.p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_GAINED))
     {
       error = check_ha_repl_constraints_in_hierarchy (class_obj);
       if (error != NO_ERROR)
