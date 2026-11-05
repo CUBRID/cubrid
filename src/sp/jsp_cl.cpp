@@ -2359,7 +2359,9 @@ sp_add_pkg_sp (MOP *mop_out, MOP pkg_mop, MOP owner, DB_VALUE &current_datetime,
   // attribute unique_name
   sp_name = pl_downcase_identifier (sp.name);
   n = snprintf (buffer, sizeof (buffer), "%s.%s", pkg_unique_name, sp_name.data());
-  if (n >= (int) sizeof (buffer))
+  // shorter than an identifier, as required when the name is looked up (see identifier_fits () in
+  // method_callback.cpp), although the attribute could hold one more byte
+  if (n >= SP_ATTR_UNIQUE_NAME_LEN)
     {
       err = ER_PKG_PROC_UNIQ_NAME_TOO_LONG;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -4632,24 +4634,25 @@ jsp_user_specified_name (const char *str)
   char buffer[SM_MAX_IDENTIFIER_LENGTH];
   const char *dot = strchr (str, '.');
 
-  // sm_user_specified_name () asserts these rather than checking them: a debug build aborts and
-  // a release build has no check at all, so they have to be verified here. The total bounds the
-  // write into buffer; the parts bound what that function passes to sm_downcase_name (). A name
-  // without a qualifier needs no check of its own: that function refuses one too long to prepend
-  // the current user name to.
-  bool fits = (intl_identifier_lower_string_size (str) < (int) sizeof (buffer));
-  if (fits && dot != NULL)
-    {
-      fits = ((size_t) (dot - str) < SM_MAX_USER_LENGTH
-	      && strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
-    }
-
-  if (!fits)
+  // The total bounds the write into buffer. A name without a qualifier needs no check of its own:
+  // sm_user_specified_name () refuses one too long to prepend the current user name to.
+  if (intl_identifier_lower_string_size (str) >= (int) sizeof (buffer))
     {
       return strdup ("");
     }
 
-  sm_user_specified_name (str, buffer, sizeof (buffer));
+  if (dot != NULL)
+    {
+      // already qualified: <owner>.<name>, or <owner>.<package>.<routine> of a package routine.
+      // It only needs downcasing. sm_user_specified_name () would do the same, but it asserts that
+      // the part after the first dot fits what is left of an identifier after an owner, which
+      // <package>.<routine> may not.
+      sm_downcase_name (str, buffer, sizeof (buffer));
+    }
+  else
+    {
+      sm_user_specified_name (str, buffer, sizeof (buffer));
+    }
 
   return strdup (buffer);
 }
