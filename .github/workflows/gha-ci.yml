@@ -1535,15 +1535,12 @@ jobs:
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
           # CDATA is text, never markup: a log can hold a literal <testcase or <error. CTP ends it with ]]></ on one line.
           FAILED_AWK='
-            BEGIN { while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
+            function close_body(s) { sub(body_end ".*$", "", s); print s > body; close(body); body = "" }
+            BEGIN { cdata_end = "]]></"; body_end = cdata_end "(failure|error)>"; while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
             FNR == 1 { if (body != "") close(body); body = ""; in_cdata = 0; cur = "" }
-            body != "" {
-              if (/\]\]><\/(failure|error)>/) { sub(/\]\]><\/(failure|error)>.*$/, ""); print > body; close(body); body = ""; next }
-              print > body
-              next
-            }
-            in_cdata { if (/\]\]><\//) in_cdata = 0; next }
-            { c = index($0, "<![CDATA["); tags = c ? substr($0, 1, c - 1) : $0; opened = c && !/\]\]><\//; }
+            body != "" { if ($0 ~ body_end) close_body($0); else print > body; next }
+            in_cdata { if ($0 ~ cdata_end) in_cdata = 0; next }
+            { c = index($0, "<![CDATA["); tags = c ? substr($0, 1, c - 1) : $0; opened = c && $0 !~ cdata_end }
             tags ~ /<testcase/ { cur = ""; if (match(tags, / name="[^"]*"/)) cur = substr(tags, RSTART + 7, RLENGTH - 8) }
             tags ~ /<(failure|error)[ >\/]/ && cur != "" {
               if (idx == "") { print cur; n = ++k }
@@ -1553,17 +1550,15 @@ jobs:
               if (!c) next
               body = dir "/" n ".log"
               rest = substr($0, c + 9)
-              if (rest ~ /\]\]><\/(failure|error)>/) { sub(/\]\]><\/(failure|error)>.*$/, "", rest); print rest > body; close(body); body = "" }
-              else if (rest != "") print rest > body
+              if (rest ~ body_end) close_body(rest); else if (rest != "") print rest > body
               next
             }
             opened { in_cdata = 1; next }
             tags ~ /<\/testcase>/ { cur = "" }
           '
-          failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log, the reports read in <log dir>/xml
-            [ -f "$1/test_status.data" ] || [ -f "$1/summary_info" ] || return 0
+          failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log, the reports read in <log dir>/xml.list
             mkdir -p "$2"
-            (cd "$1" && find test-results -maxdepth 1 -type f -name '*.xml' ! -name summary.xml 2>/dev/null) > "$2/xml" || :
+            (cd "$1" && find test-results -maxdepth 1 -type f -name '*.xml' ! -name summary.xml 2>/dev/null) > "$2/xml.list" || :
             local idx=
             if [ ! -f "$1/test_status.data" ]; then
               { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
@@ -1571,9 +1566,7 @@ jobs:
               awk '{printf "%s\t%d\n", $0, NR}' "$2/failed.list" > "$2/failed.idx"
               idx="$2/failed.idx"
             fi
-            if [ -s "$2/xml" ]; then
-              (cd "$1" && xargs -d '\n' awk -v dir="$2" -v idx="$idx" "$FAILED_AWK" < "$2/xml")
-            fi
+            (cd "$1" && xargs -r -d '\n' awk -v dir="$2" -v idx="$idx" "$FAILED_AWK" < "$2/xml.list")
             if [ -n "$idx" ]; then
               cat "$2/failed.list"
               rm -f "$2/failed.list" "$2/failed.idx"
@@ -1846,7 +1839,7 @@ jobs:
           for suite in $SUITES_RUN; do
             list="/tmp/failed.$suite.list"
             [ -s "$list" ] || continue
-            xml_rel=$(cat "/tmp/failed-logs/$suite"/*/xml 2>/dev/null | head -1)
+            xml_rel=$(awk 'NF {print; exit}' "/tmp/failed-logs/$suite"/*/xml.list 2>/dev/null || :)
             [ -n "$xml_rel" ] || continue
             xml_name=$(basename "$xml_rel")
             n=$(wc -l < "$list")
@@ -1873,10 +1866,12 @@ jobs:
               k[$shard]=$(( ${k[$shard]:-0} + 1 ))
               [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
               log="/tmp/failed-logs/$suite/$shard/${k[$shard]}.log"
-              rel=$(head -1 "/tmp/failed-logs/$suite/$shard/xml" 2>/dev/null || :)
+              rel=$(head -1 "/tmp/failed-logs/$suite/$shard/xml.list" 2>/dev/null || :)
+              full=
+              [ -z "$rel" ] || full=" &middot; <a href=\"$base/shard/$shard/$rel\">full log</a>"
               {
                 echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/${rel:-$xml_rel}\">full log</a></summary>"
+                echo "<summary>shard $shard &middot; <code>$name</code>$full</summary>"
                 echo
                 # <pre> on its own line: a blank line in the log would end the HTML block.
                 echo "<pre>"
