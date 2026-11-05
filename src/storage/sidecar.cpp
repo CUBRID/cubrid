@@ -3039,6 +3039,8 @@ sidecar_heap_stats_body (THREAD_ENTRY *thread_p, const HFID *hfid, SIDECAR_HEAP_
 
 	  for (PGSLOTID slotid = HEAP_HEADER_AND_CHAIN_SLOTID + 1; slotid < n_slots; slotid++)
 	    {
+	      /* spage_get_record_type () reports a REC_MARKDELETED slot as REC_UNKNOWN */
+	      const SPAGE_SLOT *slot = spage_get_slot (page, slotid);
 	      const INT16 type = spage_get_record_type (page, slotid);
 	      RECDES record;
 	      OID oid;
@@ -3046,7 +3048,7 @@ sidecar_heap_stats_body (THREAD_ENTRY *thread_p, const HFID *hfid, SIDECAR_HEAP_
 	      oid.volid = vpid.volid;
 	      oid.pageid = vpid.pageid;
 	      oid.slotid = slotid;
-	      if (type == REC_MARKDELETED)
+	      if (slot != NULL && slot->record_type == REC_MARKDELETED)
 		{
 		  stats->markdeleted++;
 		}
