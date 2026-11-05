@@ -174,6 +174,25 @@ sidecar_cursor_before_hot_fix (THREAD_ENTRY *thread_p)
 /* heap_create_internal (): a new heap may have the VFID of a destroyed one, whose cache entry must go */
 extern void sidecar_store_forget (THREAD_ENTRY *thread_p, const VFID *hot_vfid);
 extern int sidecar_store_drop (THREAD_ENTRY *thread_p, const HFID *hfid);
+/* xfile_apply_tde_to_class_files (): the heap's store and the store's overflow file take the class TDE algorithm
+ * (7.3); a store created later takes it at its creation (heap_create_internal ()) */
+extern int sidecar_store_apply_tde (THREAD_ENTRY *thread_p, const HFID *hfid, TDE_ALGORITHM tde_algo);
+/* SHOW HEAP SIDECAR OF t (heap_sidecar_next_scan ()): what a heap's store holds.  A record is dead when its DELID's
+ * writer committed; vacuum has not removed it yet.  A REC_MARKDELETED slot is a store record vacuum removed, which
+ * is never reused (I-5).  pages counts the store file's pages, its header page included. */
+struct sidecar_heap_stats
+{
+  HFID store_hfid;		/* NULL_HFID when the heap has no store */
+  INT64 live;
+  INT64 dead;
+  INT64 relocated;		/* of the records, the ones a stamp relocated */
+  INT64 bigone;			/* of the records, the REC_BIGONE ones */
+  INT64 markdeleted;
+  INT64 pages;
+};
+typedef struct sidecar_heap_stats SIDECAR_HEAP_STATS;
+extern int sidecar_heap_stats (THREAD_ENTRY *thread_p, const HFID *hfid, SIDECAR_HEAP_STATS *stats);
+
 /* checkdb (heap_check_heap_file ()): both directions of I-2 for a heap with a store, its class or partition */
 extern DISK_ISVALID sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid);
 

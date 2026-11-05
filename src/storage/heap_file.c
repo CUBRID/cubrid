@@ -20122,7 +20122,8 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
       goto cleanup;
     }
 
-  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY
+	    || show_type == SHOWSTMT_ALL_HEAP_SIDECAR);
 
   if (is_all && partition_type == DB_PARTITIONED_CLASS)
     {
@@ -20497,6 +20498,85 @@ cleanup:
       heap_attrinfo_end (thread_p, &attr_info);
     }
 
+  return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
+}
+
+/*
+ *  heap_sidecar_next_scan() - next scan function of 'show (all) heap sidecar': the Sidecar store of a heap
+ *   return: S_ERROR, S_SUCCESS, or S_END
+ *   thread_p(in):
+ *   cursor(in): the heap, an index of ctx->hfids
+ *   out_values(out):
+ *   out_cnt(in):
+ *   ptr(in): 'show heap' context
+ *
+ * Note: A heap without a store shows -1 for the store's ids and zeros.
+ */
+SCAN_CODE
+heap_sidecar_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  int error = NO_ERROR;
+  HEAP_SHOW_SCAN_CTX *ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
+  HFID *hfid_p = NULL;
+  char *classname = NULL;
+  char class_oid_str[64] = { 0 };
+  SIDECAR_HEAP_STATS stats;
+  FILE_DESCRIPTORS fdes;
+  int idx = 0;
+
+  if (cursor >= ctx->hfids_count)
+    {
+      return S_END;
+    }
+  hfid_p = &ctx->hfids[cursor];
+
+  error = file_descriptor_get (thread_p, &hfid_p->vfid, &fdes);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+  error = sidecar_heap_stats (thread_p, hfid_p, &stats);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  error = db_make_string_copy (out_values[idx++], classname);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  oid_to_string (class_oid_str, sizeof (class_oid_str), &fdes.heap.class_oid);
+  error = db_make_string_copy (out_values[idx++], class_oid_str);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  db_make_int (out_values[idx++], hfid_p->vfid.volid);
+  db_make_int (out_values[idx++], hfid_p->vfid.fileid);
+  db_make_int (out_values[idx++], hfid_p->hpgid);
+  db_make_int (out_values[idx++], HFID_IS_NULL (&stats.store_hfid) ? -1 : stats.store_hfid.vfid.volid);
+  db_make_int (out_values[idx++], HFID_IS_NULL (&stats.store_hfid) ? -1 : stats.store_hfid.vfid.fileid);
+  db_make_int (out_values[idx++], HFID_IS_NULL (&stats.store_hfid) ? -1 : stats.store_hfid.hpgid);
+  db_make_bigint (out_values[idx++], stats.live);
+  db_make_bigint (out_values[idx++], stats.dead);
+  db_make_bigint (out_values[idx++], stats.relocated);
+  db_make_bigint (out_values[idx++], stats.bigone);
+  db_make_bigint (out_values[idx++], stats.markdeleted);
+  db_make_bigint (out_values[idx++], stats.pages);
+  assert (idx == out_cnt);
+
+cleanup:
+  if (classname != NULL)
+    {
+      free_and_init (classname);
+    }
   return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
 }
 

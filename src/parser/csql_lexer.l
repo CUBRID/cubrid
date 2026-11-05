@@ -839,6 +839,8 @@ IDL       [a-zA-Z0-9_]
 [sS][hH][oO][wW]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return SHOW; }
 [sS][iI][bB][lL][iI][nN][gG][sS]					{ return SIBLINGS; }
+[sS][iI][dD][eE][cC][aA][rR]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return SIDECAR; }
 [sS][hH][oO][rR][tT]							{ return SmallInt; }
 [sS][iI][mM][iI][lL][aA][rR]						{ return SIMILAR; }
 [sS][iI][zZ][eE]							{ return SIZE_; }

@@ -975,6 +975,8 @@ typedef enum
   SHOWSTMT_TRAN_TABLES,
   SHOWSTMT_THREADS,
   SHOWSTMT_PAGE_BUFFER_STATUS,
+  SHOWSTMT_HEAP_SIDECAR,
+  SHOWSTMT_ALL_HEAP_SIDECAR,
 
   /* append the new show statement types in here */
 

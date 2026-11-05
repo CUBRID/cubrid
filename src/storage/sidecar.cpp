@@ -2980,6 +2980,128 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
   return v.valid ? DISK_VALID : DISK_INVALID;
 }
 
+int
+sidecar_store_apply_tde (THREAD_ENTRY *thread_p, const HFID *hfid, TDE_ALGORITHM tde_algo)
+{
+  HFID store_hfid;
+  VFID ovf_vfid;
+  int error_code = heap_sidecar_get_store (thread_p, hfid, &store_hfid, NULL);
+
+  if (error_code != NO_ERROR || HFID_IS_NULL (&store_hfid))
+    {
+      return error_code;
+    }
+  error_code = file_apply_tde_algorithm (thread_p, &store_hfid.vfid, tde_algo);
+  if (error_code == NO_ERROR
+      && heap_ovf_find_vfid (thread_p, &store_hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+    {
+      error_code = file_apply_tde_algorithm (thread_p, &ovf_vfid, tde_algo);
+    }
+  return error_code;
+}
+
+/* what a heap's store holds, one store page fixed at a time; a relocated or REC_BIGONE record is read through its
+ * home as a reader reads it, after the walk */
+static int
+sidecar_heap_stats_body (THREAD_ENTRY *thread_p, const HFID *hfid, SIDECAR_HEAP_STATS *stats)
+{
+  std::vector<std::pair<OID, INT16>> forwards;
+  int error_code = heap_sidecar_get_store (thread_p, hfid, &stats->store_hfid, NULL);
+
+  if (error_code != NO_ERROR || HFID_IS_NULL (&stats->store_hfid))
+    {
+      return error_code;
+    }
+
+  VPID vpid;
+  vpid.volid = stats->store_hfid.vfid.volid;
+  vpid.pageid = stats->store_hfid.hpgid;
+  while (!VPID_ISNULL (&vpid))
+    {
+      PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      VPID next_vpid;
+
+      if (page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      if (heap_vpid_next (thread_p, &stats->store_hfid, page, &next_vpid) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, page);
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      stats->pages++;
+      if (!heap_page_is_bestspace (thread_p, page))
+	{
+	  const int n_slots = spage_number_of_slots (page);
+
+	  for (PGSLOTID slotid = HEAP_HEADER_AND_CHAIN_SLOTID + 1; slotid < n_slots; slotid++)
+	    {
+	      const INT16 type = spage_get_record_type (page, slotid);
+	      RECDES record;
+	      OID oid;
+
+	      oid.volid = vpid.volid;
+	      oid.pageid = vpid.pageid;
+	      oid.slotid = slotid;
+	      if (type == REC_MARKDELETED)
+		{
+		  stats->markdeleted++;
+		}
+	      else if (type == REC_HOME && spage_get_record (thread_p, page, slotid, &record, PEEK) == S_SUCCESS)
+		{
+		  (sidecar_record_delete_committed (&record) ? stats->dead : stats->live)++;
+		}
+	      else if (type == REC_RELOCATION || type == REC_BIGONE)
+		{
+		  forwards.emplace_back (oid, type);
+		}
+	    }
+	}
+      pgbuf_unfix_and_init (thread_p, page);
+      vpid = next_vpid;
+    }
+
+  for (const auto &f : forwards)
+    {
+      std::vector<char> bytes;
+      RECDES record;
+
+      switch (sidecar_read_store_record (thread_p, &f.first, bytes, &record))
+	{
+	case SIDECAR_READ_PRESENT:
+	  (f.second == REC_RELOCATION ? stats->relocated : stats->bigone)++;
+	  (sidecar_record_delete_committed (&record) ? stats->dead : stats->live)++;
+	  break;
+	case SIDECAR_READ_ABSENT:
+	  /* vacuumed since the walk */
+	  break;
+	default:
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
+}
+
+int
+sidecar_heap_stats (THREAD_ENTRY *thread_p, const HFID *hfid, SIDECAR_HEAP_STATS *stats)
+{
+  *stats = SIDECAR_HEAP_STATS ();
+  HFID_SET_NULL (&stats->store_hfid);
+  sidecar_cursor_release (thread_p);
+  try
+    {
+      return sidecar_heap_stats_body (thread_p, hfid, stats);
+    }
+  catch (const std::bad_alloc &)
+    {
+      return sidecar_out_of_memory ();
+    }
+}
+
 #if !defined (NDEBUG)
 void
 sidecar_assert_record_format (const RECDES *recdes)
