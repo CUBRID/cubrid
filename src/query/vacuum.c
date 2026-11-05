@@ -1557,6 +1557,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
   HFID hfid = HFID_INITIALIZER;
   bool reusable = false;
   int object_count = 0;
+  bool deferred = false;
 
   if (worker->n_heap_objects == 0)
     {
@@ -1592,10 +1593,31 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
       /* Vacuum page. */
       error_code =
 	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
+      if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
+	{
+	  /* The first deferral decides the block. Every page of this heap would wait for its header again, so a later
+	   * run of the block retries the whole heap. */
+	  if (!deferred)
+	    {
+	      er_stack_push ();
+	      deferred = true;
+	    }
+	  else
+	    {
+	      er_clear ();
+	    }
+	  error_code = NO_ERROR;
+	  for (page_ptr = obj_ptr;
+	       page_ptr < worker->heap_objects + worker->n_heap_objects && VFID_EQ (&page_ptr->vfid, &vfid); page_ptr++)
+	    {
+	      ;
+	    }
+	  continue;
+	}
       if (error_code == ER_OUT_OF_VIRTUAL_MEMORY)
 	{
 	  /* Keep the incomplete block retryable in both debug and release builds. */
-	  return error_code;
+	  break;
 	}
       if (error_code != NO_ERROR)
 	{
@@ -1615,12 +1637,25 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	    }
 #endif // not DEBUG
 
-	  return error_code;
+	  break;
 	}
       /* Advance to next page. */
       page_ptr = obj_ptr;
     }
-  return NO_ERROR;
+
+  if (deferred)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  er_stack_pop ();
+	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	}
+      else
+	{
+	  er_stack_pop_and_keep_error ();
+	}
+    }
+  return error_code;
 }
 
 /*
@@ -2301,7 +2336,8 @@ retry_prepare:
 /*
  * vacuum_heap_prepare_oos_vfid () - Find the OOS file of the heap if the current record needs it.
  *
- * return		   : Error code.
+ * return		   : Error code. On a vacuum worker a failed lookup is ER_VACUUM_OOS_LOOKUP_DEFERRED, and no
+ *			     heap page is fixed.
  * thread_p (in)	   : Thread entry.
  * helper (in/out)	   : Vacuum heap helper. Its record is a copy and stays valid while pages are released.
  * pages_released (out) : True if the heap pages were released and only the home page was fixed again. The caller
@@ -2317,37 +2353,50 @@ vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * help
 
   *pages_released = false;
 
-  if (!VFID_ISNULL (&helper->oos_vfid) || !heap_recdes_contains_oos (&helper->record)
-      || heap_oos_find_vfid_nowait (thread_p, &helper->hfid, &helper->oos_vfid))
+  if (!VFID_ISNULL (&helper->oos_vfid) || !heap_recdes_contains_oos (&helper->record))
     {
       return NO_ERROR;
     }
 
-  VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
-
-  if (helper->forward_page != NULL)
+  if (!heap_oos_find_vfid_nowait (thread_p, &helper->hfid, &helper->oos_vfid))
     {
-      pgbuf_unfix_and_init (thread_p, helper->forward_page);
-    }
-  vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
-  *pages_released = true;
+      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
-  error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record, helper->crt_slotid,
-						     helper->record_type, &helper->oos_vfid);
-  if (error_code != NO_ERROR)
+      if (helper->forward_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, helper->forward_page);
+	}
+      vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
+      *pages_released = true;
+
+      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record, &helper->oos_vfid);
+      if (error_code != NO_ERROR)
+	{
+	  if (vacuum_is_thread_vacuum_worker (thread_p))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_OOS_LOOKUP_DEFERRED, 6,
+		      VFID_AS_ARGS (&helper->hfid.vfid), error_code, VPID_AS_ARGS (&helper->home_vpid),
+		      helper->crt_slotid);
+	      error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	    }
+	  return error_code;
+	}
+
+      helper->home_page =
+	pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (helper->home_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.", VPID_AS_ARGS (&helper->home_vpid));
+	  return error_code;
+	}
+    }
+
+  if (VFID_ISNULL (&helper->oos_vfid))
     {
-      return error_code;
+      vacuum_oos_report_missing_oos_file (&helper->hfid, &helper->record, helper->crt_slotid, helper->record_type);
     }
-
-  helper->home_page = pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-  if (helper->home_page == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      vacuum_check_shutdown_interruption (thread_p, error_code);
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.", VPID_AS_ARGS (&helper->home_vpid));
-      return error_code;
-    }
-
   return NO_ERROR;
 }
 
@@ -4020,20 +4069,23 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
     }
   else
     {
-      /* Shutdown and allocation failures leave the block available for a later retry. */
+      /* Shutdown, allocation failures and deferred OOS lookups leave the block available for a later retry. */
       int error_level =
 #if defined (SERVER_MODE)
 	thread_p->shutdown ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
 
 #if !defined (NDEBUG)
       /* Other reasons for abandoning a worker job remain unexpected. */
-      assert (thread_p->shutdown || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY);
-      assert (vacuum_Data.shutdown_sequence.is_shutdown_requested () || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY);
+      assert (thread_p->shutdown || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
+	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
+      assert (vacuum_Data.shutdown_sequence.is_shutdown_requested () || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
+	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
 	er_errid () == ER_INTERRUPTED ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
-      assert (er_errid () == ER_INTERRUPTED || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY);
+      assert (er_errid () == ER_INTERRUPTED || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
+	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */
@@ -8274,7 +8326,9 @@ vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_cod
   // interrupted is accepted if:
   // 1. this is an active worker thread
   // 2. or server is shutting down
-  assert (!vacuum_is_thread_vacuum_worker (thread_p) || (thread_p->shutdown && error_code == ER_INTERRUPTED));
+  // 3. or the block is left for a later run
+  assert (!vacuum_is_thread_vacuum_worker (thread_p) || (thread_p->shutdown && error_code == ER_INTERRUPTED)
+	  || error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 }
 
 //
