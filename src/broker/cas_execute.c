@@ -4642,7 +4642,7 @@ dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locato
 }
 
 /*
- * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V14.
+ * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V13.
  *
  * A leading discriminator byte tells, per value, whether it is a reference to stored content (pulled later with
  * CAS_FC_STREAM_READ_*) or inline content with no storage behind it, such as a CHAR_TO_CLOB('x') result.
@@ -4810,8 +4810,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     const char *lob_locator = NULL;
     int lob_locator_len = 0;
     DB_BIGINT lob_byte_length = 0;
-    /* [리뷰] V14 드라이버의 BLOB/CLOB 값은 참조든 내용이든 모두 선행 바이트로 시작한다.
-     * 참조를 V14 미만이나 다른 타입 칸에 내용처럼 내보내면 안 된다. 그런 자리는 실패시킨다.
+    /* [리뷰] V13 드라이버의 BLOB/CLOB 값은 참조든 내용이든 모두 선행 바이트로 시작한다.
+     * 참조를 V13 미만이나 다른 타입 칸에 내용처럼 내보내면 안 된다. 그런 자리는 실패시킨다.
      * ext_col_type 계산 뒤에 있어 타입 바이트가 column_type_flag와 어긋나지 않는다. */
     bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
 
@@ -4834,10 +4834,10 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	return data_size;
       }
 
-    /* Only the BLOB/CLOB framing to a V14 driver can carry a reference. Anywhere else (older driver) the
+    /* Only the BLOB/CLOB framing to a V13 driver can carry a reference. Anywhere else (older driver) the
      * locator text is not the value, so fail rather than return it as content. */
     if (is_reference
-	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14)
+	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13)
 	     && (lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)))
       {
 	int not_implemented = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
@@ -4846,10 +4846,10 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	return not_implemented;
       }
 
-    /* Every BLOB/CLOB going to a V14 driver is framed with the discriminator, reference or not - the driver
+    /* Every BLOB/CLOB going to a V13 driver is framed with the discriminator, reference or not - the driver
      * reads the same shape for both and decides from the byte, not from the connection version. */
     if ((lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)
-	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14))
+	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
       {
 	if (is_reference)
 	  {

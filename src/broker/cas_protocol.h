@@ -265,7 +265,7 @@ extern "C"
   };
   typedef enum t_cas_func_code T_CAS_FUNC_CODE;
 
-/* Leading byte of every BLOB/CLOB column sent to a PROTOCOL_V14 driver.  It says whether the payload is a
+/* Leading byte of every BLOB/CLOB column sent to a PROTOCOL_V13 driver.  It says whether the payload is a
  * reference to stored content (read with CAS_FC_STREAM_READ_*) or the content itself; the column type alone
  * cannot distinguish them, because a scalar function result (CHAR_TO_CLOB('x')) is a LOB value with no storage
  * behind it. */
@@ -289,11 +289,11 @@ extern "C"
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
-    PROTOCOL_V13 = 13,		/* byte-stream transport (CAS_FC_STREAM_*, 45-53); on develop
-				 * V13 also makes the CAS-issued session id required for QC/X1
-				 * query cancel, which this branch gets when it takes develop */
-    PROTOCOL_V14 = 14,		/* a BLOB/CLOB column leads with INTERNAL_LOB_WIRE_REF / _INLINE */
-    CURRENT_PROTOCOL = PROTOCOL_V14
+    PROTOCOL_V13 = 13,		/* byte-stream transport (CAS_FC_STREAM_*, 45-53) and a BLOB/CLOB column led by
+				 * INTERNAL_LOB_WIRE_REF / _INLINE; on develop V13 also makes the CAS-issued
+				 * session id required for QC/X1 query cancel, which this branch gets when it
+				 * takes develop */
+    CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
