@@ -1505,7 +1505,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
 
-1392 Last Error
+1392 Argument %1$d of %2$s must be a host variable because it is passed to an %3$s parameter.
+
+1393 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

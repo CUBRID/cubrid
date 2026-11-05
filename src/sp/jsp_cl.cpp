@@ -132,6 +132,7 @@ static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, 
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
+static int jsp_check_out_arg (PT_NODE *node, PT_NODE *arg, int arg_mode, int arg_index);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
@@ -326,6 +327,44 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
     }
 
   return error;
+}
+
+/*
+ * jsp_check_out_arg - check the argument for an OUT or IN OUT parameter of a CALL statement
+ *   return: error code
+ *   node(in): a PT_METHOD_CALL node
+ *   arg(in): the argument node at the position of the parameter
+ *   arg_mode(in): the mode of the parameter
+ *   arg_index(in): the position of the parameter, from 0
+ *
+ * Note: An argument for an OUT or IN OUT parameter must be a host variable, that is, a ? or a csql :name.
+ *       A constant, an expression, a session variable or a correlation name of a trigger has no
+ *       place to take the value. A ? is accepted on every path, even where the caller does not
+ *       read the value back, as Oracle accepts any bind variable there.
+ */
+
+static int
+jsp_check_out_arg (PT_NODE *node, PT_NODE *arg, int arg_mode, int arg_index)
+{
+  /* A missing argument is reported as a count error before this. */
+  if (arg_mode == SP_MODE_IN || arg == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (arg->node_type == PT_HOST_VAR)
+    {
+      return NO_ERROR;
+    }
+
+  if (arg->node_type == PT_NAME && arg->info.name.meta_class == PT_PARAMETER)
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_OUT_ARG_NOT_BIND_VARIABLE, 3, arg_index + 1,
+	  node->info.method_call.method_name->info.name.original, (arg_mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
+  return ER_SP_OUT_ARG_NOT_BIND_VARIABLE;
 }
 
 /*
@@ -2265,6 +2304,7 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
       }
 
     sp_entry entry (NUM_SP_ARG_ATTR);
+    PT_NODE *arg = node->info.method_call.arg_list;
 
     for (int i = 0; i < num_params; i++)
       {
@@ -2331,6 +2371,17 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 		error = er_errid ();
 		goto exit_on_error;
 	      }
+	  }
+
+	error = jsp_check_out_arg (node, arg, arg_mode, i);
+	if (error != NO_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
+
+	if (arg != NULL)
+	  {
+	    arg = arg->next;
 	  }
 
 	sig.arg.arg_mode[i] = arg_mode;
