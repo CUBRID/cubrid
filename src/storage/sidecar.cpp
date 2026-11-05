@@ -51,6 +51,7 @@
 #include "oid.h"
 #include "overflow_file.h"
 #include "page_buffer.h"
+#include "perf_monitor.h"
 #include "slotted_page.h"
 #include "system_parameter.h"
 #include "thread_lockfree_hash_map.hpp"
@@ -258,16 +259,31 @@ struct sidecar_attr_state
   std::map<OID, std::vector<char>, sidecar_oid_less> values;
 };
 
-/* What the module did since the server started, for the tests: store records it read, of them the ones a fetch exit
- * read to expand a record, store records it wrote (inserts and stamps), committed-snapshot fetches it read again, and
- * lock fallbacks.  checkdb's verifier logs them (sidecar_verify_heap ()); P1c turns them into performance counters. */
-static std::atomic<UINT64> sidecar_Store_reads (0);
-static std::atomic<UINT64> sidecar_Expand_reads (0);
-static std::atomic<UINT64> sidecar_Expand_reads_last (0);	/* of them, by last-version reads */
-static std::atomic<UINT64> sidecar_Store_fixes (0);	/* store heap pages fixed by readers, overflow pages aside */
+/* What the module does is counted in the performance monitor (Num_sidecar_*, cubrid statdump).  The global counters
+ * always count, so the verifier's line and a stand-alone process can report them; a transaction's own counters count
+ * only while someone watches, as for every other statistic. */
+static void
+sidecar_count (THREAD_ENTRY *thread_p, PERF_STAT_ID psid, UINT64 amount = 1)
+{
+  if (perfmon_is_perf_tracking ())
+    {
+      perfmon_add_stat (thread_p, psid, amount);
+    }
+  else
+    {
+      perfmon_add_stat_to_global (psid, amount);
+    }
+}
 
-static std::atomic<UINT64> sidecar_Attr_reads (0);	/* store records the attribute layer read */
-static std::atomic<UINT64> sidecar_Attr_reads_page_held (0);	/* of them, with a data page fixed */
+static unsigned long long
+sidecar_counted (PERF_STAT_ID psid)
+{
+  if (!pstat_Global.initialized)
+    {
+      return 0;
+    }
+  return (unsigned long long) pstat_Global.global_stats[pstat_Metadata[psid].start_offset];
+}
 
 #if !defined (NDEBUG)
 /* The stored-form window of the thread: from the old-record fetch of an UPDATE under its X lock to the end of
@@ -317,9 +333,6 @@ sidecar_stored_form_is_admitted (const char *p)
   return false;
 }
 #endif /* !NDEBUG */
-static std::atomic<UINT64> sidecar_Store_writes (0);
-static std::atomic<UINT64> sidecar_Retries (0);
-static std::atomic<UINT64> sidecar_Fallbacks (0);
 
 /* the retry bound of 5.6 (c): a committed-snapshot fetch reads the row's current version at most this many times
  * more before it asks its locator-level caller for the lock fallback (guess) */
@@ -348,8 +361,8 @@ sidecar_finalize (void)
 {
   /* a stand-alone utility such as compactdb -S leaves no server to ask */
   er_log_debug (ARG_FILE_LINE, "Sidecar counters at shutdown: store reads %llu (fetch expansion %llu) writes %llu",
-		(unsigned long long) sidecar_Store_reads.load (), (unsigned long long) sidecar_Expand_reads.load (),
-		(unsigned long long) sidecar_Store_writes.load ());
+		sidecar_counted (PSTAT_SC_STORE_READS), sidecar_counted (PSTAT_SC_EXPAND),
+		sidecar_counted (PSTAT_SC_EXTERNALIZE) + sidecar_counted (PSTAT_SC_DROP));
   if (sidecar_Stores_initialized)
     {
       sidecar_Stores.destroy ();
@@ -542,7 +555,7 @@ sidecar_fix_store_page (THREAD_ENTRY *thread_p, const OID *oid, PAGE_PTR *page)
 
   vpid.volid = oid->volid;
   vpid.pageid = oid->pageid;
-  sidecar_Store_fixes++;
+  sidecar_count (thread_p, PSTAT_SC_STORE_PAGE_FIXES);
   *page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (*page == NULL)
     {
@@ -684,7 +697,7 @@ sidecar_read_store_record (THREAD_ENTRY *thread_p, const OID *oid, std::vector<c
 {
   PAGE_PTR page = NULL;
 
-  sidecar_Store_reads++;
+  sidecar_count (thread_p, PSTAT_SC_STORE_READS);
   try
     {
       return sidecar_read_store_record_at (thread_p, oid, bytes, record, page);
@@ -1245,6 +1258,8 @@ sidecar_plan_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
 	    {
 	      sidecar_plan_slot s;
 
+	      sidecar_count (thread_p, PSTAT_SC_COMPARE_KEPT);
+
 	      s.slot.location = location;
 	      s.slot.ref = o.ref;
 	      s.attrid = NULL_ATTRID;
@@ -1429,7 +1444,7 @@ sidecar_insert_values (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, 
 	  store_context->use_bulk_logging = context->use_bulk_logging;
 
 	  assert (!pgbuf_has_perm_pages_fixed (thread_p));
-	  sidecar_Store_writes++;
+	  sidecar_count (thread_p, PSTAT_SC_EXTERNALIZE);
 	  const int error_code = heap_insert_logical (thread_p, store_context, NULL);
 	  if (error_code != NO_ERROR)
 	    {
@@ -1478,7 +1493,7 @@ sidecar_stamp_values (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, s
       store_context->sidecar_store_op = true;
 
       assert (!pgbuf_has_perm_pages_fixed (thread_p));
-      sidecar_Store_writes++;
+      sidecar_count (thread_p, PSTAT_SC_DROP);
       const int error_code = heap_delete_logical (thread_p, store_context);
       if (error_code != NO_ERROR)
 	{
@@ -1757,6 +1772,7 @@ sidecar_keep_ref (HEAP_ATTRVALUE *value, const RECDES *old_recdes)
   db_make_varbit (&value->dbvalue, SIDECAR_REF_SIZE * CHAR_BIT, bytes, SIDECAR_REF_SIZE * CHAR_BIT);
   value->dbvalue.need_clear = true;
   value->state = HEAP_KEPT_REF_ATTRVALUE;
+  sidecar_count (NULL, PSTAT_SC_KEEP);
   return true;
 }
 
@@ -1919,7 +1935,7 @@ sidecar_on_absent (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, con
     }
   if (attempt < SIDECAR_RETRY_BOUND)
     {
-      sidecar_Retries++;
+      sidecar_count (thread_p, PSTAT_SC_RESOLVE_RETRY);
       er_log_debug (ARG_FILE_LINE, "Sidecar: retry %d of a committed-snapshot fetch, store record %d|%d|%d absent",
 		    attempt + 1, ref->volid, ref->pageid, ref->slotid);
       return S_SIDECAR_RETRY;
@@ -2001,8 +2017,14 @@ sidecar_on_fetch_body (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDE
       SIDECAR_REF ref;
 
       sidecar_hot_get_ref (&hot, i, &ref);
-      sidecar_Expand_reads += (i == 0 && fault) ? 0 : 1;
-      sidecar_Expand_reads_last += (fetch == SIDECAR_FETCH_LAST_VERSION) ? 1 : 0;
+      if (i != 0 || !fault)
+	{
+	  sidecar_count (thread_p, PSTAT_SC_EXPAND);
+	}
+      if (fetch == SIDECAR_FETCH_LAST_VERSION)
+	{
+	  sidecar_count (thread_p, PSTAT_SC_EXPAND_LAST_VERSION);
+	}
       const sidecar_read_result result = ((i == 0 && fault) ? SIDECAR_READ_ABSENT
 					  : sidecar_read_value (thread_p, &ref, recdes->data + value_offsets[i]));
       if (result == SIDECAR_READ_FAILED)
@@ -2053,7 +2075,7 @@ sidecar_fetch_locked (THREAD_ENTRY *thread_p, const OID *oid, OID *class_oid, HE
     {
       return S_ERROR;
     }
-  sidecar_Fallbacks++;
+  sidecar_count (thread_p, PSTAT_SC_RESOLVE_RETRY_EXHAUSTED);
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, COPY, NULL_CHN);
   scan = heap_get_last_version (thread_p, &context);
@@ -2158,10 +2180,10 @@ sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, const char *slot)
       return &found->second;
     }
 
-  sidecar_Attr_reads++;
+  sidecar_count (thread_p, PSTAT_SC_RESOLVE);
   if (pgbuf_has_perm_pages_fixed (thread_p))
     {
-      sidecar_Attr_reads_page_held++;
+      sidecar_count (thread_p, PSTAT_SC_RESOLVE_PAGE_HELD);
     }
   assert (sidecar_attr_pages_ok (thread_p, attr_info));
   std::vector<char> bytes (MAX (ref.length, 1));
@@ -2741,12 +2763,12 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
 		"with refs %d, deleted %d; store reads %llu (fetch expansion %llu) writes %llu retries %llu fallbacks %llu; "
 		"expansion by last-version reads %llu; store page fixes %llu; %s; attribute-layer reads %llu, with a page "
 		"held %llu", HFID_AS_ARGS (hfid), live, (int) v.records.size () - live, v.relocated, v.bigone, v.hot_rows,
-		v.hot_deleted, (unsigned long long) sidecar_Store_reads.load (),
-		(unsigned long long) sidecar_Expand_reads.load (), (unsigned long long) sidecar_Store_writes.load (),
-		(unsigned long long) sidecar_Retries.load (), (unsigned long long) sidecar_Fallbacks.load (),
-		(unsigned long long) sidecar_Expand_reads_last.load (), (unsigned long long) sidecar_Store_fixes.load (),
-		v.valid ? "valid" : "INVALID", (unsigned long long) sidecar_Attr_reads.load (),
-		(unsigned long long) sidecar_Attr_reads_page_held.load ());
+		v.hot_deleted, sidecar_counted (PSTAT_SC_STORE_READS), sidecar_counted (PSTAT_SC_EXPAND),
+		sidecar_counted (PSTAT_SC_EXTERNALIZE) + sidecar_counted (PSTAT_SC_DROP),
+		sidecar_counted (PSTAT_SC_RESOLVE_RETRY), sidecar_counted (PSTAT_SC_RESOLVE_RETRY_EXHAUSTED),
+		sidecar_counted (PSTAT_SC_EXPAND_LAST_VERSION), sidecar_counted (PSTAT_SC_STORE_PAGE_FIXES),
+		v.valid ? "valid" : "INVALID", sidecar_counted (PSTAT_SC_RESOLVE),
+		sidecar_counted (PSTAT_SC_RESOLVE_PAGE_HELD));
   return v.valid ? DISK_VALID : DISK_INVALID;
 }
 
