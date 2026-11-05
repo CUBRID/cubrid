@@ -38,7 +38,6 @@ extern int repl_key_pack (const char *name, int type, int count, const REPL_KEY_
 			  char **data, int *length);
 extern bool repl_key_unpack_log (const char *data, int length, const char **class_name, const char **key,
 				 int *key_length, const char **metadata, int *metadata_length);
-extern bool repl_key_is_valid (const char *data, int length);
 
 /* A row log carries only the digest of the descriptor the master used; the slave digests its own descriptor
  * and compares the two. */

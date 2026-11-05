@@ -474,6 +474,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	    {
 	      error = ER_REPL_ERROR;
 	    }
+	  free_and_init (class_name);
 	  return error;
 	}
 

@@ -199,11 +199,8 @@ repl_key_pack (const char *name, int type, int count, const REPL_KEY_COLUMN * co
 	  goto error;
 	}
 
-      /* Keep readable domain fields for mismatch logs; the packed domain also retains enum values. */
+      /* The packed domain below carries the type, precision, scale, codeset, collation and enum values. */
       if (!repl_key_put_int (&b, c->id) || !repl_key_put_name (&b, c->name)
-	  || !repl_key_put_int (&b, TP_DOMAIN_TYPE (domain)) || !repl_key_put_int (&b, domain->precision)
-	  || !repl_key_put_int (&b, domain->scale) || !repl_key_put_int (&b, domain->codeset)
-	  || !repl_key_put_int (&b, domain->collation_id)
 	  || !repl_key_put_name (&b, c->domain_class_name)
 	  || !repl_key_put_int (&b, c->descending != 0) || !repl_key_put_int (&b, c->not_null != 0))
 	{
@@ -384,15 +381,13 @@ repl_key_unpack_log (const char *data, int length, const char **class_name, cons
 }
 
 /*
- * repl_key_parse() - validate a descriptor and optionally describe it
- *   return: true for a valid descriptor, false otherwise
+ * repl_key_is_valid() - check the RK descriptor's fields and bounds
+ *   return: true if valid, false otherwise
  *   data(in): packed descriptor
  *   length(in): descriptor length in bytes
- *   output(out): optional description buffer
- *   capacity(in): size of output in bytes
  */
 static bool
-repl_key_parse (const char *data, int length, char *output, int capacity)
+repl_key_is_valid (const char *data, int length)
 {
   if (data == NULL || length <= 0)
     {
@@ -404,38 +399,18 @@ repl_key_parse (const char *data, int length, char *output, int capacity)
   const char *name;
   if (!repl_key_get_int (&r, &type) || !repl_key_type_is_supported (type)
       || !repl_key_get_name (&r, &name) || name[0] == '\0' || !repl_key_get_int (&r, &count)
-      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 14))
+      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 9))
     {
       return false;
     }
 
-  int used = 0;
-  if (output != NULL)
-    {
-      const char *type_name = type == BTREE_PRIMARY_KEY ? "PRIMARY KEY"
-	: type == BTREE_REVERSE_UNIQUE ? "REVERSE UNIQUE" : "UNIQUE";
-      used = snprintf (output, capacity, "constraint='%s', type=%s, columns=%d", name, type_name, count);
-    }
-
   for (int i = 0; i < count; i++)
     {
-      int id, fields[5], desc, not_null, domain_length;
+      int id, desc, not_null, domain_length;
       const char *column, *class_name;
 
-      if (!repl_key_get_int (&r, &id) || id < 0 || !repl_key_get_name (&r, &column) || column[0] == '\0')
-	{
-	  return false;
-	}
-
-      for (int j = 0; j < 5; j++)
-	{
-	  if (!repl_key_get_int (&r, &fields[j]))
-	    {
-	      return false;
-	    }
-	}
-
-      if (!repl_key_get_name (&r, &class_name)
+      if (!repl_key_get_int (&r, &id) || id < 0 || !repl_key_get_name (&r, &column) || column[0] == '\0'
+	  || !repl_key_get_name (&r, &class_name)
 	  || !repl_key_get_int (&r, &desc) || (desc != 0 && desc != 1)
 	  || !repl_key_get_int (&r, &not_null) || (not_null != 0 && not_null != 1)
 	  || !repl_key_get_int (&r, &domain_length) || domain_length <= 0 || domain_length > r.remaining
