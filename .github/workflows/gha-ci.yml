@@ -123,8 +123,8 @@ env:
         awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
       elif ls "$1"/test-results/*.xml > /dev/null 2>&1; then
-        awk '/<testcase / {e++} /<failure[ >]/ {f++}
-          END {printf "found=yes exec=%d pass=%d fail=%d skip=0\n", e, e - f, f}' "$1"/test-results/*.xml
+        awk '/<testcase / {e++} /<(failure|error)[ >\/]/ {f++} /<skipped[ >\/]/ {k++}
+          END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", e - k, e - k - f, f, k}' "$1"/test-results/*.xml
       else
         echo "found=no exec=0 pass=0 fail=0 skip=0"
       fi
@@ -136,8 +136,8 @@ env:
       mkdir -p "$2/upper" "$2/work" "$3"
       mount -t overlay overlay -o "lowerdir=$1,upperdir=$2/upper,workdir=$2/work" "$3"
     }
-  # A new suite also needs a row in the test image's resolve_category. The image's cases verb gets
-  # tc_subdir, not the suite: it has no case rule for sql_by_cci.
+  # A new suite also needs a row in the test image's resolve_category and result_file. The image's
+  # cases verb gets tc_subdir, not the suite: it has no case rule for sql_by_cci.
   SUITES: |-
     {
       "shell": {
