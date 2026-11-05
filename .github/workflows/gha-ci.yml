@@ -126,6 +126,8 @@ env:
         echo "found=no exec=0 pass=0 fail=0 skip=0"
       fi
     }
+  SAME_RECIPE: |
+    same_recipe() { [ -f "$1/$BUILD_SENTINEL" ] && grep -sqxF "recipe=$BUILD_RECIPE" "$1/build.meta"; }
   OVERLAY: |
     overlay() {   # <lower> <rw dir> <mount point>
       mkdir -p "$2/upper" "$2/work" "$3"
@@ -502,8 +504,8 @@ jobs:
       BUILD_LOG_DIR: /home/ci/shared/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
-      # A published build is reused only when it was built the same way.
-      BUILD_ENV: ${{ matrix.image }} args=${{ matrix.args }}
+      # A build from another image or other args sits at the same $SHA/$MODE path.
+      BUILD_RECIPE: ${{ matrix.image }}|${{ matrix.args }}
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
       # The default is mtime, which a fresh checkout always misses.
@@ -521,6 +523,8 @@ jobs:
         run: |
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
+          mkdir -p "$BUILD_LOG_DIR"
+          printf '%s\n' "$BUILD_RECIPE" > "$BUILD_LOG_DIR/recipe"
           for d in "$BUILD_MIRROR/cubrid/.git" "$BUILD_MIRROR/cubrid.git"; do
             [ -d "$d" ] || {
               echo "::error::the node copy is not visible: $d. The pod template did not reach the pod, or gha-node-seed has not run"
@@ -538,8 +542,8 @@ jobs:
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
-          dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
-          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqxF "env=$BUILD_ENV" "$dir/build.meta"; then
+          eval "$SAME_RECIPE"
+          if [ "$INPUT_FORCE" != 'true' ] && same_recipe "$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"; then
             echo "reuse=reused" >> "$GITHUB_OUTPUT"
           else
             echo "reuse=built" >> "$GITHUB_OUTPUT"
@@ -624,17 +628,17 @@ jobs:
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
-          same_env() { [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqxF "env=$BUILD_ENV" "$dir/build.meta"; }
+          eval "$SAME_RECIPE"
           # Another run on this SHA may have published since the reuse check; the rename decides.
-          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && same_env; then
+          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && same_recipe "$dir"; then
             REUSE=reused
           fi
           if [ "$REUSE" != 'reused' ]; then
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
-            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nenv=%s\nworkflow=gha-ci\n' \
-              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)" "$BUILD_ENV")
+            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nrecipe=%s\nworkflow=gha-ci\n' \
+              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)" "$BUILD_RECIPE")
             # Inside the archive too: the shard reads it back out of what it unpacked.
             printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
             # An archive: a published tree made every process launch read the build over GlusterFS.
@@ -646,7 +650,7 @@ jobs:
             # rename(2) is the one atomic arbiter on shared storage; check-then-act lost this race.
             if mv -T "$tmp" "$dir" 2>/dev/null; then
               :
-            elif same_env && [ "$INPUT_FORCE" != 'true' ]; then
+            elif same_recipe "$dir" && [ "$INPUT_FORCE" != 'true' ]; then
               echo "another run published this build first, keeping theirs: $dir"
               rm -rf "$tmp"
             else
@@ -802,7 +806,11 @@ jobs:
           [ "$meta_sha" = "$SHA" ] || {
             echo "::error::meta sha($meta_sha) differs from the sha gate resolved($SHA)"; exit 1; }
           echo "build_run_id=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")" >> "$GITHUB_OUTPUT"
-          echo "build_env=$(sed -n 's/^env=//p' "$dir/build.meta")" >> "$GITHUB_OUTPUT"
+          want=$(cat "$CI_ROOT/runs/$GITHUB_RUN_ID/build/debug/recipe" 2>/dev/null) || want=''
+          got=$(sed -n 's/^recipe=//p' "$dir/build.meta")
+          [ -n "$want" ] && [ "$got" = "$want" ] || {
+            echo "::error::the published build was made with '${got:-no recorded recipe}', not this run's '${want:-unknown}': its rebuild failed or never ran"; exit 1; }
+          echo "build_recipe=$want" >> "$GITHUB_OUTPUT"
 
       - name: GitHub App token
         id: app-token
@@ -956,7 +964,7 @@ jobs:
           SABOTAGE: ${{ needs.gate.outputs.sabotage }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           SHA: ${{ needs.gate.outputs.sha }}
-          BUILD_ENV: ${{ steps.build.outputs.build_env }}
+          BUILD_RECIPE: ${{ steps.build.outputs.build_recipe }}
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
@@ -1010,11 +1018,11 @@ jobs:
                 echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA. A re-run only re-runs the same commit"
                 exit 1
               fi
-              prev_env=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
-                -exec sed -n 's/^env=//p' {} + 2>/dev/null | sort -u) || prev_env=''
-              [ -n "$prev_env" ] || prev_env=$(sed -n "s/^build_env='\(.*\)'$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_env=''
-              if [ "$prev_env" != "$BUILD_ENV" ]; then
-                echo "::error::run $RERUN_FROM tested a build made with '${prev_env:-no recorded environment}', not '$BUILD_ENV'. A re-run only re-runs the same build. Use /run $suite"
+              prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
+                -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
+              [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
+              if [ "$prev_recipe" != "$BUILD_RECIPE" ]; then
+                echo "::error::run $RERUN_FROM tested a build made with '${prev_recipe:-no recorded recipe}', not '$BUILD_RECIPE'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
               # A shard that died whole left no result file for failed.list: carry its share.
@@ -1181,7 +1189,7 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
-              echo "build_env='$BUILD_ENV'"
+              echo "build_recipe='$BUILD_RECIPE'"
             } > "$out/plan/split.meta"
 
             case "$SABOTAGE" in
