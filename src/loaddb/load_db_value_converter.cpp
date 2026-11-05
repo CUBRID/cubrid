@@ -271,6 +271,31 @@ namespace cubload
   }
 
   /*
+   * is_date_time_literal - is the token one of the date and time literals
+   *    return: true for DATE'...', TIME'...', TIMESTAMP'...', DATETIME'...' and their
+   *            time zone forms
+   *    ldr_type(in): parser type of the token
+   */
+  static bool
+  is_date_time_literal (const data_type ldr_type)
+  {
+    switch (ldr_type)
+      {
+      case LDR_DATE:
+      case LDR_TIME:
+      case LDR_TIMESTAMP:
+      case LDR_TIMESTAMPLTZ:
+      case LDR_TIMESTAMPTZ:
+      case LDR_DATETIME:
+      case LDR_DATETIMELTZ:
+      case LDR_DATETIMETZ:
+	return true;
+      default:
+	return false;
+      }
+  }
+
+  /*
    * fallback_convert - convert through the literal's natural type and let the engine cast
    *    return: NO_ERROR or an error code
    *    ldr_type(in): parser type of the token
@@ -294,6 +319,23 @@ namespace cubload
     int error_code = get_elem_conv_func (ldr_type) (str, str_size, attr, &natural);
     if (error_code != NO_ERROR)
       {
+	if (is_date_time_literal (ldr_type))
+	  {
+	    /*
+	     * A date or time literal that will not parse keeps the code this pair has
+	     * always had. Only the pair whose column matches the literal - a date into a
+	     * DATE column - had a converter of its own before, and that one still reports
+	     * ER_DATE_CONVERSION. Every pair reached through here had none, so it was
+	     * refused outright as ER_OBJ_DOMAIN_CONFLICT, and --error-control-file names
+	     * codes: a file written against an earlier version lists -214 for these, and
+	     * reported as the parse error instead it stops matching, so a row that used to
+	     * be skipped fails the whole load.
+	     */
+	    db_value_clear (&natural);
+	    error_code = ER_OBJ_DOMAIN_CONFLICT;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+	  }
+
 	return error_code;
       }
 
