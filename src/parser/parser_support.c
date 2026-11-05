@@ -5611,6 +5611,14 @@ static PT_NODE *
 pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+
+  if (walk->error != NO_ERROR)
+    {
+      /* a stopped walk still visits the next argument of a node: keep the first error */
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
   PT_NODE *parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
 
   if (parent != NULL && (parent->next == node || parent->or_next == node))
@@ -5844,6 +5852,11 @@ pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement, PT
     }
   free (walk.kinds);
   free (walk.open);
+  if (walk.error == ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      /* the stopped walk also stopped the walk of pt_resolve_names it shares */
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+    }
   return statement;
 }
 
