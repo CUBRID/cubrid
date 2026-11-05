@@ -44,6 +44,9 @@
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
 
+/* Must match SM_CLASSFLAG_DATA_REPLICATION_OFF in class_object.h. */
+#define OR_CLASSFLAG_DATA_REPLICATION_OFF 32
+
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
  * The variable offset table is present in the headers of objects and sets.
@@ -795,13 +798,12 @@ bool
 or_class_is_replication_on (RECDES * record)
 {
   int flags = 0;
-  int replication_off_flag = 32;	/* SM_CLASSFLAG_REPLICATION_OFF = 32 */
 
   /* TODO:
    * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation(EPIC CBRD-26096). */
   or_class_flags (record, &flags);
 
-  return !(flags & replication_off_flag);
+  return !(flags & OR_CLASSFLAG_DATA_REPLICATION_OFF);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
