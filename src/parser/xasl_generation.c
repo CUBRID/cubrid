@@ -21050,7 +21050,17 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   if (pt_buildvalue_output_reads_scan (xasl))
     {
+      AGGREGATE_TYPE *agg_p;
+
       XASL_SET_FLAG (xasl, XASL_OUTPUT_READS_SCAN);
+      /* the row loop has to reach qexec_keep_last_row (), so no aggregate of this block is answered from the index or
+       * the statistics (qexec_evaluate_aggregates_optimize () ends the block without its rows).  Decided here, before
+       * the stream writes the aggregates' operand program image (xts_save_agg_prog_image ()), so that the image and
+       * the server cover the same aggregates. */
+      for (agg_p = buildvalue->agg_list; agg_p != NULL; agg_p = agg_p->next)
+	{
+	  agg_p->flag.agg_optimized = false;
+	}
     }
 
   /* set CONNECT BY xasl */

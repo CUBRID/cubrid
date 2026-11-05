@@ -14514,10 +14514,19 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!buildvalue->is_always_false)
 	    {
-	      /* CBRD-27870: an output that reads a column of the scan (XASL_OUTPUT_READS_SCAN) needs the row loop to
-	       * reach qexec_keep_last_row (); the statistics/index based evaluation ends the block without it and left
-	       * that column NULL despite source rows. */
-	      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY) || XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
+#if !defined (NDEBUG)
+	      if (XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
+		{
+		  /* XASL generation kept its aggregates off the statistics/index evaluation, which would end the block
+		   * without the row loop qexec_keep_last_row () needs, before writing their operand program image
+		   * (pt_to_buildvalue_proc ()) */
+		  for (agg_ptr = buildvalue->agg_list; agg_ptr; agg_ptr = agg_ptr->next)
+		    {
+		      assert (!agg_ptr->flag.agg_optimized);
+		    }
+		}
+#endif
+	      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 		{
 		  /* A hierarchical query aggregates the CONNECT BY expansion, not the class rows, so the
 		   * statistics/index based evaluation (which counts the class) does not apply. Clear the flag
