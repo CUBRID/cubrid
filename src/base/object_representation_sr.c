@@ -4801,7 +4801,7 @@ or_is_replication_candidate_key (const OR_INDEX * index)
       return true;
     }
 
-  if ((index->type != BTREE_UNIQUE && index->type != BTREE_REVERSE_UNIQUE) || index->n_atts <= 0 || index->atts == NULL)
+  if (!btree_is_unique_type (index->type) || index->n_atts <= 0 || index->atts == NULL)
     {
       return false;
     }
