@@ -20557,10 +20557,12 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
   if (DB_VALUE_TYPE (curr_key) != DB_TYPE_MIDXKEY)
     {
-      /* a single column function index key is the result alone, while btree_att_ids also lists its arguments */
+      /* a single column function index key is the result alone, while btree_att_ids lists its arguments,
+       * so only the function result can be read from it */
       if (attr_info->num_values != 1
-	  || (!IS_FUNC_INDEX_RESULT_ATTR_ID (attr_info->values->attrid)
-	      && (btree_num_att != 1 || attr_info->values->attrid != btree_att_ids[0])))
+	  || (func_index_col_id != -1
+	      ? !IS_FUNC_INDEX_RESULT_ATTR_ID (attr_info->values->attrid)
+	      : (btree_num_att != 1 || attr_info->values->attrid != btree_att_ids[0])))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
