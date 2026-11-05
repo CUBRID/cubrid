@@ -10235,7 +10235,15 @@ check_ha_repl_constraints_in_subclass_tree (const char *superclass_name, DB_OBJE
       return error;
     }
 
-  if (!ml_find (classes_to_drop, subclass_obj) && !(class_->flags & SM_CLASSFLAG_DATA_REPLICATION_OFF))
+  if (ml_find (classes_to_drop, subclass_obj))
+    {
+      /* A partitioned class dropped in the same statement takes its partitions with it. */
+      if (class_->partition != NULL && class_->partition->pname == NULL)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (!(class_->flags & SM_CLASSFLAG_DATA_REPLICATION_OFF))
     {
       error = check_ha_repl_constraint (subclass_obj);
       if (error != NO_ERROR)
