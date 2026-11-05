@@ -1114,12 +1114,14 @@ extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 extern bool qo_is_filter_index (QO_INDEX_ENTRY *);
 extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt);
 extern bool qo_check_type_index_covering (QO_INDEX_ENTRY * ent);
+extern char *qo_print_func_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr);
 extern bool qo_func_index_arg_used_raw (PARSER_CONTEXT * parser, PT_NODE * tree, const char *func_expr_str,
 					PT_NODE * col);
 extern QO_SEGMENT *qo_find_func_index_seg (QO_ENV * env, QO_NODE * nodep, const char *expr_str);
 extern bool qo_seg_used_only_in_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * seg,
 					    BITSET * scan_terms);
 extern bool qo_is_func_index_routable (QO_ENV * env, QO_NODE * nodep);
+extern bool qo_is_func_index_key_filter_routable (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 
 extern double QO_INFINITY;
 

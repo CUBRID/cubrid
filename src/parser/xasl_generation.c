@@ -10067,7 +10067,7 @@ pt_get_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
-  expr_str = parser_print_function_index_expr (parser, node);
+  expr_str = qo_print_func_index_expr (parser, node);
   if (expr_str == NULL)
     {
       return NULL;
@@ -10106,6 +10106,39 @@ pt_is_attr_in_key_range (PARSER_CONTEXT * parser, QO_XASL_INDEX_INFO * index_pre
   for (i = 0; i < nterms && !found; i++)
     {
       node = term_exprs[i];
+      CAST_POINTER_TO_NODE (node);
+      if (node != NULL)
+	{
+	  save_next = node->next;
+	  node->next = NULL;
+	  found = qo_func_index_arg_used_raw (parser, node, func_expr_str, attr);
+	  node->next = save_next;
+	}
+    }
+
+  return found;
+}
+
+/*
+ * pt_is_attr_in_key_filter () - check whether the key filter terms of an index scan reference an attribute outside
+ *   of the function index expression
+ *   return: bool
+ *   parser(in):
+ *   key_pred(in): key filter terms
+ *   func_expr_str(in): printed function index expression
+ *   attr(in): attribute (PT_NAME)
+ *
+ * note: The terms point into the WHERE list, so each is walked without its next conjuncts.
+ */
+static bool
+pt_is_attr_in_key_filter (PARSER_CONTEXT * parser, PT_NODE * key_pred, const char *func_expr_str, PT_NODE * attr)
+{
+  PT_NODE *term, *node, *save_next;
+  bool found = false;
+
+  for (term = key_pred; term != NULL && !found; term = term->next)
+    {
+      node = term;
       CAST_POINTER_TO_NODE (node);
       if (node != NULL)
 	{
@@ -10171,7 +10204,7 @@ pt_remove_func_index_attrs (PARSER_CONTEXT * parser, QO_PLAN * plan, PT_FI_REMOV
       else if (mode == PT_FI_REMOVE_KEY_ARGS)
 	{
 	  /* oracle_style_empty_string also adds the key range columns, which must stay */
-	  remove = (!qo_func_index_arg_used_raw (parser, key_pred, cons->func_index_info->expr_str, real)
+	  remove = (!pt_is_attr_in_key_filter (parser, key_pred, cons->func_index_info->expr_str, real)
 		    && !(prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
 			 && pt_is_attr_in_key_range (parser, index_pred, cons->func_index_info->expr_str, real)));
 	}

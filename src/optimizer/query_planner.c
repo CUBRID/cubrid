@@ -291,7 +291,7 @@ static bool qo_term_is_evaluated_before (QO_TERM * term1, QO_TERM * term2);
 static double qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
-static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
+static bool qo_index_forbids_key_filter (QO_ENV *, QO_NODE *, QO_INDEX_ENTRY *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static double qo_sort_io_cost (double objects, double pages);
@@ -2167,14 +2167,17 @@ qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
  *   terms, so a residual LIKE stays a data filter and its derived range must
  *   remain the row-count upper bound.
  *   return: true if key-filters are disabled for this index
+ *   env(in):
+ *   node(in):
  *   index_entryp(in):
  *
- * note: A non-covering function index is the only such case.
+ * note: The key has no function arguments, so a function index needs its result routed from the key.
  */
 static bool
-qo_index_forbids_key_filter (QO_INDEX_ENTRY * index_entryp)
+qo_index_forbids_key_filter (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp)
 {
-  return index_entryp->constraints->func_index_info != NULL && index_entryp->cover_segments == false;
+  return (index_entryp->constraints->func_index_info != NULL && index_entryp->cover_segments == false
+	  && !qo_is_func_index_key_filter_routable (env, node, index_entryp));
 }
 
 /*
@@ -2279,7 +2282,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       plan->plan_un.scan.index_equi = false;
     }
 
-  if (qo_index_forbids_key_filter (index_entryp))
+  if (qo_index_forbids_key_filter (env, node, index_entryp))
     {
       /* do not permit key-filter */
       assert (bitset_is_empty (&(plan->plan_un.scan.kf_terms)));

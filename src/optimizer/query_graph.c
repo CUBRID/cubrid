@@ -7274,6 +7274,27 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   /* this index is feasible to use if at least one attribute of index is specified(matched) */
 }
 
+/*
+ * qo_print_func_index_expr () - print an expression to match it against a function index expression
+ *   return: printed expression
+ *   parser(in):
+ *   expr(in):
+ *
+ * note: Merged views wrap terms in parentheses, which the stored index expression never has.
+ */
+char *
+qo_print_func_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  int save_paren = expr->info.expr.paren_type;
+  char *expr_str;
+
+  expr->info.expr.paren_type = 0;
+  expr_str = parser_print_function_index_expr (parser, expr);
+  expr->info.expr.paren_type = save_paren;
+
+  return expr_str;
+}
+
 typedef struct qo_seg_fi_walk_arg QO_SEG_FI_WALK_ARG;
 struct qo_seg_fi_walk_arg
 {
@@ -7328,7 +7349,7 @@ qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       /* the printed expression omits aliases, so skip only what pt_get_func_index_result_attr () routes */
       if (!pt_is_join_expr (tree, &expr_spec_id) && expr_spec_id == info->spec_id)
 	{
-	  char *expr_str = parser_print_function_index_expr (parser, tree);
+	  char *expr_str = qo_print_func_index_expr (parser, tree);
 
 	  if (expr_str != NULL && info->func_expr_str != NULL
 	      && !intl_identifier_casecmp (expr_str, info->func_expr_str))
@@ -7580,6 +7601,63 @@ qo_is_func_index_routable (QO_ENV * env, QO_NODE * nodep)
 }
 
 /*
+ * qo_is_func_index_key_result_exact () - check whether the function result kept in the key is the value the query
+ *   would compute from the row
+ *   return: bool
+ *   env(in): the environment
+ *   index_entry(in): the function index entry
+ *   fi_seg(in): the segment of the function index expression
+ */
+static bool
+qo_is_func_index_key_result_exact (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * fi_seg)
+{
+  TP_DOMAIN *fi_domain = index_entry->constraints->func_index_info->fi_domain;
+
+  /* the key keeps the value computed in the session that stored the row */
+  if (qo_is_session_dependent_expr (QO_ENV_PARSER (env), QO_SEG_PT_NODE (fi_seg)))
+    {
+      return false;
+    }
+
+  /* equal keys keep the value of one row only, so the result must be identical whenever it compares equal */
+  if (fi_domain == NULL || TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE (fi_domain))
+      || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (fi_domain))
+	  && !lang_get_collation (TP_DOMAIN_COLLATION (fi_domain))->options.allow_index_opt))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qo_is_func_index_key_filter_routable () - check whether a key filter of a function index scan can read the
+ *   function result from the key
+ *   return: bool
+ *   env(in): the environment
+ *   nodep(in): the scanned node
+ *   index_entry(in): the function index entry
+ */
+bool
+qo_is_func_index_key_filter_routable (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
+{
+  QO_SEGMENT *fi_seg;
+
+  if (!qo_is_func_index_routable (env, nodep))
+    {
+      return false;
+    }
+
+  fi_seg = qo_find_func_index_seg (env, nodep, index_entry->constraints->func_index_info->expr_str);
+  if (fi_seg == NULL)
+    {
+      return true;
+    }
+
+  return qo_is_func_index_key_result_exact (env, index_entry, fi_seg);
+}
+
+/*
  * qo_is_coverage_index () - check if the index cover all query segments
  *   return: bool
  *   env(in): The environment
@@ -7716,7 +7794,6 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
     {
       COLL_OPT coll_opt;
       SM_FUNCTION_INFO *fi_info = index_entry->constraints->func_index_info;
-      TP_DOMAIN *fi_domain = fi_info->fi_domain;
       QO_SEGMENT *fi_seg = qo_find_func_index_seg (env, nodep, fi_info->expr_str);
 
       /* the function result is not read from the key */
@@ -7741,16 +7818,7 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	  return false;
 	}
 
-      /* the key keeps the value computed in the session that stored the row */
-      if (qo_is_session_dependent_expr (QO_ENV_PARSER (env), QO_SEG_PT_NODE (fi_seg)))
-	{
-	  return false;
-	}
-
-      /* equal keys keep the value of one row only, so the result must be identical whenever it compares equal */
-      if (fi_domain == NULL || TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE (fi_domain))
-	  || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (fi_domain))
-	      && !lang_get_collation (TP_DOMAIN_COLLATION (fi_domain))->options.allow_index_opt))
+      if (!qo_is_func_index_key_result_exact (env, index_entry, fi_seg))
 	{
 	  return false;
 	}
