@@ -303,7 +303,8 @@ repl_key_get_name (repl_key_reader * r, const char **name)
  *   return: true on success, false for a malformed log
  *   data(in): packed log payload
  *   length(in): payload length in bytes
- *   class_name, key, metadata(out): pointers into data; do not free
+ *   class_name, key, metadata(out): pointers into data; do not free. metadata is NULL with a zero length
+ *                                    for a row log written before the RK digest was logged
  *   key_length, metadata_length(out): lengths of the corresponding fields
  */
 bool
@@ -363,6 +364,14 @@ repl_key_unpack_log (const char *data, int length, const char **class_name, cons
 
   r.data += padding;
   r.remaining -= padding;
+
+  if (r.remaining == 0)
+    {
+      /* a row log written before the RK digest was logged ends here */
+      *metadata = NULL;
+      *metadata_length = 0;
+      return true;
+    }
 
   if (!repl_key_get_int (&r, metadata_length) || *metadata_length != r.remaining
       || *metadata_length != REPL_KEY_DIGEST_SIZE)
@@ -437,33 +446,9 @@ repl_key_parse (const char *data, int length, char *output, int capacity)
 
       r.data += domain_length;
       r.remaining -= domain_length;
-
-      if (output != NULL && used >= 0 && used < capacity)
-	{
-	  const char *domain_type = pr_type_name ((DB_TYPE) fields[0]);
-	  int written = snprintf (output + used, capacity - used,
-				  " [column='%s', id=%d, domain=%s(%d,%d), charset=%d, collation=%d, "
-				  "class='%s', order=%s, %s]",
-				  column, id, domain_type ? domain_type : "UNKNOWN", fields[1], fields[2], fields[3],
-				  fields[4], class_name,
-				  desc ? "DESC" : "ASC", not_null ? "NOT NULL" : "NULL");
-	  used = written < 0 || written >= capacity - used ? capacity : used + written;
-	}
     }
 
   return r.remaining == 0;
-}
-
-/*
- * repl_key_is_valid() - check the RK descriptor's fields and bounds
- *   return: true if valid, false otherwise
- *   data(in): packed descriptor
- *   length(in): descriptor length in bytes
- */
-bool
-repl_key_is_valid (const char *data, int length)
-{
-  return repl_key_parse (data, length, NULL, 0);
 }
 
 /*

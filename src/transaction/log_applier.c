@@ -3161,7 +3161,15 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
 				  &metadata, &item->rk_metadata_length))
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-		    "Invalid or missing replication-key metadata in data log.");
+		    "Invalid replication-key metadata in data log.");
+	    goto error_return;
+	  }
+	if (metadata == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		    "Data log without a replication-key digest: it was written by a master that does not log "
+		    "the replication key. Upgrade the master first, then replicate from a log it wrote after "
+		    "the upgrade.");
 	    goto error_return;
 	  }
 

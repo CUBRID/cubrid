@@ -81,7 +81,14 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
       return;
     }
   or_unpack_mem_value ((char *) key_bytes, &key);
-  repl_key_describe_digest (metadata, metadata_length, description, sizeof (description));
+  if (metadata == NULL)
+    {
+      snprintf (description, sizeof (description), "(no digest: written before the RK digest was logged)");
+    }
+  else
+    {
+      repl_key_describe_digest (metadata, metadata_length, description, sizeof (description));
+    }
   fprintf (fp, "      class_name: %s\n      RK: %s\n      key_value: ", class_name, description);
   db_value_print (&key);
   pr_clear_value (&key);
