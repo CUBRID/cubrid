@@ -145,7 +145,7 @@ namespace hist
   }
 
   char *HistogramBuilder::build (THREAD_ENTRY *thread_p, DB_TYPE type, std::int64_t total_rows,
-				 double null_frequency, int *histogram_total_length)
+				 double null_frequency, int column_precision, int *histogram_total_length)
   {
     /* ---- precompute record sizes  ---- */
     const std::uint32_t mcv_area_size    = hist::MCV_RECORD_SIZE * static_cast<std::uint32_t> (mcvs_.size());
@@ -273,7 +273,9 @@ namespace hist
     OR_PUT_INT (buffer + hist::HV2_STR_SIZE, static_cast<int> (cur_str_off_));
     OR_PUT_INT (buffer + hist::HV2_TYPE, static_cast<int> (type));
     OR_PUT_INT (buffer + hist::HV2_TOTAL_SIZE, static_cast<int> (total_size));
-    OR_PUT_INT (buffer + hist::HV2_RESERVED, 0);
+    /* the column's declared width, so the planner can re-pad stored CHAR values the way the
+     * executor sees them; 0 means "no width" and disables re-padding (CBRD-27251) */
+    OR_PUT_INT (buffer + hist::HV2_PRECISION, column_precision);
     OR_PUT_INT64 (buffer + hist::HV2_TOTAL_ROWS, &total_rows);
     OR_PUT_DOUBLE (buffer + hist::HV2_NULL_FREQ, null_frequency);
 

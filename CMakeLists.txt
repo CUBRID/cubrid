@@ -75,6 +75,7 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
+option(MULTI_CONN_TO_A_SERVER "Allow multiple connections to a server in a client process (experimental)" OFF)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -417,6 +418,7 @@ set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
+set(PARALLEL_MERGE_JOIN_DIR  ${CMAKE_SOURCE_DIR}/src/query/parallel/px_merge_join)
 set(PARALLEL_SCAN_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel/px_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
 set(OPTIMIZER_HISTOGRAM_DIR    ${CMAKE_SOURCE_DIR}/src/optimizer/histogram)
@@ -449,6 +451,7 @@ include_directories(
   src/transaction
   src/xasl
   src/query/parallel/px_hash_join
+  src/query/parallel/px_merge_join
   src/query/parallel/px_scan
   src/query/parallel/px_scan/index
   src/query/parallel
@@ -602,6 +605,10 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 
+if(MULTI_CONN_TO_A_SERVER)
+  add_definitions(-DMULTI_CONN_TO_A_SERVER)
+endif(MULTI_CONN_TO_A_SERVER)
+
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # Definitions for system
@@ -610,11 +617,32 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     add_definitions(-DCCI_XA)
   endif(SUPPORT_XA)
   if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings  -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wformat -Wformat-security -Werror=format-security -Wwrite-strings  -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
   else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
+  endif()
+  # CUBRID compiles its .c sources as C++ on purpose, so the C variable length
+  # arrays in them are a deliberate use of a compiler extension, not a defect.
+  # Clang is the only compiler here that reports them.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-vla-cxx-extension")
+  endif()
+
+  # libstdc++ implements std::atomic<T> for a class type T through the generic
+  # __atomic_* builtins, which take a size argument (bestspace.hpp does this with
+  # its 8 byte L1/L2/L3 types). GCC lowers those inline; Clang emits a call to
+  # __atomic_compare_exchange, which lives in libatomic, and it does so in an
+  # optimised build as well as a debug one - cubridsa fails to link without it at
+  # -O2. Several targets are affected, so the library is added for all of them.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    find_library(LIBATOMIC_LIBRARY NAMES atomic libatomic.so.1)
+    if(LIBATOMIC_LIBRARY)
+      link_libraries(${LIBATOMIC_LIBRARY})
+    else()
+      message(WARNING "libatomic was not found; a Clang build will fail to link.")
+    endif()
   endif()
  
   if(SIZEOF_OFF64_T)

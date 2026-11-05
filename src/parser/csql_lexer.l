@@ -120,7 +120,7 @@ int expecting_pl_lang_spec = 0;
     _Pragma("GCC diagnostic push")                         \
     _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")   \
     _Pragma("GCC diagnostic ignored \"-Wredundant-decls\"")\
-    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
 
   #define END_SUPPRESS_WARNING_BISON_FLEX                  \
     _Pragma("GCC diagnostic pop")
@@ -270,6 +270,8 @@ IDL       [a-zA-Z0-9_]
 [cC][oO][mM][mM][iI][tT]						{ return COMMIT; }
 [cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return COMMITTED; }
+[cC][oO][mM][pP][aA][cC][tT]					        { csql_yylval.cptr = pt_makename(yytext);
+                                                                          return COMPACT; }
 [cC][oO][mM][pP][iI][lL][eE]					        { csql_yylval.cptr = pt_makename(yytext);
                                                                           return COMPILE; }
 [cC][oO][nN][nN][eE][cC][tT]						{ return CONNECT; }
@@ -400,6 +402,8 @@ IDL       [a-zA-Z0-9_]
 [fF][uU][nN][cC][tT][iI][oO][nN]					{ return FUNCTION; }
 [fF][aA][lL][sS][eE]							{ return False; }
 [fF][iI][lL][eE]							{ return File; }
+[fF][iI][lL][lL]_[fF][aA][cC][tT][oO][rR]				{ csql_yylval.cptr = pt_makename(yytext);
+									  return FILL_FACTOR; }
 [fF][lL][oO][aA][tT]							{ return FLOAT_; }
 [fF][oO][rR]								{ return For; }
 [gG][eE][nN][eE][rR][aA][lL]						{ return GENERAL; }

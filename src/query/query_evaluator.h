@@ -146,8 +146,17 @@ extern DB_LOGICAL eval_pred_rlike7 (THREAD_ENTRY * thread_p, const PRED_EXPR * p
 extern PR_EVAL_FNC eval_fnc (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, DB_TYPE * single_node_type);
 extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 				    FILTER_INFO * filter);
+extern void eval_data_filter_ensure_prog (THREAD_ENTRY * thread_p, FILTER_INFO * filter);
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_VALUE * prefix_value,
 				   FILTER_INFO * filter);
 extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification);
+
+struct DOMAIN_COMPARE;
+/* A comparison of two values unpack decided outside a predicate term: FIELD, NULLIF, LEAST and GREATEST, LIMIT's row
+ * count, a merge join's column, a PX instnum limit's rounding. */
+extern DB_VALUE_COMPARE_RESULT eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
+							     const val_descr * vd, const DB_VALUE * value1,
+							     const DB_VALUE * value2, int total_order,
+							     bool * can_compare);
 
 #endif /* _QUERY_EVALUATOR_H_ */

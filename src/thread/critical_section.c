@@ -1706,7 +1706,8 @@ csect_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values
 	  thread_entry = thread_get_manager ()->find_by_tid (owner_tid);
 	  if (thread_entry != NULL)
 	    {
-	      db_make_bigint (&vals[idx], thread_entry->index);
+	      /* CBRD-27583: in the column's declared type (show_meta.c, int), which the output keeps as it comes */
+	      db_make_int (&vals[idx], thread_entry->index);
 	    }
 	  else
 	    {
