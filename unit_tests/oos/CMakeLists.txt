@@ -305,13 +305,17 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 840
 )
 
-# The server reads CUBRID_<PARAMETER> at every parameter load, so this run has a short page latch timeout and a
+# The server reads CUBRID_<PARAMETER> at every parameter load, so these runs have a short page latch timeout and a
 # vacuum wait for the heap header can fail.
 add_test(NAME test_oos_real_vacuum_latch_timeout
-  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.*
+  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.*:-OosRealVacuumHeaderHeld.Shutdown*
+)
+# Stopping the vacuum workers ends vacuum for the rest of the process, so this case runs alone.
+add_test(NAME test_oos_real_vacuum_latch_timeout_shutdown
+  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.Shutdown*
 )
 set_tests_properties(
-  test_oos_real_vacuum_latch_timeout
+  test_oos_real_vacuum_latch_timeout test_oos_real_vacuum_latch_timeout_shutdown
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 480
     ENVIRONMENT "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000"
 )

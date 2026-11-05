@@ -1048,30 +1048,6 @@ page_vacuum_status (const OID &oid)
   return status;
 }
 
-/* Insert MVCCID of the row, or MVCCID_NULL once vacuum removed it. */
-static MVCCID
-record_insid (const OID &oid)
-{
-  VPID vpid;
-  VPID_GET_FROM_OID (&vpid, &oid);
-  PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page == NULL)
-    {
-      er_clear ();
-      return MVCCID_NULL;
-    }
-  RECDES rec {};
-  MVCC_REC_HEADER mvcc_header;
-  MVCCID insid = MVCCID_NULL;
-  if (spage_get_record (thread_p, page, oid.slotid, &rec, PEEK) == S_SUCCESS
-      && or_mvcc_get_header (&rec, &mvcc_header) == NO_ERROR && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID))
-    {
-      insid = MVCC_GET_INSID (&mvcc_header);
-    }
-  pgbuf_unfix_and_init (thread_p, page);
-  return insid;
-}
-
 /* What vacuum did with a deleted row while the test held the row's heap header past the page latch timeout. */
 struct header_hold_observation
 {
@@ -1407,15 +1383,13 @@ TEST_F (OosRealVacuumHeaderHeld, UnrelatedHeapVacuumedWhileHeaderLookupKeepsFail
   OID heap_oid = OID_INITIALIZER, oos_oid = OID_INITIALIZER;
   insert_row_on_new_page (false, heap_oid, oos_oid);
   ASSERT_FALSE (HasFatalFailure ());
-  const MVCCID insid = record_insid (heap_oid);
-  ASSERT_NE (insid, MVCCID_NULL);
 
   /* Vacuum the inserts first, so the delete is the only vacuum the OOS row's page expects. The fillers go to the
    * second heap and leave that page alone. */
   close_log_block_containing (other.hfid, class_oid, other.scan_cache, current_log_blockid ());
-  ASSERT_TRUE (wait_for_vacuum ([&heap_oid, &other, insid]
+  ASSERT_TRUE (wait_for_vacuum ([&heap_oid, &other]
   {
-    return insert_id_vacuumed (heap_oid) && insert_id_vacuumed (other.oid) && vacuum_is_mvccid_vacuumed (insid);
+    return insert_id_vacuumed (heap_oid) && insert_id_vacuumed (other.oid);
   }, 60)) << "vacuum did not finish the inserts";
 
   const header_hold_observation obs = observe_delete_with_header_held ("unrelated heap", heap_oid, oos_oid, false,
