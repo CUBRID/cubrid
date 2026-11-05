@@ -2967,6 +2967,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 #define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
 							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
+#define PT_SELECT_INFO_SUPPRESS_PLAN_DUMP 0x040000	/* the plan dump, SQL plan text and trace of this derived table
+							 * are written once the enclosing query keeps it (CBRD-27929) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
