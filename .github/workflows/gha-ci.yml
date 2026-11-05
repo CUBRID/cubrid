@@ -294,7 +294,7 @@ jobs:
               elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium|sql_by_cci)){1,5}[[:space:]]*$ ]]; then
                 for w in $req; do
                   case "$w" in
-                    all)                         sel="shell sql medium sql_by_cci" ;;
+                    all) sel="shell sql medium sql_by_cci" ;;
                     shell|sql|medium|sql_by_cci) sel="$sel $w" ;;
                   esac
                 done
