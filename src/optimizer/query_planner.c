@@ -2162,11 +2162,10 @@ qo_top_plan_new (QO_PLAN * plan)
 	      parser_free_node (parser, group_sort_list);
 	    }
 
-	  if (groupby_skip && plan->plan_type == QO_PLANTYPE_JOIN && plan->info->planner->groupby_limit_groups > 0.0
-	      && qo_groupby_skip_driving_scan (plan) == NULL)
+	  if (groupby_skip && plan->plan_type == QO_PLANTYPE_JOIN && qo_groupby_skip_driving_scan (plan) == NULL)
 	    {
-	      /* for a GROUP BY with a LIMIT the order of a join other than nested loops is not kept: it sorts, and
-	       * pays the sort (CBRD-27685) */
+	      /* the order of a join other than nested loops is not kept: it sorts, and pays the sort (CBRD-27685,
+	       * CBRD-27187) */
 	      groupby_skip = false;
 	    }
 
@@ -2176,7 +2175,7 @@ qo_top_plan_new (QO_PLAN * plan)
 
 	      if (driving == NULL)
 		{
-		  /* a join that cannot skip the GROUP BY keeps its plan as before, except that a full index scan
+		  /* a plan that is neither a scan nor a join keeps its plan as before, except that a full index scan
 		   * generated for the GROUP BY order (qo_check_plan_on_info ()) has nothing to give it */
 		  if (qo_walk_plan_tree (plan, qo_check_groupby_iscan, NULL) != NO_ERROR)
 		    {
@@ -6045,14 +6044,13 @@ qo_is_groupby_limit_term (PT_NODE * term)
 
 /*
  * qo_groupby_skip_driving_scan () - the scan whose order a plan skips the GROUP BY in
- *   return: the plan itself when it is a scan; for a GROUP BY that stops at its LIMIT, the outermost scan of a chain
- *	     of nested-loop joins, which emit the rows in that scan's order unless an inner reads a class hierarchy or
- *	     a partitioned class; NULL otherwise
+ *   return: the plan itself when it is a scan; the outermost scan of a chain of nested-loop joins, which emit the rows
+ *	     in that scan's order unless an inner reads a class hierarchy or a partitioned class; NULL otherwise
  *   plan(in):
  *
- * Note: a join is limited to a GROUP BY with a LIMIT (CBRD-27685). Without one, the join skips nothing that its
- *	 parallel scan and sort would not do faster, and the cost of the sort it saves is not priced to tell
- *	 (CBRD-27728).
+ * Note: a join skips the GROUP BY with or without a LIMIT (CBRD-27187). With a LIMIT it also stops at the LIMIT
+ *	 groups and is priced so (qo_plan_is_groupby_limit_join ()); without one it is priced as a whole join that
+ *	 saves the GROUP BY sort the other plans pay (qo_top_plan_new ()).
  */
 static QO_PLAN *
 qo_groupby_skip_driving_scan (QO_PLAN * plan)
@@ -6061,30 +6059,27 @@ qo_groupby_skip_driving_scan (QO_PLAN * plan)
   BITSET_ITERATOR iter;
   int i;
 
-  if (plan->plan_type == QO_PLANTYPE_JOIN && plan->info->planner->groupby_limit_groups > 0.0)
+  while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
     {
-      while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+      /* an inner that reads a class hierarchy or the partitions of a class reads them as scan blocks one after
+       * another, each over the whole outer scan (qexec_next_scan_block_iterations ()): the rows of a group do not
+       * come together */
+      inner = plan->plan_un.join.inner;
+      for (i = bitset_iterate (&(inner->info->nodes), &iter); i != -1; i = bitset_next_member (&iter))
 	{
-	  /* an inner that reads a class hierarchy or the partitions of a class reads them as scan blocks one after
-	   * another, each over the whole outer scan (qexec_next_scan_block_iterations ()): the rows of a group do not
-	   * come together */
-	  inner = plan->plan_un.join.inner;
-	  for (i = bitset_iterate (&(inner->info->nodes), &iter); i != -1; i = bitset_next_member (&iter))
+	  if (QO_NODE_IS_CLASS_HIERARCHY (QO_ENV_NODE (plan->info->env, i)))
 	    {
-	      if (QO_NODE_IS_CLASS_HIERARCHY (QO_ENV_NODE (plan->info->env, i)))
-		{
-		  return NULL;
-		}
+	      return NULL;
 	    }
-	  plan = plan->plan_un.join.outer;
 	}
+      plan = plan->plan_un.join.outer;
     }
 
   return (plan->plan_type == QO_PLANTYPE_SCAN) ? plan : NULL;
 }
 
 /*
- * qo_plan_is_groupby_skip_candidate () - can a scan below a join drive a GROUP BY skip that stops at the LIMIT
+ * qo_plan_is_groupby_skip_candidate () - can a scan below a join drive a GROUP BY skip of the join
  *   return: true or false
  *   plan(in): a scan of one node of the join
  *
@@ -6095,12 +6090,11 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
 {
   QO_ENV *env;
   PARSER_CONTEXT *parser;
-  PT_NODE *tree, *group_sort_list;
+  PT_NODE *tree, *group_by, *group_sort_list, *entity;
   bool is_index_w_prefix = false, groupby_skip = false;
   int t;
 
-  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->info == NULL
-      || plan->info->planner->groupby_limit_groups <= 0.0 || !qo_is_interesting_order_scan (plan))
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->info == NULL || !qo_is_interesting_order_scan (plan))
     {
       return false;
     }
@@ -6108,6 +6102,26 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
   env = plan->info->env;
   parser = QO_ENV_PARSER (env);
   tree = QO_ENV_PT_TREE (env);
+  group_by = tree->info.query.q.select.group_by;
+
+  /* if we have rollup, we do not skip the group by */
+  if (group_by == NULL || group_by->flag.with_rollup)
+    {
+      return false;
+    }
+
+  /* In RIGHT OUTER JOIN, all leading tables are used as null-supplying, so skip GROUP BY cannot be applied
+   * (as qo_plan_is_orderby_skip_candidate ()). */
+  if (qo_is_iscan_from_groupby (plan))
+    {
+      for (entity = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)->next; entity != NULL; entity = entity->next)
+	{
+	  if (entity->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	    {
+	      return false;
+	    }
+	}
+    }
 
   for (t = 0; t < (signed) plan->info->planner->T; t++)
     {
@@ -6117,8 +6131,7 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
 	}
     }
 
-  group_sort_list = qo_plan_compute_iscan_sort_list (plan, tree->info.query.q.select.group_by, &is_index_w_prefix,
-						     false);
+  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_index_w_prefix, false);
   if (group_sort_list == NULL)
     {
       return false;
@@ -6127,7 +6140,7 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
   /* ascending only: qo_top_plan_new () tries a descending scan for a plan that is a scan itself, not for a join */
   if (!is_index_w_prefix)
     {
-      groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, tree->info.query.q.select.group_by, tree);
+      groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, group_by, tree);
     }
 
   parser_free_node (parser, group_sort_list);
@@ -6145,7 +6158,8 @@ qo_plan_is_groupby_limit_join (QO_PLAN * plan, double *rows_per_group)
 {
   QO_PLAN *driving;
 
-  if (plan->plan_type != QO_PLANTYPE_JOIN || !QO_IS_NL_JOIN (plan) || !QO_PLAN_HAS_LIMIT (plan))
+  if (plan->plan_type != QO_PLANTYPE_JOIN || !QO_IS_NL_JOIN (plan) || !QO_PLAN_HAS_LIMIT (plan)
+      || plan->info->planner->groupby_limit_groups <= 0.0)
     {
       return false;
     }
@@ -9456,15 +9470,15 @@ qo_find_best_parallel_driving_plan_on_info (QO_INFO * info)
  *	     (QO_SCANMETHOD_INDEX_GROUPBY_SCAN kept by qo_check_plan_on_info ())
  *   plan(in):
  *
- * Note: such a plan is worth something only as the outer of the nested loops above it, which stop at the LIMIT
- *	 groups (CBRD-27685). Like a plan that drives a parallel block (qo_plan_cmp_parallel_drive ()), it is kept beside
- *	 the others instead of replacing them, is not the best plan of its info, and the nested-loop joins also try it
- *	 as their outer (qo_find_groupby_skip_outer_on_info ()). The top plan is compared as any other.
+ * Note: such a plan is worth something only as the outer of the nested loops above it, which skip the GROUP BY
+ *	 (CBRD-27685, CBRD-27187). Like a plan that drives a parallel block (qo_plan_cmp_parallel_drive ()), it is kept
+ *	 beside the others instead of replacing them, is not the best plan of its info, and the nested-loop joins also
+ *	 try it as their outer (qo_find_groupby_skip_outer_on_info ()). The top plan is compared as any other.
  */
 static bool
 qo_plan_drives_groupby_skip_only (QO_PLAN * plan)
 {
-  if (plan == NULL || plan->top_rooted || plan->info == NULL || plan->info->planner->groupby_limit_groups <= 0.0)
+  if (plan == NULL || plan->top_rooted || plan->info == NULL)
     {
       return false;
     }
@@ -9836,7 +9850,7 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
     }
 
   /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan.
-   * Below a join it is kept when it can drive the join's GROUP BY skip up to the LIMIT (CBRD-27685). */
+   * Below a join it is kept when it can drive the join's GROUP BY skip (CBRD-27685, CBRD-27187). */
   if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip
       && (plan->top_rooted || !qo_plan_is_groupby_skip_candidate (plan)))
     {
@@ -13621,7 +13635,7 @@ qo_search_planner (QO_PLANNER * planner)
 {
   int i, j, nsegs;
   bool broken;
-  QO_PLAN *plan;
+  QO_PLAN *plan, *groupby_plan;
   QO_NODE *node;
   QO_INFO *info;
   BITSET_ITERATOR si;
@@ -14014,6 +14028,25 @@ qo_search_planner (QO_PLANNER * planner)
       goto end;
     }
 
+  /* a GROUP BY without a LIMIT may have ORDER BY / DISTINCT sorts above the join that skips it (CBRD-27187) */
+  groupby_plan = plan;
+  while (groupby_plan->plan_type == QO_PLANTYPE_SORT
+	 && (groupby_plan->plan_un.sort.sort_type == SORT_ORDERBY
+	     || groupby_plan->plan_un.sort.sort_type == SORT_DISTINCT))
+    {
+      groupby_plan = groupby_plan->plan_un.sort.subplan;
+    }
+
+  if (groupby_plan->groupby_skip_join)
+    {
+      /* the chosen join skips the GROUP BY in its driving scan's order (CBRD-27685); mark it before
+       * qo_set_use_desc () reads the flag */
+      QO_PLAN *driving = qo_groupby_skip_driving_scan (groupby_plan);
+
+      assert (driving != NULL && driving->plan_un.scan.index != NULL);
+      driving->plan_un.scan.index->head->groupby_skip = true;
+    }
+
   if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
     {
       qo_set_use_desc (plan);
@@ -14061,15 +14094,6 @@ qo_search_planner (QO_PLANNER * planner)
     }
 
   qo_walk_plan_tree (plan, qo_unset_hint_use_desc_idx, NULL);
-
-  if (plan->groupby_skip_join)
-    {
-      /* the chosen join skips the GROUP BY in its driving scan's order (CBRD-27685) */
-      QO_PLAN *driving = qo_groupby_skip_driving_scan (plan);
-
-      assert (driving != NULL && driving->plan_un.scan.index != NULL);
-      driving->plan_un.scan.index->head->groupby_skip = true;
-    }
 
 end:
 
