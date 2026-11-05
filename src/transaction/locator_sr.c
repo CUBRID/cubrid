@@ -4308,8 +4308,8 @@ locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEAD
  *
  * Note: the writer holds no row lock on its version, an inserter none at all and an updater none past its statement.
  *	 Locking the child first and then waiting in the locked read would hold the lock against the writer, and a
- *	 writer that reaches the row again where no owner check lets it pass (its own restrict check, say) would wait
- *	 for us: a deadlock. The locked read that follows settles whatever is left.
+ *	 writer that reaches the row again where no owner check lets it pass (a unique-key check of the same key, say)
+ *	 would wait for us: a deadlock. The locked read that follows settles whatever is left.
  */
 static int
 locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, HEAP_SCANCACHE * scan_cache)
