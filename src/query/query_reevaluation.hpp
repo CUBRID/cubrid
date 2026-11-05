@@ -101,6 +101,9 @@ namespace cubquery
     val_descr *vd;		/* values descriptor */
     recdes *new_recdes;		/* record descriptor after assignment reevaluation */
     bool caller_builds_record;	/* redo the assignments into curr_attrinfo with no new_recdes: the caller builds it */
+    bool must_recompute;	/* the select phase did not compute this row's assignments: redo them even when the
+				 * last version is the one the snapshot sees */
+    bool recomputed;		/* locator_mvcc_reev_cond_assigns () redid the assignments of this row */
 
     mvcc_update_reev_data ();
   };

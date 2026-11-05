@@ -144,6 +144,8 @@ namespace cubquery
     , vd (NULL)
     , new_recdes (NULL)
     , caller_builds_record (false)
+    , must_recompute (false)
+    , recomputed (false)
   {
   }
 

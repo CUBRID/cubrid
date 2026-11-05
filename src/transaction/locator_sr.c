@@ -7757,6 +7757,15 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  return ER_FAILED;
 	}
 
+      /* a row whose assignments the select phase did not compute is never written with the values it left */
+      if (mvcc_reev_data != NULL && mvcc_reev_data->type == REEV_DATA_UPDDEL
+	  && mvcc_reev_data->upddel_reev_data->must_recompute && !mvcc_reev_data->upddel_reev_data->recomputed)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+
       old_recdes = &copy_recdes;
 
       [[fallthrough]];
@@ -13636,7 +13645,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
 
 	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
-	  if (snapshot_res == SNAPSHOT_SATISFIED)
+	  if (snapshot_res == SNAPSHOT_SATISFIED
+	      && !(mvcc_reev_data->type == REEV_DATA_UPDDEL && mvcc_reev_data->upddel_reev_data->must_recompute))
 	    {
 	      /* Skip the re-evaluation if last version is visible. It should be the same as the visible version
 	       * which was already evaluated. */
@@ -13866,7 +13876,8 @@ locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
   assert (mvcc_header_p != NULL && curr_row_version_oid_p != NULL);
 
   ev_res = V_TRUE;
-  if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, mvcc_header_p))
+  if (!MVCC_IS_REC_INSERTED_BY_ME (thread_p, mvcc_header_p)
+      || (mvcc_reev_data_p->type == REEV_DATA_UPDDEL && mvcc_reev_data_p->upddel_reev_data->must_recompute))
     {
       switch (mvcc_reev_data_p->type)
 	{
@@ -14051,6 +14062,8 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	      goto end;
 	    }
 	}
+
+      mvcc_reev_data->recomputed = true;
 
       if (mvcc_reev_data->caller_builds_record)
 	{

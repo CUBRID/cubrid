@@ -181,6 +181,7 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 typedef struct gby_skip_state GBY_SKIP_STATE;
+typedef struct upd_deferred_rows UPD_DEFERRED_ROWS;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -353,6 +354,8 @@ struct buildlist_proc_node
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
   GBY_SKIP_STATE *gby_skip_state;	/* GROUP BY skip aggregated during the scan, one execution's; not serialized */
+  UPD_DEFERRED_ROWS *upd_deferred_rows;	/* rows of the UPDATE's select whose assignments failed on a version
+					 * older than the last; one execution's, not serialized */
   const TP_DOMAIN **g_hk_compares;	/* per hash key column, the domain whose cmpval and collation compare its values
 					 * (domain_compare_in_domain), decided at unpack; NULL: each execution's key domains;
 					 * not serialized */
