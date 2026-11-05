@@ -153,10 +153,14 @@ extern bool sidecar_scan_is_protected (THREAD_ENTRY *thread_p, const HEAP_SCANCA
 extern void sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PTR page);
 /* scan_batch_copy_kept (): the batch's kept rows go out from copies of their records, which debug builds admit as
  * stored form like the page they were copied from (sidecar_batch_keeps ()) */
+extern void sidecar_batch_copied (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const char *data,
+				  size_t length);
+/* net_server_request (): nothing of the store cursor or of a lazy keep crosses a request boundary */
+extern void sidecar_request_end (THREAD_ENTRY *thread_p);
 #if !defined (NDEBUG)
-extern void sidecar_batch_copied (const char *data, size_t length);
+extern void sidecar_assert_request_start (THREAD_ENTRY *thread_p);
 #else /* NDEBUG */
-#define sidecar_batch_copied(data, length) ((void) 0)
+#define sidecar_assert_request_start(thread_p) ((void) 0)
 #endif /* NDEBUG */
 /* heap_scancache_quick_end () of an opted-in scan: the store page its decodes kept is released */
 extern void sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache);

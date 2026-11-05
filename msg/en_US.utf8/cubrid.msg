@@ -1510,8 +1510,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1395 A fetch of a row whose values live in the Sidecar store found a store record missing %1$d times in a row.
 1396 Fault injection %1$d stopped a Sidecar write after its store writes.
 1397 The record of object %1$d|%2$d|%3$d reached a copy area with its Sidecar refs.
+1398 A row whose values live in the Sidecar store was fetched by transaction %1$d and decoded after it ended (now %2$d); its stored values are no longer protected.
 
-1398 Last Error
+1399 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

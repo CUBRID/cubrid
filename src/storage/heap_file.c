@@ -7306,9 +7306,10 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
       scan_cache->local_cache_handle = NULL;
       VPID_SET_NULL (&scan_cache->local_cache_vpid);
       scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-      if (unlikely (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN))
+      if (unlikely (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+		    || scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_INDEX_SCAN))
 	{
-	  /* the store page its decodes kept goes with the scan */
+	  /* the store page its decodes kept, and its lazy keep, go with the scan */
 	  sidecar_scan_end (thread_p, scan_cache);
 	}
       scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;

@@ -585,6 +585,9 @@ struct cte_proc_node
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
 #define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
+#define XASL_HAS_ROUTINE_CALL		(0x1 << 29)	/* the statement calls a stored procedure or a method somewhere, which
+							 * may run nested SQL or end the transaction: its scans read no
+							 * Sidecar record lazily (storage/sidecar.cpp, decision E22) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)

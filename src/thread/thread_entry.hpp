@@ -296,6 +296,7 @@ namespace cubthread
        * hot page, since nobody fixes a hot page while holding a store page. */
       char *sidecar_cursor_page;
       const void *sidecar_cursor_owner;
+      bool sidecar_no_lazy;	/* the running statement calls a stored procedure or method: no lazy reads (E22) */
 
       bool sort_stats_active;
 

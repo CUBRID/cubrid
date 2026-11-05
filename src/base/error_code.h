@@ -1800,8 +1800,9 @@
 #define ER_SIDECAR_RESOLVE_RETRY                    -1395
 #define ER_SIDECAR_FAULT_INJECTED                   -1396
 #define ER_SIDECAR_UNEXPANDED_RECORD                -1397
+#define ER_SIDECAR_LAZY_AFTER_TRAN_END              -1398
 
-#define ER_LAST_ERROR                               -1398
+#define ER_LAST_ERROR                               -1399
 
 
 /*

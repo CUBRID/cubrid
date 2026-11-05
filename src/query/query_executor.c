@@ -22715,6 +22715,11 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   CUBRID_QUERY_EXEC_START (query_str, query_id, client_id, db_user);
 #endif /* ENABLE_SYSTEMTAP */
 
+  /* a statement that calls a stored procedure or method reads no Sidecar record lazily: the routine may run SQL that
+   * waits for this thread's pages, or end the transaction whose snapshot protects a lazy record (E22) */
+  const bool save_sidecar_no_lazy = thread_p->sidecar_no_lazy;
+  thread_p->sidecar_no_lazy = save_sidecar_no_lazy || XASL_IS_FLAGED (xasl, XASL_HAS_ROUTINE_CALL);
+
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = dbval_ptr;
@@ -22898,6 +22903,7 @@ end:
   /* CBRD-27583: the server does not change a bound value */
   assert (qexec_bind_checksum (dbval_cnt, dbval_ptr) == bind_checksum);
 #endif
+  thread_p->sidecar_no_lazy = save_sidecar_no_lazy;
   return list_id;
 }
 

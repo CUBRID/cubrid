@@ -1949,25 +1949,68 @@ sidecar_classify (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, SIDE
   return SIDECAR_READER_COMMITTED;
 }
 
-/* A record a query scan keeps as stored for the attribute layer.  The scan's cache becomes the owner of the thread's
- * store cursor, so the page the cursor fixes for its values may stay fixed until the scan moves to another hot page
- * or ends. */
+/*
+ * What the thread last kept lazy for a query scan: the record, the batch page or the batch's copies it lies in, the
+ * scan, and the transaction that fetched it.  A lazy record is protected only within that transaction: its commit or
+ * abort resets the transaction's lowest visible MVCCID, and vacuum may then remove a store record the record names
+ * (decision E19).  The attribute layer refuses to read a ref of such a record after the transaction ended.
+ */
+struct sidecar_lazy_keep
+{
+  const HEAP_SCANCACHE *scan;
+  const char *begin;
+  const char *end;
+  TRANID trid;
+  bool cursor;			/* the store cursor may keep its page for the record's values (E18) */
+};
+
+static thread_local sidecar_lazy_keep sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
+
+static TRANID
+sidecar_current_trid (THREAD_ENTRY *thread_p)
+{
+  const LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  return tdes != NULL ? tdes->trid : NULL_TRANID;
+}
+
+static bool
+sidecar_lazy_holds (const char *p)
+{
+  return sidecar_Lazy.begin != NULL && sidecar_Lazy.begin <= p && p < sidecar_Lazy.end;
+}
+
+/* Records [begin, end) as kept lazy by scan_cache.  The store cursor may keep a page for its values only for a fixed
+ * heap scan that holds its hot page between rows (cache_last_fix_page, not a local-cache read): only there does develop
+ * itself hold a page across the processing of a row, and only there is the store page held no longer than the hot
+ * page (E18).  Any other keep releases the cursor. */
+static void
+sidecar_lazy_note (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, const char *begin, size_t length,
+		   bool page_held)
+{
+  const bool cursor = (page_held && scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+		       && scan_cache->cache_last_fix_page && scan_cache->read_mode != HEAP_SCAN_READ_LOCAL_CACHE);
+
+  if (!cursor || thread_p->sidecar_cursor_owner != scan_cache)
+    {
+      sidecar_cursor_release (thread_p);
+    }
+  sidecar_Lazy.scan = scan_cache;
+  sidecar_Lazy.begin = begin;
+  sidecar_Lazy.end = begin + length;
+  sidecar_Lazy.trid = sidecar_current_trid (thread_p);
+  sidecar_Lazy.cursor = cursor;
+  thread_p->sidecar_cursor_owner = cursor ? scan_cache : NULL;
+}
+
+/* A record a query scan keeps as stored for the attribute layer. */
 static void
 sidecar_keep_lazy (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, const RECDES *recdes)
 {
 #if !defined (NDEBUG)
   sidecar_stored_form_admit (recdes->data, recdes->length);
 #endif /* !NDEBUG */
-  if (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN)
-    {
-      thread_p->sidecar_cursor_owner = scan_cache;
-    }
-  else
-    {
-      /* an index scan's rows are not on one page: its reads keep no store page (E7) */
-      sidecar_cursor_release (thread_p);
-      thread_p->sidecar_cursor_owner = NULL;
-    }
+  sidecar_lazy_note (thread_p, scan_cache, recdes->data, (size_t) recdes->length, true);
   sidecar_count (thread_p, PSTAT_SC_LAZY_RECORDS);
 }
 
@@ -1999,20 +2042,26 @@ sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PT
   /* the rows are peeked from the page */
   sidecar_stored_form_admit (page, DB_PAGESIZE);
 #endif /* !NDEBUG */
-  thread_p->sidecar_cursor_owner = scan_cache;
+  if (!sidecar_lazy_holds (page) || sidecar_Lazy.scan != scan_cache)
+    {
+      sidecar_lazy_note (thread_p, scan_cache, page, DB_PAGESIZE, true);
+    }
   sidecar_count (thread_p, PSTAT_SC_BATCH_ROWS);
 }
 
-#if !defined (NDEBUG)
-void
-sidecar_batch_copied (const char *data, size_t length)
+__attribute__ ((noinline)) void
+sidecar_batch_copied (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const char *data, size_t length)
 {
-  if (length > 0)
+  if (length == 0)
     {
-      sidecar_stored_form_admit (data, (int) length);
+      return;
     }
-}
+#if !defined (NDEBUG)
+  sidecar_stored_form_admit (data, (int) length);
 #endif /* !NDEBUG */
+  /* the page is let go while the copies' rows go out: no store page is kept for them */
+  sidecar_lazy_note (thread_p, scan_cache, data, length, false);
+}
 
 /*
  * The store cursor (I-7).  Per thread, since the rule it keeps is per thread: a reader holds at most one store page,
@@ -2024,13 +2073,10 @@ sidecar_batch_copied (const char *data, size_t length)
  */
 static thread_local VPID sidecar_Cursor_released = { NULL_PAGEID, NULL_VOLID };
 
-__attribute__ ((noinline)) void
-sidecar_cursor_release (THREAD_ENTRY *thread_p)
+/* unfixes the page the cursor keeps, the owner staying: the cursor moving to another store page of the same keep */
+static void
+sidecar_cursor_unfix (THREAD_ENTRY *thread_p)
 {
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
   if (thread_p->sidecar_cursor_page != NULL)
     {
       PAGE_PTR page = (PAGE_PTR) thread_p->sidecar_cursor_page;
@@ -2039,6 +2085,18 @@ sidecar_cursor_release (THREAD_ENTRY *thread_p)
       pgbuf_get_vpid (page, &sidecar_Cursor_released);
       pgbuf_unfix_and_init (thread_p, page);
     }
+}
+
+__attribute__ ((noinline)) void
+sidecar_cursor_release (THREAD_ENTRY *thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  sidecar_cursor_unfix (thread_p);
+  /* a page is kept again only after the next lazy keep names its owner */
+  thread_p->sidecar_cursor_owner = NULL;
 }
 
 __attribute__ ((noinline)) void
@@ -2051,15 +2109,35 @@ sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache)
   if (thread_p->sidecar_cursor_owner == scan_cache)
     {
       sidecar_cursor_release (thread_p);
-      thread_p->sidecar_cursor_owner = NULL;
       VPID_SET_NULL (&sidecar_Cursor_released);
     }
+  if (sidecar_Lazy.scan == scan_cache)
+    {
+      sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
+    }
 }
+
+/* Request boundaries (net_server_request ()): no store page, owner or lazy keep crosses them.  A scan whose end was
+ * skipped (a parallel spec marked ended) leaves nothing behind. */
+__attribute__ ((noinline)) void
+sidecar_request_end (THREAD_ENTRY *thread_p)
+{
+  sidecar_cursor_release (thread_p);
+  sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
+}
+
+#if !defined (NDEBUG)
+void
+sidecar_assert_request_start (THREAD_ENTRY *thread_p)
+{
+  assert (thread_p->sidecar_cursor_page == NULL && thread_p->sidecar_cursor_owner == NULL);
+}
+#endif /* !NDEBUG */
 
 /* the value of a ref, read by the attribute layer: as a row-lock holder or a protected reader, it always finds the
  * store record (5.6 a and b) */
 static int
-sidecar_cursor_read_value (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, char *out)
+sidecar_cursor_read_value (THREAD_ENTRY *thread_p, const char *slot, const SIDECAR_REF *ref, char *out)
 {
   PAGE_PTR page = (PAGE_PTR) thread_p->sidecar_cursor_page;
   VPID vpid;
@@ -2079,12 +2157,14 @@ sidecar_cursor_read_value (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, char 
     }
   else
     {
-      sidecar_cursor_release (thread_p);
+      sidecar_cursor_unfix (thread_p);
       switch (sidecar_fix_store_page (thread_p, &oid, &page))
 	{
 	case SIDECAR_READ_PRESENT:
 	  break;
 	case SIDECAR_READ_ABSENT:
+	  /* a protected reader always finds its store records (5.6 a and b); only fault 700001 makes a ref name none */
+	  assert (FI_INSERTED (FI_TEST_SIDECAR_DANGLING_REF));
 	  return sidecar_set_dangling (ref, ref->attrid_check);
 	default:
 	{
@@ -2114,7 +2194,9 @@ sidecar_cursor_read_value (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, char 
     {
       memcpy (out, value, ref->length);
     }
-  if (value != NULL && thread_p->sidecar_cursor_owner != NULL)
+  /* the page stays only for the next values of the record the owning fixed heap scan keeps (E18, E20) */
+  if (value != NULL && thread_p->sidecar_cursor_owner != NULL && sidecar_Lazy.cursor
+      && thread_p->sidecar_cursor_owner == sidecar_Lazy.scan && sidecar_lazy_holds (slot))
     {
       thread_p->sidecar_cursor_page = (char *) page;
     }
@@ -2417,7 +2499,15 @@ sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, int attrid, const char *sl
     }
   assert (sidecar_attr_pages_ok (thread_p, attr_info));
   std::vector<char> bytes (MAX (ref.length, 1));
-  if (sidecar_cursor_read_value (thread_p, &ref, bytes.data ()) != NO_ERROR)
+  if (sidecar_lazy_holds (slot) && sidecar_Lazy.trid != sidecar_current_trid (thread_p))
+    {
+      /* the transaction that kept the record lazy ended (a COMMIT inside a stored procedure), and with it the
+       * protection of its store records: never dereference (E19) */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_LAZY_AFTER_TRAN_END, 2, sidecar_Lazy.trid,
+	      sidecar_current_trid (thread_p));
+      return NULL;
+    }
+  if (sidecar_cursor_read_value (thread_p, slot, &ref, bytes.data ()) != NO_ERROR)
     {
       return NULL;
     }

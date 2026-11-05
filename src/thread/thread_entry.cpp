@@ -130,6 +130,7 @@ namespace cubthread
     , vacuum_worker (NULL)
     , sidecar_cursor_page (NULL)
     , sidecar_cursor_owner (NULL)
+    , sidecar_no_lazy (false)
     , sort_stats_active (false)
     , event_stats ()
     , trace_format (0)

@@ -4058,8 +4058,12 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  hsidp->scancache_inited = true;
-	  /* the scan decodes its records through the attribute layer only */
-	  heap_scancache_allow_lazy_sidecar (&hsidp->scan_cache, HEAP_SIDECAR_LAZY_SCAN);
+	  /* the scan decodes its records through the attribute layer only; a statement that calls a routine reads
+	   * them expanded (E22) */
+	  if (!thread_p->sidecar_no_lazy)
+	    {
+	      heap_scancache_allow_lazy_sidecar (&hsidp->scan_cache, HEAP_SIDECAR_LAZY_SCAN);
+	    }
 	}
       if (hsidp->caches_inited != true)
 	{
@@ -4158,8 +4162,12 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  goto exit_on_error;
 	}
       isidp->scancache_inited = true;
-      /* the scan decodes its records through the attribute layer only */
-      heap_scancache_allow_lazy_sidecar (&isidp->scan_cache, HEAP_SIDECAR_LAZY_INDEX_SCAN);
+      /* the scan decodes its records through the attribute layer only; a statement that calls a routine reads
+       * them expanded (E22) */
+      if (!thread_p->sidecar_no_lazy)
+	{
+	  heap_scancache_allow_lazy_sidecar (&isidp->scan_cache, HEAP_SIDECAR_LAZY_INDEX_SCAN);
+	}
       if (isidp->caches_inited != true)
 	{
 	  if (isidp->range_pred.regu_list != NULL)
@@ -8222,7 +8230,7 @@ scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       off += DB_ALIGN (rec->length, MAX_ALIGNMENT);
     }
   /* rows with Sidecar refs among them are read from the copies through the attribute layer */
-  sidecar_batch_copied (hsidp->batch_copy, off);
+  sidecar_batch_copied (thread_p, &hsidp->scan_cache, hsidp->batch_copy, off);
   return NO_ERROR;
 }
 
