@@ -11737,6 +11737,7 @@ qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 {
   SCAN_CODE xs_scan;
   DB_LOGICAL ev_res;
+  PRED_EXPR *filter_pred[2] = { xasl->after_join_pred, xasl->if_pred };
 
   /* the surviving outer goes on without this scan reading a row, so clear the correlated subqueries here as the scan
    * does for each row it reads (CBRD-27567). A select-list subquery, which the plan attaches to the innermost scan, is
@@ -11754,21 +11755,13 @@ qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   /* a partitioned inner is re-entered through spec_list's latch (see the partition init block) */
   xasl->spec_list->s_id.single_fetched = true;
 
-  if (xasl->after_join_pred != NULL)
+  for (int i = 0; i < 2; i++)
     {
-      ev_res = eval_pred (thread_p, xasl->after_join_pred, &xasl_state->vd, NULL);
-      if (ev_res == V_ERROR)
+      if (filter_pred[i] == NULL)
 	{
-	  return S_ERROR;
+	  continue;
 	}
-      else if (ev_res != V_TRUE)
-	{
-	  return S_END;
-	}
-    }
-  if (xasl->if_pred != NULL)
-    {
-      ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
+      ev_res = eval_pred (thread_p, filter_pred[i], &xasl_state->vd, NULL);
       if (ev_res == V_ERROR)
 	{
 	  return S_ERROR;
