@@ -156,6 +156,7 @@ PT_NODE *qo_analyze_path_join (PARSER_CONTEXT * parser, PT_NODE * path_spec, voi
 bool qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE * node);
 bool qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE ** wherep, int *seqno);
 void qo_insert_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * on_conds);
+void qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query);
 bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
 PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 void qo_move_on_of_explicit_join_to_where (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep);

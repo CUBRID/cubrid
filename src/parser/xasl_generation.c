@@ -474,6 +474,7 @@ static ANALYTIC_EVAL_TYPE *pt_build_analytic_eval_list (PARSER_CONTEXT * parser,
 static XASL_NODE *pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
 static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type);
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static QO_PLAN *pt_plan_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan);
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
 static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
@@ -21516,6 +21517,88 @@ pt_add_null_filter_for_min_max_opt (PARSER_CONTEXT * parser, PT_NODE * select_no
 }
 
 /*
+ * pt_plan_semi_anti_as_exists () - plan the query again with each derived SEMI / ANTI JOIN spec the rewrite made of
+ *      a subquery put back as that subquery (qo_rewrite_semi_anti_as_exists ()), and keep the plan that costs less
+ *   return: the plan kept; NULL indicates error
+ *   parser(in): context
+ *   select_node(in/out): of PT_SELECT type; the specs whose subquery costs less are left put back
+ *   plan(in): the plan of select_node as it is; discarded unless returned
+ *
+ * Note: the derived table is built in full once, before the query runs, and the plan of the query does not count
+ *   that: its cost is added here as that of a subquery is (qo_plan_compute_subquery_cost ()).  The subquery put back
+ *   is weighed by its plan alone, left on it as its summary; its XASL, and with it the plan dump, the plan text and
+ *   the trace, is made only for a subquery kept.  The derived table has its XASL and printed its plan already
+ *   (pt_generate_ctes_and_derived_tables ()), kept or not.
+ */
+static QO_PLAN *
+pt_plan_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan)
+{
+  PT_NODE *prev_spec, *spec, *expr, *subq;
+  QO_PLAN *subq_plan, *exists_plan;
+  double cpu_cost, io_cost, semi_anti_cost;
+
+  for (prev_spec = NULL, spec = select_node->info.query.q.select.from; spec != NULL && plan != NULL;
+       prev_spec = spec, spec = spec->next)
+    {
+      if (prev_spec == NULL || !(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY))
+	{
+	  continue;
+	}
+
+      qo_plan_compute_subquery_cost (spec->info.spec.derived_table, &cpu_cost, &io_cost);
+      semi_anti_cost = qo_plan_total_cost (plan) + cpu_cost + io_cost;
+
+      expr = qo_rewrite_semi_anti_as_exists (parser, select_node, prev_spec, spec);
+      if (expr == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      qo_plan_discard (plan);
+	      return NULL;
+	    }
+	  continue;
+	}
+
+      /* run per outer row, the subquery counts in the plan of the query through its summary */
+      subq = (expr->info.expr.op == PT_NOT) ? expr->info.expr.arg1->info.expr.arg1 : expr->info.expr.arg1;
+      subq_plan = qo_optimize_query (parser, subq);
+      if (subq_plan == NULL || !qo_plan_set_summary ((subq_plan->info)->env, subq_plan, NULL))
+	{
+	  if (subq_plan != NULL)
+	    {
+	      qo_plan_discard (subq_plan);
+	    }
+	  qo_restore_semi_anti_spec (parser, select_node, prev_spec, spec, expr);
+	  continue;
+	}
+      qo_plan_discard (subq_plan);
+
+      /* the tree is changed under the plan of the query as it was: plan it again if it is kept, as the retry without
+       * hints in pt_plan_query () does */
+      qo_plan_discard (plan);
+      exists_plan = qo_optimize_query (parser, select_node);
+      if (exists_plan != NULL && qo_plan_total_cost (exists_plan) < semi_anti_cost)
+	{
+	  /* the subquery is kept: make its XASL, as for the other subqueries of the query */
+	  (void) parser_walk_tree (parser, expr, parser_generate_xasl_pre, NULL, parser_generate_xasl_post,
+				   &xasl_Supp_info);
+	  plan = exists_plan;
+	  spec = prev_spec;	/* the spec is out of the FROM */
+	  continue;
+	}
+
+      if (exists_plan != NULL)
+	{
+	  qo_plan_discard (exists_plan);
+	}
+      qo_restore_semi_anti_spec (parser, select_node, prev_spec, spec, expr);
+      plan = qo_optimize_query (parser, select_node);
+    }
+
+  return plan;
+}
+
+/*
  * pt_plan_query () -
  *   return: XASL_NODE, NULL indicates error
  *   parser(in): context
@@ -21606,6 +21689,12 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 #endif /* CUBRID_DEBUG */
 
       plan = qo_optimize_query (parser, select_node);
+    }
+
+  /* a derived SEMI / ANTI JOIN spec unnested from a subquery may cost more than that subquery (CBRD-27929) */
+  if (plan != NULL)
+    {
+      plan = pt_plan_semi_anti_as_exists (parser, select_node, plan);
     }
 
   if (pt_is_single_tuple (parser, select_node))
