@@ -7480,6 +7480,79 @@ qo_seg_used_only_in_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_S
 }
 
 /*
+ * qo_session_dependent_walk () - parse tree pre walk function that detects a value depending on the session time
+ *   zone or language
+ *   return: PT_NODE *
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool, set when found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_session_dependent_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (tree->type_enum == PT_TYPE_TIMESTAMP || PT_IS_LTZ_TYPE (tree->type_enum))
+    {
+      *found = true;
+    }
+  else if (tree->node_type == PT_EXPR)
+    {
+      switch (tree->info.expr.op)
+	{
+	  /* these take a hidden date or number language argument, or convert with the session time zone */
+	case PT_DATE_FORMAT:
+	case PT_TIME_FORMAT:
+	case PT_FORMAT:
+	case PT_STR_TO_DATE:
+	case PT_TO_CHAR:
+	case PT_TO_DATE:
+	case PT_TO_TIME:
+	case PT_TO_TIMESTAMP:
+	case PT_TO_DATETIME:
+	case PT_TO_DATETIME_TZ:
+	case PT_TO_TIMESTAMP_TZ:
+	case PT_TO_NUMBER:
+	case PT_UNIX_TIMESTAMP:
+	case PT_FROM_UNIXTIME:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  *continue_walk = *found ? PT_STOP_WALK : PT_CONTINUE_WALK;
+  return tree;
+}
+
+/*
+ * qo_is_session_dependent_expr () - check whether an expression may give another value in another session
+ *   return: bool
+ *   parser(in):
+ *   expr(in): function index expression
+ */
+static bool
+qo_is_session_dependent_expr (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  PT_NODE *save_next;
+  bool found = false;
+
+  if (expr == NULL)
+    {
+      return true;
+    }
+
+  save_next = expr->next;
+  expr->next = NULL;
+  (void) parser_walk_tree (parser, expr, qo_session_dependent_walk, &found, NULL, NULL);
+  expr->next = save_next;
+
+  return found;
+}
+
+/*
  * qo_is_func_index_routable () - check whether the function result of a function index scan can be read from the
  *   index key instead of being computed from its arguments
  *   return: bool
@@ -7664,6 +7737,12 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	}
       qo_check_coll_optimization (index_entry, &coll_opt);
       if (!coll_opt.allow_index_opt)
+	{
+	  return false;
+	}
+
+      /* the key keeps the value computed in the session that stored the row */
+      if (qo_is_session_dependent_expr (QO_ENV_PARSER (env), QO_SEG_PT_NODE (fi_seg)))
 	{
 	  return false;
 	}
