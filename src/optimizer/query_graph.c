@@ -6563,11 +6563,10 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
   int n, k, i;
   QO_NODE *node, *k_node;
   QO_TERM *term;
-  BITSET suppliers, refs;
+  BITSET suppliers;
   BITSET_ITERATOR bi;
 
   bitset_init (&suppliers, env);
-  bitset_init (&refs, env);
 
   for (n = 1; n < env->nnodes; n++)
     {
@@ -6606,15 +6605,8 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
 	      continue;
 	    }
 
-	  bitset_assign (&refs, &(QO_TERM_NODES (term)));
-	  bitset_remove (&refs, QO_NODE_IDX (node));
-	  if (bitset_is_empty (&refs))
-	    {
-	      continue;
-	    }
-
 	  BITSET_CLEAR (suppliers);
-	  qo_get_null_suppliers_of (env, node, &refs, &suppliers);
+	  qo_get_null_suppliers_of (env, node, &(QO_TERM_NODES (term)), &suppliers);
 	  if (bitset_is_empty (&suppliers))
 	    {
 	      continue;
@@ -6626,7 +6618,6 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
 	}
     }
 
-  bitset_delset (&refs);
   bitset_delset (&suppliers);
 }
 
