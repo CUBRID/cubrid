@@ -1533,8 +1533,7 @@ jobs:
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
-          # A failed case is a <failure> or an <error>. CDATA is never read as markup: a log can hold a
-          # literal <testcase, <failure or <error. CTP's JunitXml ends each CDATA with "]]></" on one line.
+          # CDATA is text, never markup: a log can hold a literal <testcase or <error. CTP ends it with ]]></ on one line.
           FAILED_AWK='
             BEGIN { while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
             FNR == 1 { if (body != "") close(body); body = ""; in_cdata = 0; cur = "" }
@@ -1561,9 +1560,7 @@ jobs:
             opened { in_cdata = 1; next }
             tags ~ /<\/testcase>/ { cur = "" }
           '
-          # <shard dir> <log dir>: prints the failed cases; the n-th one's log is <log dir>/<n>.log, and
-          # <log dir>/xml names the reports read, relative to the shard dir. Only here is it known where they are.
-          failed() {
+          failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log, the reports read in <log dir>/xml
             [ -f "$1/test_status.data" ] || [ -f "$1/summary_info" ] || return 0
             mkdir -p "$2"
             (cd "$1" && find test-results -maxdepth 1 -type f -name '*.xml' ! -name summary.xml 2>/dev/null) > "$2/xml" || :
