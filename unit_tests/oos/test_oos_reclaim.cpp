@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "log_manager.h"
+#include "system_parameter.h"
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
@@ -316,6 +317,40 @@ TEST_F (OosReclaimTest, FailedReclaimOfACommittedIntentFailStopsInsteadOfReporti
     {
       EXPECT_FALSE (chunk_is_present (chunks[i])) << "chunk " << i;
     }
+}
+
+/* log_do_postpone, the path a transaction takes when its postpones overflow the postpone cache (and the one
+ * restart recovery takes), skipped a postpone whose LSA is the last parent of a system operation that started
+ * right after it. An UPDATE that drops a chain followed by an OOS page allocation, as in a bulk UPDATE, lost its
+ * reclaim this way and leaked the chain. */
+TEST_F (OosReclaimTest, PostponeRightBeforeASystemOperationRunsWhenTheCacheOverflows)
+{
+  std::vector<oos_chain_ref> chunks;
+  insert_chain (oos_vfid, 1, chunks);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  const OID owner = OID_INITIALIZER;
+
+  ASSERT_EQ (oos_log_reclaim_intent (thread_p, oos_vfid, owner, 0, "unit test", {chunks[0]}), NO_ERROR);
+
+  /* A committed system operation whose last parent is the postpone above. */
+  std::vector<oos_chain_ref> other;
+  log_sysop_start (thread_p);
+  insert_chain (oos_vfid, 1, other);
+  log_sysop_commit (thread_p);
+
+  /* Overflow the postpone cache so the commit falls back to log_do_postpone. The references are stale: their
+   * reclaim skips. */
+  oos_chain_ref stale = other[0];
+  stale.identity_stamp.offset++;
+  const int overflow = prm_get_integer_value (PRM_ID_LOG_POSTPONE_CACHE_SIZE) + 8;
+  for (int i = 0; i < overflow; i++)
+    {
+      ASSERT_EQ (oos_log_reclaim_intent (thread_p, oos_vfid, owner, 0, "unit test", {stale}), NO_ERROR);
+    }
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  EXPECT_FALSE (chunk_is_present (chunks[0])) << "the postpone right before the system operation did not run";
+  EXPECT_TRUE (chunk_is_present (other[0])) << "a stale reference reclaimed a live chain";
 }
 
 int
