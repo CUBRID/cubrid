@@ -8743,52 +8743,6 @@ exit_on_end:
   return valid;
 }
 
-int
-btree_get_rkey_btid (THREAD_ENTRY * thread_p, OID * cls_oid, BTID * rkey_btid)
-{
-  OR_CLASSREP *cls_repr = NULL;
-  OR_INDEX *curr_idx;
-  int cache_idx = -1;
-  int i;
-  int error = NO_ERROR;
-
-  assert (rkey_btid != NULL);
-
-  BTID_SET_NULL (rkey_btid);
-
-  cls_repr = heap_classrepr_get (thread_p, cls_oid, NULL, NULL_REPRID, &cache_idx);
-  if (cls_repr == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-      return error;
-    }
-
-  for (i = 0, curr_idx = cls_repr->indexes; i < cls_repr->n_indexes; i++, curr_idx++)
-    {
-      if (curr_idx == NULL)
-	{
-	  error = ER_UNEXPECTED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "Bad index information in class representation.");
-	  break;
-	}
-
-      if (or_is_replication_candidate_key (curr_idx))
-	{
-	  BTID_COPY (rkey_btid, &curr_idx->btid);
-	  break;
-	}
-    }
-
-  if (cls_repr != NULL)
-    {
-      heap_classrepr_free_and_init (cls_repr, &cache_idx);
-    }
-
-  return error;
-}
-
 /*
  * btree_check_by_class_oid () -
  *   cls_oid(in):
