@@ -847,43 +847,6 @@ qfile_get_sort_list_size (SORT_LIST * sort_list_p)
 }
 
 /*
- * qfile_is_sort_list_covered () -
- *   return: true or false
- *   covering_list(in): covering sort item list pointer
- *   covered_list(in): covered sort item list pointer
- *
- * Note: if covering_list covers covered_list returns true.
- *       otherwise, returns false.
- */
-bool
-qfile_is_sort_list_covered (SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
-{
-  SORT_LIST *s1, *s2;
-
-  if (covered_list_p == NULL)
-    {
-      return false;
-    }
-
-  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
-    {
-      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
-	{
-	  return false;
-	}
-    }
-
-  if (s1 == NULL && s2)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
-}
-
-/*
  * qfile_compare_tuple_values () -
  *   return: NO_ERROR or error code
  *   tpl1(in): First tuple value
@@ -1899,6 +1862,7 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
   QFILE_TUPLE_COL_SRC *src;
   QFILE_TUPLE_RECORD *rec;
   const char *body;
+  DB_VALUE hash_key;		/* src[] points to it until the tuple is written below the loop */
   int n = merge_info_p->ls_pos_cnt;
   int i, len, size;
   bool is_null;
@@ -1909,8 +1873,18 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
       return ER_FAILED;
     }
 
-  for (i = 0; i < n; i++)
+  i = 0;
+  if (n > 0 && merge_info_p->ls_pos_list[0] == QFILE_RESERVED_HASH_KEY_POS)
     {
+      db_make_int (&hash_key, -1);
+      qfile_col_src_set_value (&src[0], &hash_key);
+      i = 1;
+    }
+
+  for (; i < n; i++)
+    {
+      assert (merge_info_p->ls_pos_list[i] != QFILE_RESERVED_HASH_KEY_POS);
+
       rec = (merge_info_p->ls_outer_inner_list[i] == QFILE_OUTER_LIST) ? outer_rec : inner_rec;
       if (rec != NULL)
 	{
@@ -3002,6 +2976,13 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
   if (list_id->last_pgptr != NULL)
     {
       qfile_close_list (thread_p, list_id);
+    }
+
+  if (list_id->dependent_list_id != NULL)
+    {
+      /* the truncated list no longer links to the pages of its dependent lists */
+      qfile_destroy_list (thread_p, list_id->dependent_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id->dependent_list_id);
     }
 
   list_id->tuple_cnt = 0;
