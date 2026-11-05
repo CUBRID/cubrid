@@ -2169,7 +2169,9 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 {
   char *stmts = NULL;		/* statements string */
   int num_stmts = 0;		/* # of stmts executed */
-  int stmt_start_line_no = 0;	/* starting line no of each stmt */
+  /* starting line no of each stmt; until a statement is parsed, the line the lexer starts at.
+   * a statement that fails while it is parsed, e.g. SHOW THREADS of a non-DBA user, has no node to read it from. */
+  int stmt_start_line_no = 0;
   DB_SESSION *session = NULL;	/* query compilation session id */
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
@@ -2182,6 +2184,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   if (csql_Is_interactive)
     {
       csql_yyset_lineno (1);
+      stmt_start_line_no = 1;
     }
   else if (type == EDITOR_INPUT)
     {
@@ -2190,6 +2193,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       int buffer_start_line_no = csql_edit_contents_get_start_line ();
 
       csql_yyset_lineno (buffer_start_line_no > 0 ? buffer_start_line_no : 1);
+      stmt_start_line_no = (buffer_start_line_no > 0) ? buffer_start_line_no : 1;
     }
 
   if (type == FILE_INPUT)
@@ -2296,6 +2300,19 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, session->parser);
 	}
 
+      /* the line of the first token of the statement, counted by the lexer.
+       * read it before checking the compilation: its errors may have no position of their own */
+      if (session->statements != NULL && num_stmts < session->dimension && session->statements[num_stmts] != NULL)
+	{
+	  parsed_line_no = db_get_start_line (session, num_stmts + 1);
+	  if (parsed_line_no > 0)
+	    {
+	      /* add the session command lines that are not in the buffer */
+	      stmt_start_line_no =
+		(type == EDITOR_INPUT) ? csql_edit_contents_get_input_line (parsed_line_no) : parsed_line_no;
+	    }
+	}
+
       if (stmt_id <= 0)
 	{
 	  if (stmt_id == 0)	/* done */
@@ -2335,15 +2352,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    {
 	      goto error;
 	    }
-	}
-
-      /* the line of the first token of the statement, counted by the lexer */
-      parsed_line_no = db_get_start_line (session, stmt_id);
-      if (parsed_line_no > 0)
-	{
-	  /* add the session command lines that are not in the buffer */
-	  stmt_start_line_no =
-	    (type == EDITOR_INPUT) ? csql_edit_contents_get_input_line (parsed_line_no) : parsed_line_no;
 	}
 
       attr_spec = db_get_query_type_list (session, stmt_id);
