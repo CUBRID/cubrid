@@ -11728,13 +11728,15 @@ qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
  * re-entry for the same outer ends, then descend into the following join (the next
  * filter), or emit the surviving outer once when this anti join is the last in the
  * chain (CBRD-26872).  Reached from the real scan on S_END and from a memoized
- * "no match" (CBRD-27465).
+ * "no match" (CBRD-27465).  after_join_pred and if_pred do not decide the match:
+ * they filter the surviving outer here (CBRD-27889).
  */
 static SCAN_CODE
 qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 			       QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
 {
   SCAN_CODE xs_scan;
+  DB_LOGICAL ev_res;
 
   /* the surviving outer goes on without this scan reading a row, so clear the correlated subqueries here as the scan
    * does for each row it reads (CBRD-27567). A select-list subquery, which the plan attaches to the innermost scan, is
@@ -11751,6 +11753,32 @@ qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
     }
   /* a partitioned inner is re-entered through spec_list's latch (see the partition init block) */
   xasl->spec_list->s_id.single_fetched = true;
+
+  if (xasl->after_join_pred != NULL)
+    {
+      ev_res = eval_pred (thread_p, xasl->after_join_pred, &xasl_state->vd, NULL);
+      if (ev_res == V_ERROR)
+	{
+	  return S_ERROR;
+	}
+      else if (ev_res != V_TRUE)
+	{
+	  return S_END;
+	}
+    }
+  if (xasl->if_pred != NULL)
+    {
+      ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
+      if (ev_res == V_ERROR)
+	{
+	  return S_ERROR;
+	}
+      else if (ev_res != V_TRUE)
+	{
+	  return S_END;
+	}
+    }
+
   if (xasl->scan_ptr)
     {
       xasl->scan_ptr->next_scan_on = false;
@@ -12175,7 +12203,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    }
 	}			/* if (qualified) */
 
-      if (qualified)
+      /* anti join: after_join_pred and if_pred do not decide the match (see qexec_execute_sa_anti_survive ()) */
+      if (qualified && !XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	{
 	  /* evaluate after join predicate */
 	  ev_res = V_UNKNOWN;
@@ -12190,7 +12219,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  qualified = (xasl->after_join_pred == NULL || ev_res == V_TRUE);
 	}			/* if (qualified) */
 
-      if (qualified)
+      if (qualified && !XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	{
 	  /* evaluate if predicate */
 	  ev_res = V_UNKNOWN;
