@@ -246,8 +246,7 @@ static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs
 static void qo_discover_edges (QO_ENV *);
 static void qo_add_null_supplier_dep_set (QO_ENV *);
 static void qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers);
-static void qo_get_null_padded_nodes (QO_ENV * env, QO_NODE * node, BITSET * padded);
-static void qo_classify_innerjoin_terms (QO_ENV *);
+static void qo_get_null_suppliers_of (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -596,9 +595,6 @@ qo_optimize_helper (QO_ENV * env)
 
   /* classify ON-clause terms for anti join */
   qo_classify_antijoin_terms (env);
-
-  /* classify ON-clause terms of inner joins that read a node a preceding outer join fills with NULL */
-  qo_classify_innerjoin_terms (env);
 
   bitset_delset (&nodeset);
 
@@ -6473,16 +6469,16 @@ qo_discover_edges (QO_ENV * env)
 }
 
 /*
- * qo_get_null_suppliers () - Collect every preceding outer join on_node that
- *   can null-pad a node NODE that NODE's ON clause reads: a LEFT OUTER
- *   on_node that is itself read, or a RIGHT/FULL OUTER on_node whose own
- *   outer_dep_set holds a node NODE's ON clause reads.
+ * qo_get_null_suppliers_of () - Collect every preceding outer join on_node that
+ *   can null-pad a node in REFS: a LEFT OUTER on_node that is itself in REFS,
+ *   or a RIGHT/FULL OUTER on_node whose own outer_dep_set holds a node in REFS.
  *   env(in):
  *   node(in):
+ *   refs(in): nodes read by NODE's ON clause or by one of its terms
  *   suppliers(out): caller-initialized bitset; this adds the index of each
  *	  such outer join on_node to it.
  *
- * Note: Computed fresh from ON-clause references and node join types, not
+ * Note: Computed fresh from REFS and node join types, not
  *   from NODE's own (possibly hint-populated) QO_NODE_OUTER_DEP_SET -- the
  *   ORDERED/LEADING hint handling in add_hint() also fills that field, to
  *   force a visiting order, independent of any outer join. A caller that
@@ -6490,13 +6486,51 @@ qo_discover_edges (QO_ENV * env)
  *   ordering must call this instead of reading the node's stored field.
  */
 static void
+qo_get_null_suppliers_of (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers)
+{
+  int k;
+  QO_NODE *k_node;
+  bool null_supplies;
+
+  for (k = 1; k < env->nnodes; k++)
+    {
+      k_node = QO_ENV_NODE (env, k);
+      if (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node))
+	{
+	  continue;
+	}
+
+      null_supplies = false;
+      if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_LEFT_OUTER)
+	{
+	  null_supplies = BITSET_MEMBER (*refs, k);
+	}
+      else if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_RIGHT_OUTER
+	       || QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_FULL_OUTER)
+	{
+	  null_supplies = bitset_intersects (refs, &(QO_NODE_OUTER_DEP_SET (k_node)));
+	}
+
+      if (null_supplies)
+	{
+	  bitset_add (suppliers, k);
+	}
+    }
+}
+
+/*
+ * qo_get_null_suppliers () - qo_get_null_suppliers_of () over every node
+ *   NODE's ON clause reads, except NODE itself.
+ *   env(in):
+ *   node(in):
+ *   suppliers(out): caller-initialized bitset
+ */
+static void
 qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
 {
-  int k, i;
-  QO_NODE *k_node;
+  int i;
   QO_TERM *term;
   BITSET refs;
-  bool null_supplies;
 
   bitset_init (&refs, env);
 
@@ -6510,30 +6544,7 @@ qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
     }
   bitset_remove (&refs, QO_NODE_IDX (node));
 
-  for (k = 1; k < env->nnodes; k++)
-    {
-      k_node = QO_ENV_NODE (env, k);
-      if (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node))
-	{
-	  continue;
-	}
-
-      null_supplies = false;
-      if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_LEFT_OUTER)
-	{
-	  null_supplies = BITSET_MEMBER (refs, k);
-	}
-      else if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_RIGHT_OUTER
-	       || QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_FULL_OUTER)
-	{
-	  null_supplies = bitset_intersects (&refs, &(QO_NODE_OUTER_DEP_SET (k_node)));
-	}
-
-      if (null_supplies)
-	{
-	  bitset_add (suppliers, k);
-	}
-    }
+  qo_get_null_suppliers_of (env, node, &refs, suppliers);
 
   bitset_delset (&refs);
 }
@@ -6547,12 +6558,14 @@ qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
 static void
 qo_add_null_supplier_dep_set (QO_ENV * env)
 {
-  int n, k;
+  int n, k, i;
   QO_NODE *node, *k_node;
-  BITSET suppliers;
+  QO_TERM *term;
+  BITSET suppliers, refs;
   BITSET_ITERATOR bi;
 
   bitset_init (&suppliers, env);
+  bitset_init (&refs, env);
 
   for (n = 1; n < env->nnodes; n++)
     {
@@ -6574,8 +6587,44 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
 	  k_node = QO_ENV_NODE (env, k);
 	  QO_ADD_OUTER_DEP_SET (node, k_node);
 	}
+
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_INNER)
+	{
+	  continue;
+	}
+
+      /* an inner join ON term that reads only nodes a preceding outer join fills with NULL is not a scan
+       * filter of those nodes: evaluate it when this node joins, after the padding */
+      for (i = 0; i < env->nterms; i++)
+	{
+	  term = QO_ENV_TERM (env, i);
+	  if (!QO_ON_COND_TERM (term) || QO_TERM_LOCATION (term) != QO_NODE_LOCATION (node)
+	      || (QO_TERM_CLASS (term) != QO_TC_SARG && QO_TERM_CLASS (term) != QO_TC_OTHER))
+	    {
+	      continue;
+	    }
+
+	  bitset_assign (&refs, &(QO_TERM_NODES (term)));
+	  bitset_remove (&refs, QO_NODE_IDX (node));
+	  if (bitset_is_empty (&refs))
+	    {
+	      continue;
+	    }
+
+	  BITSET_CLEAR (suppliers);
+	  qo_get_null_suppliers_of (env, node, &refs, &suppliers);
+	  if (bitset_is_empty (&suppliers))
+	    {
+	      continue;
+	    }
+
+	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+	  QO_TERM_JOIN_TYPE (term) = NO_JOIN;
+	  QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+	}
     }
 
+  bitset_delset (&refs);
   bitset_delset (&suppliers);
 }
 
@@ -6912,95 +6961,6 @@ qo_classify_antijoin_terms (QO_ENV * env)
 	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
 	}
     }
-}
-
-/*
- * qo_get_null_padded_nodes () - get the nodes an outer join fills with NULL
- *   return:
- *   env(in):
- *   node(in): LEFT, RIGHT or FULL OUTER join node
- *   padded(out):
- */
-static void
-qo_get_null_padded_nodes (QO_ENV * env, QO_NODE * node, BITSET * padded)
-{
-  QO_NODE *p_node;
-  int k;
-
-  BITSET_CLEAR (*padded);
-
-  if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER)
-    {
-      bitset_add (padded, QO_NODE_IDX (node));
-      return;
-    }
-
-  /* not QO_NODE_OUTER_DEP_SET (): add_hint () also fills it for ORDERED/LEADING */
-  k = QO_NODE_IDX (node) - 1;
-  p_node = QO_ENV_NODE (env, k);
-  bitset_add (padded, k);
-
-  while (k > 0 && QO_NODE_IS_ANSI_JOIN (p_node))
-    {
-      p_node = QO_ENV_NODE (env, --k);
-      bitset_add (padded, k);
-    }
-}
-
-/*
- * qo_classify_innerjoin_terms () - classify the ON-clause terms of inner joins that read a node a preceding
- *                                  outer join fills with NULL
- *   return:
- *   env(in):
- */
-static void
-qo_classify_innerjoin_terms (QO_ENV * env)
-{
-  QO_NODE *node, *on_node;
-  QO_TERM *term;
-  BITSET padded;
-  int n, i;
-
-  bitset_init (&padded, env);
-
-  for (n = 1; n < env->nnodes; n++)
-    {
-      node = QO_ENV_NODE (env, n);
-      if (!QO_NODE_IS_OUTER_JOIN (node))
-	{
-	  continue;
-	}
-
-      qo_get_null_padded_nodes (env, node, &padded);
-
-      for (i = 0; i < env->nterms; i++)
-	{
-	  term = QO_ENV_TERM (env, i);
-	  if (!QO_ON_COND_TERM (term) || (QO_TERM_CLASS (term) != QO_TC_SARG && QO_TERM_CLASS (term) != QO_TC_OTHER))
-	    {
-	      continue;
-	    }
-
-	  on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) != PT_JOIN_INNER || QO_NODE_LOCATION (on_node) <= QO_NODE_LOCATION (node))
-	    {
-	      continue;
-	    }
-
-	  if (!bitset_intersects (&(QO_TERM_NODES (term)), &padded))
-	    {
-	      continue;
-	    }
-
-	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-	  QO_TERM_JOIN_TYPE (term) = NO_JOIN;
-
-	  /* keep out from m-join edge */
-	  QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
-	}
-    }
-
-  bitset_delset (&padded);
 }
 
 /*
