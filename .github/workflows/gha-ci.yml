@@ -150,28 +150,28 @@ env:
       "shell": {
         "tc_repo": "cubrid-testcases-private-ex", "tc_private": "yes",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases-private-ex",
-        "tc_subdir": "shell", "build": "debug",
+        "tc_subdir": "shell", "build_mode": "debug",
         "unit": "case", "par_default": "50", "runner": "cubrid-arc",
         "exclude": "_25_unstable", "status_ctx": "gha-ci: test_shell"
       },
       "sql": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "tc_subdir": "sql", "build": "debug",
+        "tc_subdir": "sql", "build_mode": "debug",
         "unit": "dir", "par_default": "10", "runner": "cubrid-arc",
         "exclude": "", "status_ctx": "gha-ci: test_sql"
       },
       "medium": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "tc_subdir": "medium", "build": "debug",
+        "tc_subdir": "medium", "build_mode": "debug",
         "unit": "dir", "par_default": "1", "runner": "cubrid-arc-light",
         "exclude": "", "status_ctx": "gha-ci: test_medium"
       },
       "sql_by_cci": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "tc_subdir": "sql", "build": "release",
+        "tc_subdir": "sql", "build_mode": "release",
         "unit": "dir", "par_default": "10", "runner": "cubrid-arc",
         "exclude": "", "status_ctx": "gha-ci: test_sql_by_cci"
       }
@@ -837,7 +837,7 @@ jobs:
             fi
           }
           ids='{}'; recipes='{}'
-          for mode in $(for s in $SUITES_RUN; do attr "$s" build; done | sort -u); do
+          for mode in $(for s in $SUITES_RUN; do attr "$s" build_mode; done | sort -u); do
             dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$mode"
             why=$(unusable "$dir" "$mode")
             if [ -z "$why" ]; then
@@ -1024,7 +1024,7 @@ jobs:
             dir="$WORKDIR/$repo"
             root="$dir/$subdir"
             out="$rundir/$suite"
-            recipe=$(jq -r --arg m "$(attr "$suite" build)" '.[$m] // ""' <<<"$BUILD_RECIPES")
+            recipe=$(jq -r --arg m "$(attr "$suite" build_mode)" '.[$m] // ""' <<<"$BUILD_RECIPES")
             unrun=0; short=0; gone=0; nfail=0; changed=0
 
             # After the previous step's checkout: its reset --hard brings $excl back.
@@ -1055,7 +1055,7 @@ jobs:
               srcdir="$rd/$suite"
               prev_sha=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec awk -F= '/^sha=/ {print $2}' {} + 2>/dev/null | sort -u) || prev_sha=''
-              # A suite with nothing to re-run had no shard, so only plan recorded the commit.
+              # A suite with nothing to re-run, or with no usable build, had no shard, so only plan recorded the commit.
               [ -n "$prev_sha" ] || prev_sha=$(awk -F= '/^sha=/ {print $2}' "$srcdir/plan/split.meta" 2>/dev/null) || prev_sha=''
               if [ "$(printf '%s' "$prev_sha" | grep -c . || :)" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
                 echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA. A re-run only re-runs the same commit"
@@ -1214,7 +1214,8 @@ jobs:
               [ -f "/tmp/shards/$n.list" ] || {
                 echo "::error::no units assigned to shard $i of $suite (parallelism $par, units $nunit)"; exit 1; }
               cp "/tmp/shards/$n.list" "$out/plan/shards/$n.list"
-              printf '{"suite":"%s","i":"%02d","runner":"%s"}\n' "$suite" "$i" "$runner" >> /tmp/matrix.jsonl
+              # No usable build: the shard would only die mounting it. The share list stays, so a re-run takes it.
+              [ -z "$recipe" ] || printf '{"suite":"%s","i":"%02d","runner":"%s"}\n' "$suite" "$i" "$runner" >> /tmp/matrix.jsonl
             done
             cp /tmp/plan.tsv "$out/plan/plan.tsv"
             cp /tmp/sel.list "$out/plan/cases.list"
@@ -1284,7 +1285,8 @@ jobs:
     name: "shard ${{ matrix.suite }} ${{ matrix.i }}"
     needs: plan
     # success() is false for a failed job anywhere behind this one, such as the release leg.
-    # An empty matrix is a re-run with nothing to run; GitHub fails a job that expands to none.
+    # An empty matrix is a re-run with nothing to run, or no selected suite has a usable build;
+    # GitHub fails a job that expands to none.
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]' }}
     permissions: {}
     runs-on: ${{ matrix.runner }}
@@ -1316,7 +1318,7 @@ jobs:
           {
             echo "TC_DIR=$WORKDIR/$(attr tc_repo)"
             echo "TC_ROOT=$WORKDIR/$(attr tc_repo)/$(attr tc_subdir)"
-            echo "BUILD_MODE=$(attr build)"
+            echo "BUILD_MODE=$(attr build_mode)"
             echo "TC_SEED=$(attr tc_seed)"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
           } >> "$GITHUB_ENV"
@@ -1655,7 +1657,7 @@ jobs:
 
           for suite in $SUITES_RUN; do
             repo=$(attr "$suite" tc_repo)
-            brid=$(jq -r --arg m "$(attr "$suite" build)" '.[$m] // ""' <<<"$BRIDS")
+            brid=$(jq -r --arg m "$(attr "$suite" build_mode)" '.[$m] // ""' <<<"$BRIDS")
             d="$RUNDIR/$suite"
             . "$d/plan/split.meta"
 
@@ -1718,7 +1720,7 @@ jobs:
               *)        v_same="FAIL nobody recorded a provenance" ;;
             esac
             v_this="OK"; [ "$brid" = "$GITHUB_RUN_ID" ] || v_this="reused"
-            [ -n "$brid" ] || v_this="FAIL plan found no usable $(attr "$suite" build) build"
+            [ -n "$brid" ] || v_this="FAIL plan found no usable $(attr "$suite" build_mode) build"
             v_tcread="OK"; [ "$tcread_n" -eq "$planned" ] || v_tcread="FAIL"
             case "$tc_reason" in
               ok)       v_tcsame="OK all the same" ;;
@@ -1835,7 +1837,11 @@ jobs:
               if [ "$unrun_n" -gt 0 ]; then
                 echo "### Never run ($unrun_n)"
                 echo
-                echo "$dead_n $s_dead died before running a case, so these never ran and are in no failure list."
+                if [ -n "$brid" ]; then
+                  echo "$dead_n $s_dead died before running a case, so these never ran and are in no failure list."
+                else
+                  echo "plan found no usable $(attr "$suite" build_mode) build, so it started none of these $dead_n $s_dead."
+                fi
                 echo
                 awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
                 echo
@@ -1860,23 +1866,26 @@ jobs:
             fault() { echo "::error::$suite: $1"; srb=1; }
             # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
             hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $suite"}}"; }
-            [ -n "$brid" ] || fault "plan found no usable $(attr "$suite" build) build, so no shard could mount one. See the plan job's warning"
-            [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
-            [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
-            [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
-            case "$reason" in
-              ok|no-shard) ;;
-              mixed)    hold "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
-              mismatch) hold "every shard read the same build, but not the one from the run plan verified ($brid)" ;;
-              *)        fault "no shard recorded a build provenance" ;;
-            esac
-            [ "$tcread_n" -eq "$planned" ] || fault "only $tcread_n of $planned shards recorded a tc provenance"
-            case "$tc_reason" in
-              ok|no-shard) ;;
-              mixed)    hold "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
-              mismatch) hold "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
-              *)        fault "no shard recorded a tc provenance" ;;
-            esac
+            if [ -z "$brid" ]; then
+              fault "plan found no usable $(attr "$suite" build_mode) build, so it started no shard. See the plan job's warning"
+            else
+              [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
+              [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
+              [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
+              case "$reason" in
+                ok|no-shard) ;;
+                mixed)    hold "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
+                mismatch) hold "every shard read the same build, but not the one from the run plan verified ($brid)" ;;
+                *)        fault "no shard recorded a build provenance" ;;
+              esac
+              [ "$tcread_n" -eq "$planned" ] || fault "only $tcread_n of $planned shards recorded a tc provenance"
+              case "$tc_reason" in
+                ok|no-shard) ;;
+                mixed)    hold "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
+                mismatch) hold "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
+                *)        fault "no shard recorded a tc provenance" ;;
+              esac
+            fi
             [ "$fail_sum" -eq 0 ] || fault "$fail_sum failed"
             # A re-run replaces the source's status, so it must not pass over cases it did not run.
             if [ -n "$RERUN_FROM" ]; then
@@ -1905,7 +1914,7 @@ jobs:
             echo "### Artifacts"
             echo
             line="[Run directory]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
-            for mode in $(for s in $SUITES_RUN; do attr "$s" build; done | sort -u); do
+            for mode in $(for s in $SUITES_RUN; do attr "$s" build_mode; done | sort -u); do
               blog="builds/$BUILD_NS/$SHA/$mode/build.log"
               if [ -f "$CI_ROOT/$blog" ]; then line="$line · [$mode build log]($ARTIFACT_URL_BASE/$blog)"; fi
             done
