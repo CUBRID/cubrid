@@ -1298,6 +1298,10 @@ parser_free_parser (PARSER_CONTEXT * parser)
     {
       free_and_init (parser->static_sql_host_var_end);
     }
+  if (parser->static_sql_host_var_label)
+    {
+      free_and_init (parser->static_sql_host_var_label);
+    }
 
   parser_free_lcks_classes (parser);
 
