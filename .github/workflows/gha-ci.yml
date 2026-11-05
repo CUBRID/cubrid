@@ -517,6 +517,10 @@ jobs:
         run: |
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
+          # An artifact is reused only when the same toolchain binaries and arguments built it.
+          key=$( { sha256sum $(command -v gcc g++ cmake bison flex) $(for p in cc1 cc1plus as ld; do gcc -print-prog-name="$p"; done)
+                   echo "$BUILD_ARGS"; } | sha256sum | cut -c1-16 )
+          echo "BUILD_ENV_KEY=$key" >> "$GITHUB_ENV"
           for d in "$BUILD_MIRROR/cubrid/.git" "$BUILD_MIRROR/cubrid.git"; do
             [ -d "$d" ] || {
               echo "::error::the node copy is not visible: $d. The pod template did not reach the pod, or gha-node-seed has not run"
@@ -534,7 +538,8 @@ jobs:
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
-          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE/$BUILD_SENTINEL" ]; then
+          dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
+          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqx "env=$BUILD_ENV_KEY" "$dir/build.meta"; then
             echo "reuse=reused" >> "$GITHUB_OUTPUT"
           else
             echo "reuse=built" >> "$GITHUB_OUTPUT"
@@ -619,16 +624,17 @@ jobs:
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
+          same_env() { [ -f "$dir/$BUILD_SENTINEL" ] && grep -sqx "env=$BUILD_ENV_KEY" "$dir/build.meta"; }
           # Another run on this SHA may have published since the reuse check; the rename decides.
-          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ]; then
+          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && same_env; then
             REUSE=reused
           fi
           if [ "$REUSE" != 'reused' ]; then
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
-            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
-              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
+            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nenv=%s\nworkflow=gha-ci\n' \
+              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)" "$BUILD_ENV_KEY")
             # Inside the archive too: the shard reads it back out of what it unpacked.
             printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
             # An archive: a published tree made every process launch read the build over GlusterFS.
@@ -640,7 +646,7 @@ jobs:
             # rename(2) is the one atomic arbiter on shared storage; check-then-act lost this race.
             if mv -T "$tmp" "$dir" 2>/dev/null; then
               :
-            elif [ -f "$dir/$BUILD_SENTINEL" ] && [ "$INPUT_FORCE" != 'true' ]; then
+            elif same_env && [ "$INPUT_FORCE" != 'true' ]; then
               echo "another run published this build first, keeping theirs: $dir"
               rm -rf "$tmp"
             else
