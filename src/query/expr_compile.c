@@ -2597,8 +2597,7 @@ expr_pred_exact_number (const EXPR_COMPILE_ENV * env, const COMP_EVAL_TERM * et,
   DOMAIN_COMPARE decided;
   const DOMAIN_COMPARE *compare;
 
-  if (!((t1 == DB_TYPE_NUMERIC && (t2 == DB_TYPE_SHORT || t2 == DB_TYPE_INTEGER || t2 == DB_TYPE_BIGINT))
-	|| (t2 == DB_TYPE_NUMERIC && (t1 == DB_TYPE_SHORT || t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT))))
+  if (!domain_compare_is_exact_number (t1, t2))
     {
       return false;
     }

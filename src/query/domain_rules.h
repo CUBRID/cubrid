@@ -565,6 +565,8 @@ TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
  * where it refuses the column's type (only a number or a date and time is a strict target). */
 TP_VALUE_CONVERTER domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target);
 const struct pr_type *domain_compare_cmp (DB_TYPE source0, DB_TYPE source1, DB_TYPE compared);
+/* An integer against a NUMERIC: the pair a comparison takes as it is, by the exact values. */
+bool domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2);
 
 /* The rule a column of a search key follows for values of an element's domain. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey);

@@ -265,9 +265,8 @@ extern int numeric_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result);
 
 /*
  * NUMERIC_HEADER_SIZE
- * The numeric header is 3 bytes in size.  Shared by the generic handler (mr_data_readval_numeric () in
- * object_primitive.c) and the heap's fixed-column decode kernel (heap_attr_readval_numeric () in
- * heap_file.c), which parse the same bytes and must agree on where the digits start.
+ * The numeric header is 3 bytes in size.  Shared by every reader of the disk bytes (mr_data_readval_numeric () in
+ * object_primitive.c, numeric_repr_read_disk ()), which must agree on where the digits start.
  * - header[0]: Total byte size of the numeric data (header + data).
  *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
  *              Bits 0-6: Total byte size value (4 ~ 20 bytes).

@@ -1113,7 +1113,7 @@ domain_type_is_integer (DB_TYPE type)
 
 /* a comparison whose sides keep their types and compare by the exact values: an integer against a NUMERIC (the
  * integer is not made a NUMERIC first) */
-static bool
+bool
 domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2)
 {
   return (type1 == DB_TYPE_NUMERIC && domain_type_is_integer (type2))
