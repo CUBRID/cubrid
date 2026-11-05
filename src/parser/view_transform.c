@@ -51,6 +51,9 @@
 /* max number of view references considered for sharing the result of a view in a statement */
 #define MQ_SHARED_VIEW_MAX_SPECS 64
 
+/* max nesting of queries tracked when a member of a shared view group is searched in subqueries */
+#define MQ_SHARED_VIEW_MAX_DEPTH 64
+
 #define MQ_IS_OUTER_JOIN_SPEC(s)                               \
     (						               \
      ((s)->info.spec.join_type == PT_JOIN_LEFT_OUTER           \
@@ -488,6 +491,9 @@ static bool mq_is_top_level_from_spec (PT_NODE * query, PT_NODE * spec);
 static bool mq_is_cached_from_spec (PT_NODE * query, PT_NODE * spec, bool is_operand);
 static bool mq_has_named_columns_first (PT_NODE * spec);
 static bool mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep);
+static void mq_set_no_parallel_scan (PT_NODE * select);
+static PT_NODE *mq_serialize_member_scans_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_serialize_member_scans_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement);
 /*
  * mq_is_outer_join_spec () - determine if a spec is outer joined in a spec list
@@ -10332,6 +10338,111 @@ mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
 }
 
 /*
+ * mq_set_no_parallel_scan () - keep the scans of a query from being split among the workers of a parallel scan
+ *   return: none
+ *   select(in/out):
+ *
+ * Note: the hint keeps the flags of the specs when the XASL is generated again from the same tree
+ */
+static void
+mq_set_no_parallel_scan (PT_NODE * select)
+{
+  PT_NODE *from;
+
+  select->info.query.q.select.hint = (PT_HINT_ENUM) (select->info.query.q.select.hint | PT_HINT_NO_PARALLEL_SCAN);
+  for (from = select->info.query.q.select.from; from != NULL; from = from->next)
+    {
+      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+    }
+}
+
+typedef struct mq_member_scan_info
+{
+  PT_NODE *queries[MQ_SHARED_VIEW_MAX_DEPTH];	/* the queries enclosing the node being walked */
+  bool in_expr[MQ_SHARED_VIEW_MAX_DEPTH];	/* the query is a subquery in an expression of the query above it */
+  int depth;
+  PT_NODE *derived;		/* derived table of the last spec walked */
+} MQ_MEMBER_SCAN_INFO;
+
+/*
+ * mq_serialize_member_scans_pre () - find the members of shared view groups in subqueries of expressions
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): MQ_MEMBER_SCAN_INFO
+ *   continue_walk(in/out):
+ *
+ * Note: a query whose expression holds a subquery with a member does not split its scans among the workers of a
+ *	 parallel scan, since the workers run such a subquery on a copy of the XASL in which the representative is not
+ *	 built. A derived table or a set operation operand is executed by the query itself, before its scan.
+ */
+static PT_NODE *
+mq_serialize_member_scans_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  MQ_MEMBER_SCAN_INFO *info = (MQ_MEMBER_SCAN_INFO *) arg;
+  PT_NODE *derived, *upper;
+  int i;
+
+  if (node->node_type == PT_WITH_CLAUSE)
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_SPEC && PT_SPEC_IS_DERIVED (node))
+    {
+      derived = node->info.spec.derived_table;
+      info->derived = derived;
+      if (PT_IS_QUERY (derived) && derived->info.query.shared_view_group > 0 && !derived->info.query.shared_view_rep)
+	{
+	  for (i = MIN (info->depth, MQ_SHARED_VIEW_MAX_DEPTH) - 1; i > 0; i--)
+	    {
+	      if ((info->in_expr[i] || info->depth > MQ_SHARED_VIEW_MAX_DEPTH) && PT_IS_SELECT (info->queries[i - 1]))
+		{
+		  mq_set_no_parallel_scan (info->queries[i - 1]);
+		}
+	    }
+	}
+      return node;
+    }
+
+  if (PT_IS_QUERY (node))
+    {
+      if (info->depth < MQ_SHARED_VIEW_MAX_DEPTH)
+	{
+	  upper = info->depth > 0 ? info->queries[info->depth - 1] : NULL;
+	  info->queries[info->depth] = node;
+	  info->in_expr[info->depth] = (upper != NULL && node != info->derived && PT_IS_SELECT (upper));
+	}
+      info->depth++;
+    }
+
+  return node;
+}
+
+/*
+ * mq_serialize_member_scans_post () - leave a query
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): MQ_MEMBER_SCAN_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+mq_serialize_member_scans_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  MQ_MEMBER_SCAN_INFO *info = (MQ_MEMBER_SCAN_INFO *) arg;
+
+  if (PT_IS_QUERY (node))
+    {
+      info->depth--;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+  return node;
+}
+
+/*
  * mq_share_multi_ref_views () - group the derived tables rewritten from the same view so that they share one XASL
  *   return: none
  *   parser(in):
@@ -10342,8 +10453,9 @@ mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
  *	 was pushed into one of its references or if it can give a different result at each evaluation. A reference
  *	 joins the group if it comes after the representative and uses only columns of the representative. A reference
  *	 in a correlated subquery does not join the group, since the workers of a parallel scan run such a subquery on a
- *	 copy of the XASL in which the representative is not built. A view is not shared either if the representative is
- *	 in a set operation operand with QUERY_CACHE.
+ *	 copy of the XASL in which the representative is not built; for the same reason a query whose expression holds
+ *	 a member in an uncorrelated subquery does not scan in parallel. A view is not shared either if the
+ *	 representative is in a set operation operand with QUERY_CACHE.
  */
 static void
 mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -10355,6 +10467,7 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *rep, *derived;
   int i, j, n, rep_idx, group_id = 0;
   bool pushed, found_unshareable, has_member;
+  MQ_MEMBER_SCAN_INFO member_info;
 
   if (!PT_IS_QUERY (statement) || statement->info.query.scan_op_type != S_SELECT)
     {
@@ -10439,6 +10552,14 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  rep->info.spec.derived_table->info.query.shared_view_group = group_id;
 	  rep->info.spec.derived_table->info.query.shared_view_rep = true;
 	}
+    }
+
+  if (group_id > 0)
+    {
+      member_info.depth = 0;
+      member_info.derived = NULL;
+      (void) parser_walk_tree (parser, statement, mq_serialize_member_scans_pre, &member_info,
+			       mq_serialize_member_scans_post, &member_info);
     }
 }
 
