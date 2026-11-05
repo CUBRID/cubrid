@@ -530,6 +530,7 @@ static int la_apply_insert_log (LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item);
+static bool la_can_log_repl_sql (LA_ITEM * item, DB_OBJECT * class_obj);
 static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_rows, LOG_PAGEID final_pageid);
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
@@ -5030,7 +5031,7 @@ la_apply_delete_log (LA_ITEM * item)
       goto end;
     }
 
-  if (la_enable_sql_logging)
+  if (la_enable_sql_logging && la_can_log_repl_sql (item, class_obj))
     {
       if (la_write_delete_sql_log (item, class_obj) != NO_ERROR)
 	{
