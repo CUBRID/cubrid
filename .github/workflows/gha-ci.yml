@@ -490,7 +490,7 @@ jobs:
           - mode: debug
             args: "-m optdebug"
     container:
-      image: cubridci/cubridci:build_rl8.10
+      image: cubridci/cubridci:build_cl6.10
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
