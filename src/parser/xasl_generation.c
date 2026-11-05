@@ -212,6 +212,7 @@ static int pt_table_compatible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 static TABLE_INFO *pt_table_info_alloc (void);
 static PT_NODE *pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec);
 static PT_NODE *pt_is_hash_agg_eligible (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *pt_gby_reads_row (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, ANALYTIC_INFO * analytic_info);
 static PT_NODE *pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE ** ex_list,
@@ -664,6 +665,7 @@ int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
+static int pt_find_group_key_expr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list);
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
 
@@ -697,6 +699,50 @@ pt_init_xasl_supp_info ()
 
   xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
   xasl_Supp_info.includes_tde_class = 0;
+}
+
+/*
+ * pt_detach_xasl_supp_info () - take what the XASL generation of a statement has gathered so far (the classes its
+ *				  plan references, their locks and pages, TDE) out of the way of a statement compiled in
+ *				  the middle of it, whose XASL generation starts by clearing it
+ *   return: the gathered information, for pt_attach_xasl_supp_info (); NULL when out of memory
+ */
+struct xasl_supp_info *
+pt_detach_xasl_supp_info (void)
+{
+  XASL_SUPP_INFO *saved;
+
+  saved = (XASL_SUPP_INFO *) malloc (sizeof (XASL_SUPP_INFO));
+  if (saved == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_SUPP_INFO));
+      return NULL;
+    }
+  *saved = xasl_Supp_info;
+  xasl_Supp_info.query_list = NULL;
+  xasl_Supp_info.class_oid_list = NULL;
+  xasl_Supp_info.class_locks = NULL;
+  xasl_Supp_info.tcard_list = NULL;
+  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+  xasl_Supp_info.includes_tde_class = 0;
+  return saved;
+}
+
+/*
+ * pt_attach_xasl_supp_info () - give back what pt_detach_xasl_supp_info () took, dropping what the statement compiled
+ *				  in between left
+ *   return: void
+ *   saved(in): a non-NULL result of pt_detach_xasl_supp_info (); freed. Each non-NULL detach takes exactly one
+ *		attach, before the statement's own XASL generation goes on. A NULL detach took nothing: then compile
+ *		no statement in between and do not call this (it would clear the lists, then dereference NULL)
+ */
+void
+pt_attach_xasl_supp_info (struct xasl_supp_info *saved)
+{
+  /* the query list of the statement in between belongs to its parser, already freed */
+  pt_init_xasl_supp_info ();
+  xasl_Supp_info = *saved;
+  free_and_init (saved);
 }
 
 
@@ -3948,6 +3994,82 @@ pt_is_hash_agg_eligible (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int
 	  *eligible = 0;
 	  *continue_walk = PT_STOP_WALK;
 	}
+    }
+
+  return tree;
+}
+
+/* what pt_gby_reads_row () looks at */
+typedef struct pt_gby_row_read_info PT_GBY_ROW_READ_INFO;
+struct pt_gby_row_read_info
+{
+  PT_NODE *group_out_list;	/* the keys first, then every other value the groups read from their rows */
+  int key_count;
+  bool reads_row;		/* out: a group's output needs a value its keys and aggregates do not give */
+};
+
+/*
+ * pt_gby_reads_row () - does an output expression of a GROUP BY read a group's row beyond its keys?
+ *   return: tree node
+ *   parser(in): parser context
+ *   tree(in): node of the select list or the HAVING clause
+ *   arg(in/out): PT_GBY_ROW_READ_INFO
+ *   continue_walk(in/out): continue walk
+ *
+ * Note: a hash GROUP BY keeps each group's first row only when this finds one (XASL_G_FIRST_TUPLE_KEEP).  Anything
+ *       it does not prove to be a key or an aggregate counts as reading the row.
+ */
+static PT_NODE *
+pt_gby_reads_row (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_GBY_ROW_READ_INFO *info = (PT_GBY_ROW_READ_INFO *) arg;
+  int index;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (pt_is_aggregate_function (parser, tree))
+    {
+      /* an aggregate reads its accumulator; groupby_num () numbers the groups as they come out */
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      switch (tree->node_type)
+	{
+	case PT_SELECT:
+	case PT_UNION:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	case PT_METHOD_CALL:
+	case PT_DOT_:
+	  info->reads_row = true;
+	  break;
+
+	case PT_EXPR:
+	  if (tree->info.expr.op == PT_INST_NUM || tree->info.expr.op == PT_ROWNUM
+	      || tree->info.expr.op == PT_ORDERBY_NUM || tree->info.expr.op == PT_LEVEL
+	      || tree->info.expr.op == PT_CONNECT_BY_ISLEAF || tree->info.expr.op == PT_CONNECT_BY_ISCYCLE)
+	    {
+	      info->reads_row = true;
+	    }
+	  break;
+
+	case PT_NAME:
+	  index = pt_find_attribute (parser, tree, info->group_out_list);
+	  if (index < 0 || index >= info->key_count)
+	    {
+	      info->reads_row = true;
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  if (info->reads_row)
+    {
+      *continue_walk = PT_STOP_WALK;
     }
 
   return tree;
@@ -19590,22 +19712,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 				   (void *) &buildlist->g_hash_eligible, NULL, NULL);
 	  (void) parser_walk_tree (parser, select_node->info.query.q.select.having, pt_is_hash_agg_eligible,
 				   (void *) &buildlist->g_hash_eligible, NULL, NULL);
-
-	  /* determine where we're storing the first tuple of each group */
-	  if (buildlist->g_hash_eligible)
-	    {
-	      if (select_node->info.query.q.select.group_by->flag.with_rollup)
-		{
-		  /* if using rollup groups, we must output the first tuple of each group so rollup will be correctly
-		   * handled during sort */
-		  buildlist->g_output_first_tuple = true;
-		}
-	      else
-		{
-		  /* in other cases just store everyting in hash table */
-		  buildlist->g_output_first_tuple = false;
-		}
-	    }
 	}
 
       /* this one will be altered further on and it's the actual output of the initial scan; will contain group key and
@@ -19730,6 +19836,53 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      buildlist->g_hkey_size++;
 	      regu_list = regu_list->next;
+	    }
+	}
+
+      /* where a hash GROUP BY keeps each group's first row */
+      buildlist->g_first_tuple = XASL_G_FIRST_TUPLE_NONE;
+      if (buildlist->g_hash_eligible)
+	{
+	  PT_GBY_ROW_READ_INFO row_read = { group_out_list, buildlist->g_hkey_size, false };
+	  PT_NODE *item, *save_next;
+
+	  if (select_node->info.query.q.select.group_by->flag.with_rollup)
+	    {
+	      /* the sort finishes the rollup groups from every group's first row */
+	      buildlist->g_first_tuple = XASL_G_FIRST_TUPLE_OUTPUT;
+	    }
+	  else
+	    {
+	      /* hierarchical, analytic and multi-table update/delete outputs read their rows in ways not walked here */
+	      row_read.reads_row = (select_node->info.query.q.select.connect_by != NULL
+				    || pt_has_analytic (parser, select_node)
+				    || PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_MULTI_UPDATE_AGG));
+	      for (item = select_node->info.query.q.select.list; item != NULL && !row_read.reads_row; item = item->next)
+		{
+		  int is_pseudocolumn = 0;
+
+		  /* a select item that prints as a key reads the key (pt_make_result_ref () below) */
+		  (void) parser_walk_tree (parser, item, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
+		  if (!is_pseudocolumn && (item->node_type == PT_EXPR || item->node_type == PT_METHOD_CALL)
+		      && pt_find_group_key_expr (parser, item, select_node->info.query.q.select.group_by) >= 0)
+		    {
+		      continue;
+		    }
+
+		  save_next = item->next;
+		  item->next = NULL;
+		  (void) parser_walk_tree (parser, item, pt_gby_reads_row, &row_read, NULL, NULL);
+		  item->next = save_next;
+		}
+	      if (!row_read.reads_row)
+		{
+		  (void) parser_walk_tree (parser, select_node->info.query.q.select.having, pt_gby_reads_row,
+					   &row_read, NULL, NULL);
+		}
+	      if (row_read.reads_row)
+		{
+		  buildlist->g_first_tuple = XASL_G_FIRST_TUPLE_KEEP;
+		}
 	    }
 	}
 
@@ -21388,6 +21541,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
   /* Check for join, path expr, and index optimizations */
   plan = qo_optimize_query (parser, select_node);
+
+  /* a planning read (row snapshot) that aborted the transaction, lost the server or was cancelled
+   * failed the statement: there is no plan to retry for */
+  if (!plan && pt_has_error (parser)
+      && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	  || er_errid () == ER_INTERRUPTED))
+    {
+      return NULL;
+    }
 
   /* optimization fails, ignore join hint and retry optimization */
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
@@ -24639,7 +24801,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
     PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_SCAN |
-    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
+    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL | PT_HINT_ROW_SNAPSHOT |
+    PT_HINT_NO_ROW_SNAPSHOT;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
@@ -33567,12 +33730,54 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
   return node;
 }
 
+/*
+ * pt_find_group_key_expr () - which GROUP BY expression prints the same as an expression
+ *   return: its position in groupby_list, or -1
+ */
+static int
+pt_find_group_key_expr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list)
+{
+  PT_NODE *groupby;
+  char *str_select = parser_print_tree (parser, node);
+  int i;
+
+  for (groupby = groupby_list, i = 0; groupby; groupby = groupby->next, i++)
+    {
+      char *str_group = NULL;
+
+      if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
+	{
+	  /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
+	  int tmp_paren_type = -1;
+	  tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
+	  groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
+
+	  str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	  groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
+	}
+      else
+	{
+	  str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	}
+
+      /* brute method, compare printed trees */
+      if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
+	{
+	  return i;
+	}
+    }
+
+  return -1;
+}
+
 static PT_NODE *
 pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list, VAL_LIST * vallist)
 {
   PT_NODE *new_node = NULL;
-  PT_NODE *groupby = groupby_list;
+  PT_NODE *save_next = NULL;
   QPROC_DB_VALUE_LIST db_list = vallist->valp;
+  int key;
 
   if (pt_has_error (parser))
     {
@@ -33580,48 +33785,37 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
     }
 
   int is_pseudocolumn = 0;
+
+  /* save and cut-off node link */
+  save_next = node->next;
+  node->next = NULL;
+
   (void) parser_walk_tree (parser, node, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
+
+  /* restore node link */
+  node->next = save_next;
 
   if (!is_pseudocolumn && (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL))
     {
-      char *str_select = parser_print_tree (parser, node);
-
-      for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
+      key = pt_find_group_key_expr (parser, node, groupby_list);
+      for (; key > 0 && db_list; key--)
 	{
-	  char *str_group = NULL;
+	  db_list = db_list->next;
+	}
 
-	  if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
+      if (key == 0 && db_list)
+	{
+	  assert (node->etc == NULL);
+	  new_node = pt_point_ref (parser, node);
+	  if (new_node == NULL)
 	    {
-	      /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
-	      int tmp_paren_type = -1;
-	      tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
-	      groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
-
-	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
-
-	      groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
+	      /* allocation failed */
+	      PT_ERROR (parser, node,
+			msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	      return NULL;
 	    }
-	  else
-	    {
-	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
-	    }
-
-	  /* brute method, compare printed trees */
-	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
-	    {
-	      assert (node->etc == NULL);
-	      new_node = pt_point_ref (parser, node);
-	      if (new_node == NULL)
-		{
-		  /* allocation failed */
-		  PT_ERROR (parser, node,
-			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		  return NULL;
-		}
-	      new_node->etc = (void *) db_list->val;
-	      break;
-	    }
+	  new_node->etc = (void *) db_list->val;
 	}
     }
 
