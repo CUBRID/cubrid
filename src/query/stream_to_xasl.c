@@ -1927,10 +1927,7 @@ stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
   if (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT
       || compare->method == DOMAIN_COMPARE_COLLATIONS)
     {
-      /* an exact pair's cmpval reads the unconverted values; a stream that converts one compares the converted ones */
-      compare->cmp = converts == 0 ? domain_compare_cmp ((DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1],
-							 (DB_TYPE) compare->source[0])
-	: pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
+      compare->cmp = domain_compare_cmp (compare);
     }
   return ptr;
 }

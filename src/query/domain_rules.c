@@ -1179,13 +1179,17 @@ domain_exact_number_type (const PR_TYPE * compared, PR_TYPE::cmpval_function_typ
   return type;
 }
 
-/* the cmpval of a resolved comparison: the compared type's, or an exact number comparison's */
+/* the cmpval of a decided comparison: an exact number comparison's when neither side converts (it reads the values
+ * as they are), else the first value's type once converted */
 const PR_TYPE *
-domain_compare_cmp (DB_TYPE source0, DB_TYPE source1, DB_TYPE compared)
+domain_compare_cmp (const DOMAIN_COMPARE * compare)
 {
-  if (!domain_compare_is_exact_number (source0, source1))
+  const DB_TYPE source0 = (DB_TYPE) compare->source[0];
+  const DB_TYPE source1 = (DB_TYPE) compare->source[1];
+
+  if (compare->target[0] != NULL || compare->target[1] != NULL || !domain_compare_is_exact_number (source0, source1))
     {
-      return pr_type_from_id (compared);
+      return pr_type_from_id (compare->target[0] != NULL ? TP_DOMAIN_TYPE (compare->target[0]) : source0);
     }
   static const PR_TYPE exact[2][3] = {
     {domain_exact_number_type (&tp_Numeric, domain_cmpval_short_numeric),
@@ -2350,10 +2354,7 @@ domain_compare_mirror (const DOMAIN_COMPARE * compare, DOMAIN_COMPARE * mirrored
   mirrored->codeset_side = compare->codeset_side >= 0 ? (signed char) (1 - compare->codeset_side) : -1;
   if (compare->cmp != NULL)
     {
-      /* cmpval is the first value's type once converted */
-      mirrored->cmp = domain_compare_cmp ((DB_TYPE) mirrored->source[0], (DB_TYPE) mirrored->source[1],
-					  mirrored->conv[0] != NULL ? TP_DOMAIN_TYPE (mirrored->target[0])
-					  : (DB_TYPE) mirrored->source[0]);
+      mirrored->cmp = domain_compare_cmp (mirrored);
     }
 }
 
@@ -2481,7 +2482,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   result->converted_first = (unsigned char) after[result->first];
 
   /* the tail on the converted values: the first side's cmpval under the comparison's collation */
-  result->cmp = domain_compare_cmp (lhs->type, rhs->type, after[0]);
+  result->cmp = domain_compare_cmp (result);
   if (enum_side >= 0 && key[0]->collation != key[1]->collation)
     {
       /* both sides compare as strings of the ENUM's collation */
