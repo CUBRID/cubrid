@@ -505,6 +505,9 @@ jobs:
       # The default is mtime, which a fresh checkout always misses.
       CCACHE_COMPILERCHECK: content
       CCACHE_MAXSIZE: 10G
+      # Jenkins builds without ccache. Without this, a file that only lost a /* fall through */ comment
+      # hits the preprocessed cache and passes where Jenkins fails on -Werror=implicit-fallthrough.
+      CCACHE_COMMENTS: 1
       # No CCACHE_HARDLINK: a hardlinked entry is one bad build away from a poisoned cache.
       CACHE_WRITE: ${{ needs.gate.outputs.cache_write }}
 
