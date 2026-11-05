@@ -13594,7 +13594,9 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
 
   thrd_idx = thread_get_entry_index (thread_p);
 
-  /* get class oid and hfid */
+  /* get class oid and hfid; a Sidecar store page carries its hot heap's class, so every fix of a store page names
+   * the store's HFID in its watcher and never reaches here */
+  assert (!heap_page_is_sidecar_store (thread_p, *pgptr));
   er_status = heap_get_class_oid_from_page (thread_p, *pgptr, &cls_oid);
 
   if (do_unfix == true)

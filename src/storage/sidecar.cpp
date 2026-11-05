@@ -795,43 +795,6 @@ sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache)
 {
 }
 
-__attribute__ ((noinline)) bool
-sidecar_is_store_record (THREAD_ENTRY *thread_p, PAGE_PTR page, PGSLOTID slotid)
-{
-  RECDES record;
-
-  if (spage_get_record (thread_p, page, slotid, &record, PEEK) != S_SUCCESS)
-    {
-      return false;
-    }
-  if ((record.type == REC_HOME || record.type == REC_NEWHOME) && record.length >= OR_MVCC_REP_SIZE)
-    {
-      return OR_GET_MVCC_REPID (record.data) == SIDECAR_STORE_REPID;
-    }
-  if (record.type != REC_BIGONE)
-    {
-      return false;
-    }
-
-  /* the header of a REC_BIGONE record is in its first overflow page, which a reader also fixes after the home page */
-  OID ovf_oid;
-  VPID ovf_vpid;
-
-  COPY_OID (&ovf_oid, (OID *) record.data);
-  ovf_vpid.volid = ovf_oid.volid;
-  ovf_vpid.pageid = ovf_oid.pageid;
-
-  PAGE_PTR ovf_page = pgbuf_fix (thread_p, &ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (ovf_page == NULL)
-    {
-      er_clear ();
-      return false;
-    }
-  const bool is_store = OR_GET_MVCC_REPID (overflow_get_first_page_data (ovf_page)) == SIDECAR_STORE_REPID;
-  pgbuf_unfix_and_init (thread_p, ovf_page);
-  return is_store;
-}
-
 void
 sidecar_store_forget (THREAD_ENTRY *thread_p, const VFID *hot_vfid)
 {

@@ -93,9 +93,6 @@ extern void sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan
  * Lifecycle and checks
  */
 
-/* The record in slotid of a heap page is a store record.  Store pages carry the class OID of their hot heap, so
- * code that finds a page's heap through its class asks this first (heap_rv_undo_insert ()). */
-extern bool sidecar_is_store_record (THREAD_ENTRY *thread_p, PAGE_PTR page, PGSLOTID slotid);
 /* heap_drop_dependent_files () only: unlinks the store of a heap being dropped and postpones its destroy (I-10) */
 /* heap_create_internal (): a new heap may have the VFID of a destroyed one, whose cache entry must go */
 extern void sidecar_store_forget (THREAD_ENTRY *thread_p, const VFID *hot_vfid);

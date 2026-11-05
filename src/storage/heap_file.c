@@ -245,6 +245,9 @@ static_assert (sizeof (((HEAP_HDR_STATS *) NULL)->sidecar) == 3 * sizeof (int),
 /* Define heap page flags. */
 #define HEAP_PAGE_FLAG_BESTSPACE		  0x00000001
 #define HEAP_PAGE_FLAG_NOT_IN_HEAP		  0x00000002
+/* A page of a Sidecar store.  Store pages carry the class OID of their hot heap, so a page's class does not name
+ * the heap that owns it; the flag does (heap_page_is_sidecar_store ()). */
+#define HEAP_PAGE_FLAG_SIDECAR_STORE		  0x00000004
 #define HEAP_PAGE_FLAG_VACUUM_STATUS_MASK	  0xC0000000
 #define HEAP_PAGE_FLAG_VACUUM_ONCE		  0x80000000
 #define HEAP_PAGE_FLAG_VACUUM_UNKNOWN		  0x40000000
@@ -263,6 +266,9 @@ static_assert (sizeof (((HEAP_HDR_STATS *) NULL)->sidecar) == 3 * sizeof (int),
 
 #define HEAP_PAGE_CLEAR_NOT_IN_HEAP(chain) \
   ((chain)->flags &= ~HEAP_PAGE_FLAG_NOT_IN_HEAP)
+
+#define HEAP_PAGE_IS_SIDECAR_STORE(chain) \
+  (((chain)->flags & HEAP_PAGE_FLAG_SIDECAR_STORE) != 0)
 
 #define HEAP_BESTSPACE_ENTRIES_SLOTID (HEAP_HEADER_AND_CHAIN_SLOTID + 1)
 
@@ -695,7 +701,8 @@ static cubstorage::bestspace *heap_find_bestspace (THREAD_ENTRY * thread_p, OID 
 STATIC_INLINE int heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
 				      bool is_newrec, PGBUF_WATCHER * page_watcher);
 
-static int heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid);
+static int heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid,
+				 const bool may_reuse_file);
 static const HFID *heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool reuse_oid);
 static bool heap_delete_all_page_records (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR pgptr);
 static int heap_reinitialize_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const bool is_header_page);
@@ -2893,6 +2900,35 @@ heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
+ * heap_page_is_sidecar_store () - Check whether a heap page belongs to a Sidecar store.
+ *
+ * return	  : true if the page is a store page
+ * page_heap (in) : Heap page
+ *
+ * Note: A store page carries the class OID of its hot heap, so code that finds a page's heap through its class must
+ *       ask this first.  heap_alloc_new_pages () and heap_vpid_alloc (), which allocate the data pages of a store,
+ *       flag them, and the header page says it through its magic.  Pages of stores created before the flag existed
+ *       carry none.
+ */
+bool
+heap_page_is_sidecar_store (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
+{
+  RECDES recdes;
+
+  if (spage_get_record (thread_p, page_heap, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return false;
+    }
+
+  if (recdes.length != sizeof (HEAP_CHAIN))
+    {
+      return HEAP_SIDECAR_IS_STORE ((HEAP_HDR_STATS *) recdes.data);
+    }
+  return HEAP_PAGE_IS_SIDECAR_STORE ((HEAP_CHAIN *) recdes.data);
+}
+
+/*
  * check_supplemental_log () - check if appending supplemental log is available
  *
  * return	  : available or not
@@ -3021,7 +3057,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
   new_page_chain.prev_vpid = last_vpid;
   VPID_SET_NULL (&new_page_chain.next_vpid);
   new_page_chain.max_mvccid = MVCCID_NULL;
-  new_page_chain.flags = 0;
+  new_page_chain.flags = HEAP_SIDECAR_IS_STORE (heap_hdr) ? HEAP_PAGE_FLAG_SIDECAR_STORE : 0;
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   /* allocate new page and initialize it */
@@ -4828,7 +4864,8 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
  * they are allocated as needs arrives.
  */
 static int
-heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid)
+heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid,
+		      const bool may_reuse_file)
 {
   HEAP_HDR_STATS heap_hdr;	/* Heap file header */
   VPID vpid;			/* Volume and page identifiers */
@@ -4861,7 +4898,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
   memset (&des, 0, sizeof (des));
 
-  if (prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false && file_type == FILE_HEAP)
+  if (may_reuse_file && prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false && file_type == FILE_HEAP)
     {
       /*
        * Try to reuse an already mark deleted heap file
@@ -5489,7 +5526,7 @@ heap_scanrange_isvalid (HEAP_SCANRANGE * scan_range)
 int
 xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid)
 {
-  return heap_create_internal (thread_p, hfid, class_oid, reuse_oid);
+  return heap_create_internal (thread_p, hfid, class_oid, reuse_oid, true);
 }
 
 /*
@@ -6415,7 +6452,8 @@ heap_sidecar_create_store (THREAD_ENTRY * thread_p, const HFID * hfid, const OID
   log_sysop_start (thread_p);
   log_raise_sidecar_compatibility (thread_p);
 
-  error_code = heap_create_internal (thread_p, store_hfid, class_oid, false);
+  /* never a dropped heap file: heap_reuse () would give its pages no store flag before the magic below exists */
+  error_code = heap_create_internal (thread_p, store_hfid, class_oid, false, false);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -17888,8 +17926,9 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
 
   /* A Sidecar store page carries its hot heap's class OID, so the class finds the hot heap: the store's free space
-   * must not go to the hot heap's bestspace, or a row of the hot heap would be inserted into the store. */
-  const bool add_bestpage = LOG_ISRESTARTED () && !sidecar_is_store_record (thread_p, rcv->pgptr, slotid);
+   * must not go to the hot heap's bestspace, or a row of the hot heap would be inserted into the store.  The store's
+   * own HFID is not reachable from here without fixing the hot header while the store page is held (I-7). */
+  const bool add_bestpage = LOG_ISRESTARTED () && !heap_page_is_sidecar_store (thread_p, rcv->pgptr);
 
   (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
@@ -21776,6 +21815,12 @@ static FILE_TYPE
 heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   FILE_TYPE file_type;
+  if (unlikely (context->sidecar_store_op))
+    {
+      /* the class names the hot heap, not the store, and a store is always FILE_HEAP (heap_sidecar_create_store ()):
+       * its vacuumed slots are never reused (I-5) */
+      return FILE_HEAP;
+    }
   if (context->scan_cache_p != NULL)
     {
       assert (HFID_EQ (&context->hfid, &context->scan_cache_p->node.hfid));
@@ -22655,6 +22700,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
 #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, context->home_page_watcher_p->pgptr, PAGE_HEAP);
 #endif /* !NDEBUG */
+  /* a store record that its DELID relocates moves to another store page */
+  assert (heap_page_is_sidecar_store (thread_p, context->home_page_watcher_p->pgptr) == context->sidecar_store_op);
 
   sp_success =
     spage_insert (thread_p, context->home_page_watcher_p->pgptr, context->recdes_p, &context->res_oid.slotid);
@@ -22707,6 +22754,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 
   /* build insert context */
   heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL);
+  ins_context.sidecar_store_op = parent_context->sidecar_store_op;
 
   /* physical insertion */
   error_code = heap_find_location_and_insert_rec_newhome (thread_p, &ins_context);
@@ -22792,6 +22840,8 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       assert (OID_EQ (&heap_class_oid, &context->class_oid));
     }
 #endif
+  /* the class OID cannot tell a store page from a hot page of the same class; the page flag can */
+  assert (heap_page_is_sidecar_store (thread_p, context->home_page_watcher_p->pgptr) == context->sidecar_store_op);
 
   /* physical insertion */
   if (spage_insert_at (thread_p, context->home_page_watcher_p->pgptr, context->res_oid.slotid, context->recdes_p) !=
@@ -28207,7 +28257,7 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   VPID_SET_NULL (&new_page_chain.prev_vpid);
   VPID_SET_NULL (&new_page_chain.next_vpid);
   new_page_chain.max_mvccid = MVCCID_NULL;
-  new_page_chain.flags = 0;
+  new_page_chain.flags = HEAP_SIDECAR_IS_STORE (heap_hdr) ? HEAP_PAGE_FLAG_SIDECAR_STORE : 0;
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   log_sysop_start (thread_p);

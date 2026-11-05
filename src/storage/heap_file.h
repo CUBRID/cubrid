@@ -453,6 +453,7 @@ extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID 
 
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
+extern bool heap_page_is_sidecar_store (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 
 extern SCAN_CODE heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
