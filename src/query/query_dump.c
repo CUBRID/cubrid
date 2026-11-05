@@ -647,7 +647,7 @@ qdump_print_key_info (KEY_INFO * key_info_p)
       fprintf (foutput, "]");
     }
   fprintf (foutput, "<is constant:%d>", key_info_p->is_constant);
-  fprintf (foutput, "<is user given keylimit:%d>", key_info_p->is_user_given_keylimit);
+  fprintf (foutput, "<is user given keylimit:%d>", key_info_p->is_user_given_keylimit_hint);
   fprintf (foutput, "<reset:%d>", key_info_p->key_limit_reset);
 
   fprintf (foutput, " key limit: [");
@@ -3069,7 +3069,7 @@ qdump_print_xasl (xasl_node * xasl_p)
       fprintf (foutput, "-->instnum predicate:");
       qdump_print_predicate (xasl_p->instnum_pred);
       fprintf (foutput, "\n");
-      if (xasl_p->instnum_flag == XASL_INSTNUM_FLAG_SCAN_CONTINUE)
+      if ((xasl_p->instnum_flag & ~XASL_INSTNUM_FLAG_ORDBYNUM_HINT) == XASL_INSTNUM_FLAG_SCAN_CONTINUE)
 	{
 	  fprintf (foutput, "-->instnum CONTINUE\n");
 	}

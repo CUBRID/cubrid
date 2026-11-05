@@ -65,6 +65,17 @@ qo_push_limit_to_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * limit
 	      add_limit->info.expr.arg1 = parser_copy_tree (parser, save_next);
 	      add_limit->info.expr.arg2 = parser_copy_tree (parser, limit);
 	      limit->next = save_next;
+	      /* as the offset + count of a numbering predicate: in DOUBLE with a host variable, else in NUMERIC */
+	      if (!pt_cast_limit_rewritten_sum (parser, add_limit))
+		{
+		  add_limit->type_enum = PT_TYPE_NUMERIC;
+		  add_limit->data_type = pt_make_prim_data_type (parser, PT_TYPE_NUMERIC);
+		  if (add_limit->data_type != NULL)
+		    {
+		      add_limit->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+		      add_limit->data_type->info.data_type.dec_precision = 0;
+		    }
+		}
 
 	      node->info.query.limit = add_limit;
 	    }

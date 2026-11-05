@@ -2343,9 +2343,9 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *   thread_p(in)  : thread entry
  *   regu_var(in)  : key limit expression (lower or upper)
  *   vd(in)        : value descriptor
- *   exclusive(in) : true when the value of a leaf is itself outside the bound (rownum < N, rownum >= N)
- *   conv(in)      : the converter of regu_var's compiled type into BIGINT the unpack found (CBRD-27583), when
- *                   regu_var is the key limit itself (KEY_INFO key_limit_l_conv, key_limit_u_conv), NULL below it
+ *   exclusive(in) : read a leaf as ceil (value) - 1 (rownum < N, rownum >= N), else as floor (value)
+ *   conv(in)      : the converter into BIGINT the unpack found for the key limit, NULL for a node
+ *                   below the top one
  *   result(out)   : evaluated BIGINT, valid when *is_null is false
  *   is_null(out)  : set to true when a NULL takes part in the expression
  *
@@ -2355,12 +2355,9 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
  *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
  *
- *       A leaf is read as the rows its comparison admits, so that the key limit reads the rows the
- *       sequential scan keeps by comparing the values (tp_value_to_row_bound):
- *         exclusive false (rownum <= N, rownum > N) : floor (N)      2.4 -> 2, 2.5 -> 2, 2 -> 2
- *         exclusive true  (rownum < N, rownum >= N) : ceil (N) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
- *       The N - 1 the optimizer builds for rownum < N is flagged REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE and read
- *       as its leaf N with exclusive true, not as N - 1 rounded (2.4 - 1 rounded is 1, two keys are right).
+ *       A leaf is read by tp_value_to_row_bound () in the read of its compiled domain. An N - 1 flagged
+ *       REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE is read from N as ceil (N) - 1, not rounded after the subtraction
+ *       (rownum < 2.4 keeps 2 rows, not 1).
  *
  *       A negative bound only means "nothing to skip" or "nothing to read", so it becomes -1 whatever its
  *       magnitude. The sign is kept for the KEYLIMIT check and the upper += lower adjustment in
@@ -2389,8 +2386,8 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
 	case T_SUB:
 	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE))
 	    {
-	      /* rownum < N: N is outside the bound, so the bound is ceil (N) - 1 and not N - 1 rounded
-	       * (2.4 reads 2 keys, 2 reads 1) */
+	      /* ceil (N) - 1 from N itself. The optimizer builds this node as N - 1 with a constant 1 */
+	      assert (arithptr->rightptr != NULL && arithptr->rightptr->type == TYPE_DBVAL);
 	      return key_limit_eval (thread_p, arithptr->leftptr, vd, true, NULL, result, is_null);
 	    }
 	  [[fallthrough]];
@@ -2444,16 +2441,14 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
       return NO_ERROR;
     }
 
-  /* the rows the comparison admits: floor (N) for rownum <= N, ceil (N) - 1 for rownum < N (exclusive), and beyond
-   * the BIGINT range DB_BIGINT_MAX or -1 by the sign (rownum < 1e46: all rows, rownum < -1e46: no rows). The value
-   * is read by the converter the unpack found for the key limit (CBRD-27583) when this leaf is the key limit itself.
-   * A leaf under an N - 1 or a LEAST/GREATEST finds its own, once per scan, from the type the plan compiled for it */
+  /* a node below the top one has no converter from the unpack */
   planned = regu_var->domain != NULL ? TP_DOMAIN_TYPE (regu_var->domain) : DB_TYPE_NULL;
   if (conv == NULL && planned != DB_TYPE_BIGINT && planned != DB_TYPE_VARIABLE && planned != DB_TYPE_NULL)
     {
-      conv = tp_value_find_converter (planned, &tp_Bigint_domain, DOMAIN_CONVERT_IMPLICIT);
+      conv = tp_value_find_converter (planned, bigint_domain, DOMAIN_CONVERT_IMPLICIT);
     }
-  dom_status = tp_value_to_row_bound (peek_val, exclusive, planned, conv, result);
+  dom_status = tp_value_to_row_bound (peek_val, exclusive, tp_domain_row_bound_read (regu_var->domain), planned, conv,
+				      result);
   if (dom_status == DOMAIN_COMPATIBLE)
     {
       if (*result < 0)
@@ -2464,13 +2459,19 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
 	}
       return NO_ERROR;
     }
+  if (dom_status == DOMAIN_OVERFLOW)
+    {
+      /* an overflow that is neither above nor below 0 is NaN: no number of rows, so it keeps no row as NULL does */
+      *is_null = true;
+      return NO_ERROR;
+    }
 
   (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_val, bigint_domain);
   return ER_FAILED;
 }
 
 /*
- * fetch_key_limits () - fetch the lower and upper key limits as BIGINT
+ * fetch_key_limits () - fetch the lower and upper key limits as BIGINT (also the sort limit, built the same way)
  *
  *   return          : NO_ERROR or error code
  *   thread_p(in)    : thread entry
@@ -2483,9 +2484,8 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
  *   upper(out)      : upper limit, set when key_limit_u is not NULL
  *   is_null(out)    : set to true when a NULL takes part in either bound (no row can match)
  *
- * Note: Both bounds go through key_limit_eval (), which reads each leaf as the number of rows its comparison
- *       admits. The tree is never computed as a whole (the fast path that fetched it and rounded it to
- *       BIGINT is gone): N - 1 computed on 2.4 and then rounded gives 1, while the rows rownum < 2.4 keeps are 2.
+ * Note: Both bounds go through key_limit_eval (), which computes the nodes the optimizer built on their operands
+ *       instead of rounding the whole tree once.
  */
 int
 fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, TP_VALUE_CONVERTER l_conv,

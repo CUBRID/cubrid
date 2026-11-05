@@ -545,6 +545,8 @@ struct cte_proc_node
 #define XASL_INSTNUM_FLAG_SCAN_LAST_STOP    0x08
 #define XASL_INSTNUM_FLAG_EVAL_DEFER	    0x10
 #define XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC	    0x20
+#define XASL_INSTNUM_FLAG_ORDBYNUM_HINT	    0x40	/* instnum_val counts from 1 the orderby_num () a skipped ORDER BY
+							 * moved into a block with a KEYLIMIT hint */
 
 /*
  * Macros for buildlist block
@@ -1283,8 +1285,7 @@ struct xasl_node
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed from [ordby_num < X] clauses */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into BIGINT, found at
-						 * unpack from its domain, not serialized. BIGINT since the limit is
-						 * read as a row bound (fetch_key_limits), then narrowed to int */
+						 * unpack from its domain; not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int ordbynum_flag;		/* stop or continue ordering? */
 

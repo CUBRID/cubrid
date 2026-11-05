@@ -294,12 +294,13 @@ namespace parallel_scan
 	      }
 	  }
 	else if (dom_status == DOMAIN_OVERFLOW
-		 && tp_value_to_row_bound (limit_val, draw.is_less_than, conversion != NULL ? conversion->source : DB_TYPE_NULL,
-					   conversion != NULL ? conversion->conv : NULL, &saturated_limit) == DOMAIN_COMPATIBLE)
+		 && tp_value_to_row_bound (limit_val, draw.is_less_than, tp_domain_row_bound_read (draw.limit_rhs->domain),
+					   conversion != NULL ? conversion->source : DB_TYPE_NULL,
+					   conversion != NULL ? conversion->conv : NULL,
+					   &saturated_limit) == DOMAIN_COMPATIBLE)
 	  {
 	    /* serial widens inst_num() rather than coercing the bound, so out of BIGINT range a
-	     * positive bound admits every row and a negative one none, whatever its type
-	     * (NUMERIC, DOUBLE, string, no longer NUMERIC only), as the key limit does. */
+	     * positive bound admits every row and a negative one none (cf. key-limit handling). */
 	    raw_limit = (saturated_limit < 0) ? 0 : saturated_limit;
 	    er_clear ();
 	  }

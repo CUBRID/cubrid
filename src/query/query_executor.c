@@ -4275,9 +4275,8 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       return NO_ERROR;
     }
 
-  /* the limit is the upper bound the optimizer took from the orderby_num () predicate, read as a key limit is:
-   * the rows the comparison admits (orderby_num () < 2.4 keeps 2 rows, not 2.4 - 1 rounded to 1), by the converter
-   * the unpack found for the limit's compiled type (CBRD-27583, orderby_limit_conv) */
+  /* orderby_limit is built as a key limit, so it is read as one: orderby_num () < 2.4 keeps 2 rows, by the unpack's
+   * converter */
   if (fetch_key_limits (thread_p, NULL, NULL, xasl->orderby_limit, xasl->orderby_limit_conv, &xasl_state->vd, NULL,
 			&row_limit, &is_null) != NO_ERROR)
     {
@@ -20349,6 +20348,13 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
 	{
 	  db_make_bigint (xasl->save_instnum_val, lower);
 	}
+
+      /* the orderby_num () a skipped ORDER BY moved here counts the sorted rows from 1, not the keys a KEYLIMIT
+       * skips (keylimit 1, 3 order by a limit 1 reads key 2) */
+      if (xasl->instnum_flag & XASL_INSTNUM_FLAG_ORDBYNUM_HINT)
+	{
+	  db_make_bigint (xasl->instnum_val, 0);
+	}
     }
 
   xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_CHECK | XASL_INSTNUM_FLAG_SCAN_STOP
@@ -21097,7 +21103,6 @@ int
 qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool * empty_result)
 {
   DB_VALUE *limit_valp;
-  DB_VALUE *offset_valp = NULL;
   DB_VALUE zero_val;
   DB_VALUE_COMPARE_RESULT cmp_with_zero;
 
@@ -21109,7 +21114,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (xasl->limit_offset != NULL)
     {
       /* limit_offset should be greater than 0. Otherwise, raises an error. */
-      if (fetch_peek_dbval (thread_p, xasl->limit_offset, &xasl_state->vd, NULL, NULL, NULL, &offset_valp) != NO_ERROR)
+      if (fetch_peek_dbval (thread_p, xasl->limit_offset, &xasl_state->vd, NULL, NULL, NULL, &limit_valp) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -21138,22 +21143,6 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  NO_ERROR)
 	{
 	  return ER_FAILED;
-	}
-
-      if (offset_valp != NULL && !DB_IS_NULL (offset_valp) && !DB_IS_NULL (limit_valp))
-	{
-	  /* LIMIT offset, count reads the rows up to offset + count, a BIGINT like the two values (an expression such
-	   * as ? / 2 may still hold its NUMERIC result here, which the predicate casts). A sum beyond BIGINT is an error
-	   * here, once and before any row is read, so that every plan and an empty table report it the same way */
-	  DB_BIGINT limit_sum;
-	  bool sum_overflow;
-
-	  if (tp_value_limit_sum (offset_valp, limit_valp, &limit_sum, &sum_overflow) == DOMAIN_COMPATIBLE
-	      && sum_overflow)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-	      return ER_FAILED;
-	    }
 	}
 
       /* the comparison unpack decided, as tp_value_compare asks it */
@@ -27083,8 +27072,12 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	}
       if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
 	{
-	  /* reset grbynum_val for next use */
-	  db_make_bigint (gbstate->grbynum_val, 0);
+	  /* reset grbynum_val for next use, but not when the peek-ahead stops on a group that is still output.
+	   * The output row reads groupby_num () from grbynum_val. */
+	  if (ev_res != V_TRUE)
+	    {
+	      db_make_bigint (gbstate->grbynum_val, 0);
+	    }
 	  /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing; the caller, 'qexec_gby_put_next()',
 	   * returns 'gbstate->state' */
 	  gbstate->state = SORT_PUT_STOP;
@@ -34110,7 +34103,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       return NO_ERROR;
     }
 
-  /* a BIGINT row bound. More rows than an int counts are too many for a top-n */
+  /* a BIGINT row bound. More rows than an int holds are too many for a top-n */
   assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_BIGINT);
   if (db_get_bigint (&ubound_val) > INT_MAX)
     {
@@ -34673,8 +34666,8 @@ qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count)
  * thread_p	   : thread entry
  * pred (in)	   : orderby_num predicate
  * vd (in)	   : value descriptor
- * ubound (in/out) : upper bound, a BIGINT row bound (tp_value_to_row_bound), NULL when the predicate gives none
- * unbounded (out) : set when a bound cannot be read as a number of rows, which leaves no top-N bound
+ * ubound (in/out) : upper bound, a BIGINT row bound (CBRD-27583), NULL when the predicate gives none
+ * unbounded (out) : CBRD-27583: set by a bound that is not a number of rows, which leaves no top-N bound
  */
 static int
 qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound,
@@ -34715,7 +34708,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	}
 
       /* both bounds are BIGINT row bounds. An AND keeps the larger one, which stays correct since the predicate
-       * filters the rows the top-n kept, and a NULL one is the lowest */
+       * filters the rows the top-n kept. A NULL bound counts as the lowest */
       if (DB_IS_NULL (&right_bound)
 	  || (!DB_IS_NULL (&left_bound) && db_get_bigint (&left_bound) > db_get_bigint (&right_bound)))
 	{
@@ -34746,17 +34739,22 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
       if (DB_IS_NULL (val))
 	{
-	  /* no bound: the predicate matches no row */
+	  /* a NULL bound matches no row */
 	  goto cleanup;
 	}
 
-      /* the rows the comparison admits, as BIGINT: floor (N) for orderby_num () <= N, ceil (N) - 1 for
-       * orderby_num () < N where N is outside the bound (< 2.4 keeps 2 rows), by the conversion the unpack found
-       * for the term's bound (CBRD-27583, bound_conversion). A value that is not a number gives no bound here. The
-       * predicate reports it */
-      const DOMAIN_BOUND_CONVERSION *conversion = pred->pe.m_eval_term.et.et_comp.bound_conversion;
-      assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (val));
-      if (tp_value_to_row_bound (val, op == R_LT, conversion != NULL ? conversion->source : DB_TYPE_NULL,
+      /* < reads in the type the compiler decided for its subtraction (bound_coercion), <= in the bound's own type.
+       * Converted by the unpack's conversion. A value that is not a number gives no bound here */
+      const COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+      const DOMAIN_BOUND_CONVERSION *conversion = term->bound_conversion;
+      const TP_ROW_BOUND_READ read = (op == R_LT && term->bound_coercion != NULL)
+	? tp_type_row_bound_read (term->bound_coercion->arith.type) : tp_domain_row_bound_read (rhs->domain);
+      /* VARIABLE: the plan leaves the type to the value, as it does for a string bound whose collation it does not
+       * fix */
+      assert (conversion != NULL
+	      && (conversion->source == DB_TYPE_VARIABLE || conversion->source == DB_VALUE_DOMAIN_TYPE (val)));
+      if (tp_value_to_row_bound (val, op == R_LT, read,
+				 conversion != NULL ? conversion->source : DB_TYPE_NULL,
 				 conversion != NULL ? conversion->conv : NULL, &row_bound) != DOMAIN_COMPATIBLE)
 	{
 	  er_clear ();

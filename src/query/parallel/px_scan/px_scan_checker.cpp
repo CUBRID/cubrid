@@ -488,8 +488,10 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* keylimit: global cap incompatible with per-worker page split. */
-		if (arg->indexptr->key_info.is_user_given_keylimit)
+		/* the workers walk the leaf pages without the key limit, so a KEYLIMIT hint or any key limit keeps the
+		 * scan serial. This includes the one made from a ROWNUM predicate or LIMIT, which drops that predicate. */
+		if (arg->indexptr->key_info.is_user_given_keylimit_hint || arg->indexptr->key_info.key_limit_l != NULL
+		    || arg->indexptr->key_info.key_limit_u != NULL)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }

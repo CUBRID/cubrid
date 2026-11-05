@@ -353,10 +353,10 @@ qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  /* The same index is used in both hints; examine the keylimit clauses; if search_node does not have
 		   * keylimit, the IF below will skip, and search_node will be deleted */
-		  if (next_node->info.name.indx_key_limit != NULL)
+		  if (next_node->info.name.indx_key_limit_hint != NULL)
 		    {
 		      /* search_node has keylimit */
-		      if (hint_node->info.name.indx_key_limit != NULL)
+		      if (hint_node->info.name.indx_key_limit_hint != NULL)
 			{
 			  /* hint_node has keylimit; no action is performed; we want to preserve the order of index
 			   * hints for the same index, with keylimit */

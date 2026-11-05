@@ -93,7 +93,7 @@ struct key_info
   int key_cnt;			/* key count */
   bool is_constant;		/* every key value is a constant */
   bool key_limit_reset;		/* should key limit reset at each range */
-  bool is_user_given_keylimit;	/* true if user specifies key limit */
+  bool is_user_given_keylimit_hint;	/* true if user specifies key limit */
   regu_variable_node *key_limit_l;	/* lower key limit */
   regu_variable_node *key_limit_u;	/* upper key limit */
   /* CBRD-27583: the key limits' converters into BIGINT, found at unpack from their regus' domains (NULL for a

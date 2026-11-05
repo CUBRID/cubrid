@@ -2801,7 +2801,7 @@ struct pt_name_info
 #define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
-  PT_NODE *indx_key_limit;	/* key limits for index name */
+  PT_NODE *indx_key_limit_hint;	/* key limits for index name */
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
   size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */

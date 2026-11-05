@@ -2435,6 +2435,15 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 	  return NON_PUSHABLE;
 	}
 
+      /* the main query numbers its rows from 1, which a KEYLIMIT hint's numbering does not, so the two cannot share
+       * a counter (select * from (select ... keylimit 2, 5) d limit 2 would read no row) */
+      if (pt_has_key_limit_hint (subquery)
+	  && (pt_has_inst_in_where_and_select_list (parser, mainquery)
+	      || (PT_IS_SELECT (mainquery) && mainquery->info.query.limit != NULL)))
+	{
+	  return NON_PUSHABLE;
+	}
+
       /* Even for a single spec, merging is given up when the main query embeds a numbering column of the subquery
        * into an expression, since such a column is not evaluated until the subquery's sort is done. (CBRD-27189) */
       if (mq_is_sort_dependent_column_used_in_expr (parser, subquery, mainquery, class_spec, class_))

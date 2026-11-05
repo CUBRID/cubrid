@@ -164,7 +164,7 @@ void qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * se
 
 /* qo_auto_parameterize is defined in parser.h */
 void qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
-void qo_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
+void qo_auto_parameterize_keylimit_hint_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 void qo_auto_parameterize_constant_select_list (PARSER_CONTEXT * parser, PT_NODE * select);
 
 /* macros */

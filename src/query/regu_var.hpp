@@ -233,11 +233,9 @@ const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may re
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 const int REGU_VARIABLE_KEY_LIMIT_ARITH = 0x4000;	/* T_SUB/T_LEAST/T_GREATEST the optimizer builds for a key limit;
 							 * key_limit_eval () computes these nodes on their operands */
+const int REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE = 0x8000;	/* the N - 1 of rownum < N, >= N and = N:
+							 * key_limit_eval () reads it as ceil (N) - 1 */
 
-const int REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE = 0x8000;	/* the N - 1 the optimizer builds for rownum < N,
-							 * rownum >= N and rownum = N, where N itself is outside the
-							 * bound: key_limit_eval () reads it as ceil (N) - 1, not as
-							 * N - 1 rounded, so that 2.4 gives 2 and not 1 */
 /* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
  * prefix converter) and what a failed conversion gives */
 const int REGU_CONV_SELECTION = 0x07;

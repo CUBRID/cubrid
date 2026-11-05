@@ -2309,9 +2309,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       return NULL;
     }
   {
-    /* CBRD-27583: each upper bound's conversion into BIGINT, which a top-N takes (qexec_setup_topn_proc): of the
-     * bound's own type for < as well, since the bound is read as the rows its comparison admits
-     * (tp_value_to_row_bound: ceil (N) - 1 for a <), not as N - 1 computed in the bound's type and then rounded */
+    /* CBRD-27583: each upper bound's conversion from its own type into BIGINT, which a top-N takes
+     * (qexec_setup_topn_proc) */
     bool planned = true;
     /* *INDENT-OFF* */
     xasl_for_each_orderbynum_upper_bound (xasl->ordbynum_pred, [&] (COMP_EVAL_TERM * term, const REGU_VARIABLE * bound,
@@ -2355,7 +2354,6 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  goto error;
 	}
     }
-  /* into BIGINT, since the limit is read as a row bound (qexec_fill_sort_limit) */
   xasl->orderby_limit_conv = xasl->orderby_limit == NULL ? NULL
     : stx_plan_limit_converter (stx_value_type_of (xasl->orderby_limit->domain), &tp_Bigint_domain);
 
@@ -4919,7 +4917,7 @@ stx_plan_limit_converter (DB_TYPE type, const TP_DOMAIN * target)
 
 /*
  * stx_plan_bound_conversion () - CBRD-27583: an upper bound term's conversion of its bound, of type source,
- *   into target (BIGINT: an ORDERBY_NUM bound or an INST_NUM limit, read as a row bound), set on the term
+ *   into target (an ORDERBY_NUM bound or an INST_NUM limit into BIGINT), set on the term
  *   return: false with the unpack error set
  */
 static bool
@@ -6380,7 +6378,7 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
   key_info->key_limit_reset = (bool) i;
 
   ptr = or_unpack_int (ptr, &i);
-  key_info->is_user_given_keylimit = (bool) i;
+  key_info->is_user_given_keylimit_hint = (bool) i;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

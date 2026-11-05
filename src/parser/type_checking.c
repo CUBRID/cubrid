@@ -225,9 +225,6 @@ static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALU
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static void pt_fold_limit_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit);
-static void pt_preset_limit_value_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit);
-static void pt_preset_limit_value (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -7525,13 +7522,35 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
   /* To ensure that after exit of recursive expression node the evaluation of type will continue in normal mode */
   *continue_walk = PT_CONTINUE_WALK;
-
-  /* before the LIMIT clause is copied into the numbering predicates (below) and its values are typed */
-  pt_preset_limit_value (parser, node);
-
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
+    }
+
+  /* cast before the switch below types the LIMIT values and copies them into the numbering predicates. A PL/CSQL
+   * static SQL keeps the clause as written and casts the copies (pt_limit_to_numbering_expr) */
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      switch (node->node_type)
+	{
+	case PT_SELECT:
+	case PT_UNION:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	  pt_cast_limit_string_operands (parser, node->info.query.limit);
+	  break;
+	case PT_UPDATE:
+	  pt_cast_limit_string_operands (parser, node->info.update.limit);
+	  break;
+	case PT_DELETE:
+	  pt_cast_limit_string_operands (parser, node->info.delete_.limit);
+	  break;
+	case PT_NAME:
+	  pt_cast_limit_string_operands (parser, node->info.name.indx_key_limit_hint);
+	  break;
+	default:
+	  break;
+	}
     }
 
   switch (node->node_type)
@@ -8458,10 +8477,6 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	}
       break;
 
-    case PT_NAME:
-      /* a key limit value was typed BIGINT by pt_preset_limit_value () in pt_eval_type_pre () */
-      break;
-
     case PT_VALUE:
     case PT_DOT_:
       /* these cases have types already assigned to them by parser and semantic name resolution. */
@@ -8973,198 +8988,6 @@ void
 pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
 {
   pt_preset_hostvar_domain (parser, hv_node, true);
-}
-
-/*
- * pt_fold_limit_expr () - fold an expression of literals in a LIMIT value into a BIGINT literal, in place
- *   return: none
- *   parser(in):
- *   node(in/out): the expression, without a host variable. A literal on return when the expression folds
- *   is_key_limit(in): true for a KEYLIMIT value, whose hint is printed as it is
- *
- * Note: The literals were typed BIGINT before, so the arithmetic is BIGINT arithmetic. The expression stays when it
- *       does not evaluate (9223372036854775807 + 1, reported) or when a KEYLIMIT folds to a negative number, which
- *       the KEYLIMIT grammar does not read back from a view's text.
- */
-static void
-pt_fold_limit_expr (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit)
-{
-  PT_NODE *copy = parser_copy_tree (parser, node);
-  PT_NODE *literal;
-
-  if (copy == NULL)
-    {
-      return;
-    }
-  copy = pt_semantic_type (parser, copy, NULL);
-  if (copy == NULL || copy->node_type != PT_VALUE)
-    {
-      parser_free_tree (parser, copy);
-      return;
-    }
-  literal = pt_limit_bigint_value (parser, pt_value_to_db (parser, copy), node);
-  parser_free_tree (parser, copy);
-  if (literal == NULL)
-    {
-      return;
-    }
-  if (is_key_limit && literal->type_enum == PT_TYPE_BIGINT && literal->info.value.data_value.bigint < 0)
-    {
-      parser_free_tree (parser, literal);
-      return;
-    }
-
-  /* the literal takes the expression's place, as pt_coerce_value puts a converted value in place */
-  literal->next = node->next;
-  literal->line_number = node->line_number;
-  literal->column_number = node->column_number;
-  literal->buffer_pos = node->buffer_pos;
-  parser_clear_node (parser, node);
-  *node = *literal;
-  literal->info.value.db_value_is_in_workspace = 0;
-  parser_free_node (parser, literal);
-}
-
-/*
- * pt_preset_limit_value_internal () - type a LIMIT value as BIGINT before it is typed with the query
- *   return: none
- *   parser(in):
- *   node(in): an offset or a count of a LIMIT clause, or a KEYLIMIT value
- *   is_key_limit(in): true for a KEYLIMIT value
- *
- * Note: A LIMIT value is a number of rows, a BIGINT, converted as a value stored into a BIGINT column is: a host
- *       variable takes BIGINT as its expected domain (2.5 is 3, '2' is 2, 1e30 is an error), a literal is converted
- *       here and an expression of literals is folded. Both print as their number, so a view's text carries no CAST.
- */
-static void
-pt_preset_limit_value_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool is_key_limit)
-{
-  if (node == NULL || !pt_is_const_expr_node (node))
-    {
-      return;
-    }
-
-  /* a converted value keeps the position its errors are reported at (the coercion puts a new node in place) */
-  const int buffer_pos = node->buffer_pos;
-
-  switch (node->node_type)
-    {
-    case PT_HOST_VAR:
-      /* the expected domain, not the type: a value bound before the compile gives the node its type, and the next
-       * execution of the plan may bind another */
-      if (node->info.host_var.var_type == PT_HOST_IN
-	  && (node->expected_domain == NULL || TP_DOMAIN_TYPE (node->expected_domain) != DB_TYPE_BIGINT))
-	{
-	  /* reports the error when a value already bound does not fit BIGINT */
-	  if (pt_coerce_value_explicit (parser, node, node, PT_TYPE_BIGINT, NULL) != NO_ERROR)
-	    {
-	      break;
-	    }
-	  node->buffer_pos = buffer_pos;
-
-	  /* with hostvar_late_binding the coercion makes a bound host variable a PT_VALUE */
-	  if (node->node_type == PT_HOST_VAR)
-	    {
-	      SET_EXPECTED_DOMAIN (node, tp_domain_resolve_default (DB_TYPE_BIGINT));
-	      pt_preset_hostvar (parser, node);
-	    }
-	  else if (node->type_enum == PT_TYPE_BIGINT)
-	    {
-	      pt_set_bigint_value_text (parser, node);
-	    }
-	}
-      break;
-
-    case PT_VALUE:
-      /* an integer literal beyond BIGINT is parsed as NUMERIC, so the conversion reports the error. The converted
-       * literal prints as its number, not as a CAST */
-      if (node->type_enum != PT_TYPE_BIGINT && node->type_enum != PT_TYPE_NULL
-	  && pt_coerce_value_explicit (parser, node, node, PT_TYPE_BIGINT, NULL) == NO_ERROR
-	  && node->type_enum == PT_TYPE_BIGINT)
-	{
-	  node->buffer_pos = buffer_pos;
-	  pt_set_bigint_value_text (parser, node);
-	}
-      break;
-
-    case PT_EXPR:
-      switch (node->info.expr.op)
-	{
-	case PT_PLUS:
-	case PT_MINUS:
-	case PT_TIMES:
-	case PT_DIVIDE:
-	case PT_DIV:
-	case PT_MOD:
-	case PT_UNARY_MINUS:
-	  {
-	    int find_host_var[2] = { PT_HOST_VAR, 0 };
-
-	    /* the literals first, so that the arithmetic is BIGINT arithmetic when the expression is folded */
-	    pt_preset_limit_value_internal (parser, node->info.expr.arg1, is_key_limit);
-	    pt_preset_limit_value_internal (parser, node->info.expr.arg2, is_key_limit);
-	    (void) parser_walk_tree (parser, node, pt_find_node_type_pre, find_host_var, NULL, NULL);
-	    if (find_host_var[1] == 0 && !pt_has_error (parser))
-	      {
-		pt_fold_limit_expr (parser, node, is_key_limit);
-	      }
-	  }
-	  break;
-
-	default:
-	  break;
-	}
-      break;
-
-    default:
-      break;
-    }
-}
-
-/*
- * pt_preset_limit_value () - type the LIMIT values a node holds as BIGINT
- *   return: none
- *   parser(in):
- *   node(in):
- *
- * Note: The LIMIT clause of a query, an UPDATE or a DELETE, and the KEYLIMIT of an index hint. They are typed up
- *       front, so every plan sees the same number of rows: the key limit of an index scan, the numbering predicate
- *       of a sequential scan and the limit of a parallel scan.
- */
-static void
-pt_preset_limit_value (PARSER_CONTEXT * parser, PT_NODE * node)
-{
-  PT_NODE *limit;
-
-  switch (node->node_type)
-    {
-    case PT_SELECT:
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      limit = node->info.query.limit;
-      break;
-
-    case PT_UPDATE:
-      limit = node->info.update.limit;
-      break;
-
-    case PT_DELETE:
-      limit = node->info.delete_.limit;
-      break;
-
-    case PT_NAME:
-      limit = node->info.name.indx_key_limit;
-      break;
-
-    default:
-      return;
-    }
-
-  for (; limit != NULL; limit = limit->next)
-    {
-      pt_preset_limit_value_internal (parser, limit, node->node_type == PT_NAME);
-    }
 }
 
 /* pt_set_expected_domain - set the expected tomain of a PT_NODE

@@ -386,7 +386,7 @@ qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 void
-qo_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
+qo_auto_parameterize_keylimit_hint_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *using_index = NULL;
   PT_NODE *key_limit_lower_boundp, *key_limit_upper_boundp;
@@ -420,23 +420,23 @@ qo_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 
       key_limit_lower_boundp = key_limit_upper_boundp = NULL;
 
-      if (using_index->info.name.indx_key_limit != NULL)
+      if (using_index->info.name.indx_key_limit_hint != NULL)
 	{
-	  key_limit_upper_boundp = using_index->info.name.indx_key_limit;
-	  key_limit_lower_boundp = using_index->info.name.indx_key_limit->next;
+	  key_limit_upper_boundp = using_index->info.name.indx_key_limit_hint;
+	  key_limit_lower_boundp = using_index->info.name.indx_key_limit_hint->next;
 
-	  using_index->info.name.indx_key_limit->next = NULL;
+	  using_index->info.name.indx_key_limit_hint->next = NULL;
 	}
 
       if (key_limit_upper_boundp != NULL)
 	{
 	  if (pt_is_const_not_hostvar (key_limit_upper_boundp) && !PT_IS_NULL_NODE (key_limit_upper_boundp))
 	    {
-	      using_index->info.name.indx_key_limit = pt_rewrite_to_auto_param (parser, key_limit_upper_boundp);
+	      using_index->info.name.indx_key_limit_hint = pt_rewrite_to_auto_param (parser, key_limit_upper_boundp);
 	    }
 	  else
 	    {
-	      using_index->info.name.indx_key_limit = key_limit_upper_boundp;
+	      using_index->info.name.indx_key_limit_hint = key_limit_upper_boundp;
 	    }
 	}
 
@@ -444,11 +444,12 @@ qo_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  if (pt_is_const_not_hostvar (key_limit_lower_boundp) && !PT_IS_NULL_NODE (key_limit_lower_boundp))
 	    {
-	      using_index->info.name.indx_key_limit->next = pt_rewrite_to_auto_param (parser, key_limit_lower_boundp);
+	      using_index->info.name.indx_key_limit_hint->next =
+		pt_rewrite_to_auto_param (parser, key_limit_lower_boundp);
 	    }
 	  else
 	    {
-	      using_index->info.name.indx_key_limit->next = key_limit_lower_boundp;
+	      using_index->info.name.indx_key_limit_hint->next = key_limit_lower_boundp;
 	    }
 	}
 

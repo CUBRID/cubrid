@@ -197,7 +197,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM
 	{
 	  return false;
 	}
-      if (hint->info.name.indx_key_limit != NULL)
+      if (hint->info.name.indx_key_limit_hint != NULL)
 	{
 	  return false;
 	}
@@ -834,7 +834,7 @@ qo_rewrite_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node)
 
   for (hint = node->info.query.q.select.using_index; hint != NULL; hint = hint->next)
     {
-      if (hint->info.name.indx_key_limit != NULL)
+      if (hint->info.name.indx_key_limit_hint != NULL)
 	{
 	  return;
 	}
@@ -1422,7 +1422,8 @@ qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
       (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_groupbynum_pre, NULL,
 			       pt_check_groupbynum_post, &has_groupbynum);
     }
-  if (node->info.query.limit != NULL || has_instnum || has_orderbynum || has_groupbynum)
+  /* LIMIT 1 counts from 1, which a KEYLIMIT hint's numbering does not (exists (... keylimit 2, 5) would be false) */
+  if (node->info.query.limit != NULL || has_instnum || has_orderbynum || has_groupbynum || pt_has_key_limit_hint (node))
     {
       return;			/* give up */
     }
