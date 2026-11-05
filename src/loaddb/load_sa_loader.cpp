@@ -143,16 +143,37 @@ const std::size_t LDR_MAX_ARGS = 32;
   } while (0)
 
 /*
- * CHECK_PARSE_ERR is used by the element setters to output more information
- * about the source token and destination attribute being processed, if
- * an error occurs.
+ * CHECK_PARSE_ERR names the token and the attribute it was going into - which the
+ * engine's own message does not - and then says that message too. It is for a caller
+ * that answers for the row, where nothing above will print it.
  */
 #define CHECK_PARSE_ERR(err, expr, cont, type, str)                     \
   do {                                                                  \
     int inner_err = (expr);                                             \
     ENSURE_ERR_SET (inner_err);                                         \
     if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
+      parse_error(cont, type, str);                                     \
       display_error(0);                                                 \
+      goto error_exit;                                                  \
+    }                                                                   \
+    if (inner_err != NO_ERROR && err == NO_ERROR) {                     \
+      skip_current_instance = true;                                     \
+    }                                                                   \
+  } while (0)
+
+/*
+ * CHECK_PARSE_ERR_QUIET leaves the engine's message out, for the reason CHECK_ERR_QUIET
+ * does: the element converters are an inner layer, and the layer that answers for the
+ * row - ldr_act_attr (), ldr_act_elem (), ldr_act_meth () - wraps them in CHECK_ERR ()
+ * and says it there. Naming the token is this layer's own contribution and stays, so a
+ * refused element reads as one informative line and then the engine's, the way an
+ * attribute's conversion already does.
+ */
+#define CHECK_PARSE_ERR_QUIET(err, expr, cont, type, str)               \
+  do {                                                                  \
+    int inner_err = (expr);                                             \
+    ENSURE_ERR_SET (inner_err);                                         \
+    if (FILTER_OUT_ERR_INTERNAL(err, inner_err) != NO_ERROR) {          \
       parse_error(cont, type, str);                                     \
       goto error_exit;                                                  \
     }                                                                   \
@@ -2009,7 +2030,7 @@ parse_error (LDR_CONTEXT *context, DB_TYPE token_type, const char *token)
 
   /*
    * This is called when we experience an error when performing a string to
-   * DB_TYPE conversion. Called via CHECK_PARSE_ERR() macro.
+   * DB_TYPE conversion. Called via the CHECK_PARSE_ERR() macros.
    */
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_PARSE_ERROR), token,
 	   db_get_type_name (token_type), ldr_attr_name (context), ldr_class_name (context));
@@ -2165,6 +2186,19 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
   else
     {
       attdesc = &context->attrs[context->next_attr];
+
+      /*
+       * A collection the attribute does not take. The leading brace was refused and
+       * said so, ldr_act_elem () dropped the elements behind it because no collection
+       * was opened, and the trailing brace would say the same thing a second time. The
+       * test is the one ldr_act_elem () uses, and it is still true here: the trailing
+       * brace clears context->collection inside ldr_collection_db_collection (), so an
+       * attribute that does take a collection still has one at this point.
+       */
+      if (type == LDR_COLLECTION && !LDR_IS_COLLECTION_OPEN_BRACE (str, type) && context->collection == NULL)
+	{
+	  goto error_exit;
+	}
 
       /* ^u and ^c are refused outright rather than through the setter table, so the
        * table is about conversion and nothing else. The server side's table has no
@@ -2562,7 +2596,7 @@ ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_
   int err = NO_ERROR;
 
   db_make_null (val);
-  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (type) (str, len, attdesc->conv_att, val), context,
+  CHECK_PARSE_ERR_QUIET (err, cubload::get_elem_conv_func (type) (str, len, attdesc->conv_att, val), context,
 		   get_token_db_type (type), str);
 
 error_exit:
@@ -2940,6 +2974,7 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
       else if (tp_value_cast (&src_val, &dest_val, domain, false))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+	  /* The row level, so this one says the engine's message itself. */
 	  CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, TP_DOMAIN_TYPE (domain), str);
 	}
       CHECK_ERR (err, ldr_sink_class_object (context, context->attrs[context->next_attr].att, val));
@@ -3037,7 +3072,7 @@ ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
       if (result != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_INTEGER));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER, str);
+	  CHECK_PARSE_ERR_QUIET (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_INTEGER, str);
 	}
     }
   else if (len < MAX_DIGITS_FOR_BIGINT || (len == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
@@ -3047,7 +3082,7 @@ ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
       if (result != 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BIGINT));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR_QUIET (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT, str);
 	}
     }
   else
@@ -3065,8 +3100,8 @@ ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 	      precision = DB_MAX_NUMERIC_PRECISION;
 	    }
 
-	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, 0), context, DB_TYPE_BIGINT, str);
-	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR_QUIET (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, 0), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR_QUIET (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_BIGINT, str);
 	}
       else
 	{
@@ -3116,7 +3151,7 @@ ldr_str_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   // knows the real length, so say it. Ownership is unchanged - both build the
   // value with db_make_db_char (), which points at the token and leaves
   // need_clear false.
-  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (LDR_STR) (str, len, NULL, val), context, DB_TYPE_VARCHAR, str);
+  CHECK_PARSE_ERR_QUIET (err, cubload::get_elem_conv_func (LDR_STR) (str, len, NULL, val), context, DB_TYPE_VARCHAR, str);
 
 error_exit:
   return err;
@@ -3147,7 +3182,7 @@ ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   if (qstr_bit_to_bin (bstring, dest_size, (char *) str, (int) len) != (int) len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
+      CHECK_PARSE_ERR_QUIET (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
   db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) len);
@@ -3157,19 +3192,19 @@ ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 
   if (domain == NULL)
     {
-      CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE), context,
+      CHECK_PARSE_ERR_QUIET (err, db_value_domain_init (val, DB_TYPE_BIT, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE), context,
 		       DB_TYPE_BIT, str);
     }
   else
     {
-      CHECK_PARSE_ERR (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
+      CHECK_PARSE_ERR_QUIET (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
 		       context, DB_TYPE_BIT, str);
     }
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
   if (tp_value_cast (&temp, val, domain_ptr, false))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
+      CHECK_PARSE_ERR_QUIET (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
 error_exit:
@@ -3205,7 +3240,7 @@ ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   if (qstr_hex_to_bin (bstring, dest_size, (char *) str, (int) len) != (int) len)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
+      CHECK_PARSE_ERR_QUIET (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
   db_make_varbit (&temp, TP_FLOATING_PRECISION_VALUE, bstring, (int) len * 4);
@@ -3222,14 +3257,14 @@ ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
     }
   else
     {
-      CHECK_PARSE_ERR (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
+      CHECK_PARSE_ERR_QUIET (err, db_value_domain_init (val, TP_DOMAIN_TYPE (domain), domain->precision, domain->scale),
 		       context, DB_TYPE_BIT, str);
     }
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
   if (tp_value_cast (&temp, val, domain_ptr, false))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
-      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
+      CHECK_PARSE_ERR_QUIET (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
 error_exit:
@@ -3276,7 +3311,7 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
   // away - 12345678901234567891 came back 12345678901234567890. INSERT keeps it.
   // Only a %constructor argument reaches here, and only since integer literals
   // past BIGINT started arriving as LDR_NUMERIC.
-  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (LDR_NUMERIC) (str, len, NULL, val), context,
+  CHECK_PARSE_ERR_QUIET (err, cubload::get_elem_conv_func (LDR_NUMERIC) (str, len, NULL, val), context,
 		   DB_TYPE_NUMERIC, str);
 
 error_exit:
@@ -3314,7 +3349,7 @@ ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
       dom_type = (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_DOUBLE;
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (dom_type));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, dom_type, str);
+      CHECK_PARSE_ERR_QUIET (err, ER_IT_DATA_OVERFLOW, context, dom_type, str);
     }
   else
     {
@@ -3356,7 +3391,7 @@ ldr_float_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val
       dom_type = (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_FLOAT;
 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (dom_type));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, dom_type, str);
+      CHECK_PARSE_ERR_QUIET (err, ER_IT_DATA_OVERFLOW, context, dom_type, str);
     }
   else
     {
@@ -3389,7 +3424,7 @@ ldr_date_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   int err = NO_ERROR;
 
   val->domain = ldr_date_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_date (str, &val->data.date), context, DB_TYPE_DATE, str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_date (str, &val->data.date), context, DB_TYPE_DATE, str);
 
 error_exit:
   return err;
@@ -3409,7 +3444,7 @@ ldr_time_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   int err = NO_ERROR;
 
   val->domain = ldr_time_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_time (str, &val->data.time), context, DB_TYPE_TIME, str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_time (str, &val->data.time), context, DB_TYPE_TIME, str);
 
 error_exit:
   return err;
@@ -3429,7 +3464,7 @@ ldr_timestamp_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE 
   int err = NO_ERROR;
 
   val->domain = ldr_timestamp_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timestamp (str, &val->data.utime), context, DB_TYPE_TIMESTAMP, str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_timestamp (str, &val->data.utime), context, DB_TYPE_TIMESTAMP, str);
 
 error_exit:
   return err;
@@ -3450,7 +3485,7 @@ ldr_timestamptz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALU
   bool has_zone;
 
   val->domain = ldr_timestamptz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone), context, DB_TYPE_TIMESTAMPTZ,
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_timestamptz (str, &val->data.timestamptz, &has_zone), context, DB_TYPE_TIMESTAMPTZ,
 		   str);
   /* if no zone text, than it is assumed session timezone */
 
@@ -3472,7 +3507,7 @@ ldr_timestampltz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VAL
   int err = NO_ERROR;
 
   val->domain = ldr_timestampltz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_timestampltz (str, &val->data.utime), context, DB_TYPE_TIMESTAMPLTZ, str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_timestampltz (str, &val->data.utime), context, DB_TYPE_TIMESTAMPLTZ, str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -3493,7 +3528,7 @@ ldr_datetime_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *
   int err = NO_ERROR;
 
   val->domain = ldr_datetime_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_datetime (str, &val->data.datetime), context, DB_TYPE_DATETIME, str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_datetime (str, &val->data.datetime), context, DB_TYPE_DATETIME, str);
 
 error_exit:
   return err;
@@ -3514,7 +3549,7 @@ ldr_datetimetz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE
   bool has_zone;
 
   val->domain = ldr_datetimetz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone), context, DB_TYPE_DATETIMETZ,
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_datetimetz (str, &val->data.datetimetz, &has_zone), context, DB_TYPE_DATETIMETZ,
 		   str);
   /* if no zone text, than it is assumed session timezone */
 
@@ -3536,7 +3571,7 @@ ldr_datetimeltz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALU
   int err = NO_ERROR;
 
   val->domain = ldr_datetimeltz_tmpl.domain;
-  CHECK_PARSE_ERR (err, db_string_to_datetimeltz (str, &val->data.datetime), context, DB_TYPE_DATETIMELTZ, str);
+  CHECK_PARSE_ERR_QUIET (err, db_string_to_datetimeltz (str, &val->data.datetime), context, DB_TYPE_DATETIMELTZ, str);
   /* if no zone text, than it is assumed session timezone */
 
 error_exit:
@@ -4298,7 +4333,7 @@ ldr_monetary_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *
 
   // same with to_db_monetary(), which reads no attribute - a %constructor
   // argument slot has none (att and conv_att are both NULL on it)
-  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (LDR_MONETARY) (str, len, NULL, val), context,
+  CHECK_PARSE_ERR_QUIET (err, cubload::get_elem_conv_func (LDR_MONETARY) (str, len, NULL, val), context,
 		   DB_TYPE_MONETARY, str);
 
 error_exit:
