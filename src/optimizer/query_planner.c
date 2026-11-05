@@ -2146,10 +2146,8 @@ qo_top_plan_new (QO_PLAN * plan)
 		{
 		  groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, group_by, tree);
 
-		  /* if index plan and can't skip group by, we search that maybe a descending scan can be used.
-		   * Not for ROLLUP: a descending GROUP BY skip scan runs serially, slower than the parallel hash
-		   * aggregation its ROLLUP would otherwise take. */
-		  if (qo_is_interesting_order_scan (plan) && !groupby_skip && !group_by->flag.with_rollup)
+		  /* if index plan and can't skip group by, we search that maybe a descending scan can be used. */
+		  if (qo_is_interesting_order_scan (plan) && !groupby_skip)
 		    {
 		      groupby_skip = qo_check_groupby_skip_descending (plan, group_sort_list);
 
