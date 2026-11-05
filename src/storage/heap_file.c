@@ -1053,10 +1053,8 @@ heap_scan_pb_latch_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_p
       page_latch_mode = PGBUF_LATCH_WRITE;
     }
 
-  if (scan_cache != NULL && unlikely (scan_cache->sc_cursor != NULL))
-    {
-      sidecar_cursor_release (thread_p, scan_cache);
-    }
+  /* nobody fixes a hot page while holding a store page (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
 
   if (pg_watcher != NULL)
     {
@@ -6921,8 +6919,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-  scan_cache->sc_cursor = NULL;
-  scan_cache->sidecar_lazy_ok = false;
+  scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
   if (copy_to_local_cache && is_queryscan)
     {
       scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
@@ -6958,8 +6955,7 @@ exit_on_error:
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-  scan_cache->sc_cursor = NULL;
-  scan_cache->sidecar_lazy_ok = false;
+  scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -7252,8 +7248,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-  scan_cache->sc_cursor = NULL;
-  scan_cache->sidecar_lazy_ok = false;
+  scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
 
   return NO_ERROR;
 }
@@ -7311,8 +7306,12 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
       scan_cache->local_cache_handle = NULL;
       VPID_SET_NULL (&scan_cache->local_cache_vpid);
       scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-      scan_cache->sc_cursor = NULL;
-      scan_cache->sidecar_lazy_ok = false;
+      if (unlikely (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN))
+	{
+	  /* the store page its decodes kept goes with the scan */
+	  sidecar_scan_end (thread_p, scan_cache);
+	}
+      scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
     }
 
   HFID_SET_NULL (&scan_cache->node.hfid);
@@ -8689,7 +8688,7 @@ heap_page_row_mvcc_header (const char *data, MVCC_REC_HEADER * header)
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
 			   HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap, int *n_rows,
-			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid)
+			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid, bool stop_at_refs)
 {
   MVCC_SNAPSHOT *snapshot = NULL;
   PAGE_PTR pgptr;
@@ -8786,10 +8785,10 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 				OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_HAS_SIDECAR)
 	      || MVCC_GET_INSID (&mvcc_header) != MVCCID_ALL_VISIBLE)
 	    {
-	      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
+	      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)) && stop_at_refs)
 		{
-		  /* its slots may hold refs, which the batch decoders would read as values: the row path resolves
-		   * them, and its visibility too */
+		  /* its slots may hold refs, which the batch decoders of a plan that reads a variable column would read
+		   * as values: the row path resolves them, and its visibility too */
 		  is_exception = true;
 		}
 	      else if (snapshot != NULL)
@@ -8811,6 +8810,12 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 		      /* its visible version is a previous one, in the log */
 		      is_exception = true;
 		    }
+		}
+	      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)) && !is_exception)
+		{
+		  /* a row with refs in the batch of a plan that reads no variable column, for a protected scan: the
+		   * attribute layer resolves the refs of the columns the scan reads after the batch */
+		  sidecar_batch_keeps (thread_p, scan_cache, pgptr);
 		}
 	    }
 	  if (!is_exception && n_repids > 0)
@@ -21615,18 +21620,19 @@ heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
 }
 
 /*
- * heap_scancache_allow_lazy_sidecar () - Let the last-version reads of a scan cache keep a record with Sidecar refs
- *					   as stored, or stop it
- *   scan_cache(in/out): a scan cache whose caller decodes the record it reads through the attribute layer
- *   allow(in): true around the one read that may keep the stored form, false after it
+ * heap_scancache_allow_lazy_sidecar () - Let reads through a scan cache keep a record with Sidecar refs as stored
+ *   scan_cache(in/out): a scan cache whose caller decodes the records it reads through the attribute layer only
+ *   lazy(in): HEAP_SIDECAR_LAZY_SCAN once at the start of a query scan; HEAP_SIDECAR_LAZY_LOCKED around the one
+ *	       last-version read of an UPDATE that may keep the stored form, and HEAP_SIDECAR_EXPAND after it
  *
- * Note: Only a lock holder's read takes the lazy form (heap_get_last_version ()); the attribute layer then reads each
- *       value it decodes through its ref (sidecar_point_variable ()).  Every other read still expands.
+ * Note: Only a protected reader takes the lazy form (I-6): a scan by the transaction's registered snapshot, or a lock
+ *       holder's last-version read (heap_get_last_version ()).  The attribute layer then reads each value it decodes
+ *       through its ref (sidecar_point_variable ()).  Every other read still expands at the fetch exit.
  */
 void
-heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache, bool allow)
+heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache, HEAP_SIDECAR_LAZY lazy)
 {
-  scan_cache->sidecar_lazy_ok = allow;
+  scan_cache->sidecar_lazy = (unsigned char) lazy;
 }
 
 /*
@@ -27572,8 +27578,10 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 
       if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
 	{
-	  /* a record with refs takes the full path, whose exit expands it */
-	  shortcut_visible = false;
+	  /* a record with refs is peeked here as stored only for a protected scan; any other reader takes the full
+	   * path, whose exit expands it or keeps it as stored */
+	  shortcut_visible = (shortcut_visible && (ispeeking == PEEK || is_cached_scan)
+			      && sidecar_scan_keeps_lazy (thread_p, scan_cache, peeked_recdes));
 	}
 
       if (shortcut_visible)
@@ -27980,6 +27988,9 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
 
   if (page_watcher_p->pgptr == NULL)
     {
+      /* nobody fixes a hot page while holding a store page (I-7) */
+      sidecar_cursor_before_hot_fix (thread_p);
+
       /* fix required page */
       ret = pgbuf_ordered_fix (thread_p, &object_vpid, OLD_PAGE, latch_mode, page_watcher_p);
       if (ret != NO_ERROR)

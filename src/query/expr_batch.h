@@ -271,6 +271,8 @@ extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN 
 #define EXPR_BATCH_WHY_OFF_PAGE "a record whose visible version is not on the page (relocated, overflow, or in the log)"
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback, bool off_page);
 extern bool expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan);
+/* a column or key the batch decodes is variable, so a record with Sidecar refs must not reach it */
+extern bool expr_batch_plan_reads_variable (const EXPR_BATCH_PLAN * plan);
 /* why the last chunk went to the row path, or NULL */
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);

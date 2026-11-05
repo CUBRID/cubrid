@@ -36,6 +36,7 @@
 #include "sidecar_format.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
+#include "thread_entry.hpp"
 
 /* The longest image the write policy lets through untouched: sidecar_inline_target, or less than the minimum value
  * size under sidecar_force_external.  sidecar_refresh_parameters () keeps it in step with the parameters. */
@@ -136,9 +137,34 @@ extern void sidecar_stored_form_end (void);
 #define sidecar_stored_form_begin() ((void) 0)
 #define sidecar_stored_form_end() ((void) 0)
 #endif /* NDEBUG */
-/* before a scan fixes another hot page: releases the store page its cursor keeps, since nobody fixes a hot page
- * while holding a store page */
-extern void sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache);
+/*
+ * Lazy reads (I-6).  A query scan opts in at its start (heap_scancache_allow_lazy_sidecar ()).  Its records with refs
+ * then reach the attribute layer as stored when its reader is protected: the transaction's registered snapshot, or a
+ * row-lock holder.  The attribute layer reads a ref'd value only when the query decodes that column, through the
+ * thread's store cursor, which keeps one store page fixed while the scan's next values live on it (I-7).
+ */
+
+/* the scan shortcut (heap_scan_get_visible_version ()): the peeked record with refs stays as stored for a protected
+ * scan, which then decodes it; false sends it to the full path */
+extern bool sidecar_scan_keeps_lazy (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const RECDES *peeked);
+/* the page batch: the scan may resolve refs later, in the attribute layer */
+extern bool sidecar_scan_is_protected (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache);
+/* heap_page_collect_visible (): a row with refs that stays in the batch of a plan reading no variable column */
+extern void sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PTR page);
+/* heap_scancache_quick_end () of an opted-in scan: the store page its decodes kept is released */
+extern void sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache);
+/* releases the store page the thread's cursor keeps */
+extern void sidecar_cursor_release (THREAD_ENTRY *thread_p);
+
+/* before the thread fixes a hot page: nobody fixes a hot page while holding a store page (I-7) */
+STATIC_INLINE void
+sidecar_cursor_before_hot_fix (THREAD_ENTRY *thread_p)
+{
+  if (unlikely (thread_p != NULL && thread_p->sidecar_cursor_page != NULL))
+    {
+      sidecar_cursor_release (thread_p);
+    }
+}
 
 /*
  * Lifecycle and checks

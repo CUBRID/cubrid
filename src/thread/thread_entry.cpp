@@ -128,6 +128,8 @@ namespace cubthread
     , no_logging (false)
     , net_request_index (-1)
     , vacuum_worker (NULL)
+    , sidecar_cursor_page (NULL)
+    , sidecar_cursor_owner (NULL)
     , sort_stats_active (false)
     , event_stats ()
     , trace_format (0)

@@ -249,14 +249,28 @@ struct sidecar_oid_less
   }
 };
 
-/* The attribute layer's view of a record with refs (HEAP_CACHE_ATTRINFO.sc): the bytes of each value it read
- * through a ref, by the store record's OID.  A DB_VALUE decoded from them points into them, so a buffer is never
- * read into twice: a second read of the same ref, from the same record or from the new image that kept it, finds the
- * bytes there.  They are freed when the attribute information's values are, in heap_attrinfo_clear_dbvalues () and
- * heap_attrinfo_end (). */
+/* The attribute layer's view of records with refs (HEAP_CACHE_ATTRINFO.sc): per attribute, the bytes of the value it
+ * read last through a ref and of the one before, with their store record's OID.  A DB_VALUE decoded from them points
+ * into them, so a buffer is never read into twice: a second read of the same ref, from the same record or from the
+ * UPDATE image that kept it, finds the bytes there.  A read of another ref for the same attribute is the next row of a
+ * scan; the value before it stays one row longer, as a peeked value of develop stays valid while its page does.  So a
+ * scan holds at most two values per attribute.  They are freed when the attribute information's values are, in
+ * heap_attrinfo_clear_dbvalues () and heap_attrinfo_end (). */
+struct sidecar_attr_value
+{
+  OID oid;
+  std::vector<char> bytes;
+};
+
+struct sidecar_attr_values
+{
+  sidecar_attr_value last;
+  sidecar_attr_value before;
+};
+
 struct sidecar_attr_state
 {
-  std::map<OID, std::vector<char>, sidecar_oid_less> values;
+  std::map<int, sidecar_attr_values> values;	/* by attribute id */
 };
 
 /* What the module does is counted in the performance monitor (Num_sidecar_*, cubrid statdump).  The global counters
@@ -298,9 +312,10 @@ struct sidecar_stored_form_record
   const char *end;
 };
 
-/* An UPDATE admits two records.  No caller nests windows today: an FK update cascade hands its record to
- * locator_attribute_info_force (), so it does not open one.  Past this many, the oldest is overwritten, which only
- * weakens the assert. */
+/* An UPDATE admits two records, a lazy scan one per row it keeps as stored and one per page its batch keeps rows of
+ * (P1c).  Past this many, the oldest is overwritten, which only weakens the assert.  The ranges are dropped when the
+ * outermost UPDATE window closes; a scan's ranges go when the ring wraps, so a stale range can only let a record
+ * through that lies where an admitted one lay. */
 #define SIDECAR_STORED_FORM_RECORDS 16
 static thread_local sidecar_stored_form_record sidecar_Stored_form_records[SIDECAR_STORED_FORM_RECORDS];
 static thread_local int sidecar_Stored_form_admitted = 0;
@@ -311,7 +326,17 @@ sidecar_stored_form_admit (const char *data, int length)
   sidecar_stored_form_record &r = sidecar_Stored_form_records[sidecar_Stored_form_admitted
 				  % SIDECAR_STORED_FORM_RECORDS];
 
-  assert (sidecar_Stored_form_window > 0);
+  if (sidecar_Stored_form_admitted > 0)
+    {
+      const sidecar_stored_form_record &l = sidecar_Stored_form_records[ (sidecar_Stored_form_admitted - 1)
+					    % SIDECAR_STORED_FORM_RECORDS];
+
+      if (l.begin <= data && data + length <= l.end)
+	{
+	  /* the page batch admits a page once for its rows */
+	  return;
+	}
+    }
   r.begin = data;
   r.end = data + length;
   sidecar_Stored_form_admitted++;
@@ -697,6 +722,8 @@ sidecar_read_store_record (THREAD_ENTRY *thread_p, const OID *oid, std::vector<c
 {
   PAGE_PTR page = NULL;
 
+  /* one store page at a time (I-7) */
+  sidecar_cursor_release (thread_p);
   sidecar_count (thread_p, PSTAT_SC_STORE_READS);
   try
     {
@@ -1044,6 +1071,8 @@ sidecar_plan_insert_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *contex
 __attribute__ ((noinline)) int
 sidecar_plan_insert (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
 {
+  /* the module's own store reads and writes, and the policy's page test, find no store page the cursor kept */
+  sidecar_cursor_release (thread_p);
   try
     {
       return sidecar_plan_insert_body (thread_p, context);
@@ -1076,6 +1105,8 @@ sidecar_prepare_update_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *con
 __attribute__ ((noinline)) int
 sidecar_prepare_update (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
 {
+  /* the module's own store reads and writes, and the policy's page test, find no store page the cursor kept */
+  sidecar_cursor_release (thread_p);
   try
     {
       return sidecar_prepare_update_body (thread_p, context);
@@ -1616,6 +1647,8 @@ sidecar_apply_plan_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context
 __attribute__ ((noinline)) int
 sidecar_apply_plan (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
 {
+  /* the module's own store reads and writes, and the policy's page test, find no store page the cursor kept */
+  sidecar_cursor_release (thread_p);
   try
     {
       return sidecar_apply_plan_body (thread_p, context);
@@ -1731,6 +1764,8 @@ __attribute__ ((noinline)) int
 sidecar_inline_kept (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *old_stored, const RECDES *image,
 		     RECDES *out)
 {
+  /* the module's own store reads and writes, and the policy's page test, find no store page the cursor kept */
+  sidecar_cursor_release (thread_p);
   try
     {
       return sidecar_inline_kept_body (thread_p, class_oid, old_stored, image, out);
@@ -1848,6 +1883,7 @@ sidecar_write_trailer_body (HEAP_CACHE_ATTRINFO *attr_info, OR_BUF *buf, char **
   *ptr_varvals += size;
   OR_PUT_INT (buf->buffer, OR_GET_INT (buf->buffer) | (OR_MVCC_FLAG_HAS_SIDECAR << OR_MVCC_FLAG_SHIFT_BITS));
 #if !defined (NDEBUG)
+  assert (sidecar_Stored_form_window > 0);
   sidecar_stored_form_admit (buf->buffer, CAST_BUFLEN (*ptr_varvals - buf->buffer));
 #endif /* !NDEBUG */
   return S_SUCCESS;
@@ -1913,6 +1949,161 @@ sidecar_classify (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, SIDE
   return SIDECAR_READER_COMMITTED;
 }
 
+/* A record a query scan keeps as stored for the attribute layer.  The scan's cache becomes the owner of the thread's
+ * store cursor, so the page the cursor fixes for its values may stay fixed until the scan moves to another hot page
+ * or ends. */
+static void
+sidecar_keep_lazy (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, const RECDES *recdes)
+{
+#if !defined (NDEBUG)
+  sidecar_stored_form_admit (recdes->data, recdes->length);
+#endif /* !NDEBUG */
+  thread_p->sidecar_cursor_owner = scan_cache;
+  sidecar_count (thread_p, PSTAT_SC_LAZY_RECORDS);
+}
+
+__attribute__ ((noinline)) bool
+sidecar_scan_is_protected (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache)
+{
+  return (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+	  && sidecar_classify (thread_p, scan_cache, SIDECAR_FETCH_VISIBLE) == SIDECAR_READER_PROTECTED);
+}
+
+__attribute__ ((noinline)) bool
+sidecar_scan_keeps_lazy (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const RECDES *peeked)
+{
+  if (!sidecar_scan_is_protected (thread_p, scan_cache))
+    {
+      return false;
+    }
+  sidecar_keep_lazy (thread_p, scan_cache, peeked);
+  return true;
+}
+
+__attribute__ ((noinline)) void
+sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PTR page)
+{
+  /* the caller made the batch keep it (scan_batch_collect_chunk ()), knowing the scan is protected */
+  assert (sidecar_scan_is_protected (thread_p, scan_cache));
+#if !defined (NDEBUG)
+  /* the rows are peeked from the page */
+  sidecar_stored_form_admit (page, DB_PAGESIZE);
+#endif /* !NDEBUG */
+  thread_p->sidecar_cursor_owner = scan_cache;
+  sidecar_count (thread_p, PSTAT_SC_BATCH_ROWS);
+}
+
+/*
+ * The store cursor (I-7).  Per thread, since the rule it keeps is per thread: a reader holds at most one store page,
+ * releases it before it fixes another, and nobody fixes a hot page while holding one.  The attribute layer reads a
+ * value of a REC_HOME store record through it.  The page stays fixed after the read only while a lazy query scan owns
+ * the cursor, so that the next values on the same page cost no fix; the heap releases it before the thread fixes a
+ * hot page (sidecar_cursor_before_hot_fix ()), the scan's end releases it, and every other store read and every store
+ * write of the module releases it first.  A value of another store page releases it before the next fix.
+ */
+static thread_local VPID sidecar_Cursor_released = { NULL_PAGEID, NULL_VOLID };
+
+__attribute__ ((noinline)) void
+sidecar_cursor_release (THREAD_ENTRY *thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p->sidecar_cursor_page != NULL)
+    {
+      PAGE_PTR page = (PAGE_PTR) thread_p->sidecar_cursor_page;
+
+      thread_p->sidecar_cursor_page = NULL;
+      pgbuf_get_vpid (page, &sidecar_Cursor_released);
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+}
+
+__attribute__ ((noinline)) void
+sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p->sidecar_cursor_owner == scan_cache)
+    {
+      sidecar_cursor_release (thread_p);
+      thread_p->sidecar_cursor_owner = NULL;
+      VPID_SET_NULL (&sidecar_Cursor_released);
+    }
+}
+
+/* the value of a ref, read by the attribute layer: as a row-lock holder or a protected reader, it always finds the
+ * store record (5.6 a and b) */
+static int
+sidecar_cursor_read_value (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, char *out)
+{
+  PAGE_PTR page = (PAGE_PTR) thread_p->sidecar_cursor_page;
+  VPID vpid;
+  OID oid;
+  RECDES peeked;
+
+  oid.volid = ref->volid;
+  oid.pageid = ref->pageid;
+  oid.slotid = ref->slotid;
+  vpid.volid = ref->volid;
+  vpid.pageid = ref->pageid;
+
+  if (page != NULL && VPID_EQ (pgbuf_get_vpid_ptr (page), &vpid))
+    {
+      thread_p->sidecar_cursor_page = NULL;
+      sidecar_count (thread_p, PSTAT_SC_CURSOR_HITS);
+    }
+  else
+    {
+      sidecar_cursor_release (thread_p);
+      switch (sidecar_fix_store_page (thread_p, &oid, &page))
+	{
+	case SIDECAR_READ_PRESENT:
+	  break;
+	case SIDECAR_READ_ABSENT:
+	  return sidecar_set_dangling (ref, ref->attrid_check);
+	default:
+	{
+	  int error_code;
+
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+	}
+      if (VPID_EQ (&vpid, &sidecar_Cursor_released))
+	{
+	  sidecar_count (thread_p, PSTAT_SC_CURSOR_REFIX);
+	}
+    }
+
+  if (spage_get_record_type (page, oid.slotid) != REC_HOME
+      || spage_get_record (thread_p, page, oid.slotid, &peeked, PEEK) != S_SUCCESS)
+    {
+      /* relocated, REC_BIGONE or gone: the reader of B10, one store page at a time */
+      pgbuf_unfix_and_init (thread_p, page);
+      return sidecar_read_value_locked (thread_p, ref, out);
+    }
+
+  sidecar_count (thread_p, PSTAT_SC_STORE_READS);
+  const char *value = sidecar_store_value (&peeked, ref);
+  if (value != NULL)
+    {
+      memcpy (out, value, ref->length);
+    }
+  if (value != NULL && thread_p->sidecar_cursor_owner != NULL)
+    {
+      thread_p->sidecar_cursor_page = (char *) page;
+    }
+  else
+    {
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+  return value != NULL ? NO_ERROR : sidecar_set_dangling (ref, ref->attrid_check);
+}
+
 /* the retry rule of 5.6 (c), for a version of which a store record was found absent */
 static SCAN_CODE
 sidecar_on_absent (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, const RECDES *hot, sidecar_reader reader,
@@ -1966,11 +2157,21 @@ sidecar_on_fetch_body (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDE
   const OID *class_oid = scan_cache != NULL ? &scan_cache->node.class_oid : &oid_Null_oid;
   const sidecar_reader reader = sidecar_classify (thread_p, scan_cache, fetch);
 
-  if (reader == SIDECAR_READER_HOLDER && scan_cache != NULL && scan_cache->sidecar_lazy_ok)
+  if (scan_cache != NULL && scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+      && (reader == SIDECAR_READER_PROTECTED || reader == SIDECAR_READER_HOLDER))
     {
+      /* a query scan's protected read: the attribute layer reads the values the query decodes (5.6 a and b) */
+      sidecar_keep_lazy (thread_p, scan_cache, recdes);
+      return S_SUCCESS;
+    }
+  if (reader == SIDECAR_READER_HOLDER && scan_cache != NULL && scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_LOCKED)
+    {
+      /* the old record of an UPDATE under its X lock (B18) */
 #if !defined (NDEBUG)
+      assert (sidecar_Stored_form_window > 0);
       sidecar_stored_form_admit (recdes->data, recdes->length);
 #endif /* !NDEBUG */
+      sidecar_count (thread_p, PSTAT_SC_LAZY_RECORDS);
       return S_SUCCESS;
     }
 
@@ -2136,7 +2337,8 @@ sidecar_attr_pages_ok (THREAD_ENTRY *thread_p, const HEAP_CACHE_ATTRINFO *attr_i
 #if !defined (NDEBUG)
   PAGE_PTR page = NULL;
   OID page_class;
-  const int n_fixed = pgbuf_count_perm_pages_fixed (thread_p, &page);
+  /* the store page the cursor keeps is the reader's own */
+  const int n_fixed = pgbuf_count_perm_pages_fixed (thread_p, (PAGE_PTR) thread_p->sidecar_cursor_page, &page);
 
   if (n_fixed == 0)
     {
@@ -2155,10 +2357,10 @@ sidecar_attr_pages_ok (THREAD_ENTRY *thread_p, const HEAP_CACHE_ATTRINFO *attr_i
 #endif /* NDEBUG */
 }
 
-/* the value bytes a ref slot names, read from the store as a row-lock holder, or found from an earlier read of the
- * same ref; NULL with the error set when the read fails */
+/* the value bytes a ref slot of attribute attrid names, read from the store as a row-lock holder or a protected
+ * reader, or found from an earlier read of the same ref; NULL with the error set when the read fails */
 static const std::vector<char> *
-sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, const char *slot)
+sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, int attrid, const char *slot)
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   SIDECAR_REF ref;
@@ -2173,26 +2375,34 @@ sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, const char *slot)
       attr_info->sc = new sidecar_attr_state ();
     }
 
-  auto found = attr_info->sc->values.find (oid);
-  if (found != attr_info->sc->values.end ())
+  sidecar_attr_values &values = attr_info->sc->values[attrid];
+  if (OID_EQ (&values.last.oid, &oid) && !values.last.bytes.empty ())
     {
-      assert ((int) found->second.size () == ref.length);
-      return &found->second;
+      assert ((int) values.last.bytes.size () == ref.length);
+      return &values.last.bytes;
+    }
+  if (OID_EQ (&values.before.oid, &oid) && !values.before.bytes.empty ())
+    {
+      assert ((int) values.before.bytes.size () == ref.length);
+      return &values.before.bytes;
     }
 
   sidecar_count (thread_p, PSTAT_SC_RESOLVE);
-  if (pgbuf_has_perm_pages_fixed (thread_p))
+  if (pgbuf_count_perm_pages_fixed (thread_p, (PAGE_PTR) thread_p->sidecar_cursor_page, NULL) > 0)
     {
       sidecar_count (thread_p, PSTAT_SC_RESOLVE_PAGE_HELD);
     }
   assert (sidecar_attr_pages_ok (thread_p, attr_info));
   std::vector<char> bytes (MAX (ref.length, 1));
-  if (sidecar_read_value_locked (thread_p, &ref, bytes.data ()) != NO_ERROR)
+  if (sidecar_cursor_read_value (thread_p, &ref, bytes.data ()) != NO_ERROR)
     {
       return NULL;
     }
   bytes.resize (ref.length);
-  return &attr_info->sc->values.emplace (oid, std::move (bytes)).first->second;
+  values.before = std::move (values.last);
+  values.last.oid = oid;
+  values.last.bytes = std::move (bytes);
+  return &values.last.bytes;
 }
 
 static bool
@@ -2201,8 +2411,9 @@ sidecar_point_variable_body (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO 
 {
   const char *end = layout->var_table + layout->trailer_end;
 
-  /* only the UPDATE's old record, read as stored under its X lock, and its new image carry refs here */
-  assert (sidecar_Stored_form_window > 0 && sidecar_stored_form_is_admitted (layout->var_table));
+  /* only a record a protected reader kept as stored (an UPDATE's old record under its X lock, a lazy scan's record)
+   * and an UPDATE image with kept refs carry refs here */
+  assert (sidecar_stored_form_is_admitted (layout->var_table));
   /* P1a D1: the trailer's count is the record's representation's */
   assert ((unsigned short) OR_GET_SHORT (end - 3 * OR_SHORT_SIZE) == attr_info->read_classrepr->n_variable);
   if (sidecar_trailer_find_from_end (end, attrepr->location) < 0)
@@ -2212,7 +2423,7 @@ sidecar_point_variable_body (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO 
 
   const char *slot = layout->var_table + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout->var_table, attrepr->location,
 		     layout->offset_size);
-  const std::vector<char> *bytes = sidecar_resolve_slot (attr_info, slot);
+  const std::vector<char> *bytes = sidecar_resolve_slot (attr_info, attrepr->id, slot);
 
   if (bytes == NULL)
     {
@@ -2247,14 +2458,14 @@ static char *
 sidecar_midxkey_point_body (HEAP_CACHE_ATTRINFO *attr_info, const RECDES *recdes, const OR_ATTRIBUTE *att,
 			    char *disk_data)
 {
-  assert (sidecar_Stored_form_window > 0 && sidecar_stored_form_is_admitted (recdes->data));
+  assert (sidecar_stored_form_is_admitted (recdes->data));
   assert (sidecar_trailer_n_variable (recdes) == attr_info->read_classrepr->n_variable);
   if (sidecar_trailer_find (recdes, att->location) < 0)
     {
       return disk_data;
     }
 
-  const std::vector<char> *bytes = sidecar_resolve_slot (attr_info, disk_data);
+  const std::vector<char> *bytes = sidecar_resolve_slot (attr_info, att->id, disk_data);
   return bytes == NULL ? NULL : (char *) bytes->data ();
 }
 
@@ -2299,10 +2510,6 @@ sidecar_stored_form_end (void)
 }
 #endif /* !NDEBUG */
 
-__attribute__ ((noinline)) void
-sidecar_cursor_release (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache)
-{
-}
 
 void
 sidecar_store_forget (THREAD_ENTRY *thread_p, const VFID *hot_vfid)
@@ -2696,6 +2903,7 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
   VFID owner_vfid;
   sidecar_verify v;
 
+  sidecar_cursor_release (thread_p);
   if (heap_sidecar_get_store (thread_p, hfid, &store_hfid, &v.class_oid) != NO_ERROR)
     {
       return DISK_ERROR;

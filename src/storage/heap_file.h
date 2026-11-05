@@ -139,6 +139,15 @@ typedef enum
 
 // *INDENT-OFF*
 typedef struct heap_scancache HEAP_SCANCACHE;
+/* Which reads through a scan cache keep a record with Sidecar refs in its stored form (I-6).  Every other read
+ * expands it at the fetch exit. */
+typedef enum
+{
+  HEAP_SIDECAR_EXPAND = 0,	/* none */
+  HEAP_SIDECAR_LAZY_LOCKED,	/* the last-version read of an UPDATE under the row's X lock (P1b1) */
+  HEAP_SIDECAR_LAZY_SCAN	/* a query scan: reads by the transaction's registered snapshot and by a row-lock holder */
+} HEAP_SIDECAR_LAZY;
+
 struct heap_scancache
 {				/* Define a scan over the whole heap file */
   public:
@@ -163,9 +172,8 @@ struct heap_scancache
     int insert_hint_l1_pos;	/* position of insert_hint_vpid in the bestspace L1 arrays, -1 if unknown;
 				 * lets bestspace::update_freespace skip the sweep over all shards */
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
-    struct sidecar_cursor *sc_cursor;	/* the Sidecar store page this scan keeps fixed; NULL when none */
-    bool sidecar_lazy_ok;	/* a lock holder's last-version read keeps a record with Sidecar refs as stored, for a
-				 * caller that decodes it through the attribute layer (heap_scancache_allow_lazy_sidecar ()) */
+    unsigned char sidecar_lazy;	/* HEAP_SIDECAR_LAZY: which reads through this cache keep a record with Sidecar refs
+				 * as stored, for a caller that decodes it through the attribute layer */
 
     void start_area ();
     void end_area ();
@@ -451,7 +459,8 @@ struct heap_page_row
 };
 extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
 					    HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap,
-					    int *n_rows, const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid);
+					    int *n_rows, const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid,
+					    bool stop_at_refs);
 
 
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
@@ -692,7 +701,7 @@ extern int heap_rv_sidecar_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern bool heap_attrinfo_check_unique_index (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					      ATTR_ID * att_id, int n_att_id);
 extern int heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
-extern void heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache, bool allow);
+extern void heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache, HEAP_SIDECAR_LAZY lazy);
 extern int heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						      OID * class_oid);
 extern int heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,

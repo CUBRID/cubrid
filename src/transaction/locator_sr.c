@@ -7695,7 +7695,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  /* only this last-version read under the row's X lock keeps refs; the attribute layer reads the values it
 	   * decodes through them until locator_update_force () returns, so an UPDATE of small columns reads no store
 	   * page in its write path */
-	  heap_scancache_allow_lazy_sidecar (scan_cache, true);
+	  heap_scancache_allow_lazy_sidecar (scan_cache, HEAP_SIDECAR_LAZY_LOCKED);
 	  sidecar_stored_form_begin ();
 	}
       if (rec_descriptor != NULL)
@@ -7738,7 +7738,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       if (stored_form)
 	{
-	  heap_scancache_allow_lazy_sidecar (scan_cache, false);
+	  heap_scancache_allow_lazy_sidecar (scan_cache, HEAP_SIDECAR_EXPAND);
 	}
 
       if (scan == S_SUCCESS)

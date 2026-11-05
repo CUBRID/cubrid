@@ -35,6 +35,7 @@
 #include "error_manager.h"
 #include "expr_batch.h"
 #include "heap_file.h"
+#include "sidecar.hpp"
 #include "ftab_set.hpp"
 #include "fetch.h"
 #include "list_file.h"
@@ -4032,6 +4033,8 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  hsidp->scancache_inited = true;
+	  /* the scan decodes its records through the attribute layer only */
+	  heap_scancache_allow_lazy_sidecar (&hsidp->scan_cache, HEAP_SIDECAR_LAZY_SCAN);
 	}
       if (hsidp->caches_inited != true)
 	{
@@ -4130,6 +4133,8 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  goto exit_on_error;
 	}
       isidp->scancache_inited = true;
+      /* the scan decodes its records through the attribute layer only */
+      heap_scancache_allow_lazy_sidecar (&isidp->scan_cache, HEAP_SIDECAR_LAZY_SCAN);
       if (isidp->caches_inited != true)
 	{
 	  if (isidp->range_pred.regu_list != NULL)
@@ -7789,11 +7794,16 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
       REPR_ID unknown_repid = NULL_REPRID;
       const REPR_ID *repids;
       int n_repids = 0;
+      bool stop_at_refs;
 
       repids = expr_batch_plan_repids (hsidp->batch_plan, &n_repids);
+      /* a record with refs stays in the batch only for a plan that reads no variable column, and only for a reader
+       * that may resolve its refs later, in the attribute layer (I-6) */
+      stop_at_refs = (expr_batch_plan_reads_variable (hsidp->batch_plan)
+		      || !sidecar_scan_is_protected (thread_p, &hsidp->scan_cache));
       code =
 	heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, slot, batch->rows, batch->cap,
-				   &batch->n_rows, repids, n_repids, &unknown_repid);
+				   &batch->n_rows, repids, n_repids, &unknown_repid, stop_at_refs);
       if (code == S_ERROR)
 	{
 	  batch->n_rows = 0;
@@ -7851,6 +7861,9 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
   VPID vpid;
   int rc;
+
+  /* nobody fixes a hot page while holding a store page (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
 
   if (!hsidp->batch_started)
     {
