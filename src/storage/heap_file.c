@@ -105,9 +105,9 @@ static int rv;
 
 /* Number of class representations kept in the server-wide cache. One partition is one class, and a single table
  * may have up to MAX_PARTITIONS (1024) partitions, so 1024 entries were exhausted by one partitioned table plus the
- * system classes. Each entry costs 112 bytes plus two 64-byte hash buckets up front; the representations themselves
- * are allocated only for classes that are actually used. The same constant sizes the client CHN guess table
- * (heap_Guesschn_area). */
+ * system classes. Each entry costs 112 bytes plus a DEFAULT_REPR_INCREMENT (16) slot pointer array (128 bytes) and
+ * two 64-byte hash buckets up front, about 3 MB for 8192 entries; the representations themselves are allocated only
+ * for classes that are actually used. The same constant sizes the client CHN guess table (heap_Guesschn_area). */
 #define HEAP_CLASSREPR_MAXCACHE	8192
 
 #define HEAP_DEBUG_SCANCACHE_INITPATTERN (12345)
