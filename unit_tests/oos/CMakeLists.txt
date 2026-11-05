@@ -308,8 +308,11 @@ set_tests_properties(
 # The server reads CUBRID_<PARAMETER> at every parameter load, so these runs have a short page latch timeout and a
 # vacuum wait for the heap header can fail. Debug builds stop at that timeout, so fault injection 700000
 # (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT) makes the wait fail at once instead. The list is set before the vacuum
-# workers exist and never changes.
-set(OOS_HEADER_HELD_ENV "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000;CUBRID_FAULT_INJECTION_IDS=700000")
+# workers exist and never changes. UnrelatedHeapVacuumedWhileHeaderLookupKeepsFailing needs one vacuum worker
+# (CUBRID_VACUUM_WORKER_COUNT=1). With ten, a second worker vacuums the unrelated heap's block while the first one
+# retries the held header, so the case passes even if vacuum retries in place.
+set(OOS_HEADER_HELD_ENV
+  "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000;CUBRID_FAULT_INJECTION_IDS=700000;CUBRID_VACUUM_WORKER_COUNT=1")
 add_test(NAME test_oos_real_vacuum_latch_timeout
   COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.*:-OosRealVacuumHeaderHeld.Shutdown*
 )
@@ -319,7 +322,7 @@ add_test(NAME test_oos_real_vacuum_latch_timeout_shutdown
 )
 set_tests_properties(
   test_oos_real_vacuum_latch_timeout test_oos_real_vacuum_latch_timeout_shutdown
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 480
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 600
     ENVIRONMENT "${OOS_HEADER_HELD_ENV}"
 )
 

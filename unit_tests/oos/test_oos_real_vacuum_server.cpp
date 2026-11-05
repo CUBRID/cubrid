@@ -1054,6 +1054,7 @@ page_vacuum_status (const OID &oid)
 /* What vacuum did with a deleted row while the test held the row's heap header past the page latch timeout. */
 struct header_hold_observation
 {
+  VACUUM_LOG_BLOCKID delete_block = VACUUM_NULL_LOG_BLOCKID;
   bool log_advanced = false;
   bool vacuum_queued = false;
   bool vacuum_still_waits = false;
@@ -1065,13 +1066,15 @@ struct header_hold_observation
   int page_status_after = -1;
 };
 
-/* A plain row of a second heap, deleted by the same transaction in the log block after the OOS row's delete. Vacuum
- * never needs an OOS file for it, so only the order of vacuum jobs decides when it goes. */
+/* A plain row of a second heap, deleted by the same transaction in the log block after the OOS row's delete, or with
+ * same_block in the same log block. Vacuum never needs an OOS file for it, so only the order of vacuum work decides
+ * when it goes. */
 struct unrelated_row
 {
   HFID hfid;
   HEAP_SCANCACHE scan_cache;
   OID oid = OID_INITIALIZER;
+  bool same_block = false;
   VACUUM_LOG_BLOCKID delete_block = VACUUM_NULL_LOG_BLOCKID;
   long long removed_during_hold_ms = -1;
   bool removed_after_release = false;
@@ -1134,6 +1137,11 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
       return count_occurrences (server_log (), "CODE = " + std::to_string (ER_VACUUM_OOS_LOOKUP_DEFERRED) + ",");
     }
 
+    int interrupted_runs (VACUUM_LOG_BLOCKID block)
+    {
+      return count_occurrences (server_log (), "Processing log block " + std::to_string (block) + " is interrupted");
+    }
+
     /* Release builds see vacuum queue on the held header. Debug builds never wait there, so they see the first
      * deferral instead. */
     bool vacuum_met_header (PAGE_PTR header_page, int deferrals_before)
@@ -1143,6 +1151,117 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
 #else
       return deferrals () > deferrals_before;
 #endif
+    }
+
+    /* OOS inserts are not MVCC operations, so they move the log past a block without giving vacuum work. */
+    bool fill_log_past (VACUUM_LOG_BLOCKID block)
+    {
+      RECDES filler_rec {};
+      if (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), filler_rec)
+	  != NO_ERROR)
+	{
+	  return false;
+	}
+      test_oos_utils::auto_freed_recdes_ptr defer_filler (&filler_rec, recdes_free_data_area);
+      for (int guard = 0; current_log_blockid () <= block; guard++)
+	{
+	  OID filler_oid = OID_INITIALIZER;
+	  if (guard >= 20000
+	      || test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, filler_rec, filler_oid) != NO_ERROR)
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    }
+
+    /* Vacuum skips log blocks near the end of the flushed log. */
+    static void flush_log ()
+    {
+      LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
+      logpb_flush_pages (thread_p, &flush_lsa);
+    }
+
+    bool close_block_with_oos_fillers (VACUUM_LOG_BLOCKID block)
+    {
+      if (!fill_log_past (block + 1))
+	{
+	  return false;
+	}
+      commit_current_tran ();
+      flush_log ();
+      return true;
+    }
+
+    /* Holds the heap header while the log blocks up to last_block close. A transaction must hold no pages when it
+     * ends, so this one stays open until release_header. */
+    bool hold_header_and_close_blocks (PGBUF_WATCHER &header_watcher, VACUUM_LOG_BLOCKID last_block)
+    {
+      VPID header_vpid = { hfid.hpgid, hfid.vfid.volid };
+      PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, &hfid);
+      if (pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher) != NO_ERROR
+	  || !fill_log_past (last_block + 1))
+	{
+	  return false;
+	}
+      flush_log ();
+      return true;
+    }
+
+    void release_header (PGBUF_WATCHER &header_watcher)
+    {
+      er_clear ();
+      if (header_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &header_watcher);
+	}
+      commit_current_tran ();
+    }
+
+    /* A second heap with one live plain row, plus a row with an OOS value on a new page of this heap. Both inserts
+     * are vacuumed. vacuum_heap walks heaps in file id order, and the second heap comes after this one. */
+    void prepare_unrelated_row (unrelated_row &other, OID &heap_oid, OID &oos_oid)
+    {
+      std::vector<HFID> lower;
+      for (int attempt = 0; attempt < 20; attempt++)
+	{
+	  ASSERT_EQ (xheap_create (thread_p, &other.hfid, &class_oid, false), NO_ERROR);
+	  if (other.hfid.vfid.fileid > hfid.vfid.fileid)
+	    {
+	      break;
+	    }
+	  lower.push_back (other.hfid);
+	}
+      for (HFID &h : lower)
+	{
+	  (void) xheap_destroy (thread_p, &h, &class_oid);
+	}
+      commit_current_tran ();
+      ASSERT_GT (other.hfid.vfid.fileid, hfid.vfid.fileid);
+      start_heap_scan_cache (other.hfid, class_oid, other.scan_cache);
+      RECDES plain_rec {};
+      ASSERT_EQ (build_plain_heap_recdes (64, plain_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_plain (&plain_rec, recdes_free_data_area);
+      ASSERT_EQ (heap_insert_mvcc (other.hfid, class_oid, other.scan_cache, plain_rec, other.oid), NO_ERROR);
+      commit_current_tran ();
+
+      insert_row_on_new_page (false, heap_oid, oos_oid);
+      ASSERT_FALSE (HasFatalFailure ());
+
+      /* Vacuum the inserts first, so the delete is the only vacuum the OOS row's page expects. The fillers go to the
+       * second heap and leave that page alone. */
+      close_log_block_containing (other.hfid, class_oid, other.scan_cache, current_log_blockid ());
+      ASSERT_TRUE (wait_for_vacuum ([&heap_oid, &other]
+      {
+	return insert_id_vacuumed (heap_oid) && insert_id_vacuumed (other.oid);
+      }, 60)) << "vacuum did not finish the inserts";
+    }
+
+    void drop_unrelated_row (unrelated_row &other)
+    {
+      (void) heap_scancache_end (thread_p, &other.scan_cache);
+      (void) xheap_destroy (thread_p, &other.hfid, &class_oid);
+      commit_current_tran ();
     }
 
     /* Inserts a row with a new OOS value on a new heap page. The header page also stores rows, and holding the
@@ -1208,7 +1327,8 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
      * queues on the header, keeps holding it for OOS_TEST_HEADER_HOLD_MSECS (default three latch timeouts, or a
      * minute with an unrelated row), or with stop_vacuum until the vacuum workers stop as at server shutdown. Then
      * releases the header and, unless the workers are stopped, waits for vacuum. With an unrelated row, the same
-     * transaction deletes that row in the next log block, and the hold records when vacuum removes it. */
+     * transaction deletes that row in the next log block, or in the same one, and the hold records when vacuum
+     * removes it. */
     header_hold_observation observe_delete_with_header_held (const char *label, OID &heap_oid, const OID &oos_oid,
 	bool stop_vacuum = false, unrelated_row *other = nullptr)
     {
@@ -1217,34 +1337,26 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
 			     3 * latch_timeout_msecs;
       header_hold_observation obs;
 
-      RECDES filler_rec {};
-      if (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), filler_rec)
-	  != NO_ERROR)
-	{
-	  return obs;
-	}
-      test_oos_utils::auto_freed_recdes_ptr defer_filler (&filler_rec, recdes_free_data_area);
-
       /* Read before the delete. With an unrelated row in the next block, vacuum can take the delete's block as soon as
        * it commits, so nothing slow may run between the commit and the header fix. */
       const int deferrals_before = deferrals ();
+      /* Two deletes fit in a log block that they start. */
+      if (other != nullptr && other->same_block && !fill_log_past (current_log_blockid ()))
+	{
+	  return obs;
+	}
       if (heap_delete_mvcc (hfid, class_oid, scan_cache, heap_oid) != NO_ERROR)
 	{
 	  return obs;
 	}
-      const VACUUM_LOG_BLOCKID delete_block = current_log_blockid ();
+      const VACUUM_LOG_BLOCKID delete_block = obs.delete_block = current_log_blockid ();
       VACUUM_LOG_BLOCKID last_block = delete_block;
       if (other != nullptr)
 	{
 	  /* The open transaction keeps vacuum off the first block until the header is held. */
-	  for (int guard = 0; current_log_blockid () == delete_block; guard++)
+	  if (!other->same_block && !fill_log_past (delete_block))
 	    {
-	      OID filler_oid = OID_INITIALIZER;
-	      if (guard >= 20000
-		  || test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, filler_rec, filler_oid) != NO_ERROR)
-		{
-		  return obs;
-		}
+	      return obs;
 	    }
 	  if (heap_delete_mvcc (other->hfid, class_oid, other->scan_cache, other->oid) != NO_ERROR)
 	    {
@@ -1265,17 +1377,10 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
 	}
 
       /* A transaction must hold no pages when it ends, so OOS inserts and a log flush close the block. */
-      obs.log_advanced = true;
-      for (int guard = 0; obs.log_advanced && current_log_blockid () <= last_block + 1; guard++)
-	{
-	  OID filler_oid = OID_INITIALIZER;
-	  obs.log_advanced = guard < 20000
-			     && test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, filler_rec, filler_oid) == NO_ERROR;
-	}
+      obs.log_advanced = fill_log_past (last_block + 1);
       if (obs.log_advanced)
 	{
-	  LOG_LSA flush_lsa = log_Gl.prior_info.prior_lsa;
-	  logpb_flush_pages (thread_p, &flush_lsa);
+	  flush_log ();
 	}
 
       obs.vacuum_queued = obs.log_advanced && wait_for_vacuum ([this, &header_watcher, deferrals_before]
@@ -1423,36 +1528,94 @@ TEST_F (OosRealVacuumHeaderHeld, RelocatedRowOosReclaimedAfterHeaderLookupFailur
 TEST_F (OosRealVacuumHeaderHeld, UnrelatedHeapVacuumedWhileHeaderLookupKeepsFailing)
 {
   unrelated_row other;
-  ASSERT_EQ (xheap_create (thread_p, &other.hfid, &class_oid, false), NO_ERROR);
-  commit_current_tran ();
-  start_heap_scan_cache (other.hfid, class_oid, other.scan_cache);
-  RECDES plain_rec {};
-  ASSERT_EQ (build_plain_heap_recdes (64, plain_rec), NO_ERROR);
-  test_oos_utils::auto_freed_recdes_ptr defer_plain (&plain_rec, recdes_free_data_area);
-  ASSERT_EQ (heap_insert_mvcc (other.hfid, class_oid, other.scan_cache, plain_rec, other.oid), NO_ERROR);
-  commit_current_tran ();
-
   OID heap_oid = OID_INITIALIZER, oos_oid = OID_INITIALIZER;
-  insert_row_on_new_page (false, heap_oid, oos_oid);
+  prepare_unrelated_row (other, heap_oid, oos_oid);
   ASSERT_FALSE (HasFatalFailure ());
-
-  /* Vacuum the inserts first, so the delete is the only vacuum the OOS row's page expects. The fillers go to the
-   * second heap and leave that page alone. */
-  close_log_block_containing (other.hfid, class_oid, other.scan_cache, current_log_blockid ());
-  ASSERT_TRUE (wait_for_vacuum ([&heap_oid, &other]
-  {
-    return insert_id_vacuumed (heap_oid) && insert_id_vacuumed (other.oid);
-  }, 60)) << "vacuum did not finish the inserts";
 
   const header_hold_observation obs = observe_delete_with_header_held ("unrelated heap", heap_oid, oos_oid, false,
 				      &other);
-  (void) heap_scancache_end (thread_p, &other.scan_cache);
-  (void) xheap_destroy (thread_p, &other.hfid, &class_oid);
-  commit_current_tran ();
+  drop_unrelated_row (other);
 
   expect_no_leak (obs);
   EXPECT_GE (other.removed_during_hold_ms, 0)
       << "vacuum never reached the unrelated heap's later log block while the OOS lookup kept failing";
+}
+
+// A failed OOS file lookup leaves the rest of its log block to vacuum. The unrelated heap comes after the failing
+// one, so a worker that gave up the block at the failure would not reach its row until the header is free.
+TEST_F (OosRealVacuumHeaderHeld, UnrelatedRowInSameBlockVacuumedWhileHeaderLookupKeepsFailing)
+{
+  unrelated_row other;
+  other.same_block = true;
+  OID heap_oid = OID_INITIALIZER, oos_oid = OID_INITIALIZER;
+  prepare_unrelated_row (other, heap_oid, oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  const header_hold_observation obs = observe_delete_with_header_held ("unrelated row in the same block", heap_oid,
+				      oos_oid, false, &other);
+  drop_unrelated_row (other);
+
+  ASSERT_EQ (other.delete_block, obs.delete_block) << "both deletes must share one log block";
+  expect_no_leak (obs);
+  EXPECT_GE (other.removed_during_hold_ms, 0)
+      << "vacuum left the rest of the log block while the OOS lookup of another heap kept failing";
+  EXPECT_TRUE (other.removed_after_release);
+}
+
+// Every page of a heap repeats the OOS file lookup. While it fails, a run of the log block must look up that heap
+// once, not once per page. With a real latch timeout each lookup waits for the header.
+TEST_F (OosRealVacuumHeaderHeld, FailingHeapCostsOneLookupPerRun)
+{
+  OID heap_oids[2], oos_oids[2];
+  for (int i = 0; i < 2; i++)
+    {
+      insert_row_on_new_page (false, heap_oids[i], oos_oids[i]);
+      ASSERT_FALSE (HasFatalFailure ());
+    }
+  ASSERT_NE (heap_oids[0].pageid, heap_oids[1].pageid);
+  ASSERT_TRUE (close_block_with_oos_fillers (current_log_blockid ()));
+  ASSERT_TRUE (wait_for_vacuum ([&heap_oids]
+  {
+    return insert_id_vacuumed (heap_oids[0]) && insert_id_vacuumed (heap_oids[1]);
+  }, 60)) << "vacuum did not finish the inserts";
+
+  /* Two deletes fit in a log block that they start. */
+  ASSERT_TRUE (fill_log_past (current_log_blockid ()));
+  const VACUUM_LOG_BLOCKID block = current_log_blockid ();
+  for (OID &heap_oid : heap_oids)
+    {
+      ASSERT_EQ (heap_delete_mvcc (hfid, class_oid, scan_cache, heap_oid), NO_ERROR);
+    }
+  ASSERT_EQ (current_log_blockid (), block) << "both deletes must share one log block";
+  commit_current_tran ();
+
+  PGBUF_WATCHER header_watcher;
+  const bool held = hold_header_and_close_blocks (header_watcher, block);
+  const bool rerun = held && wait_for_vacuum ([this, block] { return interrupted_runs (block) >= 3; }, 120);
+  bool kept = true;
+  for (int i = 0; i < 2; i++)
+    {
+      kept = kept && !row_removed (slot_record_type (heap_oids[i])) && !oos_unreadable (oos_oids[i]);
+    }
+  release_header (header_watcher);
+
+  ASSERT_TRUE (held) << "OOS filler failed to close the delete's log block";
+  ASSERT_TRUE (rerun) << "vacuum did not run the delete's log block three times while the header was held";
+  EXPECT_TRUE (kept) << "vacuum removed a deleted row of the failing heap, or its OOS value, while the header was held";
+  EXPECT_TRUE (wait_for_vacuum ([this, &oos_oids]
+  {
+    return oos_unreadable (oos_oids[0]) && oos_unreadable (oos_oids[1]);
+  }, 30)) << "vacuum never reclaimed the OOS values after the header was released";
+  for (OID &heap_oid : heap_oids)
+    {
+      EXPECT_TRUE (row_removed (slot_record_type (heap_oid))) << "vacuum never removed a deleted row";
+    }
+  const int runs = interrupted_runs (block);
+  const int lookups = deferrals ();
+  printf ("[CBRD-27933] one lookup per run: block %lld interrupted %d times, %d deferred lookups\n", (long long) block,
+	  runs, lookups);
+  fflush (stdout);
+  EXPECT_EQ (lookups, runs) << "a run of the log block looked up the failing heap's OOS file once per page";
 }
 
 int
