@@ -20763,9 +20763,7 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
 	}
       if (unlikely (scan == S_SUCCESS && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
 	{
-	  PAGE_PTR home_page = page_watcher->pgptr != NULL ? page_watcher->pgptr : scan_cache->page_watcher.pgptr;
-
-	  scan = sidecar_on_fetch (thread_p, scan_cache, NULL, home_page, recdes);
+	  scan = sidecar_on_fetch (thread_p, scan_cache, recdes);
 	}
       if (unlikely (page_watcher->pgptr != NULL))
 	{
@@ -27545,8 +27543,7 @@ exit:
   /* both the heap path and the log path end here */
   if (unlikely (scan == S_SUCCESS && context->recdes_p != NULL && sidecar_record_has_refs (context->recdes_p)))
     {
-      scan = sidecar_on_fetch (thread_p, context->scan_cache, context->class_oid_p, context->home_page_watcher.pgptr,
-			       context->recdes_p);
+      scan = sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
     }
   return scan;
 }
@@ -27723,8 +27720,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 exit:
   if (unlikely (scan == S_SUCCESS && sidecar_record_has_refs (context->recdes_p)))
     {
-      return sidecar_on_fetch (thread_p, context->scan_cache, context->class_oid_p,
-			       context->home_page_watcher.pgptr, context->recdes_p);
+      return sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p);
     }
 
   return scan;

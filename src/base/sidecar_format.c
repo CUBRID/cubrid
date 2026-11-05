@@ -148,6 +148,12 @@ sidecar_trailer_n_refs (const RECDES * recdes)
 }
 
 int
+sidecar_trailer_n_variable (const RECDES * recdes)
+{
+  return (unsigned short) OR_GET_SHORT (recdes->data + recdes->length - 3 * OR_SHORT_SIZE);
+}
+
+int
 sidecar_trailer_location (const RECDES * recdes, int index)
 {
   const int n_refs = (unsigned short) OR_GET_SHORT (recdes->data + recdes->length - 2 * OR_SHORT_SIZE);
@@ -178,12 +184,19 @@ sidecar_trailer_find (const RECDES * recdes, int location)
 }
 
 bool
-sidecar_hot_is_well_formed (const RECDES * recdes, int n_variable)
+sidecar_hot_is_well_formed (const RECDES * recdes)
 {
   SIDECAR_LAYOUT layout;
   const int n_refs = sidecar_trailer_n_refs (recdes);
 
-  if (n_refs < 1 || n_refs > n_variable || sidecar_layout_init (recdes, n_variable, &layout) != NO_ERROR)
+  if (n_refs < 1)
+    {
+      return false;
+    }
+
+  const int n_variable = sidecar_trailer_n_variable (recdes);
+
+  if (n_refs > n_variable || sidecar_layout_init (recdes, n_variable, &layout) != NO_ERROR)
     {
       return false;
     }
@@ -195,7 +208,7 @@ sidecar_hot_is_well_formed (const RECDES * recdes, int n_variable)
   const char *locations = recdes->data + recdes->length - SIDECAR_TRAILER_SIZE (n_refs);
   int previous = -1;
 
-  for (int i = 0; i < ((n_refs + 1) & ~1); i++)
+  for (int i = 0; i < SIDECAR_TRAILER_N_PAD (n_refs); i++)
     {
       const int location = (unsigned short) OR_GET_SHORT (locations + i * OR_SHORT_SIZE);
 
@@ -242,7 +255,7 @@ sidecar_hot_length (const RECDES * image, int n_variable, int n_slots, const SID
 {
   SIDECAR_LAYOUT layout;
 
-  if (n_slots < 1 || n_slots > n_variable || sidecar_record_has_refs (image)
+  if (n_slots < 1 || n_slots > n_variable || n_variable > SIDECAR_TRAILER_PAD - 1 || sidecar_record_has_refs (image)
       || sidecar_layout_init (image, n_variable, &layout) != NO_ERROR)
     {
       return SIDECAR_FORMAT_ERROR;
@@ -308,10 +321,11 @@ sidecar_build_hot (const RECDES * image, int n_variable, int n_slots, const SIDE
 
   char *trailer = var_table + position;
 
-  for (int i = 0; i < ((n_slots + 1) & ~1); i++)
+  for (int i = 0; i < SIDECAR_TRAILER_N_PAD (n_slots); i++)
     {
       OR_PUT_SHORT (trailer + i * OR_SHORT_SIZE, i < n_slots ? slots[i].location : SIDECAR_TRAILER_PAD);
     }
+  OR_PUT_SHORT (hot->data + length - 3 * OR_SHORT_SIZE, n_variable);
   OR_PUT_SHORT (hot->data + length - 2 * OR_SHORT_SIZE, n_slots);
   OR_PUT_SHORT (hot->data + length - OR_SHORT_SIZE, SIDECAR_TRAILER_MAGIC);
 
@@ -321,11 +335,12 @@ sidecar_build_hot (const RECDES * image, int n_variable, int n_slots, const SIDE
 }
 
 int
-sidecar_expanded_length (const RECDES * hot, int n_variable)
+sidecar_expanded_length (const RECDES * hot)
 {
   SIDECAR_LAYOUT layout;
 
-  if (!sidecar_hot_is_well_formed (hot, n_variable) || sidecar_layout_init (hot, n_variable, &layout) != NO_ERROR)
+  if (!sidecar_hot_is_well_formed (hot) || sidecar_layout_init (hot, sidecar_trailer_n_variable (hot), &layout)
+      != NO_ERROR)
     {
       return SIDECAR_FORMAT_ERROR;
     }
@@ -353,12 +368,19 @@ sidecar_expanded_length (const RECDES * hot, int n_variable)
 }
 
 int
-sidecar_expand_frame (const RECDES * hot, int n_variable, RECDES * out, int *value_offsets)
+sidecar_expand_frame (const RECDES * hot, RECDES * out, int *value_offsets)
 {
   SIDECAR_LAYOUT layout;
-  const int length = sidecar_expanded_length (hot, n_variable);
+  const int length = sidecar_expanded_length (hot);
 
-  if (length < 0 || out->area_size < length || sidecar_layout_init (hot, n_variable, &layout) != NO_ERROR)
+  if (length < 0 || out->area_size < length)
+    {
+      return SIDECAR_FORMAT_ERROR;
+    }
+
+  const int n_variable = sidecar_trailer_n_variable (hot);
+
+  if (sidecar_layout_init (hot, n_variable, &layout) != NO_ERROR)
     {
       return SIDECAR_FORMAT_ERROR;
     }

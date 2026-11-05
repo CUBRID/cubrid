@@ -49,6 +49,7 @@
 #include "vacuum.h"
 
 #include <map>
+#include <utility>
 #include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -715,56 +716,16 @@ sidecar_read_value_into (THREAD_ENTRY *thread_p, const SIDECAR_REF *ref, int att
   return NO_ERROR;
 }
 
-/* the class whose representation decodes a fetched record: the owner of its page when the caller still holds it */
-static const OID *
-sidecar_record_class (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const OID *class_oid, PAGE_PTR home_page,
-		      OID *page_owner)
-{
-  if (home_page != NULL && heap_get_class_oid_from_page (thread_p, home_page, page_owner) == NO_ERROR
-      && !OID_ISNULL (page_owner))
-    {
-      return page_owner;
-    }
-  if (class_oid != NULL && !OID_ISNULL (class_oid))
-    {
-      return class_oid;
-    }
-  if (scan_cache != NULL && !OID_ISNULL (&scan_cache->node.class_oid))
-    {
-      return &scan_cache->node.class_oid;
-    }
-  return NULL;
-}
-
 /*
  * No reader opts in to lazy refs in P1a, so every fetch exit expands.  The expanded record goes where a REC_BIGONE
  * record would: into the scan cache area for PEEK or when the record is already there, else into the caller's
- * area, which returns S_DOESNT_FIT with -needed when it is too small.
+ * area, which returns S_DOESNT_FIT with -needed when it is too small.  The trailer says how many variable attributes
+ * the record has, so the expansion needs no class representation and fixes no page but one store page at a time.
  */
 __attribute__ ((noinline)) SCAN_CODE
-sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const OID *class_oid, PAGE_PTR home_page,
-		  RECDES *recdes)
+sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes)
 {
-  OID page_owner;
-  const OID *record_class = sidecar_record_class (thread_p, scan_cache, class_oid, home_page, &page_owner);
-
-  if (record_class == NULL)
-    {
-      assert_release (false);
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return S_ERROR;
-    }
-
-  int idx_incache = -1;
-  OR_CLASSREP *rep = heap_classrepr_get (thread_p, record_class, NULL, OR_GET_MVCC_REPID (recdes->data),
-					 &idx_incache);
-  if (rep == NULL)
-    {
-      ASSERT_ERROR ();
-      return S_ERROR;
-    }
-  const int n_variable = rep->n_variable;
-  heap_classrepr_free_and_init (rep, &idx_incache);
+  const OID *class_oid = scan_cache != NULL ? &scan_cache->node.class_oid : &oid_Null_oid;
 
   std::vector<char> hot_bytes (recdes->data, recdes->data + recdes->length);
   RECDES hot;
@@ -773,10 +734,10 @@ sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const OID 
   hot.area_size = hot.length = recdes->length;
   hot.type = recdes->type;
 
-  const int needed = sidecar_expanded_length (&hot, n_variable);
+  const int needed = sidecar_expanded_length (&hot);
   if (needed < 0)
     {
-      (void) sidecar_set_bad_ref (record_class);
+      (void) sidecar_set_bad_ref (class_oid);
       return S_ERROR;
     }
 
@@ -792,10 +753,10 @@ sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const OID 
 
   const int n_refs = sidecar_trailer_n_refs (&hot);
   std::vector<int> value_offsets (n_refs);
-  if (sidecar_expand_frame (&hot, n_variable, recdes, value_offsets.data ()) != NO_ERROR)
+  if (sidecar_expand_frame (&hot, recdes, value_offsets.data ()) != NO_ERROR)
     {
       assert_release (false);
-      (void) sidecar_set_bad_ref (record_class);
+      (void) sidecar_set_bad_ref (class_oid);
       return S_ERROR;
     }
 
@@ -1078,75 +1039,111 @@ sidecar_verify_scan_store (THREAD_ENTRY *thread_p, sidecar_verify &v)
   return NO_ERROR;
 }
 
+/* what the verifier keeps of a hot record with refs, so it can look up representations with no page fixed */
+struct sidecar_verify_hot
+{
+  OID oid;
+  int repid;
+  int n_variable;		/* from the trailer */
+  bool deleted;
+  std::vector<std::pair<int, SIDECAR_REF>> refs;	/* location and ref */
+};
+
 static int
 sidecar_verify_scan_hot (THREAD_ENTRY *thread_p, sidecar_verify &v)
 {
-  std::map<int, std::vector<int>> attrids_by_repid;	/* the attribute at each variable location */
-  int error_code = NO_ERROR;
+  std::vector<sidecar_verify_hot> hots;
 
-  int walk_error = sidecar_verify_walk (thread_p, v.hfid,[&] (const OID & oid, INT16 type, const RECDES & record)
+  int error_code = sidecar_verify_walk (thread_p, v.hfid,[&] (const OID & oid, INT16 type, const RECDES & record)
   {
-    if ((type != REC_HOME && type != REC_NEWHOME) || error_code != NO_ERROR || !sidecar_record_has_refs (&record))
+    if ((type != REC_HOME && type != REC_NEWHOME) || !sidecar_record_has_refs (&record))
       {
 	return;
       }
-
-    const int repid = OR_GET_MVCC_REPID (record.data);
-    auto found = attrids_by_repid.find (repid);
-    if (found == attrids_by_repid.end ())
-      {
-	int idx_incache = -1;
-	OR_CLASSREP *rep = heap_classrepr_get (thread_p, &v.class_oid, NULL, repid, &idx_incache);
-	if (rep == NULL)
-	  {
-	    ASSERT_ERROR_AND_SET (error_code);
-	    return;
-	  }
-	std::vector<int> attrids (rep->n_variable, NULL_ATTRID);
-	for (int i = 0; i < rep->n_attributes; i++)
-	  {
-	    if (!rep->attributes[i].is_fixed)
-	      {
-		attrids[rep->attributes[i].location] = rep->attributes[i].id;
-	      }
-	  }
-	heap_classrepr_free_and_init (rep, &idx_incache);
-	found = attrids_by_repid.emplace (repid, attrids).first;
-      }
-
-    const std::vector<int> &attrids = found->second;
-    if (!sidecar_hot_is_well_formed (&record, (int) attrids.size ()))
+    if (!sidecar_hot_is_well_formed (&record))
       {
 	v.invalid ("a record of the heap has the Sidecar flag and no well-formed trailer", &oid);
 	return;
       }
 
-    const bool hot_deleted = sidecar_record_is_deleted (&record);
-    const int n_refs = sidecar_trailer_n_refs (&record);
-    for (int i = 0; i < n_refs; i++)
+    sidecar_verify_hot hot;
+    hot.oid = oid;
+    hot.repid = OR_GET_MVCC_REPID (record.data);
+    hot.n_variable = sidecar_trailer_n_variable (&record);
+    hot.deleted = sidecar_record_is_deleted (&record);
+    for (int i = 0; i < sidecar_trailer_n_refs (&record); i++)
       {
 	SIDECAR_REF ref;
-	OID store_oid;
-	const int attrid = attrids[sidecar_trailer_location (&record, i)];
 
 	sidecar_hot_get_ref (&record, i, &ref);
-	store_oid.volid = ref.volid;
-	store_oid.pageid = ref.pageid;
-	store_oid.slotid = ref.slotid;
-
-	auto named = v.records.find (store_oid);
-	if (named == v.records.end () || named->second.attrid != attrid || (UINT16) (attrid & 0xFFFF) != ref.attrid_check
-	    || named->second.length != ref.length || named->second.bigone != ((ref.flags & SIDECAR_REF_BIGONE) != 0)
-	    || (!named->second.live && !hot_deleted))
-	  {
-	    (void) sidecar_set_dangling (&ref, attrid);
-	    v.valid = false;
-	    continue;
-	  }
-	named->second.named++;
+	hot.refs.push_back ({ sidecar_trailer_location (&record, i), ref });
       }
+    hots.push_back (std::move (hot));
   });
-  return walk_error != NO_ERROR ? walk_error : error_code;
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* the attribute at each variable location, by representation: read with no page fixed, as the class record or the
+   * catalog may have to be */
+  std::map<int, std::vector<int>> attrids_by_repid;
+
+  for (const sidecar_verify_hot &hot : hots)
+    {
+      auto found = attrids_by_repid.find (hot.repid);
+      if (found == attrids_by_repid.end ())
+	{
+	  int idx_incache = -1;
+	  OR_CLASSREP *rep = heap_classrepr_get (thread_p, &v.class_oid, NULL, hot.repid, &idx_incache);
+	  if (rep == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	  std::vector<int> attrids (rep->n_variable, NULL_ATTRID);
+	  for (int i = 0; i < rep->n_attributes; i++)
+	    {
+	      if (!rep->attributes[i].is_fixed)
+		{
+		  attrids[rep->attributes[i].location] = rep->attributes[i].id;
+		}
+	    }
+	  heap_classrepr_free_and_init (rep, &idx_incache);
+	  found = attrids_by_repid.emplace (hot.repid, attrids).first;
+	}
+
+      const std::vector<int> &attrids = found->second;
+      if (hot.n_variable != (int) attrids.size ())
+	{
+	  v.invalid ("the trailer's count of variable attributes is not its representation's", &hot.oid);
+	  continue;
+	}
+
+      for (const auto &slot : hot.refs)
+	{
+	  const SIDECAR_REF &ref = slot.second;
+	  const int attrid = attrids[slot.first];
+	  OID store_oid;
+
+	  store_oid.volid = ref.volid;
+	  store_oid.pageid = ref.pageid;
+	  store_oid.slotid = ref.slotid;
+
+	  auto named = v.records.find (store_oid);
+	  if (named == v.records.end () || named->second.attrid != attrid
+	      || (UINT16) (attrid & 0xFFFF) != ref.attrid_check || named->second.length != ref.length
+	      || named->second.bigone != ((ref.flags & SIDECAR_REF_BIGONE) != 0)
+	      || (!named->second.live && !hot.deleted))
+	    {
+	      (void) sidecar_set_dangling (&ref, attrid);
+	      v.valid = false;
+	      continue;
+	    }
+	  named->second.named++;
+	}
+    }
+  return NO_ERROR;
 }
 
 DISK_ISVALID
@@ -1221,35 +1218,7 @@ sidecar_assert_record_format (const RECDES *recdes)
       return;
     }
 
-  const char *end = recdes->data + recdes->length;
-  const int header_size = OR_HEADER_SIZE (recdes->data);
-
-  assert (!heap_is_big_length (recdes->length - header_size + OR_MVCC_MAX_HEADER_SIZE));
-  assert (recdes->length >= header_size + SIDECAR_TRAILER_SIZE (1));
-  assert ((unsigned short) OR_GET_SHORT (end - OR_SHORT_SIZE) == SIDECAR_TRAILER_MAGIC);
-
-  const int n_refs = (unsigned short) OR_GET_SHORT (end - 2 * OR_SHORT_SIZE);
-  assert (n_refs >= 1 && recdes->length >= header_size + SIDECAR_TRAILER_SIZE (n_refs));
-
-  const char *var_table = recdes->data + header_size;
-  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  const char *location_p = end - SIDECAR_TRAILER_SIZE (n_refs);
-  const int n_pad = (n_refs + 1) & ~1;
-  int previous = -1;
-
-  for (int i = 0; i < n_pad; i++, location_p += OR_SHORT_SIZE)
-    {
-      const int location = (unsigned short) OR_GET_SHORT (location_p);
-
-      if (i >= n_refs)
-	{
-	  assert (location == SIDECAR_TRAILER_PAD);
-	  continue;
-	}
-      assert (location > previous);
-      previous = location;
-      assert (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (var_table, location + 1, offset_size)
-	      - OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (var_table, location, offset_size) == SIDECAR_REF_SIZE);
-    }
+  assert (sidecar_hot_is_well_formed (recdes));
+  assert (!heap_is_big_length (recdes->length - OR_HEADER_SIZE (recdes->data) + OR_MVCC_MAX_HEADER_SIZE));
 }
 #endif /* !NDEBUG */

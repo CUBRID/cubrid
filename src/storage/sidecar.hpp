@@ -74,11 +74,9 @@ extern SCAN_CODE sidecar_write_kept_ref (HEAP_CACHE_ATTRINFO *attr_info, int val
 
 /* A fetched record with refs: expands it into an inline record unless the reader may keep it lazy.  Asking the
  * caller to read the row's current version again is a scan code of its own, so the exits hold no out-parameter
- * (an address-taken local grows the frame of every function the exit is inlined into).  The record's class comes
- * from home_page when the caller still holds it, else from class_oid, else from the scan cache.  Returns S_SUCCESS,
+ * (an address-taken local grows the frame of every function the exit is inlined into).  Returns S_SUCCESS,
  * S_DOESNT_FIT with recdes->length = -needed when the caller's area is too small, or S_ERROR. */
-extern SCAN_CODE sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const OID *class_oid,
-				   PAGE_PTR home_page, RECDES *recdes);
+extern SCAN_CODE sidecar_on_fetch (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, RECDES *recdes);
 /* a variable attribute of a record with refs: true when its slot holds a ref and raw now points at the value;
  * false leaves the attribute to the ordinary pointer */
 extern bool sidecar_point_variable (const HEAP_REC_LAYOUT *layout, HEAP_CACHE_ATTRINFO *attr_info,

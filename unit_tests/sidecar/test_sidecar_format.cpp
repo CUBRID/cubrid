@@ -177,7 +177,7 @@ namespace
   expand (const RECDES &hot, image &original)
   {
     RECDES src = original.recdes ();
-    const int length = sidecar_expanded_length (&hot, original.n_variable);
+    const int length = sidecar_expanded_length (&hot);
     REQUIRE (length > 0);
 
     std::vector<char> out (length, (char) 0x77);
@@ -185,7 +185,7 @@ namespace
     out_recdes.data = out.data ();
     out_recdes.area_size = length;
     std::vector<int> value_offsets (original.n_variable);
-    REQUIRE (sidecar_expand_frame (&hot, original.n_variable, &out_recdes, value_offsets.data ()) == NO_ERROR);
+    REQUIRE (sidecar_expand_frame (&hot, &out_recdes, value_offsets.data ()) == NO_ERROR);
     REQUIRE (out_recdes.length == length);
 
     const int n_refs = sidecar_trailer_n_refs (&hot);
@@ -252,12 +252,19 @@ TEST_CASE ("a ref is 16 big-endian bytes in the documented order", "[sidecar]")
   CHECK (back.attrid_check == ref.attrid_check);
 }
 
-TEST_CASE ("the trailer is 8 bytes for one or two refs and 12 for three or four", "[sidecar]")
+TEST_CASE ("the trailer is 8 bytes for one ref, 12 for two or three, 16 for four or five", "[sidecar]")
 {
   CHECK (SIDECAR_TRAILER_SIZE (1) == 8);
-  CHECK (SIDECAR_TRAILER_SIZE (2) == 8);
+  CHECK (SIDECAR_TRAILER_SIZE (2) == 12);
   CHECK (SIDECAR_TRAILER_SIZE (3) == 12);
-  CHECK (SIDECAR_TRAILER_SIZE (4) == 12);
+  CHECK (SIDECAR_TRAILER_SIZE (4) == 16);
+  CHECK (SIDECAR_TRAILER_SIZE (5) == 16);
+  for (int n = 1; n <= 1000; n++)
+    {
+      INFO ("refs " << n);
+      CHECK (SIDECAR_TRAILER_SIZE (n) % 4 == 0);
+      CHECK (SIDECAR_TRAILER_SIZE (n) >= 2 * n + 6);
+    }
 }
 
 TEST_CASE ("a hot record replaces the chosen slots with refs and keeps every other byte", "[sidecar]")
@@ -273,9 +280,10 @@ TEST_CASE ("a hot record replaces the chosen slots with refs and keeps every oth
   CHECK (sidecar_record_has_refs (&hot));
   CHECK ((OR_GET_MVCC_FLAG (hot.data) & ~OR_MVCC_FLAG_HAS_SIDECAR) == OR_MVCC_FLAG_VALID_INSID);
   CHECK (OR_GET_MVCC_REPID (hot.data) == REPID);
-  CHECK (sidecar_hot_is_well_formed (&hot, im.n_variable));
+  CHECK (sidecar_hot_is_well_formed (&hot));
 
   REQUIRE (sidecar_trailer_n_refs (&hot) == 2);
+  CHECK (sidecar_trailer_n_variable (&hot) == 4);
   CHECK (sidecar_trailer_location (&hot, 0) == 0);
   CHECK (sidecar_trailer_location (&hot, 1) == 2);
   CHECK (sidecar_trailer_find (&hot, 0) == 0);
@@ -285,6 +293,10 @@ TEST_CASE ("a hot record replaces the chosen slots with refs and keeps every oth
   const char *end = hot.data + hot.length;
   CHECK ((unsigned short) OR_GET_SHORT (end - 2) == SIDECAR_TRAILER_MAGIC);
   CHECK ((unsigned short) OR_GET_SHORT (end - 4) == 2);
+  CHECK ((unsigned short) OR_GET_SHORT (end - 6) == 4);
+  CHECK ((unsigned short) OR_GET_SHORT (end - 8) == SIDECAR_TRAILER_PAD);
+  CHECK ((unsigned short) OR_GET_SHORT (end - 10) == 2);
+  CHECK ((unsigned short) OR_GET_SHORT (end - 12) == 0);
 
   SIDECAR_REF ref;
   sidecar_hot_get_ref (&hot, 1, &ref);
@@ -323,8 +335,9 @@ TEST_CASE ("a hot record expands back to the image it was built from", "[sidecar
 	      hot_result h = build (im, locations);
 	      INFO ("offset size " << offset_size << ", flags " << flags << ", first location " << locations[0]);
 	      REQUIRE (h.rc == NO_ERROR);
-	      REQUIRE (sidecar_hot_is_well_formed (&h.recdes, im.n_variable));
-	      CHECK (sidecar_expanded_length (&h.recdes, im.n_variable) == (int) im.bytes.size ());
+	      REQUIRE (sidecar_hot_is_well_formed (&h.recdes));
+	      CHECK (sidecar_trailer_n_variable (&h.recdes) == im.n_variable);
+	      CHECK (sidecar_expanded_length (&h.recdes) == (int) im.bytes.size ());
 	      CHECK (expand (h.recdes, im) == im.bytes);
 	    }
 	}
@@ -374,29 +387,39 @@ TEST_CASE ("the codec rejects what it cannot build or expand", "[sidecar]")
   {
     h.bytes[h.recdes.length - 1] ^= 1;
     CHECK (sidecar_trailer_n_refs (&h.recdes) == SIDECAR_FORMAT_ERROR);
-    CHECK (!sidecar_hot_is_well_formed (&h.recdes, im.n_variable));
-    CHECK (sidecar_expanded_length (&h.recdes, im.n_variable) == SIDECAR_FORMAT_ERROR);
+    CHECK (!sidecar_hot_is_well_formed (&h.recdes));
+    CHECK (sidecar_expanded_length (&h.recdes) == SIDECAR_FORMAT_ERROR);
   }
   SECTION ("zero refs")
   {
     OR_PUT_SHORT (h.recdes.data + h.recdes.length - 4, 0);
     CHECK (sidecar_trailer_n_refs (&h.recdes) == SIDECAR_FORMAT_ERROR);
   }
-  SECTION ("a location outside the representation")
+  SECTION ("a location outside the representation the trailer names")
   {
-    CHECK (!sidecar_hot_is_well_formed (&h.recdes, 1));
+    OR_PUT_SHORT (h.recdes.data + h.recdes.length - 6, 1);
+    CHECK (!sidecar_hot_is_well_formed (&h.recdes));
+  }
+  SECTION ("a count of variable attributes that does not end the offset table at the trailer")
+  {
+    OR_PUT_SHORT (h.recdes.data + h.recdes.length - 6, 2);
+    CHECK (!sidecar_hot_is_well_formed (&h.recdes));
+    CHECK (sidecar_expanded_length (&h.recdes) == SIDECAR_FORMAT_ERROR);
   }
   SECTION ("a padding entry that is not the pad")
   {
-    OR_PUT_SHORT (h.recdes.data + h.recdes.length - 6, 0);
-    CHECK (!sidecar_hot_is_well_formed (&h.recdes, im.n_variable));
+    hot_result two = build (im, { 0, 2 });
+    REQUIRE (two.rc == NO_ERROR);
+    REQUIRE (sidecar_hot_is_well_formed (&two.recdes));
+    OR_PUT_SHORT (two.recdes.data + two.recdes.length - 8, 0);
+    CHECK (!sidecar_hot_is_well_formed (&two.recdes));
   }
   SECTION ("a ref slot that is not 16 bytes")
   {
     /* move the slot boundary of the ref by one byte */
     char *entry = h.recdes.data + im.header_size + 2 * 2;
     OR_PUT_SHORT (entry, OR_GET_SHORT (entry) + 1);
-    CHECK (!sidecar_hot_is_well_formed (&h.recdes, im.n_variable));
+    CHECK (!sidecar_hot_is_well_formed (&h.recdes));
   }
   SECTION ("a trailer that does not follow the variable area")
   {
@@ -404,13 +427,13 @@ TEST_CASE ("the codec rejects what it cannot build or expand", "[sidecar]")
     h.recdes.data = h.bytes.data ();
     h.recdes.length++;
     CHECK (sidecar_trailer_n_refs (&h.recdes) == 1);
-    CHECK (!sidecar_hot_is_well_formed (&h.recdes, im.n_variable));
+    CHECK (!sidecar_hot_is_well_formed (&h.recdes));
   }
   SECTION ("a record without the flag has no trailer")
   {
     CHECK (sidecar_trailer_n_refs (&src) == 0);
     CHECK (sidecar_trailer_find (&src, 0) == -1);
-    CHECK (!sidecar_hot_is_well_formed (&src, im.n_variable));
+    CHECK (!sidecar_hot_is_well_formed (&src));
   }
 }
 
@@ -493,7 +516,7 @@ TEST_CASE ("the policy externalizes the largest eligible values until the row fi
   const std::vector<SIDECAR_CANDIDATE> tie = { { 0, 2500, true, false }, { 1, 2500, true, false } };
   CHECK (choose (p, facts_for (5100), tie) == std::vector<int> { 0 });
 
-  /* 12,100 - 4,984 + 8 = 7,124 B is still over 4,060; then 7,124 - 3,984 = 3,140 B; the locations come back
+  /* 12,100 - 4,984 + 8 = 7,124 B is still over 4,060; then 7,124 - 3,984 + 4 = 3,144 B; the locations come back
    * ascending */
   const std::vector<SIDECAR_CANDIDATE> three = { { 5, 3000, true, false }, { 2, 5000, true, false },
     { 9, 4000, true, false }
@@ -592,7 +615,7 @@ TEST_CASE ("the policy's estimate is the length of the hot record the codec buil
   f.header_size = im.header_size;
 
   const std::vector<int> chosen = choose (p, f, c);
-  /* 7,834 - 2,984 + 8 = 4,858 B is over the target after the 3,000 B value, 2,374 B after the 2,500 B one */
+  /* 7,834 - 2,984 + 8 = 4,858 B is over the target after the 3,000 B value, 2,378 B after the 2,500 B one */
   REQUIRE (src.length == 7834);
   REQUIRE (chosen == (std::vector<int> { 0, 2 }));
 

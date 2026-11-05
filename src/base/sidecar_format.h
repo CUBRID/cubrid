@@ -29,12 +29,17 @@
  *   [variable area: a ref slot holds SIDECAR_REF_SIZE bytes]
  *   [trailer]
  *
- * The trailer is read backwards from the record end and needs no class representation:
+ * The trailer is read backwards from the record end.  It describes the record without the class representation,
+ * so that this codec can expand a hot record, or splice values into it, with no server state:
  *
  *   UINT16 ref_location[n_pad];  OR_ATTRIBUTE.location of each ref slot, ascending; n_pad is n_refs rounded
- *                                up to even, and the padding entry is SIDECAR_TRAILER_PAD
+ *                                up to odd, and the padding entry is SIDECAR_TRAILER_PAD
+ *   UINT16 n_variable;           the variable attributes of the representation the record was written with: its
+ *                                offset table has n_variable + 1 entries
  *   UINT16 n_refs;               1 .. n_variable
  *   UINT16 magic;                SIDECAR_TRAILER_MAGIC
+ *
+ * Its size, 2 * n_pad + 6, is a multiple of 4: 8 bytes for one ref, 12 for two or three, 16 for four or five.
  *
  * A store record is an ordinary heap record of the store file:
  *
@@ -43,9 +48,9 @@
  * Refs, trailers and value headers are big-endian and unaligned (OR_GET_SHORT, OR_GET_INT).  Only this codec and
  * storage/sidecar.cpp parse them; other code asks sidecar_record_has_refs ().
  *
- * Rewriting the variable offset table needs the number of variable attributes of the record's representation,
- * which the caller passes as n_variable.  The codec keeps the record's offset size, so the inline image a hot record
- * was built from expands back to the same bytes.
+ * Building a hot record takes the number of variable attributes from the caller, who has the representation, and
+ * writes it to the trailer; expanding one reads it back.  The codec keeps the record's offset size, so the inline
+ * image a hot record was built from expands back to the same bytes.
  *
  * Every function here is pure: no server state, no allocation and no error manager.  A negative return is
  * SIDECAR_FORMAT_ERROR, a record or an argument that does not have the form the function documents.
@@ -63,8 +68,8 @@
 #define SIDECAR_TRAILER_MAGIC 0x5343
 #define SIDECAR_TRAILER_PAD 0xFFFF
 
-/* 8 bytes for one or two refs, 12 for three or four */
-#define SIDECAR_TRAILER_SIZE(n_refs) (2 * (((n_refs) + 1) & ~1) + 2 * OR_SHORT_SIZE)
+#define SIDECAR_TRAILER_N_PAD(n_refs) ((n_refs) | 1)
+#define SIDECAR_TRAILER_SIZE(n_refs) (OR_SHORT_SIZE * (SIDECAR_TRAILER_N_PAD (n_refs) + 3))
 
 /* A ref as its slot holds it, SIDECAR_REF_SIZE bytes */
 typedef struct sidecar_ref SIDECAR_REF;
@@ -125,13 +130,15 @@ extern void sidecar_ref_decode (const char *slot, SIDECAR_REF * ref);
 /* The number of refs a hot record's trailer lists, or SIDECAR_FORMAT_ERROR when the record has the flag and no
  * trailer.  0 when the record has no OR_MVCC_FLAG_HAS_SIDECAR. */
 extern int sidecar_trailer_n_refs (const RECDES * recdes);
+/* the n_variable of a record whose trailer sidecar_trailer_n_refs () accepted */
+extern int sidecar_trailer_n_variable (const RECDES * recdes);
 /* the location of the index-th ref of a record whose trailer sidecar_trailer_n_refs () accepted */
 extern int sidecar_trailer_location (const RECDES * recdes, int index);
 /* the index of the ref that the slot at location holds, or -1 when the slot holds a value */
 extern int sidecar_trailer_find (const RECDES * recdes, int location);
-/* The whole form of a hot record: trailer, ascending locations below n_variable, a SIDECAR_REF_SIZE slot for each
- * ref, and the trailer right after entry[n_variable] of the offset table */
-extern bool sidecar_hot_is_well_formed (const RECDES * recdes, int n_variable);
+/* The whole form of a hot record: trailer, ascending locations below the trailer's n_variable, a SIDECAR_REF_SIZE
+ * slot for each ref, and the trailer right after entry[n_variable] of the offset table */
+extern bool sidecar_hot_is_well_formed (const RECDES * recdes);
 /* the ref of the index-th trailer entry */
 extern void sidecar_hot_get_ref (const RECDES * recdes, int index, SIDECAR_REF * ref);
 
@@ -142,17 +149,17 @@ extern int sidecar_var_slot_length (const RECDES * recdes, int location);
  * (ascending, distinct locations below n_variable), or SIDECAR_FORMAT_ERROR */
 extern int sidecar_hot_length (const RECDES * image, int n_variable, int n_slots, const SIDECAR_SLOT * slots);
 /* Builds into hot->data (hot->area_size at least sidecar_hot_length ()) the hot record of an inline image without
- * refs: each slot of slots[] (ascending locations) gets its ref, the trailer is appended and the flag set.
- * NO_ERROR or SIDECAR_FORMAT_ERROR. */
+ * refs, whose representation has n_variable variable attributes: each slot of slots[] (ascending locations) gets its
+ * ref, the trailer is appended and the flag set.  NO_ERROR or SIDECAR_FORMAT_ERROR. */
 extern int sidecar_build_hot (const RECDES * image, int n_variable, int n_slots, const SIDECAR_SLOT * slots,
 			      RECDES * hot);
 
 /* the length of the inline record a well-formed hot record expands to, or SIDECAR_FORMAT_ERROR */
-extern int sidecar_expanded_length (const RECDES * hot, int n_variable);
+extern int sidecar_expanded_length (const RECDES * hot);
 /* Writes into out->data (out->area_size at least sidecar_expanded_length ()) the inline record of a well-formed hot
  * record, except the bytes of the values its refs name: the value of the index-th ref belongs at
  * out->data + value_offsets[index].  Sets out->length.  NO_ERROR or SIDECAR_FORMAT_ERROR. */
-extern int sidecar_expand_frame (const RECDES * hot, int n_variable, RECDES * out, int *value_offsets);
+extern int sidecar_expand_frame (const RECDES * hot, RECDES * out, int *value_offsets);
 
 /* Writes into out->data (out->area_size at least SIDECAR_STORE_RECORD_LENGTH (length)) the store record of a value */
 extern void sidecar_store_record_build (int attrid, const char *value, int length, RECDES * out);
