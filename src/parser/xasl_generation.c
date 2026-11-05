@@ -362,7 +362,6 @@ typedef struct xasl_supp_info
 
   /* views referenced more than once (see mq_share_multi_ref_views ()) */
   bool share_views;		/* the derived tables of a shared view group may reuse the XASL of the group */
-  bool shared_view_reused;	/* the XASL of a shared view group was reused */
   XASL_NODE *shared_view_xasl[PT_SHARED_VIEW_MAX_GROUPS + 1];	/* XASL of each group, indexed by group id */
 } XASL_SUPP_INFO;
 
@@ -389,7 +388,7 @@ FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 bool query_Plan_dump_fp_open = false;
 
-static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0, false, false, {NULL} };
+static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0, false, {NULL} };
 
 static const int OID_LIST_GROWTH = 10;
 
@@ -27592,7 +27591,6 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	{
 	  /* scan the result of the XASL of the shared view group */
 	  node->info.query.xasl = info->shared_view_xasl[node->info.query.shared_view_group];
-	  info->shared_view_reused = true;
 	  break;
 	}
 
@@ -27658,7 +27656,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   XASL_NODE *xasl = NULL;
   PT_NODE *next;
   bool is_system_generated_stmt;
-  bool saved_share_views, saved_shared_view_reused;
+  bool saved_share_views;
   XASL_NODE *saved_shared_view_xasl[PT_SHARED_VIEW_MAX_GROUPS + 1];
 
   assert (parser != NULL && node != NULL);
@@ -27722,23 +27720,15 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	  /* only a query statement shares the XASL of a view referenced more than once; save the state of the caller
 	   * in case of a recursive call */
 	  saved_share_views = xasl_Supp_info.share_views;
-	  saved_shared_view_reused = xasl_Supp_info.shared_view_reused;
 	  memcpy (saved_shared_view_xasl, xasl_Supp_info.shared_view_xasl, sizeof (saved_shared_view_xasl));
 	  xasl_Supp_info.share_views = true;
-	  xasl_Supp_info.shared_view_reused = false;
 	  memset (xasl_Supp_info.shared_view_xasl, 0, sizeof (xasl_Supp_info.shared_view_xasl));
 
 	  node =
 	    parser_walk_tree (parser, node, parser_generate_xasl_pre, &xasl_Supp_info, parser_generate_xasl_post,
 			      &xasl_Supp_info);
 
-	  /* a parallel subquery could read the result of a shared view group while it is being built */
-	  if (node != NULL && !pt_has_error (parser) && xasl_Supp_info.shared_view_reused && node->info.query.xasl)
-	    {
-	      XASL_SET_FLAG ((XASL_NODE *) node->info.query.xasl, XASL_NO_PARALLEL_SUBQUERY);
-	    }
 	  xasl_Supp_info.share_views = saved_share_views;
-	  xasl_Supp_info.shared_view_reused = saved_shared_view_reused;
 	  memcpy (xasl_Supp_info.shared_view_xasl, saved_shared_view_xasl, sizeof (saved_shared_view_xasl));
 	  pt_Cte_null_readers = save_cte_null_readers;
 
