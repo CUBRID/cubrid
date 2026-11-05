@@ -805,8 +805,9 @@ jobs:
               echo "no CUBRID archive or tree: $1"
             elif [ ! -f "$1/build.meta" ]; then
               echo "no build.meta: $1. Re-run with force_build=true"
-            elif [ "$(awk -F= '/^sha=/ {print $2}' "$1/build.meta")" != "$SHA" ]; then
-              echo "meta sha($(awk -F= '/^sha=/ {print $2}' "$1/build.meta")) differs from the sha gate resolved($SHA)"
+            else
+              meta_sha=$(awk -F= '/^sha=/ {print $2}' "$1/build.meta")
+              [ "$meta_sha" = "$SHA" ] || echo "meta sha($meta_sha) differs from the sha gate resolved($SHA)"
             fi
           }
           ids='{}'
