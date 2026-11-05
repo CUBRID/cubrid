@@ -129,6 +129,8 @@ env:
         echo "found=no exec=0 pass=0 fail=0 skip=0"
       fi
     }
+  SAME_RECIPE: |
+    same_recipe() { [ -f "$1/$BUILD_SENTINEL" ] && grep -sqxF "recipe=$BUILD_RECIPE" "$1/build.meta"; }
   OVERLAY: |
     overlay() {   # <lower> <rw dir> <mount point>
       mkdir -p "$2/upper" "$2/work" "$3"
@@ -498,13 +500,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        image: [cubridci/cubridci:build_cl6.10]
+        mode: [release, debug]
         include:
           - mode: release
             args: ""
           - mode: debug
             args: "-m optdebug"
     container:
-      image: cubridci/cubridci:build_rl8.10
+      image: ${{ matrix.image }}
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
@@ -514,11 +518,15 @@ jobs:
       BUILD_LOG_DIR: /home/ci/shared/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
+      # A build from another image or other args sits at the same $SHA/$MODE path.
+      BUILD_RECIPE: ${{ matrix.image }}|${{ matrix.args }}
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
       # The default is mtime, which a fresh checkout always misses.
       CCACHE_COMPILERCHECK: content
       CCACHE_MAXSIZE: 10G
+      # A /* fall through */ comment changes -Werror results, so it must change the cache key.
+      CCACHE_COMMENTS: 1
       # No CCACHE_HARDLINK: a hardlinked entry is one bad build away from a poisoned cache.
       CACHE_WRITE: ${{ needs.gate.outputs.cache_write }}
 
@@ -529,6 +537,8 @@ jobs:
         run: |
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
+          { mkdir -p "$BUILD_LOG_DIR" && printf '%s\n' "$BUILD_RECIPE" > "$BUILD_LOG_DIR/recipe"; } ||
+            echo "::warning::could not write $BUILD_LOG_DIR/recipe, so plan will refuse to test this run's build"
           for d in "$BUILD_MIRROR/cubrid/.git" "$BUILD_MIRROR/cubrid.git"; do
             [ -d "$d" ] || {
               echo "::error::the node copy is not visible: $d. The pod template did not reach the pod, or gha-node-seed has not run"
@@ -546,7 +556,8 @@ jobs:
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
-          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE/$BUILD_SENTINEL" ]; then
+          eval "$SAME_RECIPE"
+          if [ "$INPUT_FORCE" != 'true' ] && same_recipe "$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"; then
             echo "reuse=reused" >> "$GITHUB_OUTPUT"
           else
             echo "reuse=built" >> "$GITHUB_OUTPUT"
@@ -631,16 +642,17 @@ jobs:
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
+          eval "$SAME_RECIPE"
           # Another run on this SHA may have published since the reuse check; the rename decides.
-          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ]; then
+          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && same_recipe "$dir"; then
             REUSE=reused
           fi
           if [ "$REUSE" != 'reused' ]; then
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
-            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
-              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
+            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nrecipe=%s\nworkflow=gha-ci\n' \
+              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)" "$BUILD_RECIPE")
             # Inside the archive too: the shard reads it back out of what it unpacked.
             printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
             # An archive: a published tree made every process launch read the build over GlusterFS.
@@ -652,7 +664,7 @@ jobs:
             # rename(2) is the one atomic arbiter on shared storage; check-then-act lost this race.
             if mv -T "$tmp" "$dir" 2>/dev/null; then
               :
-            elif [ -f "$dir/$BUILD_SENTINEL" ] && [ "$INPUT_FORCE" != 'true' ]; then
+            elif same_recipe "$dir" && [ "$INPUT_FORCE" != 'true' ]; then
               echo "another run published this build first, keeping theirs: $dir"
               rm -rf "$tmp"
             else
@@ -798,7 +810,7 @@ jobs:
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
-          unusable() {   # <dir>: why the suites cannot read it, or nothing
+          unusable() {   # <dir> <mode>: why the suites cannot read it, or nothing
             if [ ! -f "$1/$BUILD_SENTINEL" ]; then
               echo "the build is not finished publishing (no sentinel): $1"
             elif [ ! -f "$1/CUBRID.tar.gz" ] && [ ! -d "$1/CUBRID" ]; then
@@ -807,15 +819,22 @@ jobs:
               echo "no build.meta: $1. Re-run with force_build=true"
             else
               meta_sha=$(awk -F= '/^sha=/ {print $2}' "$1/build.meta")
-              [ "$meta_sha" = "$SHA" ] || echo "meta sha($meta_sha) differs from the sha gate resolved($SHA)"
+              want=$(cat "$CI_ROOT/runs/$GITHUB_RUN_ID/build/$2/recipe" 2>/dev/null) || want=''
+              got=$(sed -n 's/^recipe=//p' "$1/build.meta")
+              if [ "$meta_sha" != "$SHA" ]; then
+                echo "meta sha($meta_sha) differs from the sha gate resolved($SHA)"
+              elif [ -z "$want" ] || [ "$got" != "$want" ]; then
+                echo "the published build was made with '${got:-no recorded recipe}', not this run's '${want:-unknown}'. Re-run the failed build job"
+              fi
             fi
           }
-          ids='{}'
+          ids='{}'; recipes='{}'
           for mode in $(for s in $SUITES_RUN; do attr "$s" build; done | sort -u); do
             dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$mode"
-            why=$(unusable "$dir")
+            why=$(unusable "$dir" "$mode")
             if [ -z "$why" ]; then
               ids=$(jq -c --arg m "$mode" --arg id "$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")" '.[$m] = $id' <<<"$ids")
+              recipes=$(jq -c --arg m "$mode" --arg r "$(sed -n 's/^recipe=//p' "$dir/build.meta")" '.[$m] = $r' <<<"$recipes")
             elif [ "$mode" = debug ]; then
               echo "::error::$why"; exit 1
             else
@@ -824,6 +843,7 @@ jobs:
             fi
           done
           echo "build_run_ids=$ids" >> "$GITHUB_OUTPUT"
+          echo "build_recipes=$recipes" >> "$GITHUB_OUTPUT"
 
       - name: GitHub App token
         id: app-token
@@ -977,6 +997,7 @@ jobs:
           SABOTAGE: ${{ needs.gate.outputs.sabotage }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           SHA: ${{ needs.gate.outputs.sha }}
+          BUILD_RECIPES: ${{ steps.build.outputs.build_recipes }}
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
@@ -995,6 +1016,7 @@ jobs:
             dir="$WORKDIR/$repo"
             root="$dir/$subdir"
             out="$rundir/$suite"
+            recipe=$(jq -r --arg m "$(attr "$suite" build)" '.[$m] // ""' <<<"$BUILD_RECIPES")
             unrun=0; short=0; gone=0; nfail=0; changed=0
 
             # After the previous step's checkout: its reset --hard brings $excl back.
@@ -1029,6 +1051,13 @@ jobs:
               [ -n "$prev_sha" ] || prev_sha=$(awk -F= '/^sha=/ {print $2}' "$srcdir/plan/split.meta" 2>/dev/null) || prev_sha=''
               if [ "$(printf '%s' "$prev_sha" | grep -c . || :)" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
                 echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA. A re-run only re-runs the same commit"
+                exit 1
+              fi
+              prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
+                -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
+              [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
+              if [ "$prev_recipe" != "$recipe" ]; then
+                echo "::error::run $RERUN_FROM tested a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
               # A shard that died whole left no result file for failed.list: carry its share.
@@ -1195,6 +1224,7 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
+              echo "build_recipe='$recipe'"
             } > "$out/plan/split.meta"
 
             case "$SABOTAGE" in
