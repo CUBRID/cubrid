@@ -2539,65 +2539,6 @@ ldr_fetch_att (LDR_CONTEXT *context, LDR_ATTDESC *attdesc)
 }
 
 /*
- * ldr_elem_token_type - the type parse_error () should name for a failed element
- *    return: DB_TYPE of the literal
- *    type(in): parser type of the token
- * Note:
- *    A collection element is converted to the literal's natural type, so this is
- *    what the token is, which is what parse_error () asks for. The collection
- *    domain would name the collection instead of the element.
- */
-static DB_TYPE
-ldr_elem_token_type (data_type type)
-{
-  switch (type)
-    {
-    case LDR_INT:
-      return DB_TYPE_INTEGER;
-    case LDR_NUMERIC:
-      return DB_TYPE_NUMERIC;
-    case LDR_DOUBLE:
-      return DB_TYPE_DOUBLE;
-    case LDR_FLOAT:
-      return DB_TYPE_FLOAT;
-    case LDR_STR:
-      return DB_TYPE_STRING;
-    case LDR_DATE:
-      return DB_TYPE_DATE;
-    case LDR_TIME:
-      return DB_TYPE_TIME;
-    case LDR_TIMESTAMP:
-      return DB_TYPE_TIMESTAMP;
-    case LDR_TIMESTAMPLTZ:
-      return DB_TYPE_TIMESTAMPLTZ;
-    case LDR_TIMESTAMPTZ:
-      return DB_TYPE_TIMESTAMPTZ;
-    case LDR_DATETIME:
-      return DB_TYPE_DATETIME;
-    case LDR_DATETIMELTZ:
-      return DB_TYPE_DATETIMELTZ;
-    case LDR_DATETIMETZ:
-      return DB_TYPE_DATETIMETZ;
-    case LDR_BSTR:
-    case LDR_XSTR:
-      return DB_TYPE_BIT;
-    case LDR_MONETARY:
-      return DB_TYPE_MONETARY;
-    case LDR_ELO_EXT:
-    case LDR_ELO_INT:
-      return DB_TYPE_BLOB;
-    case LDR_JSON:
-      return DB_TYPE_JSON;
-    default:
-      /* Except for LDR_NULL, the following five cannot reach here:
-       * LDR_COLLECTION, LDR_OID, LDR_CLASS_OID, LDR_SYS_USER, LDR_SYS_CLASS
-       */
-      assert (type == LDR_NULL);
-      return DB_TYPE_NULL;
-    }
-}
-
-/*
  * ldr_convert_elem_value - turn a collection element token into a DB_VALUE
  *    return: NO_ERROR or an error code
  *    context(in):
@@ -2622,7 +2563,7 @@ ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_
 
   db_make_null (val);
   CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (type) (str, len, attdesc->conv_att, val), context,
-		   ldr_elem_token_type (type), str);
+		   get_token_db_type (type), str);
 
 error_exit:
   return err;

@@ -370,6 +370,66 @@ namespace cubload
     return fallback_convert (LDR, str, str_size, attr, val);
   }
 
+  /*
+   * get_token_db_type - the type a message should name for a failed token
+   *    return: DB_TYPE of the literal
+   *    type(in): parser type of the token
+   * Note:
+   *    What the file said the token is, which is not where it was going. A message
+   *    about a token that would not parse has to name the token: the attribute domain
+   *    would name the column, and for a collection element it would name the
+   *    collection rather than the element.
+   */
+  DB_TYPE
+  get_token_db_type (const data_type type)
+  {
+    switch (type)
+      {
+      case LDR_INT:
+	return DB_TYPE_INTEGER;
+      case LDR_NUMERIC:
+	return DB_TYPE_NUMERIC;
+      case LDR_DOUBLE:
+	return DB_TYPE_DOUBLE;
+      case LDR_FLOAT:
+	return DB_TYPE_FLOAT;
+      case LDR_STR:
+	return DB_TYPE_STRING;
+      case LDR_DATE:
+	return DB_TYPE_DATE;
+      case LDR_TIME:
+	return DB_TYPE_TIME;
+      case LDR_TIMESTAMP:
+	return DB_TYPE_TIMESTAMP;
+      case LDR_TIMESTAMPLTZ:
+	return DB_TYPE_TIMESTAMPLTZ;
+      case LDR_TIMESTAMPTZ:
+	return DB_TYPE_TIMESTAMPTZ;
+      case LDR_DATETIME:
+	return DB_TYPE_DATETIME;
+      case LDR_DATETIMELTZ:
+	return DB_TYPE_DATETIMELTZ;
+      case LDR_DATETIMETZ:
+	return DB_TYPE_DATETIMETZ;
+      case LDR_BSTR:
+      case LDR_XSTR:
+	return DB_TYPE_BIT;
+      case LDR_MONETARY:
+	return DB_TYPE_MONETARY;
+      case LDR_ELO_EXT:
+      case LDR_ELO_INT:
+	return DB_TYPE_BLOB;
+      case LDR_JSON:
+	return DB_TYPE_JSON;
+      default:
+	/* Except for LDR_NULL, the following five cannot reach here:
+	 * LDR_COLLECTION, LDR_OID, LDR_CLASS_OID, LDR_SYS_USER, LDR_SYS_CLASS
+	 */
+	assert (type == LDR_NULL);
+	return DB_TYPE_NULL;
+      }
+  }
+
   conv_func &
   get_elem_conv_func (const data_type ldr_type)
   {

@@ -977,7 +977,14 @@ namespace cubload
     int error_code = func (tok.text (), tok.size (), &attr, &db_val);
     if (error_code == ER_DATE_CONVERSION)
       {
-	m_error_handler.log_date_time_conversion_error (tok.text (), pr_type_name (attr.get_domain ().type->get_id ()));
+	/*
+	 * Name the token, not the column. The file said "this is a date" and the date
+	 * is the thing that would not parse, so the attribute domain names the wrong
+	 * end of it: a collection attribute would call the element a set, and a
+	 * DATETIME column would call a date literal a datetime. The standalone loader
+	 * names the token here and this is the same answer.
+	 */
+	m_error_handler.log_date_time_conversion_error (tok.text (), pr_type_name (get_token_db_type (cons->type)));
       }
     else if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
       {
