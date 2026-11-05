@@ -3709,7 +3709,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         for (DeclParam dp : paramList.nodes) {
             if (dp instanceof DeclParamOut && !((DeclParamOut) dp).alsoIn) {
                 if (dp.typeSpec.type instanceof TypeRecord) {
-                    ret.add(String.format("%s[0].setNull(null);", ((DeclParamOut) dp).name));
+                    // a record OUT parameter is only for local or direct calls, which pass null
+                    ret.add(
+                            String.format(
+                                    "%s[0] = new %s();",
+                                    ((DeclParamOut) dp).name, dp.typeSpec.type.javaCode));
                 } else {
                     ret.add(String.format("%s[0] = null;", ((DeclParamOut) dp).name));
                 }
@@ -4088,16 +4092,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 // an exception, and the value written back is checked against the argument's type
                 // (e.g. its length or precision), as in a call through the server.
                 // An OUT (not IN OUT) parameter gets no value from the caller.
+                // A record of the same type is copied by copy() because the identity coercion
+                // would pass the caller's record object itself.
                 String paramType = getJavaCodeOfType(param.typeSpec);
+                String inVal;
+                if (!((DeclParamOut) param).alsoIn) {
+                    inVal = "null";
+                } else if (param.typeSpec.type instanceof TypeRecord
+                        && c instanceof Coercion.Identity) {
+                    inVal = "o" + i + "[0].copy()";
+                } else {
+                    inVal = c.javaCode("o" + i + "[0]");
+                }
                 allocCoercedOutArgs.add(
                         String.format(
-                                "%s[] p%d = new %s[] { %s };",
-                                paramType,
-                                i,
-                                paramType,
-                                ((DeclParamOut) param).alsoIn
-                                        ? c.javaCode("o" + i + "[0]")
-                                        : "null"));
+                                "%s[] p%d = new %s[] { %s };", paramType, i, paramType, inVal));
 
                 argsToLocal.append("p" + i);
 
@@ -4462,6 +4471,17 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             lines.add(String.format("    this.%s[0] = null;", f.e1));
         }
         lines.add(String.format("    return this;"));
+        lines.add("  }");
+
+        // copy method
+        List<String> copyArgs = new LinkedList<>();
+        for (Misc.Pair<String, Type> f : rec.selectList) {
+            copyArgs.add(String.format("this.%s[0]", f.e1));
+        }
+        lines.add(String.format("  %s copy() {", rec.javaCode));
+        lines.add(
+                String.format(
+                        "    return new %s().set(%s);", rec.javaCode, String.join(", ", copyArgs)));
         lines.add("  }");
 
         lines.add("}");
