@@ -523,8 +523,8 @@ jobs:
         run: |
           [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
-          mkdir -p "$BUILD_LOG_DIR"
-          printf '%s\n' "$BUILD_RECIPE" > "$BUILD_LOG_DIR/recipe"
+          { mkdir -p "$BUILD_LOG_DIR" && printf '%s\n' "$BUILD_RECIPE" > "$BUILD_LOG_DIR/recipe"; } ||
+            echo "::warning::could not write $BUILD_LOG_DIR/recipe, so plan will refuse to test this run's build"
           for d in "$BUILD_MIRROR/cubrid/.git" "$BUILD_MIRROR/cubrid.git"; do
             [ -d "$d" ] || {
               echo "::error::the node copy is not visible: $d. The pod template did not reach the pod, or gha-node-seed has not run"
@@ -809,7 +809,7 @@ jobs:
           want=$(cat "$CI_ROOT/runs/$GITHUB_RUN_ID/build/debug/recipe" 2>/dev/null) || want=''
           got=$(sed -n 's/^recipe=//p' "$dir/build.meta")
           [ -n "$want" ] && [ "$got" = "$want" ] || {
-            echo "::error::the published build was made with '${got:-no recorded recipe}', not this run's '${want:-unknown}': its rebuild failed or never ran"; exit 1; }
+            echo "::error::the published build was made with '${got:-no recorded recipe}', not this run's '${want:-unknown}'. Re-run the failed build job"; exit 1; }
           echo "build_recipe=$want" >> "$GITHUB_OUTPUT"
 
       - name: GitHub App token
@@ -1022,7 +1022,7 @@ jobs:
                 -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
               [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
               if [ "$prev_recipe" != "$BUILD_RECIPE" ]; then
-                echo "::error::run $RERUN_FROM tested a build made with '${prev_recipe:-no recorded recipe}', not '$BUILD_RECIPE'. A re-run only re-runs the same build. Use /run $suite"
+                echo "::error::run $RERUN_FROM tested a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$BUILD_RECIPE'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
               # A shard that died whole left no result file for failed.list: carry its share.
