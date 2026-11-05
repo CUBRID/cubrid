@@ -11360,6 +11360,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned
       && curr_spec->parts != NULL)
     {
+      PARTITION_SPEC_TYPE *part;
+
+      /* a previous execution of the scan (a subquery run again) leaves the partitions its last pruned outer row
+       * left out marked: open from all of them, the next outer row prunes again (CBRD-27866) */
+      for (part = curr_spec->parts; part != NULL; part = part->next)
+	{
+	  part->row_pruned = false;
+	}
+
       error_code = qexec_init_next_partition (thread_p, curr_spec, xasl);
       if (error_code != S_SUCCESS)
 	{

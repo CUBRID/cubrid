@@ -10758,6 +10758,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
   QO_NODE *inner_node;
+  QO_INFO *inner_info;
 
   if (join_type == JOIN_RIGHT)
     {
@@ -10818,10 +10819,11 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  goto exit;
 	}
+      inner_info = outer;
       inner_plan = qo_find_best_nljoin_inner_plan_on_info (outer_plan, outer, join_type, idx_join_plan_n);
       if (inner_plan == NULL)
 	{
-	  goto exit;
+	  goto outer_join_temp;
 	}
     }
   else
@@ -10852,10 +10854,11 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  goto exit;
 	}
+      inner_info = inner;
       inner_plan = qo_find_best_nljoin_inner_plan_on_info (outer_plan, inner, join_type, idx_join_plan_n);
       if (inner_plan == NULL)
 	{
-	  goto exit;
+	  goto outer_join_temp;
 	}
     }
 
@@ -10937,6 +10940,28 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  }
       }
   }
+
+outer_join_temp:
+  /* an outer join inner of partitions walked per outer row (qo_join_new ()) reads, for each outer row, every
+   * partition the row does not prune; the temp list of the inner, built once, stays a candidate for the cost to
+   * choose (CBRD-27866). An idx-join of the inner (qo_generate_join_index_scan ()) keeps the sequential inners out
+   * through idx_join_plan_n, even when that leaves no inner for the nl-join above, so the inner of the temp list is
+   * looked up without it, as before the walk. */
+  if (IS_OUTER_JOIN_TYPE (join_type))
+    {
+      QO_PLAN *temp_inner = qo_find_best_nljoin_inner_plan_on_info (outer_plan, inner_info, join_type, 0);
+
+      if (temp_inner != NULL && temp_inner->plan_type == QO_PLANTYPE_SCAN
+	  && QO_NODE_IS_CLASS_HIERARCHY (temp_inner->plan_un.scan.node)
+	  && qo_nl_inner_partitions_walk_per_row (temp_inner->plan_un.scan.node))
+	{
+	  n +=
+	    qo_check_plan_on_info (info,
+				   qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, outer_plan,
+						qo_sort_new (temp_inner, temp_inner->order, SORT_TEMP), nl_join_terms,
+						duj_terms, afj_terms, sarged_terms, pinned_subqueries, hash_terms));
+	}
+    }
 
 exit:
 

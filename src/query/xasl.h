@@ -600,8 +600,6 @@ struct cte_proc_node
 #define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc is a partitioned NL inner, or comes after one or after a
 							 * NL semi/anti inner in the scan chain: driven per outer row */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
-#define XASL_NL_PER_ROW_IF_MEMO		(0x1 << 30)	/* a partitioned NL inner driven per outer row only while it has a memo
-							 * (qexec_settle_per_row_walk ()) */
 #define XASL_NL_PER_ROW_PARTITIONS	(0x1 << 30)	/* a partitioned NL inner the optimizer drives per outer row: its partition
 							 * is opened on a memo miss (qexec_open_row_partition ()) */
 
