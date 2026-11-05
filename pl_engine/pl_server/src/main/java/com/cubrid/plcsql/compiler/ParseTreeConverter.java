@@ -177,7 +177,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
 
             if (bodyContext.body() != null) {
-                boolean saved = enterPkgInit();
+                enterPkgInit();
 
                 // the package initializer is treated as a top level routine in the loop
                 // optimization: see previsitRoutine_decl() and visitRoutine_decl()
@@ -192,7 +192,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     routineDefNestLevel--;
                     sqlUsesOfTopLevelRoutine = null;
                     routineLoopOptimizablesStack.pop();
-                    exitPkgInit(saved);
+                    exitPkgInit();
                 }
                 if (bodyContext.body().label_name() != null) {
                     checkLabel(name, bodyContext.body().label_name()); // s096
@@ -1657,11 +1657,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclConst ret = (DeclConst) symbolStack.getPrevisitedDecl(name);
         assert ret != null && ret.ctx == ctx; // by the previsit
 
-        boolean saved = enterPkgInit();
+        if (routineDefNestLevel == 0) {
+            enterPkgInit();
+        }
         try {
             ret.val = visitDefault_value_part(ctx.default_value_part());
         } finally {
-            exitPkgInit(saved);
+            if (routineDefNestLevel == 0) {
+                exitPkgInit();
+            }
         }
         ret.hidden = false;
 
@@ -1713,11 +1717,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         DeclVar ret = (DeclVar) symbolStack.getPrevisitedDecl(name);
         assert ret != null && ret.ctx == ctx; // by the previsit
 
-        boolean saved = enterPkgInit();
+        if (routineDefNestLevel == 0) {
+            enterPkgInit();
+        }
         try {
             ret.val = visitDefault_value_part(ctx.default_value_part());
         } finally {
-            exitPkgInit(saved);
+            if (routineDefNestLevel == 0) {
+                exitPkgInit();
+            }
         }
         ret.hidden = false;
 
@@ -3393,17 +3401,23 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     // the package initialization code is visited: see isPkgInitUnderParallelEnable
-    private boolean enterPkgInit() {
-        boolean saved = parallelEnabled;
-        if (isPkgInitUnderParallelEnable && routineDefNestLevel == 0 && topLevelStmt != CREATE_SP) {
+    private void enterPkgInit() {
+        assert topLevelStmt != CREATE_SP;
+        assert !parallelEnabled;
+        assert !visitingPkgInitCodeUnderParallelEnable;
+
+        if (isPkgInitUnderParallelEnable) {
             parallelEnabled = true;
             visitingPkgInitCodeUnderParallelEnable = true;
         }
-        return saved;
     }
 
-    private void exitPkgInit(boolean saved) {
-        parallelEnabled = saved;
+    private void exitPkgInit() {
+        assert topLevelStmt != CREATE_SP;
+        assert parallelEnabled == isPkgInitUnderParallelEnable;
+        assert visitingPkgInitCodeUnderParallelEnable == isPkgInitUnderParallelEnable;
+
+        parallelEnabled = false;
         visitingPkgInitCodeUnderParallelEnable = false;
     }
 
