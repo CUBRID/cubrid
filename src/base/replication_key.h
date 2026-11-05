@@ -39,8 +39,13 @@ extern int repl_key_pack (const char *name, int type, int count, const REPL_KEY_
 extern bool repl_key_unpack_log (const char *data, int length, const char **class_name, const char **key,
 				 int *key_length, const char **metadata, int *metadata_length);
 extern bool repl_key_is_valid (const char *data, int length);
-extern bool repl_key_equal (const char *left, int left_length, const char *right, int right_length);
-extern void repl_key_describe (const char *data, int length, char *output, int capacity);
+
+/* A row log carries only the digest of the descriptor the master used; the slave digests its own descriptor
+ * and compares the two. */
+#define REPL_KEY_DIGEST_SIZE 8
+extern void repl_key_digest (const char *data, int length, char *digest);
+extern bool repl_key_matches_digest (const char *digest, int digest_length, const char *data, int length);
+extern void repl_key_describe_digest (const char *digest, int digest_length, char *output, int capacity);
 
 #if !defined (SERVER_MODE)
 struct db_object;

@@ -147,8 +147,8 @@ static int locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEO
 				       BTID * rkey_btid);
 static int locator_repl_get_payload (LC_COPYAREA * area, LC_COPYAREA_ONEOBJ * obj, const char **key, int *key_length,
 				     const char **metadata, int *metadata_length, RECDES * recdes);
-static int locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const char *metadata,
-				   int metadata_length, BTID * btid);
+static int locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * key_value,
+				   const char *metadata, int metadata_length, BTID * btid);
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
@@ -6895,7 +6895,7 @@ locator_repl_get_payload (LC_COPYAREA * area, LC_COPYAREA_ONEOBJ * obj, const ch
       }
 
     *metadata = PTR_ALIGN (*key + *key_length, INT_ALIGNMENT);
-    if (*metadata > end || *metadata_length > end - *metadata || !repl_key_is_valid (*metadata, *metadata_length))
+    if (*metadata > end || *metadata_length > end - *metadata || *metadata_length != REPL_KEY_DIGEST_SIZE)
       {
 	goto invalid;
       }
@@ -6925,8 +6925,8 @@ invalid:
  * Note: The caller holds the force-scancache schema lock.
  */
 static int
-locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const char *metadata,
-			int metadata_length, BTID * btid)
+locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * key_value,
+			const char *metadata, int metadata_length, BTID * btid)
 {
   int cache_index = -1;
   OR_CLASSREP *representation = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &cache_index);
@@ -6956,23 +6956,42 @@ locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const ch
 	}
     }
 
-  if (error == NO_ERROR && !repl_key_equal (metadata, metadata_length, local, local_length))
+  if (error == NO_ERROR && !repl_key_matches_digest (metadata, metadata_length, local, local_length))
     {
-      char master_description[1024], local_description[1024], message[3072];
+      /* the message names the key value and the two digests; the master's descriptor is not in the log, and
+       * either side's detail is read from its own catalog */
+      char master_digest_text[64], local_digest_text[64], message[1024];
+      char local_digest[REPL_KEY_DIGEST_SIZE];
       char *class_name = NULL;
+      char *key_text = NULL;
 
-      repl_key_describe (metadata, metadata_length, master_description, sizeof (master_description));
-      repl_key_describe (local, local_length, local_description, sizeof (local_description));
+      repl_key_describe_digest (metadata, metadata_length, master_digest_text, sizeof (master_digest_text));
+      if (local == NULL)
+	{
+	  snprintf (local_digest_text, sizeof (local_digest_text), "no RK");
+	}
+      else
+	{
+	  repl_key_digest (local, local_length, local_digest);
+	  repl_key_describe_digest (local_digest, REPL_KEY_DIGEST_SIZE, local_digest_text, sizeof (local_digest_text));
+	}
 
       error = heap_get_class_name (thread_p, class_oid, &class_name);
       if (error == NO_ERROR)
 	{
-	  snprintf (message, sizeof (message), "Replication key mismatch for class '%s': master (%s), slave (%s)",
-		    class_name ? class_name : "(unknown)", master_description, local_description);
+	  key_text = pr_valstring (key_value);
+	  snprintf (message, sizeof (message),
+		    "Replication key mismatch for class '%s': key (%s), master (%s), slave (%s)",
+		    class_name ? class_name : "(unknown)", key_text ? key_text : "(unknown)", master_digest_text,
+		    local_digest_text);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, message);
 	  error = ER_HA_GENERIC_ERROR;
 	}
 
+      if (key_text != NULL)
+	{
+	  free_and_init (key_text);
+	}
       if (class_name != NULL)
 	{
 	  free_and_init (class_name);
@@ -7088,7 +7107,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	}
       if (error_code == NO_ERROR)
 	{
-	  error_code = locator_repl_check_key (thread_p, &obj->class_oid, metadata, metadata_length, &rkey_btid);
+	  error_code = locator_repl_check_key (thread_p, &obj->class_oid, &key_value, metadata, metadata_length,
+					       &rkey_btid);
 	}
       if (error_code == NO_ERROR)
 	{

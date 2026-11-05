@@ -5110,7 +5110,7 @@ end:
 /*
  * la_can_log_repl_sql() - check whether a SQL log can use the row log's RK
  *   return: true if the local RK matches, false otherwise
- *   item(in): row log with the master's RK descriptor
+ *   item(in): row log with the digest of the master's RK descriptor
  *   class_obj(in): local class used to select an RK
  * Note: A different RK could make the SQL log's WHERE clause target another row.
  */
@@ -5122,7 +5122,13 @@ la_can_log_repl_sql (LA_ITEM * item, DB_OBJECT * class_obj)
 
   er_stack_push ();
   int error = repl_key_from_class (class_obj, &local, &length);
-  bool matches = error == NO_ERROR && repl_key_equal (item->rk_metadata, item->rk_metadata_length, local, length);
+  bool matches = false;
+
+  if (error == NO_ERROR)
+    {
+      matches = repl_key_matches_digest (item->rk_metadata, item->rk_metadata_length, local, length);
+    }
+
   if (local != NULL)
     {
       free_and_init (local);

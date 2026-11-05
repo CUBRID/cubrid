@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "replication_key.h"
+#include "porting.h"
 #include "error_manager.h"
 #include "intl_support.h"
 #include "object_domain.h"
@@ -364,7 +365,7 @@ repl_key_unpack_log (const char *data, int length, const char **class_name, cons
   r.remaining -= padding;
 
   if (!repl_key_get_int (&r, metadata_length) || *metadata_length != r.remaining
-      || !repl_key_is_valid (r.data, *metadata_length))
+      || *metadata_length != REPL_KEY_DIGEST_SIZE)
     {
       return false;
     }
@@ -466,38 +467,78 @@ repl_key_is_valid (const char *data, int length)
 }
 
 /*
- * repl_key_equal() - compare two RK descriptors byte for byte
- *   return: true only if the descriptors match and are valid
- *   left, right(in): packed descriptors
- *   left_length, right_length(in): descriptor lengths in bytes
- */
-bool
-repl_key_equal (const char *left, int left_length, const char *right, int right_length)
-{
-  return left != NULL && right != NULL && left_length > 0 && left_length == right_length
-    && memcmp (left, right, left_length) == 0 && repl_key_is_valid (left, left_length);
-}
-
-/*
- * repl_key_describe() - format RK fields needed to diagnose a mismatch
+ * repl_key_digest() - digest a packed descriptor for a row log
  *   return: void
  *   data(in): packed descriptor
  *   length(in): descriptor length in bytes
- *   output(out): description buffer
+ *   digest(out): REPL_KEY_DIGEST_SIZE bytes, the 64-bit FNV-1a hash of data stored big-endian
+ */
+void
+repl_key_digest (const char *data, int length, char *digest)
+{
+  UINT64 hash = 14695981039346656037ULL;
+
+  for (int i = 0; i < length; i++)
+    {
+      hash ^= (unsigned char) data[i];
+      hash *= 1099511628211ULL;
+    }
+
+  for (int i = REPL_KEY_DIGEST_SIZE - 1; i >= 0; i--)
+    {
+      digest[i] = (char) (hash & 0xff);
+      hash >>= 8;
+    }
+}
+
+/*
+ * repl_key_matches_digest() - compare a row log's digest with a local descriptor
+ *   return: true only if the digest is well-formed, the descriptor is valid and their digests are equal
+ *   digest(in): digest read from the row log
+ *   digest_length(in): its length in bytes
+ *   data(in): local packed descriptor
+ *   length(in): descriptor length in bytes
+ */
+bool
+repl_key_matches_digest (const char *digest, int digest_length, const char *data, int length)
+{
+  char local_digest[REPL_KEY_DIGEST_SIZE];
+
+  if (digest == NULL || digest_length != REPL_KEY_DIGEST_SIZE || !repl_key_is_valid (data, length))
+    {
+      return false;
+    }
+
+  repl_key_digest (data, length, local_digest);
+
+  return memcmp (digest, local_digest, REPL_KEY_DIGEST_SIZE) == 0;
+}
+
+/*
+ * repl_key_describe_digest() - format a digest for an error message or a log dump
+ *   return: void
+ *   digest(in): digest bytes
+ *   digest_length(in): its length in bytes
+ *   output(out): text buffer, "digest=<16 hex digits>" or "(invalid RK digest)"
  *   capacity(in): size of output in bytes
  */
 void
-repl_key_describe (const char *data, int length, char *output, int capacity)
+repl_key_describe_digest (const char *digest, int digest_length, char *output, int capacity)
 {
   if (capacity <= 0)
     {
       return;
     }
 
-  if (!repl_key_parse (data, length, output, capacity))
+  if (digest == NULL || digest_length != REPL_KEY_DIGEST_SIZE)
     {
-      snprintf (output, capacity, "%s", data == NULL || length == 0 ? "(no RK)" : "(invalid RK metadata)");
+      snprintf (output, capacity, "(invalid RK digest)");
+      return;
     }
+
+  snprintf (output, capacity, "digest=%02x%02x%02x%02x%02x%02x%02x%02x", (unsigned char) digest[0],
+	    (unsigned char) digest[1], (unsigned char) digest[2], (unsigned char) digest[3], (unsigned char) digest[4],
+	    (unsigned char) digest[5], (unsigned char) digest[6], (unsigned char) digest[7]);
 }
 
 #if !defined (SERVER_MODE)

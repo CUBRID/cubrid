@@ -73,7 +73,7 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
   const char *class_name, *key_bytes, *metadata;
   int key_length, metadata_length;
   DB_VALUE key;
-  char description[1024];
+  char description[64];
   if (!repl_key_unpack_log ((const char *) data, length, &class_name, &key_bytes, &key_length,
 			    &metadata, &metadata_length))
     {
@@ -81,7 +81,7 @@ repl_data_insert_log_dump (FILE * fp, int length, void *data)
       return;
     }
   or_unpack_mem_value ((char *) key_bytes, &key);
-  repl_key_describe (metadata, metadata_length, description, sizeof (description));
+  repl_key_describe_digest (metadata, metadata_length, description, sizeof (description));
   fprintf (fp, "      class_name: %s\n      RK: %s\n      key_value: ", class_name, description);
   db_value_print (&key);
   pr_clear_value (&key);
@@ -447,6 +447,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       int packed_key_len = 0;
       char *key_metadata = NULL;
       int metadata_length = 0;
+      char key_digest[REPL_KEY_DIGEST_SIZE];
 
       if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR || class_name == NULL)
 	{
@@ -476,18 +477,17 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  return error;
 	}
 
+      /* the row log carries the digest of the descriptor, not the descriptor: the slave only needs to know
+       * whether its own descriptor is the same one */
+      repl_key_digest (key_metadata, metadata_length, key_digest);
+      free_and_init (key_metadata);
+      metadata_length = REPL_KEY_DIGEST_SIZE;
+
       repl_rec->tde_encrypted = tde_algo != TDE_ALGORITHM_NONE;
 
       repl_rec->length = OR_INT_SIZE;	/* packed_key_value_size */
       repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
-      if (metadata_length > INT_MAX - repl_rec->length - (int) OR_INT_SIZE - (int) MAX_ALIGNMENT)
-	{
-	  free_and_init (key_metadata);
-	  free_and_init (class_name);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "RK log metadata is too large.");
-	  return ER_HA_GENERIC_ERROR;
-	}
       repl_rec->length += metadata_length + OR_INT_SIZE + MAX_ALIGNMENT;
 
       ptr = (char *) malloc (repl_rec->length);
@@ -496,7 +496,6 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  error = ER_REPL_ERROR;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "can't allocate memory");
 	  free_and_init (class_name);
-	  free_and_init (key_metadata);
 	  return error;
 	}
 
@@ -514,10 +513,9 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       ptr = or_pack_string_with_length (ptr, class_name, strlen);
       ptr = or_pack_mem_value (ptr, key_dbvalue, &packed_key_len);
       ptr = or_pack_int (ptr, metadata_length);
-      memcpy (ptr, key_metadata, metadata_length);
+      memcpy (ptr, key_digest, metadata_length);
       ptr += metadata_length;
       repl_rec->length = CAST_BUFLEN (ptr - repl_rec->repl_data);
-      free_and_init (key_metadata);
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
