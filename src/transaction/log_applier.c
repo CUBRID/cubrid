@@ -401,6 +401,14 @@ struct la_ovf_page_list
   LA_OVF_PAGE_LIST *next;	/* next page */
 };
 
+/* a recdes lent past the pool while an OOS group is held; its db_page_size area follows the struct */
+typedef struct la_recdes_overflow LA_RECDES_OVERFLOW;
+struct la_recdes_overflow
+{
+  LA_RECDES_OVERFLOW *next;
+  RECDES recdes;
+};
+
 typedef struct la_recdes_pool LA_RECDES_POOL;
 struct la_recdes_pool
 {
@@ -409,6 +417,8 @@ struct la_recdes_pool
   int next_idx;
   int db_page_size;
   int num_recdes;
+  int num_lent;			/* entries lent since the last flush */
+  LA_RECDES_OVERFLOW *overflow;
   bool is_initialized;
 };
 
@@ -509,6 +519,7 @@ static bool la_retry_on_error (int errid);
 
 static int la_init_recdes_pool (int page_size, int num_recdes);
 static RECDES *la_assign_recdes_from_pool (void);
+static void la_release_recdes_overflow (void);
 static int la_realloc_recdes_data (RECDES * recdes, int data_size);
 static void la_clear_recdes_pool (void);
 
@@ -2364,6 +2375,8 @@ la_clear_recdes_pool (void)
       return;
     }
 
+  la_release_recdes_overflow ();
+
   if (la_recdes_pool.recdes_arr != NULL)
     {
       for (i = 0; i < la_recdes_pool.num_recdes; i++)
@@ -2442,6 +2455,29 @@ la_assign_recdes_from_pool (void)
       return NULL;
     }
 
+  /* Every entry still backs an unflushed item, which happens only while an OOS group is held past the flush
+   * limit (la_flush_repl_items): lend an area of its own rather than overwrite one. */
+  if (la_recdes_pool.num_lent >= la_recdes_pool.num_recdes)
+    {
+      LA_RECDES_OVERFLOW *entry;
+      size_t size = sizeof (LA_RECDES_OVERFLOW) + la_recdes_pool.db_page_size;
+
+      entry = (LA_RECDES_OVERFLOW *) malloc (size);
+      if (entry == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return NULL;
+	}
+
+      entry->recdes.data = (char *) (entry + 1);
+      entry->recdes.area_size = la_recdes_pool.db_page_size;
+      entry->recdes.length = 0;
+      entry->next = la_recdes_pool.overflow;
+      la_recdes_pool.overflow = entry;
+
+      return &entry->recdes;
+    }
+
   recdes = &la_recdes_pool.recdes_arr[la_recdes_pool.next_idx];
   assert (recdes != NULL && recdes->data != NULL);
 
@@ -2457,8 +2493,35 @@ la_assign_recdes_from_pool (void)
   recdes->length = 0;
   la_recdes_pool.next_idx++;
   la_recdes_pool.next_idx %= la_recdes_pool.num_recdes;
+  la_recdes_pool.num_lent++;
 
   return recdes;
+}
+
+/*
+ * la_release_recdes_overflow() - free the recdes lent past the pool and give the whole pool back
+ *
+ * Note: call it only once the repl objects borrowing from the pool are gone (flushed or cleared).
+ */
+static void
+la_release_recdes_overflow (void)
+{
+  LA_RECDES_OVERFLOW *entry;
+
+  while (la_recdes_pool.overflow != NULL)
+    {
+      entry = la_recdes_pool.overflow;
+      la_recdes_pool.overflow = entry->next;
+
+      if (entry->recdes.area_size > la_recdes_pool.db_page_size)
+	{
+	  /* recdes->data was realloced by la_realloc_recdes_data */
+	  free_and_init (entry->recdes.data);
+	}
+      free_and_init (entry);
+    }
+
+  la_recdes_pool.num_lent = 0;
 }
 
 /*
@@ -2506,6 +2569,8 @@ la_init_recdes_pool (int page_size, int num_recdes)
 
       la_recdes_pool.db_page_size = page_size;
       la_recdes_pool.num_recdes = num_recdes;
+      la_recdes_pool.num_lent = 0;
+      la_recdes_pool.overflow = NULL;
       la_recdes_pool.is_initialized = true;
     }
   else if (la_recdes_pool.db_page_size != page_size || la_recdes_pool.num_recdes != num_recdes)
@@ -5776,13 +5841,14 @@ la_flush_repl_items (bool immediate)
 
   if (la_Info.num_unflushed == 0)
     {
+      /* nothing borrows from the pool: take back what failed items were lent */
+      la_release_recdes_overflow ();
       return NO_ERROR;
     }
 
-  /* Never hold a group back past the num_unflushed limit: the recdes pool is a ring (la_assign_recdes_from_pool)
-   * whose entries repl objects only borrow, so a later record would silently overwrite a waiting one. Forcing an
-   * incomplete group at least makes the server report missing OOS metadata. */
-  if (immediate == false && la_Info.pending_oos_flush && la_Info.num_unflushed < LA_MAX_UNFLUSHED_REPL_ITEMS)
+  /* An OOS group has to reach the server in one call with its heap record, so hold it even past the limit; the
+   * pool lends the items beyond it areas of their own. A group is one row's OOS values: LOB chunks never hold one. */
+  if (immediate == false && la_Info.pending_oos_flush)
     {
       return NO_ERROR;
     }
@@ -5891,6 +5957,7 @@ la_flush_repl_items (bool immediate)
       la_Info.num_unflushed = 0;
       la_Info.pending_oos_flush = false;
       __gv_loc_repl.ws_clear_all_repl_objs ();
+      la_release_recdes_overflow ();
     }
 
   return error;
@@ -6165,6 +6232,11 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
   /* retrieve the target record description */
   error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, false);
@@ -6401,6 +6473,11 @@ la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
   if (rebuild_oos)
     {
@@ -6499,7 +6576,6 @@ end:
 
   if (error != NO_ERROR)
     {
-      la_Info.pending_oos_flush = false;
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
   else
@@ -6509,7 +6585,7 @@ end:
 
       /* An ordinary OOS record must be forced with the heap record that refers to it (the server fills the
        * placeholder with the OID the same call produced). An internal LOB chunk must not hold the flush back:
-       * the chain has any length, the slave rebuilds it across calls, and held items would wrap the recdes pool. */
+       * the chain has any length, the slave rebuilds it across calls, and holding it would keep it in memory. */
       /* [리뷰] 200청크를 넘는 체인은 중간에 flush되어 다음 호출로 이어진다.
        * 트랜잭션별 LA_APPLY 목록이라 다른 트랜잭션 항목이 끼지 않는다.
        * 호출 사이의 체인 연결은 tdes의 oos_repl_lob_chains가 맡는다. */
@@ -6567,6 +6643,11 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
   is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   /* get the target log page */
@@ -6625,7 +6706,6 @@ la_apply_insert_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      la_Info.pending_oos_flush = false;
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
   else
@@ -7132,6 +7212,9 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  LA_SLEEP (10, 0);
 		  continue;
 		}
+
+	      /* the item is dropped (a retry keeps it): an OOS group it belonged to cannot complete, stop holding */
+	      la_Info.pending_oos_flush = false;
 	    }
 	}
 
