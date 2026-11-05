@@ -19,9 +19,9 @@
 /*
  * test_oos_vacuum_server.cpp - SERVER_MODE tests for actual vacuum OOS code paths
  *
- * Exercises the real vacuum_heap_oos_delete_within_sysop() -> heap_recdes_get_oos_refs() ->
- * oos_delete() code path by crafting minimal heap RECDES with OOS inline data
- * and calling vacuum_heap_oos_delete_within_sysop() directly.
+ * Exercises the real REMOVE path vacuum_heap_oos_log_reclaim_intent() -> heap_recdes_get_oos_refs() ->
+ * sysop commit -> reclaim postpone -> oos_delete() by crafting minimal heap RECDES with OOS inline data
+ * (reclaim_record_in_sysop), and the RVOOS_NOTIFY_VACUUM consumer (ADR-0008).
  *
  * Also tests heap_recdes_get_oos_refs() and heap_recdes_contains_oos()
  * directly for OOS OID extraction from crafted heap records.
@@ -151,15 +151,32 @@ make_stub_reference_stale (RECDES &rec, int n_oos, int index)
   OR_PUT_BIGINT (stamp_ptr, &packed);
 }
 
-/* Undo image as vacuum's forward walk receives it: an INT16 record type followed by the record body. */
-static std::vector<char>
-make_undo_image (const RECDES &rec)
+/* The REMOVE path as vacuum_heap_record runs it: the reclaim intent of rec's chains is recorded in a sysop
+ * whose commit reclaims them, and the pages the reclaim empties are collected (ADR-0008). */
+static int
+reclaim_record_in_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *rec,
+			 VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
 {
-  std::vector<char> undo (sizeof (INT16) + (std::size_t) rec.length);
-  INT16 type = rec.type;
-  std::memcpy (undo.data (), &type, sizeof (INT16));
-  std::memcpy (undo.data () + sizeof (INT16), rec.data, (std::size_t) rec.length);
-  return undo;
+  VACUUM_OOS_EMPTIED_PAGES ignored;
+  OID owner = OID_INITIALIZER;
+  log_sysop_start (thread_p);
+  int err = vacuum_heap_oos_log_reclaim_intent (thread_p, oos_vfid, rec, &owner);
+  if (err != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+      return err;
+    }
+  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, emptied_pages != nullptr ? emptied_pages : &ignored);
+  return NO_ERROR;
+}
+
+/* The RVOOS_NOTIFY_VACUUM payload a committed UPDATE leaves for rec's chains. */
+static std::vector<char>
+make_notify_payload (const VFID &oos_vfid, const RECDES &rec)
+{
+  OOS_REF_VECTOR refs;
+  EXPECT_EQ (heap_recdes_get_oos_refs (&rec, refs), NO_ERROR);
+  return oos_test_make_reclaim_intent_payload (oos_vfid, refs);
 }
 
 static bool
@@ -360,7 +377,7 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosRefsRejectsStubFieldPastRecordE
 }
 
 // ============================================================================
-// TC-V4: vacuum_heap_oos_delete_within_sysop — single OOS record via actual code path
+// TC-V4: vacuum_heap_oos_log_reclaim_intent + sysop commit — single OOS record via actual code path
 // ============================================================================
 TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
 {
@@ -388,7 +405,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* OOS record must be gone */
@@ -402,7 +419,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
 }
 
 // ============================================================================
-// TC-V5: vacuum_heap_oos_delete_within_sysop — multiple OOS columns in one heap record
+// TC-V5: vacuum_heap_oos_log_reclaim_intent + sysop commit — multiple OOS columns in one heap record
 // ============================================================================
 TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
 {
@@ -435,7 +452,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All 3 OOS records must be gone */
@@ -457,7 +474,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
 }
 
 // ============================================================================
-// TC-V6: vacuum_heap_oos_delete_within_sysop — multi-chunk OOS record
+// TC-V6: vacuum_heap_oos_log_reclaim_intent + sysop commit — multi-chunk OOS record
 // ============================================================================
 TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
 {
@@ -490,7 +507,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Multi-chunk OOS must be fully gone */
@@ -504,7 +521,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
 }
 
 // ============================================================================
-// TC-V7: vacuum_heap_oos_delete_within_sysop — 160KB OOS (stress)
+// TC-V7: vacuum_heap_oos_log_reclaim_intent + sysop commit — 160KB OOS (stress)
 // ============================================================================
 TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
 {
@@ -528,7 +545,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES after {};
@@ -616,7 +633,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
-	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
+	  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  recdes_free_data_area (&heap_rec);
@@ -659,7 +676,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	}
     }
 
-  /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
+  /* The commit ends the test's transaction; reclaim does not wait for it (ADR-0008). */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_FALSE (emptied_pages.empty ());
   err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
@@ -727,7 +744,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All N OOS records must be gone */
@@ -742,7 +759,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
 	}
     }
 
-  /* Commit first: the LSA gate defers pages whose deleter is still a live undo source. */
+  /* The commit ends the test's transaction; reclaim does not wait for it (ADR-0008). */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_FALSE (emptied_pages.empty ());
   err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
@@ -819,7 +836,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkip
   const long log_offset = error_log_size ();
   ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
   er_clear ();
-  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &stale_rec, &emptied_pages), NO_ERROR);
+  ASSERT_EQ (reclaim_record_in_sysop (thread_p, &oos_vfid, &stale_rec, &emptied_pages), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
   EXPECT_TRUE (emptied_pages.empty ());
   EXPECT_TRUE (chunk_is_present (reused_oid)) << "the live occupant must survive the stale reference";
@@ -836,14 +853,14 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkip
   RECDES live_rec {};
   ASSERT_EQ (build_heap_recdes_with_oos ({live_oid}, { (INT64) live_chunk.length}, live_rec), NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr d4 (&live_rec, recdes_free_data_area);
-  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &live_rec, &emptied_pages), NO_ERROR);
+  ASSERT_EQ (reclaim_record_in_sysop (thread_p, &oos_vfid, &live_rec, &emptied_pages), NO_ERROR);
   EXPECT_FALSE (chunk_is_present (live_oid)) << "the live reference must reclaim its chain";
   EXPECT_TRUE (chunk_is_present (reused_oid));
 }
 
 // ============================================================================
 // Test fixture: a real heap file with its own OOS file, for the paths that resolve the OOS file
-// from the heap (forward walk, eager delete). Mirrors the real-vacuum fixture without DML.
+// from the heap (UPDATE notification consumer, eager delete). Mirrors the real-vacuum fixture without DML.
 // ============================================================================
 class OosVacuumHeapSeamServer : public ::testing::Test
 {
@@ -888,9 +905,10 @@ class OosVacuumHeapSeamServer : public ::testing::Test
 };
 
 // ============================================================================
-// TC-V11: forward walk — a live reference is reclaimed, a stale one is skipped (CBRD-26950)
+// TC-V11: UPDATE notification consumer — a live reference is reclaimed, a stale one is skipped, and a
+// rerun of the same notification is a quiet no-op (CBRD-26950, ADR-0008)
 // ============================================================================
-TEST_F (OosVacuumHeapSeamServer, ForwardWalkReclaimsLiveReferenceAndSkipsStaleOne)
+TEST_F (OosVacuumHeapSeamServer, NotifyConsumerReclaimsLiveReferenceAndSkipsStaleOne)
 {
   OID live_oid, reused_oid;
   RECDES live_rec {}, stale_rec {};
@@ -899,29 +917,28 @@ TEST_F (OosVacuumHeapSeamServer, ForwardWalkReclaimsLiveReferenceAndSkipsStaleOn
   test_oos_utils::auto_freed_recdes_ptr d1 (&live_rec, recdes_free_data_area);
   test_oos_utils::auto_freed_recdes_ptr d2 (&stale_rec, recdes_free_data_area);
   make_stub_reference_stale (stale_rec, 1, 0);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
-  VACUUM_OOS_VFID_MEMO memo;
   notification_log_scope admit_notifications;
   const long log_offset = error_log_size ();
   ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
 
-  std::vector<char> stale_undo = make_undo_image (stale_rec);
+  std::vector<char> stale_notify = make_notify_payload (oos_vfid, stale_rec);
+  ASSERT_FALSE (stale_notify.empty ());
   er_clear ();
-  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, stale_undo.data (), (int) stale_undo.size (), &hfid.vfid,
-	     &memo), NO_ERROR);
+  ASSERT_EQ (vacuum_oos_reclaim_notified_chains (thread_p, stale_notify.data (), (int) stale_notify.size ()),
+	     NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
-  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the forward walk must skip a stale OOS reference";
+  EXPECT_TRUE (chunk_is_present (reused_oid)) << "the consumer must skip a stale OOS reference";
 
-  std::vector<char> live_undo = make_undo_image (live_rec);
-  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, live_undo.data (), (int) live_undo.size (), &hfid.vfid,
-	     &memo), NO_ERROR);
+  std::vector<char> live_notify = make_notify_payload (oos_vfid, live_rec);
+  ASSERT_EQ (vacuum_oos_reclaim_notified_chains (thread_p, live_notify.data (), (int) live_notify.size ()), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
-  EXPECT_FALSE (chunk_is_present (live_oid)) << "the forward walk must reclaim a live reference";
+  EXPECT_FALSE (chunk_is_present (live_oid)) << "the consumer must reclaim a live reference";
   EXPECT_TRUE (chunk_is_present (reused_oid));
 
-  /* A block retry replays the already-reclaimed request: still a clean success, and still quiet. */
-  ASSERT_EQ (vacuum_forward_walk_reclaim_oos (thread_p, live_undo.data (), (int) live_undo.size (), &hfid.vfid,
-	     &memo), NO_ERROR);
+  /* A block retry, or the second notification of a rerun postpone: still a clean success, and quiet. */
+  ASSERT_EQ (vacuum_oos_reclaim_notified_chains (thread_p, live_notify.data (), (int) live_notify.size ()), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
       << "vacuum skips and retries are expected and must stay quiet";
@@ -961,8 +978,12 @@ TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOn
   ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
   heap_oos_test_reset_skipped_cleanup_diagnostics ();
   er_clear ();
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &stale_rec, NULL, "unit test stale"), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR) << "user DML on the eager path must report success cleanly";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  EXPECT_EQ (er_errid (), NO_ERROR) << "the commit on the eager path must report success cleanly";
   EXPECT_TRUE (chunk_is_present (reused_oid)) << "the eager path must skip a stale OOS reference";
   /* Unlike vacuum, the eager path diagnoses the skip: the row it completes was the chain's only reference. */
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
@@ -970,12 +991,21 @@ TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOn
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
 
+  /* An aborted DML discards its reclaim intent: the restored record's chain stays (ADR-0008). */
+  ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &live_rec, NULL, "unit test aborted"), NO_ERROR);
+  EXPECT_TRUE (chunk_is_present (live_oid)) << "the eager path must not delete before the commit";
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+  EXPECT_TRUE (chunk_is_present (live_oid)) << "an aborted DML must leave its chain intact";
+
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &live_rec, NULL, "unit test live"), NO_ERROR);
+  EXPECT_TRUE (chunk_is_present (live_oid)) << "the eager path must not delete before the commit";
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   EXPECT_FALSE (chunk_is_present (live_oid)) << "the eager path must reclaim a live reference";
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "a real reclamation is not diagnosed";
 
   /* An UPDATE whose post-image still references the chain keeps it, quietly. */
   ASSERT_EQ (heap_oos_delete_unreferenced (thread_p, &context, &kept_rec, &kept_rec, "unit test kept"), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   EXPECT_TRUE (chunk_is_present (kept_oid));
   EXPECT_TRUE (chunk_is_present (reused_oid));
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
