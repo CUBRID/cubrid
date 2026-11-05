@@ -3130,7 +3130,9 @@ struct hv_pred_ctx
 
 /* a HAVING aggregate the planner prices with a value, compared with a user host variable: COUNT (*) > ?,
  * SUM (x) <= ?, MAX (x) BETWEEN ? AND ? and the like (CBRD-27811). Planned with unbound markers, the planner
- * takes a default for it, so the first execution must replan under the values. */
+ * takes a default for it, so the first execution must replan under the values. The walks look at the whole
+ * statement, not at the clause: the same comparison in a select list is taken too, which costs a replan
+ * that does not change the plan. */
 static bool
 histogram_is_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node)
 {

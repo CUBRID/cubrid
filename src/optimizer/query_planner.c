@@ -1202,6 +1202,11 @@ qo_having_aggregate_term (QO_HAVING_ENV * henv, PT_NODE * pred)
 	}
       if (op == PT_EQ || op == PT_NE)
 	{
+	  if (op == PT_EQ && agg->info.function.function_type == PT_SUM)
+	    {
+	      /* SUM (x) = c is no row of the group at c / group_size, which mostly falls between the values of x */
+	      return -1.0;
+	    }
 	  p = qo_having_equal (henv, agg, value);
 	  /* <>, NOT BETWEEN and NOT IN fail on a NULL aggregate too */
 	  return (p < 0.0 || op == PT_EQ) ? p : MAX (qo_having_has_value (henv, agg) - p, 0.0);
@@ -1229,8 +1234,9 @@ qo_having_aggregate_term (QO_HAVING_ENV * henv, PT_NODE * pred)
 
     case PT_IS_IN:
     case PT_IS_NOT_IN:
-      if (!pt_is_aggregate_function (parser, agg))
+      if (!pt_is_aggregate_function (parser, agg) || (op == PT_IS_IN && agg->info.function.function_type == PT_SUM))
 	{
+	  /* SUM (x) IN (...) is not priced, as SUM (x) = c */
 	  return -1.0;
 	}
       p = qo_having_in (henv, agg, other);
