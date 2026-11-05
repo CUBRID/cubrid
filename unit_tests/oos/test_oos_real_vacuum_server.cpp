@@ -1142,6 +1142,25 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
       return count_occurrences (server_log (), "Processing log block " + std::to_string (block) + " is interrupted");
     }
 
+    /* The server log time of each run's "interrupted" line, in milliseconds since midnight. */
+    std::vector<long long> interrupted_times_ms (VACUUM_LOG_BLOCKID block)
+    {
+      const std::string log = server_log ();
+      const std::string line = "Processing log block " + std::to_string (block) + " is interrupted";
+      std::vector<long long> times;
+      for (size_t pos = log.find (line); pos != std::string::npos; pos = log.find (line, pos + line.size ()))
+	{
+	  int h, m, s, ms;
+	  const size_t stamp = log.rfind ("Time: ", pos);
+	  if (stamp != std::string::npos
+	      && sscanf (log.c_str () + stamp, "Time: %*d/%*d/%*d %d:%d:%d.%d", &h, &m, &s, &ms) == 4)
+	    {
+	      times.push_back (((h * 60LL + m) * 60 + s) * 1000 + ms);
+	    }
+	}
+      return times;
+    }
+
     /* Release builds see vacuum queue on the held header. Debug builds never wait there, so they see the first
      * deferral instead. */
     bool vacuum_met_header (PAGE_PTR header_page, int deferrals_before)
@@ -1616,6 +1635,64 @@ TEST_F (OosRealVacuumHeaderHeld, FailingHeapCostsOneLookupPerRun)
 	  runs, lookups);
   fflush (stdout);
   EXPECT_EQ (lookups, runs) << "a run of the log block looked up the failing heap's OOS file once per page";
+}
+
+// A failure that comes back at once must not re-run its log block on every vacuum master iteration.
+TEST_F (OosRealVacuumHeaderHeld, ImmediateFailureRerunsAtMostOncePerSecond)
+{
+#if defined (NDEBUG)
+  GTEST_SKIP () << "a real page latch timeout already spaces the runs";
+#endif
+  OID heap_oid = OID_INITIALIZER, oos_oid = OID_INITIALIZER;
+  insert_row_on_new_page (false, heap_oid, oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+  ASSERT_TRUE (close_block_with_oos_fillers (current_log_blockid ()));
+  ASSERT_TRUE (wait_for_vacuum ([&heap_oid] { return insert_id_vacuumed (heap_oid); }, 60))
+      << "vacuum did not finish the insert";
+
+  ASSERT_EQ (heap_delete_mvcc (hfid, class_oid, scan_cache, heap_oid), NO_ERROR);
+  const VACUUM_LOG_BLOCKID block = current_log_blockid ();
+  commit_current_tran ();
+
+  PGBUF_WATCHER header_watcher;
+  const bool held = hold_header_and_close_blocks (header_watcher, block);
+  /* The first failure's call stack dump resolves symbols for seconds, so the window starts after the second run. */
+  const bool rerun = held && wait_for_vacuum ([this, block] { return interrupted_runs (block) >= 2; }, 120);
+  const int window_s = 10;
+  int runs = -1;
+  if (rerun)
+    {
+      const int before = interrupted_runs (block);
+      std::this_thread::sleep_for (std::chrono::seconds (window_s));
+      runs = interrupted_runs (block) - before;
+    }
+  /* A run logs its interruption before the master learns of it, so the next run starts more than the interval after
+   * that line. The first gap counts too. */
+  const long long day_ms = 24 * 60 * 60 * 1000LL;
+  const long long retry_interval_ms = 1000;
+  const std::vector<long long> times = interrupted_times_ms (block);
+  long long min_gap_ms = -1;
+  for (size_t i = 1; i < times.size (); i++)
+    {
+      const long long gap_ms = (times[i] - times[i - 1] + day_ms) % day_ms;
+      min_gap_ms = min_gap_ms < 0 ? gap_ms : std::min (min_gap_ms, gap_ms);
+    }
+  const bool kept = !row_removed (slot_record_type (heap_oid)) && !oos_unreadable (oos_oid);
+  release_header (header_watcher);
+  printf ("[CBRD-27933] immediate failure: block %lld interrupted %d times in %d s, %zu runs in all with %lld ms "
+	  "between the closest two\n", (long long) block, runs, window_s, times.size (), min_gap_ms);
+  fflush (stdout);
+
+  ASSERT_TRUE (held) << "OOS filler failed to close the delete's log block";
+  ASSERT_TRUE (rerun) << "vacuum did not run the delete's log block twice while the header was held";
+  EXPECT_LE (runs, window_s + 1) << "vacuum re-ran an interrupted log block more often than once a second";
+  EXPECT_GE (runs, 1) << "vacuum stopped re-running the interrupted log block";
+  EXPECT_GE (min_gap_ms, retry_interval_ms)
+      << "vacuum re-ran an interrupted log block less than a second after it failed";
+  EXPECT_TRUE (kept) << "vacuum removed the deleted row or its OOS value while the header was held";
+  EXPECT_TRUE (wait_for_vacuum ([this, &oos_oid] { return oos_unreadable (oos_oid); }, 30))
+      << "vacuum never reclaimed the OOS value after the header was released";
+  EXPECT_TRUE (row_removed (slot_record_type (heap_oid))) << "vacuum never removed the deleted row";
 }
 
 int

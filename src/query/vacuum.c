@@ -63,6 +63,7 @@
 #include "util_func.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <stack>
@@ -312,6 +313,7 @@ class vacuum_job_cursor
 
     VACUUM_LOG_BLOCKID m_blockid;     // current cursor blockid
     VACUUM_LOG_BLOCKID m_retry_blockid; // earliest interrupted job to revisit on the next master iteration
+    std::chrono::steady_clock::time_point m_next_retry_time;  // no revisit before this time
     VACUUM_DATA_PAGE *m_page;         // loaded page of blockid or null
     INT16 m_index;                    // loaded index of blockid or INDEX_NOT_FOUND
 };
@@ -8624,6 +8626,7 @@ vacuum_data_page::get_first_blockid () const
 vacuum_job_cursor::vacuum_job_cursor ()
   : m_blockid (VACUUM_NULL_LOG_BLOCKID)
   , m_retry_blockid (VACUUM_NULL_LOG_BLOCKID)
+  , m_next_retry_time ()
   , m_page (NULL)
   , m_index (vacuum_data_page::INDEX_NOT_FOUND)
 {
@@ -8700,21 +8703,35 @@ vacuum_job_cursor::start_job_on_current_entry () const
   vacuum_set_dirty_data_page_dont_free (thread_p, m_page);
 }
 
+// A job that fails at once would otherwise run again on every master iteration.
+static const std::chrono::milliseconds VACUUM_RETRY_INTERRUPTED_INTERVAL (1000);
+
 int
 vacuum_job_cursor::force_data_update (bool retry_interrupted)
 {
   int mark_finished;
+  const bool had_interrupted = m_retry_blockid != VACUUM_NULL_LOG_BLOCKID;
 
   unload ();   // can't be loaded while updating
   mark_finished = vacuum_Data.update (&m_retry_blockid);
-  if (retry_interrupted && m_retry_blockid != VACUUM_NULL_LOG_BLOCKID)
+  if (m_retry_blockid != VACUUM_NULL_LOG_BLOCKID)
     {
-      // Revisit failed jobs once per master iteration. Mid-iteration updates must keep forward progress.
-      if (m_retry_blockid < m_blockid)
+      const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now ();
+      if (!had_interrupted)
         {
-          m_blockid = m_retry_blockid;
+          // Count the interval from the first failure, whichever update sees it.
+          m_next_retry_time = now + VACUUM_RETRY_INTERRUPTED_INTERVAL;
         }
-      m_retry_blockid = VACUUM_NULL_LOG_BLOCKID;
+      // Revisit failed jobs at most once per VACUUM_RETRY_INTERRUPTED_INTERVAL, and only at the start of a master
+      // iteration. Mid-iteration updates must keep forward progress.
+      if (retry_interrupted && now >= m_next_retry_time)
+        {
+          if (m_retry_blockid < m_blockid)
+            {
+              m_blockid = m_retry_blockid;
+            }
+          m_retry_blockid = VACUUM_NULL_LOG_BLOCKID;
+        }
     }
   readjust_to_vacuum_data_changes ();
   load ();
