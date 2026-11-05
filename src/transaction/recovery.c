@@ -886,7 +886,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVOOS_DELETE,
    "RVOOS_DELETE",
-   oos_rv_redo_insert,
+   NULL,
    oos_rv_redo_delete,
    NULL,
    NULL},
@@ -902,27 +902,29 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
-  /* TODO: slot reserved for RVOOS_NOTIFY_VACUUM; kept as a no-op stub so the positionally
-   * indexed RV_fun[] stays contiguous. See recovery.h for the matching enum-side TODO. */
   {RVOOS_NOTIFY_VACUUM,
    "RVOOS_NOTIFY_VACUUM",
    vacuum_rv_es_nop,
    vacuum_rv_es_nop,
-   NULL, NULL},
+   oos_rv_dump_reclaim_intent,
+   NULL},
   {RVREPL_DUMMY_OOS_RECORD,
    "RVREPL_DUMMY_OOS_RECORD",
    NULL,
    NULL,
    NULL,
    repl_data_insert_log_dump},
-  /* Crash recovery replays the forward REC_NEWHOME delete identically to RVHF_DELETE; the OOS
-   * reclaim is an additional vacuum-time action driven off the undo image, not part of redo/undo.
-   * Handlers MUST mirror RVHF_DELETE's (heap_rv_undo_delete / heap_rv_redo_delete). */
-  {RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
-   "RVHF_DELETE_NEWHOME_NOTIFY_VACUUM",
-   heap_rv_undo_delete,
-   heap_rv_redo_delete,
-   log_rv_dump_hexa,
+  {RVOOS_RECLAIM_POSTPONE,
+   "RVOOS_RECLAIM_POSTPONE",
+   NULL,
+   oos_rv_reclaim_on_postpone,
+   NULL,
+   oos_rv_dump_reclaim_intent},
+  {RVOOS_UPDATE_DROP_POSTPONE,
+   "RVOOS_UPDATE_DROP_POSTPONE",
+   NULL,
+   oos_rv_update_drop_on_postpone,
+   NULL,
    log_rv_dump_hexa}
 };
 

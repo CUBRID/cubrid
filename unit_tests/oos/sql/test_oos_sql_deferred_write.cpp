@@ -1537,6 +1537,8 @@ TEST_F (OosSqlDeferredWrite, DuplicateProbesDoNotPersistCandidateValues)
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 	  EXPECT_EQ (bridge_oos_debug_counters_get ().insert_many_requests, replace ? 1U : 2U);
 #endif
+	  /* The replaced row's chains are reclaimed when the statement's transaction commits (ADR-0008). */
+	  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
 	  DB_QUERY_RESULT *stats = nullptr;
 	  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part", &stats), NO_ERROR);
 	  int count = -1;
@@ -1579,6 +1581,8 @@ TEST_F (OosSqlDeferredWrite, DuplicateProbesReadCompositeKeys)
 	{
 	  ASSERT_EQ (exec_sql (sql), 2) << db_error_string (1);
 	}
+      /* The replaced chains are reclaimed when the transaction commits (ADR-0008). */
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
       DB_QUERY_RESULT *stats = nullptr;
       ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &stats), NO_ERROR);
       int count = -1;
@@ -1622,6 +1626,8 @@ TEST_F (OosSqlDeferredWrite, DuplicateProbesPreserveFunctionIndexesAndCompressed
 	  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE a = REPEAT('Ab', 2000) "
 				       "AND b = 1", &count), NO_ERROR);
 	  EXPECT_EQ (count, 1);
+	  /* The replaced chains are reclaimed when the transaction commits (ADR-0008). */
+	  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
 	  DB_QUERY_RESULT *stats = nullptr;
 	  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &stats), NO_ERROR);
 	  EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &count), NO_ERROR);

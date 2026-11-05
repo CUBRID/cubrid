@@ -226,6 +226,8 @@ static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
 static LOG_LSA *log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDES * tdes,
 				       LOG_LSA * savept_lsa);
+static void log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+					     int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid);
 static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes,
 				       LOG_DATA_ADDR * addr);
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
@@ -2311,6 +2313,44 @@ void
 log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int num_crumbs,
 			const LOG_CRUMB * crumbs)
 {
+  log_append_undo_crumbs_internal (thread_p, rcvindex, addr, num_crumbs, crumbs, MVCCID_NULL);
+}
+
+/*
+ * log_append_mvcc_undo_data_with_mvccid - log an MVCC undo record under a given MVCCID
+ *
+ * return: nothing
+ *
+ *   rcvindex(in): Index to recovery function; an MVCC operation
+ *   addr(in): Address of data; vfid names the file vacuum checks for a drop
+ *   length(in): Length of undo data
+ *   data(in): Undo data
+ *   mvccid(in): MVCCID the record carries
+ *
+ * NOTE: For a record appended after its transaction completed its MVCC info, e.g. by a commit postpone.
+ *       Vacuum reads the record once mvccid precedes every active snapshot (RVOOS_NOTIFY_VACUUM).
+ */
+void
+log_append_mvcc_undo_data_with_mvccid (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				       int length, const void *data, MVCCID mvccid)
+{
+  LOG_CRUMB undo_crumb;
+
+  assert (LOG_IS_MVCC_OPERATION (rcvindex));
+  assert (MVCCID_IS_VALID (mvccid));
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
+  undo_crumb.data = data;
+  undo_crumb.length = length;
+
+  log_append_undo_crumbs_internal (thread_p, rcvindex, addr, 1, &undo_crumb, mvccid);
+}
+
+static void
+log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				 int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid)
+{
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
@@ -2374,7 +2414,8 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
    * NOW do the UNDO ...
    */
 
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL,
+					  explicit_mvccid);
   if (node == NULL)
     {
       assert (false);
@@ -7563,7 +7604,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  assert (rv_err == NO_ERROR);
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM || rcvindex == RVOOS_NOTIFY_VACUUM)
 	{
 	  /* do nothing */
 	}

@@ -19,10 +19,12 @@
 /*
  * test_oos_sql_eager_cleanup.cpp - SA_MODE eager OOS cleanup tests
  *
- * In SA_MODE (non-MVCC), both UPDATE and DELETE eagerly delete the old/orphaned
- * OOS records inline before the heap slot is overwritten/removed
+ * In SA_MODE (non-MVCC), both UPDATE and DELETE record the old/orphaned OOS
+ * records as a reclaim intent when the heap slot is overwritten/removed
  * (heap_update_home / heap_update_relocation for UPDATE;
- * heap_delete_home / heap_delete_relocation for DELETE). These tests verify the
+ * heap_delete_home / heap_delete_relocation for DELETE), and the transaction's
+ * commit reclaims them (ADR-0008). Within one transaction the old and new
+ * values therefore coexist; the page bounds below allow for that. These tests verify the
  * eager cleanup mechanism by observing OOS file page counts: with eager cleanup
  * the page count stays bounded across churn instead of growing unboundedly.
  *
@@ -126,6 +128,9 @@ TEST_F (OosEagerCleanup, MultipleUpdatesPagesBounded)
   ASSERT_GT (pages_after_insert, 0);
 #endif
 
+  /* The reclaim of a replaced chain runs when the transaction commits (ADR-0008), so one transaction holds its
+   * old and new values together; the bound is that later transactions reuse what earlier ones freed. */
+  int pages_after_first_round = -1;
   const char *patterns[] = { "BB", "CC", "DD" };
   for (int u = 0; u < 3; u++)
     {
@@ -139,12 +144,18 @@ TEST_F (OosEagerCleanup, MultipleUpdatesPagesBounded)
 	  ASSERT_GE (rc, 0);
 	}
       db_commit_transaction ();
+      if (u == 0)
+	{
+	  pages_after_first_round = get_oos_page_count ("t_eager");
+	}
     }
 
 #if defined(SA_MODE)
   int pages_after_updates = get_oos_page_count ("t_eager");
-  EXPECT_LE (pages_after_updates, pages_after_insert + 1)
-      << "Eager cleanup: 15 old OOS records should all be deleted during UPDATE";
+  EXPECT_LE (pages_after_first_round, 2 * pages_after_insert)
+      << "one transaction may hold its old and new values together, no more";
+  EXPECT_LE (pages_after_updates, pages_after_first_round + 1)
+      << "Eager cleanup: the old OOS records of each committed UPDATE round must be reclaimed and reused";
 #endif
 
   int count = 0;
@@ -199,8 +210,16 @@ TEST_F (OosEagerCleanup, MultiOosColumnUpdateCleanup)
 
 #if defined(SA_MODE)
   int pages_after_update = get_oos_page_count ("t_eager");
-  EXPECT_LE (pages_after_update, pages_after_insert + 1)
-      << "Both OOS columns' old records should be eagerly cleaned during UPDATE";
+  /* The commit reclaims the old chains (ADR-0008), so until then the transaction holds both versions. */
+  EXPECT_LE (pages_after_update, 2 * pages_after_insert)
+      << "Both OOS columns' old records should be eagerly cleaned at the UPDATE's commit";
+  {
+    VFID oos_vfid;
+    OOS_STATS_INFO info;
+    ASSERT_TRUE (get_oos_vfid_for_table ("t_eager", &oos_vfid));
+    ASSERT_EQ (oos_get_stats_by_vfid (thread_get_thread_entry_info (), oos_vfid, &info), NO_ERROR);
+    EXPECT_EQ (info.num_recs, 10) << "only the 10 new values' chunks may remain after the commit";
+  }
 #endif
 
   int len1 = 0, len2 = 0;
@@ -241,6 +260,7 @@ TEST_F (OosEagerCleanup, UpdateChurnStress)
   ASSERT_GT (pages_after_insert, 0);
 #endif
 
+  int pages_after_first_round = -1;
   const char *patterns[] = { "11", "22", "33", "44", "55", "66", "77", "88", "99", "FF" };
   for (int round = 0; round < 10; round++)
     {
@@ -254,12 +274,18 @@ TEST_F (OosEagerCleanup, UpdateChurnStress)
 	  ASSERT_GE (rc, 0);
 	}
       db_commit_transaction ();
+      if (round == 0)
+	{
+	  pages_after_first_round = get_oos_page_count ("t_eager");
+	}
     }
 
 #if defined(SA_MODE)
   int pages_after_churn = get_oos_page_count ("t_eager");
-  EXPECT_LE (pages_after_churn, pages_after_insert + 2)
-      << "100 old OOS versions should all be eagerly reclaimed";
+  /* Each round's transaction holds its old and new values until its commit reclaims the old ones (ADR-0008). */
+  EXPECT_LE (pages_after_first_round, 2 * pages_after_insert);
+  EXPECT_LE (pages_after_churn, pages_after_first_round + 2)
+      << "100 old OOS versions should all be reclaimed by their commits and the pages reused";
 #endif
 
   int count = 0;
@@ -301,6 +327,9 @@ TEST_F (OosEagerCleanup, StepByStepLifecycleWithPageCounts)
 
   /* Step 2: UPDATE all records 3 times — observe eager cleanup */
   const char *patterns[] = { "BB", "CC", "DD" };
+#if defined(SA_MODE)
+  int pages_after_first_round = -1;
+#endif
   for (int u = 0; u < 3; u++)
     {
       for (int i = 1; i <= 10; i++)
@@ -318,12 +347,18 @@ TEST_F (OosEagerCleanup, StepByStepLifecycleWithPageCounts)
       int pages_now = get_oos_page_count ("t_eager");
       printf ("[Step 2] After UPDATE round %d: %d OOS pages (should stay ~%d)\n",
 	      u + 1, pages_now, pages_after_insert);
+      if (u == 0)
+	{
+	  pages_after_first_round = pages_now;
+	}
 #endif
     }
 
 #if defined(SA_MODE)
   int pages_after_updates = get_oos_page_count ("t_eager");
-  EXPECT_LE (pages_after_updates, pages_after_insert + 2)
+  /* One round's transaction holds its old and new values until its commit reclaims the old ones (ADR-0008). */
+  EXPECT_LE (pages_after_first_round, 2 * pages_after_insert);
+  EXPECT_LE (pages_after_updates, pages_after_first_round + 2)
       << "Eager cleanup keeps page count bounded across 3 update rounds";
 #endif
 

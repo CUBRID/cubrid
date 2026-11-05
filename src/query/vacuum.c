@@ -2588,7 +2588,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
- * oos_emptied_pages_out (out) : OOS pages the deletes emptied are appended, each once; the caller
+ * oos_emptied_pages_out (out) : OOS pages the sysop's reclaim emptied are appended, each once; the caller
  *				 reclaims them AFTER unfixing the home page, never here.
  */
 static int
@@ -2688,11 +2688,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      /* Delete OOS records (if any) before committing the sysop. */
+      /* Record the OOS chains (if any) as a reclaim intent of this sysop; its commit reclaims them. */
       if (has_oos)
 	{
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_emptied_pages_out);
+	  OID owner_oid = { helper->home_vpid.pageid, helper->crt_slotid, helper->home_vpid.volid };
+	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2700,7 +2700,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	    }
 	}
 
-      log_sysop_commit (thread_p);
+      vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -2743,23 +2743,25 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
     case REC_HOME:
       if (has_oos)
 	{
-	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS chunk deletes must share the one
-	   * sysop opened above so a crash between them cannot leave dangling OOS references. The bulk path
-	   * would split them across sysop boundaries. The slot was already cleared via spage_vacuum_slot;
-	   * commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE cases. */
+	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS reclaim intent must share the one
+	   * sysop opened above. Its commit reclaims the chains with redo-only deletes; its abort discards the
+	   * intent and undoes the slot removal, so no chunk delete is ever undone (ADR-0008, CBRD-27781). The
+	   * bulk path would split them across sysop boundaries. The slot was already cleared via
+	   * spage_vacuum_slot; commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE
+	   * cases. */
 	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_emptied_pages_out);
+	  OID owner_oid = { helper->home_vpid.pageid, helper->crt_slotid, helper->home_vpid.volid };
+	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
 
-	  log_sysop_commit (thread_p);
+	  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
 	}
       else
 	{
@@ -3589,8 +3591,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   bool dummy_continue_check = false;
 #endif /* SA_MODE */
 
-  VACUUM_OOS_VFID_MEMO oos_vfid_memo;
-
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return NO_ERROR;
@@ -3735,26 +3735,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WORKER,
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
-
-	  /* Free the old OOS values an UPDATE left behind. Only RVHF_UPDATE_NOTIFY_VACUUM should reach here:
-	   *
-	   *   - UPDATE writes new OOS OIDs. The old ones survive only in the undo image; the live slot no
-	   *     longer points at them, so vacuum's normal REMOVE path never sees them. Reading the undo
-	   *     image is the only way left to free them.
-	   *   - DELETE keeps the same OIDs, so REMOVE frees them already. Freeing them here too would be a
-	   *     double free and trip an assert -- so the check below lets UPDATE in but keeps DELETE out.
-	   *   - The same check keeps other heap ops out; vacuum_process_log_record does not even unpack their
-	   *     undo image. */
-	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
-	    {
-	      error_code =
-		vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
-	      if (error_code != NO_ERROR)
-		{
-		  vacuum_check_shutdown_interruption (thread_p, error_code);
-		  goto end;
-		}
-	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
 	{
@@ -3886,14 +3866,12 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	    }
 	  db_private_free_and_init (thread_p, es_uri);
 	}
-      else if (log_record_data.rcvindex == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
+      else if (log_record_data.rcvindex == RVOOS_NOTIFY_VACUUM)
 	{
-	  /* MVCC remove_old_forward forward REC_NEWHOME delete (heap_update_relocation). The old forward
-	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
-	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
-	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
-	  error_code =
-	    vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  /* A committed UPDATE dropped these OOS chains (A', ADR-0008). Vacuum reaches the record only after the
+	   * UPDATE's MVCCID precedes every active snapshot, so no reader can still reach them through the old
+	   * version. */
+	  error_code = vacuum_oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size);
 	  if (error_code != NO_ERROR)
 	    {
 	      vacuum_check_shutdown_interruption (thread_p, error_code);
@@ -4407,13 +4385,10 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
-      && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
-      && log_record_data->rcvindex != RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
+      && log_record_data->rcvindex != RVOOS_NOTIFY_VACUUM)
     {
-      /* Vacuum needs the undo image only for these ops, so anything else returns now without
-       * unpacking it: BTREE ops, the two OOS forward-walk tags -- RVHF_UPDATE_NOTIFY_VACUUM and
-       * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM -- and ES (RVES_NOTIFY_VACUUM). */
+      /* No need to unpack undo data */
       return NO_ERROR;
     }
 
