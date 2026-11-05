@@ -122,7 +122,14 @@ extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
 extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
     const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx);
 
+/* Report that a record with no OOS values still exceeds max_size and becomes REC_BIGONE. The report is a
+ * notification, so the server error log keeps it with default parameters, and it leaves the caller's error
+ * state unchanged. */
+extern void heap_oos_warn_bigone_without_oos (const OID *class_oid, int record_size, int max_size);
+
 #if defined(CUBRID_UNIT_TEST_ENABLED)
+extern int heap_oos_test_bigone_without_oos_warnings ();
+
 /* Observability of the skipped-cleanup diagnostic: how many notifications heap_oos_delete_unreferenced
  * emitted since the last reset, and the first outcome (-1 when none) and chain count (0 when none) the
  * last one carried. */

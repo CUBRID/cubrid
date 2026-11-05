@@ -1510,7 +1510,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1392 The database was created by a CUBRID build with an incompatible storage format (format %1$d, this build %2$d). Unload it with the build that created it, then load it into a database created by this build.
 
-1393 Last Error
+1393 A record of class %3$d|%4$d|%5$d needs %1$d bytes, more than the maximum record size (%2$d bytes), and is stored as a multipage overflow record (REC_BIGONE) without out-of-row storage (OOS). To keep the record within one page, reduce its fixed-length columns, small variable-length columns, or STORAGE FORCE_INLINE columns.
+
+1394 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

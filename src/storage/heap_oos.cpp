@@ -298,6 +298,7 @@ static std::atomic<bool> heap_Oos_test_fail_before_vfid_lookup { false };
 static std::atomic<int> heap_Oos_test_skipped_cleanup_diagnostics { 0 };
 static std::atomic<int> heap_Oos_test_last_skipped_cleanup_outcome { -1 };
 static std::atomic<int> heap_Oos_test_last_skipped_cleanup_count { 0 };
+static std::atomic<int> heap_Oos_test_bigone_without_oos_warnings { 0 };
 #endif
 
 static void heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
@@ -1095,7 +1096,26 @@ heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const 
 #endif
 }
 
+void
+heap_oos_warn_bigone_without_oos (const OID *class_oid, int record_size, int max_size)
+{
+  er_stack_push ();
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_BIGONE_WITHOUT_OOS, 5, record_size, max_size,
+	  OID_AS_ARGS (class_oid));
+  er_stack_pop ();
+
 #if defined(CUBRID_UNIT_TEST_ENABLED)
+  heap_Oos_test_bigone_without_oos_warnings.fetch_add (1, std::memory_order_relaxed);
+#endif
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+int
+heap_oos_test_bigone_without_oos_warnings ()
+{
+  return heap_Oos_test_bigone_without_oos_warnings.load (std::memory_order_relaxed);
+}
+
 int
 heap_oos_test_skipped_cleanup_notifications ()
 {

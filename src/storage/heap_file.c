@@ -14268,6 +14268,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
+  if (!has_oos && heap_is_big_length ((int) inline_size_after_oos))
+    {
+      heap_oos_warn_bigone_without_oos (&attr_info->class_oid, (int) inline_size_after_oos, heap_Maxslotted_reclength);
+    }
+
   if (has_oos)
     {
       /* Retain selected values until routing, or publish immediately for legacy callers. */

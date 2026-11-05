@@ -40,6 +40,7 @@
 #include <vector>
 
 #include "test_oos_sql_common.hpp"
+#include "heap_oos.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1154,15 +1155,17 @@ TEST_F (OosSqlStorage, ForceInlineValueAssignedByUpdateStaysInline)
   EXPECT_EQ (bits, 8000 * 8);
 }
 
-TEST_F (OosSqlStorage, ForceInlineAllowsNonOosBigone)
+TEST_F (OosSqlStorage, ForceInlineNonOosBigoneIsStoredWithWarning)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_INLINE, b BIT VARYING)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
+  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
   rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ", NULL)").c_str ());
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
+  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
 
   OOS_STATS_INFO stats;
   rc = get_oos_stats ("t_oos_stg", &stats);
@@ -1175,17 +1178,76 @@ TEST_F (OosSqlStorage, ForceInlineAllowsNonOosBigone)
   EXPECT_EQ (bits, 17000 * 8);
 }
 
+TEST_F (OosSqlStorage, FixedTypeNonOosBigoneIsStoredWithWarning)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT(136000))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES (1, CAST(REPEAT('AA', 17000) AS BIT(136000)))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
+
+  int bits = 0;
+  rc = fetch_single_int ("SELECT BIT_LENGTH(a) FROM t_oos_stg WHERE id = 1", &bits);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (bits, 17000 * 8);
+}
+
+TEST_F (OosSqlStorage, UpdateIntoNonOosBigoneWarns)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_INLINE)");
+  ASSERT_GE (rc, 0);
+  rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (100) + ")").c_str ());
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
+  rc = exec_sql (("UPDATE t_oos_stg SET a = " + uncompressed_bit_varying (17000) + " WHERE id = 1").c_str ());
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
+
+  int bits = 0;
+  rc = fetch_single_int ("SELECT BIT_LENGTH(a) FROM t_oos_stg WHERE id = 1", &bits);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (bits, 17000 * 8);
+}
+
+TEST_F (OosSqlStorage, OosBackedLargeRecordDoesNotWarn)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
+  rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ")").c_str ());
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings (), warnings_before);
+
+  OOS_STATS_INFO stats;
+  rc = get_oos_stats ("t_oos_stg", &stats);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (stats.has_oos_file, 1);
+  EXPECT_GE (stats.recs_sumlen, 17000);
+}
+
 TEST_F (OosSqlStorage, ForceInlineWithOosBigoneIsRejectedWithoutOrphanChain)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_INLINE, b BIT VARYING)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
+  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
   rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ", "
 		  + uncompressed_bit_varying (1000) + ")").c_str ());
   int errid = er_errid ();
   EXPECT_LT (rc, 0);
   EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings (), warnings_before);
   db_abort_transaction ();
 
   int count = -1;
