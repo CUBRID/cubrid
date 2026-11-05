@@ -86,7 +86,11 @@ namespace cubschema
     CT_SYNONYM_NAME,			// "_db_synonym"
     CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
     CT_TRIGGER_NAME,		// "_db_trigger"
-    CT_HISTOGRAM_NAME		// "_db_histogram"
+    CT_HISTOGRAM_NAME,		// "_db_histogram"
+    CT_SENSITIVITY_LABEL_NAME,	// "_db_sensitivity_label"
+    CT_SENSITIVITY_LABEL_GRADE_NAME,	// "_db_sensitivity_label_grade"
+    CT_SENSITIVITY_LABEL_INFO_TYPE_NAME,	// "_db_sensitivity_label_info_type"
+    CT_SENSITIVITY_LABEL_SOURCE_NAME	// "_db_sensitivity_label_source"
   };
 
   static const std::vector <std::string> sm_system_vclass_names = []()
@@ -120,7 +124,11 @@ namespace cubschema
       CTV_CHARSET_NAME,		// "db_charset"
       CTV_SERVER_NAME,		// "db_server"
       CTV_SYNONYM_NAME,			// "db_synonym"
-      CTV_HISTOGRAM_NAME		// "db_histogram"
+      CTV_HISTOGRAM_NAME,		// "db_histogram"
+      CTV_SENSITIVITY_LABEL_NAME,	// "db_sensitivity_label"
+      CTV_SENSITIVITY_LABEL_GRADE_NAME,	// "db_sensitivity_label_grade"
+      CTV_SENSITIVITY_LABEL_INFO_TYPE_NAME,	// "db_sensitivity_label_info_type"
+      CTV_SENSITIVITY_LABEL_SOURCE_NAME	// "db_sensitivity_label_source"
     };
 
     const std::string prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";

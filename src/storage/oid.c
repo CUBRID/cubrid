@@ -67,6 +67,10 @@ static OID oid_DB_root_class = { 0, 0, 0 };
 static OID oid_DBServer_class = { 0, 0, 0 };
 static OID oid_Synonym_class = { 0, 0, 0 };
 static OID oid_Histogram_class = { 0, 0, 0 };
+static OID oid_Sensitivity_label_class = { 0, 0, 0 };
+static OID oid_Sensitivity_label_grade_class = { 0, 0, 0 };
+static OID oid_Sensitivity_label_info_type_class = { 0, 0, 0 };
+static OID oid_Sensitivity_label_source_class = { 0, 0, 0 };
 
 static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
@@ -114,6 +118,10 @@ const OID_CACHE_ENTRY oid_Cache[OID_CACHE_SIZE] = {
   {&oid_Synonym_class, CT_SYNONYM_NAME},
   {&oid_Stored_proc_code_class, CT_STORED_PROC_CODE_NAME},
   {&oid_Histogram_class, CT_HISTOGRAM_NAME},
+  {&oid_Sensitivity_label_class, CT_SENSITIVITY_LABEL_NAME},
+  {&oid_Sensitivity_label_grade_class, CT_SENSITIVITY_LABEL_GRADE_NAME},
+  {&oid_Sensitivity_label_info_type_class, CT_SENSITIVITY_LABEL_INFO_TYPE_NAME},
+  {&oid_Sensitivity_label_source_class, CT_SENSITIVITY_LABEL_SOURCE_NAME},
 };
 
 /*

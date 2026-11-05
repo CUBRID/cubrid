@@ -42,6 +42,7 @@ namespace cubschema
       static information_schema_definition get_view_routine_privileges ();
       static information_schema_definition get_view_routines ();
       static information_schema_definition get_view_schemata ();
+      static information_schema_definition get_view_sensitivity_labels ();
       static information_schema_definition get_view_sequences ();
       static information_schema_definition get_view_statistics ();
       static information_schema_definition get_view_synonyms ();
@@ -64,6 +65,7 @@ std::string sm_define_view_referential_constraints_spec (void);
 std::string sm_define_view_routine_privileges_spec (void);
 std::string sm_define_view_routines_spec (void);
 std::string sm_define_view_schemata_spec (void);
+std::string sm_define_view_sensitivity_labels_spec (void);
 std::string sm_define_view_sequences_spec (void);
 std::string sm_define_view_statistics_spec (void);
 std::string sm_define_view_synonyms_spec (void);
