@@ -26,6 +26,58 @@
 
 #include "query_rewrite.h"
 
+/*
+ * qo_drop_null_disjuncts () - drop NULL constants from the OR lists of a CNF filter
+ *   return: the CNF list
+ *   parser(in): parser environment
+ *   cnf_list(in): CNF list of a filter (WHERE, ON, HAVING, START WITH, ...)
+ *
+ * Note: a filter keeps only TRUE rows, so a NULL disjunct acts as FALSE there.
+ *       CNF has pushed every NOT down to the leaves, so no such NULL is under a NOT.
+ *       Only a NULL constant is dropped: an expression of NULL type such as NULL IN (subquery) can be TRUE.
+ *       An OR list made only of NULL constants is left as it is.
+ */
+static PT_NODE *
+qo_drop_null_disjuncts (PARSER_CONTEXT * parser, PT_NODE * cnf_list)
+{
+  PT_NODE **cnf_p, **dnf_p, *dnf, *cnf_next;
+
+  for (cnf_p = &cnf_list; *cnf_p != NULL; cnf_p = &(*cnf_p)->next)
+    {
+      for (dnf = *cnf_p; dnf != NULL && PT_IS_VALUE_NODE (dnf) && PT_IS_NULL_NODE (dnf); dnf = dnf->or_next)
+	{
+	  ;
+	}
+      if ((*cnf_p)->or_next == NULL || dnf == NULL)
+	{
+	  continue;
+	}
+
+      /* the CNF link is on the head of the OR list: keep it for the new head */
+      cnf_next = (*cnf_p)->next;
+      (*cnf_p)->next = NULL;
+
+      for (dnf_p = cnf_p; *dnf_p != NULL;)
+	{
+	  dnf = *dnf_p;
+	  if (PT_IS_VALUE_NODE (dnf) && PT_IS_NULL_NODE (dnf))
+	    {
+	      *dnf_p = dnf->or_next;
+	      dnf->next = NULL;
+	      dnf->or_next = NULL;
+	      parser_free_tree (parser, dnf);
+	    }
+	  else
+	    {
+	      dnf_p = &dnf->or_next;
+	    }
+	}
+
+      (*cnf_p)->next = cnf_next;
+    }
+
+  return cnf_list;
+}
 
 /*
  * qo_rewrite_queries () - checks all subqueries for rewrite optimizations
@@ -353,6 +405,17 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	{
 	  *orderby_for_p = pt_cnf (parser, *orderby_for_p);
 	}
+
+      /* after NOT is pushed down, a NULL left in an OR of a filter acts as FALSE */
+      *wherep = qo_drop_null_disjuncts (parser, *wherep);
+      *havingp = qo_drop_null_disjuncts (parser, *havingp);
+      *startwithp = qo_drop_null_disjuncts (parser, *startwithp);
+      *connectbyp = qo_drop_null_disjuncts (parser, *connectbyp);
+      *aftercbfilterp = qo_drop_null_disjuncts (parser, *aftercbfilterp);
+      *merge_upd_wherep = qo_drop_null_disjuncts (parser, *merge_upd_wherep);
+      *merge_ins_wherep = qo_drop_null_disjuncts (parser, *merge_ins_wherep);
+      *merge_del_wherep = qo_drop_null_disjuncts (parser, *merge_del_wherep);
+      *orderby_for_p = qo_drop_null_disjuncts (parser, *orderby_for_p);
 
       /* in HAVING clause with GROUP BY, move non-aggregate terms to WHERE clause */
       if (PT_IS_SELECT (node) && node->info.query.q.select.group_by && *havingp)

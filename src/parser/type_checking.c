@@ -6935,7 +6935,7 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	  goto always_false;
 	}
 
-      if (cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL)
+      if ((cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL) && cnf_node->or_next == NULL)
 	{
 	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition */
 	  goto always_false;
@@ -6989,10 +6989,11 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 		  break;
 		}
 
-	      if (dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
-		  && dnf_node->info.value.data_value.i == 0)
+	      if (dnf_node->node_type == PT_VALUE
+		  && ((dnf_node->type_enum == PT_TYPE_LOGICAL && dnf_node->info.value.data_value.i == 0)
+		      || dnf_node->type_enum == PT_TYPE_NA || dnf_node->type_enum == PT_TYPE_NULL))
 		{
-		  /* cut it off from DNF list */
+		  /* a FALSE or NULL disjunct of a filter: cut it off from DNF list */
 		  if (dnf_prev)
 		    {
 		      dnf_prev->or_next = dnf_node->or_next;
@@ -7241,6 +7242,29 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 
 
 /*
+ * pt_is_never_true_and () - test whether a FALSE or NULL constant is joined by AND into the condition
+ *   return: true if the condition can never be TRUE for that reason
+ *   node(in): a conjunct of a search condition
+ */
+static bool
+pt_is_never_true_and (const PT_NODE * node)
+{
+  if (PT_IS_VALUE_NODE (node)
+      && (PT_IS_NULL_NODE (node) || (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i == 0)))
+    {
+      return true;
+    }
+
+  /* x AND y is never TRUE when x or y is a FALSE or NULL constant */
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_AND))
+    {
+      return pt_is_never_true_and (node->info.expr.arg1) || pt_is_never_true_and (node->info.expr.arg2);
+    }
+
+  return false;
+}
+
+/*
  * pt_false_search_condition () - Test for constant-folded search condition
  * 				  that evaluated false
  *   return: 1 if any of the conjuncts are effectively false, 0 otherwise
@@ -7256,7 +7280,7 @@ pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
       if (node->or_next == NULL
 	  && (node->type_enum == PT_TYPE_NA || node->type_enum == PT_TYPE_NULL
 	      || (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_LOGICAL
-		  && node->info.value.data_value.i == 0)))
+		  && node->info.value.data_value.i == 0) || pt_is_never_true_and (node)))
 	{
 	  return true;
 	}
@@ -8125,6 +8149,26 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   switch (node->node_type)
     {
     case PT_EXPR:
+      if ((parser->flag.is_checking_view_spec || parser->flag.is_parsing_trigger)
+	  && pt_is_operator_logical (node->info.expr.op))
+	{
+	  /* a view or trigger keeps its condition as text: a NULL there can not be parsed again */
+	  PT_NODE *save = parser_copy_tree (parser, node);
+
+	  node = pt_fold_const_expr (parser, node, arg);
+	  if (save != NULL && node != NULL && PT_IS_VALUE_NODE (node) && PT_IS_NULL_NODE (node))
+	    {
+	      save->next = node->next;
+	      node->next = NULL;
+	      parser_free_tree (parser, node);
+	      node = save;
+	    }
+	  else if (save != NULL)
+	    {
+	      parser_free_tree (parser, save);
+	    }
+	  break;
+	}
       node = pt_fold_const_expr (parser, node, arg);
       break;
     case PT_FUNCTION:
@@ -19184,6 +19228,12 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       db_value = pt_value_to_db (parser, val);
+      /* x AND NULL / x OR NULL can not be folded: NOT, IS and XOR tell UNKNOWN from FALSE */
+      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
+	{
+	  goto end;
+	}
+
       if (op == PT_AND)
 	{
 	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)

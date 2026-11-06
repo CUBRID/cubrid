@@ -2165,7 +2165,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	  if (arg1 && arg2)
 	    {
 	      arg1->type_enum = PT_TYPE_INTEGER;
-	      if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
+	      if (PT_IS_NULL_NODE (node))
+		{
+		  /* NULL = 1 keeps the predicate UNKNOWN, not FALSE */
+		  arg1->type_enum = PT_TYPE_NULL;
+		}
+	      else if (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
 		{
 		  arg1->info.value.data_value.i = 1;
 		}

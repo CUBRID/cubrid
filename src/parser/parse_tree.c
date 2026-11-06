@@ -1217,6 +1217,7 @@ parser_create_parser (void)
   parser->flag.is_parsing_static_sql = 0;
   parser->flag.is_unloading_plcsql_def = 0;
   parser->flag.is_parsing_trigger = 0;
+  parser->flag.is_checking_view_spec = 0;
 
   parser->external_into_label = NULL;
   parser->external_into_label_cnt = 0;

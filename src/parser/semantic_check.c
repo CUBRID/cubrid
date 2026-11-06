@@ -7718,7 +7718,11 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 
   if (do_semantic_check)
     {
+      unsigned save_stored = parser->flag.is_checking_view_spec;
+
+      parser->flag.is_checking_view_spec = 1;
       qry = pt_semantic_check (parser, qry);
+      parser->flag.is_checking_view_spec = save_stored;
       if (pt_has_error (parser) || qry == NULL)
 	{
 	  return NULL;
@@ -8189,6 +8193,7 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
   const char *name = NULL;
   int attr_count = 0;
   bool do_not_replace_orderby;
+  unsigned save_stored;
 
   assert (parser != NULL);
 
@@ -8256,7 +8261,10 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
+      save_stored = parser->flag.is_checking_view_spec;
+      parser->flag.is_checking_view_spec = 1;
       result_stmt = pt_semantic_check (parser, crt_qry);
+      parser->flag.is_checking_view_spec = save_stored;
       if (pt_has_error (parser))
 	{
 	  if (prev_qry)
