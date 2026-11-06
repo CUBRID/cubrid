@@ -582,6 +582,8 @@ extern "C"
   extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_is_orderby_for_upper_bound (PT_NODE * orderby_for);
+  extern bool pt_has_orderby_for_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_record_static_sql_star (PARSER_CONTEXT * parser, PT_STATIC_SQL_STAR_KIND kind, int pos,
 					 PT_NODE * columns, bool qualify);
