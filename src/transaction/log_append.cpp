@@ -59,7 +59,7 @@ static int prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, L
 				 const char *data);
 static int prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node,
     LOG_RCVINDEX rcvindex, LOG_DATA_ADDR *addr, int num_ucrumbs, const LOG_CRUMB *ucrumbs, int num_rcrumbs,
-    const LOG_CRUMB *rcrumbs);
+    const LOG_CRUMB *rcrumbs, MVCCID explicit_mvccid);
 static int prior_lsa_gen_2pc_prepare_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int gtran_length,
     const char *gtran_data, int lock_length, const char *lock_data);
 static int prior_lsa_gen_end_chkpt_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, int tran_length,
@@ -73,7 +73,7 @@ static void prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 static void prior_lsa_append_data (int length);
 static LOG_LSA prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *tdes,
     int with_lock);
-static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid);
+static void prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is_explicit_mvccid);
 static char *log_append_get_data_ptr (THREAD_ENTRY *thread_p);
 static bool log_append_realloc_data_ptr (THREAD_ENTRY *thread_p, int length);
 
@@ -428,7 +428,8 @@ prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG
 LOG_PRIOR_NODE *
 prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
 				 LOG_DATA_ADDR *addr, const int num_ucrumbs,
-				 const LOG_CRUMB *ucrumbs, const int num_rcrumbs, const LOG_CRUMB *rcrumbs)
+				 const LOG_CRUMB *ucrumbs, const int num_rcrumbs, const LOG_CRUMB *rcrumbs,
+				 MVCCID explicit_mvccid)
 {
   LOG_PRIOR_NODE *node;
   int error = NO_ERROR;
@@ -464,7 +465,7 @@ prior_lsa_alloc_and_copy_crumbs (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, L
     case LOG_MVCC_UNDO_DATA:
     case LOG_MVCC_REDO_DATA:
       error = prior_lsa_gen_undoredo_record_from_crumbs (thread_p, node, rcvindex, addr, num_ucrumbs, ucrumbs,
-	      num_rcrumbs, rcrumbs);
+	      num_rcrumbs, rcrumbs, explicit_mvccid);
       break;
 
     default:
@@ -666,11 +667,12 @@ prior_lsa_copy_redo_crumbs_to_node (LOG_PRIOR_NODE *node, int num_crumbs, const 
  * ucrumbs (in)	    : Undo data crumbs.
  * num_rcrumbs (in) : Number of redo data crumbs.
  * rcrumbs (in)	    : Redo data crumbs.
+ * explicit_mvccid (in) : MVCCID of an MVCC record, or MVCCID_NULL to take the current transaction's.
  */
 static int
 prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RCVINDEX rcvindex,
     LOG_DATA_ADDR *addr, int num_ucrumbs, const LOG_CRUMB *ucrumbs,
-    int num_rcrumbs, const LOG_CRUMB *rcrumbs)
+    int num_rcrumbs, const LOG_CRUMB *rcrumbs, MVCCID explicit_mvccid)
 {
   LOG_REC_REDO *redo_p = NULL;
   LOG_REC_UNDO *undo_p = NULL;
@@ -964,7 +966,13 @@ prior_lsa_gen_undoredo_record_from_crumbs (THREAD_ENTRY *thread_p, LOG_PRIOR_NOD
       assert (LOG_IS_MVCC_OPERATION (rcvindex));
 
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes == NULL || !MVCCID_IS_VALID (tdes->mvccinfo.id))
+      if (MVCCID_IS_VALID (explicit_mvccid))
+	{
+	  /* The record is appended after its transaction completed its MVCC info, e.g. by a commit postpone. */
+	  assert (rcvindex == RVOOS_NOTIFY_VACUUM);
+	  *mvccid_p = explicit_mvccid;
+	}
+      else if (tdes == NULL || !MVCCID_IS_VALID (tdes->mvccinfo.id))
 	{
 	  assert_release (false);
 	  error_code = ER_FAILED;
@@ -1337,10 +1345,21 @@ prior_lsa_gen_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_RECTYPE 
   return error_code;
 }
 
+/* is_explicit_mvccid: the record names an MVCCID given by its appender (RVOOS_NOTIFY_VACUUM, appended by a commit
+ * postpone), which may already be complete, and older than every snapshot, when the block starts. */
 static void
-prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
+prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is_explicit_mvccid)
 {
   assert (MVCCID_IS_VALID (mvccid));
+  if (is_explicit_mvccid && !LOG_ISRESTARTED ())
+    {
+      /* Restart recovery reruns a committed UPDATE's drop postpone, which appends a notification. Recovery does not
+       * keep the block's MVCCIDs (the global oldest visible MVCCID is not known yet, and only mvcc_op_log_lsa was
+       * redone); vacuum_recover_lost_block_data rebuilds the blocks from the log at vacuum boot, starting here. */
+      log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
+      log_Gl.hdr.does_block_need_vacuum = true;
+      return;
+    }
   if (!log_Gl.hdr.does_block_need_vacuum)
     {
       // first mvcc record for this block
@@ -1352,7 +1371,7 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
       // sanity checks
       assert (MVCCID_IS_VALID (log_Gl.hdr.oldest_visible_mvccid));
       assert (MVCCID_IS_VALID (log_Gl.hdr.newest_block_mvccid));
-      assert (log_Gl.hdr.oldest_visible_mvccid <= mvccid);
+      assert (is_explicit_mvccid || log_Gl.hdr.oldest_visible_mvccid <= mvccid);
       assert (!log_Gl.hdr.mvcc_op_log_lsa.is_null ());
       assert (vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) == vacuum_get_log_blockid (record_lsa.pageid));
 
@@ -1361,6 +1380,10 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid)
 	  log_Gl.hdr.newest_block_mvccid = mvccid;
 	}
     }
+  /* An explicit MVCCID (RVOOS_NOTIFY_VACUUM) belongs to a transaction that already left the MVCC table, so it may
+   * precede the block's oldest visible MVCCID, and a block of notifications only can have its newest MVCCID below
+   * its oldest. The oldest is not lowered: vacuum needs the blocks' oldest visible MVCCIDs non-decreasing, and the
+   * notification does not need it (see vacuum_process_log_block). */
   log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
   log_Gl.hdr.does_block_need_vacuum = true;
 }
@@ -1449,7 +1472,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 		     "log mvcc op at (%lld, %d) and create link with log_lsa(%lld, %d)",
 		     LSA_AS_ARGS (&node->start_lsa), LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa));
 
-      prior_update_header_mvcc_info (start_lsa, mvccid);
+      prior_update_header_mvcc_info (start_lsa, mvccid,
+				     mvcc_undo != NULL && mvcc_undo->undo.data.rcvindex == RVOOS_NOTIFY_VACUUM);
     }
   else if (node->log_header.type == LOG_SYSOP_START_POSTPONE)
     {

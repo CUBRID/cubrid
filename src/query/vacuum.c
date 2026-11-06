@@ -686,6 +686,7 @@ static int vacuum_data_mark_finished (THREAD_ENTRY * thread_p, VACUUM_LOG_BLOCKI
 static void vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_page,
 				    VACUUM_DATA_PAGE ** data_page);
 static void vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page);
+static MVCCID vacuum_last_saved_entry_oldest_mvccid (THREAD_ENTRY * thread_p);
 static void vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page,
 						     VACUUM_LOG_BLOCKID blockid);
 static int vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p);
@@ -2526,7 +2527,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
- * oos_emptied_pages_out (out) : OOS pages the deletes emptied are appended, each once; the caller
+ * oos_emptied_pages_out (out) : OOS pages the sysop's reclaim emptied are appended, each once; the caller
  *				 reclaims them AFTER unfixing the home page, never here.
  */
 static int
@@ -2626,11 +2627,11 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
-      /* Delete OOS records (if any) before committing the sysop. */
+      /* Record the OOS chains (if any) as a reclaim intent of this sysop; its commit reclaims them. */
       if (has_oos)
 	{
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_emptied_pages_out);
+	  OID owner_oid = { helper->home_vpid.pageid, helper->crt_slotid, helper->home_vpid.volid };
+	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2638,7 +2639,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	    }
 	}
 
-      log_sysop_commit (thread_p);
+      vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -2681,23 +2682,25 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
     case REC_HOME:
       if (has_oos)
 	{
-	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS chunk deletes must share the one
-	   * sysop opened above so a crash between them cannot leave dangling OOS references. The bulk path
-	   * would split them across sysop boundaries. The slot was already cleared via spage_vacuum_slot;
-	   * commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE cases. */
+	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS reclaim intent must share the one
+	   * sysop opened above. Its commit reclaims the chains with redo-only deletes; its abort discards the
+	   * intent and undoes the slot removal, so no chunk delete is ever undone (ADR-0008, CBRD-27781). The
+	   * bulk path would split them across sysop boundaries. The slot was already cleared via
+	   * spage_vacuum_slot; commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE
+	   * cases. */
 	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_emptied_pages_out);
+	  OID owner_oid = { helper->home_vpid.pageid, helper->crt_slotid, helper->home_vpid.volid };
+	  int oos_err = vacuum_heap_oos_log_reclaim_intent (thread_p, &helper->oos_vfid, &helper->record, &owner_oid);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
 
-	  log_sysop_commit (thread_p);
+	  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
 	}
       else
 	{
@@ -3527,8 +3530,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   bool dummy_continue_check = false;
 #endif /* SA_MODE */
 
-  VACUUM_OOS_VFID_MEMO oos_vfid_memo;
-
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return NO_ERROR;
@@ -3643,8 +3644,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	}
 
 #if !defined (NDEBUG)
-      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid) || MVCC_ID_PRECEDES (mvccid, data->oldest_visible_mvccid)
-	  || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
+      /* RVOOS_NOTIFY_VACUUM carries the MVCCID of an UPDATE that committed before the postpone logged it, so it may
+       * precede the block's oldest visible MVCCID (prior_update_header_mvcc_info does not lower the oldest to it).
+       * The dropped-file check above still finds the heap dropped for it: the dropped-file MVCCID is mvcc_next_id at
+       * the drop, which follows the UPDATE's MVCCID, and dropped-file entries are cleaned up only in SA_MODE after
+       * every block is vacuumed. */
+      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
+	  || (MVCC_ID_PRECEDES (mvccid, data->oldest_visible_mvccid)
+	      && log_record_data.rcvindex != RVOOS_NOTIFY_VACUUM) || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
 	{
 	  /* threshold_mvccid or mvccid or block data may be invalid */
 	  assert (0);
@@ -3673,26 +3680,6 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WORKER,
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
-
-	  /* Free the old OOS values an UPDATE left behind. Only RVHF_UPDATE_NOTIFY_VACUUM should reach here:
-	   *
-	   *   - UPDATE writes new OOS OIDs. The old ones survive only in the undo image; the live slot no
-	   *     longer points at them, so vacuum's normal REMOVE path never sees them. Reading the undo
-	   *     image is the only way left to free them.
-	   *   - DELETE keeps the same OIDs, so REMOVE frees them already. Freeing them here too would be a
-	   *     double free and trip an assert -- so the check below lets UPDATE in but keeps DELETE out.
-	   *   - The same check keeps other heap ops out; vacuum_process_log_record does not even unpack their
-	   *     undo image. */
-	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
-	    {
-	      error_code =
-		vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
-	      if (error_code != NO_ERROR)
-		{
-		  vacuum_check_shutdown_interruption (thread_p, error_code);
-		  goto end;
-		}
-	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
 	{
@@ -3824,14 +3811,12 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	    }
 	  db_private_free_and_init (thread_p, es_uri);
 	}
-      else if (log_record_data.rcvindex == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
+      else if (log_record_data.rcvindex == RVOOS_NOTIFY_VACUUM)
 	{
-	  /* MVCC remove_old_forward forward REC_NEWHOME delete (heap_update_relocation). The old forward
-	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
-	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
-	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
-	  error_code =
-	    vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  /* A committed UPDATE dropped these OOS chains (A', ADR-0008). Vacuum reaches the record only after the
+	   * UPDATE's MVCCID precedes every active snapshot, so no reader can still reach them through the old
+	   * version. */
+	  error_code = vacuum_oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size);
 	  if (error_code != NO_ERROR)
 	    {
 	      vacuum_check_shutdown_interruption (thread_p, error_code);
@@ -4342,13 +4327,10 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
-      && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
-      && log_record_data->rcvindex != RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
+      && log_record_data->rcvindex != RVOOS_NOTIFY_VACUUM)
     {
-      /* Vacuum needs the undo image only for these ops, so anything else returns now without
-       * unpacking it: BTREE ops, the two OOS forward-walk tags -- RVHF_UPDATE_NOTIFY_VACUUM and
-       * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM -- and ES (RVES_NOTIFY_VACUUM). */
+      /* No need to unpack undo data */
       return NO_ERROR;
     }
 
@@ -5764,6 +5746,46 @@ vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data)
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  */
+/*
+ * vacuum_last_saved_entry_oldest_mvccid () - Oldest visible MVCCID of the last entry in vacuum data.
+ *
+ * return	 : The MVCCID, or MVCCID_NULL when vacuum data has no entry.
+ * thread_p (in) : Thread entry.
+ *
+ * The last page is empty after all its entries were vacuumed while an earlier page may still hold some, so the pages
+ * are walked from the first.
+ */
+static MVCCID
+vacuum_last_saved_entry_oldest_mvccid (THREAD_ENTRY * thread_p)
+{
+  MVCCID oldest = MVCCID_NULL;
+  VACUUM_DATA_PAGE *data_page = vacuum_Data.first_page;
+  VPID next_vpid;
+
+  while (data_page != NULL)
+    {
+      if (data_page->index_free > 0)
+	{
+	  oldest = data_page->data[data_page->index_free - 1].oldest_visible_mvccid;
+	}
+      VPID_COPY (&next_vpid, &data_page->next_page);
+      vacuum_unfix_data_page (thread_p, data_page);
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  break;
+	}
+      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
+      if (data_page == NULL)
+	{
+	  /* Keep what was found; the caller only uses it to keep the rebuilt entries ordered. */
+	  ASSERT_ERROR ();
+	  er_clear ();
+	  break;
+	}
+    }
+  return oldest;
+}
+
 static int
 vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 {
@@ -5779,6 +5801,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   MVCCID mvccid;
   VACUUM_LOG_BLOCKID crt_blockid;
   LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
+  MVCCID notify_oldest_floor = MVCCID_NULL;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_visible_mvccid = %llu",
@@ -5910,6 +5933,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
    * if a block + 1 MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended)
    * while block was logged. therefore, we must keep it. */
   data.oldest_visible_mvccid = MVCCID_NULL;
+  notify_oldest_floor = vacuum_last_saved_entry_oldest_mvccid (thread_p);
   while (crt_blockid > vacuum_Data.get_last_blockid ())
     {
       /* Stop recovering this block when previous block is reached. */
@@ -5941,8 +5965,22 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 	      return error_code;
 	    }
-	  /* Update oldest/newest MVCCID. */
-	  if (data.oldest_visible_mvccid == MVCCID_NULL || MVCC_ID_PRECEDES (mvccid, data.oldest_visible_mvccid))
+	  /* Update oldest/newest MVCCID. A notify's MVCCID may precede the block's oldest visible MVCCID at run time
+	   * (see vacuum_process_log_block), so it does not lower the oldest. When it is the first record seen, the
+	   * oldest starts at the oldest of the last saved entry if that is newer. The run-time oldest of this block was
+	   * not older than that entry's, so the entries stay ordered and the oldest does not pass its run-time value. */
+	  if (dummy_log_data.rcvindex == RVOOS_NOTIFY_VACUUM)
+	    {
+	      if (data.oldest_visible_mvccid == MVCCID_NULL)
+		{
+		  data.oldest_visible_mvccid = mvccid;
+		  if (MVCCID_IS_VALID (notify_oldest_floor) && MVCC_ID_PRECEDES (mvccid, notify_oldest_floor))
+		    {
+		      data.oldest_visible_mvccid = notify_oldest_floor;
+		    }
+		}
+	    }
+	  else if (data.oldest_visible_mvccid == MVCCID_NULL || MVCC_ID_PRECEDES (mvccid, data.oldest_visible_mvccid))
 	    {
 	      data.oldest_visible_mvccid = mvccid;
 	    }
@@ -8460,7 +8498,8 @@ vacuum_data_entry::vacuum_data_entry (const log_lsa &lsa, MVCCID oldest, MVCCID 
   assert (!lsa.is_null ());
   assert (MVCCID_IS_VALID (oldest));
   assert (MVCCID_IS_VALID (newest));
-  assert (oldest <= newest);
+  /* No oldest <= newest check: a block that holds only RVOOS_NOTIFY_VACUUM records has the MVCCIDs of transactions
+   * that had committed before the block started (see prior_update_header_mvcc_info). Vacuum decides on newest. */
   blockid = vacuum_get_log_blockid (start_lsa.pageid);
 }
 

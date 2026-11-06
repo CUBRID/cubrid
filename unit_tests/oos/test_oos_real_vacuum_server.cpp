@@ -20,8 +20,8 @@
  * test_oos_real_vacuum_server.cpp - SERVER_MODE end-to-end tests for vacuum-based
  * OOS reclaim through the REAL vacuum pipeline.
  *
- * Unlike test_oos_vacuum_server.cpp (which calls the vacuum leaf function
- * vacuum_heap_oos_delete_within_sysop on crafted RECDES), these tests drive the
+ * Unlike test_oos_vacuum_server.cpp (which calls the vacuum leaf functions
+ * on crafted RECDES), these tests drive the
  * whole chain:
  *
  *   MVCC heap DML (heap_insert_logical / heap_delete_logical / heap_update_logical)
@@ -31,7 +31,9 @@
  *        closes, so they remain correct for any block size)
  *     -> vacuum_wakeup_master_daemon() - unit-test-only helper that wakes the
  *        vacuum master daemon in SERVER_MODE
- *     -> vacuum master -> worker -> vacuum_heap -> vacuum_heap_oos_delete_within_sysop -> oos_delete
+ *     -> vacuum master -> worker -> vacuum_heap -> vacuum_heap_oos_log_reclaim_intent, and at the sysop
+ *        commit the reclaim postpone -> oos_delete (REMOVE); or, for a committed UPDATE,
+ *        RVOOS_NOTIFY_VACUUM -> vacuum_oos_reclaim_notified_chains -> oos_delete (ADR-0008)
  *
  * The tests verify the MVCC notion of "stale": vacuum must NOT reclaim an OOS
  * value still visible to a live snapshot, and must reclaim it COMPLETELY
@@ -387,7 +389,7 @@ class OosRealVacuum : public ::testing::Test
 
     /* MVCC-update heap_oid so it references a freshly inserted OOS payload;
      * commit and close the update's log block. The previous version's OOS
-     * becomes update-superseded (reclaimed via the forward-walk path). Returns
+     * becomes update-superseded (reclaimed through the UPDATE notification). Returns
      * the new OOS OID via out param. Mirrors TC-R3's inline update sequence. */
     void update_row_to_new_oos (OID &heap_oid, const std::string &payload, OID &new_oos_oid_out)
     {
@@ -492,7 +494,8 @@ TEST_F (OosRealVacuum, MultiChunkChainsDrainCompletely)
 // ============================================================================
 // TC-R3: MVCC UPDATE — old version's OOS drained, new version survives
 //
-// Exercises the vacuum forward-walk reclaim of update-superseded OOS
+// Exercises the vacuum reclaim of update-superseded OOS through the committed UPDATE's
+// RVOOS_NOTIFY_VACUUM (A', ADR-0008)
 // (RVHF_UPDATE_NOTIFY_VACUUM path).
 // ============================================================================
 TEST_F (OosRealVacuum, UpdateStaleVersionDrainsNewSurvives)
@@ -533,6 +536,118 @@ TEST_F (OosRealVacuum, UpdateStaleVersionDrainsNewSurvives)
       << "new-version OOS must survive vacuum";
   ASSERT_EQ (survivor.length, new_oos_rec.length);
   recdes_free_data_area (&survivor);
+}
+
+// ============================================================================
+// TC-R3b: A notification whose MVCCID is older than its block's oldest visible MVCCID
+//
+// The commit postpone logs RVOOS_NOTIFY_VACUUM after logtb_complete_mvcc, so the global
+// oldest visible MVCCID may already have passed the UPDATE's MVCCID when the record lands in a
+// block. The notification must not lower that block's oldest visible MVCCID below the one of an
+// earlier block (vacuum keeps them non-decreasing), and vacuum must still reclaim the chains.
+// ============================================================================
+TEST_F (OosRealVacuum, NotifyOlderThanBlockOldestKeepsBlockOrderAndDrains)
+{
+  /* A committed transaction with MVCCID m0 that leaves a chain no row references. */
+  RECDES oos_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), oos_rec),
+	     NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+  OID oos_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid), NO_ERROR);
+  const MVCCID m0 = logtb_get_current_mvccid (thread_p);
+  ASSERT_TRUE (MVCCID_IS_VALID (m0));
+  commit_current_tran ();
+
+  LOG_LSA stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &stamp), NO_ERROR);
+
+  /* Let the vacuum master move the global oldest visible MVCCID past m0, then fill whole blocks whose
+   * oldest visible MVCCID is above m0. */
+  ASSERT_TRUE (wait_for_vacuum ([m0] { return log_Gl.mvcc_table.get_global_oldest_visible () > m0; }, 30));
+  close_log_block_containing (hfid, class_oid, scan_cache, current_log_blockid ());
+
+  /* Another transaction opens the next block, then the notification arrives with m0. */
+  RECDES filler {};
+  ASSERT_EQ (build_plain_heap_recdes (4096, filler), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_filler (&filler, recdes_free_data_area);
+  OID filler_oid = OID_INITIALIZER;
+  ASSERT_EQ (heap_insert_mvcc (hfid, class_oid, scan_cache, filler, filler_oid), NO_ERROR);
+  const MVCCID block_oldest = log_Gl.hdr.oldest_visible_mvccid;
+  ASSERT_GT (block_oldest, m0);
+
+  std::vector<char> payload = oos_test_make_reclaim_intent_payload (oos_vfid, { oos_chain_ref { oos_oid, stamp } });
+  LOG_DATA_ADDR addr (&hfid.vfid, NULL, -1);
+  log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr, (int) payload.size (),
+					 payload.data (), m0);
+  EXPECT_EQ (log_Gl.hdr.oldest_visible_mvccid, block_oldest)
+      << "the notification lowered its block's oldest visible MVCCID";
+  VACUUM_LOG_BLOCKID notify_block = current_log_blockid ();
+  commit_current_tran ();
+
+  close_log_block_containing (hfid, class_oid, scan_cache, notify_block);
+
+  ASSERT_TRUE (wait_for_vacuum ([this, oos_oid] { return oos_unreadable (oos_oid); }, 60))
+      << "vacuum did not reclaim the chain of the notification";
+}
+
+// ============================================================================
+// TC-R3c: A log block that holds only notifications
+//
+// A bulk UPDATE's commit postpone can fill a whole block with notifications whose MVCCID precedes
+// the block's oldest visible MVCCID, so the block's newest MVCCID is below its oldest. Vacuum must
+// produce that block and reclaim the chains its notifications name.
+// ============================================================================
+TEST_F (OosRealVacuum, NotificationOnlyBlockIsProducedAndVacuumed)
+{
+  RECDES oos_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), oos_rec),
+	     NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+  OID oos_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid), NO_ERROR);
+  const MVCCID m0 = logtb_get_current_mvccid (thread_p);
+  ASSERT_TRUE (MVCCID_IS_VALID (m0));
+  commit_current_tran ();
+
+  LOG_LSA stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &stamp), NO_ERROR);
+
+  ASSERT_TRUE (wait_for_vacuum ([m0] { return log_Gl.mvcc_table.get_global_oldest_visible () > m0; }, 30));
+  close_log_block_containing (hfid, class_oid, scan_cache, current_log_blockid ());
+
+  /* Notifications only, from the middle of one block to the start of the block after next: the block in between
+   * holds nothing else, and its first notification names the chain. */
+  LOG_DATA_ADDR addr (&hfid.vfid, NULL, -1);
+  std::vector<char> empty_payload = oos_test_make_reclaim_intent_payload (oos_vfid, {});
+  std::vector<char> chain_payload = oos_test_make_reclaim_intent_payload (oos_vfid, { oos_chain_ref { oos_oid, stamp } });
+  auto append_notify = [&] (const std::vector<char> &payload)
+  {
+    log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr, (int) payload.size (),
+					   payload.data (), m0);
+  };
+
+  const VACUUM_LOG_BLOCKID first_block = current_log_blockid ();
+  int guard = 0;
+  while (current_log_blockid () == first_block)
+    {
+      ASSERT_LT (guard++, 1000000) << "the notifications did not cross a block";
+      append_notify (empty_payload);
+    }
+  const VACUUM_LOG_BLOCKID notify_only_block = current_log_blockid ();
+  append_notify (chain_payload);
+  while (current_log_blockid () == notify_only_block)
+    {
+      ASSERT_LT (guard++, 1000000) << "the notifications did not cross a block";
+      append_notify (empty_payload);
+    }
+  VACUUM_LOG_BLOCKID last_block = current_log_blockid ();
+  commit_current_tran ();
+
+  close_log_block_containing (hfid, class_oid, scan_cache, last_block);
+
+  ASSERT_TRUE (wait_for_vacuum ([this, oos_oid] { return oos_unreadable (oos_oid); }, 60))
+      << "vacuum did not reclaim the chain named in the notification-only block";
 }
 
 // ============================================================================
@@ -640,10 +755,10 @@ TEST_F (OosRealVacuum, TwoReadersOldestSnapshotGatesReclaim)
 }
 
 // ============================================================================
-// TC-R6: A live snapshot gates the UPDATE forward-walk reclaim too
+// TC-R6: A live snapshot gates the UPDATE notification reclaim too
 //
-// TC-R4 only gates the DELETE/REMOVE path. The forward-walk path
-// (RVHF_UPDATE_NOTIFY_VACUUM, exercised by TC-R3) has its own visibility check;
+// TC-R4 only gates the DELETE/REMOVE path. The UPDATE path (RVOOS_NOTIFY_VACUUM under the UPDATE's
+// MVCCID, exercised by TC-R3) has its own visibility check;
 // this pins that a reader whose snapshot predates the UPDATE keeps the
 // superseded old-version OOS alive until the reader is released.
 // ============================================================================
@@ -976,6 +1091,132 @@ TEST_F (OosRealVacuum, VacuumWaitsForHeapHeaderWithoutHoldingLastPage)
   EXPECT_TRUE (wait_for_vacuum ([&heap_oid] { return insert_id_vacuumed (heap_oid); }, 60))
       << "vacuum did not finish the row after the header was released";
   EXPECT_FALSE (oos_unreadable (oos_oid)) << "vacuum of a live row lost its OOS value";
+}
+
+// ============================================================================
+// TC-R12..R14: A' UPDATE notification (ADR-0008, CBRD-27237)
+//
+// An MVCC UPDATE records the chains it drops as a postpone. Only the committed UPDATE hands them to
+// vacuum (RVOOS_NOTIFY_VACUUM under the UPDATE's MVCCID); a transaction or savepoint rollback discards
+// the postpone, and the restored version keeps its chain. The undo-image forward-walk that deleted the
+// live chain of a rolled-back UPDATE is gone.
+//
+// A rollback test cannot observe "vacuum never deletes" directly. A witness row is deleted, by a committed
+// transaction, in the same log block as the rolled-back UPDATE; vacuum processes a block as one job, so
+// once the witness's OOS drained, the job that saw the UPDATE's log records has finished.
+// ============================================================================
+class OosRealVacuumUpdateNotify : public OosRealVacuum
+{
+  protected:
+    /* Inserts a new OOS payload and updates heap_oid to reference it, without committing. */
+    void update_row_uncommitted (OID &heap_oid, const std::string &payload, OID &new_oos_oid_out)
+    {
+      RECDES new_oos_rec {};
+      ASSERT_EQ (test_oos_utils::from_string_into_recdes (payload, new_oos_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_oos (&new_oos_rec, recdes_free_data_area);
+
+      new_oos_oid_out = OID_INITIALIZER;
+      ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, new_oos_rec, new_oos_oid_out), NO_ERROR);
+
+      RECDES new_heap_rec {};
+      ASSERT_EQ (build_heap_recdes_with_oos ({new_oos_oid_out}, { (INT64) new_oos_rec.length}, new_heap_rec),
+		 NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_heap (&new_heap_rec, recdes_free_data_area);
+
+      ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, new_heap_rec), NO_ERROR);
+    }
+
+    /* Deletes the witness row in the current log block, commits, closes the block, and waits until vacuum
+     * reclaimed the witness's OOS. Returns the block. */
+    VACUUM_LOG_BLOCKID delete_witness_and_wait (OID &witness_heap_oid, const OID &witness_oos_oid,
+	VACUUM_LOG_BLOCKID expected_block)
+    {
+      EXPECT_EQ (heap_delete_mvcc (hfid, class_oid, scan_cache, witness_heap_oid), NO_ERROR);
+      VACUUM_LOG_BLOCKID block = current_log_blockid ();
+      EXPECT_EQ (block, expected_block) << "the witness must share the rolled-back UPDATE's log block";
+      commit_current_tran ();
+      close_log_block_containing (hfid, class_oid, scan_cache, block);
+      EXPECT_TRUE (wait_for_vacuum ([this, &witness_oos_oid] { return oos_unreadable (witness_oos_oid); }, 60))
+	  << "vacuum did not process the witness's block";
+      return block;
+    }
+
+    /* length counts the terminating NUL that from_string_into_recdes stores with the payload. */
+    void expect_value (const OID &oos_oid, int length, const char *what)
+    {
+      RECDES out {};
+      ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, out), NO_ERROR) << what;
+      EXPECT_EQ (out.length, length) << what;
+      recdes_free_data_area (&out);
+    }
+};
+
+TEST_F (OosRealVacuumUpdateNotify, RolledBackUpdateKeepsTheRestoredVersionsChainThroughVacuum)
+{
+  const std::string value = test_oos_utils::make_repeated_pattern_string (4096);
+  OID heap_oid, old_oos_oid, witness_heap_oid, witness_oos_oid;
+  insert_row_with_oos (value, heap_oid, old_oos_oid);
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (3000), witness_heap_oid, witness_oos_oid);
+
+  OID new_oos_oid;
+  update_row_uncommitted (heap_oid, test_oos_utils::make_repeated_pattern_string (5000), new_oos_oid);
+  const VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+
+  delete_witness_and_wait (witness_heap_oid, witness_oos_oid, update_block);
+
+  expect_value (old_oos_oid, (int) value.size () + 1, "the rolled-back UPDATE's restored version must keep its chain");
+  expect_oos_gone (new_oos_oid, "the rolled-back UPDATE's own new chain (undone by the rollback)");
+}
+
+TEST_F (OosRealVacuumUpdateNotify, SavepointRolledBackUpdateKeepsItsChainAndLaterCommitDoesNotReclaimIt)
+{
+  const std::string value = test_oos_utils::make_repeated_pattern_string (4096);
+  OID heap_oid, old_oos_oid, witness_heap_oid, witness_oos_oid;
+  insert_row_with_oos (value, heap_oid, old_oos_oid);
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (3000), witness_heap_oid, witness_oos_oid);
+
+  LOG_LSA savept_lsa;
+  ASSERT_EQ (xtran_server_savepoint (thread_p, "oos_sp", &savept_lsa), NO_ERROR);
+  OID new_oos_oid;
+  update_row_uncommitted (heap_oid, test_oos_utils::make_repeated_pattern_string (5000), new_oos_oid);
+  const VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+  ASSERT_EQ (xtran_server_partial_abort (thread_p, "oos_sp", &savept_lsa), TRAN_UNACTIVE_ABORTED);
+
+  /* The same transaction commits with the witness delete: the discarded postpone must not run. */
+  delete_witness_and_wait (witness_heap_oid, witness_oos_oid, update_block);
+
+  expect_value (old_oos_oid, (int) value.size () + 1, "a savepoint rollback must discard the UPDATE's drop postpone");
+  expect_oos_gone (new_oos_oid, "the rolled-back UPDATE's own new chain (undone by the rollback)");
+}
+
+/* The pages the notification consumer empties go to the fast path (Work818 F3): a chain that filled a page
+ * by itself returns that page without waiting for the file to grow. */
+TEST_F (OosRealVacuumUpdateNotify, CommittedUpdateReturnsThePageItsDroppedChainEmptied)
+{
+  const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+  OID heap_oid, old_oos_oid;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (max_chunk), heap_oid, old_oos_oid);
+
+  OID new_oos_oid;
+  update_row_uncommitted (heap_oid, test_oos_utils::make_repeated_pattern_string (max_chunk), new_oos_oid);
+  const VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+  commit_current_tran ();
+
+  OOS_STATS_INFO before;
+  ASSERT_EQ (oos_get_stats_by_vfid (thread_p, oos_vfid, &before), NO_ERROR);
+
+  close_log_block_containing (hfid, class_oid, scan_cache, update_block);
+  ASSERT_TRUE (wait_for_vacuum ([this, &old_oos_oid] { return oos_unreadable (old_oos_oid); }, 60))
+      << "vacuum did not reclaim the committed UPDATE's dropped chain";
+
+  OOS_STATS_INFO after;
+  ASSERT_TRUE (wait_for_vacuum ([this, &after, &before]
+  {
+    return oos_get_stats_by_vfid (thread_p, oos_vfid, &after) == NO_ERROR && after.num_user_pages < before.num_user_pages;
+  }, 10)) << "the emptied page was not returned by the fast path: pages before " << before.num_user_pages
+	  << ", after " << after.num_user_pages;
+  expect_value (new_oos_oid, max_chunk + 1, "the new version's chain must survive");
 }
 
 int

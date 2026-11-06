@@ -34,6 +34,10 @@ struct oos_record_header
   int total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
   int chunk_index;		/* 0-based index of this chunk in the chain */
   OID next_chunk_oid;		/* OID of next chunk, or NULL OID if this is the last */
+  LOG_LSA next_chunk_stamp;	/* identity stamp the next chunk carries, or NULL_LSA if this is the last.
+				 * Chains are written tail first, so it is known when this link is written.
+				 * The reclaimer follows a link only when the slot it names still carries
+				 * this stamp, so a rerun never walks into a reused slot (ADR-0008). */
   LOG_LSA identity_stamp;	/* Identity stamp of this chunk (CBRD-26950): the page LSA observed under
 				 * the write latch immediately before this chunk's insert was logged. The
 				 * head chunk's value is also stored in the owning heap record's OOS inline
@@ -56,6 +60,45 @@ struct oos_chain_ref
 {
   OID head_oid;
   LOG_LSA identity_stamp;
+};
+
+/* Reclaim intents (ADR-0008). A unit that decides chains are dead records them as a postpone, so the
+ * chunks are deleted only after that unit commits, with redo-only records:
+ *   RVOOS_RECLAIM_POSTPONE      : REMOVE (vacuum sysop) and the SA/non-MVCC eager path. The postpone
+ *                                 runs oos_delete on each reference.
+ *   RVOOS_UPDATE_DROP_POSTPONE  : an MVCC UPDATE. The postpone appends RVOOS_NOTIFY_VACUUM under the
+ *                                 UPDATE's MVCCID; vacuum runs oos_delete once no snapshot can still
+ *                                 read the old version.
+ * An abort of the deciding unit, including a statement or savepoint rollback, discards the postpone.
+ * A failed reclaim stops the server (fail-stop) so restart recovery reruns the durable postpone. */
+enum oos_reclaim_intent_flag
+{
+  OOS_RECLAIM_DIAGNOSE_SKIPS = 0x1	/* the owner held the only reference; report a skipped chain */
+};
+
+extern int oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &owner_oid, int flags,
+				   const char *op_ctx, const std::vector<oos_chain_ref> &refs);
+extern int oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid,
+				       const std::vector<oos_chain_ref> &refs);
+/* Vacuum's consumer of one RVOOS_NOTIFY_VACUUM record. emptied_vpids receives the pages the deletes
+ * emptied. The notify record names its OOS file; it is returned through oos_vfid_out. Returns NO_ERROR or
+ * ER_INTERRUPTED (shutdown); any other failure stops the server, so restart processes the block again. */
+extern int oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length,
+					VFID *oos_vfid_out, std::vector<VPID> *emptied_vpids);
+
+/* While one is in scope on a thread, the reclaim postpones that run on that thread report the pages
+ * they empty to it instead of discarding them. Vacuum opens one around the sysop commit of a REMOVE,
+ * then hands the pages to oos_reclaim_empty_pages after unfixing the heap page. */
+class oos_emptied_page_sink
+{
+  public:
+    explicit oos_emptied_page_sink (std::vector<VPID> &pages);
+    ~oos_emptied_page_sink ();
+    oos_emptied_page_sink (const oos_emptied_page_sink &) = delete;
+    oos_emptied_page_sink &operator= (const oos_emptied_page_sink &) = delete;
+
+  private:
+    std::vector<VPID> *m_previous;
 };
 
 /* What oos_delete did with the chain a reference names. Every skip is a successful call that modified
@@ -161,11 +204,9 @@ extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 /* Batch empty-page reclaim for an explicit candidate list (vacuum's fast path). Candidates are
  * sorted and deduped in place. Idempotent and zero-wait per page: busy, already-deallocated,
- * re-filled and sticky-first-page candidates are skipped, and a page whose last writer may still
- * be active is deferred until a later call. Stops at the first error (notably ER_INTERRUPTED)
- * and propagates it; unprocessed candidates stay allocated for a future pass.
- * Call only AFTER the deletes that emptied the pages are committed — a live undo could otherwise
- * restore chunks onto a deallocated page. */
+ * re-filled and sticky-first-page candidates are skipped. Stops at the first error (notably
+ * ER_INTERRUPTED) and propagates it; unprocessed candidates stay allocated for a future pass.
+ * Chunk deletes are redo-only and never undone (ADR-0008), so no undo can target an empty page. */
 extern int oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. identity_stamp_out
  * (optional) receives the head chunk's identity stamp; a caller that persists an OOS inline stub
@@ -186,12 +227,17 @@ extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbas
  * sector-reservation check (two fixes of cached volume pages) per head page (CBRD-26950). */
 extern int oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
-/* Deletes the OOS value chain ref names only after proving target identity: the head chunk must
- * carry ref.identity_stamp. A deallocated head page, a head page that is no longer an OOS page, a
- * missing head slot or a mismatched stamp is a successful no-op that modifies nothing, leaves the
- * error stack clean and reports no candidate, which gives every caller retry idempotency without
- * extra state as long as the chain was written with logging enabled; the page type is checked under
- * the latch before the page is read as a slotted page.
+/* The OOS reclaimer (ADR-0008): deletes the OOS value chain ref names with redo-only records, so a
+ * delete is never undone. Call it only after the unit that decided the chain is dead has committed:
+ * from a reclaim postpone, or from vacuum's RVOOS_NOTIFY_VACUUM consumer. It proves target identity
+ * first: the head chunk must carry ref.identity_stamp, and every link is followed only when the slot
+ * it names carries the stamp stored in the link. It deletes from the tail and the head last, so an
+ * interrupted reclaim leaves a linked prefix with an intact head and a rerun finishes it.
+ * A deallocated head page, a head page that is no longer an OOS page, a missing head slot or a
+ * mismatched head stamp is a successful no-op that modifies nothing, leaves the error stack clean
+ * and reports no candidate, which gives every caller retry idempotency without extra state as long
+ * as the chain was written with logging enabled; the page type is checked under the latch before the
+ * page is read as a slotted page.
  * A stamp-matching reference to a continuation chunk is malformed and fails with
  * ER_HEAP_OOS_CORRUPTED_RECORD before any chunk is modified, and a reference with no head OOS OID at
  * all fails with ER_HEAP_OOS_INVALID_ARGUMENT. Operational failures keep their own error (CBRD-26950).
@@ -218,6 +264,9 @@ extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
+extern int oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
+extern int oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
+extern void oos_rv_dump_reclaim_intent (FILE *fp, int length, void *data);
 
 typedef enum
 {
@@ -272,6 +321,19 @@ extern void oos_test_reclaim_release_sweep (const VFID &oos_vfid);
 extern int oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_test_reclaim_waiter_count ();
 extern void oos_test_fail_next_reclaim_write_fix ();
+/* Reclaim intents (ADR-0008): the payload RVOOS_RECLAIM_POSTPONE and RVOOS_NOTIFY_VACUUM carry; a one-shot
+ * failure of the reclaimer after it performed n_deletes more chunk deletes (0 fails before the next one,
+ * -1 disarms); and a hook that replaces the server stop of the fail-stop policy, so a test can observe it
+ * (NULL restores the stop). */
+extern std::vector<char> oos_test_make_reclaim_intent_payload (const VFID &oos_vfid,
+    const std::vector<oos_chain_ref> &refs);
+extern void oos_test_fail_reclaim_after_chunk_deletes (int n_deletes);
+extern void oos_test_set_reclaim_fail_stop_hook (void (*hook) (int error));
+/* Stops the process with std::_Exit (exit_code) right after the n-th following UPDATE drop postpone appended its
+ * RVOOS_NOTIFY_VACUUM, with the log flushed up to it: a crash in the middle of a commit's postpones (0 disarms). */
+extern void oos_test_exit_after_update_drop_notifications (int n_notifications, int exit_code);
+/* Removes the files the synthetic-owner oos_create_file overload created that still exist. */
+extern void oos_test_remove_created_files (THREAD_ENTRY *thread_p);
 #endif
 
 #endif /* _OOS_FILE_HPP_ */
