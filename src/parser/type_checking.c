@@ -19025,6 +19025,12 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       db_value = pt_value_to_db (parser, val);
+      /* x AND NULL / x OR NULL can not be folded: NOT, IS and XOR tell UNKNOWN from FALSE */
+      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
+	{
+	  goto end;
+	}
+
       if (op == PT_AND)
 	{
 	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
