@@ -226,6 +226,7 @@ static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_cast_derived_columns_to_bound_types (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * as_attr_list);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -8152,6 +8153,98 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * pt_cast_derived_columns_to_bound_types () - cast each select list item of a derived table whose type is no longer
+ *					      the type of its column back to that type
+ *   return: none
+ *   parser(in):
+ *   query(in/out): the derived table, or an operand of its set operation
+ *   as_attr_list(in): the columns of the derived table
+ *
+ * Note: name resolution types a derived table without constant folding and gives its columns those types
+ *   (pt_bind_names), and the enclosing query is bound to them. Folding the table later can change the type of an item:
+ *   COALESCE (c, CAST (NULL AS INT)) is INTEGER, and once its second argument folds to NULL it resolves to VARCHAR. The
+ *   enclosing query would read a VARCHAR value from a column that it and the driver take for INTEGER.
+ */
+static void
+pt_cast_derived_columns_to_bound_types (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * as_attr_list)
+{
+  PT_NODE *col, *prev_col, *new_col, *attr;
+  int precision, scale;
+
+  if (query == NULL)
+    {
+      return;
+    }
+
+  switch (query->node_type)
+    {
+    case PT_SELECT:
+      if (PT_IS_VALUE_QUERY (query))
+	{
+	  return;
+	}
+
+      /* the columns follow the select list by position, hidden items included: name resolution makes them before the
+       * hidden ORDER BY items are appended, so those fall past the last column, while the sorted derived table of
+       * mq_rewrite_order_dependent_query () has a column for each hidden item it keeps, ahead of the ones it adds */
+      attr = as_attr_list;
+      prev_col = NULL;
+      for (col = query->info.query.q.select.list; col != NULL && attr != NULL; prev_col = col, col = col->next)
+	{
+	  /* NULL, NA and MAYBE fit any column; objects and collections keep their own domains */
+	  if (col->type_enum != attr->type_enum && col->type_enum != PT_TYPE_NULL && col->type_enum != PT_TYPE_NA
+	      && col->type_enum != PT_TYPE_MAYBE && col->type_enum != PT_TYPE_NONE && attr->type_enum != PT_TYPE_NULL
+	      && attr->type_enum != PT_TYPE_NA && attr->type_enum != PT_TYPE_MAYBE && attr->type_enum != PT_TYPE_NONE
+	      && attr->type_enum != PT_TYPE_OBJECT && !PT_IS_COLLECTION_TYPE (attr->type_enum)
+	      && !PT_IS_COLLECTION_TYPE (col->type_enum))
+	    {
+	      precision = TP_FLOATING_PRECISION_VALUE;
+	      scale = 0;
+	      if (attr->data_type != NULL)
+		{
+		  precision = attr->data_type->info.data_type.precision;
+		  scale = attr->data_type->info.data_type.dec_precision;
+		}
+	      new_col = pt_wrap_with_cast_op (parser, col, attr->type_enum, precision, scale, attr->data_type);
+	      if (new_col == NULL)
+		{
+		  PT_ERRORm (parser, col, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return;
+		}
+	      if (prev_col == NULL)
+		{
+		  /* the type of a query is that of its first column */
+		  query->info.query.q.select.list = new_col;
+		  query->type_enum = new_col->type_enum;
+		  if (query->data_type != NULL)
+		    {
+		      parser_free_tree (parser, query->data_type);
+		    }
+		  query->data_type = parser_copy_tree_list (parser, new_col->data_type);
+		}
+	      else
+		{
+		  prev_col->next = new_col;
+		}
+	      col = new_col;
+	    }
+	  attr = attr->next;
+	}
+      break;
+
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      pt_cast_derived_columns_to_bound_types (parser, query->info.query.q.union_.arg1, as_attr_list);
+      pt_cast_derived_columns_to_bound_types (parser, query->info.query.q.union_.arg2, as_attr_list);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
  * pt_eval_type () -
  *   return:
  *   parser(in):
@@ -8305,6 +8398,12 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	  if (spec->node_type == PT_SPEC && spec->info.spec.on_cond)
 	    {
 	      spec->info.spec.on_cond = pt_where_type (parser, spec->info.spec.on_cond);
+	    }
+	  if (spec->node_type == PT_SPEC && PT_SPEC_IS_DERIVED (spec)
+	      && spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	    {
+	      pt_cast_derived_columns_to_bound_types (parser, spec->info.spec.derived_table,
+						      spec->info.spec.as_attr_list);
 	    }
 	}
 
