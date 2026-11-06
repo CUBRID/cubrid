@@ -539,6 +539,59 @@ TEST_F (OosRealVacuum, UpdateStaleVersionDrainsNewSurvives)
 }
 
 // ============================================================================
+// TC-R3b: A notification whose MVCCID is older than its block's oldest visible MVCCID
+//
+// The commit postpone logs RVOOS_NOTIFY_VACUUM after logtb_complete_mvcc, so the global
+// oldest visible MVCCID may already have passed the UPDATE's MVCCID when the record lands in a
+// block. The notification must not lower that block's oldest visible MVCCID below the one of an
+// earlier block (vacuum keeps them non-decreasing), and vacuum must still reclaim the chains.
+// ============================================================================
+TEST_F (OosRealVacuum, NotifyOlderThanBlockOldestKeepsBlockOrderAndDrains)
+{
+  /* A committed transaction with MVCCID m0 that leaves a chain no row references. */
+  RECDES oos_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), oos_rec),
+	     NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+  OID oos_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid), NO_ERROR);
+  const MVCCID m0 = logtb_get_current_mvccid (thread_p);
+  ASSERT_TRUE (MVCCID_IS_VALID (m0));
+  commit_current_tran ();
+
+  LOG_LSA stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &stamp), NO_ERROR);
+
+  /* Let the vacuum master move the global oldest visible MVCCID past m0, then fill whole blocks whose
+   * oldest visible MVCCID is above m0. */
+  ASSERT_TRUE (wait_for_vacuum ([m0] { return log_Gl.mvcc_table.get_global_oldest_visible () > m0; }, 30));
+  close_log_block_containing (hfid, class_oid, scan_cache, current_log_blockid ());
+
+  /* Another transaction opens the next block, then the notification arrives with m0. */
+  RECDES filler {};
+  ASSERT_EQ (build_plain_heap_recdes (4096, filler), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_filler (&filler, recdes_free_data_area);
+  OID filler_oid = OID_INITIALIZER;
+  ASSERT_EQ (heap_insert_mvcc (hfid, class_oid, scan_cache, filler, filler_oid), NO_ERROR);
+  const MVCCID block_oldest = log_Gl.hdr.oldest_visible_mvccid;
+  ASSERT_GT (block_oldest, m0);
+
+  std::vector<char> payload = oos_test_make_reclaim_intent_payload (oos_vfid, { oos_chain_ref { oos_oid, stamp } });
+  LOG_DATA_ADDR addr (&hfid.vfid, NULL, -1);
+  log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr, (int) payload.size (),
+					 payload.data (), m0);
+  EXPECT_EQ (log_Gl.hdr.oldest_visible_mvccid, block_oldest)
+      << "the notification lowered its block's oldest visible MVCCID";
+  VACUUM_LOG_BLOCKID notify_block = current_log_blockid ();
+  commit_current_tran ();
+
+  close_log_block_containing (hfid, class_oid, scan_cache, notify_block);
+
+  ASSERT_TRUE (wait_for_vacuum ([this, oos_oid] { return oos_unreadable (oos_oid); }, 60))
+      << "vacuum did not reclaim the chain of the notification";
+}
+
+// ============================================================================
 // TC-R4: A live snapshot blocks reclaim; releasing it lets vacuum drain
 //
 // This is the definition of "stale": vacuum may only reclaim OOS no alive

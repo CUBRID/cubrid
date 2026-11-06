@@ -3643,8 +3643,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	}
 
 #if !defined (NDEBUG)
-      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid) || MVCC_ID_PRECEDES (mvccid, data->oldest_visible_mvccid)
-	  || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
+      /* RVOOS_NOTIFY_VACUUM carries the MVCCID of an UPDATE that committed before the postpone logged it, so it may
+       * precede the block's oldest visible MVCCID. That does not shorten the life of a dropped-file entry the
+       * notify needs: the UPDATE keeps its class lock until its postpones are done, so a drop of the heap is logged
+       * after the notify, and its dropped-file MVCCID (mvcc_next_id at the drop) is not older than the oldest
+       * visible MVCCID of the block that holds the notify. */
+      if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
+	  || (MVCC_ID_PRECEDES (mvccid, data->oldest_visible_mvccid)
+	      && log_record_data.rcvindex != RVOOS_NOTIFY_VACUUM) || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
 	{
 	  /* threshold_mvccid or mvccid or block data may be invalid */
 	  assert (0);
@@ -5754,6 +5760,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   MVCCID mvccid;
   VACUUM_LOG_BLOCKID crt_blockid;
   LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
+  MVCCID notify_oldest_floor = MVCCID_NULL;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_visible_mvccid = %llu",
@@ -5885,6 +5892,10 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
    * if a block + 1 MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended)
    * while block was logged. therefore, we must keep it. */
   data.oldest_visible_mvccid = MVCCID_NULL;
+  if (vacuum_Data.last_page != NULL && vacuum_Data.last_page->index_free > 0)
+    {
+      notify_oldest_floor = vacuum_Data.last_page->data[vacuum_Data.last_page->index_free - 1].oldest_visible_mvccid;
+    }
   while (crt_blockid > vacuum_Data.get_last_blockid ())
     {
       /* Stop recovering this block when previous block is reached. */
@@ -5916,8 +5927,22 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
 	      return error_code;
 	    }
-	  /* Update oldest/newest MVCCID. */
-	  if (data.oldest_visible_mvccid == MVCCID_NULL || MVCC_ID_PRECEDES (mvccid, data.oldest_visible_mvccid))
+	  /* Update oldest/newest MVCCID. A notify's MVCCID may precede the block's oldest visible MVCCID at run time
+	   * (see vacuum_process_log_block), so it does not lower the oldest. When it is the first record seen, the
+	   * oldest starts at the oldest of the last saved entry if that is newer. The run-time oldest of this block was
+	   * not older than that entry's, so the entries stay ordered and the oldest does not pass its run-time value. */
+	  if (dummy_log_data.rcvindex == RVOOS_NOTIFY_VACUUM)
+	    {
+	      if (data.oldest_visible_mvccid == MVCCID_NULL)
+		{
+		  data.oldest_visible_mvccid = mvccid;
+		  if (MVCCID_IS_VALID (notify_oldest_floor) && MVCC_ID_PRECEDES (mvccid, notify_oldest_floor))
+		    {
+		      data.oldest_visible_mvccid = notify_oldest_floor;
+		    }
+		}
+	    }
+	  else if (data.oldest_visible_mvccid == MVCCID_NULL || MVCC_ID_PRECEDES (mvccid, data.oldest_visible_mvccid))
 	    {
 	      data.oldest_visible_mvccid = mvccid;
 	    }
