@@ -269,6 +269,7 @@ extern int oos_get_identity_stamp (THREAD_ENTRY *thread_p, const OID &head_oid, 
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
+extern int oos_rv_undo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
@@ -312,6 +313,8 @@ struct oos_debug_counters
   unsigned long long read_many_requests;
   unsigned long long read_many_grouped_head_pages;
   unsigned long long read_values_per_fixed_page;
+  unsigned long long reclaim_growth_examined_pages;
+  unsigned long long reclaim_growth_laps;
 };
 
 /* One-shot publication failure seams used by focused SERVER_MODE tests. */
@@ -327,6 +330,11 @@ extern void oos_test_reclaim_release_sweep (const VFID &oos_vfid);
 extern int oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_test_reclaim_waiter_count ();
 extern void oos_test_fail_next_reclaim_write_fix ();
+extern void oos_test_fail_next_reclaim_read_fix ();
+/* Sets how many pages a file's emptied-page set holds before it marks the file unknown; 0 restores
+ * the default. */
+extern void oos_test_reclaim_set_emptied_limit (std::size_t limit);
+extern std::size_t oos_test_reclaim_emptied_count (const VFID &oos_vfid);
 /* Reclaim intents (ADR-0008): the payload RVOOS_RECLAIM_POSTPONE and RVOOS_NOTIFY_VACUUM carry; a one-shot
  * failure of the reclaimer after it performed n_deletes more chunk deletes (0 fails before the next one,
  * -1 disarms); and a hook that replaces the server stop of the fail-stop policy, so a test can observe it

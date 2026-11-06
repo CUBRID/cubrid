@@ -1029,8 +1029,8 @@ heap_oos_resolve_vfid (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context, 
  * reference, so a skip is unexpected: the intent asks the reclaim to report skips once, as a
  * notification that leaves the error stack clean (heap_oos_diagnose_skipped_cleanup).
  *
- * Empty-page reclaim (oos_reclaim_empty_pages) is not wired here; the growth-gate sweep returns the
- * pages the commit empties.
+ * Empty-page reclaim (oos_reclaim_empty_pages) is not wired here; the pages the commit empties enter
+ * the file's emptied-page set, and the next growth returns them.
  *
  * op_ctx (in): short operation tag for diagnostics, e.g. "update home", "delete relocation".
  */

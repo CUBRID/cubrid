@@ -880,7 +880,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVOOS_INSERT,
    "RVOOS_INSERT",
-   oos_rv_redo_delete,
+   oos_rv_undo_insert,
    oos_rv_redo_insert,
    NULL,
    NULL},
