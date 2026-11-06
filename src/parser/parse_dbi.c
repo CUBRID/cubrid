@@ -3220,15 +3220,29 @@ pt_host_var_is_leave_typed (const TP_DOMAIN * expected)
 }
 
 /*
- * pt_host_var_is_char_typed () - CBRD-27583: whether a context-typed position's expected domain is a CHAR: the
- *   client sends a VARCHAR value as it is and casts any other into the CHAR (pt_set_host_variables), so its plan is the
- *   one of the type the client sends, which its compiled domain keeps (pt_host_var_sent_domain; a LEAVE CHAR
- *   position's is the value's)
+ * pt_host_var_is_assignment () - whether every occurrence of a user position is a value stored into a column
+ *   (PT_HOST_VAR_ASSIGNMENT): the column's domain is its plan's, a CHAR's VARCHAR padded at the bind as the store would
  */
 bool
-pt_host_var_is_char_typed (const TP_DOMAIN * expected)
+pt_host_var_is_assignment (const PARSER_CONTEXT * parser, int index)
 {
-  return pt_host_var_is_context_typed (expected) && TP_DOMAIN_TYPE (expected) == DB_TYPE_CHAR;
+  return index < parser->host_var_count && parser->host_var_format_classes != NULL
+    && (parser->host_var_format_classes[index] & PT_HOST_VAR_ASSIGNMENT);
+}
+
+/*
+ * pt_host_var_is_char_typed () - CBRD-27583: whether a context-typed position's expected domain is a CHAR the client
+ *   sends a VARCHAR value into as it is, casting any other into the CHAR (pt_set_host_variables): its plan is the one
+ *   of the type the client sends, which its compiled domain keeps (pt_host_var_sent_domain; a LEAVE CHAR position's
+ *   is the value's). Not an assignment position: its VARCHAR is padded into the CHAR.
+ */
+bool
+pt_host_var_is_char_typed (const PARSER_CONTEXT * parser, int index)
+{
+  const TP_DOMAIN *expected =
+    parser->host_var_expected_domains != NULL ? parser->host_var_expected_domains[index] : NULL;
+  return pt_host_var_is_context_typed (expected) && TP_DOMAIN_TYPE (expected) == DB_TYPE_CHAR
+    && !pt_host_var_is_assignment (parser, index);
 }
 
 /*
@@ -3263,7 +3277,7 @@ pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB
       return TP_DOMAIN_TYPE (compiled) == TP_DOMAIN_TYPE (parser->host_var_bind_domains[index]);
     }
   const bool leave = pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]);
-  if (pt_host_var_is_char_typed (parser->host_var_expected_domains[index]))
+  if (pt_host_var_is_char_typed (parser, index))
     {
       const bool sent_varchar = DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_VARCHAR;
       if (sent_varchar != (TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR))
@@ -3392,7 +3406,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 			   pt_host_var_coerce_target (parser, i, val_type, target, name, sizeof (name)));
 	      return;
 	    }
-	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
+	  if (TP_IS_CHAR_TYPE (hv_dom->type->id) && !pt_host_var_is_assignment (parser, i))
 	    {
 	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR))
 		{
