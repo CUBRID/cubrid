@@ -295,7 +295,7 @@ jobs:
                   | awk -v k="^(${known})$" '{split($0, a, " "); if (a[2] ~ k) print a[2]}' \
                   | sort -u)
                 if [ -z "$sel" ]; then
-                  echo "::error::run ${rerun} ran no suite: it only built, or it predates per-suite job names. Use /run shell, sql or all"
+                  echo "::error::run ${rerun} has no shard or status job of any suite, so its suites are unknown. Use /run shell, sql or all"
                   emit run false
                   exit 0
                 fi
@@ -1286,7 +1286,7 @@ jobs:
     name: "shard ${{ matrix.suite }} ${{ matrix.i }}"
     needs: plan
     # success() is false for a failed job anywhere behind this one, such as the release leg.
-    # An empty matrix is a re-run with nothing to run, or no selected suite has a usable build;
+    # An empty matrix means no selected suite has a shard to run: nothing to re-run, or no usable build.
     # GitHub fails a job that expands to none.
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]' }}
     permissions: {}
@@ -1736,12 +1736,14 @@ jobs:
               echo "## gha-ci: $suite suite"
               echo
               if [ -n "$RERUN_FROM" ]; then
-                echo "> **Only what run \`$RERUN_FROM\` left unhandled, and the cases \`$tc_branch\` changed since, were re-run. This is not a full run.**"
+                echo "> **Only what run \`$RERUN_FROM\` left unhandled, and the cases \`$tc_branch\` changed since, were taken for this re-run. This is not a full run.**"
                 echo ">"
                 if [ "$total" -gt 0 ]; then
                   echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because their shard died whole or never started, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
                 elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
-                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. The verdict of run \`$RERUN_FROM\` stands.**"
+                  stands="The verdict of run \`$RERUN_FROM\` stands."
+                  [ -n "$brid" ] || stands="This run has no usable $(attr "$suite" build_mode) build, so the suite fails."
+                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. $stands**"
                 elif [ "${rerun_gone:-0}" -eq 0 ]; then
                   echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
                 else
@@ -1869,11 +1871,11 @@ jobs:
             # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
             hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $suite"}}"; }
             if [ -z "$brid" ]; then
-              fault "plan found no usable $(attr "$suite" build_mode) build, so it started no shard. See the plan job's warning"
+              fault "plan found no usable $(attr "$suite" build_mode) build, and a suite fails without one. See the plan job's warning"
             else
               [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
               [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
-              [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
+              [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before recording one"
               case "$reason" in
                 ok|no-shard) ;;
                 mixed)    hold "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
