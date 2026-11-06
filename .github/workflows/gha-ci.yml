@@ -1065,6 +1065,8 @@ jobs:
               prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
               [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
+              # A run from before recipes were recorded read a build of unknown recipe: no build matches it.
+              [ -n "$prev_recipe" ] || grep -q "^build_recipe=" "$srcdir/plan/split.meta" 2>/dev/null || prev_recipe='no recorded recipe'
               # No build to keep the same: this run has no usable build and starts no shard, or the source run
               # recorded '' because none of the results a re-run of it relies on came from a build (see build_recipe below).
               if [ -n "$recipe" ] && ! grep -qx "build_recipe=''" "$srcdir/plan/split.meta" 2>/dev/null \
