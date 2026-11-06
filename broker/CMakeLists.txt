@@ -378,6 +378,16 @@ add_executable(cub_cas_cgw WIN32 ${CUB_CAS_CGW_SOURCES})
 target_compile_definitions(cub_cas_cgw PRIVATE ${BROKER_DEFS} CAS_FOR_CGW CAS_CUBRID)
 target_include_directories(cub_cas_cgw PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_cas_cgw LINK_PRIVATE cas_cgw_lib cas_common_lib cubridcs)
+if(NOT "${CUBRID_3RDPARTY_ROOT}" STREQUAL "")
+  # Keep the selected driver manager with Gateway after the producer is removed.
+  set_target_properties(cub_cas_cgw PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+  get_filename_component(odbc_payload "${LIBUNIXODBC_LIBS}" REALPATH)
+  get_filename_component(odbc_library_dir "${LIBUNIXODBC_LIBS}" DIRECTORY)
+  install(FILES "${odbc_payload}" "${odbc_library_dir}/libodbc.so.2"
+    DESTINATION ${CUBRID_LIBDIR})
+  install(DIRECTORY "${LIBUNIXODBC_SOURCE_DIR}/"
+    DESTINATION "${CUBRID_3RDPARTYDIR}/unixODBC")
+endif()
 if(UNIX)
   target_link_libraries(cub_cas_cgw LINK_PRIVATE ${LIBOPENSSL_LIBS})
   if(TARGET ${LIBOPENSSL_TARGET})
