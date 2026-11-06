@@ -559,10 +559,6 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
-  /* every WHERE term now has its selectivity: reconcile each derived duplicate with the
-   * predicate that implies it */
-  qo_derived_term_compensate (env);
-
   /* check join-edge for ansi(explicit) join */
   for (n = 1; n < env->nnodes; n++)
     {
@@ -598,6 +594,10 @@ qo_optimize_helper (QO_ENV * env)
 
   /* classify ON-clause terms for anti join */
   qo_classify_antijoin_terms (env);
+
+  /* every WHERE term now has its selectivity and its class: reconcile each derived duplicate with
+   * the predicate that implies it */
+  qo_derived_term_compensate (env);
 
   bitset_delset (&nodeset);
 
@@ -9348,8 +9348,10 @@ qo_node_free (QO_NODE * node)
  *	 rewrite passes that run between the extraction and this point rebuild predicates
  *	 without preserving annotations of their own.
  *
- *	 An OR-derived restriction comes from a multi-spec OR factor, so its origin is a
- *	 disjunction spanning several specs whose segments cover the derived term's own -- the
+ *	 An OR-derived restriction comes from an OR factor kept whole -- over several specs, or
+ *	 over one as a PT_OR tree -- so its origin is a disjunction whose segments cover the
+ *	 derived term's own; a key range on one column derived beside the restriction on its whole
+ *	 spec takes that restriction as its origin, since the restriction implies it -- the
  *	 segments, not just the node, because a query can hold more than one such factor over
  *	 the same tables and only the columns tell them apart.  A LIKE-derived range comes from
  *	 the prefix of a LIKE on the same segment, which carries the paired
@@ -9370,6 +9372,7 @@ qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken
   int j;
   QO_TERM *candidate, *origin = NULL;
   PT_NODE *pt;
+  bool nested, origin_nested = false;
 
   for (j = 0; j < env->nterms; j++)
     {
@@ -9389,17 +9392,35 @@ qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken
 	}
       else
 	{
-	  if (QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED)
-	      || bitset_cardinality (&(QO_TERM_NODES (candidate))) < 2
-	      || !bitset_subset (&(QO_TERM_NODES (candidate)), &(QO_TERM_NODES (derived)))
-	      || !bitset_subset (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))))
-	    {
-	      continue;		/* the origin spans several specs and covers the derived one */
-	    }
 	  pt = QO_TERM_PT_EXPR (candidate);
 	  if (pt == NULL || pt->node_type != PT_EXPR || (pt->info.expr.op != PT_OR && pt->or_next == NULL))
 	    {
 	      continue;		/* the origin is a disjunction */
+	    }
+	  /* a key range on one column derived next to the restriction on its whole spec is implied
+	   * by that restriction: it pairs with it, not with the factor both come from */
+	  nested = (QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED) && pt->info.expr.op == PT_OR
+		    && bitset_is_equivalent (&(QO_TERM_NODES (candidate)), &(QO_TERM_NODES (derived)))
+		    && !bitset_is_equivalent (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))));
+	  if ((QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED) && !nested)
+	      || (bitset_cardinality (&(QO_TERM_NODES (candidate))) < 2 && pt->info.expr.op != PT_OR)
+	      || !bitset_subset (&(QO_TERM_NODES (candidate)), &(QO_TERM_NODES (derived)))
+	      || !bitset_subset (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))))
+	    {
+	      /* the origin spans several specs, or is a factor over one spec that pt_cnf () kept
+	       * whole (a PT_OR tree, not an or_next chain), and covers the derived one */
+	      continue;
+	    }
+
+	  if (origin != NULL && origin_nested && !nested)
+	    {
+	      continue;		/* the restriction on the spec is the closer origin */
+	    }
+	  if (nested && !origin_nested)
+	    {
+	      origin = candidate;
+	      origin_nested = true;
+	      continue;
 	    }
 	}
 
@@ -9488,6 +9509,14 @@ qo_derived_term_compensate (QO_ENV * env)
 	  || QO_TERM_SELECTIVITY (derived) <= 0.0)
 	{
 	  continue;		/* an empty derived range leaves nothing to divide by */
+	}
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED) && QO_TERM_LOCATION (derived) > 0
+	  && QO_TERM_CLASS (derived) != QO_TC_SARG)
+	{
+	  /* not counted at a node: an outer join's ON condition derives a restriction on the
+	   * preserved side, evaluated during the join without rejecting rows, so the origin has
+	   * no share of it to pay back */
+	  continue;
 	}
 
       origin = qo_derived_term_origin (env, derived, i, &taken);
