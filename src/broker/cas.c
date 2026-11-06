@@ -1139,7 +1139,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   con_status_to_restore = -1;
 
-  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code) || ux_stream_finds_no_upload (func_code))
     {
       if (is_first_request == true)
 	{
