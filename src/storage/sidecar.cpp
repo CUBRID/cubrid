@@ -2042,7 +2042,8 @@ sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PT
   /* the rows are peeked from the page */
   sidecar_stored_form_admit (page, DB_PAGESIZE);
 #endif /* !NDEBUG */
-  if (!sidecar_lazy_holds (page) || sidecar_Lazy.scan != scan_cache)
+  if (!sidecar_lazy_holds (page) || sidecar_Lazy.scan != scan_cache
+      || sidecar_Lazy.trid != sidecar_current_trid (thread_p))
     {
       sidecar_lazy_note (thread_p, scan_cache, page, DB_PAGESIZE, true);
     }
@@ -2131,6 +2132,7 @@ void
 sidecar_assert_request_start (THREAD_ENTRY *thread_p)
 {
   assert (thread_p->sidecar_cursor_page == NULL && thread_p->sidecar_cursor_owner == NULL);
+  assert (sidecar_Lazy.scan == NULL && sidecar_Lazy.begin == NULL && sidecar_Lazy.trid == NULL_TRANID);
 }
 #endif /* !NDEBUG */
 
