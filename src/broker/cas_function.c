@@ -2472,6 +2472,33 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
     }
 }
 
+/* an argument of any length: a byte string, which net_arg_get_str () bounds by its own size */
+#define STREAM_ARG_ANY_SIZE (-1)
+
+/*
+ * stream_args_fit () - Has each argument of a stream request the size its reader takes?
+ *   widths(in): one per argument, NET_SIZE_* or STREAM_ARG_ANY_SIZE
+ *
+ * net_arg_get_int () and the other fixed-width readers copy their width whatever size the driver sent, so a shorter
+ * argument at the end of the request would be read past.
+ */
+static bool
+stream_args_fit (int argc, void **argv, const int *widths)
+{
+  int i, size;
+
+  for (i = 0; i < argc; i++)
+    {
+      NET_ARG_GET_SIZE (size, argv[i]);
+      if (widths[i] != STREAM_ARG_ANY_SIZE && size != widths[i])
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 /* SEND_DATA: data [, flags]. With CAS_STREAM_FLAG_FINAL the chunk ends the stream and the reply is END's. */
 FN_RETURN
 fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -2479,8 +2506,9 @@ fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *data = NULL;
   int data_len = 0;
   char flags = 0;
+  static const int widths[] = { STREAM_ARG_ANY_SIZE, NET_SIZE_BYTE };
 
-  if (argc < 1 || argc > 2)
+  if (argc < 1 || argc > 2 || !stream_args_fit (argc, argv, widths))
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
@@ -2508,6 +2536,13 @@ fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 FN_RETURN
 fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
+  if (argc != 0)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
   ux_stream_end (NULL, 0, net_buf, req_info);
 
   return FN_KEEP_CONN;
@@ -2524,8 +2559,9 @@ fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   char flags = 0;
   char *data = NULL;
   int data_len = 0;
+  static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_BYTE, STREAM_ARG_ANY_SIZE };
 
-  if (argc != 2 && argc != 4)
+  if ((argc != 2 && argc != 4) || !stream_args_fit (argc, argv, widths))
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
@@ -2549,6 +2585,13 @@ fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 FN_RETURN
 fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
+  if (argc != 0)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
   ux_stream_abort (net_buf, req_info);
 
   return FN_KEEP_CONN;
@@ -2563,8 +2606,9 @@ fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int config_len = 0;
   int first_max = 0;
   char flags = 0;
+  static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_INT, NET_SIZE_BYTE };
 
-  if (argc != 2 && argc != 4)
+  if ((argc != 2 && argc != 4) || !stream_args_fit (argc, argv, widths))
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
@@ -2591,8 +2635,9 @@ fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   DB_BIGINT handle = 0;
   int max = 0;
   char flags = 0;
+  static const int widths[] = { NET_SIZE_BIGINT, NET_SIZE_INT, NET_SIZE_BYTE };
 
-  if (argc < 2 || argc > 3)
+  if (argc < 2 || argc > 3 || !stream_args_fit (argc, argv, widths))
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
@@ -2617,8 +2662,9 @@ fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 {
   DB_BIGINT handle = 0;
   char auto_commit_mode = FALSE;
+  static const int widths[] = { NET_SIZE_BIGINT, NET_SIZE_BYTE };
 
-  if (argc != 2)
+  if (argc != 2 || !stream_args_fit (argc, argv, widths))
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
