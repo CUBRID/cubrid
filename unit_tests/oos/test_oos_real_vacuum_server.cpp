@@ -1813,6 +1813,43 @@ TEST_F (OosRealVacuumHeaderHeld, ImmediateFailureRerunsAtMostOncePerSecond)
   EXPECT_TRUE (row_removed (slot_record_type (heap_oid))) << "vacuum never removed the deleted row";
 }
 
+// A committed UPDATE's notification names only the heap; vacuum looks up its OOS file at the heap header. A failed
+// lookup leaves the block for a later run instead of stopping the server, and the chain is reclaimed once the
+// header is free (ADR-0008 with CBRD-27933).
+TEST_F (OosRealVacuumHeaderHeld, UpdateNotificationDeferredWhileHeaderHeldThenReclaimed)
+{
+  OID heap_oid = OID_INITIALIZER, old_oos_oid = OID_INITIALIZER;
+  insert_row_on_new_page (false, heap_oid, old_oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  RECDES new_oos_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096),
+	     new_oos_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&new_oos_rec, recdes_free_data_area);
+  OID new_oos_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, new_oos_rec, new_oos_oid), NO_ERROR);
+  RECDES new_heap_rec {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({new_oos_oid}, { (INT64) new_oos_rec.length}, new_heap_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_heap (&new_heap_rec, recdes_free_data_area);
+
+  const int deferrals_before = deferrals ();
+  ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, new_heap_rec), NO_ERROR);
+  const VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+  commit_current_tran ();
+
+  PGBUF_WATCHER header_watcher;
+  ASSERT_TRUE (hold_header_and_close_blocks (header_watcher, update_block)) << "the update's log block did not close";
+  const bool deferred = wait_for_vacuum ([this, deferrals_before] { return deferrals () > deferrals_before; }, 60);
+  const bool old_kept_while_held = !oos_unreadable (old_oos_oid);
+  release_header (header_watcher);
+
+  EXPECT_TRUE (deferred) << "vacuum never deferred the block on the held heap header";
+  EXPECT_TRUE (old_kept_while_held) << "the dropped chain was reclaimed although the header lookup failed";
+  EXPECT_TRUE (wait_for_vacuum ([this, &old_oos_oid] { return oos_unreadable (old_oos_oid); }, 60))
+      << "vacuum never reclaimed the UPDATE's dropped chain after the header was released";
+  EXPECT_FALSE (oos_unreadable (new_oos_oid)) << "the new version's chain must survive";
+}
+
 // ============================================================================
 // TC-R15..R17: A' UPDATE notification (ADR-0008, CBRD-27237)
 //
