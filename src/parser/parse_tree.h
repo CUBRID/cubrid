@@ -1667,7 +1667,8 @@ typedef enum
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
-  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x40000	/* a derived SEMI / ANTI JOIN spec qo_rewrite_exists_semi_anti () made of a [NOT] EXISTS / [NOT] IN subquery over several tables; pt_plan_query () plans it as that subquery too */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2969,6 +2970,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 #define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
 							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
+#define PT_SELECT_INFO_SUPPRESS_PLAN_DUMP 0x040000	/* the plan dump, SQL plan text and trace of this derived table
+							 * are written once the enclosing query keeps it (CBRD-27929) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))

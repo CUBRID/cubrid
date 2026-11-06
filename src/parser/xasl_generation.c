@@ -472,6 +472,10 @@ static ANALYTIC_EVAL_TYPE *pt_build_analytic_eval_list (PARSER_CONTEXT * parser,
 static XASL_NODE *pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
 static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type);
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static QO_PLAN *pt_plan_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan);
+static int pt_dump_query_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl,
+			       bool hint_ignored);
+static void pt_dump_unnested_derived_plans (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
 static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
@@ -21571,131 +21575,114 @@ pt_add_null_filter_for_min_max_opt (PARSER_CONTEXT * parser, PT_NODE * select_no
 }
 
 /*
- * pt_plan_query () -
- *   return: XASL_NODE, NULL indicates error
+ * pt_plan_semi_anti_as_exists () - plan the query again with each derived SEMI / ANTI JOIN spec the rewrite made of
+ *      a subquery put back as that subquery (qo_rewrite_semi_anti_as_exists ()), and keep the plan that costs less
+ *   return: the plan kept; NULL indicates error
  *   parser(in): context
- *   select_node(in): of PT_SELECT type
+ *   select_node(in/out): of PT_SELECT type; the specs whose subquery costs less are left put back
+ *   plan(in): the plan of select_node as it is; discarded unless returned
+ *
+ * Note: the derived table is built in full once, before the query runs, and the plan of the query does not count
+ *   that: its cost is added here as that of a subquery is (qo_plan_compute_subquery_cost ()).  The subquery put back
+ *   is weighed by its plan alone, left on it as its summary; its XASL, and with it the plan dump, the plan text and
+ *   the trace, is made only for a subquery kept.  The derived table has its XASL and printed its plan already
+ *   (pt_generate_ctes_and_derived_tables ()), kept or not.
  */
-static XASL_NODE *
-pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
+static QO_PLAN *
+pt_plan_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan)
 {
-  XASL_NODE *xasl;
-  QO_PLAN *plan = NULL;
-  PT_NODE *spec;
-  int level, trace_format;
-  bool hint_ignored = false;
-  bool dump_plan;
+  PT_NODE *prev_spec, *spec, *expr, *subq;
+  QO_PLAN *subq_plan, *exists_plan;
+  double cpu_cost, io_cost, semi_anti_cost;
 
-  if (select_node->node_type != PT_SELECT)
+  for (prev_spec = NULL, spec = select_node->info.query.q.select.from; spec != NULL && plan != NULL;
+       prev_spec = spec, spec = spec->next)
     {
-      return NULL;
-    }
-
-  /* let the index-based MIN/MAX scan skip NULL keys of the ordering column (CBRD-24890) */
-  pt_add_null_filter_for_min_max_opt (parser, select_node);
-
-  /* Check for join, path expr, and index optimizations */
-  plan = qo_optimize_query (parser, select_node);
-
-  /* a planning read (row snapshot) that aborted the transaction, lost the server or was cancelled
-   * failed the statement: there is no plan to retry for */
-  if (!plan && pt_has_error (parser)
-      && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
-	  || er_errid () == ER_INTERRUPTED))
-    {
-      return NULL;
-    }
-
-  /* optimization fails, ignore join hint and retry optimization */
-  if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
-    {
-      hint_ignored = true;
-
-      /* init hint */
-      select_node->info.query.q.select.hint = PT_HINT_NONE;
-      if (select_node->info.query.q.select.leading)
+      if (prev_spec == NULL || !(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY))
 	{
-	  parser_free_tree (parser, select_node->info.query.q.select.leading);
-	  select_node->info.query.q.select.leading = NULL;
-	}
-      if (select_node->info.query.q.select.use_nl)
-	{
-	  parser_free_tree (parser, select_node->info.query.q.select.use_nl);
-	  select_node->info.query.q.select.use_nl = NULL;
-	}
-      if (select_node->info.query.q.select.use_idx)
-	{
-	  parser_free_tree (parser, select_node->info.query.q.select.use_idx);
-	  select_node->info.query.q.select.use_idx = NULL;
-	}
-      if (select_node->info.query.q.select.index_ss)
-	{
-	  parser_free_tree (parser, select_node->info.query.q.select.index_ss);
-	  select_node->info.query.q.select.index_ss = NULL;
-	}
-      if (select_node->info.query.q.select.index_ls)
-	{
-	  parser_free_tree (parser, select_node->info.query.q.select.index_ls);
-	  select_node->info.query.q.select.index_ls = NULL;
-	}
-      if (select_node->info.query.q.select.use_merge)
-	{
-	  parser_free_tree (parser, select_node->info.query.q.select.use_merge);
-	  select_node->info.query.q.select.use_merge = NULL;
-	}
-      if (select_node->info.query.q.select.no_use_hash)
-	{
-	  parser_free_tree (parser, select_node->info.query.q.select.no_use_hash);
-	  select_node->info.query.q.select.no_use_hash = NULL;
-	}
-      if (select_node->info.query.q.select.use_hash)
-	{
-	  parser_free_tree (parser, select_node->info.query.q.select.use_hash);
-	  select_node->info.query.q.select.use_hash = NULL;
+	  continue;
 	}
 
-      select_node->alias_print = NULL;
+      qo_plan_compute_subquery_cost (spec->info.spec.derived_table, &cpu_cost, &io_cost);
+      semi_anti_cost = qo_plan_total_cost (plan) + cpu_cost + io_cost;
 
-#if defined(CUBRID_DEBUG)
-      PT_NODE_PRINT_TO_ALIAS (parser, select_node, PT_CONVERT_RANGE);
-#endif /* CUBRID_DEBUG */
+      expr = qo_rewrite_semi_anti_as_exists (parser, select_node, prev_spec, spec);
+      if (expr == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      qo_plan_discard (plan);
+	      return NULL;
+	    }
+	  continue;
+	}
 
+      /* run per outer row, the subquery counts in the plan of the query through its summary */
+      subq = (expr->info.expr.op == PT_NOT) ? expr->info.expr.arg1->info.expr.arg1 : expr->info.expr.arg1;
+
+      /* the copy of the derived table carries its flag (pt_generate_ctes_and_derived_tables ()): the subquery writes
+       * its plan output as the other subqueries do */
+      PT_SELECT_INFO_CLEAR_FLAG (subq, PT_SELECT_INFO_SUPPRESS_PLAN_DUMP);
+      subq_plan = qo_optimize_query (parser, subq);
+      if (subq_plan == NULL || !qo_plan_set_summary ((subq_plan->info)->env, subq_plan, NULL))
+	{
+	  if (subq_plan != NULL)
+	    {
+	      qo_plan_discard (subq_plan);
+	    }
+	  qo_restore_semi_anti_spec (parser, select_node, prev_spec, spec, expr);
+	  continue;
+	}
+      qo_plan_discard (subq_plan);
+
+      /* the tree is changed under the plan of the query as it was: plan it again if it is kept, as the retry without
+       * hints in pt_plan_query () does */
+      qo_plan_discard (plan);
+      exists_plan = qo_optimize_query (parser, select_node);
+      if (exists_plan != NULL && qo_plan_total_cost (exists_plan) < semi_anti_cost)
+	{
+	  /* the subquery is kept: make its XASL, as for the other subqueries of the query */
+	  (void) parser_walk_tree (parser, expr, parser_generate_xasl_pre, NULL, parser_generate_xasl_post,
+				   &xasl_Supp_info);
+	  plan = exists_plan;
+	  spec = prev_spec;	/* the spec is out of the FROM */
+	  continue;
+	}
+
+      if (exists_plan != NULL)
+	{
+	  qo_plan_discard (exists_plan);
+	}
+      qo_restore_semi_anti_spec (parser, select_node, prev_spec, spec, expr);
       plan = qo_optimize_query (parser, select_node);
     }
 
-  if (pt_is_single_tuple (parser, select_node))
-    {
-      xasl = pt_to_buildvalue_proc (parser, select_node, plan);
-    }
-  else
-    {
-      xasl = pt_to_buildlist_proc (parser, select_node, plan);
-    }
+  return plan;
+}
 
-  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
-      && histogram_stmt_has_hv_predicate (parser, select_node))
-    {
-      /* the plan was chosen with unbound host-variable predicate markers (default
-       * selectivity), e.g. at PREPARE. The first EXECUTE detects this flag and replans
-       * once under the actual bind values; the value-bound regeneration runs with
-       * set_host_var on, so its plan does not carry the flag and later executions reuse
-       * the fixed plan. */
-      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
-    }
+/*
+ * pt_dump_query_plan () - the plan dump (SET OPTIMIZATION LEVEL >= 0x100), the SQL plan text of the XASL cache entry
+ *      and the query trace of a SELECT, written once its XASL is made
+ *   return: NO_ERROR, or ER_FAILED when the plan text cannot be allocated
+ *   parser(in):
+ *   select_node(in): the SELECT
+ *   plan(in): its plan; NULL when the optimizer gave up
+ *   xasl(in): its XASL
+ *   hint_ignored(in): the plan was made with the join hints dropped
+ *
+ * Note: suppressed for a derived table that may be put back as its subquery (PT_SELECT_INFO_SUPPRESS_PLAN_DUMP) and
+ *   written once the enclosing query keeps it (pt_dump_unnested_derived_plans ()).
+ */
+static int
+pt_dump_query_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl, bool hint_ignored)
+{
+  PT_NODE *spec;
+  int level, trace_format;
+  bool dump_plan;
 
-  if (xasl != NULL && !pt_is_subquery (select_node) && histogram_bind_watch_candidate (parser, select_node))
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_SUPPRESS_PLAN_DUMP))
     {
-      /* target selection for the bind-value plan variants. No condition looks at the values
-       * (real-class specs, most-common values on the column, no unique key pinning the node), so
-       * whatever values the plan was chosen under, every compile of the statement gives the same
-       * answer and the flag travels with every variant of it. Only the statement's own header
-       * is read, and its walk covers the subqueries, so a subquery is not judged on its own. */
-      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
-    }
-  if (xasl != NULL && plan != NULL)
-    {
-      /* the plan-variant directory tells two compiles of one query apart by their plans */
-      parser->bind_plan_sig = qo_plan_signature (plan, parser->bind_plan_sig);
+      return NO_ERROR;
     }
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
@@ -21810,7 +21797,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      sql_plan = pt_alloc_packing_buf ((int) sizeloc + 1);
 	      if (sql_plan == NULL)
 		{
-		  goto exit;
+		  return ER_FAILED;
 		}
 
 	      strncpy (sql_plan, ptr, sizeloc);
@@ -21829,7 +21816,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      contextp->sql_plan_text = (char *) parser_alloc (parser, size);
 	      if (contextp->sql_plan_text == NULL)
 		{
-		  goto exit;
+		  return ER_FAILED;
 		}
 
 	      contextp->sql_plan_alloc_size = size;
@@ -21843,7 +21830,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	      ptr = (char *) parser_alloc (parser, size);
 	      if (ptr == NULL)
 		{
-		  goto exit;
+		  return ER_FAILED;
 		}
 
 	      ptr[0] = '\0';
@@ -21870,6 +21857,190 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  qo_top_plan_print_json (parser, xasl, select_node, plan);
 	}
     }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_dump_unnested_derived_plans () - write the plan output of the derived tables unnested from a subquery that the
+ *      query keeps, suppressed by pt_generate_ctes_and_derived_tables () while pt_plan_semi_anti_as_exists () could
+ *      still put them back as the subquery
+ *   return: none
+ *   parser(in):
+ *   select_node(in): the enclosing SELECT, its FROM as pt_plan_semi_anti_as_exists () left it
+ *
+ * Note: the plan the XASL of the derived table was made from is discarded, so the table is planned once more for its
+ *   output: the same plan over the same tree.
+ */
+static void
+pt_dump_unnested_derived_plans (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  PT_NODE *spec, *derived;
+  QO_PLAN *plan;
+
+  for (spec = select_node->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      derived = spec->info.spec.derived_table;
+      if (!(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY) || derived == NULL || derived->node_type != PT_SELECT
+	  || !PT_SELECT_INFO_IS_FLAGED (derived, PT_SELECT_INFO_SUPPRESS_PLAN_DUMP))
+	{
+	  continue;
+	}
+
+      PT_SELECT_INFO_CLEAR_FLAG (derived, PT_SELECT_INFO_SUPPRESS_PLAN_DUMP);
+      if (derived->info.query.xasl == NULL)
+	{
+	  continue;
+	}
+
+      plan = qo_optimize_query (parser, derived);
+      if (plan != NULL)
+	{
+	  (void) pt_dump_query_plan (parser, derived, plan, (XASL_NODE *) derived->info.query.xasl, false);
+	  qo_plan_discard (plan);
+	}
+    }
+}
+
+/*
+ * pt_plan_query () -
+ *   return: XASL_NODE, NULL indicates error
+ *   parser(in): context
+ *   select_node(in): of PT_SELECT type
+ */
+static XASL_NODE *
+pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  XASL_NODE *xasl;
+  QO_PLAN *plan = NULL;
+  int level;
+  bool hint_ignored = false;
+
+  if (select_node->node_type != PT_SELECT)
+    {
+      return NULL;
+    }
+
+  /* let the index-based MIN/MAX scan skip NULL keys of the ordering column (CBRD-24890) */
+  pt_add_null_filter_for_min_max_opt (parser, select_node);
+
+  /* Check for join, path expr, and index optimizations */
+  plan = qo_optimize_query (parser, select_node);
+
+  /* a planning read (row snapshot) that aborted the transaction, lost the server or was cancelled
+   * failed the statement: there is no plan to retry for */
+  if (!plan && pt_has_error (parser)
+      && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	  || er_errid () == ER_INTERRUPTED))
+    {
+      return NULL;
+    }
+
+  /* optimization fails, ignore join hint and retry optimization */
+  if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
+    {
+      hint_ignored = true;
+
+      /* init hint */
+      select_node->info.query.q.select.hint = PT_HINT_NONE;
+      if (select_node->info.query.q.select.leading)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.leading);
+	  select_node->info.query.q.select.leading = NULL;
+	}
+      if (select_node->info.query.q.select.use_nl)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.use_nl);
+	  select_node->info.query.q.select.use_nl = NULL;
+	}
+      if (select_node->info.query.q.select.use_idx)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.use_idx);
+	  select_node->info.query.q.select.use_idx = NULL;
+	}
+      if (select_node->info.query.q.select.index_ss)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.index_ss);
+	  select_node->info.query.q.select.index_ss = NULL;
+	}
+      if (select_node->info.query.q.select.index_ls)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.index_ls);
+	  select_node->info.query.q.select.index_ls = NULL;
+	}
+      if (select_node->info.query.q.select.use_merge)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.use_merge);
+	  select_node->info.query.q.select.use_merge = NULL;
+	}
+      if (select_node->info.query.q.select.no_use_hash)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.no_use_hash);
+	  select_node->info.query.q.select.no_use_hash = NULL;
+	}
+      if (select_node->info.query.q.select.use_hash)
+	{
+	  parser_free_tree (parser, select_node->info.query.q.select.use_hash);
+	  select_node->info.query.q.select.use_hash = NULL;
+	}
+
+      select_node->alias_print = NULL;
+
+#if defined(CUBRID_DEBUG)
+      PT_NODE_PRINT_TO_ALIAS (parser, select_node, PT_CONVERT_RANGE);
+#endif /* CUBRID_DEBUG */
+
+      plan = qo_optimize_query (parser, select_node);
+    }
+
+  /* a derived SEMI / ANTI JOIN spec unnested from a subquery may cost more than that subquery (CBRD-27929) */
+  if (plan != NULL)
+    {
+      plan = pt_plan_semi_anti_as_exists (parser, select_node, plan);
+    }
+  pt_dump_unnested_derived_plans (parser, select_node);
+
+  if (pt_is_single_tuple (parser, select_node))
+    {
+      xasl = pt_to_buildvalue_proc (parser, select_node, plan);
+    }
+  else
+    {
+      xasl = pt_to_buildlist_proc (parser, select_node, plan);
+    }
+
+  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
+      && histogram_stmt_has_hv_predicate (parser, select_node))
+    {
+      /* the plan was chosen with unbound host-variable predicate markers (default
+       * selectivity), e.g. at PREPARE. The first EXECUTE detects this flag and replans
+       * once under the actual bind values; the value-bound regeneration runs with
+       * set_host_var on, so its plan does not carry the flag and later executions reuse
+       * the fixed plan. */
+      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+
+  if (xasl != NULL && !pt_is_subquery (select_node) && histogram_bind_watch_candidate (parser, select_node))
+    {
+      /* target selection for the bind-value plan variants. No condition looks at the values
+       * (real-class specs, most-common values on the column, no unique key pinning the node), so
+       * whatever values the plan was chosen under, every compile of the statement gives the same
+       * answer and the flag travels with every variant of it. Only the statement's own header
+       * is read, and its walk covers the subqueries, so a subquery is not judged on its own. */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
+  if (xasl != NULL && plan != NULL)
+    {
+      /* the plan-variant directory tells two compiles of one query apart by their plans */
+      parser->bind_plan_sig = qo_plan_signature (plan, parser->bind_plan_sig);
+    }
+
+  if (pt_dump_query_plan (parser, select_node, plan, xasl, hint_ignored) != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
 
   if (level >= 0x100)
     {
@@ -27444,6 +27615,13 @@ pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
     {
       if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL)
 	{
+	  if ((spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
+	      && spec->info.spec.derived_table->node_type == PT_SELECT)
+	    {
+	      /* pt_plan_semi_anti_as_exists () may put the table back as its subquery: its plan output is written once
+	       * the query keeps it (pt_dump_unnested_derived_plans ()) */
+	      PT_SELECT_INFO_SET_FLAG (spec->info.spec.derived_table, PT_SELECT_INFO_SUPPRESS_PLAN_DUMP);
+	    }
 	  spec->info.spec.derived_table =
 	    parser_walk_tree (parser, spec->info.spec.derived_table, parser_generate_xasl_pre, NULL,
 			      parser_generate_xasl_post, &xasl_Supp_info);

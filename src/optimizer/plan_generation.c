@@ -3432,6 +3432,40 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 }
 
 /*
+ * qo_plan_set_summary () - leave the costs and the cardinality of a plan on the SELECT it plans (qo_summary), where
+ *      the plans of the queries holding that SELECT count them (qo_plan_compute_subquery_cost ())
+ *   return: false on allocation failure
+ *   env(in): The optimizer environment
+ *   plan(in): The plan
+ *   xasl(in): The xasl tree generated from the plan; NULL for a plan only weighed (pt_plan_semi_anti_as_exists ())
+ */
+bool
+qo_plan_set_summary (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
+{
+  QO_SUMMARY *summary;
+  PARSER_CONTEXT *parser;
+  PT_NODE *select;
+
+  parser = QO_ENV_PARSER (env);
+  select = QO_ENV_PT_TREE (env);
+  summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
+  if (summary == NULL)
+    {
+      return false;
+    }
+
+  summary->fixed_cpu_cost = plan->fixed_cpu_cost;
+  summary->fixed_io_cost = plan->fixed_io_cost;
+  summary->variable_cpu_cost = plan->variable_cpu_cost;
+  summary->variable_io_cost = plan->variable_io_cost;
+  summary->cardinality = (plan->info)->group_rows;
+  summary->xasl = xasl;
+  select->info.query.q.select.qo_summary = summary;
+
+  return true;
+}
+
+/*
  * preserve_info () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -3441,26 +3475,9 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 static XASL_NODE *
 preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 {
-  QO_SUMMARY *summary;
-  PARSER_CONTEXT *parser;
-  PT_NODE *select;
-
   if (xasl != NULL)
     {
-      parser = QO_ENV_PARSER (env);
-      select = QO_ENV_PT_TREE (env);
-      summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
-      if (summary)
-	{
-	  summary->fixed_cpu_cost = plan->fixed_cpu_cost;
-	  summary->fixed_io_cost = plan->fixed_io_cost;
-	  summary->variable_cpu_cost = plan->variable_cpu_cost;
-	  summary->variable_io_cost = plan->variable_io_cost;
-	  summary->cardinality = (plan->info)->group_rows;
-	  summary->xasl = xasl;
-	  select->info.query.q.select.qo_summary = summary;
-	}
-      else
+      if (!qo_plan_set_summary (env, plan, xasl))
 	{
 	  xasl = NULL;
 	}

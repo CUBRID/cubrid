@@ -2407,9 +2407,10 @@ qo_modify_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
  *   on_cond(in):
  *   spec(in):
  *
- * Note:
+ * Note: the ON of a spec is parked in the WHERE while the query is rewritten and back on the spec once it is
+ *   (qo_rewrite_queries_post ()); both are reset.
  */
-static void
+void
 qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query)
 {
   short curr_loc, after_loc;
@@ -2435,6 +2436,7 @@ qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query
       locate_info.end = after_loc;
       where = query->info.query.q.select.where;
       (void) parser_walk_tree (parser, where, qo_modify_location, &locate_info, NULL, NULL);
+      (void) parser_walk_tree (parser, spec->info.spec.on_cond, qo_modify_location, &locate_info, NULL, NULL);
 
       spec = spec->next;
     }
@@ -2485,6 +2487,7 @@ qo_insert_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * quer
   where = query->info.query.q.select.where;
   (void) parser_walk_tree (parser, where, qo_modify_location, &locate_info, NULL, NULL);
   (void) parser_walk_tree (parser, on_conds, qo_modify_location, &locate_info, NULL, NULL);
+  (void) parser_walk_tree (parser, spec->info.spec.on_cond, qo_modify_location, &locate_info, NULL, NULL);
 }
 
 /*

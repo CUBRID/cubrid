@@ -76,7 +76,9 @@ static PT_NODE *qo_rewrite_inner_as_derived (PARSER_CONTEXT * parser, PT_NODE * 
  * A subquery over several tables is wrapped into a derived table instead (CBRD-27376): the conjuncts naming
  * the enclosing query leave its WHERE for the new spec's ON, reading the inner columns through the derived
  * table's select list, and the rest stays inside with the tables, their join order and their hints.  The
- * derived table runs once, before the enclosing query.
+ * derived table runs once, before the enclosing query.  Run per outer row, the subquery may cost less:
+ * pt_plan_query () plans the query that way too and keeps the cheaper (qo_rewrite_semi_anti_as_exists (),
+ * CBRD-27929).
  *
  * This runs after pt_check_semi_anti_join (), so the joins it builds are never checked there; the
  * direct-join invariant is reused explicitly below instead.
@@ -614,10 +616,12 @@ qo_rewrite_inner_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, QO_UNNEST_
   subq->info.query.q.select.where = where;
   subq->info.query.correlation_level = 0;
 
-  /* pt_coerce_range_expr_arguments () marks an IN subquery DISTINCT for the nested evaluation, which scans its
-   * result list per outer row.  A SEMI / ANTI JOIN asks only whether a match exists, so the duplicates cost it
-   * nothing and the sort would: read the derived table as EXISTS does, with every row */
-  subq->info.query.all_distinct = PT_ALL;
+  /* an IN subquery is DISTINCT (pt_coerce_range_expr_arguments ()): its derived table keeps it and drops the
+   * duplicates as it is built, as the one qo_rewrite_subqueries () makes; EXISTS asks only whether a match exists */
+  if (!info->is_in_form)
+    {
+      subq->info.query.all_distinct = PT_ALL;
+    }
 
   /* the derived table selects the inner columns the ON names: search the ON alone, not the specs and their JOIN ... ON */
   for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
@@ -705,6 +709,10 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      break;		/* PT_INTERNAL_ERROR () is set */
 	    }
+
+	  /* run once before the query, the derived table can cost more than the subquery run per outer row;
+	   * pt_plan_query () plans the query both ways (qo_rewrite_semi_anti_as_exists ()) */
+	  inner_spec->info.spec.flag = (PT_SPEC_FLAG) (inner_spec->info.spec.flag | PT_SPEC_FLAG_UNNESTED_SUBQUERY);
 
 	  /* unhook it from the conjunct freed below, with the lhs the synthesized equality owns */
 	  expr = (cnf_node->info.expr.op == PT_NOT) ? cnf_node->info.expr.arg1 : cnf_node;
@@ -816,6 +824,105 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+}
+
+/*
+ * qo_rewrite_semi_anti_as_exists () - put a derived SEMI / ANTI JOIN spec qo_rewrite_exists_semi_anti () made back
+ *      into the WHERE as the [NOT] EXISTS subquery it was unnested from, for pt_plan_query () to plan the query that
+ *      way too
+ *   return: the conjunct, appended to the WHERE; NULL when the spec cannot be put back, the tree unchanged
+ *   parser(in):
+ *   node(in/out): the PT_SELECT
+ *   prev_spec(in): the spec in front of 'spec' in the FROM
+ *   spec(in/out): a spec flagged PT_SPEC_FLAG_UNNESTED_SUBQUERY, unlinked from the FROM
+ *
+ * Note: the subquery is a copy of the derived table with the ON of the spec added to its WHERE, the columns of the
+ *   spec in that ON read through the select list of the derived table again.  The ON names the outer spec, so the
+ *   subquery is correlated.  An IN form comes back as EXISTS: its ON holds the 'lhs = select-list item' equality,
+ *   and NOT IN was unnested only with both sides non-null (qo_conjunct_is_unnestable ()).  Both the derived table
+ *   and the ON have been through the whole rewrite, auto-parameterization included, and so is the subquery.  The ON
+ *   is on the spec here, back from the WHERE (qo_rewrite_queries_post ()).
+ */
+PT_NODE *
+qo_rewrite_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec, PT_NODE * spec)
+{
+  PT_NODE *subq, *on_cond, *expr;
+  short location = 0;
+
+  subq = spec->info.spec.derived_table;
+  if (subq == NULL || subq->node_type != PT_SELECT
+      || pt_length_of_list (spec->info.spec.as_attr_list) != pt_length_of_list (subq->info.query.q.select.list))
+    {
+      return NULL;
+    }
+
+  subq = parser_copy_tree (parser, subq);
+  on_cond = parser_copy_tree_list (parser, spec->info.spec.on_cond);
+  if (subq == NULL || on_cond == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  /* the ON reads the columns of the spec: read the select list items they stand for, as pt_copypush_terms () does
+   * for a term it pushes into a derived table */
+  on_cond = mq_lambda (parser, on_cond, spec->info.spec.as_attr_list, subq->info.query.q.select.list);
+
+  /* the ON stood at the location of the spec; in the subquery it is a WHERE conjunct */
+  (void) parser_walk_tree (parser, on_cond, pt_mark_location, &location, NULL, NULL);
+  subq->info.query.q.select.where = parser_append_node (on_cond, subq->info.query.q.select.where);
+
+  /* an EXISTS subquery asks only whether a row comes: no DISTINCT, and the LIMIT 1 the rewrite gives it
+   * (qo_rewrite_queries ()) */
+  subq->info.query.all_distinct = PT_ALL;
+  qo_add_limit_clause (parser, subq);
+  subq->info.query.is_subquery = PT_IS_SUBQUERY;
+  subq->info.query.correlation_level = 1;
+  subq = mq_reset_ids_in_statement (parser, subq);
+
+  /* set query id # */
+  subq->info.query.id = (UINTPTR) subq;
+
+  expr = parser_make_expression (parser, PT_EXISTS, subq, NULL, NULL);
+  if (expr != NULL && spec->info.spec.join_type == PT_JOIN_ANTI)
+    {
+      expr = parser_make_expression (parser, PT_NOT, expr, NULL, NULL);
+    }
+  if (expr == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "allocate new node");
+      return NULL;
+    }
+
+  /* the specs behind it move one location down, as when qo_reduce_joined_tbls_ref_by_fk () drops a spec */
+  prev_spec->next = spec->next;
+  spec->next = NULL;
+  qo_reset_spec_location (parser, prev_spec->next, node);
+
+  node->info.query.q.select.where = parser_append_node (expr, node->info.query.q.select.where);
+
+  return expr;
+}
+
+/*
+ * qo_restore_semi_anti_spec () - undo qo_rewrite_semi_anti_as_exists (): take the conjunct out of the WHERE and link
+ *      the spec back behind the spec it followed
+ *   return: none
+ *   parser(in):
+ *   node(in/out): the PT_SELECT
+ *   prev_spec(in): the spec 'spec' followed
+ *   spec(in/out): the spec qo_rewrite_semi_anti_as_exists () unlinked
+ *   expr(in): the conjunct it returned, freed here
+ */
+void
+qo_restore_semi_anti_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * prev_spec, PT_NODE * spec, PT_NODE * expr)
+{
+  node->info.query.q.select.where = pt_remove_from_list (parser, expr, node->info.query.q.select.where);
+
+  /* make room for the spec, as qo_rewrite_exists_semi_anti () does when it links the spec in */
+  qo_insert_spec_location (parser, prev_spec->next, node, NULL);
+  spec->next = prev_spec->next;
+  prev_spec->next = spec;
 }
 
 /*
