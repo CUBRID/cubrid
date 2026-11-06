@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
+#include "sp_context_rules.hpp"
 
 using namespace cubpl;
 
@@ -228,6 +229,13 @@ namespace cubmethod
     int error_code = NO_ERROR;
     int command; // commit : 1, abort : 2
     unpacker.unpack_all (command);
+
+    if (sp_check_statement_allowed (SP_STMT_TCL, command == 1 ? CUBRID_STMT_COMMIT_WORK : CUBRID_STMT_ROLLBACK_WORK)
+	!= NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
 
     if (command == 1)
       {
@@ -466,6 +474,12 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
+    if (sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_UPDATE) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
+
     int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
     if (m_error_ctx.has_error())
       {
@@ -488,6 +502,12 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
+    if (cmd == OID_DROP && sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_DELETE) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
+
     int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
     if (m_error_ctx.has_error())
       {
@@ -509,6 +529,13 @@ namespace cubmethod
     // args
     collection_cmd_request request;
     request.unpack (unpacker);
+
+    if (request.command != COL_GET && request.command != COL_SIZE
+	&& sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_UPDATE) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
 
     int result = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
 		 request.value);

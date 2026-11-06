@@ -3450,6 +3450,8 @@ struct pt_execute_info
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
+  int is_click_counter;		/* INCR/DECR (click counter) */
+  int is_method_on_target;	/* method call with a target (ON CLASS or the first argument) */
 };
 
 struct pt_stored_proc_param_info
@@ -3908,6 +3910,8 @@ struct parser_node
 					 * Set in do_prepare_select () -- the driver-neutral prepare path --
 					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
 					 * is not reached by CCI/JDBC prepared statements. */
+    unsigned has_sp_call:1;	/* the semantic check found a stored procedure call in this query, and the root of a
+				 * view cache also gets it from a view under it, which mq_mark_sp_call () reads */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -4178,6 +4182,8 @@ struct parser_context
 					 * only place one is made: only then can type checking mark a STR_TO_DATE
 					 * format or ELT index position, and pt_set_host_var_format_classes computes
 					 * the values' format classes and ELT indexes */
+    unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
+					 * and mq_translate () sets cannot_prepare on the statement at its end */
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
   } flag;
