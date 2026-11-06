@@ -11047,19 +11047,14 @@ ux_stream_give_up_after_error (void)
 int
 ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
 {
-  /* [리뷰] 드라이버가 직접 열 수 있는 kind는 업로드뿐이다.
-   * DML·load 스트림은 소유 문장·유틸리티가 열고 대상 검사도 거기서 한다. */
   int err_code;
 
-  /* Only a consumer whose client half is the driver may be opened here: the internal-LOB upload, which has no
-   * statement of its own. COPY, the internal-LOB DML stream and the loaddb stream are opened by the statement or
-   * utility that owns them, and that is where their target is checked (privilege, view, partition, trigger) --
-   * opening one directly would hand the server a target nothing has checked. */
-  if (stream_kind != STREAM_KIND_INTERNAL_LOB)
+  /* Only a kind registered as driver-openable may be opened here. The DML and loaddb streams are opened by the
+   * statement or utility that owns them, which is where their target is checked. */
+  err_code = stream_kind_client_check_driver_open (stream_kind);
+  if (err_code < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
-	      "a driver may open only an internal LOB upload stream directly");
-      err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
