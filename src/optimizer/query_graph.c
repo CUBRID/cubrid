@@ -249,8 +249,8 @@ static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_add_null_supplier_dep_set (QO_ENV *);
-static void qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers);
-static void qo_get_null_suppliers_of (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers);
+static void qo_get_on_cond_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers);
+static void qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers);
 static void qo_add_where_term_dep_set (QO_ENV * env);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_classify_antijoin_terms (QO_ENV *);
@@ -6509,7 +6509,7 @@ qo_discover_edges (QO_ENV * env)
 }
 
 /*
- * qo_get_null_suppliers_of () - Collect every preceding outer join on_node that
+ * qo_get_null_suppliers_of_nodes () - Collect every preceding outer join on_node that
  *   can null-pad a node in REFS: a LEFT OUTER on_node that is itself in REFS,
  *   or a RIGHT/FULL OUTER on_node whose own outer_dep_set holds a node in REFS.
  *   env(in):
@@ -6526,7 +6526,7 @@ qo_discover_edges (QO_ENV * env)
  *   ordering must call this instead of reading the node's stored field.
  */
 static void
-qo_get_null_suppliers_of (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers)
+qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers)
 {
   int k;
   QO_NODE *k_node;
@@ -6559,14 +6559,14 @@ qo_get_null_suppliers_of (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * 
 }
 
 /*
- * qo_get_null_suppliers () - qo_get_null_suppliers_of () over every node
+ * qo_get_on_cond_null_suppliers () - qo_get_null_suppliers_of_nodes () over every node
  *   NODE's ON clause reads, except NODE itself.
  *   env(in):
  *   node(in):
  *   suppliers(out): caller-initialized bitset
  */
 static void
-qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
+qo_get_on_cond_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
 {
   int i;
   QO_TERM *term;
@@ -6584,7 +6584,7 @@ qo_get_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
     }
   bitset_remove (&refs, QO_NODE_IDX (node));
 
-  qo_get_null_suppliers_of (env, node, &refs, suppliers);
+  qo_get_null_suppliers_of_nodes (env, node, &refs, suppliers);
 
   bitset_delset (&refs);
 }
@@ -6615,7 +6615,7 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
 	}
 
       BITSET_CLEAR (suppliers);
-      qo_get_null_suppliers (env, node, &suppliers);
+      qo_get_on_cond_null_suppliers (env, node, &suppliers);
 
       for (k = bitset_iterate (&suppliers, &bi); k != -1; k = bitset_next_member (&bi))
 	{
@@ -6644,7 +6644,7 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
 	    }
 
 	  BITSET_CLEAR (suppliers);
-	  qo_get_null_suppliers_of (env, node, &(QO_TERM_NODES (term)), &suppliers);
+	  qo_get_null_suppliers_of_nodes (env, node, &(QO_TERM_NODES (term)), &suppliers);
 	  if (bitset_is_empty (&suppliers))
 	    {
 	      continue;
@@ -6706,7 +6706,7 @@ qo_add_where_term_dep_set (QO_ENV * env)
 	}
 
       BITSET_CLEAR (suppliers);
-      qo_get_null_suppliers_of (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
+      qo_get_null_suppliers_of_nodes (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
 
       for (k = bitset_iterate (&suppliers, &bi); k != -1; k = bitset_next_member (&bi))
 	{
@@ -9056,7 +9056,7 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 	  if (QO_NODE_PT_JOIN_TYPE (jon) == PT_JOIN_INNER)
 	    {
 	      BITSET_CLEAR (suppliers);
-	      qo_get_null_suppliers (env, jon, &suppliers);
+	      qo_get_on_cond_null_suppliers (env, jon, &suppliers);
 	      if (!bitset_is_empty (&suppliers))
 		{
 		  continue;	/* reads a null-supplied node; conditional, not an unconditional edge */
