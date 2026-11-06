@@ -1376,12 +1376,9 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is
 	  log_Gl.hdr.newest_block_mvccid = mvccid;
 	}
     }
-  /* Keep the block's oldest at or below every MVCCID it holds, as vacuum_recover_lost_block_data does when it
-   * rebuilds a block. */
-  if (is_explicit_mvccid && mvccid < log_Gl.hdr.oldest_visible_mvccid)
-    {
-      log_Gl.hdr.oldest_visible_mvccid = mvccid;
-    }
+  /* An explicit MVCCID (RVOOS_NOTIFY_VACUUM) belongs to a transaction that already left the MVCC table, so it may
+   * precede the block's oldest visible MVCCID. The block's oldest is not lowered to it: entries must keep a
+   * non-decreasing oldest visible MVCCID, and the notify does not need it (see vacuum_process_log_block). */
   log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
   log_Gl.hdr.does_block_need_vacuum = true;
 }
