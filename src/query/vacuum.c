@@ -686,6 +686,7 @@ static int vacuum_data_mark_finished (THREAD_ENTRY * thread_p, VACUUM_LOG_BLOCKI
 static void vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_page,
 				    VACUUM_DATA_PAGE ** data_page);
 static void vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page);
+static MVCCID vacuum_last_saved_entry_oldest_mvccid (THREAD_ENTRY * thread_p);
 static void vacuum_init_data_page_with_last_blockid (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page,
 						     VACUUM_LOG_BLOCKID blockid);
 static int vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p);
@@ -3644,10 +3645,10 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 
 #if !defined (NDEBUG)
       /* RVOOS_NOTIFY_VACUUM carries the MVCCID of an UPDATE that committed before the postpone logged it, so it may
-       * precede the block's oldest visible MVCCID. That does not shorten the life of a dropped-file entry the
-       * notify needs: the UPDATE keeps its class lock until its postpones are done, so a drop of the heap is logged
-       * after the notify, and its dropped-file MVCCID (mvcc_next_id at the drop) is not older than the oldest
-       * visible MVCCID of the block that holds the notify. */
+       * precede the block's oldest visible MVCCID (prior_update_header_mvcc_info does not lower the oldest to it).
+       * The dropped-file check above still finds the heap dropped for it: the dropped-file MVCCID is mvcc_next_id at
+       * the drop, which follows the UPDATE's MVCCID, and dropped-file entries are cleaned up only in SA_MODE after
+       * every block is vacuumed. */
       if (MVCC_ID_FOLLOW_OR_EQUAL (mvccid, threshold_mvccid)
 	  || (MVCC_ID_PRECEDES (mvccid, data->oldest_visible_mvccid)
 	      && log_record_data.rcvindex != RVOOS_NOTIFY_VACUUM) || MVCC_ID_PRECEDES (data->newest_mvccid, mvccid))
@@ -5745,6 +5746,46 @@ vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data)
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  */
+/*
+ * vacuum_last_saved_entry_oldest_mvccid () - Oldest visible MVCCID of the last entry in vacuum data.
+ *
+ * return	 : The MVCCID, or MVCCID_NULL when vacuum data has no entry.
+ * thread_p (in) : Thread entry.
+ *
+ * The last page is empty after all its entries were vacuumed while an earlier page may still hold some, so the pages
+ * are walked from the first.
+ */
+static MVCCID
+vacuum_last_saved_entry_oldest_mvccid (THREAD_ENTRY * thread_p)
+{
+  MVCCID oldest = MVCCID_NULL;
+  VACUUM_DATA_PAGE *data_page = vacuum_Data.first_page;
+  VPID next_vpid;
+
+  while (data_page != NULL)
+    {
+      if (data_page->index_free > 0)
+	{
+	  oldest = data_page->data[data_page->index_free - 1].oldest_visible_mvccid;
+	}
+      VPID_COPY (&next_vpid, &data_page->next_page);
+      vacuum_unfix_data_page (thread_p, data_page);
+      if (VPID_ISNULL (&next_vpid))
+	{
+	  break;
+	}
+      data_page = vacuum_fix_data_page (thread_p, &next_vpid);
+      if (data_page == NULL)
+	{
+	  /* Keep what was found; the caller only uses it to keep the rebuilt entries ordered. */
+	  ASSERT_ERROR ();
+	  er_clear ();
+	  break;
+	}
+    }
+  return oldest;
+}
+
 static int
 vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 {
@@ -5892,10 +5933,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
    * if a block + 1 MVCCID is smaller than all MVCCID's in block, then it must have been active (and probably suspended)
    * while block was logged. therefore, we must keep it. */
   data.oldest_visible_mvccid = MVCCID_NULL;
-  if (vacuum_Data.last_page != NULL && vacuum_Data.last_page->index_free > 0)
-    {
-      notify_oldest_floor = vacuum_Data.last_page->data[vacuum_Data.last_page->index_free - 1].oldest_visible_mvccid;
-    }
+  notify_oldest_floor = vacuum_last_saved_entry_oldest_mvccid (thread_p);
   while (crt_blockid > vacuum_Data.get_last_blockid ())
     {
       /* Stop recovering this block when previous block is reached. */
@@ -8460,7 +8498,8 @@ vacuum_data_entry::vacuum_data_entry (const log_lsa &lsa, MVCCID oldest, MVCCID 
   assert (!lsa.is_null ());
   assert (MVCCID_IS_VALID (oldest));
   assert (MVCCID_IS_VALID (newest));
-  assert (oldest <= newest);
+  /* No oldest <= newest check: a block that holds only RVOOS_NOTIFY_VACUUM records has the MVCCIDs of transactions
+   * that had committed before the block started (see prior_update_header_mvcc_info). Vacuum decides on newest. */
   blockid = vacuum_get_log_blockid (start_lsa.pageid);
 }
 

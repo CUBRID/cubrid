@@ -592,6 +592,65 @@ TEST_F (OosRealVacuum, NotifyOlderThanBlockOldestKeepsBlockOrderAndDrains)
 }
 
 // ============================================================================
+// TC-R3c: A log block that holds only notifications
+//
+// A bulk UPDATE's commit postpone can fill a whole block with notifications whose MVCCID precedes
+// the block's oldest visible MVCCID, so the block's newest MVCCID is below its oldest. Vacuum must
+// produce that block and reclaim the chains its notifications name.
+// ============================================================================
+TEST_F (OosRealVacuum, NotificationOnlyBlockIsProducedAndVacuumed)
+{
+  RECDES oos_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096), oos_rec),
+	     NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos (&oos_rec, recdes_free_data_area);
+  OID oos_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos_rec, oos_oid), NO_ERROR);
+  const MVCCID m0 = logtb_get_current_mvccid (thread_p);
+  ASSERT_TRUE (MVCCID_IS_VALID (m0));
+  commit_current_tran ();
+
+  LOG_LSA stamp = NULL_LSA;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oos_oid, &stamp), NO_ERROR);
+
+  ASSERT_TRUE (wait_for_vacuum ([m0] { return log_Gl.mvcc_table.get_global_oldest_visible () > m0; }, 30));
+  close_log_block_containing (hfid, class_oid, scan_cache, current_log_blockid ());
+
+  /* Notifications only, from the middle of one block to the start of the block after next: the block in between
+   * holds nothing else, and its first notification names the chain. */
+  LOG_DATA_ADDR addr (&hfid.vfid, NULL, -1);
+  std::vector<char> empty_payload = oos_test_make_reclaim_intent_payload (oos_vfid, {});
+  std::vector<char> chain_payload = oos_test_make_reclaim_intent_payload (oos_vfid, { oos_chain_ref { oos_oid, stamp } });
+  auto append_notify = [&] (const std::vector<char> &payload)
+  {
+    log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr, (int) payload.size (),
+					   payload.data (), m0);
+  };
+
+  const VACUUM_LOG_BLOCKID first_block = current_log_blockid ();
+  int guard = 0;
+  while (current_log_blockid () == first_block)
+    {
+      ASSERT_LT (guard++, 1000000) << "the notifications did not cross a block";
+      append_notify (empty_payload);
+    }
+  const VACUUM_LOG_BLOCKID notify_only_block = current_log_blockid ();
+  append_notify (chain_payload);
+  while (current_log_blockid () == notify_only_block)
+    {
+      ASSERT_LT (guard++, 1000000) << "the notifications did not cross a block";
+      append_notify (empty_payload);
+    }
+  VACUUM_LOG_BLOCKID last_block = current_log_blockid ();
+  commit_current_tran ();
+
+  close_log_block_containing (hfid, class_oid, scan_cache, last_block);
+
+  ASSERT_TRUE (wait_for_vacuum ([this, oos_oid] { return oos_unreadable (oos_oid); }, 60))
+      << "vacuum did not reclaim the chain named in the notification-only block";
+}
+
+// ============================================================================
 // TC-R4: A live snapshot blocks reclaim; releasing it lets vacuum drain
 //
 // This is the definition of "stale": vacuum may only reclaim OOS no alive

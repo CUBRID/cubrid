@@ -5353,7 +5353,8 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
  * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
  *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
  *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
- *       inconsistency.
+ *       inconsistency. The OOS reclaim of a committed intent (oos_rv_reclaim_on_postpone) is the third: it runs
+ *       in a commit and stops the server on any error.
  *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
  *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
  *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and

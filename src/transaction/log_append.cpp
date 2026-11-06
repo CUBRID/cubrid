@@ -1351,6 +1351,15 @@ static void
 prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is_explicit_mvccid)
 {
   assert (MVCCID_IS_VALID (mvccid));
+  if (is_explicit_mvccid && !LOG_ISRESTARTED ())
+    {
+      /* Restart recovery reruns a committed UPDATE's drop postpone, which appends a notification. Recovery does not
+       * keep the block's MVCCIDs (the global oldest visible MVCCID is not known yet, and only mvcc_op_log_lsa was
+       * redone); vacuum_recover_lost_block_data rebuilds the blocks from the log at vacuum boot, starting here. */
+      log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
+      log_Gl.hdr.does_block_need_vacuum = true;
+      return;
+    }
   if (!log_Gl.hdr.does_block_need_vacuum)
     {
       // first mvcc record for this block
@@ -1372,8 +1381,9 @@ prior_update_header_mvcc_info (const LOG_LSA &record_lsa, MVCCID mvccid, bool is
 	}
     }
   /* An explicit MVCCID (RVOOS_NOTIFY_VACUUM) belongs to a transaction that already left the MVCC table, so it may
-   * precede the block's oldest visible MVCCID. The block's oldest is not lowered to it: entries must keep a
-   * non-decreasing oldest visible MVCCID, and the notify does not need it (see vacuum_process_log_block). */
+   * precede the block's oldest visible MVCCID, and a block of notifications only can have its newest MVCCID below
+   * its oldest. The oldest is not lowered: vacuum needs the blocks' oldest visible MVCCIDs non-decreasing, and the
+   * notification does not need it (see vacuum_process_log_block). */
   log_Gl.hdr.mvcc_op_log_lsa = record_lsa;
   log_Gl.hdr.does_block_need_vacuum = true;
 }

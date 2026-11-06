@@ -69,6 +69,7 @@ set(SERVER_MODE_TESTS
   test_oos_mock_vacuum_server
   test_oos_vacuum_server
   test_oos_real_vacuum_server
+  test_oos_server_crash_recovery
 )
 
 foreach(test_name ${SERVER_MODE_TESTS})
@@ -162,6 +163,30 @@ add_test(NAME oos_cleanup_recovery_db
 )
 set_tests_properties(oos_cleanup_recovery_db
   PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
+# test_oos_server_crash_recovery stops a SERVER_MODE process in the middle of a commit and restarts the
+# database, so it owns a database of its own.
+add_test(NAME oos_setup_server_crash_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosservercrashdb
+)
+set_tests_properties(oos_setup_server_crash_db
+  PROPERTIES FIXTURES_SETUP OOS_SERVER_CRASH_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
+
+add_test(NAME oos_cleanup_server_crash_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosservercrashdb
+)
+set_tests_properties(oos_cleanup_server_crash_db
+  PROPERTIES FIXTURES_CLEANUP OOS_SERVER_CRASH_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
 # The storage format guard test patches the volume header of its own database and leaves it refused, so that
@@ -306,6 +331,13 @@ set_tests_properties(
 set_tests_properties(
   test_oos_real_vacuum_server
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 840
+)
+
+# Two children boot the database in turn; the second waits up to 180 seconds for vacuum.
+add_test(NAME test_oos_server_crash_recovery COMMAND test_oos_server_crash_recovery)
+set_tests_properties(
+  test_oos_server_crash_recovery
+  PROPERTIES FIXTURES_REQUIRED OOS_SERVER_CRASH_DB RUN_SERIAL TRUE TIMEOUT 300
 )
 
 # Note: add_test vs. gtest_discover_tests
