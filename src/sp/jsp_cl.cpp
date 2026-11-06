@@ -340,7 +340,8 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
  *       read the value back, as Oracle accepts any bind variable there.
  *       This runs in the semantic check because hostvar_late_binding turns a ? into a value before
  *       the statement runs. A statement kept prepared, as by JDBC, or a trigger action already compiled
- *       in the session is not checked again when the procedure is redefined afterwards.
+ *       in the session is not checked again when the procedure is redefined or the EXECUTE privilege is
+ *       granted afterwards.
  */
 
 int
@@ -363,17 +364,16 @@ jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
       name = PT_NAME_ORIGINAL (method_name_node);
     }
 
-  int save;
-  AU_SAVE_AND_DISABLE (save);
-
-  MOP mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  MOP mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
   if (mop_p == NULL)
     {
-      /* A missing procedure is reported when the statement runs. */
-      AU_RESTORE (save);
+      /* A missing procedure or EXECUTE privilege is reported when the statement runs. */
       er_clear ();
       return NO_ERROR;
     }
+
+  int save;
+  AU_SAVE_AND_DISABLE (save);
 
   /* If the catalog cannot be read, the check is skipped and the statement fails when it runs. */
   int error = NO_ERROR;
