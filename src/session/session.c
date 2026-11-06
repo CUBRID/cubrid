@@ -32,6 +32,8 @@
 
 #include "system.h"
 #include "session.h"
+#include "stream_session.hpp"
+#include "stream_handle.hpp"
 
 #include "boot_sr.h"
 #include "crypt_opfunc.h"
@@ -146,6 +148,11 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
+  pthread_mutex_t stream_mutex;	/* the slot below; two connections of the session may reach it at once */
+  stream_session *stream_session_p;
+  int stream_session_kind;
+  int stream_session_client_id;	/* the connection that owns stream_session_p */
+  stream_handle_table *stream_handles_p;
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -252,11 +259,15 @@ static void session_control_daemon_destroy ();
 session_state::session_state ()
 {
   pthread_mutex_init (&mutex, NULL);
+  pthread_mutex_init (&stream_mutex, NULL);
+  stream_handles_p = new stream_handle_table ();
 }
 
 session_state::~session_state ()
 {
   pthread_mutex_destroy (&mutex);
+  pthread_mutex_destroy (&stream_mutex);
+  delete stream_handles_p;
 }
 // *INDENT-ON*
 
@@ -273,6 +284,9 @@ session_state_alloc (void)
   if (state != NULL)
     {
       pthread_mutex_init (&state->mutex, NULL);
+      /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
+      pthread_mutex_init (&state->stream_mutex, NULL);
+      state->stream_handles_p = new stream_handle_table ();
     }
   return (void *) state;
 }
@@ -288,6 +302,8 @@ session_state_free (void *st)
   if (st != NULL)
     {
       pthread_mutex_destroy (&((SESSION_STATE *) st)->mutex);
+      pthread_mutex_destroy (&((SESSION_STATE *) st)->stream_mutex);
+      delete ((SESSION_STATE *) st)->stream_handles_p;
       free (st);
       return NO_ERROR;
     }
@@ -330,6 +346,9 @@ session_state_init (void *st)
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
   session_p->pl_session_p = NULL;
+  session_p->stream_session_p = NULL;
+  session_p->stream_session_kind = -1;
+  session_p->stream_session_client_id = 0;
   memset (session_p->secret, 0, SESSION_SECRET_SIZE);
 
   return NO_ERROR;
@@ -3315,7 +3334,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
     }
 
   /* The session state can outlive its load session: connection teardown (see
-   * session_destroy_load_session) frees the load session while the state is still
+   * session_destroy_attached_sessions) frees the load session while the state is still
    * reachable. Report an error here so sloaddb_* handlers take the error path
    * instead of dereferencing a NULL load session. */
   if (state_p->load_session_p == NULL)
@@ -3327,6 +3346,252 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
   load_session_ref_ptr = state_p->load_session_p;
 
   return NO_ERROR;
+}
+
+/* session_destroy_attached_sessions () at the end of the session itself, when every connection's share goes */
+static const int SESSION_STREAM_ALL_CLIENTS = -1;
+
+/*
+ * session_stream_client_id () - The connection a stream session or a handle belongs to
+ *
+ * A reconnecting client can attach to its session before the server has processed the old connection's close
+ * (CBRD-27389), so what a connection opened is that connection's. A client_id is not handed out again while its
+ * connection entry lives, unlike a transaction index. A standalone process is one client, 0.
+ */
+int
+session_stream_client_id (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  return (thread_p != NULL && thread_p->conn_entry != NULL) ? thread_p->conn_entry->client_id : 0;
+#else /* SERVER_MODE */
+  return 0;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * session_take_stream_session () - Empty the slot if client_id owns it
+ *   return: what the slot held for client_id, or NULL
+ *   client_id(in): the owner, or SESSION_STREAM_ALL_CLIENTS for any
+ */
+static stream_session *
+session_take_stream_session (SESSION_STATE * state_p, int client_id)
+{
+  stream_session *taken = NULL;
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  if (client_id == SESSION_STREAM_ALL_CLIENTS || state_p->stream_session_client_id == client_id)
+    {
+      taken = state_p->stream_session_p;
+      state_p->stream_session_p = NULL;
+      state_p->stream_session_kind = -1;
+      state_p->stream_session_client_id = 0;
+    }
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return taken;
+}
+
+/* the caller holds stream_mutex */
+static int
+session_refuse_taken_stream_slot (SESSION_STATE * state_p, int client_id)
+{
+  if (state_p->stream_session_p == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  state_p->stream_session_client_id == client_id ? "a stream session is already active on this connection"
+	  : "another connection of this session still holds a stream session");
+  return ER_STREAM_SESSION_ERROR;
+}
+
+/*
+ * session_check_stream_slot () - May the caller open a stream session?
+ *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR while any connection of the session holds the slot
+ *
+ * Asked before a kind's factory runs, so it counts another connection's stream too, which the caller cannot see.
+ */
+int
+session_check_stream_slot (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = NULL;
+  int error_code;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  error_code = session_refuse_taken_stream_slot (state_p, session_stream_client_id (thread_p));
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return error_code;
+}
+
+/*
+ * session_set_stream_session () - Put the caller's stream session in the slot, or take it out with NULL
+ */
+int
+session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p, int kind)
+{
+  SESSION_STATE *state_p = NULL;
+  int client_id = session_stream_client_id (thread_p);
+  int error_code = NO_ERROR;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (stream_session_p == NULL)
+    {
+      (void) session_take_stream_session (state_p, client_id);
+      return NO_ERROR;
+    }
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  /* one stream session per session (the invariant the transport seam depends on); one another connection still
+   * holds is ended by that connection's close */
+  error_code = session_refuse_taken_stream_slot (state_p, client_id);
+  if (error_code == NO_ERROR)
+    {
+      state_p->stream_session_p = stream_session_p;
+      state_p->stream_session_kind = kind;
+      state_p->stream_session_client_id = client_id;
+    }
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return error_code;
+}
+
+/*
+ * session_get_stream_session () - The caller's stream session; another connection's is not seen
+ */
+int
+session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr), int *kind)
+{
+  SESSION_STATE *state_p = NULL;
+  int client_id = session_stream_client_id (thread_p);
+
+  stream_session_ref_ptr = NULL;
+  if (kind != NULL)
+    {
+      *kind = -1;
+    }
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  if (state_p->stream_session_client_id == client_id)
+    {
+      stream_session_ref_ptr = state_p->stream_session_p;
+      if (kind != NULL)
+	{
+	  *kind = state_p->stream_session_kind;
+	}
+    }
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return NO_ERROR;
+}
+
+bool
+session_has_stream_session (THREAD_ENTRY * thread_p)
+{
+  stream_session *stream_session_p = NULL;
+
+  (void) session_get_stream_session (thread_p, stream_session_p, NULL);
+
+  return stream_session_p != NULL;
+}
+
+/*
+ * session_end_stream_session () - End the stream session when its transaction rolls back
+ *   thread_p(in): this thread handle
+ *
+ * A stream session cannot outlive the transaction it was opened in. Its
+ * consumer has already put work into that transaction, so a chunk arriving
+ * after a rollback would build on state that was undone. Rolling back
+ * therefore ends the stream, and the next chunk is refused with "no active
+ * stream session". Nothing commits inside a stream (stran_server_commit_internal).
+ *
+ * Unlike the interrupt path, this is safe to free here: the transaction is
+ * ended by the same worker that would be running receive_chunk, and the stream
+ * protocol is lockstep, so no chunk can be in flight.
+ */
+void
+session_end_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = NULL;
+  stream_session *stream_session_p = NULL;
+  bool continue_checking = true;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return;
+    }
+
+  /* only the caller's: another connection of the session runs another transaction */
+  stream_session_p = session_take_stream_session (state_p, session_stream_client_id (thread_p));
+  if (stream_session_p == NULL)
+    {
+      return;
+    }
+
+  /* a cancel the CAS left for the stream is answered by this rollback; the abort runs while the transaction is
+   * still active, so it must not see it */
+  (void) logtb_is_interrupted (thread_p, true, &continue_checking);
+  stream_session_p->abort (thread_p);
+
+  delete stream_session_p;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * session_get_stream_handles () - The handles this session's client holds between stream requests
+ *   return: the session's table, or NULL with an error set
+ */
+stream_handle_table *
+session_get_stream_handles (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  return state_p != NULL ? state_p->stream_handles_p : NULL;
+}
+
+/*
+ * session_end_tran_stream_handles () - Release the STREAM_SCOPE_TRAN handles of an ending transaction
+ *   tran_index(in): the transaction that ends
+ *
+ * Every transaction end comes through here, including those on threads with no
+ * session; they hold no handles and are passed over without an error.
+ */
+void
+session_end_tran_stream_handles (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return;
+    }
+
+  thread_p->conn_entry->session_p->stream_handles_p->end_tran (thread_p, tran_index);
+#endif /* SERVER_MODE */
 }
 
 bool
@@ -3409,12 +3674,17 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   /* Interrupt only; keep the load session object alive so that in-flight requests
    * still holding a reference (via session_get_load_session) do not access freed
-   * memory. The object is freed later by session_destroy_load_session, once the
+   * memory. The object is freed later by session_destroy_attached_sessions, once the
    * connection workers have drained. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->interrupt ();
     }
+
+  /* The stream session (COPY / LOB / ...) is left alone here for the same reason
+   * as the load session: a worker may still be inside receive_chunk. It is
+   * aborted and freed by session_destroy_attached_sessions, once the workers have
+   * drained. */
 
   if (session->pl_session_p)
     {
@@ -3427,22 +3697,48 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 #endif
 }
 
+/*
+ * session_destroy_attached_sessions () - Destroy what a closing connection left attached to its session
+ *   client_id(in): the closing connection, or SESSION_STREAM_ALL_CLIENTS when the session itself ends
+ *
+ * The session outlives the connection, and another connection may already have attached to it. Only the closing
+ * connection's stream session and STREAM_SCOPE_TRAN handles go; STREAM_SCOPE_OWNER handles stay for a client that
+ * attaches again, until the session itself ends.
+ */
 void
-session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
+session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, int client_id)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
+  stream_session *stream_session_p = NULL;
 
   assert (session != NULL);
 
   /* Must be called only after the connection workers have drained, otherwise an
-   * in-flight sloaddb_* request may still be using the load session. */
+   * in-flight sloaddb_* or sstream_* request may still be using the session. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->wait_for_completion ();
 
       delete session->load_session_p;
       session->load_session_p = NULL;
+    }
+
+  stream_session_p = session_take_stream_session (session, client_id);
+  if (stream_session_p != NULL)
+    {
+      stream_session_p->abort (thread_p);
+
+      delete stream_session_p;
+    }
+
+  if (client_id == SESSION_STREAM_ALL_CLIENTS)
+    {
+      session->stream_handles_p->clear (thread_p);
+    }
+  else
+    {
+      session->stream_handles_p->end_client (thread_p, client_id);
     }
 #endif
 }
@@ -3456,8 +3752,8 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
   assert (session != NULL);
 
   /* Session-state uninit path: no concurrent worker can reach this session, so
-   * interrupt and destroy in one shot. */
+   * interrupt and destroy in one shot, every connection's share included. */
   session_interrupt_attached_threads (thread_p, session);
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session, SESSION_STREAM_ALL_CLIENTS);
 #endif
 }

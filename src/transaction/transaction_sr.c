@@ -39,6 +39,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "server_support.h"
+#include "session.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -79,6 +80,9 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* while the transaction is still there for a source to close in */
+  session_end_tran_stream_handles (thread_p, tran_index);
 
   /* dblink transaction commit first */
   QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);
@@ -131,6 +135,8 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  session_end_tran_stream_handles (thread_p, tran_index);
 
   /* dblink transaction abort first */
   (void) qmgr_check_dblink_trans (thread_p, true);

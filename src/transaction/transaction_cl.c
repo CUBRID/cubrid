@@ -287,6 +287,14 @@ tran_commit (bool retain_lock)
   int error_code = NO_ERROR;
   bool query_end_notify_server;
 
+  /* before any client state is touched: a stream is one statement still running, and nothing commits inside it */
+  if (stream_from_is_open ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is open on this connection; end or abort it first");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
   /* check deferred trigger activities, these may prevent the transaction from being committed. */
   error_code = tr_check_commit_triggers (TR_TIME_BEFORE);
   if (error_code != NO_ERROR)
@@ -381,6 +389,9 @@ tran_commit (bool retain_lock)
       er_log_debug (ARG_FILE_LINE, "tran_commit: DB_CONNECTION_STATUS_RESET\n");
     }
 
+  /* the transaction is over on the server, and every download handle with it */
+  stream_from_reset ();
+
   /* Increment snapshot version in work space */
   ws_increment_mvcc_snapshot_version ();
 
@@ -431,6 +442,9 @@ tran_abort (void)
   TRAN_STATE state;
   int error_code = NO_ERROR;
   bool query_end_notify_server;
+
+  /* a rollback, requested here or already done by the server, ends any open stream with it */
+  stream_from_reset ();
 
   /*
    * inform the trigger manager of the event, triggers can't prevent a
@@ -603,6 +617,9 @@ tran_abort_only_client (bool is_server_down)
   ws_filter_dirty ();
   ws_set_defer_free (false);
   db_clear_client_query_result (false, true);
+
+  /* the server already aborted the transaction, and any open stream with it */
+  stream_from_reset ();
 
   tm_Tran_rep_read_lock = NULL_LOCK;
 
@@ -1233,6 +1250,14 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
   int error_code = NO_ERROR;
   LOG_LSA savept_lsa;
   TRAN_STATE state;
+
+  /* for the reason tran_commit () gives: the savepoint may predate the stream */
+  if (stream_from_is_open ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is open on this connection; end or abort it first");
+      return ER_STREAM_SESSION_ERROR;
+    }
 
   /* tell the schema manager to flush any transaction caches */
   sm_transaction_boundary ();
