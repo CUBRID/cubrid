@@ -35,6 +35,10 @@
 #define ROTL32(x,r) \
   (((x) << (r)) | ((x) >> (32 - (r))))
 
+/* 32-bit FNV-1a */
+#define MHT_FNV_OFFSET 2166136261u
+#define MHT_FNV_PRIME 16777619u
+
 #define MHT2STR_COLL(id, str, size) \
   (lang_get_collation (id))->mht2str ((lang_get_collation (id)), (str), (size))
 

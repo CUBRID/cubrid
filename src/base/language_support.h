@@ -118,7 +118,7 @@ enum
   LANG_COLL_BUILTIN_MAX = LANG_COLL_BINARY
 };
 
-/* the compare function of a collation (lang_get_coll_fastcmp) */
+/* the compare function of a collation (fastcmp_kind); OTHER=0 so that zero-initialized collations are none */
 typedef enum
 {
   LANG_FASTCMP_OTHER,
@@ -210,8 +210,10 @@ struct lang_collation
   void (*init_coll) (LANG_COLLATION * lang_coll);
 
   /* byte-lockstep LIKE eligibility kind, computed at registration; NONE=0 is mandatory and the
-   * field must stay last (built-in collations use positional aggregate initializers) */
+   * fields from here must stay last (built-in collations use positional aggregate initializers) */
   LANG_LOCKSTEP_KIND byte_lockstep_kind;
+  /* which of the known compare functions fastcmp is, computed at registration */
+  LANG_FASTCMP fastcmp_kind;
 };
 
 /* Language locale data */
@@ -338,7 +340,6 @@ extern "C"
   extern char lang_digit_fractional_symbol (const INTL_LANG lang_id);
   extern bool lang_is_coll_name_allowed (const char *name);
   extern LANG_COLLATION *lang_get_collation (const int coll_id);
-  extern LANG_FASTCMP lang_get_coll_fastcmp (const LANG_COLLATION * lang_coll);
   extern const char *lang_get_collation_name (const int coll_id);
   extern LANG_COLLATION *lang_get_collation_by_name (const char *coll_name);
   extern int lang_collation_count (void);

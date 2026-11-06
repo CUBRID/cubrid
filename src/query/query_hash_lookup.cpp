@@ -42,7 +42,6 @@
 #include "list_file.h"
 #include "memory_alloc.h"
 #include "memory_hash.h"
-#include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "qfile_tuple_layout.h"
 #include "query_hash_scan.h"
@@ -50,7 +49,6 @@
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 #include "xasl.h"
-#include "xasl_iteration.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -59,12 +57,11 @@
 typedef struct hash_lookup_table HASH_LOOKUP_TABLE;
 struct hash_lookup_table
 {
-  bool unusable;		/* the lookups read the list: a value the table cannot take, a list too large for memory, or
-				 * hashing turned off */
+  bool unusable;		/* the lookups read the list: a comparison or a value the table cannot take, or a list too
+				 * large for memory */
   bool has_null;		/* the list holds a NULL */
   DOMAIN_COMPARE compare;	/* the comparison the table was built for: a copy, as each worker's term has its own */
   const LANG_COLLATION *lang_coll;	/* its collation if it compares strings, looked up once */
-  LANG_FASTCMP fastcmp;		/* lang_coll's compare function */
   HASH_LIST_SCAN hash_scan;	/* the table; HASH_METH_NOT_USE: none */
 };
 
@@ -78,7 +75,7 @@ struct hash_lookup
   QFILE_LIST_SCAN_ID list_scan;	/* a scan of the list: a HYBRID table's tuples are read by their positions through it */
   QFILE_TUPLE_RECORD tuple_record;	/* the tuple the last hash_lookup_next found */
   DB_VALUE value;		/* that tuple's list value */
-  HASH_LOOKUP_STATS stats;	/* kept until the subquery's XASL is cleared, past hash_lookup_destroy_tree */
+  HASH_LOOKUP_STATS stats;	/* kept until the subquery's XASL is cleared, past hash_lookup_release_tree */
 };
 
 static bool hash_lookup_type (DB_TYPE type);
@@ -87,6 +84,7 @@ static bool hash_lookup_same_compare (const DOMAIN_COMPARE *a, const DOMAIN_COMP
 static bool hash_lookup_value (const HASH_LOOKUP_TABLE *table, const DB_VALUE *value, unsigned int *hash_key);
 static bool hash_lookup_key (const HASH_LOOKUP_TABLE *table, int side, const DB_VALUE *value, unsigned int *hash_key);
 static HASH_LOOKUP *hash_lookup_create (THREAD_ENTRY *thread_p, HASH_LOOKUP_TABLE *table, bool owns_table);
+static void hash_lookup_release_node (THREAD_ENTRY *thread_p, xasl_node *xasl);
 static int hash_lookup_new_table (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *list_id,
 				  const DOMAIN_COMPARE *compare);
 static int hash_lookup_build (THREAD_ENTRY *thread_p, HASH_LOOKUP_TABLE *table, QFILE_LIST_ID *list_id,
@@ -133,7 +131,7 @@ hash_lookup_comparable (const DOMAIN_COMPARE *compare)
 	 && compare->cmp != NULL && hash_lookup_type (compare->cmp->id)
 	 && (!TP_IS_CHAR_TYPE (compare->cmp->id)
 	     || (compare->collation >= 0
-		 && lang_get_coll_fastcmp (lang_get_collation (compare->collation)) != LANG_FASTCMP_OTHER));
+		 && lang_get_collation (compare->collation)->fastcmp_kind != LANG_FASTCMP_OTHER));
 }
 
 /*
@@ -167,20 +165,18 @@ hash_lookup_value (const HASH_LOOKUP_TABLE *table, const DB_VALUE *value, unsign
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
     {
-      /* the comparison's collation, not the value's (hash_lookup_comparable). The collations' hash functions
-       * (lang_mht2str_*) tell apart strings their comparison finds equal */
+      /* the comparison's collation, not the value's (hash_lookup_comparable) */
       if (db_get_string_codeset (value) != table->lang_coll->codeset)
 	{
 	  return false;
 	}
-      *hash_key = qdata_hash_string (table->lang_coll, table->fastcmp, (const unsigned char *) db_get_string (value),
+      *hash_key = qdata_hash_string (table->lang_coll, (const unsigned char *) db_get_string (value),
 				     db_get_string_size (value));
       return true;
     }
     case DB_TYPE_NUMERIC:
     case DB_TYPE_DOUBLE:
     case DB_TYPE_FLOAT:
-      /* 1.00 and 1.000, 0.0 and -0.0 compare equal; a NaN compares equal to every value and has no hash */
       return qdata_hash_number (value, hash_key);
     default:
       *hash_key = mht_get_hash_number (UINT_MAX, value);
@@ -227,9 +223,9 @@ hash_lookup_key (const HASH_LOOKUP_TABLE *table, int side, const DB_VALUE *value
 static HASH_LOOKUP *
 hash_lookup_create (THREAD_ENTRY *thread_p, HASH_LOOKUP_TABLE *table, bool owns_table)
 {
-  HL_HEAPID old_heap = db_change_private_heap (thread_p, 0);
+  HL_HEAPID save_heap_id = db_change_private_heap (thread_p, 0);
   HASH_LOOKUP *hash = (HASH_LOOKUP *) db_private_alloc (thread_p, sizeof (HASH_LOOKUP));
-  (void) db_change_private_heap (thread_p, old_heap);
+  (void) db_change_private_heap (thread_p, save_heap_id);
   if (hash == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_LOOKUP));
@@ -244,26 +240,22 @@ hash_lookup_create (THREAD_ENTRY *thread_p, HASH_LOOKUP_TABLE *table, bool owns_
 
 /*
  * hash_lookup_release () - frees what the hash holds, with its table if it owns it, and keeps the hash with its stats;
- *			    a later lookup builds the table again
+ *			    a later lookup builds the table again. In the global heap, which the callers switch to
  */
 static void
 hash_lookup_release (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
 {
-  HL_HEAPID old_heap = db_change_private_heap (thread_p, 0);
-
   if (hash->scan_open)
     {
       qfile_close_scan (thread_p, &hash->list_scan);
       hash->scan_open = false;
     }
-  pr_clear_value (&hash->value);
   if (hash->owns_table && hash->table != NULL)
     {
       qdata_hscan_destroy (thread_p, &hash->table->hash_scan);
       db_private_free (thread_p, hash->table);
     }
   hash->table = NULL;
-  (void) db_change_private_heap (thread_p, old_heap);
 }
 
 /*
@@ -272,30 +264,75 @@ hash_lookup_release (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
 void
 hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash)
 {
-  HL_HEAPID old_heap;
+  HL_HEAPID save_heap_id = db_change_private_heap (thread_p, 0);
 
   hash_lookup_release (thread_p, hash);
-  old_heap = db_change_private_heap (thread_p, 0);
   db_private_free (thread_p, hash);
-  (void) db_change_private_heap (thread_p, old_heap);
+  (void) db_change_private_heap (thread_p, save_heap_id);
 }
 
 /*
- * hash_lookup_destroy_tree () - frees the tables of the hashes in an XASL tree: a parallel aptr worker frees those of
- *			       the tree it ran as it clears the tree (qexec_clear_xasl_for_parallel_aptr does not). The
- *			       hashes stay with their stats for the trace, and qexec_clear_xasl frees them.
+ * hash_lookup_release_list () - hash_lookup_release_node on the nodes of a list. An aptr with its own px_executor is
+ *				 another job's, which may still be running (qexec_clear_xasl_for_parallel_aptr skips
+ *				 it too)
+ */
+static void
+hash_lookup_release_list (THREAD_ENTRY *thread_p, xasl_node *list, bool is_aptr_list)
+{
+  for (xasl_node *node = list; node != NULL; node = node->next)
+    {
+      if (is_aptr_list && node->px_executor != NULL && !XASL_IS_FLAGED (node, XASL_LINK_TO_REGU_VARIABLE))
+	{
+	  continue;
+	}
+      hash_lookup_release_node (thread_p, node);
+    }
+}
+
+/*
+ * hash_lookup_release_node () - hash_lookup_release on the hashes of a node and the nodes under it, through the
+ *				 lists iterate_xasl_tree walks (but an INSERT's values, which no job's tree has)
+ */
+static void
+hash_lookup_release_node (THREAD_ENTRY *thread_p, xasl_node *xasl)
+{
+  if (xasl == NULL)
+    {
+      return;
+    }
+  if (xasl->hash_lookup != NULL)
+    {
+      hash_lookup_release (thread_p, xasl->hash_lookup);
+    }
+  hash_lookup_release_list (thread_p, xasl->aptr_list, true);
+  hash_lookup_release_list (thread_p, xasl->bptr_list, false);
+  hash_lookup_release_list (thread_p, xasl->dptr_list, false);
+  hash_lookup_release_list (thread_p, xasl->scan_ptr, false);
+  hash_lookup_release_list (thread_p, xasl->connect_by_ptr, false);
+  hash_lookup_release_list (thread_p, xasl->fptr_list, false);
+  if (xasl->type == BUILDLIST_PROC)
+    {
+      hash_lookup_release_list (thread_p, xasl->proc.buildlist.eptr_list, false);
+    }
+  if (xasl->type == CTE_PROC)
+    {
+      hash_lookup_release_node (thread_p, xasl->proc.cte.non_recursive_part);
+      hash_lookup_release_node (thread_p, xasl->proc.cte.recursive_part);
+    }
+}
+
+/*
+ * hash_lookup_release_tree () - hash_lookup_release on the hashes in an XASL tree: a parallel aptr worker frees
+ *			       those of the tree it ran as it clears the tree (qexec_clear_xasl_for_parallel_aptr does
+ *			       not). The hashes stay with their stats for the trace, and qexec_clear_xasl frees them.
  */
 void
-hash_lookup_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl)
+hash_lookup_release_tree (THREAD_ENTRY *thread_p, xasl_node *xasl)
 {
-  cubxasl::iterate_xasl_tree<bool> (xasl, [thread_p] (XASL_NODE *node)
-  {
-    if (node->hash_lookup != NULL)
-      {
-	hash_lookup_release (thread_p, node->hash_lookup);
-      }
-    return true;
-  }, true);
+  HL_HEAPID save_heap_id = db_change_private_heap (thread_p, 0);
+
+  hash_lookup_release_node (thread_p, xasl);
+  (void) db_change_private_heap (thread_p, save_heap_id);
 }
 
 /*
@@ -389,13 +426,12 @@ hash_lookup_build (THREAD_ENTRY *thread_p, HASH_LOOKUP_TABLE *table, QFILE_LIST_
       table->unusable = true;
       return error;
     }
+  /* zeroed by hash_lookup_new_table */
+  assert (table->lang_coll == NULL && !table->has_null && !table->unusable);
   table->compare = *compare;
-  table->lang_coll = NULL;
-  table->fastcmp = LANG_FASTCMP_OTHER;
   if (TP_IS_CHAR_TYPE (compare->cmp->id))
     {
       table->lang_coll = lang_get_collation (compare->collation);
-      table->fastcmp = lang_get_coll_fastcmp (table->lang_coll);
     }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &list_scan, &tuple_record, PEEK)) == S_SUCCESS)
@@ -444,45 +480,41 @@ hash_lookup_build (THREAD_ENTRY *thread_p, HASH_LOOKUP_TABLE *table, QFILE_LIST_
 /*
  * hash_lookup_new_table () - the subquery's table over its list for the comparison, or one the lookups do not use:
  *			    they read the list
- *   return: error code; no table for a comparison the hash cannot answer for, which a later lookup checks again
+ *   return: error code
  */
 static int
 hash_lookup_new_table (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *list_id,
 		       const DOMAIN_COMPARE *compare)
 {
-  const UINT64 mem_limit = (UINT64) prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-  /* 0 turns hashing a list off, as it does for a hash list scan */
-  const HASH_METHOD method = mem_limit == 0 ? HASH_METH_NOT_USE : qdata_hscan_method (list_id, mem_limit);
+  /* 0 bytes hold no table: a hash file, which the lookups do not use */
+  const HASH_METHOD method =
+	  qdata_hscan_method (list_id, (UINT64) prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE));
   HASH_LOOKUP_TABLE *table;
-  HL_HEAPID old_heap;
+  HL_HEAPID save_heap_id;
   int error = NO_ERROR;
 
-  /* checked here, once a table would be built, rather than at each lookup */
-  if (method != HASH_METH_NOT_USE && method != HASH_METH_HASH_FILE && !hash_lookup_comparable (compare))
-    {
-      return NO_ERROR;
-    }
-
-  old_heap = db_change_private_heap (thread_p, 0);
+  save_heap_id = db_change_private_heap (thread_p, 0);
   table = (HASH_LOOKUP_TABLE *) db_private_alloc (thread_p, sizeof (HASH_LOOKUP_TABLE));
   if (table == NULL)
     {
-      (void) db_change_private_heap (thread_p, old_heap);
+      (void) db_change_private_heap (thread_p, save_heap_id);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (HASH_LOOKUP_TABLE));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   /* no table (HASH_METH_NOT_USE is 0) */
   memset (table, 0, sizeof (HASH_LOOKUP_TABLE));
-  if (method == HASH_METH_NOT_USE || method == HASH_METH_HASH_FILE)
+  if (method == HASH_METH_HASH_FILE || !hash_lookup_comparable (compare))
     {
-      /* a hash file costs more to build than reading the list for a few lookups: the lookups read the list */
+      /* a hash file costs more to build than reading the list for a few lookups, and the hash cannot answer for
+       * the comparison: the lookups read the list. A term's comparison stays, so the later lookups keep reading the
+       * list without building again */
       table->unusable = true;
     }
   else
     {
       error = hash_lookup_build (thread_p, table, list_id, compare, method);
     }
-  (void) db_change_private_heap (thread_p, old_heap);
+  (void) db_change_private_heap (thread_p, save_heap_id);
   subquery->hash_lookup->table = table;
 
   if (error != NO_ERROR && error != ER_INTERRUPTED && er_errid () != ER_INTERRUPTED)
@@ -511,7 +543,7 @@ hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *lis
 		 const DOMAIN_COMPARE *compare, HASH_LOOKUP **hash)
 {
   HASH_LOOKUP *hash_lookup;
-  HL_HEAPID old_heap;
+  HL_HEAPID save_heap_id;
   int error;
 
   *hash = NULL;
@@ -542,9 +574,9 @@ hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, QFILE_LIST_ID *lis
 
   if (!hash_lookup->scan_open)
     {
-      old_heap = db_change_private_heap (thread_p, 0);
+      save_heap_id = db_change_private_heap (thread_p, 0);
       error = qfile_open_list_scan (list_id, &hash_lookup->list_scan);
-      (void) db_change_private_heap (thread_p, old_heap);
+      (void) db_change_private_heap (thread_p, save_heap_id);
       if (error != NO_ERROR)
 	{
 	  return error;

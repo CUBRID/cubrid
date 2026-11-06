@@ -212,6 +212,7 @@ static int register_lang_locale_data (LANG_LOCALE_DATA * lld);
 static void free_lang_locale_data (LANG_LOCALE_DATA * lld);
 static int register_collation (LANG_COLLATION * coll);
 static void lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll);
+static void lang_set_fastcmp_kind (LANG_COLLATION * lang_coll);
 
 static bool lang_is_codeset_allowed (const INTL_LANG intl_id, const INTL_CODESET codeset);
 static int lang_get_builtin_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id);
@@ -887,6 +888,7 @@ lang_init_builtin (void)
   for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
     {
       lang_set_byte_lockstep_like (built_In_collations[i]);
+      lang_set_fastcmp_kind (built_In_collations[i]);
     }
 
   /* register all built-in locales allowed in current charset Support for multiple locales is required for switching
@@ -1628,6 +1630,7 @@ register_collation (LANG_COLLATION * coll)
     {
       /* loaded collations have complete weight data here; built-in ones are decided in lang_init_builtin () */
       lang_set_byte_lockstep_like (coll);
+      lang_set_fastcmp_kind (coll);
     }
 
   return NO_ERROR;
@@ -1736,42 +1739,44 @@ lang_get_collation (const int coll_id)
 }
 
 /*
- * lang_get_coll_fastcmp - which of the compare functions below the collation compares strings by
- *   return: LANG_FASTCMP_OTHER if none of them
- *   lang_coll(in): collation
+ * lang_set_fastcmp_kind - sets which of the compare functions below the collation compares strings by,
+ *			   LANG_FASTCMP_OTHER if none of them
+ *   return: void
+ *   lang_coll(in/out): collation
  */
-LANG_FASTCMP
-lang_get_coll_fastcmp (const LANG_COLLATION * lang_coll)
+static void
+lang_set_fastcmp_kind (LANG_COLLATION * lang_coll)
 {
   if (lang_coll->fastcmp == lang_fastcmp_byte)
     {
-      if (lang_coll->coll.weights == lang_Weight_EN_cs && lang_coll->coll.weights_ti == lang_Weight_EN_cs_ti)
-	{
-	  return LANG_FASTCMP_BYTE_CS;
-	}
-      return LANG_FASTCMP_BYTE;
+      const bool en_cs = lang_coll->coll.weights == lang_Weight_EN_cs
+	&& lang_coll->coll.weights_ti == lang_Weight_EN_cs_ti;
+      lang_coll->fastcmp_kind = en_cs ? LANG_FASTCMP_BYTE_CS : LANG_FASTCMP_BYTE;
     }
-  if (lang_coll->fastcmp == lang_fastcmp_binary)
+  else if (lang_coll->fastcmp == lang_fastcmp_binary)
     {
-      return LANG_FASTCMP_BINARY;
+      lang_coll->fastcmp_kind = LANG_FASTCMP_BINARY;
     }
-  if (lang_coll->fastcmp == lang_fastcmp_ko)
+  else if (lang_coll->fastcmp == lang_fastcmp_ko)
     {
-      return LANG_FASTCMP_KO;
+      lang_coll->fastcmp_kind = LANG_FASTCMP_KO;
     }
-  if (lang_coll->fastcmp == lang_strcmp_utf8)
+  else if (lang_coll->fastcmp == lang_strcmp_utf8)
     {
-      return LANG_FASTCMP_UTF8;
+      lang_coll->fastcmp_kind = LANG_FASTCMP_UTF8;
     }
-  if (lang_coll->fastcmp == lang_strcmp_utf8_w_contr)
+  else if (lang_coll->fastcmp == lang_strcmp_utf8_w_contr)
     {
-      return LANG_FASTCMP_UTF8_CONTR;
+      lang_coll->fastcmp_kind = LANG_FASTCMP_UTF8_CONTR;
     }
-  if (lang_coll->fastcmp == lang_strcmp_utf8_uca)
+  else if (lang_coll->fastcmp == lang_strcmp_utf8_uca)
     {
-      return LANG_FASTCMP_UTF8_UCA;
+      lang_coll->fastcmp_kind = LANG_FASTCMP_UTF8_UCA;
     }
-  return LANG_FASTCMP_OTHER;
+  else
+    {
+      lang_coll->fastcmp_kind = LANG_FASTCMP_OTHER;
+    }
 }
 
 
@@ -4156,10 +4161,6 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
   return pseudo_key;
 }
 
-/* FNV-1a, for the hashes below */
-static const unsigned int LANG_HASH_FNV_OFFSET = 2166136261u;
-static const unsigned int LANG_HASH_FNV_PRIME = 16777619u;
-
 /*
  * lang_hash_utf8_w_contr() - the hash of a UTF-8 string as lang_strcmp_utf8_w_contr compares it: strings it finds
  *			      equal hash alike
@@ -4178,7 +4179,7 @@ lang_hash_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *s
   const COLL_DATA *coll = &(lang_coll->coll);
   const unsigned char *str_end = str + size;
   unsigned char *str_next;
-  unsigned int hash_key = LANG_HASH_FNV_OFFSET;
+  unsigned int hash_key = MHT_FNV_OFFSET;
   unsigned int cp, w;
   int zeros = 0;		/* weights 0 not hashed yet */
 
@@ -4211,9 +4212,9 @@ lang_hash_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *s
 	}
       for (; zeros > 0; zeros--)
 	{
-	  hash_key *= LANG_HASH_FNV_PRIME;
+	  hash_key *= MHT_FNV_PRIME;
 	}
-      hash_key = (hash_key ^ w) * LANG_HASH_FNV_PRIME;
+      hash_key = (hash_key ^ w) * MHT_FNV_PRIME;
     }
 
   return hash_key;
@@ -4239,7 +4240,7 @@ lang_hash_utf8_uca (const LANG_COLLATION * lang_coll, const unsigned char *str, 
   unsigned char *str_next;
   UCA_L13_W *uca_w_l13 = NULL;
   unsigned int cp_contr;
-  unsigned int hash_key = LANG_HASH_FNV_OFFSET;
+  unsigned int hash_key = MHT_FNV_OFFSET;
   unsigned int w;
   int num_ce, i;
   int zeros = 0;		/* weights 0 of spaces not hashed yet */
@@ -4260,9 +4261,9 @@ lang_hash_utf8_uca (const LANG_COLLATION * lang_coll, const unsigned char *str, 
 	    }
 	  for (; zeros > 0; zeros--)
 	    {
-	      hash_key *= LANG_HASH_FNV_PRIME;
+	      hash_key *= MHT_FNV_PRIME;
 	    }
-	  hash_key = (hash_key ^ w) * LANG_HASH_FNV_PRIME;
+	  hash_key = (hash_key ^ w) * MHT_FNV_PRIME;
 	}
       str = str_next;
     }

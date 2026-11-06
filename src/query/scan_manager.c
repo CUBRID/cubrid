@@ -9616,7 +9616,6 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   regu_variable_list_node *build, *probe;
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   INT64 tuple_cnt;
-  UINT64 slot_array_size, entries_size, payload_size, in_mem_size, hybrid_size;
 
   assert (hash_list_scan_yn == 0 || hash_list_scan_yn == 1);
   /* no_hash_list_scan sql hint check, or key pairs XASL generation found no domain for */
@@ -9663,36 +9662,5 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       return HASH_METH_NOT_USE;
     }
 
-  /* The IN_MEM/HYBRID table is int-indexed, capped at INT_MAX rows;
-   * larger builds use HASH_FILE. */
-  if (tuple_cnt > INT_MAX)
-    {
-      return HASH_METH_HASH_FILE;
-    }
-
-  slot_array_size = (UINT64) mht_hls_slot_count ((int) tuple_cnt) * sizeof (MHT_HLS_SLOT);
-  entries_size = (UINT64) tuple_cnt *sizeof (MHT_HLS_ENTRY);
-
-  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
-  payload_size = (UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE;
-  in_mem_size = slot_array_size + entries_size + payload_size;
-
-  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
-  payload_size = (UINT64) tuple_cnt *sizeof (QFILE_TUPLE_SIMPLE_POS);
-  hybrid_size = slot_array_size + entries_size + payload_size;
-
-  if (in_mem_size <= mem_limit)
-    {
-      return HASH_METH_IN_MEM;
-    }
-  else if (hybrid_size <= mem_limit)
-    {
-      return HASH_METH_HYBRID;
-    }
-  else
-    {
-      return HASH_METH_HASH_FILE;
-    }
-
-  return HASH_METH_NOT_USE;
+  return qdata_hscan_method (llsidp->list_id, mem_limit);
 }

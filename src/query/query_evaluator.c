@@ -1046,7 +1046,7 @@ eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_des
     {
       return NO_ERROR;
     }
-  if (!XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL) || XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP))
+  if (!XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL))
     {
       return NO_ERROR;
     }

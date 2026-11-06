@@ -1843,10 +1843,6 @@ namespace parallel_scan
 
     if (unlikely (!m_task_started))
       {
-	/* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too
-	 * instead of re-executing per worker. Every gather mode needs it, the row-by-row XASL_SNAPSHOT included: its
-	 * workers evaluate the scan predicate too, and a worker that finds no value re-executes the subquery
-	 * (CBRD-27588: NEXT_VALUE ran once per worker). */
 	/* an uncorrelated list subquery of an IN or NOT IN term: execute it and build its hash here, so the workers
 	 * share both (hash_lookup_share) in place of executing it and building a hash each */
 	for (XASL_NODE *xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
@@ -1860,6 +1856,10 @@ namespace parallel_scan
 		  }
 	      }
 	  }
+	/* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too
+	 * instead of re-executing per worker. Every gather mode needs it, the row-by-row XASL_SNAPSHOT included: its
+	 * workers evaluate the scan predicate too, and a worker that finds no value re-executes the subquery
+	 * (CBRD-27588: NEXT_VALUE ran once per worker). */
 	m_pre_execution_info.capture_precomp_vals (m_xasl);
 
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)

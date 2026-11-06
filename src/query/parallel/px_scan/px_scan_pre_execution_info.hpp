@@ -65,9 +65,10 @@ namespace parallel_scan
 
       /* precomputed scalar values, keyed by subquery xasl header.id; never operator[] (default-inserts NULL on miss) -- find/at/emplace only. */
       const DB_VALUE *find_precomp_val (XASL_NODE_ID subquery_id) const;
+      void capture_precomp_vals (xasl_node *head);
+
       /* the leader's executed list subqueries of IN or NOT IN terms, whose list and hash the clones share */
       xasl_node *find_lookup_list (XASL_NODE_ID subquery_id) const;
-      void capture_precomp_vals (xasl_node *head);
 
     private:
       std::mutex m_mutex;

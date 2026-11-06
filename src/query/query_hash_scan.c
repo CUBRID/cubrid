@@ -54,8 +54,6 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
-#include "intl_support.h"
-#include "language_support.h"
 #include "numeric_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -283,10 +281,6 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
   db_private_free (thread_p, key);
 }
 
-/* FNV-1a */
-static const unsigned int QDATA_HASH_FNV_OFFSET = 2166136261u;
-static const unsigned int QDATA_HASH_FNV_PRIME = 16777619u;
-
 /* 8 bytes a step: see qdata_hash_words */
 static const UINT64 QDATA_HASH_WORD_PRIME = 0x517cc1b727220a95ULL;
 
@@ -344,33 +338,29 @@ qdata_hash_words (const unsigned char *str, int size, bool byte_cs)
 /*
  * qdata_hash_string () - the hash of a string as its collation's compare function weighs it: strings it finds equal
  *			  hash alike, which the collations' own hashes (lang_mht2str_*) do not
- *   lang_coll(in): the collation
- *   fastcmp(in): its compare function (lang_get_coll_fastcmp), not LANG_FASTCMP_OTHER
+ *   lang_coll(in): the collation, whose compare function (fastcmp_kind) is not LANG_FASTCMP_OTHER
  *
  * The weights the collation's compare function compares the string by, from its start, a space weighing 0. Trailing
  * weights 0 are left out: a compare function ignores them or tells the strings apart by them, which the caller's
  * comparison does again.
  */
 unsigned int
-qdata_hash_string (const LANG_COLLATION * lang_coll, LANG_FASTCMP fastcmp, const unsigned char *str, int size)
+qdata_hash_string (const LANG_COLLATION * lang_coll, const unsigned char *str, int size)
 {
+  const LANG_FASTCMP fastcmp = lang_coll->fastcmp_kind;
   const unsigned int *weights = lang_coll->built_in ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
-  unsigned int hash_key = QDATA_HASH_FNV_OFFSET;
-  if (fastcmp == LANG_FASTCMP_UTF8_CONTR)
+  unsigned int hash_key = MHT_FNV_OFFSET;
+  switch (fastcmp)
     {
+    case LANG_FASTCMP_UTF8_CONTR:
       return lang_hash_utf8_w_contr (lang_coll, str, size);
-    }
-  if (fastcmp == LANG_FASTCMP_UTF8_UCA)
-    {
+    case LANG_FASTCMP_UTF8_UCA:
       return lang_hash_utf8_uca (lang_coll, str, size);
-    }
-  if (fastcmp == LANG_FASTCMP_BYTE_CS || fastcmp == LANG_FASTCMP_BINARY)
-    {
+    case LANG_FASTCMP_BYTE_CS:
+    case LANG_FASTCMP_BINARY:
       /* a weight is the byte itself, but NUL's and a space's (BYTE_CS): the bytes, 8 at a time */
       return qdata_hash_words (str, size, fastcmp == LANG_FASTCMP_BYTE_CS);
-    }
-  if (fastcmp == LANG_FASTCMP_BYTE)
-    {
+    case LANG_FASTCMP_BYTE:
       /* a loop of their own: the loop below hashed 200-byte strings about 1.5 times slower. weights_ti weighs a space
        * 0 */
       while (size > 0 && lang_coll->coll.weights_ti[str[size - 1]] == 0)
@@ -379,9 +369,12 @@ qdata_hash_string (const LANG_COLLATION * lang_coll, LANG_FASTCMP fastcmp, const
 	}
       for (int i = 0; i < size; i++)
 	{
-	  hash_key = (hash_key ^ lang_coll->coll.weights_ti[str[i]]) * QDATA_HASH_FNV_PRIME;
+	  hash_key = (hash_key ^ lang_coll->coll.weights_ti[str[i]]) * MHT_FNV_PRIME;
 	}
       return hash_key;
+    default:
+      /* LANG_FASTCMP_KO, LANG_FASTCMP_UTF8: the loop below */
+      break;
     }
 
   const unsigned char *end = str + size;
@@ -424,9 +417,9 @@ qdata_hash_string (const LANG_COLLATION * lang_coll, LANG_FASTCMP fastcmp, const
 	}
       for (; zeros > 0; zeros--)
 	{
-	  hash_key *= QDATA_HASH_FNV_PRIME;
+	  hash_key *= MHT_FNV_PRIME;
 	}
-      hash_key = (hash_key ^ weight) * QDATA_HASH_FNV_PRIME;
+      hash_key = (hash_key ^ weight) * MHT_FNV_PRIME;
     }
   return hash_key;
 }
@@ -436,22 +429,20 @@ static unsigned int
 qdata_hash_bytes (const void *bytes, size_t size)
 {
   const unsigned char *p = (const unsigned char *) bytes;
-  unsigned int hash_key = QDATA_HASH_FNV_OFFSET;
+  unsigned int hash_key = MHT_FNV_OFFSET;
   size_t i;
 
   for (i = 0; i < size; i++)
     {
-      hash_key = (hash_key ^ p[i]) * QDATA_HASH_FNV_PRIME;
+      hash_key = (hash_key ^ p[i]) * MHT_FNV_PRIME;
     }
   return hash_key;
 }
 
 /*
  * qdata_hash_number () - the hash of a NUMERIC, FLOAT, DOUBLE or MONETARY value: values their comparison finds equal
- *			  hash alike,
- *			  which mht_get_hash_number does not do for 1.0 and 1.00, or for 0.0 and -0.0
- *   returns: false if the value is of another type or has no such hash: a NaN compares equal to every value (MR_CMP),
- *	      and a NUMERIC of negative scale is left to mht_get_hash_number
+ *			  hash alike, which mht_get_hash_number does not do for 1.0 and 1.00, or for 0.0 and -0.0
+ *   returns: false if the value is of another type or has no such hash: a NaN compares equal to every value (MR_CMP)
  *   value(in): a value, not NULL
  *   hash_key(out): its hash
  */
@@ -464,16 +455,13 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
     {
     case DB_TYPE_NUMERIC:
       {
-	/* the digits without trailing zeros. A float NUMERIC keeps its scale in the value, not in its domain */
+	/* the digits without trailing zeros, or with a negative scale's zeros appended up to the full precision
+	 * (mht_get_hash_number). A float NUMERIC keeps its scale in the value, not in its domain */
 	uint8_t digits[DB_NUMERIC_BUF_SIZE];
 	int precision, scale;
 
 	db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
-	if (scale < 0)
-	  {
-	    return false;
-	  }
-	if (scale == 0)
+	if (scale == 0 || (scale < 0 && precision == DB_MAX_NUMERIC_PRECISION))
 	  {
 	    *hash_key = qdata_hash_bytes (db_locate_numeric (value), DB_NUMERIC_BUF_SIZE);
 	    return true;
@@ -515,7 +503,8 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
  *
  * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON value,
  * which hashes its text while its comparison takes a scalar's value (true as 'true', mr_cmpval_json ()), and a
- * string of a collation with expansions, which hashes the weights its comparison skips (lang_mht2str_utf8_exp ()).
+ * string of a codeset other than its collation's, which mht_get_hash_number hashes by the collation's mht2str (the
+ * weights its comparison skips for a collation with expansions: lang_mht2str_utf8_exp ()).
  */
 unsigned int
 qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
@@ -533,10 +522,9 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
   if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value)))
     {
       const LANG_COLLATION *lang_coll = lang_get_collation (db_get_string_collation (value));
-      const LANG_FASTCMP fastcmp = lang_get_coll_fastcmp (lang_coll);
-      if (fastcmp != LANG_FASTCMP_OTHER && db_get_string_codeset (value) == lang_coll->codeset)
+      if (lang_coll->fastcmp_kind != LANG_FASTCMP_OTHER && db_get_string_codeset (value) == lang_coll->codeset)
 	{
-	  return qdata_hash_string (lang_coll, fastcmp, (const unsigned char *) db_get_string (value),
+	  return qdata_hash_string (lang_coll, (const unsigned char *) db_get_string (value),
 				    db_get_string_size (value)) % ht_size;
 	}
     }
@@ -927,12 +915,12 @@ qdata_hscan_destroy (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
 
 /*
  * qdata_hscan_set_key () - the key of the next insert or probe
- *   hash_key(in): a hash value; a hash file takes its own hash of it, as qdata_hash_scan_key gives a key
+ *   hash_key(in): a hash value; a hash file takes its own hash of it, as for qdata_hash_scan_key
  */
 void
 qdata_hscan_set_key (HASH_LIST_SCAN * hash_scan, unsigned int hash_key)
 {
-  hash_scan->curr_hash_key = hash_scan->hash_list_scan_type == HASH_METH_HASH_FILE ? fhs_hash (&hash_key) : hash_key;
+  hash_scan->curr_hash_key = qdata_hash_scan_key_finish (hash_key, hash_scan->hash_list_scan_type);
 }
 
 /*
@@ -951,21 +939,11 @@ qdata_hscan_insert (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_L
   switch (hash_scan->hash_list_scan_type)
     {
     case HASH_METH_IN_MEM:
-      entry = qdata_alloc_hscan_value (thread_p, hash_scan->memory.hash_table->heap_id, tuple_record->tpl);
-      if (entry == NULL)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, entry) == NULL)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      break;
-
     case HASH_METH_HYBRID:
-      entry = qdata_alloc_hscan_value_OID (thread_p, hash_scan->memory.hash_table->heap_id, list_scan_id);
+      /* IN_MEM keeps a copy of the tuple, HYBRID its position */
+      entry = (hash_scan->hash_list_scan_type == HASH_METH_IN_MEM
+	       ? qdata_alloc_hscan_value (thread_p, hash_scan->memory.hash_table->heap_id, tuple_record->tpl)
+	       : qdata_alloc_hscan_value_OID (thread_p, hash_scan->memory.hash_table->heap_id, list_scan_id));
       if (entry == NULL)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);

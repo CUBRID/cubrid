@@ -747,7 +747,8 @@ namespace parallel_scan
     QFILE_SORTED_LIST_ID *srlist_id = clone_subq->hash_lookup_term->elemset->value.srlist_id;
 
     /* the term reads the subquery's own list (pt_make_regu_subquery), which return_lookup_lists gives back */
-    if (leader == nullptr || srlist_id->list_id != clone_subq->list_id)
+    assert (srlist_id->list_id == clone_subq->list_id);
+    if (leader == nullptr)
       {
 	/* the clone executes the subquery as the term reads it */
 	return NO_ERROR;

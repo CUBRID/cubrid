@@ -290,6 +290,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_aggregate.cpp
   ${QUERY_DIR}/query_hash_scan.c
   ${QUERY_DIR}/query_hash_join.c
+  ${QUERY_DIR}/query_hash_lookup.cpp
   ${QUERY_DIR}/query_analytic.cpp
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
@@ -308,7 +309,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/show_scan.c
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
-  ${QUERY_DIR}/query_hash_lookup.cpp
   ${QUERY_DIR}/stream_to_xasl.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
@@ -324,12 +324,12 @@ set(QUERY_HEADERS
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_hash_join.h
+  ${QUERY_DIR}/query_hash_lookup.hpp
   ${QUERY_DIR}/query_analytic.hpp
   ${QUERY_DIR}/query_monitoring.hpp
   ${QUERY_DIR}/query_reevaluation.hpp
   ${QUERY_DIR}/scan_json_table.hpp
   ${QUERY_DIR}/memoize.hpp
-  ${QUERY_DIR}/query_hash_lookup.hpp
   )
 
 set(OBJECT_SOURCES

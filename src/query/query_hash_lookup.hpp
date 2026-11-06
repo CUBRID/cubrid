@@ -52,7 +52,7 @@ extern void hash_lookup_merge_stats (xasl_node *dst, const xasl_node *src);
 
 /* the hash's lifetime: a lookup creates it (hash_lookup_get), the subquery's XASL frees it */
 extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
-extern void hash_lookup_destroy_tree (THREAD_ENTRY *thread_p, xasl_node *xasl);
+extern void hash_lookup_release_tree (THREAD_ENTRY *thread_p, xasl_node *xasl);
 
 /* a PX scan worker's clone of the subquery: the leader's table */
 extern int hash_lookup_share (THREAD_ENTRY *thread_p, xasl_node *subquery, const xasl_node *leader);

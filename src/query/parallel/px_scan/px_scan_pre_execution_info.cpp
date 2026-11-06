@@ -89,6 +89,7 @@ namespace parallel_scan
   }
 
   /* snapshot each uncorrelated scalar subquery (precomp_owner_regu set) in aptr lists across the scan_ptr chain, keyed by header.id; main thread, before workers; idempotent (emplace skips existing). */
+  /* also records each executed list subquery of a hashed IN term (m_lookup_lists), which the workers share */
   void pre_execution_info::capture_precomp_vals (xasl_node *head)
   {
     for (xasl_node *xptr = head; xptr != NULL; xptr = xptr->scan_ptr)
