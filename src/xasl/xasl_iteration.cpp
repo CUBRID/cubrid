@@ -182,8 +182,8 @@ extern "C" {
 	  /* agl copy needed..? */
 
 	  /* partition stats copy needed */
-	  if ((XASL_IS_PER_OUTER_ROW (src_node) || XASL_IS_FLAGED (src_node, XASL_NL_PER_ROW_PARTITIONS))
-	      && src_node->spec_list->parts != nullptr && dst_node->spec_list->parts != nullptr)
+	  if (XASL_IS_PER_OUTER_ROW (src_node) && src_node->spec_list->parts != nullptr
+	      && dst_node->spec_list->parts != nullptr)
 	    {
 	      /* a clone walking the partitions per outer row (CBRD-27493, CBRD-27866) scans every partition itself, not
 	       * only the one the main thread's scan block iteration opened, so each partition goes to the main thread's

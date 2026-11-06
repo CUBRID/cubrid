@@ -1239,11 +1239,14 @@ struct topn_tuple
   int values_size;		/* total size in bytes occupied by the objects stored in the values array */
 };
 
+/* the range, key, pred and rest attribute caches of an index scan */
+#define PARTITION_SCAN_CACHE_COUNT 4
+
 /* the attribute caches an index scan walked per outer row keeps for a partition it left, to take them back when it
  * comes back instead of binding them to the class again (scan_switch_index_partition ()) */
 struct partition_scan_cache
 {
-  HEAP_CACHE_ATTRINFO attrs[4];	/* range, key, pred and rest caches; num_values -1 when none is kept */
+  HEAP_CACHE_ATTRINFO attrs[PARTITION_SCAN_CACHE_COUNT];	/* num_values -1 when none is kept */
   bool parked;			/* attrs hold the partition's caches; false while the scan is on it */
 };
 

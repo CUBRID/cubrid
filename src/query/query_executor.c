@@ -11939,7 +11939,7 @@ qexec_free_partition_scan_caches (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * sp
 	{
 	  continue;
 	}
-      for (k = 0; k < 4; k++)
+      for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
 	{
 	  if (part->scan_cache->attrs[k].num_values != -1)
 	    {

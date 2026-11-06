@@ -3294,8 +3294,8 @@ scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OI
 			       PARTITION_SCAN_CACHE * park, PARTITION_SCAN_CACHE ** kept, size_t * kept_bytes,
 			       bool * caches_kept)
 {
-  HEAP_CACHE_ATTRINFO *caches[4];
-  SCAN_ATTRS *attrs[4];
+  HEAP_CACHE_ATTRINFO *caches[PARTITION_SCAN_CACHE_COUNT];
+  SCAN_ATTRS *attrs[PARTITION_SCAN_CACHE_COUNT];
   int k, error = NO_ERROR;
 
   caches[0] = (isidp->range_pred.regu_list != NULL) ? isidp->range_attrs.attr_cache : NULL;
@@ -3310,7 +3310,7 @@ scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OI
   if (park == NULL && *kept == NULL && *kept_bytes >= SCAN_PARTITION_KEPT_CACHE_LIMIT)
     {
       /* nothing is kept: bind the caches to the class of the partition, keeping their value arrays */
-      for (k = 0; k < 4 && error == NO_ERROR; k++)
+      for (k = 0; k < PARTITION_SCAN_CACHE_COUNT && error == NO_ERROR; k++)
 	{
 	  if (caches[k] != NULL)
 	    {
@@ -3321,7 +3321,7 @@ scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OI
     }
 
   /* take the caches off the partition the scan leaves */
-  for (k = 0; k < 4; k++)
+  for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
     {
       if (caches[k] == NULL || caches[k]->num_values == -1)
 	{
@@ -3347,7 +3347,7 @@ scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OI
   /* put them on the partition the scan moves to */
   if (*kept != NULL && (*kept)->parked)
     {
-      for (k = 0; k < 4; k++)
+      for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
 	{
 	  if (caches[k] != NULL && (*kept)->attrs[k].num_values != -1)
 	    {
@@ -3380,7 +3380,7 @@ scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OI
       *kept = (PARTITION_SCAN_CACHE *) malloc (sizeof (PARTITION_SCAN_CACHE));
       if (*kept != NULL)
 	{
-	  for (k = 0; k < 4; k++)
+	  for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
 	    {
 	      (*kept)->attrs[k].num_values = -1;
 	    }
@@ -3389,7 +3389,7 @@ scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OI
 	}
     }
 
-  for (k = 0; k < 4; k++)
+  for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
     {
       if (caches[k] == NULL)
 	{
