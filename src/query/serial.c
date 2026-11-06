@@ -843,8 +843,8 @@ serial_fast_refill (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num
   /* counts taken past the block, by this draw or by lock-free draws waiting on the mutex: one write covers them all */
   DB_BIGINT short_of = entry->fast_drawn.load (std::memory_order_relaxed)
     - entry->fast_reserved.load (std::memory_order_relaxed) + (taken ? 0 : num_alloc);
-  DB_VALUE new_last, from, cmp_result;
-  DB_BIGINT left, step, last, reserved;
+  DB_VALUE new_last, cmp_result;
+  DB_BIGINT last, reserved;
   int error;
 
   if (short_of > nth)
@@ -852,19 +852,12 @@ serial_fast_refill (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num
       nth = CEIL_PTVDIV (short_of, entry->cached_num) * entry->cached_num;
     }
 
-  pr_clone_value (&entry->last_cached_val, &new_last);
-  for (left = nth; left > 0; left -= step)
+  error =
+    serial_reserve_block_end (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
+			      &entry->cyclic, nth, &new_last);
+  if (error != NO_ERROR)
     {
-      /* serial_reserve_block_end () takes an int */
-      step = MIN (left, INT_MAX);
-      pr_clone_value (&new_last, &from);
-      error =
-	serial_reserve_block_end (&entry->inc_val, &from, &entry->min_val, &entry->max_val, &entry->cyclic, (int) step,
-				  &new_last);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      return error;
     }
   error = numeric_db_value_compare (&new_last, &entry->last_cached_val, &cmp_result);
   if (error != NO_ERROR)
