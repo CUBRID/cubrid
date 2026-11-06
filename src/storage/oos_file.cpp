@@ -197,6 +197,9 @@ static std::atomic<int> oos_Test_fail_reclaim_after_chunk_deletes { -1 };
 static std::vector<VFID> oos_Test_created_files;
 static std::mutex oos_Test_created_files_mutex;
 static void (*oos_Test_reclaim_fail_stop_hook) (int error) = NULL;
+/* UPDATE drop postpones that still append their notification before the process stops; 0 when disarmed. */
+static std::atomic<int> oos_Test_exit_after_update_drop_notifications { 0 };
+static int oos_Test_exit_after_update_drop_notifications_code = 0;
 
 #define OOS_COUNTER_ADD(field, value) \
   do \
@@ -3643,7 +3646,7 @@ oos_pack_reclaim_intent (const VFID &oos_vfid, const HFID &heap_hfid, const OID 
 			 const char *op_ctx, const std::vector<oos_chain_ref> &refs, std::size_t prefix_size,
 			 std::vector<char> &payload_out)
 {
-  oos_reclaim_intent_header header;
+  oos_reclaim_intent_header header {};
   std::memset (&header, 0, sizeof (header));
   header.oos_vfid = oos_vfid;
   header.heap_hfid = heap_hfid;
@@ -3836,7 +3839,7 @@ oos_reclaim_fail_stop (THREAD_ENTRY *thread_p, int error, const VFID &oos_vfid, 
 int
 oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
-  oos_reclaim_intent_header header;
+  oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
   int error = oos_unpack_reclaim_intent (rcv->data, rcv->length, header, refs);
   if (error != NO_ERROR)
@@ -3845,8 +3848,11 @@ oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return NO_ERROR;
     }
 
-  /* A commit is not interruptible: an interrupt here would stop the server. */
+  /* A commit is not interruptible: an interrupt here would stop the server. For the same reason the page latches
+   * wait even for a no-wait transaction (lock timeout 0), which would otherwise get a conditional latch and fail on
+   * a busy page. */
   bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
+  int save_wait_msecs = pgbuf_force_latch_wait (thread_p);
 
   int skipped_count = 0;
   oos_chain_ref first_skipped_ref = {oid_Null_oid, NULL_LSA};
@@ -3857,6 +3863,7 @@ oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       error = oos_delete (thread_p, header.oos_vfid, ref, NULL, &outcome);
       if (error != NO_ERROR)
 	{
+	  (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
 	  (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 	  oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, ref);
 	  return NO_ERROR;
@@ -3871,6 +3878,7 @@ oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 	}
     }
 
+  (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
   (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
   if (skipped_count == (int) refs.size ())
@@ -3906,7 +3914,7 @@ int
 oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
   oos_update_drop_prefix prefix;
-  oos_reclaim_intent_header header;
+  oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
 
   int error = ER_GENERIC_ERROR;
@@ -3927,6 +3935,15 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   LOG_DATA_ADDR addr (&header.heap_hfid.vfid, NULL, -1);
   log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr, rcv->length - (int) sizeof (prefix),
 					 rcv->data + sizeof (prefix), prefix.mvccid);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (oos_Test_exit_after_update_drop_notifications.load (std::memory_order_relaxed) > 0
+      && oos_Test_exit_after_update_drop_notifications.fetch_sub (1, std::memory_order_relaxed) == 1)
+    {
+      /* A crash in the middle of the commit's postpones, after this notification reached the disk. */
+      logpb_force_flush_pages (thread_p);
+      std::_Exit (oos_Test_exit_after_update_drop_notifications_code);
+    }
+#endif
   return NO_ERROR;
 }
 
@@ -3949,7 +3966,7 @@ int
 oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length, VFID *oos_vfid_out,
 			     std::vector<VPID> *emptied_vpids)
 {
-  oos_reclaim_intent_header header;
+  oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
   int error = oos_unpack_reclaim_intent (notify_data, notify_length, header, refs);
   if (error != NO_ERROR)
@@ -4001,7 +4018,7 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
 void
 oos_rv_dump_reclaim_intent (FILE *fp, int length, void *data)
 {
-  oos_reclaim_intent_header header;
+  oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
   if (oos_unpack_reclaim_intent ((const char *) data, length, header, refs) != NO_ERROR)
     {
@@ -4541,6 +4558,13 @@ void
 oos_test_set_reclaim_fail_stop_hook (void (*hook) (int error))
 {
   oos_Test_reclaim_fail_stop_hook = hook;
+}
+
+void
+oos_test_exit_after_update_drop_notifications (int n_notifications, int exit_code)
+{
+  oos_Test_exit_after_update_drop_notifications_code = exit_code;
+  oos_Test_exit_after_update_drop_notifications.store (n_notifications, std::memory_order_relaxed);
 }
 
 /* Removes the synthetic-owner test files that still exist, so a test binary that ends with a commit leaves no
