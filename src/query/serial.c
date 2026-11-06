@@ -185,12 +185,12 @@ static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val, DB_VALUE * prior_val);
 static int serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val,
-					  DB_VALUE * max_val, DB_VALUE * cyclic, int nth, DB_VALUE * result_val,
+					  DB_VALUE * max_val, DB_VALUE * cyclic, DB_BIGINT nth, DB_VALUE * result_val,
 					  bool clamp_block);
 static int serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
 				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
 static int serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
-				     DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
+				     DB_VALUE * cyclic, DB_BIGINT nth, DB_VALUE * result_val);
 static void serial_set_cache_entry (SERIAL_CACHE_ENTRY * entry, DB_VALUE * inc_val, DB_VALUE * cur_val,
 				    DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * started, DB_VALUE * cyclic,
 				    DB_VALUE * last_val, int cached_num);
@@ -594,7 +594,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 
       error =
 	serial_reserve_block_end (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
-				  &entry->cyclic, (nturns * entry->cached_num), &new_last_cached_val);
+				  &entry->cyclic, (DB_BIGINT) nturns * entry->cached_num, &new_last_cached_val);
 
       if (error != NO_ERROR)
 	{
@@ -1056,7 +1056,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
 	      ret =
 		serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic,
-					  (nturns * (cached_num - 1)), &last_val);
+					  (DB_BIGINT) nturns * (cached_num - 1), &last_val);
 	    }
 
 	  num_alloc--;
@@ -1070,7 +1070,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	  nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	  ret =
-	    serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num),
+	    serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (DB_BIGINT) nturns * cached_num,
 				      &last_val);
 	}
 
@@ -1339,7 +1339,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
  *   min_val(in)        :
  *   max_val(in)        :
  *   cyclic(in)         :
- *   nth(in)            :
+ *   nth(in)            : increments from cur_val to the block end; it can exceed INT_MAX
  *   result_val(out)    :
  *
  * A block end past max_val (min_val for a negative increment) on a non-cyclic serial is
@@ -1348,7 +1348,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
  */
 static int
 serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
-			  DB_VALUE * cyclic, int nth, DB_VALUE * result_val)
+			  DB_VALUE * cyclic, DB_BIGINT nth, DB_VALUE * result_val)
 {
   return serial_get_nth_value_internal (inc_val, cur_val, min_val, max_val, cyclic, nth, result_val, true);
 }
@@ -1368,7 +1368,7 @@ serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min
  */
 static int
 serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
-			       DB_VALUE * cyclic, int nth, DB_VALUE * result_val, bool clamp_block)
+			       DB_VALUE * cyclic, DB_BIGINT nth, DB_VALUE * result_val, bool clamp_block)
 {
   DB_VALUE tmp_val, cmp_result, add_val;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -1384,7 +1384,7 @@ serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE 
   /* Now calculate next value */
   if (nth > 1)
     {
-      numeric_coerce_int_to_num (nth, num, NULL);
+      numeric_coerce_bigint_to_num (nth, num, NULL);
       db_make_numeric (&tmp_val, num, DB_MAX_FIXED_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false, false);
       numeric_db_value_mul (inc_val, &tmp_val, &add_val);
       FLOAT_TO_FIXED_NUMERIC (&add_val);
