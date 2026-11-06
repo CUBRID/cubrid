@@ -1236,6 +1236,10 @@ struct dbdef_vol_ext_info
 #define SERVER_SESSION_KEY_SIZE			8
 #define SESSION_SECRET_SIZE			8
 
+/* session variable the broker (CAS) keeps the state it restores for a client that reconnects to the session in.
+ * It is not counted against the limit of session variables a user may define. */
+#define SESSION_CAS_RESTORE_VARIABLE		"cas_session_restore"
+
 typedef enum
 {
   DB_PARTITION_HASH = 0,

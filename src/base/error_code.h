@@ -1794,8 +1794,11 @@
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1390
 #define ER_SES_SESSION_NOT_ATTACHED                 -1391
+#define ER_AU_LOGIN_METHOD_NOT_ALLOWED_ON_BROKER    -1392
+#define ER_SES_SESSION_RENEWED                      -1393
+#define ER_SES_LOGIN_NOT_RESTORED                   -1394
 
-#define ER_LAST_ERROR                               -1392
+#define ER_LAST_ERROR                               -1395
 
 
 /*

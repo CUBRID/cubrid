@@ -831,6 +831,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 #define PRM_NAME_ROW_SNAPSHOT_MAX_ROWS "row_snapshot_max_rows"
 
+#define PRM_NAME_ALLOW_LOGIN_METHOD_ON_BROKER "allow_login_method_on_broker"
+
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
 // #endregion
@@ -5745,6 +5747,21 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},
    {false, {.i = 10000}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* whether a client of a broker may switch users with the login () method. The password is in the statement text,
+   * so only tests use it; a test harness that turns it on also gets the user back when the CAS restarts.
+   * Not changeable on-line: a client must not be able to turn it on for itself. */
+  {PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER,
+   PRM_NAME_ALLOW_LOGIN_METHOD_ON_BROKER,
+   (PRM_FOR_CLIENT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

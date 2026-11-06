@@ -1504,8 +1504,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
+1392 The login method cannot be called through a broker.
+1393 session renewed: %1$u -> %2$u (%3$s)
+1394 Cannot restore the login user %2$s of session %1$u. Open a new connection.
 
-1392 Last Error
+1395 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

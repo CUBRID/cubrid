@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -80,6 +81,7 @@
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
 #include "query_replace.h"
+#include "network_interface_cl.h"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -339,6 +341,78 @@ static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
 
+/*
+ * What a client changed that is not kept by the session itself, kept in the session variable
+ * SESSION_CAS_RESTORE_VARIABLE so that the CAS the client reconnects to (after a CAS restart) gives it back:
+ *   v1|api=<isolation>,<lock timeout msec>|tran=<isolation>,<lock timeout msec>|login=<user>|prm=<name=value;...>
+ * api   : the last values the driver set through SET_DB_PARAMETER, empty when not set. Only to tell a value
+ *	   the driver sends again after reconnecting from a new one.
+ * tran  : the transaction settings in effect, once they differ from what the client connected with (SET TRANSACTION,
+ *	   SET_DB_PARAMETER and SET SYSTEM PARAMETERS, whichever came last); empty until then. They are given back over
+ *	   the session parameters, which SET TRANSACTION and SET_DB_PARAMETER do not change.
+ * login : the user the client switched to with login (), when it is not the user it connected as
+ * prm   : the parameters for the client only (not session parameters) whose values differ from the conf,
+ *	   in the form db_set_system_parameters () takes; it is the last field since a value may contain '|'.
+ * The variable is written only when its value changes, and read only when a client reconnects to its session.
+ */
+#define CAS_RESTORE_VERSION		"v1"
+#define CAS_RESTORE_NOT_SET		INT_MIN
+#define CAS_RESTORE_BUF_SIZE		4096
+
+typedef struct cas_session_restore CAS_SESSION_RESTORE;
+struct cas_session_restore
+{
+  /* set through SET_DB_PARAMETER; the driver sends them again after reconnecting */
+  int api_isolation;
+  int api_lock_timeout;		/* msec */
+  /* the transaction settings in effect, once they differ from what the session parameters give */
+  int tran_isolation;
+  int tran_lock_timeout;	/* msec */
+  char login_user[SRV_CON_DBUSER_SIZE];
+  char prm[CAS_RESTORE_BUF_SIZE];
+  char stored[CAS_RESTORE_BUF_SIZE];	/* the value in the session, as last written or read */
+
+  /* from reconnecting to the session until the first request other than SET_DB_PARAMETER */
+  bool in_resend_window;
+  DB_OBJECT *user;		/* the user when it was last recorded */
+  unsigned int prm_generation;	/* db_get_system_parameters_generation () when prm was last recorded */
+  int base_isolation;		/* the transaction settings when the client connected */
+  int base_lock_timeout;
+  bool api_changed;		/* SET_DB_PARAMETER changed api, not written yet */
+};
+
+static CAS_SESSION_RESTORE cas_restore = {
+  CAS_RESTORE_NOT_SET, CAS_RESTORE_NOT_SET, CAS_RESTORE_NOT_SET, CAS_RESTORE_NOT_SET, "", "", "", false, NULL, 0,
+  0, 0, false
+};
+
+/* the parameters for the client only that a client can change, with the values of the conf ("name=value") */
+typedef struct cas_client_prm CAS_CLIENT_PRM;
+struct cas_client_prm
+{
+  PARAM_ID prm_id;
+  char *conf_value;
+};
+
+static CAS_CLIENT_PRM *cas_client_prms = NULL;
+static int cas_num_client_prms = 0;
+
+/* the values of the conf for new sessions, in the client library (system_parameter.h declares it for CS_MODE only) */
+extern SESSION_PARAM *cached_session_parameters;
+
+static int ux_prm_lock_timeout_to_msec (int lock_timeout);
+static void ux_get_prm_tran_setting (int *isolation_level, int *lock_timeout);
+static void ux_apply_tran_setting (int isolation_level, int lock_timeout);
+static void ux_reset_tran_setting_from_prm (void);
+static void ux_init_client_prms (void);
+static void ux_get_changed_client_prms (char *buf, int size, bool revert);
+static void ux_write_session_restore (void);
+static bool ux_read_session_restore (void);
+static bool ux_read_int_pair (const char **p, int *first, int *second);
+static void ux_format_int_pair (char *buf, int size, int first, int second);
+static void ux_clear_session_restore (void);
+static int ux_restore_login (void);
+
 int
 ux_check_connection (void)
 {
@@ -362,7 +436,11 @@ ux_check_connection (void)
 	      strncpy_bufsize (dbpasswd, database_passwd);
 
 	      ux_database_shutdown (true);
-	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
+	      if (ux_database_connect (dbname, dbuser, dbpasswd, NULL) == 0)
+		{
+		  /* a new session, with the parameters of the conf */
+		  ux_reset_tran_setting_from_prm ();
+		}
 	    }
 	}
       return 0;
@@ -491,6 +569,12 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
 
       ux_get_default_setting ();
+
+      if (cas_shard_flag == OFF)
+	{
+	  /* the conf has just been loaded again */
+	  ux_init_client_prms ();
+	}
     }
   else
     {
@@ -510,6 +594,11 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
     }
+
+  /* The session parameters are now those of the session the client reconnected to, or those of the conf for a new
+   * session, but the transaction of the CAS may still have the settings of the previous client, or (db_restart_ex ()
+   * leaves an infinite lock timeout alone) of the conf. The caller sets them: ux_restore_session_state (), or
+   * ux_set_default_setting () for a shard CAS. */
   return 0;
 
 connect_error:
@@ -536,7 +625,15 @@ ux_is_database_connected (void)
 void
 ux_get_default_setting ()
 {
-  ux_get_tran_setting (&cas_default_lock_timeout, &cas_default_isolation_level);
+  int idx;
+
+  /* The values of the conf, kept for new sessions. The transaction may already have the values of the session the
+   * first client of this CAS reconnected to, which must not become the defaults for the next clients. */
+  idx = prm_Def_session_idx[PRM_ID_LOG_ISOLATION_LEVEL];
+  cas_default_isolation_level = (idx >= 0) ? cached_session_parameters[idx].value.i : 0;
+
+  idx = prm_Def_session_idx[PRM_ID_LK_TIMEOUT];
+  cas_default_lock_timeout = ux_prm_lock_timeout_to_msec ((idx >= 0) ? cached_session_parameters[idx].value.i : -1);
 
   if (!IS_VALID_ISOLATION_LEVEL (cas_default_isolation_level))
     {
@@ -556,28 +653,643 @@ ux_get_default_setting ()
   return;
 }
 
+/*
+ * ux_set_default_setting () - reset the transaction and some parameters to the values of the first connection
+ *
+ * Note: only for a shard CAS, which serves its clients without their sessions. A CAS for a client takes the session
+ *	 of the client, whose parameters (and the transaction set from them) are already right.
+ */
 void
 ux_set_default_setting ()
 {
-  int cur_isolation_level;
-  int cur_lock_timeout;
-
-  ux_get_tran_setting (&cur_lock_timeout, &cur_isolation_level);
-
-  if (cas_default_isolation_level != cur_isolation_level)
-    {
-      ux_set_isolation_level (cas_default_isolation_level, NULL);
-    }
-
-  if (cas_default_lock_timeout != cur_lock_timeout)
-    {
-      ux_set_lock_timeout (cas_default_lock_timeout);
-    }
+  ux_apply_tran_setting (cas_default_isolation_level, cas_default_lock_timeout);
 
   if (cas_db_sys_param[0])
     {
       db_set_system_parameters (cas_db_sys_param);
     }
+}
+
+/*
+ * ux_prm_lock_timeout_to_msec () - the lock timeout of the parameter (seconds) in msec, as the transaction has it
+ */
+static int
+ux_prm_lock_timeout_to_msec (int lock_timeout)
+{
+  return (lock_timeout > 0) ? lock_timeout * 1000 : lock_timeout;
+}
+
+/*
+ * ux_get_prm_tran_setting () - the isolation level and the lock timeout (msec) of the session parameters
+ */
+static void
+ux_get_prm_tran_setting (int *isolation_level, int *lock_timeout)
+{
+  *isolation_level = prm_get_integer_value (PRM_ID_LOG_ISOLATION_LEVEL);
+  *lock_timeout = ux_prm_lock_timeout_to_msec (prm_get_integer_value (PRM_ID_LK_TIMEOUT));
+}
+
+/*
+ * ux_apply_tran_setting () - set the isolation level and the lock timeout of the transaction, each only if it differs
+ *
+ * isolation_level (in) : ignored if not valid
+ * lock_timeout (in)	: msec
+ */
+static void
+ux_apply_tran_setting (int isolation_level, int lock_timeout)
+{
+  int cur_isolation_level, cur_lock_timeout;
+
+  ux_get_tran_setting (&cur_lock_timeout, &cur_isolation_level);
+
+  if (IS_VALID_ISOLATION_LEVEL (isolation_level) && isolation_level != cur_isolation_level)
+    {
+      ux_set_isolation_level (isolation_level, NULL);
+    }
+
+  if (lock_timeout != cur_lock_timeout)
+    {
+      ux_set_lock_timeout (lock_timeout);
+    }
+}
+
+/*
+ * ux_reset_tran_setting_from_prm () - set the isolation level and the lock timeout of the transaction to the
+ *				       session parameters
+ */
+static void
+ux_reset_tran_setting_from_prm (void)
+{
+  int isolation_level, lock_timeout;
+
+  ux_get_prm_tran_setting (&isolation_level, &lock_timeout);
+  ux_apply_tran_setting (isolation_level, lock_timeout);
+}
+
+/*
+ * ux_init_client_prms () - take the values of the conf of the parameters for the client only that a client can change
+ *
+ * Note: session parameters are left out; the session keeps them for each client. So are the parameters for the
+ *	 server or for HA, which a client cannot change for itself only.
+ */
+static void
+ux_init_client_prms (void)
+{
+  char buf[LINE_MAX];
+  int i, count;
+  unsigned int flag;
+
+  for (i = 0; i < cas_num_client_prms; i++)
+    {
+      free_and_init (cas_client_prms[i].conf_value);
+    }
+  FREE_MEM (cas_client_prms);
+  cas_num_client_prms = 0;
+
+  cas_client_prms = (CAS_CLIENT_PRM *) MALLOC (sizeof (CAS_CLIENT_PRM) * (PRM_LAST_ID + 1));
+  if (cas_client_prms == NULL)
+    {
+      return;
+    }
+
+  for (i = 0, count = 0; i <= PRM_LAST_ID; i++)
+    {
+      flag = prm_Def[i].static_flag;
+      if (!(flag & PRM_FOR_CLIENT) || (flag & (PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_FOR_HA | PRM_COMPOUND))
+	  || (flag & (PRM_DEPRECATED | PRM_OBSOLETED)) || !(flag & (PRM_USER_CHANGE | PRM_TEST_CHANGE)))
+	{
+	  continue;
+	}
+
+      strncpy_bufsize (buf, prm_get_name ((PARAM_ID) i));
+      if (db_get_system_parameters (buf, sizeof (buf)) != NO_ERROR)
+	{
+	  er_clear ();
+	  continue;
+	}
+
+      cas_client_prms[count].conf_value = strdup (buf);
+      if (cas_client_prms[count].conf_value == NULL)
+	{
+	  continue;
+	}
+      cas_client_prms[count].prm_id = (PARAM_ID) i;
+      count++;
+    }
+
+  cas_num_client_prms = count;
+}
+
+/*
+ * ux_get_changed_client_prms () - get the parameters for the client only whose values differ from the conf
+ *
+ * buf (out)   : "name=value;name=value", or NULL when revert
+ * size (in)   : size of buf
+ * revert (in) : set them back to the values of the conf
+ */
+static void
+ux_get_changed_client_prms (char *buf, int size, bool revert)
+{
+  char cur_value[LINE_MAX];
+  char *p = buf;
+  int i, len;
+
+  if (buf != NULL)
+    {
+      buf[0] = '\0';
+    }
+
+  for (i = 0; i < cas_num_client_prms; i++)
+    {
+      strncpy_bufsize (cur_value, prm_get_name (cas_client_prms[i].prm_id));
+      if (db_get_system_parameters (cur_value, sizeof (cur_value)) != NO_ERROR)
+	{
+	  er_clear ();
+	  continue;
+	}
+
+      if (strcmp (cur_value, cas_client_prms[i].conf_value) == 0)
+	{
+	  continue;
+	}
+
+      if (revert)
+	{
+	  if (db_set_system_parameters (cas_client_prms[i].conf_value) != NO_ERROR)
+	    {
+	      cas_log_write_and_end (0, false, "cannot reset %s, error:%d", cas_client_prms[i].conf_value, er_errid ());
+	      er_clear ();
+	    }
+	  continue;
+	}
+
+      len = (int) strlen (cur_value);
+      if ((p - buf) + len + 2 > size)
+	{
+	  /* too many to keep; the rest is lost when the CAS restarts */
+	  cas_log_write_and_end (0, false, "cannot keep %s in the session", cur_value);
+	  continue;
+	}
+      if (p != buf)
+	{
+	  *p++ = ';';
+	}
+      memcpy (p, cur_value, len + 1);
+      p += len;
+    }
+}
+
+/*
+ * ux_write_session_restore () - write the state of the client to the session, if it has changed
+ */
+static void
+ux_write_session_restore (void)
+{
+  char value[CAS_RESTORE_BUF_SIZE];
+  char api[32], tran[32];
+  DB_VALUE vars[2];
+  int len;
+
+  if (cas_restore.stored[0] == '\0' && cas_restore.api_isolation == CAS_RESTORE_NOT_SET
+      && cas_restore.api_lock_timeout == CAS_RESTORE_NOT_SET && cas_restore.tran_isolation == CAS_RESTORE_NOT_SET
+      && cas_restore.tran_lock_timeout == CAS_RESTORE_NOT_SET && cas_restore.login_user[0] == '\0'
+      && cas_restore.prm[0] == '\0')
+    {
+      /* nothing to keep, and nothing kept to overwrite */
+      return;
+    }
+
+  ux_format_int_pair (api, sizeof (api), cas_restore.api_isolation, cas_restore.api_lock_timeout);
+  ux_format_int_pair (tran, sizeof (tran), cas_restore.tran_isolation, cas_restore.tran_lock_timeout);
+
+  len = snprintf (value, sizeof (value), "%s|api=%s|tran=%s|login=%s|prm=%s", CAS_RESTORE_VERSION, api, tran,
+		  cas_restore.login_user, cas_restore.prm);
+  if (len < 0 || len >= (int) sizeof (value))
+    {
+      cas_log_write_and_end (0, false, "cannot keep the state of the client in the session, too long");
+      return;
+    }
+
+  if (strcmp (value, cas_restore.stored) == 0)
+    {
+      return;
+    }
+
+  db_make_char (&vars[0], (int) strlen (SESSION_CAS_RESTORE_VARIABLE), SESSION_CAS_RESTORE_VARIABLE,
+		(int) strlen (SESSION_CAS_RESTORE_VARIABLE), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_string (&vars[1], value);
+
+  if (csession_set_session_variables (vars, 2) != NO_ERROR)
+    {
+      cas_log_write_and_end (0, false, "cannot keep the state of the client in the session, error:%d", er_errid ());
+      er_clear ();
+      return;
+    }
+
+  strncpy_bufsize (cas_restore.stored, value);
+}
+
+/*
+ * ux_read_session_restore () - read the state of the client from the session
+ *
+ * return : true if the session has it
+ */
+static bool
+ux_read_session_restore (void)
+{
+  DB_VALUE name, value;
+  const char *str, *p, *q;
+  char *end;
+  bool found = false;
+
+  db_make_char (&name, (int) strlen (SESSION_CAS_RESTORE_VARIABLE), SESSION_CAS_RESTORE_VARIABLE,
+		(int) strlen (SESSION_CAS_RESTORE_VARIABLE), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_null (&value);
+
+  if (db_get_variable (&name, &value) != NO_ERROR)
+    {
+      /* not kept for this session */
+      er_clear ();
+      return false;
+    }
+
+  if (!DB_IS_STRING (&value) || DB_IS_NULL (&value) || (str = db_get_string (&value)) == NULL
+      || strncmp (str, CAS_RESTORE_VERSION "|api=", strlen (CAS_RESTORE_VERSION "|api=")) != 0)
+    {
+      /* written by another version, or by the user */
+      goto end;
+    }
+
+  strncpy_bufsize (cas_restore.stored, str);
+
+  p = str + strlen (CAS_RESTORE_VERSION "|api=");
+  if (!ux_read_int_pair (&p, &cas_restore.api_isolation, &cas_restore.api_lock_timeout))
+    {
+      goto end;
+    }
+
+  if (strncmp (p, "|tran=", strlen ("|tran=")) != 0)
+    {
+      goto end;
+    }
+  p += strlen ("|tran=");
+  if (!ux_read_int_pair (&p, &cas_restore.tran_isolation, &cas_restore.tran_lock_timeout))
+    {
+      goto end;
+    }
+
+  if (strncmp (p, "|login=", strlen ("|login=")) != 0)
+    {
+      goto end;
+    }
+  p += strlen ("|login=");
+  q = strstr (p, "|prm=");
+  if (q == NULL || q - p >= (int) sizeof (cas_restore.login_user))
+    {
+      goto end;
+    }
+  memcpy (cas_restore.login_user, p, q - p);
+  cas_restore.login_user[q - p] = '\0';
+
+  strncpy_bufsize (cas_restore.prm, q + strlen ("|prm="));
+  found = true;
+
+end:
+  if (!found)
+    {
+      ux_clear_session_restore ();
+    }
+  pr_clear_value (&value);
+  return found;
+}
+
+/*
+ * ux_read_int_pair () - read "<int>,<int>" of the state kept in the session; either may be empty (not set)
+ *
+ * return : false if malformed
+ * p (in/out) : where to read; moved past the pair
+ * first (out), second (out) : the values, or CAS_RESTORE_NOT_SET
+ */
+static bool
+ux_read_int_pair (const char **p, int *first, int *second)
+{
+  const char *q = *p;
+  char *end;
+
+  *first = *second = CAS_RESTORE_NOT_SET;
+
+  if (*q != ',')
+    {
+      *first = (int) strtol (q, &end, 10);
+      q = end;
+    }
+  if (*q++ != ',')
+    {
+      return false;
+    }
+  if (*q != '|')
+    {
+      *second = (int) strtol (q, &end, 10);
+      q = end;
+    }
+
+  *p = q;
+  return true;
+}
+
+/*
+ * ux_format_int_pair () - write "<int>,<int>" of the state kept in the session, leaving out a value not set
+ *
+ * buf (out)  : the pair
+ * size (in)  : size of buf
+ * first (in), second (in) : the values, or CAS_RESTORE_NOT_SET
+ */
+static void
+ux_format_int_pair (char *buf, int size, int first, int second)
+{
+  char first_str[16] = "", second_str[16] = "";
+
+  if (first != CAS_RESTORE_NOT_SET)
+    {
+      snprintf (first_str, sizeof (first_str), "%d", first);
+    }
+  if (second != CAS_RESTORE_NOT_SET)
+    {
+      snprintf (second_str, sizeof (second_str), "%d", second);
+    }
+  snprintf (buf, size, "%s,%s", first_str, second_str);
+}
+
+/*
+ * ux_clear_session_restore () - forget the state of the previous client
+ */
+static void
+ux_clear_session_restore (void)
+{
+  cas_restore.api_isolation = CAS_RESTORE_NOT_SET;
+  cas_restore.api_lock_timeout = CAS_RESTORE_NOT_SET;
+  cas_restore.tran_isolation = CAS_RESTORE_NOT_SET;
+  cas_restore.tran_lock_timeout = CAS_RESTORE_NOT_SET;
+  cas_restore.login_user[0] = '\0';
+  cas_restore.prm[0] = '\0';
+}
+
+/*
+ * ux_restore_login () - switch to the user the client had switched to with login () in its session
+ *
+ * return : 0, or the error to refuse the connection with (set in err_info)
+ *
+ * Note: the client must not go on as another user, so a user that cannot be given back refuses the connection: the
+ *	 login method is not allowed any more, the user the client connected as is not a DBA (login () took a password,
+ *	 which is not kept), or the user is gone.
+ */
+static int
+ux_restore_login (void)
+{
+  char *user_name;
+  int error;
+
+  if (!prm_get_bool_value (PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER))
+    {
+      error = ER_AU_LOGIN_METHOD_NOT_ALLOWED_ON_BROKER;
+    }
+  else
+    {
+      /* as the login method does */
+      error = au_login (cas_restore.login_user, NULL, false);
+      if (error == NO_ERROR)
+	{
+	  user_name = db_get_user_name ();
+	  tm_Tran_invalidate_snapshot = 1;
+	  error = clogin_user (user_name);
+	  db_string_free (user_name);
+	}
+    }
+
+  if (error == NO_ERROR)
+    {
+      return 0;
+    }
+
+  cas_log_write_and_end (0, false, "login %s not restored, error:%d", cas_restore.login_user, error);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_LOGIN_NOT_RESTORED, 2, db_get_session_id (), cas_restore.login_user);
+  error = ERROR_INFO_SET_FORCE (ER_SES_LOGIN_NOT_RESTORED, DBMS_ERROR_INDICATOR);
+
+  /* The connection is refused, and the CAS goes back to wait without the cleanup of a client that connected: give up
+   * what the attempt holds (the locks of reading the users) and leave the database, so that the session is no longer
+   * attached to this CAS and expires in time if the client does not come back. The session stays for the client. */
+  (void) db_abort_transaction ();
+  er_clear ();
+  ux_database_shutdown_for_reconnect ();
+
+  return error;
+}
+
+/*
+ * ux_restore_session_state () - set up the state of a client that has just connected to this CAS
+ *
+ * return : 0, or the error to refuse the connection with (set in err_info)
+ * is_reused_session (in) : whether the client reconnected to its session
+ *
+ * Note: not for a shard CAS.
+ */
+int
+ux_restore_session_state (bool is_reused_session)
+{
+  int isolation_level, lock_timeout;
+  int error;
+
+  /* What the previous client of this CAS changed out of its session. prm has all of it (recorded after each request),
+   * so most connections, whose previous client changed none, skip comparing every parameter. */
+  if (cas_restore.prm[0] != '\0')
+    {
+      ux_get_changed_client_prms (NULL, 0, true);
+    }
+
+  ux_clear_session_restore ();
+  cas_restore.stored[0] = '\0';
+  cas_restore.in_resend_window = false;
+  cas_restore.api_changed = false;
+
+  if (is_reused_session && ux_read_session_restore ())
+    {
+      cas_log_write_and_end (0, false, "restore %s", cas_restore.stored);
+
+      /* first, since it can refuse the connection */
+      if (cas_restore.login_user[0] != '\0' && strcasecmp (cas_restore.login_user, database_user) != 0)
+	{
+	  error = ux_restore_login ();
+	  if (error < 0)
+	    {
+	      return error;
+	    }
+	}
+
+      cas_restore.in_resend_window = true;
+
+      if (cas_restore.prm[0] != '\0' && db_set_system_parameters (cas_restore.prm) != NO_ERROR)
+	{
+	  cas_log_write_and_end (0, false, "cannot restore %s, error:%d", cas_restore.prm, er_errid ());
+	  er_clear ();
+	}
+    }
+
+  /* the session parameters, or over them what the client set for its transaction only (SET TRANSACTION,
+   * SET_DB_PARAMETER); set once, since setting the lock timeout is a request to the server */
+  ux_get_prm_tran_setting (&isolation_level, &lock_timeout);
+  if (cas_restore.tran_isolation != CAS_RESTORE_NOT_SET)
+    {
+      isolation_level = cas_restore.tran_isolation;
+    }
+  if (cas_restore.tran_lock_timeout != CAS_RESTORE_NOT_SET)
+    {
+      lock_timeout = cas_restore.tran_lock_timeout;
+    }
+  ux_apply_tran_setting (isolation_level, lock_timeout);
+
+  cas_default_ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+  cas_default_no_backslash_escapes = prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES);
+
+  cas_restore.user = Au_user;
+  cas_restore.prm_generation = db_get_system_parameters_generation ();
+  ux_get_tran_setting (&cas_restore.base_lock_timeout, &cas_restore.base_isolation);
+
+  return 0;
+}
+
+/*
+ * ux_end_resend_window () - the driver has sent a request other than SET_DB_PARAMETER after reconnecting
+ */
+void
+ux_end_resend_window (void)
+{
+  cas_restore.in_resend_window = false;
+}
+
+/*
+ * ux_record_session_restore () - keep in the session what the last request of the client changed
+ *
+ * Note: not for a shard CAS.
+ */
+void
+ux_record_session_restore (void)
+{
+  char prm[CAS_RESTORE_BUF_SIZE];
+  char *user_name;
+  int cur_isolation_level, cur_lock_timeout;
+  bool changed = cas_restore.api_changed;
+
+  cas_restore.api_changed = false;
+
+  if (Au_user != NULL && Au_user != cas_restore.user)
+    {
+      /* login () */
+      cas_restore.user = Au_user;
+      user_name = db_get_user_name ();
+      if (user_name != NULL && strcasecmp (user_name, database_user) != 0)
+	{
+	  strncpy_bufsize (cas_restore.login_user, user_name);
+	}
+      else
+	{
+	  cas_restore.login_user[0] = '\0';
+	}
+      db_string_free (user_name);
+      changed = true;
+    }
+
+  if (cas_restore.prm_generation != db_get_system_parameters_generation ())
+    {
+      cas_restore.prm_generation = db_get_system_parameters_generation ();
+      ux_get_changed_client_prms (prm, sizeof (prm), false);
+      if (strcmp (prm, cas_restore.prm) != 0)
+	{
+	  strncpy_bufsize (cas_restore.prm, prm);
+	  changed = true;
+	}
+    }
+
+  /* Kept once it differs from what the client connected with, and from then on: the session parameters may have
+   * changed since (SET SYSTEM PARAMETERS), so being back to the value at connecting does not make it unneeded. */
+  ux_get_tran_setting (&cur_lock_timeout, &cur_isolation_level);
+  if (cur_isolation_level != cas_restore.tran_isolation
+      && (cas_restore.tran_isolation != CAS_RESTORE_NOT_SET || cur_isolation_level != cas_restore.base_isolation))
+    {
+      cas_restore.tran_isolation = cur_isolation_level;
+      changed = true;
+    }
+  if (cur_lock_timeout != cas_restore.tran_lock_timeout
+      && (cas_restore.tran_lock_timeout != CAS_RESTORE_NOT_SET || cur_lock_timeout != cas_restore.base_lock_timeout))
+    {
+      cas_restore.tran_lock_timeout = cur_lock_timeout;
+      changed = true;
+    }
+
+  if (changed)
+    {
+      ux_write_session_restore ();
+    }
+}
+
+/*
+ * ux_is_resent_tran_setting () - whether an isolation level or a lock timeout from SET_DB_PARAMETER is only the
+ *				  driver sending again, after reconnecting, the value it set before
+ *
+ * return : true if it must not be applied
+ * param_name (in) : CCI_PARAM_ISOLATION_LEVEL or CCI_PARAM_LOCK_TIMEOUT
+ * value (in)	   : the value to set (lock timeout in msec)
+ *
+ * Note: the drivers do not send a value equal to the one they set last, so a value equal to it right after
+ *	 reconnecting is a resend. If the session has another value, the client changed it later (SET TRANSACTION),
+ *	 and the resend must not undo that. The JDBC driver does not resend.
+ */
+bool
+ux_is_resent_tran_setting (int param_name, int value)
+{
+  int cur_isolation_level, cur_lock_timeout;
+
+  if (cas_shard_flag == ON || !cas_restore.in_resend_window || cas_client_type == CAS_CLIENT_JDBC)
+    {
+      return false;
+    }
+
+  ux_get_tran_setting (&cur_lock_timeout, &cur_isolation_level);
+
+  if (param_name == CCI_PARAM_ISOLATION_LEVEL)
+    {
+      return (cas_restore.api_isolation == value && cur_isolation_level != value);
+    }
+  else
+    {
+      return (cas_restore.api_lock_timeout == value && cur_lock_timeout != value);
+    }
+}
+
+/*
+ * ux_keep_tran_setting () - remember an isolation level or a lock timeout set through SET_DB_PARAMETER, to tell its
+ *			     resend after reconnecting; ux_record_session_restore () writes it with the transaction
+ *			     settings after the request
+ *
+ * param_name (in) : CCI_PARAM_ISOLATION_LEVEL or CCI_PARAM_LOCK_TIMEOUT
+ * value (in)	   : the value set (lock timeout in msec)
+ */
+void
+ux_keep_tran_setting (int param_name, int value)
+{
+  if (cas_shard_flag == ON)
+    {
+      return;
+    }
+
+  if (param_name == CCI_PARAM_ISOLATION_LEVEL)
+    {
+      cas_restore.api_isolation = value;
+    }
+  else
+    {
+      cas_restore.api_lock_timeout = value;
+    }
+  cas_restore.api_changed = true;
 }
 
 void
@@ -10168,9 +10880,16 @@ get_client_result_cache_lifetime (DB_SESSION * session, int stmt_id)
 {
   bool jdbc_cache_is_hint;
   int jdbc_cache_life_time = shm_appl->jdbc_cache_life_time;
+  int isolation_level;
 
-  if (shm_appl->jdbc_cache == 0 || db_get_statement_type (session, stmt_id) != CUBRID_STMT_SELECT
-      || cas_default_isolation_level == TRAN_REPEATABLE_READ || cas_default_isolation_level == TRAN_SERIALIZABLE)
+  if (shm_appl->jdbc_cache == 0 || db_get_statement_type (session, stmt_id) != CUBRID_STMT_SELECT)
+    {
+      return -1;
+    }
+
+  /* the isolation level of this client, not the default of the CAS */
+  ux_get_tran_setting (NULL, &isolation_level);
+  if (isolation_level == TRAN_REPEATABLE_READ || isolation_level == TRAN_SERIALIZABLE)
     {
       return -1;
     }
