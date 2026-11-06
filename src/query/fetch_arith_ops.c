@@ -4655,6 +4655,20 @@ fetch_op_trace_stats (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 }
 
 
+/* T_COPY_REJECTED_ROWS */
+static int
+fetch_op_copy_rejected_rows (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+
+  if (session_get_copy_rejected_rows (thread_p, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+
 /* T_WIDTH_BUCKET */
 static int
 fetch_op_width_bucket (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
@@ -5272,6 +5286,8 @@ fetch_arith_op (OPERATOR_TYPE opcode)
       return fetch_op_charset;
     case T_TRACE_STATS:
       return fetch_op_trace_stats;
+    case T_COPY_REJECTED_ROWS:
+      return fetch_op_copy_rejected_rows;
     case T_WIDTH_BUCKET:
       return fetch_op_width_bucket;
     case T_INDEX_PREFIX:

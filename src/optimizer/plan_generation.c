@@ -7086,6 +7086,8 @@ qo_is_unshareable_expr (PT_NODE * node)
     case PT_LAST_INSERT_ID:
     case PT_EXEC_STATS:
     case PT_TRACE_STATS:
+      /* reads the session's COPY state, as PT_TRACE_STATS reads its trace */
+    case PT_COPY_REJECTED_ROWS:
 
       /* writes a session variable */
     case PT_DEFINE_VARIABLE:

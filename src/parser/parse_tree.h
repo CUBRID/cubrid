@@ -1101,6 +1101,8 @@ enum pt_node_type
   PT_DROP_SYNONYM = CUBRID_STMT_DROP_SYNONYM,
   PT_RENAME_SYNONYM = CUBRID_STMT_RENAME_SYNONYM,
 
+  PT_COPY = CUBRID_STMT_COPY,
+
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
   PT_UNION,
@@ -1610,6 +1612,7 @@ typedef enum
   PT_SCHEMA_DEF,
   PT_CONV_TZ,
   PT_COLLECTION_TO_STRING,
+  PT_COPY_REJECTED_ROWS,
 
   /* This is the last entry. Please add a new one before it. */
   PT_LAST_OPCODE
@@ -3658,6 +3661,38 @@ struct pt_synonym_info
   unsigned is_dblinked:1;	/* server name specified */
 };
 
+/* COPY FROM STDIN / COPY TO STDOUT info */
+/* ON_ERROR of COPY. DEFAULT is the option left out, which behaves as STOP. */
+enum pt_copy_on_error
+{
+  PT_COPY_ON_ERROR_DEFAULT = 0,
+  PT_COPY_ON_ERROR_STOP,
+  PT_COPY_ON_ERROR_IGNORE,
+  PT_COPY_ON_ERROR_INVALID	/* a word other than STOP or IGNORE */
+};
+
+typedef struct pt_copy_info PT_COPY_INFO;
+struct pt_copy_info
+{
+  PT_NODE *table_name;		/* PT_NAME: target table */
+  PT_NODE *column_list;		/* PT_NAME (list): column names, or NULL for all */
+  int direction;		/* 0 = FROM, 1 = TO */
+  int format;			/* 0 = BINARY, 1 = CSV, 2 = LOADDB */
+  int bulk;			/* 1 = bulk-load mode (BU_LOCK + batch insert); all formats */
+  int on_error;			/* PT_COPY_ON_ERROR_* */
+  PT_NODE *reject_limit;	/* PT_VALUE: REJECT_LIMIT n, or NULL */
+  union				/* format-specific options, selected by `format` */
+  {
+    struct
+    {
+      int delimiter;		/* field delimiter char; 0 = default ',' */
+      int quote;		/* quote char; 0 = default '"' */
+      int header;		/* 1 = skip a leading header line */
+      PT_NODE *null_str;	/* PT_VALUE: the unquoted field that reads as NULL; NULL = the empty field */
+    } csv;
+  } fmt;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3679,6 +3714,7 @@ union pt_statement_info
   PT_CHECK_OPTION_INFO check_option;
   PT_COMMIT_WORK_INFO commit_work;
   PT_CONSTRAINT_INFO constraint;
+  PT_COPY_INFO copy;
   PT_CREATE_ENTITY_INFO create_entity;
   PT_CREATE_SERVER_INFO create_server;
   PT_CREATE_TRIGGER_INFO create_trigger;

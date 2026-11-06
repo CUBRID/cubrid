@@ -5050,6 +5050,7 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
     case T_LAST_INSERT_ID:
     case T_LIST_DBS:
     case T_TRACE_STATS:
+    case T_COPY_REJECTED_ROWS:
     case T_DBTIMEZONE:
     case T_SESSIONTIMEZONE:
     case T_SYS_GUID:

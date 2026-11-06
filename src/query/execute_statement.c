@@ -72,6 +72,7 @@
 #include "memory_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "copy_column_types.h"
 #include "object_representation.h"
 #include "trigger_manager.h"
 #include "release_string.h"
@@ -96,6 +97,9 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3592,6 +3596,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SERVER:
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
+	case PT_COPY:
 
 	case PT_ALTER_SYNONYM:
 	case PT_CREATE_SYNONYM:
@@ -3882,6 +3887,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_RENAME_SYNONYM:
 	  error = do_rename_synonym (parser, statement);
+	  break;
+
+	case PT_COPY:
+	  error = do_copy (parser, statement);
 	  break;
 
 	default:
@@ -4341,6 +4350,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SYNONYM:
     case PT_DROP_SYNONYM:
     case PT_RENAME_SYNONYM:
+    case PT_COPY:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -4569,6 +4579,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_RENAME_SYNONYM:
       err = do_rename_synonym (parser, statement);
+      break;
+    case PT_COPY:
+      err = do_copy (parser, statement);
       break;
 
     default:
@@ -23017,4 +23030,397 @@ pt_is_allowed_result_cache ()
     }
 
   return true;
+}
+
+/*
+ * do_copy () - Execute a COPY statement
+ *   return: Error code or number of rows loaded
+ *   parser(in): Parser context
+ *   statement(in): Parse tree node for COPY statement
+ *
+ * Resolves the table and column types, then calls copy_from_init(). Actual
+ * binary data transfer is handled by the CAS broker via stream_from_send_data()
+ * and stream_from_end().
+ */
+int
+do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  const char *table_name;
+  DB_OBJECT *class_obj;
+  DB_ATTRIBUTE *attr;
+  PT_NODE *col;
+  DB_TYPE *col_types = NULL;
+  int *col_ids = NULL;
+  int ncols = 0;
+  PT_NODE *entity_spec;
+  PT_NODE *entity;
+  int is_partitioned = 0;
+  const char *null_str = "";	/* CSV: the unquoted field that reads as NULL */
+  DB_BIGINT reject_limit = 0;	/* ON_ERROR IGNORE: the most rows it may reject, 0 for no limit */
+
+  CHECK_MODIFICATION_ERROR ();
+
+  /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
+  entity_spec = statement->info.copy.table_name;
+  if (entity_spec == NULL || entity_spec->node_type != PT_SPEC || entity_spec->info.spec.entity_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  entity = entity_spec->info.spec.flat_entity_list;
+  if (entity != NULL)
+    {
+      table_name = entity->info.name.original;
+    }
+  else
+    {
+      /* flat_entity_list may not be populated; use entity_name directly */
+      table_name = entity_spec->info.spec.entity_name->info.name.resolved;
+      if (table_name == NULL)
+	{
+	  table_name = entity_spec->info.spec.entity_name->info.name.original;
+	}
+    }
+
+  class_obj = db_find_class (table_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      return (error != NO_ERROR) ? error : ER_FAILED;
+    }
+
+  /* COPY inserts instances directly into the target heap, so the target must be
+   * an ordinary instance class: a view has no heap, and a partitioned class
+   * needs pruning that the server-side session does not perform. */
+  if (db_is_class (class_obj) <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  /* returns 1 for a partition sub-class, and sets is_partitioned for a parent */
+  if (do_is_partitioned_subclass (&is_partitioned, table_name, NULL) != 0 || is_partitioned)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  /* Server-side insertion carries no authorization of its own, so the INSERT
+   * privilege has to be checked here, as loaddb does. */
+  error = au_check_class_authorization (class_obj, AU_INSERT);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      /* promote from warning to error severity, as loaddb does */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  /* The rows go straight into the heap on the server, where no trigger runs. A
+   * COPY into a table with an active INSERT trigger would load rows the trigger
+   * never saw, so it is refused; the user can deactivate the trigger first.
+   * Authorization is disabled as INSERT does here: the check must not need the
+   * SELECT privilege that the INSERT privilege alone does not give. */
+  {
+    int has_row_trigger = 0;
+    int has_stmt_trigger = 0;
+    int au_save;
+
+    AU_SAVE_AND_DISABLE (au_save);
+    error = sm_class_has_triggers (class_obj, &has_row_trigger, TR_EVENT_INSERT);
+    if (error == NO_ERROR)
+      {
+	error = sm_class_has_triggers (class_obj, &has_stmt_trigger, TR_EVENT_STATEMENT_INSERT);
+      }
+    AU_RESTORE (au_save);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    if (has_row_trigger || has_stmt_trigger)
+      {
+	char detail[DB_MAX_IDENTIFIER_LENGTH + 48];
+
+	snprintf (detail, sizeof (detail), "%s, which has an active INSERT trigger", table_name);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+	return ER_COPY_NOT_SUPPORTED;
+      }
+  }
+
+  /* Count the target columns first: an explicit list as given, otherwise every
+   * instance attribute in schema order. Shared attributes have no per-instance
+   * slot in the heap record, so they are not COPY targets. */
+  if (statement->info.copy.column_list != NULL)
+    {
+      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	{
+	  ncols++;
+	}
+    }
+  else
+    {
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  if (!db_attribute_is_shared (attr))
+	    {
+	      ncols++;
+	    }
+	}
+    }
+
+  if (ncols <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+  col_ids = (int *) malloc (ncols * sizeof (int));
+  if (col_types == NULL || col_ids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (ncols * (sizeof (DB_TYPE) + sizeof (int))));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  {
+    int i = 0;
+
+    if (statement->info.copy.column_list != NULL)
+      {
+	for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	  {
+	    attr = db_get_attribute (class_obj, col->info.name.original);
+	    if (attr == NULL)
+	      {
+		error = er_errid ();
+		error = (error != NO_ERROR) ? error : ER_FAILED;
+		goto end;
+	      }
+	    if (db_attribute_is_shared (attr))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 32];
+
+		snprintf (detail, sizeof (detail), "shared column %s", db_attribute_name (attr));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    if (!copy_type_is_supported (db_attribute_type (attr)))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 64];
+
+		snprintf (detail, sizeof (detail), "column %s of type %s", db_attribute_name (attr),
+			  pr_type_name (db_attribute_type (attr)));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+
+	    for (int j = 0; j < i; j++)
+	      {
+		if (col_ids[j] == col_ids[i])
+		  {
+		    char detail[DB_MAX_IDENTIFIER_LENGTH + 40];
+
+		    snprintf (detail, sizeof (detail), "column %s is named more than once", db_attribute_name (attr));
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, detail);
+		    error = ER_COPY_INVALID_OPTION;
+		    goto end;
+		  }
+	      }
+	    i++;
+	  }
+      }
+    else
+      {
+	for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	  {
+	    if (db_attribute_is_shared (attr))
+	      {
+		continue;
+	      }
+	    if (!copy_type_is_supported (db_attribute_type (attr)))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 64];
+
+		snprintf (detail, sizeof (detail), "column %s of type %s", db_attribute_name (attr),
+			  pr_type_name (db_attribute_type (attr)));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+	    i++;
+	  }
+      }
+
+    assert (i == ncols);
+  }
+
+  /* A column list may leave a NOT NULL column out. INSERT refuses that unless
+   * the column has somewhere else to get a value -- a default, a default
+   * expression, or AUTO_INCREMENT -- and COPY applies defaults the same way, so
+   * it refuses the same set. Same conditions as check_missing_non_null_attrs ();
+   * without a column list every instance attribute is supplied. */
+  if (statement->info.copy.column_list != NULL)
+    {
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
+	      && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	      && is_attr_not_in_insert_list (parser, statement->info.copy.column_list, db_attribute_name (attr))
+	      && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_MISSING_NON_NULL_ASSIGN, 1, db_attribute_name (attr));
+	      error = ER_OBJ_MISSING_NON_NULL_ASSIGN;
+	      goto end;
+	    }
+	}
+    }
+
+  /* CSV-only options are rejected for the BINARY format (DDL-time error). */
+  if (statement->info.copy.format != 1
+      && (statement->info.copy.fmt.csv.delimiter != 0 || statement->info.copy.fmt.csv.quote != 0
+	  || statement->info.copy.fmt.csv.header != 0))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+	      "DELIMITER, QUOTE and HEADER are only valid with FORMAT CSV");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+
+  if (statement->info.copy.format != 1 && statement->info.copy.fmt.csv.null_str != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "NULL is only valid with FORMAT CSV");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+
+  /* ON_ERROR IGNORE skips a row the decoder refuses and goes on after its line
+   * terminator. A BINARY row has no terminator: after a bad field length the
+   * next row's boundary is not known, so BINARY stops, as PostgreSQL's does. */
+  if (statement->info.copy.on_error == PT_COPY_ON_ERROR_INVALID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "ON_ERROR takes STOP or IGNORE");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+  if (statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE && statement->info.copy.format != 1)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+	      "ON_ERROR IGNORE is only valid with FORMAT CSV");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+  if (statement->info.copy.reject_limit != NULL)
+    {
+      PT_NODE *lv = statement->info.copy.reject_limit;
+
+      /* the grammar makes a number past BIGINT a NUMERIC, which is refused below */
+      if (lv->type_enum == PT_TYPE_BIGINT)
+	{
+	  reject_limit = lv->info.value.data_value.bigint;
+	}
+      else if (lv->type_enum == PT_TYPE_INTEGER)
+	{
+	  reject_limit = lv->info.value.data_value.i;
+	}
+      else
+	{
+	  reject_limit = -1;
+	}
+      if (statement->info.copy.on_error != PT_COPY_ON_ERROR_IGNORE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "REJECT_LIMIT needs ON_ERROR IGNORE");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+      if (reject_limit <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "REJECT_LIMIT must be a positive BIGINT");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+    }
+
+  /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
+  if (statement->info.copy.fmt.csv.delimiter < 0 || statement->info.copy.fmt.csv.quote < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+	      "DELIMITER and QUOTE must be exactly one character");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+
+  /* A delimiter that is also the quote, or either one being a line terminator,
+   * describes a format no encoder can write and no decoder can read back.
+   * QUOTE '<LF>' is the worst of them: it opens a quoted field that the row
+   * terminator can never close, so the decoder buffers the whole stream and
+   * then reports a zero-row success. */
+  if (statement->info.copy.format == 1)
+    {
+      int delim = (statement->info.copy.fmt.csv.delimiter != 0) ? statement->info.copy.fmt.csv.delimiter : ',';
+      int quote = (statement->info.copy.fmt.csv.quote != 0) ? statement->info.copy.fmt.csv.quote : '"';
+
+      if (delim == quote)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		  "DELIMITER and QUOTE must be different characters");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+      if (delim == '\n' || delim == '\r' || quote == '\n' || quote == '\r')
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		  "DELIMITER and QUOTE cannot be a line terminator");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+
+      /* The NULL string is compared with an unquoted field, which holds no
+       * line terminator and no delimiter, and in which the quote character
+       * would open or close a quoted part. A NULL string the decoder can never
+       * see as one unquoted field would quietly make NULL impossible to write. */
+      if (statement->info.copy.fmt.csv.null_str != NULL)
+	{
+	  PT_NODE *nv = statement->info.copy.fmt.csv.null_str;
+
+	  if (nv->info.value.data_value.str != NULL)
+	    {
+	      null_str = (const char *) nv->info.value.data_value.str->bytes;
+	    }
+	  if (strchr (null_str, '\n') != NULL || strchr (null_str, '\r') != NULL
+	      || strchr (null_str, delim) != NULL || strchr (null_str, quote) != NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		      "NULL cannot contain a line terminator, the DELIMITER or the QUOTE character");
+	      error = ER_COPY_INVALID_OPTION;
+	      goto end;
+	    }
+	}
+    }
+
+  error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
+			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
+			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk, null_str,
+			  statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE, reject_limit);
+
+end:
+  if (col_types != NULL)
+    {
+      free_and_init (col_types);
+    }
+  if (col_ids != NULL)
+    {
+      free_and_init (col_ids);
+    }
+
+  return error;
 }

@@ -1,0 +1,69 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * copy_csv_decoder.hpp - Decode CSV text rows for COPY FROM STDIN (FORMAT CSV)
+ *
+ * Default dialect (PostgreSQL CSV): comma delimiter, double-quote quoting with
+ * "" escape, empty unquoted field = NULL, LF / CRLF line terminator, UTF-8.
+ */
+
+#ifndef _COPY_CSV_DECODER_HPP_
+#define _COPY_CSV_DECODER_HPP_
+
+#include "copy_binary_decoder.hpp"	/* COPY_COL_DOMAIN */
+#include "dbtype_def.h"
+
+#include <string>
+#include <vector>
+
+/*
+ * Where a CSV row failed and why. The decoder raises nothing: only its caller
+ * knows whether the row ends the COPY or ON_ERROR IGNORE skips it, and a
+ * skipped row is not always logged.
+ */
+struct copy_row_error
+{
+  int col;			/* 0-based column, or -1 for the row as a whole */
+  const char *reason;		/* a string literal */
+};
+
+/*
+ * decode_csv_row () - Decode one CSV record from a text buffer.
+ *   return: NO_ERROR, COPY_DECODE_NEED_MORE (no complete line yet), or
+ *           ER_COPY_CSV_FORMAT_ERROR, which is not raised: row_error says
+ *           where and why, for copy_format_error ().
+ *   buf/buf_len(in): remaining text
+ *   types/ncols(in): expected column types
+ *   domains(in): per-column target domain (precision / codeset / collation)
+ *   out_vals(out): decoded DB_VALUE array (caller-allocated, size >= ncols)
+ *   null_str(in): the unquoted field that reads as NULL; a quoted one never does
+ *   field_storage/quoted(in/out): caller-owned scratch reused per row, and its
+ *     buffers are kept between rows rather than freed, so a row in steady state
+ *     allocates nothing. VARCHAR out_vals point into field_storage, so it must
+ *     outlive the row's insert. Only the first ncols entries are meaningful.
+ *   bytes_consumed(out): bytes consumed (including the line terminator); set
+ *     whenever the line was found, so also for a row in error
+ *   row_error(out): set when ER_COPY_CSV_FORMAT_ERROR is returned
+ */
+extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains,
+			   int ncols, DB_VALUE *out_vals, std::vector<std::string> &field_storage,
+			   std::vector<char> &quoted, char delimiter, char quote, const std::string &null_str,
+			   bool skip_only, int *bytes_consumed, copy_row_error *row_error);
+
+#endif /* _COPY_CSV_DECODER_HPP_ */

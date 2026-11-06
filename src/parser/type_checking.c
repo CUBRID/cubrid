@@ -4268,6 +4268,18 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_COPY_REJECTED_ROWS:
+      num = 0;
+
+      /* one overload */
+
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIGINT;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_INDEX_PREFIX:
       num = 0;
 
@@ -6722,6 +6734,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_COLLATION:
     case PT_WIDTH_BUCKET:
     case PT_TRACE_STATS:
+    case PT_COPY_REJECTED_ROWS:
     case PT_SHA_ONE:
     case PT_SHA_TWO:
     case PT_AES_ENCRYPT:
@@ -18565,7 +18578,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     }
   else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB
 	   || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR
-	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET
+	   || op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_COPY_REJECTED_ROWS
+	   || op == PT_TZ_OFFSET
 	   || op == PT_ESTIMATED_TABLE_ROWS || op == PT_ESTIMATED_AVG_ROW_LENGTH
 	   || op == PT_ESTIMATED_DATA_LENGTH || op == PT_ESTIMATED_DATA_FREE)
     {

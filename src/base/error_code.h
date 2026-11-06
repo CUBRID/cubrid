@@ -1797,7 +1797,12 @@
 
 #define ER_STREAM_SESSION_ERROR                     -1392
 
-#define ER_LAST_ERROR                               -1393
+#define ER_COPY_NOT_SUPPORTED                       -1393
+#define ER_COPY_BINARY_FORMAT_ERROR                 -1394
+#define ER_COPY_CSV_FORMAT_ERROR                    -1395
+#define ER_COPY_INVALID_OPTION                      -1396
+
+#define ER_LAST_ERROR                               -1397
 
 
 /*
