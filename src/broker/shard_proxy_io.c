@@ -92,7 +92,7 @@ extern T_PROXY_CONTEXT proxy_Context;
 typedef T_CAS_IO *(*T_FUNC_FIND_CAS) (int shard_id, int cas_id, int ctx_cid, unsigned int ctx_uid);
 
 extern void proxy_term (void);
-extern bool proxy_Keep_running;
+extern volatile sig_atomic_t proxy_Keep_running;
 
 extern const char *rel_build_number (void);
 

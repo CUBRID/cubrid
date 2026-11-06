@@ -40,6 +40,7 @@ struct db_value;
 struct mht_table;
 struct tp_domain;
 struct val_descr;
+struct agg_group_slab;
 
 namespace cubxasl
 {
@@ -56,6 +57,9 @@ namespace cubquery
     int curr_size;		/* last computed size of structure */
     int tuple_count;		/* # of tuples aggregated in structure */
     int func_count;		/* # of functions (i.e. accumulators) */
+    struct agg_group_slab *slab;	/* the slab block this group lives in (key and value in one), or NULL */
+    int batch_slot;		/* the page batch GROUP BY node's cache slot that named this group last, or -1; a hint
+				 * only, checked against the slot's own value pointer (qexec_batch_gby_consume ()) */
     cubxasl::aggregate_accumulator *accumulators;	/* function accumulators */
     qfile_tuple_record first_tuple;	/* first aggregated tuple */
   };
@@ -65,9 +69,15 @@ namespace cubquery
   {
     int val_count;		/* key size */
     bool free_values;		/* true if values need to be freed */
+    bool in_slab;		/* lives in its value's slab block (aggregate_hash_value::slab) */
     db_value **values;		/* value array */
+    const tp_domain **compares;	/* the context's key_compares (NULL: the values compare): the keys mht compares
+				 * carry them */
   };
 
+
+  /* the registers of a hash GROUP BY's distinct-key sketch (HyperLogLog, about 3% error) */
+#define QDATA_KEY_SKETCH_REGS (1024)
 
   struct aggregate_hash_context
   {
@@ -76,12 +86,16 @@ namespace cubquery
     aggregate_hash_key *temp_key;	/* temporary key used for fetch */
     AGGREGATE_HASH_STATE state;	/* state of hash aggregation */
     tp_domain **key_domains;	/* hash key domains */
+    const tp_domain **key_compares;	/* per key column, the domain its values compare in (g_hk_compares), NULL
+					 * when a key's domain leaves its values' type to the data */
     cubxasl::aggregate_accumulator_domain **accumulator_domains;	/* accumulator domains */
 
     /* runtime statistics stuff */
     int hash_size;		/* hash table size */
     int group_count;		/* groups processed in hash table */
     int tuple_count;		/* tuples processed in hash table */
+    unsigned int evictions;	/* groups the table freed so far (an LRU eviction at its budget, or the dump of an
+				 * abandon): a generation the page batch's key cache compares to its own */
 
     /* partial list file stuff */
     SCAN_CODE part_scan_code;	/* scan status of partial list file */
@@ -99,6 +113,12 @@ namespace cubquery
     aggregate_hash_value *curr_part_value;	/* current partial value */
     aggregate_hash_value *temp_part_value;	/* temporary partial value */
     int sorted_count;
+
+    /* distinct keys the table saw (qdata_key_sketch_*): what hashing the leftovers would fold them to
+     * (qexec_gby_hash_merge ()); a parallel scan's workers merge theirs into the leader's */
+    struct agg_group_slab *slab;	/* the groups' blocks (qdata_slab_new_group ()), or NULL */
+    unsigned char key_sketch[QDATA_KEY_SKETCH_REGS];
+    bool key_sketch_partial;	/* rows went by the table (it stopped taking them): the sketch missed some keys */
   };
 
 
@@ -117,11 +137,34 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
 
 int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
-				     QUERY_ID query_id);
+				     QUERY_ID query_id, const struct val_descr *vd);
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
-void qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list);
+int qdata_copy_to_accumulator (const cubxasl::aggregate_accumulator_domain *acc_dom, const DB_VALUE *value,
+			       DB_VALUE *acc_value, bool is_acc_to_acc);
+void qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list, const val_descr *vd);
+void qdata_link_shared_accumulators_by_cell (cubxasl::aggregate_list_node *agg_list, const val_descr *vd);
+struct expr_prog;
+struct expr_batch_plan;
+struct expr_batch;
+expr_prog *qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+    val_descr *val_desc_p);
+int qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+				    val_descr *val_desc_p, expr_batch_plan *plan, const expr_batch *batch,
+				    bool skip_optimized, cubxasl::aggregate_accumulator *alt_acc_list);
+/* the aggregate as the blocking node at the end of a chunk chain (expr_batch.h): its state is
+ * a QDATA_AGG_CHUNK_STATE */
+typedef struct qdata_agg_chunk_state QDATA_AGG_CHUNK_STATE;
+struct qdata_agg_chunk_state
+{
+  cubxasl::aggregate_list_node *agg_list;
+  val_descr *vd;
+  bool skip_optimized;
+};
+struct expr_chunk_node;
+int qdata_agg_chunk_consume (cubthread::entry *thread_p, struct expr_chunk_node *node, struct expr_batch_plan *plan,
+			     struct expr_batch *batch);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,
 				   cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index);
 int qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_ptr, HFID *hfid,
@@ -129,11 +172,12 @@ int qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggr
 bool qdata_evaluate_aggregate_min_max_finished (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p);
 int qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_ptr,
 					HFID *root_hfid, BTID *root_btid,
-					cubquery::hierarchy_aggregate_helper *helper);
+					cubquery::hierarchy_aggregate_helper *helper, const struct val_descr *vd);
 int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
-				   bool keep_list_file);
+				   bool keep_list_file, const struct val_descr *vd);
 
-cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
+cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals,
+    const tp_domain **compares);
 void qdata_free_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
 cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt,
     cubxasl::aggregate_list_node *g_agg_list);
@@ -142,15 +186,41 @@ int qdata_get_agg_hkey_size (cubquery::aggregate_hash_key *key);
 int qdata_get_agg_hvalue_size (cubquery::aggregate_hash_value *value, bool ret_delta);
 int qdata_free_agg_hentry (const void *key, void *data, void *args);
 unsigned int qdata_hash_agg_hkey (const void *key, unsigned int ht_size);
+/* the hash table's bucket function: the key's full-range hash, qdata_hash_agg_hkey (key, 0xffffffffu), modulo the
+ * table's size -- so a caller that computes that hash once can look the key up with mht_get_hash () and feed the
+ * sketch with it (qdata_key_sketch_add_hashed ()) */
+unsigned int qdata_hash_agg_hkey_bucket (const void *key, unsigned int ht_size);
 DB_VALUE_COMPARE_RESULT qdata_agg_hkey_compare (cubquery::aggregate_hash_key *ckey1,
     cubquery::aggregate_hash_key *ckey2, int *diff_pos);
 int qdata_agg_hkey_eq (const void *key1, const void *key2);
 cubquery::aggregate_hash_key *qdata_copy_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
 void qdata_load_agg_hvalue_in_agg_list (cubquery::aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
 					bool copy_vals);
+/* A hash GROUP BY's groups as blocks of one size, carved from large chunks: a group's key, its key values, its
+ * value, accumulators and their values, and a first tuple up to inline_cap bytes -- one allocation where the generic
+ * path makes about ten, and given back to a free list when the table lets the group go (the LRU dump), the chunks
+ * freed with the table's context (the table's memory goes as a whole with its context, and its fixed-size groups
+ * come from a slab).  The generic free functions see the block and give it back
+ * (qdata_free_agg_hentry ()).  The chunks are on the process heap (malloc), not the thread's private heap: they are
+ * 256 KB each and live as long as the context that made them -- a group the LRU dump lets go returns its block to the
+ * free list, so the slab holds the table's peak group count until qexec_free_agg_hash_context (). */
+struct agg_group_slab;
+struct agg_group_slab *qdata_slab_create (cubthread::entry *thread_p, int n_keys, int n_funcs, int inline_cap);
+void qdata_slab_destroy (cubthread::entry *thread_p, struct agg_group_slab *slab);
+int qdata_slab_new_group (cubthread::entry *thread_p, struct agg_group_slab *slab, cubquery::aggregate_hash_key *key,
+			  cubxasl::aggregate_list_node *g_agg_list, int tuple_size, cubquery::aggregate_hash_key **out_key,
+			  cubquery::aggregate_hash_value **out_value);
+/* a hash GROUP BY's distinct-key sketch: add a key, merge another sketch in, estimate the distinct keys */
+void qdata_key_sketch_add (unsigned char *regs, const cubquery::aggregate_hash_key *key);
+void qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h);
+void qdata_key_sketch_merge (unsigned char *regs, const unsigned char *other);
+double qdata_key_sketch_estimate (const unsigned char *regs);
 int qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key,
 				   cubquery::aggregate_hash_value *value, DB_VALUE *temp_dbval_array,
 				   qfile_list_id *list_id);
+/* the key columns of a partial-list entry (qdata_load_agg_hentry_from_tuple ()) without its accumulators */
+int qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
+				    cubquery::aggregate_hash_key *key, tp_domain **key_dom, bool copy);
 int qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size,
 				      cubquery::aggregate_hash_key *key,
 				      cubquery::aggregate_hash_value *value, tp_domain **key_dom,
@@ -160,14 +230,15 @@ SCAN_CODE qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_lis
     tp_domain **key_dom, cubxasl::aggregate_accumulator_domain **acc_dom);
 int qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table, qfile_list_id *tuple_list_id,
 				   qfile_list_id *partial_list_id, db_value *temp_dbval_array);
-int qdata_group_concat_first_value (cubthread::entry *thread_p,
+int qdata_group_concat_first_value (cubthread::entry *thread_p, const struct val_descr *vd,
 				    cubxasl::aggregate_list_node *agg_p,
 				    db_value *dbvalue);
-int qdata_group_concat_value (cubthread::entry *thread_p,
+int qdata_group_concat_value (cubthread::entry *thread_p, const struct val_descr *vd,
 			      cubxasl::aggregate_list_node *agg_p,
 			      db_value *dbvalue);
-int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p,
-    db_value *val);
+tp_domain *qdata_aggregate_list_domain (const struct val_descr *vd, const cubxasl::aggregate_list_node *agg_p);
+int qdata_update_agg_interpolation_func_value_and_domain (const struct val_descr *vd,
+    cubxasl::aggregate_list_node *agg_p, db_value *val);
 int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p,
     cubxasl::aggregate_list_node *agg_p,
     struct val_descr *val_desc_p);

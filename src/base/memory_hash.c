@@ -611,23 +611,24 @@ mht_valhash (const void *key, const unsigned int ht_size)
 
 	    /*
 	     * calculate hash without normalization if:
-	     *   - fixed numeric (is_float_numeric == false), or
-	     *   - float numeric (is_float_numeric == true) with:
-	     *     * scale is 0, or
-	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
-	     *   for float numeric with positive scale, trailing zero check is required
-	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     *   - scale is 0, or
+	     *   - precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
+	     *   for positive scale, trailing zero check is required even when precision is
+	     *   DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     * unlike mht_get_hash_number (), a fixed numeric is normalized too: the keys of one table here
+	     * (e.g. the host variables of a query cache entry) are not cast to one precision and scale
+	     * first, so 1.0 and 1.00 must hash alike.
 	     */
-	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+	    if (scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
-		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+		hash = mht_1str_pseudo_key (db_get_numeric (val), DB_NUMERIC_BUF_SIZE);
 	      }
 	    else
 	      {
 		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
 		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
 							 scale);
-		hash = mht_1str_pseudo_key (calc_buf, -1);
+		hash = mht_1str_pseudo_key (calc_buf, DB_NUMERIC_BUF_SIZE);
 	      }
 	  }
 	  break;
@@ -637,7 +638,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  break;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
-	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), -1);
+	  hash = mht_1str_pseudo_key (db_get_bit (val, &t_n), db_get_string_size (val));
 	  break;
 	case DB_TYPE_TIME:
 	  {
@@ -822,6 +823,33 @@ int
 mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
 {
   return ((key1 == key2) || (tp_value_compare ((DB_VALUE *) key1, (DB_VALUE *) key2, 1, 1) == DB_EQ));
+}
+
+/*
+ * mht_compare_dbvalues_are_identical - compare two DB_VALUEs, strings byte by byte
+ *   return: 0 or 1 (key1 == key2)
+ *   key1(in): pointer to DB_VALUE key1
+ *   key2(in): pointer to DB_VALUE key2
+ *
+ * Note: for keys of cached results (memoize, subquery cache). Strings equal only under their collation
+ *       ('A' and 'a' under a case-insensitive one) can give different results, e.g. ASCII (key).
+ *       Identical bytes are also equal under the collation, so mht_get_hash_number () still applies.
+ */
+int
+mht_compare_dbvalues_are_identical (const void *key1, const void *key2)
+{
+  const DB_VALUE *val1 = (const DB_VALUE *) key1;
+  const DB_VALUE *val2 = (const DB_VALUE *) key2;
+  int size;
+
+  if (key1 != key2 && TP_IS_CHAR_TYPE (db_value_type (val1)) && TP_IS_CHAR_TYPE (db_value_type (val2))
+      && !DB_IS_NULL (val1) && !DB_IS_NULL (val2))
+    {
+      size = db_get_string_size (val1);
+      return (size == db_get_string_size (val2) && memcmp (db_get_string (val1), db_get_string (val2), size) == 0);
+    }
+
+  return mht_compare_dbvalues_are_equal (key1, key2);
 }
 
 /*
@@ -1466,6 +1494,42 @@ mht_get (MHT_TABLE * ht, const void *key)
 	  mht_adjust_lru_list (ht, hentry);
 
 	  /* return value */
+	  return hentry->data;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * mht_get_hash - find data associated with key, its hash computed by the caller
+ *   return: the data associated with the key, or NULL if not found
+ *   ht(in): hash table
+ *   key(in): hashing key
+ *   hash(in): the key's hash over the full unsigned range, of which the table's hash function takes hash % size
+ *	       as the bucket for every size (so the caller's one hash serves the lookup and whatever else it
+ *	       hashes the key for)
+ *
+ * Note: mht_get () without the call of the table's hash function.
+ */
+void *
+mht_get_hash (MHT_TABLE * ht, const void *key, unsigned int hash)
+{
+  HENTRY_PTR hentry;
+
+  assert (ht != NULL);
+  assert (key != NULL);
+
+  if (hash >= ht->size)
+    {
+      hash %= ht->size;
+    }
+  assert (hash == (*ht->hash_func) (key, ht->size));
+
+  for (hentry = ht->table[hash]; hentry != NULL; hentry = hentry->next)
+    {
+      if (hentry->key == key || (*ht->cmp_func) (hentry->key, key))
+	{
+	  mht_adjust_lru_list (ht, hentry);
 	  return hentry->data;
 	}
     }
@@ -2327,6 +2391,18 @@ mht_count (const MHT_TABLE * ht)
   return ht->nentries;
 }
 
+/* a hash reduced to [0, ht_size): the full range (ht_size UINT_MAX, a caller that keeps the whole hash, as the hash
+ * GROUP BY's key does) is the hash itself but for UINT_MAX, without the division */
+static inline unsigned int
+mht_reduce (unsigned int hash, unsigned int ht_size)
+{
+  if (ht_size == UINT_MAX)
+    {
+      return (hash == UINT_MAX) ? 0 : hash;
+    }
+  return hash % ht_size;
+}
+
 /*
  * mht_get_hash_number - get linear hash number or string hash number
  *   return: the hash value of the hash key
@@ -2389,8 +2465,6 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_NUMERIC:
 	  {
 	    bool is_float_numeric = false;
-	    unsigned int tmp = 0;
-	    unsigned int *buf;
 	    int precision = 0, scale = 0;
 	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
 
@@ -2405,10 +2479,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	     */
 	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
-		buf = (unsigned int *) db_locate_numeric (val);
-		memcpy (&tmp, db_locate_numeric (val) + 16, 1);
-
-		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (db_locate_numeric (val)), ht_size);
 	      }
 	    else
 	      {
@@ -2416,10 +2487,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
 							 scale);
 
-		buf = (unsigned int *) calc_buf;
-		memcpy (&tmp, (char *) calc_buf + 16, 1);
-
-		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (calc_buf), ht_size);
 	      }
 	  }
 	  break;
@@ -2483,7 +2551,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  else
 	    {
 	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, i);
-	      hashcode %= ht_size;
+	      hashcode = mht_reduce (hashcode, ht_size);
 	    }
 	  break;
 	case DB_TYPE_SET:
@@ -2507,7 +2575,9 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_CLOB:
 	  {
 	    DB_ELO *elo = db_get_elo (val);
-	    if (elo == NULL && elo->type != ELO_FBO)
+
+	    /* db_get_elo () returns NULL for ELO_NULL, so a non-NULL elo is always ELO_FBO. */
+	    if (elo == NULL)
 	      {
 		hashcode = 0;
 		break;
@@ -2516,7 +2586,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	    /* Memory addresses are compared in mr_cmpval_elo,
 	     * so no additional processing is needed. */
 	    hashcode = GET_PTR_FOR_HASH (val);
-	    hashcode %= ht_size;
+	    hashcode = mht_reduce (hashcode, ht_size);
 	  }
 	  break;
 	case DB_TYPE_ENUMERATION:
@@ -2537,7 +2607,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		len = (int) strlen (json_body);
 
 		hashcode = MHT2STR_COLL (LANG_COLL_BINARY, (unsigned char *) json_body, len);
-		hashcode %= ht_size;
+		hashcode = mht_reduce (hashcode, ht_size);
 		db_private_free (NULL, json_body);
 	      }
 	  }
@@ -2627,7 +2697,7 @@ mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size)
   key ^= (key >> 4);
   key *= c2;
   key ^= (key >> 15);
-  return (key % ht_size);
+  return mht_reduce (key, ht_size);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -2700,7 +2770,9 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry
 
       if (ht->table[idx].hash == hash)
 	{
-	  /* same hash: prepend to the chain so duplicates take no extra slot (a collision, as in mht_put_internal) */
+	  /* same hash: prepend to the chain so duplicates take no extra slot (a collision, as in mht_put_internal).
+	   * Probes therefore return same-hash duplicates in reverse insertion order; a caller that needs list
+	   * order reorders on its side (e.g. the CONNECT BY DFS reverses a node's children). */
 	  entry->next = ht->table[idx].entry;
 	  ht->table[idx].entry = entry;
 	  ht->nentries++;

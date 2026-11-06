@@ -1269,6 +1269,35 @@ parser_free_parser (PARSER_CONTEXT * parser)
     {
       free_and_init (parser->host_var_expected_domains);
     }
+  if (parser->host_var_compiled_domains)
+    {
+      free_and_init (parser->host_var_compiled_domains);
+    }
+  if (parser->host_var_format_classes)
+    {
+      free_and_init (parser->host_var_format_classes);
+    }
+  if (parser->host_var_elt_indexes)
+    {
+      free_and_init (parser->host_var_elt_indexes);
+    }
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
+    }
+  if (parser->host_var_bind_domains)
+    {
+      free_and_init (parser->host_var_bind_domains);
+    }
+
+  if (parser->static_sql_host_var_end)
+    {
+      free_and_init (parser->static_sql_host_var_end);
+    }
 
   parser_free_lcks_classes (parser);
 
