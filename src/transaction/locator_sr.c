@@ -4115,6 +4115,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1;
   BTREE_SEARCH ret;
+  bool values_read = false;
 
   db_make_null (&dbvalue);
 
@@ -4125,15 +4126,6 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   if (num_found <= 0)
     {
       return error_code;
-    }
-
-  if (idx_info.has_single_col)
-    {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, &index_attrinfo);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
     }
 
   for (i = 0; i < idx_info.num_btids; i++)
@@ -4147,6 +4139,16 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	{
 	  /* the row keeps its entry, which a parent DELETE meets; checking would only wait on that DELETE */
 	  continue;
+	}
+
+      if (idx_info.has_single_col && !values_read)
+	{
+	  error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, &index_attrinfo);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  values_read = true;
 	}
 
       /* must be updated when key_prefix_length will be added for FK and PK */
@@ -4301,6 +4303,39 @@ locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEAD
 }
 
 /*
+ * locator_peek_last_insid () - Read, without a lock, the insert id of the object's last version
+ *
+ * return: scan code of the read
+ *   context(in/out): heap get context; given back unfixed, so that the caller may block next
+ *   insid(out): the insert id while it is not visible to all; MVCCID_NULL otherwise or when the read failed
+ */
+static SCAN_CODE
+locator_peek_last_insid (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCCID * insid)
+{
+  MVCC_REC_HEADER header;
+  SCAN_CODE scan;
+
+  *insid = MVCCID_NULL;
+  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+  if (scan == S_SUCCESS)
+    {
+      scan = heap_get_mvcc_header (thread_p, context, &header);
+    }
+  if (scan == S_SUCCESS && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&header))
+    {
+      *insid = MVCC_GET_INSID (&header);
+    }
+
+  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
+      && context->home_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+    }
+  heap_clean_get_context (thread_p, context);
+  return scan;
+}
+
+/*
  * locator_wait_out_child_writer () - wait, without the child's row lock, for another transaction that wrote the
  *				       child's last version and is still active
  *
@@ -4315,39 +4350,21 @@ static int
 locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, HEAP_SCANCACHE * scan_cache)
 {
   HEAP_GET_CONTEXT context;
-  MVCC_REC_HEADER mvcc_header;
   MVCCID writer;
   SCAN_CODE scan;
   int error_code;
 
   while (true)
     {
-      writer = MVCCID_NULL;
       heap_init_get_context (thread_p, &context, oid, class_oid, NULL, scan_cache, PEEK, NULL_CHN);
       context.latch_mode = PGBUF_LATCH_READ;
-      scan = heap_prepare_get_context (thread_p, &context, false, LOG_WARNING_IF_DELETED);
-      if (scan == S_SUCCESS)
-	{
-	  scan = heap_get_mvcc_header (thread_p, &context, &mvcc_header);
-	}
-      if (scan == S_SUCCESS && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
-	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_INSID (&mvcc_header)))
-	{
-	  writer = MVCC_GET_INSID (&mvcc_header);
-	}
-      if (scan_cache != NULL && scan_cache->cache_last_fix_page && context.home_page_watcher.pgptr != NULL)
-	{
-	  /* the wait below must not hold a page fixed */
-	  pgbuf_ordered_unfix (thread_p, &context.home_page_watcher);
-	}
-      heap_clean_get_context (thread_p, &context);
-
+      scan = locator_peek_last_insid (thread_p, &context, &writer);
       if (scan == S_ERROR && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
-      if (writer == MVCCID_NULL)
+      if (writer == MVCCID_NULL || !logtb_is_active_other_mvccid (thread_p, writer))
 	{
 	  /* nothing to wait for, or nothing left to read (a slot freed, or taken by another row's address): the locked
 	   * read decides, and skips the child as it always has */
@@ -6567,6 +6584,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      ASSERT_ERROR ();
 		      goto error;
 		    }
+
+		  /* the row had no entry to keep: check every foreign key */
+		  att_id = NULL;
+		  n_att_id = 0;
 		}
 	    }
 
@@ -8726,6 +8747,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 
 	    }
 	}
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
 
       if (!locator_Dont_check_foreign_key && index->type == BTREE_PRIMARY_KEY && index->fk)
 	{
@@ -9377,15 +9403,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		  /* in MVCC - update index key means insert index key */
 		  if (do_insert_only == true)
 		    {
-		      if (index->type == BTREE_FOREIGN_KEY)
-			{
-			  if (lock_object (thread_p, oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-			    {
-			      ASSERT_ERROR_AND_SET (error_code);
-			      goto error;
-			    }
-			}
-
 		      if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 			{
 			  /* Online index loading on current index. */
@@ -13853,25 +13870,60 @@ locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * cont
 static bool
 locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
-  MVCC_REC_HEADER header;
+  MVCCID insid;
+
+  if (locator_peek_last_insid (thread_p, context, &insid) != S_SUCCESS)
+    {
+      /* decides nothing: the lock taken instead is followed by a read that meets the same failure */
+      er_clear ();
+      return false;
+    }
+  return insid != MVCCID_NULL && logtb_is_current_mvccid (thread_p, insid);
+}
+
+/*
+ * locator_lock_object_unless_ours () - Lock an object unconditionally, or pass it without the lock when its last
+ *					version is ours and only writers hold it
+ *   return: LK_GRANTED; LK_NOTGRANTED_HELD_BY_WRITERS when passed; otherwise the lock failed
+ *   thread_p(in): thread entry
+ *   context(in/out): heap get context of the object; given back unfixed
+ *   lock_mode(in): lock mode
+ *   transient(in): whether the request ends with the statement rather than the transaction
+ *   owner_bypass_ok(in): whether an object we stamped may be passed; see locator_last_version_is_ours ()
+ */
+int
+locator_lock_object_unless_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode, bool transient,
+				 bool owner_bypass_ok)
+{
   bool ours = false;
 
-  if (heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED) == S_SUCCESS
-      && heap_get_mvcc_header (thread_p, context, &header) == S_SUCCESS)
+  if (owner_bypass_ok)
     {
-      ours = MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&header)
-	&& logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&header));
+      ours = locator_last_version_is_ours (thread_p, context);
+      if (ours && lock_is_held_only_by_writers (thread_p, context->oid_p, context->class_oid_p))
+	{
+	  return LK_NOTGRANTED_HELD_BY_WRITERS;
+	}
     }
 
   if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
       && context->home_page_watcher.pgptr != NULL)
     {
-      /* do not leave the home page cached in scan_cache: the caller may block on the lock next */
+      /* prevent caching home page watcher in scan_cache */
       pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
     }
   heap_clean_get_context (thread_p, context);
 
-  return ours;
+  if (ours)
+    {
+      /* a writer queued before us would wait on our stamp once granted: go ahead of it */
+      return lock_object_ahead_of_waiters (thread_p, context->oid_p, context->class_oid_p, lock_mode, transient);
+    }
+  if (transient)
+    {
+      return lock_object_transient (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK);
+    }
+  return lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK);
 }
 
 /*
@@ -13894,7 +13946,6 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 {
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
-  bool ours = false;
   int granted;
   MVCC_REC_HEADER recdes_header;
   bool is_mvcc_class;
@@ -13921,29 +13972,16 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
     {
       lock_acquired = true;
     }
-  else if (owner_bypass_ok && is_mvcc_class && (ours = locator_last_version_is_ours (thread_p, context))
-	   && lock_is_held_only_by_writers (thread_p, context->oid_p, context->class_oid_p))
-    {
-      /* lock_acquired stays false: there is nothing to give back */
-    }
   else
     {
-      if (context->scan_cache && context->scan_cache->cache_last_fix_page && context->home_page_watcher.pgptr != NULL)
-	{
-	  /* prevent caching home page watcher in scan_cache */
-	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
-	}
-      heap_clean_get_context (thread_p, context);
-      /* a writer queued before us would wait on our stamp once granted: go ahead of it */
-      granted = (ours ? lock_object_ahead_of_waiters (thread_p, context->oid_p, context->class_oid_p, lock_mode,
-						      transient)
-		 : lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK));
+      granted = locator_lock_object_unless_ours (thread_p, context, lock_mode, transient,
+						 owner_bypass_ok && is_mvcc_class);
       if (granted != LK_GRANTED && granted != LK_NOTGRANTED_HELD_BY_WRITERS)
 	{
 	  goto error;
 	}
 
-      /* not granted because only writers hold it by now: as above, there is nothing to give back */
+      /* not granted because only writers hold it: there is nothing to give back */
       lock_acquired = (granted == LK_GRANTED);
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
