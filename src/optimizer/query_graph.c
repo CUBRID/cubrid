@@ -186,6 +186,7 @@ static void graph_size_for_entity (QO_ENV * env, PT_NODE * entity);
 static bool is_dependent_table (PT_NODE * entity);
 static void get_term_subqueries (QO_ENV * env, QO_TERM * term);
 static void get_term_rank (QO_ENV * env, QO_TERM * term);
+static double qo_expr_eval_cost (const PT_NODE * expr);
 static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 static void get_local_subqueries (QO_ENV * env, PT_NODE * tree);
@@ -3705,6 +3706,7 @@ get_term_rank (QO_ENV * env, QO_TERM * term)
   PT_NODE *pt_expr;
 
   QO_TERM_RANK (term) = bitset_cardinality (&(QO_TERM_SUBQUERIES (term))) * RANK_QUERY;
+  QO_TERM_EVAL_COST (term) = 0.0;
 
   if (QO_IS_FAKE_TERM (term))
     {
@@ -3719,6 +3721,9 @@ get_term_rank (QO_ENV * env, QO_TERM * term)
     {
       return;
     }
+
+  /* CBRD-27127: unlike the rank, the cost follows the OR list -- the evaluator may try every disjunct */
+  QO_TERM_EVAL_COST (term) = qo_expr_eval_cost (pt_expr);
 
   /* At here, do not traverse OR list */
   switch (pt_expr->node_type)
@@ -4451,6 +4456,182 @@ get_local_subqueries (QO_ENV * env, PT_NODE * node)
 
 }
 
+
+/*
+ * qo_expr_eval_cost () - CBRD-27127: what evaluating an expression once costs, as a multiple of one integer
+ *			  comparison, for the scan cost of the rows it is evaluated on
+ *   return: the cost; 0 for a column, a constant, a host variable or a subquery (a subquery is priced by its own
+ *	     plan)
+ *   expr(in): the expression, with its OR list
+ *
+ * Note: The prices were measured on a serial full scan, each predicate's extra time per row over one integer
+ *	 comparison: a comparison 1, BETWEEN 1.7, IN of n values about 8 + 1.45 n, LIKE about 12 whatever the
+ *	 pattern (taking the string out of the record dominates), REGEXP about 35, a string function about 20.
+ *	 All but the comparison and IN are system parameters (cost_filter_*).
+ */
+static double
+qo_expr_eval_cost (const PT_NODE * expr)
+{
+  double cost = 0.0;
+  const PT_NODE *node, *arg2, *list;
+
+  for (node = expr; node != NULL; node = node->or_next)
+    {
+      if (node->node_type == PT_FUNCTION)
+	{
+	  cost += (double) prm_get_float_value (PRM_ID_COST_FILTER_FUNC);
+	  for (list = node->info.function.arg_list; list != NULL; list = list->next)
+	    {
+	      cost += qo_expr_eval_cost (list);
+	    }
+	  continue;
+	}
+      if (node->node_type != PT_EXPR)
+	{
+	  /* a column, a constant, a host variable or a subquery */
+	  continue;
+	}
+
+      arg2 = node->info.expr.arg2;
+      switch (node->info.expr.op)
+	{
+	case PT_AND:
+	case PT_OR:
+	case PT_XOR:
+	case PT_NOT:
+	  /* the connective itself costs nothing apart from its operands */
+	  break;
+
+	case PT_LIKE:
+	case PT_NOT_LIKE:
+	  {
+	    const PT_NODE *pattern = arg2;
+
+	    if (pattern != NULL && pattern->node_type == PT_EXPR && pattern->info.expr.op == PT_LIKE_ESCAPE)
+	      {
+		pattern = pattern->info.expr.arg1;
+	      }
+	    /* a constant pattern that starts with a wildcard has no fixed prefix */
+	    if (pattern != NULL && pattern->node_type == PT_VALUE && PT_IS_CHAR_STRING_TYPE (pattern->type_enum)
+		&& pattern->info.value.data_value.str != NULL && pattern->info.value.data_value.str->length > 0
+		&& (pattern->info.value.data_value.str->bytes[0] == '%'
+		    || pattern->info.value.data_value.str->bytes[0] == '_'))
+	      {
+		cost += (double) prm_get_float_value (PRM_ID_COST_FILTER_LIKE_GENERIC);
+	      }
+	    else
+	      {
+		cost += (double) prm_get_float_value (PRM_ID_COST_FILTER_LIKE_PREFIX);
+	      }
+	    if (pattern != arg2)
+	      {
+		/* LIKE ... ESCAPE: the pattern is the escape node's first operand; the escape node is no call */
+		cost += qo_expr_eval_cost (pattern);
+		arg2 = NULL;
+	      }
+	  }
+	  break;
+
+	case PT_RLIKE:
+	case PT_NOT_RLIKE:
+	case PT_RLIKE_BINARY:
+	case PT_NOT_RLIKE_BINARY:
+	  cost += (double) prm_get_float_value (PRM_ID_COST_FILTER_REGEXP);
+	  break;
+
+	case PT_IS_IN:
+	case PT_IS_NOT_IN:
+	case PT_EQ_SOME:
+	case PT_NE_SOME:
+	case PT_GE_SOME:
+	case PT_GT_SOME:
+	case PT_LT_SOME:
+	case PT_LE_SOME:
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	  {
+	    int n = 1;
+
+	    if (arg2 != NULL && pt_is_function (arg2))
+	      {
+		n = pt_length_of_list (arg2->info.function.arg_list);
+		arg2 = NULL;
+	      }
+	    else if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_COLLECTION_TYPE (arg2->type_enum))
+	      {
+		n = pt_length_of_list (arg2->info.value.data_value.set);
+		arg2 = NULL;
+	      }
+	    cost += 8.0 + 1.45 * (double) MAX (n, 1);
+	  }
+	  break;
+
+	case PT_BETWEEN:
+	case PT_NOT_BETWEEN:
+	  cost += (double) prm_get_float_value (PRM_ID_COST_FILTER_RANGE);
+	  break;
+
+	case PT_RANGE:
+	  {
+	    /* a range list: each range of arg2's OR list is a BETWEEN of its own */
+	    for (list = arg2; list != NULL; list = list->or_next)
+	      {
+		cost += (double) prm_get_float_value (PRM_ID_COST_FILTER_RANGE);
+	      }
+	    arg2 = NULL;
+	  }
+	  break;
+
+	case PT_EQ:
+	case PT_NE:
+	case PT_GE:
+	case PT_GT:
+	case PT_LT:
+	case PT_LE:
+	case PT_NULLSAFE_EQ:
+	case PT_IS_NULL:
+	case PT_IS_NOT_NULL:
+	case PT_IS:
+	case PT_IS_NOT:
+	case PT_EXISTS:
+	case PT_GT_INF:
+	case PT_LT_INF:
+	case PT_PLUS:
+	case PT_MINUS:
+	case PT_TIMES:
+	case PT_DIVIDE:
+	case PT_UNARY_MINUS:
+	case PT_MOD:
+	case PT_DIV:
+	case PT_BIT_AND:
+	case PT_BIT_OR:
+	case PT_BIT_XOR:
+	case PT_BIT_NOT:
+	case PT_BITSHIFT_LEFT:
+	case PT_BITSHIFT_RIGHT:
+	case PT_CAST:
+	  /* a comparison or an arithmetic step: the unit */
+	  cost += 1.0;
+	  break;
+
+	default:
+	  /* any other operator is a function call on its operands */
+	  cost += (double) prm_get_float_value (PRM_ID_COST_FILTER_FUNC);
+	  break;
+	}
+
+      /* the operands are evaluated first (arg2 is NULL where the case above priced it already) */
+      cost += qo_expr_eval_cost (node->info.expr.arg1);
+      cost += qo_expr_eval_cost (arg2);
+      cost += qo_expr_eval_cost (node->info.expr.arg3);
+    }
+
+  return cost;
+}
 
 /*
  * get_rank () - Gather term's rank
@@ -6315,6 +6496,7 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
   BITSET_EXCHANGE (t0->segments, t1->segments);
   DOUBLE_EXCHANGE (t0->selectivity, t1->selectivity);
   INT_EXCHANGE (t0->rank, t1->rank);
+  DOUBLE_EXCHANGE (t0->eval_cost, t1->eval_cost);
   PT_NODE_EXCHANGE (t0->pt_expr, t1->pt_expr);
   INT_EXCHANGE (t0->location, t1->location);
   BITSET_EXCHANGE (t0->subqueries, t1->subqueries);
@@ -9892,6 +10074,7 @@ qo_term_clear (QO_ENV * env, int idx)
   QO_TERM_CLASS (term) = QO_TC_OTHER;
   QO_TERM_SELECTIVITY (term) = 1.0;
   QO_TERM_RANK (term) = 0;
+  QO_TERM_EVAL_COST (term) = 0.0;
   QO_TERM_PT_EXPR (term) = NULL;
   QO_TERM_LOCATION (term) = 0;
   QO_TERM_SEG (term) = NULL;
@@ -10395,6 +10578,12 @@ qo_term_dump (QO_TERM * term, FILE * f)
   if (QO_TERM_RANK (term) > 1)
     {
       fprintf (f, " (rank %d)", QO_TERM_RANK (term));
+    }
+
+  /* CBRD-27127: like the rank, only past a single comparison */
+  if (QO_TERM_EVAL_COST (term) > 1.0)
+    {
+      fprintf (f, " (eval_cost %g)", QO_TERM_EVAL_COST (term));
     }
 
   switch (QO_TERM_CLASS (term))
