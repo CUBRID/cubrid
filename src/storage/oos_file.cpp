@@ -4026,11 +4026,15 @@ oos_rv_dump_reclaim_intent (FILE *fp, int length, void *data)
       fprintf (fp, "  malformed OOS reclaim intent of %d bytes\n", length);
       return;
     }
-  fprintf (fp, "  OOS file %d|%d, owner %d|%d|%d, op %s, flags %d, %d chains:\n", VFID_AS_ARGS (&header.oos_vfid),
-	   OID_AS_ARGS (&header.owner_oid), header.op_ctx, header.flags, header.n_refs);
+  /* The arguments are spelled out rather than given with VFID_AS_ARGS and the like, whose expansion cppcheck does
+   * not see when it counts them against the format. */
+  fprintf (fp, "  OOS file %d|%d, owner %d|%d|%d, op %s, flags %d, %d chains:\n", (int) header.oos_vfid.volid,
+	   (int) header.oos_vfid.fileid, (int) header.owner_oid.volid, (int) header.owner_oid.pageid,
+	   (int) header.owner_oid.slotid, header.op_ctx, header.flags, header.n_refs);
   for (const oos_chain_ref &ref : refs)
     {
-      fprintf (fp, "    head %d|%d|%d stamp %lld|%d\n", OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp));
+      fprintf (fp, "    head %d|%d|%d stamp %lld|%d\n", (int) ref.head_oid.volid, (int) ref.head_oid.pageid,
+	       (int) ref.head_oid.slotid, (long long int) ref.identity_stamp.pageid, (int) ref.identity_stamp.offset);
     }
 }
 
