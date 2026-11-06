@@ -43,6 +43,7 @@
 #include "log_impl.h"
 #include "log_system_tran.hpp"
 #include "xserver_interface.h"
+#include "fault_injection.h"
 #include "heap_oos.hpp"
 
 #include "oos_file.hpp"
@@ -3957,12 +3958,15 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 /*
  * oos_reclaim_notified_chains () - vacuum's consumer of one RVOOS_NOTIFY_VACUUM record
  *
- *   return: NO_ERROR, or ER_INTERRUPTED (shutdown), which leaves the block to be processed again. Any other
+ *   return: NO_ERROR; ER_INTERRUPTED (shutdown), which leaves the block to be processed again; or the error of
+ *	     a failed heap header lookup for the OOS file (a latch timeout or a read error), which the caller
+ *	     turns into a later run of the block, as vacuum does for a heap record (CBRD-27933). Any other
  *	     reclaim failure stops the server (fail-stop), so the block is processed again after restart
  *   thread_p(in): vacuum worker
  *   notify_data(in): undo data of the record
  *   notify_length(in): its length
  *   oos_vfid_out(out): OOS file the chains belong to
+ *   heap_hfid_out(out): heap file the notification names (for the caller's report of a failed lookup)
  *   emptied_vpids(out): pages the deletes emptied
  *
  * Vacuum reaches the record only once its MVCCID precedes every active snapshot, so no reader can still
@@ -3975,7 +3979,7 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
  */
 int
 oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length, VFID *oos_vfid_out,
-			     std::vector<VPID> *emptied_vpids)
+			     HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids)
 {
   oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
@@ -3985,17 +3989,32 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
       oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA});
       return error;
     }
+  *heap_hfid_out = header.heap_hfid;
   if (VFID_ISNULL (&header.oos_vfid))
     {
       /* The UPDATE did not resolve the OOS file; vacuum holds no page and can fix the heap header. */
-      if (!heap_oos_find_vfid (thread_p, &header.heap_hfid, &header.oos_vfid, false))
+      bool found;
+      if (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))
 	{
-	  /* A false return sets the error. */
-	  ASSERT_ERROR_AND_SET (error);
-	  if (error == ER_INTERRUPTED)
+	  /* A latch timeout stops debug builds in pgbuf_timed_sleep, so a busy header fails here at once instead. */
+	  found = heap_oos_find_vfid_nowait (thread_p, &header.heap_hfid, &header.oos_vfid);
+	  if (!found)
 	    {
-	      return error;
+	      VPID header_vpid = { header.heap_hfid.hpgid, header.heap_hfid.vfid.volid };
+	      (void) FI_TEST_ARG (thread_p, FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, &header_vpid, 0);
 	    }
+	}
+      else
+	{
+	  found = heap_oos_find_vfid (thread_p, &header.heap_hfid, &header.oos_vfid, false);
+	}
+      if (!found)
+	{
+	  /* A false return sets the error. A busy or unreadable heap header is not a reclaim failure: the block runs
+	   * again later, as vacuum does when it cannot look up the OOS file of a heap record (CBRD-27933). */
+	  ASSERT_ERROR_AND_SET (error);
+	  VFID_SET_NULL (oos_vfid_out);
+	  return error;
 	}
       else if (VFID_ISNULL (&header.oos_vfid))
 	{

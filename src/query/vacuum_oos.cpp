@@ -216,8 +216,10 @@ vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM
  * vacuum_oos_reclaim_notified_chains () - Reclaim the chains one RVOOS_NOTIFY_VACUUM record names, then
  *   return the pages it emptied to the file manager.
  *
- * return	       : NO_ERROR, or ER_INTERRUPTED on shutdown (the block is processed again after restart).
- *			 Any other reclaim failure stops the server (oos_reclaim_notified_chains).
+ * return	       : NO_ERROR; ER_INTERRUPTED on shutdown (the block is processed again after restart); or, on a
+ *			 vacuum worker, ER_VACUUM_OOS_LOOKUP_DEFERRED when the heap header lookup for the OOS file failed
+ *			 (the block runs again later). Any other reclaim failure stops the server
+ *			 (oos_reclaim_notified_chains).
  * thread_p (in)       : Thread entry.
  * undo_data (in)      : Undo data of the record. It may point into the worker's current log page:
  *			 oos_reclaim_notified_chains copies it before its first page fix.
@@ -230,10 +232,20 @@ int
 vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size)
 {
   VFID oos_vfid = VFID_INITIALIZER;
+  HFID heap_hfid = HFID_INITIALIZER;
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
-  int error_code = oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_vfid, &emptied_pages);
+  int error_code =
+	  oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_vfid, &heap_hfid, &emptied_pages);
   if (error_code != NO_ERROR)
     {
+      if (error_code != ER_INTERRUPTED && vacuum_is_thread_vacuum_worker (thread_p))
+	{
+	  /* The heap header lookup failed: run the block again later (CBRD-27933). */
+	  VPID header_vpid = { heap_hfid.hpgid, heap_hfid.vfid.volid };
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_OOS_LOOKUP_DEFERRED, 6, VFID_AS_ARGS (&heap_hfid.vfid),
+		  error_code, VPID_AS_ARGS (&header_vpid), (int) NULL_SLOTID);
+	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	}
       return error_code;
     }
   if (emptied_pages.empty ())
