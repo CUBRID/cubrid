@@ -1237,7 +1237,7 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
-              # A re-run with no usable build keeps the build its source tested: its verdict still rests on it.
+              # A re-run with no usable build keeps the build its source's verdict rests on: so does its own.
               echo "build_recipe='${recipe:-${prev_recipe:-}}'"
             } > "$out/plan/split.meta"
 
