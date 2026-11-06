@@ -90,15 +90,22 @@ extern int ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf
 extern SESSION_ID ux_get_session_id (void);
 extern void ux_set_session_id (const SESSION_ID session_id);
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-extern bool is_server_alive (void);
-#endif
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_lobfile_new (int lobfile_type, T_NET_BUF * net_buf);
 extern int ux_lobfile_write (DB_VALUE * lobfile_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
 extern int ux_lobfile_read (DB_VALUE * lobfile_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+
+extern void ux_stream_reset (void);
+extern bool ux_stream_is_open (void);
+extern bool ux_stream_admits_request (int func_code);
+extern int ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf);
+extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf);
+extern int ux_stream_end (T_NET_BUF * net_buf);
+extern int ux_stream_abort (T_NET_BUF * net_buf);
+extern int ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled, int first_max,
+				char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern void ux_stream_result_set_commit (T_REQ_INFO * req_info);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 

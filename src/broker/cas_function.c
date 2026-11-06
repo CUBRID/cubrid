@@ -1193,7 +1193,7 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (auto_commit_mode == TRUE)
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "close_req_handle srv_h_id %d", srv_h_id);
@@ -2469,4 +2469,246 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 			 query_timeout);
 	}
     }
+}
+
+FN_RETURN
+fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *data = NULL;
+  int data_len = 0;
+
+  if (argc != 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_str (&data, &data_len, argv[0]);
+
+  ux_stream_send_data (data, data_len, net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  /* whether END owes an auto-commit was settled when the stream opened: by the statement's own mode, or for a
+   * driver-opened stream by the kind's answer (ux_stream_init) -- an upload never owes one */
+  ux_stream_end (net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+
+  ux_stream_init (stream_kind, config, config_len, net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  if (argc != 0)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  ux_stream_abort (net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+/* runs in place of a request an open stream does not admit (ux_stream_admits_request); the stream is left as it was */
+FN_RETURN
+fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a stream session is open on this connection; end or abort it first");
+  errors_in_transaction++;
+  ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ_OPEN: kind, config [, first_max, flags]. With the optional pair the first piece comes back with the handle. */
+FN_RETURN
+fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+  int first_max = 0;
+  char flags = 0;
+
+  if (argc != 2 && argc != 4)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  if (argc == 4)
+    {
+      net_arg_get_int (&first_max, argv[2]);
+      net_arg_get_char (flags, argv[3]);
+    }
+
+  ux_stream_read_open (stream_kind, config, config_len, argc == 4, first_max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ: handle, max [, flags] */
+FN_RETURN
+fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  int max = 0;
+  char flags = 0;
+
+  if (argc < 2 || argc > 3)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_int (&max, argv[1]);
+  if (argc > 2)
+    {
+      net_arg_get_char (flags, argv[2]);
+    }
+
+  ux_stream_read ((INT64) handle, max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* RELEASE: handle, auto_commit */
+FN_RETURN
+fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  char auto_commit_mode = FALSE;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_char (auto_commit_mode, argv[1]);
+
+  ux_stream_release ((INT64) handle, auto_commit_mode == TRUE, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* UPLOAD_RELEASE: token [, token ...], uploads the driver discarded before an execute bound them */
+FN_RETURN
+fn_stream_upload_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+  int i, size;
+
+  if (argc < 1 || argc > CAS_STREAM_UPLOAD_RELEASE_MAX)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  for (i = 0; i < argc; i++)
+    {
+      NET_ARG_GET_SIZE (size, argv[i]);
+      if (size != NET_SIZE_BIGINT)
+	{
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return FN_KEEP_CONN;
+	}
+    }
+
+  for (i = 0; i < argc; i++)
+    {
+      net_arg_get_bigint (&token, argv[i]);
+      hm_internal_lob_upload_release ((INT64) token);
+    }
+  net_buf_cp_int (net_buf, 0, NULL);
+
+  return FN_KEEP_CONN;
+}
+
+/* UPLOAD_HOLD: srv_h_id, token [, token ...], uploads a statement binds before it executes */
+FN_RETURN
+fn_stream_upload_hold (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  INT64 tokens[CAS_STREAM_UPLOAD_RELEASE_MAX];
+  T_SRV_HANDLE *srv_handle;
+  DB_BIGINT token = 0;
+  int srv_h_id = 0, i, size;
+
+  if (argc < 2 || argc - 1 > CAS_STREAM_UPLOAD_RELEASE_MAX)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  for (i = 0; i < argc; i++)
+    {
+      NET_ARG_GET_SIZE (size, argv[i]);
+      if (size != (i == 0 ? NET_SIZE_INT : NET_SIZE_BIGINT))
+	{
+	  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+	  NET_BUF_ERR_SET (net_buf);
+	  return FN_KEEP_CONN;
+	}
+    }
+
+  net_arg_get_int (&srv_h_id, argv[0]);
+  srv_handle = hm_find_srv_handle (srv_h_id);
+  if (srv_handle == NULL)
+    {
+      ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  for (i = 1; i < argc; i++)
+    {
+      net_arg_get_bigint (&token, argv[i]);
+      tokens[i - 1] = (INT64) token;
+    }
+  if (hm_srv_handle_hold_internal_lob_uploads (srv_handle, tokens, argc - 1) < 0)
+    {
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_buf_cp_int (net_buf, 0, NULL);
+
+  return FN_KEEP_CONN;
 }

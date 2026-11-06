@@ -92,6 +92,7 @@ struct xasl_state
   int qp_xasl_line;		/* Error line */
 };
 
+extern bool qexec_set_internal_lob_stream_output (xasl_node * xasl, bool to_client);
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,

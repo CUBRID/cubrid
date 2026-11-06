@@ -27,6 +27,7 @@
 #ifndef _VACUUM_OOS_HPP_
 #define _VACUUM_OOS_HPP_
 
+#include "heap_file.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
@@ -35,6 +36,17 @@
 /* Pages that lost OOS chunks during one delete batch (duplicates allowed). A plain typedef so
  * vacuum.c (GNU-indent formatted) can declare one without exposing template syntax. */
 typedef std::vector<VPID> VACUUM_OOS_TOUCHED_PAGES;
+
+/* A removable record whose OOS chains are trimmed to their heads after its home page is unfixed.  The slot and the
+ * heads go together afterwards, so after a crash a re-run block meets the record again and finishes the chains. */
+typedef struct vacuum_oos_deferred_record VACUUM_OOS_DEFERRED_RECORD;
+struct vacuum_oos_deferred_record
+{
+  PGSLOTID slotid;
+  HEAP_OOS_REFERENCE_VECTOR references;
+  bool chains_trimmed = false;
+};
+typedef std::vector<VACUUM_OOS_DEFERRED_RECORD> VACUUM_OOS_DEFERRED_RECORDS;
 
 /* Forward-walk OOS reclamation helpers. */
 
@@ -52,15 +64,19 @@ struct vacuum_oos_vfid_memo
   bool valid = false;		/* false until the first successful lookup */
   VFID heap_vfid;		/* key; meaningful only when valid */
   VFID oos_vfid;		/* value; meaningful only when valid (VFID_NULL = "no OOS file") */
+  VFID internal_lob_vfid;	/* value; the heap's internal LOB file (VFID_NULL = "no internal LOB file") */
 };
 
 extern int vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
     const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo);
-extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
-    PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
-extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
-    VACUUM_OOS_TOUCHED_PAGES *touched_pages_out);
+extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+    const VFID *internal_lob_vfid, const RECDES *record, VACUUM_OOS_TOUCHED_PAGES *touched_pages_out);
 extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
     VACUUM_OOS_TOUCHED_PAGES *touched_pages);
+extern int vacuum_oos_defer_record (THREAD_ENTRY *thread_p, const OID *oid, const RECDES *record,
+				    VACUUM_OOS_DEFERRED_RECORDS *deferred, bool *handled);
+extern int vacuum_oos_delete_deferred_chains (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+    const VFID *internal_lob_vfid, VACUUM_OOS_DEFERRED_RECORD *deferred);
+extern void vacuum_oos_release_record (const OID *oid);
 
 #endif /* _VACUUM_OOS_HPP_ */

@@ -522,6 +522,7 @@ struct vacuum_heap_helper
   HFID hfid;			/* Heap file identifier. */
   VFID overflow_vfid;		/* Overflow file identifier. */
   VFID oos_vfid;		/* OOS file identifier (if any). */
+  VFID internal_lob_vfid;	/* Internal LOB file identifier (if any); resolved together with oos_vfid. */
   bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
@@ -712,7 +713,11 @@ static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID 
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
-			       VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out);
+			       VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out,
+			       VACUUM_OOS_DEFERRED_RECORDS * oos_deferred_out);
+static int vacuum_heap_finish_deferred_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+					    VACUUM_OOS_DEFERRED_RECORDS * oos_deferred, MVCCID threshold_mvccid,
+					    VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -1526,6 +1531,8 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
   int error_code = NO_ERROR;
   VFID vfid = VFID_INITIALIZER;
   HFID hfid = HFID_INITIALIZER;
+  /* Resolved once per heap file alongside hfid, then reused for every page of that file. */
+  VACUUM_HEAP_OOS_FILES oos_files = VACUUM_HEAP_OOS_FILES_INITIALIZER;
   bool reusable = false;
   int object_count = 0;
 
@@ -1548,8 +1555,9 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
       if (!VFID_EQ (&vfid, &page_ptr->vfid))
 	{
 	  VFID_COPY (&vfid, &page_ptr->vfid);
-	  /* Reset HFID */
+	  /* Reset HFID and the file ids resolved alongside it */
 	  HFID_SET_NULL (&hfid);
+	  VACUUM_HEAP_OOS_FILES_RESET (&oos_files);
 	}
 
       /* Find all objects for this page. */
@@ -1562,7 +1570,8 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	}
       /* Vacuum page. */
       error_code =
-	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
+	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &oos_files, &reusable,
+			  was_interrupted);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
@@ -1602,12 +1611,14 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
  * n_heap_objects (in)	 : Number of objects.
  * threshold_mvccid (in) : Threshold MVCCID used to vacuum.
  * hfid (in/out)         : Heap file identifier
+ * oos_files (in/out)     : The heap's OOS / Internal LOB files, resolved once and reused across its pages.
  * reusable (in/out)	 : True if object slots are reusable.
  * was_interrutped (in)  : True if same job was executed and interrupted.
  */
 int
 vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
-		  MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted)
+		  MVCCID threshold_mvccid, HFID * hfid, VACUUM_HEAP_OOS_FILES * oos_files, bool * reusable,
+		  bool was_interrupted)
 {
   VACUUM_HEAP_HELPER helper;	/* Vacuum heap helper. */
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
@@ -1615,6 +1626,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   int obj_index = 0;		/* Index used to iterate the object array. */
 
   VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
+  VACUUM_OOS_DEFERRED_RECORDS oos_deferred;
 
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
@@ -1652,6 +1664,54 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
   VFID_SET_NULL (&helper.oos_vfid);
+  VFID_SET_NULL (&helper.internal_lob_vfid);
+
+  if (HFID_IS_NULL (hfid))
+    {
+      /* file has changed and we must get HFID and file type */
+      error_code = vacuum_heap_get_hfid_and_file_type (thread_p, &helper, &heap_objects[0].vfid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Failed to get hfid.");
+	  return error_code;
+	}
+      /* we need to also output to avoid checking again for other objects */
+      *reusable = helper.reusable;
+      *hfid = helper.hfid;
+    }
+  else
+    {
+      helper.reusable = *reusable;
+      helper.hfid = *hfid;
+    }
+
+  /* Resolve both ids once per heap, BEFORE fixing the home page: looking them up while holding it inverts DML's
+   * page order (header, then data page) and deadlocks.  With no heap page held the header latch can be
+   * unconditional, so a NULL vfid definitively means "no such file" - a vacuumed slot is never revisited, so a
+   * spurious NULL would orphan its OOS/LOB chains for good. */
+  /* [리뷰] VFID 조회를 heap 페이지 fix 앞으로 옮긴 것이 핵심이다(DML과 래치 순서 역전 제거).
+   * 조회 실패 시 이 페이지를 vacuum하지 않고 오류를 돌려준다. 같은 페이지 재시도는 없다. */
+  if (!oos_files->resolved)
+    {
+      if (!heap_oos_find_both_vfids (thread_p, &helper.hfid, &oos_files->oos_vfid, &oos_files->internal_lob_vfid))
+	{
+	  error_code = er_errid ();
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	    }
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+			       "Could not read the OOS/internal LOB file ids of heap %d|%d - page %d|%d not vacuumed.",
+			       HFID_AS_ARGS (&helper.hfid), VPID_AS_ARGS (&helper.home_vpid));
+	  return error_code;
+	}
+      oos_files->resolved = true;
+    }
+  helper.oos_vfid = oos_files->oos_vfid;
+  helper.internal_lob_vfid = oos_files->internal_lob_vfid;
 
   /* Fix heap page. */
   if (was_interrupted)
@@ -1713,27 +1773,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 
   helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page);
 
-  if (HFID_IS_NULL (hfid))
-    {
-      /* file has changed and we must get HFID and file type */
-      error_code = vacuum_heap_get_hfid_and_file_type (thread_p, &helper, &heap_objects[0].vfid);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  vacuum_check_shutdown_interruption (thread_p, error_code);
-	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Failed to get hfid.");
-	  return error_code;
-	}
-      /* we need to also output to avoid checking again for other objects */
-      *reusable = helper.reusable;
-      *hfid = helper.hfid;
-    }
-  else
-    {
-      helper.reusable = *reusable;
-      helper.hfid = *hfid;
-    }
-
   helper.crt_slotid = -1;
   for (obj_index = 0; obj_index < n_heap_objects; obj_index++)
     {
@@ -1777,7 +1816,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
-	      error_code = vacuum_heap_record (thread_p, &helper, &oos_touched_pages);
+	      error_code = vacuum_heap_record (thread_p, &helper, &oos_touched_pages, &oos_deferred);
 	    }
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
@@ -1940,6 +1979,24 @@ end:
       vacuum_heap_page_log_and_reset (thread_p, &helper, true, true);
     }
 
+  if (!oos_deferred.empty ())
+    {
+      if (error_code == NO_ERROR)
+	{
+	  error_code =
+	    vacuum_heap_finish_deferred_oos (thread_p, &helper, &oos_deferred, threshold_mvccid, &oos_touched_pages);
+	}
+      else
+	{
+	  /* the slots stay; the block is run again */
+	  for (size_t i = 0; i < oos_deferred.size (); i++)
+	    {
+	      OID oid = { helper.home_vpid.pageid, oos_deferred[i].slotid, helper.home_vpid.volid };
+	      vacuum_oos_release_record (&oid);
+	    }
+	}
+    }
+
   /* Reclaim only after the home page is unfixed: the reclaim takes the OOS stats header WRITE
    * latch and one dealloc sysop per page, which must not extend the home page latch hold. */
   if (error_code == NO_ERROR && !oos_touched_pages.empty ())
@@ -1952,6 +2009,93 @@ end:
 	}
     }
 
+  return error_code;
+}
+
+/*
+ * vacuum_heap_finish_deferred_oos () - Trim the deferred records' OOS chains to their heads with no heap page held,
+ *					then remove each slot with its heads in one sysop.  The heads go last, so a
+ *					re-run after a crash never follows a freed, possibly reused address.
+ *
+ * return : Error code.  The home page is unfixed on entry and on return; the claims are released here.
+ */
+static int
+vacuum_heap_finish_deferred_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+				 VACUUM_OOS_DEFERRED_RECORDS * oos_deferred, MVCCID threshold_mvccid,
+				 VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages)
+{
+  int error_code = NO_ERROR;
+  bool any_deleted = false;
+  size_t i;
+
+  assert (helper->home_page == NULL && helper->forward_page == NULL);
+
+  /* Phase 2: trim the chains to their heads; a slot still in place is what tells a re-run block to finish them */
+  for (i = 0; i < oos_deferred->size (); i++)
+    {
+      error_code = vacuum_oos_delete_deferred_chains (thread_p, &helper->oos_vfid, &helper->internal_lob_vfid,
+						      &(*oos_deferred)[i]);
+      if (error_code == ER_INTERRUPTED)
+	{
+	  break;
+	}
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to delete OOS chains of %d|%d|%d; record kept.",
+			       VPID_AS_ARGS (&helper->home_vpid), (*oos_deferred)[i].slotid);
+	  er_clear ();
+	  error_code = NO_ERROR;
+	  continue;
+	}
+      any_deleted = true;
+    }
+
+  /* Phase 3: remove each slot and its one-chunk chains atomically (the OOS-bearing path of vacuum_heap_record) */
+  if (error_code == NO_ERROR && any_deleted)
+    {
+      helper->home_page =
+	pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (helper->home_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      else
+	{
+	  helper->initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper->home_page);
+	  for (i = 0; i < oos_deferred->size () && error_code == NO_ERROR; i++)
+	    {
+	      if (!(*oos_deferred)[i].chains_trimmed)
+		{
+		  continue;
+		}
+	      helper->crt_slotid = (*oos_deferred)[i].slotid;
+	      error_code = vacuum_heap_prepare_record (thread_p, helper);
+	      if (error_code == NO_ERROR && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION))
+		{
+		  helper->can_vacuum = mvcc_satisfies_vacuum (thread_p, &helper->mvcc_header, threshold_mvccid);
+		  if (helper->can_vacuum == VACUUM_RECORD_REMOVE)
+		    {
+		      error_code = vacuum_heap_record (thread_p, helper, oos_touched_pages, NULL);
+		    }
+		}
+	      if (helper->forward_page != NULL)
+		{
+		  pgbuf_unfix_and_init (thread_p, helper->forward_page);
+		}
+	    }
+	  vacuum_heap_page_log_and_reset (thread_p, helper, true, true);
+	}
+    }
+
+  for (i = 0; i < oos_deferred->size (); i++)
+    {
+      OID oid = { helper->home_vpid.pageid, (*oos_deferred)[i].slotid, helper->home_vpid.volid };
+      vacuum_oos_release_record (&oid);
+    }
+  if (error_code != NO_ERROR)
+    {
+      vacuum_check_shutdown_interruption (thread_p, error_code);
+    }
   return error_code;
 }
 
@@ -2103,12 +2247,6 @@ retry_prepare:
 	  return error_code;
 	}
 
-      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
-							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
       return NO_ERROR;
 
     case REC_BIGONE:
@@ -2217,13 +2355,6 @@ retry_prepare:
 	{
 	  assert_release (false);
 	  return ER_FAILED;
-	}
-
-      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
-							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
 	}
       break;
 
@@ -2444,7 +2575,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  */
 static int
 vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
-		    VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out)
+		    VACUUM_OOS_TOUCHED_PAGES * oos_touched_pages_out, VACUUM_OOS_DEFERRED_RECORDS * oos_deferred_out)
 {
   /* Assert expected arguments. */
   assert (helper != NULL);
@@ -2475,9 +2606,21 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
    * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
    * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
    * an otherwise single-page REC_HOME into the sysop path. */
-  bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
+  bool has_oos = ((!VFID_ISNULL (&helper->oos_vfid) || !VFID_ISNULL (&helper->internal_lob_vfid))
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
+
+  if (has_oos && oos_deferred_out != NULL)
+    {
+      /* Leave the slot; vacuum_heap_page trims the chains after unfixing the home page, then removes it. */
+      OID oid = { helper->home_vpid.pageid, helper->crt_slotid, helper->home_vpid.volid };
+      bool handled = false;
+      int error_code = vacuum_oos_defer_record (thread_p, &oid, &helper->record, oos_deferred_out, &handled);
+      if (error_code != NO_ERROR || handled)
+	{
+	  return error_code;
+	}
+    }
 
   if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
     {
@@ -2542,8 +2685,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
       /* Delete OOS records (if any) before committing the sysop. */
       if (has_oos)
 	{
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_touched_pages_out);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->internal_lob_vfid,
+							     &helper->record, oos_touched_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2618,8 +2761,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
-							     oos_touched_pages_out);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->internal_lob_vfid,
+							     &helper->record, oos_touched_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2663,28 +2806,14 @@ static int
 vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid)
 {
   int error_code = NO_ERROR;	/* Error code. */
-  OID class_oid = OID_INITIALIZER;	/* Class OID. */
   FILE_DESCRIPTORS file_descriptor;
   FILE_TYPE ftype;
 
   assert (helper != NULL);
-  assert (helper->home_page != NULL);
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
-  /* Get class OID from heap page. */
-  error_code = heap_get_class_oid_from_page (thread_p, helper->home_page, &class_oid);
-  if (error_code != NO_ERROR)
-    {
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			   "Failed to obtain class_oid from heap page %d|%d.",
-			   PGBUF_PAGE_VPID_AS_ARGS (helper->home_page));
-
-      assert_release (false);
-      return error_code;
-    }
-  assert (!OID_ISNULL (&class_oid));
-
-  /* Get HFID for class OID. */
+  /* Get HFID from the heap file descriptor.  This reads no heap page, so it is safe to call before the home
+   * page is fixed (vacuum_heap_page resolves the heap's OOS/LOB files right after, latch-order free). */
   error_code = file_descriptor_get (thread_p, vfid, &file_descriptor);
   if (error_code != NO_ERROR)
     {
@@ -2701,8 +2830,8 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
     }
   if (error_code != NO_ERROR)
     {
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			   "Failed to obtain heap file identifier for class %d|%d|%d)", OID_AS_ARGS (&class_oid));
+      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to obtain heap file identifier for file %d|%d",
+			   VFID_AS_ARGS (vfid));
 
       assert_release (false);
       return error_code;

@@ -121,6 +121,8 @@ extern int desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value);
 extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
 extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
+extern int internal_lob_unload_sidecar_open (const char *output_dirname, const char *output_prefix);
+extern void internal_lob_unload_sidecar_close (void);
 
 extern volatile bool error_occurred;
 extern int g_sampling_records;

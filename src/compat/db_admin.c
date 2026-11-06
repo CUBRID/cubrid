@@ -1091,6 +1091,9 @@ db_end_session (void)
 
   CHECK_CONNECT_ERROR ();
 
+  /* the locators this session was given go with it: a CAS serves another client next */
+  internal_lob_locator_forget_issued ();
+
   if (db_get_session_id () == DB_EMPTY_SESSION)
     {
       return NO_ERROR;

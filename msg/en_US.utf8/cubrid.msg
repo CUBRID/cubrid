@@ -1493,7 +1493,12 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Internal error: invalid out-of-row storage argument.
 
-1384 Last Error
+1386 Stream session error: %1$s.
+1388 The unload file's internal LOB charset (%1$s) differs from this database (%2$s); load aborted.
+1389 Internal LOB locator is not authorized for the current user or session.
+1390 The internal LOB sidecar file is missing, or a reference in the load file is not in it.
+1391 The internal LOB value this locator refers to no longer exists; fetch the row again.
+1392 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1661,6 +1666,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
+140 invalid use of clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -2007,6 +2013,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 339 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
 340 STORAGE options can be set only on variable-type normal attributes of a class: '%1$s'.
+341 CLOB literal exceeds 1 GiB. Values over 1 GiB can be loaded with CLOB_FROM_FILE or CFILE_TO_CLOB (up to 4 GiB).
+342 BLOB literal exceeds 128 MiB. Values over 128 MiB can be loaded with BLOB_FROM_FILE or BFILE_TO_BLOB (up to 4 GiB).
 
 
 

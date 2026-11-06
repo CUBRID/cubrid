@@ -35,9 +35,28 @@
 #include "log_writer.h"
 #include "method_scan.hpp"
 #include "thread_compat.hpp"
+#include "tsc_timer.h"
 
 // forward definitions
 struct qfile_list_id;
+struct execution_info;
+
+/* What an execution logs about itself, as sqmgr_execute_query () does: slow query trace, many ioreads, extend pages */
+typedef struct net_exec_log NET_EXEC_LOG;
+struct net_exec_log
+{
+  int trace_level;
+  int trace_slow_msec;
+  int trace_ioreads;
+  UINT64 *base_stats;
+  TSC_TICKS start_tick;
+};
+
+extern int net_exec_log_start (THREAD_ENTRY * thread_p, NET_EXEC_LOG * exec_log);
+extern void net_exec_log_error (THREAD_ENTRY * thread_p, const struct execution_info *info, int error_code);
+extern int net_exec_log_end (THREAD_ENTRY * thread_p, NET_EXEC_LOG * exec_log, struct execution_info *info,
+			     char **queryinfo_string, int *queryinfo_string_length);
+extern void net_exec_log_free (NET_EXEC_LOG * exec_log);
 
 extern TRAN_STATE return_error_to_client (THREAD_ENTRY * thread_p, unsigned int rid);
 extern int server_ping_with_handshake (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -227,6 +246,7 @@ extern void sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void soos_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_upload_release (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -246,7 +266,16 @@ extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void ssession_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
-extern void ssession_destroy_load_session (THREAD_ENTRY * thread_p, void *session);
+extern void ssession_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session, int closing_tran_index);
+
+/* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+extern void sstream_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read_open (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_release (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

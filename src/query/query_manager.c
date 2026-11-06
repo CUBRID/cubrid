@@ -48,6 +48,7 @@
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
 #include "dblink_scan.h"
+#include "internal_lob_file.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -191,6 +192,12 @@ static QMGR_TEMP_FILE *qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST * temp_
 static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
 
 static int copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * bind_vals);
+static QFILE_LIST_ID *qmgr_execute_query_internal (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
+						   QUERY_ID * query_id_p, int dbval_count, void *dbval_p,
+						   QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
+						   CACHE_TIME * server_cache_time_p, int query_timeout,
+						   xasl_cache_ent ** ret_cache_entry_p,
+						   XASL_CACHE_ENTRY * fixed_entry_p, XASL_CLONE * fixed_clone_p);
 
 /*
  * qmgr_get_page_type () -
@@ -1228,6 +1235,13 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
       XASL_SET_FLAG (xasl_p, XASL_RETURN_GENERATED_KEYS);
     }
 
+  /* a cached result is shared with other sessions, so it never holds a session's stream marker */
+  if (!qexec_set_internal_lob_stream_output (xasl_p, (query_p->query_flag & INTERNAL_LOB_STREAM_TO_CLIENT)
+					     && !qmgr_is_allowed_result_cache (flag)))
+    {
+      query_p->query_flag &= ~INTERNAL_LOB_STREAM_TO_CLIENT;
+    }
+
   /* execute the query with the value list, if any */
   query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
   thread_p->no_logging = false;
@@ -1274,6 +1288,52 @@ exit_on_error:
   goto end;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * qmgr_check_client_internal_lob_values () - Check the internal LOB values a client bound to this statement.
+ *   return: error code
+ *
+ * A locator gets the same class-lock check as a read and may not be an adopted one; a value naming a file is made
+ * only in SA mode, so a client may not bind one.
+ */
+static int
+qmgr_check_client_internal_lob_values (THREAD_ENTRY * thread_p, int dbval_count, const DB_VALUE * dbvals)
+{
+  /* [리뷰] 클라이언트 파라미터에는 파일 소스·pending·adopted 로케이터가 올 수 없다(서버 내부 전용).
+   * 로케이터면 클래스 IS 락을 먼저 잡아 뒤의 체인 복사·읽기가 락 없이 돌지 않게 한다.
+   * SERVER_MODE 전용이라 SA 모드 실행 경로에는 이 검사가 없다. */
+  INTERNAL_LOB_LOCATOR locator;
+  int marker;
+  int error;
+
+  for (int i = 0; i < dbval_count; i++)
+    {
+      marker = db_value_get_internal_lob_marker (&dbvals[i]);
+      if (marker == DB_VALUE_INTERNAL_LOB_MARKER_FILE_SOURCE || marker == DB_VALUE_INTERNAL_LOB_MARKER_PENDING)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED, 0);
+	  return ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED;
+	}
+
+      if (internal_lob_db_value_is_locator (&dbvals[i], &locator))
+	{
+	  if (locator.adopted)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED, 0);
+	      return ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED;
+	    }
+	  error = internal_lob_lock_locator_class (thread_p, locator);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  continue;
+	}
+    }
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
 /*
  * xqmgr_execute_query () - Execute a prepared query
  *   return: query result file id
@@ -1299,6 +1359,75 @@ QFILE_LIST_ID *
 xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_ID * query_id_p, int dbval_count,
 		     void *dbval_p, QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
 		     CACHE_TIME * server_cache_time_p, int query_timeout, xasl_cache_ent ** ret_cache_entry_p)
+{
+  return qmgr_execute_query_internal (thread_p, xasl_id_p, query_id_p, dbval_count, dbval_p, flag_p,
+				      client_cache_time_p, server_cache_time_p, query_timeout, ret_cache_entry_p, NULL,
+				      NULL);
+}
+
+/*
+ * qmgr_fix_xasl_for_execute () - Start the execution of a prepared query: fix its cache entry, lock its classes,
+ *				  check the entry and take a clone (xcache_find_xasl_id_for_execute ())
+ *   return: error code; ER_QPROC_INVALID_XASLNODE when the plan is gone or stale
+ */
+int
+qmgr_fix_xasl_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, XASL_CACHE_ENTRY ** xasl_cache_entry_p,
+			   XASL_CLONE * xclone_p)
+{
+  int error;
+
+  *xasl_cache_entry_p = NULL;
+  error = xcache_find_xasl_id_for_execute (thread_p, xasl_id_p, xasl_cache_entry_p, xclone_p);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+  if (*xasl_cache_entry_p == NULL)
+    {
+      /* XASL cache entry not found. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+  if (xclone_p->xasl == NULL || xclone_p->xasl_buf == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * qmgr_execute_fixed_query () - Execute a prepared query whose entry and clone qmgr_fix_xasl_for_execute () gave
+ *				 the caller, possibly in an earlier request
+ *   return: as xqmgr_execute_query ()
+ *
+ * Note: The clone is retired here; the entry stays fixed for the caller to unfix.
+ */
+QFILE_LIST_ID *
+qmgr_execute_fixed_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, XASL_CACHE_ENTRY * xasl_cache_entry_p,
+			  XASL_CLONE * xclone_p, QUERY_ID * query_id_p, int dbval_count, void *dbval_p,
+			  QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p, CACHE_TIME * server_cache_time_p,
+			  int query_timeout)
+{
+  xasl_cache_ent *ret_cache_entry_p = NULL;
+
+  assert (xasl_cache_entry_p != NULL && xclone_p->xasl != NULL && xclone_p->xasl_buf != NULL);
+
+  return qmgr_execute_query_internal (thread_p, xasl_id_p, query_id_p, dbval_count, dbval_p, flag_p,
+				      client_cache_time_p, server_cache_time_p, query_timeout, &ret_cache_entry_p,
+				      xasl_cache_entry_p, xclone_p);
+}
+
+/* xqmgr_execute_query (), or with fixed_entry_p, qmgr_execute_fixed_query () */
+static QFILE_LIST_ID *
+qmgr_execute_query_internal (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_ID * query_id_p,
+			     int dbval_count, void *dbval_p, QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
+			     CACHE_TIME * server_cache_time_p, int query_timeout, xasl_cache_ent ** ret_cache_entry_p,
+			     XASL_CACHE_ENTRY * fixed_entry_p, XASL_CLONE * fixed_clone_p)
 {
   XASL_CACHE_ENTRY *xasl_cache_entry_p = NULL;
   XASL_CLONE xclone = XASL_CLONE_INITIALIZER;
@@ -1376,24 +1505,16 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       thread_trace_off (thread_p);
     }
 
-  xasl_cache_entry_p = NULL;
-  if (xcache_find_xasl_id_for_execute (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
+  if (fixed_entry_p != NULL)
     {
-      ASSERT_ERROR ();
-      return NULL;
+      /* fixed, locked and checked by qmgr_fix_xasl_for_execute (); the clone is ours to retire from here on */
+      xasl_cache_entry_p = fixed_entry_p;
+      xclone = *fixed_clone_p;
+      fixed_clone_p->xasl = NULL;
+      fixed_clone_p->xasl_buf = NULL;
     }
-  if (xasl_cache_entry_p == NULL)
+  else if (qmgr_fix_xasl_for_execute (thread_p, xasl_id_p, &xasl_cache_entry_p, &xclone) != NO_ERROR)
     {
-      /* XASL cache entry not found. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
-      return NULL;
-    }
-  if (xclone.xasl == NULL || xclone.xasl_buf == NULL)
-    {
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      perfmon_inc_stat (thread_p, PSTAT_PC_NUM_INVALID_XASL_ID);
       return NULL;
     }
 
@@ -1430,6 +1551,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
 	  ptr = or_unpack_db_value (ptr, dbval);
+	}
+      if (qmgr_check_client_internal_lob_values (thread_p, dbval_count, dbvals_p) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 #else
@@ -1527,6 +1652,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
   query_p->query_status = QUERY_IN_PROGRESS;
   query_p->query_flag = *flag_p;
+  /* told back only when an output column does stream (qmgr_process_query) */
+  *flag_p &= ~INTERNAL_LOB_STREAM_TO_CLIENT;
   if (*flag_p & RESULT_HOLDABLE)
     {
       query_p->is_holdable = true;
@@ -1580,6 +1707,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       goto exit_on_error;
     }
+  *flag_p |= (query_p->query_flag & INTERNAL_LOB_STREAM_TO_CLIENT);
 
   /* everything is ok, mark that the query is completed */
   qmgr_mark_query_as_completed (query_p);
@@ -1942,6 +2070,10 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
 	  ptr = or_unpack_db_value (ptr, dbval);
+	}
+      if (qmgr_check_client_internal_lob_values (thread_p, dbval_count, dbvals_p) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 #else

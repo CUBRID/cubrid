@@ -28,22 +28,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/*
- * oos_oid_in_vector () - True if oid appears in oids (linear scan; vector is small by design).
- */
-bool
-oos_oid_in_vector (const std::vector<OID> &oids, const OID *oid)
-{
-  for (const OID &candidate : oids)
-    {
-      if (OID_EQ (&candidate, oid))
-	{
-	  return true;
-	}
-    }
-  return false;
-}
-
 #if !defined (NDEBUG)
 /*
  * heap_recdes_compute_oos_flag_debug - debug-only audit of OR_RECORD_FLAG_HAS_OOS

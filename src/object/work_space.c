@@ -5358,7 +5358,7 @@ ws_repl::ws_clear_all_repl_objs (void)
  */
 int
 ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-				  RECDES * recdes, int operation, bool has_index)
+				  RECDES * recdes, int operation, bool has_index, int oos_attrid)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
@@ -5387,6 +5387,7 @@ ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int 
   repl_obj->recdes = recdes;
   repl_obj->has_index = has_index;
   repl_obj->operation = operation;
+  repl_obj->oos_attrid = oos_attrid;
   repl_obj->next = NULL;
 
   if (m_Repl_objs.tail == NULL)

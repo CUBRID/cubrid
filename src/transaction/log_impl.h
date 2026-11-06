@@ -61,6 +61,7 @@
 #include "transaction_transient.hpp"
 #include "lockfree_circular_queue.hpp"
 
+#include <vector>
 #include <unordered_set>
 #include <unordered_map>
 #include <queue>
@@ -471,6 +472,19 @@ struct log_rcv_tdes
   LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
 };
 
+typedef struct oos_repl_lob_chain OOS_REPL_LOB_CHAIN;
+struct oos_repl_lob_chain
+{
+  /* HA apply only: one internal LOB chunk chain this slave is rebuilding, per target attribute.
+   * Chunks arrive tail-first with the master's link OIDs, so each is relinked to the previous chunk applied for
+   * the attribute; the last one (chunk_index 0) is the head the heap record points at. Kept on the transaction
+   * because one value's chunks span several xlocator_repl_force () calls. */
+  int attrid;			/* target attribute of the chain */
+  INT64 total_data_length;	/* the chain's own length - tells one chain from the next */
+  int last_chunk_index;		/* chunk_index applied most recently; must count down by one */
+  OID last_chunk_oid;		/* the OID this slave gave that chunk = the link the next one needs */
+};
+
 typedef struct log_tdes LOG_TDES;
 struct log_tdes
 {
@@ -528,6 +542,11 @@ struct log_tdes
   LOG_LSA repl_update_lsa;	/* in-place update target lsa */
   LOG_LSA_QUEUE oos_insert_lsa_queue;	/* for oos replication log */
   bool oos_suppress_insert_lsa_queueing;	/* skip auto queueing of chunk LSAs during multi-chunk OOS logging */
+  // *INDENT-OFF*
+  /* HA apply only: the internal LOB chunk chains being rebuilt by this transaction, one per target
+   * attribute.  See OOS_REPL_LOB_CHAIN. */
+  std::vector<OOS_REPL_LOB_CHAIN> oos_repl_lob_chains;
+  // *INDENT-ON*
   void *first_save_entry;	/* first save entry for the transaction */
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */

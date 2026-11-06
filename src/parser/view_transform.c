@@ -15618,11 +15618,20 @@ mq_auto_param_merge_clauses (PARSER_CONTEXT * parser, PT_NODE * stmt)
   int i;
 
   /* auto-parameterize update assignments */
+  if (pt_fold_internal_lob_direct_source_assignments (parser, stmt->info.merge.update.assignment) != NO_ERROR)
+    {
+      return;
+    }
   qo_auto_parameterize (parser, stmt->info.merge.update.assignment);
 
   /* auto-parameterize insert values clause */
   if (stmt->info.merge.insert.value_clauses)
     {
+      if (pt_fold_internal_lob_direct_source_values
+	  (parser, &stmt->info.merge.insert.value_clauses->info.node_list.list) != NO_ERROR)
+	{
+	  return;
+	}
       p = values_list = stmt->info.merge.insert.value_clauses->info.node_list.list;
       first = prev = NULL;
       for (i = 0; p != NULL; i++)

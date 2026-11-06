@@ -50,6 +50,7 @@
 #include "log_common_impl.h"
 #include "parse_tree.h"
 #include "load_common.hpp"
+#include "internal_lob_dml_protocol.hpp"
 #include "timezone_lib_common.h"
 
 #include "dynamic_array.h"
@@ -97,7 +98,8 @@ extern int locator_get_class (OID * class_oid, int class_chn, const OID * oid, L
 			      LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
 			      OID * class_oidp, int *nobjects, int *nfetched, OID * last_oidp,
-			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key);
+			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key,
+			      bool keep_oos_locators);
 extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_chn, int need_fetching,
 			       int prefetch, LC_COPYAREA ** fetch_copyarea, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
@@ -354,6 +356,7 @@ extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);
 extern int csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id);
 extern int csession_reset_cur_insert_id (void);
+extern int internal_lob_upload_release_from_server (INT64 token);
 extern int csession_create_prepared_statement (const char *name, const char *alias_print, char *stmt_info,
 					       int info_length);
 extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,
@@ -422,5 +425,40 @@ extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *b
 #if !defined(NDEBUG)
 extern int file_delete_target_file (const char *target_vfid_str);
 #endif
+
+/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
+extern int stream_from_init (int stream_kind, const char *config, int config_len);
+extern int stream_from_send_data (const char *data, int data_len);
+extern int stream_from_end (INT64 * count);
+extern int stream_from_abort (void);
+extern bool stream_from_is_open (void);
+extern bool stream_from_ends_unit_of_work (void);
+extern void stream_from_reset (void);
+extern bool stream_from_holds_download (void);
+extern bool stream_from_holds_handle (INT64 handle);
+extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
+				  INT64 * handle, char *buf, int *nread, int *reply_flags);
+extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
+extern int stream_from_release (INT64 handle);
+
+/* COPY FROM STDIN binding over the stream transport */
+
+/* internal LOB DML binding over the stream transport */
+extern int internal_lob_dml_make_slot_value (DB_VALUE * value, DB_TYPE type, int slot);
+extern int internal_lob_dml_from_init (const XASL_ID * xasl_id, int dbval_count, const DB_VALUE * dbvals,
+				       QUERY_FLAG query_flag, const CACHE_TIME * client_cache_time, int query_timeout,
+				       const internal_lob_dml_slot_config * slot_configs, int slot_count);
+extern int internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, int data_len);
+
+/* internal LOB read over the stream transport (STREAM_KIND_INTERNAL_LOB_READ) */
+extern int internal_lob_read_from_open (const char *locator, int locator_len, INT64 start_offset, int first_max,
+					int flags, INT64 * handle, char *buf, int *nread, int *reply_flags);
+
+/* who may use an internal LOB locator: one the server sent this client, or one whose table the user may read */
+extern void internal_lob_locator_note_issued (const char *locator, int size);
+extern void internal_lob_locator_note_issued_value (const DB_VALUE * value);
+extern void internal_lob_locator_forget_issued (void);
+extern int internal_lob_locator_check_access (const char *locator, int size);
+extern int internal_lob_locator_check_value (const DB_VALUE * value);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

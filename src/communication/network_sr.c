@@ -676,6 +676,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_OOS_STATS];
   req_p->processing_function = soos_stats;
 
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sinternal_lob_upload_release;
+
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
 
@@ -709,6 +713,38 @@ net_server_init (void)
 
   req_p = &net_Requests[NET_SERVER_LD_UPDATE_STATS];
   req_p->processing_function = sloaddb_update_stats;
+
+  /* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+  req_p = &net_Requests[NET_SERVER_STREAM_INIT];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_from_init;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_SEND_DATA];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_send_data;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_END];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_end;
+
+  /* the only one of the four without CHECK_DB_MODIFICATION: it writes nothing, and a server that
+   * turned read-only mid-stream would otherwise refuse the request that cleans the stream up */
+  req_p = &net_Requests[NET_SERVER_STREAM_ABORT];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_abort;
+
+  /* the download family reads, so a read-only server serves it */
+  req_p = &net_Requests[NET_SERVER_STREAM_READ_OPEN];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read_open;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_READ];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_RELEASE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_release;
 
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];

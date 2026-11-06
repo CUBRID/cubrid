@@ -1381,6 +1381,8 @@ error:
 int
 boot_shutdown_client (bool is_er_final)
 {
+  internal_lob_locator_forget_issued ();
+
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       /*
