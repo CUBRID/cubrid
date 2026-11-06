@@ -9886,11 +9886,6 @@ pt_make_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
 static void
 pt_uncover_func_index_scans (QO_PLAN * plan)
 {
-  QO_ENV *env;
-  QO_INDEX_ENTRY *index_entry;
-  QO_SEGMENT *seg;
-  int i, j;
-
   if (plan == NULL)
     {
       return;
@@ -9899,31 +9894,11 @@ pt_uncover_func_index_scans (QO_PLAN * plan)
   switch (plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      if (!plan->plan_un.scan.index_cover || pt_func_index_scan_cons (plan) == NULL)
+      if (qo_is_func_index_cover_routed (plan))
 	{
-	  break;
-	}
-      env = plan->info->env;
-      index_entry = plan->plan_un.scan.index->head;
-      for (i = 0; i < env->nsegs; i++)
-	{
-	  seg = QO_ENV_SEG (env, i);
-	  if (seg == NULL || QO_SEG_HEAD (seg) != plan->plan_un.scan.node || QO_SEG_FUNC_INDEX (seg)
-	      || QO_SEG_IS_OID_SEG (seg))
-	    {
-	      continue;
-	    }
-	  for (j = 0; j < index_entry->col_num && index_entry->seg_idxs[j] != QO_SEG_IDX (seg); j++)
-	    {
-	      ;
-	    }
-	  if (j == index_entry->col_num)
-	    {
-	      /* a loose scan is made only of a covering scan */
-	      plan->plan_un.scan.index_cover = false;
-	      plan->plan_un.scan.index_loose = false;
-	      break;
-	    }
+	  /* a loose scan is made only of a covering scan */
+	  plan->plan_un.scan.index_cover = false;
+	  plan->plan_un.scan.index_loose = false;
 	}
       break;
 
@@ -9955,6 +9930,7 @@ pt_uncover_func_index_scans (QO_PLAN * plan)
  *
  * Note: only scans whose value list the query reads directly are routed; this follows gen_outer () and gen_inner (),
  *   which put the other plans (merge and hash join inputs, sorts under a join, sort limit) into list files.
+ *   qo_plan_uncover_cost () charges the heap fetches at the same positions, so the two must change together.
  */
 static void
 pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan, bool nl_outer)
