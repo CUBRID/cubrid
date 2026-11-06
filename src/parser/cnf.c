@@ -120,11 +120,30 @@ pt_and_or_form (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *arg1, *temp;
   PT_OP_TYPE neg_op_type;
 
+  if (node->node_type != PT_EXPR)
+    {
+      return node;
+    }
+
   switch (node->info.expr.op)
     {
     case PT_NOT:
       /* unfold NOT expression */
       arg1 = node->info.expr.arg1;
+      if (arg1->node_type != PT_EXPR)
+	{
+	  if (arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_NULL)
+	    {
+	      /* NOT NULL is still NULL; free NOT node(node) */
+	      node->info.expr.arg1 = NULL;
+	      node->next = NULL;
+	      node->or_next = NULL;
+	      parser_free_tree (parser, node);
+	      node = arg1;
+	    }
+	  break;
+	}
+
       switch (arg1->info.expr.op)
 	{
 	case PT_NOT:
@@ -206,6 +225,22 @@ pt_negate_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *temp;
   PT_OP_TYPE neg_op_type;
+
+  if (node->node_type != PT_EXPR)
+    {
+      if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL)
+	{
+	  /* NOT NULL is still NULL */
+	  return node;
+	}
+
+      /* making 'NOT value' without reading the value as an expression */
+      temp = parser_new_node (parser, PT_EXPR);
+      temp->type_enum = PT_TYPE_LOGICAL;
+      temp->info.expr.op = PT_NOT;
+      temp->info.expr.arg1 = node;
+      return temp;
+    }
 
   neg_op_type = pt_negate_op (node->info.expr.op);
   if (neg_op_type == 0)
