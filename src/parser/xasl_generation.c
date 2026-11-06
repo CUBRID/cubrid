@@ -285,6 +285,7 @@ static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * st
 static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_NODE * from,
 						 PT_NODE * select_list);
 static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl);
+static bool pt_buildvalue_output_reads_scan (XASL_NODE * xasl);
 static REGU_VARIABLE *pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * tree, UNBOX unbox);
 
 static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE * attr);
@@ -20794,6 +20795,57 @@ exit_on_error:
 }
 
 /*
+ * pt_buildvalue_output_reads_scan () - does the output list of a BUILDVALUE read a column of its own scans?
+ *   return: true when an output value reads a slot of the block's value list or of a scan_ptr's
+ *   xasl(in): the BUILDVALUE, its plan generated
+ *
+ * A BUILDVALUE evaluates its output list once, after its scans (qexec_end_buildvalueblock_iterations ()): its
+ * aggregates' results, constants and the outer blocks' values.  A column of its own scans there reads what the row
+ * loop last fetched into the slot, the last row that passed the filters.  A select list cannot name such a column
+ * beside an aggregate ("not single valued"), but two rewrites put one there: INSERT ... SELECT ... ON DUPLICATE KEY
+ * UPDATE appends the columns its assignments read to the SELECT's list (pt_append_assignment_references ()), and a
+ * select list of aggregates whose correlated subquery reads a column of the source becomes a derived table that
+ * carries the column (mq_rewrite_aggregate_as_derived ()).  A SELECT of aggregates without GROUP BY carries them so.
+ * The page batch (qexec_batch_eligible ()) and the buildvalue gather of a parallel scan
+ * accumulate the aggregates without fetching any row into the slots, and a row by row parallel scan leaves them
+ * pointing into the workers' lists, which close with the scan: such a block is marked XASL_OUTPUT_READS_SCAN, and
+ * the page batch and the parallel scan checker (scan_check_parallel_scan_possible ()) leave it to the serial row loop,
+ * which copies the columns of each row it aggregates for the output list (qexec_keep_last_row ()).
+ */
+static bool
+pt_buildvalue_output_reads_scan (XASL_NODE * xasl)
+{
+  REGU_VARIABLE_LIST out;
+  bool reads = false;
+
+  for (out = xasl->outptr_list->valptrp; out != NULL && !reads; out = out->next)
+    {
+      // *INDENT-OFF*
+      out->value.map_regu ([&] (regu_variable_node & regu, bool & stop)
+	{
+	  if (regu.type != TYPE_CONSTANT)
+	    {
+	      return;
+	    }
+	  for (XASL_NODE * scan = xasl; scan != NULL && !reads; scan = scan->scan_ptr)
+	    {
+	      for (QPROC_DB_VALUE_LIST v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL;
+		   v = v->next)
+		{
+		  if (v->val == regu.value.dbvalptr)
+		    {
+		      reads = stop = true;
+		      break;
+		    }
+		}
+	    }
+	});
+      // *INDENT-ON*
+    }
+  return reads;
+}
+
+/*
  * pt_to_buildvalue_proc () - Make a buildvalue xasl proc
  *   return:
  *   parser(in):
@@ -20994,6 +21046,21 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   if (!xasl->outptr_list || !xasl->spec_list || !xasl->val_list || pt_has_error (parser))
     {
       goto exit_on_error;
+    }
+
+  if (pt_buildvalue_output_reads_scan (xasl))
+    {
+      AGGREGATE_TYPE *agg_p;
+
+      XASL_SET_FLAG (xasl, XASL_OUTPUT_READS_SCAN);
+      /* the row loop has to reach qexec_keep_last_row (), so no aggregate of this block is answered from the index or
+       * the statistics (qexec_evaluate_aggregates_optimize () ends the block without its rows).  Decided here, before
+       * the stream writes the aggregates' operand program image (xts_save_agg_prog_image ()), so that the image and
+       * the server cover the same aggregates. */
+      for (agg_p = buildvalue->agg_list; agg_p != NULL; agg_p = agg_p->next)
+	{
+	  agg_p->flag.agg_optimized = false;
+	}
     }
 
   /* set CONNECT BY xasl */
