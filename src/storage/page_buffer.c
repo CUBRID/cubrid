@@ -76,6 +76,9 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
+/* storage/sidecar.cpp */
+extern void sidecar_cursor_release (THREAD_ENTRY * thread_p);
+
 #include "memory_wrapper.hpp"
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
@@ -2226,17 +2229,18 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       thread_p->pgbuf_fix_req_cnt++;
     }
 
-#if !defined (NDEBUG)
   /* The Sidecar store cursor keeps a store page between the values a scan decodes.  Every site that can fix another
-   * permanent page while it is kept releases it first (sidecar_cursor_release ()); a missed site fails here.  Temporary
-   * pages may be fixed with it kept. */
-  if (thread_p != NULL && thread_p->sidecar_cursor_page != NULL && !pgbuf_is_temporary_volume (vpid->volid))
+   * permanent page while it is kept releases it first (sidecar_cursor_release ()); a missed site fails here in a debug
+   * build, and is released here in a release build (E26).  Temporary pages may be fixed with it kept. */
+  if (unlikely (thread_p != NULL && thread_p->sidecar_cursor_page != NULL) && !pgbuf_is_temporary_volume (vpid->volid))
     {
+#if !defined (NDEBUG)
       er_log_debug (ARG_FILE_LINE, "Sidecar: page %d|%d fixed at %s:%d (%s) while the store cursor keeps a page",
 		    vpid->volid, vpid->pageid, caller_file, caller_line, caller_func);
       assert (false);
-    }
 #endif /* !NDEBUG */
+      sidecar_cursor_release (thread_p);
+    }
 
   if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
