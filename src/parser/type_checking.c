@@ -8184,15 +8184,13 @@ pt_cast_derived_columns_to_bound_types (PARSER_CONTEXT * parser, PT_NODE * query
 	  return;
 	}
 
+      /* the columns follow the select list by position, hidden items included: name resolution makes them before the
+       * hidden ORDER BY items are appended, so those fall past the last column, while the sorted derived table of
+       * mq_rewrite_order_dependent_query () has a column for each hidden item it keeps, ahead of the ones it adds */
       attr = as_attr_list;
       prev_col = NULL;
       for (col = query->info.query.q.select.list; col != NULL && attr != NULL; prev_col = col, col = col->next)
 	{
-	  if (col->flag.is_hidden_column)
-	    {
-	      continue;
-	    }
-
 	  /* NULL, NA and MAYBE fit any column; objects and collections keep their own domains */
 	  if (col->type_enum != attr->type_enum && col->type_enum != PT_TYPE_NULL && col->type_enum != PT_TYPE_NA
 	      && col->type_enum != PT_TYPE_MAYBE && col->type_enum != PT_TYPE_NONE && attr->type_enum != PT_TYPE_NULL
