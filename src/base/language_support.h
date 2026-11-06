@@ -298,6 +298,8 @@ extern "C"
   extern void lang_final (void);
   extern bool lang_is_all_initialized (void);
   extern int lang_locales_count (bool check_codeset);
+  extern int lang_uca_weight_key (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size,
+				  const bool ignore_trailing_space, unsigned char **key_out, int *key_size_out);
   extern const char *lang_get_msg_Loc_name (void);
   extern const char *lang_get_Lang_name (void);
   extern INTL_LANG lang_id (void);
