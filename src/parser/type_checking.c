@@ -10879,6 +10879,11 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto error;
 		    }
 		  prev->info.expr.arg2 = nextcase;
+		  if (prev == node)
+		    {
+		      /* the domain of node is computed from arg2 below; use the cast one */
+		      arg2 = nextcase;
+		    }
 		  nextcase = NULL;
 		}
 	    }
