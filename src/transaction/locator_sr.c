@@ -8350,6 +8350,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
+	  /* OOS replication records describe an inserted post-image. A delete only needs its primary key;
+	   * partition moves have already consumed the OOS insert LSAs while inserting the destination row. */
 	  if (is_insert && heap_recdes_contains_oos (recdes))
 	    {
 	      // insert oos replication log

@@ -47,6 +47,7 @@ add_test(NAME test_oos_sql_storage COMMAND test_oos_sql_storage)
 add_test(NAME test_oos_sql_show COMMAND test_oos_sql_show)
 add_test(NAME test_oos_sql_deferred_write COMMAND test_oos_sql_deferred_write)
 add_test(NAME test_oos_sql_visible_version COMMAND test_oos_sql_visible_version)
+add_test(NAME test_oos_sql_ownership COMMAND test_oos_sql_ownership)
 add_test(NAME test_oos_sql_workspace_bytes COMMAND test_oos_sql_workspace_bytes)
 
 set_tests_properties(
@@ -58,6 +59,7 @@ set_tests_properties(
   test_oos_sql_show
   test_oos_sql_deferred_write
   test_oos_sql_visible_version
+  test_oos_sql_ownership
   test_oos_sql_workspace_bytes
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
