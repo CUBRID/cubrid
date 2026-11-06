@@ -30,6 +30,9 @@
 #include <limits.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <mutex>
+#include <unordered_set>
 
 #include "porting.h"
 #include "network.h"
@@ -7385,6 +7388,15 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   CACHE_TIME local_srv_cache_time;
   int should_conn_reset, end_query_result, tran_state;
 
+  /* a locator among the host variables must be one this client was given, or name a table the user may read */
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      if (internal_lob_locator_check_value (&dbvals[i]) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -7658,6 +7670,15 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   char *reply;
   char *page_ptr;
   int page_size, dummy_plan_size;
+
+  /* a locator among the host variables must be one this client was given, or name a table the user may read */
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      if (internal_lob_locator_check_value (&dbval_ptr[i]) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -12396,6 +12417,15 @@ internal_lob_dml_from_init (const XASL_ID * xasl_id, int dbval_count, const DB_V
 
   for (int i = 0; i < dbval_count; i++)
     {
+      error = internal_lob_locator_check_value (&dbvals[i]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  for (int i = 0; i < dbval_count; i++)
+    {
       packed_dbvals_size += OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) & dbvals[i]);
       if (packed_dbvals_size > INT_MAX)
 	{
@@ -12509,8 +12539,176 @@ internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, i
 #endif /* CS_MODE */
 }
 
-/* The client half of STREAM_KIND_INTERNAL_LOB_READ. A driver may open it; authorize checks only that the config
- * names a locator -- the server takes the class lock, and a privilege check is not made here. */
+/*
+ * Locators the server sent this client, in query results or fetched objects. A locator names only the base table,
+ * so one this client was given (perhaps through a view) is usable as it is; any other must pass the SELECT
+ * privilege of its table, the check an OID read gets.
+ */
+#if defined (CS_MODE)
+#define INTERNAL_LOB_ISSUED_MAX (1024 * 1024)	/* a bound, not a cache: a dropped locator only gets checked */
+
+// *INDENT-OFF*
+static std::mutex internal_lob_Issued_mutex;
+static std::unordered_set<std::uint64_t> internal_lob_Issued;
+// *INDENT-ON*
+
+static std::uint64_t
+internal_lob_issued_key (const INTERNAL_LOB_MARKER_LOCATOR_FIELDS * fields)
+{
+  return ((std::uint64_t) (std::uint16_t) fields->volid << 48) | ((std::uint64_t) (std::uint32_t) fields->pageid << 16)
+    | (std::uint64_t) (std::uint16_t) fields->slotid;
+}
+#endif /* CS_MODE */
+
+/*
+ * internal_lob_locator_note_issued () - Remember a locator the server sent this client.
+ */
+void
+internal_lob_locator_note_issued (const char *locator, int size)
+{
+#if defined (CS_MODE)
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  int consumed = 0;
+
+  if (locator == NULL || !internal_lob_marker_parse_locator_fields (locator, size, &fields, &consumed))
+    {
+      return;
+    }
+
+  std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
+  if (internal_lob_Issued.size () >= INTERNAL_LOB_ISSUED_MAX)
+    {
+      internal_lob_Issued.clear ();
+    }
+  internal_lob_Issued.insert (internal_lob_issued_key (&fields));
+#endif /* CS_MODE */
+}
+
+/*
+ * internal_lob_locator_forget_issued () - Forget them when the client session ends; the next client is someone else.
+ */
+void
+internal_lob_locator_forget_issued (void)
+{
+#if defined (CS_MODE)
+  std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
+  internal_lob_Issued.clear ();
+#endif /* CS_MODE */
+}
+
+/*
+ * internal_lob_locator_check_access () - May the current user read the value this locator names?
+ *   return: NO_ERROR, or ER_AU_SELECT_FAILURE (or the error that stopped the check)
+ */
+int
+internal_lob_locator_check_access (const char *locator, int size)
+{
+#if defined (CS_MODE)
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  int consumed = 0;
+  OID class_oid;
+  MOP class_mop;
+  SM_CLASS *class_ = NULL;
+  int is_class;
+  int au_save;
+  int error;
+
+  if (locator == NULL || !internal_lob_marker_parse_locator_fields (locator, size, &fields, &consumed))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_SELECT_FAILURE, 0);
+      return ER_AU_SELECT_FAILURE;
+    }
+
+  {
+    std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
+    if (internal_lob_Issued.find (internal_lob_issued_key (&fields)) != internal_lob_Issued.end ())
+      {
+	return NO_ERROR;
+      }
+  }
+
+  /* not given to this client: its table must be readable, and must be a table (the locator text is the client's) */
+  if (fields.class_pageid < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_SELECT_FAILURE, 0);
+      return ER_AU_SELECT_FAILURE;
+    }
+  class_oid.volid = (short) fields.class_volid;
+  class_oid.pageid = fields.class_pageid;
+  class_oid.slotid = (short) fields.class_slotid;
+  class_mop = ws_mop (&class_oid, NULL);
+  is_class = (class_mop != NULL) ? locator_is_class (class_mop, DB_FETCH_READ) : 0;
+  if (is_class <= 0)
+    {
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_SELECT_FAILURE, 0);
+      return ER_AU_SELECT_FAILURE;
+    }
+
+  /* the user's own privilege even where authorization is off (a template applies values with it off) */
+  AU_SAVE_AND_ENABLE (au_save);
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
+  AU_RESTORE (au_save);
+  return error;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* CS_MODE */
+}
+
+/* The locator a value names: a column value (LOCATOR marker) or a top-level conversion result (STREAM marker). */
+static bool
+internal_lob_value_locator (const DB_VALUE * value, const char **locator, int *size)
+{
+  int marker = db_value_get_internal_lob_marker (value);
+
+  if ((marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR && marker != DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+      || !db_get_internal_lob_marker_text (value, marker, NULL, locator, size))
+    {
+      return false;
+    }
+  if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      return internal_lob_marker_parse_scalar_stream (*locator, *size, NULL, NULL, locator, size);
+    }
+  return true;
+}
+
+/*
+ * internal_lob_locator_note_issued_value () - internal_lob_locator_note_issued () for a value read from the server.
+ */
+void
+internal_lob_locator_note_issued_value (const DB_VALUE * value)
+{
+  const char *locator;
+  int size;
+
+  if (internal_lob_value_locator (value, &locator, &size))
+    {
+      internal_lob_locator_note_issued (locator, size);
+    }
+}
+
+/*
+ * internal_lob_locator_check_value () - internal_lob_locator_check_access () for a value the client sends.
+ */
+int
+internal_lob_locator_check_value (const DB_VALUE * value)
+{
+  const char *locator;
+  int size;
+
+  if (!internal_lob_value_locator (value, &locator, &size))
+    {
+      return NO_ERROR;
+    }
+  return internal_lob_locator_check_access (locator, size);
+}
+
+/* The client half of STREAM_KIND_INTERNAL_LOB_READ. A driver may open it; the server takes the class lock, and the
+ * reader must have been given the locator or be allowed to read its table. */
 static int
 internal_lob_read_authorize (const char *config, int config_len)
 {
@@ -12525,7 +12723,7 @@ internal_lob_read_authorize (const char *config, int config_len)
       return stream_session_set_error ("invalid internal LOB read configuration");
     }
 
-  return NO_ERROR;
+  return internal_lob_locator_check_access (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator_len);
 }
 
 // *INDENT-OFF*

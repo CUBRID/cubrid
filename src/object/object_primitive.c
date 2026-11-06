@@ -56,6 +56,7 @@
 #include "virtual_object.h"
 #include "transform_cl.h"
 #include "dbi.h"
+#include "network_interface_cl.h"
 #endif /* !defined (SERVER_MODE) */
 
 #include "dbtype.h"
@@ -10763,6 +10764,10 @@ mr_internal_lob_read_marked_char (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * do
       value->need_clear = (new_ != copy_buf) ? true : false;
       value->data.ch.medium.length = payload_size;
       db_value_mark_internal_lob (value, marker);
+#if defined (CS_MODE)
+      /* the server sent this client the locator: it may use it later without a privilege check */
+      internal_lob_locator_note_issued_value (value);
+#endif /* CS_MODE */
     }
   if (rc != NO_ERROR)
     {
@@ -10952,6 +10957,10 @@ mr_internal_lob_read_marked_varbit (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * 
 	}
       value->need_clear = (new_ != copy_buf) ? true : false;
       db_value_mark_internal_lob (value, marker);
+#if defined (CS_MODE)
+      /* the server sent this client the locator: it may use it later without a privilege check */
+      internal_lob_locator_note_issued_value (value);
+#endif /* CS_MODE */
     }
   if (rc != NO_ERROR)
     {
@@ -16301,6 +16310,15 @@ mr_setmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       return NO_ERROR;
     }
 
+#if defined (CS_MODE)
+  /* a locator kept in an instance is written back as a reference: the rule a host variable gets */
+  error = internal_lob_locator_check_value (value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+#endif /* CS_MODE */
+
   src_length = db_get_string_size (value);
   if (src_length < 0)
     {
@@ -16508,6 +16526,12 @@ mr_data_readmem_clob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
       /* a record from the server holds a CLOB as the locator it built, never as content */
       MR_LOB_MEM_MARKER (new_) = internal_lob_marker_parse_locator (cur, len, NULL)
 	? DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR : DB_VALUE_INTERNAL_LOB_MARKER_NONE;
+#if defined (CS_MODE)
+      if (MR_LOB_MEM_MARKER (new_) == DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR)
+	{
+	  internal_lob_locator_note_issued (cur, len);
+	}
+#endif /* CS_MODE */
 
       /* obey a size larger than what was consumed */
       pad = size - (int) (buf->ptr - start);
@@ -17278,6 +17302,14 @@ mr_setmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
        * since we really only care about the byte size of the value for varbit.
        * Whether or not the value "fits" should have been checked by now.
        */
+#if defined (CS_MODE)
+      /* a locator kept in an instance is written back as a reference: the rule a host variable gets */
+      error = internal_lob_locator_check_value (value);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+#endif /* CS_MODE */
       src_precision = db_value_precision (value);
       src_length = db_get_string_size (value);	/* size in bytes */
       src_length_bits = db_get_string_length (value);	/* size in bits */
@@ -17506,6 +17538,12 @@ mr_data_readmem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	      /* same as mr_data_readmem_clob (): the server sends a BLOB as its locator */
 	      MR_LOB_MEM_MARKER (new_) = internal_lob_marker_parse_locator (cur, BITS_TO_BYTES (bit_len), NULL)
 		? DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR : DB_VALUE_INTERNAL_LOB_MARKER_NONE;
+#if defined (CS_MODE)
+	      if (MR_LOB_MEM_MARKER (new_) == DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR)
+		{
+		  internal_lob_locator_note_issued (cur, BITS_TO_BYTES (bit_len));
+		}
+#endif /* CS_MODE */
 	    }
 
 	  /*
