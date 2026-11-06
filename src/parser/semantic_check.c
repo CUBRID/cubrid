@@ -11572,6 +11572,13 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 
+	  if ((node->info.method_call.method_type == PT_SP_PROCEDURE
+	       || node->info.method_call.method_type == PT_SP_FUNCTION)
+	      && jsp_check_out_args_of_call (parser, node) != NO_ERROR)
+	    {
+	      break;
+	    }
+
 	  /* Expressions in method calls from a CALL statement need to be typed explicitly since they are not wrapped
 	   * in a query and are not explicitly type-checked via pt_check_method().  This is due to a bad decision which
 	   * allowed users to refrain from fully typing methods before the advent of methods in queries. */

@@ -132,7 +132,6 @@ static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, 
 static char *jsp_check_stored_procedure_name (const char *str);
 static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
-static int jsp_check_out_arg (PT_NODE *node, PT_NODE *arg, int arg_mode, int arg_index);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 
 static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
@@ -330,41 +329,111 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
 }
 
 /*
- * jsp_check_out_arg - check the argument for an OUT or IN OUT parameter of a CALL statement
+ * jsp_check_out_args_of_call - check the arguments for the OUT and IN OUT parameters of a CALL statement
  *   return: error code
- *   node(in): a PT_METHOD_CALL node
- *   arg(in): the argument node at the position of the parameter
- *   arg_mode(in): the mode of the parameter
- *   arg_index(in): the position of the parameter, from 0
+ *   parser(in): parser context
+ *   node(in): a PT_METHOD_CALL node of a CALL statement that calls a stored procedure or function
  *
- * Note: An argument for an OUT or IN OUT parameter must be a host variable, that is, a ? or a csql :name.
+ * Note: An argument for an OUT or IN OUT parameter must be a bind variable, that is, a ? or a csql :name.
  *       A constant, an expression, a session variable or a correlation name of a trigger has no
  *       place to take the value. A ? is accepted on every path, even where the caller does not
  *       read the value back, as Oracle accepts any bind variable there.
+ *       This runs in the semantic check because hostvar_late_binding turns a ? into a value before
+ *       the statement runs. A statement kept prepared, as by JDBC, or a trigger action already compiled
+ *       in the session is not checked again when the procedure is redefined afterwards.
  */
 
-static int
-jsp_check_out_arg (PT_NODE *node, PT_NODE *arg, int arg_mode, int arg_index)
+int
+jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
 {
-  /* A missing argument is reported as a count error before this. */
-  if (arg_mode == SP_MODE_IN || arg == NULL)
+  assert (node != NULL && node->node_type == PT_METHOD_CALL);
+
+  PT_NODE *method_name_node = node->info.method_call.method_name;
+  const char *name;
+  if (PT_NAME_RESOLVED (method_name_node))
     {
+      int custom_print_saved = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_QUOTES;
+      parser->custom_print &= ~PT_PRINT_QUOTES;
+      name = parser_print_tree (parser, method_name_node);
+      parser->custom_print = custom_print_saved;
+    }
+  else
+    {
+      name = PT_NAME_ORIGINAL (method_name_node);
+    }
+
+  int save;
+  AU_SAVE_AND_DISABLE (save);
+
+  MOP mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  if (mop_p == NULL)
+    {
+      /* A missing procedure is reported when the statement runs. */
+      AU_RESTORE (save);
+      er_clear ();
       return NO_ERROR;
     }
 
-  if (arg->node_type == PT_HOST_VAR)
+  /* If the catalog cannot be read, the check is skipped and the statement fails when it runs. */
+  int error = NO_ERROR;
+  bool unreadable = false;
+  DB_VALUE args_val;
+  db_make_null (&args_val);
+  if (db_get (mop_p, SP_ATTR_ARGS, &args_val) != NO_ERROR)
     {
-      return NO_ERROR;
+      unreadable = true;
+    }
+  else if (!DB_IS_NULL (&args_val))
+    {
+      DB_SET *param_set = db_get_set (&args_val);
+      int num_params = set_size (param_set);
+
+      /* Too many arguments are reported as a count error when the statement runs. */
+      PT_NODE *arg = node->info.method_call.arg_list;
+      if (pt_length_of_list (arg) > num_params)
+	{
+	  arg = NULL;
+	}
+
+      for (int i = 0; i < num_params && arg != NULL; i++, arg = arg->next)
+	{
+	  DB_VALUE param_val, mode_val;
+	  if (set_get_element (param_set, i, &param_val) != NO_ERROR)
+	    {
+	      unreadable = true;
+	      break;
+	    }
+
+	  MOP param_mop = db_get_object (&param_val);
+	  bool read_ok = (param_mop != NULL && db_get (param_mop, SP_ARG_ATTR_MODE, &mode_val) == NO_ERROR);
+	  db_value_clear (&param_val);
+	  if (!read_ok)
+	    {
+	      unreadable = true;
+	      break;
+	    }
+
+	  int mode = db_get_int (&mode_val);
+	  if (mode == SP_MODE_IN || PT_IS_HOSTVAR (arg) || PT_IS_PARAMETER (arg))
+	    {
+	      continue;
+	    }
+
+	  PT_ERRORmf3 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARG_NOT_BIND_VARIABLE, i + 1,
+		       name, (mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
+	  error = ER_PT_SEMANTIC;
+	  break;
+	}
+    }
+  db_value_clear (&args_val);
+  if (unreadable)
+    {
+      er_clear ();
     }
 
-  if (arg->node_type == PT_NAME && arg->info.name.meta_class == PT_PARAMETER)
-    {
-      return NO_ERROR;
-    }
-
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_OUT_ARG_NOT_BIND_VARIABLE, 3, arg_index + 1,
-	  node->info.method_call.method_name->info.name.original, (arg_mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
-  return ER_SP_OUT_ARG_NOT_BIND_VARIABLE;
+  AU_RESTORE (save);
+  return error;
 }
 
 /*
@@ -2304,7 +2373,6 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
       }
 
     sp_entry entry (NUM_SP_ARG_ATTR);
-    PT_NODE *arg = node->info.method_call.arg_list;
 
     for (int i = 0; i < num_params; i++)
       {
@@ -2371,17 +2439,6 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 		error = er_errid ();
 		goto exit_on_error;
 	      }
-	  }
-
-	error = jsp_check_out_arg (node, arg, arg_mode, i);
-	if (error != NO_ERROR)
-	  {
-	    goto exit_on_error;
-	  }
-
-	if (arg != NULL)
-	  {
-	    arg = arg->next;
 	  }
 
 	sig.arg.arg_mode[i] = arg_mode;
