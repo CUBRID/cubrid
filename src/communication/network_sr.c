@@ -765,6 +765,13 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
   req_p->processing_function = scdc_auth_response;
 
+  /* a client proves its password with these two before logging in or switching users */
+  req_p = &net_Requests[NET_SERVER_AU_CHALLENGE];
+  req_p->processing_function = sau_challenge;
+
+  req_p = &net_Requests[NET_SERVER_AU_RESPONSE];
+  req_p->processing_function = sau_response;
+
   /* flashback : DBA-only, checked first thing in each handler with
    * log_extract_check_authorization (), the function CDC uses too */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];

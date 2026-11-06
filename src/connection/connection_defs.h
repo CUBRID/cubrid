@@ -385,6 +385,14 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
  * response is a SHA-256 digest in hex. */
 #define CSS_CDC_AUTH_NONCE_SIZE         33
 #define CSS_CDC_AUTH_RESPONSE_SIZE      65
+/* fixed size of the reply to a login password challenge: error, scheme,
+ * nonce, issue time and tag, plus alignment slack; client and server must agree */
+/* salt of a salted password, as hex (ENCRYPT_SALT_SIZE_HEX), plus NUL */
+#define CSS_AU_SALT_SIZE                (64 + 1)
+/* an account name as stored, upper-cased (INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER is 2), plus NUL */
+#define CSS_AU_NAME_SIZE                (DB_MAX_USER_LENGTH * 2 + 1)
+#define CSS_AU_CHALLENGE_REPLY_SIZE     (4 * 4 + 8 + CSS_CDC_AUTH_NONCE_SIZE + CSS_CDC_AUTH_RESPONSE_SIZE + 3 * 8 \
+                                         + CSS_AU_SALT_SIZE + CSS_AU_NAME_SIZE + 4 * 4)
 
 #define NET_HEADER_FLAG_METHOD_MODE         0x4000
 #define NET_HEADER_FLAG_INVALIDATE_SNAPSHOT 0x8000
@@ -467,6 +475,9 @@ struct css_conn_entry
    * challenge-response of its own and the outcome is kept here. */
   bool cdc_auth_done;		/* a DBA answered a challenge on this connection */
   volatile int cdc_auth_busy;	/* an account lookup for the handshake is running */
+  /* the account whose password this connection proved; used once */
+  char auth_user[DB_MAX_USER_LENGTH + 1];
+  bool auth_verified;
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */
