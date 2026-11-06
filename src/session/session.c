@@ -1234,11 +1234,16 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
 	  return NO_ERROR;
 	}
 
+      /* the variable of the broker must not take one of the variables the user may define */
+      if (intl_identifier_casecmp (current->name, SESSION_CAS_RESTORE_VARIABLE) != 0)
+	{
+	  count++;
+	}
+
       current = current->next;
-      count++;
     }
 
-  if (count >= MAX_SESSION_VARIABLES_COUNT)
+  if (count >= MAX_SESSION_VARIABLES_COUNT && intl_identifier_casecmp (name_str, SESSION_CAS_RESTORE_VARIABLE) != 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_TOO_MANY_VARIABLES, 0);
       return ER_FAILED;
@@ -3233,6 +3238,10 @@ session_state_decrease_ref_count (THREAD_ENTRY * thread_p, SESSION_STATE * state
       assert (state_p->ref_count >= 0);
       ATOMIC_TAS_32 (&state_p->ref_count, 0);
     }
+
+  /* a connection leaves the session, also when it is cut off (CAS killed or crashed) without ending or keeping the
+   * session; session_state_timeout runs from here, not from when the connection attached */
+  state_p->active_time = time (NULL);
 
   return NO_ERROR;
 }

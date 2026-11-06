@@ -198,6 +198,11 @@ static void cas_cleanup_session (void);
 static void cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info);
 static void cas_make_session_for_driver (char *out);
 static void cas_set_session_id (T_BROKER_VERSION protocol, char *session);
+static bool cas_check_session_renewed (SESSION_ID session_id);
+
+/* the session the driver asked for (cas_set_session_id ()); DB_EMPTY_SESSION if none */
+static SESSION_ID cas_requested_session_id = DB_EMPTY_SESSION;
+static char cas_requested_session_key[SERVER_SESSION_KEY_SIZE];
 
 #if defined(WINDOWS)
 int WINAPI
@@ -310,6 +315,8 @@ cas_set_session_id (T_BROKER_VERSION protocol, char *session)
     {
       id = *(SESSION_ID *) (session + SERVER_SESSION_KEY_SIZE);
       id = ntohl (id);
+      cas_requested_session_id = id;
+      memcpy (cas_requested_session_key, session, SERVER_SESSION_KEY_SIZE);
       db_set_server_session_key (session);
       db_set_session_secret (session + SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID));
       db_set_session_id (id);
@@ -323,6 +330,7 @@ cas_set_session_id (T_BROKER_VERSION protocol, char *session)
       char secret[SESSION_SECRET_SIZE] = { 0 };
 
       cas_log_write_and_end (0, false, "session id (old protocol) for connection 0");
+      cas_requested_session_id = DB_EMPTY_SESSION;
       db_set_server_session_key (key);
       db_set_session_secret (secret);
       db_set_session_id (DB_EMPTY_SESSION);
@@ -439,7 +447,48 @@ cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_i
   cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s" " session id %u", as_info->database_name,
 			 as_info->database_host, db_user, url, session_id);
 
-  ux_set_default_setting ();
+  ux_restore_session_state (cas_check_session_renewed (session_id));
+}
+
+/*
+ * cas_check_session_renewed () - log it when the client did not get the session it asked for
+ *
+ * return : true if the client reconnected to its session
+ * session_id (in) : the session the client got
+ */
+static bool
+cas_check_session_renewed (SESSION_ID session_id)
+{
+  const char *reason;
+
+  if (cas_requested_session_id == DB_EMPTY_SESSION)
+    {
+      return false;
+    }
+
+  if (cas_requested_session_id == session_id
+      && memcmp (cas_requested_session_key, db_get_server_session_key (), SERVER_SESSION_KEY_SIZE) == 0)
+    {
+      return true;
+    }
+
+  /* the key changes when the server restarts; the driver may also have connected to another server (HA) */
+  if (memcmp (cas_requested_session_key, db_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0)
+    {
+      reason = "server restarted or changed";
+    }
+  else
+    {
+      reason = "expired or rejected";
+    }
+
+  cas_log_write_and_end (0, false, "session renewed: %u -> %u (%s)", cas_requested_session_id, session_id, reason);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_RENEWED, 3, cas_requested_session_id, session_id,
+	  reason);
+  er_clear ();
+
+  return false;
 }
 
 typedef struct
@@ -1170,10 +1219,20 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   as_info->fn_status = FN_STATUS_BUSY;
 
+  if (cas_shard_flag == OFF && func_code != CAS_FC_SET_DB_PARAMETER)
+    {
+      ux_end_resend_window ();
+    }
+
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
   set_hang_check_time ();
+
+  if (cas_shard_flag == OFF && ux_is_database_connected ())
+    {
+      ux_record_session_restore ();
+    }
 
   /* set back original utype for enum, date-time, JSON */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))

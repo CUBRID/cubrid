@@ -3209,6 +3209,11 @@ db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose)
   return chn;
 }
 
+/* generation of the parameters: incremented each time db_set_system_parameters () succeeds, also when it sets a
+ * parameter back to its default, and never decremented. Not the number of changed parameters; see
+ * db_get_system_parameters_generation (). */
+static unsigned int db_Sysprm_generation = 0;
+
 /*
  * db_set_system_parameters () - set new values to system parameters
  *
@@ -3299,11 +3304,30 @@ db_set_system_parameters (const char *data)
 
   /* convert SYSPRM_ERR to error code */
   error = sysprm_set_error (rc, data);
+  if (error == NO_ERROR)
+    {
+      db_Sysprm_generation++;
+    }
 
 cleanup:
   /* clean up */
   sysprm_free_assign_values (&assignments);
   return error;
+}
+
+/*
+ * db_get_system_parameters_generation () - the generation of the parameters set through db_set_system_parameters ()
+ *
+ * return : the generation; it wraps around, so compare it for equality only
+ *
+ * Note: lets a broker tell cheaply whether the parameters may have changed while it served a request: a different
+ *	 generation means it has to compare the values again. Setting a parameter back to its default also moves the
+ *	 generation, so that the comparison finds the parameter no longer changed.
+ */
+unsigned int
+db_get_system_parameters_generation (void)
+{
+  return db_Sysprm_generation;
 }
 
 /*

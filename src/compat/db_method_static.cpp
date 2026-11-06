@@ -37,6 +37,8 @@
 #include "object_print.h" /* help_print_info */
 #include "jsp_cl.h" /* jsp_find_stored_procedure */
 #include "transform.h" /* DB_MAX_SERIAL_NAME_LENGTH */
+#include "boot.h" /* BOOT_BROKER_CLIENT_TYPE */
+#include "system_parameter.h" /* prm_get_bool_value */
 
 // ================================================================
 // authenticate methods
@@ -686,6 +688,15 @@ au_login_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *user, DB_VALUE *p
 {
   int error = NO_ERROR;
   char *user_name;
+
+  /* checked before the abort below, so that a refused call leaves the transaction of the client alone */
+  if (BOOT_BROKER_CLIENT_TYPE (db_get_client_type ()) && !prm_get_bool_value (PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER))
+    {
+      error = ER_AU_LOGIN_METHOD_NOT_ALLOWED_ON_BROKER;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      db_make_error (returnval, error);
+      return;
+    }
 
   /* Abort any in-flight transaction before switching user (same effect as ROLLBACK before login). */
   if (BOOT_IS_CLIENT_RESTARTED () && db_commit_is_needed())

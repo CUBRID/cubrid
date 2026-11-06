@@ -762,6 +762,7 @@ extern "C"
   extern int db_decode_object (const char *string, DB_OBJECT ** object);
 
   extern int db_set_system_parameters (const char *data);
+  extern unsigned int db_get_system_parameters_generation (void);
   extern int db_set_system_parameters_for_ha_repl (const char *data);
   extern int db_reset_system_parameters_from_assignments (const char *data);
   extern int db_get_system_parameters (char *data, int len);
