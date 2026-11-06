@@ -1712,6 +1712,12 @@ namespace parallel_scan
       }
     m_input_handler = placement_new ((input_handler_t *) m_input_handler, &m_interrupt, &m_err_messages);
 
+    /* before init_on_main: its snapshot build must take m_px_lock_mutex like the workers' */
+    if (m_thread_p->m_px_orig_thread_entry == NULL)
+      {
+	m_thread_p->m_px_orig_thread_entry = m_thread_p;
+      }
+
     {
       int init_err;
       if constexpr (ST == SCAN_TYPE::LIST)
@@ -1781,10 +1787,6 @@ namespace parallel_scan
 	return ER_FAILED;
       }
     m_on_trace = m_thread_p->on_trace;
-    if (m_thread_p->m_px_orig_thread_entry == NULL)
-      {
-	m_thread_p->m_px_orig_thread_entry = m_thread_p;
-      }
     if (m_on_trace)
       {
 	m_trace_handler.m_trace_storage_for_sibling_xasl.set_main_xasl_tree (m_xasl);
