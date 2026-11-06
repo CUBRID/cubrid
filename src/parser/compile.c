@@ -498,7 +498,22 @@ pt_class_pre_fetch (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* specs referring a CTE will have an entity name, just like a normal class;
    * in order to not try and prefetch (and possibly fail) such classes, we must first resolve such specs */
-  (void) parser_walk_tree (parser, statement, NULL, NULL, pt_resolve_cte_specs, NULL);
+  if (parser->host_var_assigned_later == statement)
+    {
+      /* CBRD-27583: the same walk assigns the translated statement's positions */
+      parser->host_var_assigned_later = NULL;
+      (void) pt_assign_host_var_positions (parser, statement, pt_resolve_cte_specs, NULL);
+      if (pt_has_error (parser))
+	{
+	  /* the translation's failure, as it was at its end */
+	  parser->flag.host_var_assign_failed = 1;
+	  return NULL;
+	}
+    }
+  else
+    {
+      (void) parser_walk_tree (parser, statement, NULL, NULL, pt_resolve_cte_specs, NULL);
+    }
 
   lcks.num_classes = 0;
 
