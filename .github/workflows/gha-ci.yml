@@ -847,7 +847,7 @@ jobs:
             elif [ "$mode" = debug ]; then
               echo "::error::$why"; exit 1
             else
-              # A red release leg must not stop the debug suites. Its own suites get no shard and no verdict.
+              # A red release leg must not stop the debug suites. Its own suites get no shard.
               echo "::warning::$why"
             fi
           done
@@ -1744,7 +1744,7 @@ jobs:
                   echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because their shard died whole or never started, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
                 elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
                   nobuild=''
-                  [ -n "$brid" ] || nobuild=" This run has no usable $(attr "$suite" build_mode) build, so no case ran."
+                  [ -n "$brid" ] || nobuild=" This run also has no usable $(attr "$suite" build_mode) build."
                   echo "> **Nothing to re-run: no failure, no named unrun case, and no case changed since tc commit \`${rerun_since:0:10}\`.$nobuild**"
                 elif [ "${rerun_gone:-0}" -eq 0 ]; then
                   echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
@@ -1873,7 +1873,7 @@ jobs:
             # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
             hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $suite"}}"; }
             if [ -z "$brid" ]; then
-              echo "::error::$suite: plan found no usable $(attr "$suite" build_mode) build, so no case ran. See the plan job's warning"
+              echo "::error::$suite: plan found no usable $(attr "$suite" build_mode) build. See the plan job's warning"
               rc=1
             else
               [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
@@ -1911,7 +1911,7 @@ jobs:
 
             if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
             # Not judged, not failed: the status is error, so the nightly batch takes the commit again.
-            # A hold is red that no re-run clears, so with one the suite stays failed.
+            # A hold is red that no re-run clears, so with one the verdict is fail.
             [ -n "$brid" ] || [ -n "$held" ] || v=nobuild
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             echo "$v" > "$d/collect/verdict"
