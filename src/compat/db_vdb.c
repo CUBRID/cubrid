@@ -1552,13 +1552,13 @@ db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
     {
       TP_DOMAIN *expected = parser->host_var_expected_domains[i];
       if (pt_host_var_is_context_typed (expected) && !pt_host_var_is_leave_typed (expected)
-	  && !pt_host_var_is_char_typed (expected))
+	  && !pt_host_var_is_char_typed (parser, i))
 	{
 	  continue;
 	}
       if (parser->host_var_compiled_domains[i] == NULL)
 	{
-	  parser->host_var_compiled_domains[i] = pt_host_var_is_char_typed (expected)
+	  parser->host_var_compiled_domains[i] = pt_host_var_is_char_typed (parser, i)
 	    && !pt_host_var_is_leave_typed (expected)
 	    ? pt_host_var_sent_domain (parser, i, expected) : pt_host_var_value_domain (parser, i);
 	}
@@ -1577,7 +1577,7 @@ db_has_untyped_host_var (const PARSER_CONTEXT * parser)
     {
       if ((!pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
 	   || pt_host_var_is_leave_typed (parser->host_var_expected_domains[i])
-	   || pt_host_var_is_char_typed (parser->host_var_expected_domains[i]))
+	   || pt_host_var_is_char_typed (parser, i))
 	  && (parser->host_var_compiled_domains == NULL || parser->host_var_compiled_domains[i] == NULL))
 	{
 	  return true;
@@ -1784,15 +1784,17 @@ db_compile_statement_local (DB_SESSION * session)
       pt_take_host_var_bind_domains (parser, session->bind_domains_from);
     }
 
-  /* CBRD-27583: mark the positions where a NULL cannot change the answer (any NULL value there shares one plan),
-   * before type checking types the binds */
-  if (n_markers > 0)
-    {
-      pt_classify_host_var_positions (parser, statement);
-    }
+  /* CBRD-27583: name resolution marks the positions where a NULL cannot change the answer (any NULL value there
+   * shares one plan), before type checking types the binds */
+  parser->host_var_classified = n_markers > 0 ? statement : NULL;
 
   /* do semantic check for the statement */
   statement_result = pt_compile (parser, statement);
+  /* every planned statement resolves its names */
+  assert (parser->host_var_classified == NULL || pt_has_error (parser) || !db_is_plan_statement (statement)
+	  || parser->host_var_count <= 0 || parser->host_var_derived_from != NULL
+	  || parser->flag.is_parsing_static_sql);
+  parser->host_var_classified = NULL;
 
   if (statement_result == NULL || pt_has_error (parser))
     {
@@ -1849,9 +1851,11 @@ db_compile_statement_local (DB_SESSION * session)
   else
     {
       /* translate views or virtual classes into base classes */
+      parser->host_var_assigned_later = statement;
       statement_result = mq_translate (parser, statement);
       if (!statement_result || pt_has_error (parser))
 	{
+	  parser->host_var_assigned_later = NULL;
 	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	  return er_errid ();
 	}
@@ -1859,9 +1863,19 @@ db_compile_statement_local (DB_SESSION * session)
 
       /* prefetch and lock translated real classes to avoid deadlock */
       (void) pt_class_pre_fetch (parser, statement);
+      if (parser->host_var_assigned_later != NULL && !pt_has_error (parser))
+	{
+	  /* CBRD-27583: a statement the prefetch does not walk */
+	  (void) pt_assign_host_var_positions (parser, statement, NULL, NULL);
+	  parser->flag.host_var_assign_failed = pt_has_error (parser);
+	}
+      parser->host_var_assigned_later = NULL;
       if (pt_has_error (parser))
 	{
-	  pt_report_to_ersys_with_statement (parser, PT_SYNTAX, statement);
+	  /* the positions' failure is the translation's (PT_SEMANTIC), as at its end */
+	  pt_report_to_ersys_with_statement (parser, parser->flag.host_var_assign_failed ? PT_SEMANTIC : PT_SYNTAX,
+					     statement);
+	  parser->flag.host_var_assign_failed = 0;
 	  return er_errid ();
 	}
 
@@ -4559,7 +4573,8 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	}
       /* a VARCHAR value bound to a CHAR(n) host variable keeps its original value once the cast
        * accepts it, as pt_set_host_variables does; re-initializing the cast value's domain here left a NULL. */
-      keep_varchar = TP_IS_CHAR_TYPE (hv_dom->type->id) && hv_dom->type->id != typ && typ == DB_TYPE_VARCHAR;
+      keep_varchar = TP_IS_CHAR_TYPE (hv_dom->type->id) && hv_dom->type->id != typ && typ == DB_TYPE_VARCHAR
+	&& !pt_host_var_is_assignment (session->parser, i);
       db_make_null (&char_cast);
       if (tp_value_cast_preserve_domain (hv, keep_varchar ? &char_cast : hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
