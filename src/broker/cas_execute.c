@@ -2216,6 +2216,10 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       net_buf_cp_int (net_buf, strlen (err_msg) + 1, NULL);
       net_buf_cp_str (net_buf, err_msg, strlen (err_msg) + 1);
 
+      /* the next statement must not run inside a stream this one opened; only after the error is copied, as
+       * giving up may set one of its own */
+      ux_stream_give_up_after_error ();
+
       if (session)
 	{
 	  db_close_session (session);
@@ -2244,6 +2248,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
 execute_batch_error:
   NET_BUF_ERR_SET (net_buf);
+  ux_stream_give_up_after_error ();
   errors_in_transaction++;
 
   logddl_set_msg ("execute_batch %d%s", query_index + 1, auto_commit_mode == TRUE ? " auto_rollback" : "");
@@ -2589,6 +2594,10 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       net_buf_cp_int (net_buf, strlen (err_msg) + 1, NULL);
       net_buf_cp_str (net_buf, err_msg, strlen (err_msg) + 1);
 
+      /* the next row must not run inside a stream this one opened; only after the error is copied, as giving up
+       * may set one of its own */
+      ux_stream_give_up_after_error ();
+
       if (is_prepared == FALSE && session != NULL)
 	{
 	  db_close_session (session);
@@ -2683,6 +2692,7 @@ return_success:
 
 execute_array_error:
   NET_BUF_ERR_SET (net_buf);
+  ux_stream_give_up_after_error ();
   errors_in_transaction++;
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
