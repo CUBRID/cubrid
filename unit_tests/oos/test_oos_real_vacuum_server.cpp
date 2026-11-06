@@ -1410,11 +1410,12 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
       printf ("[CBRD-27933] %s: page latch timeout %d ms; vacuum workers %d; delete log block %lld; "
 	      "page vacuum status %d; vacuum queued on heap header %d|%d: %d\n", label, latch_timeout_msecs,
 	      prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), (long long) delete_block, obs.page_status_while_held,
-	      VPID_AS_ARGS (&header_vpid), (int) obs.vacuum_queued);
+	      header_vpid.volid, header_vpid.pageid, (int) obs.vacuum_queued);
       if (other != nullptr)
 	{
 	  printf ("[CBRD-27933] %s: unrelated row %d|%d|%d of heap %d|%d|%d deleted in log block %lld\n", label,
-		  OID_AS_ARGS (&other->oid), HFID_AS_ARGS (&other->hfid), (long long) other->delete_block);
+		  other->oid.volid, other->oid.pageid, other->oid.slotid, other->hfid.hpgid, other->hfid.vfid.volid,
+		  other->hfid.vfid.fileid, (long long) other->delete_block);
 	}
       fflush (stdout);
       const auto hold_start = std::chrono::steady_clock::now ();
