@@ -25,6 +25,7 @@
 #include <mutex>
 
 #include "log_impl.h"		/* LOG_FIND_CURRENT_TDES, log_tdes::is_under_sysop */
+#include "pl_session.hpp"	/* cubpl::get_session */
 #include "system.h"		/* UINT32, UINT64 */
 #include "system_parameter.h"	/* sysprm_get_range, PRM_ID_PARALLELISM */
 #include "thread_manager.hpp"	/* cubthread::system_core_count */
@@ -35,26 +36,43 @@
 namespace parallel_query
 {
   /*
-   * is_under_system_operation () - is the calling transaction inside a system operation?
-   *   return: true if a system operation is open on the current thread's transaction
+   * is_under_system_operation () - would a worker of this thread block on the transaction's system operation?
+   *   return: true if no worker may be started
    *
-   * A system operation (log_sysop_start) holds the transaction's rmutex_topop, which is re-entrant only for the
-   * owning thread. Every parallel worker runs on the leader's transaction index, so a worker that needs a system
-   * operation of its own (e.g. creating a temporary file when the temp file cache is empty: file_create ->
-   * disk_reserve_sectors -> log_sysop_start) blocks on that mutex forever while the leader waits for the worker.
-   * MERGE opens its statement-level system operation before executing its sub-SELECTs (CBRD-27492); the same risk
-   * exists for any other context that would spawn workers while a system operation is open. The check therefore
-   * gates compute_parallel_degree (sort, hash join, heap/list scan, subquery, statistics scans) rather than one
-   * executor site; the parallel index scan, whose degree comes from the optimizer, calls it directly.
+   * Workers share the leader's transaction index. A worker that opens a system operation (e.g. file_create ->
+   * disk_reserve_sectors -> log_sysop_start for a temp file) blocks on rmutex_topop while the leader waits for it
+   * (CBRD-27492). The result depends on who owns the open system operation:
+   *   - none is open: false
+   *   - this thread owns it (or the owner is empty because it ended between the two reads): true. The leader waits
+   *     for its workers while holding it, e.g. the statement-level system operation of MERGE.
+   *   - a thread of the PL session owns it: true. lock_topop () lets those threads re-enter rmutex_topop.
+   *   - any other thread owns it, e.g. a sibling worker in disk_reserve_sectors: false. It ends without waiting for
+   *     this thread (CBRD-27938).
    *
-   * topops.last is read without synchronization: the caller is either the leader itself (exact) or a worker of a
-   * leader that keeps its system operation open until all workers finish (stable while the worker runs).
+   * rmutex_topop.owner is read without synchronization; a value other than this thread's only means "not this thread".
+   * TODO: with CBRD-27562 a worker no longer opens a system operation for temp files; check whether the owner
+   * comparison can then be dropped.
    */
   bool is_under_system_operation () noexcept
   {
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES ();
 
-    return tdes != NULL && tdes->is_under_sysop ();
+    if (tdes == NULL || !tdes->is_under_sysop ())
+      {
+	return false;
+      }
+
+    const thread_id_t owner = tdes->rmutex_topop.owner;
+
+    if (owner == thread_id_t () /* not locked, or ended between the two reads */
+	|| owner == thread_get_thread_entry_info ()->get_id ())
+      {
+	return true;
+      }
+
+    cubpl::session *session = cubpl::get_session ();
+
+    return session != NULL && session->is_thread_involved (owner);
   }
 
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages, int hint_degree) noexcept
