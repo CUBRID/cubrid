@@ -53,6 +53,7 @@ struct qo_unnest_info
   PT_NODE *outer_spec;		/* the one enclosing spec the ON names; the lifted spec joins right after its chain */
   bool is_anti;			/* ANTI rather than SEMI */
   bool is_in_form;		/* an IN form, whose on_cond starts with a synthesized equality */
+  bool is_derived;		/* the subquery FROM holds several tables: the inner is a derived table over them */
 };
 
 struct spec_id_info
@@ -140,6 +141,7 @@ void qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, P
 void qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep);
 PT_NODE *qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 int qo_is_reduceable_const (PT_NODE * expr);
+bool qo_is_exact_compare_const (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * val);
 PT_NODE *qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 PT_NODE *qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 bool qo_check_condition_null (PARSER_CONTEXT * parser, PT_NODE * path_spec, PT_NODE * query_where);
