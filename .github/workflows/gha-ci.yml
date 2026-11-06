@@ -123,9 +123,7 @@ env:
         awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
           END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
       elif ls "$1"/test-results/*.xml > /dev/null 2>&1; then
-        # Reads CTP's layout as collect's FAILED_AWK does: one element per line, <![CDATA[ on its tag's
-        # line, ]]></ after the last text. CDATA is text, never markup: a log can hold a literal
-        # <testcase or <error, and CTP writes a ]]> in it as ]]]]><![CDATA[>.
+        # Same input layout and CDATA rule as collect's FAILED_AWK.
         awk 'FNR == 1 {in_cdata = 0}
           in_cdata { if (index($0, "]]></")) in_cdata = 0; next }
           { c = index($0, "<![CDATA["); tags = c ? substr($0, 1, c - 1) : $0
@@ -143,8 +141,7 @@ env:
       mkdir -p "$2/upper" "$2/work" "$3"
       mount -t overlay overlay -o "lowerdir=$1,upperdir=$2/upper,workdir=$2/work" "$3"
     }
-  # A new suite also needs a row in the test image's resolve_category and result_file. The image's
-  # cases verb gets tc_subdir, not the suite: it has no case rule for sql_by_cci.
+  # A new suite also needs a row in the test image's resolve_category.
   SUITES: |-
     {
       "shell": {
@@ -186,7 +183,7 @@ jobs:
     permissions:
       contents: read # a batch child reads its engine commit's date
       pull-requests: read # the head SHA of the commented PR
-      actions: read # a re-run reads the source run's jobs to learn which suites failed
+      actions: read # a re-run reads the source run's jobs
     # Same author set as comment_trigger.yml; the other events already need write access.
     if: >-
       ${{ github.event_name != 'issue_comment'
@@ -284,9 +281,7 @@ jobs:
               fi
               if [[ "$req" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
                 rerun="${BASH_REMATCH[1]}"
-                # No run directory here: the source run's job names carry the suites. Every suite, as
-                # a passed one may have changed cases; one that had nothing to re-run, or no usable build,
-                # left only a status job, and only in a run that posts statuses (a PR or nightly run).
+                # Passed suites too: their cases may have changed. A suite with no shard has at most a status job.
                 runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/${rerun}/jobs?per_page=100" \
                   --jq '.jobs[] | select(.name | test("^(shard|status) ")) | .name') || {
                   echo "::error::could not read the jobs of run ${rerun}"; exit 1; }
@@ -669,7 +664,6 @@ jobs:
             printf '%s\n' "$meta" > "$tmp/build.meta"
             touch "$tmp/$BUILD_SENTINEL"
 
-            # rename(2) is the one atomic arbiter on shared storage; check-then-act lost this race.
             if mv -T "$tmp" "$dir" 2>/dev/null; then
               :
             elif same_recipe "$dir" && [ "$INPUT_FORCE" != 'true' ]; then
@@ -761,8 +755,7 @@ jobs:
   plan:
     name: plan
     needs: [gate, build]
-    # Not success(): a red release leg must not block the debug suites. Below, plan checks the leg
-    # each selected suite needs.
+    # Not success(): a red release leg must not block the debug suites.
     if: ${{ !cancelled() && needs.gate.outputs.test == 'true' }}
     permissions: {}
     runs-on: cubrid-arc-light
@@ -847,7 +840,6 @@ jobs:
             elif [ "$mode" = debug ]; then
               echo "::error::$why"; exit 1
             else
-              # A red release leg must not stop the debug suites. Its own suites get no shard.
               echo "::warning::$why"
             fi
           done
@@ -1030,6 +1022,7 @@ jobs:
 
             # After the previous step's checkout: its reset --hard brings $excl back.
             [ -z "$excl" ] || rm -rf "${root:?}/$excl"
+            # tc_subdir, not the suite: the image has no case rule for sql_by_cci.
             /entrypoint.sh cases "$subdir" "$root" | sed "s#^$WORKDIR/##" | sort > /tmp/cases.list
             case "$unit" in
               case) cp /tmp/cases.list /tmp/all.list ;;
@@ -1056,7 +1049,7 @@ jobs:
               srcdir="$rd/$suite"
               prev_sha=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec awk -F= '/^sha=/ {print $2}' {} + 2>/dev/null | sort -u) || prev_sha=''
-              # A suite with nothing to re-run, or with no usable build, had no shard, so only plan recorded the commit.
+              # A suite with no shard has no build.read: only plan recorded the commit.
               [ -n "$prev_sha" ] || prev_sha=$(awk -F= '/^sha=/ {print $2}' "$srcdir/plan/split.meta" 2>/dev/null) || prev_sha=''
               if [ "$(printf '%s' "$prev_sha" | grep -c . || :)" -ne 1 ] || [ "$prev_sha" != "$SHA" ]; then
                 echo "::error::run $RERUN_FROM tested '$(echo $prev_sha)', not this head $SHA. A re-run only re-runs the same commit"
@@ -1065,16 +1058,16 @@ jobs:
               prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
               [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
-              # A run from before recipes were recorded has no recipe to match: no build matches it.
+              # A run from before recipes were recorded matches no build, and a buildless re-run of it must pass that on, not ''.
               [ -n "$prev_recipe" ] || grep -q "^build_recipe=" "$srcdir/plan/split.meta" 2>/dev/null || prev_recipe='no recorded recipe'
-              # No build to keep the same: this run has no usable build and starts no shard, or the source run
-              # recorded '' because none of the results a re-run of it relies on came from a build (see build_recipe below).
+              # Nothing to keep the same when this run has no usable build, or when the source recorded
+              # build_recipe='', which means none of the results a re-run of it relies on came from a build.
               if [ -n "$recipe" ] && ! grep -qx "build_recipe=''" "$srcdir/plan/split.meta" 2>/dev/null \
                  && [ "$prev_recipe" != "$recipe" ]; then
                 echo "::error::the recipe recorded for run $RERUN_FROM is '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
-              # A shard that died whole, or never started, left no result file for failed.list: carry its share.
+              # A shard with no result file left nothing in failed.list: carry its share.
               : > /tmp/unrun.list
               for sf in "$srcdir"/plan/shards/*.list; do
                 [ -f "$sf" ] || continue
@@ -1217,7 +1210,7 @@ jobs:
               [ -f "/tmp/shards/$n.list" ] || {
                 echo "::error::no units assigned to shard $i of $suite (parallelism $par, units $nunit)"; exit 1; }
               cp "/tmp/shards/$n.list" "$out/plan/shards/$n.list"
-              # No usable build: the shard would only stop at its build check. The share list stays, so a re-run takes it.
+              # No usable build: a shard would only stop at its build check. The share list stays for a re-run.
               [ -z "$recipe" ] || printf '{"suite":"%s","i":"%02d","runner":"%s"}\n' "$suite" "$i" "$runner" >> /tmp/matrix.jsonl
             done
             cp /tmp/plan.tsv "$out/plan/plan.tsv"
@@ -1239,7 +1232,7 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
-              # A re-run with no usable build keeps the recipe found above for its source: a re-run of it relies on the same results.
+              # A re-run with no usable build keeps its source's recipe: a re-run of it relies on the same results.
               echo "build_recipe='${recipe:-${prev_recipe:-}}'"
             } > "$out/plan/split.meta"
 
@@ -1289,8 +1282,7 @@ jobs:
     name: "shard ${{ matrix.suite }} ${{ matrix.i }}"
     needs: plan
     # success() is false for a failed job anywhere behind this one, such as the release leg.
-    # An empty matrix means no selected suite has a shard to run: nothing to re-run, or no usable build.
-    # GitHub fails a job that expands to none.
+    # GitHub fails a job whose matrix is empty.
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.matrix != '[]' }}
     permissions: {}
     runs-on: ${{ matrix.runner }}
@@ -1412,7 +1404,6 @@ jobs:
           git config --global fetch.unpackLimit 1
           # Commits, not branches: tc/pr-<N> and probe/* are gone once their work ends.
           BRANCH_TESTCASES="$tc_sha" BRANCH_TESTTOOLS="$WANT_CTP_SHA" /entrypoint.sh checkout "$SUITE"
-          # /rw in MB means the fetch kept its pack; in GB, it copied the node copy's up.
           echo "refresh WAN: $(( ($(wan) - rx0) / 1048576 )) MB · /rw $(df -h /rw | awk 'END {print $3}') used"
           printf 'tc_sha=%s\ntc_branch=%s\n' "$(git -C "$TC_DIR" rev-parse HEAD)" "$tc_branch" > "$SHARD_DIR/tc.read"
 
@@ -1615,7 +1606,8 @@ jobs:
         run: |
           eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
-          # Reads CTP's layout: one element per line, <![CDATA[ on its tag's line, ]]></ after the last text. CDATA is text, never markup: a log can hold a literal <testcase or <error.
+          # Reads CTP's layout: one element per line, <![CDATA[ on its tag's line, ]]></ after the last text.
+          # CDATA is text, never markup: a log can hold a literal <testcase or <error, and CTP writes ]]> as ]]]]><![CDATA[>.
           FAILED_AWK='
             function finish_body(s) { sub(body_end ".*$", "", s); print s > body; close(body); body = "" }
             BEGIN { cdata_start = "<![CDATA["; cdata_end = "]]></"; body_end = cdata_end "(failure|error)>"; while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
@@ -1867,7 +1859,6 @@ jobs:
               echo
             } >> "$GITHUB_STEP_SUMMARY"
 
-            # A shard dying whole is invisible to guard 2.
             srb=0; held=''
             fault() { echo "::error::$suite: $1"; srb=1; }
             # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
@@ -1901,8 +1892,7 @@ jobs:
               from="$CI_ROOT/runs/$RERUN_FROM/$suite/collect"
               if [ -f "$from/held" ]; then
                 [ ! -s "$from/held" ] || hold "run $RERUN_FROM was red for what no re-run clears: $(cat "$from/held"). Use /run $suite" "$(cat "$from/held")"
-              # A run from before held was recorded: the cause of its red is unknown, so with nothing
-              # re-run it stands.
+              # A run from before held was recorded: the cause of its red is unknown, so it stands.
               elif [ "$total" -eq 0 ]; then
                 prev=$(cat "$from/verdict" 2>/dev/null || echo none)
                 [ "$prev" = pass ] || hold "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $suite"
@@ -1910,8 +1900,7 @@ jobs:
             fi
 
             if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
-            # Not judged, not failed: the status is error, so the nightly batch takes the commit again.
-            # A hold is red that no re-run clears, so with a hold the verdict is fail.
+            # Without a build the suite is not judged, unless a hold already made it red.
             [ -n "$brid" ] || [ -n "$held" ] || v=nobuild
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             echo "$v" > "$d/collect/verdict"
