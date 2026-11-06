@@ -3415,6 +3415,7 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *state_p = NULL;
+  bool continue_checking = true;
 
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL || state_p->stream_session_p == NULL)
@@ -3422,6 +3423,9 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
       return;
     }
 
+  /* a cancel the CAS left for the stream is answered by this rollback; the abort runs while the transaction is
+   * still active, so it must not see it */
+  (void) logtb_is_interrupted (thread_p, true, &continue_checking);
   state_p->stream_session_p->abort (thread_p);
 
   delete state_p->stream_session_p;

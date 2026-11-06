@@ -1063,8 +1063,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 #if !defined(WINDOWS)
   /* Before start to execute a new request, try to reset a previous interrupt request we might have. The interrupt
-   * request arrived too late to interrupt the previous request and still remains. */
-  db_set_interrupt (0);
+   * request arrived too late to interrupt the previous request and still remains. Not while an upload is open: the
+   * statement is still running, and the stream's next request carries the interrupt to the server, which ends it. */
+  if (!ux_stream_is_open ())
+    {
+      db_set_interrupt (0);
+    }
 #endif /* !WINDOWS */
 
   if (cas_shard_flag == ON)

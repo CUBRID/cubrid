@@ -13521,13 +13521,37 @@ stream_drop_session (THREAD_ENTRY *thread_p, stream_session *session, bool abort
 }
 
 /*
- * stream_receive () - Hand one chunk to the open session; a chunk it cannot consume ends the stream
+ * stream_check_interrupt () - ER_INTERRUPTED if the client cancelled
+ *
+ * While an upload is open the CAS does not clear a cancel at the start of a request, so one that arrived between
+ * two requests is still set here.
+ */
+static int
+stream_check_interrupt (THREAD_ENTRY *thread_p)
+{
+  bool continue_checking = true;
+
+  if (!logtb_is_interrupted (thread_p, true, &continue_checking))
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+  return ER_INTERRUPTED;
+}
+
+/*
+ * stream_receive () - Hand one chunk to the open session; a chunk it cannot consume, or a cancel, ends the stream
  */
 static int
 stream_receive (THREAD_ENTRY *thread_p, stream_session *session, const char *data, int data_len)
 {
-  int error_code = session->receive_chunk (thread_p, data, data_len);
+  int error_code = stream_check_interrupt (thread_p);
 
+  if (error_code == NO_ERROR)
+    {
+      error_code = session->receive_chunk (thread_p, data, data_len);
+    }
   if (error_code != NO_ERROR)
     {
       stream_drop_session (thread_p, session, true);
@@ -13552,7 +13576,12 @@ stream_finish (THREAD_ENTRY *thread_p, stream_session *session, int kind, INT64 
 
   *count = 0;
 
-  error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
+  /* an END that carries no chunk still ends a cancelled stream rather than finishing it */
+  error_code = stream_check_interrupt (thread_p);
+  if (error_code == NO_ERROR)
+    {
+      error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
+    }
   stream_drop_session (thread_p, session, error_code != NO_ERROR);
   if (error_code != NO_ERROR)
     {
@@ -13797,6 +13826,7 @@ void
 sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error_code = NO_ERROR;
+  bool continue_checking = true;
   stream_session *session = stream_open_session (thread_p, NULL);
 
   if (session == NULL)
@@ -13805,6 +13835,8 @@ sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     }
   else
     {
+      /* a cancel the CAS left for the stream is answered by this abort, which must not see it */
+      (void) logtb_is_interrupted (thread_p, true, &continue_checking);
       stream_drop_session (thread_p, session, true);
     }
 
