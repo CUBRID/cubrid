@@ -286,7 +286,7 @@ jobs:
                 rerun="${BASH_REMATCH[1]}"
                 # No run directory here: the source run's job names carry the suites. Every suite, as
                 # a passed one may have changed cases; one that had nothing to re-run, or no usable build,
-                # left only a status job.
+                # left only a status job, and only in a run that posts statuses (a PR or nightly run).
                 runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/${rerun}/jobs?per_page=100" \
                   --jq '.jobs[] | select(.name | test("^(shard|status) ")) | .name') || {
                   echo "::error::could not read the jobs of run ${rerun}"; exit 1; }
@@ -1215,7 +1215,7 @@ jobs:
               [ -f "/tmp/shards/$n.list" ] || {
                 echo "::error::no units assigned to shard $i of $suite (parallelism $par, units $nunit)"; exit 1; }
               cp "/tmp/shards/$n.list" "$out/plan/shards/$n.list"
-              # No usable build: the shard would only die mounting it. The share list stays, so a re-run takes it.
+              # No usable build: the shard would only stop at its build check. The share list stays, so a re-run takes it.
               [ -z "$recipe" ] || printf '{"suite":"%s","i":"%02d","runner":"%s"}\n' "$suite" "$i" "$runner" >> /tmp/matrix.jsonl
             done
             cp /tmp/plan.tsv "$out/plan/plan.tsv"
