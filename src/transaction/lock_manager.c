@@ -379,7 +379,7 @@ struct lk_tran_lock
   int inst_hold_count;		/* # of entries in inst_hold_list */
   int transient_scope;		/* statements now taking transient row locks, so nesting is visible */
   int transient_total;		/* counted requests outstanding, never below the entries' sum: the walk stops on it */
-  int escalated_count;		/* class entries with escalated_from set; only this transaction's thread touches them */
+  int escalated_count;		/* class entries with escalated_from set; only this transaction's thread writes them */
   bool reclaimed_only_transient;	/* the last reclaim of instance locks took only this statement's requests */
   int class_hold_count;		/* # of entries in class_hold_list */
 
@@ -6751,7 +6751,7 @@ lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p)
  * lock_transient_scope_end () - Leave such a statement, giving its locks back if it was the outermost
  *   return: void
  *   thread_p(in): thread entry
- *   release(in): give the counted requests back, rather than only forgetting the counts
+ *   release(in): give the counted requests back and lower the class locks escalations raised, not only forget both
  */
 void
 lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
