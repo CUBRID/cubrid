@@ -27,7 +27,6 @@
 #include <assert.h>
 #include <errno.h>
 #include <atomic>
-#include <thread>
 
 #include "serial.h"
 #include "storage_common.h"
@@ -200,7 +199,8 @@ static int serial_entry_next_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY 
 static bool serial_fast_in_block (SERIAL_CACHE_ENTRY * entry, DB_BIGINT drawn, int num_alloc);
 static int serial_fast_draw_locked (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc,
 				    DB_BIGINT * drawn, bool * row_moved);
-static int serial_fast_refill (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc, bool * row_moved);
+static int serial_fast_refill (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc, bool taken,
+			       bool * row_moved);
 static DB_BIGINT serial_fast_value (SERIAL_CACHE_ENTRY * entry, DB_BIGINT count);
 static DB_BIGINT serial_fast_last_issued (SERIAL_CACHE_ENTRY * entry, DB_BIGINT drawn);
 static void serial_fast_close (SERIAL_CACHE_ENTRY * entry);
@@ -229,6 +229,7 @@ static void serial_set_cache_entry (SERIAL_CACHE_ENTRY * entry, DB_VALUE * inc_v
 static void serial_fast_open (SERIAL_CACHE_ENTRY * entry);
 static bool serial_value_to_bigint (DB_VALUE * val, DB_BIGINT * out);
 static int serial_cache_claim_entry (THREAD_ENTRY * thread_p, const OID * oidp, SERIAL_CACHE_ENTRY ** claimed);
+static bool serial_entry_lock (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static void serial_cache_release_entry (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, bool drop);
 static void serial_clear_value (SERIAL_CACHE_ENTRY * entry);
 static int serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p);
@@ -495,12 +496,8 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 	  entry = serial_Cache_hashmap.find (thread_p, key);
 	  if (entry != NULL)
 	    {
+	      /* a retry finds the GONE entry unlinked already (serial_cache_release_entry ()) */
 	      ret = serial_entry_next_value (thread_p, entry, result_num, num_alloc, &retry);
-	      if (retry)
-		{
-		  /* the thread that marked it GONE unlinks it shortly */
-		  std::this_thread::yield ();
-		}
 	      continue;
 	    }
 
@@ -717,7 +714,7 @@ serial_entry_next_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB
 	}
     }
 
-  pthread_mutex_lock (&entry->mutex);
+  (void) serial_entry_lock (thread_p, entry);
   assert (entry->state.load (std::memory_order_relaxed) != SERIAL_ENTRY_INIT);
 
   error = serial_fast_draw_locked (thread_p, entry, num_alloc, &drawn, &row_moved);
@@ -754,6 +751,7 @@ serial_entry_next_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB
     {
       /* the write-back keeps clear of the caller's error, and writes only while the row holds the block end */
       er_stack_push ();
+      serial_fast_close (entry);
       serial_flush_entry_best_effort (thread_p, entry);
       er_stack_pop ();
     }
@@ -819,7 +817,7 @@ serial_fast_draw_locked (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, in
 	    }
 	}
 
-      error = serial_fast_refill (thread_p, entry, num_alloc, row_moved);
+      error = serial_fast_refill (thread_p, entry, num_alloc, taken, row_moved);
       if (error != NO_ERROR || *row_moved)
 	{
 	  return error;
@@ -835,30 +833,38 @@ serial_fast_draw_locked (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, in
  * serial_fast_refill () - reserve the next block of a FAST entry, or move it to SLOW when the block cannot be counted
  *   return: NO_ERROR, or ER_status
  *   entry(in/out) : FAST entry; the caller holds its mutex
+ *   taken(in)     : the draw's count is already in fast_drawn
  *   row_moved(out): set when the row no longer holds the entry's block end; nothing is reserved then
  */
 static int
-serial_fast_refill (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc, bool * row_moved)
+serial_fast_refill (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc, bool taken, bool * row_moved)
 {
   DB_BIGINT nth = (DB_BIGINT) CEIL_PTVDIV (num_alloc, entry->cached_num) * entry->cached_num;
-  DB_VALUE new_last, cmp_result;
-  DB_BIGINT last, reserved;
+  /* counts taken past the block, by this draw or by lock-free draws waiting on the mutex: one write covers them all */
+  DB_BIGINT short_of = entry->fast_drawn.load (std::memory_order_relaxed)
+    - entry->fast_reserved.load (std::memory_order_relaxed) + (taken ? 0 : num_alloc);
+  DB_VALUE new_last, from, cmp_result;
+  DB_BIGINT left, step, last, reserved;
   int error;
 
-  if (nth > INT_MAX)
+  if (short_of > nth)
     {
-      /* serial_reserve_block_end () takes an int; leave such a draw to the SLOW path */
-      serial_fast_close (entry);
-      return NO_ERROR;
+      nth = CEIL_PTVDIV (short_of, entry->cached_num) * entry->cached_num;
     }
 
-  db_make_null (&new_last);
-  error =
-    serial_reserve_block_end (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
-			      &entry->cyclic, (int) nth, &new_last);
-  if (error != NO_ERROR)
+  pr_clone_value (&entry->last_cached_val, &new_last);
+  for (left = nth; left > 0; left -= step)
     {
-      return error;
+      /* serial_reserve_block_end () takes an int */
+      step = MIN (left, INT_MAX);
+      pr_clone_value (&new_last, &from);
+      error =
+	serial_reserve_block_end (&entry->inc_val, &from, &entry->min_val, &entry->max_val, &entry->cyclic, (int) step,
+				  &new_last);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
   error = numeric_db_value_compare (&new_last, &entry->last_cached_val, &cmp_result);
   if (error != NO_ERROR)
@@ -910,7 +916,7 @@ serial_fast_last_issued (SERIAL_CACHE_ENTRY * entry, DB_BIGINT drawn)
 /*
  * serial_fast_close () - move a FAST entry to SLOW, leaving its last issued value in cur_val
  *   return: void
- *   entry(in/out): FAST entry; the caller holds its mutex
+ *   entry(in/out): the caller holds its mutex; an entry not FAST is left as it is
  *
  * Every draw ordered before the exchange is included in closed_at and every draw after it sees a negative count, so
  * closed_at bounds every value handed out.
@@ -918,8 +924,13 @@ serial_fast_last_issued (SERIAL_CACHE_ENTRY * entry, DB_BIGINT drawn)
 static void
 serial_fast_close (SERIAL_CACHE_ENTRY * entry)
 {
-  DB_BIGINT closed_at = entry->fast_drawn.exchange (SERIAL_FAST_CLOSED, std::memory_order_acq_rel);
+  DB_BIGINT closed_at;
 
+  if (entry->state.load (std::memory_order_relaxed) != SERIAL_ENTRY_FAST)
+    {
+      return;
+    }
+  closed_at = entry->fast_drawn.exchange (SERIAL_FAST_CLOSED, std::memory_order_acq_rel);
   serial_bigint_to_value (serial_fast_last_issued (entry, closed_at), &entry->cur_val);
   entry->state.store (SERIAL_ENTRY_SLOW, std::memory_order_release);
 }
@@ -1188,7 +1199,8 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
 /*
  * serial_flush_entry_best_effort () - write the entry's issued value back, swallowing a failure.
  *   return: void
- *   entry(in/out): the caller holds its mutex; a FAST entry is moved to SLOW so cur_val holds its issued value
+ *   entry(in/out): the caller holds its mutex and has closed it (serial_fast_close ()), so cur_val holds its issued
+ *                  value
  *
  * Every caller drops the entry either way, deliberately: they run because the serial's definition
  * changed, the object is gone, or the entry cannot reserve its next block, so a kept entry would serve
@@ -1200,10 +1212,7 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
 static void
 serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
 {
-  if (entry->state.load (std::memory_order_relaxed) == SERIAL_ENTRY_FAST)
-    {
-      serial_fast_close (entry);
-    }
+  assert (entry->state.load (std::memory_order_relaxed) == SERIAL_ENTRY_SLOW);
 
   if (serial_flush_cur_val_of_serial (thread_p, entry) != NO_ERROR)
     {
@@ -1851,6 +1860,7 @@ serial_flush_cache_pool (THREAD_ENTRY * thread_p)
       pthread_mutex_lock (&entry->mutex);
       if (entry->state.load (std::memory_order_relaxed) != SERIAL_ENTRY_GONE)
 	{
+	  serial_fast_close (entry);
 	  serial_flush_entry_best_effort (thread_p, entry);
 	}
       pthread_mutex_unlock (&entry->mutex);
@@ -2456,8 +2466,8 @@ serial_value_to_bigint (DB_VALUE * val, DB_BIGINT * out)
 /*
  * serial_cache_claim_entry () - link a placeholder for the serial, its mutex held, for the caller to fill
  *   return: NO_ERROR, or ER_status
- *   claimed(out): the pinned placeholder, released with serial_cache_release_entry (); NULL when an entry for the
- *                 serial is already linked
+ *   claimed(out): the placeholder, locked and not pinned (see serial_entry_lock ()), released with
+ *                 serial_cache_release_entry (); NULL when an entry for the serial is already linked
  */
 static int
 serial_cache_claim_entry (THREAD_ENTRY * thread_p, const OID * oidp, SERIAL_CACHE_ENTRY ** claimed)
@@ -2479,6 +2489,7 @@ serial_cache_claim_entry (THREAD_ENTRY * thread_p, const OID * oidp, SERIAL_CACH
   pthread_mutex_lock (&mine->mutex);
   if (serial_Cache_hashmap.insert_given (thread_p, key, entry))
     {
+      serial_Cache_hashmap.unlock (thread_p, entry);
       *claimed = mine;
       return NO_ERROR;
     }
@@ -2491,23 +2502,49 @@ serial_cache_claim_entry (THREAD_ENTRY * thread_p, const OID * oidp, SERIAL_CACH
 }
 
 /*
- * serial_cache_release_entry () - unlock and unpin an entry; with drop, mark it GONE and erase it
+ * serial_entry_lock () - lock an entry find () returned pinned, and unpin it unless it is GONE
+ *   return: true when the entry is GONE; it stays pinned, as a draw counted inside its block is still served from it
+ *
+ * Only a holder of the mutex marks an entry GONE and erases it, so a locked entry that is not GONE stays linked
+ * without the pin, and the holder's page I/O does not hold back the reclaiming of other entries.
+ */
+static bool
+serial_entry_lock (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
+{
+  SERIAL_CACHE_ENTRY *pinned = entry;
+
+  pthread_mutex_lock (&entry->mutex);
+  if (entry->state.load (std::memory_order_relaxed) == SERIAL_ENTRY_GONE)
+    {
+      return true;
+    }
+  serial_Cache_hashmap.unlock (thread_p, pinned);
+  return false;
+}
+
+/*
+ * serial_cache_release_entry () - unlock an entry locked by serial_entry_lock () or claimed, unpinning one found GONE;
+ *                                 with drop, mark it GONE and erase it
  */
 static void
 serial_cache_release_entry (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, bool drop)
 {
-  OID key = entry->oid;
+  bool pinned = !drop && entry->state.load (std::memory_order_relaxed) == SERIAL_ENTRY_GONE;
 
   if (drop)
     {
+      OID key = entry->oid;
+
       entry->state.store (SERIAL_ENTRY_GONE, std::memory_order_release);
+      /* Unlinked before the unlock, so a finder waiting on the mutex looks again and misses instead of spinning on
+       * the GONE entry. Its pin keeps the entry from being reclaimed until then; without one, a reclaim only hands
+       * the entry to a claimer, which locks this mutex before it links it. */
+      (void) serial_Cache_hashmap.erase (thread_p, key);
     }
   pthread_mutex_unlock (&entry->mutex);
-  /* erase () starts its own lock-free transaction, so unpin first; only the key is used after */
-  serial_Cache_hashmap.unlock (thread_p, entry);
-  if (drop)
+  if (pinned)
     {
-      (void) serial_Cache_hashmap.erase (thread_p, key);
+      serial_Cache_hashmap.unlock (thread_p, entry);
     }
 }
 
@@ -2584,6 +2621,9 @@ serial_cache_entry_init (void *entry)
   db_make_null (&ent->last_cached_val);
   ent->cached_num = 0;
   ent->state.store (SERIAL_ENTRY_INIT, std::memory_order_relaxed);
+  ent->fast_base = 0;
+  ent->fast_inc = 0;
+  ent->fast_reserved.store (0, std::memory_order_relaxed);
   ent->fast_drawn.store (SERIAL_FAST_CLOSED, std::memory_order_relaxed);
   return NO_ERROR;
 }
@@ -2646,16 +2686,15 @@ xserial_decache (THREAD_ENTRY * thread_p, OID * oidp)
 
       if (entry != NULL)
 	{
-	  bool drop;
+	  bool drop = !serial_entry_lock (thread_p, entry);
 
-	  pthread_mutex_lock (&entry->mutex);
 	  assert (entry->state.load (std::memory_order_relaxed) != SERIAL_ENTRY_INIT);
-	  drop = entry->state.load (std::memory_order_relaxed) != SERIAL_ENTRY_GONE;
 	  if (drop)
 	    {
 	      /* Hand the unissued tail back before losing the entry, so the next block resumes at the
 	       * last value actually issued instead of past the block end. Finders wait on the mutex meanwhile,
 	       * so none reloads the block from disk before the write. */
+	      serial_fast_close (entry);
 	      serial_flush_entry_best_effort (thread_p, entry);
 	    }
 	  serial_cache_release_entry (thread_p, entry, drop);
