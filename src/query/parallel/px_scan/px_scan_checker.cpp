@@ -49,6 +49,9 @@ namespace parallel_scan
   /* the checked part calls an SP not declared PARALLEL_ENABLE or a method: a px worker cannot
    * run it, since its callbacks to the client are never answered (CBRD-27596) */
   const possible_flags CANNOT_RUN_IN_WORKER = 0x1 << 3;
+  /* reads or writes session or serial state; unlike a scan-shape block it survives a subquery boundary */
+  const possible_flags HAS_SESSION_SIDE_EFFECT = 0x1 << 4;
+  const possible_flags SUBQUERY_BLOCKERS = CANNOT_RUN_IN_WORKER | HAS_SESSION_SIDE_EFFECT;
 
   static bool
   is_buildvalue_opt_supported_function (FUNC_CODE function)
@@ -93,6 +96,10 @@ namespace parallel_scan
   /* sibling_check results, one map per is_outptr_list. A nested subquery is reached through its regu
    * and through its parent's aptr / dptr link, so without the cache deep nesting costs 2^depth. */
   thread_local std::unordered_map<XASL_NODE *, possible_flags> xasl_sibling_check_cache[2];
+
+  /* the scalar subqueries the leader evaluates once before the scan of the block being decided opens; its workers
+   * only read their values (px_scan_task.cpp). A correlated one is in a dptr_list and never here. */
+  thread_local std::unordered_set<XASL_NODE *> leader_precomputed;
 
   static void set_flag (possible_flags &flags, possible_flags flag)
   {
@@ -151,6 +158,8 @@ namespace parallel_scan
   possible_flags check (XASL_NODE *arg);
   template <bool is_outptr_list>
   possible_flags sibling_check (XASL_NODE *sibling);
+  template <bool is_outptr_list>
+  possible_flags sibling_check_block (XASL_NODE *sibling);
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg);
 
@@ -242,6 +251,7 @@ namespace parallel_scan
     if (arg->xasl)
       {
 	temp = sibling_check<is_outptr_list> (arg->xasl);
+	result |= temp & HAS_SESSION_SIDE_EFFECT;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -302,7 +312,7 @@ namespace parallel_scan
 	break;
       case TYPE_REGU_VAR_LIST:
 	temp = check<is_outptr_list> (arg->value.regu_var_list);
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -386,6 +396,7 @@ namespace parallel_scan
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
+	set_flag (result, HAS_SESSION_SIDE_EFFECT);
       }
     return result;
   }
@@ -611,7 +622,7 @@ namespace parallel_scan
       }
 
     /* the key filter and key ranges are evaluated by the thread that runs this scan too, for an NL
-     * inner at every outer row. Only an SP or method there counts, so a plan without one stays. */
+     * inner at every outer row. Only an SP, a method or a session side effect there counts. */
     possible_flags temp = check<false> (arg->where_key) | check<false> (arg->where_range);
     if (arg->type == TARGET_CLASS && arg->indexptr != NULL)
       {
@@ -639,11 +650,27 @@ namespace parallel_scan
 	set_flag (result, CANNOT_RUN_IN_WORKER);
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
+    result |= temp & HAS_SESSION_SIDE_EFFECT;
     return result;
   }
 
   template <bool is_outptr_list>
   possible_flags sibling_check (XASL_NODE *sibling)
+  {
+    possible_flags result = sibling_check_block<is_outptr_list> (sibling);
+    if (leader_precomputed.count (sibling) != 0)
+      {
+	return result & ~HAS_SESSION_SIDE_EFFECT;
+      }
+    if (is_flag_set (result, HAS_SESSION_SIDE_EFFECT))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
+    return result;
+  }
+
+  template <bool is_outptr_list>
+  possible_flags sibling_check_block (XASL_NODE *sibling)
   {
     if (!sibling)
       {
@@ -671,7 +698,7 @@ namespace parallel_scan
     for (XASL_NODE *xaslp = sibling->aptr_list; xaslp; xaslp = xaslp->next)
       {
 	result |= check<is_outptr_list> (xaslp);
-	result |= sibling_check<false> (xaslp) & CANNOT_RUN_IN_WORKER;
+	result |= sibling_check<false> (xaslp) & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->bptr_list || sibling->fptr_list)
@@ -686,7 +713,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->connect_by_ptr)
@@ -701,7 +728,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if (sibling->if_pred)
@@ -711,7 +738,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & CANNOT_RUN_IN_WORKER;
+	result |= temp & SUBQUERY_BLOCKERS;
       }
 
     if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling)
@@ -727,7 +754,7 @@ namespace parallel_scan
 
     /* the thread that runs this block evaluates the rest of it as well: its select list, aggregates,
      * GROUP BY / analytic lists, later join tables, merged method scans, hierarchical query and nested
-     * blocks. Of these only an SP or method counts, so a subquery without one keeps its plan (CBRD-27596). */
+     * blocks. Of these only an SP, a method or a session side effect counts. */
     temp = sibling_check<false> (sibling->scan_ptr);
     for (ACCESS_SPEC_TYPE *specp = sibling->merge_spec; specp; specp = specp->next)
       {
@@ -804,7 +831,7 @@ namespace parallel_scan
       default:
 	break;
       }
-    result |= temp & CANNOT_RUN_IN_WORKER;
+    result |= temp & SUBQUERY_BLOCKERS;
 
     cache[sibling] = result;
     return result;
@@ -1233,6 +1260,18 @@ namespace parallel_scan
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }
 
+    leader_precomputed.clear ();
+    for (XASL_NODE *xptr = arg; xptr; xptr = xptr->scan_ptr)
+      {
+	for (XASL_NODE *subq = xptr->aptr_list; subq; subq = subq->next)
+	  {
+	    if (subq->precomp_owner_regu != NULL)
+	      {
+		leader_precomputed.insert (subq);
+	      }
+	  }
+      }
+
     result |= check<false> (arg);
 
     const bool block_index_spec =
@@ -1307,6 +1346,7 @@ namespace parallel_scan
 	  }
       }
 
+    leader_precomputed.clear ();
   }
 
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel)
