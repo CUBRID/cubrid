@@ -30829,7 +30829,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
 	{
 	  if (func_p->from_last)
 	    {
-	      target_idx = group_tuple_count - target_idx;
+	      target_idx = group_tuple_count - 1 - target_idx;
 	    }
 	}
       else
