@@ -236,6 +236,7 @@ static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
 
 static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							      int *continue_walk);
+static PT_NODE *pt_parameterize_deferred_names_before_typing (PARSER_CONTEXT * parser, PT_NODE * query);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -1355,11 +1356,15 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	    }
 	  spec->info.spec.derived_table = table;
 
-	  /* must bind any expr types in table. pt_bind_types requires it. */
-	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
-	  bind_arg->sc_info->donot_fold = true;	/* skip folding */
-	  table = pt_semantic_type (parser, table, bind_arg->sc_info);
-	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
+	  table = pt_parameterize_deferred_names_before_typing (parser, table);
+	  if (table != NULL)
+	    {
+	      /* must bind any expr types in table. pt_bind_types requires it. */
+	      save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
+	      bind_arg->sc_info->donot_fold = true;	/* skip folding */
+	      table = pt_semantic_type (parser, table, bind_arg->sc_info);
+	      bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
+	    }
 	  if (table != NULL)
 	    {
 	      spec->info.spec.derived_table = table;
@@ -3535,7 +3540,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  }
 	else
 	  {
-	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	    /* a name not found in a class sets ER_OBJ_INVALID_ATTRIBUTE, but a name in group by/having not found in
+	     * a derived table or a CTE sets no error (see pt_bind_name_or_path_in_scope ()) */
+	    if (parser->flag.is_parsing_static_sql == 1
+		&& (er_errid () == ER_OBJ_INVALID_ATTRIBUTE
+		    || (er_errid () == NO_ERROR && !pt_has_error (parser) && is_pt_name_in_group_having (node))))
 	      {
 		er_clear ();
 		pt_reset_error (parser);
@@ -9231,6 +9240,41 @@ pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE *
 }
 
 /*
+ * pt_parameterize_deferred_names_before_typing () - convert the deferred names of a derived table or a CTE of a
+ *						     static SQL before they are typed in name binding
+ *   return: the query, or NULL on error
+ *   parser(in):
+ *   query(in):
+ *
+ * Note: the names in group by/having which are not aliases are converted to host variables after the whole
+ *	 statement is bound (see pt_resolve_names ()), but a derived table and a CTE are typed while the statement is
+ *	 bound; a name typed there has no type and the expression around it is typed wrong (e.g. FIELD casts the other
+ *	 arguments to no type)
+ */
+static PT_NODE *
+pt_parameterize_deferred_names_before_typing (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  if (query == NULL || parser->flag.is_parsing_static_sql != 1)
+    {
+      return query;
+    }
+
+  query = parser_walk_tree (parser, query, pt_resolve_group_having_alias, NULL, NULL, NULL);
+  if (query == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  query = parser_walk_tree (parser, query, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+  if (query == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  return query;
+}
+
+/*
  * pt_mark_pt_name () -
  *   return:
  *   parser(in):
@@ -11461,6 +11505,11 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
    */
   non_recursive_cte = parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg,
 					pt_bind_names_post, bind_arg);
+  non_recursive_cte = pt_parameterize_deferred_names_before_typing (parser, non_recursive_cte);
+  if (non_recursive_cte == NULL)
+    {
+      goto end;
+    }
 
   /* must bind any expr types in non recursive part; required for types binding */
   save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
@@ -11491,6 +11540,11 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
   if (recursive_cte != NULL)
     {
       recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+      if (recursive_cte == NULL)
+	{
+	  goto end;
+	}
+      recursive_cte = pt_parameterize_deferred_names_before_typing (parser, recursive_cte);
       if (recursive_cte == NULL)
 	{
 	  goto end;
