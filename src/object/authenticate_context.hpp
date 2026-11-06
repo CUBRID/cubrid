@@ -24,7 +24,6 @@
 #ifndef _AUTHENTICATE_CONTEXT_HPP_
 #define _AUTHENTICATE_CONTEXT_HPP_
 
-#include <array>
 #include <stack>
 
 #include "porting.h"
@@ -208,12 +207,8 @@ class EXPORT_IMPORT authenticate_context
     int create_public_user (MOP root_cls);
     int create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls);
 
+    bool load_system_users (void);
     int set_system_users_as_created (void);
-
-    auto get_system_users (void) const
-    {
-      return std::array { dba_user, public_user, information_schema_user };
-    }
 };
 
 extern bool use_console_password;
