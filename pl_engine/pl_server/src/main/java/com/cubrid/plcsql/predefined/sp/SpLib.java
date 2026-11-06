@@ -388,29 +388,75 @@ public class SpLib {
     // To provide line and column numbers for run-time exceptions
     //
 
+    // for an exception raised in the routine catching it, whose topmost frame of the class is in
+    // the routine
     public static int[] getPlcLineColumn(
             List<CodeRangeMarker> crmList, Throwable thrown, String fileName) {
 
         StackTraceElement[] stackTrace = thrown.getStackTrace();
+        int i = findFrame(stackTrace, 0, fileName);
+        if (i < 0) {
+            return UNKNOWN_LINE_COLUMN;
+        }
 
-        // get exception line number in the generated Java class
-        int exceptionJavaLine = 0;
-        for (int i = stackTrace.length - 1; i >= 0; i--) {
-            // scan bottom to top
-            StackTraceElement e = stackTrace[i];
-            String steFileName = e.getFileName();
-            if (steFileName != null && steFileName.equals(fileName)) {
-                exceptionJavaLine = e.getLineNumber(); // update it
-            } else {
-                if (exceptionJavaLine > 0) {
-                    break; // exceptionJavaLine is the last value with the matching file name
-                }
+        return getPlcLineColumn(crmList, stackTrace[i].getLineNumber());
+    }
+
+    // For an error that escaped from the body of the routine catching it. The error may have come
+    // up from the routines called directly, which have already found their frames in its stack
+    // trace. The routine searches its frames from the frame index of the error, which skips those
+    // frames, and returns the frame index for its caller along with the line and column.
+    public static int[] getPlcLineColumn(
+            List<CodeRangeMarker> crmList, PlcsqlRuntimeError err, String fileName) {
+
+        StackTraceElement[] stackTrace = err.getStackTrace();
+        int from = err.getFrameIndex();
+        int top = findFrame(stackTrace, from, fileName);
+        if (top < 0) {
+            if (err.getLine() == -1 && err.getColumn() == -1) {
+                // its frames are out of the stack trace, which keeps only the top frames in a
+                // deep recursion
+                return new int[] {0, 0, from};
+            }
+            // Keep the position. A routine calling itself calls its entry method in the same
+            // class, so the frames of all its activations make one run, which the innermost one
+            // has skipped, and the position it found stays with the error.
+            return new int[] {err.getLine(), err.getColumn(), from};
+        }
+
+        int bottom = top + 1;
+        while (bottom < stackTrace.length && fileName.equals(stackTrace[bottom].getFileName())) {
+            bottom++;
+        }
+
+        int javaLine = stackTrace[top].getLineNumber();
+
+        // An error converted from a Java exception in the routine (see the template of a body in
+        // JavaCodeWriter) is better located by the exception.
+        Throwable cause = err.getCause();
+        if (cause != null && from == 0) {
+            StackTraceElement[] causeStackTrace = cause.getStackTrace();
+            int i = findFrame(causeStackTrace, 0, fileName);
+            if (i >= 0) {
+                javaLine = causeStackTrace[i].getLineNumber();
             }
         }
 
-        if (exceptionJavaLine == 0) {
-            return UNKNOWN_LINE_COLUMN;
+        int[] pos = getPlcLineColumn(crmList, javaLine);
+        return new int[] {pos[0], pos[1], bottom};
+    }
+
+    // the index of the first frame of the file at or after the index from, or -1 if none
+    private static int findFrame(StackTraceElement[] stackTrace, int from, String fileName) {
+        for (int i = from; i < stackTrace.length; i++) {
+            if (fileName.equals(stackTrace[i].getFileName())) {
+                return i;
+            }
         }
+        return -1;
+    }
+
+    private static int[] getPlcLineColumn(List<CodeRangeMarker> crmList, int exceptionJavaLine) {
 
         // find the innermost code range that contains the Java line number
         Stack<CodeRangeMarker> stack = new Stack<>();

@@ -585,8 +585,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    %'+USER-CODE'%",
                 // exceptions that escaped from the exception handlers of the body
                 "  } catch (PlcsqlRuntimeError e) {",
-                "    Throwable c = e.getCause();",
-                "    int[] pos = getPlcLineColumn(codeRangeMarkerList, c == null ? e : c, \"%'CLASS-NAME'%.java\");",
+                "    int[] pos = getPlcLineColumn(codeRangeMarkerList, e, \"%'CLASS-NAME'%.java\");",
                 "    throw e.setPlcLineColumn(pos);",
                 // exceptions raised in an exception handler
                 "  } catch (OutOfMemoryError e) {",

@@ -47,9 +47,18 @@ public class PlcsqlRuntimeError extends RuntimeException {
         return column;
     }
 
+    public int getFrameIndex() {
+        return frameIndex;
+    }
+
+    // pos: the line and column, and optionally the frame index for the caller (see
+    // SpLib.getPlcLineColumn())
     public PlcsqlRuntimeError setPlcLineColumn(int[] pos) {
         this.line = pos[0];
         this.column = pos[1];
+        if (pos.length > 2) {
+            this.frameIndex = pos[2];
+        }
         return this;
     }
 
@@ -76,7 +85,9 @@ public class PlcsqlRuntimeError extends RuntimeException {
                             "%s\n  ...%s",
                             MSG_SP_EXECUTE_ERROR, msg.substring(MSG_SP_EXECUTE_ERROR.length()));
         } else if (line == -1 && column == -1) {
-            // the position is unknown, e.g., in a package spec member without its implementation
+            // not in the PL/CSQL code, e.g., in a package spec member without its implementation
+            nestedMsg = String.format("%s\n  %s", MSG_SP_EXECUTE_ERROR, msg);
+        } else if (line == 0 && column == 0) {
             nestedMsg = String.format("%s\n  (line ?, column ?) %s", MSG_SP_EXECUTE_ERROR, msg);
         } else {
             nestedMsg =
@@ -102,8 +113,13 @@ public class PlcsqlRuntimeError extends RuntimeException {
     // the same as METHOD_MAX_RECURSION_DEPTH, the limit of nested calls through the server
     private static final int MAX_NEST_LEVEL = 15;
 
-    private int line = -1; // -1: unknown yet
+    // -1: not set yet, or the error is not from the PL/CSQL code
+    // 0: from the PL/CSQL code, but its position is unknown
+    private int line = -1;
     private int column = -1;
     private String nestedMsg = null;
     private int nestLevel = 0; // the number of times this has been nested
+
+    // the index of the stack trace frame from which the routine catching this searches its frames
+    private int frameIndex = 0;
 }

@@ -263,6 +263,16 @@ public class ExecuteThread extends Thread {
                                     // exception was thrown not in the SP code but in the PL engine
                                     // code
                                     errMsg = String.format("\n  %s", plcsqlError.getMessage());
+                                } else if (line == 0 && col == 0) {
+                                    // thrown in the SP code but the position is unknown. for
+                                    // example,
+                                    // the position was in an exception stack frame which was cut
+                                    // due to
+                                    // too many nests.
+                                    errMsg =
+                                            String.format(
+                                                    "\n  (line ?, column ?) %s",
+                                                    plcsqlError.getMessage());
                                 } else {
                                     errMsg =
                                             String.format(
