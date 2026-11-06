@@ -1411,6 +1411,10 @@ static int btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, c
 				 int *entry_idx_out);
 static int btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, const VPID * dir_vpid,
 				    PGBUF_LATCH_MODE latch_mode, PAGE_PTR * prev_page);
+static int btree_ovf_dir_prev_data_vpid (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, PAGE_PTR dir_page,
+					 int idx, VPID * prev_vpid);
+static int btree_ovf_dir_route_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_page,
+				    const OID * oid, PAGE_PTR * ovf_page, PAGE_PTR * prev_page);
 static int btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
 				   const VPID * first_ovf_vpid, BTREE_OP_PURPOSE purpose,
 				   BTREE_MVCC_INFO * match_mvccinfo, PAGE_PTR * found_page, PAGE_PTR * prev_page,
@@ -11193,7 +11197,7 @@ exit_on_error:
 }
 
 /*
- * btree_replace_first_oid_with_ovfl_oid () - Replace the object in leaf page with an object from the first overflow page.
+ * btree_replace_first_oid_with_ovfl_oid () - Replace the object in leaf page with an object from an overflow page.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -11212,7 +11216,8 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
 {
   int ret = NO_ERROR;		/* Error code. */
   BTREE_OBJECT_INFO last_ovf_object;
-  PAGE_PTR ovfl_page = NULL;	/* First overflow page. */
+  PAGE_PTR ovfl_page = NULL;	/* Overflow page taking part in the swap. */
+  PAGE_PTR prev_page = NULL;	/* Its predecessor in the chain: leaf page or the previous overflow page. */
   RECDES ovfl_copy_rec;		/* Overflow record. */
   /* Buffer to store overflow record data. */
   char ovfl_copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
@@ -11259,6 +11264,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
       ASSERT_ERROR_AND_SET (ret);
       goto exit_on_error;
     }
+  prev_page = leaf_page;
 
 #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, ovfl_page, PAGE_BTREE);
@@ -11283,6 +11289,41 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
       goto exit_on_error;
     }
   /* Last object obtained. */
+
+  if (!BTREE_IS_UNIQUE (btid->unique_pk) && OID_GT (BTREE_DELETE_OID (delete_helper), &last_ovf_object.oid))
+    {
+      /* CBRD-27973: a non-unique chain is OID-ordered and searched through its OID directory (CBRD-24094). The
+       * deleted object can take the first page only while its OID does not exceed the page's last object; beyond
+       * that it must be relocated to the page the directory routes its OID to, or the chain is out of order
+       * between the two sub-operations and, if the server stops in between, the object left behind is never found
+       * again (vacuum skips objects it cannot find). */
+      ret =
+	btree_ovf_dir_route_oid (thread_p, btid, leaf_page, BTREE_DELETE_OID (delete_helper), &ovfl_page, &prev_page);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+
+      /* Swap with the last object of the routed page. */
+      if (spage_get_record (thread_p, ovfl_page, 1, &ovfl_copy_rec, COPY) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  ret = ER_FAILED;
+	  goto exit_on_error;
+	}
+#if !defined (NDEBUG)
+      (void) btree_check_valid_record (thread_p, btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE, NULL);
+#endif /* NDEBUG */
+      ret =
+	btree_record_get_last_object (thread_p, btid, &ovfl_copy_rec, BTREE_OVERFLOW_NODE, 0, &last_ovf_object.oid,
+				      &last_ovf_object.class_oid, &last_ovf_object.mvcc_info, &offset_to_ovfl_object);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+    }
 
   /* Swap operation must use system op. */
   save_system_op_started = delete_helper->is_system_op_started;
@@ -11354,7 +11395,7 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   delete_helper->leaf_addr.offset = search_key->slotid;
   delete_helper->rv_redo_data_ptr = delete_helper->rv_redo_data;
   ret =
-    btree_overflow_remove_object (thread_p, key, btid, delete_helper, &ovfl_page, leaf_page, leaf_page, leaf_rec,
+    btree_overflow_remove_object (thread_p, key, btid, delete_helper, &ovfl_page, prev_page, leaf_page, leaf_rec,
 				  search_key, offset_to_ovfl_object);
   if (ret != NO_ERROR)
     {
@@ -11365,6 +11406,10 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   if (ovfl_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, ovfl_page);
+    }
+  if (prev_page != leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   return NO_ERROR;
@@ -11384,6 +11429,10 @@ exit_on_error:
   if (ovfl_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, ovfl_page);
+    }
+  if (prev_page != NULL && prev_page != leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, prev_page);
     }
 
   assert_release (ret != NO_ERROR);
@@ -13461,6 +13510,215 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
 }
 
 /*
+ * btree_ovf_dir_prev_data_vpid () - Output the VPID of the data page that precedes the data page of a directory entry
+ *				     in the chain: the previous entry's page, or the last entry's page of the preceding
+ *				     directory page. NULL VPID for the chain's first data page (preceded by the leaf).
+ *
+ * return	      : Error code.
+ * thread_p (in)      : Thread entry.
+ * dir_head_vpid (in) : Directory head page VPID.
+ * dir_page (in)      : Directory page holding the entry (fixed).
+ * idx (in)	      : Entry index within dir_page.
+ * prev_vpid (out)    : Preceding data page VPID or NULL VPID.
+ */
+static int
+btree_ovf_dir_prev_data_vpid (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, PAGE_PTR dir_page, int idx,
+			      VPID * prev_vpid)
+{
+  PAGE_PTR prev_dir_page = NULL;
+  RECDES dir_record;
+  int num_entries;
+  int error_code = NO_ERROR;
+
+  assert (dir_page != NULL && idx >= 0);
+  assert (prev_vpid != NULL);
+
+  VPID_SET_NULL (prev_vpid);
+
+  if (idx > 0)
+    {
+      if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  return ER_FAILED;
+	}
+      assert (idx < (int) (dir_record.length / sizeof (BTREE_OVF_DIR_ENTRY)));
+      VPID_COPY (prev_vpid, &((BTREE_OVF_DIR_ENTRY *) dir_record.data)[idx - 1].vpid);
+      return NO_ERROR;
+    }
+  if (VPID_EQ (pgbuf_get_vpid_ptr (dir_page), dir_head_vpid))
+    {
+      /* The chain's first data page: its predecessor is the leaf. */
+      return NO_ERROR;
+    }
+
+  /* Previous data page is the last entry of the preceding directory page. */
+  error_code =
+    btree_ovf_dir_find_prev (thread_p, dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ, &prev_dir_page);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (spage_get_record (thread_p, prev_dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, prev_dir_page);
+      return ER_FAILED;
+    }
+  num_entries = (int) (dir_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
+  assert (num_entries > 0);
+  VPID_COPY (prev_vpid, &((BTREE_OVF_DIR_ENTRY *) dir_record.data)[num_entries - 1].vpid);
+  pgbuf_unfix_and_init (thread_p, prev_dir_page);
+  return NO_ERROR;
+}
+
+/*
+ * btree_ovf_dir_route_oid () - Move from a directory chain's first data page (fixed) to the data page the directory
+ *				routes an OID to, i.e. the page an insert of the OID would use. The predecessor page is
+ *				fixed too, but only when the routed page holds a single object: it is needed then to
+ *				relink the chain once the object's removal empties the page. Must be called under the
+ *				key's leaf write latch, like every other chain modification.
+ *
+ * return	     : Error code.
+ * thread_p (in)     : Thread entry.
+ * btid_int (in)     : B-tree info.
+ * leaf_page (in)    : Leaf page (predecessor of the first data page).
+ * oid (in)	     : OID to route.
+ * ovf_page (in/out) : In: the chain's first data page, fixed (write). Out: the routed data page, fixed (write); the
+ *		       first page is unfixed when another page is routed to. NULL on error.
+ * prev_page (out)   : leaf_page, or the previous data page fixed (write) when the routed page holds one object.
+ */
+static int
+btree_ovf_dir_route_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_page, const OID * oid,
+			 PAGE_PTR * ovf_page, PAGE_PTR * prev_page)
+{
+  BTREE_OVF_DIR_HEADER *dir_hdr;
+  VPID dir_head_vpid, first_vpid, target_vpid, prev_vpid;
+  PAGE_PTR dir_page = NULL;
+  PAGE_PTR target_page = NULL;
+  RECDES dir_record, data_record;
+  int idx;
+  int error_code = NO_ERROR;
+  PERF_UTIME_TRACKER ovf_fix_time_track;
+
+  assert (leaf_page != NULL);
+  assert (oid != NULL);
+  assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
+  assert (ovf_page != NULL && *ovf_page != NULL);
+  assert (prev_page != NULL);
+
+  *prev_page = leaf_page;
+
+  dir_hdr = btree_ovf_dir_get_header (thread_p, *ovf_page);
+  if (dir_hdr == NULL)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+  if (VPID_ISNULL (&dir_head_vpid))
+    {
+      /* Single-page chain. */
+      return NO_ERROR;
+    }
+  pgbuf_get_vpid (*ovf_page, &first_vpid);
+
+  error_code = btree_ovf_dir_locate (thread_p, btid_int, &dir_head_vpid, oid, PGBUF_LATCH_READ, &dir_page, &idx);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
+  assert (idx >= 0 && idx < (int) (dir_record.length / sizeof (BTREE_OVF_DIR_ENTRY)));
+  VPID_COPY (&target_vpid, &((BTREE_OVF_DIR_ENTRY *) dir_record.data)[idx].vpid);
+
+  if (VPID_EQ (&target_vpid, &first_vpid))
+    {
+      /* Routed to the first page after all (the OID is below the second page's separator). */
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      return NO_ERROR;
+    }
+
+  pgbuf_unfix_and_init (thread_p, *ovf_page);
+
+  PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+  target_page = pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+  if (target_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
+  if (spage_get_record (thread_p, target_page, 1, &data_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  if (data_record.length == BTREE_OBJECT_FIXED_SIZE (btid_int))
+    {
+      /* A single object: removing the relocated object will empty the page, which must then be unlinked from its
+       * predecessor. Fix the predecessor first (chain latch order); nothing changes the chain meanwhile, the key's
+       * leaf is write latched. */
+      error_code = btree_ovf_dir_prev_data_vpid (thread_p, &dir_head_vpid, dir_page, idx, &prev_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+      assert (!VPID_ISNULL (&prev_vpid));
+
+      pgbuf_unfix_and_init (thread_p, target_page);
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      *prev_page = pgbuf_fix (thread_p, &prev_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (*prev_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  *prev_page = leaf_page;
+	  goto error;
+	}
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      target_page = pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (target_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error;
+	}
+    }
+
+  pgbuf_unfix_and_init (thread_p, dir_page);
+  *ovf_page = target_page;
+  return NO_ERROR;
+
+error:
+  assert_release (error_code != NO_ERROR);
+  if (target_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, target_page);
+    }
+  if (*prev_page != leaf_page)
+    {
+      pgbuf_unfix_and_init (thread_p, *prev_page);
+      *prev_page = leaf_page;
+    }
+  if (dir_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_page);
+    }
+  return error_code;
+}
+
+/*
  * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory.
  *
  * return		  : Error code.
@@ -13578,36 +13836,11 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
       /* Fix the previous data page first (chain latch order) when the caller needs it. */
       if (prev_page != NULL)
 	{
-	  VPID_SET_NULL (&prev_vpid);
-	  if (idx > 0)
+	  error_code = btree_ovf_dir_prev_data_vpid (thread_p, &dir_head_vpid, dir_page, idx, &prev_vpid);
+	  if (error_code != NO_ERROR)
 	    {
-	      VPID_COPY (&prev_vpid, &entries[idx - 1].vpid);
-	    }
-	  else if (!VPID_EQ (pgbuf_get_vpid_ptr (dir_page), &dir_head_vpid))
-	    {
-	      /* Previous data page is the last entry of the preceding directory page. */
-	      PAGE_PTR prev_dir_page = NULL;
-	      RECDES prev_record;
-	      int prev_num_entries;
-
-	      error_code =
-		btree_ovf_dir_find_prev (thread_p, &dir_head_vpid, pgbuf_get_vpid_ptr (dir_page), PGBUF_LATCH_READ,
-					 &prev_dir_page);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto error;
-		}
-	      if (spage_get_record (thread_p, prev_dir_page, 1, &prev_record, PEEK) != S_SUCCESS)
-		{
-		  assert_release (false);
-		  pgbuf_unfix_and_init (thread_p, prev_dir_page);
-		  error_code = ER_FAILED;
-		  goto error;
-		}
-	      prev_num_entries = (int) (prev_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
-	      VPID_COPY (&prev_vpid, &((BTREE_OVF_DIR_ENTRY *) prev_record.data)[prev_num_entries - 1].vpid);
-	      pgbuf_unfix_and_init (thread_p, prev_dir_page);
+	      ASSERT_ERROR ();
+	      goto error;
 	    }
 
 	  if (!VPID_ISNULL (&prev_vpid))
