@@ -6931,7 +6931,7 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 	  goto always_false;
 	}
 
-      if (cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL)
+      if ((cnf_node->type_enum == PT_TYPE_NA || cnf_node->type_enum == PT_TYPE_NULL) && cnf_node->or_next == NULL)
 	{
 	  /* on_cond does not confused with where conjunct is a NULL, treat it as false condition */
 	  goto always_false;
@@ -6985,10 +6985,11 @@ pt_where_type (PARSER_CONTEXT * parser, PT_NODE * where)
 		  break;
 		}
 
-	      if (dnf_node->node_type == PT_VALUE && dnf_node->type_enum == PT_TYPE_LOGICAL
-		  && dnf_node->info.value.data_value.i == 0)
+	      if (dnf_node->node_type == PT_VALUE
+		  && ((dnf_node->type_enum == PT_TYPE_LOGICAL && dnf_node->info.value.data_value.i == 0)
+		      || dnf_node->type_enum == PT_TYPE_NA || dnf_node->type_enum == PT_TYPE_NULL))
 		{
-		  /* cut it off from DNF list */
+		  /* a FALSE or NULL disjunct of a filter: cut it off from DNF list */
 		  if (dnf_prev)
 		    {
 		      dnf_prev->or_next = dnf_node->or_next;

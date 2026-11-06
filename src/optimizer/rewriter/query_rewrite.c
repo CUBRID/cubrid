@@ -26,6 +26,90 @@
 
 #include "query_rewrite.h"
 
+/* a NULL constant only; an expression of NULL type such as NULL IN (subquery) can still be TRUE */
+#define QO_IS_NULL_VALUE(n) ((n)->node_type == PT_VALUE && PT_IS_NULL_NODE (n))
+
+/*
+ * qo_drop_null_disjuncts () - drop NULL constants from the OR lists of a CNF filter
+ *   return: the CNF list
+ *   parser(in): parser environment
+ *   cnf_list(in): CNF list of a filter (WHERE, ON, HAVING, START WITH, ...)
+ *
+ * Note: a filter keeps only TRUE rows, so a NULL disjunct acts as FALSE there.
+ *       CNF has pushed every NOT down to the leaves, so no such NULL is under a NOT.
+ *       An OR list made only of NULL constants is left as it is.
+ */
+static PT_NODE *
+qo_drop_null_disjuncts (PARSER_CONTEXT * parser, PT_NODE * cnf_list)
+{
+  PT_NODE *cnf, *prev_cnf, *dnf, *prev_dnf, *head;
+  bool has_other;
+
+  prev_cnf = NULL;
+  for (cnf = cnf_list; cnf != NULL; prev_cnf = cnf, cnf = cnf->next)
+    {
+      if (cnf->or_next == NULL)
+	{
+	  continue;
+	}
+
+      has_other = false;
+      for (dnf = cnf; dnf != NULL; dnf = dnf->or_next)
+	{
+	  if (!QO_IS_NULL_VALUE (dnf))
+	    {
+	      has_other = true;
+	      break;
+	    }
+	}
+      if (!has_other)
+	{
+	  continue;
+	}
+
+      /* drop the NULL constants, keeping the CNF link on the head of the OR list */
+      head = cnf;
+      prev_dnf = NULL;
+      dnf = cnf;
+      while (dnf != NULL)
+	{
+	  PT_NODE *dnf_next = dnf->or_next;
+
+	  if (QO_IS_NULL_VALUE (dnf))
+	    {
+	      if (prev_dnf == NULL)
+		{
+		  dnf_next->next = head->next;
+		  head = dnf_next;
+		}
+	      else
+		{
+		  prev_dnf->or_next = dnf_next;
+		}
+	      dnf->next = NULL;
+	      dnf->or_next = NULL;
+	      parser_free_tree (parser, dnf);
+	    }
+	  else
+	    {
+	      prev_dnf = dnf;
+	    }
+	  dnf = dnf_next;
+	}
+
+      if (prev_cnf == NULL)
+	{
+	  cnf_list = head;
+	}
+      else
+	{
+	  prev_cnf->next = head;
+	}
+      cnf = head;
+    }
+
+  return cnf_list;
+}
 
 /*
  * qo_rewrite_queries () - checks all subqueries for rewrite optimizations
@@ -353,6 +437,17 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	{
 	  *orderby_for_p = pt_cnf (parser, *orderby_for_p);
 	}
+
+      /* after NOT is pushed down, a NULL left in an OR of a filter acts as FALSE */
+      *wherep = qo_drop_null_disjuncts (parser, *wherep);
+      *havingp = qo_drop_null_disjuncts (parser, *havingp);
+      *startwithp = qo_drop_null_disjuncts (parser, *startwithp);
+      *connectbyp = qo_drop_null_disjuncts (parser, *connectbyp);
+      *aftercbfilterp = qo_drop_null_disjuncts (parser, *aftercbfilterp);
+      *merge_upd_wherep = qo_drop_null_disjuncts (parser, *merge_upd_wherep);
+      *merge_ins_wherep = qo_drop_null_disjuncts (parser, *merge_ins_wherep);
+      *merge_del_wherep = qo_drop_null_disjuncts (parser, *merge_del_wherep);
+      *orderby_for_p = qo_drop_null_disjuncts (parser, *orderby_for_p);
 
       /* in HAVING clause with GROUP BY, move non-aggregate terms to WHERE clause */
       if (PT_IS_SELECT (node) && node->info.query.q.select.group_by && *havingp)
