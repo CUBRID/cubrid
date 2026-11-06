@@ -1066,10 +1066,10 @@ jobs:
                 -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
               [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
               # No build to keep the same: this run has no usable build and starts no shard, or the source run
-              # recorded '' because no part of its verdict rests on a build (see build_recipe below).
+              # recorded '' because none of the results a re-run of it relies on came from a build (see build_recipe below).
               if [ -n "$recipe" ] && ! grep -qx "build_recipe=''" "$srcdir/plan/split.meta" 2>/dev/null \
                  && [ "$prev_recipe" != "$recipe" ]; then
-                echo "::error::the verdict of run $RERUN_FROM rests on a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
+                echo "::error::run $RERUN_FROM relies on results from a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
               # A shard that died whole, or never started, left no result file for failed.list: carry its share.
@@ -1237,7 +1237,7 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
-              # A re-run with no usable build keeps the build its source's verdict rests on: so does its own.
+              # A re-run with no usable build keeps the recipe its source recorded: a re-run of it relies on the same results.
               echo "build_recipe='${recipe:-${prev_recipe:-}}'"
             } > "$out/plan/split.meta"
 
