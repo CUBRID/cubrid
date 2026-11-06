@@ -96,7 +96,10 @@ public class SpLib {
         } catch (NoSuchMethodException e) {
             Server.log(e);
             throw new PROGRAM_ERROR(
-                    "cannot find method " + methodName + " in the executable binary");
+                    "cannot find method "
+                            + methodName
+                            + " in the executable binary"
+                            + " (hint: try recompiling this stored procedure)");
         } catch (SecurityException e) {
             Server.log(e);
             throw new PROGRAM_ERROR("cannot use method " + methodName + " for a serurity reason");
