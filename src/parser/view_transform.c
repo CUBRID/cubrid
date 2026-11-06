@@ -10190,8 +10190,17 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   parser->flag.is_skip_auto_parameterize = save_skip_auto_parameterize;
 
-  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
-  pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions. The
+   * compiled statement's are assigned by the walk its class prefetch makes next (pt_class_pre_fetch) */
+  if (parser->host_var_assigned_later == node && !compiled_every_time)
+    {
+      parser->host_var_assigned_later = (PT_NODE *) return_node;
+    }
+  else
+    {
+      parser->host_var_assigned_later = NULL;
+      pt_assign_host_var_positions (parser, (PT_NODE *) return_node, NULL, NULL);
+    }
   parser->session_variable_count = 0;
   if (return_node != NULL && compiled_every_time)
     {
