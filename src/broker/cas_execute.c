@@ -11232,14 +11232,20 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 static void
 ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
 {
-  if (!auto_commit)
+  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code) || ER_IS_SERVER_DOWN_ERROR (err_code))
     {
+      /* the rollback ended an upload open beside the download too, and the commit it deferred is paid back as a
+       * rollback; left set, it would roll back the transaction of a later ABORT or END */
+      if (auto_commit || stream_Deferred_auto_commit)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	}
+      ux_stream_reset ();
       return;
     }
 
-  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code) || ER_IS_SERVER_DOWN_ERROR (err_code))
+  if (!auto_commit)
     {
-      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
       return;
     }
 
