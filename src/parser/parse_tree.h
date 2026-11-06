@@ -594,8 +594,11 @@ struct trace_json_t;
 /* CBRD-27583: a position that took its bind domain (host_var_bind_domains): the client's bind converts its value into
  * it, and the compilation planned it so (pt_take_host_var_bind_domains) */
 #define PT_HOST_VAR_BIND_DOMAIN 0x2000
+/* a position every occurrence of which is a value stored into a column (pt_classify_host_var_positions): the client
+ * converts its value into the column's domain, a CHAR padded, so its plan is that domain's */
+#define PT_HOST_VAR_ASSIGNMENT 0x4000
 /* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
-#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 14
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 15
 #define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
 #define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
 #define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
@@ -4056,6 +4059,10 @@ struct parser_context
 					 * translation's type checking gave a node of it (pt_preset_hostvar's writes,
 					 * not a rule cast's target or an AGNOSTIC position's INTEGER), which the bind
 					 * casts the bound value into; NULL for none */
+  PT_NODE *host_var_classified;	/* the statement whose name resolution classifies its positions
+				 * (pt_classify_host_var_positions), while it compiles */
+  PT_NODE *host_var_assigned_later;	/* the statement whose class prefetch assigns its positions after its
+					 * translation (pt_assign_host_var_positions), while it compiles */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
@@ -4159,6 +4166,8 @@ struct parser_context
     unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
+    unsigned host_var_assign_failed:1;	/* CBRD-27583: the positions of the compiled statement failed after its
+					 * translation (pt_assign_host_var_positions): a semantic error */
     unsigned compile_uncached:1;	/* CBRD-27478: the statement compiles through do_statement (), outside the XASL
 					 * cache, so it compiles again at every execution: the planner reads no rows
 					 * (row snapshot) for a plan nothing keeps */
