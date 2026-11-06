@@ -1099,6 +1099,11 @@ heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const 
 void
 heap_oos_warn_bigone_without_oos (const OID *class_oid, int record_size, int max_size)
 {
+  if (OID_IS_ROOTOID (class_oid) || oid_is_system_class (class_oid))
+    {
+      return;
+    }
+
   er_stack_push ();
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_BIGONE_WITHOUT_OOS, 5, record_size, max_size,
 	  OID_AS_ARGS (class_oid));

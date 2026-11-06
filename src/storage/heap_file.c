@@ -14268,11 +14268,6 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
-  if (!has_oos && heap_is_big_length ((int) inline_size_after_oos))
-    {
-      heap_oos_warn_bigone_without_oos (&attr_info->class_oid, (int) inline_size_after_oos, heap_Maxslotted_reclength);
-    }
-
   if (has_oos)
     {
       /* Retain selected values until routing, or publish immediately for legacy callers. */
@@ -22635,6 +22630,8 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
       return NO_ERROR;
     }
 
+  heap_oos_warn_bigone_without_oos (&context->class_oid, context->recdes_p->length, heap_Maxslotted_reclength);
+
   /* insert overflow record */
   if (heap_ovf_insert (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
     {
@@ -26084,6 +26081,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+      if (heap_is_big_length (context->recdes_p->length))
+	{
+	  heap_oos_warn_bigone_without_oos (&context->class_oid, context->recdes_p->length, heap_Maxslotted_reclength);
 	}
     }
 

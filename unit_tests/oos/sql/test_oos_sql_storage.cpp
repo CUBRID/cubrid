@@ -1216,6 +1216,26 @@ TEST_F (OosSqlStorage, UpdateIntoNonOosBigoneWarns)
   EXPECT_EQ (bits, 17000 * 8);
 }
 
+TEST_F (OosSqlStorage, BigoneReportCountsOnlyStoredBigoneRecords)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT PRIMARY KEY, a BIT VARYING STORAGE FORCE_INLINE)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* 16195 bytes fit in a REC_HOME record; only the layout estimate's MVCC header slack exceeds the limit. */
+  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
+  rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (16195) + ")").c_str ());
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings (), warnings_before);
+
+  /* REPLACE lays the row out for its duplicate check too, but stores one REC_BIGONE record. */
+  rc = exec_sql (("REPLACE INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ")").c_str ());
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
+}
+
 TEST_F (OosSqlStorage, OosBackedLargeRecordDoesNotWarn)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING)");
