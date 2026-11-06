@@ -3009,7 +3009,8 @@ tr_map_trigger_if_exists (DB_OBJECT * object, TR_TRIGGER ** trigger)
  *
  * Note:
  *    If the trigger is associated with a class, the current user must have appropriate class authorization.
- *    If the trigger is associated with a user, the current user must be the owner of the trigger.
+ *    If the trigger is associated with a user, the current user must be the owner of the trigger or a member
+ *    of the DBA group.
  *    If the alter flag is set, it means that the trigger is about to be modified in some way.
  */
 static bool
@@ -3056,8 +3057,8 @@ check_authorization (TR_TRIGGER * trigger, bool alter_flag)
     }
   else
     {
-      /* its a user trigger, must be the active user */
-      if (ws_is_same_object (trigger->owner, Au_user))
+      /* its a user trigger, must be the owner or a member of the DBA group */
+      if (ws_is_same_object (trigger->owner, Au_user) || au_is_dba_group_member (Au_user))
 	{
 	  status = true;
 	}
@@ -3516,6 +3517,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_INVALID_USER, owner_name);
+      goto error;
+    }
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
@@ -5414,6 +5420,19 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
     {
       tr_User_triggers_valid = 0;
       tr_User_triggers_modified = 0;
+    }
+}
+
+/*
+ * tr_check_partial_rollback_triggers() - This is called when the transaction is rolled back to a savepoint.
+ *    return: none
+ */
+void
+tr_check_partial_rollback_triggers (void)
+{
+  if (tr_User_triggers_modified)
+    {
+      tr_invalidate_user_cache ();
     }
 }
 
