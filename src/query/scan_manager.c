@@ -4060,7 +4060,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  hsidp->scancache_inited = true;
 	  /* the scan decodes its records through the attribute layer only; a statement that calls a routine reads
 	   * them expanded (E22) */
-	  if (!thread_p->sidecar_no_lazy)
+	  if (!thread_get_main_thread (thread_p)->sidecar_no_lazy)
 	    {
 	      heap_scancache_allow_lazy_sidecar (&hsidp->scan_cache, HEAP_SIDECAR_LAZY_SCAN);
 	    }
@@ -4164,7 +4164,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       isidp->scancache_inited = true;
       /* the scan decodes its records through the attribute layer only; a statement that calls a routine reads
        * them expanded (E22) */
-      if (!thread_p->sidecar_no_lazy)
+      if (!thread_get_main_thread (thread_p)->sidecar_no_lazy)
 	{
 	  heap_scancache_allow_lazy_sidecar (&isidp->scan_cache, HEAP_SIDECAR_LAZY_INDEX_SCAN);
 	}

@@ -40,6 +40,7 @@
 #include "query_hash_join.h"
 #include "query_opfunc.h"
 #include "scope_exit.hpp"
+#include "sidecar.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -50,6 +51,12 @@ namespace parallel_scan
   void task<result_type, ST>::execute (cubthread::entry &thread_ref)
   {
     int err_code;
+    /* a worker's scan may end without scan_end_scan () (a spec marked ended): nothing of the store cursor outlives the
+     * task on this pooled thread (E24) */
+    auto sidecar_guard = make_scope_exit ([&thread_ref] ()
+    {
+      sidecar_request_end (&thread_ref);
+    });
     auto done_guard = make_scope_exit ([this] ()
     {
       if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)

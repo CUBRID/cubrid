@@ -32,6 +32,8 @@
 #endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "sidecar.hpp"
+
 #include "memory_wrapper.hpp"
 
 namespace parallel_query_execute
@@ -237,6 +239,11 @@ namespace parallel_query_execute
 	perfmon_destroy_parallel_stats (cur_thread_p);
 	cur_thread_p->m_px_stats = px_stats;
 	pthread_mutex_unlock (&cur_thread_p->m_px_stats_mutex);
+      }
+    if (!is_on_root_thread)
+      {
+	/* nothing of the store cursor outlives the job on this pooled thread (E24) */
+	sidecar_request_end (cur_thread_p);
       }
     cur_thread_p->conn_entry = conn_entry;
     cur_thread_p->tran_index = tran_index;
