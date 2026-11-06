@@ -5193,6 +5193,25 @@ qo_or_extract_join_parts (PARSER_CONTEXT * parser, PT_NODE ** parts, int dis_cnt
 }
 
 /*
+ * qo_or_extract_has_null_test () - does a single-column restriction test the column for NULL?
+ *   return: true when a disjunct is IS NULL or IS NOT NULL
+ *   node(in): a restriction accepted by qo_or_extract_restriction_column ()
+ *
+ * Note: a B-tree holds no NULL key, so a disjunction with such a disjunct is no key range, and
+ *	 the restriction derived from it would serve neither an index nor the estimate.
+ */
+static bool
+qo_or_extract_has_null_test (PT_NODE * node)
+{
+  if (node->info.expr.op == PT_OR)
+    {
+      return qo_or_extract_has_null_test (node->info.expr.arg1) || qo_or_extract_has_null_test (node->info.expr.arg2);
+    }
+
+  return node->info.expr.op == PT_IS_NULL || node->info.expr.op == PT_IS_NOT_NULL;
+}
+
+/*
  * qo_or_extract_for_columns () - derive the per-column restrictions of one spec from an OR factor
  *   return: the derived factors, chained through next
  *   parser(in):
@@ -5242,7 +5261,8 @@ qo_or_extract_for_columns (PARSER_CONTEXT * parser, PT_NODE ** disjuncts, int di
       for (i = 0; i < dis_cnt && ok; i++)
 	{
 	  parts[i] = qo_or_extract_build_for_spec (parser, disjuncts[i], spec_id, columns[c], true);
-	  ok = (parts[i] != NULL && qo_or_extract_restriction_column (parser, parts[i]) != NULL);
+	  ok = (parts[i] != NULL && qo_or_extract_restriction_column (parser, parts[i]) != NULL
+		&& !qo_or_extract_has_null_test (parts[i]));
 	}
       if (!ok)
 	{
