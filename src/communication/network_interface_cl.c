@@ -13043,6 +13043,14 @@ internal_lob_read_authorize (const char *config, int config_len)
   return internal_lob_locator_check_access (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator_len);
 }
 
+/* The client half of STREAM_KIND_INTERNAL_LOB (upload). A driver may open it: the upload names no table, and the
+ * statement that later binds its token is checked like any other. */
+static int
+internal_lob_upload_authorize (const char *config, int config_len)
+{
+  return NO_ERROR;
+}
+
 // *INDENT-OFF*
 namespace
 {
@@ -13051,8 +13059,10 @@ namespace
     internal_lob_read_client_registrar ()
     {
       stream_kind_client_desc desc = { true, internal_lob_read_authorize };
+      stream_kind_client_desc upload_desc = { true, internal_lob_upload_authorize };
 
-      if (stream_kind_client_register (STREAM_KIND_INTERNAL_LOB_READ, desc) != NO_ERROR)
+      if (stream_kind_client_register (STREAM_KIND_INTERNAL_LOB_READ, desc) != NO_ERROR
+	  || stream_kind_client_register (STREAM_KIND_INTERNAL_LOB, upload_desc) != NO_ERROR)
 	{
 	  assert (false);
 	}
