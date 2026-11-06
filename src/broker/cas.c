@@ -184,6 +184,11 @@ static const char *server_func_name[] = {
   "fn_stream_release"
 };
 
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
+
 
 static void set_db_connection_info (void);
 static void clear_db_connection_info (void);

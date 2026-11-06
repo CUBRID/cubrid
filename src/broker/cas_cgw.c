@@ -200,6 +200,11 @@ static const char *server_func_name[] = {
   "stream_release"
 };
 
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
+
 static int cgw_cas_main (void);
 static int cgw_cas_init (void);
 static int cgw_init_shm (void);
