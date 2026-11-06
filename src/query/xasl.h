@@ -181,6 +181,8 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 typedef struct gby_skip_state GBY_SKIP_STATE;
+struct pruning_context;
+typedef struct partition_scan_cache PARTITION_SCAN_CACHE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -595,8 +597,11 @@ struct cte_proc_node
 #define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
-#define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
+#define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc is a partitioned NL inner, or comes after one or after a
+							 * NL semi/anti inner in the scan chain: driven per outer row */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
+#define XASL_NL_PER_ROW_PARTITIONS	(0x1 << 30)	/* a partitioned NL inner the optimizer drives per outer row: its partition
+							 * is opened on a memo miss (qexec_open_row_partition ()) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
@@ -935,7 +940,9 @@ typedef enum
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6	/* a partitioned NL inner walked per outer row prunes its partitions
+						 * by the outer row's join values (CBRD-27866) */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
@@ -1232,12 +1239,29 @@ struct topn_tuple
   int values_size;		/* total size in bytes occupied by the objects stored in the values array */
 };
 
+/* the range, key, pred and rest attribute caches of an index scan */
+#define PARTITION_SCAN_CACHE_COUNT 4
+
+/* the attribute caches an index scan walked per outer row keeps for a partition it left, to take them back when it
+ * comes back instead of binding them to the class again (scan_switch_index_partition ()) */
+struct partition_scan_cache
+{
+  HEAP_CACHE_ATTRINFO attrs[PARTITION_SCAN_CACHE_COUNT];	/* num_values -1 when none is kept */
+  bool parked;			/* attrs hold the partition's caches; false while the scan is on it */
+};
+
 struct partition_spec_node
 {
   OID oid;			/* class oid */
   HFID hfid;			/* class hfid */
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
+  int pos;			/* position among the class's partitions (pruningset_to_spec_list ()) */
+  bool row_pruned;		/* left out for the current outer row (partition_prune_spec_for_row ()) */
+  bool btid_int_cached;		/* btid_int is read from the partition's root page (scan_switch_index_partition ()) */
+  bool scan_locked;		/* an index scan switched to this partition holds its IS_LOCK */
+  PARTITION_SCAN_CACHE *scan_cache;	/* the attribute caches kept for the partition, or NULL */
+  BTID_INT btid_int;		/* the B+tree header of btid, for an index scan switched to this partition */
   SCAN_STATS scan_stats;
   const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
 };
@@ -1264,6 +1288,10 @@ struct access_spec_node
   SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
+  struct pruning_context *row_pruning;	/* pruning by the outer row's join values, loaded on its first row, or NULL */
+  bool row_rewind_pending;	/* rewound for a new outer row, its partition not opened yet (qexec_open_row_partition ()) */
+  PARTITION_SPEC_TYPE *attr_cache_part;	/* the partition whose kept caches the index scan's attribute caches hold */
+  size_t part_scan_cache_bytes;	/* memory the partitions' kept caches take (partition_scan_cache) */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
   bool cached_scan;		/* runtime-only cached-scan activation; not serialized */

@@ -90,6 +90,7 @@ struct pruning_context
 				 * DB_PARTITION_CLASS */
   bool is_attr_info_inited;
   bool is_from_cache;		/* true if this context is cached */
+  bool use_join_values;		/* a join term's outer value (TYPE_CONSTANT) prunes: partition_prune_spec_for_row () */
 };
 
 extern void partition_init_pruning_context (PRUNING_CONTEXT * pinfo);
@@ -110,6 +111,10 @@ extern PRUNING_SCAN_CACHE *partition_get_scancache (PRUNING_CONTEXT * pcontext, 
 extern PRUNING_SCAN_CACHE *partition_new_scancache (PRUNING_CONTEXT * pcontext);
 
 extern int partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node * access_spec);
+
+extern int partition_prune_spec_for_row (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node * spec);
+
+extern void partition_clear_spec_row_pruning (access_spec_node * spec);
 
 extern int partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   HEAP_SCANCACHE * scan_cache, PRUNING_CONTEXT * pcontext, int op_type,

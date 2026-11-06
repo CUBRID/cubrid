@@ -50,6 +50,7 @@
 #include "xasl_analytic.hpp"
 #include "xasl_generation.h"
 #include "schema_manager.h"
+#include "set_object.h"
 #include "network_interface_cl.h"
 #include "dbtype.h"
 #include "object_domain.h"	/* tp_value_compare (), to tell an empty range from an out-of-range one */
@@ -119,6 +120,10 @@
  * saturation, without overturning genuinely cheap unique-key probes. Revisit together with
  * ISCAN_OID_ACCESS_OVERHEAD if either is recalibrated. */
 #define BTREE_DESCENT_PAGE_OVERHEAD 50
+/* Switching the index scan of a nested-loop inner walked per outer row to another partition
+ * (scan_switch_index_partition ()), as a share of the B+tree descent that follows it: about a quarter on the
+ * release build (CBRD-27866) */
+#define PARTITION_SWITCH_DESCENT_RATIO 0.25
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
@@ -4913,8 +4918,12 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	}
       else if (IS_OUTER_JOIN_TYPE (join_type))
 	{
-	  /* for outer join, if inner plan is a scan of classes in hierarchy */
-	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node))
+	  /* for outer join, if inner plan is a scan of classes in hierarchy: the scan block iterator would return
+	   * the NULL row of each class. A partitioned table is walked per outer row instead, which returns it once
+	   * after the last partition (CBRD-27866), unless a class hierarchy scan of the query could follow it, which
+	   * only the iterator moves to its next class (gen_inner ()). */
+	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
+	      && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node))
 	    {
 	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
 	    }
@@ -5558,6 +5567,40 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
     }
 
   return MIN (rows, calls);
+}
+
+/*
+ * qo_nl_inner_partitions_walk_per_row () - whether a nested-loop inner scan of the node walks its partitions per
+ *	outer row
+ *   return: bool
+ *   node(in): the inner node
+ *
+ * Note: a partitioned table, the only class of its node, is walked per outer row (plan_generation.c,
+ *	 nl_inner_can_walk_partitions_per_row ()) unless a class hierarchy scan follows it, which only the scan block
+ *	 iterator moves to its next class: so when the query reads no class hierarchy (CBRD-27866).
+ */
+bool
+qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
+{
+  QO_ENV *env = QO_NODE_ENV (node);
+  int i;
+
+  if (!QO_NODE_IS_CLASS_PARTITIONED (node) || QO_NODE_INFO_N (node) != 1)
+    {
+      return false;
+    }
+
+  for (i = 0; i < env->nnodes; i++)
+    {
+      QO_NODE *other = QO_ENV_NODE (env, i);
+
+      if (QO_NODE_INFO (other) != NULL && QO_NODE_INFO_N (other) > 1)
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*
@@ -6603,6 +6646,317 @@ qo_join_input_factor (QO_PLAN * input, double divisor)
 }
 
 /*
+ * qo_node_partition_key () - the partition key column of a partitioned table, when the partition expression is the
+ *	column itself
+ *   return: the column name, or NULL
+ *   node(in):
+ *   partitions(out): the partition count, or NULL
+ */
+static const char *
+qo_node_partition_key (QO_NODE * node, int *partitions)
+{
+  SM_PARTITION *partition;
+  DB_VALUE attr_name, part_count;
+  const char *key_name;
+  int key_len;
+
+  if (!QO_NODE_IS_CLASS_PARTITIONED (node))
+    {
+      return NULL;
+    }
+
+  partition = QO_NODE_INFO_SMCLASS (node)->partition;
+  if (partition->values == NULL || set_get_element_nocopy (partition->values, 0, &attr_name) != NO_ERROR
+      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (&attr_name)
+      || DB_IS_NULL (&part_count) || (key_name = db_get_string (&attr_name)) == NULL)
+    {
+      return NULL;
+    }
+  if (partitions != NULL)
+    {
+      *partitions = MAX (1, db_get_int (&part_count));
+    }
+
+  /* the partition expression is kept as "SELECT [key] FROM ..." */
+  key_len = (int) strlen (key_name);
+  if (partition->expr == NULL || strncmp (partition->expr, "SELECT [", 8) != 0
+      || intl_identifier_ncasecmp (partition->expr + 8, key_name, key_len) != 0
+      || strncmp (partition->expr + 8 + key_len, "] FROM", 6) != 0)
+    {
+      return NULL;
+    }
+
+  return key_name;
+}
+
+/*
+ * qo_nl_inner_prunes_per_row () - whether a join term prunes a partitioned NL inner to its partition for each outer row
+ *   return: bool
+ *   node(in): the inner node, a partitioned table
+ *   outer_nodes(in): the nodes of the outer
+ *   terms(in): the terms the inner scan evaluates
+ *
+ * Note: an equality of the partition key and an outer column of the same type picks one partition per outer row
+ *	 (partition_prune_spec_for_row ()). The partition expression must be the key column itself. Only integer and
+ *	 date / time keys: a hash partition hashes the outer value as it is, and a string under another collation, a
+ *	 NUMERIC of another scale or a float zero of the other sign would hash apart from the key it is equal to
+ *	 (CBRD-27866).
+ */
+bool
+qo_nl_inner_prunes_per_row (QO_NODE * node, BITSET * outer_nodes, BITSET * terms)
+{
+  QO_ENV *env = QO_NODE_ENV (node);
+  QO_TERM *term;
+  PT_NODE *expr, *key, *other;
+  const char *key_name;
+  UINTPTR spec_id;
+  BITSET_ITERATOR bi;
+  int t;
+
+  key_name = qo_node_partition_key (node, NULL);
+  if (key_name == NULL)
+    {
+      return false;
+    }
+
+  spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
+  for (t = bitset_iterate (terms, &bi); t != -1; t = bitset_next_member (&bi))
+    {
+      term = QO_ENV_TERM (env, t);
+      expr = QO_TERM_PT_EXPR (term);
+      if (expr == NULL || expr->node_type != PT_EXPR || expr->info.expr.op != PT_EQ
+	  || !bitset_intersects (&(QO_TERM_NODES (term)), outer_nodes))
+	{
+	  continue;
+	}
+
+      key = expr->info.expr.arg1;
+      other = expr->info.expr.arg2;
+      if (key == NULL || key->node_type != PT_NAME || key->info.name.spec_id != spec_id)
+	{
+	  key = expr->info.expr.arg2;
+	  other = expr->info.expr.arg1;
+	}
+      if (key == NULL || key->node_type != PT_NAME || key->info.name.spec_id != spec_id
+	  || intl_identifier_casecmp (key->info.name.original, key_name) != 0 || other == NULL
+	  || other->node_type != PT_NAME || other->info.name.spec_id == spec_id || other->type_enum != key->type_enum)
+	{
+	  continue;
+	}
+
+      switch (key->type_enum)
+	{
+	case PT_TYPE_SMALLINT:
+	case PT_TYPE_INTEGER:
+	case PT_TYPE_BIGINT:
+	case PT_TYPE_DATE:
+	case PT_TYPE_TIME:
+	case PT_TYPE_DATETIME:
+	case PT_TYPE_TIMESTAMP:
+	  return true;
+	default:
+	  break;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_nl_inner_partitions () - the partitions a nested-loop inner scan of the node probes for an outer key
+ *   return: the partition count of a partitioned table, 1 for any other table or one a constant prunes,
+ *	     0 for one a join term prunes per outer row
+ *   planp(in): the nested-loop join
+ *   node(in): the inner node
+ *
+ * Note: the inner walks its partitions per outer row (CBRD-27866). A constant term on the partition key prunes them
+ *	 when the scan is opened, and a join term on it prunes them for each outer row
+ *	 (qo_nl_inner_prunes_per_row ()); which ones is not known here, so the scan is then taken to read one.
+ */
+static int
+qo_nl_inner_partitions (QO_PLAN * planp, QO_NODE * node)
+{
+  QO_ENV *env = QO_NODE_ENV (node);
+  QO_PLAN *inner = planp->plan_un.join.inner;
+  QO_TERM *term;
+  QO_SEGMENT *seg;
+  BITSET scan_terms;
+  BITSET_ITERATOR bi, si;
+  const char *key_name;
+  int partitions = 1, t, s;
+  bool prunes;
+
+  key_name = qo_node_partition_key (node, &partitions);
+  if (!QO_NODE_IS_CLASS_PARTITIONED (node) || partitions <= 1)
+    {
+      return 1;
+    }
+
+  if (key_name != NULL)
+    {
+      for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &bi); t != -1; t = bitset_next_member (&bi))
+	{
+	  term = QO_ENV_TERM (env, t);
+	  for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &si); s != -1; s = bitset_next_member (&si))
+	    {
+	      seg = QO_ENV_SEG (env, s);
+	      if (QO_SEG_HEAD (seg) == node && QO_SEG_NAME (seg) != NULL
+		  && !intl_identifier_casecmp (QO_SEG_NAME (seg), key_name))
+		{
+		  return 1;
+		}
+	    }
+	}
+    }
+
+  /* the terms on the inner node; read them from info->terms, not join_terms, which the temporary plan of
+   * qo_find_best_nljoin_inner_plan_on_info () leaves uninitialized */
+  bitset_init (&scan_terms, env);
+  for (t = bitset_iterate (&(planp->info->terms), &bi); t != -1; t = bitset_next_member (&bi))
+    {
+      if (BITSET_MEMBER (QO_TERM_NODES (QO_ENV_TERM (env, t)), QO_NODE_IDX (node)))
+	{
+	  bitset_add (&scan_terms, t);
+	}
+    }
+  bitset_union (&scan_terms, &(inner->sarged_terms));
+  bitset_union (&scan_terms, &(inner->plan_un.scan.terms));
+  bitset_union (&scan_terms, &(inner->plan_un.scan.kf_terms));
+  prunes = qo_nl_inner_prunes_per_row (node, &(planp->plan_un.join.outer->info->nodes), &scan_terms);
+  bitset_delset (&scan_terms);
+
+  return prunes ? 0 : partitions;
+}
+
+/*
+ * qo_outer_seg_ndv () - distinct values of a column among the rows of its table an outer holds
+ *   return: the estimate, 0 without statistics
+ *   env(in):
+ *   seg(in): a column of a table in the outer
+ *   outer_nodes(in): the tables of the outer
+ *   rows(in): the outer rows
+ */
+static double
+qo_outer_seg_ndv (QO_ENV * env, QO_SEGMENT * seg, BITSET * outer_nodes, double rows)
+{
+  QO_NODE *node = QO_SEG_HEAD (seg);
+  double seg_ndv = qo_seg_ndv (seg);
+  double node_rows;
+
+  if (seg_ndv <= 0.0 || QO_NODE_NCARD (node) <= 0)
+    {
+      return 0.0;
+    }
+
+  node_rows = qo_node_rows_in_join (env, node, outer_nodes, rows);
+  if (node_rows <= 0.0)
+    {
+      return 0.0;
+    }
+
+  return qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv);
+}
+
+/*
+ * qo_nl_outer_key_ndv () - the number of distinct memoize keys among the outer rows of a nested-loop join
+ *   return: the estimate, at most rows; rows when it cannot be estimated or the inner is not memoized
+ *   planp(in): the nested-loop join
+ *   inner_node(in): the node the inner scans
+ *   rows(in): the outer rows the inner is probed for
+ *
+ * Note: the memoize key of an NL inner is the outer columns of the terms the inner evaluates. The memo of an inner
+ *	 walked per outer row spans the walk of its partitions, so only a key it has not seen probes them again
+ *	 (CBRD-27866). Each outer column counts with its NDV in the outer rows (qo_outer_seg_ndv ()), an equivalence
+ *	 class once. The executor does not memoize a scan that locks the rows it reads (UPDATE / DELETE, FOR UPDATE),
+ *	 nor with memoize_memory_limit = 0.
+ */
+static double
+qo_nl_outer_key_ndv (QO_PLAN * planp, QO_NODE * inner_node, double rows)
+{
+  QO_ENV *env = planp->info->env;
+  QO_PLAN *outer = planp->plan_un.join.outer;
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  QO_TERM *term;
+  QO_SEGMENT *seg;
+  BITSET key_segs;
+  BITSET_ITERATOR bi, si;
+  double key_ndv = 1.0, seg_ndv;
+  bool found = false;
+  int t, s;
+
+  if (prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT) <= 0
+      || (tree != NULL && PT_IS_SELECT (tree)
+	  && PT_SELECT_INFO_IS_FLAGED (tree, PT_SELECT_INFO_IS_UPD_DEL_QUERY | PT_SELECT_INFO_FOR_UPDATE)))
+    {
+      return rows;
+    }
+
+  /* the outer columns of the terms on the inner node; info->terms also holds the terms among the
+   * outer nodes, which are not part of the key */
+  bitset_init (&key_segs, env);
+  for (t = bitset_iterate (&(planp->info->terms), &bi); t != -1; t = bitset_next_member (&bi))
+    {
+      term = QO_ENV_TERM (env, t);
+      if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (inner_node)))
+	{
+	  continue;
+	}
+
+      for (s = bitset_iterate (&(QO_TERM_SEGS (term)), &si); s != -1; s = bitset_next_member (&si))
+	{
+	  if (BITSET_MEMBER (outer->info->nodes, QO_NODE_IDX (QO_SEG_HEAD (QO_ENV_SEG (env, s)))))
+	    {
+	      bitset_add (&key_segs, s);
+	    }
+	}
+    }
+
+  for (s = bitset_iterate (&key_segs, &si); s != -1; s = bitset_next_member (&si))
+    {
+      seg_ndv = qo_outer_seg_ndv (env, QO_ENV_SEG (env, s), &(outer->info->nodes), rows);
+      if (seg_ndv <= 0.0)
+	{
+	  /* no statistics */
+	  found = false;
+	  break;
+	}
+
+      /* columns of one equivalence class hold the same value in a row (x.k = o.k): count the class once,
+       * with the fewest distinct values among its columns */
+      seg = QO_ENV_SEG (env, s);
+      if (QO_SEG_EQCLASS (seg) != NULL)
+	{
+	  BITSET_ITERATOR oi;
+	  int o;
+	  bool counted = false;
+
+	  for (o = bitset_iterate (&key_segs, &oi); o != -1 && !counted; o = bitset_next_member (&oi))
+	    {
+	      QO_SEGMENT *other = QO_ENV_SEG (env, o);
+	      double other_ndv;
+
+	      if (o == s || QO_SEG_EQCLASS (other) != QO_SEG_EQCLASS (seg))
+		{
+		  continue;
+		}
+	      other_ndv = qo_outer_seg_ndv (env, other, &(outer->info->nodes), rows);
+	      counted = (other_ndv > 0.0 && (other_ndv < seg_ndv || (other_ndv == seg_ndv && o < s)));
+	    }
+	  if (counted)
+	    {
+	      continue;
+	    }
+	}
+
+      key_ndv *= seg_ndv;
+      found = true;
+    }
+  bitset_delset (&key_segs);
+
+  return found ? MIN (rows, MAX (1.0, key_ndv)) : rows;
+}
+
+/*
  * qo_nljoin_cost () -
  *   return:
  *   planp(in):
@@ -6786,6 +7140,32 @@ qo_nljoin_cost (QO_PLAN * planp)
   outer_cpu_cost = outer->variable_cpu_cost;
   /* outer side IO cost of nested-loop block join */
   outer_io_cost = outer->variable_io_cost;
+
+  /* a partitioned inner walks its partitions per outer row (CBRD-27866): each outer key its memo has not seen
+   * (qo_nl_outer_key_ndv ()) probes every partition the join does not prune (qo_nl_inner_partitions ()), and the
+   * scan switches to each of them. The descent above counts one partition per outer row. */
+  if (inner->plan_type == QO_PLANTYPE_SCAN && inner->iscan_descent_cpu > 0.0)
+    {
+      int partitions = qo_nl_inner_partitions (planp, inner->plan_un.scan.node);
+
+      if (partitions > 1)
+	{
+	  double key_ndv = qo_nl_outer_key_ndv (planp, inner->plan_un.scan.node, guessed_result_cardinality);
+
+	  inner_cpu_cost += key_ndv * (double) (partitions - 1) * inner->iscan_descent_cpu
+	    * (1.0 + PARTITION_SWITCH_DESCENT_RATIO);
+	}
+      else if (partitions == 0)
+	{
+	  /* pruned per outer row: each key evaluates the partition expression and switches the scan to its
+	   * partition. The descent above is priced on one partition's index, a level lower than the whole
+	   * table's, while the pruning and the switch cost about that level: price them as one page step so
+	   * the probe costs what a probe of the unpartitioned table does. */
+	  double key_ndv = qo_nl_outer_key_ndv (planp, inner->plan_un.scan.node, guessed_result_cardinality);
+
+	  inner_cpu_cost += key_ndv * BTREE_DESCENT_PAGE_OVERHEAD * QO_CPU_WEIGHT;
+	}
+    }
 
   /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does;
    * then the per-row inner work is divided, and so is the driving scan when the outer is that
@@ -10378,6 +10758,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
   QO_NODE *inner_node;
+  QO_INFO *inner_info;
 
   if (join_type == JOIN_RIGHT)
     {
@@ -10438,10 +10819,11 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  goto exit;
 	}
+      inner_info = outer;
       inner_plan = qo_find_best_nljoin_inner_plan_on_info (outer_plan, outer, join_type, idx_join_plan_n);
       if (inner_plan == NULL)
 	{
-	  goto exit;
+	  goto outer_join_temp;
 	}
     }
   else
@@ -10472,10 +10854,11 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  goto exit;
 	}
+      inner_info = inner;
       inner_plan = qo_find_best_nljoin_inner_plan_on_info (outer_plan, inner, join_type, idx_join_plan_n);
       if (inner_plan == NULL)
 	{
-	  goto exit;
+	  goto outer_join_temp;
 	}
     }
 
@@ -10557,6 +10940,28 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  }
       }
   }
+
+outer_join_temp:
+  /* an outer join inner of partitions walked per outer row (qo_join_new ()) reads, for each outer row, every
+   * partition the row does not prune; the temp list of the inner, built once, stays a candidate for the cost to
+   * choose (CBRD-27866). An idx-join of the inner (qo_generate_join_index_scan ()) keeps the sequential inners out
+   * through idx_join_plan_n, even when that leaves no inner for the nl-join above, so the inner of the temp list is
+   * looked up without it, as before the walk. */
+  if (IS_OUTER_JOIN_TYPE (join_type))
+    {
+      QO_PLAN *temp_inner = qo_find_best_nljoin_inner_plan_on_info (outer_plan, inner_info, join_type, 0);
+
+      if (temp_inner != NULL && temp_inner->plan_type == QO_PLANTYPE_SCAN
+	  && QO_NODE_IS_CLASS_HIERARCHY (temp_inner->plan_un.scan.node)
+	  && qo_nl_inner_partitions_walk_per_row (temp_inner->plan_un.scan.node))
+	{
+	  n +=
+	    qo_check_plan_on_info (info,
+				   qo_join_new (info, join_type, QO_JOINMETHOD_NL_JOIN, outer_plan,
+						qo_sort_new (temp_inner, temp_inner->order, SORT_TEMP), nl_join_terms,
+						duj_terms, afj_terms, sarged_terms, pinned_subqueries, hash_terms));
+	}
+    }
 
 exit:
 
@@ -13110,13 +13515,14 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
   if (nodep != NULL && QO_NODE_IS_CLASS_HIERARCHY (nodep))
     {
       /* Class hierarchies are split into scan blocks which cannot be used for index joins. However, if the class
-       * hierarchy is a partitioning hierarchy, we can use an index join for inner joins
+       * hierarchy is a partitioning hierarchy, we can use an index join for inner joins, and for outer joins when
+       * the partitions are walked per outer row, which returns the NULL row once (CBRD-27866)
        */
       if (!QO_NODE_IS_CLASS_PARTITIONED (nodep))
 	{
 	  return 0;
 	}
-      else if (join_type != JOIN_INNER)
+      else if (join_type != JOIN_INNER && !qo_nl_inner_partitions_walk_per_row (nodep))
 	{
 	  return 0;
 	}

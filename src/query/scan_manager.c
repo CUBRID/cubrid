@@ -3271,6 +3271,317 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+/* the memory the attribute caches an index scan keeps for the partitions it left may take (CBRD-27866); past it the
+ * caches are bound to the class of each partition again, as without keeping them */
+#define SCAN_PARTITION_KEPT_CACHE_LIMIT (4 * 1024 * 1024)
+
+/*
+ * scan_switch_index_attr_caches () - move the attribute caches of a started index scan to another partition
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   isidp(in/out): the index scan
+ *   cls_oid(in): the partition the scan moves to
+ *   park(in/out), kept(in/out), kept_bytes(in/out), caches_kept(out): as scan_switch_index_partition ()
+ *
+ * Note: the caches the scan holds go to park, or are ended when they are bound to the server-wide class
+ *	 representation cache. The partition's kept caches are then swapped in, or the caches are started on it:
+ *	 with a class representation of their own while the kept caches stay under SCAN_PARTITION_KEPT_CACHE_LIMIT,
+ *	 to be kept when the scan leaves, otherwise from the server-wide cache. regu variables point at the caches
+ *	 themselves and the partition switch resets the value pointers they cache, so only the contents move.
+ */
+static int
+scan_switch_index_attr_caches (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, OID * cls_oid,
+			       PARTITION_SCAN_CACHE * park, PARTITION_SCAN_CACHE ** kept, size_t * kept_bytes,
+			       bool * caches_kept)
+{
+  HEAP_CACHE_ATTRINFO *caches[PARTITION_SCAN_CACHE_COUNT];
+  SCAN_ATTRS *attrs[PARTITION_SCAN_CACHE_COUNT];
+  int k, error = NO_ERROR;
+
+  caches[0] = (isidp->range_pred.regu_list != NULL) ? isidp->range_attrs.attr_cache : NULL;
+  attrs[0] = &isidp->range_attrs;
+  caches[1] = (isidp->key_pred.regu_list != NULL) ? isidp->key_attrs.attr_cache : NULL;
+  attrs[1] = &isidp->key_attrs;
+  caches[2] = isidp->pred_attrs.attr_cache;
+  attrs[2] = &isidp->pred_attrs;
+  caches[3] = isidp->rest_attrs.attr_cache;
+  attrs[3] = &isidp->rest_attrs;
+
+  if (park == NULL && *kept == NULL && *kept_bytes >= SCAN_PARTITION_KEPT_CACHE_LIMIT)
+    {
+      /* nothing is kept: bind the caches to the class of the partition, keeping their value arrays */
+      for (k = 0; k < PARTITION_SCAN_CACHE_COUNT && error == NO_ERROR; k++)
+	{
+	  if (caches[k] != NULL)
+	    {
+	      error = heap_attrinfo_switch_class (thread_p, cls_oid, caches[k]);
+	    }
+	}
+      return error;
+    }
+
+  /* take the caches off the partition the scan leaves */
+  for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
+    {
+      if (caches[k] == NULL || caches[k]->num_values == -1)
+	{
+	  continue;
+	}
+      if (park != NULL && caches[k]->last_cacheindex < 0)
+	{
+	  heap_attrinfo_park (thread_p, caches[k]);
+	  park->attrs[k] = *caches[k];
+	  park->parked = true;
+	  /* the contents moved to park */
+	  caches[k]->num_values = -1;
+	  caches[k]->values = NULL;
+	  caches[k]->last_classrepr = NULL;
+	  caches[k]->read_classrepr = NULL;
+	}
+      else
+	{
+	  heap_attrinfo_end (thread_p, caches[k]);
+	}
+    }
+
+  /* put them on the partition the scan moves to */
+  if (*kept != NULL && (*kept)->parked)
+    {
+      for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
+	{
+	  if (caches[k] != NULL && (*kept)->attrs[k].num_values != -1)
+	    {
+	      *caches[k] = (*kept)->attrs[k];
+	      (*kept)->attrs[k].num_values = -1;
+	    }
+	  else if (caches[k] != NULL && attrs[k]->num_attrs == 0)
+	    {
+	      /* an empty cache, as heap_attrinfo_start () leaves it */
+	      caches[k]->num_values = -1;
+	    }
+	  else if (caches[k] != NULL)
+	    {
+	      caches[k]->num_values = -1;
+	      error =
+		heap_attrinfo_start_private (thread_p, cls_oid, attrs[k]->num_attrs, attrs[k]->attr_ids, caches[k]);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+      (*kept)->parked = false;
+      *caches_kept = true;
+      return NO_ERROR;
+    }
+
+  if (*kept == NULL && *kept_bytes < SCAN_PARTITION_KEPT_CACHE_LIMIT)
+    {
+      *kept = (PARTITION_SCAN_CACHE *) malloc (sizeof (PARTITION_SCAN_CACHE));
+      if (*kept != NULL)
+	{
+	  for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
+	    {
+	      (*kept)->attrs[k].num_values = -1;
+	    }
+	  (*kept)->parked = false;
+	  *kept_bytes += sizeof (PARTITION_SCAN_CACHE);
+	}
+    }
+
+  for (k = 0; k < PARTITION_SCAN_CACHE_COUNT; k++)
+    {
+      if (caches[k] == NULL)
+	{
+	  continue;
+	}
+      caches[k]->num_values = -1;
+      if (*kept != NULL)
+	{
+	  error = heap_attrinfo_start_private (thread_p, cls_oid, attrs[k]->num_attrs, attrs[k]->attr_ids, caches[k]);
+	  *kept_bytes += heap_attrinfo_kept_size (caches[k]);
+	}
+      else
+	{
+	  error = heap_attrinfo_start (thread_p, cls_oid, attrs[k]->num_attrs, attrs[k]->attr_ids, caches[k]);
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* as scan_start_scan () arms the predicate cache */
+  eval_mark_first_term_attrs (isidp->scan_pred.pred_expr, isidp->pred_attrs.attr_cache);
+  eval_disable_lazy_read (isidp->pred_attrs.attr_cache);
+
+  *caches_kept = (*kept != NULL);
+  return NO_ERROR;
+}
+
+/*
+ * scan_switch_index_partition () - move an index scan of a partitioned class to another partition
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   scan_id(in/out): an index scan opened by scan_open_index_scan ()
+ *   cls_oid(in): the partition
+ *   hfid(in): its heap
+ *   btid_int(in/out): the header of the partition's B+tree, which indx_info->btid already holds; read from its root
+ *		       page on the first switch to the partition and kept for the next ones
+ *   btid_int_cached(in/out): whether btid_int is read
+ *   lock_held(in): the scan already holds the IS_LOCK of the partition (it was started on it before)
+ *   park(in/out): where the attribute caches are kept for the partition the scan leaves, or NULL: they are bound
+ *		   to the server-wide class representation cache and are released
+ *   kept(in/out): the caches kept for the partition the scan moves to; allocated here on the first switch to it
+ *		   while the partitions' kept caches take less than SCAN_PARTITION_KEPT_CACHE_LIMIT
+ *   kept_bytes(in/out): the memory the partitions' kept caches take
+ *   started(out): the scan is started on the partition; otherwise the caller starts it (scan_start_scan ())
+ *   caches_kept(out): the attribute caches are the partition's kept ones (kept), to be parked when it leaves
+ *
+ * Note: the partitions of a class have the same index columns and attributes, so what scan_open_index_scan () set up
+ *	 for the index (the key attributes, the OID buffer, the key copy buffer, the covering list) stays as it is, and
+ *	 a started scan keeps its heap scan cache, which only takes the partition's heap. Its attribute caches are kept
+ *	 for each partition with a class representation of their own (heap_attrinfo_start_private ()) and are swapped
+ *	 in when the scan comes back, instead of being bound to the class representation again. A scan walked per outer
+ *	 row switches partitions for every outer key, and closing and opening it again costs more than the B+tree probe
+ *	 itself (CBRD-27866). The caller resets its block as for a new key.
+ */
+int
+scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * cls_oid, HFID * hfid,
+			     BTID_INT * btid_int, bool * btid_int_cached, bool lock_held, PARTITION_SCAN_CACHE * park,
+			     PARTITION_SCAN_CACHE ** kept, size_t * kept_bytes, bool * started, bool * caches_kept)
+{
+  INDX_SCAN_ID *isidp = &scan_id->s.isid;
+  BTREE_SCAN *BTS = &isidp->bt_scan;
+  KEY_VAL_RANGE *key_vals;
+  bool upddel_target_scan;
+  int i, error;
+
+  assert (scan_id->type == S_INDX_SCAN);
+
+  *caches_kept = false;
+  *started = (scan_id->status == S_STARTED && isidp->scancache_inited && isidp->caches_inited);
+
+  if (!*btid_int_cached)
+    {
+      BTID *btid = &isidp->indx_info->btid;
+      VPID root_vpid;
+      PAGE_PTR root;
+      BTREE_ROOT_HEADER *root_header;
+
+      root_vpid.pageid = btid->root_pageid;
+      root_vpid.volid = btid->vfid.volid;
+      root = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (root == NULL)
+	{
+	  ASSERT_ERROR ();
+	  return ER_FAILED;
+	}
+
+      root_header = btree_get_root_header (thread_p, root);
+      if (root_header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, root);
+	  return ER_FAILED;
+	}
+
+      btid_int->sys_btid = btid;
+      btid_int->key_type = NULL;
+      if (btree_glean_root_header_info (thread_p, root_header, btid_int, true) != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, root);
+	  return ER_FAILED;
+	}
+      pgbuf_unfix_and_init (thread_p, root);
+
+      /* the search keys were decided against the key domain of the index, as scan_open_index_scan () checks */
+      if (isidp->indx_info->key_type == NULL
+	  || !tp_domain_match (isidp->indx_info->key_type, btid_int->key_type, TP_EXACT_MATCH))
+	{
+	  (void) domain_unresolved_error (-1, TP_DOMAIN_TYPE (btid_int->key_type));
+	  return ER_FAILED;
+	}
+
+      *btid_int_cached = true;
+    }
+
+  if (*started)
+    {
+      /* scan_end_scan () without ending the caches, which move to the partition below */
+      if (isidp->curr_keyno >= 0 && isidp->curr_keyno < isidp->key_cnt)
+	{
+	  key_vals = isidp->key_vals;
+	  for (i = 0; i < isidp->key_cnt; i++)
+	    {
+	      pr_clear_value (&key_vals[i].key1);
+	      pr_clear_value (&key_vals[i].key2);
+	    }
+	}
+      btree_scan_clear_key (BTS);
+      (void) scan_init_iss (isidp);
+
+      error = heap_scancache_switch_class (thread_p, &isidp->scan_cache, hfid, cls_oid, lock_held);
+      if (error == NO_ERROR)
+	{
+	  error = scan_switch_index_attr_caches (thread_p, isidp, cls_oid, park, kept, kept_bytes, caches_kept);
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else
+    {
+      scan_end_scan (thread_p, scan_id);
+      if (isidp->caches_inited)
+	{
+	  if (isidp->range_pred.regu_list != NULL)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->range_attrs.attr_cache);
+	    }
+	  if (isidp->key_pred.regu_list != NULL)
+	    {
+	      heap_attrinfo_end (thread_p, isidp->key_attrs.attr_cache);
+	    }
+	  heap_attrinfo_end (thread_p, isidp->pred_attrs.attr_cache);
+	  heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
+	  isidp->caches_inited = false;
+	}
+      isidp->scancache_inited = false;
+    }
+
+  BTREE_INIT_SCAN (BTS);
+  BTS->btid_int = *btid_int;
+  BTS->btid_int.sys_btid = &isidp->indx_info->btid;
+  BTS->is_btid_int_valid = true;
+
+  upddel_target_scan = scan_id->upddel_target_scan;
+  scan_init_scan_id (scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type, scan_id->fixed,
+		     scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval, scan_id->val_list, scan_id->vd);
+  /* whether the row locks end with the statement is decided per class, as scan_open_index_scan () does */
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
+
+  COPY_OID (&isidp->cls_oid, cls_oid);
+  isidp->hfid = *hfid;		/* bitwise copy */
+  isidp->oids_count = 0;
+  isidp->curr_keyno = -1;
+  isidp->curr_oidno = -1;
+  isidp->one_range = false;
+  if (isidp->oid_list != NULL)
+    {
+      isidp->oid_list->oid_cnt = 0;
+      isidp->curr_oidp = isidp->oid_list->oidp;
+    }
+
+  if (*started)
+    {
+      /* as scan_start_scan () leaves a started scan */
+      scan_id->status = S_STARTED;
+    }
+
+  return scan_init_index_key_limit (thread_p, isidp, &isidp->indx_info->key_info, scan_id->vd);
+}
+
 /*
  * scan_open_index_key_info_scan () - Opens a scan for index key info
  *

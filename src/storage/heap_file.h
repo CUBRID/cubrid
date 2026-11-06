@@ -421,6 +421,8 @@ extern int heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
+extern int heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
+					const OID * class_oid, bool lock_held);
 extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
@@ -501,6 +503,11 @@ extern char *heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p, const O
 extern int heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int requested_num_attrs,
 				const ATTR_ID * attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_start_private (THREAD_ENTRY * thread_p, const OID * class_oid, int requested_num_attrs,
+					const ATTR_ID * attrids, HEAP_CACHE_ATTRINFO * attr_info);
+extern void heap_attrinfo_park (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
+extern size_t heap_attrinfo_kept_size (const HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 					HEAP_CACHE_ATTRINFO * attr_info);
