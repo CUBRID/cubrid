@@ -1073,7 +1073,16 @@ ux_restore_login (void)
 
   cas_log_write_and_end (0, false, "login %s not restored, error:%d", cas_restore.login_user, error);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_LOGIN_NOT_RESTORED, 2, db_get_session_id (), cas_restore.login_user);
-  return ERROR_INFO_SET_FORCE (ER_SES_LOGIN_NOT_RESTORED, DBMS_ERROR_INDICATOR);
+  error = ERROR_INFO_SET_FORCE (ER_SES_LOGIN_NOT_RESTORED, DBMS_ERROR_INDICATOR);
+
+  /* The connection is refused, and the CAS goes back to wait without the cleanup of a client that connected: give up
+   * what the attempt holds (the locks of reading the users) and leave the database, so that the session is no longer
+   * attached to this CAS and expires in time if the client does not come back. The session stays for the client. */
+  (void) db_abort_transaction ();
+  er_clear ();
+  ux_database_shutdown_for_reconnect ();
+
+  return error;
 }
 
 /*
