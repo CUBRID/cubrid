@@ -141,6 +141,9 @@ namespace parallel_scan
       int initialize (cubthread::entry &thread_ref);
       int finalize (cubthread::entry &thread_ref);
       int clone_xasl (cubthread::entry &thread_ref);
+      /* the clone's list subqueries of IN or NOT IN terms read the leader's lists and hashes (hash_lookup_share) */
+      int share_lookup_list (cubthread::entry &thread_ref, xasl_node *clone_subq);
+      void return_lookup_lists ();
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
       SCAN_CODE row_body (cubthread::entry &thread_ref, bool &stop);

@@ -67,10 +67,14 @@ namespace parallel_scan
       const DB_VALUE *find_precomp_val (XASL_NODE_ID subquery_id) const;
       void capture_precomp_vals (xasl_node *head);
 
+      /* the leader's executed list subqueries of IN or NOT IN terms, whose list and hash the clones share */
+      xasl_node *find_lookup_list (XASL_NODE_ID subquery_id) const;
+
     private:
       std::mutex m_mutex;
       std::map <XASL_NODE_ID, scan_info> m_scan_infos;
       std::map <XASL_NODE_ID, DB_VALUE> m_precomp_vals;
+      std::map <XASL_NODE_ID, xasl_node *> m_lookup_lists;
   };
 }
 

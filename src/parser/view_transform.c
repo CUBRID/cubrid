@@ -7070,8 +7070,10 @@ mq_rewrite_aggregate_as_derived (PARSER_CONTEXT * parser, PT_NODE * agg_sel)
    * Additionally, if the subquery has the QUERY_CACHE hint, it should not be merged, so it is treated together with the NO_MERGE hint.
    * All hints except for NO_MERGE and QUERY_CACHE are moved to the derived subquery. */
   derived->info.query.q.select.hint =
-    agg_sel->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE);
-  agg_sel->info.query.q.select.hint &= (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE);
+    agg_sel->info.query.q.select.hint & ~(PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE
+					  | PT_HINT_NO_HASH_LOOKUP);
+  agg_sel->info.query.q.select.hint &= (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE | PT_HINT_NO_SUBQUERY_CACHE
+					| PT_HINT_NO_HASH_LOOKUP);
 
   derived->info.query.q.select.leading = agg_sel->info.query.q.select.leading;
   agg_sel->info.query.q.select.leading = NULL;

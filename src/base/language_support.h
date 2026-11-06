@@ -118,6 +118,20 @@ enum
   LANG_COLL_BUILTIN_MAX = LANG_COLL_BINARY
 };
 
+/* the compare function of a collation (fastcmp_kind); OTHER=0 so that zero-initialized collations are none */
+typedef enum
+{
+  LANG_FASTCMP_OTHER,
+  LANG_FASTCMP_BYTE,		/* lang_fastcmp_byte */
+  LANG_FASTCMP_BYTE_CS,		/* lang_fastcmp_byte over the English case sensitive weights: a byte weighs itself, but
+				 * a space and NUL weigh 0 */
+  LANG_FASTCMP_BINARY,		/* lang_fastcmp_binary */
+  LANG_FASTCMP_KO,		/* lang_fastcmp_ko */
+  LANG_FASTCMP_UTF8,		/* lang_strcmp_utf8 */
+  LANG_FASTCMP_UTF8_CONTR,	/* lang_strcmp_utf8_w_contr */
+  LANG_FASTCMP_UTF8_UCA		/* lang_strcmp_utf8_uca */
+} LANG_FASTCMP;
+
 #define LANG_GET_BINARY_COLLATION(c) (((c) == INTL_CODESET_UTF8) \
   ? LANG_COLL_UTF8_BINARY :					 \
   (((c) == INTL_CODESET_KSC5601_EUC) ? LANG_COLL_EUCKR_BINARY :  \
@@ -196,8 +210,10 @@ struct lang_collation
   void (*init_coll) (LANG_COLLATION * lang_coll);
 
   /* byte-lockstep LIKE eligibility kind, computed at registration; NONE=0 is mandatory and the
-   * field must stay last (built-in collations use positional aggregate initializers) */
+   * fields from here must stay last (built-in collations use positional aggregate initializers) */
   LANG_LOCKSTEP_KIND byte_lockstep_kind;
+  /* which of the known compare functions fastcmp is, computed at registration */
+  LANG_FASTCMP fastcmp_kind;
 };
 
 /* Language locale data */
@@ -333,6 +349,9 @@ extern "C"
   extern const char *lang_charset_name (const INTL_CODESET codeset);
   extern const char *lang_charset_cubrid_name (const INTL_CODESET codeset);
 
+  extern unsigned int lang_hash_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str,
+					      const int size);
+  extern unsigned int lang_hash_utf8_uca (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   extern int lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, const unsigned char *str1,
 						 const int size1, const unsigned char *str2, const int size2,
 						 const unsigned char *escape, const bool has_last_escape,

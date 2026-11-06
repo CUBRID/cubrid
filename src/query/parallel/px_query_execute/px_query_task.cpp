@@ -25,6 +25,7 @@
 #include "log_impl.h"
 #include "perf_monitor.h"
 #include "query_executor.h"
+#include "query_hash_lookup.hpp"
 
 #if !defined(NDEBUG)
 #include <unistd.h>
@@ -211,6 +212,7 @@ namespace parallel_query_execute
     er_log_debug (ARG_FILE_LINE, "thread %8ld clears xasl : %p",
 		  syscall (SYS_gettid), xasl);
 #endif
+    hash_lookup_release_tree (cur_thread_p, xasl);
     (void) qexec_clear_xasl_for_parallel_aptr (cur_thread_p, xasl, true);
     if (is_list_id_exists)
       {

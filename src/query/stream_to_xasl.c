@@ -2222,6 +2222,9 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   /* initialize query_in_progress flag */
   xasl->query_in_progress = false;
+  /* before the children: a term the node's unpack reaches registers itself here (stx_build_alsm_eval_term) */
+  xasl->hash_lookup = NULL;
+  xasl->hash_lookup_term = NULL;
 
   /* XASL node header is packed first */
   ptr = stx_build_xasl_header (thread_p, ptr, &xasl->header);
@@ -5764,6 +5767,24 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
   alsm_eval_term->compare = NULL;
   alsm_eval_term->compare_row = -1;
   alsm_eval_term->compare_each = NULL;
+
+  /* the subquery whose list the term reads was unpacked with the elemset; a PX scan reaches the term from it */
+  if (alsm_eval_term->elemset != NULL && alsm_eval_term->elemset->type == TYPE_LIST_ID)
+    {
+      XASL_NODE *subquery = alsm_eval_term->elemset->xasl;
+      if (subquery->hash_lookup_term == NULL && !XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP))
+	{
+	  subquery->hash_lookup_term = alsm_eval_term;
+	}
+      else
+	{
+	  /* a second term reads the list (or NO_HASH_LOOKUP is set already): a PX scan worker would read the
+	   * leader's list through one term only (hash_lookup_share), so the terms read the list as they did before
+	   * the hash */
+	  subquery->hash_lookup_term = NULL;
+	  XASL_SET_FLAG (subquery, XASL_NO_HASH_LOOKUP);
+	}
+    }
 
   ptr = stx_build_element_compares (thread_p, ptr, alsm_eval_term);
   alsm_eval_term->prune_domain = NULL;

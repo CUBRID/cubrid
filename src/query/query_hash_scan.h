@@ -25,6 +25,7 @@
 
 #include "regu_var.hpp"
 #include "system.h"		/* HL_HEAPID */
+#include "language_support.h"
 
 #define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
 #define HASH_LIST_SCAN_DUMP_FILE_HASH 0
@@ -140,6 +141,23 @@ unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_ME
 unsigned int qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size);
 unsigned int qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size);
 unsigned int qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method);
+
+/* the hashes qdata_hash_scan_value takes of strings and numbers, which hash alike the values their comparison finds
+ * equal; also for the IN hash (query_hash_lookup.cpp) */
+unsigned int qdata_hash_string (const LANG_COLLATION * lang_coll, const unsigned char *str, int size);
+bool qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key);
+
+/* A hash table over a list's tuples, keyed by a hash value: the tuples in memory, their positions in memory, or a
+ * hash file */
+HASH_METHOD qdata_hscan_method (const QFILE_LIST_ID * list_id, UINT64 mem_limit);
+int qdata_hscan_create (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, HASH_METHOD method,
+			INT64 tuple_cnt, const char *name);
+void qdata_hscan_destroy (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
+void qdata_hscan_set_key (HASH_LIST_SCAN * hash_scan, unsigned int hash_key);
+int qdata_hscan_insert (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
+			QFILE_TUPLE_RECORD * tuple_record);
+int qdata_hscan_probe (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
+		       QFILE_TUPLE_RECORD * tuple_record);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 				 void *args);
