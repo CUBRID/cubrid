@@ -373,14 +373,12 @@ struct analytic_function_state
 #define QEXEC_ANALYTIC_HAS_ROW_VALUE(func_p) \
   (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p) || (func_p)->function == PT_PERCENT_RANK)
 
-/* the memory the waiting rows of a sort key group take before the next ones go to a list file */
-#define ANALYTIC_STREAM_AREA_MAX_SIZE (1024 * 1024)
-
 /* streaming: the sorted rows that wait for their sort key group to end, in order */
 typedef struct analytic_stream_buffer ANALYTIC_STREAM_BUFFER;
 struct analytic_stream_buffer
 {
   char *area;			/* rows: the row values of the functions, the input tuple */
+  int area_max;			/* the memory the waiting rows take before the next ones go to list files */
   int area_size;
   int area_used;
   int area_rows;
@@ -30513,6 +30511,10 @@ qexec_analytic_can_stream (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_st
 
   analytic_state->stream_waits = (group_keys != -1);
 
+  /* the waiting rows are intermediate aggregation state, which hash GROUP BY bounds with max_agg_hash_size before it
+   * goes to list files as well */
+  analytic_state->stream.area_max = (int) MIN (prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE), (INT64) INT_MAX);
+
   for (i = 0; i < analytic_state->func_count; i++)
     {
       if (QEXEC_ANALYTIC_HAS_ROW_VALUE (analytic_state->func_state_list[i].func_p))
@@ -30563,8 +30565,8 @@ qexec_analytic_stream_finalize_group (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION
  *   analytic_state(in/out): analytic state
  *   tplrec(in): the sorted input tuple, whose values are fetched
  *
- * A waiting row keeps its input tuple and its row values: in memory up to ANALYTIC_STREAM_AREA_MAX_SIZE, then in list
- * files, so a large group takes no memory by its rows.
+ * A waiting row keeps its input tuple and its row values: in memory up to stream->area_max, then in list files, so a
+ * large group takes no memory by its rows.
  */
 static int
 qexec_analytic_stream_add_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, QFILE_TUPLE_RECORD * tplrec)
@@ -30616,8 +30618,12 @@ qexec_analytic_stream_add_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analyti
 	{
 	  new_size *= 2;
 	}
+      if (new_size > stream->area_max && stream->area_used + rec_len <= stream->area_max)
+	{
+	  new_size = stream->area_max;
+	}
 
-      if (new_size <= ANALYTIC_STREAM_AREA_MAX_SIZE)
+      if (new_size <= stream->area_max)
 	{
 	  char *area = (char *) (stream->area == NULL ? db_private_alloc (thread_p, new_size)
 				 : db_private_realloc (thread_p, stream->area, new_size));
