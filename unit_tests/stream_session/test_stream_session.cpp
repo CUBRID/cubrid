@@ -244,6 +244,10 @@ namespace
   const int TRAN_1 = 7;
   const int TRAN_2 = 8;
 
+  /* connections: a client_id is not reused while its connection lives, unlike a tran_index */
+  const int CLIENT_1 = 101;
+  const int CLIENT_2 = 102;
+
   stream_kind_desc
   upload_desc (stream_session_factory sink, bool ends_unit_of_work)
   {
@@ -480,8 +484,8 @@ TEST_CASE_METHOD (registry_fixture, "a handle resolves only where it was issued"
   stream_handle_table table, other_session;
   std::int64_t download = 0, staged = 0;
 
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, 0, new fake_source ("v"), &download) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, 10, new fake_object (), &staged) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 10, new fake_object (), &staged) == NO_ERROR);
   CHECK (download > 0);
   CHECK (staged > 0);
   CHECK (download != staged);
@@ -517,7 +521,7 @@ TEST_CASE_METHOD (registry_fixture, "handle numbers are positive and never repea
 	{
 	  std::int64_t h = 0;
 
-	  REQUIRE (t.issue (NULL, KIND_STAGED, TRAN_1, 0, new fake_object (), &h) == NO_ERROR);
+	  REQUIRE (t.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &h) == NO_ERROR);
 	  CHECK (h > 0);
 	  CHECK (seen.insert (h).second);
 	  t.release (NULL, h);
@@ -530,8 +534,8 @@ TEST_CASE_METHOD (registry_fixture, "a download pin is exclusive and an upload p
   stream_handle_table table;
   std::int64_t download = 0, staged = 0;
 
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, 0, new fake_source ("v"), &download) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, 0, new fake_object (), &staged) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &staged) == NO_ERROR);
 
   REQUIRE (table.get_source (download, TRAN_1) != NULL);
   /* a second READ sent before the first one's reply: refused, not serialized */
@@ -555,7 +559,7 @@ TEST_CASE_METHOD (registry_fixture, "a release during a pin waits for the last p
   stream_handle_table table;
   std::int64_t staged = 0;
 
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, 0, new fake_object (), &staged) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &staged) == NO_ERROR);
   REQUIRE (table.get (staged, KIND_STAGED, TRAN_1) != NULL);
   REQUIRE (table.get (staged, KIND_STAGED, TRAN_1) != NULL);
 
@@ -580,9 +584,9 @@ TEST_CASE_METHOD (registry_fixture, "a transaction end releases only that transa
   stream_handle_table table;
   std::int64_t d1 = 0, d2 = 0, staged = 0;
 
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, 0, new fake_source ("a"), &d1) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, 0, new fake_source ("b"), &d2) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, 0, new fake_object (), &staged) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("a"), &d1) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, 0, new fake_source ("b"), &d2) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &staged) == NO_ERROR);
 
   table.end_tran (NULL, TRAN_1);
   CHECK (test_Closed == 1);
@@ -605,6 +609,68 @@ TEST_CASE_METHOD (registry_fixture, "a transaction end releases only that transa
   CHECK (test_Closed == 3);
 }
 
+TEST_CASE_METHOD (registry_fixture, "a connection's close leaves the handles another connection issued",
+		  "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t download = 0;
+
+  /* the old connection's close, processed after its client attached again on a new one */
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, 0, new fake_source ("v"), &download) == NO_ERROR);
+  table.end_client (NULL, CLIENT_1);
+  CHECK (test_Closed == 0);
+  CHECK (table.get_source (download, TRAN_1) != NULL);
+  table.put (NULL, download);
+
+  table.clear (NULL);
+  CHECK (test_Closed == 1);
+}
+
+TEST_CASE_METHOD (registry_fixture, "a connection's close releases its STREAM_SCOPE_TRAN handles", "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t mine = 0, pinned = 0, reused = 0;
+
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("a"), &mine) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("b"), &pinned) == NO_ERROR);
+  /* the same tran_index, issued to the next connection that was given it */
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, 0, new fake_source ("c"), &reused) == NO_ERROR);
+
+  REQUIRE (table.get_source (pinned, TRAN_1) != NULL);
+  table.end_client (NULL, CLIENT_1);
+  CHECK (test_Closed == 1);
+  CHECK (table.get_source (mine, TRAN_1) == NULL);
+
+  /* one in use goes at its put, as with any release */
+  table.put (NULL, pinned);
+  CHECK (test_Closed == 2);
+  CHECK (table.get_source (pinned, TRAN_1) == NULL);
+
+  CHECK (table.get_source (reused, TRAN_1) != NULL);
+  table.put (NULL, reused);
+
+  table.clear (NULL);
+  CHECK (test_Closed == 3);
+}
+
+TEST_CASE_METHOD (registry_fixture, "STREAM_SCOPE_OWNER handles survive their connection's close", "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t staged = 0;
+
+  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 10, new fake_object (), &staged) == NO_ERROR);
+  table.end_client (NULL, CLIENT_1);
+  CHECK (test_Closed == 0);
+
+  /* the client attached again on another connection, in another transaction */
+  CHECK (table.get (staged, KIND_STAGED, TRAN_2) != NULL);
+  table.put (NULL, staged);
+
+  /* the session's end takes them */
+  table.clear (NULL);
+  CHECK (test_Closed == 1);
+}
+
 TEST_CASE_METHOD (registry_fixture, "the limits refuse an issue and close what was refused", "[stream_handle]")
 {
   stream_handle_table table;
@@ -613,26 +679,27 @@ TEST_CASE_METHOD (registry_fixture, "the limits refuse an issue and close what w
 
   for (int i = 0; i < STREAM_HANDLE_MAX_PER_TRAN; i++)
     {
-      REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, 0, new fake_source ("v"), &h) == NO_ERROR);
+      REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &h) == NO_ERROR);
       handles.push_back (h);
     }
 
-  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, 0, new fake_source ("v"), &h) == ER_STREAM_SESSION_ERROR);
+  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &h) == ER_STREAM_SESSION_ERROR);
   CHECK (h == 0);
   CHECK (test_Closed == 1);
 
   /* per transaction: another one is not charged for it */
-  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, 0, new fake_source ("v"), &h) == NO_ERROR);
+  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, 0, new fake_source ("v"), &h) == NO_ERROR);
 
   /* a release requested during a pin frees the slot at once */
   REQUIRE (table.get_source (handles[0], TRAN_1) != NULL);
   table.release (NULL, handles[0]);
-  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, 0, new fake_source ("v"), &h) == NO_ERROR);
+  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &h) == NO_ERROR);
   table.put (NULL, handles[0]);
 
   /* staged bytes are counted per session */
-  CHECK (table.issue (NULL, KIND_STAGED, TRAN_1, STREAM_HANDLE_MAX_OWNER_BYTES, new fake_object (), &h) == NO_ERROR);
-  CHECK (table.issue (NULL, KIND_STAGED, TRAN_2, 1, new fake_object (), &h) == ER_STREAM_SESSION_ERROR);
+  CHECK (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, STREAM_HANDLE_MAX_OWNER_BYTES, new fake_object (),
+		      &h) == NO_ERROR);
+  CHECK (table.issue (NULL, KIND_STAGED, TRAN_2, CLIENT_1, 1, new fake_object (), &h) == ER_STREAM_SESSION_ERROR);
 
   table.clear (NULL);
 }
@@ -645,15 +712,15 @@ TEST_CASE_METHOD (registry_fixture, "a value within one read comes back with the
   int nread = 0, reply_flags = 0;
   std::int64_t handle = -1;
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "hello", 5, TRAN_1, 64, STREAM_FLAG_RELEASE_AT_EOF,
-				 buf.data (), &nread, &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "hello", 5, TRAN_1, CLIENT_1, 64,
+				 STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags, &handle) == NO_ERROR);
   CHECK (handle == 0);
   CHECK (std::string (buf.data (), (size_t) nread) == "hello");
   CHECK (reply_flags == (STREAM_FLAG_EOF | STREAM_FLAG_RELEASED));
   CHECK (test_Closed == 1);
 
   /* without RELEASE_AT_EOF the client keeps the handle and releases it itself */
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "hello", 5, TRAN_1, 64, 0, buf.data (), &nread,
+  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "hello", 5, TRAN_1, CLIENT_1, 64, 0, buf.data (), &nread,
 				 &reply_flags, &handle) == NO_ERROR);
   CHECK (handle > 0);
   CHECK (reply_flags == STREAM_FLAG_EOF);
@@ -681,8 +748,9 @@ TEST_CASE_METHOD (registry_fixture, "a larger value reads to eof and releases at
       value[i] = (char) ('a' + i % 26);
     }
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, value.data (), (int) value.size (), TRAN_1, 4096,
-				 STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, value.data (), (int) value.size (), TRAN_1, CLIENT_1,
+				 4096, STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags, &handle)
+	   == NO_ERROR);
   REQUIRE (handle > 0);
   CHECK (nread == 4096);
   CHECK (reply_flags == 0);
@@ -709,8 +777,8 @@ TEST_CASE_METHOD (registry_fixture, "an unbundled open issues a handle and reads
   int nread = -1, reply_flags = -1;
   std::int64_t handle = 0;
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, 0, 0, NULL, &nread, &reply_flags,
-				 &handle) == NO_ERROR);
+  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
+				 &reply_flags, &handle) == NO_ERROR);
   CHECK (handle > 0);
   CHECK (nread == 0);
   CHECK (reply_flags == 0);
@@ -726,15 +794,15 @@ TEST_CASE_METHOD (registry_fixture, "a failed read releases its handle", "[strea
   int nread = 0, reply_flags = 0;
   std::int64_t handle = 0;
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "?fail", 5, TRAN_1, 0, 0, NULL, &nread, &reply_flags,
-				 &handle) == NO_ERROR);
+  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "?fail", 5, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
+				 &reply_flags, &handle) == NO_ERROR);
   CHECK (stream_download_read (NULL, table, handle, TRAN_1, 16, 0, buf.data (), &nread, &reply_flags)
 	 == ER_STREAM_SESSION_ERROR);
   CHECK (test_Closed == 1);
   CHECK (table.get_source (handle, TRAN_1) == NULL);
 
   /* a failed first read in a bundled open leaves no handle either */
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "?fail", 5, TRAN_1, 16, 0, buf.data (), &nread,
+  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "?fail", 5, TRAN_1, CLIENT_1, 16, 0, buf.data (), &nread,
 				 &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
   CHECK (handle == 0);
   CHECK (test_Closed == 2);
@@ -749,8 +817,8 @@ TEST_CASE_METHOD (registry_fixture, "the core holds a source to its read contrac
   std::int64_t handle = 0;
 
   /* nothing and no eof would keep a client reading forever */
-  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "~", 1, TRAN_1, 16, 0, buf.data (), &nread, &reply_flags,
-			       &handle) == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "~", 1, TRAN_1, CLIENT_1, 16, 0, buf.data (), &nread,
+			       &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
   CHECK (handle == 0);
   CHECK (test_Closed == 1);
 
@@ -758,12 +826,12 @@ TEST_CASE_METHOD (registry_fixture, "the core holds a source to its read contrac
   CHECK (stream_read_bound (1 << 30) == STREAM_READ_MAX_CHUNK);
   CHECK (stream_read_bound (100) == 100);
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, 0, 0, NULL, &nread, &reply_flags,
-				 &handle) == NO_ERROR);
+  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
+				 &reply_flags, &handle) == NO_ERROR);
   CHECK (stream_download_read (NULL, table, handle, TRAN_1, 0, 0, buf.data (), &nread, &reply_flags)
 	 == ER_STREAM_SESSION_ERROR);
-  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, -1, 0, NULL, &nread, &reply_flags,
-			       &handle) == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, CLIENT_1, -1, 0, NULL, &nread,
+			       &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
   table.clear (NULL);
 }
 
@@ -773,11 +841,11 @@ TEST_CASE_METHOD (registry_fixture, "an open refused by its factory or its kind 
   int nread = 0, reply_flags = 0;
   std::int64_t handle = -1;
 
-  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "!no", 3, TRAN_1, 0, 0, NULL, &nread, &reply_flags,
-			       &handle) == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "!no", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
+			       &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
   CHECK (handle == 0);
-  CHECK (stream_download_open (NULL, table, KIND_A, "abc", 3, TRAN_1, 0, 0, NULL, &nread, &reply_flags, &handle)
-	 == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_download_open (NULL, table, KIND_A, "abc", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread, &reply_flags,
+			       &handle) == ER_STREAM_SESSION_ERROR);
   CHECK (handle == 0);
   CHECK (test_Closed == 0);
 }

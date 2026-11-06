@@ -86,7 +86,7 @@ stream_handle_table::~stream_handle_table ()
 }
 
 int
-stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, std::int64_t size,
+stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, std::int64_t size,
 			    stream_handle_object *object, std::int64_t *handle)
 {
   const stream_kind_desc *desc = stream_kind_find (kind);
@@ -124,6 +124,7 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, st
 
 	e.kind = kind;
 	e.tran_index = tran_index;
+	e.client_id = client_id;
 	e.scope = desc->scope;
 	e.exclusive = (desc->direction == STREAM_DOWNLOAD);
 	e.counted = true;
@@ -261,6 +262,35 @@ stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index)
 }
 
 void
+stream_handle_table::end_client (THREAD_ENTRY *thread_p, int client_id)
+{
+  std::vector<stream_handle_object *> to_close;
+
+  if (m_size.load () == 0)
+    {
+      return;
+    }
+
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    for (entry_map::iterator it = m_entries.begin (); it != m_entries.end ();)
+      {
+	entry_map::iterator next = std::next (it);
+
+	/* by connection, not by tran_index: a late close must not reach a handle of a reused index */
+	if (it->second.scope == STREAM_SCOPE_TRAN && it->second.client_id == client_id)
+	  {
+	    release_locked (it, to_close);
+	  }
+	it = next;
+      }
+  }
+
+  close_all (thread_p, to_close);
+}
+
+void
 stream_handle_table::clear (THREAD_ENTRY *thread_p)
 {
   std::vector<stream_handle_object *> to_close;
@@ -371,6 +401,7 @@ stream_source_read_checked (THREAD_ENTRY *thread_p, stream_source *source, char 
  *   kind(in): STREAM_KIND_* taken off the wire, not yet trusted
  *   config(in), config_len(in): the kind's config blob
  *   tran_index(in): the transaction the handle belongs to
+ *   client_id(in): the connection that opened it
  *   first_max(in): 0 to open only, or the bytes to read at once
  *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
  *   buf(out): stream_read_bound (first_max) bytes
@@ -379,8 +410,8 @@ stream_source_read_checked (THREAD_ENTRY *thread_p, stream_source *source, char 
  */
 int
 stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int kind, const char *config,
-		      int config_len, int tran_index, int first_max, int flags, char *buf, int *nread, int *reply_flags,
-		      std::int64_t *handle)
+		      int config_len, int tran_index, int client_id, int first_max, int flags, char *buf, int *nread,
+		      int *reply_flags, std::int64_t *handle)
 {
   stream_source *source;
   int error_code = NO_ERROR;
@@ -428,7 +459,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
 	}
     }
 
-  error_code = table.issue (thread_p, kind, tran_index, 0, source, handle);
+  error_code = table.issue (thread_p, kind, tran_index, client_id, 0, source, handle);
   if (error_code != NO_ERROR)
     {
       /* the bytes already read go with the refusal */
