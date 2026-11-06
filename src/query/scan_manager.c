@@ -1309,6 +1309,25 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 
   cmp_1 = cmp_2 = cmp_3 = cmp_4 = ROP_NA;
 
+  /* remove empty key ranges (e.g. a NULL bound) first; they match no key, and merging one would swallow the other
+   * range. Keep one if all are empty. */
+  cur_n = 0;
+  while (key_cnt > 1 && cur_n < key_cnt)
+    {
+      curp = key_vals + cur_n;
+      if (curp->range == NA_NA)
+	{
+	  pr_clear_value (&curp->key1);
+	  pr_clear_value (&curp->key2);
+	  memmove (curp, curp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - cur_n - 1));
+	  key_cnt--;
+	}
+      else
+	{
+	  cur_n++;
+	}
+    }
+
   curp = key_vals;
   cur_n = 0;
   while (key_cnt > 1 && cur_n < key_cnt - 1)
@@ -1408,6 +1427,11 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  /* remove merged one(nextp) */
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - next_n - 1));
 	  key_cnt--;
+
+	  /* the merged range may now overlap one skipped as disjoint before it (e.g. k > 7 sorted ahead of
+	   * k between 7 and 59 when k < 7 is the current one); check them again */
+	  nextp = curp + 1;
+	  next_n = cur_n + 1;
 	}
 
       curp++;

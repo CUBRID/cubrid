@@ -190,7 +190,8 @@ namespace parallel_scan
 
   /* a GROUP BY skip runs in parallel (CBRD-27664) when its workers' partial aggregates combine in the leader's key
    * order merge: every aggregate combines, its inputs are computable in a worker, and no group count stops the scan
-   * (groupby_num, which runs serially and stops early). The scan stays ascending (groupby_desc, the spec check). */
+   * (groupby_num, which runs serially and stops early). The scan direction does not matter: a worker's run ends when
+   * its key goes back, and the merge compares keys in the GROUP BY order. */
   static bool
   is_groupby_skip_parallel (XASL_NODE *arg)
   {
@@ -214,6 +215,19 @@ namespace parallel_scan
 	flags |= check<false> (agg);
       }
     return !is_flag_set (flags, CANNOT_PARALLEL_SCAN) && !is_flag_set (flags, CANNOT_RUN_IN_WORKER);
+  }
+
+  /* the list keeps the scan order as its result order: the planner dropped ORDER BY, or the executor skips its sort
+   * because after_iscan_list covers it. GROUP BY and DISTINCT sort anyway. */
+  static bool
+  is_scan_order_result (XASL_NODE *arg)
+  {
+    if (arg->type != BUILDLIST_PROC || arg->after_iscan_list == nullptr || arg->proc.buildlist.groupby_list != nullptr
+	|| arg->option == Q_DISTINCT)
+      {
+	return false;
+      }
+    return arg->orderby_list == nullptr || qfile_is_sort_list_covered (arg->after_iscan_list, arg->orderby_list);
   }
 
   template <bool is_outptr_list>
@@ -494,12 +508,12 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby skip and a descending groupby skip need globally ordered traversal; an ascending
-		 * groupby skip merges its workers' partial aggregates in key order, which its XASL check decides
+		/* orderby skip needs globally ordered traversal; a groupby skip, ascending or descending, merges
+		 * its workers' partial aggregates in key order, which its XASL check decides
 		 * (is_groupby_skip_parallel ()). orderby_desc/groupby_desc only tell the first sort column is DESC
 		 * and are used only with skip (see scan_get_index_oidset ()), so they alone do not prevent a
 		 * parallel scan. */
-		if (arg->indexptr->orderby_skip || (arg->indexptr->groupby_skip && arg->indexptr->groupby_desc))
+		if (arg->indexptr->orderby_skip)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -1134,7 +1148,7 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    /* nested sort/hash join serial too: qexec_execute_cte copies each iteration's result without dependents */
+	    /* the nested sorts and hash joins run serially too (parallelism 1), not only the scans */
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
@@ -1230,8 +1244,10 @@ namespace parallel_scan
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
     const bool block_list_spec = (arg->instnum_pred != nullptr);
 
-    /* a groupby skip that runs in parallel keeps the group order its ORDER BY skipped: the leader merges in key order */
-    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST) && !is_groupby_skip_parallel (arg);
+    /* a groupby skip that runs in parallel keeps the group order its ORDER BY skipped: the leader merges in key order;
+     * otherwise the list keeps the scan order when ORDER BY was skipped or its sort is skipped at run time */
+    const bool block_all_specs = (XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST) && !is_groupby_skip_parallel (arg))
+				 || is_scan_order_result (arg);
 
     if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
       {
