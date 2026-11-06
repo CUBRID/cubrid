@@ -1744,7 +1744,7 @@ jobs:
                   echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because their shard died whole or never started, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
                 elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
                   nobuild=''
-                  [ -n "$brid" ] || nobuild=" This run also has no usable $(attr "$suite" build_mode) build."
+                  [ -n "$brid" ] || nobuild=" This run has no usable $(attr "$suite" build_mode) build."
                   echo "> **Nothing to re-run: no failure, no named unrun case, and no case changed since tc commit \`${rerun_since:0:10}\`.$nobuild**"
                 elif [ "${rerun_gone:-0}" -eq 0 ]; then
                   echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
@@ -1911,7 +1911,7 @@ jobs:
 
             if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
             # Not judged, not failed: the status is error, so the nightly batch takes the commit again.
-            # A hold is red that no re-run clears, so with one the verdict is fail.
+            # A hold is red that no re-run clears, so with a hold the verdict is fail.
             [ -n "$brid" ] || [ -n "$held" ] || v=nobuild
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             echo "$v" > "$d/collect/verdict"
