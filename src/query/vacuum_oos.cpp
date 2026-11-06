@@ -45,7 +45,7 @@
 /*
  * vacuum_oos_reclaim_empty_pages () - Reclaim the pages a batch of OOS reclaims emptied (fast path).
  *   Only ER_INTERRUPTED is propagated; other failures are absorbed (the pages stay allocated,
- *   candidates for the growth-gate sweep).
+ *   in the file's emptied-page set for the next growth).
  *
  * return                 : NO_ERROR or ER_INTERRUPTED.
  * thread_p (in)          : Thread entry.
