@@ -92,6 +92,8 @@ extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_comm
 extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
 extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 
+extern int session_stream_client_id (THREAD_ENTRY * thread_p);
+extern int session_check_stream_slot (THREAD_ENTRY * thread_p);
 extern int session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p, int kind);
 extern int session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr),
 				       int *kind);
@@ -106,5 +108,5 @@ extern void session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p);
 
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
-extern void session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session);
+extern void session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session, int client_id);
 #endif /* _SESSION_H_ */

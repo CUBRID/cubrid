@@ -11428,9 +11428,9 @@ ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
 }
 
 void
-ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session)
+ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session, int client_id)
 {
-  session_destroy_attached_sessions (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session, client_id);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -13611,7 +13611,8 @@ stream_finish (THREAD_ENTRY *thread_p, stream_session *session, int kind, INT64 
       return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
 
-  return handles->issue (thread_p, kind, LOG_FIND_THREAD_TRAN_INDEX (thread_p), result.count, result.staged, count);
+  return handles->issue (thread_p, kind, LOG_FIND_THREAD_TRAN_INDEX (thread_p), session_stream_client_id (thread_p),
+			 result.count, result.staged, count);
 }
 
 /*
@@ -13646,11 +13647,9 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
     }
 
   /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
-  if (session_has_stream_session (thread_p))
+  error_code = session_check_stream_slot (thread_p);
+  if (error_code != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
-	      "a stream session is already active on this connection");
-      error_code = ER_STREAM_SESSION_ERROR;
       goto send_reply;
     }
 
@@ -13670,11 +13669,11 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       goto send_reply;
     }
 
+  /* another connection of the session may have taken the slot since the check above */
   error_code = session_set_stream_session (thread_p, session, stream_kind);
   if (error_code != NO_ERROR)
     {
-      session->abort (thread_p);
-      delete session;
+      stream_drop_session (thread_p, session, true);
       goto send_reply;
     }
 
@@ -13961,8 +13960,8 @@ sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       if (error_code == NO_ERROR)
 	{
 	  error_code = stream_download_open (thread_p, *handles, stream_kind, ptr, reqlen - header_size,
-					     LOG_FIND_THREAD_TRAN_INDEX (thread_p), first_max, flags, buf, &nread,
-					     &reply_flags, &handle);
+					     LOG_FIND_THREAD_TRAN_INDEX (thread_p), session_stream_client_id (thread_p),
+					     first_max, flags, buf, &nread, &reply_flags, &handle);
 	}
     }
 
