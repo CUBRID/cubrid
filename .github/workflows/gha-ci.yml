@@ -1071,7 +1071,7 @@ jobs:
               # recorded '' because none of the results a re-run of it relies on came from a build (see build_recipe below).
               if [ -n "$recipe" ] && ! grep -qx "build_recipe=''" "$srcdir/plan/split.meta" 2>/dev/null \
                  && [ "$prev_recipe" != "$recipe" ]; then
-                echo "::error::run $RERUN_FROM relies on results from a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
+                echo "::error::the recipe recorded for run $RERUN_FROM is '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
                 exit 1
               fi
               # A shard that died whole, or never started, left no result file for failed.list: carry its share.
