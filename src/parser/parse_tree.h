@@ -594,8 +594,11 @@ struct trace_json_t;
 /* CBRD-27583: a position that took its bind domain (host_var_bind_domains): the client's bind converts its value into
  * it, and the compilation planned it so (pt_take_host_var_bind_domains) */
 #define PT_HOST_VAR_BIND_DOMAIN 0x2000
+/* a position every occurrence of which is a value stored into a column (pt_classify_host_var_positions): the client
+ * converts its value into the column's domain, a CHAR padded, so its plan is that domain's */
+#define PT_HOST_VAR_ASSIGNMENT 0x4000
 /* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
-#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 14
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 15
 #define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
 #define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
 #define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
@@ -1318,6 +1321,9 @@ typedef UINT64 PT_HINT_ENUM;
 							 * different histogram territory (per-statement form of
 							 * plan_cache_bind_sensitivity) */
 #define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
+#define  PT_HINT_ROW_SNAPSHOT			(1ULL << 48)	/* read the rows a constant filter selects while planning,
+								 * even with row_snapshot_max_rows=0 (CBRD-27478) */
+#define  PT_HINT_NO_ROW_SNAPSHOT		(1ULL << 49)	/* do not read them (CBRD-27478) */
 
 /* Codes for error messages */
 typedef enum
@@ -3326,6 +3332,7 @@ struct pt_value_info
   bool is_collate_allowed;	/* 1 if this is a PT_VALUE allowed to have the COLLATE modifier (the grammar context in
 				 * which is created allows it) */
   bool is_false_where;		/* reduced node from false where */
+  bool is_reserved_hash_key;	/* the hash key placeholder at the front of a hash join input list */
   int coll_modifier;		/* collation modifier = collation + 1 */
   int host_var_index;		/* save the host_var index which it comes from. -1 means it is a normal value. it does
 				 * not come from any host_var. */
@@ -4051,6 +4058,10 @@ struct parser_context
 					 * translation's type checking gave a node of it (pt_preset_hostvar's writes,
 					 * not a rule cast's target or an AGNOSTIC position's INTEGER), which the bind
 					 * casts the bound value into; NULL for none */
+  PT_NODE *host_var_classified;	/* the statement whose name resolution classifies its positions
+				 * (pt_classify_host_var_positions), while it compiles */
+  PT_NODE *host_var_assigned_later;	/* the statement whose class prefetch assigns its positions after its
+					 * translation (pt_assign_host_var_positions), while it compiles */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
@@ -4154,6 +4165,11 @@ struct parser_context
     unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
+    unsigned host_var_assign_failed:1;	/* CBRD-27583: the positions of the compiled statement failed after its
+					 * translation (pt_assign_host_var_positions): a semantic error */
+    unsigned compile_uncached:1;	/* CBRD-27478: the statement compiles through do_statement (), outside the XASL
+					 * cache, so it compiles again at every execution: the planner reads no rows
+					 * (row snapshot) for a plan nothing keeps */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned is_verifying_static_sql_text:1;	/* compile the edited text of a PL/CSQL static SQL without preparing it, so that
 						 * the verification leaves no XASL cache entry (see make_static_sql_text ()) */

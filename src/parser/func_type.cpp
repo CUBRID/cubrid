@@ -2458,8 +2458,8 @@ pt_check_function_collation (PARSER_CONTEXT *parser, PT_NODE *node)
 	{
 	  return node;
 	}
-      arg_list = arg_list->next;
       prev_arg = arg_list;
+      arg_list = arg_list->next;
     }
 
   arg = arg_list;
