@@ -398,6 +398,16 @@ cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
   int err_code;
   char *db_err_msg = NULL;
   err_code = ux_database_connect ((char *) db_name, (char *) db_user, (char *) db_passwd, &db_err_msg);
+  if (err_code >= 0)
+    {
+      /* give the client the state it had in its session; a login user that cannot be given back refuses the
+       * connection, rather than run the client as another user */
+      err_code = ux_restore_session_state (cas_check_session_renewed (db_get_session_id ()));
+      if (err_code < 0)
+	{
+	  db_err_msg = strdup (err_info.err_string);
+	}
+    }
   if (err_code < 0)
     {
       char msg_buf[LINE_MAX];
@@ -446,8 +456,6 @@ cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_i
 
   cas_log_write_and_end (0, false, "connect db %s@%s user %s url %s" " session id %u", as_info->database_name,
 			 as_info->database_host, db_user, url, session_id);
-
-  ux_restore_session_state (cas_check_session_renewed (session_id));
 }
 
 /*

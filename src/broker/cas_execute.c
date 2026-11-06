@@ -411,6 +411,7 @@ static bool ux_read_session_restore (void);
 static bool ux_read_int_pair (const char **p, int *first, int *second);
 static void ux_format_int_pair (char *buf, int size, int first, int second);
 static void ux_clear_session_restore (void);
+static int ux_restore_login (void);
 
 int
 ux_check_connection (void)
@@ -1034,16 +1035,58 @@ ux_clear_session_restore (void)
 }
 
 /*
+ * ux_restore_login () - switch to the user the client had switched to with login () in its session
+ *
+ * return : 0, or the error to refuse the connection with (set in err_info)
+ *
+ * Note: the client must not go on as another user, so a user that cannot be given back refuses the connection: the
+ *	 login method is not allowed any more, the user the client connected as is not a DBA (login () took a password,
+ *	 which is not kept), or the user is gone.
+ */
+static int
+ux_restore_login (void)
+{
+  char *user_name;
+  int error;
+
+  if (!prm_get_bool_value (PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER))
+    {
+      error = ER_AU_LOGIN_METHOD_NOT_ALLOWED_ON_BROKER;
+    }
+  else
+    {
+      /* as the login method does */
+      error = au_login (cas_restore.login_user, NULL, false);
+      if (error == NO_ERROR)
+	{
+	  user_name = db_get_user_name ();
+	  tm_Tran_invalidate_snapshot = 1;
+	  error = clogin_user (user_name);
+	  db_string_free (user_name);
+	}
+    }
+
+  if (error == NO_ERROR)
+    {
+      return 0;
+    }
+
+  cas_log_write_and_end (0, false, "login %s not restored, error:%d", cas_restore.login_user, error);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_LOGIN_NOT_RESTORED, 2, db_get_session_id (), cas_restore.login_user);
+  return ERROR_INFO_SET_FORCE (ER_SES_LOGIN_NOT_RESTORED, DBMS_ERROR_INDICATOR);
+}
+
+/*
  * ux_restore_session_state () - set up the state of a client that has just connected to this CAS
  *
+ * return : 0, or the error to refuse the connection with (set in err_info)
  * is_reused_session (in) : whether the client reconnected to its session
  *
  * Note: not for a shard CAS.
  */
-void
+int
 ux_restore_session_state (bool is_reused_session)
 {
-  char *user_name;
   int isolation_level, lock_timeout;
   int error;
 
@@ -1063,40 +1106,22 @@ ux_restore_session_state (bool is_reused_session)
     {
       cas_log_write_and_end (0, false, "restore %s", cas_restore.stored);
 
+      /* first, since it can refuse the connection */
+      if (cas_restore.login_user[0] != '\0' && strcasecmp (cas_restore.login_user, database_user) != 0)
+	{
+	  error = ux_restore_login ();
+	  if (error < 0)
+	    {
+	      return error;
+	    }
+	}
+
       cas_restore.in_resend_window = true;
 
       if (cas_restore.prm[0] != '\0' && db_set_system_parameters (cas_restore.prm) != NO_ERROR)
 	{
 	  cas_log_write_and_end (0, false, "cannot restore %s, error:%d", cas_restore.prm, er_errid ());
 	  er_clear ();
-	}
-
-      if (cas_restore.login_user[0] != '\0' && strcasecmp (cas_restore.login_user, database_user) != 0)
-	{
-	  if (!prm_get_bool_value (PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER))
-	    {
-	      cas_log_write_and_end (0, false, "login %s not restored, not allowed", cas_restore.login_user);
-	      cas_restore.login_user[0] = '\0';
-	    }
-	  else
-	    {
-	      /* as the login method does; it succeeds only if the user the client connected as is a DBA */
-	      error = au_login (cas_restore.login_user, NULL, false);
-	      if (error == NO_ERROR)
-		{
-		  user_name = db_get_user_name ();
-		  tm_Tran_invalidate_snapshot = 1;
-		  error = clogin_user (user_name);
-		  db_string_free (user_name);
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  cas_log_write_and_end (0, false, "login %s not restored, error:%d", cas_restore.login_user, error);
-		  er_clear ();
-		  cas_restore.login_user[0] = '\0';
-		}
-	    }
 	}
     }
 
@@ -1120,8 +1145,7 @@ ux_restore_session_state (bool is_reused_session)
   cas_restore.prm_generation = db_get_system_parameters_generation ();
   ux_get_tran_setting (&cas_restore.base_lock_timeout, &cas_restore.base_isolation);
 
-  /* a login that was not restored */
-  ux_write_session_restore ();
+  return 0;
 }
 
 /*
