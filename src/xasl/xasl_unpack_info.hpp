@@ -76,6 +76,7 @@ struct xasl_unpack_info
   int track_allocated_bufers;
 
   bool use_xasl_clone;		/* true, if uses xasl clone */
+  bool has_routine_call;	/* a stored procedure regu or a method spec was unpacked (XASL_HAS_ROUTINE_CALL) */
   bool index_stream;		/* a filter or function index predicate or expression: its domains need not describe its
 				 * values (stx_decide_stream_compare) */
 #if !defined (NDEBUG)

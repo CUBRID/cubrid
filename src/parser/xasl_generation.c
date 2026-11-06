@@ -358,7 +358,6 @@ typedef struct xasl_supp_info
   int n_oid_list;		/* number OIDs in the list */
   int oid_list_size;		/* size of the list */
   int includes_tde_class;	/* whether there are some tde class in class_oid_list: 0 or 1 */
-  int has_routine_call;		/* a stored procedure or method call was generated: 0 or 1 (XASL_HAS_ROUTINE_CALL) */
 } XASL_SUPP_INFO;
 
 typedef struct uncorr_info
@@ -699,7 +698,6 @@ pt_init_xasl_supp_info ()
 
   xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
   xasl_Supp_info.includes_tde_class = 0;
-  xasl_Supp_info.has_routine_call = 0;
 }
 
 
@@ -5616,7 +5614,6 @@ pt_make_cselect_access_spec (XASL_NODE * xasl, PL_SIGNATURE_ARRAY_TYPE * sig_arr
     }
 
   spec = pt_make_access_spec (TARGET_METHOD, access, indexptr, NULL, where_pred, NULL);
-  xasl_Supp_info.has_routine_call = 1;
 
   if (spec)
     {
@@ -8842,7 +8839,6 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   regu->type = TYPE_SP;
-  xasl_Supp_info.has_routine_call = 1;
 
   if (node->type_enum != PT_TYPE_NUMERIC)
     {
@@ -23738,10 +23734,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (xasl_Supp_info.has_routine_call == 1)
-	{
-	  XASL_SET_FLAG (xasl, XASL_HAS_ROUTINE_CALL);
-	}
       pt_init_xasl_supp_info ();
 
       insert = &xasl->proc.insert;
@@ -27462,10 +27454,6 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       xasl->class_locks = NULL;
       xasl->tcard_list = NULL;
       XASL_CLEAR_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
-      if (xasl_Supp_info.has_routine_call == 1)
-	{
-	  XASL_SET_FLAG (xasl, XASL_HAS_ROUTINE_CALL);
-	}
 
       if ((n = xasl_Supp_info.n_oid_list) > 0 && (xasl->class_oid_list = regu_oid_array_alloc (n))
 	  && (xasl->class_locks = regu_int_array_alloc (n)) && (xasl->tcard_list = regu_int_array_alloc (n)))
