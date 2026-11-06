@@ -19108,6 +19108,8 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   PT_NODE *new_node, *next;
   int line, column;
   const char *alias_print;
+  char *sql_user_text;
+  int sql_user_text_len;
 
   assert (union_node->node_type == PT_UNION || union_node->node_type == PT_INTERSECTION
 	  || union_node->node_type == PT_DIFFERENCE);
@@ -19115,6 +19117,10 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   line = union_node->line_number;
   column = union_node->column_number;
   alias_print = union_node->alias_print;
+  /* the parser puts the length of a statement's text only on the statement node; when the set operation is the
+   * statement, its arms carry none, and a driver session compiles the text again for the types of its bind values */
+  sql_user_text = union_node->sql_user_text;
+  sql_user_text_len = union_node->sql_user_text_len;
   next = union_node->next;
   union_node->next = NULL;
 
@@ -19211,6 +19217,8 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   new_node->line_number = line;
   new_node->column_number = column;
   new_node->alias_print = alias_print;
+  new_node->sql_user_text = sql_user_text;
+  new_node->sql_user_text_len = sql_user_text_len;
   new_node->next = next;
 
   return new_node;
