@@ -23,6 +23,7 @@
 #include "xasl_stream.hpp"
 
 #include "memory_alloc.h"
+#include "object_domain_convert.h"
 #include "object_representation.h"
 #include "xasl.h"
 #include "xasl_unpack_info.hpp"
@@ -30,7 +31,7 @@
 #include "memory_wrapper.hpp"
 
 #if !defined(SERVER_MODE)
-static int stx_Xasl_errcode = NO_ERROR;
+static CUB_THREAD_LOCAL int stx_Xasl_errcode = NO_ERROR;
 #endif /* !SERVER_MODE */
 
 /*
@@ -98,6 +99,10 @@ stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_s
   unpack_info->alloc_buf = (char *) unpack_info + head_offset;
   unpack_info->additional_buffers = NULL;
   unpack_info->track_allocated_bufers = 0;
+  unpack_info->index_stream = false;
+#if !defined (NDEBUG)
+  unpack_info->n_undecided_regu = unpack_info->n_undecided_arith = unpack_info->n_undecided_position = 0;
+#endif
 #if defined (SERVER_MODE)
   unpack_info->thrd = thread_p;
 #endif /* SERVER_MODE */
@@ -374,6 +379,9 @@ stx_build (THREAD_ENTRY *thread_p, char *ptr, cubxasl::json_table::column &jtc)
     }
 
   ptr = or_unpack_domain (ptr, &jtc.m_domain, NULL);
+  /* CBRD-27583: the column's conversion, chosen once for every row */
+  jtc.m_converter = tp_value_find_converter (jtc.m_function == JSON_TABLE_EXISTS ? DB_TYPE_SHORT : DB_TYPE_JSON,
+		    jtc.m_domain, DOMAIN_CONVERT_ASSIGN);
 
   jtc.m_path = stx_restore_string (thread_p, ptr);
   jtc.m_column_name = stx_restore_string (thread_p, ptr);

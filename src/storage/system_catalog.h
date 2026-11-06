@@ -68,13 +68,7 @@ struct disk_representation
   int fixed_length;		/* total length of fixed attributes */
   int n_variable;		/* number of variable attributes */
   struct disk_attribute *variable;	/* variable attribute structures */
-  int stats_layout;		/* on-disk layout of the BTREE_STATS that follow each attribute: CATALOG_STATS_LAYOUT_V0
-				 * (32-bit keys/pkeys, records written before CBRD-27140) or CATALOG_STATS_LAYOUT_V1 (INT64).
-				 * Readers accept both; writers always emit V1. */
 };				/* object disk representation */
-
-#define CATALOG_STATS_LAYOUT_V0  0	/* the value pre-CBRD-27140 writers left in the reserved slot */
-#define CATALOG_STATS_LAYOUT_V1  1
 
 
 
@@ -157,7 +151,7 @@ extern CTID catalog_Id;		/* global catalog identifier */
 
 extern void catalog_free_representation (DISK_REPR * repr_p);
 extern void catalog_free_class_info (CLS_INFO * class_info_p);
-extern void catalog_initialize (CTID * catid);
+extern int catalog_initialize (CTID * catid);
 extern void catalog_finalize (void);
 
 /* these two routines should be called only once and by the root */

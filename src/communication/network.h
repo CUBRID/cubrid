@@ -291,6 +291,18 @@
   \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_BTREE_COMPACT_OVERFLOW) \
   \
+  /* bind-value plan variants of a cached query */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_BIND_VARIANT) \
+  \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_DROP_CLONES) \
+  \
+  /* cdc channel authentication - appended at the end so no existing request number moves */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_CHALLENGE) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE) \
+  \
+  /* progress of UPDATE STATISTICS ON ALL CLASSES, written to the event log */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_LOG_STATS_PROGRESS) \
+  \
   /* shared byte-stream transport, both directions */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_INIT) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_SEND_DATA) \

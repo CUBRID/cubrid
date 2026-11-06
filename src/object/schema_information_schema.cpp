@@ -56,7 +56,7 @@ namespace cubschema
     return names;
   }
 
-  static const cubbase::identifier_store sm_info_schema_view_names (get_information_schema_view_names (), false);
+  static const cubbase::identifier_store sm_info_schema_view_names (get_information_schema_view_names ());
 }
 
 bool sm_is_information_schema_views (const std::string_view name)

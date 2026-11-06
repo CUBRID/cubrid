@@ -1780,14 +1780,29 @@
 #define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
 #define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
 
-#define ER_STREAM_SESSION_ERROR                     -1383
+#define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
 
-#define ER_COPY_NOT_SUPPORTED                       -1384
-#define ER_COPY_BINARY_FORMAT_ERROR                 -1385
-#define ER_COPY_CSV_FORMAT_ERROR                    -1386
-#define ER_COPY_INVALID_OPTION                      -1387
+#define ER_SES_VARIABLE_TYPE_FIXED                  -1384
 
-#define ER_LAST_ERROR                               -1388
+#define ER_AU_REJECT_LOGIN                          -1385
+
+#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
+
+#define ER_SUB_CLIENTS_ALIVE                        -1387
+#define ER_MAIN_CLIENT_NOT_READY                    -1388
+#define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
+
+#define ER_SES_SESSION_SECRET_MISMATCH              -1390
+#define ER_SES_SESSION_NOT_ATTACHED                 -1391
+
+#define ER_STREAM_SESSION_ERROR                     -1392
+
+#define ER_COPY_NOT_SUPPORTED                       -1393
+#define ER_COPY_BINARY_FORMAT_ERROR                 -1394
+#define ER_COPY_CSV_FORMAT_ERROR                    -1395
+#define ER_COPY_INVALID_OPTION                      -1396
+
+#define ER_LAST_ERROR                               -1397
 
 
 /*
