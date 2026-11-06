@@ -48,7 +48,7 @@ enum STREAM_KIND
 
   /* Allocated so far -- a consumer takes the next free value and names it in
    * its own header, and this list is what stops two of them colliding:
-   *   0  COPY                   (src/loaddb/copy_stream_kind.h)
+   *   0  COPY                   (not landed; CBRD-26961, PR #7343)
    *   1  internal-LOB upload    (not landed; CBRD-26780)
    *   2  internal-LOB DML       (not landed; CBRD-26780)
    *   3  loaddb                 (not landed; CBRD-26780)
