@@ -7764,12 +7764,9 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	  continue;
 	}
 
+      /* the arguments of the expression are separate segments, so a plain index covers them by its key columns */
       if (QO_SEG_FUNC_INDEX (seg))
 	{
-	  if (index_entry->constraints == NULL || index_entry->constraints->func_index_info == NULL)
-	    {
-	      return false;
-	    }
 	  continue;
 	}
 
