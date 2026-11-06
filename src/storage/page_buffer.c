@@ -2232,8 +2232,11 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   /* The Sidecar store cursor keeps a store page between the values a scan decodes.  Every site that can fix another
    * permanent page while it is kept releases it first (sidecar_cursor_release ()); a missed site fails here in a debug
    * build, and is released here in a release build (E26).  Temporary pages may be fixed with it kept. */
-  if (unlikely (thread_p != NULL && thread_p->sidecar_cursor_page != NULL) && !pgbuf_is_temporary_volume (vpid->volid))
+  if (unlikely ((thread_p != NULL ? thread_p : thread_get_thread_entry_info ())->sidecar_cursor_page != NULL)
+      && !pgbuf_is_temporary_volume (vpid->volid))
     {
+      /* a caller without its entry passes NULL: the cursor is kept on the real one (E28), which the rest of the fix
+       * leaves as the caller gave it */
 #if !defined (NDEBUG)
       er_log_debug (ARG_FILE_LINE, "Sidecar: page %d|%d fixed at %s:%d (%s) while the store cursor keeps a page",
 		    vpid->volid, vpid->pageid, caller_file, caller_line, caller_func);

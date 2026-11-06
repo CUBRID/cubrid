@@ -171,7 +171,12 @@ extern void sidecar_cursor_release (THREAD_ENTRY *thread_p);
 STATIC_INLINE void
 sidecar_cursor_before_hot_fix (THREAD_ENTRY *thread_p)
 {
-  if (unlikely (thread_p != NULL && thread_p->sidecar_cursor_page != NULL))
+  if (unlikely (thread_p == NULL))
+    {
+      /* a caller without its entry: the cursor is kept on the real one (E28) */
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (unlikely (thread_p->sidecar_cursor_page != NULL))
     {
       sidecar_cursor_release (thread_p);
     }
