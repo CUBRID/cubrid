@@ -7122,7 +7122,8 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 {
 #if defined(SERVER_MODE)
   THREAD_ENTRY *cur_thrd_entry, *thrd_entry;
-  assert (get_waiter_exists (&bufptr->atomic_latch) == true);
+  /* readers and writers set waiter_exists before they queue; a flush waiter does not */
+  assert (request_mode == PGBUF_LATCH_FLUSH || get_waiter_exists (&bufptr->atomic_latch) == true);
 
   /* caller is holding bufptr->mutex */
   /* request_mode == PGBUF_LATCH_READ/PGBUF_LATCH_WRITE/PGBUF_LATCH_FLUSH */
@@ -7196,12 +7197,6 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 		    }
 
 		  thrd_entry->next_wait_thrd = NULL;
-		  /* self-removed from the wait queue on interrupt: reconcile waiter_exists (see
-		   * pgbuf_wake_flush_waiters). */
-		  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
-		    {
-		      set_waiter_exists (&bufptr->atomic_latch, false);
-		    }
 		  PGBUF_BCB_UNLOCK (bufptr);
 		  /* set an error like the READ/WRITE wait path does (pgbuf_timed_sleep); callers assert one is set */
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -7829,6 +7824,15 @@ pgbuf_lockfree_fix_ro (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MO
   while (!bufptr->atomic_latch.compare_exchange_weak (impl.raw, new_impl.raw,
 						      std::memory_order_acq_rel, std::memory_order_acquire));
 
+  /* the CAS compares only the latch word, which returns to the same value when the BCB is reused for another page and
+   * latched again. the fix just taken keeps the BCB from being reused, so its vpid is stable now. */
+  if (!VPID_EQ (&bufptr->vpid, vpid))
+    {
+      PGBUF_BCB_LOCK (bufptr);
+      (void) pgbuf_unlatch_bcb_upon_unfix (thread_p, bufptr, NO_ERROR);
+      /* bufptr->mutex has been released in above function. */
+      return NULL;
+    }
 
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
   if (holder != NULL)
@@ -8890,7 +8894,7 @@ static int
 pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked)
 {
   int error_code = NO_ERROR;
-  PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
+  PGBUF_LATCH_MODE latch_mode;
   bool immediate_flush = false, block = false, is_flushing = false;
 
   assert (get_latch (&bufptr->atomic_latch) != PGBUF_LATCH_FLUSH);
@@ -8915,32 +8919,22 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
    * for the second case, we know the bcb is already being flushed. if we need to be sure page is flushed, we'll put
    * ourselves in bcb's waiting list (and a thread doing flush should wake us).
    */
-  do
+  /* latch_mode changes only under bufptr->mutex (the lock-free paths change only the fix count of a read latch) */
+  latch_mode = get_latch (&bufptr->atomic_latch);
+  is_flushing = pgbuf_bcb_is_flushing (bufptr);
+  if (!is_flushing
+      && (latch_mode == PGBUF_NO_LATCH || latch_mode == PGBUF_LATCH_READ
+	  || (latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
     {
-      immediate_flush = false;
-      block = false;
-      is_flushing = false;
-      impl = get_impl (&bufptr->atomic_latch);
-      impl_new = impl;
-      is_flushing = pgbuf_bcb_is_flushing (bufptr);
-      if (!is_flushing
-	  && (impl.impl.latch_mode == PGBUF_NO_LATCH || impl.impl.latch_mode == PGBUF_LATCH_READ
-	      || (impl.impl.latch_mode == PGBUF_LATCH_WRITE && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL)))
-	{
-	  immediate_flush = true;
-	}
-      else
-	{
-	  assert (is_flushing || impl.impl.latch_mode == PGBUF_LATCH_WRITE);
-	  if (synchronous)
-	    {
-	      block = true;
-	      impl_new.impl.waiter_exists = true;
-	    }
-	}
+      immediate_flush = true;
     }
-  while (!bufptr->atomic_latch.compare_exchange_strong (impl.raw, impl_new.raw, std::memory_order_acq_rel,
-							std::memory_order_acquire));
+  else
+    {
+      assert (is_flushing || latch_mode == PGBUF_LATCH_WRITE);
+      /* a flush waiter does not set waiter_exists: it waits for the flush to end, not for the latch, so readers may
+       * keep joining a read latch meanwhile. */
+      block = synchronous;
+    }
 
   if (immediate_flush)
     {
@@ -11171,16 +11165,6 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	{
 	  prev_waiter = crt_waiter;
 	}
-    }
-  /* every PGBUF_LATCH_FLUSH waiter was dequeued above. reconcile the atomic-latch waiter_exists bit exactly as
-   * pgbuf_wakeup_reader_writer does on the unlatch path: if no blocked reader/writer remains queued, clear it.
-   * leaving it set on a bcb that is (or goes) idle poisons pgbuf_latch_bcb_upon_fix's idle-grant CAS, which
-   * force-expects waiter_exists == false and never enqueues when latch_mode == PGBUF_NO_LATCH -- the next fix
-   * then spins forever while holding the bcb mutex (bulk-build CREATE INDEX livelock). caller holds the bcb
-   * mutex at all callsites, and all waiter_exists transitions are bcb-mutex-protected, so this is race-free. */
-  if (!pgbuf_is_exist_blocked_reader_writer (bcb))
-    {
-      set_waiter_exists (&bcb->atomic_latch, false);
     }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_WAKE_FLUSH_WAITER);
