@@ -11114,6 +11114,29 @@ ux_stream_admits_request (int func_code)
 }
 
 /*
+ * ux_stream_finds_no_upload () - Is this a request to go on with an upload when none is open?
+ *
+ * The upload was given up already, by a chunk the server refused or by the rollback that ended it, and its
+ * auto-commit was settled then. Such a request does no work in the transaction, so the connection keeps the status
+ * it had: marked in a transaction, an auto-commit connection would keep this CAS bound to its client with nothing
+ * left to end the transaction.
+ */
+bool
+ux_stream_finds_no_upload (int func_code)
+{
+  switch (func_code)
+    {
+    case CAS_FC_STREAM_SEND_DATA:
+    case CAS_FC_STREAM_END:
+    case CAS_FC_STREAM_ABORT:
+      return !stream_from_is_open ();
+
+    default:
+      return false;
+    }
+}
+
+/*
  * refuse_stream_opened_mid_request () - Give up a stream a statement opened with more of its request to run
  *
  * What runs next -- another statement, the batch's own commit, a rollback to the request's savepoint --
