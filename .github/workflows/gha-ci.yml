@@ -1065,8 +1065,8 @@ jobs:
               prev_recipe=$(find "$srcdir/shard" -mindepth 2 -maxdepth 2 -name build.read \
                 -exec sed -n 's/^recipe=//p' {} + 2>/dev/null | sort -u) || prev_recipe=''
               [ -n "$prev_recipe" ] || prev_recipe=$(sed -n "s/^build_recipe='\(.*\)'\$/\1/p" "$srcdir/plan/split.meta" 2>/dev/null) || prev_recipe=''
-              # A run with no usable build for the suite has no shard that read one. When this run or the source
-              # run (or both) is such a run, there is no build to keep the same.
+              # No build to keep the same: this run has no usable build and starts no shard, or the source run
+              # recorded '' because no part of its verdict rests on a build (see build_recipe below).
               if [ -n "$recipe" ] && ! grep -qx "build_recipe=''" "$srcdir/plan/split.meta" 2>/dev/null \
                  && [ "$prev_recipe" != "$recipe" ]; then
                 echo "::error::run $RERUN_FROM tested a build made with '$(echo ${prev_recipe:-no recorded recipe})', not '$recipe'. A re-run only re-runs the same build. Use /run $suite"
@@ -1237,7 +1237,8 @@ jobs:
               echo "rerun_failed=$nfail"
               echo "rerun_changed=$changed"
               echo "rerun_since='$(cat "/tmp/tc.$suite.since" 2>/dev/null || :)'"
-              echo "build_recipe='$recipe'"
+              # A re-run with no usable build keeps the build its source tested: its verdict still rests on it.
+              echo "build_recipe='${recipe:-${prev_recipe:-}}'"
             } > "$out/plan/split.meta"
 
             case "$SABOTAGE" in
@@ -1743,7 +1744,7 @@ jobs:
                 elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
                   nobuild=''
                   [ -n "$brid" ] || nobuild=" This run has no usable $(attr "$suite" build_mode) build, so the suite fails."
-                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`.$nobuild**"
+                  echo "> **Nothing to re-run: no failure, no named unrun case, and no case changed since tc commit \`${rerun_since:0:10}\`.$nobuild**"
                 elif [ "${rerun_gone:-0}" -eq 0 ]; then
                   echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
                 else
