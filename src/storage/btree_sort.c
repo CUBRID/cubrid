@@ -891,6 +891,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->data_sects = 0;
 
   sort_param->px_leave_runs = false;
+  sort_param->px_parallel_num = 1;
 
   /* initialize memory allocable fields */
   sort_param->temp = NULL;
