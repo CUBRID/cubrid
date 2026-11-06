@@ -304,6 +304,12 @@ tp_value_convert_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN 
 	    {
 	      return error == ER_IT_DATA_OVERFLOW ? DOMAIN_OVERFLOW : DOMAIN_INCOMPATIBLE;
 	    }
+	  if (DB_IS_NULL (&number))
+	    {
+	      /* '' or a whitespace-only string with numeric_empty_string_as_null */
+	      db_value_domain_init (target, DB_TYPE_NUMERIC, desired_domain->precision, desired_domain->scale);
+	      return DOMAIN_COMPATIBLE;
+	    }
 	  /* The legacy strict string path also rounds when fitting the parsed NUMERIC to the target. */
 	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
 		 (&number, target, desired_domain, date_error);

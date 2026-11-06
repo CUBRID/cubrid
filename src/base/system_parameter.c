@@ -835,6 +835,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 // #endregion
 
+#define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -5745,6 +5747,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},
    {false, {.i = 10000}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+   PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_QRY_STRING | PRM_FOR_PL_CONTEXT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
