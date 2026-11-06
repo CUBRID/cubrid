@@ -4149,7 +4149,7 @@ struct parser_context
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
     unsigned is_unloading_plcsql_def:1;
     unsigned is_parsing_trigger:1;
-    unsigned is_checking_stored_condition:1;	/* checking a view query spec or a filter index condition, which is stored as text */
+    unsigned is_checking_view_spec:1;	/* checking the query spec of a view, which is stored as text */
     unsigned bind_signature_changed:1;	/* CBRD-27583: a value pushed into a value-typed position has another type
 					 * than the plan was compiled for: the statement needs the plan of the new
 					 * signature */

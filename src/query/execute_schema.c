@@ -16008,11 +16008,7 @@ do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICATE_INFO * fi
   *stmt = pt_resolve_names (parser, *stmt, &sc_info);
   if (*stmt != NULL && !pt_has_error (parser))
     {
-      unsigned save_stored = parser->flag.is_checking_stored_condition;
-
-      parser->flag.is_checking_stored_condition = 1;
       *stmt = pt_semantic_type (parser, *stmt, &sc_info);
-      parser->flag.is_checking_stored_condition = save_stored;
     }
   else
     {

@@ -7238,6 +7238,29 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 
 
 /*
+ * pt_is_never_true_and () - test whether a FALSE or NULL constant is joined by AND into the condition
+ *   return: true if the condition can never be TRUE for that reason
+ *   node(in): a conjunct of a search condition
+ */
+static bool
+pt_is_never_true_and (const PT_NODE * node)
+{
+  if (PT_IS_VALUE_NODE (node)
+      && (PT_IS_NULL_NODE (node) || (node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i == 0)))
+    {
+      return true;
+    }
+
+  /* x AND y is never TRUE when x or y is a FALSE or NULL constant */
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_AND))
+    {
+      return pt_is_never_true_and (node->info.expr.arg1) || pt_is_never_true_and (node->info.expr.arg2);
+    }
+
+  return false;
+}
+
+/*
  * pt_false_search_condition () - Test for constant-folded search condition
  * 				  that evaluated false
  *   return: 1 if any of the conjuncts are effectively false, 0 otherwise
@@ -7253,7 +7276,7 @@ pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
       if (node->or_next == NULL
 	  && (node->type_enum == PT_TYPE_NA || node->type_enum == PT_TYPE_NULL
 	      || (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_LOGICAL
-		  && node->info.value.data_value.i == 0)))
+		  && node->info.value.data_value.i == 0) || pt_is_never_true_and (node)))
 	{
 	  return true;
 	}
@@ -8122,9 +8145,10 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   switch (node->node_type)
     {
     case PT_EXPR:
-      if ((parser->flag.is_checking_stored_condition || parser->flag.is_parsing_trigger) && pt_is_operator_logical (node->info.expr.op))
+      if ((parser->flag.is_checking_view_spec || parser->flag.is_parsing_trigger)
+	  && pt_is_operator_logical (node->info.expr.op))
 	{
-	  /* a view, trigger or filter index keeps its condition as text: a NULL there can not be parsed again */
+	  /* a view or trigger keeps its condition as text: a NULL there can not be parsed again */
 	  PT_NODE *save = parser_copy_tree (parser, node);
 
 	  node = pt_fold_const_expr (parser, node, arg);

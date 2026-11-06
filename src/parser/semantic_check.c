@@ -7716,11 +7716,11 @@ pt_check_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * at
 
   if (do_semantic_check)
     {
-      unsigned save_stored = parser->flag.is_checking_stored_condition;
+      unsigned save_stored = parser->flag.is_checking_view_spec;
 
-      parser->flag.is_checking_stored_condition = 1;
+      parser->flag.is_checking_view_spec = 1;
       qry = pt_semantic_check (parser, qry);
-      parser->flag.is_checking_stored_condition = save_stored;
+      parser->flag.is_checking_view_spec = save_stored;
       if (pt_has_error (parser) || qry == NULL)
 	{
 	  return NULL;
@@ -8259,10 +8259,10 @@ pt_check_create_view (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       crt_qry = result_stmt;
 
-      save_stored = parser->flag.is_checking_stored_condition;
-      parser->flag.is_checking_stored_condition = 1;
+      save_stored = parser->flag.is_checking_view_spec;
+      parser->flag.is_checking_view_spec = 1;
       result_stmt = pt_semantic_check (parser, crt_qry);
-      parser->flag.is_checking_stored_condition = save_stored;
+      parser->flag.is_checking_view_spec = save_stored;
       if (pt_has_error (parser))
 	{
 	  if (prev_qry)
@@ -13491,11 +13491,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
 	  if (!pt_has_error (parser))
 	    {
-	      unsigned save_stored = parser->flag.is_checking_stored_condition;
-
-	      parser->flag.is_checking_stored_condition = 1;
 	      node = pt_semantic_type (parser, node, info);
-	      parser->flag.is_checking_stored_condition = save_stored;
 	    }
 
 	  if (node && !pt_has_error (parser))
