@@ -14189,7 +14189,7 @@ index_hint_name_keylimit
 			    else
 			      {
 				/* set key limit */
-				node->info.name.indx_key_limit = $3;
+				node->info.name.indx_key_limit_hint = $3;
 			      }
 			  }
 			$$ = node;
@@ -14207,7 +14207,7 @@ index_hint_name_keylimit
 			    else
 			      {
 				/* set key limits */
-				node->info.name.indx_key_limit = $5;
+				node->info.name.indx_key_limit_hint = $5;
 				if ($5)
 				  {
 				    ($5)->next = $3;

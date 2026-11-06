@@ -4272,11 +4272,8 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 static int
 qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, int *limit_ptr)
 {
-  DB_VALUE *dbvalp = NULL;
-  DB_VALUE limit_value;
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_INTEGER);
-  DB_TYPE orig_type;
-  int error = NO_ERROR;
+  DB_BIGINT row_limit = 0;
+  bool is_null = false;
 
   if (limit_ptr == NULL)
     {
@@ -4292,57 +4289,31 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       return NO_ERROR;
     }
 
-  if (fetch_peek_dbval (thread_p, xasl->orderby_limit, &xasl_state->vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+  /* orderby_limit is built as a key limit, so it is read as one: orderby_num () < 2.4 keeps 2 rows, by the unpack's
+   * converter */
+  if (fetch_key_limits (thread_p, NULL, NULL, xasl->orderby_limit, xasl->orderby_limit_conv, &xasl_state->vd, NULL,
+			&row_limit, &is_null) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-
-  if (orig_type != DB_TYPE_INTEGER)
+  if (is_null)
     {
-      TP_DOMAIN_STATUS dom_status;
-
-      /* into a value of its own: the limit is a bind value other readers share; by the converter the unpack found for
-       * the limit's domain */
-      const DB_TYPE planned =
-	xasl->orderby_limit->domain != NULL ? TP_DOMAIN_TYPE (xasl->orderby_limit->domain) : DB_TYPE_NULL;
-      /* a bind type signature's plan: the value has its regu's type, so the converter's lookup for another type is not
-       * reached */
-      assert (DB_IS_NULL (dbvalp) || orig_type == planned);
-      db_make_null (&limit_value);
-      dom_status = tp_value_coerce_with_converter (dbvalp, &limit_value, domainp, planned, xasl->orderby_limit_conv);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  if (dom_status == DOMAIN_OVERFLOW)
-	    {
-	      /* The limit is too bog to fit an integer. However, since this limit is used to keep the sort run flushes
-	       * small (for instance only keep the first 10 elements of each run if ORDER BY LIMIT 10 is specified),
-	       * there is no conceivable way this limit would be useful if it is larger than 2.147 billion: such a
-	       * large run is infeasible anyway. So if it does not fit into an integer, discard it. */
-	      return NO_ERROR;
-	    }
-	  else
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-	      return error;
-	    }
-	}
-      dbvalp = &limit_value;
-
-      if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_INTEGER)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_FAILED;
-	}
+      /* the predicate matches no row, so no limit is needed to find that out */
+      return NO_ERROR;
     }
 
-  *limit_ptr = db_get_int (dbvalp);
-  if (*limit_ptr < 0)
+  if (row_limit > INT_MAX)
     {
-      /* If the limit is below 0, set it to 0 and still return success. */
-      *limit_ptr = 0;
+      /* The limit is too big to fit an integer. However, since this limit is used to keep the sort run flushes
+       * small (for instance only keep the first 10 elements of each run if ORDER BY LIMIT 10 is specified),
+       * there is no conceivable way this limit would be useful if it is larger than 2.147 billion: such a
+       * large run is infeasible anyway. So if it does not fit into an integer, discard it. */
+      return NO_ERROR;
     }
+
+  /* If the limit is below 0, set it to 0 and still return success. */
+  *limit_ptr = (row_limit < 0) ? 0 : (int) row_limit;
 
   return NO_ERROR;
 }
@@ -20698,6 +20669,13 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
 	{
 	  db_make_bigint (xasl->save_instnum_val, lower);
 	}
+
+      /* the orderby_num () a skipped ORDER BY moved here counts the sorted rows from 1, not the keys a KEYLIMIT
+       * skips (keylimit 1, 3 order by a limit 1 reads key 2) */
+      if (xasl->instnum_flag & XASL_INSTNUM_FLAG_ORDBYNUM_HINT)
+	{
+	  db_make_bigint (xasl->instnum_val, 0);
+	}
     }
 
   xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_CHECK | XASL_INSTNUM_FLAG_SCAN_STOP
@@ -27461,8 +27439,12 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	}
       if (gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_STOP)
 	{
-	  /* reset grbynum_val for next use */
-	  db_make_bigint (gbstate->grbynum_val, 0);
+	  /* reset grbynum_val for next use, but not when the peek-ahead stops on a group that is still output.
+	   * The output row reads groupby_num () from grbynum_val. */
+	  if (ev_res != V_TRUE)
+	    {
+	      db_make_bigint (gbstate->grbynum_val, 0);
+	    }
 	  /* setting SORT_PUT_STOP will make 'sr_in_sort()' stop processing; the caller, 'qexec_gby_put_next()',
 	   * returns 'gbstate->state' */
 	  gbstate->state = SORT_PUT_STOP;
@@ -34585,8 +34567,13 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       return NO_ERROR;
     }
 
-  assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_INTEGER);
-  ubound = db_get_int (&ubound_val);
+  /* a BIGINT row bound. More rows than an int holds are too many for a top-n */
+  assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_BIGINT);
+  if (db_get_bigint (&ubound_val) > INT_MAX)
+    {
+      return NO_ERROR;
+    }
+  ubound = (int) db_get_bigint (&ubound_val);
 
   if (ubound == 0)
     {
@@ -35143,8 +35130,8 @@ qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count)
  * thread_p	   : thread entry
  * pred (in)	   : orderby_num predicate
  * vd (in)	   : value descriptor
- * ubound (in/out) : upper bound, an INTEGER (CBRD-27583)
- * unbounded (out) : CBRD-27583: set by a bound INTEGER cannot hold, which leaves no top-N bound
+ * ubound (in/out) : upper bound, a BIGINT row bound (CBRD-27583), NULL when the predicate gives none
+ * unbounded (out) : CBRD-27583: set by a bound that is not a number of rows, which leaves no top-N bound
  */
 static int
 qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound,
@@ -35154,6 +35141,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   REGU_VARIABLE *rhs;
   REL_OP op;
   DB_VALUE *val;
+  DB_BIGINT row_bound;
   DB_VALUE left_bound, right_bound;
 
   assert_release (pred != NULL);
@@ -35183,10 +35171,10 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto cleanup;
 	}
 
-      /* an AND keeps the larger bound and a NULL one is the lowest, as the total order compare of the two bounds had
-       * it; each term's conversion into INTEGER is monotonic, so the larger INTEGER is the larger bound's */
+      /* both bounds are BIGINT row bounds. An AND keeps the larger one, which stays correct since the predicate
+       * filters the rows the top-n kept. A NULL bound counts as the lowest */
       if (DB_IS_NULL (&right_bound)
-	  || (!DB_IS_NULL (&left_bound) && db_get_int (&left_bound) > db_get_int (&right_bound)))
+	  || (!DB_IS_NULL (&left_bound) && db_get_bigint (&left_bound) > db_get_bigint (&right_bound)))
 	{
 	  error = pr_clone_value (&left_bound, ubound);
 	}
@@ -35213,43 +35201,33 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto error_return;
 	}
 
-      if (op == R_LT)
+      if (DB_IS_NULL (val))
 	{
-	  /* add 1 so we can use R_LE, after the subtraction's operand coercion the compiler decided for the bound's
-	   * type - a string as DOUBLE */
-	  DB_VALUE one_val;
-	  db_make_int (&one_val, 1);
-	  assert (DB_IS_NULL (val) || DB_VALUE_DOMAIN_TYPE (val) == TP_DOMAIN_TYPE (rhs->domain));
-	  const DOMAIN_OPERAND_COERCION *operand_coercion = pred->pe.m_eval_term.et.et_comp.bound_coercion;
-	  assert (operand_coercion != NULL);
-	  error =
-	    qdata_coerce_arith_operands (T_SUB, operand_coercion->conv, operand_coercion->operand_domain,
-					 &operand_coercion->arith, val, &one_val, ubound, rhs->domain,
-					 operand_coercion->result);
-	}
-      else
-	{
-	  error = pr_clone_value (val, ubound);
+	  /* a NULL bound matches no row */
+	  goto cleanup;
 	}
 
-      if (error != NO_ERROR)
+      /* < reads in the type the compiler decided for its subtraction (bound_coercion), <= in the bound's own type.
+       * Converted by the unpack's conversion. A value that is not a number gives no bound here */
+      const COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+      const DOMAIN_BOUND_CONVERSION *conversion = term->bound_conversion;
+      const TP_ROW_BOUND_READ read = (op == R_LT && term->bound_coercion != NULL)
+	? tp_type_row_bound_read (term->bound_coercion->arith.type) : tp_domain_row_bound_read (rhs->domain);
+      /* VARIABLE: the plan leaves the type to the value, as it does for a string bound whose collation it does not
+       * fix */
+      assert (conversion != NULL
+	      && (conversion->source == DB_TYPE_VARIABLE || conversion->source == DB_VALUE_DOMAIN_TYPE (val)));
+      if (tp_value_to_row_bound (val, op == R_LT, read,
+				 conversion != NULL ? conversion->source : DB_TYPE_NULL,
+				 conversion != NULL ? conversion->conv : NULL, &row_bound) != DOMAIN_COMPATIBLE)
 	{
-	  goto error_return;
+	  er_clear ();
+	  *unbounded = true;
+	  goto cleanup;
 	}
 
-      if (!DB_IS_NULL (ubound) && DB_VALUE_TYPE (ubound) != DB_TYPE_INTEGER)
-	{
-	  /* by the conversion the unpack found for the term's bound */
-	  const DOMAIN_BOUND_CONVERSION *conversion = pred->pe.m_eval_term.et.et_comp.bound_conversion;
-	  assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (ubound));
-	  const DB_TYPE source = conversion != NULL ? conversion->source : DB_TYPE_NULL;
-	  if (tp_value_coerce_with_converter (ubound, ubound, &tp_Integer_domain, source,
-					      conversion != NULL ? conversion->conv : NULL) != DOMAIN_COMPATIBLE)
-	    {
-	      pr_clear_value (ubound);
-	      *unbounded = true;
-	    }
-	}
+      /* a negative bound keeps no row: 0 makes qexec_setup_topn_proc () skip the top-n */
+      db_make_bigint (ubound, (row_bound < 0) ? 0 : row_bound);
       goto cleanup;
     }
 

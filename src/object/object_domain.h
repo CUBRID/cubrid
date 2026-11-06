@@ -199,6 +199,16 @@ struct date_conversion_error;
 typedef TP_DOMAIN_STATUS (*TP_VALUE_CONVERTER) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
 						struct date_conversion_error *);
 
+/* How a value compared with a row number is read as a whole number of rows (tp_value_to_row_bound), decided from
+ * the value's compiled domain (tp_domain_row_bound_read) */
+typedef enum tp_row_bound_read
+{
+  TP_ROW_BOUND_READ_VALUE = 0,	/* the domain leaves the type to the value: round, then compare with the value */
+  TP_ROW_BOUND_READ_BIGINT,	/* a whole number: as it is, in BIGINT */
+  TP_ROW_BOUND_READ_NUMERIC,	/* NUMERIC with a fraction: floor or ceil in NUMERIC */
+  TP_ROW_BOUND_READ_DOUBLE	/* FLOAT, DOUBLE, MONETARY, a string: floor or ceil in DOUBLE */
+} TP_ROW_BOUND_READ;
+
 /*
  * TP_MATCH
  *    This is used to describe the amount of "tolerance" to be exhibited by
@@ -463,6 +473,11 @@ extern "C"
 
   extern TP_DOMAIN_STATUS tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
   extern int tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain);
+  extern TP_ROW_BOUND_READ tp_type_row_bound_read (DB_TYPE type);
+  extern TP_ROW_BOUND_READ tp_domain_row_bound_read (const TP_DOMAIN * domain);
+  extern TP_DOMAIN_STATUS tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, TP_ROW_BOUND_READ read,
+						 DB_TYPE source_type, TP_VALUE_CONVERTER converter,
+						 DB_BIGINT * row_bound);
 
   extern TP_DOMAIN_STATUS tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 					 bool implicit_coercion);

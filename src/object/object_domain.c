@@ -42,6 +42,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "numeric_opfunc.h"
+#include "arithmetic.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
@@ -5577,6 +5578,236 @@ TP_DOMAIN_STATUS
 tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   return tp_value_cast (src, dest, desired_domain, true);
+}
+
+/*
+ * tp_type_row_bound_read () - how a value of type is read as a row bound (tp_value_to_row_bound)
+ *    return: the reading, TP_ROW_BOUND_READ_VALUE when the type leaves it to the value
+ *    type(in): the compiled type of the value
+ *
+ * Note: Every NUMERIC is read as NUMERIC here. tp_domain_row_bound_read () reads a fixed NUMERIC of scale 0 as BIGINT.
+ */
+TP_ROW_BOUND_READ
+tp_type_row_bound_read (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      return TP_ROW_BOUND_READ_BIGINT;
+
+    case DB_TYPE_NUMERIC:
+      return TP_ROW_BOUND_READ_NUMERIC;
+
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      return TP_ROW_BOUND_READ_DOUBLE;
+
+    default:
+      return TP_ROW_BOUND_READ_VALUE;
+    }
+}
+
+/*
+ * tp_domain_row_bound_read () - how a value of domain is read as a row bound (tp_value_to_row_bound)
+ *    return: the reading, TP_ROW_BOUND_READ_VALUE when the domain leaves the type to the value
+ *    domain(in): the compiled domain of the value, or NULL
+ *
+ * Note: A NUMERIC of scale 0 is a whole number unless it is the floating NUMERIC, whose domain is
+ *       NUMERIC (DB_DEFAULT_NUMERIC_PRECISION, 0) and whose values keep their own scale.
+ */
+TP_ROW_BOUND_READ
+tp_domain_row_bound_read (const TP_DOMAIN * domain)
+{
+  if (domain == NULL)
+    {
+      return TP_ROW_BOUND_READ_VALUE;
+    }
+
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC && domain->scale == 0
+      && domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      return TP_ROW_BOUND_READ_BIGINT;
+    }
+
+  return tp_type_row_bound_read (TP_DOMAIN_TYPE (domain));
+}
+
+/*
+ * tp_row_bound_of_bigint () - a value coerced into BIGINT, saturated by its sign
+ *    return: DOMAIN_COMPATIBLE, or the coercion's failure (DOMAIN_OVERFLOW when the value is neither above nor
+ *            below 0, as NaN is)
+ *    value(in): the value
+ *    source_type(in), converter(in): as tp_value_to_row_bound ()
+ *    row_bound(out): the coerced value, or DB_BIGINT_MAX or -1 beyond BIGINT
+ *    saturated(out): true when the value was beyond BIGINT
+ */
+static TP_DOMAIN_STATUS
+tp_row_bound_of_bigint (const DB_VALUE * value, DB_TYPE source_type, TP_VALUE_CONVERTER converter,
+			DB_BIGINT * row_bound, bool * saturated)
+{
+  DB_VALUE bigint_value, zero_value;
+  TP_DOMAIN_STATUS coerce_status;
+  DB_VALUE_COMPARE_RESULT compare_result;
+
+  *saturated = false;
+  db_make_null (&bigint_value);
+  coerce_status = tp_value_coerce_with_converter (value, &bigint_value, &tp_Bigint_domain, source_type, converter);
+  if (coerce_status == DOMAIN_COMPATIBLE && !DB_IS_NULL (&bigint_value))
+    {
+      *row_bound = db_get_bigint (&bigint_value);
+      pr_clear_value (&bigint_value);
+      return DOMAIN_COMPATIBLE;
+    }
+
+  pr_clear_value (&bigint_value);
+  if (coerce_status != DOMAIN_OVERFLOW)
+    {
+      return (coerce_status != DOMAIN_COMPATIBLE) ? coerce_status : DOMAIN_INCOMPATIBLE;
+    }
+
+  db_make_int (&zero_value, 0);
+  compare_result = tp_value_compare (value, &zero_value, 1, 0);
+  if (compare_result != DB_GT && compare_result != DB_LT)
+    {
+      return DOMAIN_OVERFLOW;
+    }
+
+  *row_bound = (compare_result == DB_GT) ? DB_BIGINT_MAX : -1;
+  *saturated = true;
+  return DOMAIN_COMPATIBLE;
+}
+
+/*
+ * tp_value_to_row_bound () - the last row number that a comparison of a row number with value keeps
+ *    return: DOMAIN_COMPATIBLE, DOMAIN_OVERFLOW when value is a number neither above nor below 0 (NaN), or a
+ *            failure status (the coercion's, or DOMAIN_INCOMPATIBLE) when value is not a number
+ *    value(in): value compared with a row number (ROWNUM, INST_NUM, ORDERBY_NUM, GROUPBY_NUM), not NULL
+ *    exclusive(in): read value as ceil (value) - 1 (rownum < value, rownum >= value), else as floor (value)
+ *    read(in): how to read value, decided from its compiled domain (tp_domain_row_bound_read)
+ *    source_type(in): the type of value the plan compiled, DB_TYPE_NULL when the caller has none
+ *    converter(in): the converter of source_type into BIGINT the unpack found, or NULL (read BIGINT and VALUE)
+ *    row_bound(out): the integer bound
+ *
+ * Note: The bound keeps the rows the comparison keeps:
+ *         exclusive false (rownum <= value, rownum > value) : floor (value)      2.4 -> 2, 2.5 -> 2, 2 -> 2
+ *         exclusive true  (rownum < value, rownum >= value) : ceil (value) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
+ *       Beyond BIGINT the bound is DB_BIGINT_MAX or -1 by the sign.
+ */
+TP_DOMAIN_STATUS
+tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, TP_ROW_BOUND_READ read, DB_TYPE source_type,
+		       TP_VALUE_CONVERTER converter, DB_BIGINT * row_bound)
+{
+  DB_VALUE rounded_value;
+  DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (value);
+  TP_DOMAIN_STATUS status;
+  DB_VALUE_COMPARE_RESULT compare_result;
+  bool saturated;
+  double number;
+
+  assert (value != NULL && !DB_IS_NULL (value) && row_bound != NULL);
+
+  /* read was decided from the type the plan compiled, which is the value's (bind-type-keyed XASL): BIGINT takes
+   * a fixed NUMERIC of scale 0 only, a floating NUMERIC is read as NUMERIC */
+  assert (read != TP_ROW_BOUND_READ_BIGINT || TP_IS_DISCRETE_NUMBER_TYPE (value_type)
+	  || (value_type == DB_TYPE_NUMERIC && db_value_precision (value) != DB_DEFAULT_NUMERIC_PRECISION
+	      && db_value_scale (value) == 0));
+  assert (read != TP_ROW_BOUND_READ_NUMERIC || value_type == DB_TYPE_NUMERIC);
+
+  switch (read)
+    {
+    case TP_ROW_BOUND_READ_BIGINT:
+      /* the value itself, 1 less when exclusive */
+      status = tp_row_bound_of_bigint (value, source_type, converter, row_bound, &saturated);
+      if (status == DOMAIN_COMPATIBLE && !saturated && exclusive && *row_bound > DB_BIGINT_MIN)
+	{
+	  (*row_bound)--;
+	}
+      return status;
+
+    case TP_ROW_BOUND_READ_NUMERIC:
+      /* floor, or ceil less 1, in NUMERIC: the whole number then fits BIGINT exactly or overflows */
+      db_make_null (&rounded_value);
+      if ((exclusive ? db_ceil_dbval (&rounded_value, (DB_VALUE *) value)
+	   : db_floor_dbval (&rounded_value, (DB_VALUE *) value)) != NO_ERROR || DB_IS_NULL (&rounded_value))
+	{
+	  pr_clear_value (&rounded_value);
+	  return DOMAIN_ERROR;
+	}
+
+      status = tp_row_bound_of_bigint (&rounded_value, DB_TYPE_NULL, NULL, row_bound, &saturated);
+      pr_clear_value (&rounded_value);
+      if (status == DOMAIN_COMPATIBLE && !saturated && exclusive && *row_bound > DB_BIGINT_MIN)
+	{
+	  (*row_bound)--;
+	}
+      return status;
+
+    case TP_ROW_BOUND_READ_DOUBLE:
+      /* floor, or ceil less 1, in DOUBLE */
+      db_make_null (&rounded_value);
+      status = tp_value_coerce (value, &rounded_value, &tp_Double_domain);
+      if (status != DOMAIN_COMPATIBLE || DB_IS_NULL (&rounded_value))
+	{
+	  /* a string beyond DOUBLE is no number: fails as the value decides */
+	  pr_clear_value (&rounded_value);
+	  return tp_value_to_row_bound (value, exclusive, TP_ROW_BOUND_READ_VALUE, source_type, converter, row_bound);
+	}
+
+      number = db_get_double (&rounded_value);
+      pr_clear_value (&rounded_value);
+      if (isnan (number))
+	{
+	  if (value_type != DB_TYPE_FLOAT && value_type != DB_TYPE_DOUBLE)
+	    {
+	      /* a string 'nan' is no number: fails as the value decides */
+	      return tp_value_to_row_bound (value, exclusive, TP_ROW_BOUND_READ_VALUE, source_type, converter,
+					    row_bound);
+	    }
+	  return DOMAIN_OVERFLOW;
+	}
+
+      number = exclusive ? ceil (number) - 1 : floor (number);
+      /* (double) DB_BIGINT_MAX is 2^63, the first double beyond BIGINT */
+      if (number >= (double) DB_BIGINT_MAX)
+	{
+	  *row_bound = DB_BIGINT_MAX;
+	}
+      else if (number < (double) DB_BIGINT_MIN)
+	{
+	  *row_bound = -1;
+	}
+      else
+	{
+	  *row_bound = (DB_BIGINT) number;
+	}
+      return DOMAIN_COMPATIBLE;
+
+    case TP_ROW_BOUND_READ_VALUE:
+    default:
+      /* the coercion rounds: step down when the result lies above value, or on value when exclusive */
+      status = tp_row_bound_of_bigint (value, source_type, converter, row_bound, &saturated);
+      if (status != DOMAIN_COMPATIBLE || saturated)
+	{
+	  return status;
+	}
+
+      db_make_bigint (&rounded_value, *row_bound);
+      compare_result = tp_value_compare (&rounded_value, (DB_VALUE *) value, 1, 0);
+      if (compare_result == DB_UNK)
+	{
+	  return DOMAIN_INCOMPATIBLE;
+	}
+      if ((compare_result == DB_GT || (exclusive && compare_result == DB_EQ)) && *row_bound > DB_BIGINT_MIN)
+	{
+	  (*row_bound)--;
+	}
+      return DOMAIN_COMPATIBLE;
+    }
 }
 
 /*

@@ -222,7 +222,7 @@ regu_init (indx_info &ii)
   ii.key_info.key_ranges = NULL;
   ii.key_info.is_constant = false;
   ii.key_info.key_limit_reset = false;
-  ii.key_info.is_user_given_keylimit = false;
+  ii.key_info.is_user_given_keylimit_hint = false;
   ii.key_info.key_limit_l = NULL;
   ii.key_info.key_limit_u = NULL;
   ii.orderby_desc = 0;

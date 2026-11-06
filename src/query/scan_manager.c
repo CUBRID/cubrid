@@ -853,7 +853,7 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 
   if (is_null)
     {
-      if (key_infop->is_user_given_keylimit == true)
+      if (key_infop->is_user_given_keylimit_hint == true)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_QPROC_INVALID_DATATYPE;
@@ -867,7 +867,7 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 
   if (key_infop->key_limit_l != NULL && isidp->key_limit_lower < 0)
     {
-      if (key_infop->is_user_given_keylimit == true)
+      if (key_infop->is_user_given_keylimit_hint == true)
 	{
 	  /* We don't allow users to give us a bad keylimit bound */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
@@ -886,7 +886,7 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
 
   if (key_infop->key_limit_u != NULL && isidp->key_limit_upper < 0)
     {
-      if (key_infop->is_user_given_keylimit == true)
+      if (key_infop->is_user_given_keylimit_hint == true)
 	{
 	  /* We don't allow users to give us a bad keylimit bound */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);

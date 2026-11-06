@@ -260,7 +260,7 @@ struct qo_using_index
 #define QO_UI_N(ui)	      ((ui)->n)
 #define QO_UI_INDEX(ui, n)    ((ui)->index[(n)].name)
 #define QO_UI_FORCE(ui, n)    ((ui)->index[(n)].force)
-#define QO_UI_KEYLIMIT(ui, n) ((ui)->index[(n)].key_limit)
+#define QO_UI_KEYLIMIT_HINT(ui, n) ((ui)->index[(n)].key_limit)
 
 
 struct qo_node

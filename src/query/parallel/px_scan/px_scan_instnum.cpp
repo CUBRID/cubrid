@@ -257,6 +257,7 @@ namespace parallel_scan
   {
     DB_VALUE *limit_val = nullptr;
     INT64 raw_limit = 0;
+    DB_BIGINT saturated_limit = 0;
 
     if (fetch_peek_dbval (thread_p, draw.limit_rhs, vd, NULL, NULL, NULL, &limit_val) != NO_ERROR)
       {
@@ -292,11 +293,15 @@ namespace parallel_scan
 		  }
 	      }
 	  }
-	else if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (limit_val) == DB_TYPE_NUMERIC)
+	else if (dom_status == DOMAIN_OVERFLOW
+		 && tp_value_to_row_bound (limit_val, draw.is_less_than, tp_domain_row_bound_read (draw.limit_rhs->domain),
+					   conversion != NULL ? conversion->source : DB_TYPE_NULL,
+					   conversion != NULL ? conversion->conv : NULL,
+					   &saturated_limit) == DOMAIN_COMPATIBLE)
 	  {
 	    /* serial widens inst_num() rather than coercing the bound, so out of BIGINT range a
 	     * positive bound admits every row and a negative one none (cf. key-limit handling). */
-	    raw_limit = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (limit_val) ? 0 : DB_BIGINT_MAX;
+	    raw_limit = (saturated_limit < 0) ? 0 : saturated_limit;
 	    er_clear ();
 	  }
 	else
