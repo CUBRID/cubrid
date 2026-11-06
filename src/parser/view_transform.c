@@ -3129,6 +3129,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		{
 		  derived_table->info.query.all_distinct = PT_DISTINCT;
 		}
+
+	      /* LIMIT of a DISTINCT query without ORDER BY is rewritten to FOR ORDERBY_NUM() (see pt_eval_type_pre ()),
+	       * which mq_update_order_by () does not move since there is no ORDER BY */
+	      if (query_spec->info.query.order_by == NULL && query_spec->info.query.orderby_for != NULL)
+		{
+		  derived_table->info.query.orderby_for =
+		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
+					derived_table->info.query.orderby_for);
+		}
 	    }
 
 	  result = tmp_result;
@@ -10190,8 +10199,17 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   parser->flag.is_skip_auto_parameterize = save_skip_auto_parameterize;
 
-  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
-  pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions. The
+   * compiled statement's are assigned by the walk its class prefetch makes next (pt_class_pre_fetch) */
+  if (parser->host_var_assigned_later == node && !compiled_every_time)
+    {
+      parser->host_var_assigned_later = (PT_NODE *) return_node;
+    }
+  else
+    {
+      parser->host_var_assigned_later = NULL;
+      pt_assign_host_var_positions (parser, (PT_NODE *) return_node, NULL, NULL);
+    }
   parser->session_variable_count = 0;
   if (return_node != NULL && compiled_every_time)
     {
