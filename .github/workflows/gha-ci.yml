@@ -1049,7 +1049,7 @@ jobs:
                 elif [ ! -d "$rd/$suite/shard" ]; then
                   echo "::error::run $RERUN_FROM never ran the $suite suite. Take the id from a run that ran it, not from 'built by run'"
                 else
-                  echo "::error::run $RERUN_FROM ran the suite but collect published no failure list (running, cancelled or dead)"
+                  echo "::error::run $RERUN_FROM planned the suite but collect published no failure list (running, cancelled or dead)"
                 fi
                 exit 1
               fi
@@ -1741,9 +1741,9 @@ jobs:
                 if [ "$total" -gt 0 ]; then
                   echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because their shard died whole or never started, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
                 elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
-                  stands="The verdict of run \`$RERUN_FROM\` stands."
-                  [ -n "$brid" ] || stands="This run has no usable $(attr "$suite" build_mode) build, so the suite fails."
-                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. $stands**"
+                  nobuild=''
+                  [ -n "$brid" ] || nobuild=" This run has no usable $(attr "$suite" build_mode) build, so the suite fails."
+                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`.$nobuild**"
                 elif [ "${rerun_gone:-0}" -eq 0 ]; then
                   echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
                 else
