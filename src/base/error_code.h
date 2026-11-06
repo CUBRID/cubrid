@@ -1790,8 +1790,9 @@
 #define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED -1387
 #define ER_HA_FK_CONSTRAINT_VIOLATION               -1388
 #define ER_HA_REPLICATION_CONSTRAINT_VIOLATION      -1389
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS -1390
 
-#define ER_LAST_ERROR                               -1390
+#define ER_LAST_ERROR                               -1391
 
 
 /*
