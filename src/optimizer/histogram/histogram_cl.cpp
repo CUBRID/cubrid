@@ -1177,24 +1177,13 @@ histogram_key_kind_for_type (DB_TYPE type)
     }
 }
 
-void
-histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success)
+/* the equality estimate of one constant against a column whose histogram is already open in
+ * histogram_reader: histogram_get_equal_selectivity () past the blob parse, which is most of a
+ * probe's cost and is the same for every constant of the column */
+static void
+histogram_equal_selectivity_with_reader (hist::HistogramReader &histogram_reader, PT_NODE *lhs,
+    DB_VALUE *rhs_db_value, double *selectivity, bool *success)
 {
-  assert (selectivity != NULL);
-
-  if (rhs_db_value == NULL)
-    {
-      *success = false;
-      return;
-    }
-
-  hist::HistogramReader histogram_reader;
-  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
-    {
-      *success = false;
-      return;
-    }
-
   hist::histogram_key key;
   if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
@@ -1371,6 +1360,71 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
     }
   *success = true;
   return;
+}
+
+void
+histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success)
+{
+  assert (selectivity != NULL);
+
+  if (rhs_db_value == NULL)
+    {
+      *success = false;
+      return;
+    }
+
+  hist::HistogramReader histogram_reader;
+  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      *success = false;
+      return;
+    }
+
+  histogram_equal_selectivity_with_reader (histogram_reader, lhs, rhs_db_value, selectivity, success);
+}
+
+/*
+ * histogram_get_equal_selectivity_sum () - the sum of the equality estimates of many constants
+ *   against one column, each exactly as histogram_get_equal_selectivity () prices it
+ *   lhs (in)    : column node
+ *   values (in) : the constants; a NULL entry or a NULL value adds nothing
+ *   n (in)      : number of constants
+ *   sum (out)   : the sum
+ *   success (out): false when the column has no usable histogram or a constant cannot be priced
+ *
+ * The histogram is opened once for all of them: a row snapshot prices hundreds of keys of one
+ * join at a time (CBRD-27478), and a per-key probe would parse the blob again for each.
+ */
+void
+histogram_get_equal_selectivity_sum (PT_NODE *lhs, DB_VALUE **values, int n, double *sum, bool *success)
+{
+  hist::HistogramReader histogram_reader;
+  double one;
+
+  assert (sum != NULL && success != NULL);
+  *sum = 0.0;
+  *success = false;
+
+  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      return;
+    }
+
+  for (int i = 0; i < n; i++)
+    {
+      if (values[i] == NULL || DB_IS_NULL (values[i]))
+	{
+	  continue;
+	}
+      one = 0.0;
+      histogram_equal_selectivity_with_reader (histogram_reader, lhs, values[i], &one, success);
+      if (!*success)
+	{
+	  return;
+	}
+      *sum += one;
+    }
+  *success = true;
 }
 
 void
@@ -2103,6 +2157,66 @@ histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success)
     }
 
   *ndv = distinct;
+  *success = true;
+}
+
+/*
+ * histogram_get_group_size_selectivity () - fraction of the groups of GROUP BY attr with at least min_rows rows
+ *   attr(in)        : the GROUP BY column (PT_NAME or a path chain ending in one)
+ *   min_rows(in)    : the least group size counted
+ *   scale(in)       : how much smaller (< 1) or larger the groups are than the column's value counts, for the rows
+ *                     the filters and joins keep
+ *   selectivity(out): the fraction of the distinct values whose group has min_rows rows or more
+ *   success(out)    : false when the node is not a column or carries no histogram
+ *
+ * Note: A group of GROUP BY attr is the rows of one value. An MCV knows its count. A bucket knows only the
+ *   average count of its values, and its counts are taken as geometric with that average, the same model the
+ *   caller uses without a histogram.
+ */
+void
+histogram_get_group_size_selectivity (PT_NODE *attr, double min_rows, double scale, double *selectivity,
+				      bool *success)
+{
+  assert (selectivity != NULL);
+
+  *success = false;
+
+  hist::HistogramReader reader;
+  if (!histogram_init_reader_from_lhs (attr, reader))
+    {
+      return;
+    }
+
+  const double total_rows = static_cast<double> (reader.total_rows ());
+  const double distinct = static_cast<double> (reader.mcv_count ()) + static_cast<double> (reader.nonmcv_distinct ());
+  if (total_rows <= 0.0 || distinct <= 0.0 || scale <= 0.0)
+    {
+      return;
+    }
+
+  double groups = 0.0;
+  for (std::uint32_t i = 0; i < reader.mcv_count (); i++)
+    {
+      /* the count is the frequency times the rows, an integer up to the rounding of the frequency */
+      if (reader.mcv_freq (i) * total_rows * scale + 0.5 >= min_rows)
+	{
+	  groups += 1.0;
+	}
+    }
+
+  for (std::uint32_t i = 0; i < reader.bucket_count (); i++)
+    {
+      const double ndv = static_cast<double> (reader.bucket_approx_ndv (i));
+      if (ndv <= 0.0)
+	{
+	  continue;
+	}
+      const double mean = static_cast<double> (reader.bucket_rows (i)) * scale / ndv;
+      const double r = 1.0 - 1.0 / std::max (mean, 1.0);
+      groups += ndv * ((min_rows <= 1.0) ? 1.0 : std::pow (r, std::ceil (min_rows) - 1.0));
+    }
+
+  *selectivity = std::min (std::max (groups / distinct, 0.0), 1.0);
   *success = true;
 }
 
@@ -2869,7 +2983,8 @@ bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
  *   (column op ?) in either argument order, and hand back its column and host-variable nodes.
  *   Both the fingerprint walk and the predicate-candidate walk must agree on what counts as
  *   such a predicate; keeping the test here prevents the two from drifting apart.
- * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=}
+ * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=}; the column may
+ *                  be the argument of an AVG, MIN or MAX in HAVING
  * node (in)      : expression node to test
  * out_name (out) : the column node (end of a path expression), NULL if not matched
  * out_hv (out)   : the host-variable node, NULL if not matched
@@ -2945,6 +3060,57 @@ histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_n
   return false;
 }
 
+/* is this a HAVING aggregate the planner prices with a value (CBRD-27811): COUNT (*), MIN, MAX, or SUM and AVG
+ * without DISTINCT, the others over a single column */
+static bool
+histogram_is_priced_aggregate (const PT_NODE *operand)
+{
+  if (operand == NULL || operand->node_type != PT_FUNCTION)
+    {
+      return false;
+    }
+
+  const FUNC_CODE func = operand->info.function.function_type;
+  if (func == PT_COUNT_STAR)
+    {
+      return true;
+    }
+  if (func != PT_SUM && func != PT_AVG && func != PT_MIN && func != PT_MAX)
+    {
+      return false;
+    }
+  if ((func == PT_SUM || func == PT_AVG) && operand->info.function.all_or_distinct == PT_DISTINCT)
+    {
+      return false;
+    }
+
+  const PT_NODE *arg = operand->info.function.arg_list;
+  return arg != NULL && arg->next == NULL && pt_get_end_path_node ((PT_NODE *) arg) != NULL
+	 && pt_get_end_path_node ((PT_NODE *) arg)->node_type == PT_NAME;
+}
+
+/* the column a host variable is compared with through this operand: the column itself, or the column that an
+ * AVG, MIN or MAX of HAVING aggregates, which the planner prices as the column compared with the value. SUM is
+ * priced as the column compared with the value over the group size, which the fingerprint cannot see, and
+ * COUNT (*) has no column: they get the first-execution replan only (histogram_is_having_hv_predicate ()). */
+static PT_NODE *
+histogram_hv_operand_column (PT_NODE *operand)
+{
+  if (operand != NULL && operand->node_type == PT_FUNCTION)
+    {
+      const FUNC_CODE func = operand->info.function.function_type;
+
+      if ((func != PT_AVG && func != PT_MIN && func != PT_MAX) || !histogram_is_priced_aggregate (operand))
+	{
+	  return NULL;
+	}
+      operand = operand->info.function.arg_list;
+    }
+
+  operand = pt_get_end_path_node (operand);
+  return (operand != NULL && operand->node_type == PT_NAME) ? operand : NULL;
+}
+
 static bool
 histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv,
 			      bool *out_reversed)
@@ -2973,11 +3139,11 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
       return false;
     }
 
-  PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
+  PT_NODE *a1 = node->info.expr.arg1;
   PT_NODE *a2 = node->info.expr.arg2;
 
-  if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR
-      && histogram_is_user_host_var (parser, a2))
+  if (a2 != NULL && a2->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a2)
+      && (a1 = histogram_hv_operand_column (a1)) != NULL)
     {
       if (out_name != NULL)
 	{
@@ -2991,7 +3157,7 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
     }
 
   if (a1 != NULL && a1->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a1)
-      && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME)
+      && (a2 = histogram_hv_operand_column (a2)) != NULL)
     {
       if (out_name != NULL)
 	{
@@ -3016,6 +3182,45 @@ struct hv_pred_ctx
   bool found;
 };
 
+/* a HAVING aggregate the planner prices with a value, compared with a user host variable: COUNT (*) > ?,
+ * SUM (x) <= ?, MAX (x) BETWEEN ? AND ? and the like (CBRD-27811). Planned with unbound markers, the planner
+ * takes a default for it, so the first execution must replan under the values. The walks look at the whole
+ * statement, not at the clause: the same comparison in a select list is taken too, which costs a replan
+ * that does not change the plan. */
+static bool
+histogram_is_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  PT_NODE *a1 = node->info.expr.arg1;
+  PT_NODE *a2 = node->info.expr.arg2;
+
+  switch (node->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LT:
+    case PT_LE:
+      return (histogram_is_priced_aggregate (a1) && histogram_is_user_host_var (parser, a2))
+	     || (histogram_is_priced_aggregate (a2) && histogram_is_user_host_var (parser, a1));
+
+    case PT_BETWEEN:
+    case PT_NOT_BETWEEN:
+      return histogram_is_priced_aggregate (a1) && a2 != NULL && a2->node_type == PT_EXPR
+	     && a2->info.expr.op == PT_BETWEEN_AND
+	     && (histogram_is_user_host_var (parser, a2->info.expr.arg1)
+		 || histogram_is_user_host_var (parser, a2->info.expr.arg2));
+
+    default:
+      return false;
+    }
+}
+
 /* structural check only (no value fetch): is there a (column op ?) predicate that the
  * bind-sensitive planner could price? Used at plan generation, where host variables carry
  * no execution values, to mark a plan as chosen under unbound markers. */
@@ -3025,12 +3230,34 @@ hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
   hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
 
   if (histogram_split_hv_predicate (parser, node, NULL, NULL, NULL)
-      || histogram_split_hv_range (parser, node, NULL))
+      || histogram_split_hv_range (parser, node, NULL) || histogram_is_having_hv_predicate (parser, node))
     {
       ctx->found = true;
       *continue_walk = PT_STOP_WALK;
     }
   return node;
+}
+
+static PT_NODE *
+having_hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
+
+  if (histogram_is_having_hv_predicate (parser, node))
+    {
+      ctx->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+bool
+histogram_stmt_has_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  hv_pred_ctx ctx;
+  ctx.found = false;
+  (void) parser_walk_tree (parser, statement, having_hv_pred_walk, &ctx, NULL, NULL);
+  return ctx.found;
 }
 
 bool
@@ -3748,7 +3975,9 @@ bind_target_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continu
 
   if (histogram_split_hv_predicate (parser, node, &name, NULL, NULL))
     {
-      bind_target_add (ctx, name, node->info.expr.op == PT_EQ);
+      /* an aggregate equal to a value does not pin the column's rows */
+      bind_target_add (ctx, name, node->info.expr.op == PT_EQ && node->info.expr.arg1->node_type != PT_FUNCTION
+		       && node->info.expr.arg2->node_type != PT_FUNCTION);
     }
   return node;
 }
