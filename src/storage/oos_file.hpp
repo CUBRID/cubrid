@@ -82,7 +82,8 @@ extern int oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_
 				       const std::vector<oos_chain_ref> &refs);
 /* Vacuum's consumer of one RVOOS_NOTIFY_VACUUM record. emptied_vpids receives the pages the deletes
  * emptied. The notify record names its OOS file; it is returned through oos_vfid_out. Returns NO_ERROR or
- * ER_INTERRUPTED (shutdown); any other failure stops the server, so restart processes the block again. */
+ * ER_INTERRUPTED (shutdown); any other failure stops the server, so restart processes the block again.
+ * notify_data is copied before the first page fix, so it may point into the caller's log page. */
 extern int oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length,
 					VFID *oos_vfid_out, std::vector<VPID> *emptied_vpids);
 
@@ -326,6 +327,9 @@ extern void oos_test_fail_next_reclaim_write_fix ();
  * -1 disarms); and a hook that replaces the server stop of the fail-stop policy, so a test can observe it
  * (NULL restores the stop). */
 extern std::vector<char> oos_test_make_reclaim_intent_payload (const VFID &oos_vfid,
+    const std::vector<oos_chain_ref> &refs);
+/* The RVOOS_NOTIFY_VACUUM payload of an UPDATE that did not resolve the OOS file: vacuum looks it up from heap_hfid. */
+extern std::vector<char> oos_test_make_update_drop_notify_payload (const HFID &heap_hfid,
     const std::vector<oos_chain_ref> &refs);
 extern void oos_test_fail_reclaim_after_chunk_deletes (int n_deletes);
 extern void oos_test_set_reclaim_fail_stop_hook (void (*hook) (int error));

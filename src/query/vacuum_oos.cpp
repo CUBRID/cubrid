@@ -36,7 +36,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include <new>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -203,7 +202,8 @@ vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM
  * return	       : NO_ERROR, or ER_INTERRUPTED on shutdown (the block is processed again after restart).
  *			 Any other reclaim failure stops the server (oos_reclaim_notified_chains).
  * thread_p (in)       : Thread entry.
- * undo_data (in)      : Undo data of the record.
+ * undo_data (in)      : Undo data of the record. It may point into the worker's current log page:
+ *			 oos_reclaim_notified_chains copies it before its first page fix.
  * undo_data_size (in) : Its size.
  *
  * Vacuum reaches the record only once the UPDATE's MVCCID precedes every active snapshot, so no reader can
@@ -212,23 +212,9 @@ vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM
 int
 vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size)
 {
-  /* The undo data may point into the worker's current log page, which the page fixes below can rotate out.
-   * Work on a private copy. */
-  std::vector<char> notify_copy;
-  try
-    {
-      notify_copy.assign (undo_data, undo_data + undo_data_size);
-    }
-  catch (std::bad_alloc &)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) undo_data_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
   VFID oos_vfid = VFID_INITIALIZER;
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
-  int error_code = oos_reclaim_notified_chains (thread_p, notify_copy.data (), (int) notify_copy.size (), &oos_vfid,
-		   &emptied_pages);
+  int error_code = oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_vfid, &emptied_pages);
   if (error_code != NO_ERROR)
     {
       return error_code;
