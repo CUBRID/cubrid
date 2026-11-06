@@ -1667,7 +1667,8 @@ typedef enum
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
-  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_PRED_PUSHED = 0x40000	/* predicates were copy-pushed into the derived table of this spec */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2344,6 +2345,7 @@ struct pt_spec_info
   DB_AUTH auth_bypass_mask;	/* flag to bypass normal authorization : used only by SHOW statements currently */
   PT_SPEC_FLAG flag;		/* flag wich marks this spec for DELETE or UPDATE operations */
   int num_parallel_threads;	/* number of parallel threads for this spec */
+  void *vclass_origin;		/* DB_OBJECT of the view this derived table was rewritten from */
 };
 
 /* Info for an EVALUATE object */
@@ -2978,6 +2980,9 @@ struct pt_select_info
           (s)->info.query.q.select.flag &= ~(f)
 
 /* common with union and select info */
+/* max number of shared view groups in a statement; see mq_share_multi_ref_views () */
+#define PT_SHARED_VIEW_MAX_GROUPS 32
+
 struct pt_query_info
 {
   int correlation_level;	/* for correlated subqueries */
@@ -3018,6 +3023,9 @@ struct pt_query_info
   PT_NODE *limit;		/* PT_VALUE (list) limit clause parameter(s) */
   void *xasl;			/* xasl proc pointer */
   XASL_ID *sub_xasl_id;		/* xasl_id for cached subquery */
+  int shared_view_group;	/* > 0: shares one XASL with the other references of its view */
+  bool shared_view_rep;		/* this derived table generates the XASL of its shared view group */
+  bool shared_view_used;	/* the XASL of the shared view group was reused instead of generating this query */
   UINTPTR id;			/* query unique id # */
   PT_HINT_ENUM hint;		/* hint flag */
   bool is_order_dependent;	/* true if query is order dependent */

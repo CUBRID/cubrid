@@ -15277,6 +15277,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, "select ");
 
+      /* a shared view group changes the plan, so it must change the text the XASL cache is keyed on */
+      if (p->info.query.shared_view_group > 0)
+	{
+	  char s[64];
+
+	  sprintf (s, "/* shared view %d%s */ ", p->info.query.shared_view_group,
+		   p->info.query.shared_view_rep ? "" : " reused");
+	  q = pt_append_nulstring (parser, q, s);
+	}
+
       if (p->info.query.q.select.hint != PT_HINT_NONE
 	  || (p->info.query.hint != PT_HINT_NONE && p->info.query.hint != PT_HINT_REEXECUTE))
 	{
