@@ -19207,7 +19207,7 @@ qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tr
  *   arg(in/out): bool *, set when such a node is found
  *   continue_walk(in/out):
  *
- * Note: a session variable and a serial are shared by the workers without a lock.
+ * Note: a session variable assignment changes the session variable list without a lock.
  */
 static PT_NODE *
 qo_check_hjoin_term_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -19225,20 +19225,10 @@ qo_check_hjoin_term_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tre
       return qo_check_method_call_parallel_eligibility (parser, tree, arg, continue_walk);
     }
 
-  if (tree->node_type == PT_EXPR)
+  if (tree->node_type == PT_EXPR && tree->info.expr.op == PT_DEFINE_VARIABLE)
     {
-      switch (tree->info.expr.op)
-	{
-	case PT_NEXT_VALUE:
-	case PT_CURRENT_VALUE:
-	case PT_DEFINE_VARIABLE:
-	case PT_EVALUATE_VARIABLE:
-	  *found = true;
-	  *continue_walk = PT_STOP_WALK;
-	  break;
-	default:
-	  break;
-	}
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
     }
 
   return tree;
