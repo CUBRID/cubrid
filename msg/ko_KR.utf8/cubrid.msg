@@ -1509,7 +1509,9 @@ $ LOADDB
 
 1392 저장 형식이 호환되지 않는 CUBRID 빌드로 생성된 데이터베이스입니다(형식 %1$d, 현재 빌드 %2$d). 데이터베이스를 생성한 빌드로 unloaddb 한 뒤, 현재 빌드로 생성한 데이터베이스에 loaddb 하십시오.
 
-1393 마지막 에러
+1393 클래스 %3$d|%4$d|%5$d 의 레코드가 %1$d 바이트로 최대 레코드 크기(%2$d 바이트)를 넘어, out-of-row 저장소(OOS) 없이 여러 페이지에 걸친 overflow 레코드(REC_BIGONE)로 저장됩니다. 레코드가 한 페이지에 들어가도록 고정 길이 컬럼, 작은 가변 길이 컬럼, STORAGE FORCE_INLINE 컬럼의 크기를 줄이십시오.
+
+1394 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2022,7 +2024,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 파티션 이름이 너무 깁니다.
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 339 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 storage 옵션을 정의할 수 있습니다.
-340 STORAGE 옵션은 클래스의 가변 타입 일반 속성에만 지정할 수 있습니다: '%1$s'.
+340 '%1$s'에는 이 STORAGE 옵션을 지정할 수 없습니다. STORAGE 옵션은 클래스의 일반 속성에만 지정할 수 있으며, 고정 타입 속성에는 DEFAULT와 FORCE_INLINE만 지정할 수 있습니다.
 341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.

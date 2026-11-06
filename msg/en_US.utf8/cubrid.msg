@@ -1510,7 +1510,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1392 The database was created by a CUBRID build with an incompatible storage format (format %1$d, this build %2$d). Unload it with the build that created it, then load it into a database created by this build.
 
-1393 Last Error
+1393 A record of class %3$d|%4$d|%5$d needs %1$d bytes, more than the maximum record size (%2$d bytes), and is stored as a multipage overflow record (REC_BIGONE) without out-of-row storage (OOS). To keep the record within one page, reduce its fixed-length columns, small variable-length columns, or STORAGE FORCE_INLINE columns.
+
+1394 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2023,7 +2025,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 The partition name is too long.
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 339 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
-340 STORAGE options can be set only on variable-type normal attributes of a class: '%1$s'.
+340 STORAGE option is not allowed on '%1$s'. STORAGE options apply only to normal attributes of a class, and fixed-type attributes accept only DEFAULT and FORCE_INLINE.
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).

@@ -1566,6 +1566,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> FILL_FACTOR
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
+%token <cptr> FORCE_INLINE
 %token <cptr> FORCE_OUTLINE
 %token <cptr> FULLSCAN
 %token <cptr> GE_INF_
@@ -10691,6 +10692,11 @@ column_storage_def
 		{{
 			PT_NODE* attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_FORCE_OUTLINE;
+		}}
+	| STORAGE FORCE_INLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_FORCE_INLINE;
 		}}
 	| STORAGE DEFAULT
 		{{
@@ -20808,6 +20814,7 @@ identifier
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FILL_FACTOR            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FORCE_INLINE           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FORCE_OUTLINE          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}

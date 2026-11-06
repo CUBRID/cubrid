@@ -13188,6 +13188,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
 	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
 	  if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
+	      && attr_info->values[i].last_attrepr->oos_storage != OR_ATTRIBUTE_OOS_STORAGE_FORCE_INLINE
 	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      /* *INDENT-OFF* */
@@ -22629,6 +22630,8 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
       return NO_ERROR;
     }
 
+  heap_oos_warn_bigone_without_oos (&context->class_oid, context->recdes_p->length, heap_Maxslotted_reclength);
+
   /* insert overflow record */
   if (heap_ovf_insert (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
     {
@@ -26078,6 +26081,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+      if (heap_is_big_length (context->recdes_p->length))
+	{
+	  heap_oos_warn_bigone_without_oos (&context->class_oid, context->recdes_p->length, heap_Maxslotted_reclength);
 	}
     }
 

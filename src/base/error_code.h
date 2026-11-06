@@ -1800,7 +1800,9 @@
 
 #define ER_BO_INCOMPATIBLE_STORAGE_FORMAT           -1392
 
-#define ER_LAST_ERROR                               -1393
+#define ER_HEAP_BIGONE_WITHOUT_OOS                  -1393
+
+#define ER_LAST_ERROR                               -1394
 
 
 /*
