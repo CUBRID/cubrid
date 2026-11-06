@@ -132,7 +132,7 @@ pt_and_or_form (PARSER_CONTEXT * parser, PT_NODE * node)
       arg1 = node->info.expr.arg1;
       if (arg1->node_type != PT_EXPR)
 	{
-	  if (arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_NULL)
+	  if (PT_IS_VALUE_NODE (arg1) && PT_IS_NULL_NODE (arg1))
 	    {
 	      /* NOT NULL is still NULL; free NOT node(node) */
 	      node->info.expr.arg1 = NULL;
@@ -228,7 +228,7 @@ pt_negate_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node->node_type != PT_EXPR)
     {
-      if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL)
+      if (PT_IS_VALUE_NODE (node) && PT_IS_NULL_NODE (node))
 	{
 	  /* NOT NULL is still NULL */
 	  return node;

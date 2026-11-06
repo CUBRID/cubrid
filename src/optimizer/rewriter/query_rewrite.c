@@ -26,9 +26,6 @@
 
 #include "query_rewrite.h"
 
-/* a NULL constant only; an expression of NULL type such as NULL IN (subquery) can still be TRUE */
-#define QO_IS_NULL_VALUE(n) ((n)->node_type == PT_VALUE && PT_IS_NULL_NODE (n))
-
 /*
  * qo_drop_null_disjuncts () - drop NULL constants from the OR lists of a CNF filter
  *   return: the CNF list
@@ -37,75 +34,46 @@
  *
  * Note: a filter keeps only TRUE rows, so a NULL disjunct acts as FALSE there.
  *       CNF has pushed every NOT down to the leaves, so no such NULL is under a NOT.
+ *       Only a NULL constant is dropped: an expression of NULL type such as NULL IN (subquery) can be TRUE.
  *       An OR list made only of NULL constants is left as it is.
  */
 static PT_NODE *
 qo_drop_null_disjuncts (PARSER_CONTEXT * parser, PT_NODE * cnf_list)
 {
-  PT_NODE *cnf, *prev_cnf, *dnf, *prev_dnf, *head;
-  bool has_other;
+  PT_NODE **cnf_p, **dnf_p, *dnf, *cnf_next;
 
-  prev_cnf = NULL;
-  for (cnf = cnf_list; cnf != NULL; prev_cnf = cnf, cnf = cnf->next)
+  for (cnf_p = &cnf_list; *cnf_p != NULL; cnf_p = &(*cnf_p)->next)
     {
-      if (cnf->or_next == NULL)
+      for (dnf = *cnf_p; dnf != NULL && PT_IS_VALUE_NODE (dnf) && PT_IS_NULL_NODE (dnf); dnf = dnf->or_next)
+	{
+	  ;
+	}
+      if ((*cnf_p)->or_next == NULL || dnf == NULL)
 	{
 	  continue;
 	}
 
-      has_other = false;
-      for (dnf = cnf; dnf != NULL; dnf = dnf->or_next)
-	{
-	  if (!QO_IS_NULL_VALUE (dnf))
-	    {
-	      has_other = true;
-	      break;
-	    }
-	}
-      if (!has_other)
-	{
-	  continue;
-	}
+      /* the CNF link is on the head of the OR list: keep it for the new head */
+      cnf_next = (*cnf_p)->next;
+      (*cnf_p)->next = NULL;
 
-      /* drop the NULL constants, keeping the CNF link on the head of the OR list */
-      head = cnf;
-      prev_dnf = NULL;
-      dnf = cnf;
-      while (dnf != NULL)
+      for (dnf_p = cnf_p; *dnf_p != NULL;)
 	{
-	  PT_NODE *dnf_next = dnf->or_next;
-
-	  if (QO_IS_NULL_VALUE (dnf))
+	  dnf = *dnf_p;
+	  if (PT_IS_VALUE_NODE (dnf) && PT_IS_NULL_NODE (dnf))
 	    {
-	      if (prev_dnf == NULL)
-		{
-		  dnf_next->next = head->next;
-		  head = dnf_next;
-		}
-	      else
-		{
-		  prev_dnf->or_next = dnf_next;
-		}
+	      *dnf_p = dnf->or_next;
 	      dnf->next = NULL;
 	      dnf->or_next = NULL;
 	      parser_free_tree (parser, dnf);
 	    }
 	  else
 	    {
-	      prev_dnf = dnf;
+	      dnf_p = &dnf->or_next;
 	    }
-	  dnf = dnf_next;
 	}
 
-      if (prev_cnf == NULL)
-	{
-	  cnf_list = head;
-	}
-      else
-	{
-	  prev_cnf->next = head;
-	}
-      cnf = head;
+      (*cnf_p)->next = cnf_next;
     }
 
   return cnf_list;
