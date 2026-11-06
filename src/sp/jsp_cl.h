@@ -49,6 +49,7 @@ extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * stateme
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int jsp_check_return_type_supported (DB_TYPE type);
+extern int jsp_check_out_args_of_call (PARSER_CONTEXT * parser, PT_NODE * node);
 
 extern int jsp_make_pl_signature (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery_as_attr_list,
 				  cubpl::pl_signature & signature);

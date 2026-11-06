@@ -329,6 +329,114 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
 }
 
 /*
+ * jsp_check_out_args_of_call - check the arguments for the OUT and IN OUT parameters of a CALL statement
+ *   return: error code
+ *   parser(in): parser context
+ *   node(in): a PT_METHOD_CALL node of a CALL statement that calls a stored procedure or function
+ *
+ * Note: An argument for an OUT or IN OUT parameter must be a bind variable, that is, a ? or a csql :name.
+ *       A constant, an expression, a session variable or a correlation name of a trigger has no
+ *       place to take the value. A ? is accepted on every path, even where the caller does not
+ *       read the value back, as Oracle accepts any bind variable there.
+ *       This runs in the semantic check because hostvar_late_binding turns a ? into a value before
+ *       the statement runs. A statement kept prepared, as by JDBC, or a trigger action already compiled
+ *       in the session is not checked again when the procedure is redefined or the EXECUTE privilege is
+ *       granted afterwards.
+ */
+
+int
+jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  assert (node != NULL && node->node_type == PT_METHOD_CALL);
+
+  PT_NODE *method_name_node = node->info.method_call.method_name;
+  const char *name;
+  if (PT_NAME_RESOLVED (method_name_node))
+    {
+      int custom_print_saved = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_QUOTES;
+      parser->custom_print &= ~PT_PRINT_QUOTES;
+      name = parser_print_tree (parser, method_name_node);
+      parser->custom_print = custom_print_saved;
+    }
+  else
+    {
+      name = PT_NAME_ORIGINAL (method_name_node);
+    }
+
+  MOP mop_p = jsp_find_stored_procedure (name, DB_AUTH_EXECUTE);
+  if (mop_p == NULL)
+    {
+      /* A missing procedure or EXECUTE privilege is reported when the statement runs. */
+      er_clear ();
+      return NO_ERROR;
+    }
+
+  int save;
+  AU_SAVE_AND_DISABLE (save);
+
+  /* If the catalog cannot be read, the check is skipped and the statement fails when it runs. */
+  int error = NO_ERROR;
+  bool unreadable = false;
+  DB_VALUE args_val;
+  db_make_null (&args_val);
+  if (db_get (mop_p, SP_ATTR_ARGS, &args_val) != NO_ERROR)
+    {
+      unreadable = true;
+    }
+  else if (!DB_IS_NULL (&args_val))
+    {
+      DB_SET *param_set = db_get_set (&args_val);
+      int num_params = set_size (param_set);
+
+      /* Too many arguments are reported as a count error when the statement runs. */
+      PT_NODE *arg = node->info.method_call.arg_list;
+      if (pt_length_of_list (arg) > num_params)
+	{
+	  arg = NULL;
+	}
+
+      for (int i = 0; i < num_params && arg != NULL; i++, arg = arg->next)
+	{
+	  DB_VALUE param_val, mode_val;
+	  if (set_get_element (param_set, i, &param_val) != NO_ERROR)
+	    {
+	      unreadable = true;
+	      break;
+	    }
+
+	  MOP param_mop = db_get_object (&param_val);
+	  bool read_ok = (param_mop != NULL && db_get (param_mop, SP_ARG_ATTR_MODE, &mode_val) == NO_ERROR);
+	  db_value_clear (&param_val);
+	  if (!read_ok)
+	    {
+	      unreadable = true;
+	      break;
+	    }
+
+	  int mode = db_get_int (&mode_val);
+	  if (mode == SP_MODE_IN || PT_IS_HOSTVAR (arg) || PT_IS_PARAMETER (arg))
+	    {
+	      continue;
+	    }
+
+	  PT_ERRORmf3 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARG_NOT_BIND_VARIABLE, i + 1,
+		       name, (mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
+	  error = ER_PT_SEMANTIC;
+	  break;
+	}
+    }
+  db_value_clear (&args_val);
+  if (unreadable)
+    {
+      er_clear ();
+    }
+
+  AU_RESTORE (save);
+  return error;
+}
+
+/*
  * jsp_check_param_type_supported
  *
  * Note:
