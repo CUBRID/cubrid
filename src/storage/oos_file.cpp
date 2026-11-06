@@ -3968,6 +3968,10 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
  * Vacuum reaches the record only once its MVCCID precedes every active snapshot, so no reader can still
  * reach the chains through the old version. A block retry or a rerun notification finds reclaimed
  * chains gone and skips them.
+ *
+ * notify_data is read only by the unpack, into private copies, before the first page fix. The caller may
+ * pass a pointer into its log page, which the page fixes below can rotate out, and an allocation failure of
+ * the copy fail-stops with the rest of the consumer.
  */
 int
 oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length, VFID *oos_vfid_out,
@@ -3984,19 +3988,24 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
   if (VFID_ISNULL (&header.oos_vfid))
     {
       /* The UPDATE did not resolve the OOS file; vacuum holds no page and can fix the heap header. */
-      if (!heap_oos_find_vfid (thread_p, &header.heap_hfid, &header.oos_vfid, false) || VFID_ISNULL (&header.oos_vfid))
+      if (!heap_oos_find_vfid (thread_p, &header.heap_hfid, &header.oos_vfid, false))
 	{
-	  error = er_errid ();
+	  /* A false return sets the error. */
+	  ASSERT_ERROR_AND_SET (error);
 	  if (error == ER_INTERRUPTED)
 	    {
 	      return error;
 	    }
-	  if (error == NO_ERROR)
-	    {
-	      /* Chains exist, so the heap must have an OOS file; a dropped table never reaches here. */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-	      error = ER_HEAP_OOS_CORRUPTED_RECORD;
-	    }
+	}
+      else if (VFID_ISNULL (&header.oos_vfid))
+	{
+	  /* Chains exist, so the heap must have an OOS file; a dropped table never reaches here. The lookup
+	   * succeeded and set no error, so er_errid () may name an older one. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	  error = ER_HEAP_OOS_CORRUPTED_RECORD;
+	}
+      if (error != NO_ERROR)
+	{
 	  oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, refs.empty () ? oos_chain_ref {oid_Null_oid, NULL_LSA}
 				 : refs[0]);
 	  return error;
@@ -4553,6 +4562,18 @@ oos_test_make_reclaim_intent_payload (const VFID &oos_vfid, const std::vector<oo
   std::vector<char> payload;
   HFID no_hfid = HFID_INITIALIZER;
   if (oos_pack_reclaim_intent (oos_vfid, no_hfid, oid_Null_oid, 0, "mvcc update", refs, 0, payload) != NO_ERROR)
+    {
+      payload.clear ();
+    }
+  return payload;
+}
+
+std::vector<char>
+oos_test_make_update_drop_notify_payload (const HFID &heap_hfid, const std::vector<oos_chain_ref> &refs)
+{
+  std::vector<char> payload;
+  VFID no_oos_vfid = VFID_INITIALIZER;
+  if (oos_pack_reclaim_intent (no_oos_vfid, heap_hfid, oid_Null_oid, 0, "mvcc update", refs, 0, payload) != NO_ERROR)
     {
       payload.clear ();
     }

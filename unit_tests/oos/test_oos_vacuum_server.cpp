@@ -934,6 +934,51 @@ TEST_F (OosVacuumHeapSeamServer, NotifyConsumerReclaimsLiveReferenceAndSkipsStal
 }
 
 // ============================================================================
+// TC-V11b: UPDATE notification consumer — a heap without an OOS file is corruption and stops the server,
+// even when an earlier error is still set: the lookup succeeded, so the error id is not its (CBRD-27781)
+// ============================================================================
+static int g_notify_fail_stops = 0;
+static int g_notify_fail_stop_error = NO_ERROR;
+
+static void
+record_notify_fail_stop (int error)
+{
+  g_notify_fail_stops++;
+  g_notify_fail_stop_error = error;
+}
+
+TEST_F (OosVacuumHeapSeamServer, NotifyConsumerFailStopsOnAHeapWithoutAnOosFileDespiteAStaleError)
+{
+  HFID bare_hfid;
+  HFID_SET_NULL (&bare_hfid);
+  ASSERT_EQ (xheap_create (thread_p, &bare_hfid, &class_oid, false), NO_ERROR);
+  VFID no_oos_vfid = VFID_INITIALIZER;
+  ASSERT_TRUE (heap_oos_find_vfid (thread_p, &bare_hfid, &no_oos_vfid, false));
+  ASSERT_TRUE (VFID_ISNULL (&no_oos_vfid)) << "the heap must have no OOS file";
+
+  /* The consumer stops before it reaches the chain, so the reference names nothing. */
+  const oos_chain_ref unreached = {oid_Null_oid, NULL_LSA};
+  std::vector<char> notify = oos_test_make_update_drop_notify_payload (bare_hfid, {unreached});
+  ASSERT_FALSE (notify.empty ());
+
+  g_notify_fail_stops = 0;
+  g_notify_fail_stop_error = NO_ERROR;
+  oos_test_set_reclaim_fail_stop_hook (record_notify_fail_stop);
+  /* Left by an earlier step. The shutdown interrupt is the one error that leaves the block unfinished. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+  const int error_code = vacuum_oos_reclaim_notified_chains (thread_p, notify.data (), (int) notify.size ());
+  oos_test_set_reclaim_fail_stop_hook (NULL);
+  er_clear ();
+
+  EXPECT_EQ (error_code, ER_HEAP_OOS_CORRUPTED_RECORD) << "a stale interrupt must not leave the block unfinished";
+  EXPECT_EQ (g_notify_fail_stops, 1) << "a heap without an OOS file must stop the server";
+  EXPECT_EQ (g_notify_fail_stop_error, ER_HEAP_OOS_CORRUPTED_RECORD);
+
+  (void) xheap_destroy (thread_p, &bare_hfid, &class_oid);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+}
+
+// ============================================================================
 // TC-V12: eager path — same no-op contract as vacuum (CBRD-26950)
 // ============================================================================
 TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOne)
