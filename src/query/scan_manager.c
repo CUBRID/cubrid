@@ -8886,7 +8886,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1, NULL);
+					iscan_id->rest_attrs.attr_cache, iscan_id->indx_cov.func_index_col_id, NULL);
   if (error != NO_ERROR)
     {
       return error;
