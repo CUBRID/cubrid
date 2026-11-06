@@ -51,7 +51,7 @@ public class ClassAccess {
             byte[] jarCode = getObjectCodeBytes();
             if (jarCode != null) {
                 return CompiledCodeSet.loadFromJar(jarCode);
-                // mainClassName, and compileId will be set later
+                // compileId will be set later
             } else {
                 return null;
             }
@@ -77,7 +77,6 @@ public class ClassAccess {
                 assert jarCode.length > 0;
 
                 CompiledCodeSet code = CompiledCodeSet.loadFromJar(jarCode);
-                code.setMainClassName(mainClassName);
                 code.setCompileId(compileIdRef[0]);
                 return code;
             }

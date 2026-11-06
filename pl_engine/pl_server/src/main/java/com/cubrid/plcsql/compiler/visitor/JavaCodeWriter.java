@@ -469,52 +469,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitUnitSp(UnitSp node) {
 
-        // declarations
-        Object codeDeclClass =
-                node.routine.decls == null
-                        ? ""
-                        : new CodeTemplate(
-                                "DeclClass of UnitSp",
-                                Misc.UNKNOWN_LINE_COLUMN,
-                                tmplDeclBlock,
-                                "%'BLOCK'%",
-                                node.routine.getDeclBlockName(),
-                                "%'+DECLARATIONS'%",
-                                visitNodeList(node.routine.decls));
-
-        // nullify OUT parameters
-        String[] strNullifyOutParam = getNullifyOutParamCode(node.routine.paramList);
-        // range-check incoming IN OUT NUMERIC parameters
-        String[] strCheckInoutParam = getCheckInoutParamCode(node.routine.paramList);
-
-        // body
-        CodeToResolve bodyCode = visit(node.routine.body);
-
-        // main user code
-        CodeToResolve mainUserCode =
-                new CodeTemplate(
-                        "main user code",
-                        Misc.UNKNOWN_LINE_COLUMN,
-                        tmplMainUserCode,
-                        "%'+NULLIFY-OUT-PARAMETERS'%",
-                        strNullifyOutParam,
-                        "%'+CHECK-INOUT-PARAMETERS'%",
-                        strCheckInoutParam,
-                        "%'+DECL-CLASS'%",
-                        codeDeclClass,
-                        "%'+BODY'%",
-                        bodyCode);
-
         assert node.routine.sqlUsesOfTopLevel != null;
-        Set<SqlUse> loopOptimizableSqlUses =
-                node.routine.sqlUsesOfTopLevel.stream()
-                        .filter(n -> n.reachableFromLoop())
-                        .collect(Collectors.toSet());
-        if (!loopOptimizableSqlUses.isEmpty()) {
-            mainUserCode = wrapWithStmtDeclareAndClose(loopOptimizableSqlUses, mainUserCode);
-        }
-
-        CodeToResolve methods = getEntryMethod("public static ", node.routine, mainUserCode);
+        CodeToResolve methods =
+                getEntryMethod(
+                        "public static ", node.routine, getRoutineUserCode(node.routine, true));
 
         String[] recordDefs = getRecordDefs();
         String[] recordAssignFuncs = getRecordAssignFuncs();
@@ -678,6 +636,52 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 unitClassName);
     }
 
+    // the user code of a routine with its body: a stored procedure/function, a package routine, or
+    // a local routine
+    private CodeToResolve getRoutineUserCode(DeclRoutine routine, boolean checkInoutParams) {
+
+        // declarations
+        Object codeDeclClass =
+                routine.decls == null
+                        ? ""
+                        : new CodeTemplate(
+                                "DeclClass of Routine",
+                                Misc.UNKNOWN_LINE_COLUMN,
+                                tmplDeclBlock,
+                                "%'BLOCK'%",
+                                routine.getDeclBlockName(),
+                                "%'+DECLARATIONS'%",
+                                visitNodeList(routine.decls));
+
+        CodeToResolve routineUserCode =
+                new CodeTemplate(
+                        "routine user code",
+                        Misc.UNKNOWN_LINE_COLUMN,
+                        tmplMainUserCode,
+                        "%'+NULLIFY-OUT-PARAMETERS'%",
+                        getNullifyOutParamCode(routine.paramList),
+                        "%'+CHECK-INOUT-PARAMETERS'%",
+                        // range-check incoming IN OUT NUMERIC parameters
+                        checkInoutParams ? getCheckInoutParamCode(routine.paramList) : "",
+                        "%'+DECL-CLASS'%",
+                        codeDeclClass,
+                        "%'+BODY'%",
+                        visitBody(routine.body));
+
+        if (routine.sqlUsesOfTopLevel != null) {
+            Set<SqlUse> loopOptimizableSqlUses =
+                    routine.sqlUsesOfTopLevel.stream()
+                            .filter(n -> n.reachableFromLoop())
+                            .collect(Collectors.toSet());
+            if (!loopOptimizableSqlUses.isEmpty()) {
+                routineUserCode =
+                        wrapWithStmtDeclareAndClose(loopOptimizableSqlUses, routineUserCode);
+            }
+        }
+
+        return routineUserCode;
+    }
+
     private CodeToResolve visitDeclRoutine(DeclRoutine node) {
 
         if (node.codeGenDone) {
@@ -710,45 +714,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             assert node.paramList != null;
 
-            String[] strNullifyOutParam = getNullifyOutParamCode(node.paramList);
-
-            // declarations
-            Object codeDeclClass =
-                    node.decls == null
-                            ? ""
-                            : new CodeTemplate(
-                                    "DeclClass of Routine",
-                                    Misc.UNKNOWN_LINE_COLUMN,
-                                    tmplDeclBlock,
-                                    "%'BLOCK'%",
-                                    node.getDeclBlockName(),
-                                    "%'+DECLARATIONS'%",
-                                    visitNodeList(node.decls));
-
-            CodeToResolve routineUserCode =
-                    new CodeTemplate(
-                            "routine user code",
-                            Misc.UNKNOWN_LINE_COLUMN,
-                            tmplMainUserCode,
-                            "%'+NULLIFY-OUT-PARAMETERS'%",
-                            strNullifyOutParam,
-                            "%'+CHECK-INOUT-PARAMETERS'%",
-                            node.isPkgPublic ? getCheckInoutParamCode(node.paramList) : "",
-                            "%'+DECL-CLASS'%",
-                            codeDeclClass,
-                            "%'+BODY'%",
-                            visitBody(node.body));
-
-            if (node.sqlUsesOfTopLevel != null) {
-                Set<SqlUse> loopOptimizableSqlUses =
-                        node.sqlUsesOfTopLevel.stream()
-                                .filter(n -> n.reachableFromLoop())
-                                .collect(Collectors.toSet());
-                if (!loopOptimizableSqlUses.isEmpty()) {
-                    routineUserCode =
-                            wrapWithStmtDeclareAndClose(loopOptimizableSqlUses, routineUserCode);
-                }
-            }
+            CodeToResolve routineUserCode = getRoutineUserCode(node, node.isPkgPublic);
 
             if (node.isPkgPublic) {
                 return getEntryMethod(getModifier(node), node, routineUserCode);

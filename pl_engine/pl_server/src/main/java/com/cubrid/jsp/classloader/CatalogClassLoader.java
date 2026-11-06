@@ -56,7 +56,6 @@ public class CatalogClassLoader extends ClassLoader {
             throw new IllegalStateException(
                     "retrieving object code failed for a class " + mainClassName);
         }
-        this.codeSet.setMainClassName(mainClassName);
         this.codeSet.setCompileId(compileId);
     }
 

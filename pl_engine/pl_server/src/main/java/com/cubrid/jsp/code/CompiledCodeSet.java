@@ -44,7 +44,6 @@ import org.apache.commons.compress.archivers.jar.JarArchiveInputStream;
 
 public class CompiledCodeSet {
 
-    public String mainClassName;
     public String compileId;
 
     public Map<String, CompiledCode> codeMap = null;
@@ -57,10 +56,6 @@ public class CompiledCodeSet {
 
     public void clear() {
         codeMap.clear();
-    }
-
-    public void setMainClassName(String val) {
-        this.mainClassName = val;
     }
 
     public void setCompileId(String val) {

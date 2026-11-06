@@ -1505,16 +1505,7 @@ exit:
     pr_clear_value (&key);
     if (code_mop != NULL)
       {
-	DB_VALUE v;
-	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_COMPILE_ID : SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
-	  {
-	    const char *s = db_get_string (&v);
-	    if (s != NULL)
-	      {
-		compile_id.assign (s);
-	      }
-	    pr_clear_value (&v);
-	  }
+	get_string_attr (code_mop, is_pkg ? PKG_CODE_ATTR_COMPILE_ID : SP_CODE_ATTR_COMPILE_ID, compile_id);
       }
 
     // db_find_unique sets ER_OBJ_OBJECT_NOT_FOUND when the key is absent; that is a normal
@@ -1533,16 +1524,7 @@ exit:
 
     if (code_mop != NULL)
       {
-	DB_VALUE v;
-	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_OCODE : SP_CODE_ATTR_OCODE, &v) == NO_ERROR)
-	  {
-	    const char *s = db_get_string (&v);
-	    if (s != NULL)
-	      {
-		ocode.assign (s);
-	      }
-	    pr_clear_value (&v);
-	  }
+	get_string_attr (code_mop, is_pkg ? PKG_CODE_ATTR_OCODE : SP_CODE_ATTR_OCODE, ocode);
 	found = true;
 
 	// The row was read with a lock, which keeps the cached copy for the rest of the transaction. Drop it, so that
