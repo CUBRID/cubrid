@@ -6663,13 +6663,16 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
  * qo_add_where_term_dep_set () - Join the later nodes of a WHERE join/other
  *   term after every preceding outer join on_node that can null-pad a node
  *   the term reads, so the term is not evaluated before that padding.
+ *   Terms that qo_classify_outerjoin_terms () turns into after-join terms are
+ *   skipped.
  *   return:
  *   env(in):
  */
 static void
 qo_add_where_term_dep_set (QO_ENV * env)
 {
-  int i, k, t;
+  int i, k, t, nidx_self;
+  bool or_outer;
   QO_TERM *term;
   QO_NODE *k_node;
   BITSET suppliers;
@@ -6681,6 +6684,23 @@ qo_add_where_term_dep_set (QO_ENV * env)
     {
       term = QO_ENV_TERM (env, i);
       if (QO_ON_COND_TERM (term) || (QO_TERM_CLASS (term) != QO_TC_JOIN && QO_TERM_CLASS (term) != QO_TC_OTHER))
+	{
+	  continue;
+	}
+
+      nidx_self = -1;
+      or_outer = false;
+      for (t = bitset_iterate (&(QO_TERM_NODES (term)), &ti); t != -1; t = bitset_next_member (&ti))
+	{
+	  nidx_self = MAX (nidx_self, QO_NODE_IDX (QO_ENV_NODE (env, t)));
+	  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_PRED) && QO_NODE_IS_OUTER_JOIN (QO_ENV_NODE (env, t)))
+	    {
+	      or_outer = true;
+	    }
+	}
+
+      /* qo_classify_outerjoin_terms () makes these after-join terms, evaluated once every node is joined */
+      if (nidx_self < 0 || QO_NODE_IS_OUTER_JOIN (QO_ENV_NODE (env, nidx_self)) || or_outer)
 	{
 	  continue;
 	}
