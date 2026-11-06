@@ -329,6 +329,9 @@ extern std::vector<char> oos_test_make_reclaim_intent_payload (const VFID &oos_v
     const std::vector<oos_chain_ref> &refs);
 extern void oos_test_fail_reclaim_after_chunk_deletes (int n_deletes);
 extern void oos_test_set_reclaim_fail_stop_hook (void (*hook) (int error));
+/* Stops the process with std::_Exit (exit_code) right after the n-th following UPDATE drop postpone appended its
+ * RVOOS_NOTIFY_VACUUM, with the log flushed up to it: a crash in the middle of a commit's postpones (0 disarms). */
+extern void oos_test_exit_after_update_drop_notifications (int n_notifications, int exit_code);
 /* Removes the files the synthetic-owner oos_create_file overload created that still exist. */
 extern void oos_test_remove_created_files (THREAD_ENTRY *thread_p);
 #endif
