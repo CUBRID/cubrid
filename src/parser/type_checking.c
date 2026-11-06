@@ -8122,6 +8122,25 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   switch (node->node_type)
     {
     case PT_EXPR:
+      if ((parser->flag.is_checking_stored_condition || parser->flag.is_parsing_trigger) && pt_is_operator_logical (node->info.expr.op))
+	{
+	  /* a view, trigger or filter index keeps its condition as text: a NULL there can not be parsed again */
+	  PT_NODE *save = parser_copy_tree (parser, node);
+
+	  node = pt_fold_const_expr (parser, node, arg);
+	  if (save != NULL && node != NULL && PT_IS_VALUE_NODE (node) && PT_IS_NULL_NODE (node))
+	    {
+	      save->next = node->next;
+	      node->next = NULL;
+	      parser_free_tree (parser, node);
+	      node = save;
+	    }
+	  else if (save != NULL)
+	    {
+	      parser_free_tree (parser, save);
+	    }
+	  break;
+	}
       node = pt_fold_const_expr (parser, node, arg);
       break;
     case PT_FUNCTION:
