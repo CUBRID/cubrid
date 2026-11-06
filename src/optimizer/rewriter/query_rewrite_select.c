@@ -1702,11 +1702,21 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
   need_merge_check = false;
   has_orderbynum_with_groupby = false;
 
-  /* check for merge order by to group by( without DISTINCT and HAVING clause) */
+  /* a super-aggregate row of ROLLUP outputs NULL for the grouped expression, so it is not constant */
+  with_rollup = node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup;
+
+  /* check for merge order by to group by( without DISTINCT, HAVING clause and ROLLUP) */
 
   if (node->info.query.all_distinct == PT_DISTINCT)
     {
       ;				/* give up */
+    }
+  else if (with_rollup)
+    {
+      /* give up: groupby_num () counts only the regular groups and is applied before the super-aggregate rows are
+       * generated, so moving the orderby_num () bound of a LIMIT to groupby_num () would drop the subtotal rows (the
+       * same reason GROUPBY_NUM () with ROLLUP is rejected by the semantic check) */
+      ;
     }
   else
     {
@@ -1741,8 +1751,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto exit_on_error;
 	    }
 
-	  if (node->info.query.orderby_for == NULL && !node->info.query.q.select.connect_by
-	      && !node->info.query.q.select.group_by->flag.with_rollup)
+	  if (node->info.query.orderby_for == NULL && !node->info.query.q.select.connect_by)
 	    {
 	      /* clear unnecessary node info */
 	      parser_free_tree (parser, node->info.query.order_by);
@@ -1752,9 +1761,6 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	  need_merge_check = false;	/* clear */
 	}
     }
-
-  /* a super-aggregate row of ROLLUP outputs NULL for the grouped expression, so it is not constant */
-  with_rollup = node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup;
 
   order_prev = NULL;
   for (order = node->info.query.order_by; order; order = order_next)
