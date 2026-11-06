@@ -7658,6 +7658,8 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (result != NULL)
 	    {
 	      query_spec = *result;
+	      /* specs referring a CTE are not views; resolve them so that they are not compared with self */
+	      query_spec = parser_walk_tree (query_cache, query_spec, NULL, NULL, pt_resolve_cte_specs, NULL);
 	      parser_walk_tree (query_cache, query_spec, pt_check_cyclic_reference_in_view_spec, arg, NULL, NULL);
 	    }
 
@@ -13359,6 +13361,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		}
 	      if (!resolve_whole)
 		{
+		  if (parser->host_var_classified == node)
+		    {
+		      /* CBRD-27583: a remote DML resolves no names here, so its positions are classified on their own */
+		      parser->host_var_classified = NULL;
+		      node = pt_classify_host_var_positions (parser, node, NULL, NULL);
+		    }
 		  break;
 		}
 	    }
@@ -16309,6 +16317,15 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
   s = parser_walk_tree (parser, s, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
   assert (s != NULL);
 
+  /* specs referring a CTE have an entity name; resolve them to the CTE before name resolution */
+  s = parser_walk_tree (parser, s, NULL, NULL, pt_resolve_cte_specs, NULL);
+  if (s == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error_code = er_errid ();
+      goto error_exit;
+    }
+
   attrs = pt_get_attributes (parser, c);
 
   /* apply semantic checks to query_spec */
@@ -18969,8 +18986,9 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
  *       or a row cut. An orderby_for predicate and a LIMIT not yet rewritten cut rows after it.
  *       EXCEPT ALL would become EXCEPT, so DISTINCT is not set either.
  *       A false return sets no DISTINCT. The caller does not rely on the query being DISTINCT,
- *       or removes duplicates outside the query.
- *       Call it after pt_eval_type_pre () has rewritten the LIMIT of a SELECT.
+ *       or removes duplicates outside the query. A range predicate does not rely on it,
+ *       and its join rewrite in qo_rewrite_subqueries () removes the duplicates outside.
+ *       Called before pt_eval_type_pre () rewrites the LIMIT of a SELECT, it leaves that SELECT without DISTINCT.
  */
 bool
 pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
