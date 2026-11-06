@@ -5284,11 +5284,12 @@ SYSPRM_PARAM prm_Def[] = {
   /* CBRD-27236: the most temp files a merge pass of the index build sort reads from, which is otherwise half the
    * sort buffer in pages. The default 256 bounds the temp space of a build whose runs are short: a key longer than a
    * page makes runs of a page, and each temp file takes at least a sector, so with no cap a 64M sort buffer can
-   * reserve a sector for each of 2,048 files. The cap changes nothing while the runs are no more than 256, and beyond
-   * it adds a pass, which writes and reads the sort data once more. 0 sets no cap. A lower cap also suits a device
-   * whose reads slow down to a third or less when thousands of runs are read by turns, such as a volume of about
-   * 1,000 read IOPS (see btsort_get_num_half_tmpfiles ()). Changeable on-line, for the CREATE INDEX statements that
-   * follow. */
+   * reserve a sector for each of 2,048 files. The data sectors of the heap bound the files as well, so that they
+   * reserve no more space than the heap takes; the workers of a parallel build each take their share of the sectors.
+   * The cap changes nothing while the runs are no more than 256, and beyond it adds a pass, which writes and reads
+   * the sort data once more. 0 sets no cap. A lower cap also suits a device whose reads slow down to a third or less
+   * when thousands of runs are read by turns, such as a volume of about 1,000 read IOPS (see
+   * btsort_get_num_half_tmpfiles ()). Changeable on-line, for the CREATE INDEX statements that follow. */
   {PRM_ID_INDEX_BUILD_MERGE_FANIN,
    PRM_NAME_INDEX_BUILD_MERGE_FANIN,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),

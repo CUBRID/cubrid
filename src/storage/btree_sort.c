@@ -238,6 +238,10 @@ struct btsort_param
   /* Estimated number of pages in each temp file (used in initialization) */
   int tmp_file_pgs;
 
+  /* Data sectors of the heaps the sort reads, 0 if unknown; a temp file takes a sector at least, so the sort makes no
+   * more files than that (see btsort_get_num_half_tmpfiles) */
+  int data_sects;
+
   /* total number of recordes */
   unsigned int total_numrecs;
 
@@ -471,7 +475,8 @@ static int btsort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NT
 			      INT32 num_pages, char *area_start, bool tde_encrypted);
 static int btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
 			     INT32 num_pages, char *area_start);
-static int btsort_get_num_half_tmpfiles (int tot_buffers);
+static int btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_param, int *n_sects);
+static int btsort_get_num_half_tmpfiles (int tot_buffers, int data_sects);
 static int btsort_run_add_new (BTSORT_FILE_CONTENTS * file_contents, int num_pages);
 static void btsort_run_remove_first (BTSORT_FILE_CONTENTS * file_contents);
 static int btsort_run_count (const BTSORT_FILE_CONTENTS * file_contents);
@@ -883,6 +888,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   sort_param->put_arg = put_arg;
 
   sort_param->tot_tempfiles = 0;
+  sort_param->data_sects = 0;
 
   sort_param->px_leave_runs = false;
 
@@ -918,7 +924,14 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 	}
     }
 
-  sort_param->half_files = btsort_get_num_half_tmpfiles (sort_param->tot_buffers);
+  /* a temp file takes a sector at least: the sort makes no more files than its input holds sectors */
+  error = btsort_get_num_data_sectors (thread_p, sort_param, &sort_param->data_sects);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  sort_param->half_files = btsort_get_num_half_tmpfiles (sort_param->tot_buffers, sort_param->data_sects);
   sort_param->tot_tempfiles = sort_param->half_files * 2;
   sort_param->in_half = 0;
 
@@ -1973,6 +1986,11 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
 	  goto clear;
 	}
       px_sort_param[i].tot_buffers = sort_param->tot_buffers;	/* match allocated size (may be 8 for parallel) */
+      /* a worker reads its share of the data sectors, and makes no more files than that */
+      px_sort_param[i].half_files =
+	btsort_get_num_half_tmpfiles (sort_param->tot_buffers, sort_param->data_sects / parallel_num);
+      px_sort_param[i].tot_tempfiles = px_sort_param[i].half_files * 2;
+      px_sort_param[i].tmp_file_pgs = CEIL_PTVDIV (sort_param->tot_buffers, px_sort_param[i].half_files);
       error = btsort_alloc_temp_slots (&px_sort_param[i]);
       if (error != NO_ERROR)
 	{
@@ -4766,10 +4784,47 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
 }
 
 /*
+ * btsort_get_num_data_sectors () - Data sectors of the heaps the sort reads
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   sort_param(in): sort parameters; get_arg names the classes
+ *   n_sects(out): the data sectors of the heaps of the classes together; a class without a heap adds none
+ */
+static int
+btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_param, int *n_sects)
+{
+  const SORT_ARGS *sort_args_p = (const SORT_ARGS *) sort_param->get_arg;
+  int class_sects;
+  int error;
+  int i;
+
+  *n_sects = 0;
+  for (i = 0; i < sort_args_p->n_classes; i++)
+    {
+      if (HFID_IS_NULL (&sort_args_p->hfids[i]))
+	{
+	  continue;
+	}
+
+      error = file_get_num_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &class_sects);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+
+      *n_sects += class_sects;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * btsort_get_num_half_tmpfiles () - Determines the number of temporary files to be used
  *                        during the sorting process
  *   return: half of the number of temporary files (the number of input files of a merge pass, its fan-in)
  *   tot_buffers(in): total number of buffers in the sort buffer
+ *   data_sects(in): data sectors of the heap pages the sort reads, or 0 if unknown
  *
  * Note: A merge pass reads from as many files as half the sort buffer holds pages, one page per input at full
  *       fan-in, but from at least BTSORT_MIN_HALF_FILES (fewer files cannot merge). In a sweep of one to eight pages
@@ -4780,9 +4835,15 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
  *       are no more than the cap. Beyond it, the merge takes one more pass, which writes and reads the sort data once
  *       more, and in exchange each input of the first pass reads more pages at a time. The default bounds the temp
  *       space of short runs: every file takes at least a sector, and keys longer than a page make runs of a page.
+ *
+ *       The data sectors bound the count as well: a file takes a sector however short its runs, so a sort that
+ *       makes no more files than its input holds sectors reserves no more space for them than the heap takes. The
+ *       bound leaves a large input alone, whose runs fill their files, and stops the short runs of a small one from
+ *       taking a sector each. The workers of a parallel sort read a share of the sectors each, so their files
+ *       together stay within the same bound.
  */
 static int
-btsort_get_num_half_tmpfiles (int tot_buffers)
+btsort_get_num_half_tmpfiles (int tot_buffers, int data_sects)
 {
   int half_files = tot_buffers / 2;
   int fanin_limit = prm_get_integer_value (PRM_ID_INDEX_BUILD_MERGE_FANIN);
@@ -4790,6 +4851,11 @@ btsort_get_num_half_tmpfiles (int tot_buffers)
   if (fanin_limit > 0)
     {
       half_files = MIN (half_files, fanin_limit);
+    }
+
+  if (data_sects > 0)
+    {
+      half_files = MIN (half_files, data_sects);
     }
 
   return MAX (BTSORT_MIN_HALF_FILES, half_files);
