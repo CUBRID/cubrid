@@ -10006,7 +10006,7 @@ mq_find_unshareable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
       break;
 
     case PT_FUNCTION:
-      if (node->info.function.function_type == PT_GROUPBY_NUM)
+      if (node->info.function.function_type == PT_GROUPBY_NUM || node->info.function.function_type == F_BENCHMARK)
 	{
 	  *found = true;
 	}
