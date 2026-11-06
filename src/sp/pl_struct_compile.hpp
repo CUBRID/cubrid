@@ -84,6 +84,7 @@ namespace cubpl
     // common to sp and package spec
     string translated_code;
     string class_name;
+    string compile_id;
     string compiled_code;
     vector <plcsql_dependency> dependencies;
 
@@ -174,6 +175,21 @@ namespace cubpl
     DB_VALUE value; // only for auto parameterized
   };
 
+  enum global_semantics_question_type
+  {
+    GSQT_PROCEDURE = 1,
+    GSQT_FUNCTION = 2,
+    GSQT_SERIAL = 3,
+    GSQT_ID_TYPE = 4,
+  };
+
+  // kind of <qualifier>.<id> in the answer to a GSQT_ID_TYPE question
+  enum qualified_id_kind
+  {
+    QID_TABLE_COLUMN = 0,
+    QID_PKG_VAR = 1,	// package variable or constant
+  };
+
   struct EXPORT_IMPORT global_semantics_question : public cubpacking::packable_object
   {
     global_semantics_question () = default;
@@ -221,6 +237,8 @@ namespace cubpl
 
     pl_parameter_info ret;
     vector <pl_parameter_info> args;
+    string target_class; // generated Java class name of the resolved SP/package member
+    string unique_name;  // canonical unique_name of the resolved routine, used for the runtime EXECUTE check
   };
 
   struct EXPORT_IMPORT global_semantics_response_serial : public global_semantics_response_common
@@ -230,15 +248,16 @@ namespace cubpl
     size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
   };
 
-  struct EXPORT_IMPORT global_semantics_response_column : public global_semantics_response_common
+  struct EXPORT_IMPORT global_semantics_response_id_type : public global_semantics_response_common
   {
-    global_semantics_response_column ();
+    global_semantics_response_id_type ();
 
     void pack (cubpacking::packer &serializator) const override;
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, size_t start_offset) const override;
 
-    cubmethod::column_info c_info;
+    cubmethod::type_info t_info;
+    int qid_kind;	// qualified_id_kind
   };
 
   struct EXPORT_IMPORT global_semantics_response : public cubpacking::packable_object

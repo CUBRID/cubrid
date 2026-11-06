@@ -66,7 +66,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
@@ -261,6 +263,16 @@ public class ExecuteThread extends Thread {
                                     // exception was thrown not in the SP code but in the PL engine
                                     // code
                                     errMsg = String.format("\n  %s", plcsqlError.getMessage());
+                                } else if (line == 0 && col == 0) {
+                                    // thrown in the SP code but the position is unknown. for
+                                    // example,
+                                    // the position was in an exception stack frame which was cut
+                                    // due to
+                                    // too many nests.
+                                    errMsg =
+                                            String.format(
+                                                    "\n  (line ?, column ?) %s",
+                                                    plcsqlError.getMessage());
                                 } else {
                                     errMsg =
                                             String.format(
@@ -425,7 +437,8 @@ public class ExecuteThread extends Thread {
 
         try {
             CompileRequest request = new CompileRequest(unpacker);
-            response = PlcsqlCompilerMain.compilePLCSQL(request);
+            Set<String> referencedClasses = new HashSet<>();
+            response = PlcsqlCompilerMain.compilePLCSQL(request, referencedClasses);
             if (response.errCode == 0) {
                 switch (response.type) {
                     case CompileRequest.PLCSQL_COMPILE_TYPE_SP:
@@ -447,7 +460,7 @@ public class ExecuteThread extends Thread {
                                     response.translated.getBytes(Context.getSessionCharset()));
                         }
 
-                        CompiledCodeSet codeSet = compiler.compile(sCode);
+                        CompiledCodeSet codeSet = compiler.compile(sCode, referencedClasses);
 
                         byte[] data = null;
 
@@ -456,7 +469,7 @@ public class ExecuteThread extends Thread {
                         writeJar(codeSet, baos);
                         data = baos.toByteArray();
 
-                        response.compiledCode = Base64.getEncoder().encode(data);
+                        response.setCompiledCode(Base64.getEncoder().encode(data));
                         break;
 
                     case CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY:
@@ -481,6 +494,7 @@ public class ExecuteThread extends Thread {
 
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
+        String compileId = unpacker.unpackCString();
         String authUser = unpacker.unpackCString();
         int lang = unpacker.unpackInt();
         int paramCount = unpacker.unpackInt();
@@ -501,7 +515,9 @@ public class ExecuteThread extends Thread {
 
         serverSideSqlForbidden = unpacker.unpackBool();
 
-        storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
+        storedProcedure =
+                new StoredProcedure(methodSig, compileId, lang, authUser, arguments, returnType);
+
         return storedProcedure;
     }
 

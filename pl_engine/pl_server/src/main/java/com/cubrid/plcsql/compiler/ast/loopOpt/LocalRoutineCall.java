@@ -31,10 +31,9 @@
 package com.cubrid.plcsql.compiler.ast.loopOpt;
 
 import com.cubrid.plcsql.compiler.ast.DeclRoutine;
-import java.util.Set;
 
 public interface LocalRoutineCall extends LoopOptimizable {
-    void markAsReachableFromLoop(Set<SqlUse> reachableSqlUses);
+    void markAsReachableFromLoop();
 
     DeclRoutine getDecl();
 }

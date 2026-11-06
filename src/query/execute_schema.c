@@ -2096,10 +2096,14 @@ do_grant_or_revoke_obj_list (DB_OBJECT * user_obj, DB_OBJECT_TYPE obj_type, PT_N
 	  switch (obj_type)
 	    {
 	    case DB_OBJECT_PROCEDURE:
-	      obj_mop = jsp_find_stored_procedure (obj_name, DB_AUTH_NONE);
+	      error = jsp_find_standalone_routine (obj_name, granting ? "GRANT" : "REVOKE", &obj_mop);
+	      if (error != NO_ERROR)
+		{
+		  goto end;
+		}
 	      break;
 	    case DB_OBJECT_PACKAGE:
-	      obj_mop = jsp_find_package (obj_name, DB_AUTH_NONE);
+	      obj_mop = jsp_find_package (obj_name);
 	      break;
 	    default:
 	      assert (false);

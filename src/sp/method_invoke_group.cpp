@@ -158,7 +158,7 @@ namespace cubmethod
 
 	// invoke and get_return
 	cubmethod::header header (s_id, METHOD_REQUEST_INVOKE /* default */);
-	error = xs_callback_send_and_receive (m_stack->get_thread_entry (), get_method_result, header, m_id,
+	error = xs_callback_send_and_receive (m_stack->get_thread_entry (), get_method_result, true, header, m_id,
 					      m_sig_array->sigs[i]);
 	if (error != NO_ERROR)
 	  {

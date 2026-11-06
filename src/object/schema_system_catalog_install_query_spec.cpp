@@ -1236,7 +1236,7 @@ sm_define_view_stored_procedure_spec (void)
   int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
-          "[sp].[pkg_name] AS [pkg_name], "
+          "[sp].[pkg_of].[pkg_name] AS [pkg_name], "
 	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
 	  "CASE [sp].[return_type] "
 	    "WHEN 0 THEN 'void' "
@@ -1264,7 +1264,7 @@ sm_define_view_stored_procedure_spec (void)
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 	        "[u].[name] = CURRENT_USER"
-	    ") THEN [sp_code].[scode] "
+	    ") THEN [sp].[code].[scode] "
 	    "WHEN {[sp].[owner].[name]} SUBSETEQ ("
 	      "SELECT "
 	        "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
@@ -1273,7 +1273,7 @@ sm_define_view_stored_procedure_spec (void)
 		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
 	      "WHERE "
 	        "[u].[name] = CURRENT_USER"
-	    ") THEN [sp_code].[scode] "
+	    ") THEN [sp].[code].[scode] "
 	    "ELSE NULL "
 	    "END AS [code], "
         "CASE [sp].[sql_data_access] "
@@ -1289,8 +1289,6 @@ sm_define_view_stored_procedure_spec (void)
 	"FROM "
 	  /* CT_STORED_PROC_NAME */
 	  "[%s] AS [sp] "
-	  /* CT_STORED_PROC_CODE_NAME */
-          "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp].[target_class] = [sp_code].[name] "
         "WHERE "
           "[sp].[is_system_generated] = 0"
           "AND ("
@@ -1329,15 +1327,34 @@ sm_define_view_stored_procedure_spec (void)
 			  "[u].[name] = CURRENT_USER"
 		      ") "
 		    "AND [au].[auth_type] = 'EXECUTE'"
-		")"
+		") "
+	      "OR ([sp].[pkg_of] IS NOT NULL AND {[sp].[pkg_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[object_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'EXECUTE'"
+		"))"
 	    ")",
 	CT_DATATYPE_NAME,
 	SP_DIRECTIVE_PARALLEL_ENABLE,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_STORED_PROC_NAME,
-        CT_STORED_PROC_CODE_NAME,
         AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -1350,14 +1367,14 @@ sm_define_view_stored_procedure_spec (void)
 std::string
 sm_define_view_stored_procedure_args_spec (void)
 {
-  char stmt [2048];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
 	  "[sp].[sp_of].[sp_name] AS [sp_name], "
 	  "[sp].[sp_of].[owner].[name] AS [sp_owner_name], "
-          "CAST ([sp].[sp_of].[pkg_name] AS VARCHAR(255)) AS [pkg_name], " /* string -> varchar(255) */
+          "[sp].[sp_of].[pkg_of].[pkg_name] AS [pkg_name], "
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
 	  "CASE [sp].[data_type] "
@@ -1410,7 +1427,25 @@ sm_define_view_stored_procedure_args_spec (void)
 			  "[u].[name] = CURRENT_USER"
 		      ") "
 		    "AND [au].[auth_type] = 'EXECUTE'"
-		")"
+		") "
+	      "OR ([sp].[sp_of].[pkg_of] IS NOT NULL AND {[sp].[sp_of].[pkg_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[object_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'EXECUTE'"
+		"))"
 	    ")"
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_of].[sp_name], "
@@ -1418,6 +1453,8 @@ sm_define_view_stored_procedure_args_spec (void)
 	CT_DATATYPE_NAME,
 	CT_STORED_PROC_ARGS_NAME,
         AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);

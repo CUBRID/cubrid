@@ -804,7 +804,11 @@ extern "C"
     DB_TYPE_VARCHAR = DB_TYPE_STRING,	/* SQL CHAR(n) VARYING values */
     DB_TYPE_UTIME = DB_TYPE_TIMESTAMP,	/* SQL TIMESTAMP */
 
-    DB_TYPE_LAST = DB_TYPE_JSON
+    DB_TYPE_LAST = DB_TYPE_JSON,
+
+    DB_TYPE_PL_BOOLEAN = 101,
+    DB_TYPE_PL_SYS_REFCURSOR = 102,
+    DB_TYPE_PL_RECORD = 103
   } DB_TYPE;
 
   /* Domain information stored in DB_VALUE structures. */

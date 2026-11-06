@@ -30,7 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclProc extends DeclRoutine {
@@ -44,44 +46,52 @@ public class DeclProc extends DeclRoutine {
             ParserRuleContext ctx,
             String name,
             String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx, name, comment, loopOptimizables, paramList, directive, null, decls, body);
+        super(
+                ctx,
+                name,
+                comment,
+                sqlUsesOfTopLevel,
+                loopOptimizables,
+                isPublic,
+                paramList,
+                directive,
+                null,
+                decls,
+                body);
     }
 
     public DeclProc(
             ParserRuleContext ctx,
             String name,
             String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive) {
-        super(ctx, name, comment, loopOptimizables, paramList, directive, null, null, new Body());
+        super(
+                ctx,
+                name,
+                comment,
+                sqlUsesOfTopLevel,
+                loopOptimizables,
+                isPublic,
+                paramList,
+                directive,
+                null,
+                null,
+                null);
     }
 
     @Override
     public String kind() {
         return "procedure";
-    }
-
-    @Override
-    public boolean givesBodyOf(Decl d) {
-
-        if (d == null || d.getClass() != DeclProc.class) {
-            return false;
-        }
-
-        DeclProc other = (DeclProc) d;
-
-        // name and parameters must be the same
-        if (!this.name.equals(other.name) || !this.paramList.equals(other.paramList)) {
-            return false;
-        }
-
-        // this must have a body and the other may not
-        return (this.body != null && other.body == null);
     }
 }

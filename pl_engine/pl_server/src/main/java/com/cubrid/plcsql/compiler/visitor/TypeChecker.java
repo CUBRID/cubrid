@@ -44,7 +44,7 @@ import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.ast.ExprFloat;
 import com.cubrid.plcsql.compiler.ast.ExprUint;
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.serverapi.ServerAPI;
 import com.cubrid.plcsql.compiler.serverapi.SqlSemantics;
@@ -67,13 +67,11 @@ public class TypeChecker extends AstVisitor<Type> {
             InstanceStore iStore,
             SymbolStack symbolStack,
             Set<Dependency> dependencies,
-            String spOwner,
-            Set<SqlUse> sqlUsesInRecursiveCalls) {
+            String spOwner) {
         this.iStore = iStore;
         this.symbolStack = symbolStack;
         this.dependencies.addAll(dependencies);
         this.spOwner = spOwner;
-        this.sqlUsesInRecursiveCalls = sqlUsesInRecursiveCalls;
     }
 
     @Override
@@ -92,6 +90,13 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitDeclPackage(DeclPackage node) {
         visitNodeList(node.pkgItems);
         if (node.initializer != null) {
+            // the package initializer is treated as a top level routine: see visitDeclRoutine()
+            Stack<DeclRoutine> calls = new Stack<>();
+            for (LocalRoutineCall n : node.pkgInitLoopOptimizables.localRoutineCalls) {
+                n.getDecl().visitToFindRecursiveCalls(calls);
+                assert calls.size() == 0;
+            }
+
             visitBody(node.initializer);
         }
         return null;
@@ -117,7 +122,9 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitTypeSpecPercent(TypeSpecPercent node) {
-        dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, node.table, spOwner));
+        if (node.qidKind == ServerAPI.QID_TABLE_COLUMN) {
+            dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, node.qualifier, spOwner));
+        }
         assert node.type != null;
         return node.type;
     }
@@ -256,11 +263,6 @@ public class TypeChecker extends AstVisitor<Type> {
             // forward declaration
             assert node.recordTypeSpec != null;
             visitTypeSpec(node.recordTypeSpec);
-
-            if (node.bodyDecl != null) {
-                assert node.bodyDecl instanceof DeclCursor;
-                visitDeclCursor((DeclCursor) node.bodyDecl);
-            }
         }
         return null;
     }
@@ -807,12 +809,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitExprLocalFuncCall(ExprLocalFuncCall node) {
+
         checkRoutineCall(node.decl, node.args.nodes);
-        if (routineDefNestLevel == 1) {
-            Stack<DeclRoutine> calls = new Stack<>();
-            node.decl.visitToFindRecursiveCalls(sqlUsesInRecursiveCalls, calls);
-            assert calls.size() == 0;
-        }
         return node.decl.retTypeSpec.type;
     }
 
@@ -928,6 +926,12 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitStmtBasicLoop(StmtBasicLoop node) {
+
+        // Marking loop's optimizables is not related to type checking.
+        // It would be better if it was done in another step between ParseTreeConverter and
+        // TypeChecking.
+        node.markLoopOptimizables();
+
         visitNodeList(node.stmts);
         return null;
     }
@@ -1182,6 +1186,11 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitStmtForCursorLoop(StmtForCursorLoop node) {
 
+        // Marking loop's optimizables is not related to type checking.
+        // It would be better if it was done in another step between ParseTreeConverter and
+        // TypeChecking.
+        node.markLoopOptimizables();
+
         Type idType = visit(node.cursor);
         if (idType == Type.CURSOR) {
             checkCursorArgs(node.cursor, node.cursorArgs); // s240
@@ -1197,6 +1206,12 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitStmtForIterLoop(StmtForIterLoop node) {
+
+        // Marking loop's optimizables is not related to type checking.
+        // It would be better if it was done in another step between ParseTreeConverter and
+        // TypeChecking.
+        node.markLoopOptimizables();
+
         Type ty;
         Coercion c;
 
@@ -1240,6 +1255,11 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitStmtForStaticSqlLoop(StmtForStaticSqlLoop node) {
 
+        // Marking loop's optimizables is not related to type checking.
+        // It would be better if it was done in another step between ParseTreeConverter and
+        // TypeChecking.
+        node.markLoopOptimizables();
+
         typeCheckHostExprs(node.staticSql); // s406
         visitNodeList(node.stmts);
         return null;
@@ -1264,12 +1284,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitStmtLocalProcCall(StmtLocalProcCall node) {
+
         checkRoutineCall(node.decl, node.args.nodes);
-        if (routineDefNestLevel == 1) {
-            Stack<DeclRoutine> calls = new Stack<>();
-            node.decl.visitToFindRecursiveCalls(sqlUsesInRecursiveCalls, calls);
-            assert calls.size() == 0;
-        }
         return null;
     }
 
@@ -1381,6 +1397,12 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitStmtWhileLoop(StmtWhileLoop node) {
+
+        // Marking loop's optimizables is not related to type checking.
+        // It would be better if it was done in another step between ParseTreeConverter and
+        // TypeChecking.
+        node.markLoopOptimizables();
+
         Type condType = visit(node.cond);
         if (condType != Type.BOOLEAN) {
             throw new SemanticError(
@@ -1403,13 +1425,10 @@ public class TypeChecker extends AstVisitor<Type> {
 
     private static final Type[] TYPE_ARRAY_DUMMY = new Type[0];
 
-    private int routineDefNestLevel;
-
     private InstanceStore iStore;
     private SymbolStack symbolStack;
     private ParseTreeConverter ptConv;
     private String spOwner;
-    private Set<SqlUse> sqlUsesInRecursiveCalls;
 
     private List<Type> caseComparedTypes;
 
@@ -1427,11 +1446,47 @@ public class TypeChecker extends AstVisitor<Type> {
 
     private Type visitDeclRoutine(DeclRoutine node) {
 
-        routineDefNestLevel++;
+        // Marking sql uses in recursive calls is not related to type checking.
+        // It would be better if it was done in another step between ParseTreeConverter and
+        // TypeChecking.
+        if (node.sqlUsesOfTopLevel != null) {
+
+            Stack<DeclRoutine> calls = new Stack<>();
+            for (LocalRoutineCall n : node.loopOptimizables.localRoutineCalls) {
+                n.getDecl().visitToFindRecursiveCalls(calls);
+                assert calls.size() == 0;
+            }
+        }
 
         visitNodeList(node.paramList);
+        if (node.isPublic) {
+            for (DeclParam dp : node.paramList.nodes) {
+                switch (dp.typeSpec.type.idx) {
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(dp.ctx), // s243
+                                "type "
+                                        + dp.typeSpec.type.plcName
+                                        + " cannot be used as a paramter type of stored procedures");
+                }
+            }
+        }
+
         if (node.retTypeSpec != null) {
-            visit(node.retTypeSpec);
+            Type retType = visit(node.retTypeSpec);
+            if (node.isPublic) {
+                switch (retType.idx) {
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(node.retTypeSpec.ctx), // s244
+                                "type "
+                                        + retType.plcName
+                                        + " cannot be used as a return type of stored functions");
+                }
+            }
         }
         if (node.decls != null) {
             visitNodeList(node.decls);
@@ -1440,13 +1495,6 @@ public class TypeChecker extends AstVisitor<Type> {
         // forward declarations do not have a body
         if (node.body != null) {
             visitBody(node.body);
-        }
-
-        routineDefNestLevel--;
-
-        if (node.bodyDecl != null) {
-            assert node.body == null;
-            visit(node.bodyDecl);
         }
 
         return null;

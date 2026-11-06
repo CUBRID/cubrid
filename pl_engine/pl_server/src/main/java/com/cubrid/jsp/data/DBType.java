@@ -77,6 +77,10 @@ public class DBType { // see src/compat/dbtype_def.h
     public static final int DB_DATETIMELTZ = 39;
     public static final int DB_JSON = 40;
 
+    public static final int DB_PL_BOOLEAN = 101;
+    public static final int DB_PL_SYS_REFCURSOR = 102;
+    public static final int DB_PL_RECORD = 103;
+
     public static int getObjectDBtype(Object value) {
         if (value == null) return DB_NULL;
         else if (value instanceof String) return DB_STRING;

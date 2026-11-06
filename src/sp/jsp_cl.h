@@ -65,9 +65,14 @@ extern int jsp_is_existing_package (const char *name);
 extern char *jsp_get_owner_name (const char *name, char *buf, int buf_size);
 extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);
+extern MOP jsp_find_stored_procedure (const char *name);
+extern int jsp_check_execute_authorization (const MOP sp_obj);
+extern int jsp_get_package_of_member (const MOP sp_obj, MOP * pkg_mop_p);
+extern int jsp_is_system_generated_pkg (MOP pkg_mop, bool * is_system);
+extern int jsp_is_system_generated_sp (MOP sp_mop, bool * is_system);
+extern int jsp_find_standalone_routine (const char *name, const char *op_name, MOP * sp_mop_p);
+extern MOP jsp_find_package (const char *name);
 extern bool jsp_is_sp_parallel_eligible (const char *name);
-extern MOP jsp_find_stored_procedure (const char *name, DB_AUTH purpose);
-extern MOP jsp_find_package (const char *name, DB_AUTH purpose);
 extern MOP jsp_find_stored_procedure_code (const char *name);
 extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);
 

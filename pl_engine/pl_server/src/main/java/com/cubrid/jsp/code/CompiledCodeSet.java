@@ -44,6 +44,8 @@ import org.apache.commons.compress.archivers.jar.JarArchiveInputStream;
 
 public class CompiledCodeSet {
 
+    public String compileId;
+
     public Map<String, CompiledCode> codeMap = null;
 
     public CompiledCodeSet(Collection<CompiledCode> codeList) {
@@ -54,6 +56,10 @@ public class CompiledCodeSet {
 
     public void clear() {
         codeMap.clear();
+    }
+
+    public void setCompileId(String val) {
+        this.compileId = val;
     }
 
     public static CompiledCodeSet loadFromJar(byte[] jarString) throws Exception {
@@ -68,7 +74,7 @@ public class CompiledCodeSet {
                     continue;
                 }
                 final String key = jarEntry.getName();
-                CompiledCode c = new CompiledCode(key);
+                CompiledCode c = new CompiledCode(key, true);
                 OutputStream os = c.openOutputStream();
 
                 final long fileSize = jarEntry.getSize();
