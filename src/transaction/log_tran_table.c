@@ -2842,13 +2842,18 @@ logtb_interrupt_session_sleeper_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_
     }
 
   bool match = false;
+  CSS_CONN_ENTRY *conn;
+
   (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
 
+  /* tran_index_lock does not guard conn_entry: the worker sets it when it takes a request and clears it when it ends
+   * one (css_server_task::execute (), the parallel query tasks) without this lock. Read it once, so the NULL check and
+   * the session_id read see the same entry. */
+  conn = thread_ref.conn_entry;
   if (!thread_ref.is_on_current_thread ()
       && thread_ref.m_status != cubthread::entry::status::TS_DEAD
       && thread_ref.m_status != cubthread::entry::status::TS_FREE
-      && thread_ref.m_status != cubthread::entry::status::TS_CHECK
-      && thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_id == session_id)
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK && conn != NULL && conn->session_id == session_id)
     {
       match = true;
       if (thread_ref.tran_index != NULL_TRAN_INDEX && log_Gl.trantable.area != NULL)
@@ -2984,14 +2989,18 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		THREAD_ENTRY *tran_worker = logtb_find_thread_by_tran_index_except_me (tran_index);
 		if (tran_worker != NULL)
 		  {
+		    /* that worker clears its conn_entry when it ends its request, with no lock this thread holds:
+		     * read it once */
+		    CSS_CONN_ENTRY *tran_conn = tran_worker->conn_entry;
+
 		    /* single regular SQL: wake this transaction's own suspended worker */
 		    thread_check_suspend_reason_and_wakeup (tran_worker, THREAD_RESUME_DUE_TO_INTERRUPT,
 							    THREAD_SLEEP_FUNC_SUSPENDED);
-		    if (tran_worker->conn_entry != NULL)
+		    if (tran_conn != NULL)
 		      {
 			/* parallel sibling workers, or nested SLEEP() in a PL/CSQL procedure:
 			 * wake all suspended workers of the same session */
-			logtb_interrupt_session_sleepers (thread_p, tran_worker->conn_entry->session_id);
+			logtb_interrupt_session_sleepers (thread_p, tran_conn->session_id);
 		      }
 		  }
 	      }
