@@ -663,3 +663,9 @@ if(WIN32)
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
+
+if(UNIX)
+  foreach(target cub_broker cub_gateway cubrid_broker cubrid_gateway broker_changer brokeradmin)
+    target_sources(${target} PRIVATE ${BROKER_DIR}/broker_process.cpp ${BASE_DIR}/background_process.cpp)
+  endforeach()
+endif()

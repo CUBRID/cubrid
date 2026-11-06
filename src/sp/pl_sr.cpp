@@ -47,6 +47,7 @@
 #include "pl_comm.h"
 #include "pl_connection.hpp"
 #include "process_util.h"
+#include "background_process.hpp"
 #include "environment_variable.h"
 #include "system_parameter.h"
 #include "release_string.h"
@@ -359,18 +360,31 @@ namespace cubpl
 
     if (m_state == SERVER_MONITOR_STATE_STOPPED || m_state == SERVER_MONITOR_STATE_FAILED_TO_FORK)
       {
-	int status;
-
 	pl_reset_info (m_db_name.c_str ());
+#if defined(WINDOWS)
+	int status;
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
 					&status);
+#else
+	// PL opens its listener after exec; the server connects at runtime.
+	// No server socket, error log, or database volume is an exec handoff.
+	// Keep intentional direct/SA output as well as the background relay.
+	// Preserve the legacy asynchronous PL caller's auto-reaping policy,
+	// including after the monitor is destroyed in a still-live SA parent.
+	// The shared spawn helper itself never changes the parent's signals.
+	int pid = -1;
+	if (signal (SIGCHLD, SIG_IGN) != SIG_ERR)
+	  {
+	    pid = background_process_spawn_stdio (m_executable_path.c_str (), m_argv, STDOUT_FILENO, STDERR_FILENO);
+	  }
+#endif
 	if (pid > 1) // parent
 	  {
 	    m_pid = pid;
 	    sleep (1);
 	    m_state = SERVER_MONITOR_STATE_READY_TO_INITIALIZE;
 	  }
-	else if (pid == 1) // fork error
+	else if (pid <= 1) // fork or exec error
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
 	    m_state = SERVER_MONITOR_STATE_FAILED_TO_FORK;
