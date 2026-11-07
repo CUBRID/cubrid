@@ -50,7 +50,7 @@ enum
   LK_NOTGRANTED_DUE_ERROR = 5,
   LK_GRANTED_PUSHINSET_LOCKONE = 6,
   LK_GRANTED_PUSHINSET_RELOCKALL = 7,
-  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* lock_object_ahead_of_waiters () only */
+  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* by lock_object_ahead_of_waiters (), locator_lock_object_unless_ours () */
 };
 
 enum
