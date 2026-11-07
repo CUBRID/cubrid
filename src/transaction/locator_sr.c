@@ -214,7 +214,8 @@ static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID 
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea,
 				      ATTR_ID * att_id, int n_att_id);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
-static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
+static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key,
+					     const OID * upd_oid, RECDES * upd_recdes);
 static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p,
 										MVCC_REC_HEADER * rec_header,
 										MVCC_SNAPSHOT * snapshot);
@@ -4145,8 +4146,10 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
   int classrepr_cacheindex = -1;
   BTREE_SEARCH ret;
   bool values_read = false;
+  OID pk_root_oid;
 
   db_make_null (&dbvalue);
+  OID_SET_NULL (&pk_root_oid);
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
@@ -4157,6 +4160,25 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       return error_code;
     }
 
+  /* when the UPDATE SETs the primary key, pk_root_oid is the class a foreign key names for it (a partition's root) */
+  for (i = 0; att_id != NULL && n_att_id > 0 && i < idx_info.num_btids; i++)
+    {
+      index = &(index_attrinfo.last_classrepr->indexes[i]);
+      if (index->type == BTREE_PRIMARY_KEY && locator_index_has_attr (index, att_id, n_att_id))
+	{
+	  COPY_OID (&pk_root_oid, class_oid);
+	  if (index_attrinfo.last_classrepr->has_partition_info > 0)
+	    {
+	      error_code = partition_find_root_class_oid (thread_p, class_oid, &pk_root_oid);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  break;
+	}
+    }
+
   for (i = 0; i < idx_info.num_btids; i++)
     {
       index = &(index_attrinfo.last_classrepr->indexes[i]);
@@ -4164,9 +4186,12 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 	{
 	  continue;
 	}
-      if (!locator_index_has_attr (index, att_id, n_att_id))
+      if (!locator_index_has_attr (index, att_id, n_att_id)
+	  && (OID_ISNULL (&pk_root_oid)
+	      || (!OID_EQ (&index->fk->ref_class_oid, class_oid) && !OID_EQ (&index->fk->ref_class_oid, &pk_root_oid))))
 	{
-	  /* the row keeps its entry, which a parent DELETE meets; checking would only wait on that DELETE */
+	  /* the row keeps its entry, which a parent DELETE meets; checking would only wait on that DELETE. Not so when
+	   * the row's own key changes and the foreign key refers to it: the row may be its own parent */
 	  continue;
 	}
 
@@ -5493,9 +5518,12 @@ error3:
  *
  *   index(in):
  *   key(in):
+ *   upd_oid(in): the row whose key the UPDATE changes in place; NULL on a partition move
+ *   upd_recdes(in): the record the UPDATE writes for upd_oid
  */
 static int
-locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key)
+locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key, const OID * upd_oid,
+				  RECDES * upd_recdes)
 {
   OR_FOREIGN_KEY *fkref;
   int oid_cnt, force_count, i;
@@ -5709,7 +5737,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      for (i = 0; i < n_buffered; i++)
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
-		  bool gone;
+		  bool gone, refers;
 
 		  /* again: a cascade of an earlier child may have changed or deleted it */
 		  error_code =
@@ -5720,6 +5748,33 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    }
 		  if (gone)
 		    {
+		      continue;
+		    }
+
+		  if (upd_oid != NULL && OID_EQ (oid_ptr, upd_oid))
+		    {
+		      /* The row is its own child, and the UPDATE's record decides: if it still refers to the key, the
+		       * row keeps a value with no parent, and the UPDATE fails as the foreign key check would. */
+		      error_code =
+			locator_child_still_refers (thread_p, &fk_attr_info, &fkref->self_btid, oid_ptr, upd_recdes,
+						    &parent_key, &refers);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error1;
+			}
+		      if (refers)
+			{
+			  char *val_print = pr_valstring (key);
+
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, fkref->fkname,
+				  (val_print ? val_print : "unknown value"));
+			  if (val_print)
+			    {
+			      db_private_free (thread_p, val_print);
+			    }
+			  error_code = ER_FK_INVALID;
+			  goto error1;
+			}
 		      continue;
 		    }
 
@@ -9100,7 +9155,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		  /* This delete is caused by 'UPDATE ... SET ...' between partitioned tables. It first delete a
 		   * record in a partitioned table and insert a record in another partitioned table. It should check
 		   * the 'ON UPDATE ...' condition, not check 'ON DELETE ...' condition. */
-		  error_code = locator_check_primary_key_update (thread_p, index, key_dbvalue);
+		  error_code = locator_check_primary_key_update (thread_p, index, key_dbvalue, NULL, NULL);
 		}
 	      else
 		{
@@ -9814,7 +9869,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		}
 
 	      /* The old key is already delete-marked: see locator_add_or_remove_index_internal () for the order. */
-	      error_code = locator_check_primary_key_update (thread_p, index, old_key);
+	      error_code = locator_check_primary_key_update (thread_p, index, old_key, oid, new_recdes);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
