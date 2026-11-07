@@ -201,7 +201,7 @@ namespace parallel_scan
 	return false;
       }
     const BUILDLIST_PROC_NODE &buildlist = arg->proc.buildlist;
-    if (buildlist.groupby_list == nullptr || buildlist.g_with_rollup || buildlist.g_grbynum_pred != nullptr)
+    if (buildlist.groupby_list == nullptr || buildlist.g_grbynum_pred != nullptr)
       {
 	return false;
       }
@@ -1148,7 +1148,7 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    /* nested sort/hash join serial too: qexec_execute_cte copies each iteration's result without dependents */
+	    /* the nested sorts and hash joins run serially too (parallelism 1), not only the scans */
 	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
