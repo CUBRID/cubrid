@@ -6927,6 +6927,28 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
+      /* Update the heap before the indexes and the foreign key check, as locator_insert_force () does: a parent
+       * DELETE's wait-out finds this writer only by its heap header. */
+      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place);
+      error_code = heap_update_logical (thread_p, &update_context);
+      if (error_code != NO_ERROR)
+	{
+	  /*
+	   * Problems updating the object...Maybe, the transaction should be aborted by the caller...Quit..
+	   */
+	  if (error_code == ER_FAILED)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      assert (error_code == ER_INTERRUPTED);
+	    }
+	  else
+	    {
+	      ASSERT_ERROR ();
+	    }
+	  goto error;
+	}
+      isold_object = update_context.is_logical_old;
+
       /* AN INSTANCE: Update indices if any */
       if (has_index)
 	{
@@ -6993,26 +7015,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	    }
 	}
-
-      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place);
-      error_code = heap_update_logical (thread_p, &update_context);
-      if (error_code != NO_ERROR)
-	{
-	  /*
-	   * Problems updating the object...Maybe, the transaction should be aborted by the caller...Quit..
-	   */
-	  if (error_code == ER_FAILED)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      assert (error_code == ER_INTERRUPTED);
-	    }
-	  else
-	    {
-	      ASSERT_ERROR ();
-	    }
-	  goto error;
-	}
-      isold_object = update_context.is_logical_old;
 
       /*
        * for replication,
@@ -9448,6 +9450,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 #endif /* ENABLE_SYSTEMTAP */
   LOG_TDES *tdes;
   LOG_LSA preserved_repl_lsa;
+  LOG_LSA preserved_repl_update_lsa;
   int tran_index;
 
   assert_release (class_oid != NULL);
@@ -9465,6 +9468,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 #endif /* SERVER_MODE */
 
   LSA_SET_NULL (&preserved_repl_lsa);
+  LSA_SET_NULL (&preserved_repl_update_lsa);
 
   db_make_null (&new_dbvalue);
   db_make_null (&old_dbvalue);
@@ -9860,12 +9864,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      if (pk_btid_index == i)
 		{
 		  /*
-		   * save lsa before it is overwritten by FK action. No need
-		   * to consider in-place update (repl_update_lsa) since it updates
-		   * index first and then updates heap
+		   * save lsa before it is overwritten by FK action. repl_update_lsa already holds this row's
+		   * heap update, since locator_update_force () updates the heap first; a child update by the
+		   * action overwrites it.
 		   */
 		  LSA_COPY (&preserved_repl_lsa, &tdes->repl_insert_lsa);
 		  LSA_SET_NULL (&tdes->repl_insert_lsa);
+		  LSA_COPY (&preserved_repl_update_lsa, &tdes->repl_update_lsa);
 		}
 
 	      /* The old key is already delete-marked: see locator_add_or_remove_index_internal () for the order. */
@@ -9877,9 +9882,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
 	      if (pk_btid_index == i)
 		{
-		  /* restore repl_insert_lsa */
+		  /* restore repl_insert_lsa and repl_update_lsa */
 		  assert (LSA_ISNULL (&tdes->repl_insert_lsa));
 		  LSA_COPY (&tdes->repl_insert_lsa, &preserved_repl_lsa);
+		  LSA_COPY (&tdes->repl_update_lsa, &preserved_repl_update_lsa);
 		}
 	    }
 	}
