@@ -83,7 +83,9 @@ typedef enum csql_statement_substate
   CSQL_SUBSTATE_PL_LANG_SPEC,
   CSQL_SUBSTATE_SEEN_LANGUAGE,
   CSQL_SUBSTATE_PLCSQL_TEXT,
-  CSQL_SUBSTATE_SEEN_END
+  CSQL_SUBSTATE_SEEN_END,
+  CSQL_SUBSTATE_SEEN_TRIGGER,
+  CSQL_SUBSTATE_TRIGGER_EXECUTE
 } CSQL_STATEMENT_SUBSTATE;
 
 /* editor buffer management */
@@ -1144,8 +1146,66 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
 		  continue;
 		}
+	      else if (match_word_ci ("trigger", &p))
+		{
+		  substate = CSQL_SUBSTATE_SEEN_TRIGGER;
+		  continue;
+		}
 	      else
 		{
+		  substate = CSQL_SUBSTATE_INITIAL;
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_SEEN_TRIGGER:
+	      if (match_word_ci ("execute", &p))
+		{
+		  substate = CSQL_SUBSTATE_TRIGGER_EXECUTE;
+		  continue;
+		}
+	      else
+		{
+		  // keep the substate CSQL_SUBSTATE_SEEN_TRIGGER until the action
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_TRIGGER_EXECUTE:
+	      if (match_word_ci ("after", &p) || match_word_ci ("deferred", &p))
+		{
+		  continue;
+		}
+	      else if (match_word_ci ("declare", &p))
+		{
+		  // TRANSITION to CSQL_SUBSTATE_PLCSQL_TEXT!!!
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
+		  continue;
+		}
+	      else
+		{
+		  const char *word_p = p;
+
+		  if (match_word_ci ("begin", &word_p))
+		    {
+		      // TRANSITION to CSQL_SUBSTATE_PLCSQL_TEXT!!!
+		      substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		      plcsql_begin_end_balance = 0;
+		      plcsql_nest_level = 0;
+		      goto substate_transition;	// use goto to count the begin in CSQL_SUBSTATE_PLCSQL_TEXT
+		    }
+
+		  if ((*p == '/' && (*(p + 1) == '/' || *(p + 1) == '*')) || (*p == '-' && *(p + 1) == '-'))
+		    {
+		      // a comment can come before the action
+		      // keep the substate CSQL_SUBSTATE_TRIGGER_EXECUTE
+		      // break and proceed to the second switch
+		      break;
+		    }
+
+		  // not a PL/CSQL block
 		  substate = CSQL_SUBSTATE_INITIAL;
 		  // break and proceed to the second switch
 		}
