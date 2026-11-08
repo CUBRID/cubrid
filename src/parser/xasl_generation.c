@@ -20733,6 +20733,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   /* CBRD-27583: the sort keys over the block's lists, whose columns are decided by now */
   pt_set_sort_list_domains (buildlist->groupby_list, NULL, xasl->outptr_list);
+  /* CBRD-27817: the GROUP BY's output list is sorted by its keys over the output columns */
+  pt_set_sort_list_domains (buildlist->after_groupby_list, NULL, buildlist->g_outptr_list);
   for (ANALYTIC_EVAL_TYPE * eval = buildlist->a_eval_list; eval != NULL; eval = eval->next)
     {
       pt_set_sort_list_domains (eval->sort_list, NULL, buildlist->a_outptr_list_ex);
