@@ -493,6 +493,36 @@ struct sort_list
 };				/* Sort item list */
 
 /*
+ * qfile_is_sort_list_covered () -
+ *   return: true or false
+ *   covering_list_p(in): covering sort item list pointer
+ *   covered_list_p(in): covered sort item list pointer
+ *
+ * Note: if covering_list_p covers covered_list_p returns true.
+ *       otherwise, returns false.
+ */
+static inline bool
+qfile_is_sort_list_covered (const SORT_LIST * covering_list_p, const SORT_LIST * covered_list_p)
+{
+  const SORT_LIST *s1, *s2;
+
+  if (covered_list_p == NULL)
+    {
+      return false;
+    }
+
+  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
+    {
+      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
+	{
+	  return false;
+	}
+    }
+
+  return s2 == NULL;
+}
+
+/*
  *       		     LIST FILE DEFINITIONS
  */
 
@@ -567,6 +597,8 @@ struct qfile_tuple_position
   QFILE_TUPLE tpl;		/* Tuple pointer inside the page */
   int tplno;			/* Tuple number inside the page */
 };
+
+#define QFILE_RESERVED_HASH_KEY_POS  (-1)	/* first column only: INT -1, overwritten by a consuming hash join */
 
 #define QFILE_OUTER_LIST  0	/* outer list file indicator */
 #define QFILE_INNER_LIST  1	/* inner list file indicator */
@@ -682,6 +714,9 @@ class sector_page_iterator
 
     inline struct qmgr_temp_file *get_current_tfile () const { return m_current_tfile; }
     inline VPID get_current_vpid () const { return m_last_vpid; }
+    /* did get_next_page () return NULL because a page could not be fetched (the error is set on the thread), rather
+     * than because every page was handed out? */
+    inline bool failed () const { return m_failed; }
 
   private:
     int m_membuf_index;		/* -1 = initial, >=0 = CAS winner iterating membuf, -2 = not winner */
@@ -690,6 +725,7 @@ class sector_page_iterator
     VSID m_current_vsid;
     VPID m_last_vpid;		/* VPID of the last returned page */
     struct qmgr_temp_file *m_current_tfile;
+    bool m_failed;		/* a page fetch failed: get_next_page () returned NULL on an error */
 };
 // *INDENT-ON*
 #endif /* __cplusplus */
