@@ -27883,8 +27883,9 @@ qexec_gby_skip_key_cmp (const GBY_SKIP_STATE * st, DB_VALUE * const *a, DB_VALUE
 	}
       else
 	{
-	  /* total order, as a sorted GROUP BY compares */
-	  c = tp_value_compare (a[i], b[i], 1, 1);
+	  /* total order in the key's domain, as a sorted GROUP BY compares */
+	  assert (col->pos_descr.dom != NULL && !domain_is_variable (col->pos_descr.dom));
+	  c = domain_compare_in_domain (col->pos_descr.dom, a[i], b[i], 1, 1);
 	  if (c == DB_EQ)
 	    {
 	      continue;
