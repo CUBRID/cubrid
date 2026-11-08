@@ -1922,6 +1922,7 @@ trigger_activity_in_use (TR_TRIGGER * trigger)
  *
  * Note:
  *    The trigger is made and its owner is changed with the same text.
+ *    The text is in lowercase as the parser prints it, so changing the owner stores the same text as creating.
  *    The owner name is quoted, as it may be a reserved word.
  */
 int
@@ -1940,7 +1941,7 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
     }
   owner_len = (int) (name - sp_name) - 1;
 
-  len = snprintf (buf, buf_size, "CALL [%.*s].[%s]()", owner_len, sp_name, name);
+  len = snprintf (buf, buf_size, "call [%.*s].[%s]()", owner_len, sp_name, name);
   if (len < 0 || len >= buf_size)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_INTERNAL_ERROR, 1, sp_name);
