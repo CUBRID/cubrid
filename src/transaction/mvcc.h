@@ -179,6 +179,8 @@ struct mvcc_snapshot
 
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
+  unsigned int status_version;	/* version of the transaction status the snapshot was copied from */
+
   bool valid;			/* true, if the snapshot is valid */
 
   // *INDENT-OFF*

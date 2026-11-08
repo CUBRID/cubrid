@@ -396,7 +396,8 @@ enum count_optim_state
 {
   COS_NOT_LOADED = 0,		/* the global statistics was not loaded yet */
   COS_TO_LOAD = 1,		/* the global statistics must be loaded when snapshot is taken */
-  COS_LOADED = 2		/* the global statistics were loaded */
+  COS_LOADED = 2,		/* the global statistics were loaded */
+  COS_LOADING = 3		/* loaded, kept only if no transaction completed since the snapshot's status */
 };
 typedef enum count_optim_state COUNT_OPTIM_STATE;
 
@@ -1272,6 +1273,7 @@ extern int logpb_set_page_checksum (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgpt
 
 extern LOG_TDES *logtb_get_system_tdes (THREAD_ENTRY * thread_p = NULL);
 extern int logtb_load_global_statistics_to_tran (THREAD_ENTRY * thread_p);
+extern void logtb_confirm_global_statistics (THREAD_ENTRY * thread_p, unsigned int status_version);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation

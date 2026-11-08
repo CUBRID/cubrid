@@ -83,6 +83,8 @@ class mvcctable
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
 
     bool is_active (MVCCID mvccid) const;
+    // raised by every transaction completion before it publishes its unique statistics
+    mvcc_trans_status::version_type get_current_status_version () const;
 
     void reset_start_mvccid ();     // not thread safe
     void rv_reactivate_mvccid (MVCCID mvccid);      // not thread safe; restart only

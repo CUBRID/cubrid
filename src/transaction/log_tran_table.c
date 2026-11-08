@@ -138,6 +138,7 @@ static LOG_TRAN_CLASS_COS *logtb_tran_create_class_cos (THREAD_ENTRY * thread_p,
 static LOG_TRAN_BTID_UNIQUE_STATS *logtb_tran_create_btid_unique_stats (THREAD_ENTRY * thread_p, const BTID * btid);
 static int logtb_tran_update_delta_hash_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *args);
+static int logtb_tran_confirm_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_tran_reset_cos_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int logtb_create_unique_stats_from_repr (THREAD_ENTRY * thread_p, OID * class_oid);
 static GLOBAL_UNIQUE_STATS *logtb_get_global_unique_stats_entry (THREAD_ENTRY * thread_p, BTID * btid,
@@ -3937,7 +3938,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *ar
   bool clear_pcontext = false;
 
   entry = (LOG_TRAN_CLASS_COS *) data;
-  if (entry->count_state != COS_TO_LOAD)
+  if (entry->count_state != COS_TO_LOAD && entry->count_state != COS_LOADING)
     {
       return NO_ERROR;
     }
@@ -3983,7 +3984,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *ar
 	      goto cleanup;
 	    }
 
-	  new_entry->count_state = COS_LOADED;
+	  new_entry->count_state = COS_LOADING;
 	}
     }
 
@@ -3993,7 +3994,7 @@ logtb_tran_load_global_stats_func (THREAD_ENTRY * thread_p, void *data, void *ar
       goto cleanup;
     }
 
-  entry->count_state = COS_LOADED;
+  entry->count_state = COS_LOADING;
 
 cleanup:
   if (clear_pcontext == true)
@@ -4009,6 +4010,52 @@ cleanup:
 }
 
 /*
+ * logtb_tran_confirm_cos_func () - working function for logtb_confirm_global_statistics
+ *
+ * return: NO_ERROR
+ * data(in): count optimization state entry.
+ * args(in): true if the loaded statistics belong to the snapshot.
+ */
+static int
+logtb_tran_confirm_cos_func (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  LOG_TRAN_CLASS_COS *entry = (LOG_TRAN_CLASS_COS *) data;
+
+  if (entry->count_state == COS_LOADING)
+    {
+      entry->count_state = *(bool *) args ? COS_LOADED : COS_TO_LOAD;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * logtb_confirm_global_statistics () - keep the statistics loaded since the snapshot was copied only if no
+ *					transaction completed since then
+ *
+ * thread_p(in)	      :
+ * status_version(in) : version of the transaction status the snapshot was copied from
+ *
+ * Note: a completing transaction raises the current status version before it publishes its unique statistics
+ *	 (mvcctable::complete_mvcc). Statistics loaded while the version still equals the snapshot's hold exactly the
+ *	 transactions the snapshot sees; otherwise the classes go back to COS_TO_LOAD and COUNT(*) scans.
+ */
+void
+logtb_confirm_global_statistics (THREAD_ENTRY * thread_p, unsigned int status_version)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  bool confirmed;
+
+  if (tdes == NULL || mht_count (tdes->log_upd_stats.classes_cos_hash) == 0)
+    {
+      return;
+    }
+
+  confirmed = log_Gl.mvcc_table.get_current_status_version () == status_version;
+  (void) mht_map_no_key (thread_p, tdes->log_upd_stats.classes_cos_hash, logtb_tran_confirm_cos_func, &confirmed);
+}
+
+/*
  * logtb_load_global_statistics_to_tran () - load global statistics into the
  *					     current transaction for all classes
  *					     with COS_TO_LOAD count optimization
@@ -4018,7 +4065,8 @@ cleanup:
  * thread_p(in)	    :
  *
  * Note: The statistics will be loaded only for classes that have COS_TO_LOAD
- *	 count optimization state. This function is used when a snapshot is
+ *	 (or COS_LOADING) count optimization state; they stay COS_LOADING until
+ *	 logtb_confirm_global_statistics. This function is used when a snapshot is
  *	 taken.
  */
 int

@@ -34399,7 +34399,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 	      /* 
 	       * build_mvcc_info() loads stats only for classes already marked COS_TO_LOAD at snapshot time.
 	       * Under parallel UNION execution, the snapshot may have been built by another thread before this
-	       * class was marked COS_TO_LOAD, so its stats were never loaded.  Always retry here if still needed.
+	       * class was marked COS_TO_LOAD, so its stats were never loaded.  Always retry here if still needed;
+	       * the stats are kept only if no transaction completed since the snapshot, otherwise this scans.
 	       */
 	      if (class_cos->count_state != COS_LOADED)
 		{
@@ -34409,6 +34410,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 		      QEXEC_COUNT_OPT_PX_UNLOCK (main_thread_p);
 		      return (error == NO_ERROR ? ER_FAILED : error);
 		    }
+		  logtb_confirm_global_statistics (thread_p, tdes->mvccinfo.snapshot.status_version);
 		}
 
 	      if (class_cos->count_state != COS_LOADED)
