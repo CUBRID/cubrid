@@ -52,10 +52,11 @@ class stream_handle_table
     stream_handle_table &operator= (const stream_handle_table &) = delete;
 
     /* Take object over and return the number the client sends back. object is
-     * closed on a refusal too, so the caller never keeps it. size counts against
-     * the STREAM_SCOPE_OWNER byte limit. */
-    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, std::int64_t size, stream_handle_object *object,
-	       std::int64_t *handle);
+     * closed on a refusal too, so the caller never keeps it. client_id is the
+     * connection that asked (end_client). size counts against the
+     * STREAM_SCOPE_OWNER byte limit. */
+    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, std::int64_t size,
+	       stream_handle_object *object, std::int64_t *handle);
 
     /* Pin a handle for one call; put () ends the pin. A download pin is
      * exclusive, because a reader is not thread-safe; an upload pin is shared.
@@ -67,9 +68,12 @@ class stream_handle_table
 
     /* Release one handle, or every handle of a scope. A handle that does not
      * resolve is not an error -- a purge may have run first. A release during a
-     * pin is deferred to the last put () and never blocks. */
+     * pin is deferred to the last put () and never blocks. end_client () is a
+     * connection's close: its STREAM_SCOPE_TRAN handles go, and the session keeps
+     * its STREAM_SCOPE_OWNER ones for a client that attaches again. */
     void release (THREAD_ENTRY *thread_p, std::int64_t handle);
     void end_tran (THREAD_ENTRY *thread_p, int tran_index);
+    void end_client (THREAD_ENTRY *thread_p, int client_id);
     void clear (THREAD_ENTRY *thread_p);
 
   private:
@@ -77,6 +81,7 @@ class stream_handle_table
     {
       int kind;
       int tran_index;
+      int client_id;
       stream_handle_scope scope;
       bool exclusive;
       bool counted;		/* against the limits; dropped as soon as a release is requested */
@@ -108,8 +113,8 @@ class stream_handle_table
  * STREAM_FLAG_RELEASE_AT_EOF, no handle is issued (*handle is 0). buf holds
  * stream_read_bound (first_max) bytes. */
 extern int stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int kind, const char *config,
-				 int config_len, int tran_index, int first_max, int flags, char *buf, int *nread,
-				 int *reply_flags, std::int64_t *handle);
+				 int config_len, int tran_index, int client_id, int first_max, int flags, char *buf,
+				 int *nread, int *reply_flags, std::int64_t *handle);
 
 /* The next piece of an open download; buf holds stream_read_bound (max) bytes.
  * A read that fails releases its handle, with STREAM_FLAG_RELEASED. */

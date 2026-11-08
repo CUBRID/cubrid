@@ -1064,11 +1064,11 @@ namespace cubconn::connection
 
     /* remove and close */
 
-    /* Connection workers have drained, so the load and stream sessions can be destroyed now; tearing the stream
-     * session down any earlier could free it under an in-flight sstream_* request. */
+    /* Connection workers have drained; it is now safe to destroy the load session
+     * that was interrupted at the start of the close, and this connection's streams. */
     if (ctx->m_conn->session_p != NULL)
       {
-	ssession_destroy_attached_sessions (m_entry, ctx->m_conn->session_p, tran_index);
+	ssession_destroy_attached_sessions (m_entry, ctx->m_conn->session_p, ctx->m_conn->client_id);
       }
 
     m_events.remove_descriptor (ctx->m_conn->fd);

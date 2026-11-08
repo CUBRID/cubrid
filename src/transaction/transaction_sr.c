@@ -41,26 +41,29 @@
 #include "server_support.h"
 #include "session.h"
 #include "dbtype.h"
+#if !defined (SERVER_MODE)
+#include "stream_handle.hpp"
+#endif /* !SERVER_MODE */
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 /*
- * tran_server_end_streams - Drop the stream session and download handles of the ending transaction.
+ * tran_server_end_streams - Drop the stream session of the ending transaction, and SA's download handles.
  *
  *   An open stream session belongs to a statement that never reached END, and is dropped while its savepoint is
- *   still valid.  Download handles go with their transaction so an abandoned one is not held until the connection
- *   drops, which with pooled broker->server connections may be never.
+ *   still valid.  SA keeps its download handles out of the session (session_sa_stream_handles), so they go here.
  */
 static void
 tran_server_end_streams (THREAD_ENTRY * thread_p)
 {
-  /* [리뷰] 커밋·롤백 모든 종료 경로의 백스톱. 스트림 세션과 다운로드 핸들을 버린다.
+  /* [리뷰] 커밋·롤백 모든 종료 경로의 백스톱. 스트림 세션을 버리고, SA는 다운로드 핸들도 버린다.
    * 세션 abort가 세이브포인트로 되돌릴 수 있게 트랜잭션 종료 전에 부른다.
    * TT_LOADDB 워커의 배치 커밋은 연결의 스트림을 건드리지 않는다. */
   session_abort_stream_session (thread_p);
-  /* while the transaction is still there for a source to close in */
-  session_end_tran_stream_handles (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+#if !defined (SERVER_MODE)
+  session_sa_stream_handles ()->end_tran (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+#endif /* !SERVER_MODE */
 }
 
 /*
@@ -92,6 +95,8 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   TRAN_STATE state;
   int tran_index;
 
+  tran_server_end_streams (thread_p);
+
   /*
    * Execute some few remaining actions before the log manager is notified of
    * the commit
@@ -99,7 +104,8 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  tran_server_end_streams (thread_p);
+  /* while the transaction is still there for a source to close in */
+  session_end_tran_stream_handles (thread_p, tran_index);
 
   /* dblink transaction commit first */
   QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);
@@ -150,10 +156,12 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
   TRAN_STATE state;
   int tran_index;
 
+  tran_server_end_streams (thread_p);
+
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  tran_server_end_streams (thread_p);
+  session_end_tran_stream_handles (thread_p, tran_index);
 
   /* dblink transaction abort first */
   (void) qmgr_check_dblink_trans (thread_p, true);

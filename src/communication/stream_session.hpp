@@ -48,11 +48,11 @@ enum STREAM_KIND
 
   /* Allocated so far -- a consumer takes the next free value and names it in
    * its own header, and this list is what stops two of them colliding:
-   *   0  (reserved; COPY FROM STDIN, CBRD-26961)
-   *   1  internal-LOB upload    (src/loaddb/internal_lob_stream_kind.h, CBRD-26780)
-   *   2  internal-LOB DML       (src/loaddb/internal_lob_stream_kind.h, CBRD-26780)
-   *   3  internal-LOB load      (src/loaddb/internal_lob_stream_kind.h, CBRD-26780)
-   *   4  internal-LOB read      (src/loaddb/internal_lob_stream_kind.h, CBRD-26780)
+   *   0  COPY                   (not landed; CBRD-26961, PR #7343)
+   *   1  internal-LOB upload    (not landed; CBRD-26780)
+   *   2  internal-LOB DML       (not landed; CBRD-26780)
+   *   3  loaddb                 (not landed; CBRD-26780)
+   *   4  internal-LOB read      (not landed; CBRD-26780)
    */
   STREAM_KIND_MAX = 5		/* registry slots; raise when a sixth consumer lands */
 };
@@ -89,18 +89,14 @@ class stream_handle_object
     virtual void close (THREAD_ENTRY *thread_p) = 0;
 };
 
-/* What END reports back. A struct rather than a bare count because a consumer
- * that has more to report should not change every other one's signature to say
- * it. The END reply carries exactly one 64-bit value, and what it means is the
- * kind's to say -- the transport passes it through without reading it. */
+/* What END reports back. A struct rather than a bare count so that a consumer
+ * with more to report does not change every other one's signature to say it. */
 struct stream_result
 {
-  std::int64_t count;		/* rows for COPY and internal-LOB DML, the upload token for an
-				 * internal-LOB upload, the batch-local slot for an internal-LOB load */
+  std::int64_t count;		/* rows for COPY and LOB DML; a result_is_handle kind's staged bytes */
+  stream_handle_object *staged;	/* result_is_handle kinds: what END issues the client a handle for */
 };
 
-/* [리뷰] 전송 계층과 소비자를 가르는 경계. kind별로 등록된 팩토리가 만든다.
- * 연결당 하나이고, 그것을 연 트랜잭션보다 오래 살지 않는다. */
 class stream_session
 {
   public:
@@ -110,8 +106,9 @@ class stream_session
      * payload needs is the implementation's concern. */
     virtual int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) = 0;
 
-    /* Flush pending work and report the binding's result (see stream_result). The
-     * count is 64-bit so a stream is not bounded by int. */
+    /* Flush pending work and report the binding's result: a row count for COPY
+     * and LOB DML, or, for a result_is_handle kind, the object it staged and its
+     * size, for which the core issues the handle END returns. */
     virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
     /* Discard in-flight state so no partial result survives an error. */

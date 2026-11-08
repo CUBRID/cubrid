@@ -428,29 +428,6 @@ extern void tdes_reset_query_start_info (PT_NODE * node);
 extern int lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length);
 extern int lob_remove_dir (HFID * hfid, int attrid);
 
-extern int file_dump_file_list (FILE * outfp, bool invalid_only);
-extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf);
-#if !defined(NDEBUG)
-extern int file_delete_target_file (const char *target_vfid_str);
-#endif
-
-/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
-extern int stream_from_init (int stream_kind, const char *config, int config_len);
-extern int stream_from_send_data (const char *data, int data_len);
-extern int stream_from_end (INT64 * count);
-extern int stream_from_abort (void);
-extern bool stream_from_is_open (void);
-extern bool stream_from_ends_unit_of_work (void);
-extern void stream_from_reset (void);
-extern bool stream_from_holds_download (void);
-extern bool stream_from_holds_handle (INT64 handle);
-extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
-				  INT64 * handle, char *buf, int *nread, int *reply_flags);
-extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
-extern int stream_from_release (INT64 handle);
-
-/* COPY FROM STDIN binding over the stream transport */
-
 /* internal LOB DML binding over the stream transport */
 extern int internal_lob_dml_make_slot_value (DB_VALUE * value, DB_TYPE type, int slot);
 extern int internal_lob_dml_from_init (const XASL_ID * xasl_id, int dbval_count, const DB_VALUE * dbvals,
@@ -468,5 +445,27 @@ extern void internal_lob_locator_note_issued_value (const DB_VALUE * value);
 extern void internal_lob_locator_forget_issued (void);
 extern int internal_lob_locator_check_access (const char *locator, int size);
 extern int internal_lob_locator_check_value (const DB_VALUE * value);
+
+extern int file_dump_file_list (FILE * outfp, bool invalid_only);
+extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf);
+#if !defined(NDEBUG)
+extern int file_delete_target_file (const char *target_vfid_str);
+#endif
+
+/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
+extern int stream_from_init (int stream_kind, const char *config, int config_len, int flags = 0,
+			     const char *data = NULL, int data_len = 0, INT64 * count = NULL,
+			     bool * ends_unit_of_work = NULL);
+extern int stream_from_send_data (const char *data, int data_len);
+extern int stream_from_end (INT64 * count, const char *data = NULL, int data_len = 0);
+extern int stream_from_abort (void);
+extern bool stream_from_is_open (void);
+extern void stream_from_reset (void);
+extern bool stream_from_holds_download (void);
+extern bool stream_from_holds_handle (INT64 handle);
+extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
+				  INT64 * handle, char *buf, int *nread, int *reply_flags);
+extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
+extern int stream_from_release (INT64 handle);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */
