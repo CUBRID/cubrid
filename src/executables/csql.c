@@ -711,7 +711,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   char *ptr;			/* loop pointer */
   char *line_read_alloced = NULL;
   bool is_first_read_line = true;
-  bool read_whole_line;
+  bool read_whole_line = false;
   char *prompt;
 
   /* check in string block or comment block or identifier block */

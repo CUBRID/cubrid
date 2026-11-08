@@ -633,7 +633,9 @@ csql_display_csql_err (int line_no, int col_no)
  *                            for this session
  *   return: none
  *   session(in): context of query compilation
- *   line_no(in): statement starting line number
+ *   line_no(in): statement starting line number, as a line of the input
+ *
+ * Note: an error with no position of its own, e.g. one raised while the statement is executed, is shown at line_no.
  */
 void
 csql_display_session_err (DB_SESSION * session, int line_no)
@@ -648,10 +650,17 @@ csql_display_session_err (DB_SESSION * session, int line_no)
   do
     {
       csql_Scratch_text[0] = '\0';
-      err = db_get_next_error (err, &line_no, &col_no);
+      if (err != NULL)
+	{
+	  /* the position in the error list is a line counted by the lexer; line_no is a line of the input already */
+	  err = db_get_next_error (err, &line_no, &col_no);
+	  if (line_no > 0)
+	    {
+	      line_no = csql_edit_contents_get_input_line (line_no);
+	    }
+	}
       if (line_no > 0)
 	{
-	  line_no = csql_edit_contents_get_input_line (line_no);
 	  csql_fputs ("\n", csql_Error_fp);
 	  iq_format_err (csql_Scratch_text, SCRATCH_TEXT_LEN, line_no, col_no);
 	  csql_fputs_console_conv (csql_Scratch_text, csql_Error_fp);

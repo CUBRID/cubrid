@@ -500,7 +500,7 @@ static int g_plcsql_text_pos;
                       break;						\
                     }							\
                 }							\
-            }								\
+          }								\
 	}								\
       else								\
 	{								\
