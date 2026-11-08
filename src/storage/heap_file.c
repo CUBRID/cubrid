@@ -899,7 +899,8 @@ static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
-static int heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
+static int heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op,
+			     const RECDES * serial_undo);
 static int heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, RECDES * recdes_p);
 static void heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
 				      RECDES * old_recdes_p, RECDES * new_recdes_p, LOG_RCVINDEX rcvindex);
@@ -24210,9 +24211,11 @@ exit:
  *   thread_p(in): thread entry
  *   context(in): operation context
  *   is_mvcc_op(in): type of operation (MVCC/non-MVCC)
+ *   serial_undo(in): NULL, or the undo serial_row_write_undo () built for a _db_serial row
  */
 static int
-heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op)
+heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op,
+		  const RECDES * serial_undo)
 {
   int error_code = NO_ERROR;
   RECDES forwarding_recdes;
@@ -24374,8 +24377,20 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
     }
 
   /* log home update */
-  heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-			    &context->home_recdes, home_page_updated_recdes_p, undo_rcvindex);
+  if (serial_undo != NULL && home_page_updated_recdes_p == context->recdes_p)
+    {
+      LOG_DATA_ADDR address (&context->hfid.vfid, context->home_page_watcher_p->pgptr, context->oid.slotid);
+
+      /* undo first: a crash keeps the redo only along with the undo before it, and a rollback, walking back,
+       * skips the redo and applies the undo. The redo has the form issuing logs, so replication reads it as before. */
+      log_append_undo_data (thread_p, RVHF_SERIAL_DDL_UPDATE_UNDO, &address, serial_undo->length, serial_undo->data);
+      log_append_redo_recdes (thread_p, RVHF_UPDATE, &address, home_page_updated_recdes_p);
+    }
+  else
+    {
+      heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
+				&context->home_recdes, home_page_updated_recdes_p, undo_rcvindex);
+    }
 
   /* undo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_RELOCATION/BIGONE
    * if redo lsa is NULL , then append redo lsa :update REC_HOME to REC_HOME case */
@@ -25093,6 +25108,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   SERIAL_ROW_WRITE serial_write;
   record_descriptor serial_merged;
   RECDES serial_merged_recdes;
+  record_descriptor serial_undo;
+  const RECDES *serial_undo_p = NULL;
   RECDES *client_recdes_p = context->recdes_p;
 
   /*
@@ -25247,6 +25264,15 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	  serial_merged_recdes.type = context->recdes_p->type;
 	  context->recdes_p = &serial_merged_recdes;
 	}
+      rc = serial_row_write_undo (thread_p, &serial_write, &context->home_recdes, &serial_undo);
+      if (rc != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (serial_write.undo)
+	{
+	  serial_undo_p = &serial_undo.get_recdes ();
+	}
     }
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
@@ -25288,7 +25314,7 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       context->is_logical_old = false;
       [[fallthrough]];
     case REC_HOME:
-      rc = heap_update_home (thread_p, context, is_mvcc_op);
+      rc = heap_update_home (thread_p, context, is_mvcc_op, serial_undo_p);
       break;
 
     default:

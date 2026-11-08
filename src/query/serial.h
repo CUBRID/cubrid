@@ -33,6 +33,7 @@
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "record_descriptor.hpp"
+#include "recovery.h"
 #include "thread_compat.hpp"
 #include "storage_common.h"
 
@@ -42,6 +43,7 @@ struct serial_row_write
 {
   bool active;
   bool merged;			/* serial_row_write_keep_value () filled its merged row */
+  bool undo;			/* serial_row_write_undo () filled its undo */
   HEAP_CACHE_ATTRINFO old_info;
   HEAP_CACHE_ATTRINFO new_info;
 };
@@ -60,7 +62,10 @@ extern bool serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * cla
 extern void serial_row_write_begin (THREAD_ENTRY * thread_p, const OID * class_oidp, SERIAL_ROW_WRITE * write);
 extern int serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, const OID * serial_oidp,
 					RECDES * old_recdes, RECDES * new_recdes, record_descriptor * merged);
+extern int serial_row_write_undo (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, RECDES * old_recdes,
+				  record_descriptor * undo);
 extern void serial_row_write_end (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write);
+extern int serial_rv_undo_ddl_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 #if defined (SERVER_MODE)
 extern void serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p);

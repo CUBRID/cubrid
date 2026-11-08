@@ -76,7 +76,8 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, fi_handler_exit, FI_INIT_STATE},
-  {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE}
+  {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE},
+  {FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR, fi_handler_hold, FI_INIT_STATE}
 };
 
 const FI_TEST_CODE fi_Group_none[] = {

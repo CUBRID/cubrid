@@ -35,16 +35,20 @@
 #include "log_impl.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "record_descriptor.hpp"
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
 #include "dbtype.h"
+#include "fault_injection.h"
 #include "xasl_cache.h"
 #include "thread_lockfree_hash_map.hpp"
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
+
+#include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -2175,6 +2179,7 @@ serial_row_write_begin (THREAD_ENTRY * thread_p, const OID * class_oidp, SERIAL_
 {
   write->active = false;
   write->merged = false;
+  write->undo = false;
 
   /* the log applier writes the master's rows, which carry the master's values */
   if (!oid_is_serial (class_oidp) || LOG_CHECK_LOG_APPLIER (thread_p) || serial_Num_attrs < 0)
@@ -2273,6 +2278,315 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
     }
   write->merged = (error == NO_ERROR);
   return error;
+}
+
+/* Payload of RVHF_SERIAL_DDL_UPDATE_UNDO: this header, then the row the write replaced. The layout fields describe
+ * that row's representation, so the undo reads no catalog. */
+typedef struct serial_ddl_undo SERIAL_DDL_UNDO;
+struct serial_ddl_undo
+{
+  char version;
+  char old_inc_sign;		/* +1 or -1 */
+  char new_inc_sign;
+  int new_started;
+  int repid;
+  int n_variable;
+  int fixed_length;
+  int cur_index;		/* current_val: its entry in the variable offset table */
+  int cur_precision;
+  int cur_scale;
+  int started_location;		/* started: its offset in the fixed area, and its bound bit */
+  int started_position;
+};
+
+#define SERIAL_DDL_UNDO_VERSION 1
+
+/*
+ * serial_row_write_undo () - build the undo of a client write that replaces a _db_serial row
+ *   return: NO_ERROR, or ER_status
+ *   write(in)     : after serial_row_write_keep_value (), which read both rows
+ *   old_recdes(in): the row on the page
+ *   undo(out)     : payload of RVHF_SERIAL_DDL_UPDATE_UNDO, filled only when write->undo is set: a row without the
+ *                   layout serial_rv_undo_ddl_update () expects logs its before-image as any row does
+ *
+ * Restart recovery runs before the serial class is known, so the payload carries what the undo needs, taken while
+ * the attribute caches are at hand.
+ */
+int
+serial_row_write_undo (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, RECDES * old_recdes, record_descriptor * undo)
+{
+  OR_CLASSREP *rep = write->old_info.read_classrepr;
+  HEAP_ATTRVALUE *cur = heap_attrvalue_locate (serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX], &write->old_info);
+  HEAP_ATTRVALUE *started = heap_attrvalue_locate (serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX], &write->old_info);
+  ATTR_ID inc_id = serial_Attrs_id[SERIAL_ATTR_INCREMENT_VAL_INDEX];
+  DB_VALUE *old_inc, *new_inc, *new_started;
+  SERIAL_DDL_UNDO header;
+  char *ptr;
+
+  assert (write->active);
+
+  if (rep == NULL || rep->id != or_rep_id (old_recdes) || cur == NULL || started == NULL
+      || cur->read_attrepr == NULL || cur->read_attrepr->is_fixed || started->read_attrepr == NULL
+      || !started->read_attrepr->is_fixed || TP_DOMAIN_TYPE (started->read_attrepr->domain) != DB_TYPE_INTEGER)
+    {
+      return NO_ERROR;
+    }
+
+  old_inc = heap_attrinfo_access (inc_id, &write->old_info);
+  new_inc = heap_attrinfo_access (inc_id, &write->new_info);
+  new_started = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX], &write->new_info);
+  if (old_inc == NULL || DB_IS_NULL (old_inc) || new_inc == NULL || DB_IS_NULL (new_inc) || new_started == NULL
+      || DB_IS_NULL (new_started))
+    {
+      return NO_ERROR;
+    }
+
+  header.version = SERIAL_DDL_UNDO_VERSION;
+  header.old_inc_sign = numeric_db_value_is_positive (old_inc) > 0 ? 1 : -1;
+  header.new_inc_sign = numeric_db_value_is_positive (new_inc) > 0 ? 1 : -1;
+  header.new_started = db_get_int (new_started);
+  header.repid = rep->id;
+  header.n_variable = rep->n_variable;
+  header.fixed_length = rep->fixed_length;
+  header.cur_index = cur->read_attrepr->location;
+  header.cur_precision = cur->read_attrepr->domain->precision;
+  header.cur_scale = cur->read_attrepr->domain->scale;
+  header.started_location = started->read_attrepr->location;
+  header.started_position = started->read_attrepr->position;
+
+  undo->resize_buffer (sizeof (header) + old_recdes->length);
+  ptr = undo->get_data_for_modify ();
+  memcpy (ptr, &header, sizeof (header));
+  memcpy (ptr + sizeof (header), old_recdes->data, old_recdes->length);
+  undo->set_record_length (sizeof (header) + old_recdes->length);
+  write->undo = true;
+
+  return NO_ERROR;
+}
+
+/*
+ * serial_rv_locate () - find current_val and started in a _db_serial row by the layout an undo payload carries
+ *   return: false if the row is not of the payload's representation, or either column is NULL
+ */
+static bool
+serial_rv_locate (const SERIAL_DDL_UNDO * undo, RECDES * rec, char **cur, int *cur_length, int *started)
+{
+  char *obj = rec->data;
+  int header_size, offset_size, fixed, var_start, start, end;
+
+  if (rec->length < OR_NON_MVCC_HEADER_SIZE || or_rep_id (rec) != undo->repid || undo->cur_index < 0
+      || undo->cur_index >= undo->n_variable || undo->started_location < 0 || undo->started_position < 0
+      || undo->started_location + OR_INT_SIZE > undo->fixed_length)
+    {
+      return false;
+    }
+
+  header_size = OR_HEADER_SIZE (obj);
+  offset_size = OR_GET_OFFSET_SIZE (obj);
+  fixed = header_size + OR_VAR_TABLE_SIZE_INTERNAL (undo->n_variable, offset_size);
+  if (fixed > rec->length)
+    {
+      return false;
+    }
+  var_start = header_size + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, 0, offset_size);
+  start = header_size + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, undo->cur_index, offset_size);
+  end = header_size + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, undo->cur_index + 1, offset_size);
+  if (fixed + undo->fixed_length + OR_BOUND_BIT_BYTES (undo->started_position + 1) > var_start || var_start > start
+      || start >= end || end > rec->length
+      || !OR_FIXED_ATT_IS_BOUND (obj, undo->n_variable, undo->fixed_length, undo->started_position))
+    {
+      return false;
+    }
+
+  *cur = obj + start;
+  *cur_length = end - start;
+  *started = OR_GET_INT (obj + fixed + undo->started_location);
+  return true;
+}
+
+/*
+ * serial_rv_get_cur () - read a current_val located by serial_rv_locate ()
+ */
+static int
+serial_rv_get_cur (const SERIAL_DDL_UNDO * undo, char *cur, int cur_length, DB_VALUE * value)
+{
+  TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, undo->cur_precision, undo->cur_scale, NULL, 0);
+  OR_BUF buf;
+
+  if (domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  or_init (&buf, cur, cur_length);
+  return domain->type->data_readval (&buf, value, domain, -1, false, NULL, 0);
+}
+
+/*
+ * serial_rv_replace_var () - replace one variable column of a row, and rewrite its offset table in the narrowest
+ *			      offset size the new length allows, as heap_attrinfo_transform_to_disk () does
+ */
+// *INDENT-OFF*
+static void
+serial_rv_replace_var (record_descriptor & rec, int n_variable, int index, const char *field, int field_length)
+{
+  char *obj = rec.get_data_for_modify ();
+  int header_size = OR_HEADER_SIZE (obj);
+  int old_offset_size = OR_GET_OFFSET_SIZE (obj);
+  int old_table_size = OR_VAR_TABLE_SIZE_INTERNAL (n_variable, old_offset_size);
+  int start = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, index, old_offset_size);
+  int end = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, index + 1, old_offset_size);
+  int delta = field_length - (end - start);
+  int rest = (int) rec.get_size () - header_size - old_table_size + delta;	/* what follows the offset table */
+  int offset_size = OR_BYTE_SIZE, table_size, offset, repid_bits, i;
+  std::vector<char> table;
+  OR_BUF buf;
+
+  if (header_size + OR_VAR_TABLE_SIZE_INTERNAL (n_variable, offset_size) + rest > OR_MAX_BYTE)
+    {
+      offset_size = OR_SHORT_SIZE;
+    }
+  if (offset_size == OR_SHORT_SIZE
+      && header_size + OR_VAR_TABLE_SIZE_INTERNAL (n_variable, offset_size) + rest > OR_MAX_SHORT)
+    {
+      offset_size = OR_INT_SIZE;
+    }
+  table_size = OR_VAR_TABLE_SIZE_INTERNAL (n_variable, offset_size);
+  table.assign (table_size, 0);
+  or_init (&buf, table.data (), table_size);
+  for (i = 0; i <= n_variable; i++)
+    {
+      offset = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, i, old_offset_size) - old_table_size;
+      or_put_offset_internal (&buf, offset + table_size + (i > index ? delta : 0), offset_size);
+    }
+
+  rec.modify_data (header_size + start, end - start, field_length, field);
+  rec.modify_data (header_size, old_table_size, table_size, table.data ());
+
+  obj = rec.get_data_for_modify ();
+  repid_bits = OR_GET_INT (obj + OR_REP_OFFSET) & ~OR_OFFSET_SIZE_FLAG;
+  OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
+  OR_PUT_INT (obj + OR_REP_OFFSET, repid_bits);
+}
+// *INDENT-ON*
+
+/*
+ * serial_rv_undo_ddl_update () - undo a client write of a _db_serial row, keeping the values issued since
+ *   return: NO_ERROR, or ER_status
+ *   rcv(in): payload from serial_row_write_undo (), on the latched page of the row
+ *
+ * The definition goes back to the replaced row. Issuing moves current_val in place without the row's lock, so
+ * current_val and started go back only when nothing was issued after the write:
+ *   1. started on the page is 0: nothing was issued since, or the write restarted the serial itself. The replaced
+ *      row's values stand.
+ *   2. the write left started 1 and the increment's sign: the page's current_val, which only issuing moved since
+ *      (a cyclic wrap included).
+ *   3. otherwise whichever of the replaced row's and the page's current_val is further along in the replaced row's
+ *      direction, with started 1.
+ * A row without the payload's layout gets the replaced row back, as before.
+ *
+ * The compensation is the merged row as RVHF_UPDATE, so redoing it writes that row whatever the page holds.
+ */
+int
+serial_rv_undo_ddl_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  SERIAL_DDL_UNDO undo;
+  RECDES old_recdes, page_recdes;
+  const RECDES *undone;
+  record_descriptor merged;
+  char *old_cur, *page_cur, *fixed;
+  int old_cur_length, page_cur_length, old_started, page_started = -1;
+  int rule = 0;			/* 0: the replaced row */
+  bool take_page = false;
+  bool in_redo = log_is_in_crash_recovery_and_not_yet_completes_redo ();
+  DB_VALUE old_val, page_val, cmp_result;
+  INT16 type = REC_HOME;
+  LOG_RCV clr_rcv;
+  VPID vpid;
+  // *INDENT-OFF*
+  cubmem::stack_block<IO_MAX_PAGE_SIZE> clr;
+  // *INDENT-ON*
+
+  memcpy (&undo, rcv->data, sizeof (undo));
+  assert (undo.version == SERIAL_DDL_UNDO_VERSION && rcv->length > (int) sizeof (undo));
+  old_recdes.type = REC_HOME;
+  old_recdes.data = (char *) rcv->data + sizeof (undo);
+  old_recdes.length = old_recdes.area_size = rcv->length - (int) sizeof (undo);
+  undone = &old_recdes;
+
+  /* in redo it applies a compensation logged with this payload when the rollback could not fix the page; that
+   * compensation stands for the replaced row, as a physical one would */
+  if (!in_redo && !FI_INSERTED (FI_TEST_SERIAL_DDL_UNDO_FALLBACK)
+      && spage_get_record (thread_p, rcv->pgptr, rcv->offset, &page_recdes, PEEK) == S_SUCCESS
+      && serial_rv_locate (&undo, &old_recdes, &old_cur, &old_cur_length, &old_started)
+      && serial_rv_locate (&undo, &page_recdes, &page_cur, &page_cur_length, &page_started))
+    {
+      if (page_started == 0)
+	{
+	  rule = 1;
+	}
+      else if (undo.new_started == 1 && undo.new_inc_sign == undo.old_inc_sign)
+	{
+	  rule = 2;
+	  take_page = true;
+	}
+      else if (serial_rv_get_cur (&undo, old_cur, old_cur_length, &old_val) == NO_ERROR
+	       && serial_rv_get_cur (&undo, page_cur, page_cur_length, &page_val) == NO_ERROR
+	       && numeric_db_value_compare (&page_val, &old_val, &cmp_result) == NO_ERROR)
+	{
+	  rule = 3;
+	  take_page = db_get_int (&cmp_result) * undo.old_inc_sign > 0;
+	}
+    }
+
+  if (rule > 1)
+    {
+      merged.set_recdes (old_recdes);
+      if (take_page)
+	{
+	  serial_rv_replace_var (merged, undo.n_variable, undo.cur_index, page_cur, page_cur_length);
+	}
+      fixed = merged.get_data_for_modify ();
+      fixed += OR_HEADER_SIZE (fixed) + OR_VAR_TABLE_SIZE_INTERNAL (undo.n_variable, OR_GET_OFFSET_SIZE (fixed));
+      OR_PUT_INT (fixed + undo.started_location, 1);
+      if (spage_is_updatable (thread_p, rcv->pgptr, rcv->offset, (int) merged.get_size ()))
+	{
+	  undone = &merged.get_recdes ();
+	}
+      else
+	{
+	  rule = 0;
+	}
+    }
+  er_log_debug (ARG_FILE_LINE, "serial_rv_undo_ddl_update: rule %d, current_val of the %s row, page started %d, "
+		"length %d -> %d\n", rule, take_page && rule > 1 ? "page" : "replaced", page_started, old_recdes.length,
+		undone->length);
+
+  memcpy (clr.get_ptr (), &type, sizeof (type));
+  memcpy (clr.get_ptr () + sizeof (type), undone->data, undone->length);
+  if (!in_redo)
+    {
+      pgbuf_get_vpid (rcv->pgptr, &vpid);
+      log_append_compensate_with_undo_nxlsa (thread_p, RVHF_UPDATE, &vpid, rcv->offset, rcv->pgptr,
+					     (int) sizeof (type) + undone->length, clr.get_ptr (),
+					     LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
+    }
+
+#if !defined (NDEBUG)
+  if (FI_INSERTED (FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR))
+    {
+      /* the compensation is on disk and the page is not changed yet */
+      int hold_seconds = 60;
+
+      logpb_force_flush_pages (thread_p);
+      (void) FI_TEST_ARG (thread_p, FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR, &hold_seconds, 0);
+    }
+#endif /* !NDEBUG */
+
+  clr_rcv.pgptr = rcv->pgptr;
+  clr_rcv.offset = rcv->offset;
+  clr_rcv.data = clr.get_ptr ();
+  clr_rcv.length = (int) sizeof (type) + undone->length;
+  return heap_rv_undo_update (thread_p, &clr_rcv);
 }
 
 /*
