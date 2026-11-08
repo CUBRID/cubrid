@@ -60,6 +60,9 @@
 #include "db_session.h"
 #include "object_primitive.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* ========================================================================
  * Forward Function Declarations
  * ======================================================================== */
@@ -2433,202 +2436,6 @@ fn_lobfile_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   return FN_KEEP_CONN;
 }
 
-
-void
-set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
-{
-  int broker_timeout_in_millis = shm_appl->query_timeout * 1000;
-
-  if (tran_is_in_libcas () == false)
-    {
-      if (query_timeout == 0 || broker_timeout_in_millis == 0)
-	{
-	  tran_set_query_timeout (query_timeout + broker_timeout_in_millis);
-
-	  if (query_timeout == 0 && broker_timeout_in_millis == 0)
-	    {
-	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to 0 (no limit)");
-	    }
-	  else
-	    {
-	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to %d ms (from %s)",
-			     (query_timeout + broker_timeout_in_millis), (query_timeout > 0 ? "app" : "broker"));
-	    }
-	}
-      else if (query_timeout > broker_timeout_in_millis)
-	{
-	  tran_set_query_timeout (broker_timeout_in_millis);
-	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to %d ms (from broker)",
-			 broker_timeout_in_millis);
-	}
-      else
-	{
-	  tran_set_query_timeout (query_timeout);
-	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to %d ms (from app)",
-			 query_timeout);
-	}
-    }
-}
-
-FN_RETURN
-fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  char *data = NULL;
-  int data_len = 0;
-
-  if (argc != 1)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
-
-  net_arg_get_str (&data, &data_len, argv[0]);
-
-  ux_stream_send_data (data, data_len, net_buf);
-
-  return FN_KEEP_CONN;
-}
-
-FN_RETURN
-fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  /* whether END owes an auto-commit was settled when the stream opened: by the statement's own mode, or for a
-   * driver-opened stream by the kind's answer (ux_stream_init) -- an upload never owes one */
-  ux_stream_end (net_buf);
-
-  return FN_KEEP_CONN;
-}
-
-FN_RETURN
-fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  int stream_kind = 0;
-  char *config = NULL;
-  int config_len = 0;
-
-  if (argc != 2)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
-
-  net_arg_get_int (&stream_kind, argv[0]);
-  net_arg_get_str (&config, &config_len, argv[1]);
-
-  ux_stream_init (stream_kind, config, config_len, net_buf);
-
-  return FN_KEEP_CONN;
-}
-
-FN_RETURN
-fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  if (argc != 0)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
-
-  ux_stream_abort (net_buf);
-
-  return FN_KEEP_CONN;
-}
-
-/* runs in place of a request an open stream does not admit (ux_stream_admits_request); the stream is left as it was */
-FN_RETURN
-fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
-	  "a stream session is open on this connection; end or abort it first");
-  errors_in_transaction++;
-  ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (net_buf);
-
-  return FN_KEEP_CONN;
-}
-
-/* READ_OPEN: kind, config [, first_max, flags]. With the optional pair the first piece comes back with the handle. */
-FN_RETURN
-fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  int stream_kind = 0;
-  char *config = NULL;
-  int config_len = 0;
-  int first_max = 0;
-  char flags = 0;
-
-  if (argc != 2 && argc != 4)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
-
-  net_arg_get_int (&stream_kind, argv[0]);
-  net_arg_get_str (&config, &config_len, argv[1]);
-  if (argc == 4)
-    {
-      net_arg_get_int (&first_max, argv[2]);
-      net_arg_get_char (flags, argv[3]);
-    }
-
-  ux_stream_read_open (stream_kind, config, config_len, argc == 4, first_max, flags, net_buf, req_info);
-
-  return FN_KEEP_CONN;
-}
-
-/* READ: handle, max [, flags] */
-FN_RETURN
-fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  DB_BIGINT handle = 0;
-  int max = 0;
-  char flags = 0;
-
-  if (argc < 2 || argc > 3)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
-
-  net_arg_get_bigint (&handle, argv[0]);
-  net_arg_get_int (&max, argv[1]);
-  if (argc > 2)
-    {
-      net_arg_get_char (flags, argv[2]);
-    }
-
-  ux_stream_read ((INT64) handle, max, flags, net_buf, req_info);
-
-  return FN_KEEP_CONN;
-}
-
-/* RELEASE: handle, auto_commit */
-FN_RETURN
-fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  DB_BIGINT handle = 0;
-  char auto_commit_mode = FALSE;
-
-  if (argc != 2)
-    {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
-    }
-
-  net_arg_get_bigint (&handle, argv[0]);
-  net_arg_get_char (auto_commit_mode, argv[1]);
-
-  ux_stream_release ((INT64) handle, auto_commit_mode == TRUE, net_buf, req_info);
-
-  return FN_KEEP_CONN;
-}
-
 /* UPLOAD_RELEASE: token [, token ...], uploads the driver discarded before an execute bound them */
 FN_RETURN
 fn_stream_upload_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -2708,6 +2515,264 @@ fn_stream_upload_hold (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
       return FN_KEEP_CONN;
     }
   net_buf_cp_int (net_buf, 0, NULL);
+
+  return FN_KEEP_CONN;
+}
+
+
+
+void
+set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
+{
+  int broker_timeout_in_millis = shm_appl->query_timeout * 1000;
+
+  if (tran_is_in_libcas () == false)
+    {
+      if (query_timeout == 0 || broker_timeout_in_millis == 0)
+	{
+	  tran_set_query_timeout (query_timeout + broker_timeout_in_millis);
+
+	  if (query_timeout == 0 && broker_timeout_in_millis == 0)
+	    {
+	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to 0 (no limit)");
+	    }
+	  else
+	    {
+	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to %d ms (from %s)",
+			     (query_timeout + broker_timeout_in_millis), (query_timeout > 0 ? "app" : "broker"));
+	    }
+	}
+      else if (query_timeout > broker_timeout_in_millis)
+	{
+	  tran_set_query_timeout (broker_timeout_in_millis);
+	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to %d ms (from broker)",
+			 broker_timeout_in_millis);
+	}
+      else
+	{
+	  tran_set_query_timeout (query_timeout);
+	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to %d ms (from app)",
+			 query_timeout);
+	}
+    }
+}
+
+/* an argument of any length: a byte string, which net_arg_get_str () bounds by its own size */
+#define STREAM_ARG_ANY_SIZE (-1)
+
+/*
+ * stream_args_fit () - Has each argument of a stream request the size its reader takes?
+ *   widths(in): one per argument, NET_SIZE_* or STREAM_ARG_ANY_SIZE
+ *
+ * net_arg_get_int () and the other fixed-width readers copy their width whatever size the driver sent, so a shorter
+ * argument at the end of the request would be read past.
+ */
+static bool
+stream_args_fit (int argc, void **argv, const int *widths)
+{
+  int i, size;
+
+  for (i = 0; i < argc; i++)
+    {
+      NET_ARG_GET_SIZE (size, argv[i]);
+      if (widths[i] != STREAM_ARG_ANY_SIZE && size != widths[i])
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/* SEND_DATA: data [, flags]. With CAS_STREAM_FLAG_FINAL the chunk ends the stream and the reply is END's. */
+FN_RETURN
+fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *data = NULL;
+  int data_len = 0;
+  char flags = 0;
+  static const int widths[] = { STREAM_ARG_ANY_SIZE, NET_SIZE_BYTE };
+
+  if (argc < 1 || argc > 2 || !stream_args_fit (argc, argv, widths))
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_str (&data, &data_len, argv[0]);
+  if (argc > 1)
+    {
+      net_arg_get_char (flags, argv[1]);
+    }
+
+  if (flags & CAS_STREAM_FLAG_FINAL)
+    {
+      ux_stream_end (data, data_len, net_buf, req_info);
+    }
+  else
+    {
+      ux_stream_send_data (data, data_len, net_buf, req_info);
+    }
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  if (argc != 0)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  ux_stream_end (NULL, 0, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* INIT: kind, config [, flags, data]. The data is the first chunk; with CAS_STREAM_FLAG_FINAL it is the whole
+ * value, and the reply is END's. */
+FN_RETURN
+fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+  char flags = 0;
+  char *data = NULL;
+  int data_len = 0;
+  static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_BYTE, STREAM_ARG_ANY_SIZE };
+
+  if ((argc != 2 && argc != 4) || !stream_args_fit (argc, argv, widths))
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  if (argc == 4)
+    {
+      net_arg_get_char (flags, argv[2]);
+      net_arg_get_str (&data, &data_len, argv[3]);
+    }
+
+  ux_stream_init (stream_kind, config, config_len, (flags & CAS_STREAM_FLAG_FINAL) != 0, data, data_len, net_buf,
+		  req_info);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  if (argc != 0)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  ux_stream_abort (net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ_OPEN: kind, config [, first_max, flags]. With the optional pair the first piece comes back with the handle. */
+FN_RETURN
+fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+  int first_max = 0;
+  char flags = 0;
+  static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_INT, NET_SIZE_BYTE };
+
+  if ((argc != 2 && argc != 4) || !stream_args_fit (argc, argv, widths))
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  if (argc == 4)
+    {
+      net_arg_get_int (&first_max, argv[2]);
+      net_arg_get_char (flags, argv[3]);
+    }
+
+  ux_stream_read_open (stream_kind, config, config_len, argc == 4, first_max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ: handle, max [, flags] */
+FN_RETURN
+fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  int max = 0;
+  char flags = 0;
+  static const int widths[] = { NET_SIZE_BIGINT, NET_SIZE_INT, NET_SIZE_BYTE };
+
+  if (argc < 2 || argc > 3 || !stream_args_fit (argc, argv, widths))
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_int (&max, argv[1]);
+  if (argc > 2)
+    {
+      net_arg_get_char (flags, argv[2]);
+    }
+
+  ux_stream_read ((INT64) handle, max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* RELEASE: handle, auto_commit */
+FN_RETURN
+fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  char auto_commit_mode = FALSE;
+  static const int widths[] = { NET_SIZE_BIGINT, NET_SIZE_BYTE };
+
+  if (argc != 2 || !stream_args_fit (argc, argv, widths))
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_char (auto_commit_mode, argv[1]);
+
+  ux_stream_release ((INT64) handle, auto_commit_mode == TRUE, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* runs in place of a request an open stream does not admit (ux_stream_admits_request); the stream is left as it was */
+FN_RETURN
+fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a stream session is open on this connection; end or abort it first");
+  errors_in_transaction++;
+  ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
 
   return FN_KEEP_CONN;
 }

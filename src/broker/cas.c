@@ -66,6 +66,9 @@
 #include "broker_process_size.h"
 #include "cas_ssl.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
 static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
@@ -129,10 +132,6 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_stream_upload_hold		/* CAS_FC_STREAM_UPLOAD_HOLD */
 };
 
-/* dispatch indexes the table by func_code - 1 after checking func_code < CAS_FC_MAX, so every build needs every code */
-static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
-	       "server_fn_table must have one entry per CAS function code");
-
 static const char *server_func_name[] = {
   "end_tran",
   "prepare",
@@ -189,7 +188,8 @@ static const char *server_func_name[] = {
   "fn_stream_upload_hold"
 };
 
-/* process_request () indexes the names the same way, before the admission check can swap the function */
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
 static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
 	       "server_func_name must have one entry per CAS function code");
 
@@ -1067,8 +1067,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 #if !defined(WINDOWS)
   /* Before start to execute a new request, try to reset a previous interrupt request we might have. The interrupt
-   * request arrived too late to interrupt the previous request and still remains. */
-  db_set_interrupt (0);
+   * request arrived too late to interrupt the previous request and still remains. Not while an upload is open: the
+   * statement is still running, and the stream's next request carries the interrupt to the server, which ends it. */
+  if (!ux_stream_is_open ())
+    {
+      db_set_interrupt (0);
+    }
 #endif /* !WINDOWS */
 
   if (cas_shard_flag == ON)

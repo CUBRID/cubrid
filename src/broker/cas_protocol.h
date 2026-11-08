@@ -123,8 +123,6 @@ extern "C"
  * Only a PROTOCOL_V13 client may read it. init_msg_header () fills this byte
  * with CAS_INFO_RESERVED_DEFAULT, so every bit above the three older masks
  * reads as 1 from any earlier server. */
-/* [리뷰] 요청마다 지우고 다시 세우는 응답 헤더 비트.
- * 옛 서버는 이 바이트를 -1로 채워 1로 읽히므로 V13 이상 드라이버만 읽는다. */
 #define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
 
 /* The optional trailing flags byte of the bundled stream requests and replies. A
