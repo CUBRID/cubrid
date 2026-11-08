@@ -7093,7 +7093,14 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
+  ptr = or_unpack_int (ptr, &tmp);
+  regu_var->type = (REGU_DATATYPE) tmp;
+  /* a regu value list is a container of values, not a value: it carries no domain */
+  regu_var->domain = NULL;
+  if (regu_var->type != TYPE_REGU_VAR_LIST)
+    {
+      ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
+    }
 
   /* CBRD-27583: the domain the value is read in, and the converter into the domain its consumer wants */
   ptr = or_unpack_int (ptr, &tmp);
@@ -7111,9 +7118,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 				   (DOMAIN_CONVERT_MODE) (tmp & REGU_CONV_SELECTION));
       assert (regu_var->conv != NULL);
     }
-
-  ptr = or_unpack_int (ptr, &tmp);
-  regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));

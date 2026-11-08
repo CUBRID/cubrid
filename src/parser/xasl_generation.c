@@ -32619,7 +32619,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
 
   regu->type = TYPE_REGU_VAR_LIST;
   /* CBRD-27583: a container of values, not a value: no domain of its own */
-  regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
+  regu->domain = NULL;
   /* for cume_dist and percent_rank, regu_variable should be hidden */
   REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
   arg_list = tree->info.function.arg_list;
