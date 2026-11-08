@@ -98,6 +98,7 @@ class internal_lob_temp_spool
     VFID m_vfid;
     DB_BIGINT m_size;
     char *m_tail;		/* the last page while it fills; it is written whole each time */
+    int m_tde_algo;		/* TDE_ALGORITHM of the file */
 };
 
 /* heap_internal_lob_insert_stream () reader over [base, base + length) of a spool */

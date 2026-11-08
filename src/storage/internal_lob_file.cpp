@@ -990,6 +990,7 @@ xinternal_lob_upload_release (THREAD_ENTRY *thread_p, INT64 token)
 internal_lob_temp_spool::internal_lob_temp_spool ()
   : m_size (0)
   , m_tail (NULL)
+  , m_tde_algo (TDE_ALGORITHM_NONE)
 {
   VFID_SET_NULL (&m_vfid);
 }
@@ -1029,6 +1030,19 @@ internal_lob_temp_spool::append (THREAD_ENTRY *thread_p, const char *data, int s
 	  VFID_SET_NULL (&m_vfid);
 	  return error;
 	}
+      /* the target table is not known yet, so a loaded key encrypts every spool, as a TDE table's sort file is */
+      m_tde_algo = tde_is_loaded ()? prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM) : TDE_ALGORITHM_NONE;
+      if (m_tde_algo != TDE_ALGORITHM_NONE)
+	{
+	  error = file_apply_tde_algorithm (thread_p, &m_vfid, (TDE_ALGORITHM) m_tde_algo);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      file_temp_retire (thread_p, &m_vfid);
+	      VFID_SET_NULL (&m_vfid);
+	      return error;
+	    }
+	}
       /* retired by destroy (), not with the transaction: an upload is kept for a later statement */
       file_temp_preserve (thread_p, &m_vfid);
       m_size = 0;
@@ -1047,7 +1061,7 @@ internal_lob_temp_spool::append (THREAD_ENTRY *thread_p, const char *data, int s
 	  ASSERT_ERROR ();
 	  return error;
 	}
-      if (pgbuf_copy_from_area (thread_p, &vpid, 0, in_page + count, m_tail, true, TDE_ALGORITHM_NONE) == NULL)
+      if (pgbuf_copy_from_area (thread_p, &vpid, 0, in_page + count, m_tail, true, (TDE_ALGORITHM) m_tde_algo) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
