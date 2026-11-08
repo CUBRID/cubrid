@@ -9344,6 +9344,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 
 	  if (xasl->single_tuple)
 	    {
+	      /* the value is read in the list's column domain (qdata_get_single_tuple_from_list_id), as regu's */
+	      xasl->single_tuple->valp->dom = regu->domain;
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
 	      /* mark uncorrelated scalar subquery (precompute/inject/checker-relax):
@@ -17402,6 +17404,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->domain =
 			pt_reader_domain (pt_xasl_node_to_domain (parser, col), domain_list_column_of (xasl, i));
 		      regu->value.dbvalptr = value_list->val;
+		      value_list->dom = regu->domain;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
 		      if (pt_prepare_corr_subquery_hash_result_cache (parser, node, xasl))
