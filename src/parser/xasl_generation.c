@@ -4585,6 +4585,17 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      /* convert to SORT_LIST */
 	      aggregate_list->sort_list =
 		pt_agg_orderby_to_sort_list (parser, tree->info.function.order_by, tree->info.function.arg_list);
+	      if (aggregate_list->function == PT_CUME_DIST || aggregate_list->function == PT_PERCENT_RANK)
+		{
+		  /* CBRD-27817: no list is sorted by these keys - the hypothetical values compare with the ORDER BY
+		   * items - and each key carries its item's domain, not the hypothetical argument's */
+		  SORT_LIST *key = aggregate_list->sort_list;
+		  for (PT_NODE * item = tree->info.function.order_by; key != NULL && item != NULL;
+		       key = key->next, item = item->next)
+		    {
+		      key->pos_descr.dom = pt_xasl_node_to_domain (parser, item->info.sort_spec.expr);
+		    }
+		}
 	    }
 	  else
 	    {
