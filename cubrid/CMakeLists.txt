@@ -287,6 +287,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/query_evaluator.c
   ${QUERY_DIR}/query_executor.c
   ${QUERY_DIR}/query_manager.c
+  ${QUERY_DIR}/expr_batch.c
   ${QUERY_DIR}/expr_compile.c
   ${QUERY_DIR}/query_opfunc.c
   ${QUERY_DIR}/query_reevaluation.cpp
@@ -299,8 +300,6 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
-  ${QUERY_DIR}/domain_plan.c
-  ${QUERY_DIR}/domain_resolve.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
@@ -372,6 +371,18 @@ set(PARALLEL_HASH_JOIN_HEADERS
   ${PARALLEL_HASH_JOIN_DIR}/px_hash_join.hpp
 )
 
+set(PARALLEL_MERGE_JOIN_SOURCES
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.cpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.cpp
+)
+
+set(PARALLEL_MERGE_JOIN_HEADERS
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_partition.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join_task.hpp
+  ${PARALLEL_MERGE_JOIN_DIR}/px_merge_join.hpp
+)
+
 set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
@@ -421,6 +432,7 @@ set(PARALLEL_QUERY_SOURCES
   ${PARALLEL_QUERY_DIR}/px_callable_task.cpp
   ${PARALLEL_QUERY_DIR}/px_sort.c
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.cpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.cpp
   ${PARALLEL_QUERY_DIR}/px_parallel.cpp
   )
 
@@ -430,6 +442,7 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_callable_task.hpp
   ${PARALLEL_QUERY_DIR}/px_sort.h
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
+  ${PARALLEL_QUERY_DIR}/px_task_manager.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
   )
@@ -521,7 +534,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_lock.cpp
   ${STORAGE_DIR}/btree_sort.c
+  ${STORAGE_DIR}/btree_sort_merge.cpp
+  ${STORAGE_DIR}/btree_sort_radix.cpp
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
@@ -550,6 +566,7 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/bestspace.hpp
+  ${STORAGE_DIR}/btree_lock.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/ftab_set.hpp
@@ -683,6 +700,7 @@ set (CUBRID_LIB_SOURCES
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_HASH_JOIN_SOURCES}
+  ${PARALLEL_MERGE_JOIN_SOURCES}
   ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
@@ -709,6 +727,7 @@ set (CUBRID_LIB_HEADERS
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
   ${PARALLEL_HASH_JOIN_HEADERS}
+  ${PARALLEL_MERGE_JOIN_HEADERS}
   ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
