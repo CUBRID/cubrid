@@ -235,6 +235,8 @@ struct log_rec_replication
 /* after the key (int aligned), a _db_serial write-back's data record carries this marker, the packed length
  * and the packed value (max aligned) of the cur_val it replaced; an older applier ignores what follows the key */
 #define LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC 0x53525056	/* "SRPV" */
+/* in the same place, a _db_serial write that issues values carries this marker and a packed length of 0 */
+#define LOG_REPL_SERIAL_ISSUE_MAGIC 0x53524953	/* "SRIS" */
 
 /* Log the time of termination of transaction */
 typedef struct log_rec_donetime LOG_REC_DONETIME;

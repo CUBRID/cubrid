@@ -62,6 +62,8 @@ struct xasl_unpack_info;
 // from page_buffer.h
 struct pgbuf_holder_anchor;
 
+struct serial_repl_apply;
+
 // forward resource trackers
 namespace cubbase
 {
@@ -308,6 +310,7 @@ namespace cubthread
       bool no_supplemental_log;
       bool trigger_involved;
       bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
+      struct serial_repl_apply *serial_repl_apply;	/* the log applier's _db_serial row image being forced, or NULL */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb

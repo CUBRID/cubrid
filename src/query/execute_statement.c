@@ -3404,6 +3404,9 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  /* before the delete takes the row's X lock, so the unissued tail goes back; the decache after it drops an entry
+   * made meanwhile */
+  (void) serial_decache (&serial_obj_id);
   error = db_drop (serial_object);
   if (error < 0)
     {

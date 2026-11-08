@@ -60,6 +60,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "record_descriptor.hpp"
 #include "serial.h"
+#include "fault_injection.h"
 #include "slotted_page.h"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
@@ -7621,7 +7622,14 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	}
 
       error_code = locator_repl_prepare_force (thread_p, obj, &old_recdes, &recdes, &key_value, force_scancache);
-      if (error_code == NO_ERROR)
+      if (error_code == ER_OBJ_OBJECT_NOT_FOUND && has_prior_value && oid_is_serial (&obj->class_oid))
+	{
+	  /* not this node's to take; the object counts as applied */
+	  er_clear ();
+	  serial_repl_skip_missing_row (thread_p, &key_value, &prior_value);
+	  error_code = NO_ERROR;
+	}
+      else if (error_code == NO_ERROR)
 	{
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
 
@@ -7646,17 +7654,52 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE:
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
-	      if (serial_repl_image_is_stale (thread_p, &obj->class_oid, &obj->oid, &recdes,
-					      has_prior_value ? &prior_value : NULL))
-		{
-		  break;	/* not this node's to take; the object counts as applied */
-		}
-	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
-	      error_code =
-		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, has_index,
-				      NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
-				      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE,
-				      LOCATOR_LOCK_AT_FORCE);
+	      {
+		RECDES *image_p = &recdes;
+		RECDES rebuilt_recdes;
+		record_descriptor rebuilt;
+		SERIAL_REPL_APPLY apply;
+		bool is_serial = oid_is_serial (&obj->class_oid);
+
+		if (is_serial)
+		  {
+		    if (!serial_repl_prepare (thread_p, &obj->oid, &key_value, &recdes,
+					      has_prior_value ? &prior_value : NULL, LC_ONEOBJ_IS_SERIAL_ISSUE (obj),
+					      &rebuilt, &apply))
+		      {
+			break;	/* not this node's to take; the object counts as applied */
+		      }
+		    if (apply.rebuilt)
+		      {
+			rebuilt_recdes = rebuilt.get_recdes ();
+			rebuilt_recdes.type = recdes.type;
+			image_p = &rebuilt_recdes;
+		      }
+#if !defined (NDEBUG)
+		    if (FI_INSERTED (FI_TEST_SERIAL_REPL_APPLY_HOLD))
+		      {
+			/* between the checks out of the page latch and the write */
+			int hold_seconds = 20;
+
+			(void) FI_TEST_ARG (thread_p, FI_TEST_SERIAL_REPL_APPLY_HOLD, &hold_seconds, 0);
+		      }
+#endif /* !NDEBUG */
+		    thread_p->serial_repl_apply = &apply;
+		  }
+
+		pruning_type = locator_area_op_to_pruning_type (obj->operation);
+		error_code =
+		  locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, image_p, has_index,
+					NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
+					REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE,
+					LOCATOR_LOCK_AT_FORCE);
+
+		if (is_serial)
+		  {
+		    thread_p->serial_repl_apply = NULL;
+		    serial_repl_finish (thread_p, &obj->oid, &apply);
+		  }
+	      }
 
 	      if (error_code == NO_ERROR)
 		{
@@ -7850,6 +7893,16 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_UPDATE:
 	case LC_FLUSH_UPDATE_PRUNE:
 	case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+#if !defined (NDEBUG)
+	  if (FI_INSERTED (FI_TEST_SERIAL_APPLIER_DDL_WRITE_HOLD) && LOG_CHECK_LOG_APPLIER (thread_p)
+	      && oid_is_serial (&obj->class_oid))
+	    {
+	      /* a DDL the log applier runs again: its client read the row, which is not written yet */
+	      int hold_seconds = 20;
+
+	      (void) FI_TEST_ARG (thread_p, FI_TEST_SERIAL_APPLIER_DDL_WRITE_HOLD, &hold_seconds, 0);
+	    }
+#endif /* !NDEBUG */
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,

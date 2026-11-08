@@ -7078,6 +7078,10 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	{
 	  LC_ONEOBJ_SET_HAS_PRIOR_VALUE (mflush->obj);
 	}
+      if (repl_obj->serial_issue)
+	{
+	  LC_ONEOBJ_SET_SERIAL_ISSUE (mflush->obj);
+	}
 
       COPY_OID (&mflush->obj->class_oid, &repl_obj->class_oid);
       HFID_SET_NULL (&mflush->obj->hfid);

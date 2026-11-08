@@ -94,6 +94,8 @@ typedef enum
   /* SERIAL */
   FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR = 700010,	/* flush the compensation of a serial row undo, then hold */
   FI_TEST_SERIAL_DDL_UNDO_FALLBACK = 700011,	/* (FI_INSERTED only) the serial row undo restores the replaced row */
+  FI_TEST_SERIAL_REPL_APPLY_HOLD = 700012,	/* hold the log applier's serial row image before its write */
+  FI_TEST_SERIAL_APPLIER_DDL_WRITE_HOLD = 700013,	/* hold the serial row write of a DDL the log applier runs */
 
   /* etc .... */
 
