@@ -2630,7 +2630,7 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	      goto cleanup;
 	    }
 	  partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
-	      pinfo->key_value_cached = true;
+	  pinfo->key_value_cached = true;
 
 	  /* the partition expression's value: the partition key's domain */
 	  status = partition_prune (pinfo, part_expr, op, NULL, pruned);
