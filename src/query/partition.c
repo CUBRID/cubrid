@@ -176,6 +176,7 @@ static MATCH_STATUS partition_prune_elements (PRUNING_CONTEXT * pinfo, const DB_
 static const PRUNING_TERM *partition_comparison_term (const COMP_EVAL_TERM * comp, int key_side, PRUNING_TERM * term);
 static int partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * attr_key,
 					 bool * is_present);
+static bool partition_is_unread_join_value (const PRUNING_CONTEXT * pinfo, const DB_VALUE * val);
 static int partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * src, DB_VALUE * value_p,
 					     bool * is_present);
 static int partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * value_p,
@@ -2017,7 +2018,8 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_CONSTANT:
       /* the outer row's value of a join term: set only while an inner prunes per outer row (CBRD-27866) */
-      if (!pinfo->use_join_values || regu->value.dbvalptr == NULL)
+      if (!pinfo->use_join_values || regu->value.dbvalptr == NULL
+	  || partition_is_unread_join_value (pinfo, regu->value.dbvalptr))
 	{
 	  db_make_null (value_p);
 	  *is_value = false;
@@ -2053,6 +2055,36 @@ error:
   *is_value = false;
 
   return ER_FAILED;
+}
+
+/*
+ * partition_is_unread_join_value () - whether a join value is one the outer row has not set yet
+ * return : true if the value belongs to the scan pruned per outer row or to a scan after it
+ * pinfo (in) : pruning context
+ * val (in)   : the value a TYPE_CONSTANT points to
+ *
+ * Note: the range terms of an index scan (where_range) carry the conjuncts after them, so a term may compare the
+ *	 partition key with a column of a scan that runs after the pruned one; its value is still NULL or that of the
+ *	 previous outer row, and it must not prune (CBRD-27866).
+ */
+static bool
+partition_is_unread_join_value (const PRUNING_CONTEXT * pinfo, const DB_VALUE * val)
+{
+  const XASL_NODE *scan;
+  QPROC_DB_VALUE_LIST valp;
+
+  for (scan = pinfo->row_xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (valp = (scan->val_list != NULL) ? scan->val_list->valp : NULL; valp != NULL; valp = valp->next)
+	{
+	  if (valp->val == val)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -2212,7 +2244,8 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
     case TYPE_CONSTANT:
       /* TYPE_CONSTANT comes from an index join. When the scan is opened nothing has been scanned yet and this value
        * is not set, so it is used only while the inner prunes per outer row (CBRD-27866) */
-      if (pinfo->use_join_values && key->value.dbvalptr != NULL)
+      if (pinfo->use_join_values && key->value.dbvalptr != NULL
+	  && !partition_is_unread_join_value (pinfo, key->value.dbvalptr))
 	{
 	  error = pr_clone_value (key->value.dbvalptr, attr_key);
 	  *is_present = (error == NO_ERROR);
@@ -3004,6 +3037,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->is_from_cache = false;
   pinfo->use_join_values = false;
   pinfo->key_value_cached = false;
+  pinfo->row_xasl = NULL;
 }
 
 /*
@@ -3853,6 +3887,7 @@ error_exit:
  * return : error code or NO_ERROR
  * thread_p (in) :
  * vd (in)	 : value descriptor
+ * xasl (in)	 : the scan of spec
  * spec (in)	 : a partitioned nested-loop inner walked per outer row, pruned by partition_prune_spec ()
  *
  * Note: partition_prune_spec () prunes when the scan is opened, before any outer row is read, so a join term
@@ -3862,7 +3897,7 @@ error_exit:
  *	 walked when no term prunes.
  */
 int
-partition_prune_spec_for_row (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node * spec)
+partition_prune_spec_for_row (THREAD_ENTRY * thread_p, val_descr * vd, xasl_node * xasl, access_spec_node * spec)
 {
   PRUNING_CONTEXT *pinfo = spec->row_pruning;
   PRUNING_BITSET pruned, pruned_term;
@@ -3907,6 +3942,7 @@ partition_prune_spec_for_row (THREAD_ENTRY * thread_p, val_descr * vd, access_sp
     }
 
   pinfo->vd = vd;
+  pinfo->row_xasl = xasl;
   pinfo->error_code = NO_ERROR;
 
   pruningset_init (&pruned, PARTITIONS_COUNT (pinfo));

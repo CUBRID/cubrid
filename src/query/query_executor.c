@@ -12016,7 +12016,7 @@ qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   spec->row_rewind_pending = false;
 
   if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)
-      && partition_prune_spec_for_row (thread_p, spec->s_id.vd, spec) != NO_ERROR)
+      && partition_prune_spec_for_row (thread_p, spec->s_id.vd, xasl, spec) != NO_ERROR)
     {
       return S_ERROR;
     }
