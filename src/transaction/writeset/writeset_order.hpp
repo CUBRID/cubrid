@@ -27,6 +27,8 @@
 
 #include "log_lsa.hpp"
 
+#include <cstddef>
+
 typedef struct log_tdes LOG_TDES;
 
 extern void wset_order_find_dependency (LOG_TDES *tdes, LOG_LSA *dependency_out);
@@ -34,5 +36,8 @@ extern void wset_order_record_commit (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 extern void wset_order_publish_commit_keys (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
 extern void wset_order_find_sysop_dependency (LOG_TDES *tdes, LOG_LSA *dependency_out);
 extern void wset_order_advance_barrier (const LOG_LSA *lsa, const char *reason);
+extern void wset_order_find_sysop_key_dependency (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out);
+extern void wset_order_record_sysop (const LOG_LSA *sysop_lsa);
+extern void wset_order_publish_sysop_keys (LOG_TDES *tdes, size_t begin, const LOG_LSA *sysop_lsa);
 
 #endif /* _WRITESET_ORDER_HPP_ */

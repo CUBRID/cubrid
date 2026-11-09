@@ -95,6 +95,7 @@ test_initialize_coordinator (TEST_COORDINATOR_CONTEXT *context, const LOG_LSA *r
   config.retire_entry = test_retire_entry;
   config.store_progress = test_store_progress;
   config.shutdown_requested = test_shutdown_requested;
+  config.merge_task = NULL;
   config.context = context;
 
   REQUIRE (la_coordinator_initialize (&config) == NO_ERROR);

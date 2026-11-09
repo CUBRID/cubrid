@@ -44,6 +44,15 @@ struct la_task
   LA_APPLY *apply;		/* repl_list pre-mapped by the coordinator so the worker never calls
 				 * la_find_apply_list, avoiding the la_Info.repl_lists realloc / slot-reuse race */
   bool has_items;		/* false for a commit without replicated items; the worker does not trace it */
+  /* Later fragments of the same key merged into this pending fragment task (la_coordinator_submit_task): the
+   * worker applies their items in the same slave transaction and marks each of them applied, and the coordinator
+   * completes each of their LSAs in the gate. Owned by the task, then by its result; freed at retire. */
+  LOG_LSA *merged_lsa;
+  int merged_count;
+  int merged_capacity;
+  UINT64 unit_key_hash;		/* a fragment of an independent replication unit ordered by a single key: the
+				 * key's writeset hash from the master's label; 0 otherwise. A later fragment of the
+				 * same key may join this task */
   LOG_LSA dependency_seq;	/* dependency ordering key in the master's commit_seq space, decoded from the
 				 * LOG_DUMMY_WSET_LABEL right before the commit; the gate waits for the transaction
 				 * at this LSA to finish. null = no dependency */

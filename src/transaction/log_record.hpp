@@ -262,6 +262,9 @@ typedef struct log_rec_wset_label LOG_REC_WSET_LABEL;
 struct log_rec_wset_label
 {
   LOG_LSA dependency_seq;	/* dependency LSA selected from the writeset history at commit time */
+  UINT64 unit_key_hash;		/* an independent replication unit (serial update, INCR/DECR) ordered by a single key:
+				 * the writeset hash of that key; 0 otherwise. Consecutive units of one key may be
+				 * applied together by the slave */
 };
 
 /* Information of database external redo log records */

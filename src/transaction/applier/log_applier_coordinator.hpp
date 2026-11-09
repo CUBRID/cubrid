@@ -43,6 +43,8 @@ struct la_coordinator_config
 			const LOG_LSA *frontier); /* apply ordered completion to legacy state */
   int (*store_progress) (void *context); /* persist retired progress when its interval expires */
   bool (*shutdown_requested) (void *context); /* stop coordinator waits when the applier is shutting down */
+  bool (*merge_task) (void *context, LA_TASK *target, LA_TASK *task); /* move task's items into the parked
+									   * target; false if they cannot join */
   void *context;
 };
 

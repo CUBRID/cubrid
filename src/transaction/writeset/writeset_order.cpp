@@ -191,4 +191,44 @@ wset_order_advance_barrier (const LOG_LSA *lsa, const char *reason)
 	      (long long) lsa->pageid, (int) lsa->offset);
 }
 
+/* An independent replication unit (serial update, INCR/DECR that commits on its own) is ordered by the keys it
+ * collected, the tail of the key list from begin, like a commit. */
+void
+wset_order_find_sysop_key_dependency (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out)
+{
+  assert (tdes != NULL);
+  assert (dependency_out != NULL);
+  assert (!tdes->wset_overflow);
+
+  wset_order_find_dependency_in_range (tdes, begin, dependency_out);
+}
+
+/* Called in log order, inside prior_lsa_mutex, for a SYSOP_END ordered by its keys. The commit-order baseline moves
+ * to it as for a commit: a later label lowered to the baseline, and a later commit-order label, then still waits for
+ * it, although the history floor is not raised. */
+void
+wset_order_record_sysop (const LOG_LSA *sysop_lsa)
+{
+  assert (sysop_lsa != NULL);
+  wset_history_record_commit (false, sysop_lsa);
+}
+
+/* Publish the keys of an independent replication unit at its SYSOP_END, before the operation releases the row lock
+ * (instant lock) or the page latch (serial) that held them. */
+void
+wset_order_publish_sysop_keys (LOG_TDES *tdes, size_t begin, const LOG_LSA *sysop_lsa)
+{
+  assert (tdes != NULL);
+  assert (sysop_lsa != NULL);
+  assert (!LSA_ISNULL (sysop_lsa));
+  assert (begin <= tdes->wset_hashes.size ());
+
+  WSET_TRACE (1, "SYSOP_PUBLISH trid=%d sysop_lsa=%lld|%d dependency=%lld|%d entries=%zu\n",
+	      tdes->trid, (long long) sysop_lsa->pageid, (int) sysop_lsa->offset,
+	      (long long) tdes->wset_dependency_seq.pageid, (int) tdes->wset_dependency_seq.offset,
+	      tdes->wset_hashes.size () - begin);
+
+  wset_history_publish_keys (tdes, begin, tdes->wset_hashes.size (), sysop_lsa);
+}
+
 #endif /* SERVER_MODE || SA_MODE */

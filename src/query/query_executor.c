@@ -20282,6 +20282,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
   bool sysop_started = false;
   bool in_instant_lock_mode;
+  int flush_mark_begin = -1;
 
   // *INDENT-OFF*
   struct incr_info
@@ -20510,6 +20511,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       /* Subtransaction case. Locks and MVCCID are acquired/released by subtransaction. */
       tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
       assert (tdes != NULL);
+      flush_mark_begin = tdes->fl_mark_repl_recidx;
       logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
       subtransaction_started = true;
     }
@@ -20559,6 +20561,12 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   else
     {
       /* Transaction case. */
+      if (subtransaction_started && need_ha_replication)
+	{
+	  /* The increments are now part of the outer transaction and are undone if it rolls back, so their
+	   * replication records go out with its commit, not at the end of the next system operation. */
+	  repl_keep_flush_marked_with_outer (thread_p, flush_mark_begin);
+	}
       log_sysop_attach_to_outer (thread_p);
 
       in_instant_lock_mode = false;

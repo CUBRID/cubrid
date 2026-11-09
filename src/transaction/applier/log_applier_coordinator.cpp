@@ -34,6 +34,7 @@
 #include "system_parameter.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
 
@@ -62,6 +63,7 @@ static int la_coordinator_wait_until_retired (void);
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_retire_results (void);
 static int la_coordinator_run_alone (LA_TASK *task);
+static bool la_coordinator_merge_into_pending (LA_TASK *task, int *error);
 
 /*
  * la_coordinator_clock_ns - read the monotonic clock used by scheduling statistics
@@ -346,6 +348,10 @@ la_coordinator_record_result (LA_RESULT *result)
   if (result->error == NO_ERROR && (result->rectype == LOG_COMMIT || result->rectype == LOG_SYSOP_END))
     {
       la_gate_mark_completed (&result->commit_lsa);
+      for (int i = 0; i < result->merged_count; i++)
+	{
+	  la_gate_mark_completed (&result->merged_lsa[i]);
+	}
     }
 
   return NO_ERROR;
@@ -551,6 +557,10 @@ la_coordinator_retire_results (void)
       has_frontier = la_gate_get_frontier (&frontier);
       assert (has_frontier);
       la_Coordinator_config.retire_entry (la_Coordinator_config.context, entry, has_frontier ? &frontier : NULL);
+      if (result->merged_lsa != NULL)
+	{
+	  free ((void *) result->merged_lsa);
+	}
       la_inflight_pop ();
 
       error = la_Coordinator_config.store_progress (la_Coordinator_config.context);
@@ -598,6 +608,75 @@ la_coordinator_run_alone (LA_TASK *task)
     }
 
   return la_coordinator_wait_until_retired ();
+}
+
+/*
+ * la_coordinator_merge_into_pending - let a fragment join the parked fragment of the previous change of its key
+ *
+ * return: true if the task was merged (error tells whether that succeeded), false to schedule it on its own
+ *
+ *   task(in/out): fragment task just read from the log, already on the commit-order ring
+ *   error(out): NO_ERROR or an error code when merged
+ *
+ * Note: Independent replication units of one key (updates of one serial, INCR/DECR of one row) are ordered one
+ *       after another, so a backlog of them is applied one slave transaction at a time. When the previous one is
+ *       still parked, this one is applied by the same task right after it: one slave transaction instead of one
+ *       per unit. Its LSA stays on the commit-order ring and is completed with the task, so whatever waits for it
+ *       (the next unit, its outer commit) is released as before. The task only waits for the dependency of the
+ *       parked task: the merged fragment has that single key (the master's label says so), whose earlier writers
+ *       are the parked task's own fragments or lie at or below that dependency.
+ */
+static bool
+la_coordinator_merge_into_pending (LA_TASK *task, int *error)
+{
+  LA_TASK *target;
+  LOG_LSA *grown;
+
+  assert (task != NULL && error != NULL);
+  *error = NO_ERROR;
+
+  if (task->unit_key_hash == 0 || la_Coordinator_config.merge_task == NULL)
+    {
+      return false;
+    }
+
+  target = la_pending_find_merge_target (&task->dependency_seq, task->unit_key_hash);
+  if (target == NULL)
+    {
+      return false;
+    }
+
+  if (target->merged_count == target->merged_capacity)
+    {
+      int capacity = (target->merged_capacity == 0) ? 16 : target->merged_capacity * 2;
+
+      grown = (LOG_LSA *) realloc (target->merged_lsa, capacity * sizeof (LOG_LSA));
+      if (grown == NULL)
+	{
+	  /* not merged: the fragment is scheduled on its own */
+	  return false;
+	}
+      target->merged_lsa = grown;
+      target->merged_capacity = capacity;
+    }
+
+  if (!la_Coordinator_config.merge_task (la_Coordinator_config.context, target, task))
+    {
+      return false;
+    }
+
+  LSA_COPY (&target->merged_lsa[target->merged_count], &task->commit_lsa);
+  target->merged_count++;
+
+  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "[WSET] coordinator merge trid=%d sysop_lsa=%lld|%d into trid=%d sysop_lsa=%lld|%d merged=%d\n",
+		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset, target->tranid,
+		     (long long) target->commit_lsa.pageid, (int) target->commit_lsa.offset, target->merged_count);
+    }
+
+  return true;
 }
 
 /*
@@ -657,6 +736,11 @@ la_coordinator_submit_task (LA_TASK *task)
 
   error = la_coordinator_drain_ready ();
   if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (la_coordinator_merge_into_pending (task, &error))
     {
       return error;
     }
