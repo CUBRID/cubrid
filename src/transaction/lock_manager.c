@@ -628,6 +628,13 @@ static LK_RES_KEY lock_create_mvccid_search_key (MVCCID mvccid);
 #if defined (SERVER_MODE)
 static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 static int lock_transaction_mvccid_with_wait (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int wait_msecs);
+static void lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 target);
+static bool lock_send_deferred_wake (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvccid, UINT64 epoch);
+static void lock_grant_waiting_entry (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * prev, LK_ENTRY * entry_ptr);
+static bool lock_queue_and_wake_row_holder (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr,
+					    LK_ENTRY * entry_ptr, bool conversion, bool * published);
+static bool lock_resolve_cycle_by_wake (int s, int t);
+static void lock_send_deadlock_wakes (THREAD_ENTRY * thread_p);
 #endif /* SERVER_MODE */
 
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
@@ -2416,6 +2423,9 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 
   /* The caller is holding the thread entry mutex */
 
+  /* a thread asleep with its entry flagged as queued would be granted without a resume */
+  assert (entry_ptr->thrd_entry->lockwait_prequeued == NULL);
+
   if (lk_Gl.config.verbose_mode)
     {
       const char *__client_prog_name;	/* Client program name for transaction */
@@ -2924,6 +2934,13 @@ lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr)
       if (compat == LOCK_COMPAT_NO)
 	{
 	  break;		/* stop the granting */
+	}
+
+      /* an entry queued by its thread that is not asleep yet keeps its place: stop here as at an incompatible one;
+       * that thread grants it, and goes on granting, when it comes back (lock_queue_and_wake_row_holder ()) */
+      if (waiter->thrd_entry != NULL && waiter->thrd_entry->lockwait_prequeued == (void *) waiter)
+	{
+	  break;
 	}
 
       /* compatible: grant it */
@@ -3696,6 +3713,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   TSCTIMEVAL tv_diff;
   UINT64 lock_wait_time;
   LK_PERFORM_STATE state = LK_S_FIND_RESOURCE;
+  bool wake_target_published = false;
 
 #if defined(ENABLE_SYSTEMTAP)
   const OID *class_oid_for_marker_p;
@@ -4231,6 +4249,16 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 
 	case LK_S_SUSPENDED:
 
+	  if (res_ptr->key.type == LOCK_RESOURCE_INSTANCE
+	      && lock_queue_and_wake_row_holder (thread_p, tran_index, res_ptr, entry_ptr, lock_conversion,
+						 &wake_target_published))
+	    {
+	      /* granted while queued, before going to sleep: a waiter holding the row gave it up */
+	      is_res_mutex_locked = false;
+	      state = LK_S_POST_GRANT;
+	      break;
+	    }
+
 	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_LOCK_OBJECT))
 	    {
 	      tsc_getticks (&start_tick);
@@ -4360,6 +4388,12 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_LOCK_ACQUIRE_END (oid_for_marker_p, class_oid_for_marker_p, lock, ret_val != LK_GRANTED);
 #endif /* ENABLE_SYSTEMTAP */
+
+  if (wake_target_published)
+    {
+      /* however the request ended, it no longer waits on that row */
+      __atomic_store_n (&LOG_FIND_TDES (tran_index)->wake_target, (UINT64) 0, __ATOMIC_RELAXED);
+    }
 
   if (entry_ptr != NULL && ret_val == LK_GRANTED)
     {
@@ -5385,6 +5419,12 @@ lock_select_deadlock_victim (THREAD_ENTRY * thread_p, int s, int t)
 	  TWFG_node[v].ancestor = -1;
 	  v = w;
 	}
+      return;
+    }
+
+  if (lock_resolve_cycle_by_wake (s, t))
+    {
+      /* a transaction in the cycle has deferred its wake: send it instead of choosing a victim, no notification */
       return;
     }
 
@@ -6603,6 +6643,12 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
 	}
 
       /* case 3 : resource type is LOCK_RESOURCE_INSTANCE */
+      if (lock > S_LOCK)
+	{
+	  /* a row write lock. Not an S lock: compiling a statement fetches its statistics
+	   * (NET_SERVER_QST_GET_STATISTICS) under an S row lock, before the execute that touches the row again. */
+	  lock_note_row_write (thread_p);
+	}
       if (lock_is_class_lock_escalated (old_class_lock, lock) == true)
 	{			/* already granted on the class level */
 	  granted = LK_GRANTED;
@@ -6867,6 +6913,11 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
+
+  /* no request of the transaction is between queuing and the grant (lock_queue_and_wake_row_holder ()),
+   * where a grant path adds to the hold list this walks without hold_mutex */
+  assert (LOG_FIND_TDES (tran_index) == NULL
+	  || __atomic_load_n (&LOG_FIND_TDES (tran_index)->wake_target, __ATOMIC_RELAXED) == 0);
 
   left = tran_lock->transient_total;
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = next_ptr)
@@ -7236,6 +7287,7 @@ lock_forget_recheck_wait (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   thread_p->lockwait_recheck_mvccid = MVCCID_NULL;
+  thread_p->deferred_wake_seen = 0;
 #endif /* SERVER_MODE */
 }
 
@@ -7253,9 +7305,25 @@ lock_forget_recheck_wait (THREAD_ENTRY * thread_p)
 void
 lock_wake_transaction_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
-#if !defined (SERVER_MODE)
-  return;
-#else /* !SERVER_MODE */
+#if defined (SERVER_MODE)
+  lock_wake_mvccid_waiters (thread_p, mvccid, 0);
+#endif /* SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+/*
+ * lock_wake_mvccid_waiters - wake waiters on the self-lock keyed by mvccid without granting
+ *
+ *   target(in): 0 wakes all of them (the full wake); otherwise only those holding the row whose packed OID it is
+ *		 X while they wait (the targeted wake)
+ *
+ * Note: the caller has already written what a woken waiter must see (the cleared mark, the target); the generation
+ *	 bump passes it on. Each woken waiter's WFG node time is cleared first, so edges the deadlock detector
+ *	 collected before the wake cannot meet one collected after it in a cycle.
+ */
+static void
+lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 target)
+{
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *waiter, *prev, *next;
@@ -7283,8 +7351,10 @@ lock_wake_transaction_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid)
     {
       next = waiter->next;
       thread_lock_entry (waiter->thrd_entry);
-      if (LK_IS_LOCKWAIT_THREAD (waiter->thrd_entry) && waiter->thrd_entry->lockwait == (void *) waiter)
+      if (LK_IS_LOCKWAIT_THREAD (waiter->thrd_entry) && waiter->thrd_entry->lockwait == (void *) waiter
+	  && (target == 0 || __atomic_load_n (&waiter->thrd_entry->lockwait_row_oid, __ATOMIC_RELAXED) == target))
 	{
+	  lk_Gl.TWFG_node[waiter->tran_index].thrd_wait_stime = 0;
 	  /* Take the entry off the waiters here, as a grant does. Left for the woken thread to remove, it would show
 	   * the deadlock detector a wait that is over, and an owner touching the row again would be taken for a
 	   * cycle. The woken thread only frees it, so do not touch it after the resume. */
@@ -7310,6 +7380,638 @@ lock_wake_transaction_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid)
   res_ptr->total_waiters_mode = waiters_mode;
 
   pthread_mutex_unlock (&res_ptr->res_mutex);
+}
+
+/*
+ * lock_send_deferred_wake - clear the deferred mark if it is still the epoch observed, and then wake
+ *
+ * return: whether the mark was cleared and the waiters woken
+ */
+static bool
+lock_send_deferred_wake (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvccid, UINT64 epoch)
+{
+  UINT64 expected = epoch;
+
+  if (epoch == 0
+      || !__atomic_compare_exchange_n (&tdes->deferred_wake_epoch, &expected, (UINT64) 0, false, __ATOMIC_SEQ_CST,
+				       __ATOMIC_RELAXED))
+    {
+      /* a newer partial rollback took the mark over, or the transaction ended */
+      return false;
+    }
+  lock_wake_mvccid_waiters (thread_p, mvccid, 0);
+  return true;
+}
+
+static UINT64
+lock_pack_row_oid (const OID * oid)
+{
+  return ((UINT64) (UINT32) oid->pageid << 32) | ((UINT64) (UINT16) oid->slotid << 16) | (UINT64) (UINT16) oid->volid;
+}
+
+/*
+ * lock_grant_waiting_entry - grant a waiting entry whose thread is not asleep on it, as the common grant
+ *			   paths grant a sleeping one, without the resume
+ *
+ * return: void
+ *
+ *   res_ptr(in): the resource, its mutex held
+ *   prev(in): the entry before entry_ptr in the waiter list, or NULL
+ *   entry_ptr(in): the waiting entry
+ *
+ * Note: the caller resumes the thread if it sleeps on the entry.
+ */
+static void
+lock_grant_waiting_entry (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * prev, LK_ENTRY * entry_ptr)
+{
+  LK_ENTRY *e;
+
+  if (prev == NULL)
+    {
+      res_ptr->waiter = entry_ptr->next;
+    }
+  else
+    {
+      prev->next = entry_ptr->next;
+    }
+  entry_ptr->granted_mode = entry_ptr->blocked_mode;
+  entry_ptr->blocked_mode = NULL_LOCK;
+  lock_position_holder_entry (res_ptr, entry_ptr);
+  res_ptr->total_holders_mode = lock_conv (entry_ptr->granted_mode, res_ptr->total_holders_mode);
+  res_ptr->total_waiters_mode = NULL_LOCK;
+  for (e = res_ptr->waiter; e != NULL; e = e->next)
+    {
+      res_ptr->total_waiters_mode = lock_conv (e->blocked_mode, res_ptr->total_waiters_mode);
+    }
+  lock_insert_into_tran_hold_list (entry_ptr, LOG_FIND_THREAD_TRAN_INDEX (entry_ptr->thrd_entry));
+  lock_update_non2pl_list (thread_p, res_ptr, entry_ptr->tran_index, entry_ptr->granted_mode);
+  perfmon_inc_stat (thread_p, PSTAT_LK_NUM_ACQUIRED_ON_OBJECTS);
+}
+
+/*
+ * lock_queue_and_wake_row_holder - the owner must wait for a row while its wake is deferred
+ *
+ * return: true if granted meanwhile (the resource mutex is released); false to go to sleep as usual (still held)
+ *
+ *   entry_ptr(in): the request's entry, already queued as a waiter
+ *   conversion(in): whether entry_ptr is a holder converting; a conversion is not handed over and sleeps as usual
+ *   published(out): set when the target was published, for the caller to clear at the end of the request
+ *
+ * Note: called with the resource mutex held. The common grant stops at the flagged entry, as at an incompatible
+ *	 one, and grants nothing behind it: the waiter holding this row grants it in lock_hand_row_to_owner (), and if a
+ *	 release stopped at it meanwhile we grant it ourselves in step 3, where a common grant would have, and go on
+ *	 granting behind it. Our lockwait_stime is 0 so the deadlock detector drops its edges until we really sleep.
+ *	 The target goes out before the generation bump of the targeted wake, so a waiter that comes back sees it.
+ */
+static bool
+lock_queue_and_wake_row_holder (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
+				bool conversion, bool * published)
+{
+  LOG_TDES *tdes;
+  LK_ENTRY *e, *prev;
+  UINT64 target;
+  bool granted;
+
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL || __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_ACQUIRE) == 0)
+    {
+      return false;
+    }
+  if (conversion)
+    {
+      /* not handed over: the deadlock detector's full wake resolves a cycle through it */
+      return false;
+    }
+  assert (entry_ptr->thrd_entry == thread_p && thread_p->lockwait_prequeued == NULL);
+
+  /* one thread of a transaction takes row locks (parallel query workers do not), so no other target is out */
+  assert (__atomic_load_n (&tdes->wake_target, __ATOMIC_RELAXED) == 0);
+
+  /* 1. queued and flagged, not asleep */
+  thread_p->lockwait_prequeued = (void *) entry_ptr;
+  thread_p->lockwait_stime = 0;
+  target = lock_pack_row_oid (&res_ptr->key.oid);
+  __atomic_store_n (&tdes->wake_target, target, __ATOMIC_RELAXED);
+  *published = true;
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+  /* 2. wake only the waiters that hold this row X */
+  lock_wake_mvccid_waiters (thread_p, tdes->mvccinfo.id, target);
+
+  /* 3. handed the row meanwhile; or granted now, where the common grant would have granted a sleeping waiter (no
+   * incompatible waiter ahead of us, and our mode goes with the holders'); or go to sleep */
+  pthread_mutex_lock (&res_ptr->res_mutex);
+  thread_p->lockwait_prequeued = NULL;
+  if (entry_ptr->blocked_mode != NULL_LOCK)
+    {
+      for (prev = NULL, e = res_ptr->waiter; e != entry_ptr; prev = e, e = e->next)
+	{
+	  if (lock_compat (e->blocked_mode, res_ptr->total_holders_mode) == LOCK_COMPAT_NO)
+	    {
+	      break;
+	    }
+	}
+      if (e == entry_ptr && lock_compat (entry_ptr->blocked_mode, res_ptr->total_holders_mode) == LOCK_COMPAT_YES)
+	{
+	  lock_grant_waiting_entry (thread_p, res_ptr, prev, entry_ptr);
+	  /* a release that stopped at our entry did not reach the waiters behind it */
+	  (void) lock_grant_blocked_waiter (thread_p, res_ptr);
+	}
+    }
+  granted = (entry_ptr->blocked_mode == NULL_LOCK);
+  if (granted)
+    {
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+    }
+  return granted;
+}
+
+/*
+ * lock_resolve_cycle_by_wake - a cycle found by the deadlock detector holds a transaction whose wake
+ *			       is deferred: cut the cycle there and queue the wake instead of choosing a victim
+ *
+ * return: true if the cycle was taken
+ *
+ * Note: called from lock_select_deadlock_victim () for a cycle that is not false. The wakes go out after the search
+ *	 (lock_send_deadlock_wakes ()), with the epoch observed here and the trid checked again.
+ */
+#define LK_MAX_DEADLOCK_WAKES 64
+static struct
+{
+  int tran_index;
+  TRANID trid;
+  MVCCID mvccid;
+  UINT64 epoch;
+} lk_Deadlock_wakes[LK_MAX_DEADLOCK_WAKES];
+static int lk_Deadlock_wake_count = 0;
+
+static bool
+lock_resolve_cycle_by_wake (int s, int t)
+{
+  LK_WFG_NODE *TWFG_node = lk_Gl.TWFG_node;
+  LOG_TDES *tdes;
+  UINT64 epoch;
+  int v, w, k, found = 0;
+
+  for (v = s;; v = TWFG_node[v].ancestor)
+    {
+      tdes = LOG_FIND_TDES (v);
+      epoch = (tdes != NULL) ? __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_ACQUIRE) : 0;
+      if (epoch != 0)
+	{
+	  found++;
+	  for (k = 0; k < lk_Deadlock_wake_count && lk_Deadlock_wakes[k].tran_index != v; k++)
+	    {
+	      ;
+	    }
+	  if (k == lk_Deadlock_wake_count && k < LK_MAX_DEADLOCK_WAKES)
+	    {
+	      lk_Deadlock_wakes[k].tran_index = v;
+	      lk_Deadlock_wakes[k].trid = tdes->trid;
+	      lk_Deadlock_wakes[k].mvccid = tdes->mvccinfo.id;
+	      lk_Deadlock_wakes[k].epoch = epoch;
+	      lk_Deadlock_wake_count++;
+	    }
+	  /* as for a victim: the search does not find this cycle again */
+	  TWFG_node[v].current = -1;
+	}
+      if (v == t)
+	{
+	  break;
+	}
+    }
+  if (found == 0)
+    {
+      return false;
+    }
+
+  for (v = s; v != t;)
+    {
+      w = TWFG_node[v].ancestor;
+      TWFG_node[v].ancestor = -1;
+      v = w;
+    }
+  return true;
+}
+
+static void
+lock_send_deadlock_wakes (THREAD_ENTRY * thread_p)
+{
+  int k;
+
+  for (k = 0; k < lk_Deadlock_wake_count; k++)
+    {
+      if (logtb_find_tranid (lk_Deadlock_wakes[k].tran_index) == lk_Deadlock_wakes[k].trid)
+	{
+	  (void) lock_send_deferred_wake (thread_p, LOG_FIND_TDES (lk_Deadlock_wakes[k].tran_index),
+					  lk_Deadlock_wakes[k].mvccid, lk_Deadlock_wakes[k].epoch);
+	}
+    }
+  lk_Deadlock_wake_count = 0;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_defer_transaction_mvccid_wake - a rollback to a savepoint has finished its undo; mark the wake
+ *					of the waiters on our self-lock as due at the end of our next request that writes
+ *					a row
+ *
+ * return: nothing
+ */
+void
+lock_defer_transaction_mvccid_wake (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+#if defined (SERVER_MODE)
+  UINT64 epoch;
+
+  if (!MVCCID_IS_NORMAL (tdes->mvccinfo.id))
+    {
+      return;
+    }
+  epoch = ++tdes->deferred_wake_counter;
+  __atomic_store_n (&tdes->deferred_wake_epoch, epoch, __ATOMIC_RELEASE);
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_forget_deferred_wake - the transaction ends; a deferred wake is no longer due
+ *
+ * return: nothing
+ *
+ * Note: lock_unlock_all () calls it, and a COMMIT WORK RETAIN LOCK that skips lock_unlock_all (); the waiters of a
+ *	 retained self-lock wait for its release, as before.
+ */
+void
+lock_forget_deferred_wake (LOG_TDES * tdes)
+{
+#if defined (SERVER_MODE)
+  if (tdes != NULL)
+    {
+      __atomic_store_n (&tdes->deferred_wake_epoch, (UINT64) 0, __ATOMIC_RELAXED);
+      __atomic_store_n (&tdes->wake_target, (UINT64) 0, __ATOMIC_RELAXED);
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_note_row_write - the request writes a row (asks for a row write lock, or inserts); the
+ *			      deferred wake standing now goes out when the request ends
+ *
+ * return: nothing
+ */
+void
+lock_note_row_write (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p->deferred_wake_seen != 0)
+    {
+      return;
+    }
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (tdes == NULL)
+    {
+      return;
+    }
+  thread_p->deferred_wake_seen = __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_ACQUIRE);
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_end_request_deferred_wake - a request ends; if it wrote a row after a rollback to a
+ *				    savepoint, send that rollback's wake unless a newer one took the mark over
+ *
+ * return: nothing
+ *
+ * Note: the reply is already sent, so the next request of the transaction may be running; the CAS on the epoch seen
+ *	 keeps a late call from clearing a newer rollback's mark.
+ */
+void
+lock_end_request_deferred_wake (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  UINT64 epoch = thread_p->deferred_wake_seen;
+  LOG_TDES *tdes;
+
+  if (epoch == 0)
+    {
+      return;
+    }
+  thread_p->deferred_wake_seen = 0;
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (tdes != NULL)
+    {
+      (void) lock_send_deferred_wake (thread_p, tdes, tdes->mvccinfo.id, epoch);
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_settle_after_recheck - a self-lock wait came back to read again; decide what to do
+ *
+ * return: LK_RECHECK_READ (read again), LK_RECHECK_REWAIT (wait again with *wake_gen, without reading) or
+ *	   LK_RECHECK_YIELD (the owner waits for the row the caller holds: try lock_hand_row_to_owner ())
+ *
+ *   mvccid(in): the owner waited on
+ *   row_oid(in): packed OID of the row the caller holds X while waiting, or 0
+ *   wake_gen(out): the generation to wait again with
+ *   owner_tran_index(out): the owner's transaction index, for the yield
+ *
+ * Note: the generation is read before the owner's target and mark; a wake writes those before bumping it.
+ */
+int
+lock_settle_after_recheck (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 row_oid, UINT64 * wake_gen,
+			   int *owner_tran_index)
+{
+#if !defined (SERVER_MODE)
+  return LK_RECHECK_READ;
+#else /* !SERVER_MODE */
+  UINT64 gen, target, epoch;
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr;
+  LOG_TDES *tdes;
+  int idx = NULL_TRAN_INDEX;
+
+
+  /* 1 */
+  gen = lk_Gl.tran_wake_generation.load ();
+
+  /* 2: the owner is the holder of its self-lock with X */
+  search_key = lock_create_mvccid_search_key (mvccid);
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return LK_RECHECK_READ;
+    }
+  for (entry_ptr = res_ptr->holder; entry_ptr != NULL; entry_ptr = entry_ptr->next)
+    {
+      if (entry_ptr->granted_mode == X_LOCK)
+	{
+	  idx = entry_ptr->tran_index;
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  tdes = (idx != NULL_TRAN_INDEX) ? LOG_FIND_TDES (idx) : NULL;
+  if (tdes == NULL || tdes->mvccinfo.id != mvccid)
+    {
+      return LK_RECHECK_READ;
+    }
+  target = __atomic_load_n (&tdes->wake_target, __ATOMIC_RELAXED);
+  epoch = __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_RELAXED);
+
+  /* 3 */
+  if (row_oid != 0 && target == row_oid)
+    {
+      *owner_tran_index = idx;
+      return LK_RECHECK_YIELD;
+    }
+  /* 4 */
+  if (epoch != 0)
+    {
+      *wake_gen = gen;
+      return LK_RECHECK_REWAIT;
+    }
+  /* 5 */
+  return LK_RECHECK_READ;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_hand_row_to_owner - a waiter back from a targeted wake hands the row it holds to the owner waiting
+ *			 for that row, and waits again right behind it
+ *
+ * return: LK_NOT_YIELDED (read the row again), LK_NOT_YIELDED_STALE (the owner is not waiting on this row:
+ *	   look at its mark again), LK_YIELDED_GRANTED (the row is ours again), LK_YIELDED_FAILED (it is
+ *	   not: timeout or interrupt)
+ *
+ *   oid, class_oid(in): the row
+ *   owner_tran_index(in): the owner, from lock_settle_after_recheck ()
+ *   owner_mvccid(in): its MVCCID, the key of the recheck record (lock_forget_recheck_wait ())
+ *   transient(in): whether this call's request was counted transient
+ *
+ * Note: all under the row's resource mutex. We hand over only when we are the row's only holder, with the share this
+ *	 call took (count 1), and the owner's entry is a new request queued on this row whose mode does not go with
+ *	 ours. The hand-over is one step under the owner's thread mutex as well: the owner's entry is granted (resumed,
+ *	 or left to see the grant itself if queued and not yet asleep) and our share leaves the holders, so the owner
+ *	 cannot time out in between and no writer queued behind us gets the row. Then our new entry goes to the head of
+ *	 the waiters, right behind the owner, and we sleep on it as a new request does, with what is left
+ *	 of the lock timeout. The common grant paths are not involved.
+ */
+int
+lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, int owner_tran_index,
+			MVCCID owner_mvccid, bool transient)
+{
+#if !defined (SERVER_MODE)
+  return LK_NOT_YIELDED;
+#else /* !SERVER_MODE */
+  LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  LOG_TDES *owner_tdes;
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *mine, *owner = NULL, *e, *prev, *entry_ptr = NULL;
+  LK_ENTRY *class_entry = NULL;
+  bool stale = false;
+  const char *reason = NULL;
+  LOCK mode = NULL_LOCK;
+  int wait_msecs, ret;
+  INT64 start_msecs, elapsed = 0;
+  struct timespec ts;
+  TRANID trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
+
+  assert (thread_p->lockwait_prequeued == NULL);
+
+  search_key = lock_create_search_key (oid, class_oid);
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return LK_NOT_YIELDED;
+    }
+  assert (res_ptr->key.type == LOCK_RESOURCE_INSTANCE);
+
+  /* 1. the checks; while its entry waits on this row the owner cannot end, so its descriptor holds still */
+  for (mine = res_ptr->holder; mine != NULL && mine->tran_index != tran_index; mine = mine->next)
+    {
+      ;
+    }
+  if (mine == NULL)
+    {
+      reason = "noyield-nohold";
+    }
+  else if (mine->count != 1 || mine->blocked_mode != NULL_LOCK || mine->transient_count != (transient ? 1 : 0))
+    {
+      reason = "noyield-count";
+    }
+  else if (res_ptr->holder != mine || mine->next != NULL)
+    {
+      reason = "noyield-others";
+    }
+  else
+    {
+      for (owner = res_ptr->waiter; owner != NULL && owner->tran_index != owner_tran_index; owner = owner->next)
+	{
+	  ;
+	}
+      owner_tdes = LOG_FIND_TDES (owner_tran_index);
+      stale = true;
+      if (owner == NULL || owner->thrd_entry == NULL)
+	{
+	  reason = "noyield-noowner";
+	}
+      else if (owner_tdes == NULL || owner_tdes->mvccinfo.id != owner_mvccid)
+	{
+	  /* another transaction took the owner's slot */
+	  reason = "noyield-ownermvccid";
+	}
+      else
+	{
+	  stale = false;
+	  if (lock_compat (mine->granted_mode, owner->blocked_mode) != LOCK_COMPAT_NO)
+	    {
+	      reason = "noyield-compat";
+	    }
+	}
+    }
+  if (reason == NULL)
+    {
+      entry_ptr = lock_get_new_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list);
+      if (entry_ptr == NULL)
+	{
+	  reason = "noyield-noentry";
+	}
+    }
+  if (reason == NULL)
+    {
+      thread_lock_entry (owner->thrd_entry);
+      if (owner->thrd_entry->lockwait_prequeued != (void *) owner
+	  && !(LK_IS_LOCKWAIT_THREAD (owner->thrd_entry) && owner->thrd_entry->lockwait == (void *) owner))
+	{
+	  /* the owner has just timed out or been interrupted, and will take its entry away */
+	  thread_unlock_entry (owner->thrd_entry);
+	  lock_free_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list, entry_ptr);
+	  stale = true;
+	  reason = "noyield-ownerstate";
+	}
+    }
+  if (reason != NULL)
+    {
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      return stale ? LK_NOT_YIELDED_STALE : LK_NOT_YIELDED;
+    }
+
+  /* 2. the hand-over, under the owner's thread mutex: the owner's entry is granted ... */
+  for (prev = NULL, e = res_ptr->waiter; e != owner; prev = e, e = e->next)
+    {
+      ;
+    }
+  lock_grant_waiting_entry (thread_p, res_ptr, prev, owner);
+
+  /* ... and our share leaves, as the statement end would give it back: no non2pl */
+  mode = mine->granted_mode;
+  class_entry = mine->class_entry;
+  for (prev = NULL, e = res_ptr->holder; e != mine; prev = e, e = e->next)
+    {
+      ;
+    }
+  if (prev == NULL)
+    {
+      res_ptr->holder = mine->next;
+    }
+  else
+    {
+      prev->next = mine->next;
+    }
+  if (transient)
+    {
+      mine->transient_count = 0;
+      if (tran_lock->transient_total > 0)
+	{
+	  tran_lock->transient_total--;
+	}
+    }
+  (void) lock_delete_from_tran_hold_list (mine, tran_index);
+  lock_decrement_class_granules (mine->class_entry);
+  lock_free_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list, mine);
+  mine = NULL;
+  /* we were the only holder */
+  res_ptr->total_holders_mode = owner->granted_mode;
+
+  if (owner->thrd_entry->lockwait_prequeued == (void *) owner)
+    {
+      /* queued and not yet asleep: it sees the grant when it takes this mutex again */
+      thread_unlock_entry (owner->thrd_entry);
+    }
+  else
+    {
+      lock_resume (owner, LOCK_RESUMED);
+    }
+
+  /* 3. our new entry at the head of the waiters, right behind the owner, ahead of the writers queued behind us */
+  lock_initialize_entry_as_blocked (entry_ptr, thread_p, tran_index, res_ptr, mode);
+  entry_ptr->next = res_ptr->waiter;
+  res_ptr->waiter = entry_ptr;
+  res_ptr->total_waiters_mode = NULL_LOCK;
+  for (e = res_ptr->waiter; e != NULL; e = e->next)
+    {
+      res_ptr->total_waiters_mode = lock_conv (e->blocked_mode, res_ptr->total_waiters_mode);
+    }
+
+  /* what is left of the lock timeout: the recheck record of the wait that brought us here */
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
+  if (wait_msecs > 0 && thread_p->lockwait_recheck_mvccid == owner_mvccid && thread_p->lockwait_recheck_trid == trid
+      && thread_p->lockwait_recheck_wait_msecs == wait_msecs)
+    {
+      wait_msecs = (int) MAX (wait_msecs - thread_p->lockwait_recheck_msecs, 0);
+    }
+
+  if (wait_msecs == 0)
+    {
+      /* no time left: time out at once, as a zero wait does */
+      pthread_mutex_unlock (&res_ptr->res_mutex);
+      (void) lock_set_error_for_timeout (thread_p, entry_ptr);
+      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+      return LK_YIELDED_FAILED;
+    }
+
+  /* 4. sleep, as a new request does */
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  start_msecs = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+  thread_lock_entry (thread_p);
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  ret = lock_suspend (thread_p, entry_ptr, wait_msecs);
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  elapsed = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL - start_msecs;
+  if (thread_p->lockwait_recheck_mvccid == owner_mvccid && thread_p->lockwait_recheck_trid == trid)
+    {
+      /* the wait counts toward the timeout of the next wait on the owner */
+      thread_p->lockwait_recheck_msecs += elapsed;
+    }
+
+  if (ret == LOCK_RESUMED)
+    {
+      /* as LK_S_POST_GRANT for a new request; the grant put the entry at the head of our hold list */
+      entry_ptr->class_entry = class_entry;
+      lock_increment_class_granules (class_entry);
+      if (transient)
+	{
+	  entry_ptr->transient_count = 1;
+	  tran_lock->transient_total++;
+	}
+      lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
+      return LK_YIELDED_GRANTED;
+    }
+
+  lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
+  return LK_YIELDED_FAILED;
 #endif /* !SERVER_MODE */
 }
 
@@ -8188,6 +8890,9 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
 
   /* the transaction is over, so no statement of it is inside a transient scope any more */
   lock_reset_transient_state (tran_lock);
+
+  /* releasing the self-lock grants its waiters; a deferred wake is no longer due */
+  lock_forget_deferred_wake (LOG_FIND_TDES (tran_index));
 
   /* remove all instance locks */
   entry_ptr = tran_lock->inst_hold_list;
@@ -9124,8 +9829,17 @@ lock_detect_local_deadlock (THREAD_ENTRY * thread_p)
       /* holding resource mutex */
       if (res_ptr->holder == NULL)
 	{
-	  if (res_ptr->waiter == NULL)
+	  for (hi = res_ptr->waiter; hi != NULL; hi = hi->next)
 	    {
+	      if (hi->thrd_entry != NULL && hi->thrd_entry->lockwait_prequeued == (void *) hi)
+		{
+		  break;
+		}
+	    }
+	  if (res_ptr->waiter == NULL || hi != NULL)
+	    {
+	      /* no waiter; or the last holder left while an owner queued here is not asleep yet: it grants itself
+	       * (lock_queue_and_wake_row_holder ()) */
 	      continue;
 	    }
 	  else
@@ -9384,6 +10098,8 @@ final_:
 	  (void) lock_wakeup_deadlock_victim_aborted (lk_Gl.victims[k].tran_index);
 	}
     }
+  /* the cycles lock_resolve_cycle_by_wake () took: the deferred wakes */
+  lock_send_deadlock_wakes (thread_p);
 
   /* deallocate memory space used for deadlock detection */
   if (lk_Gl.TWFG_edge != lk_Gl.TWFG_edge_storage)

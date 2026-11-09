@@ -564,6 +564,9 @@ css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_r
       /* 3. Call server_request() function */
       status = css_Server_request_handler (&thread_ref, eid, request, size, buffer);
 
+      /* a deferred wake due at the end of this request */
+      lock_end_request_deferred_wake (&thread_ref);
+
       /* 4. reset thread transaction id(may be NULL_TRAN_INDEX) */
       css_set_thread_info (&thread_ref, -1, 0, local_tran_index, -1);
     }

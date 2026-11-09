@@ -281,6 +281,9 @@ namespace cubthread
       int lockwait_recheck_trid;	/* the trid of the transaction that waited */
       int lockwait_recheck_wait_msecs;	/* the lock timeout it waited with */
       INT64 lockwait_recheck_msecs;	/* how long it had waited, in all */
+      UINT64 lockwait_row_oid;	/* packed OID of the row held X while waiting on a self-lock, or 0 */
+      void *lockwait_prequeued;	/* our lock entry queued before a targeted wake, not yet asleep */
+      UINT64 deferred_wake_seen;	/* the deferred epoch this request saw at its first row lock, or 0 */
       void *query_entry;
       entry *tran_next_wait;
       entry *worker_thrd_list;	/* worker thread on job queue */

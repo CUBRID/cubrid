@@ -1740,6 +1740,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->ddl_sql_user_text = NULL;
+  tdes->deferred_wake_epoch = 0;
+  tdes->deferred_wake_counter = 0;
+  tdes->wake_target = 0;
 
   for (i = 0; i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
@@ -4401,15 +4404,57 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 int
 logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen)
 {
+  return logtb_wait_for_tran_end_on_row (thread_p, mvccid, wake_gen, NULL, NULL);
+}
+
+/*
+ * logtb_wait_for_tran_end_on_row () - logtb_wait_for_tran_end () for a caller that holds row_oid X while it waits
+ *
+ * return	 : as logtb_wait_for_tran_end (), or LK_RECHECK_YIELD (positive, no error set) when the owner waits
+ *		   for row_oid: the caller tries lock_hand_row_to_owner ()
+ * row_oid (in)	 : the row, or NULL (a wait point that holds no row)
+ * owner_tran_index (out) : the owner, for the yield
+ *
+ * Note: A wait that comes back to read again waits again instead while the owner's wake is deferred
+ *	 (lock_settle_after_recheck ()).
+ */
+int
+logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, const OID * row_oid,
+				int *owner_tran_index)
+{
   int error_code;
   int granted;
+  UINT64 packed_oid = 0;
 
-  granted = lock_wait_transaction_mvccid (thread_p, mvccid, wake_gen);
-  if (granted == LK_NOTGRANTED_DUE_RECHECK)
+  if (thread_p == NULL)
     {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (row_oid != NULL)
+    {
+      packed_oid = ((UINT64) (UINT32) row_oid->pageid << 32) | ((UINT64) (UINT16) row_oid->slotid << 16)
+	| (UINT64) (UINT16) row_oid->volid;
+    }
+
+  while (true)
+    {
+      int next;
+
+      __atomic_store_n (&thread_p->lockwait_row_oid, packed_oid, __ATOMIC_RELAXED);
+      granted = lock_wait_transaction_mvccid (thread_p, mvccid, wake_gen);
+      __atomic_store_n (&thread_p->lockwait_row_oid, (UINT64) 0, __ATOMIC_RELAXED);
+      if (granted != LK_NOTGRANTED_DUE_RECHECK)
+	{
+	  break;
+	}
       /* a partial rollback (of that transaction, or of any while we joined the waiters): what the caller saw may be
-       * gone */
-      return NO_ERROR;
+       * gone, unless its wake is still deferred */
+      next = lock_settle_after_recheck (thread_p, mvccid, packed_oid, &wake_gen, owner_tran_index);
+      if (next == LK_RECHECK_REWAIT)
+	{
+	  continue;
+	}
+      return (next == LK_RECHECK_YIELD) ? LK_RECHECK_YIELD : NO_ERROR;
     }
   if (granted != LK_GRANTED)
     {

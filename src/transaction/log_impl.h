@@ -569,6 +569,15 @@ struct log_tdes
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
+  /* a rollback to a savepoint defers waking the waiters on our MVCCID self-lock.
+   * deferred_wake_epoch is 0 or the epoch of the partial rollback whose wake is still due; the epoch comes from
+   * deferred_wake_counter, which is never reset (an epoch cleared and taken again would let a late clear of an old
+   * epoch drop a new one). wake_target is the packed OID of the row we queued on while the wake is deferred, or 0.
+   * Read and written with __atomic builtins. */
+  UINT64 deferred_wake_epoch;
+  UINT64 deferred_wake_counter;
+  UINT64 wake_target;
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -1201,6 +1210,8 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen);
+extern int logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, const OID * row_oid,
+					   int *owner_tran_index);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);

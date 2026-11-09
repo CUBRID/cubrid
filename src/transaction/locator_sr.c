@@ -6136,6 +6136,9 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   assert (!OID_ISNULL (class_oid));
   assert (!OID_IS_ROOTOID (class_oid));
 
+  /* an INSERT takes no row write lock on the new row; it is a write all the same */
+  lock_note_row_write (thread_p);
+
   HFID_COPY (&real_hfid, hfid);
   COPY_OID (&real_class_oid, class_oid);
 
@@ -14353,7 +14356,7 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
  */
 static SCAN_CODE
 locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_mvcc_class,
-				  MVCC_REC_HEADER * recdes_header)
+				  MVCC_REC_HEADER * recdes_header, bool * lock_acquired, bool transient)
 {
   SCAN_CODE scan = S_SUCCESS;
 #if defined (SERVER_MODE)
@@ -14419,10 +14422,42 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
 	    }
 	  heap_clean_get_context (thread_p, context);
-	  if (logtb_wait_for_tran_end (thread_p, owner_mvccid, wake_gen) != NO_ERROR)
-	    {
-	      return S_ERROR;
-	    }
+	  {
+	    /* holding the row X, we may be asked to give it to the owner (lock_hand_row_to_owner ()) */
+	    int owner_tran_index = NULL_TRAN_INDEX;
+	    int wait_rc = logtb_wait_for_tran_end_on_row (thread_p, owner_mvccid, wake_gen,
+							  (*lock_acquired) ? context->oid_p : NULL, &owner_tran_index);
+
+	    while (wait_rc == LK_RECHECK_YIELD)
+	      {
+		int yield_rc = lock_hand_row_to_owner (thread_p, context->oid_p, context->class_oid_p, owner_tran_index,
+						       owner_mvccid, transient);
+
+		if (yield_rc == LK_YIELDED_FAILED)
+		  {
+		    /* the row lock went to the owner and could not be had again */
+		    *lock_acquired = false;
+		    return S_ERROR;
+		  }
+		/* the row lock is ours again, behind the owner's new stamp, or we did not yield: read again; but if the
+		 * owner no longer waits for the row, wait again while its wake is deferred */
+		wait_rc = NO_ERROR;
+		if (yield_rc == LK_NOT_YIELDED_STALE
+		    && lock_settle_after_recheck (thread_p, owner_mvccid, 0, &wake_gen,
+						  &owner_tran_index) == LK_RECHECK_REWAIT)
+		  {
+		    wait_rc = logtb_wait_for_tran_end_on_row (thread_p, owner_mvccid, wake_gen, context->oid_p,
+							      &owner_tran_index);
+		  }
+	      }
+	    if (wait_rc != NO_ERROR)
+	      {
+		return S_ERROR;
+	      }
+	    /* lock_hand_row_to_owner () gave the row back to us, if it gave it away */
+	    assert (!*lock_acquired || lock_get_object_lock (context->class_oid_p, oid_Root_class_oid) == BU_LOCK
+		    || lock_get_object_lock (context->oid_p, context->class_oid_p) >= S_LOCK);
+	  }
 
 	  /* committed or rolled back, read the header again; it may name another owner */
 	  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
@@ -14730,7 +14765,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
 
-  scan = locator_get_settled_last_version (thread_p, context, is_mvcc_class, &recdes_header);
+  scan = locator_get_settled_last_version (thread_p, context, is_mvcc_class, &recdes_header, &lock_acquired, transient);
   if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
     {
       goto error;
