@@ -80,6 +80,7 @@
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
 #define UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT "cHANGEcOLUMNcOMMENT"
+#define UNIQUE_SAVEPOINT_DROP_INDEX "dROPiNDEX"
 #define UNIQUE_SAVEPOINT_CHANGE_REPLICATION "cHANGErEPLICATION"
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
@@ -111,8 +112,12 @@
 #define IS_REPL_CONSTRAINT_RELATED_ALTER(code)              \
   ( ((code) == PT_ADD_ATTR_MTHD)         ||                 \
     ((code) == PT_DROP_ATTR_MTHD)        ||                 \
+    ((code) == PT_CHANGE_ATTR)           ||                 \
+    ((code) == PT_ADD_SUPCLASS)          ||                 \
+    ((code) == PT_DROP_SUPCLASS)         ||                 \
     ((code) == PT_DROP_CONSTRAINT)       ||                 \
-    ((code) == PT_DROP_PRIMARY_CLAUSE)                     \
+    ((code) == PT_DROP_PRIMARY_CLAUSE)   ||                 \
+    ((code) == PT_DROP_INDEX_CLAUSE)                        \
   )
 
 typedef enum
@@ -264,7 +269,8 @@ static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
-static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter);
+static int do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter,
+				       bool * const is_unique_index);
 static int do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 
 static int do_rename_internal (const char *const old_name, const char *const new_name);
@@ -420,7 +426,12 @@ static int do_alter_index_compact_one_class (MOP class_mop, const char *index_na
 					     INT64 * keys_compacted, INT64 * pages_freed, INT64 * pairs_skipped);
 
 static int check_ha_repl_constraint (DB_OBJECT * class_obj);
-static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
+static int check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
+static int check_ha_repl_constraints_in_hierarchy (DB_OBJECT * class_obj);
+static int check_ha_repl_constraints_in_subclass_list (const char *superclass_name, DB_OBJLIST * subclasses,
+						       DB_OBJLIST * classes_to_drop);
+static int check_ha_repl_constraints_in_subclass_tree (const char *superclass_name, DB_OBJECT * subclass_obj,
+						       DB_OBJLIST * classes_to_drop);
 
 int ib_thread_count = 0;
 
@@ -1706,11 +1717,12 @@ do_alter_clause_add_index (PARSER_CONTEXT * const parser, PT_NODE * const alter)
  *   alter(in/out): Parse tree of a PT_DROP_INDEX_CLAUSE clause potentially
  *                  followed by the rest of the clauses in the ALTER
  *                  statement.
+ *   is_unique_index(out): Whether the dropped index is a unique index
  * Note: The clauses following the PT_DROP_INDEX_CLAUSE clause are not
  *       affected in any way.
  */
 static int
-do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter)
+do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter, bool * const is_unique_index)
 {
   int error_code = NO_ERROR;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
@@ -1723,6 +1735,9 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
   assert (alter->info.alter.constraint_list != NULL);
   assert (alter->info.alter.constraint_list->next == NULL);
   assert (alter->info.alter.constraint_list->node_type == PT_NAME);
+  assert (is_unique_index != NULL);
+
+  *is_unique_index = false;
 
   index_type =
     get_reverse_unique_index_type (alter->info.alter.alter_clause.index.reverse,
@@ -1750,6 +1765,8 @@ do_alter_clause_drop_index (PARSER_CONTEXT * const parser, PT_NODE * const alter
       is_reverse = alter->info.alter.alter_clause.index.reverse;
       is_unique = alter->info.alter.alter_clause.index.unique;
     }
+
+  *is_unique_index = is_unique;
 
   error_code =
     create_or_drop_index_helper (parser, alter->info.alter.constraint_list->info.name.original, is_reverse, is_unique,
@@ -1839,6 +1856,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   bool do_rollback = false;
   int au_save = 0;
   DB_OBJECT *histogram_obj = NULL;
+  DB_OBJECT *class_obj = NULL;
   bool need_check_repl_constraint = false;
 
   CHECK_MODIFICATION_ERROR ();
@@ -1851,10 +1869,18 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
     }
   do_rollback = true;
 
+  class_obj = alter->info.alter.entity_name->info.name.db_object;
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error_exit;
+    }
+
   for (crt_clause = alter; crt_clause != NULL; crt_clause = crt_clause->next)
     {
       PT_NODE *const save_next = crt_clause->next;
       const PT_ALTER_CODE alter_code = crt_clause->info.alter.code;
+      bool is_unique_index = false;
 
       /* The first ALTER clause has already been checked, we call the semantic check starting with the second clause. */
       if (do_semantic_checks)
@@ -2006,7 +2032,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  error_code = do_alter_clause_add_index (parser, crt_clause);
 	  break;
 	case PT_DROP_INDEX_CLAUSE:
-	  error_code = do_alter_clause_drop_index (parser, crt_clause);
+	  error_code = do_alter_clause_drop_index (parser, crt_clause, &is_unique_index);
 	  break;
 	case PT_CHANGE_AUTO_INCREMENT:
 	  error_code = do_alter_change_auto_increment (parser, crt_clause);
@@ -2044,7 +2070,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  goto error_exit;
 	}
 
-      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter->info.alter.code))
+      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter_code)
+	  && (alter_code != PT_DROP_INDEX_CLAUSE || is_unique_index))
 	{
 	  need_check_repl_constraint = true;
 	}
@@ -2054,29 +2081,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   if (need_check_repl_constraint)
     {
-      DB_OBJECT *class_obj = alter->info.alter.entity_name->info.name.db_object;
-      int is_vclass;
-
-      if (class_obj == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto error_exit;
-	}
-
-      is_vclass = db_is_vclass (class_obj);
-      if (is_vclass < 0)
-	{
-	  error_code = is_vclass;
-	  goto error_exit;
-	}
-
-      /* Vclasses do not store data and therefore do not require a replication key. */
-      if (is_vclass > 0 || !sm_is_replication_class (class_obj))
-	{
-	  return NO_ERROR;
-	}
-
-      error_code = check_ha_repl_constraint (class_obj);
+      error_code = check_ha_repl_constraints_in_hierarchy (class_obj);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -2853,6 +2858,51 @@ drop_class_name (const char *name, bool is_cascade_constraints)
 }
 
 /*
+ * collect_subclasses_to_validate() - Collect subclasses whose inherited constraints may change after DROP CLASS.
+ *   return: Error code
+ *   class_name(in): Name of the class to be dropped
+ *   subclasses_affected_by_drop(in/out): Subclasses to validate after their superclass is dropped
+ */
+static int
+collect_subclasses_to_validate (const char *class_name, DB_OBJLIST ** subclasses_affected_by_drop)
+{
+  DB_OBJECT *class_obj = NULL;
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST *subclass = NULL;
+  int error = NO_ERROR;
+
+  if (HA_DISABLED ())
+    {
+      return NO_ERROR;
+    }
+
+  class_obj = db_find_class (class_name);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  for (subclass = class_->users; subclass != NULL; subclass = subclass->next)
+    {
+      error = ml_add (subclasses_affected_by_drop, subclass->op, NULL);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_drop() - Drops a vclass, class
  *   return: Error code if a vclass is not deleted.
  *   parser(in): Parser context
@@ -2865,6 +2915,9 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *entity_spec_list, *entity_spec;
   PT_NODE *entity;
   PT_NODE *entity_list;
+  DB_OBJLIST *subclasses_affected_by_drop = NULL;
+  DB_OBJLIST *classes_to_drop = NULL;
+  DB_OBJECT *class_obj = NULL;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -2889,23 +2942,74 @@ do_drop (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
+  if (!HA_DISABLED ())
+    {
+      entity_spec_list = statement->info.drop.spec_list;
+      for (entity_spec = entity_spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  entity_list = entity_spec->info.spec.flat_entity_list;
+	  for (entity = entity_list; entity != NULL; entity = entity->next)
+	    {
+	      class_obj = db_find_class (entity->info.name.original);
+	      if (class_obj == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  goto error_exit;
+		}
+
+	      error = ml_add (&classes_to_drop, class_obj, NULL);
+	      if (error != NO_ERROR)
+		{
+		  goto error_exit;
+		}
+	    }
+	}
+    }
+
   entity_spec_list = statement->info.drop.spec_list;
   for (entity_spec = entity_spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
     {
       entity_list = entity_spec->info.spec.flat_entity_list;
       for (entity = entity_list; entity != NULL; entity = entity->next)
 	{
+	  error = collect_subclasses_to_validate (entity->info.name.original, &subclasses_affected_by_drop);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
 	  error = drop_class_name (entity->info.name.original, statement->info.drop.is_cascade_constraints);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
+
+	  error = check_ha_repl_constraints_in_subclass_list (entity->info.name.original, subclasses_affected_by_drop,
+							      classes_to_drop);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  ml_free (subclasses_affected_by_drop);
+	  subclasses_affected_by_drop = NULL;
 	}
     }
 
+  ml_free (classes_to_drop);
   return error;
 
 error_exit:
+  if (subclasses_affected_by_drop != NULL)
+    {
+      ml_free (subclasses_affected_by_drop);
+    }
+
+  if (classes_to_drop != NULL)
+    {
+      ml_free (classes_to_drop);
+    }
+
   if (error != ER_LK_UNILATERALLY_ABORTED)
     {
       tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_ENTITY);
@@ -3582,6 +3686,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_CONSTRAINT_TYPE index_type;
   bool is_reverse;
   bool is_unique;
+  bool check_repl_constraint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -3626,7 +3731,26 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       is_unique = statement->info.index.unique;
     }
 
+  check_repl_constraint = is_unique && !HA_DISABLED ();
+  if (check_repl_constraint)
+    {
+      error_code = tran_system_savepoint (UNIQUE_SAVEPOINT_DROP_INDEX);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
   error_code = create_or_drop_index_helper (parser, index_name, is_reverse, is_unique, NULL, obj, DO_INDEX_DROP);
+  if (error_code == NO_ERROR && check_repl_constraint)
+    {
+      error_code = check_ha_repl_constraints_in_hierarchy (obj);
+    }
+
+  if (error_code != NO_ERROR && check_repl_constraint && error_code != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_INDEX);
+    }
 
   return error_code;
 }
@@ -9912,31 +10036,55 @@ error_exit:
 /*
  * check_ha_repl_fk_ref_all_replicated() - Check if all referenced tables (FK targets)
  *                                         are replicated.
- *   return    : true if all referenced tables are replicated, false otherwise
+ *   return    : NO_ERROR if all referenced tables are replicated, error code otherwise
  *   class_obj(in): The class object being validated
  *
  */
-bool
+int
 check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj)
 {
-  DB_CONSTRAINT *tmp_c;
+  SM_CLASS *class_ = NULL;
+  SM_CLASS *ref_class = NULL;
+  SM_CLASS_CONSTRAINT *tmp_c;
+  MOP ref_class_mop;
+  int error = NO_ERROR;
 
   assert (class_obj != NULL);
 
-  for (tmp_c = db_get_constraints (class_obj); tmp_c; tmp_c = db_constraint_next (tmp_c))
+  error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (tmp_c = class_->constraints; tmp_c != NULL; tmp_c = tmp_c->next)
     {
       if (tmp_c->type != SM_CONSTRAINT_FOREIGN_KEY)
 	{
 	  continue;
 	}
 
-      if (!sm_is_replication_class (ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL)))
+      ref_class_mop = ws_mop (&(tmp_c->fk_info->ref_class_oid), NULL);
+      if (ref_class_mop == NULL)
 	{
-	  return false;
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      error = au_fetch_class_force (ref_class_mop, &ref_class, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (ref_class->flags & SM_CLASSFLAG_DATA_REPLICATION_OFF)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_FK_CONSTRAINT_VIOLATION, 0);
+	  return ER_HA_FK_CONSTRAINT_VIOLATION;
 	}
     }
 
-  return true;
+  return NO_ERROR;
 }
 
 /*
@@ -10003,24 +10151,170 @@ log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
 int
 check_ha_repl_constraint (DB_OBJECT * class_obj)
 {
+  SM_CLASS *class_ = NULL;
+  int error = NO_ERROR;
+  int is_vclass;
+
   if (HA_DISABLED ())
     {
       return NO_ERROR;
     }
 
-  if (!classobj_has_class_repl_key_constraint (db_get_constraints (class_obj)))
+  is_vclass = db_is_vclass (class_obj);
+  if (is_vclass < 0)
+    {
+      return is_vclass;
+    }
+
+  /* Vclasses do not store data and therefore do not require replication constraints. */
+  if (is_vclass > 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* Replication validation reads schema metadata independently of SELECT privileges. */
+  error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (!classobj_has_class_repl_key_constraint (class_->constraints))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_KEY_REQUIRED, 0);
       return ER_HA_REPLICATION_KEY_REQUIRED;
     }
 
-  if (!check_ha_repl_fk_ref_all_replicated (class_obj))
+  return check_ha_repl_fk_ref_all_replicated (class_obj);
+}
+
+/*
+ * check_ha_repl_constraints_in_subclass_list() - Validate replication constraints for a list of subclasses.
+ *   return: Error code
+ *   superclass_name(in): Name of the class being altered or dropped
+ *   subclasses(in): Subclasses to validate
+ *   classes_to_drop(in): Classes excluded from validation, or NULL outside DROP
+ */
+static int
+check_ha_repl_constraints_in_subclass_list (const char *superclass_name, DB_OBJLIST * subclasses,
+					    DB_OBJLIST * classes_to_drop)
+{
+  DB_OBJLIST *subclass;
+  int error = NO_ERROR;
+
+  for (subclass = subclasses; subclass != NULL; subclass = subclass->next)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_FK_CONSTRAINT_VIOLATION, 0);
-      return ER_HA_FK_CONSTRAINT_VIOLATION;
+      error = check_ha_repl_constraints_in_subclass_tree (superclass_name, subclass->op, classes_to_drop);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
   return NO_ERROR;
+}
+
+/*
+ * check_ha_repl_constraints_in_subclass_tree() - Validate a subclass and its descendants.
+ *   return: Error code
+ *   superclass_name(in): Name of the class being altered or dropped
+ *   subclass_obj(in): Subclass to validate
+ *   classes_to_drop(in): Classes excluded from validation, or NULL outside DROP
+ */
+static int
+check_ha_repl_constraints_in_subclass_tree (const char *superclass_name, DB_OBJECT * subclass_obj,
+					    DB_OBJLIST * classes_to_drop)
+{
+  SM_CLASS *class_ = NULL;
+  const char *subclass_name;
+  int error = NO_ERROR;
+
+  if (WS_IS_DELETED (subclass_obj))
+    {
+      return NO_ERROR;
+    }
+
+  error = au_fetch_class_force (subclass_obj, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (ml_find (classes_to_drop, subclass_obj))
+    {
+      /* A partitioned class dropped in the same statement takes its partitions with it. */
+      if (class_->partition != NULL && class_->partition->pname == NULL)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (!(class_->flags & SM_CLASSFLAG_DATA_REPLICATION_OFF))
+    {
+      error = check_ha_repl_constraint (subclass_obj);
+      if (error != NO_ERROR)
+	{
+	  if (error != ER_HA_REPLICATION_KEY_REQUIRED && error != ER_HA_FK_CONSTRAINT_VIOLATION)
+	    {
+	      return error;
+	    }
+
+	  subclass_name = sm_get_ch_name (subclass_obj);
+	  if (subclass_name == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS, 2,
+		  superclass_name, subclass_name);
+	  return ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS;
+	}
+    }
+
+  /* Even an excluded subclass can have descendants that survive the DROP. */
+  return check_ha_repl_constraints_in_subclass_list (superclass_name, class_->users, classes_to_drop);
+}
+
+/*
+ * check_ha_repl_constraints_in_hierarchy() - Validate replication constraints for a class hierarchy.
+ *   return        : Error code (NO_ERROR if valid)
+ *   class_obj(in) : Root class of the hierarchy being checked
+ */
+static int
+check_ha_repl_constraints_in_hierarchy (DB_OBJECT * class_obj)
+{
+  SM_CLASS *class_ = NULL;
+  const char *superclass_name = NULL;
+  int error = NO_ERROR;
+
+  if (HA_DISABLED ())
+    {
+      return NO_ERROR;
+    }
+
+  if (sm_is_replication_class (class_obj))
+    {
+      error = check_ha_repl_constraint (class_obj);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  superclass_name = sm_get_ch_name (class_obj);
+  if (superclass_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return check_ha_repl_constraints_in_subclass_list (superclass_name, class_->users, NULL);
 }
 
 /*
@@ -11157,6 +11451,21 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
     }
   /* set NULL, avoid 'abort_class' in case of error */
   ctemplate = NULL;
+
+  /* A clause that drops NOT NULL from the replication key is checked here, before the rows are rewritten,
+   * so that a clause bound to fail does not pay for the rewrite first. The new constraints of the clause do
+   * not exist yet at this point: a clause that adds a PRIMARY KEY keeps the key, so it is left to the check
+   * that follows the whole statement. */
+  if (is_srv_update_needed && alter->next == NULL
+      && is_att_prop_set (attr_chg_prop.p[P_NOT_NULL], ATT_CHG_PROPERTY_LOST)
+      && !is_att_prop_set (attr_chg_prop.p[P_S_CONSTR_PK], ATT_CHG_PROPERTY_GAINED))
+    {
+      error = check_ha_repl_constraints_in_hierarchy (class_obj);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
 
   if (attr_chg_prop.constr_info != NULL)
     {
