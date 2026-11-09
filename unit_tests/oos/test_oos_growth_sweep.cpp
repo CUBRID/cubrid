@@ -617,8 +617,10 @@ TEST (OosGrowthSweepTest, DeleteThatEmptiesNoPageCostsGrowthNothing)
   remove_file_and_commit (oos_vfid);
 }
 
-// ADR-0010 decision 4: pages a lap finds busy enter the set, and the lap still clears the unknown mark.
-TEST (OosGrowthSweepTest, LapAfterRestartKeepsBusyPageInTheSet)
+// ADR-0010 decision 4: a page the lap finds busy enters the set, and the same growth checks the set
+// again after the lap, so the page is reused as soon as it is free. The completed lap clears the
+// unknown mark.
+TEST (OosGrowthSweepTest, LapAfterRestartRechecksBusyPage)
 {
   VFID oos_vfid;
   ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
@@ -633,22 +635,23 @@ TEST (OosGrowthSweepTest, LapAfterRestartKeepsBusyPageInTheSet)
   simulate_hint_loss (oos_vfid);
 
   // The lap's first page is the sticky header, which is skipped without a fix; the next fix is the
-  // emptied page, and it fails.
+  // emptied page, and it fails once.
   oos_test_fail_next_reclaim_read_fix ();
   bridge_oos_debug_counters_reset ();
   OID oid2 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
-  ASSERT_EQ (count_user_pages (oos_vfid), 3);
   EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_laps, 1ULL);
-  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 1U) << "the lap dropped a busy page";
+  ASSERT_EQ (count_user_pages (oos_vfid), 2) << "the page the lap found busy was not rechecked after the lap";
+  ASSERT_EQ (oid2.pageid, oid1.pageid);
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 0U);
 
   simulate_hint_loss (oos_vfid);
   bridge_oos_debug_counters_reset ();
   OID oid3 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
-  ASSERT_EQ (count_user_pages (oos_vfid), 3) << "the busy page the lap saw was stranded";
-  ASSERT_EQ (oid3.pageid, oid1.pageid);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3);
   EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_laps, 0ULL) << "the completed lap left the file unknown";
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_examined_pages, 0ULL);
   assert_value_intact (oid2);
   assert_value_intact (oid3);
 
