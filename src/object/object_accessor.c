@@ -674,7 +674,7 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
    * unresolved envelope would be stored as if it were the user payload.  Refuse instead of losing the LOB.  */
   /* [리뷰] 클라이언트 1차 방어. 객체 경로는 직렬화 때 LOB 마커를 잃는다.
    * 미해결 봉투(파일·스트림·업로드·DML/로드 슬롯)면 텍스트가 값으로 저장된다.
-   * 트리거·뷰 갱신에 64KiB 넘는 LOB 파라미터가 오면 여기서 -1386. */
+   * 트리거·뷰 갱신에 64KiB 넘는 LOB 파라미터가 오면 여기서 -1402. */
   if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (att->domain)) && obj_is_unresolved_internal_lob_transport (value))
     {
       char detail[SM_MAX_IDENTIFIER_LENGTH + 128];

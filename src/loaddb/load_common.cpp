@@ -946,7 +946,7 @@ namespace cubload
 			     bool &sidecar_available)
   {
     /* [리뷰] 사이드카가 없으면 NO_ERROR·available=false. 참조 유무 검사는 커밋 31·32.
-     * 엔트리 파싱 실패는 ER_FAILED를 돌려준다(er_set은 -1390).
+     * 엔트리 파싱 실패는 ER_FAILED를 돌려준다(er_set은 -1405).
      * 반환값으로 분기하는 호출자는 -1390을 못 본다. */
     std::string path;
     std::ifstream sidecar_file;
@@ -1009,7 +1009,7 @@ namespace cubload
       }
 
     /* only a stored LOB value is read with the unload-time charset; an unload without one loads anywhere */
-    /* [리뷰] LOB 값이 하나라도 있을 때만 charset 불일치(-1388)로 거부한다.
+    /* [리뷰] LOB 값이 하나라도 있을 때만 charset 불일치(-1403)로 거부한다.
      * 콜레이션은 비교하지 않는다. 값 없는 사이드카는 어디든 적재된다. */
     if (!sidecar.empty () && db_charset != NULL && file_charset != db_charset)
       {
