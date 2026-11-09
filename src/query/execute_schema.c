@@ -81,6 +81,7 @@
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
 #define UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT "cHANGEcOLUMNcOMMENT"
 #define UNIQUE_SAVEPOINT_DROP_INDEX "dROPiNDEX"
+#define UNIQUE_SAVEPOINT_CHANGE_REPLICATION "cHANGErEPLICATION"
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
@@ -8187,8 +8188,6 @@ do_promote_partition (SM_CLASS * class_)
   SM_ATTRIBUTE *smattr = NULL;
   bool has_notnull_unique = false;
 
-  DB_CONSTRAINT *tmp;
-  SM_CLASS_CONSTRAINT *c;
   CHECK_1ARG_ERROR (class_);
 
   if (class_->partition == NULL)
@@ -10121,6 +10120,12 @@ log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp)
       if (!sm_is_replication_class (ref_class_mop))
 	{
 	  DB_CONSTRAINT *pk_c = db_constraint_find_primary_key (db_get_constraints (ref_class_mop));
+	  if (pk_c == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_CONSTRAINT, 0);
+	      return ER_SM_INVALID_CONSTRAINT;
+	    }
+
 	  fprintf (fp, "%s(%s) -> %s(%s)\n", sm_get_ch_name (class_obj), tmp_c->name,
 		   sm_get_ch_name (ref_class_mop), pk_c->name);
 	  ret++;
@@ -12222,7 +12227,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
       goto exit;
     }
 
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_REPLICATION);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -12320,7 +12325,7 @@ exit:
 
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_REPLICATION);
     }
 
   return error;

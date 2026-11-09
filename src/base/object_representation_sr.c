@@ -44,6 +44,9 @@
 #define DATA_INIT(data, type) memset(data, 0, sizeof(DB_DATA))
 #define OR_ARRAY_EXTENT 10
 
+/* Must match SM_CLASSFLAG_DATA_REPLICATION_OFF in class_object.h. */
+#define OR_CLASSFLAG_DATA_REPLICATION_OFF 32
+
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
  * The variable offset table is present in the headers of objects and sets.
@@ -795,13 +798,12 @@ bool
 or_class_is_replication_on (RECDES * record)
 {
   int flags = 0;
-  int replication_off_flag = 32;	/* SM_CLASSFLAG_REPLICATION_OFF = 32 */
 
   /* TODO:
    * Consider adding a replication flag to HEAP_CLASSREPR_ENTRY in heap_classrepr to reduce class record interpretation(EPIC CBRD-26096). */
   or_class_flags (record, &flags);
 
-  return !(flags & replication_off_flag);
+  return !(flags & OR_CLASSFLAG_DATA_REPLICATION_OFF);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -4775,7 +4777,7 @@ or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_versi
 /* 
  * or_is_replication_candidate_key() -
  *   return : true if the index is a replication-key candidate
- *            (PRIMARY KEY, or UNIQUE with at least one key attribute NOT NULL)
+ *            (PRIMARY KEY, or UNIQUE/REVERSE UNIQUE with at least one key attribute NOT NULL)
  *   index(in): OR_INDEX pointer (may be NULL)
  */
 /* TODO: We need to review a method to replace the index-dependent approach with one that receives the replication key name from the master node(EPIC CBRD-26096). */
@@ -4790,12 +4792,18 @@ or_is_replication_candidate_key (const OR_INDEX * index)
       return false;
     }
 
+  /* An index being built online must not be used as a replication key. */
+  if (index->index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+    {
+      return false;
+    }
+
   if (index->type == BTREE_PRIMARY_KEY)
     {
       return true;
     }
 
-  if (index->type != BTREE_UNIQUE || index->n_atts <= 0 || index->atts == NULL)
+  if (!btree_is_unique_type (index->type) || index->n_atts <= 0 || index->atts == NULL)
     {
       return false;
     }
