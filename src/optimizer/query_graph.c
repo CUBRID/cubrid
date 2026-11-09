@@ -251,7 +251,6 @@ static void qo_discover_edges (QO_ENV *);
 static void qo_add_null_supplier_dep_set (QO_ENV *);
 static void qo_get_on_cond_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers);
 static void qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers);
-static void qo_add_where_term_dep_set (QO_ENV * env);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -594,7 +593,6 @@ qo_optimize_helper (QO_ENV * env)
 
   /* order each on_node after the outer joins that null-supply what its ON clause reads */
   qo_add_null_supplier_dep_set (env);
-  qo_add_where_term_dep_set (env);
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
@@ -6631,71 +6629,6 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
 }
 
 /*
- * qo_add_where_term_dep_set () - Join the later nodes of a WHERE join/other
- *   term after every preceding outer join on_node that can null-pad a node
- *   the term reads, so the term is not evaluated before that padding.
- *   Terms that qo_classify_outerjoin_terms () turns into after-join terms are
- *   skipped.
- *   return:
- *   env(in):
- */
-static void
-qo_add_where_term_dep_set (QO_ENV * env)
-{
-  int i, k, t, nidx_self;
-  bool or_outer;
-  QO_TERM *term;
-  QO_NODE *k_node;
-  BITSET suppliers;
-  BITSET_ITERATOR bi, ti;
-
-  bitset_init (&suppliers, env);
-
-  for (i = 0; i < env->nterms; i++)
-    {
-      term = QO_ENV_TERM (env, i);
-      if (QO_ON_COND_TERM (term) || (QO_TERM_CLASS (term) != QO_TC_JOIN && QO_TERM_CLASS (term) != QO_TC_OTHER))
-	{
-	  continue;
-	}
-
-      nidx_self = -1;
-      or_outer = false;
-      for (t = bitset_iterate (&(QO_TERM_NODES (term)), &ti); t != -1; t = bitset_next_member (&ti))
-	{
-	  nidx_self = MAX (nidx_self, QO_NODE_IDX (QO_ENV_NODE (env, t)));
-	  if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_PRED) && QO_NODE_IS_OUTER_JOIN (QO_ENV_NODE (env, t)))
-	    {
-	      or_outer = true;
-	    }
-	}
-
-      /* qo_classify_outerjoin_terms () makes these after-join terms, evaluated once every node is joined */
-      if (nidx_self < 0 || QO_NODE_IS_OUTER_JOIN (QO_ENV_NODE (env, nidx_self)) || or_outer)
-	{
-	  continue;
-	}
-
-      BITSET_CLEAR (suppliers);
-      qo_get_null_suppliers_of_nodes (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
-
-      for (k = bitset_iterate (&suppliers, &bi); k != -1; k = bitset_next_member (&bi))
-	{
-	  k_node = QO_ENV_NODE (env, k);
-	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &ti); t != -1; t = bitset_next_member (&ti))
-	    {
-	      if (t > k)
-		{
-		  QO_ADD_OUTER_DEP_SET (QO_ENV_NODE (env, t), k_node);
-		}
-	    }
-	}
-    }
-
-  bitset_delset (&suppliers);
-}
-
-/*
  * qo_classify_outerjoin_terms () -
  *   return:
  *   env(in):
@@ -6711,8 +6644,8 @@ qo_add_where_term_dep_set (QO_ENV * env)
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
  * I1|ON   |TC_sarg/other(inner) |-         |null-padded ref|TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
- * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
- * W3|WHERE|TC_other(n>0)        |!Outer    |!Right         |TC_other(ow TC_aj)
+ * W2|WHERE|TC_join              |!Outer    |!Right,!pad ref|TC_join(ow TC_aj)
+ * W3|WHERE|TC_other(n>0)        |!Outer    |!Right,!pad ref|TC_other(ow TC_aj)
  * W4|WHERE|TC_other(n==0)       |-         |-              |TC_aj
  * --+-----+---------------------+----------+---------------+------------------
  */
@@ -6849,7 +6782,10 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	  else
 	    {
-	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred)
+	      /* a join edge would evaluate it with the outer join that null-pads a node it reads, before the padding */
+	      BITSET_CLEAR (suppliers);
+	      qo_get_null_suppliers_of_nodes (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
+	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred || !bitset_is_empty (&suppliers))
 		{
 		  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 
@@ -6865,7 +6801,12 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  if (nidx_self >= 0)
 	    {
 	      node = QO_ENV_NODE (env, nidx_self);
-	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred)
+	      BITSET_CLEAR (suppliers);
+	      if (!QO_ON_COND_TERM (term))
+		{
+		  qo_get_null_suppliers_of_nodes (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
+		}
+	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred || !bitset_is_empty (&suppliers))
 		{
 		  if (QO_ON_COND_TERM (term))
 		    {
