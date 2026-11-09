@@ -322,9 +322,6 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   // tdes.mvccinfo.snapshot.m_active_mvccs was not checked because it was not safe; now it is
   tdes.mvccinfo.snapshot.m_active_mvccs.check_valid ();
 
-  // the statistics loaded above count only if no transaction completed since the copied status
-  logtb_confirm_global_statistics (thread_get_thread_entry_info (), trans_status_version);
-
   highest_completed_mvccid = tdes.mvccinfo.snapshot.m_active_mvccs.compute_highest_completed_mvccid ();
   MVCCID_FORWARD (highest_completed_mvccid);
 
@@ -335,7 +332,6 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   tdes.mvccinfo.snapshot.snapshot_fnc = mvcc_satisfies_snapshot;
   tdes.mvccinfo.snapshot.lowest_active_mvccid = crt_status_lowest_active;
   tdes.mvccinfo.snapshot.highest_completed_mvccid = highest_completed_mvccid;
-  tdes.mvccinfo.snapshot.status_version = trans_status_version;
   tdes.mvccinfo.snapshot.valid = true;
 
   if (is_perf_tracking)
@@ -439,12 +435,6 @@ mvcctable::is_active (MVCCID mvccid) const
   while (version != m_trans_status_history[index].m_version.load ());
 
   return ret_active;
-}
-
-mvcc_trans_status::version_type
-mvcctable::get_current_status_version () const
-{
-  return m_current_trans_status.m_version.load ();
 }
 
 mvcc_trans_status &

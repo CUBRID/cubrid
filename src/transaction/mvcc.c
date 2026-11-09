@@ -717,7 +717,6 @@ mvcc_snapshot::mvcc_snapshot ()
   , highest_completed_mvccid (MVCCID_NULL)
   , m_active_mvccs ()
   , snapshot_fnc (NULL)
-  , status_version (0)
   , valid (false)
 {
 }
@@ -743,7 +742,6 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
   dest.lowest_active_mvccid = lowest_active_mvccid;
   dest.highest_completed_mvccid = highest_completed_mvccid;
   dest.snapshot_fnc = snapshot_fnc;
-  dest.status_version = status_version;
   dest.valid = valid;
 }
 
