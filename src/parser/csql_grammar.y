@@ -20926,6 +20926,7 @@ identifier
 	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REPLICATION            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RESPECT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RETAIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REUSE_OID              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
