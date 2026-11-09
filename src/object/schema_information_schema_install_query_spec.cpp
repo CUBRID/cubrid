@@ -419,7 +419,7 @@ sm_define_view_partitions_spec (void)
       "NULL AS [partition_ordinal_position], "
       /* DB_PARTITION_HASH, DB_PARTITION_RANGE, DB_PARTITION_LIST */
       "DECODE ([part].[ptype], %d, 'HASH', %d, 'RANGE', %d, 'LIST') AS [partition_method], "
-      "[part_info].[pexpr] AS [partition_expression], "
+      "TRIM (SUBSTRING ([part_info].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [part_info].[pexpr]) - 8))) AS [partition_expression], "
       /* DB_PARTITION_RANGE, DB_PARTITION_LIST */
       "IF ([part].[ptype] IN (%d, %d), COLLECTION_TO_STRING ([part].[pvalues]), NULL) AS [partition_description], "
       "NULL AS [subpartition_name], "
@@ -584,7 +584,7 @@ sm_define_view_routines_spec (void)
           "AND " AUTH_CHECK_USER ("[sp].[owner].[name]") ", "
           "[sp_code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
-      "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
+      "IF ([sp].[lang] = %d, CONCAT ([sp].[target_class], '.', [sp].[target_method]), NULL) AS [external_name], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
       "DECODE ([sp].[lang], %d, 'PLCSQL', %d, 'JAVA') AS [external_language], "
       "'SQL' AS [parameter_style], "
