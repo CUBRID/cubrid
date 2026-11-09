@@ -7280,7 +7280,7 @@ la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa)
       fragment->num_items = outer->num_items;
       fragment->is_long_trans = true;
       LSA_COPY (&fragment->last_lsa, &outer->last_lsa);
-      LSA_COPY (&fragment->start_lsa, &fragment->head->lsa);
+      LSA_COPY (&fragment->start_lsa, &outer->start_lsa);
 
       outer->head = NULL;
       outer->tail = NULL;
@@ -7304,7 +7304,11 @@ la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa)
       return NULL;
     }
 
-  LSA_COPY (&fragment->start_lsa, &fragment->head->lsa);
+  /* The outer transaction's first record, not the fragment's first item: until the fragment retires, the required
+   * LSA must stay below where the outer slot is rebuilt from after a restart. Otherwise, if the outer transaction
+   * rolls back and frees its slot, the required LSA passes the outer's first record, a restart finds no slot for
+   * the fragment's items and drops them, and the operation the master committed on its own is lost. */
+  LSA_COPY (&fragment->start_lsa, &outer->start_lsa);
   return fragment;
 }
 
