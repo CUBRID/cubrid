@@ -11780,13 +11780,22 @@ cdc_auth_init_key (void)
   cdc_Auth_key_ready = (crypt_generate_random_bytes (cdc_Auth_key, sizeof (cdc_Auth_key)) == NO_ERROR);
 }
 
+/* what a signed challenge is for: a tag issued for one purpose must not pass for
+ * another, so the CDC channel handshake and the login/user-switch proof cannot
+ * borrow each other's tags */
+#define CDC_AUTH_PURPOSE_CDC "cdc"
+#define CDC_AUTH_PURPOSE_LOGIN "login"
+
 /*
- * cdc_auth_sign () - tag that ties a challenge to this connection, account and
- *   issue time, so the server can recognise its own challenge without storing it.
+ * cdc_auth_sign () - tag that ties a challenge to its purpose, this connection,
+ *   account and issue time, so the server can recognise its own challenge
+ *   without storing it.
+ *   purpose (in): what the challenge is for (CDC channel or login proof)
  *   tag (out): CSS_CDC_AUTH_RESPONSE_SIZE bytes of hex
  */
 static int
-cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, INT64 issued_at, char *tag)
+cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *purpose, const char *user_name, const char *nonce, INT64 issued_at,
+	       char *tag)
 {
   char msg[CSS_CDC_AUTH_NONCE_SIZE + DB_MAX_USER_LENGTH + 64];
   int len;
@@ -11797,7 +11806,7 @@ cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, I
       return ER_FAILED;
     }
 
-  len = snprintf (msg, sizeof (msg), "%s|%d|%d|%s|%lld", nonce, (int) conn->fd, conn->client_id, user_name,
+  len = snprintf (msg, sizeof (msg), "%s|%s|%d|%d|%s|%lld", purpose, nonce, (int) conn->fd, conn->client_id, user_name,
 		  (long long) issued_at);
   if (len < 0 || len >= (int) sizeof (msg))
     {
@@ -11883,7 +11892,7 @@ scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   memset (stored, 0, sizeof (stored));
 
   issued_at = (INT64) time (NULL);
-  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, tag) != NO_ERROR)
+  if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_CDC, user_name, nonce, issued_at, tag) != NO_ERROR)
     {
       goto error;
     }
@@ -11973,7 +11982,7 @@ scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
 
   now = (INT64) time (NULL);
-  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, expected) != NO_ERROR
+  if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_CDC, user_name, nonce, issued_at, expected) != NO_ERROR
       || !cdc_auth_response_matches (expected, tag) || issued_at > now || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
     {
       /* not a challenge this server issued to this connection for this account, or expired */
@@ -12097,7 +12106,7 @@ sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 	      intl_identifier_upper (user_name, stored_name);
 	    }
 	  issued_at = (INT64) time (NULL);
-	  error = cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, tag);
+	  error = cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, tag);
 	}
       memset (stored, 0, sizeof (stored));
     }
@@ -12162,7 +12171,7 @@ sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
     {
       /* malformed */
     }
-  else if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, expected) != NO_ERROR
+  else if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, expected) != NO_ERROR
 	   || !cdc_auth_response_matches (expected, tag) || issued_at > now
 	   || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
     {
