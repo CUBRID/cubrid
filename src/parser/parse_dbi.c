@@ -2805,7 +2805,9 @@ pt_bind_helper (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val, int *da
   dt = NULL;
 
   val_type = DB_VALUE_DOMAIN_TYPE (val);
-  if (DB_IS_NULL (val) && val_type == DB_TYPE_NULL)
+  /* a NULL OBJECT, collection or JSON has no class, elements or document to read its domain from */
+  if (DB_IS_NULL (val) && (val_type == DB_TYPE_NULL || val_type == DB_TYPE_OBJECT || TP_IS_SET_TYPE (val_type)
+			   || val_type == DB_TYPE_JSON))
     {
       node->type_enum = PT_TYPE_NULL;
       return node;
@@ -3077,12 +3079,13 @@ pt_bind_type_from_dbval (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val
 
 /*
  * pt_value_has_domain_type () - CBRD-27583: whether a bound value has the type a value-typed position was compiled
- *   for: the DB_TYPE, and for a string its codeset and collation (a NULL has type DB_TYPE_NULL)
+ *   for: the DB_TYPE, and for a string its codeset and collation (a NULL the driver sent without a type has type
+ *   DB_TYPE_NULL; one it sent with a declared type has that type, as a value of it)
  */
 bool
 pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain)
 {
-  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
   if (type != TP_DOMAIN_TYPE (domain))
     {
       return false;
@@ -3217,15 +3220,29 @@ pt_host_var_is_leave_typed (const TP_DOMAIN * expected)
 }
 
 /*
- * pt_host_var_is_char_typed () - CBRD-27583: whether a context-typed position's expected domain is a CHAR: the
- *   client sends a VARCHAR value as it is and casts any other into the CHAR (pt_set_host_variables), so its plan is the
- *   one of the type the client sends, which its compiled domain keeps (pt_host_var_sent_domain; a LEAVE CHAR
- *   position's is the value's)
+ * pt_host_var_is_assignment () - whether every occurrence of a user position is a value stored into a column
+ *   (PT_HOST_VAR_ASSIGNMENT): the column's domain is its plan's, a CHAR's VARCHAR padded at the bind as the store would
  */
 bool
-pt_host_var_is_char_typed (const TP_DOMAIN * expected)
+pt_host_var_is_assignment (const PARSER_CONTEXT * parser, int index)
 {
-  return pt_host_var_is_context_typed (expected) && TP_DOMAIN_TYPE (expected) == DB_TYPE_CHAR;
+  return index < parser->host_var_count && parser->host_var_format_classes != NULL
+    && (parser->host_var_format_classes[index] & PT_HOST_VAR_ASSIGNMENT);
+}
+
+/*
+ * pt_host_var_is_char_typed () - CBRD-27583: whether a context-typed position's expected domain is a CHAR the client
+ *   sends a VARCHAR value into as it is, casting any other into the CHAR (pt_set_host_variables): its plan is the one
+ *   of the type the client sends, which its compiled domain keeps (pt_host_var_sent_domain; a LEAVE CHAR position's
+ *   is the value's). Not an assignment position: its VARCHAR is padded into the CHAR.
+ */
+bool
+pt_host_var_is_char_typed (const PARSER_CONTEXT * parser, int index)
+{
+  const TP_DOMAIN *expected =
+    parser->host_var_expected_domains != NULL ? parser->host_var_expected_domains[index] : NULL;
+  return pt_host_var_is_context_typed (expected) && TP_DOMAIN_TYPE (expected) == DB_TYPE_CHAR
+    && !pt_host_var_is_assignment (parser, index);
 }
 
 /*
@@ -3241,13 +3258,15 @@ pt_host_var_leave_collation (DB_TYPE type, int collation)
 /* CBRD-27583: whether a value is one the compilation of a position's plan took: a value-typed position's value of its
  * compiled domain, a LEAVE position's value of the compiled value's collation, a CHAR position's VARCHAR of the
  * compiled VARCHAR's collation or another value of the compiled CHAR (a LEAVE CHAR one's of the collation); and a
- * NULL at a comparison operand, or at an NVL family operand whose node keeps its domain without it */
+ * NULL at a comparison operand, or a NULL without a type at an NVL family operand whose node keeps its domain without
+ * it (CBRD-27679: a NULL with a declared type gives the node its type, as a value of it) */
 static bool
 pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
 {
   const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
   if (DB_IS_NULL (val) && (PT_HOST_VAR_CLASS (format_class) == PT_HOST_VAR_CLASS_COMPARE
-			   || (format_class & PT_HOST_VAR_NULL_MATCHES)))
+			   || ((format_class & PT_HOST_VAR_NULL_MATCHES)
+			       && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL)))
     {
       return true;
     }
@@ -3258,9 +3277,9 @@ pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB
       return TP_DOMAIN_TYPE (compiled) == TP_DOMAIN_TYPE (parser->host_var_bind_domains[index]);
     }
   const bool leave = pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]);
-  if (pt_host_var_is_char_typed (parser->host_var_expected_domains[index]))
+  if (pt_host_var_is_char_typed (parser, index))
     {
-      const bool sent_varchar = !DB_IS_NULL (val) && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_VARCHAR;
+      const bool sent_varchar = DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_VARCHAR;
       if (sent_varchar != (TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR))
 	{
 	  return false;
@@ -3278,7 +3297,7 @@ pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB
     {
       return pt_value_has_domain_type (val, compiled);
     }
-  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
   return pt_host_var_leave_collation (type, TP_IS_CHAR_TYPE (type) ? db_get_string_collation (val) : -1)
     == pt_host_var_leave_collation (TP_DOMAIN_TYPE (compiled), compiled->collation_id);
 }
@@ -3387,10 +3406,13 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 			   pt_host_var_coerce_target (parser, i, val_type, target, name, sizeof (name)));
 	      return;
 	    }
-	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
+	  if (TP_IS_CHAR_TYPE (hv_dom->type->id) && !pt_host_var_is_assignment (parser, i))
 	    {
 	      if (hv_dom->type->id != val_type && (val_type == DB_TYPE_VARCHAR))
 		{
+		  /* the cast above only checked the value against CHAR(n): its converted copy is released before the
+		   * original VARCHAR value takes its place, or it leaks on every execution */
+		  pr_clear_value (hv);
 		  pr_clone_value (val, hv);
 		}
 	    }

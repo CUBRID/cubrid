@@ -647,26 +647,22 @@ tp_make_varchar_conversion (const TP_DOMAIN *desired_domain, const char *new_str
 char *
 tp_ftoa_buffer (const DB_VALUE *src, DB_VALUE *result)
 {
-  /* dtoa() appears to ignore the requested number of digits... */
   const int ndigits = TP_FLOAT_MANTISA_DECIMAL_PRECISION;
-  char *str_float, *rve;
+  char *str_float;
   int decpt, sign;
 
   assert (DB_VALUE_TYPE (src) == DB_TYPE_FLOAT);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_float = (char *) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
+  str_float = (char *) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
   if (str_float == NULL)
     {
       db_make_null (result);
       return nullptr;
     }
 
-  /* _dtoa just returns the digits sequence and the exponent as for a number in the form 0.4321344e+14 */
-  _dtoa (db_get_float (src), 0, ndigits, &decpt, &sign, &rve, str_float, 1);
-
-  /* rounding should also be performed here */
-  str_float[ndigits] = '\0';	/* _dtoa() disregards ndigits */
+  /* the digits sequence and the exponent as for a number in the form 0.4321344e+14 */
+  numeric_shortest_digits (db_get_float (src), true, ndigits, str_float, &decpt, &sign);
 
   format_floating_point (str_float, str_float + strlen (str_float), ndigits, decpt, sign);
 
@@ -704,24 +700,21 @@ tp_ftoa_varchar (const DB_VALUE *src, DB_VALUE *result)
 char *
 tp_dtoa_buffer (const DB_VALUE *src, DB_VALUE *result)
 {
-  /* dtoa() appears to ignore the requested number of digits... */
   const int ndigits = TP_DOUBLE_MANTISA_DECIMAL_PRECISION;
-  char *str_double, *rve;
+  char *str_double;
   int decpt, sign;
 
   assert (DB_VALUE_TYPE (src) == DB_TYPE_DOUBLE);
   assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
 
-  rve = str_double = (char *) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
+  str_double = (char *) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
   if (str_double == NULL)
     {
       db_make_null (result);
       return nullptr;
     }
 
-  _dtoa (db_get_double (src), 0, ndigits, &decpt, &sign, &rve, str_double, 0);
-  /* rounding should also be performed here */
-  str_double[ndigits] = '\0';	/* _dtoa() disregards ndigits */
+  numeric_shortest_digits (db_get_double (src), false, ndigits, str_double, &decpt, &sign);
 
   format_floating_point (str_double, str_double + strlen (str_double), ndigits, decpt, sign);
 
