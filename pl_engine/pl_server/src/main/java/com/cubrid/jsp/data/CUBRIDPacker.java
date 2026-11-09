@@ -162,7 +162,7 @@ public class CUBRIDPacker {
 
     public void packValue(Value value, int dbType)
             throws UnsupportedEncodingException, TypeMismatchException {
-        if (value == null || value instanceof NullValue || isNullAsNumeric(value, dbType)) {
+        if (value == null || value instanceof NullValue) {
             dbType = DBType.DB_NULL;
         }
 
@@ -202,8 +202,17 @@ public class CUBRIDPacker {
                 break;
 
             case DBType.DB_NUMERIC:
-                packInt(dbType);
-                packString(value.toBigDecimal().toPlainString());
+                {
+                    // a string converts to NULL with oracle_style_empty_string or
+                    // numeric_empty_string_as_null
+                    BigDecimal numeric = value.toBigDecimal();
+                    if (numeric == null) {
+                        packInt(DBType.DB_NULL);
+                        break;
+                    }
+                    packInt(dbType);
+                    packString(numeric.toPlainString());
+                }
                 break;
 
             case DBType.DB_DATE:
@@ -402,16 +411,6 @@ public class CUBRIDPacker {
         if (newPosition - currentPosition > 0) {
             buffer.position(newPosition);
         }
-    }
-
-    // A string returned for a NUMERIC return or OUT type is converted by
-    // SpLib.convStringToNumeric. With oracle_style_empty_string, '' is converted to NULL. With
-    // numeric_empty_string_as_null, an empty or whitespace-only string is also converted to NULL.
-    // Pack such a value as NULL, because packValue calls toPlainString() on the converted value.
-    private static boolean isNullAsNumeric(Value value, int dbType) throws TypeMismatchException {
-        return dbType == DBType.DB_NUMERIC
-                && value instanceof StringValue
-                && value.toBigDecimal() == null;
     }
 
     private static final int EXPAND_FACTOR = 2;
