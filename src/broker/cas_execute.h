@@ -98,6 +98,8 @@ extern void ux_stream_reset (void);
 extern bool ux_stream_is_open (void);
 extern bool ux_stream_admits_request (int func_code);
 extern bool ux_stream_finds_no_upload (int func_code);
+extern void ux_stream_note_status_before (int con_status);
+extern int ux_stream_status_to_restore (void);
 extern int ux_stream_init (int stream_kind, char *config, int config_len, bool final, char *data, int data_len,
 			   T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info);

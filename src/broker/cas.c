@@ -1141,6 +1141,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	}
     }
 
+  ux_stream_note_status_before (is_first_request ? CON_STATUS_OUT_TRAN
+				: (con_status_before_check_cas != -1 ? con_status_before_check_cas : old_con_status));
+
   con_status_to_restore = -1;
 
   if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code) || ux_stream_finds_no_upload (func_code))
@@ -1232,6 +1235,15 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
 
+  if (con_status_to_restore != -1)
+    {
+      CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+      as_info->con_status = con_status_to_restore;
+      CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
+    }
+
+  /* an upload given up leaves nothing in the transaction */
+  con_status_to_restore = ux_stream_status_to_restore ();
   if (con_status_to_restore != -1)
     {
       CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
