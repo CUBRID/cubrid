@@ -14256,10 +14256,10 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       inline_size_after_oos += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
     }
 
-  /* A user-class record never becomes REC_BIGONE. heap_attrinfo_determine_disk_layout already demoted every
-   * OOS-eligible variable column, so a record still over the maximum slotted record length is rejected here,
-   * before any OOS record is written. The size includes the full MVCC header, so a later header change cannot
-   * turn an accepted record into REC_BIGONE. System classes keep REC_BIGONE for large catalog rows. */
+  /* Reject a non-system-class row that would need REC_BIGONE. heap_attrinfo_determine_disk_layout already demoted
+   * every OOS-eligible variable column, so the check runs before any OOS record is written. The size includes the
+   * full MVCC header, so a later header change cannot turn an accepted row into REC_BIGONE. Only writers that lay
+   * out rows here are covered; the heap layer does not check, and system classes keep REC_BIGONE for catalog rows. */
   if (unlikely (heap_is_big_length ((int) inline_size_after_oos)
 		&& (has_oos || !oid_is_system_class (&attr_info->class_oid))))
     {
