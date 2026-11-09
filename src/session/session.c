@@ -3576,12 +3576,6 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
   stream_session *stream_session_p = NULL;
   bool continue_checking = true;
 
-  /* a loaddb worker's batch transaction does not own the connection's stream; see session_abort_stream_session () */
-  if (thread_p != NULL && thread_p->type == TT_LOADDB)
-    {
-      return;
-    }
-
   /* for the reason session_has_stream_session () gives */
   if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
     {
