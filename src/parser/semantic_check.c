@@ -7658,6 +7658,8 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (result != NULL)
 	    {
 	      query_spec = *result;
+	      /* specs referring a CTE are not views; resolve them so that they are not compared with self */
+	      query_spec = parser_walk_tree (query_cache, query_spec, NULL, NULL, pt_resolve_cte_specs, NULL);
 	      parser_walk_tree (query_cache, query_spec, pt_check_cyclic_reference_in_view_spec, arg, NULL, NULL);
 	    }
 
@@ -16314,6 +16316,15 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
   do_not_replace_orderby = true;
   s = parser_walk_tree (parser, s, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
   assert (s != NULL);
+
+  /* specs referring a CTE have an entity name; resolve them to the CTE before name resolution */
+  s = parser_walk_tree (parser, s, NULL, NULL, pt_resolve_cte_specs, NULL);
+  if (s == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error_code = er_errid ();
+      goto error_exit;
+    }
 
   attrs = pt_get_attributes (parser, c);
 
