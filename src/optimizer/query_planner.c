@@ -10431,6 +10431,20 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	      /* fall through */
 	    }
 	}
+      else
+	{
+	  /* the side to be the inner is already a join, so no table of it is the inner: read the hint from the table
+	   * written right of RIGHT OUTER JOIN, as qo_examine_hash_join () does.  Only a hash join is forced from here,
+	   * and only when there is a hash term: idx-join needs a single class inner, and merge-join may not be
+	   * possible for this join, so nl-join is kept for them. */
+	  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+	  if (!(QO_NODE_HINT (inner_node) & (PT_HINT_NO_USE_HASH | PT_HINT_USE_NL))
+	      && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH) && !bitset_is_empty (hash_terms))
+	    {
+	      /* join hint: force hash-join; skip nl-join */
+	      goto exit;
+	    }
+	}
 
       outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
       if (outer_plan == NULL)
@@ -10876,19 +10890,13 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   /* Determine the node that carries the join-method hint.  For a right outer join the
    * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
    * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
-   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins.  A
-   * table-level hint applies only when that side is a single class; for a multi-node
-   * (temp) inner the table hint is not applicable and the cost decides. */
-  if (join_type == JOIN_RIGHT)
+   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins.  When
+   * that side is already a join of several nodes, no table of it is the inner, so the
+   * hint is read from the table written right of RIGHT OUTER JOIN, as qo_examine_nl_join
+   * and qo_examine_merge_join do (a hint without a table is on every node). */
+  if (join_type == JOIN_RIGHT && bitset_cardinality (&(outer->nodes)) == 1)
     {
-      if (bitset_cardinality (&(outer->nodes)) == 1)
-	{
-	  hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-	}
-      else
-	{
-	  hint_node = NULL;
-	}
+      hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
     }
   else
     {
