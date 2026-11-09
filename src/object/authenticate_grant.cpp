@@ -1670,14 +1670,15 @@ end:
  * apply_grants -  Work function for au_compute_privilege.
  *   return: error code
  *   auth(in):  authorization object
- *   class(in):  class being authorized
+ *   obj_type(in): object type of the grant
+ *   class_mop(in): object being authorized; NULL for a system object
  *   bits(in):
  *
  * Note: Get the grant information for an authorization object and update
  *       the cache for any grants that apply to the class.
  */
 int
-apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
+apply_grants (MOP auth, DB_OBJECT_TYPE obj_type, MOP class_mop, unsigned int *bits)
 {
   int error = NO_ERROR;
   DB_SET *grants;
@@ -1693,8 +1694,12 @@ apply_grants (MOP auth, MOP class_mop, unsigned int *bits)
 	  set_get_element (grants, GRANT_ENTRY_CLASS (i), &grvalue);
 	  if (db_get_object (&grvalue) == class_mop)
 	    {
-	      set_get_element (grants, GRANT_ENTRY_CACHE (i), &grvalue);
-	      *bits |= db_get_int (&grvalue);
+	      set_get_element (grants, GRANT_ENTRY_TYPE (i), &grvalue);
+	      if (db_get_int (&grvalue) == obj_type)
+		{
+		  set_get_element (grants, GRANT_ENTRY_CACHE (i), &grvalue);
+		  *bits |= db_get_int (&grvalue);
+		}
 	    }
 	}
       set_free (grants);

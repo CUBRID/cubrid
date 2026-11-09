@@ -200,7 +200,7 @@ au_compute_privilege (DB_OBJECT_TYPE obj_type, MOP mop, MOP owner, unsigned int 
   else
     {
       /* apply local grants */
-      error = apply_grants (auth, mop, bits);
+      error = apply_grants (auth, obj_type, mop, bits);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -238,7 +238,7 @@ au_compute_privilege (DB_OBJECT_TYPE obj_type, MOP mop, MOP owner, unsigned int 
 		  goto end;
 		}
 
-	      error = apply_grants (auth, mop, bits);
+	      error = apply_grants (auth, obj_type, mop, bits);
 	      if (error != NO_ERROR)
 		{
 		  goto end;
