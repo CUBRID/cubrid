@@ -334,14 +334,11 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
  *   parser(in): parser context
  *   node(in): a PT_METHOD_CALL node of a CALL statement that calls a stored procedure or function
  *
- * Note: An argument for an OUT or IN OUT parameter must be a bind variable, that is, a ? or a csql :name.
- *       A constant, an expression, a session variable or a correlation name of a trigger has no
- *       place to take the value. A ? is accepted on every path, even where the caller does not
- *       read the value back, as Oracle accepts any bind variable there.
- *       This runs in the semantic check because hostvar_late_binding turns a ? into a value before
- *       the statement runs. A statement kept prepared, as by JDBC, or a trigger action already compiled
- *       in the session is not checked again when the procedure is redefined or the EXECUTE privilege is
- *       granted afterwards.
+ * Note: An argument for an OUT or IN OUT parameter must be a bind variable, a ? or a csql :name.
+ *       This runs in the semantic check so that CREATE TRIGGER and PREPARE fail early,
+ *       and before hostvar_late_binding turns a ? into a value.
+ *       A statement already prepared or a trigger action already compiled is not checked again
+ *       when the procedure is redefined.
  */
 
 int
