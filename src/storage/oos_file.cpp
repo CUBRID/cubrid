@@ -3961,6 +3961,8 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
  *   oos_vfid_out(out): OOS file the chains belong to
  *   heap_hfid_out(out): heap file the notification names (for the caller's report of a failed lookup)
  *   emptied_vpids(out): pages the deletes emptied
+ *   deferred_heaps(in): heaps whose OOS file lookup already failed in the caller's run of the block; may be NULL.
+ *			 A notification that needs one of them is left for the next run without waiting again.
  *
  * Vacuum reaches the record only once its MVCCID precedes every active snapshot, so no reader can still
  * reach the chains through the old version. A block retry or a rerun notification finds reclaimed
@@ -3972,7 +3974,8 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
  */
 int
 oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length, VFID *oos_vfid_out,
-			     HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids)
+			     HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids,
+			     const std::vector<VFID> *deferred_heaps)
 {
   oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
@@ -3985,6 +3988,18 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
   *heap_hfid_out = header.heap_hfid;
   if (VFID_ISNULL (&header.oos_vfid))
     {
+      if (deferred_heaps != NULL)
+	{
+	  for (const VFID &deferred : *deferred_heaps)
+	    {
+	      if (VFID_EQ (&deferred, &header.heap_hfid.vfid))
+		{
+		  /* The caller already left the block for a later run; that run reclaims these chains. */
+		  return NO_ERROR;
+		}
+	    }
+	}
+
       /* The UPDATE did not resolve the OOS file; vacuum holds no page and can fix the heap header. */
       bool found;
       if (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))

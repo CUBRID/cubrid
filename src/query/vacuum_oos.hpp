@@ -36,6 +36,9 @@
  * vacuum.c (GNU-indent formatted) can declare one without exposing template syntax. */
 typedef std::vector<VPID> VACUUM_OOS_EMPTIED_PAGES;
 
+/* Heaps whose OOS file lookup failed in one run of a log block; the rest of the run skips their notifications. */
+typedef std::vector<VFID> VACUUM_OOS_DEFERRED_HEAPS;
+
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
     VFID *oos_vfid);
 extern void vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSLOTID slotid,
@@ -44,7 +47,8 @@ extern int vacuum_heap_oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFI
     const OID *owner_oid);
 extern void vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p,
     VACUUM_OOS_EMPTIED_PAGES *emptied_pages);
-extern int vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size);
+extern int vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size,
+    VACUUM_OOS_DEFERRED_HEAPS *deferred_heaps = NULL);
 extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
     VACUUM_OOS_EMPTIED_PAGES *emptied_pages);
 

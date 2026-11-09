@@ -3585,6 +3585,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   bool vacuum_complete = false;
   bool was_interrupted = false;
   bool is_file_dropped = false;
+  bool oos_deferred = false;
+  VACUUM_OOS_DEFERRED_HEAPS oos_deferred_heaps;
 
   PERF_UTIME_TRACKER perf_tracker;
   PERF_UTIME_TRACKER job_time_tracker;
@@ -3878,8 +3880,23 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  /* A committed UPDATE dropped these OOS chains (A', ADR-0008). Vacuum reaches the record only after the
 	   * UPDATE's MVCCID precedes every active snapshot, so no reader can still reach them through the old
 	   * version. */
-	  error_code = vacuum_oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size);
-	  if (error_code != NO_ERROR)
+	  error_code = vacuum_oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_deferred_heaps);
+	  if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
+	    {
+	      /* Keep the first deferral and finish the rest of the block, as vacuum_heap does. The end of the block
+	       * leaves it for a later run, which reclaims the deferred chains. */
+	      if (!oos_deferred)
+		{
+		  er_stack_push ();
+		  oos_deferred = true;
+		}
+	      else
+		{
+		  er_clear ();
+		}
+	      error_code = NO_ERROR;
+	    }
+	  else if (error_code != NO_ERROR)
 	    {
 	      vacuum_check_shutdown_interruption (thread_p, error_code);
 	      goto end;
@@ -3911,11 +3928,30 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
   assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
+  if (oos_deferred)
+    {
+      /* The rest of the block is done; a later run reclaims the deferred chains. */
+      goto end;
+    }
+
   perfmon_add_stat (thread_p, PSTAT_VAC_NUM_VACUUMED_LOG_PAGES, vacuum_Data.log_block_npages);
 
   vacuum_complete = true;
 
 end:
+
+  if (oos_deferred)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  er_stack_pop ();
+	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	}
+      else
+	{
+	  er_stack_pop_and_keep_error ();
+	}
+    }
 
   assert (!LOG_FIND_CURRENT_TDES (thread_p)->is_under_sysop ());
 
