@@ -3513,6 +3513,15 @@ session_has_stream_session (THREAD_ENTRY * thread_p)
 {
   stream_session *stream_session_p = NULL;
 
+#if defined (SERVER_MODE)
+  /* a client that ended its session first (db_shutdown ends it before its last commit or abort) has no stream left,
+   * and asking must not raise ER_SES_SESSION_EXPIRED on the way */
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return false;
+    }
+#endif /* SERVER_MODE */
+
   (void) session_get_stream_session (thread_p, stream_session_p, NULL);
 
   return stream_session_p != NULL;
@@ -3539,6 +3548,12 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
   SESSION_STATE *state_p = NULL;
   stream_session *stream_session_p = NULL;
   bool continue_checking = true;
+
+  /* for the reason session_has_stream_session () gives */
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return;
+    }
 
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
