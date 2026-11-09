@@ -244,7 +244,6 @@ namespace cubconn::connection
 
       /* true while an eventfd notification is pending or being handled */
       std::atomic<bool> m_notified;
-      bool m_has_retry;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
