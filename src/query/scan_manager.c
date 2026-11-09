@@ -3453,6 +3453,7 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
 {
   INDX_SCAN_ID *isidp = &scan_id->s.isid;
   BTREE_SCAN *BTS = &isidp->bt_scan;
+  struct bts_attid_idx_info attid_idxs;
   KEY_VAL_RANGE *key_vals;
   bool upddel_target_scan;
   int i, error;
@@ -3550,10 +3551,12 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
       isidp->scancache_inited = false;
     }
 
-  /* the attribute id mappings the key filter of the partition left built are freed here, as scan_close_scan () frees
-   * those of the last one: BTREE_INIT_SCAN () drops the pointers (CBRD-27866) */
-  btree_range_scan_free_matched_idx (BTS);
+  /* the attribute id mappings of the key filter map an attribute to its place in the attribute caches, which every
+   * partition builds from the same attribute ids: they go on to the next partition, built once per scan and freed by
+   * scan_close_scan (), instead of being dropped by BTREE_INIT_SCAN () (CBRD-27866) */
+  attid_idxs = BTS->attid_idxs;
   BTREE_INIT_SCAN (BTS);
+  BTS->attid_idxs = attid_idxs;
   BTS->btid_int = *btid_int;
   BTS->btid_int.sys_btid = &isidp->indx_info->btid;
   BTS->is_btid_int_valid = true;
