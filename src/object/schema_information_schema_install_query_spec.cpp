@@ -797,7 +797,8 @@ sm_define_view_synonyms_spec (void)
       "[syn].[owner].[name] AS [synonym_schema], "
       "[syn].[name] AS [synonym_name], "
       "IF ([syn].[is_public] = 1, 'YES', 'NO') AS [is_public_synonym], "
-      "CAST (DATABASE () AS VARCHAR (255)) AS [target_catalog], " /* string -> varchar(255) */
+      /* string -> varchar(255) */
+      "CAST (IF (INSTR ([syn].[target_name], '@') > 0, NULL, DATABASE ()) AS VARCHAR (255)) AS [target_catalog], "
       "[syn].[target_owner].[name] AS [target_schema], "
       "[syn].[target_name] AS [target_name], "
       "[syn].[comment] AS [synonym_comment], "
