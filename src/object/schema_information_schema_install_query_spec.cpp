@@ -696,7 +696,7 @@ sm_define_view_sequences_spec (void)
       "[serial].[owner].[name] AS [sequence_schema], "
       "[serial].[name] AS [sequence_name], "
       "'NUMERIC' AS [data_type], "
-      /* DB_MAX_NUMERIC_PRECISION */
+      /* DB_MAX_FIXED_NUMERIC_PRECISION */
       "%d AS [numeric_precision], "
       "10 AS [numeric_precision_radix], "
       /* DB_DEFAULT_NUMERIC_SCALE */
@@ -706,7 +706,7 @@ sm_define_view_sequences_spec (void)
       "[serial].[max_val] AS [maximum_value], "
       "[serial].[increment_val] AS [increment], "
       "IF ([serial].[cyclic] = 1, 'YES', 'NO') AS [cycle_option], "
-      "IF ([serial].[cached_num] > 0, 'YES', 'NO') AS [is_cached], "
+      "IF ([serial].[cached_num] > 1, 'YES', 'NO') AS [is_cached], "
       "[serial].[comment] AS [sequence_comment], "
       "[serial].[created_time] AS [create_time], "
       "[serial].[updated_time] AS [update_time] "
@@ -715,7 +715,7 @@ sm_define_view_sequences_spec (void)
       "[%s] AS [serial] "
     "WHERE "
       "[serial].[class_name] IS NULL",
-    DB_MAX_NUMERIC_PRECISION,
+    DB_MAX_FIXED_NUMERIC_PRECISION,
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
   // *INDENT-ON*
