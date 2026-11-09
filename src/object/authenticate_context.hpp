@@ -231,4 +231,6 @@ class EXPORT_IMPORT authenticate_context
     int find_system_users (void);
 };
 
+extern bool use_console_password;
+
 #endif // _AUTHENTICATE_CONTEXT_HPP_

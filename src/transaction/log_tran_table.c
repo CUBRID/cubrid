@@ -83,6 +83,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error Does not belong to CS_MODE
+#endif
+
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
 #define NUM_ASSIGNED_TRAN_INDICES log_Gl.trantable.num_assigned_indices
@@ -4289,6 +4293,78 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
     }
 
   return false;
+}
+
+/*
+ * logtb_is_active_other_mvccid () - Is mvccid an in-progress write by another transaction?
+ *
+ * return: true if some other transaction under mvccid is active, or has completed its MVCC but still holds its
+ *	   self-lock: while it commits or aborts, or after COMMIT WORK RETAIN LOCK
+ *
+ *   thread_p(in): thread entry
+ *   mvccid(in): MVCC id
+ *
+ * Note: a committer clears its active mark before it appends its commit record, and releases its self-lock only
+ *	 after it. A writer that went ahead in between could commit first; restart recovery or the HA applier then
+ *	 reverses the two.
+ */
+bool
+logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
+    && (log_Gl.mvcc_table.is_active (mvccid) || lock_is_transaction_mvccid_held (thread_p, mvccid));
+}
+
+/*
+ * logtb_has_active_savepoint () - Is a savepoint declared, so a partial rollback can reach back to here?
+ *
+ * return: true if this transaction has declared a savepoint
+ *
+ *   thread_p(in): thread entry
+ */
+bool
+logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
+}
+
+/*
+ * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends
+ *
+ * return	 : NO_ERROR once that transaction has ended.  An error if the lock failed, or if the lock was granted
+ *		   while that transaction is still active -- waiting again cannot help.
+ * thread_p (in) : Thread entry.
+ * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
+ *
+ * Note: call with no page latch held.
+ */
+int
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  int error_code;
+
+  if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, mvccid, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (mvccid))
+    {
+      /* Invariant breach: no-op grant while that transaction is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
 }
 
 /*

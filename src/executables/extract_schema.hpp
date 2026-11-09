@@ -53,6 +53,8 @@ struct extract_context
   std::vector<std::string> schema_file_list;
   DB_OBJLIST *classes;
   DB_OBJLIST *vclass_list_has_using_index;
+  /* er_errid () misses these: a later ER_OBJ_NO_COMPONENTS overwrites them */
+  int emit_err_count;
 
   extract_context ():
     do_auth (0),
@@ -66,7 +68,8 @@ struct extract_context
     has_indexes (0),
     schema_file_list(),
     classes (NULL),
-    vclass_list_has_using_index (NULL)
+    vclass_list_has_using_index (NULL),
+    emit_err_count (0)
   {
   }
 
