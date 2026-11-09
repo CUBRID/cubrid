@@ -685,6 +685,36 @@ namespace cubload
   };
 
   /*
+   * overflow_type_name - the type an overflow message should name
+   *    return: type name, never NULL
+   *    attr(in): attribute the value was going into, or NULL
+   *    built(in): the type the converter was building
+   * Note:
+   *    The column is the useful thing to name, so the attribute's domain is used where
+   *    it is the one the value is going into. Two slots do not have one to name. An
+   *    element's attribute is the collection, whose domain is the set and not the
+   *    element's - naming it gave "Data overflow on data type \"set\"". And a
+   *    %constructor argument, or a slot the loader walked past after an earlier error
+   *    on the line, has no attribute at all: ldr_refresh_conv_att () leaves conv_att
+   *    NULL wherever att is.
+   *
+   *    Both of those name the type the converter built, which for an element is what
+   *    the element is. The informative line beside it already calls it that, and so
+   *    does the set domain when it refuses one: "type double is not allowed in the
+   *    domain of the set".
+   */
+  static const char *
+  overflow_type_name (const attribute *attr, DB_TYPE built)
+  {
+    if (attr == NULL || TP_IS_SET_TYPE (attr->get_domain ().type->get_id ()))
+      {
+	return pr_type_name (built);
+      }
+
+    return attr->get_domain ().type->get_name ();
+  }
+
+  /*
    * split_leading_sign - take a leading sign off an integer token
    *    return: the token's digit count, its first digit, and the string for the long number path
    *    str(in), str_size(in): the token
@@ -855,15 +885,8 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
       {
-	/*
-	 * The attribute is for the message only, and an element slot may not have one:
-	 * ldr_convert_elem_value () hands over attdesc->conv_att, which ldr_refresh_conv_att ()
-	 * leaves NULL wherever att is NULL - a %constructor argument, and any slot the loader
-	 * walked past after an earlier error on the line. Name the literal's own type there,
-	 * which is what this function built.
-	 */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		(attr != NULL) ? attr->get_domain ().type->get_name () : pr_type_name (DB_TYPE_FLOAT));
+		overflow_type_name (attr, DB_TYPE_FLOAT));
 	return ER_IT_DATA_OVERFLOW;
       }
     else
@@ -886,15 +909,8 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_DOUBLE_OVERFLOW (d))
       {
-	/*
-	 * The attribute is for the message only, and an element slot may not have one:
-	 * ldr_convert_elem_value () hands over attdesc->conv_att, which ldr_refresh_conv_att ()
-	 * leaves NULL wherever att is NULL - a %constructor argument, and any slot the loader
-	 * walked past after an earlier error on the line. Name the literal's own type there,
-	 * which is what this function built.
-	 */
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
-		(attr != NULL) ? attr->get_domain ().type->get_name () : pr_type_name (DB_TYPE_DOUBLE));
+		overflow_type_name (attr, DB_TYPE_DOUBLE));
 	return ER_IT_DATA_OVERFLOW;
       }
     else
