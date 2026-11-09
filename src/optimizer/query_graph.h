@@ -779,6 +779,7 @@ struct qo_term
 #define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
 #define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
 #define QO_TERM_SEL_FROM_SNAPSHOT   32768	/* join selectivity from the small side's rows (CBRD-27478) */
+#define QO_TERM_OR_DERIVED_COLUMN   65536	/* OR-derived key range on one column */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)

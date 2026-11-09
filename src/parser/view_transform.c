@@ -8025,7 +8025,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   assert (!PT_SELECT_INFO_IS_FLAGED (select_statement, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA));
 
   /* Convert to cnf and tag taggable terms */
-  select_statement->info.query.q.select.where = pt_cnf (parser, select_statement->info.query.q.select.where);
+  select_statement->info.query.q.select.where = pt_cnf_where (parser, select_statement->info.query.q.select.where);
   if (select_statement->info.query.q.select.having)
     {
       select_statement->info.query.q.select.having = pt_cnf (parser, select_statement->info.query.q.select.having);

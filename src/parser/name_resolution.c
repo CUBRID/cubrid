@@ -2461,7 +2461,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 #endif /* 0 */
 
       /* convert to CNF and tag taggable terms */
-      node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+      node->info.query.q.select.where = pt_cnf_where (parser, node->info.query.q.select.where);
 
       /* list search twice one-pass: set outer join type, edge two-pass: set outer join sarg outer join sarg matrix:
        * X.i=Y.i and Y.i=Z.i and Y.j=1 case 1: X right Y right Z -> put Y(+)-sarg to Z case 2: X right Y left Z ->
