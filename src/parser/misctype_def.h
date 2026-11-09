@@ -199,7 +199,11 @@ typedef enum
   PT_DETERMINISTIC,
 
   PT_LOGIN,			/* user login capability */
-  PT_NOLOGIN
+  PT_NOLOGIN,
+
+  PT_SENSITIVITY_LABEL_GRADE,	/* sensitivity label kind */
+  PT_SENSITIVITY_LABEL_INFO_TYPE,
+  PT_SENSITIVITY_LABEL_SOURCE
     // todo: separate into relevant enumerations
 } PT_MISC_TYPE;
 

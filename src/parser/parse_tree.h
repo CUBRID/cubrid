@@ -1109,6 +1109,10 @@ enum pt_node_type
   PT_DROP_SYNONYM = CUBRID_STMT_DROP_SYNONYM,
   PT_RENAME_SYNONYM = CUBRID_STMT_RENAME_SYNONYM,
 
+  PT_CREATE_SENSITIVITY_LABEL = CUBRID_STMT_CREATE_SENSITIVITY_LABEL,
+  PT_ALTER_SENSITIVITY_LABEL = CUBRID_STMT_ALTER_SENSITIVITY_LABEL,
+  PT_DROP_SENSITIVITY_LABEL = CUBRID_STMT_DROP_SENSITIVITY_LABEL,
+
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
   PT_UNION,
@@ -1843,6 +1847,8 @@ typedef struct pt_json_table_node_info PT_JSON_TABLE_NODE_INFO;
 typedef struct pt_json_table_column_info PT_JSON_TABLE_COLUMN_INFO;
 
 typedef struct pt_synonym_info PT_SYNONYM_INFO;
+
+typedef struct pt_sensitivity_label_info PT_SENSITIVITY_LABEL_INFO;
 
 typedef PT_NODE *(*PT_NODE_WALK_FUNCTION) (PARSER_CONTEXT * p, PT_NODE * tree, void *arg, int *continue_walk);
 
@@ -3668,6 +3674,15 @@ struct pt_synonym_info
   unsigned is_dblinked:1;	/* server name specified */
 };
 
+struct pt_sensitivity_label_info
+{
+  PT_MISC_TYPE kind;		/* PT_SENSITIVITY_LABEL_GRADE, ... */
+  PT_NODE *name;		/* PT_VALUE */
+  PT_NODE *new_name;		/* PT_VALUE */
+  PT_NODE *level;		/* PT_VALUE */
+  PT_NODE *comment;		/* PT_VALUE */
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3748,6 +3763,7 @@ union pt_statement_info
   PT_ROLLBACK_WORK_INFO rollback_work;
   PT_SAVEPOINT_INFO savepoint;
   PT_SCOPE_INFO scope;
+  PT_SENSITIVITY_LABEL_INFO sensitivity_label;
   PT_SERIAL_INFO serial;
   PT_SET_NAMES_INFO set_names;
   PT_SET_TIMEZONE_INFO set_timezone;

@@ -304,6 +304,9 @@ static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, vo
 static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
@@ -5531,6 +5534,9 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
+  pt_apply_func_array[PT_CREATE_SENSITIVITY_LABEL] = pt_apply_create_sensitivity_label;
+  pt_apply_func_array[PT_ALTER_SENSITIVITY_LABEL] = pt_apply_alter_sensitivity_label;
+  pt_apply_func_array[PT_DROP_SENSITIVITY_LABEL] = pt_apply_drop_sensitivity_label;
   pt_apply_func_array[PT_SP_BODY] = pt_apply_sp_body;
 
   pt_apply_f = pt_apply_func_array;
@@ -5666,6 +5672,9 @@ pt_init_init_f (void)
   pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_CREATE_SENSITIVITY_LABEL] = pt_init_func_null_function;
+  pt_init_func_array[PT_ALTER_SENSITIVITY_LABEL] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_SENSITIVITY_LABEL] = pt_init_func_null_function;
   pt_init_func_array[PT_SP_BODY] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
@@ -21296,4 +21305,28 @@ pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
   parser->custom_print = save_custom;
 
   return q;
+}
+
+static PT_NODE *
+pt_apply_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.level, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.new_name, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.level, arg);
+  return p;
+}
+
+static PT_NODE *
+pt_apply_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
+  return p;
 }
