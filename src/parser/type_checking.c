@@ -8153,7 +8153,22 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	  && pt_is_operator_logical (node->info.expr.op))
 	{
 	  /* a view or trigger keeps its condition as text: a NULL there can not be parsed again */
-	  PT_NODE *save = parser_copy_tree (parser, node);
+	  PT_OP_TYPE op = node->info.expr.op;
+	  PT_NODE *arg1 = node->info.expr.arg1;
+	  PT_NODE *arg2 = node->info.expr.arg2;
+	  PT_NODE *save = NULL;
+	  bool may_fold_to_null = true;
+
+	  /* AND, OR, XOR and NOT give NULL only over a NULL operand: do not copy a long chain of them */
+	  if (op == PT_AND || op == PT_OR || op == PT_XOR || op == PT_NOT)
+	    {
+	      may_fold_to_null = ((arg1 != NULL && PT_IS_VALUE_NODE (arg1) && PT_IS_NULL_NODE (arg1))
+				  || (arg2 != NULL && PT_IS_VALUE_NODE (arg2) && PT_IS_NULL_NODE (arg2)));
+	    }
+	  if (may_fold_to_null)
+	    {
+	      save = parser_copy_tree (parser, node);
+	    }
 
 	  node = pt_fold_const_expr (parser, node, arg);
 	  if (save != NULL && node != NULL && PT_IS_VALUE_NODE (node) && PT_IS_NULL_NODE (node))
