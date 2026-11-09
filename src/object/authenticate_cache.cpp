@@ -123,7 +123,7 @@ au_compute_privilege (DB_OBJECT_TYPE obj_type, MOP mop, MOP owner, unsigned int 
   bool is_member = false;
   bool need_pop_er_stack = false;
 
-  const unsigned int FULL_AUTH = (obj_type == DB_OBJECT_CLASS) ? AU_FULL_AUTHORIZATION : AU_EXECUTE;
+  const unsigned int FULL_AUTH = (obj_type == DB_OBJECT_PROCEDURE) ? AU_EXECUTE : AU_FULL_AUTHORIZATION;
 
   /*
    * must disable here because we may be updating the cache of the system

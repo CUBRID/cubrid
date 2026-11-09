@@ -129,6 +129,28 @@ au_make_system_object_when_clauses (char *buf, int buf_size)
 }
 
 /*
+ * au_check_system_object_authorization - check that the current user holds a privilege on a system object
+ *   return: error code
+ *   obj_type(in): system object type
+ *   type(in): privilege to check
+ */
+int
+au_check_system_object_authorization (DB_OBJECT_TYPE obj_type, DB_AUTH type)
+{
+  unsigned int bits;
+  int error;
+
+  error = au_compute_privilege (obj_type, NULL, Au_dba_user, &bits);
+  if (error == NO_ERROR && (bits & type) != type)
+    {
+      error = appropriate_error (bits, type);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
+    }
+
+  return error;
+}
+
+/*
  * GRANT/REVOKE OPERATION
  */
 
