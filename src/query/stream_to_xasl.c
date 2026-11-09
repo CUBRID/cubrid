@@ -1927,7 +1927,7 @@ stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
   if (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT
       || compare->method == DOMAIN_COMPARE_COLLATIONS)
     {
-      compare->cmp = pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
+      compare->cmp = domain_compare_cmp (compare);
     }
   return ptr;
 }
@@ -3442,7 +3442,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     (AGGREGATE_HASH_CONTEXT *) stx_alloc_struct (thread_p, sizeof (*stx_build_list_proc->agg_hash_context));
   std::memset (stx_build_list_proc->agg_hash_context, 0, sizeof (*stx_build_list_proc->agg_hash_context));
 
-  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_output_first_tuple);
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_first_tuple);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3887,6 +3887,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   TP_DOMAIN **all_domains = NULL;
   int domain_cnt;
+  int has_ineligible;
   int offset;
 
   int error = NO_ERROR;
@@ -3966,6 +3967,9 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       goto exit_on_error;
     }
   assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
+
+  ptr = or_unpack_int (ptr, &has_ineligible);
+  node_p->has_ineligible = (has_ineligible != 0);
 
   /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;
