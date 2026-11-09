@@ -245,7 +245,7 @@ static void log_append_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_TDES * t
 					   LOG_LSA * sysop_end_lsa_out);
 static void log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						 LOG_REC_SYSOP_END * sysop_end, int data_size, const char *data,
-						 LOG_LSA * sysop_end_lsa_out);
+						 bool by_keys, size_t key_begin, LOG_LSA * sysop_end_lsa_out);
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
@@ -3760,6 +3760,8 @@ log_sysop_start (THREAD_ENTRY * thread_p)
    * when it ends: a replicating system operation is labeled for commit order, not by its keys. */
   tdes->topops.stack[tdes->topops.last].wset_mark = tdes->wset_hashes.size ();
   tdes->topops.stack[tdes->topops.last].repl_flushed = false;
+  tdes->topops.stack[tdes->topops.last].repl_unit = false;
+  tdes->topops.stack[tdes->topops.last].repl_unit_begin = 0;
 
   perfmon_inc_stat (thread_p, PSTAT_TRAN_NUM_START_TOPOPS);
 }
@@ -3942,6 +3944,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
   int repl_start_index = 0;
   bool sysop_end_appended = false;
   bool sysop_commit_order = false;	/* SYSOP_END labeled for commit order, no keys published */
+  bool sysop_keyed = false;	/* SYSOP_END labeled by its keys, which are published at it */
+  bool sysop_leftover = false;	/* records made before the operation started were written at its SYSOP_END */
   size_t sysop_key_begin = 0;
   size_t sysop_key_count = 0;
   LOG_LSA sysop_lsa = LSA_INITIALIZER;
@@ -4019,6 +4023,10 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 		  && repl_record->must_flush == LOG_REPL_NEED_FLUSH)
 		{
 		  repl_item_count++;
+		  if (item_index < LOG_TDES_LAST_SYSOP (tdes)->repl_unit_begin)
+		    {
+		      sysop_leftover = true;
+		    }
 		}
 	    }
 
@@ -4053,27 +4061,28 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  || (LOG_TDES_LAST_SYSOP (tdes)->repl_flushed && !LOG_CHECK_LOG_APPLIER (thread_p)
 	      && tdes->is_active_worker_transaction () && log_does_allow_replication () == true))
 	{
-	  /* Commit order: the writeset label (LOG_DUMMY_WSET_LABEL, written right before this SYSOP_END) holds the
-	   * log position of the latest commit (or labeled SYSOP_END) written before this operation, so the slave
-	   * applies it as its own task only after everything before it. The history floor is raised to this
-	   * SYSOP_END below, so no later transaction gets a lower label and every later transaction waits for it.
-	   * The keys this operation changed are not registered in the history: it is ordered by the label alone.
-	   * Every system operation whose replication records reached the log while it was the innermost one
-	   * is labeled, whatever its end type: checksumdb appends its statement before log_sysop_commit, and
-	   * records an INCR attached to its transaction left unwritten reach the log at the SYSOP_END of a later
-	   * operation of any type. An unlabeled SYSOP_END leaves the records to the outer transaction on the
-	   * slave, which applies them at the outer commit or drops them on its abort.
+	  /* The writeset label (LOG_DUMMY_WSET_LABEL, written right before this SYSOP_END) makes the slave apply the
+	   * records written here as their own task at this SYSOP_END. Every system operation whose replication
+	   * records reached the log while it was the innermost one is labeled, whatever its end type: checksumdb
+	   * appends its statement before log_sysop_commit. An unlabeled SYSOP_END leaves the records to the outer
+	   * transaction on the slave, which applies them at the outer commit or drops them on its abort.
 	   *
-	   * TODO: Such an operation could instead probe and publish the keys it collected on its own
-	   * SYSOP_END coordinate, so that only a later change to the same serial waits for it. That is
-	   * on hold: some of these operations carry no writeset label at all (INCR/DECR, checksumdb,
-	   * overflowed transactions) and still need the commit-order barrier, and the key path has open
-	   * ordering questions (a label lowered to prev_commit_lsa below a SYSOP_END coordinate, the order
-	   * between operations of one transaction, restart idempotency). */
+	   * Commit order: the label holds the log position of the latest commit (or SYSOP_END) written before this
+	   * operation, and the history floor is raised to this SYSOP_END, so every later transaction waits for it.
+	   * By keys: the label comes from the keys the operation collected, which are published at this SYSOP_END,
+	   * so only a later change of the same keys waits for it. */
 	  sysop_key_count =
 	    tdes->wset_hashes.size () > sysop_key_begin ? tdes->wset_hashes.size () - sysop_key_begin : 0;
-	  sysop_commit_order = true;
-	  log_append_wset_label_and_sysop_end (thread_p, tdes, log_record, data_size, data, &sysop_lsa);
+
+	  /* An operation that declared itself an independent replication unit (repl_start_flush_mark) and collected
+	   * the keys it changed is ordered by them, like a commit: only a later change of the same serial or row
+	   * waits for it. Commit order stays for a unit without keys (checksumdb, an overflowed writeset) and for a
+	   * SYSOP_END that also wrote records made before the operation started, whose keys it does not hold. */
+	  sysop_keyed = (LOG_TDES_LAST_SYSOP (tdes)->repl_unit && !sysop_leftover && !tdes->wset_overflow
+			 && sysop_key_count > 0);
+	  sysop_commit_order = !sysop_keyed;
+	  log_append_wset_label_and_sysop_end (thread_p, tdes, log_record, data_size, data, sysop_keyed,
+					       sysop_key_begin, &sysop_lsa);
 	}
       else
 	{
@@ -4084,7 +4093,14 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
       /* Remember last partial result */
       LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
 
-      if (sysop_commit_order)
+      if (sysop_keyed)
+	{
+	  /* Published at the SYSOP_END while the row lock (INCR/DECR) or the page latch (serial) is still held, then
+	   * dropped from the outer writeset so the outer commit does not publish them again. */
+	  wset_order_publish_sysop_keys (tdes, sysop_key_begin, &sysop_lsa);
+	  wset_discard_sysop_keys (tdes, sysop_key_begin);
+	}
+      else if (sysop_commit_order)
 	{
 	  /* Every later transaction waits for this operation: log_append_wset_label_and_sysop_end raised the
 	   * history floor to it. The keys collected inside it are dropped unpublished: the row lock on a serial
@@ -4095,7 +4111,7 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
 
   /* a labeled (serial) fragment is traced at level 1; every other system operation at level 2 */
-  if (wset_trace_is_enabled (2) || (sysop_commit_order && wset_trace_is_enabled (1)))
+  if (wset_trace_is_enabled (2) || ((sysop_commit_order || sysop_keyed) && wset_trace_is_enabled (1)))
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] SYSOP master trid=%d type=%s appended=%d sysop_lsa=%lld|%d repl_items=%d flushed_items=%d "
@@ -4112,6 +4128,15 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 			 tdes->trid, (long long) tdes->wset_dependency_seq.pageid,
 			 (int) tdes->wset_dependency_seq.offset, (long long) sysop_lsa.pageid,
 			 (int) sysop_lsa.offset, sysop_key_count, tdes->wset_overflow ? 1 : 0, sysop_reason);
+	}
+      else if (sysop_keyed)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[WSET] SYSOP master keyed trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
+			 "published_keys=%zu reason=%s\n",
+			 tdes->trid, (long long) tdes->wset_dependency_seq.pageid,
+			 (int) tdes->wset_dependency_seq.offset, (long long) sysop_lsa.pageid,
+			 (int) sysop_lsa.offset, sysop_key_count, sysop_reason);
 	}
     }
 
@@ -4893,24 +4918,44 @@ log_sysop_fallback_reason (const LOG_TDES * tdes, int repl_start_index)
  * log_append_wset_label_and_sysop_end - append the writeset dependency label and the SYSOP_END atomically
  *
  *   tdes(in): transaction carrying the operation's selected dependency
+ *   by_keys(in): order the operation by its keys (from key_begin) instead of commit order
+ *   key_begin(in): index in wset_hashes where the operation's keys start
  *   sysop_end_lsa_out(out): LSA of the appended SYSOP_END record
  *
  * NOTE: The label and the SYSOP_END are written inside one prior_lsa_mutex region so no other
  *       transaction's label or commit record can fall between them. The applier binds a label to the
  *       SYSOP_END of the same trid that immediately follows it, so this adjacency must be preserved.
- *       The label is decided and the history floor raised to the SYSOP_END in the same region, for the
- *       reason given in log_append_repl_info_and_commit_log: the operation is then a barrier on the slave.
+ *       The label is decided and the commit-order state updated in the same region, for the reason given in
+ *       log_append_repl_info_and_commit_log. In commit order the history floor is raised to the SYSOP_END, so
+ *       the operation is a barrier on the slave. By keys the label comes from the keys like a commit's, and the
+ *       commit-order baseline (prev_commit_lsa) moves to the SYSOP_END: without it a later label lowered to the
+ *       baseline, or a later commit-order label, could fall below this operation.
  */
 static void
 log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
-				     int data_size, const char *data, LOG_LSA * sysop_end_lsa_out)
+				     int data_size, const char *data, bool by_keys, size_t key_begin,
+				     LOG_LSA * sysop_end_lsa_out)
 {
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-  wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_seq);
+  if (by_keys)
+    {
+      wset_order_find_sysop_key_dependency (tdes, key_begin, &tdes->wset_dependency_seq);
+    }
+  else
+    {
+      wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_seq);
+    }
   log_append_wset_label_with_lock (thread_p, tdes);
   log_append_sysop_end_internal (thread_p, tdes, sysop_end, data_size, data, true, sysop_end_lsa_out);
-  wset_order_advance_barrier (sysop_end_lsa_out, "SYSOP_COMMIT_ORDER");
+  if (by_keys)
+    {
+      wset_order_record_sysop (sysop_end_lsa_out);
+    }
+  else
+    {
+      wset_order_advance_barrier (sysop_end_lsa_out, "SYSOP_COMMIT_ORDER");
+    }
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 }

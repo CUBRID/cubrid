@@ -362,6 +362,9 @@ struct log_topops_addresses
 				 * added afterwards belong to the operation and are dropped at its SYSOP_END */
   bool repl_flushed;		/* replication records were appended to the log while this was the innermost open
 				 * system operation, so its SYSOP_END is where the slave must apply them */
+  bool repl_unit;		/* the operation flush-marked its replication records (serial update, INCR/DECR,
+				 * checksumdb): it commits on its own and is applied on the slave at its SYSOP_END */
+  int repl_unit_begin;		/* first replication record of the operation when repl_unit is set */
 };
 
 typedef struct log_topops_stack LOG_TOPOPS_STACK;

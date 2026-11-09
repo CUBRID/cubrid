@@ -697,6 +697,14 @@ repl_start_flush_mark (THREAD_ENTRY * thread_p)
   if (tdes->fl_mark_repl_recidx == -1)
     {
       tdes->fl_mark_repl_recidx = tdes->cur_repl_record;
+
+      /* The system operation that marks its records is an independent replication unit: it commits on its own,
+       * so log_sysop_commit_internal orders its SYSOP_END by the keys collected inside it. */
+      if (tdes->topops.last >= 0)
+	{
+	  tdes->topops.stack[tdes->topops.last].repl_unit = true;
+	  tdes->topops.stack[tdes->topops.last].repl_unit_begin = tdes->cur_repl_record;
+	}
     }				/* else already started, return */
   return;
 }
