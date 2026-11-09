@@ -1848,6 +1848,13 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	    break;
 	  }
 
+	if (DB_IS_NULL (&tmp_value))
+	  {
+	    /* '' or a whitespace-only string with numeric_empty_string_as_null */
+	    db_value_domain_init (value, DB_TYPE_NUMERIC, precision, scale);
+	    break;
+	  }
+
 	if (is_float_numeric)
 	  {
 	    db_make_numeric (value, db_locate_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
