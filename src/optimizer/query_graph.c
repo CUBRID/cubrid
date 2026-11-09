@@ -7612,6 +7612,65 @@ qo_is_session_dependent_expr (PARSER_CONTEXT * parser, PT_NODE * expr)
 }
 
 /*
+ * qo_negative_zero_walk () - parse tree pre walk function that detects an operator giving -0 from a nonzero argument
+ *   return: PT_NODE *
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool, set when found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_negative_zero_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (tree->node_type == PT_EXPR)
+    {
+      switch (tree->info.expr.op)
+	{
+	case PT_CEIL:
+	case PT_ROUND:
+	case PT_TRUNC:
+	case PT_MOD:
+	case PT_MODULUS:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  *continue_walk = *found ? PT_STOP_WALK : PT_CONTINUE_WALK;
+  return tree;
+}
+
+/*
+ * qo_may_give_negative_zero_expr () - check whether a floating point expression may give -0 for a row whose
+ *   arguments are not -0
+ *   return: bool
+ *   parser(in):
+ *   expr(in): function index expression
+ */
+static bool
+qo_may_give_negative_zero_expr (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  PT_NODE *save_next;
+  bool found = false;
+
+  if (expr == NULL)
+    {
+      return true;
+    }
+
+  save_next = expr->next;
+  expr->next = NULL;
+  (void) parser_walk_tree (parser, expr, qo_negative_zero_walk, &found, NULL, NULL);
+  expr->next = save_next;
+
+  return found;
+}
+
+/*
  * qo_is_func_index_routable () - check whether the function result of a function index scan can be read from the
  *   index key instead of being computed from its arguments
  *   return: bool
@@ -7661,6 +7720,14 @@ qo_is_func_index_key_result_exact (QO_ENV * env, QO_INDEX_ENTRY * index_entry, Q
   if (fi_domain == NULL || TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE (fi_domain))
       || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (fi_domain))
 	  && !lang_get_collation (TP_DOMAIN_COLLATION (fi_domain))->options.allow_index_opt))
+    {
+      return false;
+    }
+
+  /* -0 compares equal to 0, so a row computing 0 may read the -0 another row stored, or the other way round */
+  if ((TP_DOMAIN_TYPE (fi_domain) == DB_TYPE_FLOAT || TP_DOMAIN_TYPE (fi_domain) == DB_TYPE_DOUBLE
+       || TP_DOMAIN_TYPE (fi_domain) == DB_TYPE_MONETARY)
+      && qo_may_give_negative_zero_expr (QO_ENV_PARSER (env), QO_SEG_PT_NODE (fi_seg)))
     {
       return false;
     }
