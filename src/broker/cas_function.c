@@ -1661,7 +1661,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 
   if (value_index > 0)
     {
-      err_code = make_bind_value (1, 2, argv + value_index, &ele_val, net_buf, db_type);
+      err_code = make_bind_value (1, 2, argv + value_index, &ele_val, net_buf, db_type, false);
       if (err_code < 0)
 	{
 	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)

@@ -4549,7 +4549,13 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
 	      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
 		{
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, or the caller
+		   * takes a class whose statistics were never updated (they are updated after this loop) for a
+		   * finished one */
+		  if (!quiet)
+		    {
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
+		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}
@@ -4720,9 +4726,11 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      if (error != ER_LC_CLASSNAME_EXIST)
 		{
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, as the all-columns
+		   * path does, or the statement reports success after the savepoint rollback below */
 		  if (!quiet)
 		    {
-		      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
 		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
@@ -9416,8 +9424,8 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
 /*
  * add_union_query() - Adds a query to a virtual class object.
  *			  If the query is a union all query
- *			  without limit and order_by, it is
- * 			  divided into its component queries
+ *			  without limit, order_by and with clause,
+ * 			  it is divided into its component queries
  *   return: Error code
  *   parser(in): Parser context
  *   ctemplate(in/out): Class template
@@ -9433,7 +9441,7 @@ add_union_query (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * 
   /* Add each query listed in the virtual class definition. */
 
   if (query->node_type == PT_UNION && query->info.query.all_distinct == PT_ALL && query->info.query.limit == NULL
-      && query->info.query.order_by == NULL)
+      && query->info.query.order_by == NULL && query->info.query.with == NULL)
     {
       error = add_union_query (parser, ctemplate, query->info.query.q.union_.arg1);
 

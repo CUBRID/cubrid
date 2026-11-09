@@ -127,16 +127,6 @@ extern unsigned int db_on_server;
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
 
-static const int _gv_mr_float_numeric_precision_to_size[41] = {
-  0, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 12, 12,
-  12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 20, 20, 20, 20, 20, 20, 20, 20,
-  20
-};
-
-static const int _gv_mr_fixed_numeric_bytes_to_size[17] = {
-  0, 4, 8, 8, 8, 8, 12, 12, 12, 12, 16, 16, 16, 16, 20, 20, 20
-};
-
 // *INDENT-OFF*
 pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
                   initmem_function_type initmem_f_arg, initval_function_type initval_f_arg,
@@ -820,7 +810,6 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, 
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
-static inline int mr_get_fixed_numeric_size (const DB_C_NUMERIC data);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -8391,11 +8380,11 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	  if (is_float_numeric)
 	    {
 	      assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
-	      byte_size = _gv_mr_float_numeric_precision_to_size[precision];
+	      byte_size = numeric_repr_disk_size_by_precision (precision);
 	    }
 	  else
 	    {
-	      byte_size = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (src_num)];
+	      byte_size = numeric_repr_disk_size_by_value (src_num);
 	    }
 
 	  assert ((byte_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
@@ -8428,10 +8417,9 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	      num = (DB_C_NUMERIC) new_;
 	      memcpy (num, header, NUMERIC_HEADER_SIZE);
 
-	      byte_size -= NUMERIC_HEADER_SIZE;
 	      data_dest = num + NUMERIC_HEADER_SIZE;
 
-	      memcpy (data_dest, src_num + (DB_NUMERIC_BUF_SIZE - byte_size), byte_size);
+	      numeric_repr_write_disk (data_dest, src_num, byte_size);
 
 	      *mem = new_;
 	    }
@@ -8684,14 +8672,14 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       if (is_float_numeric)
 	{
 	  assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
-	  len = _gv_mr_float_numeric_precision_to_size[precision];
+	  len = numeric_repr_disk_size_by_precision (precision);
 	}
       else
 	{
 	  DB_C_NUMERIC numeric = db_get_numeric (value);
 	  if (numeric != NULL)
 	    {
-	      len = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (numeric)];
+	      len = numeric_repr_disk_size_by_value (numeric);
 	    }
 	}
     }
@@ -8723,11 +8711,11 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 
 	  if (is_float_numeric)
 	    {
-	      disk_size = _gv_mr_float_numeric_precision_to_size[precision];
+	      disk_size = numeric_repr_disk_size_by_precision (precision);
 	    }
 	  else
 	    {
-	      disk_size = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (numeric)];
+	      disk_size = numeric_repr_disk_size_by_value (numeric);
 	    }
 	  assert ((disk_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
 
@@ -8743,10 +8731,11 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	      header[2] = scale;
 	    }
 
-	  or_put_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
-	  disk_size -= NUMERIC_HEADER_SIZE;
+	  unsigned char digits[DB_NUMERIC_BUF_SIZE];
 
-	  rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
+	  or_put_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
+	  numeric_repr_write_disk (digits, numeric, disk_size);
+	  rc = or_put_data (buf, (char *) digits, disk_size - NUMERIC_HEADER_SIZE);
 	}
     }
   return rc;
@@ -8910,68 +8899,6 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
     }
 
   return c;
-}
-
-/*
- * mr_get_fixed_numeric_size - calculate the byte size of a fixed numeric value.
- *
- * return: the required number of bytes (1 ~ 16).
- * data(in): pointer to the fixed numeric data buffer.
- *
- * Note: 
- *   the maximum precision of a fixed numeric is 38, which fits within 16 bytes.
- *
- *   except for the sign byte (data[0]), the remaining 16 bytes of DB_NUMERIC_BUF_SIZE(17) 
- *   can be evaluated efficiently by casting them into two 64-bit integers (uint64_t).
- *
- *   this allows O(1) performance by using __builtin_ctzll or __builtin_clzll to quickly locate 
- *   the MSB or LSB without a traditional byte-by-byte loop.
- */
-static inline int
-mr_get_fixed_numeric_size (const DB_C_NUMERIC data)
-{
-  uint64_t word_buf[2] = { 0 };
-
-  /*
-   * 'data' points to a 17-byte numeric value stored in big-endian byte order.
-   * memcpy() copies the raw bytes as-is (no endianness conversion).
-   */
-  memcpy (word_buf, data + 1, sizeof (word_buf));
-
-  /*
-   * When the copied bytes are interpreted as uint64_t, the result depends on
-   * the host endianness:
-   *
-   * - On little-endian systems, the byte significance within each 64-bit word
-   *   is effectively reversed. 
-   *   Therefore, counting leading zeros (CLZ) in the original big-endian
-   *   representation is equivalent to counting trailing zeros (CTZ) here.
-   *
-   * - On big-endian systems, the byte order is preserved, so CLZ can be used
-   *   directly.
-   *
-   * This avoids the need for an explicit byte swap (bswap).
-   */
-  if (word_buf[0] != 0)
-    {
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return 16 - (NUMERIC_CTZ64 (word_buf[0]) >> 3);
-#else
-      return 16 - (NUMERIC_CLZ64 (word_buf[0]) >> 3);
-#endif
-    }
-  else if (word_buf[1] != 0)
-    {
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return 8 - (NUMERIC_CTZ64 (word_buf[1]) >> 3);
-#else
-      return 8 - (NUMERIC_CLZ64 (word_buf[1]) >> 3);
-#endif
-    }
-  else
-    {
-      return 1;			// value = 0
-    }
 }
 
 /*

@@ -59,10 +59,17 @@
 #include "dbtype.h"
 #include "thread_manager.hpp"
 
+/* Headers for the parallel SHOW INDEX CAPACITY */
+#include "px_worker_manager.hpp"
+#include "px_callable_task.hpp"
+#include "px_parallel.hpp"
+
 #include <assert.h>
 #include <math.h>
 #include <algorithm>
+#include <atomic>
 #include <cinttypes>
+#include <functional>
 #include <stdlib.h>
 #include <string.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -377,6 +384,21 @@ struct btree_search_key_helper
 #define BTREE_SEARCH_KEY_HELPER_INITIALIZER \
   { BTREE_KEY_NOTFOUND, NULL_SLOTID, btree_search_key_helper::NO_FENCE_KEY, DB_EQ, NULL }
 // *INDENT-ON*
+
+/* BTREE_INTEGRAL_SEARCH_KEY - CBRD-27862: a search key a node search compares with the key images of the records it
+ * reads, without reading each key into a DB_VALUE. An index of one column of an integral type (SHORT, INTEGER,
+ * BIGINT) keeps its keys as the type's native image (mr_index_writeval_short, _int, _bigint); a search key of that
+ * type that compares as it is - a key of the index's own domain, or a bound whose comparison is the type's cmpval
+ * without a conversion - orders as its value does, which the search compares with the image's.
+ */
+typedef struct btree_integral_search_key BTREE_INTEGRAL_SEARCH_KEY;
+struct btree_integral_search_key
+{
+  DB_BIGINT value;		/* the search key's value */
+  int size;			/* the size of a key image: OR_SHORT_SIZE, OR_INT_SIZE or OR_BIGINT_SIZE; 0 when the
+				 * search reads the keys as DB_VALUEs */
+  bool is_desc;			/* a descending index: its order is the values' reversed */
+};
 
 /* BTREE_REC_SATISFIES_SNAPSHOT_HELPER -
  * Structure used as helper for btree_record_satisfies_snapshot function.
@@ -1230,6 +1252,19 @@ static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * c
 					  const char *btname, PAGE_PTR pg_ptr, VPID * pg_vpid, BTREE_NODE_INFO * INFO);
 static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
 				       BTREE_STATS_ENV * env);
+static int btree_index_capacity_serial (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc);
+/* the accumulator/argument structs are defined next to the implementations below */
+#if defined (SERVER_MODE)
+struct btree_capacity_accum;
+struct btree_capacity_scan_ctx;
+struct btree_capacity_worker_arg;
+static void btree_capacity_accum_to_cpc (const struct btree_capacity_accum *total, int root_free, BTREE_CAPACITY * cpc);
+static void btree_capacity_parallel_worker (cubthread::entry & thread_ref, struct btree_capacity_worker_arg *arg);
+static int btree_capacity_run_workers (THREAD_ENTRY * thread_p, const struct btree_capacity_scan_ctx *ctx,
+				       int root_free, parallel_query::worker_manager * wm, int n_workers,
+				       BTREE_CAPACITY * cpc);
+static int btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc, bool * applied);
+#endif /* SERVER_MODE */
 static void btree_print_space (FILE * fp, int n);
 static int btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int slot_id);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R);
@@ -1355,6 +1390,23 @@ STATIC_INLINE DB_VALUE_COMPARE_RESULT btree_compare_bound_key (const BTID_INT * 
 							       const DOMAIN_KEY_BOUND * bound,
 							       const DOMAIN_COMPARE * compares, DB_VALUE * key,
 							       int *start_colp) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int btree_integral_search_key_init (const BTID_INT * btid, const TP_DOMAIN * node_key_type,
+						  const DB_VALUE * key, const DOMAIN_COMPARE * compares,
+						  BTREE_INTEGRAL_SEARCH_KEY * search_key)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_VALUE_COMPARE_RESULT btree_integral_search_key_compare (const BTREE_INTEGRAL_SEARCH_KEY * search_key,
+									 const char *image)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int btree_leaf_record_key_offset (const BTID_INT * btid, RECDES * rec) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *btree_leaf_record_key_image (const BTID_INT * btid, RECDES * rec, int size)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE const char *btree_non_leaf_record_key_image (RECDES * rec, NON_LEAF_REC * non_leaf_rec, int size)
+  __attribute__ ((ALWAYS_INLINE));
+#if !defined(NDEBUG)
+static void btree_integral_search_key_check (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec,
+					     BTREE_NODE_TYPE node_type, DB_VALUE * key, const DOMAIN_KEY_BOUND * bound,
+					     const DOMAIN_COMPARE * compares, DB_VALUE_COMPARE_RESULT c);
+#endif
 static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
 static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
@@ -4666,40 +4718,11 @@ btree_read_record_without_decompression (THREAD_ENTRY * thread_p, BTID_INT * bti
       leaf_rec = (LEAF_REC *) rec_header;
       leaf_rec->key_len = -1;
 
-      rc = or_advance (&buf, OR_OID_SIZE);	/* skip instance oid */
+      /* skip the first object's OID, class OID and MVCCIDs */
+      rc = or_advance (&buf, btree_leaf_record_key_offset (btid, rec));
       if (rc != NO_ERROR)
 	{
 	  return rc;
-	}
-
-      if (BTREE_IS_UNIQUE (btid->unique_pk))
-	{
-	  if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_CLASS_OID))
-	    {
-	      rc = or_advance (&buf, OR_OID_SIZE);	/* skip class oid */
-	      if (rc != NO_ERROR)
-		{
-		  return rc;
-		}
-	    }
-	}
-
-      if (btree_record_object_is_flagged (rec->data, BTREE_OID_HAS_MVCC_INSID))
-	{
-	  rc = or_advance (&buf, OR_MVCCID_SIZE);	/* skip insert mvccid */
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
-	}
-
-      if (btree_record_object_is_flagged (rec->data, BTREE_OID_HAS_MVCC_DELID))
-	{
-	  rc = or_advance (&buf, OR_MVCCID_SIZE);	/* skip delete mvccid */
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
 	}
 
       if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY))
@@ -5283,6 +5306,223 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
 }
 
 /*
+ * btree_integral_search_key_init () - CBRD-27862: whether a node search compares its records' key images with the
+ *				       search key (BTREE_INTEGRAL_SEARCH_KEY)
+ *   return: the size of a key image, 0 when the search reads the keys as DB_VALUEs
+ *   btid(in): B-tree info
+ *   node_key_type(in): the domain of the node's keys (a non-leaf key's, btree_generate_prefix_domain)
+ *   key(in): search key
+ *   compares(in): the bound's comparison with the node's keys; NULL for a key of the index's own domain
+ *   search_key(out): the search key's value and the index's order
+ */
+STATIC_INLINE int
+btree_integral_search_key_init (const BTID_INT * btid, const TP_DOMAIN * node_key_type, const DB_VALUE * key,
+				const DOMAIN_COMPARE * compares, BTREE_INTEGRAL_SEARCH_KEY * search_key)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (node_key_type);
+
+  search_key->value = 0;
+  search_key->size = 0;
+  search_key->is_desc = false;
+  if (DB_IS_NULL (key) || DB_VALUE_DOMAIN_TYPE (key) != type)
+    {
+      return 0;
+    }
+  if (compares != NULL
+      && (compares->method != DOMAIN_COMPARE_DIRECT || compares->cmp == NULL || compares->cmp->id != type
+	  || compares->conv[0] != NULL || compares->conv[1] != NULL))
+    {
+      /* the bound compares otherwise than as a value of the index's type */
+      return 0;
+    }
+
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+      search_key->value = db_get_short (key);
+      search_key->size = OR_SHORT_SIZE;
+      break;
+    case DB_TYPE_INTEGER:
+      search_key->value = db_get_int (key);
+      search_key->size = OR_INT_SIZE;
+      break;
+    case DB_TYPE_BIGINT:
+      search_key->value = db_get_bigint (key);
+      search_key->size = OR_BIGINT_SIZE;
+      break;
+    default:
+      return 0;
+    }
+  search_key->is_desc = btid->key_type->is_desc;
+
+  return search_key->size;
+}
+
+/*
+ * btree_integral_search_key_compare () - CBRD-27862: the search key compared with a record's key image, as the index
+ *					  orders them (btree_compare_key's answer for the two values)
+ *   return: DB_LT, DB_EQ or DB_GT
+ *   search_key(in): search key (btree_integral_search_key_init)
+ *   image(in): the key image in a record (btree_leaf_record_key_image, btree_non_leaf_record_key_image)
+ */
+STATIC_INLINE DB_VALUE_COMPARE_RESULT
+btree_integral_search_key_compare (const BTREE_INTEGRAL_SEARCH_KEY * search_key, const char *image)
+{
+  DB_BIGINT value;
+  DB_VALUE_COMPARE_RESULT c;
+
+  switch (search_key->size)
+    {
+    case OR_SHORT_SIZE:
+      {
+	short s;
+
+	memcpy (&s, image, sizeof (s));
+	value = s;
+      }
+      break;
+    case OR_INT_SIZE:
+      {
+	int i;
+
+	memcpy (&i, image, sizeof (i));
+	value = i;
+      }
+      break;
+    default:
+      assert (search_key->size == OR_BIGINT_SIZE);
+      memcpy (&value, image, sizeof (value));
+      break;
+    }
+
+  c = (search_key->value < value) ? DB_LT : (search_key->value > value) ? DB_GT : DB_EQ;
+  if (search_key->is_desc)
+    {
+      c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
+    }
+
+  return c;
+}
+
+/*
+ * btree_leaf_record_key_offset () - where a leaf record's key starts: after the first object's OID, its class OID
+ *				     (where a unique index's record has one) and its insert and delete MVCCIDs, as
+ *				     btree_write_record_header writes them
+ *   return: the offset of the key (of its overflow VPID for a key kept in overflow pages)
+ *   btid(in): B-tree info
+ *   rec(in): leaf record
+ *
+ * Note: btree_read_record_without_decompression and btree_leaf_record_key_image (CBRD-27862) both find the key here.
+ */
+STATIC_INLINE int
+btree_leaf_record_key_offset (const BTID_INT * btid, RECDES * rec)
+{
+  int offset = OR_OID_SIZE;
+
+  if (BTREE_IS_UNIQUE (btid->unique_pk) && btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_CLASS_OID))
+    {
+      offset += OR_OID_SIZE;
+    }
+  if (btree_record_object_is_flagged (rec->data, BTREE_OID_HAS_MVCC_INSID))
+    {
+      offset += OR_MVCCID_SIZE;
+    }
+  if (btree_record_object_is_flagged (rec->data, BTREE_OID_HAS_MVCC_DELID))
+    {
+      offset += OR_MVCCID_SIZE;
+    }
+
+  return offset;
+}
+
+/*
+ * btree_leaf_record_key_image () - CBRD-27862: the key image of a leaf record, where
+ *				    btree_read_record_without_decompression reads the key (btree_leaf_record_key_offset)
+ *   return: the image; NULL for a key kept in overflow pages or a record shorter than the image
+ *   btid(in): B-tree info
+ *   rec(in): leaf record
+ *   size(in): the size of the image
+ */
+STATIC_INLINE const char *
+btree_leaf_record_key_image (const BTID_INT * btid, RECDES * rec, int size)
+{
+  int offset;
+
+  if (btree_leaf_is_flaged (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY))
+    {
+      return NULL;
+    }
+
+  offset = btree_leaf_record_key_offset (btid, rec);
+
+  return (offset + size <= rec->length) ? rec->data + offset : NULL;
+}
+
+/*
+ * btree_non_leaf_record_key_image () - CBRD-27862: the key image of a non-leaf record, after its fixed portion
+ *   return: the image; NULL for a key kept in overflow pages (a negative key length) or a record shorter than the
+ *	     image
+ *   rec(in): non-leaf record
+ *   non_leaf_rec(out): the record's fixed portion (the child page pointer)
+ *   size(in): the size of the image
+ */
+STATIC_INLINE const char *
+btree_non_leaf_record_key_image (RECDES * rec, NON_LEAF_REC * non_leaf_rec, int size)
+{
+  btree_read_fixed_portion_of_non_leaf_record (rec, non_leaf_rec);
+
+  if (non_leaf_rec->key_len < 0 || NON_LEAF_RECORD_SIZE + size > rec->length)
+    {
+      return NULL;
+    }
+
+  return rec->data + NON_LEAF_RECORD_SIZE;
+}
+
+#if !defined(NDEBUG)
+/*
+ * btree_integral_search_key_check () - CBRD-27862: assert that comparing a record's key image answers as comparing
+ *					the key read into a DB_VALUE does (btree_compare_bound_key)
+ *   return: void
+ *   thread_p(in): thread entry
+ *   btid(in): B-tree info
+ *   rec(in): leaf or non-leaf record
+ *   node_type(in): the record's node type
+ *   key(in): search key
+ *   bound(in): how the key compares; NULL for a key of the index's own domain
+ *   compares(in): the bound's comparison with the node's keys
+ *   c(in): btree_integral_search_key_compare's answer
+ */
+static void
+btree_integral_search_key_check (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * rec, BTREE_NODE_TYPE node_type,
+				 DB_VALUE * key, const DOMAIN_KEY_BOUND * bound, const DOMAIN_COMPARE * compares,
+				 DB_VALUE_COMPARE_RESULT c)
+{
+  DB_VALUE rec_key;
+  bool clear_key;
+  int offset;
+  int start_col = 0;
+  LEAF_REC leaf_rec;
+  NON_LEAF_REC non_leaf_rec;
+  void *rec_header = (node_type == BTREE_LEAF_NODE) ? (void *) &leaf_rec : (void *) &non_leaf_rec;
+  DB_VALUE_COMPARE_RESULT expected;
+
+  btree_init_temp_key_value (&clear_key, &rec_key);
+  if (btree_read_record_without_decompression (thread_p, btid, rec, &rec_key, rec_header, node_type, &clear_key,
+					       &offset, PEEK_KEY_VALUE) != NO_ERROR)
+    {
+      assert (false);
+      return;
+    }
+
+  expected = btree_compare_bound_key (btid, key, bound, compares, &rec_key, &start_col);
+  btree_clear_key_value (&clear_key, &rec_key);
+
+  assert (c == expected);
+}
+#endif /* !NDEBUG */
+
+/*
  * btree_search_nonleaf_page () -
  *   return: NO_ERROR
  *   btid(in):
@@ -5305,12 +5545,14 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
   int c;
   bool clear_key;
   /* the start position of non-equal-value column */
-  int start_col, left_start_col, right_start_col;
+  int start_col = 0, left_start_col, right_start_col;
   INT16 left, right;
   INT16 middle = 0;
   DB_VALUE temp_key;
   RECDES rec;
   NON_LEAF_REC non_leaf_rec;
+  BTREE_INTEGRAL_SEARCH_KEY integral_key;
+  const char *key_image;
 
   /* initialize child page identifier */
   VPID_SET_NULL (child_vpid);
@@ -5359,6 +5601,14 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
   /* for non-compressed midxkey; separator is not compressed */
   left_start_col = right_start_col = 0;
 
+  /* CBRD-27862: a key of an integral type compares with the records' key images; the page boundaries read DB_VALUEs */
+  (void) btree_integral_search_key_init (btid, btid->nonleaf_key_type, key,
+					 bound != NULL ? bound->nonleaf_compares : NULL, &integral_key);
+  if (page_bounds != NULL)
+    {
+      integral_key.size = 0;
+    }
+
   left = 2;			/* Ignore dummy key (neg-inf or 1st key) */
   right = key_cnt;
 
@@ -5373,25 +5623,39 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	  return ER_FAILED;
 	}
 
-      if (btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &non_leaf_rec, BTREE_NON_LEAF_NODE,
-						   &clear_key, &offset, PEEK_KEY_VALUE) != NO_ERROR)
+      key_image = (integral_key.size > 0) ? btree_non_leaf_record_key_image (&rec, &non_leaf_rec, integral_key.size)
+	: NULL;
+      if (key_image != NULL)
 	{
-	  return ER_FAILED;
+	  c = btree_integral_search_key_compare (&integral_key, key_image);
+#if !defined(NDEBUG)
+	  btree_integral_search_key_check (thread_p, btid, &rec, BTREE_NON_LEAF_NODE, key, bound,
+					   bound != NULL ? bound->nonleaf_compares : NULL, (DB_VALUE_COMPARE_RESULT) c);
+#endif
 	}
-
-      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
+      else
 	{
-	  start_col = MIN (left_start_col, right_start_col);
-	}
+	  if (btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &non_leaf_rec,
+						       BTREE_NON_LEAF_NODE, &clear_key, &offset,
+						       PEEK_KEY_VALUE) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 
-      /* a non-leaf key has the non-leaf key domain (btree_generate_prefix_domain) */
-      c = btree_compare_bound_key (btid, key, bound, bound != NULL ? bound->nonleaf_compares : NULL, &temp_key,
-				   &start_col);
+	  if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
+	    {
+	      start_col = MIN (left_start_col, right_start_col);
+	    }
 
-      if (c == DB_UNK)
-	{
-	  btree_clear_key_value (&clear_key, &temp_key);
-	  return ER_FAILED;
+	  /* a non-leaf key has the non-leaf key domain (btree_generate_prefix_domain) */
+	  c = btree_compare_bound_key (btid, key, bound, bound != NULL ? bound->nonleaf_compares : NULL, &temp_key,
+				       &start_col);
+
+	  if (c == DB_UNK)
+	    {
+	      btree_clear_key_value (&clear_key, &temp_key);
+	      return ER_FAILED;
+	    }
 	}
 
       if (c == 0 && bound != NULL && bound->merges)
@@ -5671,6 +5935,8 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   /* a bound that merges keys: the slot of the last key found that compares equal, and whether the upper fence did */
   INT16 equal_slot = NULL_SLOTID;
   bool upper_fence_equal = false;
+  BTREE_INTEGRAL_SEARCH_KEY integral_key;
+  const char *key_image;
 
   /* Assert expected arguments. */
   assert (btid != NULL);
@@ -5679,6 +5945,10 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   assert (search_key != NULL);
 
   btree_init_temp_key_value (&clear_key, &temp_key);
+
+  /* CBRD-27862: a key of an integral type compares with the records' key images */
+  (void) btree_integral_search_key_init (btid, btid->key_type, key,
+					 search_key->bound != NULL ? search_key->bound->compares : NULL, &integral_key);
 
   /* Initialize search results. */
   search_key->result = BTREE_KEY_NOTFOUND;
@@ -5754,37 +6024,52 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  return ER_FAILED;
 	}
 
-      error =
-	btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &leaf_pnt, BTREE_LEAF_NODE,
-						 &clear_key, &offset, PEEK_KEY_VALUE);
-      if (error != NO_ERROR)
+      key_image = (integral_key.size > 0) ? btree_leaf_record_key_image (btid, &rec, integral_key.size) : NULL;
+      if (key_image != NULL)
 	{
-	  /* Error! */
-	  ASSERT_ERROR ();
-	  return error;
+	  /* Compare searched key with current middle key's image. */
+	  c = btree_integral_search_key_compare (&integral_key, key_image);
+	  is_record_read = true;
+#if !defined(NDEBUG)
+	  btree_integral_search_key_check (thread_p, btid, &rec, BTREE_LEAF_NODE, key, search_key->bound,
+					   search_key->bound != NULL ? search_key->bound->compares : NULL,
+					   (DB_VALUE_COMPARE_RESULT) c);
+#endif
 	}
-
-      is_record_read = true;
-
-      if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
+      else
 	{
-	  start_col = MIN (left_start_col, right_start_col);
-	}
+	  error =
+	    btree_read_record_without_decompression (thread_p, btid, &rec, &temp_key, &leaf_pnt, BTREE_LEAF_NODE,
+						     &clear_key, &offset, PEEK_KEY_VALUE);
+	  if (error != NO_ERROR)
+	    {
+	      /* Error! */
+	      ASSERT_ERROR ();
+	      return error;
+	    }
 
-      /* Compare searched key with current middle key. */
-      c = btree_compare_search_key (btid, key, search_key->bound, &temp_key, &start_col);
+	  is_record_read = true;
 
-      /* Clear current middle key. */
-      btree_clear_key_value (&clear_key, &temp_key);
-      if (c == DB_UNK)
-	{
-	  /* Unknown compare result? */
-	  search_key->result = BTREE_KEY_NOTFOUND;
-	  search_key->slotid = NULL_SLOTID;
+	  if (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY)
+	    {
+	      start_col = MIN (left_start_col, right_start_col);
+	    }
 
-	  /* Is this an error case? */
-	  ASSERT_ERROR_AND_SET (error);
-	  return error;
+	  /* Compare searched key with current middle key. */
+	  c = btree_compare_search_key (btid, key, search_key->bound, &temp_key, &start_col);
+
+	  /* Clear current middle key. */
+	  btree_clear_key_value (&clear_key, &temp_key);
+	  if (c == DB_UNK)
+	    {
+	      /* Unknown compare result? */
+	      search_key->result = BTREE_KEY_NOTFOUND;
+	      search_key->slotid = NULL_SLOTID;
+
+	      /* Is this an error case? */
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
 	}
 
       if (c == DB_EQ)
@@ -5961,6 +6246,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   VPID_SET_NULL (&(root_header->node.next_vpid));
   root_header->node.node_level = 1;
   root_header->node.max_key_len = 0;
+  /* a root leaf has no fence keys and is never compressed; a multi-column index reads this field as the number of
+   * leading key columns the keys of the leaf share */
+  root_header->node.common_prefix = 0;
 
   if (unique_pk)
     {
@@ -9917,15 +10205,16 @@ exit_on_error:
 }
 
 /*
- * btree_index_capacity () -
- *   return: NO_ERROR
+ * btree_index_capacity_serial () - serial implementation, used as btree_index_capacity's fallback
+ *                                  and directly by btree_dump_capacity
+ *   return: NO_ERROR, or the error that stopped the traversal
  *   btid(in): B+tree index identifier
  *   cpc(out): Set to contain index capacity information
  *
  * Note: Form and return index capacity/space related information
  */
-int
-btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
+static int
+btree_index_capacity_serial (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
 {
   VPID root_vpid;		/* root page identifier */
   PAGE_PTR root = NULL;		/* root page pointer */
@@ -10004,6 +10293,635 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
+/* Parallel SHOW INDEX CAPACITY (entry point: btree_index_capacity_parallel).
+ * Workers claim root-child subtrees and fold per-worker partials. sum_rec_len / sum_key_len are
+ * INT64 the whole way down -- btree_get_subtree_capacity accumulates them exactly, the fold adds
+ * them exactly -- so avg_rec_len / avg_key_len match what serial computes, byte for byte, however
+ * the children happened to be split across workers. The space fields stay float in BTREE_CAPACITY;
+ * the fold adds each subtree's float total into an INT64, while serial keeps one float running sum.
+ * Once a space total exceeds 2^24 bytes (free space reaches that first) the two can differ in the
+ * low bits, so the size-string columns may rarely differ in their last printed digit. */
+
+/* btree_capacity_accum - per-worker INT64 partial sums, merged after join. Zero-initialize.
+ *   tot_used_space is not accumulated; the reduce derives it. The fields are named after their
+ *   BTREE_CAPACITY counterparts so that one template adds either kind into an accumulator. */
+typedef struct btree_capacity_accum BTREE_CAPACITY_ACCUM;
+struct btree_capacity_accum
+{
+  INT64 fence_key_cnt;
+  INT64 dis_key_cnt;
+  INT64 tot_val_cnt;
+  INT64 leaf_pg_cnt;
+  INT64 nleaf_pg_cnt;
+  INT64 tot_pg_cnt;
+  INT64 sum_rec_len;
+  INT64 sum_key_len;
+  INT64 tot_free_space;
+  INT64 tot_space;
+  struct
+  {
+    INT64 dis_key_cnt;
+    INT64 tot_val_cnt;
+    INT64 tot_pg_cnt;
+    INT64 tot_free_space;
+    INT64 tot_space;
+    int max_pg_cnt_per_key;
+  } ovfl_oid_pg;
+  int height;			/* height of a root-child subtree (all children are co-level) */
+};
+
+/*
+ * btree_capacity_accum_merge () - merge one source's capacity into an accumulator
+ *   Src is BTREE_CAPACITY when a worker folds a root-child subtree it has just scanned, and
+ *   BTREE_CAPACITY_ACCUM when the reduce merges one worker's partial into the total. Both name
+ *   these fields alike, so the two directions are this one body: the sums add, and
+ *   max_pg_cnt_per_key and height take the larger of the two.
+ *   height is a max, not a copy: root children are co-level so every fold reports the same height,
+ *   and 0 is the identity - a worker that folded nothing, or a keyless non-leaf child, drops out.
+ */
+template < typename Src > static inline void
+btree_capacity_accum_merge (BTREE_CAPACITY_ACCUM * dst, const Src * src)
+{
+  dst->fence_key_cnt += (INT64) src->fence_key_cnt;
+  dst->dis_key_cnt += (INT64) src->dis_key_cnt;
+  dst->tot_val_cnt += (INT64) src->tot_val_cnt;
+  dst->leaf_pg_cnt += (INT64) src->leaf_pg_cnt;
+  dst->nleaf_pg_cnt += (INT64) src->nleaf_pg_cnt;
+  dst->tot_pg_cnt += (INT64) src->tot_pg_cnt;
+  dst->sum_rec_len += (INT64) src->sum_rec_len;
+  dst->sum_key_len += (INT64) src->sum_key_len;
+  dst->tot_free_space += (INT64) src->tot_free_space;
+  dst->tot_space += (INT64) src->tot_space;
+  dst->ovfl_oid_pg.dis_key_cnt += (INT64) src->ovfl_oid_pg.dis_key_cnt;
+  dst->ovfl_oid_pg.tot_val_cnt += (INT64) src->ovfl_oid_pg.tot_val_cnt;
+  dst->ovfl_oid_pg.tot_pg_cnt += (INT64) src->ovfl_oid_pg.tot_pg_cnt;
+  dst->ovfl_oid_pg.tot_free_space += (INT64) src->ovfl_oid_pg.tot_free_space;
+  dst->ovfl_oid_pg.tot_space += (INT64) src->ovfl_oid_pg.tot_space;
+  if (dst->ovfl_oid_pg.max_pg_cnt_per_key < src->ovfl_oid_pg.max_pg_cnt_per_key)
+    {
+      dst->ovfl_oid_pg.max_pg_cnt_per_key = src->ovfl_oid_pg.max_pg_cnt_per_key;
+    }
+  if (dst->height < src->height)
+    {
+      dst->height = src->height;
+    }
+}
+
+/*
+ * btree_capacity_accum_to_cpc () - fold in the root page and convert the merged total into the
+ *   BTREE_CAPACITY output (INT64 -> int/float casts + one-shot averages), mirroring the tail of
+ *   btree_index_capacity_serial.
+ *   total(in): merged partials from all workers
+ *   root_free(in): free space of the (non-leaf) root page, counted once here
+ */
+static void
+btree_capacity_accum_to_cpc (const BTREE_CAPACITY_ACCUM * total, int root_free, BTREE_CAPACITY * cpc)
+{
+  /* the root page itself: one more non-leaf page counted once */
+  INT64 t_nleaf = total->nleaf_pg_cnt + 1;
+  INT64 t_pg = total->tot_pg_cnt + 1;
+  INT64 t_free = total->tot_free_space + root_free;
+  INT64 t_space = total->tot_space + DB_PAGESIZE;
+
+  memset (cpc, 0, sizeof (*cpc));
+  cpc->fence_key_cnt = (int) total->fence_key_cnt;
+  cpc->dis_key_cnt = (int) total->dis_key_cnt;
+  cpc->tot_val_cnt = total->tot_val_cnt;
+  cpc->leaf_pg_cnt = (int) total->leaf_pg_cnt;
+  cpc->nleaf_pg_cnt = (int) t_nleaf;
+  cpc->tot_pg_cnt = (int) t_pg;
+  cpc->height = total->height + 1;	/* root children are co-level */
+  cpc->sum_rec_len = total->sum_rec_len;
+  cpc->sum_key_len = total->sum_key_len;
+  cpc->tot_free_space = (float) t_free;
+  cpc->tot_space = (float) t_space;
+  cpc->tot_used_space = (float) (t_space - t_free);
+
+  cpc->ovfl_oid_pg.max_pg_cnt_per_key = total->ovfl_oid_pg.max_pg_cnt_per_key;
+  cpc->ovfl_oid_pg.dis_key_cnt = (int) total->ovfl_oid_pg.dis_key_cnt;
+  cpc->ovfl_oid_pg.tot_val_cnt = total->ovfl_oid_pg.tot_val_cnt;
+  cpc->ovfl_oid_pg.tot_pg_cnt = (int) total->ovfl_oid_pg.tot_pg_cnt;
+  cpc->ovfl_oid_pg.tot_free_space = (float) total->ovfl_oid_pg.tot_free_space;
+  cpc->ovfl_oid_pg.tot_space = (float) total->ovfl_oid_pg.tot_space;
+  cpc->ovfl_oid_pg.tot_used_space = (float) (total->ovfl_oid_pg.tot_space - total->ovfl_oid_pg.tot_free_space);
+
+  /* averages: serial's formulas, field for field */
+  if (cpc->dis_key_cnt > 0)
+    {
+      cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
+      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
+      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->dis_key_cnt);
+    }
+  if (cpc->leaf_pg_cnt > 0)
+    {
+      cpc->avg_pg_key_cnt = (int) (cpc->dis_key_cnt / cpc->leaf_pg_cnt);
+    }
+  cpc->avg_pg_free_sp = cpc->tot_free_space / cpc->tot_pg_cnt;
+  if (cpc->ovfl_oid_pg.tot_pg_cnt > 0)
+    {
+      cpc->ovfl_oid_pg.avg_pg_free_sp = cpc->ovfl_oid_pg.tot_free_space / cpc->ovfl_oid_pg.tot_pg_cnt;
+    }
+}
+
+/* btree_capacity_scan_ctx - read-only scan inputs shared by all workers */
+typedef struct btree_capacity_scan_ctx BTREE_CAPACITY_SCAN_CTX;
+struct btree_capacity_scan_ctx
+{
+  const BTID_INT *btid_int;
+  const VPID *children;		/* the root's child page VPIDs */
+  int n_children;
+};
+
+/* btree_capacity_worker_arg - per-worker argument */
+typedef struct btree_capacity_worker_arg BTREE_CAPACITY_WORKER_ARG;
+struct btree_capacity_worker_arg
+{
+  THREAD_ENTRY *main_thread_p;
+  const BTREE_CAPACITY_SCAN_CTX *ctx;
+  BTREE_CAPACITY_ACCUM *accum;
+/* *INDENT-OFF* */
+  std::atomic<int> *next_child;	/* shared claim counter: workers take the next unprocessed child */
+  std::atomic<bool> *failed;
+  std::atomic<int> *fail_errid;	/* a failing worker's errid (NO_ERROR = none) */
+/* *INDENT-ON* */
+};
+
+/*
+ * btree_capacity_parallel_worker () - claim root children from the shared counter and fold each
+ *   subtree into this worker's accum. Children are claimed dynamically (atomic fetch_add) so a
+ *   worker on a heavy subtree never leaves idle peers. Bracket the scan with resource tracks so the
+ *   debug leak trackers (private-heap allocations, page fixes, critical sections) start from a clean
+ *   baseline on a recycled pool entry. The dispatcher's root pin rules out child deallocation, so
+ *   any error here is genuine.
+ */
+static void
+btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WORKER_ARG * arg)
+{
+  const BTREE_CAPACITY_SCAN_CTX *ctx = arg->ctx;
+  BTREE_STATS_ENV env;
+  bool first_failure;
+  int scan_error;
+  int i;
+
+  /* inherit the caller's transaction/connection context */
+  thread_ref.tran_index = arg->main_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = arg->main_thread_p;
+  thread_ref.conn_entry = arg->main_thread_p->conn_entry;
+  thread_ref.on_trace = arg->main_thread_p->on_trace;
+  if (thread_ref.on_trace)
+    {
+      /* without a private stats buffer perfmon_add_at_offset falls back to a non-atomic += on the
+       * caller's shared pstat_Global.tran_stats[], which every worker would race on. Note this only
+       * covers the traced case: perfmon gates that += on pstat_Global.is_watching[], which the
+       * statistics RPC can set without on_trace, and the workers still race there (as they do in
+       * heap_capacity_parallel_worker and px_scan_task). */
+      perfmon_initialize_parallel_stats (&thread_ref);
+      if (thread_ref.m_uses_px_stats == false)
+	{
+	  /* record it before clearing: the OOM has to go, or the page loop would mistake it for its
+	   * own error, but the lost isolation should not pass unnoticed. Isolation is lost here: the
+	   * workers then race on the shared counter, as they would with none. */
+	  er_log_debug (ARG_FILE_LINE,
+			"btree_capacity_parallel_worker: perfmon isolation lost to OOM; "
+			"workers share pstat_Global.tran_stats\n");
+	  er_clear ();
+	}
+    }
+
+  thread_ref.push_resource_tracks ();
+
+  memset (&env, 0, sizeof (env));
+  BTREE_INIT_SCAN (&env.btree_scan);
+  env.btree_scan.btid_int = *ctx->btid_int;	/* shallow copy: shares the key domains and sys_btid */
+
+  for (i = arg->next_child->fetch_add (1, std::memory_order_relaxed); i < ctx->n_children;
+       i = arg->next_child->fetch_add (1, std::memory_order_relaxed))
+    {
+      PAGE_PTR child_page = NULL;
+      BTREE_CAPACITY child_cpc;
+
+      if (arg->failed->load (std::memory_order_relaxed))
+	{
+	  break;
+	}
+
+      child_page = pgbuf_fix (&thread_ref, &ctx->children[i], OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (child_page == NULL)
+	{
+	  /* pgbuf_fix signals by NULL, so the code has to come from the error stack */
+	  scan_error = er_errid ();
+	  goto worker_failed;
+	}
+
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (&thread_ref, child_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+      /* btree_get_subtree_capacity memsets child_cpc on entry */
+      scan_error = btree_get_subtree_capacity (&thread_ref, child_page, &child_cpc, &env);
+      if (scan_error != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (&thread_ref, child_page);
+	  goto worker_failed;
+	}
+      pgbuf_unfix_and_init (&thread_ref, child_page);
+
+      btree_capacity_accum_merge (arg->accum, &child_cpc);
+      continue;			/* next child; do not fall into worker_failed */
+
+    worker_failed:
+      /* first error wins: a later failure must not overwrite the root cause, e.g. ER_INTERRUPTED */
+      first_failure = false;
+      if (arg->failed->compare_exchange_strong (first_failure, true, std::memory_order_relaxed))
+	{
+	  arg->fail_errid->store (scan_error, std::memory_order_relaxed);
+	}
+      er_clear ();
+      break;
+    }
+
+  btree_scan_clear_key (&env.btree_scan);
+  thread_ref.pop_resource_tracks ();
+  perfmon_destroy_parallel_stats (&thread_ref);
+  /* the pool recycles this entry without resetting on_trace or conn_entry, so a later unrelated
+   * task would otherwise see thread_is_on_trace () as true and a conn_entry that may already be
+   * freed (both are cleared the same way in px_hash_join_task_manager.hpp). */
+  thread_ref.on_trace = false;
+  thread_ref.conn_entry = NULL;
+}
+
+/*
+ * btree_capacity_run_workers () - parallel implementation behind btree_index_capacity.
+ *   return: NO_ERROR, or ER_INTERRUPTED / ER_GENERIC_ERROR / ER_OUT_OF_VIRTUAL_MEMORY
+ *   ctx(in): read-only scan inputs (index config + root children)
+ *   root_free(in): root page free space; the root itself is folded in by the reduce
+ *   wm(in): worker pool reserved by the dispatcher (caller owns its lifecycle)
+ *   n_workers(in): reserved workers (>= 2)
+ *   cpc(out): index capacity (same shape as serial)
+ *
+ * Note: the dispatcher keeps the root READ-latched while this runs; that pin keeps the children
+ *       valid under concurrent SMO.
+ */
+static int
+btree_capacity_run_workers (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * ctx, int root_free,
+			    parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc)
+{
+/* *INDENT-OFF* */
+  std::atomic<bool> failed (false);
+  std::atomic<int> fail_errid (NO_ERROR);
+  std::atomic<int> next_child (0);
+/* *INDENT-ON* */
+  BTREE_CAPACITY_ACCUM *accums = NULL;
+  BTREE_CAPACITY_WORKER_ARG *worker_args = NULL;
+  size_t accums_size = sizeof (BTREE_CAPACITY_ACCUM) * n_workers;
+  size_t worker_args_size = sizeof (BTREE_CAPACITY_WORKER_ARG) * n_workers;
+  int pushed = 0;
+  int error_code = NO_ERROR;
+  int errid;
+  int i;
+
+  /* Plain arrays, not std::vector: engine code must not raise C++ exceptions, and a vector allocates
+   * through the throwing ::operator new (memory_wrapper replaces only the placement form that a
+   * new-expression uses). db_private_alloc reports OOM as an error. Both structs are PODs. */
+  accums = (BTREE_CAPACITY_ACCUM *) db_private_alloc (thread_p, accums_size);
+  worker_args = (BTREE_CAPACITY_WORKER_ARG *) db_private_alloc (thread_p, worker_args_size);
+  if (accums == NULL || worker_args == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, accums_size + worker_args_size);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  memset (accums, 0, accums_size);
+  memset (worker_args, 0, worker_args_size);
+
+  for (i = 0; i < n_workers; i++)
+    {
+      parallel_query::callable_task * task;
+      BTREE_CAPACITY_WORKER_ARG *worker_arg_p = &worker_args[i];
+
+      worker_args[i].main_thread_p = thread_p;
+      worker_args[i].ctx = ctx;
+      worker_args[i].accum = &accums[i];
+      worker_args[i].next_child = &next_child;
+      worker_args[i].failed = &failed;
+      worker_args[i].fail_errid = &fail_errid;
+
+      /* A one-pointer lambda is trivially copyable, so std::function stores it in place. std::bind is
+       * not (libstdc++ gates the small-object buffer on is_trivially_copyable), and would allocate
+       * through the THROWING ::operator new -- the one path this function must not have. */
+/* *INDENT-OFF* */
+      task = new parallel_query::callable_task (wm, [worker_arg_p] (cubthread::entry &thread_ref)
+                                                    { btree_capacity_parallel_worker (thread_ref, worker_arg_p); });
+/* *INDENT-ON* */
+      if (task == NULL)
+	{
+	  /* OOM under the non-throwing operator new. The tasks already pushed claim every remaining
+	   * child via next_child, so a partial push still answers correctly; report the OOM only on
+	   * the path below that finds the scan incomplete, never on a run that succeeded. */
+	  break;
+	}
+      wm->push_task (task);
+      pushed++;
+    }
+
+  /* the join, and the only synchronization here: wait_workers loads m_active_tasks with acquire and
+   * each task releases it in retire () -> pop_task (), so every worker's writes to its accums[]
+   * slot happen-before the reduce below. That edge is also why the worker's own accesses to the
+   * three atomics can be relaxed. */
+  wm->wait_workers ();
+
+  if (failed.load ())
+    {
+      /* propagate the scanner error; no serial retry (the one-shot interrupt flag is consumed).
+       * Only ER_INTERRUPTED is re-raised as itself; any other errid becomes generic, because its
+       * message arguments never crossed threads and ER_FAILED is not a catalog id (er_set asserts
+       * on it). The real errid survives only in the log line below. */
+      errid = fail_errid.load ();
+      er_log_debug (ARG_FILE_LINE, "btree_capacity_run_workers: worker error errid=%d; aborting parallel\n", errid);
+      if (errid == ER_INTERRUPTED)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  error_code = ER_INTERRUPTED;
+	}
+      else
+	{
+	  /* the worker's error stayed in its own thread-local stack and never reached thread_p, so
+	   * report something rather than returning a code with nothing on the caller's stack */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	}
+      goto cleanup;
+    }
+
+  if (next_child.load () < ctx->n_children)
+    {
+      /* a child was never claimed: no task could be allocated, or the pool retired tasks without
+       * running them (server shutting down). The partials are incomplete, so do not report them. */
+      er_log_debug (ARG_FILE_LINE,
+		    "btree_capacity_run_workers: only %d of %d children claimed, %d tasks pushed\n",
+		    next_child.load (), ctx->n_children, pushed);
+      /* decide on what happened here, not on er_errid (), which may still hold an unrelated error
+       * from an earlier row of SHOW ALL */
+      if (pushed == 0)
+	{
+	  /* not one task could be allocated, so the OOM that broke the push is the whole story */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (parallel_query::callable_task));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      else
+	{
+	  /* tasks were pushed but none ran, because one that ran would have drained next_child: the
+	   * pool retired them unexecuted (server shutting down) and nothing reported anything */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	}
+      goto cleanup;
+    }
+
+  /* merge the per-worker partials into accums[0], then derive the output (n_workers >= 2) */
+  for (i = 1; i < n_workers; i++)
+    {
+      btree_capacity_accum_merge (&accums[0], &accums[i]);
+    }
+  btree_capacity_accum_to_cpc (&accums[0], root_free, cpc);
+
+cleanup:
+  if (worker_args != NULL)
+    {
+      db_private_free_and_init (thread_p, worker_args);
+    }
+  if (accums != NULL)
+    {
+      db_private_free_and_init (thread_p, accums);
+    }
+  return error_code;
+}
+
+/*
+ * btree_index_capacity_parallel () - parallel implementation behind btree_index_capacity.
+ *   return: NO_ERROR when the capacity was produced in parallel or parallel was declined;
+ *           otherwise the error that made the attempt fail
+ *   btid(in): B+tree index identifier
+ *   cpc(out): index capacity, valid only when *applied is true
+ *   applied(out): true means *cpc holds the result; false together with NO_ERROR means parallel was
+ *                 declined and the caller must run btree_index_capacity_serial
+ *
+ * Note: owns the whole parallel attempt -- root latch, eligibility, child enumeration, worker
+ *       reservation and release -- so the caller only picks between *cpc and serial.
+ *
+ *       The root stays READ-latched until the workers join. The class lock (SCH_S_LOCK; S_LOCK for
+ *       the ALL variants) blocks only DDL in the single-index case, so assume concurrent DML and
+ *       vacuum SMOs are live -- the root
+ *       latch is what keeps children[] valid for a worker's plain fix. Every SMO that would change
+ *       the root's records (child merge, root split) must promote the root to WRITE first, which
+ *       cannot succeed while we hold READ. Below the root, btree_get_subtree_capacity couples node
+ *       latches; an overflow-OID chain is covered by its leaf's latch instead.
+ */
+static int
+btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc, bool * applied)
+{
+  VPID root_vpid;
+  PAGE_PTR root_ptr = NULL;
+  BTREE_ROOT_HEADER *root_header = NULL;
+  BTID_INT btid_int;
+  BTREE_CAPACITY_SCAN_CTX ctx;
+  VPID *children = NULL;
+  parallel_query::worker_manager * wm = NULL;
+  int key_cnt;
+  int root_free;
+  int n_pages = 0;
+  int n_workers;
+  int error_code = NO_ERROR;
+  int i;
+  UINT32 degree;
+
+  *applied = false;
+
+  /* Every path leaves through "exit": error_code says what to report, and NO_ERROR with *applied
+   * still false is the normal "declined, run serial" answer. */
+
+  root_vpid.pageid = btid->root_pageid;
+  root_vpid.volid = btid->vfid.volid;
+  root_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (root_ptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, root_ptr, PAGE_BTREE);
+#endif /* !NDEBUG */
+
+  root_header = btree_get_root_header (thread_p, root_ptr);
+  if (root_header == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
+    }
+
+  /* BTREE_ROOT_HEADER opens with the node header, and btree_get_node_header would only PEEK the
+   * same record again, so read it through the root header already in hand */
+  key_cnt = btree_node_number_of_keys (thread_p, root_ptr);
+  if (root_header->node.node_level <= 1 || key_cnt < 2)
+    {
+      /* leaf root, or too few root children to split -> serial */
+      goto exit;
+    }
+
+  error_code = file_get_num_user_pages (thread_p, &btid->vfid, &n_pages);
+  if (error_code != NO_ERROR)
+    {
+      /* n_pages only sizes the degree and serial never reads the file header, so decline rather
+       * than fail a query serial can still answer -- a storage fault resurfaces when serial fixes
+       * the tree pages. This forgives more than a latch timeout (an unreadable header too), which
+       * is deliberate and matches heap_get_capacity_parallel. A cancellation is the exception: the
+       * fix consumes the interrupt flag, so clearing it would let serial answer a cancelled query.
+       * file_get_num_user_pages reports via ASSERT_ERROR_AND_SET, so error_code is er_errid (),
+       * or ER_FAILED if the fix returned NULL without reporting. */
+      if (error_code != ER_INTERRUPTED)
+	{
+	  er_clear ();
+	  error_code = NO_ERROR;
+	}
+      goto exit;
+    }
+  degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) n_pages, -1);
+  if (degree > (UINT32) key_cnt)
+    {
+      /* split granularity is bounded by the number of root children */
+      degree = (UINT32) key_cnt;
+    }
+  if (degree < 2)
+    {
+      /* too few cores, index below the parallel scan page threshold, or parallelism off -> serial */
+      goto exit;
+    }
+
+  /* glean the read-only index config once; scanners share it. It always returns NO_ERROR, so check
+   * the error stack and key_type instead -- or_get_domain can fail with or without reporting */
+  memset (&btid_int, 0, sizeof (btid_int));
+  btid_int.sys_btid = btid;
+  er_clear ();
+  (void) btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
+  error_code = er_errid ();
+  if (error_code != NO_ERROR || btid_int.key_type == NULL)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  /* unpack_domain's error label returns NULL without reporting on a couple of paths */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	}
+      goto exit;
+    }
+
+  /* enumerate the root's child VPIDs */
+  children = (VPID *) db_private_alloc (thread_p, sizeof (VPID) * key_cnt);
+  if (children == NULL)
+    {
+      /* db_private_alloc reports this itself via hl_lea_alloc, except under PRM_ID_USE_SYSTEM_MALLOC */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VPID) * key_cnt);
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+  for (i = 0; i < key_cnt; i++)
+    {
+      RECDES rec;
+      NON_LEAF_REC nleaf;
+
+      if (spage_get_record (thread_p, root_ptr, i + 1, &rec, PEEK) != S_SUCCESS)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
+      children[i] = nleaf.pnt;
+    }
+  root_free = spage_get_free_space (thread_p, root_ptr);
+
+  /* reserve workers (best-effort; may grant fewer). NULL is a pool shortage (nothing set) or the
+   * reservation's own alloc failure (ER_OUT_OF_VIRTUAL_MEMORY); clear first so er_errid () tells */
+  er_clear ();
+  wm = parallel_query::worker_manager::try_reserve_workers ((int) degree);
+  if (wm == NULL)
+    {
+      if (er_errid () != NO_ERROR)
+	{
+	  /* the reservation failed, it did not decline */
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      goto exit;
+    }
+  n_workers = wm->get_reserved_workers ();
+  if (n_workers < 2)
+    {
+      /* defensive: unreachable, worker_manager_global floors a grant at 2 when 2+ are requested,
+       * and degree >= 2 here.
+       * Kept because that invariant lives in another module */
+      goto exit;
+    }
+
+  ctx.btid_int = &btid_int;
+  ctx.children = children;
+  ctx.n_children = key_cnt;
+  error_code = btree_capacity_run_workers (thread_p, &ctx, root_free, wm, n_workers, cpc);
+  if (error_code == NO_ERROR)
+    {
+      *applied = true;
+    }
+
+exit:
+  if (wm != NULL)
+    {
+      wm->release_workers ();
+    }
+  if (children != NULL)
+    {
+      db_private_free_and_init (thread_p, children);
+    }
+  if (root_ptr != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, root_ptr);
+    }
+  return error_code;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * btree_index_capacity () - Form and return index capacity/space related information
+ *   return: NO_ERROR, or a propagated error from the parallel attempt or the serial fallback
+ *   btid(in): B+tree index identifier
+ *   cpc(out): Set to contain index capacity information
+ *
+ * Note: tries parallel first; btree_index_capacity_parallel declines (applied == false) for the
+ *       cases serial can still answer, and returns an error for a genuine failure.
+ */
+int
+btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
+{
+  int error_code = NO_ERROR;
+#if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only */
+  bool applied = false;
+
+  error_code = btree_index_capacity_parallel (thread_p, btid, cpc, &applied);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (applied)
+    {
+      return NO_ERROR;
+    }
+#endif /* SERVER_MODE */
+
+  error_code = btree_index_capacity_serial (thread_p, btid, cpc);
+  return error_code;
+}
+
 /*
  * btree_dump_capacity () -
  *   return: NO_ERROR
@@ -10023,8 +10941,8 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 
   assert (fp != NULL && btid != NULL);
 
-  /* get index capacity information */
-  ret = btree_index_capacity (thread_p, btid, &cpc);
+  /* get index capacity information; serial on purpose -- a dump path claims no parallel budget */
+  ret = btree_index_capacity_serial (thread_p, btid, &cpc);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -20918,6 +21836,36 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 	}
     }
 
+  while (!bts->end_scan && bts->force_restart_from_root)
+    {
+      /* Descending scan could not latch the previous leaf and returned without a key, its leaf released: reading the
+       * current position here would make a row of the released leaf's slot 0. Locate again as btree_range_scan does,
+       * from the start if no key was found yet, else from the last consumed key. */
+      assert (bts->use_desc_index);
+      btree_log_if_enabled ("Notification: descending key info scan had to be interrupted and restarted from root.\n");
+      if (bts->C_page != NULL)
+	{
+	  /* The btree_range_scan_resume() function assumes that cur_key is decompressed.
+	   * Decompress it before doing pgbuf_unfix() on C_page. */
+	  btree_check_decompress_key (bts);
+	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	}
+      if (!bts->is_scan_started)
+	{
+	  error_code = btree_range_scan_start (thread_p, bts);
+	}
+      else
+	{
+	  error_code = btree_range_scan_resume (thread_p, bts);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
   if (bts->end_scan)
     {
       /* Reached the end of leaf level */
@@ -29561,6 +30509,16 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     }
   /* Pages are still linked. */
 
+  if (!bts->is_scan_started && DB_IS_NULL (&bts->cur_key))
+    {
+      /* No key was read yet, so there is no key to look up again. Where the scan starts depends on how the lower limit
+       * compares (a limit of another type compares equal to several keys): let btree_range_scan_start locate it again
+       * from the root. Nothing was returned yet, so starting over repeats nothing. */
+      bts->force_restart_from_root = true;
+      pgbuf_unfix_and_init (thread_p, prev_leaf);
+      return NO_ERROR;
+    }
+
   /* Fix current page too. */
   bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (bts->C_page == NULL)
@@ -29570,17 +30528,6 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       return error_code;
     }
 
-  /* Before searching the key in leaf page, we must make sure to handle this next peculiar case: 1. First key search of
-   * descending scan. Lower key limit is located as first in leaf page. 2. Range scan says strictly less than lower key
-   * limit. 3. The algorithm tries to fix go to previous leaf. However, bts->cur_key does not yet store any key values.
-   * Set bts->cur_key to lower key limit of range. NOTE: If there is no lower limit, this case cannot happen. */
-  if (!bts->is_scan_started && bts->key_range.lower_key != NULL && DB_IS_NULL (&bts->cur_key))
-    {
-      pr_clone_value (bts->key_range.lower_key, &bts->cur_key);
-      bts->clear_cur_key = true;
-      /* Next steps will go before bts->key_range.lower_key, which compares as its bound */
-      search_key.bound = bts->key_range.lower_bound;
-    }
   /* We must have a non-null current key. */
   assert (!DB_IS_NULL (&bts->cur_key));
   assert (bts->is_cur_key_compressed == false);

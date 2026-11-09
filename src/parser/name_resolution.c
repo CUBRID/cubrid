@@ -9559,7 +9559,16 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	}
 
       /* Before pt_bind_name, we mark PT_NAME in group by/ having. */
-      statement = parser_walk_tree (parser, statement, pt_mark_group_having_pt_name, NULL, NULL, NULL);
+      if (parser->host_var_classified == statement)
+	{
+	  /* CBRD-27583: the same walk classifies the positions, before type checking */
+	  parser->host_var_classified = NULL;
+	  statement = pt_classify_host_var_positions (parser, statement, pt_mark_group_having_pt_name, NULL);
+	}
+      else
+	{
+	  statement = parser_walk_tree (parser, statement, pt_mark_group_having_pt_name, NULL, NULL, NULL);
+	}
       if (pt_has_error (parser))
 	{
 	  return NULL;

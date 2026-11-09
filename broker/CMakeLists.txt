@@ -194,6 +194,9 @@ set(CUBRID_BROKER_SOURCES
   ${BROKER_DIR}/shard_key_func.c
   ${BASE_DIR}/util_func.c
   )
+if(UNIX)
+  list(APPEND CUBRID_BROKER_SOURCES ${BROKER_DIR}/broker_ssl_cert.c)
+endif(UNIX)
 SET_SOURCE_FILES_PROPERTIES(
   ${CUBRID_BROKER_SOURCES}
   PROPERTIES LANGUAGE CXX
@@ -216,6 +219,9 @@ target_include_directories(cubrid_broker PRIVATE ${EP_INCLUDES})
 target_link_libraries(cubrid_broker LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(cubrid_broker LINK_PRIVATE m)
+  # a broker start calls broker_ssl_cert.c to create a missing SSL certificate and to warn of a bundled key
+  target_compile_definitions(cubrid_broker PRIVATE MANAGE_SSL_CERT)
+  target_link_libraries(cubrid_broker LINK_PRIVATE ${LIBOPENSSL_LIBS})
 endif(UNIX)
 if(WIN32)
   target_link_libraries(cubrid_broker LINK_PRIVATE ws2_32)
@@ -233,6 +239,9 @@ target_include_directories(cubrid_gateway PRIVATE ${EP_INCLUDES})
 target_link_libraries(cubrid_gateway LINK_PRIVATE cubridcs)
 if(UNIX)
   target_link_libraries(cubrid_gateway LINK_PRIVATE m)
+  # a broker start calls broker_ssl_cert.c to create a missing SSL certificate and to warn of a bundled key
+  target_compile_definitions(cubrid_gateway PRIVATE MANAGE_SSL_CERT)
+  target_link_libraries(cubrid_gateway LINK_PRIVATE ${LIBOPENSSL_LIBS})
 endif(UNIX)
 if(WIN32)
   target_link_libraries(cubrid_gateway LINK_PRIVATE ws2_32)

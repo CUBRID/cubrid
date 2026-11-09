@@ -250,6 +250,10 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
       /* shared_from is not reset: links last the whole execution, and this runs at every sort-path group start */
       agg_p->accumulator.curr_cnt = 0;
       agg_p->accumulator.sum_acc.is_active = false;
+      if (agg_p->function == PT_GROUP_CONCAT)
+	{
+	  agg_p->info.group_concat.capacity = 0;
+	}
       if (db_value_domain_init (agg_p->accumulator.value, DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value),
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
 	{
@@ -4118,6 +4122,20 @@ qdata_group_concat_argument_type (const AGGREGATE_TYPE *agg_p)
 }
 
 /*
+ * qdata_group_concat_capacity () - CBRD-27926: the byte capacity of the GROUP_CONCAT accumulator's buffer, which
+ *   counts only while the accumulator still holds the buffer it was recorded for; 0 = unknown
+ */
+static int *
+qdata_group_concat_capacity (AGGREGATE_TYPE *agg_p)
+{
+  if (agg_p->info.group_concat.buf != db_get_string (agg_p->accumulator.value))
+    {
+      agg_p->info.group_concat.capacity = 0;
+    }
+  return &agg_p->info.group_concat.capacity;
+}
+
+/*
  * qdata_group_concat_first_value() - concatenates the first value
  *   return: NO_ERROR, or ER_code
  *   thread_p(in) :
@@ -4131,10 +4149,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
   int max_allowed_size;
-  DB_VALUE tmp_val;
   int error_code = NO_ERROR;
-
-  db_make_null (&tmp_val);
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
   /* init the aggregate value domain */
@@ -4159,6 +4174,8 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
     {
       agg_p->accumulator.value->domain.general_info.is_null = 0;
     }
+  /* a new group starts a new buffer: a freed buffer's address may come back */
+  agg_p->info.group_concat.capacity = 0;
 
   /* concat the first value: CBRD-27583: a value that is not a string casts into the function's domain, which
    * its accumulator keeps (qdata_concatenate_dbval) */
@@ -4166,24 +4183,17 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
-  error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain,
-					max_allowed_size, "GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
+  error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue,
+					qdata_group_concat_capacity (agg_p), result_domain, max_allowed_size,
+					"GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
 					agg_p->accumulator_domain.operand_coercion.conv[1]);
+  agg_p->info.group_concat.buf = db_get_string (agg_p->accumulator.value);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       /* dbvalue is caller-owned; the caller clears it. */
       return error_code;
     }
-
-  /* check for concat success */
-  if (!DB_IS_NULL (&tmp_val))
-    {
-      (void) pr_clear_value (agg_p->accumulator.value);
-      pr_clone_value (&tmp_val, agg_p->accumulator.value);
-    }
-
-  (void) pr_clear_value (&tmp_val);
 
   return NO_ERROR;
 }
@@ -4202,9 +4212,7 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
   int max_allowed_size;
-  DB_VALUE tmp_val;
-
-  db_make_null (&tmp_val);
+  int error_code;
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
 
@@ -4213,57 +4221,38 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
-  if (DB_IS_NULL (agg_p->accumulator.value2) && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
-    {
-      if (db_string_make_empty_typed_string (agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
-					     TP_DOMAIN_CODESET (domain),
-					     TP_DOMAIN_COLLATION (domain)) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      agg_p->accumulator.value2->domain.general_info.is_null = 0;
-    }
-
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->accumulator.value2))
     {
       /* the separator is a string, which casts nothing */
-      if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, agg_p->accumulator.value2, &tmp_val,
-				   result_domain, max_allowed_size, "GROUP_CONCAT()", DB_TYPE_NULL, NULL) != NO_ERROR)
+      error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, agg_p->accumulator.value2,
+					    qdata_group_concat_capacity (agg_p), result_domain, max_allowed_size,
+					    "GROUP_CONCAT()", DB_TYPE_NULL, NULL);
+      agg_p->info.group_concat.buf = db_get_string (agg_p->accumulator.value);
+      if (error_code != NO_ERROR)
 	{
 	  return ER_FAILED;
-	}
-
-      /* check for concat success */
-      if (!DB_IS_NULL (&tmp_val))
-	{
-	  (void) pr_clear_value (agg_p->accumulator.value);
-	  pr_clone_value (&tmp_val, agg_p->accumulator.value);
 	}
     }
   else
     {
-      assert (agg_type == DB_TYPE_VARBIT || agg_type == DB_TYPE_BIT);
+      /* a bit string takes no default separator; oracle_style_empty_string makes SEPARATOR '' NULL, which adds
+       * nothing as an empty one would. value2 is never filled here: a parallel scan's merge would allocate it on
+       * heap 0 and the coordinator would free it on its own heap. */
+      assert (agg_type == DB_TYPE_VARBIT || agg_type == DB_TYPE_BIT
+	      || prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING));
     }
 
-  pr_clear_value (&tmp_val);
-
-  if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
-			       "GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
-			       agg_p->accumulator_domain.operand_coercion.conv[1]) != NO_ERROR)
+  error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue,
+					qdata_group_concat_capacity (agg_p), result_domain, max_allowed_size,
+					"GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
+					agg_p->accumulator_domain.operand_coercion.conv[1]);
+  agg_p->info.group_concat.buf = db_get_string (agg_p->accumulator.value);
+  if (error_code != NO_ERROR)
     {
       /* dbvalue is caller-owned; the caller clears it. */
       return ER_FAILED;
     }
-
-  /* check for concat success */
-  if (!DB_IS_NULL (&tmp_val))
-    {
-      (void) pr_clear_value (agg_p->accumulator.value);
-      pr_clone_value (&tmp_val, agg_p->accumulator.value);
-    }
-
-  pr_clear_value (&tmp_val);
 
   return NO_ERROR;
 }

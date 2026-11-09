@@ -43,8 +43,12 @@ elseif(CPACK_GENERATOR STREQUAL "RPM")
   set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_postinstall.sh.in")
   set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_preuninstall.sh.in")
   set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/etc/profile.d/cubrid.csh /etc/profile.d/cubrid.sh /etc/init.d/cubrid /etc/init.d/cubrid-ha")
+  # the SSL key and certificate are not shipped but created by the first start of a broker with SSL=ON; as ghost
+  # config files an upgrade leaves them where they are, instead of moving those an earlier package shipped to .rpmsave
   set(CPACK_RPM_USER_FILELIST
     "%config(noreplace) /opt/cubrid/conf"
+    "%ghost %config(noreplace) /opt/cubrid/conf/cas_ssl_cert.crt"
+    "%ghost %config(noreplace) /opt/cubrid/conf/cas_ssl_cert.key"
     "%dir /opt/cubrid/databases"
     "%attr(750,root,root) /etc/init.d/cubrid"
     "%attr(750,root,root) /etc/init.d/cubrid-ha"

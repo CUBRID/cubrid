@@ -101,6 +101,7 @@ struct lk_entry
   XASL_ID xasl_id;
   int transient_count;		/* requests on this entry that the statement gives up before commit */
   bool shared_requested;	/* a request on this entry asked for S: the holder read the object and decided */
+  LOCK escalated_from;		/* class mode before this statement's escalation, to lower back to; else NULL_LOCK */
 #else				/* not SERVER_MODE */
   int dummy;
 #endif				/* not SERVER_MODE */

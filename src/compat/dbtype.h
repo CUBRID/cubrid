@@ -42,6 +42,7 @@
 #include "language_support.h"
 #include "intl_support.h"
 #include "memory_alloc.h"
+#include "numeric_opfunc.h"
 
 #define DB_CURRENCY_DEFAULT db_get_currency_default()
 

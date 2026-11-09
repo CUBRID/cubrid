@@ -1334,6 +1334,8 @@ namespace parallel_scan
 	    /* Non-order GROUP_CONCAT: re-home value only. value2 holds the separator
 	     * (metadata set on the main thread at init) and must NOT be re-homed --
 	     * cloning it leaks the separator buffer (mr_setval_char) on the txn heap. */
+	    /* the clone is sized to the string, and the freed buffer's address may come back */
+	    orig_agg_p->info.group_concat.capacity = 0;
 	    if (rehome_agg_value (thread_p, orig_agg_p->accumulator.value, dir) != NO_ERROR)
 	      {
 		return S_ERROR;
@@ -2555,6 +2557,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
+		orig_agg_p->info.group_concat.capacity = 0;
 		if (pr_clone_value (cur_agg_p->accumulator.value, orig_agg_p->accumulator.value) != NO_ERROR)
 		  {
 		    db_change_private_heap (thread_p, prev_heap_id);

@@ -3129,6 +3129,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 		{
 		  derived_table->info.query.all_distinct = PT_DISTINCT;
 		}
+
+	      /* LIMIT of a DISTINCT query without ORDER BY is rewritten to FOR ORDERBY_NUM() (see pt_eval_type_pre ()),
+	       * which mq_update_order_by () does not move since there is no ORDER BY */
+	      if (query_spec->info.query.order_by == NULL && query_spec->info.query.orderby_for != NULL)
+		{
+		  derived_table->info.query.orderby_for =
+		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
+					derived_table->info.query.orderby_for);
+		}
 	    }
 
 	  result = tmp_result;
@@ -9045,6 +9054,13 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 
       parser_walk_tree (parser, query_spec, pt_set_is_view_spec, NULL, NULL, NULL);
 
+      /* specs referring a CTE have an entity name; resolve them to the CTE before name resolution */
+      query_spec = parser_walk_tree (parser, query_spec, NULL, NULL, pt_resolve_cte_specs, NULL);
+      if (query_spec == NULL)
+	{
+	  return NULL;
+	}
+
       /* apply semantic checks */
       query_spec = pt_compile (parser, query_spec);
 
@@ -9067,6 +9083,25 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	{
 	  /* if authorizations requested, compute them */
 	  *authorization = (DB_AUTH) (*authorization & mq_compute_query_authorization (query_spec));
+	}
+
+      /* rewrite the CTEs of the query spec as derived tables, as mq_translate_helper () does for the main query */
+      query_spec = parser_walk_tree (parser, query_spec, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+      query_spec = parser_walk_tree (parser, query_spec, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
+      if (query_spec == NULL || pt_has_error (parser))
+	{
+	  return NULL;
+	}
+
+      /* the WITH clause remains for recursive or materialized CTEs, but it is lost when the query spec is substituted
+       * into a statement; keep it in a derived table of the query spec */
+      if (query_spec->info.query.with != NULL)
+	{
+	  query_spec = mq_rewrite_query_as_derived (parser, query_spec);
+	  if (query_spec == NULL)
+	    {
+	      return NULL;
+	    }
 	}
 
       /* this will recursively expand the query spec into local queries. The mq_push_paths will convert the expression
@@ -10190,8 +10225,17 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   parser->flag.is_skip_auto_parameterize = save_skip_auto_parameterize;
 
-  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
-  pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions. The
+   * compiled statement's are assigned by the walk its class prefetch makes next (pt_class_pre_fetch) */
+  if (parser->host_var_assigned_later == node && !compiled_every_time)
+    {
+      parser->host_var_assigned_later = (PT_NODE *) return_node;
+    }
+  else
+    {
+      parser->host_var_assigned_later = NULL;
+      pt_assign_host_var_positions (parser, (PT_NODE *) return_node, NULL, NULL);
+    }
   parser->session_variable_count = 0;
   if (return_node != NULL && compiled_every_time)
     {
