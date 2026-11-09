@@ -13961,6 +13961,11 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
       /* We cannot use the lower limit in a hierarchy */
       limit_infop->lower = NULL;
     }
+  else if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      /* We cannot use the lower limit with the analytic limit optimization: the skipped rows must be counted */
+      limit_infop->lower = NULL;
+    }
   else
     {
       /* a trivial select: we can keep the lower limit, but we must adjust the upper limit.

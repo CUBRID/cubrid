@@ -124,6 +124,7 @@ namespace cubxasl
     int covered_size;		/* covered size */
     DB_VALUE *current_values;	/* current values */
     DB_VALUE *temp_values;	/* temp values */
+    int input_recs;		/* number of input records */
 
     analytic_eval_type () = default;
   };

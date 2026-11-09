@@ -29591,6 +29591,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
     {
       a_eval_list->current_values = NULL;
       a_eval_list->temp_values = NULL;
+      a_eval_list->input_recs = 0;
 
       for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
 	{
@@ -31726,8 +31727,9 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       return ER_FAILED;
     }
 
-  if (xasl->list_id->tuple_cnt == 0)
+  if (a_eval_list->input_recs == 0)
     {
+      /* first input record; the rows the LIMIT offset skips come before the first row of the list */
       int key_idx = 0;
       for (SORT_LIST * tmp = a_eval_list->sort_list; tmp != NULL; tmp = tmp->next)
 	{
@@ -31875,6 +31877,8 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       a_func_list->curr_group_tuple_count++;
       a_func_list->curr_sort_key_tuple_count++;
     }
+
+  a_eval_list->input_recs++;
 
   return NO_ERROR;
 }
