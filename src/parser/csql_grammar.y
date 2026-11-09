@@ -1570,6 +1570,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
 %token <cptr> GE_LT_
+%token <cptr> GRADE
 %token <cptr> GRANTS
 %token <cptr> GROUP_CONCAT
 %token <cptr> GROUPS
@@ -1588,6 +1589,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INF_LE_
 %token <cptr> INF_LT_
 %token <cptr> INFINITE_
+%token <cptr> INFO_TYPE
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
@@ -1709,6 +1711,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> SHOW
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
+%token <cptr> SOURCE
 %token <cptr> STABILITY
 %token <cptr> START_
 %token <cptr> STATEMENT
@@ -20818,6 +20821,7 @@ identifier
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GRADE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GRANTS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GROUPS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GROUP_CONCAT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20834,6 +20838,7 @@ identifier
 	| INDEXES                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INDEX_PREFIX           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INFINITE_              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INFO_TYPE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INF_LE_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INF_LT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INSTANCES              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20951,6 +20956,7 @@ identifier
 	| SHOW                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SLOTS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SLOTTED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SOURCE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STABILITY              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| START_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STATEMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
