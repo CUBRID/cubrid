@@ -740,7 +740,46 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 }
 
 /*
- * repl_log_abort_after_lsa - drop the replication records of a system operation that is being aborted
+ * repl_keep_flush_marked_with_outer - hand the records of a flush-marked system operation to the outer transaction
+ *
+ * return: nothing
+ *
+ *   thread_p(in):
+ *   begin_index(in): first replication record of the system operation (the flush mark start)
+ *
+ * NOTE: A flush-marked system operation that ends with log_sysop_attach_to_outer did not commit on its own: its
+ *       changes are undone when the outer transaction rolls back. Its records were marked LOG_REPL_NEED_FLUSH,
+ *       which writes them at the end of the next system operation of any kind, before the outer transaction ends,
+ *       so the slave would keep a change the master rolled back. Mark them to be written with the outer commit.
+ */
+void
+repl_keep_flush_marked_with_outer (THREAD_ENTRY * thread_p, int begin_index)
+{
+  LOG_TDES *tdes;
+  int i;
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1,
+	      LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      return;
+    }
+
+  assert (tdes->fl_mark_repl_recidx == -1);
+
+  for (i = MAX (begin_index, 0); i < tdes->cur_repl_record; i++)
+    {
+      if (tdes->repl_records[i].must_flush == LOG_REPL_NEED_FLUSH)
+	{
+	  tdes->repl_records[i].must_flush = LOG_REPL_COMMIT_NEED_FLUSH;
+	}
+    }
+}
+
+/*
+ * repl_log_abort_after_lsa -drop the replication records of a system operation that is being aborted
  *
  * return: NO_ERROR
  *
