@@ -588,16 +588,15 @@ authenticate_context::perform_login (const char *name, const char *password, boo
     }
   else
     {
-      public_user = au_find_user (AU_PUBLIC_USER_NAME);
-      dba_user = au_find_user (AU_DBA_USER_NAME);
-      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
+      // start () fills these before any login
+      for (const auto &sys_user : system_users)
 	{
-	  error = er_errid ();
-	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	  assert (this->*sys_user.mop != NULL);
+	  if (this->*sys_user.mop == NULL)
 	    {
 	      error = ER_AU_INCOMPLETE_AUTH;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      return error;
 	    }
 	}
       user = au_find_user (dbuser);
