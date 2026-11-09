@@ -4726,9 +4726,11 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      if (error != ER_LC_CLASSNAME_EXIST)
 		{
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, as the all-columns
+		   * path does, or the statement reports success after the savepoint rollback below */
 		  if (!quiet)
 		    {
-		      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
 		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
