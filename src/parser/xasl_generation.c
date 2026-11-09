@@ -285,7 +285,6 @@ static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * st
 static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_NODE * from,
 						 PT_NODE * select_list);
 static ODKU_INFO *pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl);
-static bool pt_buildvalue_output_reads_scan (XASL_NODE * xasl);
 static REGU_VARIABLE *pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * tree, UNBOX unbox);
 
 static REGU_VARIABLE *pt_to_regu_reserved_name (PARSER_CONTEXT * parser, PT_NODE * attr);
@@ -458,6 +457,7 @@ static XASL_NODE *pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * sele
 static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static XASL_NODE *pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_buildvalue_output_reads_scan (XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static bool pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC_KEY_METADOMAIN * func_meta,
 				       PT_NODE ** index, int *index_size);
@@ -20806,11 +20806,11 @@ exit_on_error:
  * UPDATE appends the columns its assignments read to the SELECT's list (pt_append_assignment_references ()), and a
  * select list of aggregates whose correlated subquery reads a column of the source becomes a derived table that
  * carries the column (mq_rewrite_aggregate_as_derived ()).  A SELECT of aggregates without GROUP BY carries them so.
- * The page batch (qexec_batch_eligible ()) and the buildvalue gather of a parallel scan
- * accumulate the aggregates without fetching any row into the slots, and a row by row parallel scan leaves them
- * pointing into the workers' lists, which close with the scan: such a block is marked XASL_OUTPUT_READS_SCAN, and
- * the page batch and the parallel scan checker (scan_check_parallel_scan_possible ()) leave it to the serial row loop,
- * which copies the columns of each row it aggregates for the output list (qexec_keep_last_row ()).
+ * The page batch (qexec_batch_eligible ()) accumulates the aggregates without fetching any row into the slots: such a
+ * block is marked XASL_OUTPUT_READS_SCAN and the page batch leaves it to the row loop, which copies the columns of each
+ * row it aggregates for the output list (qexec_keep_last_row ()).  A block that ends without the row loop, an
+ * aggregate answered from the index or the statistics or the buildvalue gather of a parallel scan, leaves the columns
+ * NULL (qexec_restore_last_row ()), as before the page batch.
  */
 static bool
 pt_buildvalue_output_reads_scan (XASL_NODE * xasl)
@@ -21050,17 +21050,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   if (pt_buildvalue_output_reads_scan (xasl))
     {
-      AGGREGATE_TYPE *agg_p;
-
       XASL_SET_FLAG (xasl, XASL_OUTPUT_READS_SCAN);
-      /* the row loop has to reach qexec_keep_last_row (), so no aggregate of this block is answered from the index or
-       * the statistics (qexec_evaluate_aggregates_optimize () ends the block without its rows).  Decided here, before
-       * the stream writes the aggregates' operand program image (xts_save_agg_prog_image ()), so that the image and
-       * the server cover the same aggregates. */
-      for (agg_p = buildvalue->agg_list; agg_p != NULL; agg_p = agg_p->next)
-	{
-	  agg_p->flag.agg_optimized = false;
-	}
     }
 
   /* set CONNECT BY xasl */

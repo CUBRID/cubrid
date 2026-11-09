@@ -805,11 +805,11 @@ static int qexec_connect_by_sort_siblings (THREAD_ENTRY * thread_p, CONNECT_BY_D
 					   SORTKEY_INFO * key_info_p, const QFILE_TUPLE_VALUE_TYPE_LIST * tpl_layout);
 static int qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID * list_file,
 				   SORT_LIST * orderby_list, XASL_STATE * xasl_state, OUTPTR_LIST * outptr_list);
-static int qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-						 QFILE_TUPLE_RECORD * tplrec);
 static int qexec_keep_last_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static void qexec_restore_last_row (XASL_NODE * xasl);
 static void qexec_clear_last_row (THREAD_ENTRY * thread_p, BUILDVALUE_PROC_NODE * buildvalue);
+static int qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+						 QFILE_TUPLE_RECORD * tplrec);
 static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					   QFILE_TUPLE_RECORD * tplrec);
 static void qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
@@ -14514,18 +14514,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!buildvalue->is_always_false)
 	    {
-#if !defined (NDEBUG)
-	      if (XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
-		{
-		  /* XASL generation kept its aggregates off the statistics/index evaluation, which would end the block
-		   * without the row loop qexec_keep_last_row () needs, before writing their operand program image
-		   * (pt_to_buildvalue_proc ()) */
-		  for (agg_ptr = buildvalue->agg_list; agg_ptr; agg_ptr = agg_ptr->next)
-		    {
-		      assert (!agg_ptr->flag.agg_optimized);
-		    }
-		}
-#endif
 	      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 		{
 		  /* A hierarchical query aggregates the CONNECT BY expansion, not the class rows, so the
@@ -14566,8 +14554,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (!xasl->fptr_list	/* no path expressions */
 	      && !xasl->instnum_pred	/* no instnum predicate */
 	      && agg_ptr->next == NULL	/* no other aggregate functions */
-	      && agg_ptr->function == PT_COUNT_STAR && !XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY)
-	      && !XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
+	      && agg_ptr->function == PT_COUNT_STAR && !XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 	    {
 	      ACCESS_SPEC_TYPE *specp;
 	      bool is_scan_ptr = xasl->scan_ptr ? true : false;
@@ -21047,7 +21034,8 @@ qexec_keep_last_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  *   xasl(in): a BUILDVALUE marked XASL_OUTPUT_READS_SCAN, its scans closed
  *
  * The value lists take the copies over (qexec_clear_xasl () frees them, as the next row a slot takes would).  When no
- * row passed the filters the columns are NULL.
+ * row passed the filters, or the block ended without the row loop (an aggregate answered from the index or the
+ * statistics, the buildvalue gather of a parallel scan), the columns are NULL.
  */
 static void
 qexec_restore_last_row (XASL_NODE * xasl)
