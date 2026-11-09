@@ -1429,9 +1429,10 @@ db_string_append (DB_VALUE * string1, const DB_VALUE * string2, int *capacity, i
       bit_ncat ((unsigned char *) db_get_string (string1), length1, DB_GET_UCHAR (string2), length2);
       string1->data.ch.medium.size = length1 + length2;
       string1->data.ch.medium.length = -1;
+      /* db_string_concatenate's db_make_varbit turns a floating precision into the maximum */
       string1->domain.char_info.length =
 	(precision1 == TP_FLOATING_PRECISION_VALUE || precision2 == TP_FLOATING_PRECISION_VALUE)
-	? TP_FLOATING_PRECISION_VALUE : MIN (DB_MAX_BIT_LENGTH, precision1 + precision2);
+	? DB_MAX_VARBIT_PRECISION : MIN (DB_MAX_BIT_LENGTH, precision1 + precision2);
       return NO_ERROR;
     }
   else
@@ -1536,9 +1537,10 @@ db_string_append (DB_VALUE * string1, const DB_VALUE * string2, int *capacity, i
 
       string1->data.ch.medium.size = size;
       string1->data.ch.medium.length = result_length;
+      /* db_string_concatenate's db_make_varchar turns a floating precision into the maximum */
       string1->domain.char_info.length =
 	(precision1 == TP_FLOATING_PRECISION_VALUE || precision2 == TP_FLOATING_PRECISION_VALUE)
-	? TP_FLOATING_PRECISION_VALUE : MIN (DB_MAX_VARCHAR_PRECISION, precision1 + precision2);
+	? DB_MAX_VARCHAR_PRECISION : MIN (DB_MAX_VARCHAR_PRECISION, precision1 + precision2);
       db_string_put_cs_and_collation (string1, codeset, common_coll);
       return NO_ERROR;
     }
