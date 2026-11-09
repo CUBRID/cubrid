@@ -750,7 +750,7 @@ sm_define_view_statistics_spec (void)
         "[idx].[index_name], "
         "[idx_key].[key_order]"
       ") AS INTEGER) AS [cardinality], "
-      "[idx_key].[key_prefix_length] AS [sub_part], "
+      "IF ([idx_key].[key_prefix_length] > -1, [idx_key].[key_prefix_length], NULL) AS [sub_part], "
       "IF ([idx_key].[key_attr_name] IS NULL, 'YES', "
         "IF ([attr].[is_nullable] = 1, 'YES', 'NO')) AS [nullable], "
       "'BTREE' AS [index_type], "
@@ -771,6 +771,8 @@ sm_define_view_statistics_spec (void)
       "INNER JOIN [%s] AS [cls] ON [cls] = [idx].[class_of] "
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
+        /* attr_type 1: CLASS ATTRIBUTE */
+        "AND [attr].[attr_type] <> 1 "
     "WHERE "
       AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     CT_INDEXKEY_NAME,
