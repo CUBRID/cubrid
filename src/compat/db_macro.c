@@ -941,6 +941,11 @@ db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision,
       break;
     case DB_TYPE_NUMERIC:
       numeric_coerce_dec_str_to_num ("0", value->data.num.d.buf, NULL);
+      if (precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  value->data.num.header.precision = 1;
+	  value->data.num.header.scale = 0;
+	}
       value->domain.numeric_info.is_value_negative = false;
       value->domain.general_info.is_null = 0;
       break;

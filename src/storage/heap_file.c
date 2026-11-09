@@ -12782,6 +12782,27 @@ exit_on_error:
 }
 
 /*
+ * heap_attrinfo_check_not_null_after_coercion () - check NOT NULL again on the value after coercion
+ *   return: NO_ERROR or ER_NULL_CONSTRAINT_VIOLATION
+ *   value(in): the attribute value after coercion
+ *
+ * Note: NOT NULL is checked against the value before coercion. However, coercion can still produce NULL:
+ *       '' converted to NUMERIC with numeric_empty_string_as_null, or a failed coercion with
+ *       return_null_on_function_errors.
+ */
+static int
+heap_attrinfo_check_not_null_after_coercion (const HEAP_ATTRVALUE * value)
+{
+  if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+      return ER_NULL_CONSTRAINT_VIOLATION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_set () - Set the value of given attribute
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
@@ -12834,13 +12855,9 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
 	  db_make_null (&value->dbvalue);
 	}
-      else if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue))
+      else
 	{
-	  /* NOT NULL is checked against the value before coercion. However, coercion can still produce NULL:
-	   * '' converted to NUMERIC with numeric_empty_string_as_null, or a failed coercion with
-	   * return_null_on_function_errors. */
-	  ret = ER_NULL_CONSTRAINT_VIOLATION;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ret, 0);
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
 	}
     }
 
@@ -12933,6 +12950,10 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, catalog);
 	  assert (er_errid () != NO_ERROR);
 	  db_make_null (&value->dbvalue);
+	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
 	}
     }
   if (ret != NO_ERROR)

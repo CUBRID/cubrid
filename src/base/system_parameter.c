@@ -5779,6 +5779,7 @@ static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
 static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
 static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
 static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 353, "update SysParam.java");
+static_assert (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL == 402, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 

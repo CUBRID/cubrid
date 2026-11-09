@@ -5853,8 +5853,7 @@ numeric_coerce_string_to_num_status (const char *astring, int astring_length, IN
   if (is_empty && prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL))
     {
       /* with numeric_empty_string_as_null, '' or a whitespace-only string is NULL as before CBRD-26749 */
-      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
-      return NO_ERROR;
+      goto exit_with_null;
     }
 
   assert (int_len > 0 || frac_len > 0);
@@ -5889,9 +5888,16 @@ numeric_coerce_string_to_num_status (const char *astring, int astring_length, IN
 
 exit_on_error:
 
+  if (ret == NO_ERROR)
+    {
+      ret = ER_FAILED;
+    }
+
+exit_with_null:
+
   db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION, DB_DEFAULT_NUMERIC_SCALE);
 
-  return ret == NO_ERROR ? ER_FAILED : ret;
+  return ret;
 }
 
 /*
