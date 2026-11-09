@@ -417,8 +417,17 @@ jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
 	      continue;
 	    }
 
+	  /* Show the unique name from the catalog, as jsp_check_out_param_in_query does. */
+	  char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
+	  const char *shown_name = jsp_get_unique_name (mop_p, unique_name, DB_MAX_IDENTIFIER_LENGTH);
+	  if (shown_name == NULL)
+	    {
+	      er_clear ();
+	      shown_name = name;
+	    }
+
 	  PT_ERRORmf3 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARG_NOT_BIND_VARIABLE, i + 1,
-		       name, (mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
+		       shown_name, (mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
 	  error = ER_PT_SEMANTIC;
 	  break;
 	}
