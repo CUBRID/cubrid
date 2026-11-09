@@ -1850,6 +1850,114 @@ TEST_F (OosRealVacuumHeaderHeld, UpdateNotificationDeferredWhileHeaderHeldThenRe
   EXPECT_FALSE (oos_unreadable (new_oos_oid)) << "the new version's chain must survive";
 }
 
+// A deferred notification must not hold back the rest of its log block. Another heap's deleted row in the same block
+// is vacuumed while the header lookup keeps failing; a worker that gave up the block at the notification would leave
+// it until the header is free (CBRD-27953, as CBRD-27933 for heap records).
+TEST_F (OosRealVacuumHeaderHeld, UpdateNotificationDeferralLeavesRestOfBlockToVacuum)
+{
+  unrelated_row other;
+  OID heap_oid = OID_INITIALIZER, old_oos_oid = OID_INITIALIZER;
+  prepare_unrelated_row (other, heap_oid, old_oos_oid);
+  ASSERT_FALSE (HasFatalFailure ());
+
+  RECDES plain_rec {};
+  ASSERT_EQ (build_plain_heap_recdes (64, plain_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_plain (&plain_rec, recdes_free_data_area);
+
+  /* The update, its notification at commit and the other heap's delete fit in a log block that they start. */
+  ASSERT_TRUE (fill_log_past (current_log_blockid ()));
+  const VACUUM_LOG_BLOCKID block = current_log_blockid ();
+  ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, plain_rec), NO_ERROR);
+  ASSERT_EQ (heap_delete_mvcc (other.hfid, class_oid, other.scan_cache, other.oid), NO_ERROR);
+  commit_current_tran ();
+  ASSERT_EQ (current_log_blockid (), block) << "the update, its notification and the delete must share one log block";
+
+  const int deferrals_before = deferrals ();
+  PGBUF_WATCHER header_watcher;
+  const bool held = hold_header_and_close_blocks (header_watcher, block);
+  const bool deferred = held && wait_for_vacuum ([this, deferrals_before] { return deferrals () > deferrals_before; },
+			60);
+  const bool other_removed = deferred && wait_for_vacuum ([&other]
+  {
+    return row_removed (slot_record_type (other.oid));
+  }, 20);
+  const bool old_kept_while_held = !oos_unreadable (old_oos_oid);
+  const int runs = interrupted_runs (block);
+  release_header (header_watcher);
+  const bool reclaimed = wait_for_vacuum ([this, &old_oos_oid] { return oos_unreadable (old_oos_oid); }, 60);
+  printf ("[CBRD-27953] notification and unrelated row: block %lld interrupted %d times, unrelated row removed "
+	  "while held %d, dropped chain kept while held %d, reclaimed after release %d\n", (long long) block, runs,
+	  (int) other_removed, (int) old_kept_while_held, (int) reclaimed);
+  fflush (stdout);
+  drop_unrelated_row (other);
+
+  ASSERT_TRUE (held) << "OOS filler failed to close the update's log block";
+  EXPECT_TRUE (deferred) << "vacuum never deferred the block on the held heap header";
+  EXPECT_TRUE (other_removed) << "vacuum left the rest of the log block while the notification's lookup failed";
+  EXPECT_TRUE (old_kept_while_held) << "the dropped chain was reclaimed although the header lookup failed";
+  EXPECT_TRUE (reclaimed) << "vacuum never reclaimed the UPDATE's dropped chain after the header was released";
+}
+
+// Several notifications of one heap in a log block fail their lookup together: one lookup per run, not one per
+// notification. With a real latch timeout each lookup waits for the header.
+TEST_F (OosRealVacuumHeaderHeld, FailingHeapNotificationsCostOneLookupPerRun)
+{
+  OID heap_oids[2], oos_oids[2];
+  for (int i = 0; i < 2; i++)
+    {
+      insert_row_on_new_page (false, heap_oids[i], oos_oids[i]);
+      ASSERT_FALSE (HasFatalFailure ());
+    }
+  ASSERT_TRUE (close_block_with_oos_fillers (current_log_blockid ()));
+  ASSERT_TRUE (wait_for_vacuum ([&heap_oids]
+  {
+    return insert_id_vacuumed (heap_oids[0]) && insert_id_vacuumed (heap_oids[1]);
+  }, 60)) << "vacuum did not finish the inserts";
+
+  RECDES plain_rec {};
+  ASSERT_EQ (build_plain_heap_recdes (64, plain_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_plain (&plain_rec, recdes_free_data_area);
+
+  /* Two updates and their notifications fit in a log block that they start. The new versions have no OOS value, so
+   * vacuum_heap never looks up the heap's OOS file and every lookup in the block is a notification's. */
+  ASSERT_TRUE (fill_log_past (current_log_blockid ()));
+  const VACUUM_LOG_BLOCKID block = current_log_blockid ();
+  for (OID &heap_oid : heap_oids)
+    {
+      ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, plain_rec), NO_ERROR);
+    }
+  commit_current_tran ();
+  ASSERT_EQ (current_log_blockid (), block) << "both updates and their notifications must share one log block";
+
+  const int deferrals_before = deferrals ();
+  PGBUF_WATCHER header_watcher;
+  const bool held = hold_header_and_close_blocks (header_watcher, block);
+  const bool rerun = held && wait_for_vacuum ([this, block] { return interrupted_runs (block) >= 2; }, 120);
+  const bool kept = !oos_unreadable (oos_oids[0]) && !oos_unreadable (oos_oids[1]);
+  /* One read of the log for both counts. A run logs its deferral before its interruption, so a run in progress
+   * counts one lookup more than the finished runs. */
+  const std::string held_log = server_log ();
+  const int runs = count_occurrences (held_log, "Processing log block " + std::to_string (block) + " is interrupted");
+  const int lookups = count_occurrences (held_log, "CODE = " + std::to_string (ER_VACUUM_OOS_LOOKUP_DEFERRED) + ",")
+		      - deferrals_before;
+  release_header (header_watcher);
+  const bool reclaimed = wait_for_vacuum ([this, &oos_oids]
+  {
+    return oos_unreadable (oos_oids[0]) && oos_unreadable (oos_oids[1]);
+  }, 60);
+  printf ("[CBRD-27953] two notifications: block %lld interrupted %d times, %d deferred lookups, dropped chains "
+	  "kept while held %d, reclaimed after release %d\n", (long long) block, runs, lookups, (int) kept,
+	  (int) reclaimed);
+  fflush (stdout);
+
+  ASSERT_TRUE (held) << "OOS filler failed to close the updates' log block";
+  ASSERT_TRUE (rerun) << "vacuum did not leave the updates' log block for a later run";
+  EXPECT_TRUE (kept) << "a dropped chain was reclaimed although the header lookup failed";
+  EXPECT_GE (lookups, runs) << "a run of the log block left the block without a failed lookup";
+  EXPECT_LE (lookups, runs + 1) << "a run of the log block looked up the failing heap once per notification";
+  EXPECT_TRUE (reclaimed) << "vacuum never reclaimed the dropped chains after the header was released";
+}
+
 // ============================================================================
 // TC-R15..R17: A' UPDATE notification (ADR-0008, CBRD-27237)
 //

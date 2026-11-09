@@ -84,10 +84,13 @@ extern int oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_
  * emptied. The notify record names its OOS file; it is returned through oos_vfid_out. Returns NO_ERROR,
  * ER_INTERRUPTED (shutdown), or the error of a failed heap header lookup for the OOS file, whose heap is
  * returned through heap_hfid_out (the caller leaves the block for a later run); any other failure stops the
- * server, so restart processes the block again. notify_data is copied before the first page fix, so it may
- * point into the caller's log page. */
+ * server, so restart processes the block again. A notification that needs the OOS file of a heap in
+ * deferred_heaps (may be NULL) is left alone: NO_ERROR, nothing reclaimed, because the caller already left the
+ * block for a later run. notify_data is copied before the first page fix, so it may point into the caller's
+ * log page. */
 extern int oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length,
-					VFID *oos_vfid_out, HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids);
+					VFID *oos_vfid_out, HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids,
+					const std::vector<VFID> *deferred_heaps);
 
 /* While one is in scope on a thread, the reclaim postpones that run on that thread report the pages
  * they empty to it instead of discarding them. Vacuum opens one around the sysop commit of a REMOVE,
