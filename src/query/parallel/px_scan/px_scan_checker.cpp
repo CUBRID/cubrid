@@ -49,9 +49,12 @@ namespace parallel_scan
   /* the checked part calls an SP not declared PARALLEL_ENABLE or a method: a px worker cannot
    * run it, since its callbacks to the client are never answered (CBRD-27596) */
   const possible_flags CANNOT_RUN_IN_WORKER = 0x1 << 3;
-  /* reads or writes session or serial state; unlike a scan-shape block it survives a subquery boundary */
-  const possible_flags HAS_SESSION_SIDE_EFFECT = 0x1 << 4;
-  const possible_flags SUBQUERY_BLOCKERS = CANNOT_RUN_IN_WORKER | HAS_SESSION_SIDE_EFFECT;
+  /* survives a subquery boundary: workers running it would write the shared session or serial state concurrently */
+  const possible_flags WRITES_SESSION_STATE = 0x1 << 4;
+  /* survives a subquery boundary too: a worker read races with a write the leader makes during the scan */
+  const possible_flags READS_SESSION_STATE = 0x1 << 5;
+  const possible_flags SESSION_STATE_ACCESS = WRITES_SESSION_STATE | READS_SESSION_STATE;
+  const possible_flags SUBQUERY_BLOCKERS = CANNOT_RUN_IN_WORKER | SESSION_STATE_ACCESS;
 
   static bool
   is_buildvalue_opt_supported_function (FUNC_CODE function)
@@ -251,7 +254,7 @@ namespace parallel_scan
     if (arg->xasl)
       {
 	temp = sibling_check<is_outptr_list> (arg->xasl);
-	result |= temp & HAS_SESSION_SIDE_EFFECT;
+	result |= temp & SESSION_STATE_ACCESS;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -396,7 +399,15 @@ namespace parallel_scan
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
-	set_flag (result, HAS_SESSION_SIDE_EFFECT);
+      }
+    /* TRACE_STATS also marks the calling thread to clear the session's trace at query end */
+    if (arg->opcode == T_DEFINE_VARIABLE || arg->opcode == T_NEXT_VALUE || arg->opcode == T_TRACE_STATS)
+      {
+	set_flag (result, WRITES_SESSION_STATE);
+      }
+    else if (arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_CURRENT_VALUE)
+      {
+	set_flag (result, READS_SESSION_STATE);
       }
     return result;
   }
@@ -622,7 +633,7 @@ namespace parallel_scan
       }
 
     /* the key filter and key ranges are evaluated by the thread that runs this scan too, for an NL
-     * inner at every outer row. Only an SP, a method or a session side effect there counts. */
+     * inner at every outer row. Only an SP, a method or a session or serial access there counts. */
     possible_flags temp = check<false> (arg->where_key) | check<false> (arg->where_range);
     if (arg->type == TARGET_CLASS && arg->indexptr != NULL)
       {
@@ -650,7 +661,7 @@ namespace parallel_scan
 	set_flag (result, CANNOT_RUN_IN_WORKER);
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
-    result |= temp & HAS_SESSION_SIDE_EFFECT;
+    result |= temp & SESSION_STATE_ACCESS;
     return result;
   }
 
@@ -660,9 +671,9 @@ namespace parallel_scan
     possible_flags result = sibling_check_block<is_outptr_list> (sibling);
     if (leader_precomputed.count (sibling) != 0)
       {
-	return result & ~HAS_SESSION_SIDE_EFFECT;
+	return result & ~SESSION_STATE_ACCESS;
       }
-    if (is_flag_set (result, HAS_SESSION_SIDE_EFFECT))
+    if (is_flag_set (result, WRITES_SESSION_STATE))
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
@@ -754,7 +765,7 @@ namespace parallel_scan
 
     /* the thread that runs this block evaluates the rest of it as well: its select list, aggregates,
      * GROUP BY / analytic lists, later join tables, merged method scans, hierarchical query and nested
-     * blocks. Of these only an SP, a method or a session side effect counts. */
+     * blocks. Of these only an SP, a method or a session or serial access counts. */
     temp = sibling_check<false> (sibling->scan_ptr);
     for (ACCESS_SPEC_TYPE *specp = sibling->merge_spec; specp; specp = specp->next)
       {
@@ -1111,6 +1122,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
+	result |= temp & SESSION_STATE_ACCESS;
       }
 
     if (arg->if_pred)
@@ -1120,6 +1132,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
+	result |= temp & SESSION_STATE_ACCESS;
       }
 
     if (arg->instnum_pred || arg->instnum_val)
@@ -1154,6 +1167,21 @@ namespace parallel_scan
     xasl_check_cache[arg] = result;
 
     return result;
+  }
+
+  /* the leader evaluates a ROWNUM predicate and a row-by-row aggregate while the workers still scan */
+  static bool
+  leader_writes_during_scan (XASL_NODE *arg)
+  {
+    possible_flags flags = check<false> (arg->instnum_pred);
+    if (arg->type == BUILDVALUE_PROC)
+      {
+	for (AGGREGATE_TYPE *agg = arg->proc.buildvalue.agg_list; agg; agg = agg->next)
+	  {
+	    flags |= check<false> (agg);
+	  }
+      }
+    return is_flag_set (flags, WRITES_SESSION_STATE);
   }
 
   void process_xasl_node_recursive (XASL_NODE *arg)
@@ -1273,6 +1301,10 @@ namespace parallel_scan
       }
 
     result |= check<false> (arg);
+    if (is_flag_set (result, READS_SESSION_STATE) && leader_writes_during_scan (arg))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
 
     const bool block_index_spec =
 	    ((arg->instnum_pred || arg->instnum_val) && !is_renumberable_instnum (arg))
