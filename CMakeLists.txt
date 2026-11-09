@@ -75,7 +75,7 @@ option(WITH_JDBC "Build with JDBC driver" ON)
 option(WITH_CMSERVER "Build with Manager server" ON)
 option(UNIT_TESTS "Unit tests" OFF)
 option(WITH_CCI "Build with CCI driver" ON)
-option(MULTI_CONN_TO_A_SERVER "Allow multiple connections to a server in a client process (experimental)" OFF)
+option(MULTI_CONN_TO_A_SERVER "Allow multiple connections to a server in a client process (experimental)" ON)
 
 # Version info
 # TODO: remove BUILD_NUMBER file and replace with VERSION file
@@ -414,6 +414,8 @@ set(STORAGE_DIR              ${CMAKE_SOURCE_DIR}/src/storage)
 set(THREAD_DIR               ${CMAKE_SOURCE_DIR}/src/thread)
 set(TOOLS_DIR                ${CMAKE_SOURCE_DIR}/cubrid-cci/src/tools)
 set(TRANSACTION_DIR          ${CMAKE_SOURCE_DIR}/src/transaction)
+set(APPLIER_DIR              ${CMAKE_SOURCE_DIR}/src/transaction/applier)
+set(WRITESET_DIR             ${CMAKE_SOURCE_DIR}/src/transaction/writeset)
 set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
@@ -449,6 +451,8 @@ include_directories(
   src/storage
   src/thread
   src/transaction
+  src/transaction/applier
+  src/transaction/writeset
   src/xasl
   src/query/parallel/px_hash_join
   src/query/parallel/px_merge_join
