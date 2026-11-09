@@ -12873,11 +12873,72 @@ heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
 }
 
 /*
+ * heap_attrinfo_can_share_string () - CBRD-27847: whether an attribute takes a string or bit string value as it is,
+ *   sharing the value's buffer: the value is of the attribute's domain - precision and collation, as the match
+ *   heap_attrinfo_set tries first (TP_EXACT_MATCH), and the codeset -, fits its precision (a CHAR or BIT fills it),
+ *   and owns no buffer. The cast would only copy such a value: the same codeset is copied as it is, and a full CHAR
+ *   or BIT is padded by neither the cast nor writing it, which pad a shorter one differently (the cast with the
+ *   codeset's pad character, writing with a space). A value that owns its buffer is cast into a copy: its holder may
+ *   clear it before the record is written (locator_mvcc_reev_cond_assigns clears it right after the assignment).
+ *   return: true to share the value's buffer
+ *   value(in): a value, not NULL, of the attribute's type
+ *   domain(in): the attribute's domain
+ */
+static bool
+heap_attrinfo_can_share_string (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  int precision;
+
+  if (!TP_IS_CHAR_BIT_TYPE (type) || DB_NEED_CLEAR (value))
+    {
+      return false;
+    }
+
+  if (TP_IS_CHAR_TYPE (type)
+      && (db_get_string_codeset (value) != TP_DOMAIN_CODESET (domain)
+	  || db_get_string_collation (value) != TP_DOMAIN_COLLATION (domain)))
+    {
+      return false;
+    }
+
+  /* the value's precision as tp_domain_resolve_value makes it - an unset variable one is the maximum -, but for an
+   * oversized one, which the shared setval refuses (ER_INVALID_PRECISION) where the cast stores the value */
+  precision = db_value_precision (value);
+  if ((type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+      && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE))
+    {
+      precision = (type == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION;
+    }
+  if (precision != domain->precision)
+    {
+      return false;
+    }
+
+  /* and the value fits it, whatever its precision says. A CHAR or BIT fills it: one read from a list tuple, a record
+   * or a plan comes padded, with its precision as its length. A VARCHAR's size in bytes bounds its length in
+   * characters, which is counted only when the size does not decide; a bit string's length is in bits */
+  if (type == DB_TYPE_CHAR || type == DB_TYPE_BIT)
+    {
+      return db_get_string_length (value) == precision;
+    }
+  if (type == DB_TYPE_VARCHAR && db_get_string_size (value) <= precision)
+    {
+      return true;
+    }
+  return db_get_string_length (value) <= precision;
+}
+
+/*
  * heap_attrinfo_set_converted () - CBRD-27583: set the value an INSERT, UPDATE or MERGE assigns to an
  *   attribute with the converter its plan chose at unpack for the value's type into the attribute's type, as
  *   heap_attrinfo_set's coercion does it (tp_value_auto_cast_with_precision_check) into the catalog's domain, without
- *   the match it tries first
+ *   the match it tries first - but for a string the attribute can share (heap_attrinfo_can_share_string), which the
+ *   cast would only copy
  *   return: NO_ERROR, or the conversion's error
+ *   attr_val(in): the value; a string the attribute shares is borrowed, not copied: its buffer must stay as it is
+ *		   until the record is built (locator_attribute_info_force), so a value read through the scan cache that
+ *		   the force rereads the old record with is copied first
  *   domain(in): the attribute's domain the XASL streams, of the catalog's type (a client builds a collection's,
  *		 MONETARY's or an object's domain that tp_domain_match does not find the catalog's)
  *   value_type(in), conv(in): the plan's - the type the value comes in and its converter into domain's type, which a
@@ -12905,12 +12966,14 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
       /* NULL, and an object reference, which the server takes as it is (tp_domain_check) */
       ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
     }
-  else if (value_type == TP_DOMAIN_TYPE (catalog) && heap_attrinfo_is_fixed_copy_type (value_type)
+  else if (value_type == TP_DOMAIN_TYPE (catalog)
 	   /* guard: the plan's premise; a mismatch takes the converter path */
-	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type)
+	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type
+	   && (heap_attrinfo_is_fixed_copy_type (value_type) || heap_attrinfo_can_share_string (attr_val, catalog)))
     {
-      /* the plan's value of the attribute's own fixed-size type: the cast would only clone it (no precision, codeset
-       * or zone) */
+      /* the plan's value of the attribute's own type that the cast would only copy: a fixed-size type (no precision,
+       * codeset or zone) is cloned; a string's buffer is shared, so the value's holder keeps it until the record is
+       * written - a list tuple, a record or a plan constant does, for the row */
       ret = pr_type->setval (&value->dbvalue, attr_val, false);
     }
   else

@@ -9416,8 +9416,8 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
 /*
  * add_union_query() - Adds a query to a virtual class object.
  *			  If the query is a union all query
- *			  without limit and order_by, it is
- * 			  divided into its component queries
+ *			  without limit, order_by and with clause,
+ * 			  it is divided into its component queries
  *   return: Error code
  *   parser(in): Parser context
  *   ctemplate(in/out): Class template
@@ -9433,7 +9433,7 @@ add_union_query (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * 
   /* Add each query listed in the virtual class definition. */
 
   if (query->node_type == PT_UNION && query->info.query.all_distinct == PT_ALL && query->info.query.limit == NULL
-      && query->info.query.order_by == NULL)
+      && query->info.query.order_by == NULL && query->info.query.with == NULL)
     {
       error = add_union_query (parser, ctemplate, query->info.query.q.union_.arg1);
 
