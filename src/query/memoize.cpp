@@ -401,6 +401,26 @@ namespace memoize
 	  }), const_regu_var_vector.end());
 	}
 
+      /* the range terms of an index scan (where_range) carry the conjuncts after them, so a term may read a column of
+       * a scan after this one. That value changes while the rows of this key are collected: it is not an input of the
+       * probe, and keying by it splits the rows of one key (CBRD-27866) */
+      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+				   const_regu_var_vector.end(), [xasl] (regu_variable_node *regu_var)
+      {
+	for (XASL_NODE *scan = xasl->scan_ptr; scan != NULL; scan = scan->scan_ptr)
+	  {
+	    for (QPROC_DB_VALUE_LIST valp = (scan->val_list != NULL) ? scan->val_list->valp : NULL; valp != NULL;
+		 valp = valp->next)
+	      {
+		if (regu_var->value.dbvalptr == valp->val)
+		  {
+		    return true;
+		  }
+	      }
+	  }
+	return false;
+      }), const_regu_var_vector.end());
+
       if constexpr (target_type == TARGET_LIST)
 	{
 	  REGU_VARIABLE_LIST pred = spec->s.list_node.list_regu_list_pred, rest = spec->s.list_node.list_regu_list_rest;
