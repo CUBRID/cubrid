@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -224,18 +225,23 @@ vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM
  * undo_data (in)      : Undo data of the record. It may point into the worker's current log page:
  *			 oos_reclaim_notified_chains copies it before its first page fix.
  * undo_data_size (in) : Its size.
+ * deferred_heaps (in/out) : Heaps whose lookup failed in this run of the block; may be NULL. A failed lookup adds
+ *			     its heap, and a later notification of that heap in the same run returns NO_ERROR without
+ *			     waiting for the header again; the next run of the block reclaims it.
  *
  * Vacuum reaches the record only once the UPDATE's MVCCID precedes every active snapshot, so no reader can
  * still reach the chains through the old version.
  */
 int
-vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size)
+vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size,
+				    VACUUM_OOS_DEFERRED_HEAPS *deferred_heaps)
 {
   VFID oos_vfid = VFID_INITIALIZER;
   HFID heap_hfid = HFID_INITIALIZER;
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
   int error_code =
-	  oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_vfid, &heap_hfid, &emptied_pages);
+	  oos_reclaim_notified_chains (thread_p, undo_data, undo_data_size, &oos_vfid, &heap_hfid, &emptied_pages,
+				       deferred_heaps);
   if (error_code != NO_ERROR)
     {
       if (error_code != ER_INTERRUPTED && vacuum_is_thread_vacuum_worker (thread_p))
@@ -245,6 +251,17 @@ vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_dat
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_OOS_LOOKUP_DEFERRED, 6, VFID_AS_ARGS (&heap_hfid.vfid),
 		  error_code, VPID_AS_ARGS (&header_vpid), (int) NULL_SLOTID);
 	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	  if (deferred_heaps != NULL)
+	    {
+	      try
+		{
+		  deferred_heaps->push_back (heap_hfid.vfid);
+		}
+	      catch (const std::bad_alloc &)
+		{
+		  /* Only the skip is lost: a later notification of this heap waits for the header again. */
+		}
+	    }
 	}
       return error_code;
     }
