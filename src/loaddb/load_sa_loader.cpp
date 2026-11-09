@@ -164,10 +164,10 @@ const std::size_t LDR_MAX_ARGS = 32;
 /*
  * CHECK_PARSE_ERR_QUIET leaves the engine's message out, for the reason CHECK_ERR_QUIET
  * does: the element converters are an inner layer, and the layer that answers for the
- * row - ldr_act_attr (), ldr_act_elem (), ldr_act_meth () - wraps them in CHECK_ERR ()
- * and says it there. Naming the token is this layer's own contribution and stays, so a
- * refused element reads as one informative line and then the engine's, the way an
- * attribute's conversion already does.
+ * row - ldr_act_elem (), ldr_act_meth (), ldr_act_class_attr () - wraps them in
+ * CHECK_ERR () and says it there. Naming the token is this layer's own contribution
+ * and stays, so a refused element reads as one informative line and then the engine's,
+ * the way an attribute's conversion already does.
  */
 #define CHECK_PARSE_ERR_QUIET(err, expr, cont, type, str)               \
   do {                                                                  \
@@ -1831,15 +1831,6 @@ ldr_clear_context (LDR_CONTEXT *context)
 }
 
 /*
- * ldr_clear_and_free_context - Frees up the space allocated for the
- * constructor strings, attribute descriptors and args array.
- *    return: void
- *    context(in/out): current context
- * Note:
- *   Called if we have an internal error, or when we finish processing each
- *   class.
- */
-/*
  * ldr_clear_ctor_values - let go of what the line before left in the slots
  *    context(in/out): current context
  * Note:
@@ -1874,6 +1865,15 @@ ldr_clear_ctor_values (LDR_CONTEXT *context)
     }
 }
 
+/*
+ * ldr_clear_and_free_context - Frees up the space allocated for the attribute
+ * descriptors, the argument array and the class name.
+ *    return: void
+ *    context(in/out): current context
+ * Note:
+ *   Called if we have an internal error, or when we finish processing each
+ *   class.
+ */
 static void
 ldr_clear_and_free_context (LDR_CONTEXT *context)
 {
@@ -4971,14 +4971,20 @@ error_exit:
 }
 
 /*
- * ldr_store_convert - this slot parses the token as the attribute's type, then stores
+ * ldr_store_convert - this slot converts the token and names it when that fails
  *    attdesc(out): descriptor being built
  *    slot(in): the parser type this applies to
  *    direct(in): the instance image can take the value as it is
  *    bound_bit(in): for a direct store, whether the attribute carries a bound bit
  * Note:
- *    A token that does not parse is reported with the value and the attribute
- *    named, because the file said "this is a time" and the attribute is a time.
+ *    The conversion is whatever the shared table holds for this slot and the
+ *    attribute's domain: a parse as the attribute's own type where the two agree -
+ *    LDR_DATE on a DATE column - and a parse into the literal's natural type followed
+ *    by the engine's cast everywhere else.
+ *
+ *    What this says, and ldr_store_cast () does not, is that a failure names the value
+ *    and the attribute. The file said "this is a time" and the attribute is a time, so
+ *    the token is worth naming.
  */
 static void
 ldr_store_convert (LDR_ATTDESC *attdesc, data_type slot, bool direct, bool bound_bit)
@@ -5160,8 +5166,10 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
   /*
    * Allow loaddb to support the typecasts implicitly permitted by INSERT, ensuring
    * identical results between INSERT and loaddb.
-   * These literal kinds are converted to their natural type and handed to the object template, whose
-   * check_att_domain () performs the same cast INSERT would.
+   * These literal kinds are converted to their natural type and cast to the column's by
+   * fallback_convert (), through the engine's own tp_value_cast () and in the coercion
+   * mode check_att_domain () picks. The object template is handed a value already in
+   * the attribute's domain, so it has nothing left to coerce.
    */
   ldr_store_handler (attdesc, LDR_NULL, &ldr_null_db_generic);
   ldr_store_convert (attdesc, LDR_INT, false, false);
@@ -5518,7 +5526,9 @@ error_exit:
  *    context(in/out):
  *    obj_ptr(out): the constructed instance, NULL on failure
  * Note:
- *    This simulates the token parsing here.
+ *    Nothing is parsed here. ldr_act_meth () converted every token on the line as it
+ *    arrived and left the values in the slots; this hands the argument slots to the
+ *    method and writes the attribute slots into the object it returns.
  */
 static int
 construct_instance (LDR_CONTEXT *context, MOP *obj_ptr)
