@@ -3492,13 +3492,14 @@ typedef struct pt_dblink_info
   PT_NODE *owner_list;
 
   /* a referenced name could not be pinned to this table (pt_get_column_name_pre ()), so the
-   * column list is described instead of prepared.  A prediction only: when it is wrong the
-   * prepare is refused and the describe runs anyway. */
+   * column list is described instead of prepared.  A prediction only: without it, a name the
+   * "SELECT *" prepare does not cover is described anyway (uncertain_name_seen). */
   bool needs_describe;
 
   /* a gathered name may not be this table's (pt_get_column_name_pre ()): an unqualified one,
    * or one qualified with this table's name inside a nested block.  Without one every name is
-   * this table's, so a refused prepare is the answer and nothing is described. */
+   * this table's, so a refused prepare is the answer and nothing is described.  With one, a
+   * name outside "SELECT *" is described: a remote accepting it proves nothing (Oracle's UID). */
   bool uncertain_name_seen;
 
   void *remote_col_list;	/* remote table's column list */

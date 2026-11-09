@@ -438,7 +438,7 @@ static int pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_T
 							   S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason,
 							   T_CCI_ERROR * remote_error);
 static int pt_dblink_table_get_column_defs_by_prepare (PARSER_CONTEXT * parser, int conn, const char *table_name,
-						       PT_NODE * sel_list, bool star_removed,
+						       PT_NODE * sel_list, bool star_removed, bool uncertain,
 						       S_REMOTE_TBL_COLS * rmt_tbl_cols, T_CCI_ERROR * cci_error);
 
 static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -5662,28 +5662,32 @@ end:
  *   conn(in): open CCI connection to the remote
  *   table_name(in): remote table name, as the statement wrote it
  *   sel_list(in): the gathered references, star first if there is one
+ *   uncertain(in): a gathered name may not be this table's (uncertain_name_seen)
  *   rmt_tbl_cols(out): remote column list
- *   cci_error(out): why a prepare was refused
+ *   cci_error(out): why a prepare was refused, or which name needs the catalog
  *
  * Note: a referenced name the "SELECT *" prepare did not describe exists yet is outside
  *   the star's expansion, which is what makes it invisible.  No catalog is asked at all.
- *   When a prepare is refused the caller describes the table only if a gathered name may
- *   not be this table's (uncertain_name_seen); otherwise the refusal is the answer.
+ *   With uncertain a prepare accepting a name proves nothing (Oracle's UID), so a name
+ *   outside the star fails here as if refused.  When a prepare is refused the caller
+ *   describes the table only if a gathered name may not be this table's
+ *   (uncertain_name_seen); otherwise the refusal is the answer.
  */
 static int
 pt_dblink_table_get_column_defs_by_prepare (PARSER_CONTEXT * parser, int conn, const char *table_name,
-					    PT_NODE * sel_list, bool star_removed,
+					    PT_NODE * sel_list, bool star_removed, bool uncertain,
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols, T_CCI_ERROR * cci_error)
 {
   PT_NODE *name;
   PARSER_VARCHAR *sel = NULL;
   char *sql;
-  int n_named = 0, custom_print_saved;
+  int n_named = 0, custom_print_saved = parser->custom_print;
   bool has_star = (sel_list->node_type == PT_NAME && sel_list->type_enum == PT_TYPE_STAR);
   /* the visible set tells which referenced columns are invisible, and it is needed
    * whenever a star decides what this spec exposes: one the statement wrote, or the one
-   * the grammar took away when it collapsed "FROM (SELECT * FROM tbl@srv)" into this spec */
-  bool need_visible = (has_star || star_removed);
+   * the grammar took away when it collapsed "FROM (SELECT * FROM tbl@srv)" into this spec,
+   * and with an uncertain name, since only the star pins an unqualified name to this table */
+  bool need_visible = (has_star || star_removed || uncertain);
 
   /* the caller logs these on ER_FAILED, and not every failure here comes from a CCI call */
   cci_error->err_code = 0;
@@ -5702,7 +5706,6 @@ pt_dblink_table_get_column_defs_by_prepare (PARSER_CONTEXT * parser, int conn, c
 
   /* 2. the referenced names the star did not cover, printed as
    * pt_build_select_list_for_dblink () prints the remote select list */
-  custom_print_saved = parser->custom_print;
   parser->custom_print |= PT_SUPPRESS_RESOLVED | PT_PRINT_SUPPRESS_FOR_DBLINK;
   for (name = (has_star ? sel_list->next : sel_list); name != NULL; name = name->next)
     {
@@ -5714,6 +5717,15 @@ pt_dblink_table_get_column_defs_by_prepare (PARSER_CONTEXT * parser, int conn, c
       if (rmt_tbl_cols->find_col (name->info.name.original) >= 0)
 	{
 	  continue;		/* visible: described above */
+	}
+
+      /* the remote may accept an uncertain name that is no column (Oracle's UID): leave it to
+       * the catalog.  Per statement, so a certain name goes too; a per-name mark would spare it. */
+      if (uncertain)
+	{
+	  snprintf (cci_error->err_msg, sizeof (cci_error->err_msg),
+		    "[%s] is outside SELECT * and may not be a column of [%s]", name->info.name.original, table_name);
+	  goto error;
 	}
 
       if (n_named++ > 0)
@@ -5740,6 +5752,7 @@ pt_dblink_table_get_column_defs_by_prepare (PARSER_CONTEXT * parser, int conn, c
   return NO_ERROR;
 
 error:
+  parser->custom_print = custom_print_saved;
   rmt_tbl_cols->reset_attrs ();
   return ER_FAILED;
 }
@@ -6006,11 +6019,13 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 
       if (!dblink_table->needs_describe)
 	{
-	  /* every gathered name is this table's: prepare exactly those and skip the catalog
-	   * request.  A star alone is the same prepare of "SELECT *".  The remote parses the
-	   * table name itself, so a name written with identifier quotes is fine here. */
+	  /* names certainly this table's are prepared as written, skipping the catalog request;
+	   * with uncertain_name_seen only "SELECT *" is, and a name outside it is described below.
+	   * A star alone is the same prepare of "SELECT *".  The remote parses the table name
+	   * itself, so a name written with identifier quotes is fine here. */
 	  rc = pt_dblink_table_get_column_defs_by_prepare (parser, conn, table_name, dblink_table->sel_list,
-							   star_removed, rmt_tbl_cols, &cci_error);
+							   star_removed, dblink_table->uncertain_name_seen,
+							   rmt_tbl_cols, &cci_error);
 	  if (rc == NO_ERROR)
 	    {
 	      err = NO_ERROR;
@@ -6028,7 +6043,7 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	    }
 
 	  er_log_debug (ARG_FILE_LINE,
-			"dblink: the prepare of the referenced columns of [%s] was refused (%d: %s); "
+			"dblink: the referenced columns of [%s] were not settled by a prepare (%d: %s); "
 			"describing the table instead\n", table_name, cci_error.err_code, cci_error.err_msg);
 	}
 
@@ -12860,9 +12875,9 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	}
       else
 	{
-	  /* The whole rule: an unqualified name is this table's only when this table is the
-	   * block's single column source and the name is not inside a nested block, where it
-	   * may be that block's own or a correlated reference to an outer table. */
+	  /* An unqualified name is never certain: a remote may accept one that is no column.  In a
+	   * join or a nested block it is likely another table's (that block's own, or an outer
+	   * one's in a correlated reference), so the catalog is asked directly. */
 	  if (plkcol->multi_source || plkcol->nested_depth > 0)
 	    {
 	      plkcol->needs_describe = true;
