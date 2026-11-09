@@ -7858,14 +7858,32 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY *thread_p, unsigned int rid, char *
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int i = 0;
-  int *tran_index_list;
-  int num_tran_index, interrupt_only;
+  int *tran_index_list = NULL;
+  int num_tran_index = 0, interrupt_only = 0;
   int num_killed_tran = 0;
   int client_claims_dba_group = 0;
 
   /* read only to stay in step with the request; the server decides */
-  ptr = or_unpack_int (request, &client_claims_dba_group);
-  ptr = or_unpack_int (ptr, &num_tran_index);
+  if (reqlen >= OR_INT_SIZE * 3)
+    {
+      ptr = or_unpack_int (request, &client_claims_dba_group);
+      ptr = or_unpack_int (ptr, &num_tran_index);
+    }
+
+  /* the request is the flag, the count, the indexes and interrupt_only, so its
+   * length is fixed by the count; a crafted count would otherwise read past the
+   * buffer or free an uninitialised pointer */
+  if (num_tran_index <= 0 || (reqlen - OR_INT_SIZE * 3) % OR_INT_SIZE != 0
+      || num_tran_index != (reqlen - OR_INT_SIZE * 3) / OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE * 3, reqlen);
+      (void) return_error_to_client (thread_p, rid);
+      ptr = or_pack_int (reply, ER_NET_DATASIZE_MISMATCH);
+      ptr = or_pack_int (ptr, 0);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
   ptr = or_unpack_int_array (ptr, num_tran_index, &tran_index_list);
   ptr = or_unpack_int (ptr, &interrupt_only);
 
