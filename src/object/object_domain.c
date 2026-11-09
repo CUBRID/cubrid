@@ -6002,12 +6002,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	  status = er_errid () != NO_ERROR ? DOMAIN_ERROR : DOMAIN_INCOMPATIBLE;
 	}
-      else if (DB_IS_NULL (&number))
-	{
-	  /* '' or a whitespace-only string with numeric_empty_string_as_null */
-	  db_value_domain_init (target, DB_TYPE_NUMERIC, desired_domain->precision, desired_domain->scale);
-	  status = DOMAIN_COMPATIBLE;
-	}
       else
 	{
 	  status = tp_value_numeric_fit_converter ()(&number, target, desired_domain, &conversion_error);
