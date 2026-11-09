@@ -7766,19 +7766,21 @@ struct qo_tie_keys
  *   return:
  *   plan(in): a scan plan
  *
- * Note: True when the key range terms of the scan hold an equality term on every column of a primary key or unique
- *   index of the table: of the index scanned (qo_is_all_unique_index_columns_are_equi_terms ()), or of another one
- *   whose columns the index scanned also equates, as an index on (a, e) does those of a primary key on (a). The two
- *   scans then count alike in qo_plan_tie_cmp (), and the more key range terms of the index on (a, e) decide, as
- *   the rules did (CBRD-25060).
+ * Note: True for a scan by a primary key or unique index whose columns all have equality terms
+ *   (qo_is_all_unique_index_columns_are_equi_terms ()), and for a scan by another index whose equality key range
+ *   terms cover the columns of such an index and at least one column more, as a = 1 and e = 1 on an index on (a, e)
+ *   do a primary key on (a). That scan reads one row at most too, and can reject it in the index: it counts alike
+ *   in qo_plan_tie_cmp () and its more key range terms decide, as the rules took the index whose range terms contain
+ *   the other's (CBRD-25060). A scan whose equality range terms are just the unique key's reads the same row through
+ *   a larger index, so it does not count and the scan by the unique index stays ahead of it.
  */
 static bool
 qo_iscan_reads_one_row (QO_PLAN * plan)
 {
   QO_NODE *node;
   QO_NODE_INDEX *node_indexp;
-  QO_INDEX_ENTRY *index_entryp;
-  int i, j;
+  QO_INDEX_ENTRY *scan_entryp, *index_entryp;
+  int i, j, n_equal;
   bool covered;
 
   if (qo_is_all_unique_index_columns_are_equi_terms (plan))
@@ -7789,6 +7791,22 @@ qo_iscan_reads_one_row (QO_PLAN * plan)
   if (!qo_is_iscan (plan) || plan->plan_un.scan.index == NULL)
     {
       return false;
+    }
+
+  /* the columns of the index scanned that its key range terms equate */
+  scan_entryp = plan->plan_un.scan.index->head;
+  if (scan_entryp == NULL || scan_entryp->seg_equal_terms == NULL)
+    {
+      return false;
+    }
+  n_equal = 0;
+  for (j = 0; j < scan_entryp->nsegs; j++)
+    {
+      if (scan_entryp->seg_idxs[j] != -1
+	  && bitset_intersects (&plan->plan_un.scan.terms, &scan_entryp->seg_equal_terms[j]))
+	{
+	  n_equal++;
+	}
     }
 
   node = plan->plan_un.scan.node;
@@ -7819,7 +7837,7 @@ qo_iscan_reads_one_row (QO_PLAN * plan)
 		     && bitset_intersects (&plan->plan_un.scan.terms, &index_entryp->seg_equal_terms[j]));
 	}
 
-      if (covered)
+      if (covered && n_equal > index_entryp->nsegs)
 	{
 	  return true;
 	}
@@ -7903,8 +7921,8 @@ qo_plan_tie_keys (QO_PLAN * plan, QO_TIE_KEYS * keys)
  *     1. fewer sorts: a plan that skips the ORDER BY or GROUP BY sort
  *     2. more covering index scans
  *     3. more index scans that read one row at most: by a unique index whose columns all have equality terms, or
- *        by an index whose key range terms equate all the columns of one (qo_iscan_reads_one_row ()); an empty table
- *        costs every index scan alike
+ *        by an index whose equality key range terms cover the columns of one and more (qo_iscan_reads_one_row ());
+ *        an empty table costs every index scan alike
  *     4. more key range terms, then more key filter terms: the indexes read fewer keys
  *     5. fewer index pages (a sequential scan has none): of two joins of one cost, the one whose inner index is smaller
  *     6. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
