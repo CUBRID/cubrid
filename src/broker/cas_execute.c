@@ -11548,8 +11548,7 @@ ux_stream_give_up_upload (void)
 /*
  * ux_stream_status_to_restore () - The status to set after a request that gave up an upload, or -1
  *
- * Only back out of a transaction, and only when nothing else the client holds keeps it: a download, a result set,
- * or another upload a statement holds for its execute.
+ * Only back out of a transaction, and only when nothing else the client holds keeps it: a download or a result set.
  */
 int
 ux_stream_status_to_restore (void)
@@ -11557,8 +11556,7 @@ ux_stream_status_to_restore (void)
   int status = stream_Status_to_restore;
 
   stream_Status_to_restore = -1;
-  if (status != CON_STATUS_OUT_TRAN || stream_from_holds_download () || hm_has_result_tied_to_tran ()
-      || hm_holds_internal_lob_uploads ())
+  if (status != CON_STATUS_OUT_TRAN || stream_from_holds_download () || hm_has_result_tied_to_tran ())
     {
       return -1;
     }

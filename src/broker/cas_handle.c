@@ -420,22 +420,6 @@ hm_srv_handle_hold_internal_lob_uploads (T_SRV_HANDLE * srv_handle, const INT64 
   return 0;
 }
 
-/* Does an open statement hold an upload for its execute? */
-bool
-hm_holds_internal_lob_uploads (void)
-{
-  int i;
-
-  for (i = 0; i < max_handle_id; i++)
-    {
-      if (srv_handle_table[i] != NULL && srv_handle_table[i]->internal_lob_upload_token_count > 0)
-	{
-	  return true;
-	}
-    }
-  return false;
-}
-
 /* The driver discarded this upload: release it unless an open statement still binds it. */
 void
 hm_internal_lob_upload_release (INT64 token)
