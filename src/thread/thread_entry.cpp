@@ -110,7 +110,7 @@ namespace cubthread
     , interrupted (false)
     , shutdown (false)
     , check_interrupt (true)
-    , force_latch_wait (false)
+    , wait_msecs_override (LK_WAIT_NOT_OVERRIDDEN)
     , wait_for_latch_promote (false)
     , next_wait_thrd (NULL)
     , lockwait (NULL)
@@ -133,9 +133,11 @@ namespace cubthread
     , trace_format (0)
     , on_trace (false)
     , clear_trace (false)
+    , trace_plan_detail (false)
     , tran_entries ()
     , no_supplemental_log (false)
     , trigger_involved (false)
+    , serial_restart (false)
     , is_cdc_daemon (false)
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
@@ -304,6 +306,7 @@ namespace cubthread
     no_supplemental_log = false;
 
     trigger_involved = false;
+    serial_restart = false;
 
     is_cdc_daemon = false;
 

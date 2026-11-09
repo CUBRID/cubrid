@@ -71,6 +71,11 @@
 #define PT_MEMB_ERR_BUF_SIZE    256
 #define MAX_STRING_SEGMENT_LENGTH 254
 #define DONT_PRT_LONG_STRING_LENGTH 256
+/* CBRD-27583: the cache key text prints a LIMIT rewritten into a numbering predicate too: the plan reads its binds */
+#define PT_PRINT_LIMIT(parser, rewrite_limit) ((rewrite_limit) || ((parser)->custom_print & PT_PRINT_HOST_VAR_COUNT))
+/* the text printed with quotes is the one parsed again (e.g. a view spec, see parser_print_tree_with_quotes ()), while
+ * the text printed for a plan or a column name is only shown */
+#define PT_PRINT_TO_PARSE_AGAIN(parser) (((parser)->custom_print & PT_PRINT_QUOTES) != 0)
 
 #define PT_APPLY_WALK(parser, ptr, arg) do { \
          if((ptr))                           \
@@ -424,6 +429,7 @@ static PARSER_VARCHAR *pt_print_set_xaction (PARSER_CONTEXT * parser, PT_NODE * 
 static PARSER_VARCHAR *pt_print_showstmt (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sort_spec (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p);
+static PT_NODE *pt_pad_attr_list_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * select_list);
 static PARSER_VARCHAR *pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_table_option (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_timeout (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -432,6 +438,10 @@ static PARSER_VARCHAR *pt_print_trigger_spec_list (PARSER_CONTEXT * parser, PT_N
 static PARSER_VARCHAR *pt_print_truncate (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_do (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p);
+static bool pt_select_prints_paren (PT_NODE * p);
+static bool pt_set_op_prints_paren (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_set_operand (PARSER_CONTEXT * parser, PT_NODE * operand);
+static bool pt_select_prints_limit_for_orderby_for (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_value (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -962,6 +972,25 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
     }
 
   *new_node = *old_node;
+
+  /* the bind-value watch state belongs to the statement whose plan it records, and the copy is
+   * a different statement with its own plan: sharing the pointer would let one of them record
+   * cardinalities the other is compared against. The copy simply starts unwatched. */
+  if (PT_IS_QUERY (new_node))
+    {
+      new_node->info.query.bind_watch = NULL;
+      new_node->info.query.bind_variant_key = NULL;
+    }
+  else if (new_node->node_type == PT_UPDATE)
+    {
+      new_node->info.update.bind_watch = NULL;
+      new_node->info.update.bind_variant_key = NULL;
+    }
+  else if (new_node->node_type == PT_DELETE)
+    {
+      new_node->info.delete_.bind_watch = NULL;
+      new_node->info.delete_.bind_variant_key = NULL;
+    }
 
   /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
   new_node->xasl_id = NULL;
@@ -3021,7 +3050,7 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
   PT_PRINT_VALUE_FUNC saved_print_db_value;
   unsigned int saved_dont_prt_long_string;
 
-  if (parser->auto_param_count <= 0)
+  if (PT_AUTO_PARAM_LITERAL_COUNT (parser) <= 0)
     {
       /* nothing was auto-parameterized: the values are still visible in the printed text */
       return NULL;
@@ -3066,7 +3095,7 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
   parser->print_db_value = saved_print_db_value;
   parser->flag.dont_prt_long_string = saved_dont_prt_long_string;
 
-  if (values_str == NULL || values_str->bytes == NULL || values_str->length <= 0)
+  if (values_str == NULL || values_str->length <= 0)
     {
       return NULL;
     }
@@ -3115,23 +3144,9 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
       if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
 	{
 	  char host_var_count[12];
-	  if ((node->info.query.is_subquery == PT_IS_SUBQUERY || node->info.query.is_subquery == PT_IS_UNION_QUERY
-	       || node->info.query.is_subquery == PT_IS_UNION_SUBQUERY
-	       || node->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && node->info.query.correlation_level == 0
-	      && (node->info.query.hint & PT_HINT_QUERY_CACHE))
-	    {
-	      /* 
-	       * This condition is identical to the one used in do_prepare_subquery_pre function to call do_prepare_subquery.
-	       * Both functions must maintain the same condition to ensure consistency.
-	       * Be careful not to modify only one of them.
-	       */
-	      snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count);
-	    }
-	  else
-	    {
-	      snprintf (host_var_count, sizeof (host_var_count), "%d",
-			parser->host_var_count + parser->auto_param_count);
-	    }
+	  /* CBRD-27583: a QUERY_CACHE subquery's context counts its own positions (do_subquery_positions), so its text
+	   * names as many as the same query's at the top */
+	  snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count + parser->auto_param_count);
 	  string = pt_append_nulstring (parser, string, ";bind_var_cnt=");
 	  string = pt_append_nulstring (parser, string, host_var_count);
 	}
@@ -7866,37 +7881,9 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
-  if (p->info.index.unique == false)
+  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      char buf[64] = { 0x00, };
-      if (p->info.index.deduplicate_level == DEDUPLICATE_OPTION_AUTO)
-	{
-	  /* Do not print level */ ;
-	}
-      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
-	{
-	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
-	}
-      if (buf[0])
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ");
-	  b = pt_append_nulstring (parser, b, buf);
-	  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	    {
-	      b = pt_append_nulstring (parser, b, ", ONLINE ");
-	    }
-	}
-      else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-	}
-    }
-  else
-    {
-      if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-	}
+      b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
 
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
@@ -9464,7 +9451,17 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.delete_.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
 	{
-	  q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	  q = pt_append_nulstring (parser, q, " NO_PARALLEL_HASH_JOIN ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_ROW_SNAPSHOT)
+	{
+	  q = pt_append_nulstring (parser, q, " ROW_SNAPSHOT ");
+	}
+
+      if (p->info.delete_.hint & PT_HINT_NO_ROW_SNAPSHOT)
+	{
+	  q = pt_append_nulstring (parser, q, " NO_ROW_SNAPSHOT ");
 	}
 
       q = pt_append_nulstring (parser, q, " */");
@@ -9495,39 +9492,9 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " where ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.delete_.using_index)
-    {
-      if (p->info.delete_.using_index->info.name.original == NULL)
-	{
-	  if (p->info.delete_.using_index->info.name.resolved == NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, " using index none");
-	    }
-	  else
-	    {
-	      if (p->info.delete_.using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index);
-		  q = pt_append_nulstring (parser, q, " using index ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
-	      else
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index->next);
-		  q = pt_append_nulstring (parser, q, " using index all except ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
-	    }
-	}
-      else
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index);
-	  q = pt_append_nulstring (parser, q, " using index ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-    }
+  q = pt_print_using_index_clause (parser, q, p->info.delete_.using_index);
 
-  if (p->info.delete_.limit && p->info.delete_.rewrite_limit)
+  if (p->info.delete_.limit && PT_PRINT_LIMIT (parser, p->info.delete_.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.delete_.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -9582,6 +9549,12 @@ static PARSER_VARCHAR *
 pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+  bool set_paren = pt_set_op_prints_paren (parser, p);
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
 
   if (p->info.query.with != NULL)
     {
@@ -9589,8 +9562,11 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
-  q = pt_append_nulstring (parser, q, "(");
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg1);
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " except ");
 
@@ -9599,9 +9575,12 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "all ");
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg2);
   q = pt_append_varchar (parser, q, r1);
-  q = pt_append_nulstring (parser, q, ")");
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   if (p->info.query.order_by)
     {
@@ -9617,12 +9596,18 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
     }
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
   return q;
 }
 
@@ -9960,7 +9945,9 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
   unsigned int save_custom;
 
-  if (p->info.spec.natural)
+  /* a natural join is resolved into on_cond, and an inner join may be rewritten into PT_JOIN_NONE.
+   * In both cases, printing "natural" makes an invalid statement. */
+  if (p->info.spec.natural && p->info.spec.on_cond == NULL && p->info.spec.join_type != PT_JOIN_NONE)
     {
       q = pt_append_nulstring (parser, q, " natural ");
     }
@@ -10106,6 +10093,25 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	      q = pt_append_nulstring (parser, q, ")");
 	    }
+	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE && p->info.spec.remote_server_name != NULL
+		   && (parser->custom_print & PT_SHORT_PRINT))
+	    {
+	      /* A remote DML target takes this shape to get its columns. An error message ends with
+	       * the statement printed short, and there the target is printed as <table>@<server>
+	       * followed by its range variable. As for a local table, the range variable is the
+	       * table name when no alias is written. */
+	      q = pt_append_nulstring (parser, q, p->info.spec.derived_table->info.dblink_table.remote_table_name);
+	      q = pt_append_nulstring (parser, q, "@");
+	      if (p->info.spec.remote_server_name->next)
+		{
+		  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name->next));
+		  q = pt_append_nulstring (parser, q, ".");
+		}
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.remote_server_name));
+	      q = pt_append_nulstring (parser, q, " ");
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.spec.range_var));
+	      goto print_join_cond;
+	    }
 	  else if (p->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	    {
 	      q = pt_append_varchar (parser, q, r1);
@@ -10133,7 +10139,9 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ")");
 
-	      return q;
+	      /* the range variable and the columns are printed above. "natural" is not printed for a resolved
+	       * natural join, so its on_cond must be printed */
+	      goto print_join_cond;
 	    }
 	  else
 	    {
@@ -10190,15 +10198,29 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
+      PT_NODE *as_attr_list = p->info.spec.as_attr_list;
+      PT_NODE *derived_table = p->info.spec.derived_table;
+
+      /* the select list of a derived table can carry hidden columns (e.g. an order-by column added while a subquery
+       * with ORDER BY is merged into it) that the attribute list does not name */
+      if (p->info.spec.derived_table_type == PT_IS_SUBQUERY && derived_table != NULL
+	  && derived_table->node_type == PT_SELECT && derived_table->info.query.q.select.list != NULL
+	  && derived_table->info.query.q.select.list->node_type != PT_NODE_LIST)
+	{
+	  as_attr_list =
+	    pt_pad_attr_list_for_static_sql (parser, as_attr_list, derived_table->info.query.q.select.list);
+	}
+
       save_custom = parser->custom_print;
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
+      r1 = pt_print_bytes_l (parser, as_attr_list);
       q = pt_append_nulstring (parser, q, " (");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       parser->custom_print = save_custom;
     }
 
+print_join_cond:
   if (p->info.spec.on_cond)
     {
       r1 = pt_print_and_list (parser, p->info.spec.on_cond);
@@ -13481,6 +13503,195 @@ pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 }
 
 /*
+ * pt_put_decimal () - the decimal text of a number at out, as sprintf's "%lld" writes it: the key text is made at every
+ *   compilation, and its tokens are a few small integers each
+ *   return: the end of the text (its terminating NUL)
+ */
+static char *
+pt_put_decimal (char *out, DB_BIGINT number)
+{
+  char digits[24];
+  int count = 0;
+  unsigned long long rest = number < 0 ? -(unsigned long long) number : (unsigned long long) number;
+
+  if (number < 0)
+    {
+      *out++ = '-';
+    }
+  do
+    {
+      digits[count++] = (char) ('0' + rest % 10);
+      rest /= 10;
+    }
+  while (rest != 0);
+  while (count > 0)
+    {
+      *out++ = digits[--count];
+    }
+  *out = '\0';
+  return out;
+}
+
+/*
+ * pt_print_host_var_type () - CBRD-27583: the type token of a host variable in the XASL cache key text, so that a
+ *   statement has one plan per bind type signature. A user host variable prints the domain the plan reads: the
+ *   expected domain its context gave it, else the value domain a typed compilation took (host_var_compiled_domains),
+ *   else '?' (a compilation without values, which no execution shares). A derived position prints its domain, an
+ *   auto-parameter its literal's. A string carries its codeset and collation - a literal's collation comes from the
+ *   session, not the text.
+ */
+static void
+pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
+{
+  const TP_DOMAIN *domain = NULL;
+  DB_TYPE type = DB_TYPE_NULL;
+  /* DB_TYPE_UNKNOWN is DB_TYPE_NULL: a NULL bind's position is typed, its token is the NULL type's */
+  bool typed = false;
+  int codeset = 0, collation = 0;
+
+  if (index < parser->host_var_count)
+    {
+      const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
+      if (parser->host_var_expected_domains != NULL
+	  && pt_host_var_is_context_typed (parser->host_var_expected_domains[index])
+	  && !pt_host_var_is_leave_typed (parser->host_var_expected_domains[index])
+	  && !pt_host_var_is_char_typed (parser, index)
+	  && !(format_class & (PT_HOST_VAR_BIND_DOMAIN | PT_HOST_VAR_FORMAT_POSITION | PT_HOST_VAR_ELT_POSITION)))
+	{
+	  /* the text and the schema give its domain, and every value is cast into it: no token */
+	  *out = '\0';
+	  return;
+	}
+      if (parser->host_var_expected_domains != NULL
+	  && pt_host_var_is_context_typed (parser->host_var_expected_domains[index]))
+	{
+	  domain = parser->host_var_expected_domains[index];
+	  if (pt_host_var_is_char_typed (parser, index) && parser->host_var_compiled_domains != NULL
+	      && parser->host_var_compiled_domains[index] != NULL
+	      && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[index]) == DB_TYPE_VARCHAR)
+	    {
+	      /* a CHAR position prints the VARCHAR the client sends as it is (any other value is cast into the CHAR) */
+	      domain = parser->host_var_compiled_domains[index];
+	    }
+	}
+      else if (parser->host_var_compiled_domains != NULL)
+	{
+	  domain = parser->host_var_compiled_domains[index];
+	}
+      if (domain != NULL)
+	{
+	  typed = true;
+	  type = TP_DOMAIN_TYPE (domain);
+	  codeset = domain->codeset;
+	  collation = domain->collation_id;
+	}
+      const TP_DOMAIN *value =
+	parser->host_var_compiled_domains != NULL ? parser->host_var_compiled_domains[index] : NULL;
+      if (domain != NULL && value != NULL && pt_host_var_is_leave_typed (domain))
+	{
+	  /* a LEAVE string position prints the value's codeset and collation, or the NULL type for a NULL */
+	  const int leave = pt_host_var_leave_collation (TP_DOMAIN_TYPE (value), value->collation_id);
+	  if (leave == -2)
+	    {
+	      type = DB_TYPE_NULL;
+	    }
+	  else if (leave >= 0)
+	    {
+	      codeset = value->codeset;
+	      collation = value->collation_id;
+	    }
+	}
+    }
+  else if (pt_is_derived_host_var (parser, index))
+    {
+      typed = true;
+      domain = parser->host_var_expected_domains[index];
+      if (pt_host_var_is_char_typed (parser, index))
+	{
+	  /* the type the derived bind gives, as the regu takes it (pt_make_regu_hostvar) */
+	  domain = pt_host_var_sent_domain (parser, index, (TP_DOMAIN *) domain);
+	}
+      type = TP_DOMAIN_TYPE (domain);
+      codeset = domain->codeset;
+      collation = domain->collation_id;
+    }
+  else if (parser->host_variables != NULL && index < parser->host_var_count + parser->auto_param_count)
+    {
+      const DB_VALUE *val = &parser->host_variables[index];
+      typed = true;
+      type = DB_VALUE_DOMAIN_TYPE (val);
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  codeset = db_get_string_codeset (val);
+	  collation = db_get_string_collation (val);
+	}
+    }
+
+  if (!typed)
+    {
+      strcpy (out, ":?");
+    }
+  else if (TP_IS_CHAR_TYPE (type))
+    {
+      char *end;
+
+      *out = ':';
+      end = pt_put_decimal (out + 1, (int) type);
+      *end = '.';
+      end = pt_put_decimal (end + 1, codeset);
+      *end = '.';
+      (void) pt_put_decimal (end + 1, collation);
+    }
+  else
+    {
+      *out = ':';
+      (void) pt_put_decimal (out + 1, (int) type);
+    }
+  if (index < parser->host_var_count && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[index] & PT_HOST_VAR_FORMAT_POSITION))
+    {
+      /* a STR_TO_DATE format: its class types the result, a NULL one as the NULL literal */
+      const int format_class = PT_HOST_VAR_FORMAT_CLASS (parser->host_var_format_classes[index]);
+      if (format_class == PT_HOST_VAR_FORMAT_NULL)
+	{
+	  *out = ':';
+	  (void) pt_put_decimal (out + 1, (int) DB_TYPE_NULL);
+	}
+      else
+	{
+	  char *end = out + strlen (out);
+
+	  *end++ = ':';
+	  *end++ = 'f';
+	  (void) pt_put_decimal (end, format_class);
+	}
+    }
+  if (index < parser->host_var_count && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[index] & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL)
+    {
+      /* an ELT index: its value picks the branch that types the result */
+      const DB_BIGINT elt_index =
+	pt_elt_index_signature (parser->host_var_format_classes[index], parser->host_var_elt_indexes[index]);
+      if (elt_index == PT_HOST_VAR_ELT_NULL)
+	{
+	  strcat (out, ":en");
+	}
+      else if (elt_index == PT_HOST_VAR_ELT_INVALID || elt_index == PT_HOST_VAR_ELT_UNKNOWN)
+	{
+	  strcat (out, ":ex");
+	}
+      else
+	{
+	  char *end = out + strlen (out);
+
+	  *end++ = ':';
+	  *end++ = 'e';
+	  (void) pt_put_decimal (end, elt_index);
+	}
+    }
+}
+
+/*
  * pt_print_host_var () -
  *   return:
  *   parser(in):
@@ -13551,7 +13762,17 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  sprintf (s, ":%d", p->info.host_var.index);
+	  /* CBRD-27583: the plan dump and the trace show a derived position as the user position it is derived
+	   * from, as they showed the user's ? before; any other text keeps its own number: the cache key's, the
+	   * internal texts parsed again (?:N reads the index back) and the texts compared by their print */
+	  const int index = parser->flag.print_host_var_source
+	    && pt_is_derived_host_var (parser, p->info.host_var.index)
+	    ? parser->host_var_derived_from[p->info.host_var.index] : p->info.host_var.index;
+	  sprintf (s, ":%d", index);
+	  if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+	    {
+	      pt_print_host_var_type (parser, p->info.host_var.index, s + strlen (s));
+	    }
 	}
       q = pt_append_nulstring (parser, q, s);
     }
@@ -13588,8 +13809,10 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
 
-  /* do not check attribute list for dblink */
-  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+  /* Walk the INSERT column list for a local target, and for a dblink target in the derived dblink table shape,
+   * which carries its columns. */
+  if (p->info.insert.spec && (p->info.insert.spec->info.spec.remote_server_name == NULL
+			      || PT_SPEC_IS_DERIVED (p->info.insert.spec)))
     {
       PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
     }
@@ -13870,6 +14093,12 @@ static PARSER_VARCHAR *
 pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
+  bool set_paren = pt_set_op_prints_paren (parser, p);
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
 
   if (p->info.query.with != NULL)
     {
@@ -13877,9 +14106,12 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
-  r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
-  q = pt_append_nulstring (parser, q, "(");
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg1);
+  r2 = pt_print_set_operand (parser, p->info.query.q.union_.arg2);
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
   q = pt_append_varchar (parser, q, r1);
   if (p->info.query.all_distinct == PT_ALL)
     {
@@ -13890,7 +14122,10 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " intersect ");
     }
   q = pt_append_varchar (parser, q, r2);
-  q = pt_append_nulstring (parser, q, ")");
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   if (p->info.query.order_by)
     {
@@ -13901,15 +14136,21 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.query.orderby_for)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
-      q = pt_append_nulstring (parser, q, " for");
+      q = pt_append_nulstring (parser, q, " for ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
     }
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
   return q;
 }
 
@@ -14975,15 +15216,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       return q;
     }
 
-  if (p->info.query.is_subquery == PT_IS_SUBQUERY
-      || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
-      || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by))
-    {
-      if (!p->info.query.flag.subquery_cached)
-	{
-	  set_paren = true;
-	}
-    }
+  set_paren = pt_select_prints_paren (p);
 
   if (set_paren)
     {
@@ -14999,7 +15232,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print |= PT_PRINT_ALIAS;
 
       is_first_list = true;
-      for (temp = temp; temp; temp = temp->next)
+      for (; temp; temp = temp->next)
 	{
 	  if (!is_first_list)
 	    {
@@ -15281,6 +15514,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HASH_JOIN ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_ROW_SNAPSHOT)
+	    {
+	      q = pt_append_nulstring (parser, q, "ROW_SNAPSHOT ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_ROW_SNAPSHOT)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_ROW_SNAPSHOT ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_PARALLEL)
@@ -15566,37 +15809,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
-      if (p->info.query.q.select.using_index)
-	{
-	  if (p->info.query.q.select.using_index->info.name.original == NULL)
-	    {
-	      if (p->info.query.q.select.using_index->info.name.resolved == NULL)
-		{
-		  q = pt_append_nulstring (parser, q, " using index none");
-		}
-	      else
-		{
-		  if (p->info.query.q.select.using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-		    {
-		      r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index);
-		      q = pt_append_nulstring (parser, q, " using index ");
-		      q = pt_append_varchar (parser, q, r1);
-		    }
-		  else
-		    {
-		      r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index->next);
-		      q = pt_append_nulstring (parser, q, " using index all except ");
-		      q = pt_append_varchar (parser, q, r1);
-		    }
-		}
-	    }
-	  else
-	    {
-	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index);
-	      q = pt_append_nulstring (parser, q, " using index ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	}
+      q = pt_print_using_index_clause (parser, q, p->info.query.q.select.using_index);
 
       if (p->info.query.q.select.with_increment)
 	{
@@ -15651,14 +15864,16 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
-      if (p->info.query.orderby_for)
+      if (p->info.query.orderby_for && !pt_select_prints_limit_for_orderby_for (parser, p))
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
 	  q = pt_append_nulstring (parser, q, " for ");
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
-      if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+      if (p->info.query.limit
+	  && (PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit)
+	      || pt_select_prints_limit_for_orderby_for (parser, p)))
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.limit);
 	  q = pt_append_nulstring (parser, q, " limit ");
@@ -16251,6 +16466,12 @@ static PARSER_VARCHAR *
 pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
+  bool set_paren = pt_set_op_prints_paren (parser, p);
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
 
   if (p->info.query.with != NULL)
     {
@@ -16258,9 +16479,12 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
-  r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
-  q = pt_append_nulstring (parser, q, "(");
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg1);
+  r2 = pt_print_set_operand (parser, p->info.query.q.union_.arg2);
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " union ");
   if (p->info.query.all_distinct == PT_ALL)
@@ -16268,7 +16492,10 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "all ");
     }
   q = pt_append_varchar (parser, q, r2);
-  q = pt_append_nulstring (parser, q, ")");
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   if (p->info.query.order_by)
     {
@@ -16282,14 +16509,125 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
     }
 
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
   return q;
+}
+
+/*
+ * pt_select_prints_paren () - check whether pt_print_select () wraps the printed text of a SELECT in parentheses
+ *   return:
+ *   p(in): SELECT
+ */
+static bool
+pt_select_prints_paren (PT_NODE * p)
+{
+  if (p->info.query.flag.subquery_cached)
+    {
+      return false;
+    }
+
+  return (p->info.query.is_subquery == PT_IS_SUBQUERY
+	  || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
+	  || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by));
+}
+
+/*
+ * pt_set_op_prints_paren () - check whether a set operation wraps its printed text in parentheses by itself
+ *   return:
+ *   parser(in):
+ *   p(in): UNION, DIFFERENCE or INTERSECTION
+ *
+ * Note: A set operation is printed as "(arg1 op arg2)" followed by its ORDER BY, FOR and LIMIT clauses. As a
+ *       subquery (e.g. of EXISTS or IN), those clauses would be taken as clauses of the enclosing query when the
+ *       printed text (e.g. a view spec) is parsed again, so it is printed as "(arg1 op arg2 order by ...)".
+ *       The text that is only shown (a plan, a column name) is printed as before.
+ */
+static bool
+pt_set_op_prints_paren (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  if (!PT_PRINT_TO_PARSE_AGAIN (parser) || p->info.query.is_subquery != PT_IS_SUBQUERY)
+    {
+      return false;
+    }
+
+  return (p->info.query.order_by != NULL || p->info.query.orderby_for != NULL
+	  || (p->info.query.limit != NULL && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit)));
+}
+
+/*
+ * pt_print_set_operand () - print an operand of a set operation
+ *   return:
+ *   parser(in):
+ *   operand(in):
+ *
+ * Note: ORDER BY, FOR and LIMIT of an operand would be taken as clauses of the whole set operation when the printed
+ *       text is parsed again, so wrap an operand that prints them but not its own parentheses (e.g. a DISTINCT
+ *       SELECT with LIMIT).
+ */
+static PARSER_VARCHAR *
+pt_print_set_operand (PARSER_CONTEXT * parser, PT_NODE * operand)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+  bool prints_paren;
+
+  r1 = pt_print_bytes (parser, operand);
+
+  if (!PT_PRINT_TO_PARSE_AGAIN (parser) || operand == NULL || !PT_IS_QUERY_NODE_TYPE (operand->node_type))
+    {
+      return r1;
+    }
+
+  if (operand->node_type == PT_SELECT)
+    {
+      prints_paren = pt_select_prints_paren (operand);
+    }
+  else
+    {
+      prints_paren = pt_set_op_prints_paren (parser, operand);
+    }
+
+  if (prints_paren
+      || (operand->info.query.order_by == NULL && operand->info.query.orderby_for == NULL
+	  && !(operand->info.query.limit != NULL && PT_PRINT_LIMIT (parser, operand->info.query.flag.rewrite_limit))))
+    {
+      return r1;
+    }
+
+  q = pt_append_nulstring (parser, q, "(");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ")");
+
+  return q;
+}
+
+/*
+ * pt_select_prints_limit_for_orderby_for () - check whether LIMIT of a SELECT is printed in place of FOR
+ *   return:
+ *   parser(in):
+ *   p(in): SELECT
+ *
+ * Note: LIMIT of a DISTINCT SELECT without ORDER BY and GROUP BY is rewritten to FOR ORDERBY_NUM() (see
+ *       pt_eval_type_pre ()), but FOR is not accepted without ORDER BY when the printed text (e.g. a view spec) is
+ *       parsed again. LIMIT is kept in the tree, so print it instead; it is rewritten to the same FOR again.
+ *       The text that is only shown (a plan) keeps FOR, which is what is executed.
+ */
+static bool
+pt_select_prints_limit_for_orderby_for (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  return (PT_PRINT_TO_PARSE_AGAIN (parser) && p->info.query.all_distinct == PT_DISTINCT
+	  && p->info.query.order_by == NULL && p->info.query.orderby_for != NULL && p->info.query.limit != NULL
+	  && !PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit));
 }
 
 /* UPDATE */
@@ -16337,6 +16675,49 @@ pt_init_update (PT_NODE * p)
 {
   p->info.update.hint = PT_HINT_NONE;
   return p;
+}
+
+/*
+ * pt_print_using_index_clause () - Append a statement's USING INDEX clause to buf.
+ *   Four shapes the parser can leave behind: "none", a name list, "all except" a list, and a plain list.
+ *   SELECT, UPDATE and DELETE print the same clause, so the four-way check lives here once.
+ *   return: buf with the clause appended, or buf unchanged when there is no clause
+ *   parser(in)      : parser context
+ *   buf(in)         : buffer to append to, may be NULL
+ *   using_index(in) : the statement's using_index list, may be NULL
+ */
+PARSER_VARCHAR *
+pt_print_using_index_clause (PARSER_CONTEXT * parser, PARSER_VARCHAR * buf, const PT_NODE * using_index)
+{
+  PARSER_VARCHAR *r1;
+
+  if (using_index == NULL)
+    {
+      return buf;
+    }
+
+  if (using_index->info.name.original != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, using_index);
+      buf = pt_append_nulstring (parser, buf, " using index ");
+      return pt_append_varchar (parser, buf, r1);
+    }
+
+  if (using_index->info.name.resolved == NULL)
+    {
+      return pt_append_nulstring (parser, buf, " using index none");
+    }
+
+  if (using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
+    {
+      r1 = pt_print_bytes_l (parser, using_index);
+      buf = pt_append_nulstring (parser, buf, " using index ");
+      return pt_append_varchar (parser, buf, r1);
+    }
+
+  r1 = pt_print_bytes_l (parser, using_index->next);
+  buf = pt_append_nulstring (parser, buf, " using index all except ");
+  return pt_append_varchar (parser, buf, r1);
 }
 
 /*
@@ -16523,7 +16904,17 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.update.hint & PT_HINT_NO_PARALLEL_HASH_JOIN)
 	{
-	  b = pt_append_nulstring (parser, b, "NO_PARALLEL_HASH_JOIN ");
+	  b = pt_append_nulstring (parser, b, " NO_PARALLEL_HASH_JOIN ");
+	}
+
+      if (p->info.update.hint & PT_HINT_ROW_SNAPSHOT)
+	{
+	  b = pt_append_nulstring (parser, b, " ROW_SNAPSHOT ");
+	}
+
+      if (p->info.update.hint & PT_HINT_NO_ROW_SNAPSHOT)
+	{
+	  b = pt_append_nulstring (parser, b, " NO_ROW_SNAPSHOT ");
 	}
 
       b = pt_append_nulstring (parser, b, " */ ");
@@ -16552,37 +16943,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " where ");
       b = pt_append_varchar (parser, b, r1);
     }
-  if (p->info.update.using_index)
-    {
-      if (p->info.update.using_index->info.name.original == NULL)
-	{
-	  if (p->info.update.using_index->info.name.resolved == NULL)
-	    {
-	      b = pt_append_nulstring (parser, b, " using index none");
-	    }
-	  else
-	    {
-	      if (p->info.update.using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.update.using_index);
-		  b = pt_append_nulstring (parser, b, " using index ");
-		  b = pt_append_varchar (parser, b, r1);
-		}
-	      else
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.update.using_index->next);
-		  b = pt_append_nulstring (parser, b, " using index all except ");
-		  b = pt_append_varchar (parser, b, r1);
-		}
-	    }
-	}
-      else
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.update.using_index);
-	  b = pt_append_nulstring (parser, b, " using index ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
-    }
+  b = pt_print_using_index_clause (parser, b, p->info.update.using_index);
 
   if (p->info.update.order_by)
     {
@@ -16598,7 +16959,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
-  if (p->info.update.limit && p->info.update.rewrite_limit)
+  if (p->info.update.limit && PT_PRINT_LIMIT (parser, p->info.update.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.update.limit);
       b = pt_append_nulstring (parser, b, " limit ");
@@ -18222,6 +18583,62 @@ pt_name_list_has_name (PT_NODE * name_list, const char *name)
 }
 
 /*
+ * pt_pad_attr_list_for_static_sql () - pad the attribute list printed for a CTE or a derived table with generated
+ *                                      names so that it covers every column of the select list, hidden ones too
+ *   return: attr_list, or a padded copy of it
+ *   parser(in):
+ *   attr_list(in): the attribute list (PT_NAME list) to print
+ *   select_list(in): the select list of the CTE or the derived table
+ *
+ * Note: rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
+ *       from scratch at runtime; that re-parse derives the exposed column count directly from how many items
+ *       the attribute list prints. A rewrite/optimization applied after the attribute list was computed (e.g.
+ *       adding a hidden order-by carry column while merging a ROWNUM-filtered outer query with an ORDER BY inner
+ *       subquery) can grow the actual select list past the attribute list's length, so pad a local copy here
+ *       instead of printing an attribute list/select list pair that a fresh parse would reject as mismatched.
+ */
+static PT_NODE *
+pt_pad_attr_list_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * attr_list, PT_NODE * select_list)
+{
+  PT_NODE *padded_list;
+  PT_NODE *extra = NULL;
+  int actual_cnt, declared_cnt;
+  int version;
+  int i;
+
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      return attr_list;
+    }
+
+  actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+  declared_cnt = pt_length_of_list (attr_list);
+  if (actual_cnt <= declared_cnt)
+    {
+      return attr_list;
+    }
+
+  padded_list = parser_copy_tree_list (parser, attr_list);
+  version = declared_cnt;
+  for (i = declared_cnt; i < actual_cnt; i++)
+    {
+      const char *generated_name;
+
+      /* keep clear of any user-declared name so the list printed can't collide with it once this text is
+       * re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
+      do
+	{
+	  generated_name = mq_generate_name (parser, "hidden_col", &version);
+	}
+      while (pt_name_list_has_name (attr_list, generated_name));
+
+      extra = parser_append_node (pt_name (parser, generated_name), extra);
+    }
+
+  return parser_append_node (extra, padded_list);
+}
+
+/*
  * pt_print_with_cte ()
  * return :
  * parser (in) :
@@ -18233,43 +18650,10 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   PT_NODE *as_attr_list = p->info.cte.as_attr_list;
 
-  /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
-   * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
-   * items the header below prints. A rewrite/optimization applied to non_recursive_part after as_attr_list
-   * was computed (e.g. adding a hidden order-by carry column while merging a ROWNUM-filtered outer query
-   * with an ORDER BY inner subquery) can grow the actual select list past as_attr_list's cached length, so
-   * pad a local copy of the header here instead of printing a header/body pair that a fresh parse would
-   * reject as mismatched. */
   if (parser->flag.is_parsing_static_sql)
     {
-      PT_NODE *select_list = pt_get_select_list (parser, p->info.cte.non_recursive_part);
-      int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-      int declared_cnt = pt_length_of_list (as_attr_list);
-
-      if (actual_cnt > declared_cnt)
-	{
-	  PT_NODE *extra = NULL;
-	  int version = declared_cnt;
-	  int i;
-
-	  as_attr_list = parser_copy_tree_list (parser, as_attr_list);
-	  for (i = declared_cnt; i < actual_cnt; i++)
-	    {
-	      const char *generated_name;
-
-	      /* keep clear of any user-declared name so the header printed below can't collide with it once
-	       * this text is re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
-	      do
-		{
-		  generated_name = mq_generate_name (parser, "hidden_col", &version);
-		}
-	      while (pt_name_list_has_name (p->info.cte.as_attr_list, generated_name));
-
-	      extra = parser_append_node (pt_name (parser, generated_name), extra);
-	    }
-
-	  as_attr_list = parser_append_node (extra, as_attr_list);
-	}
+      as_attr_list = pt_pad_attr_list_for_static_sql (parser, as_attr_list,
+						      pt_get_select_list (parser, p->info.cte.non_recursive_part));
     }
 
   /* name of cte */
@@ -19246,6 +19630,84 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
 }
 
 /*
+ *   pt_keeps_distinct_values () : checks if distinct values of FROM stay
+ *				   distinct when converted to the type of TO
+ *   return:
+ *   from(in): node whose values are converted
+ *   to(in): node giving the target type
+ *   check_precision(in): whether a shorter target string truncates
+ *
+ * Note: '7' and '07' both become 7 as a number, 'a' and 'A' are equal in a
+ *	 case insensitive collation, and a BIGINT loses digits as a DOUBLE.
+ */
+bool
+pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_precision)
+{
+  PT_TYPE_ENUM from_type = from->type_enum;
+  PT_TYPE_ENUM to_type = to->type_enum;
+  PT_COLL_INFER from_coll, to_coll;
+  int from_prec, to_prec;
+
+  switch (from_type)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+      if (to_type == PT_TYPE_DOUBLE || (from_type == PT_TYPE_SMALLINT && to_type == PT_TYPE_FLOAT))
+	{
+	  return true;
+	}
+      [[fallthrough]];
+    case PT_TYPE_BIGINT:
+      return (PT_IS_DISCRETE_NUMBER_TYPE (to_type) || to_type == PT_TYPE_NUMERIC || PT_IS_CHAR_STRING_TYPE (to_type));
+
+    case PT_TYPE_NUMERIC:
+      if (to_type == PT_TYPE_NUMERIC)
+	{
+	  /* a smaller scale rounds */
+	  return (from->data_type != NULL && to->data_type != NULL
+		  && to->data_type->info.data_type.dec_precision >= from->data_type->info.data_type.dec_precision);
+	}
+      return PT_IS_CHAR_STRING_TYPE (to_type);
+
+    case PT_TYPE_FLOAT:
+      return (to_type == PT_TYPE_FLOAT || to_type == PT_TYPE_DOUBLE);
+
+    case PT_TYPE_DATE:
+      return (to_type == PT_TYPE_DATE || to_type == PT_TYPE_DATETIME);
+
+    case PT_TYPE_CHAR:
+    case PT_TYPE_VARCHAR:
+      if (!PT_IS_CHAR_STRING_TYPE (to_type))
+	{
+	  return false;
+	}
+      if (!pt_get_collation_info (from, &from_coll) || !pt_get_collation_info (to, &to_coll)
+	  || from_coll.coll_id != to_coll.coll_id)
+	{
+	  return false;
+	}
+      if (check_precision)
+	{
+	  if (from->data_type == NULL || to->data_type == NULL)
+	    {
+	      return false;
+	    }
+	  from_prec = from->data_type->info.data_type.precision;
+	  to_prec = to->data_type->info.data_type.precision;
+	  if (to_prec != TP_FLOATING_PRECISION_VALUE
+	      && (from_prec == TP_FLOATING_PRECISION_VALUE || from_prec > to_prec))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return from_type == to_type;
+    }
+}
+
+/*
  *   pt_expr_keep_uniqueness () : checks if the given operator
  *				  is keeping uniqueness
  *   return:
@@ -19273,6 +19735,151 @@ pt_expr_keep_uniqueness (const PT_NODE * expr)
       return false;
     }
   return false;
+}
+
+/*
+ *   pt_get_exact_number_digits () : gets the integer digits and the scale of an exact number operand
+ *   return: false if the node is not an exact number or its digits are unknown
+ *   node(in):
+ *   int_digits(out):
+ *   scale(out):
+ */
+static bool
+pt_get_exact_number_digits (const PT_NODE * node, int *int_digits, int *scale)
+{
+  int int_digits2, scale2, prec;
+
+  *scale = 0;
+  switch (node->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+      *int_digits = DB_SMALLINT_PRECISION;
+      return true;
+    case PT_TYPE_INTEGER:
+      *int_digits = DB_INTEGER_PRECISION;
+      return true;
+    case PT_TYPE_BIGINT:
+      *int_digits = DB_BIGINT_PRECISION;
+      return true;
+    case PT_TYPE_NUMERIC:
+      break;
+    default:
+      return false;
+    }
+
+  if (node->node_type == PT_VALUE)
+    {
+      if (!node->info.value.db_value_is_initialized)
+	{
+	  return false;
+	}
+      /* a constant carries its own precision and scale */
+      db_get_numeric_precision_and_scale (&node->info.value.db_value, &prec, scale, NULL);
+      *int_digits = prec - *scale;
+      return true;
+    }
+
+  if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_CAST:
+	  /* the declared precision of CAST (x AS NUMERIC) is the default one, not the digits of x */
+	  if (node->data_type == NULL || !pt_get_exact_number_digits (node->info.expr.arg1, int_digits, scale))
+	    {
+	      return false;
+	    }
+	  *scale = node->data_type->info.data_type.dec_precision;
+	  return true;
+	case PT_PLUS:
+	case PT_MINUS:
+	  /* the declared precision of the result is a placeholder */
+	  if (node->info.expr.arg2 == NULL || !pt_get_exact_number_digits (node->info.expr.arg1, int_digits, scale)
+	      || !pt_get_exact_number_digits (node->info.expr.arg2, &int_digits2, &scale2))
+	    {
+	      return false;
+	    }
+	  *int_digits = MAX (*int_digits, int_digits2) + 1;
+	  *scale = MAX (*scale, scale2);
+	  return true;
+	default:
+	  return false;
+	}
+    }
+
+  if (node->data_type == NULL)
+    {
+      return false;
+    }
+  *int_digits = node->data_type->info.data_type.precision - node->data_type->info.data_type.dec_precision;
+  *scale = node->data_type->info.data_type.dec_precision;
+  return true;
+}
+
+/*
+ *   pt_expr_keeps_distinct_values () : checks if an expression accepted by
+ *					pt_expr_keep_uniqueness () maps distinct
+ *					values of its argument to distinct values
+ *   return:
+ *   expr(in): expression parse tree node
+ *
+ * Note: the operator alone is not enough. '7' + 0 and '07' + 0 are both 7,
+ *	 and 1e-20 + 1 and 0 + 1 are both 1 as a DOUBLE.
+ */
+bool
+pt_expr_keeps_distinct_values (const PT_NODE * expr)
+{
+  PT_TYPE_ENUM type = expr->type_enum;
+  PT_NODE *arg;
+  int i, int_digits, scale;
+
+  switch (expr->info.expr.op)
+    {
+    case PT_REVERSE:
+    case PT_CONCAT:
+    case PT_STRCAT:
+      if (!PT_IS_CHAR_STRING_TYPE (type))
+	{
+	  return false;
+	}
+      break;
+    case PT_PLUS:
+    case PT_MINUS:
+      if (type == PT_TYPE_NUMERIC)
+	{
+	  /* the operands are aligned to the larger scale, and a sum with more digits than
+	   * DB_MAX_NUMERIC_PRECISION is rounded */
+	  return (pt_get_exact_number_digits (expr, &int_digits, &scale)
+		  && int_digits + scale <= DB_MAX_NUMERIC_PRECISION);
+	}
+      if (!PT_IS_DISCRETE_NUMBER_TYPE (type) && type != PT_TYPE_DATE && type != PT_TYPE_TIME
+	  && type != PT_TYPE_DATETIME && type != PT_TYPE_TIMESTAMP && !PT_IS_CHAR_STRING_TYPE (type))
+	{
+	  return false;
+	}
+      break;
+    case PT_CAST:
+      break;
+    default:
+      /* PT_EQ gives only true or false */
+      return false;
+    }
+
+  /* the argument holding the column must convert to the result type without merging values */
+  for (i = 0; i < 2; i++)
+    {
+      arg = (i == 0) ? expr->info.expr.arg1 : expr->info.expr.arg2;
+      if (arg == NULL || (arg->node_type != PT_NAME && arg->node_type != PT_EXPR))
+	{
+	  continue;
+	}
+      if (!pt_keeps_distinct_values (arg, expr, expr->info.expr.op == PT_CAST))
+	{
+	  return false;
+	}
+    }
+
+  return true;
 }
 
 /*

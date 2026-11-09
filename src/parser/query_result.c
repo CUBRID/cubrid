@@ -523,6 +523,12 @@ pt_get_select_list (PARSER_CONTEXT * parser, PT_NODE * query)
 	      db_make_null (&col->info.value.db_value);
 	    }
 
+	  /* named like an untyped NULL column below */
+	  if (col->alias_print == NULL && PT_IS_CAST_OF_UNTYPED_NULL (col))
+	    {
+	      col->alias_print = pt_append_string (parser, NULL, "null");
+	    }
+
 	  if ((attr2->type_enum == PT_TYPE_NONE) || (attr2->type_enum == PT_TYPE_NA)
 	      || (attr2->type_enum == PT_TYPE_NULL))
 	    {

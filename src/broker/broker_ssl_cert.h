@@ -16,20 +16,14 @@
  *
  */
 
-#include "schema_information_schema_definition.hpp"
+/*
+ * broker_ssl_cert.h - SSL certificate that a broker start creates or checks (see broker_ssl_cert.c)
+ */
 
-namespace cubschema
-{
-  information_schema_definition::information_schema_definition (const std::string &n, const attr_vec_type &attrs,
-      const cstr_vec_type &cts,
-      const authorization &au,
-      row_init_type ri)
-    : name {n}
-    , attributes {attrs}
-    , constraints {cts}
-    , auth {au}
-    , row_initializer {ri}
-  {
-    //
-  }
-}
+#ifndef _BROKER_SSL_CERT_H_
+#define _BROKER_SSL_CERT_H_
+
+extern int broker_create_ssl_cert (const char *cert_file, const char *key_file, char *err_msg, int err_msg_size);
+extern bool broker_has_bundled_ssl_key (const char *cert_file);
+
+#endif /* _BROKER_SSL_CERT_H_ */

@@ -37,6 +37,7 @@
 
 #if !defined(WINDOWS)
 #include <stdlib.h>		/* posix_memalign (), size_t */
+#include <stdint.h>		/* SIZE_MAX */
 #include <assert.h>
 
 #ifdef SERVER_MODE
@@ -93,6 +94,10 @@ cub_alloc (size_t size, const char *file, const int line)
 
   if (mmon_is_memory_monitor_enabled ())
     {
+      if (size > SIZE_MAX - cubmem::MMON_METAINFO_SIZE)
+	{
+	  return NULL;
+	}
       p = malloc (size + cubmem::MMON_METAINFO_SIZE);
       if (p != NULL)
 	{
@@ -114,6 +119,10 @@ cub_calloc (size_t num, size_t size, const char *file, const int line)
 
   if (mmon_is_memory_monitor_enabled ())
     {
+      if (size != 0 && num > (SIZE_MAX - cubmem::MMON_METAINFO_SIZE) / size)
+	{
+	  return NULL;
+	}
       p = malloc (num * size + cubmem::MMON_METAINFO_SIZE);
       if (p != NULL)
 	{
@@ -140,6 +149,12 @@ cub_realloc (void *ptr, size_t size, const char *file, const int line)
       if (ptr == NULL)
 	{
 	  return cub_alloc (size, file, line);
+	}
+
+      /* Realloc spec.: ptr is left as it is on failure */
+      if (size > SIZE_MAX - cubmem::MMON_METAINFO_SIZE)
+	{
+	  return NULL;
 	}
 
       /* Realloc spec.: If input size is zero, just free ptr */
@@ -210,7 +225,8 @@ cub_aligned_alloc (size_t alignment, size_t size, const char *file, const int li
   if (mmon_is_memory_monitor_enabled ())
     {
       /* reserve room for the metainfo at the tail, same as cub_alloc () */
-      if (posix_memalign (&p, alignment, size + cubmem::MMON_METAINFO_SIZE) != 0)
+      if (size > SIZE_MAX - cubmem::MMON_METAINFO_SIZE
+	  || posix_memalign (&p, alignment, size + cubmem::MMON_METAINFO_SIZE) != 0)
 	{
 	  return NULL;
 	}
