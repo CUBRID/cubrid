@@ -4221,17 +4221,6 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
-  if (DB_IS_NULL (agg_p->accumulator.value2) && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) == true)
-    {
-      if (db_string_make_empty_typed_string (agg_p->accumulator.value2, agg_type, DB_DEFAULT_PRECISION,
-					     TP_DOMAIN_CODESET (domain),
-					     TP_DOMAIN_COLLATION (domain)) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      agg_p->accumulator.value2->domain.general_info.is_null = 0;
-    }
-
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->accumulator.value2))
     {
@@ -4247,7 +4236,11 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
     }
   else
     {
-      assert (agg_type == DB_TYPE_VARBIT || agg_type == DB_TYPE_BIT);
+      /* a bit string takes no default separator; oracle_style_empty_string makes SEPARATOR '' NULL, which adds
+       * nothing as an empty one would. value2 is never filled here: a parallel scan's merge would allocate it on
+       * heap 0 and the coordinator would free it on its own heap. */
+      assert (agg_type == DB_TYPE_VARBIT || agg_type == DB_TYPE_BIT
+	      || prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING));
     }
 
   error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue,
