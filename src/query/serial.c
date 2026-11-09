@@ -2440,13 +2440,16 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
 
 /* Payload of RVHF_SERIAL_DDL_UPDATE_UNDO: this header, then the row the write replaced. The layout fields describe
  * that row's representation, so the undo reads no catalog. */
+#define SERIAL_DDL_UNDO_VALUE_SIZE 32
+
 typedef struct serial_ddl_undo SERIAL_DDL_UNDO;
 struct serial_ddl_undo
 {
   char version;
   char old_inc_sign;		/* +1 or -1 */
   char new_inc_sign;
-  int new_started;
+  char old_cyclic;
+  char new_cyclic;
   int repid;
   int n_variable;
   int fixed_length;
@@ -2455,9 +2458,48 @@ struct serial_ddl_undo
   int cur_scale;
   int started_location;		/* started: its offset in the fixed area, and its bound bit */
   int started_position;
+  /* in current_val's disk form: the current_val the write left, and its definition's range end on the side the
+   * replaced row's increment goes */
+  int written_length;
+  int bound_length;
+  char written[SERIAL_DDL_UNDO_VALUE_SIZE];
+  char bound[SERIAL_DDL_UNDO_VALUE_SIZE];
 };
 
 #define SERIAL_DDL_UNDO_VERSION 1
+
+typedef enum
+{
+  SERIAL_RV_END_REPLACED,
+  SERIAL_RV_END_PAGE,
+  SERIAL_RV_END_WRITTEN,
+  SERIAL_RV_END_BOUND
+} SERIAL_RV_END;
+
+/*
+ * serial_ddl_undo_put_value () - write a value into an undo payload field in current_val's disk form
+ *   return: false if the value does not fit the field
+ */
+static bool
+serial_ddl_undo_put_value (TP_DOMAIN * domain, DB_VALUE * value, char *field, int *length)
+{
+  DB_VALUE coerced;
+  OR_BUF buf;
+  bool done = false;
+
+  db_make_null (&coerced);
+  if (tp_value_coerce (value, &coerced, domain) == DOMAIN_COMPATIBLE)
+    {
+      *length = pr_data_writeval_disk_size (&coerced);
+      if (*length > 0 && *length <= SERIAL_DDL_UNDO_VALUE_SIZE)
+	{
+	  or_init (&buf, field, *length);
+	  done = (domain->type->data_writeval (&buf, &coerced) == NO_ERROR);
+	}
+    }
+  pr_clear_value (&coerced);
+  return done;
+}
 
 /*
  * serial_row_write_undo () - build the undo of a client write that replaces a _db_serial row
@@ -2477,7 +2519,8 @@ serial_row_write_undo (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, RECDES
   HEAP_ATTRVALUE *cur = heap_attrvalue_locate (serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX], &write->old_info);
   HEAP_ATTRVALUE *started = heap_attrvalue_locate (serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX], &write->old_info);
   ATTR_ID inc_id = serial_Attrs_id[SERIAL_ATTR_INCREMENT_VAL_INDEX];
-  DB_VALUE *old_inc, *new_inc, *new_started;
+  ATTR_ID cyclic_id = serial_Attrs_id[SERIAL_ATTR_CYCLIC_INDEX];
+  DB_VALUE *old_inc, *new_inc, *new_cur, *new_min, *new_max, *old_cyclic, *new_cyclic;
   SERIAL_DDL_UNDO header;
   char *ptr;
 
@@ -2498,17 +2541,31 @@ serial_row_write_undo (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, RECDES
 
   old_inc = heap_attrinfo_access (inc_id, &write->old_info);
   new_inc = heap_attrinfo_access (inc_id, &write->new_info);
-  new_started = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX], &write->new_info);
-  if (old_inc == NULL || DB_IS_NULL (old_inc) || new_inc == NULL || DB_IS_NULL (new_inc) || new_started == NULL
-      || DB_IS_NULL (new_started))
+  new_cur = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX], &write->new_info);
+  new_min = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_MIN_VAL_INDEX], &write->new_info);
+  new_max = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_MAX_VAL_INDEX], &write->new_info);
+  old_cyclic = heap_attrinfo_access (cyclic_id, &write->old_info);
+  new_cyclic = heap_attrinfo_access (cyclic_id, &write->new_info);
+  if (old_inc == NULL || DB_IS_NULL (old_inc) || new_inc == NULL || DB_IS_NULL (new_inc) || new_cur == NULL
+      || DB_IS_NULL (new_cur) || new_min == NULL || DB_IS_NULL (new_min) || new_max == NULL || DB_IS_NULL (new_max)
+      || old_cyclic == NULL || DB_IS_NULL (old_cyclic) || new_cyclic == NULL || DB_IS_NULL (new_cyclic))
     {
       return NO_ERROR;
     }
 
+  memset (&header, 0, sizeof (header));
   header.version = SERIAL_DDL_UNDO_VERSION;
   header.old_inc_sign = numeric_db_value_is_positive (old_inc) > 0 ? 1 : -1;
   header.new_inc_sign = numeric_db_value_is_positive (new_inc) > 0 ? 1 : -1;
-  header.new_started = db_get_int (new_started);
+  header.old_cyclic = db_get_int (old_cyclic) != 0;
+  header.new_cyclic = db_get_int (new_cyclic) != 0;
+  if (!serial_ddl_undo_put_value (cur->read_attrepr->domain, new_cur, header.written, &header.written_length)
+      || !serial_ddl_undo_put_value (cur->read_attrepr->domain, header.old_inc_sign > 0 ? new_max : new_min,
+				     header.bound, &header.bound_length))
+    {
+      return NO_ERROR;
+    }
+
   header.repid = rep->id;
   header.n_variable = rep->n_variable;
   header.fixed_length = rep->fixed_length;
@@ -2634,6 +2691,65 @@ serial_rv_replace_var (record_descriptor & rec, int n_variable, int index, const
 // *INDENT-ON*
 
 /*
+ * serial_rv_issued_end () - the current_val that keeps every value issued since the write behind it
+ *   return: NO_ERROR, or ER_status
+ *   end(out): which of the values to write
+ *
+ * Under the write's definition the issued values run from the written current_val (itself issued only after a
+ * restart) to the page's, wrapping at its range end if it is cyclic; the page is behind the written value only after
+ * a wrap. In the replaced row's direction they reach the page value or the written one, or the range end after a
+ * wrap, and the replaced row's current_val stands if it is further. A serial cyclic before the write, wrapping the
+ * same way, goes on from the page as its next cycle.
+ */
+static int
+serial_rv_issued_end (const SERIAL_DDL_UNDO * undo, DB_VALUE * old_val, DB_VALUE * page_val, DB_VALUE * written_val,
+		      DB_VALUE * bound_val, SERIAL_RV_END * end)
+{
+  DB_VALUE cmp_result, *end_val;
+  bool wrapped;
+  int error;
+
+  error = numeric_db_value_compare (page_val, written_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  wrapped = undo->new_cyclic && db_get_int (&cmp_result) * undo->new_inc_sign < 0;
+
+  if (wrapped && undo->old_cyclic && undo->new_inc_sign == undo->old_inc_sign)
+    {
+      *end = SERIAL_RV_END_PAGE;
+      return NO_ERROR;
+    }
+  if (wrapped && !undo->old_cyclic)
+    {
+      *end = SERIAL_RV_END_BOUND;
+      end_val = bound_val;
+    }
+  else if (undo->new_inc_sign == undo->old_inc_sign)
+    {
+      *end = SERIAL_RV_END_PAGE;
+      end_val = page_val;
+    }
+  else
+    {
+      *end = SERIAL_RV_END_WRITTEN;
+      end_val = written_val;
+    }
+
+  error = numeric_db_value_compare (end_val, old_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (db_get_int (&cmp_result) * undo->old_inc_sign <= 0)
+    {
+      *end = SERIAL_RV_END_REPLACED;
+    }
+  return NO_ERROR;
+}
+
+/*
  * serial_rv_undo_ddl_update () - undo a client write of a _db_serial row, keeping the values issued since
  *   return: NO_ERROR, or ER_status
  *   rcv(in): payload from serial_row_write_undo (), on the latched page of the row
@@ -2642,10 +2758,7 @@ serial_rv_replace_var (record_descriptor & rec, int n_variable, int index, const
  * current_val and started go back only when nothing was issued after the write:
  *   1. started on the page is 0: nothing was issued since, or the write restarted the serial itself. The replaced
  *      row's values stand.
- *   2. the write left started 1 and the increment's sign: the page's current_val, which only issuing moved since
- *      (a cyclic wrap included).
- *   3. otherwise whichever of the replaced row's and the page's current_val is further along in the replaced row's
- *      direction, with started 1.
+ *   2. otherwise the current_val serial_rv_issued_end () picks, with started 1.
  * A row without the payload's layout gets the replaced row back, as before.
  *
  * The compensation is the merged row as RVHF_UPDATE, so redoing it writes that row whatever the page holds.
@@ -2660,9 +2773,10 @@ serial_rv_undo_ddl_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   char *old_cur, *page_cur, *fixed;
   int old_cur_length, page_cur_length, old_started, page_started = -1;
   int rule = 0;			/* 0: the replaced row */
-  bool take_page = false;
+  SERIAL_RV_END end = SERIAL_RV_END_REPLACED;
+  static const char *end_names[] = { "replaced row", "page row", "written value", "range end" };
   bool in_redo = log_is_in_crash_recovery_and_not_yet_completes_redo ();
-  DB_VALUE old_val, page_val, cmp_result;
+  DB_VALUE old_val, page_val, written_val, bound_val;
   INT16 type = REC_HOME;
   LOG_RCV clr_rcv;
   VPID vpid;
@@ -2688,26 +2802,30 @@ serial_rv_undo_ddl_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	{
 	  rule = 1;
 	}
-      else if (undo.new_started == 1 && undo.new_inc_sign == undo.old_inc_sign)
-	{
-	  rule = 2;
-	  take_page = true;
-	}
       else if (serial_rv_get_cur (&undo, old_cur, old_cur_length, &old_val) == NO_ERROR
 	       && serial_rv_get_cur (&undo, page_cur, page_cur_length, &page_val) == NO_ERROR
-	       && numeric_db_value_compare (&page_val, &old_val, &cmp_result) == NO_ERROR)
+	       && serial_rv_get_cur (&undo, undo.written, undo.written_length, &written_val) == NO_ERROR
+	       && serial_rv_get_cur (&undo, undo.bound, undo.bound_length, &bound_val) == NO_ERROR
+	       && serial_rv_issued_end (&undo, &old_val, &page_val, &written_val, &bound_val, &end) == NO_ERROR)
 	{
-	  rule = 3;
-	  take_page = db_get_int (&cmp_result) * undo.old_inc_sign > 0;
+	  rule = 2;
 	}
     }
 
   if (rule > 1)
     {
       merged.set_recdes (old_recdes);
-      if (take_page)
+      if (end == SERIAL_RV_END_PAGE)
 	{
 	  serial_rv_replace_var (merged, undo.n_variable, undo.cur_index, page_cur, page_cur_length);
+	}
+      else if (end == SERIAL_RV_END_WRITTEN)
+	{
+	  serial_rv_replace_var (merged, undo.n_variable, undo.cur_index, undo.written, undo.written_length);
+	}
+      else if (end == SERIAL_RV_END_BOUND)
+	{
+	  serial_rv_replace_var (merged, undo.n_variable, undo.cur_index, undo.bound, undo.bound_length);
 	}
       fixed = merged.get_data_for_modify ();
       fixed += OR_HEADER_SIZE (fixed) + OR_VAR_TABLE_SIZE_INTERNAL (undo.n_variable, OR_GET_OFFSET_SIZE (fixed));
@@ -2721,8 +2839,8 @@ serial_rv_undo_ddl_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 	  rule = 0;
 	}
     }
-  er_log_debug (ARG_FILE_LINE, "serial_rv_undo_ddl_update: rule %d, current_val of the %s row, page started %d, "
-		"length %d -> %d\n", rule, take_page && rule > 1 ? "page" : "replaced", page_started, old_recdes.length,
+  er_log_debug (ARG_FILE_LINE, "serial_rv_undo_ddl_update: rule %d, current_val of the %s, page started %d, "
+		"length %d -> %d\n", rule, rule < 2 ? "replaced row" : end_names[end], page_started, old_recdes.length,
 		undone->length);
 
   memcpy (clr.get_ptr (), &type, sizeof (type));
