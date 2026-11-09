@@ -1783,19 +1783,136 @@ oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vect
 }
 
 /*
- * oos_reclaim_sweep_step () - The growth step, run on every OOS page allocation. It checks the
- *   file's emptied-page set and, when the file is marked unknown, walks the file's data pages from
- *   the saved cursor. It stops at the FIRST page reclaimed. That page is back in the partial sector
+ * oos_reclaim_claim_growth () - Take the file's growth lock, waiting for another grower of the same
+ *   file. The lock covers the reclaim step and the file_alloc after it, so no grower can reserve a
+ *   sector between another grower's check and its allocation.
+ *
+ *   claimed(out): false when the entry could not be created; the caller then grows without the gate
+ */
+static int
+oos_reclaim_claim_growth (const VFID &oos_vfid, bool &claimed)
+{
+  int err = NO_ERROR;
+
+  claimed = false;
+  assert (oos_Bestspace != NULL);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  try
+    {
+      while (true)
+	{
+	  oos_reclaim_file_state &state = oos_Reclaim_states[oos_vfid];
+	  if (!state.sweep_in_progress)
+	    {
+	      state.sweep_in_progress = true;
+	      claimed = true;
+	      break;
+	    }
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+	  oos_Test_reclaim_waiters.fetch_add (1, std::memory_order_relaxed);
+#endif
+	  int wait_error = pthread_cond_wait (&oos_Reclaim_sweep_cond, &oos_Bestspace->bestspace_mutex);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+	  oos_Test_reclaim_waiters.fetch_sub (1, std::memory_order_relaxed);
+#endif
+	  if (wait_error != 0)
+	    {
+	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_WAIT, 0);
+	      err = ER_CSS_PTHREAD_COND_WAIT;
+	      break;
+	    }
+	}
+    }
+  catch (std::bad_alloc &)
+    {
+      /* Entry not created — it still reads as unknown for the next growth. */
+    }
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+  return err;
+}
+
+static void
+oos_reclaim_release_growth (const VFID &oos_vfid)
+{
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  oos_reclaim_release_sweep_locked (oos_vfid);
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+}
+
+/*
+ * oos_reclaim_check_emptied () - Try the members of the file's emptied-page set, including pages
+ *   added while this runs, each at most once per growth. Stops at the first page reclaimed.
+ */
+static int
+oos_reclaim_check_emptied (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &hdr_vpid,
+			   std::set<VPID, oos_vpid_order> &examined, bool &reclaimed)
+{
+  reclaimed = false;
+  std::vector<VPID> batch;
+  while (true)
+    {
+      batch.clear ();
+      (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+      try
+	{
+	  auto it = oos_Reclaim_states.find (oos_vfid);
+	  if (it != oos_Reclaim_states.end ())
+	    {
+	      for (const VPID &vpid : it->second.emptied)
+		{
+		  if (examined.insert (vpid).second)
+		    {
+		      batch.push_back (vpid);
+		    }
+		}
+	    }
+	}
+      catch (std::bad_alloc &)
+	{
+	  /* Pages not taken stay in the set; marking the file unknown makes the lap cover them. */
+	  auto it = oos_Reclaim_states.find (oos_vfid);
+	  if (it != oos_Reclaim_states.end ())
+	    {
+	      it->second.unknown = true;
+	    }
+	}
+      pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+
+      if (batch.empty ())
+	{
+	  return NO_ERROR;
+	}
+      for (const VPID &vpid : batch)
+	{
+	  OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
+	  OOS_COUNTER_INC (reclaim_growth_examined_pages);
+	  int err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, result);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	  if (result == OOS_RECLAIM_RECLAIMED)
+	    {
+	      oos_trace ("growth step on file %d|%d: reclaimed emptied page {volid=%d, pageid=%d}",
+			 VFID_AS_ARGS (&oos_vfid), vpid.volid, vpid.pageid);
+	      reclaimed = true;
+	      return NO_ERROR;
+	    }
+	}
+    }
+}
+
+/*
+ * oos_reclaim_sweep_step () - The growth step, run under the file's growth lock before every OOS
+ *   page allocation. It checks the file's emptied-page set and, when the file is marked unknown,
+ *   walks the file's data pages from the saved cursor, then checks the set again for pages added
+ *   during the lap. It stops at the FIRST page reclaimed. That page is back in the partial sector
  *   table when this returns, so the caller's file_alloc reuses it instead of growing. A known file
  *   whose set is empty costs no page fix.
  *
- *   The lap clears the unknown mark when it claims the step and restores it unless it walks the
- *   whole file without reclaiming. A set loss during the lap marks the file again, and that mark
- *   survives. Pages the lap finds busy enter the set.
- *
- *   Concurrency: at most one step per file (single-flight flag). A concurrent grower waits for
- *   the active step, then re-checks the state and claims the next step when work remains. It
- *   cannot bypass the growth gate while the active step may still find a reclaimable page.
+ *   The lap clears the unknown mark when it starts and restores it unless it walks the whole file
+ *   without reclaiming. A set loss during the lap marks the file again, and that mark survives, so
+ *   the next growth laps again. Pages the lap finds busy enter the set.
  *
  *   return: NO_ERROR or error code. ER_INTERRUPTED propagates; on any error the file stays
  *   unknown if it was, and unprocessed candidates stay in the set.
@@ -1805,90 +1922,14 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
   int err = NO_ERROR;
 
-  std::vector<VPID> candidates;
-  bool run_lap = false;
-  VPID cursor;
-  VPID_SET_NULL (&cursor);
-  bool claimed = false;
-
-  assert (oos_Bestspace != NULL);
   (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
-  try
-    {
-      while (true)
-	{
-	  oos_reclaim_file_state &state = oos_Reclaim_states[oos_vfid];
-	  if (state.sweep_in_progress)
-	    {
-#if defined(CUBRID_UNIT_TEST_ENABLED)
-	      oos_Test_reclaim_waiters.fetch_add (1, std::memory_order_relaxed);
-#endif
-	      int wait_error = pthread_cond_wait (&oos_Reclaim_sweep_cond,
-						  &oos_Bestspace->bestspace_mutex);
-#if defined(CUBRID_UNIT_TEST_ENABLED)
-	      oos_Test_reclaim_waiters.fetch_sub (1, std::memory_order_relaxed);
-#endif
-	      if (wait_error != 0)
-		{
-		  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_PTHREAD_COND_WAIT, 0);
-		  err = ER_CSS_PTHREAD_COND_WAIT;
-		  break;
-		}
-	      continue;
-	    }
-	  if (state.emptied.empty () && !state.unknown)
-	    {
-	      break;
-	    }
-
-	  try
-	    {
-	      candidates.assign (state.emptied.begin (), state.emptied.end ());
-	    }
-	  catch (std::bad_alloc &)
-	    {
-	      /* The lap below covers every candidate. */
-	      candidates.clear ();
-	      state.unknown = true;
-	    }
-	  state.sweep_in_progress = true;
-	  run_lap = state.unknown;
-	  state.unknown = false;
-	  cursor = state.sweep_cursor;
-	  claimed = true;
-	  break;
-	}
-    }
-  catch (std::bad_alloc &)
-    {
-      /* Entry not created — it still reads as unknown for the next growth. */
-    }
+  auto entry = oos_Reclaim_states.find (oos_vfid);
+  const bool has_work = entry == oos_Reclaim_states.end () || entry->second.unknown || !entry->second.emptied.empty ();
   pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
-
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-  if (!claimed)
+  if (!has_work)
     {
       return NO_ERROR;
     }
-
-  bool lap_completed = false;
-  scope_exit sweep_release ([&] () noexcept
-  {
-    (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
-    if (run_lap && !lap_completed)
-      {
-	auto it = oos_Reclaim_states.find (oos_vfid);
-	if (it != oos_Reclaim_states.end ())
-	  {
-	    it->second.unknown = true;
-	  }
-      }
-    oos_reclaim_release_sweep_locked (oos_vfid);
-    pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
-  });
 
   VPID hdr_vpid;
   err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
@@ -1898,27 +1939,47 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
       return err;
     }
 
-  for (const VPID &vpid : candidates)
+  std::set<VPID, oos_vpid_order> examined;
+  bool reclaimed = false;
+  err = oos_reclaim_check_emptied (thread_p, oos_vfid, hdr_vpid, examined, reclaimed);
+  if (err != NO_ERROR || reclaimed)
     {
-      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
-      OOS_COUNTER_INC (reclaim_growth_examined_pages);
-      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, result);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-      if (result == OOS_RECLAIM_RECLAIMED)
-	{
-	  oos_trace ("growth step on file %d|%d: reclaimed emptied page {volid=%d, pageid=%d}",
-		     VFID_AS_ARGS (&oos_vfid), vpid.volid, vpid.pageid);
-	  return NO_ERROR;
-	}
+      return err;
     }
+
+  bool run_lap = false;
+  VPID cursor;
+  VPID_SET_NULL (&cursor);
+  (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+  auto state_it = oos_Reclaim_states.find (oos_vfid);
+  if (state_it != oos_Reclaim_states.end ())
+    {
+      run_lap = state_it->second.unknown;
+      state_it->second.unknown = false;
+      cursor = state_it->second.sweep_cursor;
+    }
+  pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
 
   if (!run_lap)
     {
       return NO_ERROR;
     }
+
+  bool lap_completed = false;
+  scope_exit unknown_restorer ([&] () noexcept
+  {
+    if (lap_completed)
+      {
+	return;
+      }
+    (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
+    auto it = oos_Reclaim_states.find (oos_vfid);
+    if (it != oos_Reclaim_states.end ())
+      {
+	it->second.unknown = true;
+      }
+    pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
+  });
 
   OOS_COUNTER_INC (reclaim_growth_laps);
 
@@ -2010,7 +2071,9 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 
   oos_trace ("growth lap on file %d|%d: full lap over %d page(s), 0 reclaimed, %d busy",
 	     VFID_AS_ARGS (&oos_vfid), collector.npages, n_busy);
-  return NO_ERROR;
+
+  /* A page that emptied behind the cursor during the lap is in the set, not in the lap. */
+  return oos_reclaim_check_emptied (thread_p, oos_vfid, hdr_vpid, examined, reclaimed);
 }
 
 /*
@@ -2019,6 +2082,8 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
  *   INVARIANT: every new-page allocation for an OOS file goes through this helper, never
  *   through oos_file_alloc_new directly. The growth step runs first; a page it frees is
  *   back in the partial sector table before file_alloc runs, so no retry loop is needed.
+ *
+ *   The file's growth lock is held from the reclaim step through file_alloc.
  *
  *   PRECONDITION: call with no OOS page latched — the sweep's reclaim primitive takes the OOS
  *   stats header WRITE latch unconditionally.
@@ -2029,7 +2094,19 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 static auto_unfix_page_ptr
 oos_alloc_page_with_reclaim (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out)
 {
-  int err = oos_reclaim_sweep_step (thread_p, oos_vfid);
+  bool claimed = false;
+  int err = oos_reclaim_claim_growth (oos_vfid, claimed);
+  scope_exit growth_release ([&] () noexcept
+  {
+    if (claimed)
+      {
+	oos_reclaim_release_growth (oos_vfid);
+      }
+  });
+  if (err == NO_ERROR && claimed)
+    {
+      err = oos_reclaim_sweep_step (thread_p, oos_vfid);
+    }
   if (err == ER_INTERRUPTED)
     {
       return nullptr;
@@ -4691,7 +4768,15 @@ oos_test_reclaim_release_sweep (const VFID &oos_vfid)
 int
 oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 {
-  return oos_reclaim_sweep_step (thread_p, oos_vfid);
+  bool claimed = false;
+  int err = oos_reclaim_claim_growth (oos_vfid, claimed);
+  if (err != NO_ERROR || !claimed)
+    {
+      return err;
+    }
+  err = oos_reclaim_sweep_step (thread_p, oos_vfid);
+  oos_reclaim_release_growth (oos_vfid);
+  return err;
 }
 
 int
