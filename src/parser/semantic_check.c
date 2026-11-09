@@ -218,7 +218,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
-static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select);
+static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -7658,6 +7658,8 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (result != NULL)
 	    {
 	      query_spec = *result;
+	      /* specs referring a CTE are not views; resolve them so that they are not compared with self */
+	      query_spec = parser_walk_tree (query_cache, query_spec, NULL, NULL, pt_resolve_cte_specs, NULL);
 	      parser_walk_tree (query_cache, query_spec, pt_check_cyclic_reference_in_view_spec, arg, NULL, NULL);
 	    }
 
@@ -11070,19 +11072,62 @@ pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, 
  *      (2) inner columns may not be referenced outside the join's own ON predicate.
  *   return:  none
  *   parser(in): the parser context
- *   select(in): a PT_SELECT node
+ *   stmt(in): a select, update or delete statement
+ *
+ * Note: an UPDATE or DELETE is turned into a SELECT by pt_to_upd_del_query () only when its XASL is built,
+ *       after the semantic check, so the rules are checked on the statement itself.
  */
 static void
-pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
+pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  PT_NODE *spec;
+  PT_NODE *spec, *from, *connect_by = NULL;
+  PT_NODE *targets[9];
+  int target_cnt;
 
-  if (select == NULL || select->node_type != PT_SELECT)
+  if (stmt == NULL)
     {
       return;
     }
 
-  for (spec = select->info.query.q.select.from; spec != NULL; spec = spec->next)
+  /* the local from-list and the clauses in which the inner may not be referenced */
+  switch (stmt->node_type)
+    {
+    case PT_SELECT:
+      from = stmt->info.query.q.select.from;
+      connect_by = stmt->info.query.q.select.connect_by;
+      targets[0] = stmt->info.query.q.select.list;
+      targets[1] = stmt->info.query.q.select.where;
+      targets[2] = stmt->info.query.q.select.group_by;
+      targets[3] = stmt->info.query.q.select.having;
+      targets[4] = stmt->info.query.order_by;
+      targets[5] = stmt->info.query.q.select.connect_by;
+      targets[6] = stmt->info.query.q.select.start_with;
+      targets[7] = stmt->info.query.orderby_for;
+      targets[8] = stmt->info.query.q.select.with_increment;
+      target_cnt = 9;
+      break;
+
+    case PT_UPDATE:
+      /* the assignment list covers both sides: SET u.w = ... names the inner on its lhs */
+      from = stmt->info.update.spec;
+      targets[0] = stmt->info.update.assignment;
+      targets[1] = stmt->info.update.search_cond;
+      targets[2] = stmt->info.update.order_by;
+      targets[3] = stmt->info.update.orderby_for;
+      target_cnt = 4;
+      break;
+
+    case PT_DELETE:
+      from = stmt->info.delete_.spec;
+      targets[0] = stmt->info.delete_.search_cond;
+      target_cnt = 1;
+      break;
+
+    default:
+      return;
+    }
+
+  for (spec = from; spec != NULL; spec = spec->next)
     {
       if (spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
 	{
@@ -11092,7 +11137,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
       /* v1: SEMI/ANTI JOIN is NL-inner only and does not compose with CONNECT BY -- the hierarchical
          traversal bypasses the NL semi/anti inner handling and yields wrong results, so reject it here
          instead of silently producing them. */
-      if (select->info.query.q.select.connect_by != NULL)
+      if (connect_by != NULL)
 	{
 	  PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NOT_WITH_CONNECT_BY);
 	  continue;
@@ -11102,7 +11147,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
       {
 	PT_SEMI_ANTI_REF_INFO info;
 	info.inner_id = spec->info.spec.id;
-	info.from_list = select->info.query.q.select.from;
+	info.from_list = from;
 	info.found_inner = false;
 	info.found_outer = false;
 	info.skip_nested_for_outer_gate = true;	/* nested-subquery refs not modelled by the freeze */
@@ -11115,41 +11160,29 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	/* require a direct 2-node inner<->local-outer join conjunct (the only shape the optimizer freeze
 	 * models); reject nested-subquery-only and n>=3-table-only outer refs. */
 	if (spec->info.spec.on_cond == NULL || !info.found_outer
-	    || !pt_semi_anti_has_direct_join_conjunct (parser, spec->info.spec.on_cond, spec->info.spec.id,
-						       select->info.query.q.select.from))
+	    || !pt_semi_anti_has_direct_join_conjunct (parser, spec->info.spec.on_cond, spec->info.spec.id, from))
 	  {
 	    PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NEEDS_OUTER_PRED);
 	    continue;
 	  }
       }
 
-      /* (2) inner cols allowed only in this join's own ON; scan select clauses, sibling ON and derived tables.
+      /* (2) inner cols allowed only in this join's own ON; scan the statement's clauses, sibling ON and derived tables.
        * both forms stop scanning the inner early -- ANTI survives only when it fetched nothing at all, and
        * SEMI stops at the first match -- so which inner row (if any) is left behind is a plan artifact.
        * exposing its columns outside the ON would make the answer depend on the access path. */
       {
 	PT_SEMI_ANTI_REF_INFO info;
-	PT_NODE *targets[9];
-	PT_NODE *other;
+	PT_NODE *other, *t_node;
 	int i;
 
 	info.inner_id = spec->info.spec.id;
-	info.from_list = select->info.query.q.select.from;
+	info.from_list = from;
 	info.found_inner = false;
 	info.found_outer = false;
 	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into subqueries */
 
-	targets[0] = select->info.query.q.select.list;
-	targets[1] = select->info.query.q.select.where;
-	targets[2] = select->info.query.q.select.group_by;
-	targets[3] = select->info.query.q.select.having;
-	targets[4] = select->info.query.order_by;
-	targets[5] = select->info.query.q.select.connect_by;
-	targets[6] = select->info.query.q.select.start_with;
-	targets[7] = select->info.query.orderby_for;
-	targets[8] = select->info.query.q.select.with_increment;
-
-	for (i = 0; i < 9 && !info.found_inner; i++)
+	for (i = 0; i < target_cnt && !info.found_inner; i++)
 	  {
 	    if (targets[i] != NULL)
 	      {
@@ -11158,7 +11191,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  }
 
 	/* Check derived tables and other specs' ON conditions; only this spec's own ON is exempt. */
-	for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
+	for (other = from; other != NULL && !info.found_inner; other = other->next)
 	  {
 	    if (other != spec && other->info.spec.on_cond != NULL)
 	      {
@@ -11168,6 +11201,19 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	      {
 		(void) parser_walk_tree (parser, other->info.spec.derived_table, pt_semi_anti_ref_pre, &info, NULL,
 					 NULL);
+	      }
+	  }
+
+	/* a DELETE target names the inner as a whole (DELETE u FROM t SEMI JOIN u ...): the rows it would delete
+	 * are the ones the scan happened to stop at */
+	if (stmt->node_type == PT_DELETE)
+	  {
+	    for (t_node = stmt->info.delete_.target_classes; t_node != NULL && !info.found_inner; t_node = t_node->next)
+	      {
+		if (pt_find_spec_in_statement (parser, stmt, t_node) == spec)
+		  {
+		    info.found_inner = true;
+		  }
 	      }
 	  }
 
@@ -11442,6 +11488,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      t_node = t_node->next;
 	    }
 	}
+
+      /* inner columns of a SEMI / ANTI JOIN may not be filtered on, nor the inner deleted */
+      pt_check_semi_anti_join (parser, node);
 
       node = pt_semantic_type (parser, node, info);
       break;
@@ -11783,6 +11832,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  return NULL;
 	}
+
+      /* inner columns of a SEMI / ANTI JOIN may be neither assigned, assigned from nor filtered on */
+      pt_check_semi_anti_join (parser, node);
 
       pt_no_double_updates (parser, node);
 
@@ -13309,6 +13361,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		}
 	      if (!resolve_whole)
 		{
+		  if (parser->host_var_classified == node)
+		    {
+		      /* CBRD-27583: a remote DML resolves no names here, so its positions are classified on their own */
+		      parser->host_var_classified = NULL;
+		      node = pt_classify_host_var_positions (parser, node, NULL, NULL);
+		    }
 		  break;
 		}
 	    }
@@ -16259,6 +16317,15 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
   s = parser_walk_tree (parser, s, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
   assert (s != NULL);
 
+  /* specs referring a CTE have an entity name; resolve them to the CTE before name resolution */
+  s = parser_walk_tree (parser, s, NULL, NULL, pt_resolve_cte_specs, NULL);
+  if (s == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error_code = er_errid ();
+      goto error_exit;
+    }
+
   attrs = pt_get_attributes (parser, c);
 
   /* apply semantic checks to query_spec */
@@ -18919,8 +18986,9 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
  *       or a row cut. An orderby_for predicate and a LIMIT not yet rewritten cut rows after it.
  *       EXCEPT ALL would become EXCEPT, so DISTINCT is not set either.
  *       A false return sets no DISTINCT. The caller does not rely on the query being DISTINCT,
- *       or removes duplicates outside the query.
- *       Call it after pt_eval_type_pre () has rewritten the LIMIT of a SELECT.
+ *       or removes duplicates outside the query. A range predicate does not rely on it,
+ *       and its join rewrite in qo_rewrite_subqueries () removes the duplicates outside.
+ *       Called before pt_eval_type_pre () rewrites the LIMIT of a SELECT, it leaves that SELECT without DISTINCT.
  */
 bool
 pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query)

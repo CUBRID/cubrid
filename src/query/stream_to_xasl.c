@@ -1927,7 +1927,7 @@ stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
   if (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT
       || compare->method == DOMAIN_COMPARE_COLLATIONS)
     {
-      compare->cmp = pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
+      compare->cmp = domain_compare_cmp (compare);
     }
   return ptr;
 }
@@ -3887,6 +3887,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   TP_DOMAIN **all_domains = NULL;
   int domain_cnt;
+  int has_ineligible;
   int offset;
 
   int error = NO_ERROR;
@@ -3966,6 +3967,9 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       goto exit_on_error;
     }
   assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
+
+  ptr = or_unpack_int (ptr, &has_ineligible);
+  node_p->has_ineligible = (has_ineligible != 0);
 
   /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;
@@ -7868,6 +7872,11 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       aggregate->info.dist_percent.const_array = NULL;
       aggregate->info.dist_percent.list_len = 0;
       aggregate->info.dist_percent.nlargers = 0;
+    }
+  else if (aggregate->function == PT_GROUP_CONCAT)
+    {
+      aggregate->info.group_concat.buf = NULL;
+      aggregate->info.group_concat.capacity = 0;
     }
   else
     {

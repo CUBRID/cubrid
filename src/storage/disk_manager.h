@@ -147,6 +147,8 @@ extern int disk_rv_redo_volume_expand (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void disk_rv_dump_volume_expand (FILE * fp, int length_ignore, void *data);
 extern int disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_unreserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void disk_rv_note_unreserved_sectors (const VPID * stab_vpid, int unit_offset, const char *data,
+					     const LOG_LSA * unreserve_lsa);
 extern int disk_rv_volhead_extend_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_volhead_extend_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
