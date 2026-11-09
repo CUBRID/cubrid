@@ -75,6 +75,8 @@ struct t_query_result
 {
   void *result;
   char *null_type_column;
+  char *untyped_column;		/* the columns the PREPARE reply left untyped (CBRD-27679) */
+  int num_untyped_column;
   T_COL_UPDATE_INFO *col_update_info;
   void *column_info;
   int copied;
@@ -132,6 +134,10 @@ struct t_srv_handle
   int replace_rule_idx;		/* query replace rule index, -1 = no replace */
   int num_orig_markers;		/* driver-facing marker count (original query) = K_orig,
 				 * valid only when replace_rule_idx >= 0 */
+  char *qr_app_sql;		/* the statement text the client sent; set whenever
+				 * replace_rule_idx >= 0 (no replace without it).  a demote hands it
+				 * over to sql_stmt -- never the rule's normalized ORIG -- because the
+				 * handle recompiles sql_stmt at the next execute */
   char replace_fallback;	/* 1 = handle was self-healed to the original query after a
 				 * replacement-query execute failure; the next successful recompile
 				 * adopts the compiled statement as prepared (is_prepared -> TRUE) */
@@ -178,6 +184,7 @@ extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);
 extern void hm_session_free (T_SRV_HANDLE * srv_handle);
 extern void hm_col_update_info_clear (T_COL_UPDATE_INFO * col_update_info);
+extern void hm_col_update_info_free (T_QUERY_RESULT * q_result);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void hm_srv_handle_set_pooled (void);
 #endif

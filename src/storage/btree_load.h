@@ -38,6 +38,8 @@
 #include "oid.h"
 #include "system_parameter.h"
 #include "object_domain.h"
+#include "object_primitive.h"
+#include "object_representation.h"
 #include "slotted_page.h"
 #include "btree_sort.h"
 
@@ -131,6 +133,20 @@ typedef enum bt_load_px_outcome
 
 /* Header (Oth) record of the page */
 #define HEADER 0
+
+/* Check if page is a valid b-tree leaf node. Usually called after unfix and
+ * re-fix without validation.
+ */
+/* TODO: Is this expensive? Can we find a faster way to check it?
+ *	 (e.g. save last deallocation page LSA - it will be then enough to
+ *	 compare with an LSA saved before unfixing).
+ */
+#define BTREE_IS_PAGE_VALID_LEAF(thread_p, page) \
+  ((page) != NULL \
+   && pgbuf_get_page_ptype (thread_p, page) == PAGE_BTREE \
+   && spage_get_slot (page, HEADER) != NULL \
+   && spage_get_slot (page, HEADER)->record_length == sizeof (BTREE_NODE_HEADER) \
+   && (btree_get_node_header (thread_p, page))->node_level == 1)
 
 #if !defined(NDEBUG)
 #define BTREE_INVALID_INDEX_ID(btid) \
@@ -336,7 +352,7 @@ struct filter_index_info
  *
  * The header (btree_sort.h) tells which MVCCIDs follow, where the key starts and whether it has a
  * NULL column. The record starts INT_ALIGNMENT-aligned and every field above is a multiple of it,
- * so the key is aligned too. Readers: bt_load_get_buf_from_record () and compare_driver (). */
+ * so the key is aligned too. Readers: bt_load_get_buf_from_record () and the sort (btree_sort.c and its sorters). */
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -408,6 +424,8 @@ extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delt
 
 STATIC_INLINE bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int bt_load_cmp_key_bytes (TP_DOMAIN * key_type, const char *mem1, const char *mem2, bool has_null)
+  __attribute__ ((ALWAYS_INLINE));
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid);
 extern int btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER * ovf_header);
 extern int btree_ovf_dir_init_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVF_DIR_HEADER * ovf_header);
@@ -478,6 +496,100 @@ btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value)
 {
   db_make_null (key_value);
   *clear_flag = false;
+}
+
+/*
+ * bt_load_cmp_key_bytes () - Compare two key images in the order of the index
+ *   return: DB_LT, DB_EQ or DB_GT, or DB_UNK when the type cannot compare them
+ *   key_type(in): the domain both images were written with
+ *   mem1(in): a complete index_writeval () image
+ *   mem2(in): another
+ *   has_null(in): whether a column of either image may be NULL; true is always right, false skips the nullmap
+ *
+ * Note: The one definition of the order an index build produces.  Must stay ALWAYS_INLINE:
+ * btsort_compare_records () is reached through a function pointer, and a call frame per comparison costs 4% on an
+ * integer key.
+ */
+STATIC_INLINE int
+bt_load_cmp_key_bytes (TP_DOMAIN * key_type, const char *mem1, const char *mem2, bool has_null)
+{
+  char *p1 = CONST_CAST (char *, mem1);
+  char *p2 = CONST_CAST (char *, mem2);
+  int c = DB_UNK;
+
+  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
+    {
+      int i;
+      char *nullmap_ptr1, *nullmap_ptr2;
+      int header_size;
+      TP_DOMAIN *dom;
+
+      /* fast implementation of pr_midxkey_compare (). do not use DB_VALUE container for speed-up */
+
+      nullmap_ptr1 = p1;
+      nullmap_ptr2 = p2;
+
+      header_size = or_multi_header_size (key_type->precision);
+
+      p1 += header_size;
+      p2 += header_size;
+
+      for (i = 0, dom = key_type->setdomain; i < key_type->precision && dom; i++, dom = dom->next)
+	{
+	  /* val1 or val2 is NULL */
+	  if (has_null)
+	    {
+	      if (or_multi_is_null (nullmap_ptr1, i))
+		{		/* element val is null? */
+		  if (or_multi_is_null (nullmap_ptr2, i))
+		    {
+		      continue;
+		    }
+
+		  c = DB_LT;
+		  break;	/* exit for-loop */
+		}
+	      else if (or_multi_is_null (nullmap_ptr2, i))
+		{
+		  c = DB_GT;
+		  break;	/* exit for-loop */
+		}
+	    }
+
+	  /* check for val1 and val2 same domain */
+	  c = dom->type->index_cmpdisk (p1, p2, dom, 0, 1, NULL);
+	  assert (c == DB_LT || c == DB_EQ || c == DB_GT);
+
+	  if (c != DB_EQ)
+	    {
+	      break;		/* exit for-loop */
+	    }
+
+	  p1 += pr_midxkey_element_disk_size (p1, dom);
+	  p2 += pr_midxkey_element_disk_size (p2, dom);
+	}			/* for (i = 0; ... ) */
+      assert (c == DB_LT || c == DB_EQ || c == DB_GT);
+
+      if (dom && dom->is_desc)
+	{
+	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
+	}
+    }
+  else
+    {
+      /* the key was written with index_writeval (), so index_cmpdisk () is the matching reader */
+      assert (tp_valid_indextype (TP_DOMAIN_TYPE (key_type)));
+
+      c = key_type->type->index_cmpdisk (p1, p2, key_type, 0, 1, NULL);
+
+      /* for single-column desc index */
+      if (key_type->is_desc)
+	{
+	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
+	}
+    }
+
+  return c;
 }
 
 #endif /* _BTREE_LOAD_H_ */

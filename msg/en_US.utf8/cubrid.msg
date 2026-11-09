@@ -1492,27 +1492,34 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
+1384 Session variable @%1$s has the type %2$s in this statement, not %3$s.
 
 1385 Invalid username or password.
 
 1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+1387 %1$s cannot be executed while %2$d sub-clients are alive.
+1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
+1389 %1$s cannot be called by the main client thread.
 
-1388 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+1390 The secret of session %1$u does not match.
+1391 Cannot end or keep session %1$u because it is not attached to this connection.
 
-1389 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+1392 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
 
-1390 Internal error: invalid out-of-row storage argument.
+1393 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
 
-1391 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
+1394 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
 
-1392 The database was created by a CUBRID build with an incompatible storage format (format %1$d, this build %2$d). Unload it with the build that created it, then load it into a database created by this build.
+1395 Internal error: invalid out-of-row storage argument.
 
-1393 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
+1396 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
 
-1394 Last Error
+1397 The database was created by a CUBRID build with an incompatible storage format (format %1$d, this build %2$d). Unload it with the build that created it, then load it into a database created by this build.
+
+1398 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
+
+1399 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2029,6 +2036,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
+344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 
 
 
