@@ -2529,7 +2529,8 @@ try_again:
       /* the buffer still holds the previous contents, which may be the decrypted contents of an encrypted page: of
        * the victimized page, or of this page before it was deallocated. clear them so that they are not written with
        * the new page. clear the tde bits too, so that the tde algorithm of the new page is always set and logged.
-       * the write latch keeps the page from being flushed meanwhile. */
+       * the write latch keeps the page from being flushed meanwhile. recovery repeats this clear on the disk image,
+       * see pgbuf_log_clear_new_page (). */
       assert (request_mode == PGBUF_LATCH_WRITE);
       memset (bufptr->iopage_buffer->iopage.page, 0, DB_PAGESIZE);
       bufptr->iopage_buffer->iopage.prv.pflag = 0;
@@ -15905,12 +15906,19 @@ pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   assert (rcv->length >= 0);
   assert (rcv->length <= DB_PAGESIZE);
 
+  set_page_type = (PAGE_TYPE) rcv->offset;
+  if (set_page_type == PAGE_FTAB)
+    {
+      /* file header and table pages are logged as new right after pgbuf_fix (NEW_PAGE) cleared them, and are never
+       * encrypted: clear the disk image the same way, which may be an encrypted page of a destroyed file */
+      pgbuf_rv_clear_new_page_redo (thread_p, rcv);
+    }
+
   if (rcv->length > 0)
     {
       memcpy (rcv->pgptr, rcv->data, rcv->length);
     }
 
-  set_page_type = (PAGE_TYPE) rcv->offset;
   if (set_page_type != PAGE_UNKNOWN)
     {
       pgbuf_set_page_ptype (thread_p, rcv->pgptr, set_page_type);
@@ -15935,6 +15943,48 @@ int
 pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_log_clear_new_page () - log the clear that pgbuf_fix (NEW_PAGE) did on a new page
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * page_new (in) : page just fixed with NEW_PAGE, not changed yet
+ *
+ * Note: recovery redoes a new page on its disk image, which may still hold the contents and the tde bits of a page of
+ *       a destroyed file. without this record, a new page of a non-encrypted file keeps those tde bits after a crash,
+ *       because setting the tde algorithm NONE on a cleared page logs nothing.
+ */
+void
+pgbuf_log_clear_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new)
+{
+  assert (page_new != NULL);
+
+  log_append_redo_data2 (thread_p, RVPGBUF_CLEAR_NEW_PAGE, NULL, page_new, 0, 0, NULL);
+  pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
+}
+
+/*
+ * pgbuf_rv_clear_new_page_redo () - redo the clear of a new page: its contents and its tde bits
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+pgbuf_rv_clear_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  FILEIO_PAGE *iopage = NULL;
+
+  assert (rcv->pgptr != NULL);
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, rcv->pgptr);
+  memset (rcv->pgptr, 0, DB_PAGESIZE);
+  iopage->prv.pflag = 0;
+
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }

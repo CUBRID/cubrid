@@ -484,6 +484,8 @@ extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int 
 extern void pgbuf_log_redo_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
 extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void pgbuf_log_clear_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new);
+extern int pgbuf_rv_clear_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc);
 extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -5441,6 +5441,11 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+      if (!FILE_IS_TEMPORARY (fhead))
+	{
+	  /* first, so that recovery starts the page from the same cleared state as f_init did */
+	  pgbuf_log_clear_new_page (thread_p, page_alloc);
+	}
       error_code = f_init (thread_p, page_alloc, f_init_args);
       if (error_code != NO_ERROR)
 	{
