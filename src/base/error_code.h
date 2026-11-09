@@ -1802,9 +1802,7 @@
 
 #define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1393
 
-#define ER_HEAP_BIGONE_WITHOUT_OOS                  -1394
-
-#define ER_LAST_ERROR                               -1395
+#define ER_LAST_ERROR                               -1394
 
 
 /*

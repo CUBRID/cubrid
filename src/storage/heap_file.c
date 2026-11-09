@@ -14256,12 +14256,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       inline_size_after_oos += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
     }
 
-  /* OOS + bigone coexistence is forbidden. heap_attrinfo_determine_disk_layout already demoted every
-   * OOS-eligible variable column. If the inline record still exceeds the maximum slotted record length,
-   * it would have to be stored as a multipage (REC_BIGONE) overflow record while also carrying OOS OIDs.
-   * That combination is unsupported, so reject it here with a user-visible error -- before writing any OOS
-   * record -- instead of silently building it and tripping debug-only asserts on the read path. */
-  if (unlikely (has_oos && heap_is_big_length ((int) inline_size_after_oos)))
+  /* A user-class record never becomes REC_BIGONE. heap_attrinfo_determine_disk_layout already demoted every
+   * OOS-eligible variable column, so a record still over the maximum slotted record length is rejected here,
+   * before any OOS record is written. The size includes the full MVCC header, so a later header change cannot
+   * turn an accepted record into REC_BIGONE. System classes keep REC_BIGONE for large catalog rows. */
+  if (unlikely (heap_is_big_length ((int) inline_size_after_oos)
+		&& (has_oos || !oid_is_system_class (&attr_info->class_oid))))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2, (int) inline_size_after_oos,
 	      heap_Maxslotted_reclength);
@@ -22630,8 +22630,6 @@ heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
       return NO_ERROR;
     }
 
-  heap_oos_warn_bigone_without_oos (&context->class_oid, context->recdes_p->length, heap_Maxslotted_reclength);
-
   /* insert overflow record */
   if (heap_ovf_insert (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
     {
@@ -26081,10 +26079,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
-	}
-      if (heap_is_big_length (context->recdes_p->length))
-	{
-	  heap_oos_warn_bigone_without_oos (&context->class_oid, context->recdes_p->length, heap_Maxslotted_reclength);
 	}
     }
 

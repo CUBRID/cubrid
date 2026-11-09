@@ -1155,48 +1155,43 @@ TEST_F (OosSqlStorage, ForceInlineValueAssignedByUpdateStaysInline)
   EXPECT_EQ (bits, 8000 * 8);
 }
 
-TEST_F (OosSqlStorage, ForceInlineNonOosBigoneIsStoredWithWarning)
+TEST_F (OosSqlStorage, ForceInlineNonOosBigoneIsRejected)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_INLINE, b BIT VARYING)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
   rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ", NULL)").c_str ());
-  ASSERT_GE (rc, 0);
-  db_commit_transaction ();
-  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
+  int errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
 
-  OOS_STATS_INFO stats;
-  rc = get_oos_stats ("t_oos_stg", &stats);
+  int count = -1;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_stg", &count);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (stats.has_oos_file, 0);
-
-  int bits = 0;
-  rc = fetch_single_int ("SELECT BIT_LENGTH(a) FROM t_oos_stg WHERE id = 1", &bits);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (bits, 17000 * 8);
+  EXPECT_EQ (count, 0);
 }
 
-TEST_F (OosSqlStorage, FixedTypeNonOosBigoneIsStoredWithWarning)
+TEST_F (OosSqlStorage, FixedTypeNonOosBigoneIsRejected)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT(136000))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
   rc = exec_sql ("INSERT INTO t_oos_stg VALUES (1, CAST(REPEAT('AA', 17000) AS BIT(136000)))");
-  ASSERT_GE (rc, 0);
-  db_commit_transaction ();
-  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
+  int errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
 
-  int bits = 0;
-  rc = fetch_single_int ("SELECT BIT_LENGTH(a) FROM t_oos_stg WHERE id = 1", &bits);
+  int count = -1;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_stg", &count);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (bits, 17000 * 8);
+  EXPECT_EQ (count, 0);
 }
 
-TEST_F (OosSqlStorage, UpdateIntoNonOosBigoneWarns)
+TEST_F (OosSqlStorage, UpdateIntoNonOosBigoneIsRejected)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING STORAGE FORCE_INLINE)");
   ASSERT_GE (rc, 0);
@@ -1204,49 +1199,54 @@ TEST_F (OosSqlStorage, UpdateIntoNonOosBigoneWarns)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
   rc = exec_sql (("UPDATE t_oos_stg SET a = " + uncompressed_bit_varying (17000) + " WHERE id = 1").c_str ());
-  ASSERT_GE (rc, 0);
-  db_commit_transaction ();
-  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
+  int errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
 
   int bits = 0;
   rc = fetch_single_int ("SELECT BIT_LENGTH(a) FROM t_oos_stg WHERE id = 1", &bits);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (bits, 17000 * 8);
+  EXPECT_EQ (bits, 100 * 8);
 }
 
-TEST_F (OosSqlStorage, BigoneReportCountsOnlyStoredBigoneRecords)
+/* The guard counts the full MVCC header, so the largest accepted record leaves room for later header growth. */
+TEST_F (OosSqlStorage, NonOosRecordSizeBoundary)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT PRIMARY KEY, a BIT VARYING STORAGE FORCE_INLINE)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  /* 16195 bytes fit in a REC_HOME record; only the layout estimate's MVCC header slack exceeds the limit. */
-  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
-  rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (16195) + ")").c_str ());
+  rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (16187) + ")").c_str ());
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
-  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings (), warnings_before);
 
-  /* REPLACE lays the row out for its duplicate check too, but stores one REC_BIGONE record. */
-  rc = exec_sql (("REPLACE INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ")").c_str ());
-  ASSERT_GE (rc, 0);
+  rc = exec_sql (("INSERT INTO t_oos_stg VALUES (2, " + uncompressed_bit_varying (16188) + ")").c_str ());
+  int errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
+
+  rc = exec_sql ("DELETE FROM t_oos_stg WHERE id = 1");
+  EXPECT_EQ (rc, 1);
   db_commit_transaction ();
-  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings () - warnings_before, 1);
+
+  int count = -1;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_stg", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 0);
 }
 
-TEST_F (OosSqlStorage, OosBackedLargeRecordDoesNotWarn)
+TEST_F (OosSqlStorage, OosBackedLargeRecordIsStored)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, a BIT VARYING)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
   rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ")").c_str ());
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
-  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings (), warnings_before);
 
   OOS_STATS_INFO stats;
   rc = get_oos_stats ("t_oos_stg", &stats);
@@ -1261,13 +1261,11 @@ TEST_F (OosSqlStorage, ForceInlineWithOosBigoneIsRejectedWithoutOrphanChain)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  const int warnings_before = heap_oos_test_bigone_without_oos_warnings ();
   rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, " + uncompressed_bit_varying (17000) + ", "
 		  + uncompressed_bit_varying (1000) + ")").c_str ());
   int errid = er_errid ();
   EXPECT_LT (rc, 0);
   EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
-  EXPECT_EQ (heap_oos_test_bigone_without_oos_warnings (), warnings_before);
   db_abort_transaction ();
 
   int count = -1;

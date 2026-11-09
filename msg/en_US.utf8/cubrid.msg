@@ -1500,7 +1500,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1387 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
 
-1388 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+1388 The record cannot be stored because its size (%1$d bytes) exceeds the maximum record size (%2$d bytes) after moving eligible variable-length columns to out-of-row storage (OOS). A record must fit in one page. Reduce the size of fixed-length, small variable-length, or STORAGE FORCE_INLINE columns.
 
 1389 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
 
@@ -1512,9 +1512,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1393 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
 
-1394 A record of class %3$d|%4$d|%5$d needs %1$d bytes, more than the maximum record size (%2$d bytes), and is stored as a multipage overflow record (REC_BIGONE) without out-of-row storage (OOS). To keep the record within one page, reduce its fixed-length columns, small variable-length columns, or STORAGE FORCE_INLINE columns.
-
-1395 Last Error
+1394 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
