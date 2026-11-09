@@ -73,6 +73,7 @@ typedef enum
 
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
+  FI_TEST_FILE_MANAGER_DESTROY_HOLD = 200001,	/* hold a destroy after its pages are discarded, before its sectors are freed */
 
   /* BTREE MANAGER */
   FI_TEST_BTREE_MANAGER_RANDOM_EXIT = 300000,
@@ -83,6 +84,7 @@ typedef enum
   /* LOG MANAGER */
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE = 500000,
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP = 500001,
+  FI_TEST_LOG_MANAGER_CHECKPOINT_HOLD = 500002,	/* hold a checkpoint after its start LSA is fixed */
 
   /* DBLINK 2PC RECOVERY */
   FI_TEST_DBLINK_2PC_CRASH_BEFORE_1 = 600000,	/* before _db_global_tran INSERT (state 'P') */
