@@ -2094,6 +2094,7 @@ css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_i
   thread_p->wait_for_latch_promote = false;
   thread_p->lockwait = NULL;
   thread_p->lockwait_state = -1;
+  lock_forget_recheck_wait (thread_p);
   thread_p->query_entry = NULL;
   thread_p->tran_next_wait = NULL;
 

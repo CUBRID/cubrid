@@ -16570,7 +16570,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	}
     }
 
-  /* Later writers wait on our MVCCID self-lock, so the row locks can end here unless our stamp can go before commit */
+  /* Later writers wait on our MVCCID self-lock, so the row locks can end here. A rollback to a savepoint wakes those
+   * writers to read again (lock_wake_transaction_mvccid_waiters ()), so a savepoint does not keep the locks. */
   lock_transient_scope_end (thread_p, locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED));
 
   qexec_close_scan (thread_p, specp);

@@ -275,6 +275,12 @@ namespace cubthread
       INT64 lockwait_stime;		/* time in milliseconds */
       int lockwait_msecs;		/* time in milliseconds */
       int lockwait_state;
+      UINT64 lockwait_wake_gen;	/* lock_get_tran_wake_generation () as the caller saw it before waiting */
+      UINT64 lockwait_recheck_mvccid;	/* MVCCID of the last self-lock wait a partial rollback cut short in this
+					 * request, or 0; see lock_wait_transaction_mvccid () */
+      int lockwait_recheck_trid;	/* the trid of the transaction that waited */
+      int lockwait_recheck_wait_msecs;	/* the lock timeout it waited with */
+      INT64 lockwait_recheck_msecs;	/* how long it had waited, in all */
       void *query_entry;
       entry *tran_next_wait;
       entry *worker_thrd_list;	/* worker thread on job queue */

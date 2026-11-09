@@ -102,11 +102,13 @@ btree_key_wait_for_tran_end (THREAD_ENTRY *thread_p, MVCCID writer_mvccid,
 			     PAGE_PTR *overflow_page, bool *restart)
 {
   int error_code = NO_ERROR;
+  /* read while the leaf is still fixed: see lock_wake_transaction_mvccid_waiters () */
+  UINT64 wake_gen = lock_get_tran_wake_generation ();
 
   /* Release the locked object and the page latches before blocking on the lock. */
   btree_key_release_locked_object_and_pages (thread_p, find_unique_helper, leaf_page, overflow_page);
 
-  error_code = logtb_wait_for_tran_end (thread_p, writer_mvccid);
+  error_code = logtb_wait_for_tran_end (thread_p, writer_mvccid, wake_gen);
   if (error_code != NO_ERROR)
     {
       return error_code;

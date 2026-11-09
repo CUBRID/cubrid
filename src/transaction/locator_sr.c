@@ -4452,9 +4452,12 @@ locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   MVCCID writer;
   SCAN_CODE scan;
   int error_code;
+  UINT64 wake_gen;
 
   while (true)
     {
+      /* read before the header: see lock_wake_transaction_mvccid_waiters () */
+      wake_gen = lock_get_tran_wake_generation ();
       heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
       context.latch_mode = PGBUF_LATCH_READ;
       scan = locator_peek_last_header (thread_p, &context, &header);
@@ -4492,7 +4495,7 @@ locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    }
 	  return NO_ERROR;
 	}
-      error_code = logtb_wait_for_tran_end (thread_p, writer);
+      error_code = logtb_wait_for_tran_end (thread_p, writer, wake_gen);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -7399,7 +7402,8 @@ locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid)
  *   change(in): what the statement did to the rows
  *
  * Note: an uncommitted change is guarded by its stamp and our MVCCID self-lock, so its row lock may end unless the
- *	 stamp can go before commit: under a savepoint (a system one counts too), or in a statement nested in another.
+ *	 stamp can go before commit in a statement nested in another.  Under a savepoint it may end too: a rollback to
+ *	 it sends the writers waiting on the stamp back to read (lock_wake_transaction_mvccid_waiters ()).
  *	 REPEATABLE READ keeps its row locks for now.  Ask with the statement's transient scope open.
  */
 bool
@@ -7410,7 +7414,7 @@ locator_statement_ends_row_locks (THREAD_ENTRY * thread_p, STMT_ROW_CHANGE chang
       return true;
     }
 
-  return (!logtb_has_active_savepoint (thread_p) && lock_transient_scope_is_outermost (thread_p)
+  return (lock_transient_scope_is_outermost (thread_p)
 	  && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
 }
 
@@ -14405,6 +14409,9 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 
       if (owner_mvccid != MVCCID_NULL)
 	{
+	  /* read while the page the stamp was seen on is still fixed: see lock_wake_transaction_mvccid_waiters () */
+	  UINT64 wake_gen = lock_get_tran_wake_generation ();
+
 	  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
 	      && context->home_page_watcher.pgptr != NULL)
 	    {
@@ -14412,7 +14419,7 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
 	    }
 	  heap_clean_get_context (thread_p, context);
-	  if (logtb_wait_for_tran_end (thread_p, owner_mvccid) != NO_ERROR)
+	  if (logtb_wait_for_tran_end (thread_p, owner_mvccid, wake_gen) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }

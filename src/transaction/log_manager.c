@@ -5780,6 +5780,11 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
    * get undefined and cannot get call by the user any longer.
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
+
+  /* The undo may have removed stamps that others wait on with our self-lock. Wake them to read again; otherwise one
+   * that holds a row we touch again waits for us while we wait for it. */
+  lock_wake_transaction_mvccid_waiters (thread_p, tdes->mvccinfo.id);
+
   return TRAN_UNACTIVE_ABORTED;
 }
 

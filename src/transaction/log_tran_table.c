@@ -4385,36 +4385,33 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
- * logtb_has_active_savepoint () - Is a savepoint declared, so a partial rollback can reach back to here?
+ * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends, or until a rollback to a
+ *				savepoint of it may have removed the stamp the caller saw
  *
- * return: true if this transaction has declared a savepoint
- *
- *   thread_p(in): thread entry
- */
-bool
-logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
-}
-
-/*
- * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends
- *
- * return	 : NO_ERROR once that transaction has ended.  An error if the lock failed, or if the lock was granted
- *		   while that transaction is still active -- waiting again cannot help.
+ * return	 : NO_ERROR once that transaction has ended or rolled back to a savepoint, or once a partial rollback
+ *		   of any transaction may have raced the wait (see lock_wait_transaction_mvccid ()); the caller reads the
+ *		   stamp again either way.  An error if the lock failed, or if the lock was granted while that transaction is
+ *		   still active -- waiting again cannot help.
  * thread_p (in) : Thread entry.
  * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
+ * wake_gen (in) : lock_get_tran_wake_generation (), read as that function says.
  *
  * Note: call with no page latch held.
  */
 int
-logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen)
 {
   int error_code;
+  int granted;
 
-  if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  granted = lock_wait_transaction_mvccid (thread_p, mvccid, wake_gen);
+  if (granted == LK_NOTGRANTED_DUE_RECHECK)
+    {
+      /* a partial rollback (of that transaction, or of any while we joined the waiters): what the caller saw may be
+       * gone */
+      return NO_ERROR;
+    }
+  if (granted != LK_GRANTED)
     {
       error_code = er_errid ();
       if (error_code == NO_ERROR)

@@ -50,7 +50,8 @@ enum
   LK_NOTGRANTED_DUE_ERROR = 5,
   LK_GRANTED_PUSHINSET_LOCKONE = 6,
   LK_GRANTED_PUSHINSET_RELOCKALL = 7,
-  LK_NOTGRANTED_HELD_BY_WRITERS = 8	/* by lock_object_ahead_of_waiters (), locator_lock_object_unless_ours () */
+  LK_NOTGRANTED_HELD_BY_WRITERS = 8,	/* by lock_object_ahead_of_waiters (), locator_lock_object_unless_ours () */
+  LK_NOTGRANTED_DUE_RECHECK = 9	/* lock_wait_transaction_mvccid () only: read the stamp again */
 };
 
 enum
@@ -237,6 +238,10 @@ extern void lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * o
 extern bool lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p);
 extern bool lock_transient_scope_start (THREAD_ENTRY * thread_p);
 extern void lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release);
+extern UINT64 lock_get_tran_wake_generation (void);
+extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen);
+extern void lock_forget_recheck_wait (THREAD_ENTRY * thread_p);
+extern void lock_wake_transaction_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
 extern void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
 extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);

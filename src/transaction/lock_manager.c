@@ -227,7 +227,8 @@ typedef enum
   LOCK_RESUMED_ABORTED,		/* Thread has been resumed, however it must be aborted because of a deadlock */
   LOCK_RESUMED_ABORTED_FIRST,	/* in case of the first aborted thread */
   LOCK_RESUMED_ABORTED_OTHER,	/* in case of other aborted threads */
-  LOCK_RESUMED_INTERRUPT
+  LOCK_RESUMED_INTERRUPT,
+  LOCK_RESUMED_RECHECK		/* Thread has been resumed without the lock: what it waited on may be gone, read again */
 } LOCK_WAIT_STATE;
 
 /*
@@ -460,6 +461,7 @@ struct lk_global_data
   short no_victim_case_count;
   // *INDENT-OFF*
   std::atomic_int deadlock_and_timeout_detector;
+  std::atomic<UINT64> tran_wake_generation;	/* bumped by every partial rollback that wakes waiters */
   // *INDENT-ON*
 
   // *INDENT-OFF*
@@ -480,6 +482,7 @@ struct lk_global_data
     , global_edge_seq_num (0)
     , no_victim_case_count (0)
     , deadlock_and_timeout_detector { 0 }
+    , tran_wake_generation { 0 }
   {
   }
   // *INDENT-ON*
@@ -624,6 +627,7 @@ static LK_RES_KEY lock_create_search_key (const OID * oid, const OID * class_oid
 static LK_RES_KEY lock_create_mvccid_search_key (MVCCID mvccid);
 #if defined (SERVER_MODE)
 static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
+static int lock_transaction_mvccid_with_wait (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int wait_msecs);
 #endif /* SERVER_MODE */
 
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
@@ -2454,6 +2458,9 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
   /* suspend the worker thread (transaction) */
   thread_suspend_wakeup_and_unlock_entry (entry_ptr->thrd_entry, THREAD_LOCK_SUSPENDED);
 
+  if (entry_ptr->thrd_entry->lockwait_state == (int) LOCK_RESUMED_RECHECK)
+    {
+    }
   lk_Gl.deadlock_and_timeout_detector--;
   lk_Gl.TWFG_node[entry_ptr->tran_index].thrd_wait_stime = 0;
 
@@ -2567,6 +2574,11 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
     case LOCK_RESUMED_INTERRUPT:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
       return LOCK_RESUMED_INTERRUPT;
+
+    case LOCK_RESUMED_RECHECK:
+      /* The waker took the entry off the waiters (lock_wake_transaction_mvccid_waiters ()); the caller frees it.
+       * No error. */
+      return LOCK_RESUMED_RECHECK;
 
     case LOCK_SUSPENDED:
     default:
@@ -3979,6 +3991,17 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	      break;
 	    }
 
+	  if (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && lock == S_LOCK
+	      && thrd_entry->lockwait_wake_gen != lk_Gl.tran_wake_generation.load ())
+	    {
+	      /* A partial rollback finished after the caller read the stamp and before we could join the waiters, so
+	       * its wake-up could not reach us: see lock_wake_transaction_mvccid_waiters (). */
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      ret_val = LK_NOTGRANTED_DUE_RECHECK;
+	      state = LK_S_DONE;
+	      break;
+	    }
+
 	  /* check if another thread is waiting for the same resource */
 	  wait_entry_ptr = lock_find_my_waiter_entry (res_ptr, tran_index);
 
@@ -4234,6 +4257,15 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	      perfmon_lk_waited_time_on_objects (thread_p, lock, lock_wait_time);
 	    }
 
+	  if (ret_val == LOCK_RESUMED_RECHECK)
+	    {
+	      /* the waker took the entry off the waiters, as a grant does: only free it */
+	      lock_free_entry (tran_index, t_entry_ent, &lk_Gl.obj_free_entry_list, entry_ptr);
+	      ret_val = LK_NOTGRANTED_DUE_RECHECK;
+	      state = LK_S_DONE;
+	      break;
+	    }
+
 	  if (ret_val != LOCK_RESUMED)
 	    {
 	      /* Following three cases are possible. 1. lock timeout 2. deadlock victim 3. interrupt In any case, current
@@ -4249,6 +4281,12 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	      else if (ret_val == LOCK_RESUMED_INTERRUPT)
 		{
 		  ret_val = LK_NOTGRANTED_DUE_ERROR;
+		  state = LK_S_DONE;
+		  break;
+		}
+	      else if (ret_val == LOCK_RESUMED_RECHECK)
+		{
+		  ret_val = LK_NOTGRANTED_DUE_RECHECK;
 		  state = LK_S_DONE;
 		  break;
 		}
@@ -6999,9 +7037,23 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
 #if !defined (SERVER_MODE)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
-  int tran_index;
-  int wait_msecs;
-  int granted;
+  return lock_transaction_mvccid_with_wait (thread_p, mvccid, lock,
+					    (cond_flag == LK_COND_LOCK) ? LK_FORCE_ZERO_WAIT
+					    : logtb_find_current_wait_msecs (thread_p));
+#endif /* !SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+/*
+ * lock_transaction_mvccid_with_wait - lock_transaction_mvccid () with the lock timeout given
+ *
+ * return: as lock_transaction_mvccid ()
+ *
+ *   wait_msecs(in): the lock timeout, or LK_FORCE_ZERO_WAIT for a conditional request
+ */
+static int
+lock_transaction_mvccid_with_wait (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int wait_msecs)
+{
   LK_ENTRY *tran_entry = NULL;
 
   /* callers pre-filter via logtb_get_current_mvccid / logtb_is_active_other_mvccid, so a non-normal
@@ -7018,22 +7070,12 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
       return LK_GRANTED;
     }
 
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (cond_flag == LK_COND_LOCK)
-    {
-      wait_msecs = LK_FORCE_ZERO_WAIT;
-    }
-  else
-    {
-      wait_msecs = logtb_find_current_wait_msecs (thread_p);
-    }
-
   /* A TRANSACTION-typed key (keyed by the inserter's MVCCID) never aliases a real class/instance. */
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, lock_create_mvccid_search_key (mvccid), lock,
-					       wait_msecs, &tran_entry, NULL);
-  return granted;
-#endif /* !SERVER_MODE */
+  return lock_internal_perform_lock_object (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+					    lock_create_mvccid_search_key (mvccid), lock, wait_msecs, &tran_entry,
+					    NULL);
 }
+#endif /* SERVER_MODE */
 
 /*
  * lock_unlock_transaction_mvccid - Release a transaction self-lock acquired with
@@ -7093,6 +7135,181 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
        * > 1; a decrement would leave it held and keep unique/FK S_LOCK waiters blocked until end-of-transaction. */
       lock_internal_perform_unlock_object (thread_p, entry_ptr, true, true);
     }
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_get_tran_wake_generation - Read the count of partial rollbacks that have woken waiters
+ *
+ * return: the current generation
+ *
+ * Note: a waiter reads it where no partial rollback can yet have removed the stamp it will wait on -- under the latch
+ *	 it saw the stamp with, or before it reads the stamp -- and hands it to lock_wait_transaction_mvccid (). See
+ *	 lock_wake_transaction_mvccid_waiters ().
+ */
+UINT64
+lock_get_tran_wake_generation (void)
+{
+#if !defined (SERVER_MODE)
+  return 0;
+#else /* !SERVER_MODE */
+  return lk_Gl.tran_wake_generation.load ();
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_wait_transaction_mvccid - Wait until the transaction working under mvccid ends, or until a partial rollback
+ *				  of it may have removed what the caller saw
+ *
+ * return: LK_GRANTED, LK_NOTGRANTED_DUE_RECHECK, or another LK_NOTGRANTED_* on failure. LK_NOTGRANTED_DUE_RECHECK
+ *	   also comes when a partial rollback of another transaction finished before the request joined the waiters:
+ *	   the generation is global, so the caller cannot tell and reads again either way.
+ *
+ *   mvccid(in): the MVCCID on the stamp the caller saw
+ *   wake_gen(in): lock_get_tran_wake_generation (), read as that function says
+ *
+ * Note: a wait on the same MVCCID by the same transaction with the same lock timeout, after one that came back
+ *	 LK_NOTGRANTED_DUE_RECHECK in the same request, waits only for what is left of that timeout; nothing left
+ *	 times out at once (LK_ZERO_WAIT). Otherwise an owner that rolls back to a savepoint again and again would keep
+ *	 a waiter on an older stamp from ever timing out. Without the wake-up, the request would have stayed blocked in
+ *	 its first wait, so it times out no earlier than it would have there, give or take one pass of the timeout
+ *	 daemon (lock_force_timeout_expired_wait_transactions ()), which would have ended that wait. A lock timeout
+ *	 changed in between (a stored procedure the statement calls can run SET TRANSACTION LOCK TIMEOUT) starts the
+ *	 count again.
+ *	 css_set_thread_info () forgets the wait at each request (lock_forget_recheck_wait ()). The threads that serve
+ *	 no requests do not get here with a lock timeout (a loaddb worker waits without one, a parallel query worker
+ *	 only scans); the trid keeps the wait from a later transaction if one ever does.
+ */
+int
+lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen)
+{
+#if !defined (SERVER_MODE)
+  return LK_GRANTED;
+#else /* !SERVER_MODE */
+  LOG_TDES *tdes;
+  struct timespec ts;
+  INT64 start_msecs, carried_msecs = 0;
+  int trid, wait_msecs, granted;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
+  if (wait_msecs > 0 && thread_p->lockwait_recheck_mvccid == mvccid && thread_p->lockwait_recheck_trid == trid
+      && thread_p->lockwait_recheck_wait_msecs == wait_msecs)
+    {
+      carried_msecs = thread_p->lockwait_recheck_msecs;
+    }
+  thread_p->lockwait_recheck_mvccid = MVCCID_NULL;
+
+  clock_gettime (CLOCK_MONOTONIC, &ts);
+  start_msecs = ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL;
+  thread_p->lockwait_wake_gen = wake_gen;
+  /* the same lock timeout the record is keyed on */
+  granted = lock_transaction_mvccid_with_wait (thread_p, mvccid, S_LOCK,
+					       (carried_msecs > 0) ? (int) MAX (wait_msecs - carried_msecs, 0)
+					       : wait_msecs);
+
+  if (granted == LK_NOTGRANTED_DUE_RECHECK)
+    {
+      clock_gettime (CLOCK_MONOTONIC, &ts);
+      thread_p->lockwait_recheck_mvccid = mvccid;
+      thread_p->lockwait_recheck_trid = trid;
+      thread_p->lockwait_recheck_wait_msecs = wait_msecs;
+      thread_p->lockwait_recheck_msecs = carried_msecs + ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL - start_msecs;
+    }
+  return granted;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_forget_recheck_wait - A new request starts: a wait it makes does not go on with one of an earlier request
+ *
+ * return: nothing
+ */
+void
+lock_forget_recheck_wait (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  thread_p->lockwait_recheck_mvccid = MVCCID_NULL;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_wake_transaction_mvccid_waiters - Wake, without granting, everyone waiting on the self-lock keyed by mvccid
+ *
+ * return: nothing
+ *
+ *   mvccid(in): the MVCCID of the transaction that has just rolled back to a savepoint
+ *
+ * Note: call after the undo is complete. The owner keeps its X; a woken waiter reads the row or key again and waits
+ *	 again only if a stamp is still there. A waiter that saw the stamp but has not yet joined the waiters cannot be
+ *	 reached here; the generation bumped before taking the resource mutex sends it back to read again instead.
+ */
+void
+lock_wake_transaction_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *waiter, *prev, *next;
+  LOCK waiters_mode;
+
+  if (!MVCCID_IS_NORMAL (mvccid))
+    {
+      return;
+    }
+
+  lk_Gl.tran_wake_generation++;
+
+  search_key = lock_create_mvccid_search_key (mvccid);
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return;
+    }
+  /* find() leaves the resource mutex locked. */
+  assert (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && res_ptr->key.mvccid == mvccid);
+
+  prev = NULL;
+  waiters_mode = NULL_LOCK;
+  for (waiter = res_ptr->waiter; waiter != NULL; waiter = next)
+    {
+      next = waiter->next;
+      thread_lock_entry (waiter->thrd_entry);
+      if (LK_IS_LOCKWAIT_THREAD (waiter->thrd_entry) && waiter->thrd_entry->lockwait == (void *) waiter)
+	{
+	  /* Take the entry off the waiters here, as a grant does. Left for the woken thread to remove, it would show
+	   * the deadlock detector a wait that is over, and an owner touching the row again would be taken for a
+	   * cycle. The woken thread only frees it, so do not touch it after the resume. */
+	  if (prev == NULL)
+	    {
+	      res_ptr->waiter = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  waiter->next = NULL;
+	  lock_resume (waiter, LOCK_RESUMED_RECHECK);
+	  continue;
+	}
+      else
+	{
+	  thread_unlock_entry (waiter->thrd_entry);
+	}
+      waiters_mode = lock_conv (waiter->blocked_mode, waiters_mode);
+      prev = waiter;
+    }
+  res_ptr->total_waiters_mode = waiters_mode;
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
 #endif /* !SERVER_MODE */
 }
 
@@ -10333,6 +10550,8 @@ lock_wait_state_to_string (int state)
       return "RESUMED_ABORTED_OTHER";
     case LOCK_RESUMED_INTERRUPT:
       return "RESUMED_INTERRUPT";
+    case LOCK_RESUMED_RECHECK:
+      return "RESUMED_RECHECK";
     }
   return "UNKNOWN";
 }
