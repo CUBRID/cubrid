@@ -879,7 +879,7 @@ struct rvfun RV_fun[] = {
    NULL},
   {RVPGBUF_CLEAR_NEW_PAGE,
    "RVPGBUF_CLEAR_NEW_PAGE",
-   NULL,
+   pgbuf_rv_new_page_undo,
    pgbuf_rv_clear_new_page_redo,
    NULL,
    NULL},

@@ -15957,13 +15957,15 @@ pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * Note: recovery redoes a new page on its disk image, which may still hold the contents and the tde bits of a page of
  *       a destroyed file. without this record, a new page of a non-encrypted file keeps those tde bits after a crash,
  *       because setting the tde algorithm NONE on a cleared page logs nothing.
+ *       it is an undo-redo record without data, as the RVPGBUF_NEW_PAGE of file_init_page_type: the overflow readers
+ *       of CDC and HA replication expect no redo-only record but the overflow records inside an overflow update.
  */
 void
 pgbuf_log_clear_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new)
 {
   assert (page_new != NULL);
 
-  log_append_redo_data2 (thread_p, RVPGBUF_CLEAR_NEW_PAGE, NULL, page_new, 0, 0, NULL);
+  log_append_undoredo_data2 (thread_p, RVPGBUF_CLEAR_NEW_PAGE, NULL, page_new, 0, 0, 0, NULL, NULL);
   pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
 }
 
