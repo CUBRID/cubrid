@@ -286,9 +286,11 @@ static void qo_join_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void (
 static void qo_follow_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void (*)(QO_PLAN *, void *), void *);
 
 static void qo_plan_compute_cost (QO_PLAN *);
+static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
 static bool qo_term_is_evaluated_before (QO_TERM * term1, QO_TERM * term2);
 static double qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx);
 static void qo_sscan_cost (QO_PLAN *);
+static void qo_subquery_scan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
 static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
 static void qo_sort_cost (QO_PLAN *);
@@ -349,6 +351,11 @@ static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *, JO
 static QO_PLAN *qo_distinct_new (QO_PLAN *, QO_INFO *, QO_EQCLASS *);
 static void qo_prepare_distinct_info (QO_PLANNER *);
 static QO_INFO *qo_get_distinct_info_ahead (QO_PLANNER *, QO_NODE *, BITSET *);
+static QO_PLAN *qo_subquery_scan_new (QO_INFO *, QO_NODE *);
+static void qo_prepare_subquery_info (QO_PLANNER *);
+static QO_INFO *qo_get_subquery_info (QO_PLANNER *, QO_NODE *, BITSET *);
+static QO_NODE *qo_plan_last_scan_node (QO_PLAN *);
+static bool qo_plan_scans_subquery_dep_last (QO_PLAN *, QO_NODE *);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
@@ -497,6 +504,17 @@ static QO_PLAN_VTBL qo_index_scan_plan_vtbl = {
   "Index scan"
 };
 
+static QO_PLAN_VTBL qo_subquery_scan_plan_vtbl = {
+  "subquery",
+  qo_scan_fprint,
+  qo_scan_walk,
+  qo_scan_free,
+  qo_subquery_scan_cost,
+  qo_subquery_scan_cost,
+  qo_scan_info,
+  "Correlated subquery"
+};
+
 static QO_PLAN_VTBL qo_sort_plan_vtbl = {
   "temp",
   qo_sort_fprint,
@@ -593,6 +611,7 @@ static QO_PLAN_VTBL qo_worst_plan_vtbl = {
 QO_PLAN_VTBL *all_vtbls[] = {
   &qo_seq_scan_plan_vtbl,
   &qo_index_scan_plan_vtbl,
+  &qo_subquery_scan_plan_vtbl,
   &qo_sort_plan_vtbl,
   &qo_nl_join_plan_vtbl,
   &qo_idx_join_plan_vtbl,
@@ -1094,7 +1113,7 @@ qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
  *   subq_cpu_cost(in):
  *   subq_io_cost(in):
  */
-void
+static void
 qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double *subq_io_cost)
 {
   QO_SUMMARY *summary;
@@ -1156,17 +1175,6 @@ qo_plan_compute_subquery_cost (PT_NODE * subquery, double *subq_cpu_cost, double
 }
 
 /*
- * qo_plan_total_cost () - the fixed and the variable cost of a plan added up, as qo_plan_print_costs () prints them
- *   return: the cost
- *   plan(in):
- */
-double
-qo_plan_total_cost (QO_PLAN * plan)
-{
-  return plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost;
-}
-
-/*
  * qo_walk_plan_tree () - applies a callback to every plan in a plan tree
  *                        and stops on errors
  *   return:  the error of the first callback function that returns something
@@ -1208,6 +1216,35 @@ qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg)
     default:
       return ER_FAILED;
     }
+}
+
+/*
+ * qo_find_subquery_scan () - qo_walk_plan_tree () function that fails on the subquery scan of the spec
+ *   return: ER_FAILED on that scan, NO_ERROR otherwise
+ *   plan(in):
+ *   arg(in): the PT_SPEC
+ */
+static int
+qo_find_subquery_scan (QO_PLAN * plan, void *arg)
+{
+  if (qo_is_subquery_scan (plan) && QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node) == (PT_NODE *) arg)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qo_plan_has_subquery_scan () - check whether the plan runs the spec as its subquery
+ *   return: true/false
+ *   plan(in):
+ *   spec(in):
+ */
+bool
+qo_plan_has_subquery_scan (QO_PLAN * plan, PT_NODE * spec)
+{
+  return qo_walk_plan_tree (plan, qo_find_subquery_scan, spec) != NO_ERROR;
 }
 
 /*
@@ -2103,6 +2140,35 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node)
   return plan;
 }
 
+/*
+ * qo_subquery_scan_new () - make the plan that runs a derived SEMI / ANTI JOIN node as its [NOT] EXISTS subquery
+ *   return: QO_PLAN *
+ *   info(in):
+ *   node(in):
+ *
+ * Note: the terms of the node are in the subquery (qo_make_semi_anti_exists_cond ()), so the plan holds none.
+ */
+static QO_PLAN *
+qo_subquery_scan_new (QO_INFO * info, QO_NODE * node)
+{
+  QO_PLAN *plan;
+
+  plan = qo_scan_new (info, node, QO_SCANMETHOD_SUBQUERY_SCAN);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
+
+  plan->vtbl = &qo_subquery_scan_plan_vtbl;
+  BITSET_CLEAR (plan->sarged_terms);
+  BITSET_CLEAR (plan->subqueries);
+
+  qo_plan_compute_cost (plan);
+
+  plan = qo_top_plan_new (plan);
+
+  return plan;
+}
 
 /*
  * qo_sscan_cost () -
@@ -2113,10 +2179,20 @@ static void
 qo_sscan_cost (QO_PLAN * planp)
 {
   QO_NODE *nodep;
+  PT_NODE *spec;
+  double subq_cpu_cost, subq_io_cost;
 
   nodep = planp->plan_un.scan.node;
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = 0.0;
+  /* charge building the derived table unnested from a subquery */
+  spec = QO_NODE_ENTITY_SPEC (nodep);
+  if (spec != NULL && (spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY))
+    {
+      qo_plan_compute_subquery_cost (spec->info.spec.derived_table, &subq_cpu_cost, &subq_io_cost);
+      planp->fixed_cpu_cost = subq_cpu_cost;
+      planp->fixed_io_cost = subq_io_cost;
+    }
   if (QO_NODE_NCARD (nodep) == 0)
     {
       planp->variable_cpu_cost = 1.0 * (double) QO_CPU_WEIGHT;
@@ -2145,6 +2221,31 @@ qo_sscan_cost (QO_PLAN * planp)
     }
   fprintf (stdout, "\n");
 #endif /* TEST_DUMP_PLAN_SCAN_COST */
+}
+
+/*
+ * qo_subquery_scan_cost () - the cost of running the subquery once; qo_nljoin_cost () charges it per outer row
+ *   return:
+ *   planp(in):
+ */
+static void
+qo_subquery_scan_cost (QO_PLAN * planp)
+{
+  PT_NODE *expr;
+  double subq_cpu_cost, subq_io_cost;
+
+  expr = QO_NODE_ENTITY_SPEC (planp->plan_un.scan.node)->info.spec.exists_cond;
+  if (expr->info.expr.op == PT_NOT)
+    {
+      expr = expr->info.expr.arg1;
+    }
+  qo_plan_compute_subquery_cost (expr->info.expr.arg1, &subq_cpu_cost, &subq_io_cost);
+
+  planp->fixed_cpu_cost = 0.0;
+  planp->fixed_io_cost = 0.0;
+  planp->variable_cpu_cost = subq_cpu_cost;
+  planp->variable_io_cost = subq_io_cost;
+  planp->info->scan_rows = 1;
 }
 
 /*
@@ -4541,7 +4642,7 @@ qo_plan_semi_anti_join_type (QO_PLAN * plan)
 {
   while (plan != NULL)
     {
-      if (plan->info != NULL && plan->info->is_distinct)
+      if (plan->info != NULL && (plan->info->is_distinct || plan->info->is_subquery))
 	{
 	  return PT_JOIN_NONE;
 	}
@@ -6099,6 +6200,11 @@ qo_nljoin_cost (QO_PLAN * planp)
 	qo_mackert_lohman_pages ((double) inner->plan_un.scan.index->cum_stats.pages, N) * QO_COST_RANDOM_PAGE;
 
       inner_io_cost = MIN (inner_scan_card * heap_io, heap_fetched) + MIN (inner_scan_card * leaf_io, leaf_fetched);
+    }
+  else if (qo_is_subquery_scan (inner))
+    {
+      /* the subquery runs once per outer row */
+      inner_io_cost = inner_scan_card * inner->variable_io_cost;
     }
   else
     {
@@ -8955,6 +9061,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
   info->hit_prob = 1.0;
   info->is_distinct = false;
+  info->is_subquery = false;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -9334,7 +9441,7 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	    }
 	  else
 	    {
-	      /* a derived table built DISTINCT is read as it is (qo_prepare_distinct_info ()): sorted as any scan */
+	      /* a derived table built DISTINCT (qo_prepare_distinct_info ()) */
 	      planp = qo_sort_new (planp, order, SORT_TEMP);
 	    }
 
@@ -9440,8 +9547,7 @@ exit:
  *       ready, once, before the search starts.  It wins when reading the inner out once is cheaper than
  *       searching it for every outer row, a small or empty inner most plainly.  ANTI JOIN has no such form.
  *
- *       A derived table built DISTINCT (an IN form, qo_rewrite_inner_as_derived ()) holds one row per value already:
- *       joined on every column of its select list, the form is the table read as it is, with no second removal.
+ *       A derived table built DISTINCT and joined on every column of its select list is read as it is.
  *
  *       merge join a SEMI JOIN inner in that form only and never an ANTI JOIN inner, so USE_MERGE on a SEMI/ANTI JOIN
  *       inner left without it is dropped here: it would leave the node no plan.  USE_HASH stays: a hash join takes a
@@ -9567,8 +9673,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 	  continue;
 	}
 
-      /* a derived table built DISTINCT, joined on every column of its select list (a segment each,
-       * get_referenced_attrs ()), is read as it is, with the rows it holds */
+      /* a derived table built DISTINCT, joined on every column of its select list (a segment each) */
       spec = QO_NODE_ENTITY_SPEC (node);
       derived = spec->info.spec.derived_table;
       derived_distinct = (derived != NULL && PT_IS_QUERY_NODE_TYPE (derived->node_type)
@@ -9621,6 +9726,61 @@ exit:
 	}
     }
   bitset_delset (&join_segs);
+}
+
+/*
+ * qo_prepare_subquery_info () - for every derived SEMI / ANTI JOIN inner with its exists_cond, build the info that
+ *      runs it as that subquery once per outer row
+ *   return:
+ *   planner(in):
+ *
+ * Note: the form needs an info of its own, as the DISTINCT form does (qo_prepare_distinct_info ()), since the plans
+ *       of node_info are still needed to join the node the other ways.
+ */
+static void
+qo_prepare_subquery_info (QO_PLANNER * planner)
+{
+  QO_NODE *node;
+  QO_INFO *node_info, *subquery_info;
+  QO_PLAN *subquery_plan;
+  int i;
+
+  if (planner->subquery_info == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      node = &planner->node[i];
+      if (!QO_NODE_IS_SEMI_ANTI_JOIN (node) || QO_NODE_ENTITY_SPEC (node)->info.spec.exists_cond == NULL)
+	{
+	  continue;
+	}
+
+      node_info = planner->node_info[QO_NODE_IDX (node)];
+      subquery_info =
+	qo_alloc_info (planner, &(node_info->nodes), &(node_info->terms), &(node_info->eqclasses), 1.0,
+		       node_info->total_rows);
+      if (subquery_info == NULL)
+	{
+	  continue;
+	}
+
+      subquery_plan = qo_subquery_scan_new (subquery_info, node);
+      if (subquery_plan == NULL)
+	{
+	  continue;
+	}
+      if (qo_check_planvec (&subquery_info->best_no_order, subquery_plan) != PLAN_COMP_GT)
+	{
+	  qo_plan_release (subquery_plan);
+	  continue;
+	}
+
+      subquery_info->is_subquery = true;
+      planner->subquery_info[QO_NODE_IDX (node)] = subquery_info;
+    }
 }
 
 /*
@@ -9705,6 +9865,69 @@ qo_get_node_info (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
   QO_INFO *info = qo_get_distinct_info_ahead (planner, node, visited_nodes);
 
   return (info != NULL) ? info : planner->node_info[QO_NODE_IDX (node)];
+}
+
+/*
+ * qo_get_subquery_info () - get the subquery info of a node placed behind the nodes it depends on
+ *   return: the node's subquery info, or NULL
+ *   planner(in):
+ *   node(in): the node about to be placed as the tail
+ *   visited_nodes(in): the nodes already placed
+ */
+static QO_INFO *
+qo_get_subquery_info (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+{
+  if (planner->subquery_info == NULL || !bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
+    {
+      return NULL;
+    }
+
+  return planner->subquery_info[QO_NODE_IDX (node)];
+}
+
+/*
+ * qo_plan_last_scan_node () - Descend the plan tree to the innermost scan of its nested loops, subquery scans aside
+ *   return: the node of that scan, or NULL if none
+ *   plan(in): root plan
+ */
+static QO_NODE *
+qo_plan_last_scan_node (QO_PLAN * plan)
+{
+  while (plan != NULL)
+    {
+      if (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+	{
+	  plan = qo_is_subquery_scan (plan->plan_un.join.inner) ? plan->plan_un.join.outer : plan->plan_un.join.inner;
+	}
+      else if (plan->plan_type == QO_PLANTYPE_SORT)
+	{
+	  plan = plan->plan_un.sort.subplan;
+	}
+      else
+	{
+	  break;
+	}
+    }
+  if (plan != NULL && plan->plan_type == QO_PLANTYPE_SCAN)
+    {
+      return plan->plan_un.scan.node;
+    }
+  return NULL;
+}
+
+/*
+ * qo_plan_scans_subquery_dep_last () - check whether the outer plan scans a node the SEMI / ANTI JOIN node depends on
+ *      last, where its subquery is evaluated once put back into the WHERE
+ *   return: true/false
+ *   plan(in): the outer plan
+ *   node(in): the SEMI / ANTI JOIN node
+ */
+static bool
+qo_plan_scans_subquery_dep_last (QO_PLAN * plan, QO_NODE * node)
+{
+  QO_NODE *last_node = qo_plan_last_scan_node (plan);
+
+  return last_node != NULL && BITSET_MEMBER (QO_NODE_SEMI_ANTI_DEP_SET (node), QO_NODE_IDX (last_node));
 }
 
 /*
@@ -9823,6 +10046,10 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  goto exit;
 	}
+      if (inner->is_subquery && !qo_plan_scans_subquery_dep_last (outer_plan, inner_node))
+	{
+	  goto exit;
+	}
       inner_plan = qo_find_best_nljoin_inner_plan_on_info (outer_plan, inner, join_type, idx_join_plan_n);
       if (inner_plan == NULL)
 	{
@@ -9881,7 +10108,8 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
     QO_PLAN *gby_outer_plan = qo_find_groupby_skip_outer_on_info (outer_plan->info);
     QO_INFO *inner_info = inner_plan->info;
 
-    if (par_outer_plan != NULL && par_outer_plan != outer_plan)
+    if (par_outer_plan != NULL && par_outer_plan != outer_plan
+	&& (!inner_info->is_subquery || qo_plan_scans_subquery_dep_last (par_outer_plan, inner_node)))
       {
 	inner_plan = qo_find_best_nljoin_inner_plan_on_info (par_outer_plan, inner_info, join_type, idx_join_plan_n);
 	if (inner_plan != NULL)
@@ -9895,7 +10123,8 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
       }
 
     /* and from the outer kept to drive a GROUP BY skip (qo_plan_drives_groupby_skip_only ()) */
-    if (gby_outer_plan != NULL && gby_outer_plan != outer_plan)
+    if (gby_outer_plan != NULL && gby_outer_plan != outer_plan
+	&& (!inner_info->is_subquery || qo_plan_scans_subquery_dep_last (gby_outer_plan, inner_node)))
       {
 	inner_plan = qo_find_best_nljoin_inner_plan_on_info (gby_outer_plan, inner_info, join_type, idx_join_plan_n);
 	if (inner_plan != NULL)
@@ -10754,6 +10983,7 @@ qo_alloc_planner (QO_ENV * env)
 
   planner->node_info = NULL;
   planner->distinct_info = NULL;
+  planner->subquery_info = NULL;
   planner->join_info = NULL;
   planner->best_info = NULL;
   planner->cp_info = NULL;
@@ -10799,6 +11029,11 @@ qo_planner_free (QO_PLANNER * planner)
   if (planner->distinct_info)
     {
       free_and_init (planner->distinct_info);
+    }
+
+  if (planner->subquery_info)
+    {
+      free_and_init (planner->subquery_info);
     }
 
   if (planner->join_info)
@@ -11948,7 +12183,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   {
     int kept = 0;
     int idx_join_plan_n = 0;
-    QO_INFO *sm_tail_info;
+    QO_INFO *sm_tail_info, *subquery_tail_info;
 
     /* for path-term, if join order is correct, we can use follow. */
     if (follow_term && (QO_NODE_IDX (QO_TERM_TAIL (follow_term)) == QO_NODE_IDX (tail_node)))
@@ -11985,6 +12220,15 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	kept +=
 	  qo_examine_nl_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
 			      &sarged_terms, &pinned_subqueries, idx_join_plan_n, &sm_join_terms);
+
+	/* STEP 5-3': examine nl-join with the SEMI / ANTI JOIN inner run as its subquery */
+	subquery_tail_info = qo_get_subquery_info (planner, tail_node, visited_nodes);
+	if (subquery_tail_info != NULL && join_type == JOIN_INNER)
+	  {
+	    kept +=
+	      qo_examine_nl_join (new_info, join_type, head_info, subquery_tail_info, &nl_join_terms, &duj_terms,
+				  &afj_terms, &sarged_terms, &pinned_subqueries, 0, &EMPTY_SET);
+	  }
 
 	/* there is no semi/anti merge join: a SEMI JOIN inner is merge joined read with the duplicates removed
 	 * (distinct_info), before or after the side it depends on */
@@ -12628,6 +12872,22 @@ qo_is_seq_scan (QO_PLAN * plan)
 }
 
 /*
+ * qo_is_subquery_scan () -
+ *   return: true/false
+ *   plan(in):
+ */
+bool
+qo_is_subquery_scan (QO_PLAN * plan)
+{
+  if (plan && plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.scan_method == QO_SCANMETHOD_SUBQUERY_SCAN)
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
  * qo_node_using_index_forced () - check whether the node carries an explicit
  *   USE INDEX / FORCE INDEX directive that points at a specific index
  *   return: true if a positive index hint (USE or FORCE) is present
@@ -13049,6 +13309,15 @@ qo_search_planner (QO_PLANNER * planner)
 	  goto end;
 	}
       memset (planner->distinct_info, 0, size);
+
+      planner->subquery_info = (QO_INFO **) malloc (size);
+      if (planner->subquery_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  plan = NULL;
+	  goto end;
+	}
+      memset (planner->subquery_info, 0, size);
     }
 
   for (i = 0; i < (signed) planner->N; ++i)
@@ -13298,6 +13567,7 @@ qo_search_planner (QO_PLANNER * planner)
 
   /* a SEMI JOIN inner that may be joined the other way round needs its plan ready before the search starts */
   qo_prepare_distinct_info (planner);
+  qo_prepare_subquery_info (planner);
 
   /*
    * Now remaining_subqueries should contain only entries that depend
@@ -17752,6 +18022,12 @@ qo_plan_scan_print_json (QO_PLAN * plan)
       scan_string = "TABLE SCAN";
       break;
 
+    case QO_SCANMETHOD_SUBQUERY_SCAN:
+      /* replaced with the subquery before the XASL is made (pt_plan_semi_anti_as_exists ()) */
+      assert (false);
+      scan_string = "SUBQUERY";
+      break;
+
     case QO_SCANMETHOD_INDEX_SCAN:
     case QO_SCANMETHOD_INDEX_ORDERBY_SCAN:
     case QO_SCANMETHOD_INDEX_GROUPBY_SCAN:
@@ -18112,6 +18388,12 @@ qo_plan_scan_print_text (FILE * fp, QO_PLAN * plan, int indent)
     {
     case QO_SCANMETHOD_SEQ_SCAN:
       fprintf (fp, "TABLE SCAN (%s)", class_name);
+      break;
+
+    case QO_SCANMETHOD_SUBQUERY_SCAN:
+      /* replaced with the subquery before the XASL is made (pt_plan_semi_anti_as_exists ()) */
+      assert (false);
+      fprintf (fp, "SUBQUERY (%s)", class_name);
       break;
 
     case QO_SCANMETHOD_INDEX_SCAN:

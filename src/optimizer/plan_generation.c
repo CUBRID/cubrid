@@ -3324,12 +3324,11 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 }
 
 /*
- * qo_plan_set_summary () - leave the costs and the cardinality of a plan on the SELECT it plans (qo_summary), where
- *      the plans of the queries holding that SELECT count them (qo_plan_compute_subquery_cost ())
+ * qo_plan_set_summary () - set the qo_summary of the select from the plan
  *   return: false on allocation failure
  *   env(in): The optimizer environment
  *   plan(in): The plan
- *   xasl(in): The xasl tree generated from the plan; NULL for a plan only weighed (pt_plan_semi_anti_as_exists ())
+ *   xasl(in): The xasl tree generated from the plan; NULL if not generated
  */
 bool
 qo_plan_set_summary (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
@@ -3351,6 +3350,7 @@ qo_plan_set_summary (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
   summary->variable_cpu_cost = plan->variable_cpu_cost;
   summary->variable_io_cost = plan->variable_io_cost;
   summary->cardinality = (plan->info)->group_rows;
+  summary->projected_size = (plan->info)->projected_size;
   summary->xasl = xasl;
   select->info.query.q.select.qo_summary = summary;
 
