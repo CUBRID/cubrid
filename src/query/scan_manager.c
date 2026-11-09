@@ -3550,6 +3550,9 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
       isidp->scancache_inited = false;
     }
 
+  /* the attribute id mappings the key filter of the partition left built are freed here, as scan_close_scan () frees
+   * those of the last one: BTREE_INIT_SCAN () drops the pointers (CBRD-27866) */
+  btree_range_scan_free_matched_idx (BTS);
   BTREE_INIT_SCAN (BTS);
   BTS->btid_int = *btid_int;
   BTS->btid_int.sys_btid = &isidp->indx_info->btid;

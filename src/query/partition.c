@@ -2058,10 +2058,11 @@ error:
 /*
  * partition_is_reguvar_const () - test if a regu_variable is a constant
  * return : true if constant, false otherwise
+ * pinfo (in) : pruning context
  * regu_var (in) :
  */
 static bool
-partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
+partition_is_reguvar_const (const PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * regu_var)
 {
   REGU_VARIABLE_LIST op;
 
@@ -2079,16 +2080,16 @@ partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
     case TYPE_OUTARITH:
       {
 	ARITH_TYPE *arithptr = regu_var->value.arithptr;
-	if (arithptr->leftptr != NULL && !partition_is_reguvar_const (arithptr->leftptr))
+	if (arithptr->leftptr != NULL && !partition_is_reguvar_const (pinfo, arithptr->leftptr))
 	  {
 	    return false;
 	  }
-	if (arithptr->rightptr != NULL && !partition_is_reguvar_const (arithptr->rightptr))
+	if (arithptr->rightptr != NULL && !partition_is_reguvar_const (pinfo, arithptr->rightptr))
 	  {
 	    return false;
 	  }
 
-	if (arithptr->thirdptr != NULL && !partition_is_reguvar_const (arithptr->thirdptr))
+	if (arithptr->thirdptr != NULL && !partition_is_reguvar_const (pinfo, arithptr->thirdptr))
 	  {
 	    return false;
 	  }
@@ -2100,7 +2101,7 @@ partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
 	op = regu_var->value.funcp->operand;
 	while (op != NULL)
 	  {
-	    if (!partition_is_reguvar_const (&op->value))
+	    if (!partition_is_reguvar_const (pinfo, &op->value))
 	      {
 		return false;
 	      }
@@ -2115,6 +2116,13 @@ partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
 	 * can cache a db_value in cache_dbvalp for TYPE_ATTR_ID.
 	 * This cached value is used specifically for partition pruning purposes. */
 	if (regu_var->value.attr_descr.cache_dbvalp == NULL)
+	  {
+	    return false;
+	  }
+	/* pruned per outer row, a column of the inner on the value side of a term still caches the value the scan
+	 * read for the previous outer row: only the partition expression's own cached value is a constant
+	 * (CBRD-27866) */
+	if (pinfo->use_join_values && !pinfo->key_value_cached)
 	  {
 	    return false;
 	  }
@@ -2257,7 +2265,7 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
   *is_value = false;
   db_make_null (value_p);
 
-  if (!partition_is_reguvar_const (src))
+  if (!partition_is_reguvar_const (pinfo, src))
     {
       return NO_ERROR;
     }
@@ -2515,7 +2523,8 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
   db_make_null (&old_collection_val);
   db_make_null (&new_collection_val);
 
-  if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR)
+  /* no value: the term does not prune, as a join term whose outer value is not set yet (CBRD-27866) */
+  if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR && is_value)
     {
       if (pinfo->partition_type == DB_PARTITION_RANGE)
 	{
@@ -2582,6 +2591,7 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		  goto cleanup;
 		}
 	      partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
+	      pinfo->key_value_cached = true;
 
 	      if (partition_get_value_from_regu_var (pinfo, part_expr, &part_key_val, &is_value) == NO_ERROR)
 		{
@@ -2620,6 +2630,7 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	      goto cleanup;
 	    }
 	  partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
+	      pinfo->key_value_cached = true;
 
 	  /* the partition expression's value: the partition key's domain */
 	  status = partition_prune (pinfo, part_expr, op, NULL, pruned);
@@ -2633,6 +2644,7 @@ cleanup:
     }
 
   partition_set_cache_dbvalp_for_attribute (part_expr, NULL);
+  pinfo->key_value_cached = false;
   pr_clear_value (&old_collection_val);
   pr_clear_value (&new_collection_val);
   pr_clear_value (&part_key_val);
@@ -2991,6 +3003,7 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->is_attr_info_inited = false;
   pinfo->is_from_cache = false;
   pinfo->use_join_values = false;
+  pinfo->key_value_cached = false;
 }
 
 /*

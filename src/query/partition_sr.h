@@ -91,6 +91,8 @@ struct pruning_context
   bool is_attr_info_inited;
   bool is_from_cache;		/* true if this context is cached */
   bool use_join_values;		/* a join term's outer value (TYPE_CONSTANT) prunes: partition_prune_spec_for_row () */
+  bool key_value_cached;	/* the partition expression's attribute holds the value it is evaluated on
+				 * (partition_prune_for_function ()) */
 };
 
 extern void partition_init_pruning_context (PRUNING_CONTEXT * pinfo);
