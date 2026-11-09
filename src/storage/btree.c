@@ -6246,6 +6246,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   VPID_SET_NULL (&(root_header->node.next_vpid));
   root_header->node.node_level = 1;
   root_header->node.max_key_len = 0;
+  /* a root leaf has no fence keys and is never compressed; a multi-column index reads this field as the number of
+   * leading key columns the keys of the leaf share */
+  root_header->node.common_prefix = 0;
 
   if (unique_pk)
     {
@@ -21833,6 +21836,36 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
 	}
     }
 
+  while (!bts->end_scan && bts->force_restart_from_root)
+    {
+      /* Descending scan could not latch the previous leaf and returned without a key, its leaf released: reading the
+       * current position here would make a row of the released leaf's slot 0. Locate again as btree_range_scan does,
+       * from the start if no key was found yet, else from the last consumed key. */
+      assert (bts->use_desc_index);
+      btree_log_if_enabled ("Notification: descending key info scan had to be interrupted and restarted from root.\n");
+      if (bts->C_page != NULL)
+	{
+	  /* The btree_range_scan_resume() function assumes that cur_key is decompressed.
+	   * Decompress it before doing pgbuf_unfix() on C_page. */
+	  btree_check_decompress_key (bts);
+	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	}
+      if (!bts->is_scan_started)
+	{
+	  error_code = btree_range_scan_start (thread_p, bts);
+	}
+      else
+	{
+	  error_code = btree_range_scan_resume (thread_p, bts);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
   if (bts->end_scan)
     {
       /* Reached the end of leaf level */
@@ -30476,6 +30509,16 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
     }
   /* Pages are still linked. */
 
+  if (!bts->is_scan_started && DB_IS_NULL (&bts->cur_key))
+    {
+      /* No key was read yet, so there is no key to look up again. Where the scan starts depends on how the lower limit
+       * compares (a limit of another type compares equal to several keys): let btree_range_scan_start locate it again
+       * from the root. Nothing was returned yet, so starting over repeats nothing. */
+      bts->force_restart_from_root = true;
+      pgbuf_unfix_and_init (thread_p, prev_leaf);
+      return NO_ERROR;
+    }
+
   /* Fix current page too. */
   bts->C_page = pgbuf_fix (thread_p, &bts->C_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (bts->C_page == NULL)
@@ -30485,17 +30528,6 @@ btree_range_scan_descending_fix_prev_leaf (THREAD_ENTRY * thread_p, BTREE_SCAN *
       return error_code;
     }
 
-  /* Before searching the key in leaf page, we must make sure to handle this next peculiar case: 1. First key search of
-   * descending scan. Lower key limit is located as first in leaf page. 2. Range scan says strictly less than lower key
-   * limit. 3. The algorithm tries to fix go to previous leaf. However, bts->cur_key does not yet store any key values.
-   * Set bts->cur_key to lower key limit of range. NOTE: If there is no lower limit, this case cannot happen. */
-  if (!bts->is_scan_started && bts->key_range.lower_key != NULL && DB_IS_NULL (&bts->cur_key))
-    {
-      pr_clone_value (bts->key_range.lower_key, &bts->cur_key);
-      bts->clear_cur_key = true;
-      /* Next steps will go before bts->key_range.lower_key, which compares as its bound */
-      search_key.bound = bts->key_range.lower_bound;
-    }
   /* We must have a non-null current key. */
   assert (!DB_IS_NULL (&bts->cur_key));
   assert (bts->is_cur_key_compressed == false);
