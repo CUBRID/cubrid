@@ -1851,7 +1851,7 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	if (DB_IS_NULL (&tmp_value))
 	  {
 	    /* '' or a whitespace-only string with numeric_empty_string_as_null */
-	    db_value_domain_init (value, DB_TYPE_NUMERIC, precision, scale);
+	    db_value_put_null (value);
 	    break;
 	  }
 
