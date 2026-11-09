@@ -75,7 +75,7 @@ static const std::vector<std::string> sp_args_entry_names
   SP_ATTR_COMMENT
 };
 
-static int sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint);
+static int sp_add_stored_procedure_internal (SP_INFO &info, MOP sp_mop, bool has_savepoint);
 static int sp_builtin_init ();
 
 // TODO
@@ -290,7 +290,7 @@ int sp_builtin_install ()
   int error = NO_ERROR;
   for (sp_info &info : sp_builtin_definition)
     {
-      error = sp_add_stored_procedure_internal (info, false);
+      error = sp_add_stored_procedure_internal (info, NULL, false);
       assert (error == NO_ERROR);
     }
   return error;
@@ -339,11 +339,29 @@ sp_check_param_type_supported (DB_TYPE domain_type, SP_MODE_ENUM mode)
 int
 sp_add_stored_procedure (SP_INFO &info)
 {
-  return sp_add_stored_procedure_internal (info, true);
+  return sp_add_stored_procedure_internal (info, NULL, true);
 }
 
+/*
+ * sp_replace_stored_procedure - overwrite an existing _db_stored_procedure row with info
+ *
+ * Note: The row keeps its OID, so the privileges granted on it in _db_auth and in the grantees' authorization
+ *       are kept. The caller deletes the old argument rows and the old code row in advance.
+ */
+int
+sp_replace_stored_procedure (MOP sp_mop, SP_INFO &info)
+{
+  assert (sp_mop != NULL);
+  return sp_add_stored_procedure_internal (info, sp_mop, true);
+}
+
+/*
+ * sp_add_stored_procedure_internal - write a _db_stored_procedure row and its argument rows
+ *
+ * Note: If sp_mop is NULL, a new row is inserted. Otherwise sp_mop is updated.
+ */
 static int
-sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
+sp_add_stored_procedure_internal (SP_INFO &info, MOP sp_mop, bool has_savepoint)
 {
   DB_OBJECT *classobj_p, *object_p, *sp_args_obj;
   DB_OTMPL *obt_p = NULL;
@@ -373,7 +391,14 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	  }
       }
 
-    obt_p = dbt_create_object_internal (classobj_p);
+    if (sp_mop == NULL)
+      {
+	obt_p = dbt_create_object_internal (classobj_p);
+      }
+    else
+      {
+	obt_p = dbt_edit_object (sp_mop);
+      }
     if (!obt_p)
       {
 	assert (er_errid () != NO_ERROR);
@@ -571,7 +596,10 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
       {
 	assert (er_errid () != NO_ERROR);
 	err = er_errid ();
-	obj_delete (object_p);
+	if (sp_mop == NULL)
+	  {
+	    obj_delete (object_p);
+	  }
 	goto error;
       }
 
