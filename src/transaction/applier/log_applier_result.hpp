@@ -57,6 +57,8 @@ struct la_result
   int rectype;
   int error;
   LOG_LSA commit_lsa;		/* marks this commit applied in the gate; releases transactions that depend on it */
+  LOG_LSA *merged_lsa;		/* the task's merged fragments, also marked applied in the gate; freed at retire */
+  int merged_count;
   LOG_LSA committed_rep_lsa;	/* applied log position; advances la_Info.committed_rep_lsa (restart point) */
   time_t log_record_time;
   int total_rows;		/* items the worker went through, as the serial applier counted them; summed into
@@ -100,6 +102,8 @@ la_result_init (LA_RESULT *result, const LA_TASK *task, int worker_idx)
   result->tranid = task->tranid;
   result->rectype = task->rectype;
   result->commit_lsa = task->commit_lsa;
+  result->merged_lsa = task->merged_lsa;
+  result->merged_count = task->merged_count;
   LSA_SET_NULL (&result->committed_rep_lsa);
   result->log_record_time = task->log_record_time;
   result->has_items = task->has_items;

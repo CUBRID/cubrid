@@ -548,7 +548,7 @@ static void la_clear_all_repl_lists (void);
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
-static int la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq);
+static int la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq, UINT64 * unit_key_hash);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
@@ -688,6 +688,62 @@ bool
 la_force_shutdown (void)
 {
   return (la_applier_need_shutdown || la_applier_shutdown_by_signal) ? true : false;
+}
+
+/*
+ * la_coordinator_merge_fragment() - move a fragment into the parked fragment task of the previous change of the
+ *                                   same key
+ *   return: true if merged; false leaves the task untouched to be scheduled on its own
+ *   context(in): unused
+ *   target(in/out): the parked task (la_pending_find_merge_target: same single key, its last fragment is the
+ *                   dependency of task)
+ *   task(in/out): the fragment just read; its slot is freed once its items have moved
+ *
+ * Note:
+ *   The items are applied after the target's in the same slave transaction, as they would have been one task
+ *   later. A fragment already applied before a restart (marked, or at or below last_committed_lsa) is skipped as
+ *   a whole by the worker, so it must not share a task with one that is not.
+ */
+static bool
+la_coordinator_merge_fragment (void *context, LA_TASK * target, LA_TASK * task)
+{
+  LA_APPLY *dst;
+  LA_APPLY *src;
+  LA_ITEM *item;
+
+  (void) context;
+  assert (target != NULL && task != NULL);
+
+  dst = target->apply;
+  src = task->apply;
+  if (target->rectype != LOG_SYSOP_END || task->rectype != LOG_SYSOP_END || dst == NULL || src == NULL
+      || dst->is_long_trans || src->is_long_trans || src->head == NULL)
+    {
+      return false;
+    }
+
+  if (LSA_LE (&target->commit_lsa, &la_Info.last_committed_lsa) || la_applied_tx_marker_exists (&target->commit_lsa)
+      || LSA_LE (&task->commit_lsa, &la_Info.last_committed_lsa) || la_applied_tx_marker_exists (&task->commit_lsa))
+    {
+      return false;
+    }
+
+  while ((item = src->head) != NULL)
+    {
+      la_unlink_repl_item (src, item);
+      la_add_repl_item (dst, item);
+    }
+
+  /* the required LSA must stay below where either outer transaction is read again after a restart */
+  if (LSA_ISNULL (&dst->start_lsa) || (!LSA_ISNULL (&src->start_lsa) && LSA_LT (&src->start_lsa, &dst->start_lsa)))
+    {
+      LSA_COPY (&dst->start_lsa, &src->start_lsa);
+    }
+
+  free_and_init (src);
+  task->apply = NULL;
+
+  return true;
 }
 
 static int
@@ -938,6 +994,11 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
   if (result->error == NO_ERROR && total_rows > 0)
     {
       result->error = la_insert_applied_tx_marker (context, &task->commit_lsa);
+      /* serial fragments merged into this task commit with it, so each is marked in the same slave transaction */
+      for (int i = 0; result->error == NO_ERROR && i < task->merged_count; i++)
+	{
+	  result->error = la_insert_applied_tx_marker (context, &task->merged_lsa[i]);
+	}
     }
 
   if (result->error != NO_ERROR)
@@ -1095,6 +1156,7 @@ la_coordinator_initialize_resources (void)
   config.retire_entry = la_coordinator_retire_entry;
   config.store_progress = la_coordinator_store_progress;
   config.shutdown_requested = la_coordinator_shutdown_requested;
+  config.merge_task = la_coordinator_merge_fragment;
   config.context = NULL;
 
   return la_coordinator_initialize (&config);
@@ -4653,12 +4715,13 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
  *   lsa(in): LSA of the label record
  *   dependency_seq(out): dependency read from the label; NULL LSA if it cannot be read, which the caller must
  *                        not use: a NULL dependency means the transaction waits for no earlier commit
+ *   unit_key_hash(out): single key hash of an independent replication unit, 0 if none
  *
  * Note:
  *   Reads the data header that follows the record header, as la_retrieve_eot_time() does.
  */
 static int
-la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
+la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq, UINT64 * unit_key_hash)
 {
   int error = NO_ERROR;
   LOG_REC_WSET_LABEL *wset_label;
@@ -4667,6 +4730,7 @@ la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
   LOG_PAGE *pg;
 
   LSA_SET_NULL (dependency_seq);
+  *unit_key_hash = 0;
 
   pageid = lsa->pageid;
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
@@ -4686,6 +4750,7 @@ la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
 
   wset_label = (LOG_REC_WSET_LABEL *) ((char *) pg->area + offset);
   LSA_COPY (dependency_seq, &wset_label->dependency_seq);
+  *unit_key_hash = wset_label->unit_key_hash;
 
   return NO_ERROR;
 }
@@ -7350,7 +7415,12 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	  task.log_record_time = 0;
 	  task.apply = fragment;
 	  task.has_items = true;
-	  (void) la_wset_label_take (lrec->trid, &task.dependency_seq);
+	  (void) la_wset_label_take (lrec->trid, &task.dependency_seq, &task.unit_key_hash);
+	  if (fragment->is_long_trans)
+	    {
+	      /* holds the outer transaction's items too, not only the unit's */
+	      task.unit_key_hash = 0;
+	    }
 
 	  /* The outer transaction's final commit must wait for this fragment to commit first. */
 	  LSA_COPY (&sysop_apply->last_sysop_fragment_lsa, final);
@@ -7706,14 +7776,15 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
        * A label that cannot be read is read again: the error leaves final_lsa on this record. */
       {
 	LOG_LSA dependency_seq;
+	UINT64 unit_key_hash;
 
-	error = la_get_wset_label (pg_ptr, final, &dependency_seq);
+	error = la_get_wset_label (pg_ptr, final, &dependency_seq, &unit_key_hash);
 	if (error != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to read LOG_DUMMY_WSET_LABEL");
 	    return error;
 	  }
-	la_wset_label_store (lrec->trid, &dependency_seq);
+	la_wset_label_store (lrec->trid, &dependency_seq, unit_key_hash);
 	LA_DEBUG_LOG (ARG_FILE_LINE, "coordinator ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
 		      (long long) dependency_seq.pageid, (int) dependency_seq.offset,
 		      (long long) final->pageid, (int) final->offset);

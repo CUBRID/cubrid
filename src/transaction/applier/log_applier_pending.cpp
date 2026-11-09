@@ -195,6 +195,10 @@ la_pending_clear (void)
     {
       node = la_Pending_head;
       la_Pending_head = node->next;
+      if (node->task.merged_lsa != NULL)
+	{
+	  free_and_init (node->task.merged_lsa);
+	}
       free_and_init (node);
       assert (la_Pending_count > 0);
       la_Pending_count--;
@@ -237,4 +241,47 @@ la_pending_foreach (void (*fn) (const LA_TASK *task, void *arg), void *arg)
     {
       fn (&node->task, arg);
     }
+}
+
+/*
+ * la_pending_find_merge_target() - find the parked fragment task a later fragment of the same key can join
+ *   return: the parked task, or NULL
+ *   dependency_seq(in): the later fragment's dependency
+ *   unit_key_hash(in): the later fragment's single key hash, not 0
+ *
+ * Note:
+ *   The later fragment's dependency is the SYSOP_END of the previous change of its key. When that change is the
+ *   last fragment of a parked task, which has not gone to a worker yet, the later fragment can be applied by the
+ *   same task right after it.
+ */
+LA_TASK *
+la_pending_find_merge_target (const LOG_LSA *dependency_seq, UINT64 unit_key_hash)
+{
+  LA_PENDING_NODE *node;
+
+  assert (dependency_seq != NULL);
+
+  if (LSA_ISNULL (dependency_seq))
+    {
+      return NULL;
+    }
+
+  for (node = la_Pending_head; node != NULL; node = node->next)
+    {
+      const LOG_LSA *last;
+
+      if (node->task.unit_key_hash == 0 || node->task.unit_key_hash != unit_key_hash)
+	{
+	  continue;
+	}
+
+      last = (node->task.merged_count > 0) ? &node->task.merged_lsa[node->task.merged_count - 1]
+	: &node->task.commit_lsa;
+      if (LSA_EQ (last, dependency_seq))
+	{
+	  return &node->task;
+	}
+    }
+
+  return NULL;
 }

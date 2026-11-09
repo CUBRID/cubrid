@@ -32,6 +32,7 @@
 static bool la_Wset_label_stored = false;
 static int la_Wset_label_tranid = 0;
 static LOG_LSA la_Wset_label_dependency_seq = LSA_INITIALIZER;
+static UINT64 la_Wset_label_unit_key_hash = 0;
 
 /*
  * la_wset_label_store - retain a writeset label until its transaction boundary is read
@@ -40,15 +41,17 @@ static LOG_LSA la_Wset_label_dependency_seq = LSA_INITIALIZER;
  *
  *   tranid(in): transaction identified by the label
  *   dependency_seq(in): dependency carried by the label
+ *   unit_key_hash(in): hash of the single key of an independent replication unit, or 0
  */
 void
-la_wset_label_store (int tranid, const LOG_LSA *dependency_seq)
+la_wset_label_store (int tranid, const LOG_LSA *dependency_seq, UINT64 unit_key_hash)
 {
   assert (dependency_seq != NULL);
 
   la_Wset_label_stored = true;
   la_Wset_label_tranid = tranid;
   LSA_COPY (&la_Wset_label_dependency_seq, dependency_seq);
+  la_Wset_label_unit_key_hash = unit_key_hash;
 }
 
 /*
@@ -69,15 +72,21 @@ la_wset_label_matches (int tranid)
  *
  *   tranid(in): transaction boundary consuming the label
  *   dependency_seq(out): dependency carried by the label; may be NULL when only consumption is needed
+ *   unit_key_hash(out): single key hash carried by the label, 0 if none; may be NULL
  *
  * Note: a transaction mismatch leaves the label pending for its own boundary.
  */
 bool
-la_wset_label_take (int tranid, LOG_LSA *dependency_seq)
+la_wset_label_take (int tranid, LOG_LSA *dependency_seq, UINT64 *unit_key_hash)
 {
   if (dependency_seq != NULL)
     {
       LSA_SET_NULL (dependency_seq);
+    }
+
+  if (unit_key_hash != NULL)
+    {
+      *unit_key_hash = 0;
     }
 
   if (!la_wset_label_matches (tranid))
@@ -90,8 +99,14 @@ la_wset_label_take (int tranid, LOG_LSA *dependency_seq)
       LSA_COPY (dependency_seq, &la_Wset_label_dependency_seq);
     }
 
+  if (unit_key_hash != NULL)
+    {
+      *unit_key_hash = la_Wset_label_unit_key_hash;
+    }
+
   la_Wset_label_stored = false;
   LSA_SET_NULL (&la_Wset_label_dependency_seq);
+  la_Wset_label_unit_key_hash = 0;
 
   return true;
 }

@@ -249,7 +249,7 @@ static void log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TD
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
-static void log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static void log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 unit_key_hash);
 static const char *log_sysop_fallback_reason (const LOG_TDES * tdes, int repl_start_index);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
@@ -4936,17 +4936,29 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 				     int data_size, const char *data, bool by_keys, size_t key_begin,
 				     LOG_LSA * sysop_end_lsa_out)
 {
+  UINT64 unit_key_hash = 0;
+
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   if (by_keys)
     {
       wset_order_find_sysop_key_dependency (tdes, key_begin, &tdes->wset_dependency_seq);
+      /* one key, possibly collected more than once (an INCR of two columns of one row) */
+      unit_key_hash = tdes->wset_hashes[key_begin].hash;
+      for (size_t i = key_begin; i < tdes->wset_hashes.size (); i++)
+	{
+	  if (tdes->wset_hashes[i].kind != LOG_WSET_KIND_WRITE || tdes->wset_hashes[i].hash != unit_key_hash)
+	    {
+	      unit_key_hash = 0;
+	      break;
+	    }
+	}
     }
   else
     {
       wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_seq);
     }
-  log_append_wset_label_with_lock (thread_p, tdes);
+  log_append_wset_label_with_lock (thread_p, tdes, unit_key_hash);
   log_append_sysop_end_internal (thread_p, tdes, sysop_end, data_size, data, true, sysop_end_lsa_out);
   if (by_keys)
     {
@@ -5091,7 +5103,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
    * decide its label before a commit-order transaction logged ahead of it raised the history floor: a statement
    * would then not be a barrier on the slave. */
   wset_order_find_dependency (tdes, &tdes->wset_dependency_seq);
-  log_append_wset_label_with_lock (thread_p, tdes);
+  log_append_wset_label_with_lock (thread_p, tdes, 0);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
   wset_order_record_commit (tdes, commit_lsa);
 
@@ -5102,13 +5114,14 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
  * log_append_wset_label_with_lock - append the writeset dependency label record
  *
  *   tdes(in): transaction whose selected writeset dependency is carried
+ *   unit_key_hash(in): hash of the only key of an independent replication unit ordered by keys, or 0
  *
  * NOTE: Appended inside prior_lsa_mutex, immediately before the transaction's commit record.
  *       No-op for crash recovery; read by the replication applier to set the apply task's
  *       dependency_seq.
  */
 static void
-log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 unit_key_hash)
 {
   LOG_REC_WSET_LABEL *wset_label;
   LOG_PRIOR_NODE *node;
@@ -5122,6 +5135,7 @@ log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   wset_label = (LOG_REC_WSET_LABEL *) node->data_header;
   LSA_COPY (&wset_label->dependency_seq, &tdes->wset_dependency_seq);
+  wset_label->unit_key_hash = unit_key_hash;
 
   (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
 }
