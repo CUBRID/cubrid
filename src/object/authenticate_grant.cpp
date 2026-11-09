@@ -1667,7 +1667,7 @@ end:
 }
 
 /*
- * apply_grants -  Work function for update_cache.
+ * apply_grants -  Work function for au_compute_privilege.
  *   return: error code
  *   auth(in):  authorization object
  *   class(in):  class being authorized
