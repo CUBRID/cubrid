@@ -30522,6 +30522,15 @@ qexec_analytic_can_stream (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_st
       return false;
     }
 
+  if (analytic_state->is_last_run && (analytic_state->xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+      && XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
+    {
+      /* a selected inst_num () is evaluated at the intermediate stage when any evaluation of the xasl skips its sort
+       * (qexec_analytic_eval_instnum_pred), so its value depends on when the rows are taken; that stays on the
+       * existing path */
+      return false;
+    }
+
   for (i = 0; i < analytic_state->func_count; i++)
     {
       ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
