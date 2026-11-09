@@ -1534,6 +1534,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   int tran_index;
   LOCK lock_mode = NULL_LOCK;
   bool own_sysop;
+  bool flush_mark;
 
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
@@ -1554,7 +1555,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
       log_sysop_start (thread_p);
     }
 
-  if (own_sysop && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+  flush_mark = own_sysop && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
+  if (flush_mark)
     {
       repl_start_flush_mark (thread_p);
     }
@@ -1596,11 +1598,11 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 	{
 	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, prior_val);
 	}
+    }
 
-      if (own_sysop)
-	{
-	  repl_end_flush_mark (thread_p, false);
-	}
+  if (flush_mark)
+    {
+      repl_end_flush_mark (thread_p, false);
     }
 
   if (own_sysop)
@@ -1611,6 +1613,11 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   return NO_ERROR;
 
 exit_on_error:
+
+  if (flush_mark)
+    {
+      repl_end_flush_mark (thread_p, true);
+    }
 
   if (own_sysop)
     {
