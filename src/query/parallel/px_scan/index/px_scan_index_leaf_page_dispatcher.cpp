@@ -511,7 +511,8 @@ retry:
     return NO_ERROR;
   }
 
-  /* like btree_range_scan_descending_fix_prev_leaf: the left leaf is still adjacent while it links to the last leaf.
+  /* like btree_range_scan_descending_fix_prev_leaf: the left leaf is still adjacent while it links to the last leaf
+   * and the last leaf is unchanged since it was handed out.
    * the scan's table lock keeps the index file alive, so skip pgbuf_fix_if_not_deallocated's sector check. */
   int
   leaf_page_dispatcher::fix_prev_leaf (THREAD_ENTRY *thread_p, PAGE_PTR &out_page)
@@ -531,6 +532,30 @@ retry:
       }
     if (!BTREE_IS_PAGE_VALID_LEAF (thread_p, out_page)
 	|| !VPID_EQ (&btree_get_node_header (thread_p, out_page)->next_vpid, &m_last_leaf_vpid))
+      {
+	pgbuf_unfix_and_init (thread_p, out_page);
+	return NO_ERROR;
+      }
+
+    /* the last leaf may have been merged into this one and its page reused by this leaf's split, which links the same
+     * VPID again. a reused page is logged anew, so compare the LSA. this leaf stays latched until the check is done
+     * (left to right, as splits and merges latch), so the last leaf cannot be merged and reused meanwhile. */
+    PAGE_PTR last_page = pgbuf_fix (thread_p, &m_last_leaf_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+				    PGBUF_UNCONDITIONAL_LATCH);
+    if (last_page == nullptr)
+      {
+	pgbuf_unfix_and_init (thread_p, out_page);
+	int err = er_errid ();
+	if (err != NO_ERROR && err != ER_PB_BAD_PAGEID)
+	  {
+	    return err;
+	  }
+	er_clear ();
+	return NO_ERROR;
+      }
+    bool last_unchanged = LSA_EQ (pgbuf_get_lsa (last_page), &m_last_leaf_lsa);
+    pgbuf_unfix (thread_p, last_page);
+    if (!last_unchanged)
       {
 	pgbuf_unfix_and_init (thread_p, out_page);
       }
