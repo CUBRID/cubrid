@@ -2129,8 +2129,7 @@ qo_top_plan_new (QO_PLAN * plan)
       plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
 
       /* GROUP BY */
-      /* if we have rollup, we do not skip the group by */
-      if (group_by && !group_by->flag.with_rollup)
+      if (group_by)
 	{
 	  PT_NODE *group_sort_list = NULL;
 
@@ -14036,7 +14035,7 @@ qo_search_planner (QO_PLANNER * planner)
 	}
 
       /* check direction of the first order by column. */
-      if (tree->info.query.q.select.group_by != NULL && tree->info.query.q.select.group_by->flag.with_rollup == false)
+      if (tree->info.query.q.select.group_by != NULL)
 	{
 	  /* if we have group by and the hint, we allow the hint only if we have group by descending on first column.
 	   * Otherwise we clear it */
@@ -18087,8 +18086,6 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       /* is for group_by skip */
       if (group_by != NULL)
 	{
-	  assert (!group_by->flag.with_rollup);
-
 	  /* check for constant col's group node */
 	  pt_to_pos_descr_groupby (parser, &pos_descr, node, tree);
 	  if (pos_descr.pos_no > 0)
