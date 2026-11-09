@@ -77,9 +77,14 @@ sm_define_view_columns_spec (void)
       "IF ([attr].[is_nullable] = 1, 'YES', 'NO') AS [is_nullable], "
       "[dt].[type_name] AS [data_type], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[prec], NULL) AS [character_maximum_length], "
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d), "
+        /* TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH; integer -> bigint */
+        "CAST (IF ([dom].[prec] = %d, %d, [dom].[prec]) AS BIGINT), NULL) AS [character_maximum_length], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
+      "IF ([attr].[data_type] IN (%d, %d), "
+        /* TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH */
+        "CAST (IF ([dom].[prec] = %d, %d, [dom].[prec]) AS BIGINT) * [charset].[char_size], "
+        "NULL) AS [character_octet_length], "
       "CASE "
         /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column precision */
         "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN NULL "
@@ -94,12 +99,17 @@ sm_define_view_columns_spec (void)
         "WHEN [attr].[data_type] IN (%d, %d, %d, %d) THEN [dom].[scale] "
         "ELSE NULL "
       "END AS [numeric_scale], "
-      /* DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [datetime_precision], "
-      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d), [charset].[charset_name], NULL) AS [character_set_name], "
-      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d), [coll].[coll_name], NULL) AS [collation_name], "
+      "CASE "
+        /* DB_TYPE_DATETIME, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
+        "WHEN [attr].[data_type] IN (%d, %d, %d) THEN 3 "
+        /* DB_TYPE_DATE, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ */
+        "WHEN [attr].[data_type] IN (%d, %d, %d, %d, %d) THEN 0 "
+        "ELSE NULL "
+      "END AS [datetime_precision], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR, DB_TYPE_ENUMERATION */
+      "IF ([attr].[data_type] IN (%d, %d, %d), [charset].[charset_name], NULL) AS [character_set_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR, DB_TYPE_ENUMERATION */
+      "IF ([attr].[data_type] IN (%d, %d, %d), [coll].[coll_name], NULL) AS [collation_name], "
       "NULL AS [domain_catalog], "
       "NULL AS [domain_schema], "
       "NULL AS [domain_name], "
@@ -107,8 +117,8 @@ sm_define_view_columns_spec (void)
       "NULL AS [udt_schema], "
       "NULL AS [udt_name], "
       "CASE "
-        /* DB_TYPE_STRING/VARCHAR */
-        "WHEN [attr].[data_type] = %d THEN CONCAT ('VARCHAR(', [dom].[prec], ')') "
+        /* DB_TYPE_STRING/VARCHAR; TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('VARCHAR(', IF ([dom].[prec] = %d, %d, [dom].[prec]), ')') "
         /* DB_TYPE_CHAR */
         "WHEN [attr].[data_type] = %d THEN CONCAT ('CHAR(', [dom].[prec], ')') "
         /* DB_TYPE_BIT */
@@ -173,18 +183,21 @@ sm_define_view_columns_spec (void)
           "[idx].[class_of], [idx_key].[key_attr_name]"
       ") AS [key_info] "
         "ON [key_info].[class_of] = [cls] AND [key_info].[key_attr_name] = [attr].[attr_name] "
+          /* attr_type 1: CLASS ATTRIBUTE */
+          "AND [attr].[attr_type] <> 1 "
     "WHERE "
       AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
-    DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
-    DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
+    DB_TYPE_STRING, DB_TYPE_CHAR, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
     DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
     DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
-    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
-    DB_TYPE_STRING, DB_TYPE_CHAR,
-    DB_TYPE_STRING, DB_TYPE_CHAR,
-    DB_TYPE_STRING,
+    DB_TYPE_DATETIME, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
+    DB_TYPE_DATE, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ,
+    DB_TYPE_STRING, DB_TYPE_CHAR, DB_TYPE_ENUMERATION,
+    DB_TYPE_STRING, DB_TYPE_CHAR, DB_TYPE_ENUMERATION,
+    DB_TYPE_STRING, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
     DB_TYPE_CHAR,
     DB_TYPE_BIT,
     DB_TYPE_VARBIT,
