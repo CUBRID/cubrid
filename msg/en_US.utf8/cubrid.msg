@@ -1507,8 +1507,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1392 Sensitivity label %1$s "%2$s" already exists.
 1393 Sensitivity label %1$s "%2$s" does not exist.
+1394 Sensitivity label %1$s "%2$s" is referenced by a label.
 
-1394 Last Error
+1395 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

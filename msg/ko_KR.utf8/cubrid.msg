@@ -1506,8 +1506,9 @@ $ LOADDB
 
 1392 Sensitivity label %1$s "%2$s"이(가) 이미 존재합니다.
 1393 Sensitivity label %1$s "%2$s"이(가) 존재하지 않습니다.
+1394 Sensitivity label %1$s "%2$s"을(를) 참조하는 라벨이 있습니다.
 
-1394 마지막 에러
+1395 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
