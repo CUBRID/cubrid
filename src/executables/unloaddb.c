@@ -230,7 +230,7 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
     }
 
   data_format = utility_get_option_int_value (arg_map, UNLOAD_DATA_FORMAT_S);
-  if (data_format < OBJECT_FORMAT_TEXT && data_format >= OBJECT_FORMAT_LAST)
+  if (data_format < OBJECT_FORMAT_TEXT || data_format >= OBJECT_FORMAT_LAST)
     {
       fprintf (stderr, "invalid '--%s' option value: %d\n", UNLOAD_DATA_FORMAT_L, data_format);
       goto end;

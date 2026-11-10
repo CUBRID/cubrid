@@ -2114,10 +2114,20 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 
   if (data_format != OBJECT_FORMAT_TEXT)
     {
+      /* end of records marker followed by the new line which closes the section */
       const BIN_REC_SIZE_TYPE end_of_records = BIN_END_OF_RECORDS;
+      char section_end[sizeof (end_of_records) + 1];
 
-      write (g_fd_handle, &end_of_records, sizeof (end_of_records));	/*  end of records */
-      write (g_fd_handle, "\n", 1);
+      memcpy (section_end, &end_of_records, sizeof (end_of_records));
+      section_end[sizeof (end_of_records)] = '\n';
+
+      if (write (g_fd_handle, section_end, sizeof (section_end)) != (ssize_t) sizeof (section_end))
+	{
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_IO_WRITE;
+	    }
+	}
     }
 
   TIMER_END ((g_sampling_records >= 0), &wi_unload_class);
@@ -2536,16 +2546,19 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 			ptr = (char *) malloc (len + 1);
 			if (ptr == NULL)
 			  {
+			    error = ER_OUT_OF_VIRTUAL_MEMORY;
+			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) (len + 1));
 			    goto exit_on_error;
 			  }
 		      }
 
-		    snprintf (ptr, len, "^E'%c%" PRId64 "|%s|%s'", dts, elo->size, elo->locator,
+		    /* the size has to include the terminating null, or the closing quote is cut off */
+		    snprintf (ptr, len + 1, "^E'%c%" PRId64 "|%s|%s'", dts, elo->size, elo->locator,
 			      elo->meta_data != NULL ? elo->meta_data : "");
 		    error = binary_print (obj_out, (u_char *) ptr, len, dt);
 		    if (ptr != tmp)
 		      {
-			free (ptr);
+			free_and_init (ptr);
 		      }
 		    if (error != NO_ERROR)
 		      {
@@ -2562,7 +2575,6 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 	  }
 	else
 	  {
-	    assert (false);
 	    if (g_data_format == OBJECT_FORMAT_TEXT)
 	      {
 		CHECK_PRINT_ERROR (text_print (obj_out, "NULL", 4, NULL));
