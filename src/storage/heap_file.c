@@ -4838,7 +4838,7 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   candidate.freespace = freespace;
   candidate.volid = vpid->volid;
   candidate.pageid = vpid->pageid;
-  bestspace->push_candidates (&candidate, 1);
+  bestspace->push_freed_page (candidate);
 }
 
 /*
