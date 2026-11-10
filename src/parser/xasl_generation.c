@@ -23623,6 +23623,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   char *set_text = NULL, *piece = NULL;
   unsigned int save_custom_print;
   int num_set_binds = 0;
+  PT_DBLINK_VALUE_CLASS set_value_class;
 
   assert (parser != NULL && statement != NULL);
 
@@ -23690,7 +23691,8 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       set_text = pt_append_string (parser, set_text, ea.lhs->info.name.original);
       set_text = pt_append_string (parser, set_text, " = ");
 
-      if (PT_IS_QUERY (ea.rhs))
+      set_value_class = pt_dblink_dml_classify_value (ea.rhs, pt_dblink_update_set_leaf, NULL);
+      if (set_value_class == PT_DBLINK_VALUE_LOCAL_BIND)
 	{
 	  set_text = pt_append_string (parser, set_text, "?");
 
@@ -23748,10 +23750,10 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else
 	{
-	  /* Re-check the shape rather than trusting the gate blindly: if pt_dblink_update_set_is_inscope and
-	   * this walk ever drift apart, an expression the gate would not have accepted must not be printed
-	   * into the remote statement. */
-	  if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
+	  /* The gate already accepted this value. Check it again here anyway. If
+	   * pt_dblink_update_set_is_inscope and this walk ever drift apart, a value the gate
+	   * would refuse must not reach the remote statement. */
+	  if (set_value_class != PT_DBLINK_VALUE_REMOTE_TEXT)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
 		      "remote UPDATE sink: SET value cannot be sent to the remote server as written");

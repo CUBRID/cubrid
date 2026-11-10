@@ -784,7 +784,30 @@ extern "C"
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
   extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
   extern bool pt_dblink_odku_value_is_bound (PT_NODE * value);
-  extern bool pt_dblink_dml_is_remote_only_expr (PT_NODE * expr);
+
+  /* Remote DML sink values (parser_support.c). pt_dblink_dml_classify_value () sorts a value by
+   * how the sink sends it. It asks a per-DML leaf function what each node is. */
+  typedef enum
+  {
+    PT_DBLINK_VALUE_REJECT,	/* cannot be sent */
+    PT_DBLINK_VALUE_REMOTE_TEXT,	/* printed into the remote statement and computed there */
+    PT_DBLINK_VALUE_LOCAL_BIND,	/* one value computed here, bound to a placeholder */
+    PT_DBLINK_VALUE_MIXED	/* remote text with values computed here bound inside it */
+  } PT_DBLINK_VALUE_CLASS;
+
+  /* what a node is to the DML classifying it. The classifier asks before looking into the node. */
+  typedef enum
+  {
+    PT_DBLINK_LEAF_NONE,	/* neither: looked into, or rejected */
+    PT_DBLINK_LEAF_REMOTE,	/* a column of the remote target, sent as written */
+    PT_DBLINK_LEAF_LOCAL	/* one value computed here and bound */
+  } PT_DBLINK_LEAF_KIND;
+
+  typedef PT_DBLINK_LEAF_KIND (*PT_DBLINK_LEAF_FN) (PT_NODE * node, void *arg);
+
+  extern PT_DBLINK_VALUE_CLASS pt_dblink_dml_classify_value (PT_NODE * expr, PT_DBLINK_LEAF_FN leaf_fn, void *arg);
+  extern PT_DBLINK_LEAF_KIND pt_dblink_update_set_leaf (PT_NODE * node, void *arg);
+
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
