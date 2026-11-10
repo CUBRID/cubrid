@@ -22213,10 +22213,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       if (xasl->spec_list)
 	{
 	  /* Decide which scan will use fixed flags and which won't. There are several cases here: 1. Do not use fixed
-	   * scans if locks on objects are required. 2. Disable all fixed scans if any index scan is used (this is
-	   * legacy and should be reconsidered). 3. Disable fixed scan for outer scans. Fixed cannot be allowed while
-	   * new scans start which also need to fix pages. This may lead to page deadlocks. NOTE: Only the innermost
-	   * scans are allowed fixed scans. */
+	   * scans if locks on objects are required. 2. If any index scan is used, only the innermost scan of the chain
+	   * may be fixed, and only when it reads the heap sequentially: it releases its page before another level of the
+	   * chain runs (heap_next () at the end of the heap, scan_handle_single_scan () on an early stop). 3. Disable
+	   * fixed scan for outer scans. Fixed cannot be allowed while new scans start which also need to fix pages. This
+	   * may lead to page deadlocks. NOTE: Only the innermost scans are allowed fixed scans. */
 	  if (COMPOSITE_LOCK (xasl->scan_op_type))
 	    {
 	      /* Do locking on each instance instead of composite locking */
@@ -22263,8 +22264,27 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	  if (has_index_scan)
 	    {
-	      /* Index found, no fixed is allowed */
-	      fixed_scan_xasl = NULL;
+	      /* Index found: only an innermost sequential heap scan stays fixed */
+	      for (xptr = xasl; xptr->scan_ptr != NULL; xptr = xptr->scan_ptr)
+		{
+		  ;
+		}
+	      /* a subquery run for each of its rows would fix pages while it holds its own */
+	      fixed_scan_xasl = (xptr->merge_spec == NULL && xptr->dptr_list == NULL) ? xptr : NULL;
+	      for (specp = xptr->spec_list; specp != NULL && fixed_scan_xasl != NULL; specp = specp->next)
+		{
+		  if (specp->type != TARGET_CLASS || specp->access != ACCESS_METHOD_SEQUENTIAL)
+		    {
+		      fixed_scan_xasl = NULL;
+		    }
+		}
+	      for (xptr2 = xptr->aptr_list; xptr2 != NULL && fixed_scan_xasl != NULL; xptr2 = xptr2->next)
+		{
+		  if (XASL_IS_FLAGED (xptr2, XASL_LINK_TO_REGU_VARIABLE))
+		    {
+		      fixed_scan_xasl = NULL;
+		    }
+		}
 	    }
 	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
 	    {
@@ -22303,13 +22323,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    {
 		      specp->fixed_scan = (xptr == fixed_scan_xasl);
 
-		      /* Cached (copy-to-local-cache) scan is allowed only on the driving scan --
-		       * the level-0 spec_list of the scan chain. An inner scan re-visits its pages
-		       * once per outer row, so the single-page local cache would be re-copied
-		       * constantly for no latch-avoidance benefit. This is only the gate: final
-		       * activation is ANDed with eligibility in qexec_open_scan (), where
+		      /* Cached (copy-to-local-cache) scan is allowed on every spec_list scan that is not fixed: an
+		       * inner scan that is not fixed would otherwise fix its page for every row, and copying the page
+		       * once per pass costs less (scan_reset_scan_block () drops the copy for the next pass). This is
+		       * only the gate: final activation is ANDed with eligibility in qexec_open_scan (), where
 		       * mvcc_select_lock_needed becomes known. */
-		      specp->cached_scan = (level == 0 && spec_level == 0);
+		      specp->cached_scan = (spec_level == 0);
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
