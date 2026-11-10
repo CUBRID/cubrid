@@ -107,10 +107,9 @@ perfmon_inc_stat (THREAD_ENTRY * t, int stat)
 }
 
 static void
-pgbuf_set_dirty (THREAD_ENTRY * t, Page * p, int release)
+release_page (Page * p)
 {
-  (void) t;
-  if (p == target && release && !syscommitted)
+  if (p == target && !syscommitted)
     {
       assert (!p->occupied);
       p->occupied = 1;
@@ -118,6 +117,14 @@ pgbuf_set_dirty (THREAD_ENTRY * t, Page * p, int release)
       if (p->logged)
         longjmp (crashed, 1);
     }
+}
+
+static void
+pgbuf_set_dirty (THREAD_ENTRY * t, Page * p, int release)
+{
+  (void) t;
+  if (release)
+    release_page (p);
 }
 
 static void
@@ -140,12 +147,8 @@ heap_add_bestpage (THREAD_ENTRY * t, int *h, Page * p)
   (void) p;
 }
 
-static void
-pgbuf_unfix_and_init (THREAD_ENTRY * t, Page * p)
-{
-  (void) t;
-  (void) p;
-}
+/* Like the engine macro, release the page and clear the caller's pointer. */
+#define pgbuf_unfix_and_init(t, p) do { (void) (t); release_page (p); (p) = NULL; } while (0)
 
 static void *
 heap_ovf_delete (THREAD_ENTRY * t, int *h, Oid * o, int *v)

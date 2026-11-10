@@ -51,7 +51,7 @@ Observed on 2026-11-10, debug_gcc:
 
 Neither replay covers release builds, the DELETE form of the CBRD-27936 window, or 2PC.
 
-The replay covers the slot form of the window on a reuse heap. It does not cover the byte-only form, a non-reuse heap, release builds (where the occupied slot would be overwritten instead of asserting), or a competitor that the fixed latch sends to another page. After the fix, `check.py` reports `OUT OF SYNC` because its source matcher does not recognize the `DONT_FREE`, commit, unfix shape. Update the matcher before relying on the model for the fixed source.
+The replay covers the slot form of the window on a reuse heap. It does not cover the byte-only form, a non-reuse heap, release builds (where the occupied slot would be overwritten instead of asserting), or a competitor that the fixed latch sends to another page. `check.py` accepts the fixed shape, which marks the forward page dirty with `DONT_FREE`, commits the sysop and then unfixes it. It treats that shape as release after the sysop commit, and both models pass.
 
 ## Bounds and assumptions
 
@@ -74,4 +74,4 @@ Sync commit: `e64a04a79a5842827a124b3f8313516d0da2594c`.
 - `src/transaction/recovery.c`, `recovery.h`: `RVVAC_HEAP_RECORD_VACUUM` mapping.
 - `src/transaction/log_manager.c`, `log_recovery.c`, `log_recovery.h`, `log_append.cpp`, `log_append.hpp`, `log_page_buffer.c`, `transaction_sr.c`: sysop logging, commit, flush, and restart undo.
 
-The command compares whole covered files to the sync commit, except the two supported release-position edits in `vacuum_heap_record` and whitespace at line boundaries. This is a conservative freshness fence, not a complete dependency analysis. A change outside these files can invalidate the assumptions and still require a review.
+The command compares whole covered files to the sync commit, with these exceptions: the two supported release-position edits in `vacuum_heap_record`, the CBRD-27935 late-unfix form of the forward release, the CBRD-27936 move of the saved-space release block in `log_commit_local`, and whitespace at line boundaries. The saved-space move is accepted because the model covers slots, not bytes. This is a conservative freshness fence, not a complete dependency analysis. A change outside these files can invalidate the assumptions and still require a review.

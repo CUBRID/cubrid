@@ -25,6 +25,33 @@ COVER = ('src/query/vacuum.c', 'src/storage/slotted_page.c', 'src/storage/heap_f
 HOME = 'pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);'
 FORWARD = 'pgbuf_set_dirty (thread_p, helper->forward_page, FREE);\n      helper->forward_page = NULL;'
 COMMIT = 'log_sysop_commit (thread_p);'
+# Fixed form: keep the forward page fixed through the sysop commit, then unfix it.
+# Only comments and whitespace may separate the three statements; a comment just
+# before the first one is dropped with them.
+GAP = r'(?:\s|/\*(?:[^*]|\*(?!/))*\*/)*'
+LATE = re.compile(r'(?:/\*(?:[^*]|\*(?!/))*\*/\s*)?pgbuf_set_dirty \(thread_p, helper->forward_page, DONT_FREE\);' + GAP
+                  + re.escape(COMMIT) + GAP + r'pgbuf_unfix_and_init \(thread_p, helper->forward_page\);')
+
+
+# CBRD-27936 moves the saved-space release in log_commit_local after the commit
+# record. Saved bytes are outside this model, which covers slots only, so that
+# block may move. Strip it, with a comment about it, before comparing.
+SAVED = re.compile(r'(?:/\*(?:(?!\*/).)*(?:saved spaces|LOG_2PC_COMMIT_DECISION)(?:(?!\*/).)*\*/\s*)?'
+                   r'if \(tdes->first_save_entry != NULL\)\s*\{\s*'
+                   r'spage_free_saved_spaces \(thread_p, tdes->first_save_entry\);\s*'
+                   r'tdes->first_save_entry = NULL;\s*\}', re.S)
+
+
+def without_saved_space_release(text):
+    text = SAVED.sub('', text)
+    return '\n'.join(line.strip() for line in text.splitlines() if line.strip())
+
+
+def canonical(rel):
+    """Rewrite the fixed late-release form as the equivalent commit-then-release form."""
+    if len(LATE.findall(rel)) > 1:
+        raise ValueError('forward release/commit shape')
+    return LATE.sub(lambda m: COMMIT + '\n      ' + FORWARD, rel)
 
 
 def source(path):
@@ -42,7 +69,7 @@ def shape(text):
     home_free = matches[0].group(1) == 'FREE'
     rel_start = body.index('case REC_RELOCATION:')
     rel_end = body.index('case REC_BIGONE:', rel_start)
-    rel = body[rel_start:rel_end]
+    rel = canonical(body[rel_start:rel_end])
     if rel.count(FORWARD) != 1 or rel.count(COMMIT) != 1:
         raise ValueError('forward release/commit shape')
     fwd_index, commit_index = rel.index(FORWARD), rel.index(COMMIT)
@@ -68,6 +95,9 @@ def run(repo):
                 home, forward, normalized = shape(current)
                 if normalized != shape(baseline)[2]:
                     raise ValueError(path + ' changed beyond supported latch releases')
+            elif path == 'src/transaction/log_manager.c':
+                if without_saved_space_release(current) != without_saved_space_release(baseline):
+                    raise ValueError(path + ' changed beyond the supported saved-space release move')
             elif current != baseline:
                 raise ValueError(path + ' changed since sync commit')
     except (OSError, ValueError, subprocess.CalledProcessError) as e:
@@ -139,7 +169,7 @@ def release_variant(text, home_early, forward_early):
     body = re.sub(r'pgbuf_set_dirty \(thread_p, helper->home_page, (DONT_FREE|FREE)\);',
                   HOME.replace('DONT_FREE', 'FREE') if home_early else HOME, body)
     lo, hi = body.index('case REC_RELOCATION:'), body.index('case REC_BIGONE:')
-    rel = body[lo:hi]
+    rel = canonical(body[lo:hi])
     fwd, commit = rel.index(FORWARD), rel.index(COMMIT)
     left = min(fwd, commit)
     right = max(fwd + len(FORWARD), commit + len(COMMIT))
