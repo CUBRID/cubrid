@@ -158,7 +158,7 @@ static void pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delet
 static PT_NODE *pt_make_default_value (PARSER_CONTEXT * parser, const char *class_name, const char *attr_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static void pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter);
-static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list);
+static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, bool class_attribute);
 static PT_NODE *pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -4243,9 +4243,11 @@ pt_is_bare_legacy_default_form (const PT_NODE * node)
  * result	    	 : modified data_default
  * parser(in)	    	 : parser context
  * data_default_list(in) : data default node
+ * class_attribute(in)	 : the DEFAULT of a class attribute, which sets the one value of the attribute at DDL time
+ *			   like a SHARED value, so the column DEFAULT rules do not apply to it
  */
 static PT_NODE *
-pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
+pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, bool class_attribute)
 {
   PT_NODE *result;
   PT_NODE *default_value;
@@ -4293,11 +4295,13 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	}
 
       /* The column DEFAULT rules -- the bare-expression rule and the Stored DEFAULT Forms classification -- apply
-       * to a column DEFAULT written in the statement: not to a SHARED value, and not to the copy of a stored
-       * DEFAULT (CREATE VIEW), which arrives with its text and volatility set. */
+       * to a column DEFAULT written in the statement: not to a SHARED value or the DEFAULT of a class attribute,
+       * both evaluated once at DDL time, and not to the copy of a stored DEFAULT (CREATE VIEW), which arrives with
+       * its text and volatility set. */
       expr_vol = data_default->info.data_default.expr_volatility;
       edl_text = data_default->info.data_default.expr_text;
-      column_rules = (data_default->info.data_default.shared == PT_DEFAULT && expr_vol == PT_VOLATILITY_UNSET);
+      column_rules = (data_default->info.data_default.shared == PT_DEFAULT && !class_attribute
+		      && expr_vol == PT_VOLATILITY_UNSET);
 
       /* a bare (non-parenthesized) column DEFAULT expression is allowed only for the legacy whitelist forms and
        * literals (a signed numeric literal included); anything else needs parentheses */
@@ -5278,7 +5282,9 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 				 alter);
       for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
 	{
-	  attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default);
+	  attr->info.attr_def.data_default =
+	    pt_check_data_default (parser, attr->info.attr_def.data_default,
+				   attr->info.attr_def.attr_type == PT_META_ATTR);
 	}
       break;
 
@@ -5296,8 +5302,10 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      return;
 	    }
 	}
+      attr = alter->info.alter.alter_clause.ch_attr_def.attr_name_list;
       alter->info.alter.alter_clause.ch_attr_def.data_default_list =
-	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list);
+	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list,
+			       attr != NULL && attr->info.name.meta_class == PT_META_ATTR);
 
       [[fallthrough]];
 
@@ -5335,7 +5343,9 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	pt_check_attribute_domain (parser, att_def, type, NULL, reuse_oid, alter);
 	for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
 	  {
-	    attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default);
+	    attr->info.attr_def.data_default =
+	      pt_check_data_default (parser, attr->info.attr_def.data_default,
+				     attr->info.attr_def.attr_type == PT_META_ATTR);
 	  }
       }
       break;
@@ -5346,7 +5356,9 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       pt_check_mutable_attributes (parser, db, alter->info.alter.alter_clause.attr_mthd.attr_def_list);
       for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
 	{
-	  attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default);
+	  attr->info.attr_def.data_default =
+	    pt_check_data_default (parser, attr->info.attr_def.data_default,
+				   attr->info.attr_def.attr_type == PT_META_ATTR);
 	}
       break;
 
@@ -9178,7 +9190,11 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   for (attr = node->info.create_entity.attr_def_list; attr; attr = attr->next)
     {
-      attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default);
+      attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default, false);
+    }
+  for (attr = node->info.create_entity.class_attr_def_list; attr; attr = attr->next)
+    {
+      attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default, true);
     }
 }
 
@@ -9903,7 +9919,7 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
   return ER_FAILED;
 
   default_value_node = param->info.sp_param.default_value =
-    pt_check_data_default (parser, param->info.sp_param.default_value);
+    pt_check_data_default (parser, param->info.sp_param.default_value, false);
   if (pt_has_error (parser))
     {
       return ER_FAILED;
