@@ -885,7 +885,7 @@ namespace cubmethod
   }
 
   // the compile_id of the code a PL/CSQL routine runs: its own code row's, or for a package member,
-  // its package's. Left empty for a routine without code (a Java SP).
+  // its package's.
   static int
   get_routine_compile_id (MOP routine_mop, std::string &compile_id)
   {
@@ -1615,6 +1615,7 @@ exit:
 
     int auth_error = NO_ERROR;
     std::string owner_name;
+    int is_plcsql = 0;
     std::string compile_id;
     std::string err_msg;
     int save;
@@ -1661,20 +1662,35 @@ exit:
 	    owner_name.assign (name);
 	    ws_free_string (name);
 
-	    // The caller loads the class of this code, so that a routine replaced since the caller last
-	    // loaded it runs as replaced, even in the same transaction.
-	    if (get_routine_compile_id (routine_mop, compile_id) != NO_ERROR)
+	    DB_VALUE lang_val;
+	    if (db_get (routine_mop, SP_ATTR_LANG, &lang_val) != NO_ERROR)
 	      {
 		take_error (ER_FAILED);
 		owner_name.clear ();
+	      }
+	    else
+	      {
+		// The routine may have been replaced by a Java SP since the caller was compiled.
+		is_plcsql = (db_get_int (&lang_val) == SP_LANG_PLCSQL) ? 1 : 0;
+		pr_clear_value (&lang_val);
+
+		// The caller loads the class of this code, so that a routine replaced since the caller last
+		// loaded it runs as replaced, even in the same transaction.
+		if (is_plcsql && get_routine_compile_id (routine_mop, compile_id) != NO_ERROR)
+		  {
+		    take_error (ER_FAILED);
+		    owner_name.clear ();
+		    is_plcsql = 0;
+		  }
 	      }
 	  }
       }
 
     AU_RESTORE (save);
 
-    // the owner name and compile_id are empty unless the check passed, and the message empty unless it failed
-    return xs_pack_and_queue (auth_error, owner_name, compile_id, err_msg);
+    // the owner name and compile_id are empty and is_plcsql 0 unless the check passed, compile_id is empty also
+    // unless the routine is a PL/CSQL one, and the message empty unless the check failed
+    return xs_pack_and_queue (auth_error, owner_name, is_plcsql, compile_id, err_msg);
   }
 
 //////////////////////////////////////////////////////////////////////////

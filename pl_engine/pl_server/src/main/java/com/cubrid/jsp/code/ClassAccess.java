@@ -108,11 +108,13 @@ public class ClassAccess {
 
             int authError = unpacker.unpackInt();
             String ownerName = unpacker.unpackCString(); // empty unless the check passed
+            boolean isPlcsql = (unpacker.unpackInt() != 0); // false unless the check passed
             String compileId = unpacker.unpackCString(); // empty unless the check passed
             String errMsg = unpacker.unpackCString(); // empty unless it failed
             if (authError == 0) {
                 ownerRef[0] = ownerName;
-                compileIdRef[0] = compileId;
+                // null for a routine that is not a PL/CSQL one (any more)
+                compileIdRef[0] = isPlcsql ? compileId : null;
             } else if (!errMsg.isEmpty()) {
                 errMsgRef[0] = errMsg;
             }

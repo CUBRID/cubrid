@@ -180,6 +180,13 @@ public class SpLib {
                             ? "no authorization to execute " + uniqueName
                             : errMsgRef[0]);
         }
+        if (compileIdRef[0] == null) {
+            // replaced by a Java SP after the caller was compiled
+            throw new PROGRAM_ERROR(
+                    uniqueName
+                            + " is not a PL/CSQL routine any more"
+                            + " (hint: try recompiling this stored procedure)");
+        }
 
         Context context = ContextManager.getContextofCurrentThread();
         CatalogClassLoaderRelay cclr = context.getCatalogClassLoaderRelay();
