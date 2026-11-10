@@ -1930,7 +1930,7 @@ namespace cubload
 		      const tp_domain *collection_domain, db_value *val)
   {
     const tp_domain &domain = attr->get_domain ();
-    DB_TYPE dom_type = TP_DOMAIN_TYPE (&domain);
+    DB_TYPE dom_type = domain.type->id;
     db_value natural;
     int error_code;
 
