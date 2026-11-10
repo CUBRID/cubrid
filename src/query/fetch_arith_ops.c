@@ -1303,7 +1303,7 @@ fetch_op_octet_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
+  else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BFILE)
     {
       DB_VALUE tval;
 
@@ -1363,7 +1363,7 @@ fetch_op_bit_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       db_get_bit (peek_right, &len);
       db_make_int (arithptr->value, len);
     }
-  else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BLOB)
+  else if (DB_VALUE_DOMAIN_TYPE (peek_right) == DB_TYPE_BFILE)
     {
       DB_VALUE tval;
       int len = 0;
@@ -2906,6 +2906,208 @@ fetch_op_lob_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_BFILE_TO_BIT */
+static int
+fetch_op_bfile_to_bit (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+  DB_VALUE *peek_right = a->peek_right;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (db_bfile_to_bit (peek_left, peek_right, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_CFILE_TO_CHAR */
+static int
+fetch_op_cfile_to_char (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+  DB_VALUE *peek_right = a->peek_right;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (db_cfile_to_char (peek_left, peek_right, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_BIT_TO_BFILE */
+static int
+fetch_op_bit_to_bfile (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_BIT || DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_VARBIT)
+    {
+      if (db_bit_to_bfile (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else				/* (DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_CHAR || DB_TYPE_VARCHAR) */
+    {
+      if (db_char_to_bfile (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_CHAR_TO_CFILE */
+static int
+fetch_op_char_to_cfile (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (db_char_to_cfile (peek_left, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_LOBFILE_LENGTH */
+static int
+fetch_op_lobfile_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_BFILE)
+    {
+      if (db_bfile_length (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else				/* (DB_VALUE_DOMAIN_TYPE (peek_left) == DB_TYPE_CFILE) */
+    {
+      if (db_cfile_length (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_BFILE_TO_BLOB */
+static int
+fetch_op_bfile_to_blob (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (db_bfile_to_blob (peek_left, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_BLOB_TO_BFILE */
+static int
+fetch_op_blob_to_bfile (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (db_blob_to_bfile (peek_left, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_CFILE_TO_CLOB */
+static int
+fetch_op_cfile_to_clob (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (db_cfile_to_clob (peek_left, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+
+/* T_CLOB_TO_CFILE */
+static int
+fetch_op_clob_to_cfile (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
+{
+  ARITH_TYPE *arithptr = a->arithptr;
+  DB_VALUE *peek_left = a->peek_left;
+
+  if (DB_IS_NULL (peek_left))
+    {
+      PRIM_SET_NULL (arithptr->value);
+    }
+  else if (db_clob_to_cfile (peek_left, arithptr->value) != NO_ERROR)
+    {
+      return ER_FAILED;
     }
 
   return NO_ERROR;
@@ -5164,6 +5366,24 @@ fetch_arith_op (OPERATOR_TYPE opcode)
       return fetch_op_char_to_clob;
     case T_LOB_LENGTH:
       return fetch_op_lob_length;
+    case T_BFILE_TO_BIT:
+      return fetch_op_bfile_to_bit;
+    case T_CFILE_TO_CHAR:
+      return fetch_op_cfile_to_char;
+    case T_BIT_TO_BFILE:
+      return fetch_op_bit_to_bfile;
+    case T_CHAR_TO_CFILE:
+      return fetch_op_char_to_cfile;
+    case T_LOBFILE_LENGTH:
+      return fetch_op_lobfile_length;
+    case T_BFILE_TO_BLOB:
+      return fetch_op_bfile_to_blob;
+    case T_BLOB_TO_BFILE:
+      return fetch_op_blob_to_bfile;
+    case T_CFILE_TO_CLOB:
+      return fetch_op_cfile_to_clob;
+    case T_CLOB_TO_CFILE:
+      return fetch_op_clob_to_cfile;
     case T_TO_DATE:
       return fetch_op_to_date;
     case T_TO_TIME:

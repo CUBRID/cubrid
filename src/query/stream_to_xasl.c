@@ -7468,10 +7468,10 @@ stx_arith_cast_target (const ARITH_TYPE * arith, int i, DB_TYPE src_type)
 	&& TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (arith->domain)) ? arith->domain : NULL;
     case T_OCTET_LENGTH:
       return i != 1 || TP_IS_STRING_TYPE (src_type) ? NULL
-	: src_type == DB_TYPE_BLOB ? &tp_VarBit_domain : &tp_Char_domain;
+	: src_type == DB_TYPE_BFILE ? &tp_VarBit_domain : &tp_Char_domain;
     case T_BIT_LENGTH:
       return i != 1 || TP_IS_CHAR_TYPE (src_type) || src_type == DB_TYPE_BIT || src_type == DB_TYPE_VARBIT ? NULL
-	: src_type == DB_TYPE_BLOB ? &tp_VarBit_domain : &tp_Char_domain;
+	: src_type == DB_TYPE_BFILE ? &tp_VarBit_domain : &tp_Char_domain;
     case T_TO_DATE:
     case T_TO_TIME:
     case T_TO_TIMESTAMP:

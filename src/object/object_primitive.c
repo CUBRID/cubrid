@@ -207,6 +207,7 @@ pr_type::get_cmpval_function () const
 static void mr_initmem_string (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
+static int mr_getmem_string_internal (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy, DB_TYPE type);
 static int mr_data_lengthmem_string (void *memptr, TP_DOMAIN * domain, int disk);
 static int mr_index_lengthmem_string (void *memptr, TP_DOMAIN * domain);
 static void mr_data_writemem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * domain);
@@ -214,6 +215,7 @@ static void mr_data_readmem_string (OR_BUF * buf, void *memptr, TP_DOMAIN * doma
 static void mr_freemem_string (void *memptr);
 static void mr_initval_string (DB_VALUE * value, int precision, int scale);
 static int mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy);
+static int mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYPE type);
 static int mr_data_lengthval_string (DB_VALUE * value, int disk);
 static int mr_data_writeval_string (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
@@ -225,7 +227,7 @@ static int mr_index_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * 
 static int mr_lengthval_string_internal (DB_VALUE * value, int disk, int align);
 static int mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align);
 static int mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
-				       char *copy_buf, int copy_buf_len, int align);
+				       char *copy_buf, int copy_buf_len, int align, DB_TYPE type);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_string (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
@@ -885,6 +887,10 @@ static int mr_data_lengthval_clob (DB_VALUE * value, int disk);
 static int mr_data_writeval_clob (OR_BUF * buf, DB_VALUE * value);
 static int mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				 char *copy_buf, int copy_buf_len);
+static int mr_lengthval_clob_internal (DB_VALUE * value, int disk, int align);
+static int mr_writeval_clob_internal (OR_BUF * buf, DB_VALUE * value, int align);
+static int mr_readval_clob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				     char *copy_buf, int copy_buf_len, int align);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_clob (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 						     int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_clob (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
@@ -2069,8 +2075,8 @@ pr_clear_value (DB_VALUE * value)
 	  value->data.ch.medium.buf = NULL;
 	}
 
-      /* Clear the compressed string for variable-length string types (VARCHAR, CHAR). */
-      if (TP_IS_CHAR_TYPE (db_type))
+      /* Clear the compressed string for compressible string types (VARCHAR, CHAR, CLOB). */
+      if (TP_IS_CHAR_TYPE (db_type) || db_type == DB_TYPE_CLOB)
 	{
 	  char *compressed_str = DB_GET_COMPRESSED_STRING (value);
 	  if (compressed_str != NULL && value->data.ch.info.compressed_need_clear != 0)
@@ -10281,6 +10287,28 @@ mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int 
 
 
 /*
+ * Shared constructor for the CHAR/VARCHAR/CLOB primitives below.
+ */
+static inline int
+mr_make_char_or_varchar (DB_VALUE * value, DB_TYPE type, int precision, const char *str, int size,
+			 int codeset, int collation)
+{
+  if (type == DB_TYPE_CHAR)
+    {
+      return db_make_char (value, precision, str, size, codeset, collation);
+    }
+  else if (type == DB_TYPE_CLOB)
+    {
+      /* internal CLOB has no per-value codeset/collation - server uses LANG_SYS_CODESET */
+      return db_make_clob (value, precision, str, size);
+    }
+  else
+    {
+      return db_make_varchar (value, precision, str, size, codeset, collation);
+    }
+}
+
+/*
  * TYPE STRING
  */
 
@@ -10365,9 +10393,21 @@ mr_setmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 static int
 mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
+  return mr_getmem_string_internal (memptr, domain, value, copy, DB_TYPE_VARCHAR);
+}
+
+/*
+ * The memory representation of an internal CLOB is identical to VARCHAR, so the
+ * only difference is the type the resulting DB_VALUE is built with.
+ */
+static int
+mr_getmem_string_internal (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy, DB_TYPE type)
+{
   int error = NO_ERROR;
   int mem_length;
   char **mem, *cur, *new_;
+
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CLOB);
 
   /* get to the current value */
   mem = (char **) memptr;
@@ -10375,7 +10415,7 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
   if (cur == NULL)
     {
-      db_value_domain_init (value, DB_TYPE_VARCHAR, domain->precision, 0);
+      db_value_domain_init (value, type, domain->precision, 0);
       value->need_clear = false;
     }
   else
@@ -10392,8 +10432,8 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 
       if (!copy)
 	{
-	  db_make_varchar (value, domain->precision, cur, mem_length, TP_DOMAIN_CODESET (domain),
-			   TP_DOMAIN_COLLATION (domain));
+	  mr_make_char_or_varchar (value, type, domain->precision, cur, mem_length, TP_DOMAIN_CODESET (domain),
+				   TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = false;
 	}
       else
@@ -10409,8 +10449,8 @@ mr_getmem_string (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	    {
 	      memcpy (new_, cur, mem_length);
 	      new_[mem_length] = '\0';
-	      db_make_varchar (value, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+	      mr_make_char_or_varchar (value, type, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain),
+				       TP_DOMAIN_COLLATION (domain));
 	      value->need_clear = true;
 	    }
 	}
@@ -10649,19 +10689,27 @@ mr_initval_string (DB_VALUE * value, int precision, int scale)
 static int
 mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
+  return mr_setval_string_internal (dest, src, copy, DB_TYPE_VARCHAR);
+}
+
+static int
+mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_TYPE type)
+{
   int error = NO_ERROR;
   int src_precision, src_length;
   const char *src_str;
   char *new_, *new_compressed_buf;
 
   assert (!db_value_is_corrupted (src));
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CLOB);
+
   if (src == NULL || DB_IS_NULL (src))
     {
-      error = db_value_domain_init (dest, DB_TYPE_VARCHAR, DB_DEFAULT_PRECISION, 0);
+      error = db_value_domain_init (dest, type, DB_DEFAULT_PRECISION, 0);
     }
   else if ((src_str = db_get_string (src)) == NULL)
     {
-      error = db_value_domain_init (dest, DB_TYPE_VARCHAR, db_value_precision (src), 0);
+      error = db_value_domain_init (dest, type, db_value_precision (src), 0);
       if (src->data.ch.info.is_max_string)
 	{
 	  dest->data.ch.info.style = MEDIUM_STRING;
@@ -10692,8 +10740,8 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
       /* should we be paying attention to this? it is extremely dangerous */
       if (!copy)
 	{
-	  error = db_make_varchar (dest, src_precision, src_str, src_length, db_get_string_codeset (src),
-				   db_get_string_collation (src));
+	  error = mr_make_char_or_varchar (dest, type, src_precision, src_str, src_length,
+					   db_get_string_codeset (src), db_get_string_collation (src));
 	  dest->data.ch.medium.compressed_buf = src->data.ch.medium.compressed_buf;
 	  dest->data.ch.info.compressed_need_clear = false;
 	}
@@ -10702,7 +10750,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	  new_ = (char *) db_private_alloc (NULL, src_length + 1);
 	  if (new_ == NULL)
 	    {
-	      db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
+	      db_value_domain_init (dest, type, src_precision, 0);
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
@@ -10710,8 +10758,8 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    {
 	      memcpy (new_, src_str, src_length);
 	      new_[src_length] = '\0';
-	      db_make_varchar (dest, src_precision, new_, src_length, db_get_string_codeset (src),
-			       db_get_string_collation (src));
+	      mr_make_char_or_varchar (dest, type, src_precision, new_, src_length, db_get_string_codeset (src),
+				       db_get_string_collation (src));
 	      dest->need_clear = true;
 	    }
 
@@ -10726,7 +10774,7 @@ mr_setval_string (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      if (new_compressed_buf == NULL)
 		{
 		  pr_clear_value (dest);
-		  db_value_domain_init (dest, DB_TYPE_VARCHAR, src_precision, 0);
+		  db_value_domain_init (dest, type, src_precision, 0);
 		  assert (er_errid () != NO_ERROR);
 		  return er_errid ();
 		}
@@ -10763,7 +10811,8 @@ static int
 mr_index_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 			 int copy_buf_len)
 {
-  return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT);
+  return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, CHAR_ALIGNMENT,
+				     DB_TYPE_VARCHAR);
 }
 
 static int
@@ -10782,7 +10831,8 @@ static int
 mr_data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 			int copy_buf_len)
 {
-  return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
+  return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT,
+				     DB_TYPE_VARCHAR);
 }
 
 /*
@@ -10942,7 +10992,7 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
 static int
 mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-			    int copy_buf_len, int align)
+			    int copy_buf_len, int align, DB_TYPE type)
 {
   int precision;
   int rc = NO_ERROR;
@@ -10963,11 +11013,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
       return rc;
     }
 
-  precision = (domain != NULL) ? domain->precision : DB_MAX_VARCHAR_PRECISION;
+  precision = (domain != NULL) ? domain->precision
+    : ((type == DB_TYPE_CLOB) ? DB_MAX_LOB_PRECISION : DB_MAX_VARCHAR_PRECISION);
   if (size == 0)
     {
       /* its NULL */
-      db_value_domain_init (value, DB_TYPE_VARCHAR, precision, 0);
+      db_value_domain_init (value, type, precision, 0);
       return NO_ERROR;
     }
 
@@ -11012,8 +11063,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	  goto cleanup;
 	}
 
-      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-		       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+      mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
       value->need_clear = (decompressed_string != copy_buf) ? true : false;
 
 #if defined(CS_MODE)
@@ -11037,8 +11088,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
       if (!copy)
 	{
 	  assert (decompressed_string == NULL);
-	  db_make_varchar (value, precision, buf->ptr, expected_decompressed_size,
-			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  mr_make_char_or_varchar (value, type, precision, buf->ptr, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = false;
 	}
       else			/* if (!copy) */
@@ -11047,8 +11098,8 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	  memcpy (decompressed_string, buf->ptr, expected_decompressed_size);
 	  decompressed_string[expected_decompressed_size] = '\0';
 
-	  db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				   TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	}
       db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
@@ -11087,7 +11138,7 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
   int compressed_size = 0, expected_decompressed_size = 0;
   char *decompressed_string = NULL, *compressed_string = NULL;
 
-  assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR);
+  assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR || type == DB_TYPE_CLOB);
 
   if (value == NULL)
     {
@@ -11106,6 +11157,10 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
   if (type == DB_TYPE_CHAR)
     {
       precision = (domain != NULL) ? domain->precision : DB_MAX_CHAR_PRECISION;
+    }
+  else if (type == DB_TYPE_CLOB)
+    {
+      precision = (domain != NULL) ? domain->precision : DB_MAX_LOB_PRECISION;
     }
   else
     {
@@ -11166,8 +11221,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	    }
 	  else
 	    {
-	      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	      mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	    }
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
@@ -11183,8 +11238,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	    }
 	  else
 	    {
-	      db_make_varchar (value, precision, buf->ptr, expected_decompressed_size, TP_DOMAIN_CODESET (domain),
-			       TP_DOMAIN_COLLATION (domain));
+	      mr_make_char_or_varchar (value, type, precision, buf->ptr, expected_decompressed_size,
+				       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	    }
 	  value->need_clear = false;
 	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
@@ -11227,8 +11282,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	    }
 	  else
 	    {
-	      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	      mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	    }
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	  db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
@@ -11247,8 +11302,8 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
 	    }
 	  else
 	    {
-	      db_make_varchar (value, precision, decompressed_string, expected_decompressed_size,
-			       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	      mr_make_char_or_varchar (value, type, precision, decompressed_string, expected_decompressed_size,
+				       TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
 	    }
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	  db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
@@ -14875,8 +14930,8 @@ pr_clear_compressed_string (DB_VALUE * value)
 
   db_type = DB_VALUE_DOMAIN_TYPE (value);
 
-  /* Clear only for variable-length string types (VARCHAR, CHAR). */
-  if (!TP_IS_CHAR_TYPE (db_type))
+  /* Clear only for compressible string types (VARCHAR, CHAR, CLOB). */
+  if (!TP_IS_CHAR_TYPE (db_type) && db_type != DB_TYPE_CLOB)
     {
       return NO_ERROR;		/* do nothing */
     }
@@ -14926,8 +14981,8 @@ pr_do_db_value_string_compression (DB_VALUE * value)
 
   db_type = DB_VALUE_DOMAIN_TYPE (value);
 
-  /* Compress only for variable-length string types (VARCHAR, CHAR). */
-  if (!TP_IS_CHAR_TYPE (db_type))
+  /* Compress only for compressible string types (VARCHAR, CHAR, CLOB). */
+  if (!TP_IS_CHAR_TYPE (db_type) && db_type != DB_TYPE_CLOB)
     {
       return rc;		/* do nothing */
     }
@@ -15476,14 +15531,103 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
   return cmp_result;
 }
 
+/*
+ * TYPE CLOB
+ */
+
+static void
+mr_initmem_clob (void *mem, TP_DOMAIN * domain)
+{
+  mr_initmem_string (mem, domain);
+}
+
+static int
+mr_setmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  return mr_setmem_string (memptr, domain, value);
+}
+
+static int
+mr_getmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
+{
+  return mr_getmem_string_internal (memptr, domain, value, copy, DB_TYPE_CLOB);
+}
+
+static int
+mr_data_lengthmem_clob (void *memptr, TP_DOMAIN * domain, int disk)
+{
+  return mr_data_lengthmem_string (memptr, domain, disk);
+}
+
+static void
+mr_data_writemem_clob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
+{
+  mr_data_writemem_string (buf, memptr, domain);
+}
+
+static void
+mr_data_readmem_clob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
+{
+  mr_data_readmem_string (buf, memptr, domain, size);
+}
+
+static void
+mr_freemem_clob (void *memptr)
+{
+  mr_freemem_string (memptr);
+}
+
+static void
+mr_initval_clob (DB_VALUE * value, int precision, int scale)
+{
+  /* CLOB has no per-value codeset/collation - server uses LANG_SYS_CODESET. */
+  db_make_clob (value, precision, NULL, 0);
+  value->need_clear = false;
+}
+
+static int
+mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
+{
+  return mr_setval_string_internal (dest, src, copy, DB_TYPE_CLOB);
+}
+
+static int
+mr_data_lengthval_clob (DB_VALUE * value, int disk)
+{
+  return mr_lengthval_string_internal (value, disk, INT_ALIGNMENT);
+}
+
+static int
+mr_data_writeval_clob (OR_BUF * buf, DB_VALUE * value)
+{
+  return mr_writeval_string_internal (buf, value, INT_ALIGNMENT);
+}
+
+static int
+mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+		      int copy_buf_len)
+{
+  return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT,
+				     DB_TYPE_CLOB);
+}
 
 
+#if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
+/* data_readval_clob() mirrors data_readval_string() for internal CLOB columns
+ * read from HEAP records to support unloaddb.
+ */
+int
+data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+		   int copy_buf_len)
+{
+  return data_readval_string (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_CLOB);
+}
+#endif // #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 
-
-
-
-
-
+static DB_VALUE_COMPARE_RESULT
+mr_data_cmpdisk_clob (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
+{
+  return mr_data_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
 }
 
 static DB_VALUE_COMPARE_RESULT

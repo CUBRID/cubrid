@@ -1725,6 +1725,8 @@ cgw_set_bindparam (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, int bind_num, void *
     case CCI_U_TYPE_MULTISET:
     case CCI_U_TYPE_SEQUENCE:
     case CCI_U_TYPE_OBJECT:
+    case CCI_U_TYPE_BFILE:
+    case CCI_U_TYPE_CFILE:
     case CCI_U_TYPE_BLOB:
     case CCI_U_TYPE_CLOB:
     case CCI_U_TYPE_JSON:
@@ -2657,6 +2659,10 @@ cgw_utype_to_string (int type)
       return (char *) "sequence";
     case CCI_U_TYPE_OBJECT:
       return (char *) "object";
+    case CCI_U_TYPE_BFILE:
+      return (char *) "bfile";
+    case CCI_U_TYPE_CFILE:
+      return (char *) "cfile";
     case CCI_U_TYPE_BLOB:
       return (char *) "blob";
     case CCI_U_TYPE_CLOB:

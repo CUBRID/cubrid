@@ -2047,6 +2047,16 @@ qdump_arith_opcode_name (OPERATOR_TYPE opcode)
       return "T_DEFAULT";
     case T_LIST_DBS:
       return "T_LIST_DBS";
+    case T_BIT_TO_BFILE:
+      return "T_BIT_TO_BFILE";
+    case T_BFILE_TO_BIT:
+      return "T_BFILE_TO_BIT";
+    case T_CHAR_TO_CFILE:
+      return "T_CHAR_TO_CFILE";
+    case T_CFILE_TO_CHAR:
+      return "T_CFILE_TO_CHAR";
+    case T_LOBFILE_LENGTH:
+      return "T_LOBFILE_LENGTH";
     case T_BIT_TO_BLOB:
       return "T_BIT_TO_BLOB";
     case T_BLOB_TO_BIT:

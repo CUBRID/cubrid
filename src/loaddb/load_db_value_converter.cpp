@@ -482,7 +482,7 @@ namespace cubload
 	return DB_TYPE_MONETARY;
       case LDR_ELO_EXT:
       case LDR_ELO_INT:
-	return DB_TYPE_BLOB;
+	return DB_TYPE_BFILE;
       case LDR_JSON:
 	return DB_TYPE_JSON;
       default:
@@ -870,13 +870,20 @@ namespace cubload
      * absolute LOB size limit (DB_MAX_LOB_PRECISION), so apply a plain bound check.
      */
     const tp_domain &domain = attr->get_domain ();
+    int max_char_length = domain.precision;
 
+    if (max_char_length <= 0 || max_char_length > DB_MAX_LOB_PRECISION)
+      {
+	max_char_length = DB_MAX_LOB_PRECISION;
+      }
 
+    if (str_size > (size_t) max_char_length)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_CLOB));
 	return ER_IT_DATA_OVERFLOW;
       }
 
+    return db_make_clob (val, max_char_length, str, (int) str_size);
   }
 
   int
@@ -1280,6 +1287,19 @@ namespace cubload
     int error_code = NO_ERROR;
     char *bstring = NULL;
     std::size_t dest_size;
+    const tp_domain &domain = attr->get_domain ();
+    int max_bit_length = domain.precision;
+
+    if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
+      {
+	max_bit_length = DB_MAX_LOB_PRECISION;
+      }
+
+    if (str_size > (std::size_t) max_bit_length)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BLOB));
+	return ER_IT_DATA_OVERFLOW;
+      }
 
     dest_size = (str_size + 7) / 8;
 
@@ -1302,6 +1322,7 @@ namespace cubload
 	return error_code;
       }
 
+    error_code = db_make_blob (val, max_bit_length, bstring, (int) str_size);
     if (error_code != NO_ERROR)
       {
 	db_private_free_and_init (NULL, bstring);
@@ -1320,6 +1341,19 @@ namespace cubload
     int error_code = NO_ERROR;
     char *bstring = NULL;
     std::size_t dest_size;
+    const tp_domain &domain = attr->get_domain ();
+    int max_bit_length = domain.precision;
+
+    if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
+      {
+	max_bit_length = DB_MAX_LOB_PRECISION;
+      }
+
+    if (str_size > (std::size_t) max_bit_length / 4)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BLOB));
+	return ER_IT_DATA_OVERFLOW;
+      }
 
     dest_size = (str_size + 1) / 2;
 
@@ -1342,6 +1376,7 @@ namespace cubload
 	return error_code;
       }
 
+    error_code = db_make_blob (val, max_bit_length, bstring, ((int) str_size) * 4);
     if (error_code != NO_ERROR)
       {
 	db_private_free_and_init (NULL, bstring);

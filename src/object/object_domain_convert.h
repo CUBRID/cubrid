@@ -42,22 +42,7 @@ enum DOMAIN_CONVERT_MODE
   DOMAIN_CONVERT_OPERAND	/* the coercion an arithmetic operand takes: strict */
 };
 
-#define TP_IS_CHAR_STRING(db_val_type)					\
-    (db_val_type == DB_TYPE_CHAR || db_val_type == DB_TYPE_VARCHAR)
-
-#define TP_IS_LOB(db_val_type)                                          \
-    (db_val_type == DB_TYPE_BLOB || db_val_type == DB_TYPE_CLOB)
-
-#define TP_IS_DATETIME_TYPE(db_val_type) TP_IS_DATE_OR_TIME_TYPE (db_val_type)
-
-#define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type)		\
-   ((TP_IS_CHAR_STRING(src_type) && !(TP_IS_CHAR_STRING(dest_type) ||	\
-				      TP_IS_DATETIME_TYPE(dest_type) || \
-				      TP_IS_NUMERIC_TYPE(dest_type) ||	\
-				      dest_type == DB_TYPE_ENUMERATION)) ||\
-    (!TP_IS_CHAR_STRING(src_type) && src_type != DB_TYPE_ENUMERATION &&	\
-     TP_IS_CHAR_STRING(dest_type)) ||					\
-    (TP_IS_LOB(src_type) || TP_IS_LOB(dest_type)))
+/* TP_IS_DATETIME_TYPE and TP_IMPLICIT_COERCION_NOT_ALLOWED (tp_implicit_coercion_not_allowed): object_domain.h */
 
 /*
  * TP_COMPARE_COERCION

@@ -4642,7 +4642,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   INDX_SCAN_ID isid;
   KEY_VAL_RANGE key_val_range;
   bool is_upd_scan_init;
-  bool lob_exist;
+  bool lobfile_exist;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_CACHE_ATTRINFO fk_attr_info;
@@ -4759,7 +4759,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    }
 	  scan_init_index_scan (&isid, &oid_list, &child_snapshot);
 	  is_upd_scan_init = false;
-	  lob_exist = false;
+	  lobfile_exist = false;
 
 	  pr_clone_value (key, &key_val_range.key1);
 	  pr_clone_value (key, &key_val_range.key2);

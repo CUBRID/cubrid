@@ -5047,12 +5047,21 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
       /* left, then right (when the node has one) for a non-NULL left (the LOB conversions) */
     case T_BLOB_TO_BIT:
     case T_CLOB_TO_CHAR:
+    case T_BFILE_TO_BIT:
+    case T_CFILE_TO_CHAR:
       return "L?r";
 
       /* the left operand */
     case T_BIT_TO_BLOB:
     case T_CHAR_TO_CLOB:
     case T_LOB_LENGTH:
+    case T_BIT_TO_BFILE:
+    case T_CHAR_TO_CFILE:
+    case T_LOBFILE_LENGTH:
+    case T_BFILE_TO_BLOB:
+    case T_BLOB_TO_BFILE:
+    case T_CFILE_TO_CLOB:
+    case T_CLOB_TO_CFILE:
       return "L";
 
       /* the right operand */

@@ -233,6 +233,7 @@ IDL       [a-zA-Z0-9_]
 									  return BIT_OR; }
 [bB][iI][tT]_[xX][oO][rR]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return BIT_XOR; }
+[bB][fF][iI][lL][eE]							{ return BFILE_; }
 [bB][lL][oO][bB]							{ return BLOB_; }
 [bB][oO][oO][lL][eE][aA][nN]						{ return BOOLEAN_; }
 [bB][oO][tT][hH]							{ return BOTH_; }
@@ -264,6 +265,9 @@ IDL       [a-zA-Z0-9_]
 									  return CHR; }
 [cC][lL][aA][sS][sS]							{ return CLASS; }
 [cC][lL][aA][sS][sS][eE][sS]						{ return CLASSES; }
+[cC][fF][iI][lL][eE]							{ return CFILE_; }
+[cC][fF][iI][lL][eE]_[tT][oO]_[cC][hH][aA][rR]				{ csql_yylval.cptr = pt_makename(yytext);
+									  return CFILE_TO_CHAR; }
 [cC][lL][oO][bB]							{ return CLOB_; }
 [cC][lL][oO][bB]_[tT][oO]_[cC][hH][aA][rR]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return CLOB_TO_CHAR; }

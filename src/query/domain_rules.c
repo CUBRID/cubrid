@@ -1852,16 +1852,7 @@ domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RES
 static bool
 domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
 {
-  if (source == DB_TYPE_BLOB || source == DB_TYPE_CLOB || target == DB_TYPE_BLOB || target == DB_TYPE_CLOB)
-    {
-      return true;
-    }
-  if (TP_IS_CHAR_TYPE (source))
-    {
-      return !(TP_IS_CHAR_TYPE (target) || TP_IS_DATE_OR_TIME_TYPE (target) || TP_IS_NUMERIC_TYPE (target)
-	       || target == DB_TYPE_ENUMERATION);
-    }
-  return source != DB_TYPE_ENUMERATION && TP_IS_CHAR_TYPE (target);
+  return tp_implicit_coercion_not_allowed (source, target);
 }
 
 /* The converter a comparison runs on a side: the ASSIGN converter (tp_value_coerce's on the pairs a
@@ -2096,6 +2087,8 @@ domain_value_domain (const DB_VALUE * value)
     case DB_TYPE_BIGINT:
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_TIME:
@@ -2554,6 +2547,8 @@ domain_element_type (int type)
     case DB_TYPE_CHAR:
     case DB_TYPE_BIGINT:
     case DB_TYPE_DATETIME:
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
     case DB_TYPE_ENUMERATION:

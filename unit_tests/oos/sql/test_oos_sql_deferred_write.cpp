@@ -1328,22 +1328,22 @@ TEST_F (OosSqlDeferredWrite, RejectedDestinationCreatesNoOosAndNextInsertSucceed
 
 TEST_F (OosSqlDeferredWrite, LobPreparationPreservesSourceAndDestinationValues)
 {
-  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (c CLOB)"), 0);
-  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_no VALUES(CHAR_TO_CLOB('source clob value'))"), 0);
-  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, c CLOB STORAGE FORCE_OUTLINE) "
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (c CFILE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_no VALUES(CHAR_TO_CFILE('source clob value'))"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, c CFILE STORAGE FORCE_OUTLINE) "
 		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10))"), 0);
   ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part SELECT 1, c FROM t_oos_show_no"), 0);
   ASSERT_EQ (db_commit_transaction (), NO_ERROR);
   int matches = 0;
-  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_no WHERE CLOB_TO_CHAR(c) = 'source clob value'",
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_no WHERE CFILE_TO_CHAR(c) = 'source clob value'",
 			       &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
-  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE CLOB_TO_CHAR(c) = 'source clob value'",
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE CFILE_TO_CHAR(c) = 'source clob value'",
 			       &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
   ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_no"), 0);
   ASSERT_EQ (db_commit_transaction (), NO_ERROR);
-  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE CLOB_TO_CHAR(c) = 'source clob value'",
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE CFILE_TO_CHAR(c) = 'source clob value'",
 			       &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
   DB_QUERY_RESULT *result = nullptr;

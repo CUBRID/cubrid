@@ -1456,6 +1456,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* nothing to fetch */
       break;
 
+    case T_BFILE_TO_BIT:
+    case T_CFILE_TO_CHAR:
     case T_BLOB_TO_BIT:
     case T_CLOB_TO_CHAR:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
@@ -1471,9 +1473,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       break;
 
+    case T_BIT_TO_BFILE:
+    case T_CHAR_TO_CFILE:
+    case T_LOBFILE_LENGTH:
     case T_BIT_TO_BLOB:
     case T_CHAR_TO_CLOB:
     case T_LOB_LENGTH:
+    case T_BFILE_TO_BLOB:
+    case T_BLOB_TO_BFILE:
+    case T_CFILE_TO_CLOB:
+    case T_CLOB_TO_CFILE:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
 	{
 	  goto error;

@@ -1485,7 +1485,7 @@ lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
     {
       attr = &class_->attributes[i];
 
-      if (TP_IS_LOB_TYPE (attr->type->id))
+      if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	{
 	  lob_attrid_arr_length++;
 	}
@@ -1516,7 +1516,7 @@ lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count)
     {
       attr = &class_->attributes[i];
 
-      if (TP_IS_LOB_TYPE (attr->type->id))
+      if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	{
 	  lob_attrid_arr[index++] = attr->id;
 	}
@@ -1558,7 +1558,7 @@ lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name)
 
       if (strcmp (attr.header.name, attr_name) == 0)
 	{
-	  if (TP_IS_LOB_TYPE (attr.type->id))
+	  if (TP_IS_LOBFILE_TYPE (attr.type->id))
 	    {
 	      HFID lob_hfid = class_->header.ch_heap;
 	      int lob_attrid_arr[1] = { attr.id };

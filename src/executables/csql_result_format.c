@@ -1884,10 +1884,12 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
     case DB_TYPE_CLOB:
       // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       {
+	int bytes_size, decomp_size;
 	bool need_decomp = false;
 	const char *str;
 	char *decomposed = NULL;
 
+	str = db_get_char (value);
 	bytes_size = db_get_string_size (value);
 	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8)
 	  {

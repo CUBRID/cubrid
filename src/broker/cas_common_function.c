@@ -142,8 +142,10 @@ static const struct
   {"RESULTSET", NULL},			/* CCI_U_TYPE_RESULTSET */
   {"BIGINT", bind_write_bigint},	/* CCI_U_TYPE_BIGINT */
   {"DATETIME", bind_write_datetime},	/* CCI_U_TYPE_DATETIME */
-  {"BLOB", bind_write_lob},		/* CCI_U_TYPE_BLOB */
-  {"CLOB", bind_write_lob},		/* CCI_U_TYPE_CLOB */
+  {"BFILE", bind_write_lob},		/* CCI_U_TYPE_BFILE */
+  {"CFILE", bind_write_lob},		/* CCI_U_TYPE_CFILE */
+  {"BLOB", NULL},			/* CCI_U_TYPE_BLOB */
+  {"CLOB", NULL},			/* CCI_U_TYPE_CLOB */
   {"ENUM", bind_write_string},		/* CCI_U_TYPE_ENUM */
   {"USHORT", bind_write_short},		/* CCI_U_TYPE_USHORT */
   {"UINT", bind_write_int},		/* CCI_U_TYPE_UINT */
@@ -470,13 +472,13 @@ bind_write_lob (BIND_LINE * line, const BIND_HEADER * header, char type, void *n
   DB_VALUE db_val;
   DB_ELO *db_elo;
 
-  net_arg_get_lob_value (&db_val, net_value);
+  net_arg_get_lobfile_value (&db_val, net_value);
   db_elo = db_get_elo (&db_val);
   /* format the value apart from the header so the length limit applies to the value alone */
   BIND_PRINT_HEADER (line, header);
   if (db_elo)
     {
-      bind_line_printf (line, "%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB", db_elo->size,
+      bind_line_printf (line, "%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BFILE) ? "BFILE" : "CFILE", db_elo->size,
 			db_elo->locator, db_elo->meta_data, db_elo->type);
     }
   else

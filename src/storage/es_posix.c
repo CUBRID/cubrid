@@ -63,6 +63,7 @@ static void es_rename_path (const char *src, char *tgt, char *metaname);
 static int es_abs_open (const char *abs_path, int flags);
 static int es_abs_open (const char *abs_path, int flags, mode_t mode);
 static int es_make_abs_path (char *abs_path, const char *src_path);
+static int es_make_abs_dirs (const char *path);
 static int es_os_rename_file_abs (const char *src, const char *dst);
 
 
@@ -272,6 +273,71 @@ es_make_abs_path (char *dst, const char *src)
     }
 
   return ret;
+}
+
+/*
+ * es_make_abs_dirs - create every component in a relative/absolute directory
+ * path.
+ *
+ * return: error code, ER_ES_GENERAL or NO_ERROR
+ * path(in): directory path. Relative paths are resolved under lobfile_base_path.
+ */
+static int
+es_make_abs_dirs (const char *path)
+{
+  char abs_path[PATH_MAX];
+  char dirbuf[PATH_MAX];
+  char *p;
+  size_t len;
+  const char *target_path = path;
+
+  if (path == NULL || path[0] == '\0')
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
+
+  if (es_make_abs_path (abs_path, path) > 0)
+    {
+      target_path = abs_path;
+    }
+
+  if (strlcpy (dirbuf, target_path, PATH_MAX) >= PATH_MAX)
+    {
+      assert (false);
+      return ER_ES_INVALID_PATH;
+    }
+
+  len = strlen (dirbuf);
+  while (len > 1 && IS_PATH_SEPARATOR (dirbuf[len - 1]))
+    {
+      dirbuf[--len] = '\0';
+    }
+
+  for (p = dirbuf + 1; *p != '\0'; p++)
+    {
+      if (!IS_PATH_SEPARATOR (*p))
+	{
+	  continue;
+	}
+
+      *p = '\0';
+      if (mkdir (dirbuf, 0744) < 0 && errno != EEXIST)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", dirbuf);
+	  *p = PATH_SEPARATOR;
+	  return ER_ES_GENERAL;
+	}
+      *p = PATH_SEPARATOR;
+    }
+
+  if (mkdir (dirbuf, 0744) < 0 && errno != EEXIST)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "POSIX", dirbuf);
+      return ER_ES_GENERAL;
+    }
+
+  return NO_ERROR;
 }
 #endif /* SA_MODE || SERVER_MODE */
 
@@ -744,7 +810,7 @@ retry:
 	      return ER_ES_GENERAL;
 	    }
 
-	  ret = es_make_dirs (new_path, dirname2);
+	  ret = es_make_abs_dirs (new_path);
 	  if (ret != NO_ERROR)
 	    {
 	      close (rd_fd);
@@ -860,7 +926,7 @@ xes_posix_move_file_with_prefix (const char *src_path, const char *metaname, con
     }
 
   /* Try create directory */
-  ret = es_make_dirs (new_path, dirname2);
+  ret = es_make_abs_dirs (new_path);
 
   *p = PATH_SEPARATOR;
 

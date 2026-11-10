@@ -706,6 +706,12 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
       value = NULL;
       u_type = CCI_U_TYPE_NULL;
       break;
+    case DB_TYPE_BFILE:
+    case DB_TYPE_CFILE:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, pr_type_name ((DB_TYPE) type));
+      return ER_DBLINK_UNSUPPORTED_TYPE;
     default:
       /* Name the type the sink refused. This branch said "unknown", so the user could not tell which type
        * was rejected -- ENUM and MONETARY sources land here, and so does anything added to DB_TYPE

@@ -9740,6 +9740,17 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
       dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
       break;
 
+    case PT_TYPE_CLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      dt->info.data_type.precision = DB_MAX_VARCHAR_PRECISION;
+      break;
+
+    case PT_TYPE_BLOB:
+      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
+      dt->info.data_type.precision = DB_MAX_VARBIT_PRECISION;
+      dt->info.data_type.units = INTL_CODESET_RAW_BITS;
+      break;
+
     default:
       /* error handling is required.. */
       parser_free_tree (parser, dt);
@@ -12182,18 +12193,6 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_SYS_GUID, domain);
 		  break;
 
-		case PT_UUID:
-		  if (node->info.expr.arg1 == NULL)
-		    {
-		      /* UUID() with no argument defaults to version 4; use an integer constant so that the server can
-		       * distinguish it from an actual NULL argument, which is an error */
-		      regu_alloc (val);
-		      db_make_int (val, 4);
-		      r2 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
-		    }
-		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID, domain);
-		  break;
-
 		case PT_BIT_TO_BFILE:
 		case PT_CHAR_TO_BFILE:
 		  data_type = pt_make_prim_data_type (parser, PT_TYPE_BFILE);
@@ -12241,6 +12240,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  regu = pt_make_regu_arith (r1, NULL, NULL, T_LOBFILE_LENGTH, domain);
 		  parser_free_tree (parser, data_type);
+		  break;
+
+		case PT_UUID:
+		  if (node->info.expr.arg1 == NULL)
+		    {
+		      /* UUID() with no argument defaults to version 4; use an integer constant so that the server can
+		       * distinguish it from an actual NULL argument, which is an error */
+		      regu_alloc (val);
+		      db_make_int (val, 4);
+		      r2 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
+		    }
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID, domain);
 		  break;
 
 		case PT_BIT_TO_BLOB:

@@ -5742,7 +5742,7 @@ locator_remove_class (MOP class_mop)
 	{
 	  attr = &class_->attributes[i];
 
-	  if (TP_IS_LOB_TYPE (attr->type->id))
+	  if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	    {
 	      lob_attr_exist = true;
 	      break;
@@ -6887,7 +6887,7 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
     {
       attr = &class_->attributes[i];
 
-      if (TP_IS_LOB_TYPE (attr->type->id))
+      if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	{
 	  lob_attrid_arr_length++;
 	}
@@ -6917,7 +6917,7 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
   for (int i = 0, index = 0; i < class_->att_count; i++)
     {
       attr = &class_->attributes[i];
-      if (TP_IS_LOB_TYPE (attr->type->id))
+      if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	{
 	  lob_attrid_arr[index++] = attr->id;
 	}

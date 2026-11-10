@@ -228,7 +228,7 @@ class OosWorkspaceTest : public ::testing::Test
 	  payload += hex[byte & 15];
 	}
       run ({"cubrid", "createdb", "--db-volume-size=32M", "--log-volume-size=32M", "--db-page-size=16K",
-	    "--lob-base-path=" + (root / "lob").string (), "-F", root.string (), "workspace_oos", "en_US.utf8"});
+	    "--lobfile-base-path=" + (root / "lob").string (), "-F", root.string (), "workspace_oos", "en_US.utf8"});
       ASSERT_FALSE (HasFailure ()) << "Evidence: " << root;
       created = true;
     }
@@ -365,9 +365,9 @@ TEST_F (OosWorkspaceTest, LoaderHonorsStoragePolicy)
 TEST_F (OosWorkspaceTest, WorkspaceUpdatePreservesExternalLobFiles)
 {
   // Seed permanent locators via the query executor: fresh workspace LOB INSERT has a preexisting defect.
-  sql ("CREATE TABLE t_lob(id INTEGER, b BLOB, c CLOB, v BIT VARYING); COMMIT;\n"
-       "INSERT INTO t_lob VALUES (1, BIT_TO_BLOB(X'abcd'), CHAR_TO_CLOB('lob value'), X'ab'); COMMIT;\n");
-  const std::string predicate = "id=1 AND BLOB_TO_BIT(b)=X'abcd' AND CLOB_TO_CHAR(c)='lob value' AND v=X'";
+  sql ("CREATE TABLE t_lob(id INTEGER, b BFILE, c CFILE, v BIT VARYING); COMMIT;\n"
+       "INSERT INTO t_lob VALUES (1, BIT_TO_BFILE(X'abcd'), CHAR_TO_CFILE('lob value'), X'ab'); COMMIT;\n");
+  const std::string predicate = "id=1 AND BFILE_TO_BIT(b)=X'abcd' AND CFILE_TO_CHAR(c)='lob value' AND v=X'";
   check ("t_lob", predicate + "ab'", 1, 0);
   const auto files = lob_files ();
   ASSERT_EQ (files.size (), 2u);

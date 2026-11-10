@@ -22980,7 +22980,7 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
       /* the types mht_get_hash_number hashes; it aborts on another (an SA client binds an object as its MOP), which
        * counts by its type */
       const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
-			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
+			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_FAMILY_TYPE (type) || type == DB_TYPE_OID
 			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
       sum = sum * 31 + (DB_IS_NULL (value) || !hashed ? 1 : mht_get_hash_number (UINT_MAX, value));
     }

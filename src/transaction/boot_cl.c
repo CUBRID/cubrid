@@ -559,7 +559,7 @@ boot_build_db_info (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INF
       hosts[1] = NULL;
       db =
 	cfg_new_db (client_credential->get_db_name (), db_path_info->db_path, db_path_info->log_path,
-		    db_path_info->lob_path, hosts);
+		    db_path_info->lobfile_path, hosts);
     }
   else
     {
@@ -1281,9 +1281,9 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
   if (!is_sub_client)
     {
       /* TODO: how about to call es_init() only for normal client? */
-      if (boot_Server_credential.lob_path[0] != '\0')
+      if (boot_Server_credential.lobfile_path[0] != '\0')
 	{
-	  error_code = es_init (boot_Server_credential.lob_path);
+	  error_code = es_init (boot_Server_credential.lobfile_path);
 	  if (error_code != NO_ERROR)
 	    {
 	      return error_code;
@@ -1291,7 +1291,7 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 	}
       else
 	{
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOBFILE_PATH, 0);
 	}
     }
 
@@ -1583,9 +1583,9 @@ boot_finalize_client_sub (void)
     {
       db_private_free_and_init (NULL, boot_Server_credential.host_name);
     }
-  if (boot_Server_credential.lob_path)
+  if (boot_Server_credential.lobfile_path)
     {
-      db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+      db_private_free_and_init (NULL, boot_Server_credential.lobfile_path);
     }
   if (boot_Server_credential.db_lang)
     {

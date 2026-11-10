@@ -5704,7 +5704,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
       pr_type = domains[i]->type;
       assert (pr_type != NULL);
 
-      if (TP_IS_CHAR_TYPE (pr_type->id))
+      if (TP_IS_CHAR_TYPE (pr_type->id) || pr_type->id == DB_TYPE_CLOB)
 	{
 	  found_compressible_string_domain = true;
 	  break;
@@ -5737,7 +5737,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
 	  pr_type = domains[i]->type;
-	  if (!TP_IS_CHAR_TYPE (pr_type->id))
+	  if (!(TP_IS_CHAR_TYPE (pr_type->id) || pr_type->id == DB_TYPE_CLOB))
 	    {
 	      continue;
 	    }

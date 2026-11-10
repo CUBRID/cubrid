@@ -686,6 +686,7 @@ need_append_dot (const char *val)
 }
 
 /*
+ * fprint_clob_value - print an internal CLOB DB_VALUE to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
  *    tout(out): output
  *    value(in): DB_VALUE of type DB_TYPE_CLOB
@@ -738,6 +739,7 @@ fprint_blob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
       if (ptr == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) max_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
   else
@@ -745,8 +747,15 @@ fprint_blob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
       ptr = buf;
     }
 
+  if (bfmt_print (1 /* BIT_STRING_HEX */ , value, ptr, max_size) != NO_ERROR)
     {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit_on_error;
     }
+
+  CHECK_PRINT_ERROR (text_print (tout, "X", 1, NULL));
+  CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, max_size - 1, MAX_DISPLAY_COLUMN));
 
 exit_on_error:
   if (ptr != buf)

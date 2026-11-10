@@ -2945,9 +2945,10 @@ tp_domain_find_charbit (DB_TYPE type, int codeset, int collation_id, unsigned ch
    * type : DB_TYPE_CHAR    DB_TYPE_VARCHAR
    * DB_TYPE_BIT     DB_TYPE_VARBIT
    */
-  assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT);
+  assert (type == DB_TYPE_CHAR || type == DB_TYPE_VARCHAR || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT
+	  || type == DB_TYPE_CLOB || type == DB_TYPE_BLOB);
 
-  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+  if (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT || type == DB_TYPE_CLOB || type == DB_TYPE_BLOB)
     {
       /* search the list for a domain that matches */
       for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
@@ -5939,7 +5940,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
        */
       bool use_replacement = tp_json_unwrap_scalar (src,
 						    desired_type == DB_TYPE_CHAR
-						    || desired_type == DB_TYPE_VARCHAR, &src_replacement);
+						    || desired_type == DB_TYPE_VARCHAR
+						    || desired_type == DB_TYPE_CLOB, &src_replacement);
 
       if (use_replacement)
 	{
@@ -5953,7 +5955,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  src = &src_replacement;
 	}
     }
-  else if (original_type == DB_TYPE_MIDXKEY && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR))
+  else if (original_type == DB_TYPE_MIDXKEY
+	   && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR || desired_type == DB_TYPE_CLOB))
     {
       string_buffer sb;
 
@@ -6071,6 +6074,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
    */
   db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
+  /* CLOB is character-shaped storage, but its value/domain does not carry
+   * per-value codeset/collation; keep it out of generic string collation setup. */
   if (TP_IS_CHAR_TYPE (desired_type))
     {
       if (desired_domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
@@ -6110,7 +6115,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		  new_elem_dom = tp_domain_copy (elem_dom, false);
 		  elem_dom->next = save_elem_dom_next;
 
-		  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (elem_dom)))
+		  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (elem_dom)) || TP_DOMAIN_TYPE (elem_dom) == DB_TYPE_CLOB)
 		    {
 		      /* for string domains overwrite collation */
 		      new_elem_dom->collation_id = TP_DOMAIN_COLLATION (desired_domain);
@@ -6187,7 +6192,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
     }
 
-  if ((original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR) && desired_type == DB_TYPE_NUMERIC)
+  if ((original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR || original_type == DB_TYPE_CLOB)
+      && desired_type == DB_TYPE_NUMERIC)
     {
       /* The cast parses the string itself, so that a parse overflow sets its error and is DOMAIN_ERROR (the converter
        * returns DOMAIN_OVERFLOW). The NUMERIC it parsed fits the target through the converter. */
@@ -6230,7 +6236,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	       && src == dest)
 	{
 	  /* The legacy nested CLOB cast wrote dest, then its outer alias
-	   * handling replaced it with the untouched typed NULL temporary. */
+	   * handling replaced it with the untouched typed NULL temporary.
+	   * A truncation is still accepted or refused below. */
 	  DB_VALUE target_domain = *target;
 
 	  status = converter (src, target, desired_domain, &conversion_error);
@@ -6238,7 +6245,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    {
 	      pr_clear_value (target);
 	      *target = target_domain;
-	      status = DOMAIN_COMPATIBLE;
 	    }
 	}
       else
@@ -6266,13 +6272,14 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       else
 	{
-	  /* Legacy LOB casts discarded the inner rejection status after
-	   * clearing the result. Keep that observable NULL-success behavior. */
-	  bool lob_nested = ((original_type == DB_TYPE_CLOB
-			      && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR))
-			     || (original_type == DB_TYPE_BLOB
-				 && (desired_type == DB_TYPE_BIT || desired_type == DB_TYPE_VARBIT)));
-	  status = lob_nested ? DOMAIN_COMPATIBLE : DOMAIN_OVERFLOW;
+	  /* Legacy BLOB casts discarded the inner rejection status after
+	   * clearing the result. Keep that observable NULL-success behavior.
+	   * A CLOB cast reports its inner rejection as DOMAIN_INCOMPATIBLE. */
+	  bool blob_nested = (original_type == DB_TYPE_BLOB
+			      && (desired_type == DB_TYPE_BIT || desired_type == DB_TYPE_VARBIT));
+	  bool clob_nested = (original_type == DB_TYPE_CLOB
+			      && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR));
+	  status = blob_nested ? DOMAIN_COMPATIBLE : (clob_nested ? DOMAIN_INCOMPATIBLE : DOMAIN_OVERFLOW);
 	  pr_clear_value (target);
 	}
     }

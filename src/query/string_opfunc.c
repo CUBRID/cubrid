@@ -25438,6 +25438,7 @@ db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
       return error_status;
     }
 
+  error_status = db_bfile_to_blob (&bfile_value, result_value);
 
   /* The temporary BFILE was created on the ES backing store solely to
    * read the file bytes; remove it before returning to avoid orphaning
@@ -25670,6 +25671,7 @@ db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value)
       return error_status;
     }
 
+  error_status = db_cfile_to_clob (&cfile_value, result_value);
 
   /* The temporary CFILE was created on the ES backing store solely to
    * read the file bytes; remove it before returning to avoid orphaning
@@ -25834,6 +25836,7 @@ lobfile_to_lob (const DB_VALUE * src_value, DB_VALUE * result_value, DB_TYPE lob
     }
   else
     {
+      error_status = db_make_clob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, (int) data_length);
     }
 
   if (error_status != NO_ERROR)
