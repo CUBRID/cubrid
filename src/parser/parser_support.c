@@ -3610,7 +3610,7 @@ pt_has_key_limit_hint (const PT_NODE * node)
 
   for (const PT_NODE * hint = node->info.query.q.select.using_index; hint != NULL; hint = hint->next)
     {
-      if (hint->info.name.indx_key_limit_hint != NULL)
+      if (hint->info.name.indx_key_limit != NULL)
 	{
 	  return true;
 	}
@@ -3637,7 +3637,7 @@ pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node)
     {
     case PT_SELECT:
       using_index = node->info.query.q.select.using_index;
-      if (using_index != NULL && using_index->info.name.indx_key_limit_hint != NULL)
+      if (using_index != NULL && using_index->info.name.indx_key_limit != NULL)
 	{
 	  return true;
 	}
@@ -3735,7 +3735,7 @@ pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node)
     {
     case PT_SELECT:
       using_index = node->info.query.q.select.using_index;
-      if (using_index != NULL && using_index->info.name.indx_key_limit_hint != NULL)
+      if (using_index != NULL && using_index->info.name.indx_key_limit != NULL)
 	{
 	  return true;
 	}

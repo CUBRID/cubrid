@@ -197,7 +197,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, PT_HINT_ENUM
 	{
 	  return false;
 	}
-      if (hint->info.name.indx_key_limit_hint != NULL)
+      if (hint->info.name.indx_key_limit != NULL)
 	{
 	  return false;
 	}
@@ -834,7 +834,7 @@ qo_rewrite_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node)
 
   for (hint = node->info.query.q.select.using_index; hint != NULL; hint = hint->next)
     {
-      if (hint->info.name.indx_key_limit_hint != NULL)
+      if (hint->info.name.indx_key_limit != NULL)
 	{
 	  return;
 	}

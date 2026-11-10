@@ -4720,13 +4720,12 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
   idx_ignore_list_size = 0;
   for (indexp_nokl = using_index; indexp_nokl; indexp_nokl = indexp_nokl->next)
     {
-      if (indexp_nokl->info.name.original && indexp_nokl->info.name.resolved
-	  && !indexp_nokl->info.name.indx_key_limit_hint)
+      if (indexp_nokl->info.name.original && indexp_nokl->info.name.resolved && !indexp_nokl->info.name.indx_key_limit)
 	{
 	  /* it's a normal index without a keylimit; search for same index with keylimit */
 	  for (indexp = using_index; indexp; indexp = indexp->next)
 	    {
-	      if (indexp->info.name.original && indexp->info.name.resolved && indexp->info.name.indx_key_limit_hint
+	      if (indexp->info.name.original && indexp->info.name.resolved && indexp->info.name.indx_key_limit
 		  && indexp->etc == indexp_nokl->etc
 		  && !intl_identifier_casecmp (indexp->info.name.original, indexp_nokl->info.name.original)
 		  && !intl_identifier_casecmp (indexp->info.name.resolved, indexp_nokl->info.name.resolved))
@@ -4859,7 +4858,7 @@ add_using_index (QO_ENV * env, PT_NODE * using_index)
 	  if (indexp->info.name.original && !intl_identifier_casecmp (QO_NODE_NAME (nodep), indexp->info.name.resolved))
 	    {
 	      QO_UI_INDEX (uip, n) = indexp->info.name.original;
-	      QO_UI_KEYLIMIT_HINT (uip, n) = indexp->info.name.indx_key_limit_hint;
+	      QO_UI_KEYLIMIT (uip, n) = indexp->info.name.indx_key_limit;
 	      QO_UI_FORCE (uip, n++) = (int) (UINT64) (indexp->etc);
 	    }
 	}
@@ -7971,7 +7970,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 	      index_entryp->constraints = consp;
 
 	      /* set key limits */
-	      index_entryp->key_limit = (j == -1) ? NULL : QO_UI_KEYLIMIT_HINT (uip, j);
+	      index_entryp->key_limit = (j == -1) ? NULL : QO_UI_KEYLIMIT (uip, j);
 
 	      /* assign seg_idx[] and seg_terms[] */
 	      for (j = 0; j < index_entryp->nsegs; j++)

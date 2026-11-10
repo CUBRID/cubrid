@@ -7546,7 +7546,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	  pt_cast_limit_string_operands (parser, node->info.delete_.limit);
 	  break;
 	case PT_NAME:
-	  pt_cast_limit_string_operands (parser, node->info.name.indx_key_limit_hint);
+	  pt_cast_limit_string_operands (parser, node->info.name.indx_key_limit);
 	  break;
 	default:
 	  break;

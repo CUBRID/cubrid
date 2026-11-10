@@ -14367,7 +14367,7 @@ pt_apply_name (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.name.path_correlation, arg);
   PT_APPLY_WALK (parser, p->info.name.default_value, arg);
   PT_APPLY_WALK (parser, p->info.name.constant_value, arg);
-  PT_APPLY_WALK (parser, p->info.name.indx_key_limit_hint, arg);
+  PT_APPLY_WALK (parser, p->info.name.indx_key_limit, arg);
   return p;
 }
 
@@ -14529,16 +14529,16 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		  q = pt_append_nulstring (parser, q, "(-)");
 		}
 	    }
-	  if (p->info.name.indx_key_limit_hint)
+	  if (p->info.name.indx_key_limit)
 	    {
 	      q = pt_append_nulstring (parser, q, " keylimit ");
-	      if (p->info.name.indx_key_limit_hint->next)
+	      if (p->info.name.indx_key_limit->next)
 		{
-		  r1 = pt_print_bytes (parser, p->info.name.indx_key_limit_hint->next);
+		  r1 = pt_print_bytes (parser, p->info.name.indx_key_limit->next);
 		  q = pt_append_varchar (parser, q, r1);
 		  q = pt_append_nulstring (parser, q, ",");
 		}
-	      r1 = pt_print_bytes (parser, p->info.name.indx_key_limit_hint);
+	      r1 = pt_print_bytes (parser, p->info.name.indx_key_limit);
 	      q = pt_append_varchar (parser, q, r1);
 	    }
 	}
@@ -14579,16 +14579,16 @@ pt_print_name (PARSER_CONTEXT * parser, PT_NODE * p)
 		  q = pt_append_nulstring (parser, q, "(-)");
 		}
 	    }
-	  if (p->info.name.indx_key_limit_hint)
+	  if (p->info.name.indx_key_limit)
 	    {
 	      q = pt_append_nulstring (parser, q, " keylimit ");
-	      if (p->info.name.indx_key_limit_hint->next)
+	      if (p->info.name.indx_key_limit->next)
 		{
-		  r1 = pt_print_bytes (parser, p->info.name.indx_key_limit_hint->next);
+		  r1 = pt_print_bytes (parser, p->info.name.indx_key_limit->next);
 		  q = pt_append_varchar (parser, q, r1);
 		  q = pt_append_nulstring (parser, q, ",");
 		}
-	      r1 = pt_print_bytes (parser, p->info.name.indx_key_limit_hint);
+	      r1 = pt_print_bytes (parser, p->info.name.indx_key_limit);
 	      q = pt_append_varchar (parser, q, r1);
 	    }
 	}

@@ -13856,7 +13856,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
   if (limit_u != NULL)
     {
       /* user explicitly specifies keylimit */
-      key_infop->is_user_given_keylimit_hint = true;
+      key_infop->is_user_given_keylimit = true;
 
       limit_l = limit_u->next;
       if (limit_l == NULL)
@@ -13963,7 +13963,7 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 
   for (spec_list = xasl->spec_list; spec_list; spec_list = spec_list->next)
     {
-      if (spec_list->indexptr && spec_list->indexptr->key_info.is_user_given_keylimit_hint)
+      if (spec_list->indexptr && spec_list->indexptr->key_info.is_user_given_keylimit)
 	{
 	  hint_key_info = &spec_list->indexptr->key_info;
 	}
