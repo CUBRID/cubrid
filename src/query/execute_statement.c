@@ -7913,6 +7913,8 @@ static bool update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * as
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
 static int do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
+static PT_NODE *do_collect_shared_view_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static int do_append_shared_view_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
 static int is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
 				     int *const server_allowed, const PT_NODE * statement);
 static int delete_object_tuple (DB_OBJECT * obj);
@@ -15359,6 +15361,95 @@ do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp,
   return NO_ERROR;
 }
 
+typedef struct do_shared_view_key_info DO_SHARED_VIEW_KEY_INFO;
+struct do_shared_view_key_info
+{
+  const char *key;		/* the position, group and role of each derived table of a group */
+  int n_selects;		/* SELECTs visited so far */
+  bool failed;			/* the key could not be allocated */
+};
+
+/*
+ * do_collect_shared_view_key () - add a derived table of a shared view group to the key of the groups
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): DO_SHARED_VIEW_KEY_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+do_collect_shared_view_key (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DO_SHARED_VIEW_KEY_INFO *info = (DO_SHARED_VIEW_KEY_INFO *) arg;
+  char buf[48];
+
+  if (!PT_IS_SELECT (node))
+    {
+      return node;
+    }
+
+  info->n_selects++;
+  if (node->info.query.shared_view_group > 0)
+    {
+      snprintf (buf, sizeof (buf), " %d:%d%c", info->n_selects, node->info.query.shared_view_group,
+		node->info.query.shared_view_rep ? 'r' : 'm');
+      info->key = pt_append_string (parser, info->key, buf);
+      if (info->key == NULL)
+	{
+	  info->failed = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * do_append_shared_view_key () - name the shared view groups of a query after its hash text
+ *   return : error code
+ *   parser(in):
+ *   contextp(in/out): its hash text gets the key
+ *   statement(in):
+ *
+ * Note: the hash text does not tell which view a derived table was rewritten from, so a query that reads one view
+ *	 twice and shares it, and a query that reads two views differing only in constants, can have the same text
+ */
+static int
+do_append_shared_view_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement)
+{
+  DO_SHARED_VIEW_KEY_INFO info;
+  const char *text;
+
+  if (!PT_IS_QUERY (statement) || contextp->sql_hash_text == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  info.key = NULL;
+  info.n_selects = 0;
+  info.failed = false;
+  (void) parser_walk_tree (parser, statement, do_collect_shared_view_key, &info, NULL, NULL);
+  if (info.key == NULL && !info.failed)
+    {
+      return NO_ERROR;
+    }
+
+  /* append to a copy: appending to the hash text itself may grow or free the block of the statement's alias_print */
+  text = info.failed ? NULL : pt_append_string (parser, NULL, contextp->sql_hash_text);
+  text = (text != NULL) ? pt_append_string (parser, text, " /* shared view") : NULL;
+  text = (text != NULL) ? pt_append_string (parser, text, info.key) : NULL;
+  text = (text != NULL) ? pt_append_string (parser, text, " */") : NULL;
+  if (text == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  contextp->sql_hash_text = (char *) text;
+  return NO_ERROR;
+}
+
 /*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
@@ -15420,6 +15511,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
+  err = do_append_shared_view_key (parser, contextp, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
   err = do_append_bind_variant_key (parser, contextp, statement);
   if (err != NO_ERROR)
     {
