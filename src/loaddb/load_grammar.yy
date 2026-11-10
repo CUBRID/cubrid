@@ -119,6 +119,7 @@ loader_init_yydebug (void)
 %token <string> REAL_LIT
 %token <string> INT_LIT
 %token <int_val> FORMAT_ARG_LIT
+%token FORMAT_ERROR
 %token <string> BINARY_ROW
 %token <int_val> OID_
 %token <string> TIME_LIT4
@@ -355,6 +356,22 @@ format_command :
     /* %format <data format> <compatibility level> <bit platform> <byte order> */
     m_driver.get_scanner ().set_ldr_data_format ($2, $3, $4, $5);
   }
+  |
+  CMD_FORMAT format_error
+  {
+    /*
+     * A malformed command line. The scanner has reported it and drops the rest of the input, see
+     * the FORMAT_ARG rules in load_lexer.l. Taking the line here keeps the parser from reporting
+     * the same failure again as a syntax error.
+     */
+  }
+  ;
+
+format_error :
+  FORMAT_ERROR
+  | FORMAT_ARG_LIT FORMAT_ERROR
+  | FORMAT_ARG_LIT FORMAT_ARG_LIT FORMAT_ERROR
+  | FORMAT_ARG_LIT FORMAT_ARG_LIT FORMAT_ARG_LIT FORMAT_ERROR
   ;
 
 class_command_spec :

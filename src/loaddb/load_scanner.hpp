@@ -32,6 +32,7 @@
 #include <FlexLexer.h>
 #endif
 #include <istream>
+#include <utility>
 
 #include "load_common.hpp"
 
@@ -46,6 +47,7 @@ namespace cubload
 	, m_semantic_helper (semantic_helper)
 	, m_error_handler (error_handler)
 	, m_data_format (OBJECT_FORMAT_TEXT)
+	, m_format_arg_count (0)
       {
 	//
       };
@@ -96,6 +98,39 @@ namespace cubload
 
     private:
       /*
+       * Report a binary section, or the "%format" command line in front of it, that cannot be read.
+       *
+       * The load has to fail in both modes, and the two count a failure differently:
+       *   - SA mode reads the object file twice, a syntax check pass and then the load, and goes on to
+       *     the load only when the first pass counted no error (ldr_sa_load ()). on_failure_with_line ()
+       *     counts a failed row there, not an error, so the load would run and end as a success. The
+       *     failure is reported as an error instead, the way a syntax error is.
+       *   - On the server on_failure_with_line () fails the session, and it counts one failed row:
+       *     on_error_with_line () followed by on_syntax_failure (), as LexerError () does, would count
+       *     two for the one failure.
+       */
+      template<typename... Args>
+      void fail_binary_section (MSGCAT_LOADDB_MSG msg_id, Args &&... args)
+      {
+#if defined (SA_MODE)
+	m_error_handler.on_error_with_line (msg_id, std::forward<Args> (args)...);
+#else
+	m_error_handler.on_failure_with_line (msg_id, std::forward<Args> (args)...);
+#endif
+      }
+
+      /* fail_binary_section () at the line given, see on_failure_with_line (int lineno, ...) */
+      template<typename... Args>
+      void fail_binary_section_at (int lineno, MSGCAT_LOADDB_MSG msg_id, Args &&... args)
+      {
+#if defined (SA_MODE)
+	m_error_handler.on_error_with_line (lineno, msg_id, std::forward<Args> (args)...);
+#else
+	m_error_handler.on_failure_with_line (lineno, msg_id, std::forward<Args> (args)...);
+#endif
+      }
+
+      /*
        * Copy raw bytes of a binary section out of the scanner input.
        * See load_lexer.l file for method definition
        */
@@ -104,6 +139,13 @@ namespace cubload
       semantic_helper &m_semantic_helper;
       error_handler &m_error_handler;
       OBJECT_DATA_FORMAT m_data_format;
+
+      /*
+       * Number of arguments of the "%format" command line scanned so far, see the FORMAT_ARG rules in
+       * load_lexer.l. The command takes exactly FORMAT_ARG_COUNT of them.
+       */
+      static const int FORMAT_ARG_COUNT = 4;
+      int m_format_arg_count;
   };
 
 } // namespace cubload

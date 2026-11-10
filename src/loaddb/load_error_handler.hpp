@@ -68,6 +68,9 @@ namespace cubload
       void on_failure_with_line (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
       template<typename... Args>
+      void on_failure_with_line (int lineno, MSGCAT_LOADDB_MSG msg_id, Args &&... args);
+
+      template<typename... Args>
       void log_date_time_conversion_error (Args &&... args);
 
       template<typename... Args>
@@ -182,6 +185,26 @@ namespace cubload
 	  }
 
 	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), get_driver_lineno ()));
+	err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
+
+	log_error_message (err_msg, true);
+      }
+  }
+
+  /*
+   * on_failure_with_line - on_failure_with_line () at the line given rather than at the line the
+   *                        driver is on, for a failure the scanner finds before the grammar has
+   *                        started the line it belongs to
+   */
+  template<typename... Args>
+  void
+  error_handler::on_failure_with_line (int lineno, MSGCAT_LOADDB_MSG msg_id, Args &&... args)
+  {
+    if (!is_last_error_filtered ())
+      {
+	std::string err_msg;
+
+	err_msg.append (format (get_message_from_catalog (LOADDB_MSG_LINE), lineno));
 	err_msg.append (format (get_message_from_catalog (msg_id), std::forward<Args> (args)...));
 
 	log_error_message (err_msg, true);

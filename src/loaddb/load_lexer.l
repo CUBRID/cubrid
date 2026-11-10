@@ -28,6 +28,10 @@
 #include "error_manager.h"
 #include "error_code.h"
 
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
+
 #undef YY_DECL
 #define YY_DECL \
   int cubload::scanner::yylex (cubload::parser::semantic_type* yylval, cubload::parser::location_type* yylloc)
@@ -179,7 +183,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 \%[Ff][Oo][Rr][Mm][Aa][Tt] {
     PRINT ("CMD_FORMAT %s\n", yytext);
     m_semantic_helper.set_in_instance_line (false);
-    /* the argument of the command is scanned as FORMAT_TYPE, see the FORMAT_ARG rules below */
+    /* the arguments of the command are scanned in FORMAT_ARG, see the rules below */
+    m_format_arg_count = 0;
     BEGIN FORMAT_ARG;
     return token::CMD_FORMAT;
 }
@@ -636,23 +641,50 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
    * initial start condition would collide with the INT_LIT rule above, which matches the very same
    * text with the same length. They are therefore scanned in a start condition of their own, which
    * is left when the command line ends.
+   *
+   * A command line that is not "%format" and FORMAT_ARG_COUNT integers is reported here, as
+   * LOADDB_MSG_INVALID_FORMAT_COMMAND, and FORMAT_ERROR is handed to the grammar in place of the
+   * token it could not make. The grammar takes that token as the end of the command, see
+   * format_command in load_grammar.yy, so the failure is not reported a second time as a syntax
+   * error. Scanning goes on in ABORTED, which drops the binary section behind the command.
+   *
+   * A valid command line never reaches the new line rule below: the grammar reduces format_command
+   * on its last argument and set_ldr_data_format () leaves FORMAT_ARG, so the new line is scanned
+   * in the start condition it selects.
    */
 <FORMAT_ARG>[ \t]+ ;
 
 <FORMAT_ARG>[0-9]+ {
     PRINT ("FORMAT_ARG_LIT %s\n", yytext);
-    yylval->int_val = atoi (yytext);
+    char *end_ptr = NULL;
+    long value;
+
+    errno = 0;
+    value = strtol (yytext, &end_ptr, 10);
+    if (errno == ERANGE || value > INT_MAX || *end_ptr != '\0' || ++m_format_arg_count > FORMAT_ARG_COUNT)
+      {
+        /* atoi () would have handed over whatever an overflowing number wraps to */
+        fail_binary_section (LOADDB_MSG_INVALID_FORMAT_COMMAND);
+        BEGIN ABORTED;
+        return token::FORMAT_ERROR;
+      }
+
+    yylval->int_val = (int) value;
     return token::FORMAT_ARG_LIT;
 }
 
 <FORMAT_ARG>\r?\n {
-    BEGIN INITIAL;
-    return token::NL;
+    /* fewer arguments than the command takes */
+    fail_binary_section (LOADDB_MSG_INVALID_FORMAT_COMMAND);
+    BEGIN ABORTED;
+    return token::FORMAT_ERROR;
 }
 
 <FORMAT_ARG>(.|\n) {
-    m_error_handler.on_failure_with_line (LOADDB_MSG_INVALID_FORMAT_COMMAND);
+    /* not an unsigned integer */
+    fail_binary_section (LOADDB_MSG_INVALID_FORMAT_COMMAND);
     BEGIN ABORTED;
+    return token::FORMAT_ERROR;
 }
 
   /*
@@ -677,7 +709,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 }
 
 <BINARY_MODE>(.|\n) {
-    m_error_handler.on_failure_with_line (LOADDB_MSG_INVALID_FORMAT_COMMAND);
+    fail_binary_section (LOADDB_MSG_INVALID_FORMAT_COMMAND);
     BEGIN ABORTED;
 }
 
@@ -737,7 +769,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 
 	if (read_binary (row->val, rec_size) != rec_size)
 	  {
-	    m_error_handler.on_failure_with_line (LOADDB_MSG_TRUNCATED_BINARY_SECTION);
+	    /* the row being read is counted when it is handed over, so it is on the line after yylineno */
+	    fail_binary_section_at (yylineno + 1, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
 	    BEGIN ABORTED;
 	  }
 	else
@@ -750,8 +783,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 }
 
 <BINARY_BLOCK>(.|\n) {
-    /* less than the four bytes of a record size field are left, the object file is truncated */
-    m_error_handler.on_failure_with_line (LOADDB_MSG_TRUNCATED_BINARY_SECTION);
+    /*
+     * Less than the four bytes of a record size field are left, the object file is truncated. The
+     * record that broke off would have been on the line after yylineno.
+     */
+    fail_binary_section_at (yylineno + 1, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
     BEGIN ABORTED;
 }
 
@@ -900,9 +936,8 @@ cubload::scanner::set_ldr_data_format (int data_format, int compat_level, int bi
       m_data_format = OBJECT_FORMAT_TEXT;
       BEGIN ABORTED;
 
-      m_error_handler.on_failure_with_line (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, compat_level, bit_platform,
-					    endian, binary_format_compat_level (), binary_format_bit_platform (),
-					    binary_format_endian ());
+      fail_binary_section (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, compat_level, bit_platform, endian,
+			   binary_format_compat_level (), binary_format_bit_platform (), binary_format_endian ());
       return;
     }
 
@@ -927,7 +962,7 @@ cubload::scanner::set_ldr_data_format (int data_format, int compat_level, int bi
       m_data_format = OBJECT_FORMAT_TEXT;
       BEGIN ABORTED;
 
-      m_error_handler.on_failure_with_line (LOADDB_MSG_UNSUPPORTED_DATA_FORMAT, data_format);
+      fail_binary_section (LOADDB_MSG_UNSUPPORTED_DATA_FORMAT, data_format);
       break;
     }
 }
