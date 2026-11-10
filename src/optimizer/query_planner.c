@@ -19348,7 +19348,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 		  /* keep the historical during_join_terms behavior */
 		  return PLAN_PARALLEL_OPT_CANNOT_USE;
 		}
-	      /* a term without a parse-tree expression cannot contain a method call */
+	      /* a term without a parse-tree expression cannot contain an ineligible node */
 	      continue;
 	    }
 
