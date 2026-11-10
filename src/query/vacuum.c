@@ -1462,6 +1462,17 @@ vacuum_stop_master (THREAD_ENTRY * thread_p)
   delete vacuum_Master_entry_manager;
   vacuum_Master_entry_manager = NULL;
 
+#if !defined (NDEBUG)
+  /* free the tracked dropped files only after the master is stopped; the master still uses it while running
+   * (e.g., vacuum_cleanup_dropped_files ()). */
+  while (vacuum_Track_dropped_files)
+    {
+      VACUUM_TRACK_DROPPED_FILES *t = vacuum_Track_dropped_files;
+      vacuum_Track_dropped_files = t->next_tracked_page;
+      free (t);
+    }
+#endif
+
   vacuum_Is_booted = false;
 }
 
@@ -6794,6 +6805,29 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   /* Success */
   return NO_ERROR;
+}
+
+/*
+ * vacuum_notify_dropped_file () - notify vacuum of a file destroyed without the commit postpone of a DROP, the same way
+ *				   that postpone does (see vacuum_log_add_dropped_file). no vacuum worker accesses
+ *				   the file after this. with vacuum disabled, the handler only cleans the caches.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * vfid (in)	 : File about to be destroyed.
+ */
+int
+vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  LOG_RCV rcv;
+  VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
+
+  VFID_COPY (&rcv_data.vfid, vfid);
+  OID_SET_NULL (&rcv_data.class_oid);
+  rcv.data = (const char *) &rcv_data;
+  rcv.length = sizeof (rcv_data);
+
+  return vacuum_rv_notify_dropped_file (thread_p, &rcv);
 }
 
 /*

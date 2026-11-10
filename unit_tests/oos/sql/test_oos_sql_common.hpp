@@ -32,7 +32,7 @@
 #include "db_client_type.hpp"
 #include "db.h"
 #include "dbi.h"
-#include "dbtype_function.h"
+#include "dbtype.h"
 #include "error_manager.h"
 
 #if defined(SA_MODE)

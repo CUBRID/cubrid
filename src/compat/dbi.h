@@ -71,10 +71,15 @@ extern "C"
 
   extern int db_login (const char *name, const char *password);
   extern int db_restart (const char *program, int print_version, const char *volume);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  extern int db_restart_sub (int sub_index);
+#endif
   extern int db_restart_ex (const char *program, const char *db_name, const char *db_user, const char *db_password,
 			    const char *preferred_hosts, int client_type);
   extern void db_set_server_session_key (const char *key);
   extern char *db_get_server_session_key (void);
+  extern void db_set_session_secret (const char *secret);
+  extern char *db_get_session_secret (void);
   extern SESSION_ID db_get_session_id (void);
   extern void db_set_session_id (const SESSION_ID session_id);
   extern bool db_get_keep_session (void);
@@ -88,6 +93,10 @@ extern "C"
   extern int db_get_variable (DB_VALUE * name, DB_VALUE * value);
   extern int db_shutdown (void);
   extern void db_shutdown_without_request_to_server (void);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  extern int db_shutdown_sub ();
+  extern int db_close_sub_client_registration (void);
+#endif
   extern int db_ping_server (int client_val, int *server_val);
   extern int db_disable_modification (void);
   extern int db_enable_modification (void);
@@ -556,6 +565,7 @@ extern "C"
   extern int db_is_updatable_object (DB_OBJECT * obj);
   extern int db_is_updatable_attribute (DB_OBJECT * obj, const char *attr_name);
   extern int db_check_single_query (DB_SESSION * session);
+  extern int db_check_driver_multiple_statements (DB_SESSION * session);
 /* query pre-processing functions */
   extern int db_get_query_format (const char *CSQL_query, DB_QUERY_TYPE ** type_list, DB_QUERY_ERROR * query_error);
   extern DB_QUERY_TYPE *db_query_format_next (DB_QUERY_TYPE * query_type);
@@ -641,6 +651,7 @@ extern "C"
   extern int db_get_start_line (DB_SESSION * session, int stmt);
 
   extern int db_get_statement_type (DB_SESSION * session, int stmt);
+  extern bool db_statement_needs_bound_values (DB_SESSION * session);
 
   extern void db_include_oid (DB_SESSION * session, int include_oid);
 

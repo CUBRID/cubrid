@@ -457,7 +457,6 @@ struct css_conn_entry
   int invalidate_snapshot;
   int db_error;
   bool in_method;		/* this connection is for method callback */
-  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   int client_id;
   bool in_transaction;		/* this client is in-transaction or out-of- */
@@ -515,6 +514,12 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
+  // the index the server assigned, as opposed to one a packet claims
+  void assign_tran_index (int tran_index);
+  bool claim_tran_index (int tran_index);
+  void release_tran_index (void);
+  int get_lost_tran_index (void);
+
   // request count manipulation
   void add_pending_request ();
   size_t start_request ();
@@ -541,6 +546,8 @@ private:
   // note - I want to protect this.
   int transaction_id;
   // *INDENT-OFF*
+  std::atomic<int> owned_tran_index;	/* assigned by the server, or NULL_TRAN_INDEX */
+  std::atomic<bool> reported_foreign_tran_index;	/* a mismatching claim is logged once */
   std::atomic<size_t> pending_request_count;
   std::atomic<size_t> working_task_count;
 #if defined(SERVER_MODE)
@@ -549,6 +556,8 @@ private:
   // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;
+  int owned_tran_index;
+  bool reported_foreign_tran_index;
 #endif				// not c++ = c
 };
 

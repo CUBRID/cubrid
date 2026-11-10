@@ -24,7 +24,6 @@
 #ifndef _QUERY_LIST_H_
 #define _QUERY_LIST_H_
 
-struct domain_plan_item;
 
 #ident "$Id$"
 
@@ -380,7 +379,6 @@ typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
-  struct domain_plan_item *plan_item;	/* load-derived, not serialized */
   int pos_no;			/* value position number */
 };
 
@@ -451,11 +449,6 @@ struct qfile_tuple_descriptor
   int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass. Lives in the
 				 * f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values), so freeing
 				 * f_valp frees it. */
-  DB_VALUE *f_cast;		/* f_cast_cnt values: the collection casts a column's value into f_cast[i] when the value is
-				 * not of the column's domain (qdata_get_dbval_from_constant_regu_variable), so a peeked
-				 * value - a scan's value another column reads too - keeps the type its producer gave it.
-				 * Allocated with f_valp, cleared and freed with it (qfile_clear_list_id). */
-  int f_cast_cnt;
 
   /* T_COL_SRC */
   QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
@@ -498,6 +491,36 @@ struct sort_list
   SORT_ORDER s_order;		/* Ascending/Descending Order */
   SORT_NULLS s_nulls;		/* NULLS as First/Last position */
 };				/* Sort item list */
+
+/*
+ * qfile_is_sort_list_covered () -
+ *   return: true or false
+ *   covering_list_p(in): covering sort item list pointer
+ *   covered_list_p(in): covered sort item list pointer
+ *
+ * Note: if covering_list_p covers covered_list_p returns true.
+ *       otherwise, returns false.
+ */
+static inline bool
+qfile_is_sort_list_covered (const SORT_LIST * covering_list_p, const SORT_LIST * covered_list_p)
+{
+  const SORT_LIST *s1, *s2;
+
+  if (covered_list_p == NULL)
+    {
+      return false;
+    }
+
+  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
+    {
+      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
+	{
+	  return false;
+	}
+    }
+
+  return s2 == NULL;
+}
 
 /*
  *       		     LIST FILE DEFINITIONS
@@ -555,8 +578,6 @@ struct qfile_list_id
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
       (list_id)->tpl_descr.f_len = NULL; \
-      (list_id)->tpl_descr.f_cast = NULL; \
-      (list_id)->tpl_descr.f_cast_cnt = 0; \
       (list_id)->tpl_descr.col_src = NULL; \
       (list_id)->tpl_descr.col_src_cap = 0; \
       (list_id)->tpl_descr.col_src_cnt = 0; \
@@ -576,6 +597,8 @@ struct qfile_tuple_position
   QFILE_TUPLE tpl;		/* Tuple pointer inside the page */
   int tplno;			/* Tuple number inside the page */
 };
+
+#define QFILE_RESERVED_HASH_KEY_POS  (-1)	/* first column only: INT -1, overwritten by a consuming hash join */
 
 #define QFILE_OUTER_LIST  0	/* outer list file indicator */
 #define QFILE_INNER_LIST  1	/* inner list file indicator */
@@ -607,7 +630,7 @@ enum
   QFILE_FLAG_ALL = 0x0100,
   QFILE_FLAG_DISTINCT = 0x0200,
   QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
-  QFILE_NOT_USE_MEMBUF = 0x0800,
+  QFILE_FLAG_NO_MEMBUF = 0x0800,
   QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple): its tuples
 				 * carry the 8-byte [len][prev_len] header (type_list.hdr_size) */
 };
@@ -691,6 +714,9 @@ class sector_page_iterator
 
     inline struct qmgr_temp_file *get_current_tfile () const { return m_current_tfile; }
     inline VPID get_current_vpid () const { return m_last_vpid; }
+    /* did get_next_page () return NULL because a page could not be fetched (the error is set on the thread), rather
+     * than because every page was handed out? */
+    inline bool failed () const { return m_failed; }
 
   private:
     int m_membuf_index;		/* -1 = initial, >=0 = CAS winner iterating membuf, -2 = not winner */
@@ -699,6 +725,7 @@ class sector_page_iterator
     VSID m_current_vsid;
     VPID m_last_vpid;		/* VPID of the last returned page */
     struct qmgr_temp_file *m_current_tfile;
+    bool m_failed;		/* a page fetch failed: get_next_page () returned NULL on an error */
 };
 // *INDENT-ON*
 #endif /* __cplusplus */
@@ -757,6 +784,9 @@ enum
 					 * pinned by a unique key): its executions choose among the
 					 * query's plans by fingerprint (bind_variant.h) */
 };
+
+/* the plan choices a LIMIT value decides (pt_recompile_for_limit_optimizations) */
+#define XASL_LIMIT_OPT_FLAGS (MRO_CANDIDATE | MRO_IS_USED | SORT_LIMIT_CANDIDATE | SORT_LIMIT_USED)
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 

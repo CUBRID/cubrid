@@ -259,7 +259,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->fd = fd;
   conn->request_id = 0;
   conn->status = CONN_OPEN;
-  conn->set_tran_index (NULL_TRAN_INDEX);
+  conn->release_tran_index ();
   conn->init_pending_request ();
   conn->init_working_task ();
   conn->init_method_callback ();
@@ -273,7 +273,6 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->client_id = err;
   conn->db_error = 0;
   conn->in_transaction = false;
-  conn->in_flashback = false;
   conn->cdc_auth_done = false;
   conn->cdc_auth_busy = 0;
   conn->reset_on_commit = false;
@@ -341,7 +340,6 @@ css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn)
   int r;
 
   conn->stop_talk = false;
-  conn->in_flashback = false;
 
   START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 

@@ -101,6 +101,8 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
  * bind-sensitive planner could price. Used at plan generation to flag a plan built with
  * unbound host-variable markers so the first execution replans under the real values. */
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
+/* true if HAVING compares an aggregate the planner prices with a value against a host variable (CBRD-27811) */
+bool histogram_stmt_has_having_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /*===========================================================================*/
 /* bind-value plans (per-predicate fingerprint)
@@ -230,6 +232,8 @@ void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
 /* histogram selectivity evaluation functions */
 void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity,
 				      bool *success);
+/* the sum of the equality estimates of n constants against one column, the histogram opened once */
+void histogram_get_equal_selectivity_sum (PT_NODE *lhs, DB_VALUE **values, int n, double *sum, bool *success);
 void histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge, bool include_equal,
 				     double *selectivity,
 				     bool *success);
@@ -239,6 +243,9 @@ void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool
 				      double fallback_sel, double *selectivity, bool *success);
 /* distinct value count of the column the node resolves to (MCV entries + non-MCV distinct) */
 void histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success);
+/* fraction of the groups of GROUP BY attr that hold min_rows rows or more, the value counts scaled by scale */
+void histogram_get_group_size_selectivity (PT_NODE *attr, double min_rows, double scale, double *selectivity,
+    bool *success);
 /* the row count the column's histogram was built from, for callers that combine two probes and
  * need the same one-row floor the single probes apply. Returns false when the column has no
  * usable histogram. */
