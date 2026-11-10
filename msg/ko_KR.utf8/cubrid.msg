@@ -1468,7 +1468,9 @@ $ LOADDB
 
 1371 WITH FULLSCAN이 샘플링 방식으로 전환되었습니다. (class "%1$s", heap pages : %2$d, stats_fullscan_max_pages : %3$d)
 
-1372 마지막 에러
+1372 연결이 트랜잭션 인덱스 %1$d 를 사용했으나, 서버가 이 연결에 할당한 인덱스는 %2$d 입니다. 할당된 인덱스를 사용했습니다.
+
+1373 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

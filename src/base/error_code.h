@@ -1759,7 +1759,9 @@
 
 #define ER_STATS_FULLSCAN_TO_SAMPLING               -1371
 
-#define ER_LAST_ERROR                               -1372
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1372
+
+#define ER_LAST_ERROR                               -1373
 
 
 /*
