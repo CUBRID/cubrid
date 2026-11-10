@@ -6201,10 +6201,11 @@ numeric_internal_real_to_num (double adouble, int dst_scale, DB_C_NUMERIC num, i
   switch (get_fp_value_type (adouble))
     {
     case FP_VALUE_TYPE_INFINITE:
-      return ER_IT_DATA_OVERFLOW;
     case FP_VALUE_TYPE_NAN:
+      /* neither has a NUMERIC value: a NaN overflows as an infinity does, and as a NaN converted to an integer type
+       * does */
+      return ER_IT_DATA_OVERFLOW;
     case FP_VALUE_TYPE_ZERO:
-      /* currently CUBRID returns 0 for a NaN converted to NUMERIC (??) */
       *scale = dst_scale;
       *prec = dst_scale ? dst_scale : 1;
 
