@@ -832,6 +832,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
+#define PRM_NAME_INNER_TABLE_THRESHOLD "inner_table_threshold"
+
 // #endregion
 
 /*
@@ -5726,6 +5728,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = true}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_INNER_TABLE_THRESHOLD,
+   PRM_NAME_INNER_TABLE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

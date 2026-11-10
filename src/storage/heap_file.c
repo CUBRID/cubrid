@@ -35,6 +35,7 @@
 
 #include "bestspace.hpp"
 #include "heap_file.h"
+#include "inner_table.hpp"
 
 #include "porting.h"
 #include "porting_inline.hpp"
@@ -1591,6 +1592,9 @@ int
 heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   int ret;
+
+  /* a schema change can create or drop a companion class */
+  inner_table_forget_classes ();
 
   ret = heap_classrepr_decache_guessed_last (class_oid);
   if (ret != NO_ERROR)
@@ -26924,7 +26928,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    {
 	      /* recdes may point directly into the still-latched page */
 	      *recdes = *peeked_recdes;
-	      return scan;
+	      return inner_table_expand (thread_p, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+					 scan_cache->mvcc_snapshot);
 	    }
 
 	  if (is_cached_scan)
@@ -26933,7 +26938,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	       * local_pgptr was set from pgbuf_copy_buffer_get_page_ptr () whenever is_cached_scan
 	       * is true, so peeked_recdes->data is stable local-cache memory, not a live latched page. */
 	      *recdes = *peeked_recdes;
-	      return scan;
+	      return inner_table_expand (thread_p, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+					 scan_cache->mvcc_snapshot);
 	    }
 
 	  /* COPY: the scan still holds the page (the caller sets cache_last_fix_page before this call), so copy the
@@ -26951,7 +26957,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	      memcpy (recdes->data, peeked_recdes->data, peeked_recdes->length);
 	      recdes->length = peeked_recdes->length;
 	      recdes->type = peeked_recdes->type;
-	      return scan;
+	      return inner_table_expand (thread_p, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+					 scan_cache->mvcc_snapshot);
 	    }
 	  /* recdes buffer too small (not expected for a single-page REC_HOME): fall through to the full path. */
 	}
@@ -27070,6 +27077,12 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   /* Fall through to exit. */
 
 exit:
+  if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
+    {
+      /* the version may come from the heap or from a log undo image; both carry references */
+      scan = inner_table_expand (thread_p, context->class_oid_p, context->recdes_p, context->scan_cache,
+				 context->ispeeking, context->scan_cache ? context->scan_cache->mvcc_snapshot : NULL);
+    }
   return scan;
 }
 
@@ -27243,6 +27256,11 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   /* Fall through to exit. */
 
 exit:
+  if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
+    {
+      scan = inner_table_expand (thread_p, context->class_oid_p, context->recdes_p, context->scan_cache,
+				 context->ispeeking, NULL);
+    }
 
   return scan;
 }

@@ -33,6 +33,7 @@
 #include <cstring>		// for std::memcpy
 
 #include "locator_sr.h"
+#include "inner_table.hpp"
 
 #include "boot_sr.h"
 #include "btree_load.h"
@@ -4930,6 +4931,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   FUNC_PRED_UNPACK_INFO *local_func_preds = NULL;
   HEAP_OPERATION_CONTEXT context;
   bool skip_checking_fk;
+  RECDES inner_recdes = RECDES_INITIALIZER;
+  bool inner_rewritten = false;
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5020,8 +5023,20 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
    * heap_insert_logical */
   recdes->type = REC_HOME;
 
+  if (inner_table_enabled ())
+    {
+      /* the heap gets the record with references; index maintenance keeps the complete record */
+      error_code = inner_table_rewrite (thread_p, &real_class_oid, recdes, NULL, NULL, 0, &inner_recdes,
+					&inner_rewritten);
+      if (error_code != NO_ERROR)
+	{
+	  goto error2;
+	}
+    }
+
   /* prepare context */
-  heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, local_scan_cache);
+  heap_create_insert_context (&context, &real_hfid, &real_class_oid, inner_rewritten ? &inner_recdes : recdes,
+			      local_scan_cache);
   context.update_in_place = force_in_place;
   context.is_bulk_op = has_BU_lock;
   context.use_bulk_logging = use_bulk_logging;
@@ -5034,6 +5049,10 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       rep = heap_get_class_repr_id (thread_p, &real_class_oid);
       (void) or_replace_rep_id (context.recdes_p, rep);
+      if (context.recdes_p != recdes)
+	{
+	  (void) or_replace_rep_id (recdes, rep);
+	}
     }
 
   /* execute insert */
@@ -5236,6 +5255,7 @@ error1:
   HFID_COPY (hfid, &real_hfid);
 
 error2:
+  inner_table_free_record (&inner_recdes);
   if (cache_attr_copyarea != NULL)
     {
       locator_free_copy_area (cache_attr_copyarea);
@@ -5394,6 +5414,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   OID superclass_oid;
+  RECDES inner_recdes = RECDES_INITIALIZER;
+  bool inner_rewritten = false;
+  INNER_TABLE_REFS *inner_refs = NULL;
 
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
 
@@ -6004,7 +6027,23 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      heap_create_update_context (&update_context, hfid, oid, class_oid, recdes, local_scan_cache, force_in_place);
+      if (inner_table_enabled ())
+	{
+	  /* the heap gets the record with references; the old version's references are retired after the update */
+	  error_code = inner_table_collect_refs (thread_p, class_oid, oid, &inner_refs);
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = inner_table_rewrite (thread_p, class_oid, recdes, inner_refs, att_id, n_att_id,
+						&inner_recdes, &inner_rewritten);
+	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	}
+
+      heap_create_update_context (&update_context, hfid, oid, class_oid, inner_rewritten ? &inner_recdes : recdes,
+				  local_scan_cache, force_in_place);
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
 	{
@@ -6023,6 +6062,12 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  goto error;
 	}
       isold_object = update_context.is_logical_old;
+
+      error_code = inner_table_retire_refs (thread_p, inner_refs);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
 
       /*
        * for replication,
@@ -6062,6 +6107,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   *force_count = 1;
 
 error:
+  inner_table_free_record (&inner_recdes);
+  inner_table_free_refs (inner_refs);
 
   if (old_classname != NULL && old_classname != classname)
     {
@@ -6274,6 +6321,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   int error_code = NO_ERROR;
   bool deleted = false;
   SCAN_CODE scan_code = S_SUCCESS;
+  INNER_TABLE_REFS *inner_refs = NULL;
 
   /* Update note : While scanning objects, the given scancache does not fix the last accessed page. So, the object must
    * be copied to the record descriptor. Changes : (1) variable name : peek_recdes => copy_recdes (2) function call :
@@ -6344,6 +6392,16 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   if (isold_object == false)
     {
       OID_SET_NULL (&class_oid);
+    }
+
+  if (isold_object == true && !OID_IS_ROOTOID (&class_oid) && inner_table_enabled ())
+    {
+      /* collect the references before the delete; their chunks are retired after it */
+      error_code = inner_table_collect_refs (thread_p, &class_oid, oid, &inner_refs);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   if (isold_object == true && OID_IS_ROOTOID (&class_oid))
@@ -6521,6 +6579,11 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	}
       deleted = true;
     }
+  error_code = inner_table_retire_refs (thread_p, inner_refs);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   *force_count = 1;
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -6532,6 +6595,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 #endif
 
 error:
+  inner_table_free_refs (inner_refs);
 
   return error_code;
 }

@@ -34,6 +34,7 @@
 
 #include "error_manager.h"
 #include "expr_batch.h"
+#include "inner_table.hpp"
 #include "heap_file.h"
 #include "ftab_set.hpp"
 #include "fetch.h"
@@ -7435,6 +7436,12 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
   if (scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || hsidp->scan_cache.mvcc_disabled_class)
     {
       hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
+      return hsidp->batch_state;
+    }
+  /* the batch peeks records on the page, so it would see Inner Table references instead of values */
+  if (inner_table_enabled () && inner_table_is_opted_in (thread_p, &hsidp->cls_oid))
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (Inner Table class)";
       return hsidp->batch_state;
     }
   if (scan_id->single_fetch != QPROC_NO_SINGLE_INNER)

@@ -579,8 +579,11 @@ enum param_id
   /* hash join: the runtime filter one input's keys make for the other input's outermost scan */
   PRM_ID_HASH_JOIN_RUNTIME_FILTER,
 
+  /* Inner Table POC: VARCHAR values of at least this many disk bytes move to the companion chunk class; 0 = off */
+  PRM_ID_INNER_TABLE_THRESHOLD,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_HASH_JOIN_RUNTIME_FILTER
+  PRM_LAST_ID = PRM_ID_INNER_TABLE_THRESHOLD
 };
 typedef enum param_id PARAM_ID;
 

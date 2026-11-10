@@ -163,11 +163,11 @@ class Case:
     def check_chunks(self, step):
         """Visible chunk rows must match the large values of t_inner exactly."""
         rc, text = self.db.sql(
-            f'select count(distinct value_id) as nvalues, nvl(sum(octet_length(chunk)), 0) as nbytes '
+            f'select count(distinct ck div 1048576) as nvalues, nvl(sum(octet_length(chunk)), 0) as nbytes '
             f'from t_inner{CHUNK_TABLE_SUFFIX};')
         rc2, text2 = self.db.sql(
             f'select count(*) as nvalues, nvl(sum(octet_length(v)), 0) as nbytes from t_inner '
-            f'where octet_length(v) >= {THRESHOLD};')
+            f"where octet_length(v) >= {THRESHOLD} and k <> 'compressible';")
         if rc or rc2 or errors(text) or errors(text2):
             self.record(f'{step}: chunk rows match large values', 'FAILED', 'query failed')
             return
@@ -181,9 +181,7 @@ class Case:
         db = self.db
         setup = (f'create table t_oracle (id int primary key, k varchar(20), n int, v varchar);\n'
                  f'create table t_inner (id int primary key, k varchar(20), n int, v varchar);\n'
-                 f'create table t_inner{CHUNK_TABLE_SUFFIX} (value_id bigint not null, ord int not null, chunk varchar,'
-                 f' constraint pk_t_inner{CHUNK_TABLE_SUFFIX} primary key (value_id, ord));\n'
-                 f'create serial t_inner{CHUNK_TABLE_SUFFIX}_seq;\n')
+                 f'create table t_inner{CHUNK_TABLE_SUFFIX} (ck bigint primary key, chunk bit varying);\n')
         rc, text = db.sql(setup)
         if rc or errors(text):
             raise HarnessError(f'setup failed: {errors(text)[:3]}')
@@ -245,12 +243,16 @@ class Case:
         if rc or not rows(text) or int(rows(text)[0]['c']) == 0:
             self.record('control: missing chunk is an error', 'NOT VERIFIED', 'no chunk rows to remove')
         else:
-            db.sql(f'delete from t_inner{CHUNK_TABLE_SUFFIX} where ord = 0 and value_id = '
-                   f'(select min(value_id) from t_inner{CHUNK_TABLE_SUFFIX});')
+            c = f't_inner{CHUNK_TABLE_SUFFIX}'
+            db.sql(f'create table saved_chunk as select * from {c} where ck = (select min(ck) from {c});\n'
+                   f'delete from {c} where ck = (select ck from saved_chunk);')
             rc, text = db.sql('select id, sha2(v, 256) as h from t_inner order by id;')
             ok = rc != 0 or bool(errors(text))
             self.record('control: missing chunk is an error', 'VERIFIED' if ok else 'FAILED',
                         errors(text)[0][:120] if errors(text) else 'query returned rows')
+            # Put the chunk back so that the final comparison and checkdb see a consistent database.
+            db.sql(f'insert into {c} select * from saved_chunk;\ndrop table saved_chunk;')
+            self.compare('after the chunk is restored')
         return self.results
 
 
@@ -311,7 +313,7 @@ def main():
     print(f'{args.case}: database {name}, artifacts {root}, inner table support {inner}', flush=True)
     rc = 2
     started = False
-    conf = Path(os.environ['CUBRID']) / 'conf/cubrid.conf'
+    conf = Path(os.environ.get('CUBRID_CONF_FILE') or Path(os.environ['CUBRID']) / 'conf/cubrid.conf')
     conf_backup = None
     try:
         sh(['cub-workenv', 'create-db', name], log)
