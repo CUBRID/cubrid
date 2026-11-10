@@ -1741,8 +1741,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->num_exec_queries = 0;
   tdes->ddl_sql_user_text = NULL;
   tdes->deferred_wake_epoch = 0;
-  tdes->deferred_wake_counter = 0;
-  tdes->wake_target = 0;
+  tdes->deferred_wake_last_epoch = 0;
+  tdes->hand_row = 0;
 
   for (i = 0; i < MAX_NUM_EXEC_QUERY_HISTORY; i++)
     {
@@ -4388,13 +4388,12 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
- * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends, or until a rollback to a
- *				savepoint of it may have removed the stamp the caller saw
+ * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends, or until what the caller saw may
+ *				be gone
  *
- * return	 : NO_ERROR once that transaction has ended or rolled back to a savepoint, or once a partial rollback
- *		   of any transaction may have raced the wait (see lock_wait_transaction_mvccid ()); the caller reads the
- *		   stamp again either way.  An error if the lock failed, or if the lock was granted while that transaction is
- *		   still active -- waiting again cannot help.
+ * return	 : NO_ERROR once that transaction has ended, or when the caller is to read the stamp again
+ *		   (lock_wait_transaction_mvccid ()). An error if the lock failed, or if it was granted while that
+ *		   transaction is still active -- waiting again cannot help.
  * thread_p (in) : Thread entry.
  * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
  * wake_gen (in) : lock_get_tran_wake_generation (), read as that function says.
@@ -4410,13 +4409,10 @@ logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen
 /*
  * logtb_wait_for_tran_end_on_row () - logtb_wait_for_tran_end () for a caller that holds row_oid X while it waits
  *
- * return	 : as logtb_wait_for_tran_end (), or LK_RECHECK_YIELD (positive, no error set) when the owner waits
- *		   for row_oid: the caller tries lock_hand_row_to_owner ()
- * row_oid (in)	 : the row, or NULL (a wait point that holds no row)
- * owner_tran_index (out) : the owner, for the yield
- *
- * Note: A wait that comes back to read again waits again instead while the owner's wake is deferred
- *	 (lock_settle_after_recheck ()).
+ * return	 : as logtb_wait_for_tran_end (), or LK_RECHECK_HAND (positive, no error set) when the owner asks for
+ *		   row_oid first: the caller hands it to *owner_tran_index (lock_hand_row_to_owner ())
+ * row_oid (in)	 : the row, or NULL
+ * owner_tran_index (out) : the owner, for the hand-over; may be NULL when row_oid is
  */
 int
 logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, const OID * row_oid,
@@ -4424,37 +4420,16 @@ logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 w
 {
   int error_code;
   int granted;
-  UINT64 packed_oid = 0;
 
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  if (row_oid != NULL)
-    {
-      packed_oid = ((UINT64) (UINT32) row_oid->pageid << 32) | ((UINT64) (UINT16) row_oid->slotid << 16)
-	| (UINT64) (UINT16) row_oid->volid;
-    }
 
-  while (true)
+  granted = lock_wait_transaction_mvccid (thread_p, mvccid, wake_gen, row_oid, owner_tran_index);
+  if (granted == LK_NOTGRANTED_DUE_RECHECK)
     {
-      int next;
-
-      __atomic_store_n (&thread_p->lockwait_row_oid, packed_oid, __ATOMIC_RELAXED);
-      granted = lock_wait_transaction_mvccid (thread_p, mvccid, wake_gen);
-      __atomic_store_n (&thread_p->lockwait_row_oid, (UINT64) 0, __ATOMIC_RELAXED);
-      if (granted != LK_NOTGRANTED_DUE_RECHECK)
-	{
-	  break;
-	}
-      /* a partial rollback (of that transaction, or of any while we joined the waiters): what the caller saw may be
-       * gone, unless its wake is still deferred */
-      next = lock_settle_after_recheck (thread_p, mvccid, packed_oid, &wake_gen, owner_tran_index);
-      if (next == LK_RECHECK_REWAIT)
-	{
-	  continue;
-	}
-      return (next == LK_RECHECK_YIELD) ? LK_RECHECK_YIELD : NO_ERROR;
+      return (owner_tran_index != NULL && *owner_tran_index != NULL_TRAN_INDEX) ? LK_RECHECK_HAND : NO_ERROR;
     }
   if (granted != LK_GRANTED)
     {

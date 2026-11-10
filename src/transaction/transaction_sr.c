@@ -317,9 +317,8 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	  tx_lob_locator_clear (thread_p, tdes, false, topop_lsa);
 	  if (logged)
 	    {
-	      /* the abort may have erased stamps that others wait on with our self-lock: wake them as a rollback to a
-	       * savepoint does (CBRD-27654 R); an operation that wrote nothing erased none */
-	      lock_defer_transaction_mvccid_wake (thread_p, tdes);
+	      /* the undo may have erased stamps others wait on, as a rollback to a savepoint does */
+	      lock_deferred_wake_mark (thread_p, tdes);
 	    }
 	}
       break;

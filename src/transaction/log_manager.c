@@ -5374,7 +5374,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    }
 	  else
 	    {
-	      lock_forget_deferred_wake (tdes);
+	      lock_deferred_wake_clear (thread_p, tdes);
 	    }
 
 	  /* Flush commit log and change the transaction state. */
@@ -5406,7 +5406,7 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	}
       else
 	{
-	  lock_forget_deferred_wake (tdes);
+	  lock_deferred_wake_clear (thread_p, tdes);
 	}
 
       tdes->state = TRAN_UNACTIVE_COMMITTED;
@@ -5789,10 +5789,9 @@ log_abort_partial (THREAD_ENTRY * thread_p, const char *savepoint_name, LOG_LSA 
    */
   LSA_COPY (&tdes->savept_lsa, savept_lsa);
 
-  /* The undo may have removed stamps that others wait on with our self-lock. They read again at the end of our next
-   * request that writes a row; a waiter holding a row we touch again before that gives it to us
-   * (lock_defer_transaction_mvccid_wake ()). */
-  lock_defer_transaction_mvccid_wake (thread_p, tdes);
+  /* the undo may have removed stamps others wait on: they read again after our next row write, or hand us a row we
+   * come back to before that */
+  lock_deferred_wake_mark (thread_p, tdes);
 
   return TRAN_UNACTIVE_ABORTED;
 }

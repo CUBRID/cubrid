@@ -102,7 +102,7 @@ btree_key_wait_for_tran_end (THREAD_ENTRY *thread_p, MVCCID writer_mvccid,
 			     PAGE_PTR *overflow_page, bool *restart)
 {
   int error_code = NO_ERROR;
-  /* read while the leaf is still fixed: see lock_wake_transaction_mvccid_waiters () */
+  /* read while the leaf is still fixed: see lock_get_tran_wake_generation () */
   UINT64 wake_gen = lock_get_tran_wake_generation ();
 
   /* Release the locked object and the page latches before blocking on the lock. */

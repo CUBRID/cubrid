@@ -70,6 +70,23 @@ enum
 enum
 { LK_UNCOND_LOCK, LK_COND_LOCK };
 
+/* lock_recheck_decide () results */
+enum
+{
+  LK_RECHECK_READ = 0,
+  LK_RECHECK_REWAIT = 1,
+  LK_RECHECK_HAND = 2
+};
+
+/* lock_hand_row_to_owner () results */
+enum
+{
+  LK_NOT_HANDED = 0,
+  LK_NOT_HANDED_STALE = 1,
+  LK_HANDED_REGAINED = 2,
+  LK_HANDED_LOST = 3
+};
+
 typedef enum
 {
   NO_KEY_LOCK_ESCALATION = 0,
@@ -238,39 +255,24 @@ extern void lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * o
 extern bool lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p);
 extern bool lock_transient_scope_start (THREAD_ENTRY * thread_p);
 extern void lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release);
-extern UINT64 lock_get_tran_wake_generation (void);
-extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen);
-extern void lock_forget_recheck_wait (THREAD_ENTRY * thread_p);
-extern void lock_wake_transaction_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid);
-/* what lock_settle_after_recheck () tells a waiter that came back to read again */
-enum
-{
-  LK_RECHECK_READ = 0,
-  LK_RECHECK_REWAIT = 1,
-  LK_RECHECK_YIELD = 2
-};
-/* lock_hand_row_to_owner () results */
-enum
-{
-  LK_NOT_YIELDED = 0,
-  LK_YIELDED_GRANTED = 1,
-  LK_YIELDED_FAILED = 2,
-  LK_NOT_YIELDED_STALE = 3
-};
-extern void lock_defer_transaction_mvccid_wake (THREAD_ENTRY * thread_p, struct log_tdes *tdes);
-extern void lock_end_request_deferred_wake (THREAD_ENTRY * thread_p);
-extern void lock_forget_deferred_wake (struct log_tdes *tdes);
-extern void lock_note_row_write (THREAD_ENTRY * thread_p);
-extern int lock_settle_after_recheck (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 row_oid, UINT64 * wake_gen,
-				      int *owner_tran_index);
-extern int lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
-				   int owner_tran_index, MVCCID owner_mvccid, bool transient);
 extern void lock_release_transient_object_locks (THREAD_ENTRY * thread_p);
 extern void lock_forget_transient_object_locks (THREAD_ENTRY * thread_p);
 extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
 extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern bool lock_is_transaction_mvccid_held (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern UINT64 lock_get_tran_wake_generation (void);
+extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, const OID * held_row,
+					 int *owner_tran_index);
+extern int lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
+				int *owner_tran_index);
+extern void lock_reset_request_state (THREAD_ENTRY * thread_p);
+extern void lock_deferred_wake_mark (THREAD_ENTRY * thread_p, struct log_tdes *tdes);
+extern void lock_deferred_wake_clear (THREAD_ENTRY * thread_p, struct log_tdes *tdes);
+extern void lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p);
+extern void lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p);
+extern int lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
+				   int owner_tran_index, MVCCID owner_mvccid, bool transient);
 extern bool lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);

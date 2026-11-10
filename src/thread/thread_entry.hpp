@@ -275,15 +275,18 @@ namespace cubthread
       INT64 lockwait_stime;		/* time in milliseconds */
       int lockwait_msecs;		/* time in milliseconds */
       int lockwait_state;
-      UINT64 lockwait_wake_gen;	/* lock_get_tran_wake_generation () as the caller saw it before waiting */
-      UINT64 lockwait_recheck_mvccid;	/* MVCCID of the last self-lock wait a partial rollback cut short in this
-					 * request, or 0; see lock_wait_transaction_mvccid () */
-      int lockwait_recheck_trid;	/* the trid of the transaction that waited */
-      int lockwait_recheck_wait_msecs;	/* the lock timeout it waited with */
-      INT64 lockwait_recheck_msecs;	/* how long it had waited, in all */
-      UINT64 lockwait_row_oid;	/* packed OID of the row held X while waiting on a self-lock, or 0 */
-      void *lockwait_prequeued;	/* our lock entry queued before a targeted wake, not yet asleep */
-      UINT64 deferred_wake_seen;	/* the deferred epoch this request saw at its first row lock, or 0 */
+      UINT64 lockwait_wake_gen;	/* lock_get_tran_wake_generation () the waiter read before its stamp */
+      /* the self-lock wait a recheck cut short in this request; see lock_wait_transaction_mvccid () */
+      struct lockwait_recheck_record
+      {
+	UINT64 mvccid;		/* the owner's MVCCID, or 0 */
+	int trid;		/* the transaction that waited */
+	int wait_msecs;		/* the lock timeout it waited with */
+	INT64 waited_msecs;	/* how long it has waited on that owner, in all */
+      };
+      lockwait_recheck_record lockwait_recheck;
+      UINT64 lockwait_held_row;	/* packed OID of the row held X while waiting on a self-lock, or 0 */
+      void *lockwait_prequeued;	/* our lock entry queued but not asleep yet (lock_ask_row_hand ()) */
       void *query_entry;
       entry *tran_next_wait;
       entry *worker_thrd_list;	/* worker thread on job queue */
@@ -297,6 +300,7 @@ namespace cubthread
       bool no_logging;
 
       int net_request_index;	/* request index of net server functions */
+      UINT64 deferred_wake_epoch_seen;	/* the deferred wake due at a row write of this request, or 0 */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 

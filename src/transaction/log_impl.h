@@ -569,14 +569,10 @@ struct log_tdes
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
-  /* a rollback to a savepoint defers waking the waiters on our MVCCID self-lock.
-   * deferred_wake_epoch is 0 or the epoch of the partial rollback whose wake is still due; the epoch comes from
-   * deferred_wake_counter, which is never reset (an epoch cleared and taken again would let a late clear of an old
-   * epoch drop a new one). wake_target is the packed OID of the row we queued on while the wake is deferred, or 0.
-   * Read and written with __atomic builtins. */
-  UINT64 deferred_wake_epoch;
-  UINT64 deferred_wake_counter;
-  UINT64 wake_target;
+  /* the wake of our self-lock waiters an undo deferred (lock_deferred_wake_mark ()); __atomic access */
+  UINT64 deferred_wake_epoch;	/* the epoch of the undo whose wake is due, or 0 */
+  UINT64 deferred_wake_last_epoch;
+  UINT64 hand_row;		/* packed OID of the row we ask to be handed while the wake is deferred, or 0 */
 
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
