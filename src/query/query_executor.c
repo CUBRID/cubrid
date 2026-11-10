@@ -30291,19 +30291,18 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
       ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
 
       if ((QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p) || func_p->function == PT_NTILE
-	   || func_p->function == PT_FIRST_VALUE || func_p->function == PT_LAST_VALUE)
-	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
+	   || func_p->function == PT_FIRST_VALUE || func_p->function == PT_LAST_VALUE) && !analytic_state->is_skip_sort)
 	{
 	  /* inst_num() predicate is evaluated at group processing for these functions, as the result is computed at
 	   * this stage using all group values */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
 
-      if ((instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
-	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
+      if ((instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER) && !analytic_state->is_skip_sort)
 	{
 	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file. Without the sort, the output
-	   * file is written by qexec_analytic_update_group_result () at ANALYTIC_INTERM_PROC */
+	   * file is written by qexec_analytic_update_group_result () at ANALYTIC_INTERM_PROC. The sort is skipped only
+	   * for the first evaluation group, so check this group's state, not the xasl flag */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
     }
