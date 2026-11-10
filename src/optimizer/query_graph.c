@@ -6516,12 +6516,10 @@ qo_discover_edges (QO_ENV * env)
  *   suppliers(out): caller-initialized bitset; this adds the index of each
  *	  such outer join on_node to it.
  *
- * Note: Computed fresh from REFS and node join types, not
- *   from NODE's own (possibly hint-populated) QO_NODE_OUTER_DEP_SET -- the
- *   ORDERED/LEADING hint handling in add_hint() also fills that field, to
- *   force a visiting order, independent of any outer join. A caller that
- *   needs to tell a genuine null-supplier dependency apart from hint-forced
- *   ordering must call this instead of reading the node's stored field.
+ * Note: Built from REFS and node join types, not from NODE's own
+ *   QO_NODE_OUTER_DEP_SET, which add_hint() also fills for ORDERED/LEADING.
+ *   The RIGHT/FULL OUTER check still reads k_node's QO_NODE_OUTER_DEP_SET,
+ *   so a node an ORDERED/LEADING hint put there can also count as a supplier.
  */
 static void
 qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers)
@@ -6642,7 +6640,7 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
- * I1|ON   |TC_sarg/other(inner) |-         |null-padded ref|TC_dj
+ * I1|ON   |TC_sarg/other(inner) |-         |pad ref        |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right,!pad ref|TC_join(ow TC_aj)
  * W3|WHERE|TC_other(n>0)        |!Outer    |!Right,!pad ref|TC_other(ow TC_aj)
