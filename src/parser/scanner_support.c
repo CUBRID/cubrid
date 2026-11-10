@@ -663,6 +663,8 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
 	case PT_HINT_NO_IDX_DESC:	/* do not use descending index scan */
 	case PT_HINT_NO_PARALLEL_HASH_JOIN:	/* disable parallel hash join */
+	case PT_HINT_ROW_SNAPSHOT:	/* read the rows a constant filter selects while planning */
+	case PT_HINT_NO_ROW_SNAPSHOT:	/* do not read them */
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -734,6 +736,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    }
 	  break;
 	case PT_HINT_NO_MERGE:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+	case PT_HINT_NO_UNNEST:
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -924,6 +932,25 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
+	    }
+	  break;
+
+	case PT_HINT_BIND_SENSITIVE:
+	  /* query-level hint (pt_query_info.hint lives outside the q union), so it is read the same
+	   * way for every PT_IS_QUERY node the bind-sensitivity check runs on; UPDATE and DELETE
+	   * take part in the same first-execution peek / bucket-change replan, so they accept the
+	   * hint too */
+	  if (PT_IS_QUERY (node))
+	    {
+	      node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
 	    }
 	  break;
 	default:

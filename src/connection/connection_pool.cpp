@@ -333,6 +333,8 @@ namespace cubconn::connection
 	cores = vec;
       }
 
+    /* the pool cannot serve any client without at least one connection worker */
+    assert (max_connection_workers >= 1);
     assert (cores.size () >= max_connection_workers);
 
     for (i = 0; i < max_connection_workers; i++)

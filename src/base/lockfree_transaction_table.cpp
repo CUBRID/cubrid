@@ -23,6 +23,7 @@
 #include "lockfree_transaction_system.hpp"
 
 #include <cassert>
+#include <new>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -33,16 +34,28 @@ namespace lockfree
     //
     // table
     //
-    table::table (system &sys)
+    table::table (system &sys, reclaimable_owner &owner)
       : m_sys (sys)
       , m_all (new descriptor[m_sys.get_max_transaction_count ()] ())
       , m_global_tranid { 0 }
       , m_min_active_tranid { 0 }
+      , m_owner (owner)
     {
+      if (m_all == NULL)
+	{
+	  // SERVER_MODE's new answers NULL (memory_wrapper.hpp); throw as SA_MODE's does, for callers catching it
+	  throw std::bad_alloc ();
+	}
       for (size_t i = 0; i < m_sys.get_max_transaction_count (); i++)
 	{
 	  m_all[i].set_table (*this);
 	}
+    }
+
+    reclaimable_owner &
+    table::get_reclaimable_owner () const
+    {
+      return m_owner;
     }
 
     table::~table ()
@@ -72,12 +85,17 @@ namespace lockfree
     id
     table::get_new_global_tranid ()
     {
-      id ret = ++m_global_tranid;
-      if (ret % MATI_REFRESH_INTERVAL == 0)
+      return ++m_global_tranid;
+    }
+
+    void
+    table::refresh_min_active_tranid_if_due (id assigned_tranid)
+    {
+      // called once the caller has published its id, never before - see the header.
+      if (assigned_tranid % MATI_REFRESH_INTERVAL == 0)
 	{
 	  compute_min_active_tranid ();
 	}
-      return ret;
     }
 
     id
@@ -86,7 +104,7 @@ namespace lockfree
       return m_global_tranid;
     }
 
-    void
+    id
     table::compute_min_active_tranid ()
     {
       // note: all transactions are actually claimed from boot. this code is optimized for this case. if we ever
@@ -101,12 +119,21 @@ namespace lockfree
 	    }
 	}
       m_min_active_tranid.store (minvalue);
+      return minvalue;
     }
 
     id
     table::get_min_active_tranid () const
     {
       return m_min_active_tranid;
+    }
+
+    id
+    table::refresh_min_active_tranid ()
+    {
+      /* This scan's value, not the shared member: a concurrent compute () can publish an older scan's
+       * INVALID_TRANID over it, and that sentinel authorizes reclaiming the whole retired list. */
+      return compute_min_active_tranid ();
     }
 
     size_t

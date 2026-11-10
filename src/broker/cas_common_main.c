@@ -36,7 +36,6 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #include <signal.h>
-#include <fcntl.h>
 #include <time.h>
 #else
 #include <signal.h>
@@ -62,6 +61,7 @@
 #include "broker_acl.h"
 #include "cas_ssl.h"
 #include "broker_util.h"
+#include "query_replace.h"
 
 #if !defined(WINDOWS)
 #include "broker_recv_fd.h"
@@ -71,6 +71,8 @@
 static int query_sequence_num;
 
 FN_RETURN cas_main_fn_ret = FN_KEEP_CONN;
+
+volatile sig_atomic_t cas_shutdown_signo = 0;
 
 static cas_cleanup_callback_t cleanup_callback = NULL;
 static cas_database_shutdown_callback_t database_shutdown_callback = NULL;
@@ -93,7 +95,6 @@ cas_main_loop (CAS_MAIN_OPS * ops)
   char client_ip_str[16];
   bool is_new_connection = true;
   DB_CONN_INFO conn_info;
-  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
   /* Initialize */
   if (cas_main_init (&net_buf, &srv_sock_fd) < 0)
@@ -113,6 +114,11 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 #endif /* WINDOWS */
     for (;;)
       {
+	if (cas_shutdown_signo)
+	  {
+	    cas_final ();	/* graceful shutdown requested by signal; does not return */
+	  }
+
 	ssl_client = false;
 	error_info_clear ();
 	cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
@@ -122,6 +128,10 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	if (IS_INVALID_SOCKET (br_sock_fd))
 	  {
+	    if (cas_shutdown_signo)
+	      {
+		cas_final ();	/* accept() was interrupted by a shutdown signal; does not return */
+	      }
 	    goto finish_cas;
 	  }
 
@@ -206,8 +216,11 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	    err_code = cas_init_ssl (client_sock_fd);
 	    if (err_code < 0)
 	      {
-		net_write_error (client_sock_fd, req_info.client_version, req_info.driver_info, cas_info, cas_info_size,
-				 CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
+		/* Closed without a CAS error: the driver has sent its ClientHello and reads only TLS from here, so a
+		 * plaintext error packet could not be read ("wrong version number"). The cause is in the CAS log.
+		 * cas_finish_session () closes the socket and frees any SSL state; finish_cas does not, and leaving it
+		 * open leaked the socket while the driver waited for a reply. */
+		cas_finish_session (client_sock_fd, ssl_client);
 		goto finish_cas;
 	      }
 	  }
@@ -237,9 +250,13 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 		goto finish_cas;
 	      }
 
+	    /* keeping a session was decided for the session of the client that left (CHANGE CLIENT, RESET, ...).
+	     * Do not carry it over to this client, or its session will also be kept. */
+	    db_set_keep_session (false);
+
 	    if (ops->set_session_id)
 	      {
-		ops->set_session_id ((T_CAS_PROTOCOL) req_info.client_version, conn_info.db_sessionid);
+		ops->set_session_id (req_info.client_version, conn_info.db_sessionid);
 
 		if (db_get_session_id () != DB_EMPTY_SESSION)
 		  {
@@ -253,11 +270,8 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    set_hang_check_time ();
 
-	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s " "session id %s", conn_info.db_name,
-			   conn_info.db_user, conn_info.url, conn_info.db_sessionid);
 	    if (as_info->reset_flag == TRUE)
 	      {
-		cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
 		if (ops->set_session_id)
 		  {
 		    cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
@@ -303,7 +317,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    if (ops->send_connect_reply)
 	      {
-		ops->send_connect_reply ((T_CAS_PROTOCOL) req_info.client_version, client_sock_fd, cas_info);
+		ops->send_connect_reply (req_info.client_version, client_sock_fd, cas_info);
 	      }
 
 	    as_info->cci_default_autocommit = shm_appl->cci_default_autocommit;
@@ -322,7 +336,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    fn_ret = FN_KEEP_CONN;
 	    cas_main_fn_ret = fn_ret;
-	    while (fn_ret == FN_KEEP_CONN)
+	    while (fn_ret == FN_KEEP_CONN && !cas_shutdown_signo)
 	      {
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
@@ -340,8 +354,6 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 #endif /* !WINDOWS */
 		as_info->last_access_time = time (NULL);
 	      }
-
-	    prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 	    if (as_info->cur_statement_pooling)
 	      {
@@ -523,6 +535,16 @@ cas_sig_handler (int signo)
 {
   static int is_doing_signal_handler = 0;
 
+  if (signo == SIGTERM || signo == SIGINT)
+    {
+      /* flush the SQL log now, since the CAS may be killed before the main loop reaches cas_final () */
+      cas_log_flush_from_signal ();
+
+      /* Avoid async-signal-unsafe functions in signal handlers to prevent aborts; defer graceful shutdown to the main loop. */
+      cas_shutdown_signo = signo;
+      return;
+    }
+
   if (is_doing_signal_handler)
     {
       return;
@@ -531,12 +553,10 @@ cas_sig_handler (int signo)
 
   signal (signo, SIG_IGN);
 
+  cas_log_flush_on_exit ();
+
   er_print_crash_callstack (signo);
 
-  if (signo == SIGTERM || signo == SIGABRT || signo == SIGINT)
-    {
-      cas_free (true);
-    }
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
 
@@ -547,12 +567,47 @@ cas_sig_handler (int signo)
 #endif
 }
 
+#if !defined(WINDOWS)
+void
+cas_register_signal_handlers (void)
+{
+  struct sigaction act;
+
+  memset (&act, 0, sizeof (act));
+  act.sa_handler = cas_sig_handler;
+  sigemptyset (&act.sa_mask);
+  act.sa_flags = 0;
+  sigaction (SIGTERM, &act, NULL);
+  sigaction (SIGINT, &act, NULL);
+
+  signal (SIGSEGV, cas_sig_handler);
+  signal (SIGABRT, cas_sig_handler);
+  signal (SIGFPE, cas_sig_handler);
+  signal (SIGILL, cas_sig_handler);
+  signal (SIGBUS, cas_sig_handler);
+  signal (SIGSYS, cas_sig_handler);
+  signal (SIGUSR1, SIG_IGN);
+  signal (SIGPIPE, SIG_IGN);
+  signal (SIGXFSZ, SIG_IGN);
+
+  /* SIGUSR2: SQL log flush timer
+   * SA_SIGINFO distinguishes our timer signal from other SIGUSR2 signals (si_code / si_value).
+   * SA_RESTART prevents EINTR from interrupting idle CAS waits in accept () / recvmsg (). */
+  memset (&act, 0, sizeof (act));
+  act.sa_sigaction = cas_log_sigusr2_handler;
+  sigemptyset (&act.sa_mask);
+  act.sa_flags = SA_SIGINFO | SA_RESTART;
+  sigaction (SIGUSR2, &act, NULL);
+}
+#endif /* !WINDOWS */
+
 void
 cas_final (void)
 {
   signal (SIGTERM, SIG_IGN);
   signal (SIGINT, SIG_IGN);
-  cas_free (false);
+  qr_final ();
+  cas_free (cas_shutdown_signo != 0);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
   er_final (ER_ALL_FINAL);
@@ -560,23 +615,11 @@ cas_final (void)
 }
 
 void
-cas_free (bool from_sighandler)
+cas_free (bool from_shutdown_signal)
 {
-#ifdef MEM_DEBUG
-  int fd;
-#endif
   int max_process_size;
 
-  if (from_sighandler)
-    {
-      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the signal handler");
-    }
-  else
-    {
-      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the cas_final()");
-    }
-
-  if (as_info->cur_statement_pooling && !from_sighandler)
+  if (as_info->cur_statement_pooling && !from_shutdown_signal)
     {
       hm_srv_handle_free_all (true);
     }
@@ -678,15 +721,6 @@ cas_free (bool from_sighandler)
   cas_slow_log_close ();
   logddl_destroy ();
 
-#ifdef MEM_DEBUG
-  fd = open ("mem_debug.log", O_CREAT | O_TRUNC | O_WRONLY, 0666);
-  if (fd > 0)
-    {
-      malloc_dump (fd);
-      close (fd);
-    }
-#endif
-
   if (cleanup_callback != NULL)
     {
       cleanup_callback ();
@@ -694,7 +728,7 @@ cas_free (bool from_sighandler)
 
   if (database_shutdown_callback != NULL)
     {
-      if (from_sighandler)
+      if (from_shutdown_signal)
 	{
 	  database_shutdown_callback (false);
 	}
@@ -735,6 +769,21 @@ unset_hang_check_time (void)
       as_info->claimed_alive_time = (time_t) 0;
     }
   return;
+}
+
+/*
+ * cas_abort_server_wait () -
+ *   return: true to give up waiting for the database server.
+ *
+ * Registered as CSS_ABORT_SERVER_WAIT_FN, so the shared client layer calls
+ * this whenever a wait for the server is interrupted by a signal.
+ * The wait is given up once a shutdown signal is recorded, allowing the wait
+ * to unwind so the main loop can execute cas_free().
+ */
+bool
+cas_abort_server_wait (void)
+{
+  return cas_shutdown_signo != 0;
 }
 
 bool
@@ -897,6 +946,12 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 
   do
     {
+      if (cas_shutdown_signo)
+	{
+	  ret_value = -1;
+	  break;
+	}
+
       if (as_info->con_status == CON_STATUS_OUT_TRAN)
 	{
 	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
@@ -1067,8 +1122,8 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_C
   if (req_info->client_version >= CAS_MAKE_VER (8, 4, 0))
     {
       assert (url != NULL);
+      /* not NUL-terminated: the last byte is part of the session secret */
       db_sessionid = url + SRV_CON_URL_SIZE;
-      db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
     }
   else
     {
@@ -1242,6 +1297,12 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 
   do
     {
+      if (cas_shutdown_signo)
+	{
+	  ret_value = -1;
+	  break;
+	}
+
       if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name);
@@ -1274,7 +1335,6 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 	    {
 	      if (restart_is_needed ())
 		{
-		  cas_log_debug (ARG_FILE_LINE, "net_read_int_keep_con_auto: " "restart_is_needed()");
 		  ret_value = -1;
 		  break;
 		}

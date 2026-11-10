@@ -56,29 +56,6 @@ namespace parallel_query
       inline interrupt() : m_code (interrupt_code::NO_INTERRUPT) {}
   };
 
-  class atomic_instnum
-  {
-    public:
-
-      std::size_t m_destination_tuple_cnt;
-      std::atomic<std::size_t> m_current_tuple_cnt;
-      bool m_is_instnum_set;
-
-      inline atomic_instnum() : m_destination_tuple_cnt (0), m_current_tuple_cnt (0), m_is_instnum_set (false) {}
-      inline atomic_instnum (std::size_t destination_tuple_cnt) : m_destination_tuple_cnt (destination_tuple_cnt),
-	m_current_tuple_cnt (0), m_is_instnum_set (true) {}
-
-      inline void set_destination_tuple_cnt (std::size_t destination_tuple_cnt) noexcept
-      {
-	m_destination_tuple_cnt = destination_tuple_cnt;
-	m_is_instnum_set = true;
-      }
-
-      inline bool is_instnum_satisfies_after_1tuple_insert() noexcept
-      {
-	return m_is_instnum_set?m_current_tuple_cnt.fetch_add (1) >= m_destination_tuple_cnt:false;
-      }
-  };
   class err_messages_with_lock
   {
       using er_message = cuberr::er_message;

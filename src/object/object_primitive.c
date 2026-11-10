@@ -47,6 +47,10 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* domain_compare_by_type_pair: the server compares two JSON scalars by the type pair comparison table */
+#include "domain_rules.h"
+#endif
 
 #include <utility>
 
@@ -106,29 +110,10 @@ extern unsigned int db_on_server;
  * and oid promotion cannot be controlled there.
  *
  */
-#if defined (SERVER_MODE)
-#define PR_INHIBIT_OID_PROMOTION_DEFAULT 1
-#else
-#define PR_INHIBIT_OID_PROMOTION_DEFAULT 0
+#if !defined (SERVER_MODE)
+#define PR_INHIBIT_OID_PROMOTION_DEFAULT (0)
 #endif
 
-/*
- * NUMERIC_HEADER_SIZE
- * The numeric header is 3 bytes in size.
- * - header[0]: Total byte size of the numeric data (header + data).
- *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
- *              Bits 0-6: Total byte size value (4 ~ 20 bytes).
- *                        Minimum: precision 1 -> data 1 byte + header 3 = 4 bytes (aligned to 4).
- *                        Maximum: precision 40 -> data 17 bytes + header 3 = 20 bytes (aligned to 20).
- * - header[1]: Precision and scale sign bit.
- *              Bit 7 (0x80): Scale sign bit (1 = negative scale, 0 = positive scale).
- *              Bits 0-6: Precision value (1 ~ 40).
- * - header[2]: Scale value.
- *              Bits 0-7: Scale absolute value (0 ~ 214).
- *                        Positive scale: 0 ~ 252.
- *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
- */
-#define NUMERIC_HEADER_SIZE (3)
 #define FLOAT_NUMERIC_SIZE (NUMERIC_HEADER_SIZE + DB_NUMERIC_BUF_SIZE)
 
 #define STR_SIZE(prec, codeset)                                             \
@@ -141,16 +126,6 @@ extern unsigned int db_on_server;
 
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
-
-static const int _gv_mr_float_numeric_precision_to_size[41] = {
-  0, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 12, 12, 12, 12, 12, 12, 12,
-  12, 12, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 20, 20, 20, 20, 20, 20, 20, 20,
-  20
-};
-
-static const int _gv_mr_fixed_numeric_bytes_to_size[17] = {
-  0, 4, 8, 8, 8, 8, 12, 12, 12, 12, 16, 16, 16, 16, 20, 20, 20
-};
 
 // *INDENT-OFF*
 pr_type::pr_type (const char * name_arg, DB_TYPE id_arg, int varp_arg, int size_arg, int disksize_arg, int align_arg,
@@ -202,6 +177,18 @@ pr_type::data_cmpdisk_function_type
 pr_type::get_data_cmpdisk_function () const
 {
   return f_data_cmpdisk;
+}
+
+pr_type::index_cmpdisk_function_type
+pr_type::get_index_cmpdisk_function () const
+{
+  return f_index_cmpdisk;
+}
+
+void
+pr_type::set_index_cmpdisk_function (index_cmpdisk_function_type index_cmpdisk_arg)
+{
+  f_index_cmpdisk = index_cmpdisk_arg;
 }
 
 void
@@ -782,7 +769,9 @@ static int mr_data_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * 
 static int mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				     char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2,
-							   int do_coercion, int total_order);
+							   int do_coercion, int total_order, int column,
+							   PR_MIDXKEY_ELEMENT_COMPARE element_compare,
+							   const void *element_context);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 							 int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
@@ -821,7 +810,6 @@ static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_numeric (void *mem1, void *mem2, 
 							int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
 						  int total_order, int *start_colp, int collation);
-static inline int mr_get_fixed_numeric_size (const DB_C_NUMERIC data);
 static void mr_initmem_resultset (void *mem, TP_DOMAIN * domain);
 static int mr_setmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value);
 static int mr_getmem_resultset (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy);
@@ -888,9 +876,11 @@ static DB_VALUE_COMPARE_RESULT mr_cmpval_json (DB_VALUE * value1, DB_VALUE * val
  *    Area used for allocation of value containers that may be given out
  *    to database applications.
  */
-static AREA *Value_area = NULL;
+static CUB_THREAD_LOCAL AREA *Value_area = NULL;
 
-int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
+#if !defined (SERVER_MODE)
+CUB_THREAD_LOCAL int pr_Inhibit_oid_promotion = PR_INHIBIT_OID_PROMOTION_DEFAULT;
+#endif
 
 int pr_Enable_string_compression = true;
 const PR_TYPE tp_Null = {
@@ -7674,7 +7664,8 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
 static DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2, int do_coercion,
-			    int total_order)
+			    int total_order, int column, PR_MIDXKEY_ELEMENT_COMPARE element_compare,
+			    const void *element_context)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_VALUE val1, val2;
@@ -7706,7 +7697,15 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
       goto clean_up;
     }
 
-  c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
+  if (element_compare != NULL)
+    {
+      /* the caller's plan for this column's two keys */
+      c = element_compare (element_context, column, &val1, &val2, do_coercion, total_order, &comparable);
+    }
+  else
+    {
+      c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
+    }
 
 clean_up:
   if (DB_NEED_CLEAR (&val1))
@@ -7730,6 +7729,15 @@ clean_up:
 DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order, int num_index_term,
 		    int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size)
+{
+  return pr_midxkey_compare_resolved (mul1, mul2, do_coercion, total_order, num_index_term, start_colp, diff_column,
+				      dom_is_desc, result_size, NULL, NULL);
+}
+
+DB_VALUE_COMPARE_RESULT
+pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
+			     int num_index_term, int *start_colp, int *diff_column, bool * dom_is_desc,
+			     int *result_size, PR_MIDXKEY_ELEMENT_COMPARE element_compare, const void *element_context)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
@@ -7907,7 +7915,8 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		  /* coercion and comparison
 		   * val1 and val2 have different domain
 		   */
-		  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order);
+		  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order, i, element_compare,
+						  element_context);
 		}
 
 	      if (c == DB_EQ)
@@ -8371,11 +8380,11 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	  if (is_float_numeric)
 	    {
 	      assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
-	      byte_size = _gv_mr_float_numeric_precision_to_size[precision];
+	      byte_size = numeric_repr_disk_size_by_precision (precision);
 	    }
 	  else
 	    {
-	      byte_size = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (src_num)];
+	      byte_size = numeric_repr_disk_size_by_value (src_num);
 	    }
 
 	  assert ((byte_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
@@ -8408,10 +8417,9 @@ mr_setmem_numeric (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	      num = (DB_C_NUMERIC) new_;
 	      memcpy (num, header, NUMERIC_HEADER_SIZE);
 
-	      byte_size -= NUMERIC_HEADER_SIZE;
 	      data_dest = num + NUMERIC_HEADER_SIZE;
 
-	      memcpy (data_dest, src_num + (DB_NUMERIC_BUF_SIZE - byte_size), byte_size);
+	      numeric_repr_write_disk (data_dest, src_num, byte_size);
 
 	      *mem = new_;
 	    }
@@ -8664,14 +8672,14 @@ mr_data_lengthval_numeric (DB_VALUE * value, int disk)
       if (is_float_numeric)
 	{
 	  assert (precision >= 0 && precision <= DB_MAX_NUMERIC_PRECISION);
-	  len = _gv_mr_float_numeric_precision_to_size[precision];
+	  len = numeric_repr_disk_size_by_precision (precision);
 	}
       else
 	{
 	  DB_C_NUMERIC numeric = db_get_numeric (value);
 	  if (numeric != NULL)
 	    {
-	      len = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (numeric)];
+	      len = numeric_repr_disk_size_by_value (numeric);
 	    }
 	}
     }
@@ -8703,11 +8711,11 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 
 	  if (is_float_numeric)
 	    {
-	      disk_size = _gv_mr_float_numeric_precision_to_size[precision];
+	      disk_size = numeric_repr_disk_size_by_precision (precision);
 	    }
 	  else
 	    {
-	      disk_size = _gv_mr_fixed_numeric_bytes_to_size[mr_get_fixed_numeric_size (numeric)];
+	      disk_size = numeric_repr_disk_size_by_value (numeric);
 	    }
 	  assert ((disk_size & NUMERIC_VALUE_SIGN_BIT_MASK) == 0);
 
@@ -8723,10 +8731,11 @@ mr_data_writeval_numeric (OR_BUF * buf, DB_VALUE * value)
 	      header[2] = scale;
 	    }
 
-	  or_put_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
-	  disk_size -= NUMERIC_HEADER_SIZE;
+	  unsigned char digits[DB_NUMERIC_BUF_SIZE];
 
-	  rc = or_put_data (buf, (char *) numeric + (DB_NUMERIC_BUF_SIZE - disk_size), disk_size);
+	  or_put_data (buf, (char *) header, NUMERIC_HEADER_SIZE);
+	  numeric_repr_write_disk (digits, numeric, disk_size);
+	  rc = or_put_data (buf, (char *) digits, disk_size - NUMERIC_HEADER_SIZE);
 	}
     }
   return rc;
@@ -8890,68 +8899,6 @@ mr_cmpval_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int to
     }
 
   return c;
-}
-
-/*
- * mr_get_fixed_numeric_size - calculate the byte size of a fixed numeric value.
- *
- * return: the required number of bytes (1 ~ 16).
- * data(in): pointer to the fixed numeric data buffer.
- *
- * Note: 
- *   the maximum precision of a fixed numeric is 38, which fits within 16 bytes.
- *
- *   except for the sign byte (data[0]), the remaining 16 bytes of DB_NUMERIC_BUF_SIZE(17) 
- *   can be evaluated efficiently by casting them into two 64-bit integers (uint64_t).
- *
- *   this allows O(1) performance by using __builtin_ctzll or __builtin_clzll to quickly locate 
- *   the MSB or LSB without a traditional byte-by-byte loop.
- */
-static inline int
-mr_get_fixed_numeric_size (const DB_C_NUMERIC data)
-{
-  uint64_t word_buf[2] = { 0 };
-
-  /*
-   * 'data' points to a 17-byte numeric value stored in big-endian byte order.
-   * memcpy() copies the raw bytes as-is (no endianness conversion).
-   */
-  memcpy (word_buf, data + 1, sizeof (word_buf));
-
-  /*
-   * When the copied bytes are interpreted as uint64_t, the result depends on
-   * the host endianness:
-   *
-   * - On little-endian systems, the byte significance within each 64-bit word
-   *   is effectively reversed. 
-   *   Therefore, counting leading zeros (CLZ) in the original big-endian
-   *   representation is equivalent to counting trailing zeros (CTZ) here.
-   *
-   * - On big-endian systems, the byte order is preserved, so CLZ can be used
-   *   directly.
-   *
-   * This avoids the need for an explicit byte swap (bswap).
-   */
-  if (word_buf[0] != 0)
-    {
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return 16 - (NUMERIC_CTZ64 (word_buf[0]) >> 3);
-#else
-      return 16 - (NUMERIC_CLZ64 (word_buf[0]) >> 3);
-#endif
-    }
-  else if (word_buf[1] != 0)
-    {
-#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
-      return 8 - (NUMERIC_CTZ64 (word_buf[1]) >> 3);
-#else
-      return 8 - (NUMERIC_CLZ64 (word_buf[1]) >> 3);
-#endif
-    }
-  else
-    {
-      return 1;			// value = 0
-    }
 }
 
 /*
@@ -9902,78 +9849,6 @@ error:
       midxkey->buf = NULL;
     }
   return ER_FAILED;
-}
-
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-int
-pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
-				   struct tp_domain *dbvals_domain_list, int tail_null_cnt)
-{
-  TP_DOMAIN *dom;
-  DB_MIDXKEY *midxkey;
-  int i, total_size, header_size, offset;
-  char *new_IDXbuf;
-  char *nullmap_ptr;
-  OR_BUF buf;
-
-  /* phase 1: find old */
-  midxkey = db_get_midxkey (keyval);
-  if (midxkey == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  assert (midxkey->ncolumns == 0 && midxkey->size == 0);
-
-  header_size = or_multi_header_size (num_dbvals + tail_null_cnt);
-  total_size = header_size;
-
-  /* phase 2: calculate how many bytes need */
-  total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
-
-  /* phase 3: initialize new_IDXbuf */
-  new_IDXbuf = (char *) db_private_alloc (NULL, total_size);
-  if (new_IDXbuf == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  or_init (&buf, new_IDXbuf, -1);
-
-  nullmap_ptr = new_IDXbuf;
-  or_multi_clear_header (nullmap_ptr, num_dbvals + tail_null_cnt);
-
-  or_advance (&buf, header_size);
-
-  /* phase 4: copy new_IDXbuf from old */
-  for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
-    {
-      /* check for added val is NULL */
-      if (DB_IS_NULL (&dbvals[i]))
-	{
-	  continue;		/* skip and go ahead */
-	}
-
-      dom->type->index_writeval (&buf, &dbvals[i]);
-
-      or_multi_set_not_null (nullmap_ptr, midxkey->ncolumns + i);
-    }				/* for (i = 0, ...) */
-
-  assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
-
-  for (i = num_dbvals; i < (num_dbvals + tail_null_cnt); i++)
-    {
-      assert (or_multi_is_null (nullmap_ptr, i));
-      or_multi_put_element_offset (nullmap_ptr, num_dbvals + tail_null_cnt, total_size, i);
-    }
-
-  or_multi_put_size_offset (nullmap_ptr, midxkey->ncolumns + num_dbvals + tail_null_cnt, total_size);
-
-  midxkey->buf = new_IDXbuf;
-  midxkey->size = total_size;
-  midxkey->ncolumns += (num_dbvals + tail_null_cnt);
-
-  return NO_ERROR;
 }
 
 /*
@@ -15483,7 +15358,13 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
+  /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
+   * every pair of keys a value can have, resolved before any row */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  cmp_result = domain_compare_by_type_pair (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+#else
   cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+#endif
 
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);

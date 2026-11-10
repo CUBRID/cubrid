@@ -69,11 +69,15 @@ extern int pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * att
 extern PT_NODE *pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							int *continue_walk);
 extern void pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
+extern bool pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query);
 
 extern STATEMENT_SET_FOLD pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node);
 
 extern PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD fold_as);
 
 extern bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
+
+extern bool pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id,
+						   PT_NODE * from_list);
 
 #endif /* _SEMANTIC_CHECK_H_ */

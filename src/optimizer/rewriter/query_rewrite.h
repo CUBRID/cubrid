@@ -44,6 +44,17 @@ typedef struct to_dot_info TO_DOT_INFO;
 typedef struct pt_name_spec_info PT_NAME_SPEC_INFO;
 typedef struct qo_reset_location_info RESET_LOCATION_INFO;
 typedef struct qo_reduce_reference_info QO_REDUCE_REFERENCE_INFO;
+typedef struct qo_unnest_info QO_UNNEST_INFO;
+
+struct qo_unnest_info
+{
+  PT_NODE *subq;		/* the [NOT] EXISTS / [NOT] IN subquery operand */
+  PT_NODE *on_cond;		/* the spec's ON, parked in the WHERE until qo_rewrite_queries_post () */
+  PT_NODE *outer_spec;		/* the one enclosing spec the ON names; the lifted spec joins right after its chain */
+  bool is_anti;			/* ANTI rather than SEMI */
+  bool is_in_form;		/* an IN form, whose on_cond starts with a synthesized equality */
+  bool is_derived;		/* the subquery FROM holds several tables: the inner is a derived table over them */
+};
 
 struct spec_id_info
 {
@@ -119,14 +130,18 @@ typedef enum dnf_merge_range_result DNF_MERGE_RANGE_RESULT;
 
 /* optimize subqueries */
 PT_NODE *qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+void qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node);
+void qo_rewrite_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node);
 PT_NODE *qo_rewrite_hidden_col_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * parent_node);
 void qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /* optimize terms */
 void qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms);
+void qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE ** wherep);
 void qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wherep);
 PT_NODE *qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 int qo_is_reduceable_const (PT_NODE * expr);
+bool qo_is_exact_compare_const (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * val);
 PT_NODE *qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 PT_NODE *qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 bool qo_check_condition_null (PARSER_CONTEXT * parser, PT_NODE * path_spec, PT_NODE * query_where);
@@ -141,6 +156,8 @@ PT_NODE *qo_analyze_path_join_pre (PARSER_CONTEXT * parser, PT_NODE * spec, void
 PT_NODE *qo_analyze_path_join (PARSER_CONTEXT * parser, PT_NODE * path_spec, void *arg, int *continue_walk);
 bool qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE * node);
 bool qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE ** wherep, int *seqno);
+void qo_insert_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * on_conds);
+bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
 PT_NODE *qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 void qo_move_on_of_explicit_join_to_where (PARSER_CONTEXT * parser, PT_NODE ** fromp, PT_NODE ** wherep);
 void qo_rewrite_index_hints (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -149,6 +166,7 @@ void qo_rewrite_nonnull_count_select_list (PARSER_CONTEXT * parser, PT_NODE * se
 /* qo_auto_parameterize is defined in parser.h */
 void qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
 void qo_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node);
+void qo_auto_parameterize_constant_select_list (PARSER_CONTEXT * parser, PT_NODE * select);
 
 /* macros */
 #define QO_CHECK_AND_REDUCE_EQUALITY_TERMS(parser, node, where) \

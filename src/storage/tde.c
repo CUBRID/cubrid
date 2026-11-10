@@ -52,6 +52,7 @@
 #include "log_storage.hpp"
 #include "log_volids.hpp"
 #include "tde.h"
+#include "crypt_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -78,8 +79,8 @@ static int tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsi
 static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo);
 
 static int tde_create_keys_file (const char *keyfile_fullname);
-static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
-static void tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
+static int tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash, bool * is_valid);
+static int tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo);
 static int tde_create_dk (unsigned char *data_key);
 static int tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const unsigned char *master_key,
@@ -93,9 +94,11 @@ static void tde_dk_nonce (TDE_DATA_KEY_TYPE dk_type, unsigned char *dk_nonce);
  * TDE internal functions for encrpytion and decryption. All the en/decryption go through it.
  */
 static int tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORITHM tde_algo,
-				 const unsigned char *key, const unsigned char *nonce, unsigned char *cipher_buffer);
+				 const unsigned char *key, const unsigned char *nonce, unsigned char *cipher_buffer,
+				 bool reuse_ctx);
 static int tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORITHM tde_algo,
-				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer);
+				 const unsigned char *key, const unsigned char *nonce, unsigned char *plain_buffer,
+				 bool reuse_ctx);
 
 /*
  * tde_initialize () - Initialize the tde module, which is called during initializing server.
@@ -540,7 +543,11 @@ tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsigned char *
   int err = NO_ERROR;
 
   keyinfo->mk_index = mk_index;
-  tde_make_mk_hash (master_key, keyinfo->mk_hash);
+  err = tde_make_mk_hash (master_key, keyinfo->mk_hash);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
 
   err = tde_encrypt_dk (dks->perm_key, TDE_DATA_KEY_TYPE_PERM, master_key, keyinfo->dk_perm);
   if (err != NO_ERROR)
@@ -712,6 +719,7 @@ tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
   int err = NO_ERROR;
   unsigned char mk[TDE_MASTER_KEY_LENGTH];
   time_t created_time;
+  bool is_valid;
 
   assert (keyinfo->mk_index >= 0);
 
@@ -723,7 +731,13 @@ tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
 
   /* MK has found */
 
-  if (!(tde_validate_mk (mk, keyinfo->mk_hash) && created_time == keyinfo->created_time))
+  err = tde_validate_mk (mk, keyinfo->mk_hash, &is_valid);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (!(is_valid && created_time == keyinfo->created_time))
     {
       err = ER_TDE_INVALID_MASTER_KEY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_MASTER_KEY, 1, keyinfo->mk_index);
@@ -771,42 +785,78 @@ tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo)
  * tde_validate_mk () - Validate a master key by comparing with the hash value, 
  *                      usually with the hash value stored in tde key info heap
  *
- * return             : Valid or not
+ * return             : Error code
  * master_key (in)    : Master key
  * mk_hash (in)       : Hash to be compared with the master key
+ * is_valid (out)     : Whether the master key matches the hash
  */
-static bool
-tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
+static int
+tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash, bool * is_valid)
 {
   unsigned char hash[SHA256_DIGEST_LENGTH];
+  int err = NO_ERROR;
 
-  tde_make_mk_hash (master_key, hash);
+  *is_valid = false;
 
-  if (memcmp (mk_hash, hash, TDE_MASTER_KEY_LENGTH) != 0)
+  /* reported separately from a mismatch: a crypto failure must not be read as a
+   * wrong or changed master key. */
+  err = tde_make_mk_hash (master_key, hash);
+  if (err != NO_ERROR)
     {
-      return false;
+      return err;
     }
-  return true;
+
+  *is_valid = (memcmp (mk_hash, hash, TDE_MASTER_KEY_LENGTH) == 0);
+
+  return NO_ERROR;
 }
 
 /*
  * tde_make_mk_hash () - Make a hash value to validate master key later
  *
+ * return             : Error code
  * master_key (in)    : Master key
  * mk_hash (out)      : Hash value created with the master key
  */
-static void
+static int
 tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
 {
-  SHA256_CTX sha_ctx;
+  EVP_MD_CTX *sha_ctx;
+  int err = ER_TDE_KEY_CREATION_FAIL;
 
   assert (SHA256_DIGEST_LENGTH == TDE_MASTER_KEY_LENGTH);
   assert (master_key != NULL);
   assert (mk_hash != NULL);
 
-  SHA256_Init (&sha_ctx);
-  SHA256_Update (&sha_ctx, master_key, TDE_MASTER_KEY_LENGTH);
-  SHA256_Final (mk_hash, &sha_ctx);
+  /* on failure leave a deterministic value: the buffer is on the caller's stack
+   * or goes straight into the keys file, so it must never stay uninitialized. */
+  memset (mk_hash, 0, SHA256_DIGEST_LENGTH);
+
+  /* Use the EVP digest API; the low-level SHA256_* functions are deprecated since OpenSSL 3.0. */
+  sha_ctx = EVP_MD_CTX_new ();
+  if (sha_ctx == NULL)
+    {
+      goto exit;
+    }
+
+  if (EVP_DigestInit_ex (sha_ctx, crypt_get_md (CRYPT_MD_SHA256), NULL) != 1
+      || EVP_DigestUpdate (sha_ctx, master_key, TDE_MASTER_KEY_LENGTH) != 1
+      || EVP_DigestFinal_ex (sha_ctx, mk_hash, NULL) != 1)
+    {
+      goto cleanup;
+    }
+
+  err = NO_ERROR;
+
+cleanup:
+  EVP_MD_CTX_free (sha_ctx);
+
+exit:
+  if (err != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_KEY_CREATION_FAIL, 0);
+    }
+  return err;
 }
 
 /*
@@ -847,7 +897,8 @@ tde_encrypt_dk (const unsigned char *dk_plain, TDE_DATA_KEY_TYPE dk_type, const 
 
   tde_dk_nonce (dk_type, dk_nonce);
 
-  return tde_encrypt_internal (dk_plain, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_cipher);
+  /* The key here is the master key, so no context reuse: see tde_encrypt_internal (). */
+  return tde_encrypt_internal (dk_plain, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_cipher, false);
 }
 
 /*
@@ -867,7 +918,8 @@ tde_decrypt_dk (const unsigned char *dk_cipher, TDE_DATA_KEY_TYPE dk_type, const
 
   tde_dk_nonce (dk_type, dk_nonce);
 
-  return tde_decrypt_internal (dk_cipher, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_plain);
+  /* The key here is the master key, so no context reuse: see tde_decrypt_internal (). */
+  return tde_decrypt_internal (dk_cipher, TDE_DATA_KEY_LENGTH, TDE_DK_ALGORITHM, master_key, dk_nonce, dk_plain, false);
 }
 
 /*
@@ -948,7 +1000,7 @@ tde_encrypt_data_page (const FILEIO_PAGE * iopage_plain, TDE_ALGORITHM tde_algo,
 
   err = tde_encrypt_internal (((const unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET,
 			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			      ((unsigned char *) iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET);
+			      ((unsigned char *) iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET, true);
 
   return err;
 }
@@ -997,7 +1049,7 @@ tde_decrypt_data_page (const FILEIO_PAGE * iopage_cipher, TDE_ALGORITHM tde_algo
 
   err = tde_decrypt_internal (((const unsigned char *) iopage_cipher) + TDE_DATA_PAGE_ENC_OFFSET,
 			      TDE_DATA_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			      ((unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET);
+			      ((unsigned char *) iopage_plain) + TDE_DATA_PAGE_ENC_OFFSET, true);
 
   return err;
 }
@@ -1029,7 +1081,7 @@ tde_encrypt_log_page (const LOG_PAGE * logpage_plain, TDE_ALGORITHM tde_algo, LO
 
   return tde_encrypt_internal (((const unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET,
 			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			       ((unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET);
+			       ((unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET, true);
 }
 
 /*
@@ -1059,8 +1111,95 @@ tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo, L
 
   return tde_decrypt_internal (((const unsigned char *) logpage_cipher) + TDE_LOG_PAGE_ENC_OFFSET,
 			       TDE_LOG_PAGE_ENC_LENGTH, tde_algo, data_key, nonce,
-			       ((unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET);
+			       ((unsigned char *) logpage_plain) + TDE_LOG_PAGE_ENC_OFFSET, true);
 }
+
+/*
+ * TDE encrypts every flushed data page and log page, so the cipher context is kept
+ * per thread and only re-keyed instead of being allocated per call. The cipher must
+ * be NULL on re-init: a non-NULL one makes Init reset the context and rebuild the
+ * algorithm context, which is most of what the per call path costs.
+ *
+ * One slot per (algorithm, direction), because the short re-init path only holds
+ * while both stay the same. The contexts are freed when the thread exits.
+ */
+// *INDENT-OFF*
+namespace
+{
+  class tde_cipher_ctx_pool
+  {
+    public:
+      tde_cipher_ctx_pool () = default;
+
+      ~tde_cipher_ctx_pool ()
+      {
+	for (int i = 0; i < SLOT_COUNT; i++)
+	  {
+	    if (m_ctx[i] != NULL)
+	      {
+		EVP_CIPHER_CTX_free (m_ctx[i]);
+		m_ctx[i] = NULL;
+	      }
+	  }
+      }
+
+      /* Returns a context initialized for (tde_algo, direction) with key and nonce,
+       * or NULL on failure. The cipher is bound on the first use of the slot only. */
+      EVP_CIPHER_CTX *init (TDE_ALGORITHM tde_algo, bool is_encrypt, const unsigned char *key,
+			    const unsigned char *nonce)
+      {
+	const EVP_CIPHER *cipher_type = NULL;	/* stays NULL once the slot is bound: re-key only */
+	int slot = get_slot (tde_algo, is_encrypt);
+	EVP_CIPHER_CTX *ctx = m_ctx[slot];
+
+	if (ctx == NULL)
+	  {
+	    cipher_type = crypt_get_cipher (tde_algo == TDE_ALGORITHM_AES
+					    ? CRYPT_CIPHER_AES_256_CTR : CRYPT_CIPHER_ARIA_256_CTR);
+	    if (cipher_type == NULL || (ctx = EVP_CIPHER_CTX_new ()) == NULL)
+	      {
+		return NULL;
+	      }
+	    m_ctx[slot] = ctx;
+	  }
+
+	int rc = is_encrypt ? EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, nonce)
+			    : EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, nonce);
+	if (rc != 1)
+	  {
+	    discard (tde_algo, is_encrypt);
+	    return NULL;
+	  }
+	return ctx;
+      }
+
+      /* Drops the context so that a failed state is not carried into the next call. */
+      void discard (TDE_ALGORITHM tde_algo, bool is_encrypt)
+      {
+	int slot = get_slot (tde_algo, is_encrypt);
+
+	if (m_ctx[slot] != NULL)
+	  {
+	    EVP_CIPHER_CTX_free (m_ctx[slot]);
+	    m_ctx[slot] = NULL;
+	  }
+      }
+
+    private:
+      static constexpr int SLOT_COUNT = (TDE_ALGORITHM_ARIA + 1) * 2;
+
+      static int get_slot (TDE_ALGORITHM tde_algo, bool is_encrypt)
+      {
+	assert (tde_algo == TDE_ALGORITHM_AES || tde_algo == TDE_ALGORITHM_ARIA);
+	return ((int) tde_algo) * 2 + (is_encrypt ? 1 : 0);
+      }
+
+      EVP_CIPHER_CTX *m_ctx[SLOT_COUNT] = { NULL, };
+  };
+
+  thread_local tde_cipher_ctx_pool tde_Cipher_ctx_pool;
+}
+// *INDENT-ON*
 
 /*
  * tde_encrypt_internal () - Gerneral encryption function
@@ -1072,41 +1211,50 @@ tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo, L
  * key (in)             : key
  * nonce (in)           : nonce, which has to be unique in time and space
  * cipher_buffer (out)  : Encrypted data
+ * reuse_ctx (in)       : Use the per thread cipher context. It holds the key between
+ *                        calls, so it is for the page paths only, not the key paths.
  *
  * plain_buffer and cipher_buffer has more space than length
  */
 static int
 tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char *key,
-		      const unsigned char *nonce, unsigned char *cipher_buffer)
+		      const unsigned char *nonce, unsigned char *cipher_buffer, bool reuse_ctx)
 {
-  EVP_CIPHER_CTX *ctx;
-  const EVP_CIPHER *cipher_type;
-  int len;
-  int cipher_len;
+  EVP_CIPHER_CTX *ctx = NULL;
+  const EVP_CIPHER *cipher_type = NULL;
+  int len = 0;
+  int cipher_len = 0;
   int err = ER_TDE_ENCRYPTION_ERROR;
 
-  if ((ctx = EVP_CIPHER_CTX_new ()) == NULL)
+  if (tde_algo != TDE_ALGORITHM_AES && tde_algo != TDE_ALGORITHM_ARIA)
     {
+      assert (false);
       goto exit;
     }
 
-  switch (tde_algo)
+  if (reuse_ctx)
     {
-    case TDE_ALGORITHM_AES:
-      cipher_type = EVP_aes_256_ctr ();
-      break;
-    case TDE_ALGORITHM_ARIA:
-      cipher_type = EVP_aria_256_ctr ();
-      break;
-    case TDE_ALGORITHM_NONE:
-    default:
-      assert (false);
-      goto cleanup;
+      // Page paths: a per thread context, re-keyed every call.
+      ctx = tde_Cipher_ctx_pool.init (tde_algo, true, key, nonce);
+      if (ctx == NULL)
+	{
+	  goto exit;
+	}
     }
-
-  if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, nonce) != 1)
+  else
     {
-      goto cleanup;
+      // Key paths: the master key must not stay in a long living context.
+      cipher_type = crypt_get_cipher (tde_algo == TDE_ALGORITHM_AES
+				      ? CRYPT_CIPHER_AES_256_CTR : CRYPT_CIPHER_ARIA_256_CTR);
+      if (cipher_type == NULL || (ctx = EVP_CIPHER_CTX_new ()) == NULL)
+	{
+	  goto exit;
+	}
+
+      if (EVP_EncryptInit_ex (ctx, cipher_type, NULL, key, nonce) != 1)
+	{
+	  goto cleanup;
+	}
     }
 
   if (EVP_EncryptUpdate (ctx, cipher_buffer, &len, plain_buffer, length) != 1)
@@ -1131,7 +1279,18 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
   err = NO_ERROR;
 
 cleanup:
-  EVP_CIPHER_CTX_free (ctx);
+  if (reuse_ctx)
+    {
+      if (err != NO_ERROR)
+	{
+	  // Do not carry a failed state into the next call on this thread.
+	  tde_Cipher_ctx_pool.discard (tde_algo, true);
+	}
+    }
+  else
+    {
+      EVP_CIPHER_CTX_free (ctx);
+    }
 
 exit:
   if (err != NO_ERROR)
@@ -1151,41 +1310,50 @@ exit:
  * key (in)             : key
  * nonce (in)           : nonce used during encryption
  * plain_buffer (out)   : Decrypted data
+ * reuse_ctx (in)       : Use the per thread cipher context. It holds the key between
+ *                        calls, so it is for the page paths only, not the key paths.
  *
  * plain_buffer and cipher_buffer has more space than length
  */
 static int
 tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORITHM tde_algo, const unsigned char *key,
-		      const unsigned char *nonce, unsigned char *plain_buffer)
+		      const unsigned char *nonce, unsigned char *plain_buffer, bool reuse_ctx)
 {
-  EVP_CIPHER_CTX *ctx;
-  const EVP_CIPHER *cipher_type;
-  int len;
-  int plain_len;
+  EVP_CIPHER_CTX *ctx = NULL;
+  const EVP_CIPHER *cipher_type = NULL;
+  int len = 0;
+  int plain_len = 0;
   int err = ER_TDE_DECRYPTION_ERROR;
 
-  if ((ctx = EVP_CIPHER_CTX_new ()) == NULL)
+  if (tde_algo != TDE_ALGORITHM_AES && tde_algo != TDE_ALGORITHM_ARIA)
     {
+      assert (false);
       goto exit;
     }
 
-  switch (tde_algo)
+  if (reuse_ctx)
     {
-    case TDE_ALGORITHM_AES:
-      cipher_type = EVP_aes_256_ctr ();
-      break;
-    case TDE_ALGORITHM_ARIA:
-      cipher_type = EVP_aria_256_ctr ();
-      break;
-    case TDE_ALGORITHM_NONE:
-    default:
-      assert (false);
-      goto cleanup;
+      // Page paths: a per thread context, re-keyed every call.
+      ctx = tde_Cipher_ctx_pool.init (tde_algo, false, key, nonce);
+      if (ctx == NULL)
+	{
+	  goto exit;
+	}
     }
-
-  if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, nonce) != 1)
+  else
     {
-      goto cleanup;
+      // Key paths: the master key must not stay in a long living context.
+      cipher_type = crypt_get_cipher (tde_algo == TDE_ALGORITHM_AES
+				      ? CRYPT_CIPHER_AES_256_CTR : CRYPT_CIPHER_ARIA_256_CTR);
+      if (cipher_type == NULL || (ctx = EVP_CIPHER_CTX_new ()) == NULL)
+	{
+	  goto exit;
+	}
+
+      if (EVP_DecryptInit_ex (ctx, cipher_type, NULL, key, nonce) != 1)
+	{
+	  goto cleanup;
+	}
     }
 
   if (EVP_DecryptUpdate (ctx, plain_buffer, &len, cipher_buffer, length) != 1)
@@ -1208,7 +1376,18 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
   err = NO_ERROR;
 
 cleanup:
-  EVP_CIPHER_CTX_free (ctx);
+  if (reuse_ctx)
+    {
+      if (err != NO_ERROR)
+	{
+	  // Do not carry a failed state into the next call on this thread.
+	  tde_Cipher_ctx_pool.discard (tde_algo, false);
+	}
+    }
+  else
+    {
+      EVP_CIPHER_CTX_free (ctx);
+    }
 
 exit:
   if (err != NO_ERROR)
@@ -1268,6 +1447,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
   time_t created_time;
   int vdes;
   int err = NO_ERROR;
+  bool is_valid;
 
   tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
@@ -1291,10 +1471,18 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
       goto exit;
     }
 
-  /* if the same key with the key set on the database */
-  if (mk_index == keyinfo.mk_index && tde_validate_mk (master_key, keyinfo.mk_hash))
+  if (mk_index == keyinfo.mk_index)
     {
-      goto exit;
+      err = tde_validate_mk (master_key, keyinfo.mk_hash, &is_valid);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (is_valid)
+	{
+	  /* the same key with the key set on the database */
+	  goto exit;
+	}
     }
 
   /* The previous key has to exist */

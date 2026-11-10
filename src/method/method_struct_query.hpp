@@ -41,7 +41,7 @@ namespace cubmethod
     column_info (int db_type, int set_type, short scale, int prec, char charset,
 		 std::string col_name);
     column_info (int db_type, int set_type, short scale, int prec, char charset,
-		 std::string col_name, std::string default_value, char auto_increment,
+		 std::string col_name, std::string written_col_name, std::string default_value, char auto_increment,
 		 char unique_key, char primary_key, char reverse_index, char reverse_unique,
 		 char foreign_key, char shared, std::string attr_name, std::string class_name,
 		 char nullable);
@@ -56,6 +56,7 @@ namespace cubmethod
     int prec;
     char charset;
     std::string col_name;
+    std::string written_col_name; /* column name as written by the user in the SELECT list (e.g. "T.col") */
     char is_non_null;
 
     char auto_increment;

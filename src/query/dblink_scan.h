@@ -37,6 +37,10 @@
 /* Forward declarations */
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
+struct remote_dml_sink;
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct tp_domain;
+typedef struct tp_domain TP_DOMAIN;
 
 typedef enum
 {
@@ -70,6 +74,8 @@ struct dblink_scan_info
   int corr_key_count;		/* copy of spec->s.dblink_node.corr_key_count */
   struct regu_variable_list_node *corr_key_regu_list;	/* non-owning; same chain as in access spec */
   bool corr_skip_result_fetch;	/* corr key NULL — no cci_execute; scan_next returns S_END */
+  struct dblink_column_plan *col_plan;	/* CBRD-27583: each column's conversion, planned at the open
+					 * (dblink_plan_columns); NULL until then, freed with the statement */
 };
 
 #define MAX_LEN_CONNECTION_URL 512
@@ -84,6 +90,13 @@ struct dblink_conn_info
   char conn_url[MAX_LEN_CONNECTION_URL + 1];
   char user_name[DB_MAX_USER_LENGTH + 1];
   char password[DB_MAX_PASSWORD_LENGTH + 1];
+  /* true if the participant cannot execute XA prepare (e.g. a gateway to a
+   * third-party DBMS); such a participant is committed with a plain end-tran
+   * at prepare time and must be excluded from the XA decision-delivery and
+   * daemon-enqueue paths that assume an XA-prepared branch.  In-memory only:
+   * entries rebuilt from _db_global_tran during recovery lose this flag and
+   * are guarded by the permanent-failure error-code check instead */
+  bool xa_unsupported;
 };
 
 /*
@@ -94,6 +107,10 @@ struct dblink_conn_entry
 {
   DBLINK_CONN_INFO conn_info;
   bool is_2pc_participant;
+  bool has_uncommitted_dml;	/* a remote DML statement of this transaction has executed on this
+				 * connection and is not committed yet. Rolling the connection's remote
+				 * transaction back would therefore lose work the transaction still
+				 * expects to commit. */
 
   DBLINK_CONN_ENTRY *next;
 };
@@ -103,26 +120,55 @@ extern int dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_nod
 				 DBLINK_HOST_VARS * host_vars);
 extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 			     VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars);
+extern int dblink_plan_columns (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern int dblink_corr_prepare (THREAD_ENTRY * thread_p, struct access_spec_node *spec, DBLINK_SCAN_INFO * scan_info);
 extern int dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd);
 extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
-/* remote INSERT SELECT state */
-typedef struct dblink_insert_state DBLINK_INSERT_STATE;
-struct dblink_insert_state
+/* remote DML push-sink state, shared by INSERT / REPLACE SELECT and DELETE / UPDATE + local subquery */
+typedef struct dblink_dml_state DBLINK_DML_STATE;
+struct dblink_dml_state
 {
   int conn_handle;
   int stmt_handle;
+  bool savepoint_set;		/* true: a remote savepoint was taken for this statement, so a failure rolls
+				 * back only this statement's work. false: the savepoint could not be taken
+				 * (unsupported by the remote, or the request failed), so a failure must roll
+				 * back and tear down the whole remote transaction; the local transaction's
+				 * commit is then refused only when that rollback discards work of earlier
+				 * statements (the connection's has_uncommitted_dml mark). */
+  bool rows_sent;		/* this statement has executed at least one row on the remote */
 };
 
-extern int dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
-			       const char *table_name, char **attr_names, int num_attrs, int num_bind,
-			       DBLINK_INSERT_STATE * state);
-extern int dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals,
-				      int num_vals);
-extern void dblink_insert_rollback (DBLINK_INSERT_STATE * state);
-extern void dblink_insert_close (DBLINK_INSERT_STATE * state);
+/* Assignments a remote ON DUPLICATE KEY UPDATE clause carries. cols[i] is the remote column name. exprs[i] is
+ * its new value, printed as remote SQL, or NULL for a value bound per row. A NULL exprs[i] goes out as "?" and
+ * is bound after the INSERT values, in clause order. Both arrays are num_assigns long. */
+typedef struct dblink_odku_assigns DBLINK_ODKU_ASSIGNS;
+struct dblink_odku_assigns
+{
+  char **cols;
+  char **exprs;
+  int num_assigns;
+};
+
+/* which statement dblink_dml_open() prepares; each kind reads only its own params below */
+typedef enum dblink_dml_kind
+{
+  DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind/odku */
+  DBLINK_DML_REPLACE,		/* same params as INSERT but never odku: the grammar makes the two exclusive */
+  DBLINK_DML_DELETE,		/* uses key_col/op and src_dom */
+  DBLINK_DML_UPDATE		/* uses set_text/num_set, and key_col/op and src_dom when the statement has a WHERE */
+} DBLINK_DML_KIND;
+
+extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink,
+			    char **attr_names, int num_attrs, int num_bind, const char *set_text, int num_set,
+			    const DBLINK_ODKU_ASSIGNS * odku, TP_DOMAIN * src_dom, DBLINK_DML_STATE * state);
+extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
+				   int num_vals, int *affected_rows);
+extern void dblink_dml_stmt_done (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
+extern void dblink_dml_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
+extern void dblink_dml_close (DBLINK_DML_STATE * state);
 
 #endif

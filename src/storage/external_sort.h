@@ -61,8 +61,7 @@ typedef enum
   SORT_ORDER_BY,
   SORT_ORDER_WITH_LIMIT,
   SORT_GROUP_BY,
-  SORT_ANALYTIC,
-  SORT_INDEX_LEAF
+  SORT_ANALYTIC
 } SORT_PARALLEL_TYPE;
 
 typedef SORT_STATUS SORT_GET_FUNC (THREAD_ENTRY * thread_p, RECDES *, void *);
@@ -98,6 +97,42 @@ struct SORT_REC
   } s;
 };
 
+/*
+ * A P_sort_key may carry the columns of its original tuple that are not sort keys behind the key body, instead of
+ * pointing back to the tuple; the tuple is then rebuilt from the record after the sort (qfile_generate_carried_tuple)
+ * with no page fix of the input list. Such a record has s.original.pageid == NULL_PAGEID (no list page has it; membuf
+ * pages use pageid >= 0 with NULL_VOLID) and s.original.offset == the start of the carried columns (a mini tuple
+ * laid out by SORTKEY_INFO.rest_tl), relative to the start of the SORT_REC.
+ */
+#define SORT_REC_HAS_TUPLE(rec)         ((rec)->s.original.pageid == NULL_PAGEID)
+#define SORT_REC_REST(rec)              ((char *) (rec) + (rec)->s.original.offset)
+
+#define SORT_CARRY_UNDECIDED            0
+#define SORT_CARRY_YES                  1
+#define SORT_CARRY_NO                   2
+
+/* start a sort undecided on tuple carrying, with no sample */
+#define SORTKEY_INFO_INIT_CARRY(key_info_p) \
+  do \
+    { \
+      (key_info_p)->carry_tuple = SORT_CARRY_UNDECIDED; \
+      (key_info_p)->carry_sample = NULL; \
+    } \
+  while (0)
+
+/* a parallel worker's copy of the key info: it samples its own input (never the leader's sample), unless the sort
+ * never carries tuples */
+#define SORTKEY_INFO_INIT_WORKER_CARRY(key_info_p) \
+  do \
+    { \
+      if ((key_info_p)->carry_tuple != SORT_CARRY_NO) \
+	{ \
+	  (key_info_p)->carry_tuple = SORT_CARRY_UNDECIDED; \
+	} \
+      (key_info_p)->carry_sample = NULL; \
+    } \
+  while (0)
+
 struct SUBKEY_INFO
 {
   /* The actual column number in the list file tuple. */
@@ -109,6 +144,7 @@ struct SUBKEY_INFO
   TP_DOMAIN *col_dom;
 
   TP_DOMAIN *cmp_dom;		/* for median sorting string in different domain */
+  TP_VALUE_CONVERTER cmp_conv;	/* the converter of a col_dom value into cmp_dom, found with it */
 
   // signature should match pr_type::data_cmpdisk_function_type
   // todo - use a function type for both sort_f and pr_type::data_cmpdisk_function_type
@@ -137,6 +173,15 @@ struct SORTKEY_INFO
   SUBKEY_INFO *key;		/* Points to `default_keys' if `nkeys' <= 8; otherwise it points to malloc'ed space. */
   SUBKEY_INFO default_keys[8];	/* Default storage; this ought to work for most cases. */
   int error;			/* median domain convert errors */
+  QFILE_TUPLE_VALUE_TYPE_LIST key_tl;	/* key mini-tuple layout: domp[i] = domain of key[i].col */
+
+  /* P_sort_key tuple carrying (SORT_REC_HAS_TUPLE), decided by qfile_build_sort_rec on a sample of the input */
+  int carry_tuple;		/* SORT_CARRY_UNDECIDED, SORT_CARRY_YES or SORT_CARRY_NO */
+  QFILE_TUPLE_VALUE_TYPE_LIST rest_tl;	/* carried mini-tuple layout: domp[j] = domain of list column rest_col[j] */
+  int *rest_col;		/* list column of carried column j (the list columns that are no sort key) */
+  int *col_src;			/* per list column: key index i (>= 0), or -1 - carried column index j */
+  int col_cnt;			/* number of list columns */
+  struct qfile_sort_carry_sample *carry_sample;	/* the sample while undecided */
 };
 
 struct SORT_INFO
@@ -168,7 +213,6 @@ struct sort_listfile_px_arg
 {
   SORTKEY_INFO *key_info;	/* points to the caller's key_info — read-only, shared across workers */
   QFILE_LIST_ID *input_list;	/* points to the input list file scanned by all workers */
-  int hash_eligible;		/* GROUP_BY only: if non-zero, parallelism must be skipped (0 otherwise) */
   void *stats;			/* GROUPBY_STATS* or ANALYTIC_STATS* in xasl node for trace output */
   int parallelism;		/* parallel(N) hint from xasl->parallelism; -1 = auto */
 };
@@ -177,7 +221,5 @@ extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_c
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
 			  SORT_DUP_OPTION option, int limit, bool includes_tde_class,
 			  SORT_PARALLEL_TYPE sort_parallel_type, void *px_extra_arg = NULL);
-
-extern SORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 
 #endif /* _EXTERNAL_SORT_H_ */

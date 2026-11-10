@@ -529,8 +529,10 @@ extern void fileio_make_volume_ext_given_name (char *volext_fullname, const char
 extern void fileio_make_volume_temp_name (char *voltmp_fullname, const char *tmp_path, const char *tmp_name,
 					  VOLID volid);
 extern void fileio_make_log_active_name (char *logactive_name, const char *log_path, const char *dbname);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID volid, FILEIO_BACKUP_LEVEL level,
 						    const char *base_log_name);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 extern void fileio_make_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname, int arvnum);
 extern void fileio_make_removed_log_archive_name (char *logarchive_name, const char *log_path, const char *dbname);
 extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p, const char *log_path_p,
@@ -538,8 +540,10 @@ extern void fileio_make_log_archive_temp_name (char *log_archive_temp_name_p, co
 extern void fileio_make_log_info_name (char *loginfo_name, const char *log_path, const char *dbname);
 extern void fileio_make_backup_volume_info_name (char *backup_volinfo_name, const char *backinfo_path,
 						 const char *dbname);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_make_backup_name (char *backup_name, const char *nopath_volname, const char *backup_path,
 				     FILEIO_BACKUP_LEVEL level, int unit_num);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 extern void fileio_make_dwb_name (char *dwb_name_p, const char *dwb_path_p, const char *db_name_p);
 extern void fileio_make_keys_name (char *keys_name_p, const char *db_name_p);
 extern void fileio_make_keys_name_given_path (char *keys_name_p, const char *keys_path_p, const char *db_name_p);
@@ -547,6 +551,7 @@ extern void fileio_make_keys_name_given_path (char *keys_name_p, const char *key
 extern void fileio_make_ha_sock_name (char *sock_path_p, const char *base_path_p, const char *sock_name_p);
 #endif /* UNSTABLE_TDE_FOR_REPLICATION_LOG */
 extern void fileio_remove_all_backup (THREAD_ENTRY * thread_p, int level);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 extern FILEIO_BACKUP_SESSION *fileio_initialize_backup (const char *db_fullname, const char *backup_destination,
 							FILEIO_BACKUP_SESSION * session, FILEIO_BACKUP_LEVEL level,
 							const char *verbose_file_path, int num_threads,
@@ -580,21 +585,26 @@ extern int fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION
 				  bool remember_pages, bool & is_prev_vheader_restored,
 				  FILEIO_UNLINKED_VOLINFO_MAP & unlinked_vol_info);
 extern int fileio_skip_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 extern const char *fileio_get_zip_method_string (FILEIO_ZIP_METHOD zip_method);
 extern const char *fileio_get_zip_level_string (FILEIO_ZIP_LEVEL zip_level);
 
 
 extern int fileio_read_backup_info_entries (FILE * fp, int which_bkvinf);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 extern int fileio_write_backup_info_entries (FILE * fp, int which_bkvinf);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 extern const char *fileio_get_backup_info_volume_name (FILEIO_BACKUP_LEVEL level, int unit_num, int which_bkvinf);
 extern int fileio_add_volume_to_backup_info (const char *name, FILEIO_BACKUP_LEVEL level, int unit_num,
 					     int which_bkvinf);
 extern int fileio_clear_backup_info_level (int level, bool dealloc, int which_bkvinf);
 extern void fileio_finalize_backup_info (int which_bkvinf);
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 extern int fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE prompt_id,
 					 const char *prompt, char *response, const char *failure_prompt, int range_low,
 					 int range_high, const char *secondary_prompt, int reprompt_value);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 #if !defined(WINDOWS)
 extern FILEIO_LOCKF_TYPE fileio_lock_la_log_path (const char *db_fullname, const char *lock_path, int vdes,
@@ -619,6 +629,7 @@ extern void fileio_flush_control_finalize (void);
 extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_usec, int *token_gen,
 					    int *token_consumed);
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
 extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_create (int vol_id, int total_pages);
 extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
@@ -626,6 +637,7 @@ extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 					 FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
 extern void fileio_page_bitmap_list_destroy (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 extern int fileio_set_page_checksum (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page);
 extern int fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bool * is_page_corrupted);
 extern void fileio_page_hexa_dump (const char *data, int length);

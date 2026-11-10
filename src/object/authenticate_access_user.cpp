@@ -728,6 +728,52 @@ au_set_user_comment (MOP user, const char *comment)
   return error;
 }
 
+/*
+ * au_set_user_loginable() -  Set whether a user can log in.
+ *   return: error code
+ *   user(in): user object
+ *   loginable(in): whether the user can log in
+ */
+int
+au_set_user_loginable (MOP user, bool loginable)
+{
+  int error = NO_ERROR;
+  int save;
+  DB_VALUE name;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  if (!au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "alter_user");
+      goto end;
+    }
+
+  if (ws_is_same_object (user, Au_information_schema_user) || ws_is_same_object (user, Au_dba_user)
+      || ws_is_same_object (user, Au_user))
+    {
+      db_make_null (&name);
+      error = obj_get (user, "name", &name);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      error = ER_AU_CANT_ALTER_LOGIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, db_get_string (&name));
+      pr_clear_value (&name);
+      goto end;
+    }
+
+  error = au_ctx ()->set_loginable (user, loginable);
+
+end:
+  AU_RESTORE (save);
+
+  return error;
+}
+
 
 /*
  * GROUP HIERARCHY MAINTENANCE

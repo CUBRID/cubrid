@@ -33,7 +33,7 @@ extern int ux_database_connect (char *db_name, char *db_user, char *db_passwd, c
 extern int ux_database_reconnect (void);
 extern int ux_is_database_connected (void);
 extern int ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * ne_buf, T_REQ_INFO * req_info,
-		       unsigned int query_seq_num);
+		       unsigned int query_seq_num, int replace_rule_idx);
 extern int ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
 extern int ux_end_session (void);
 extern int ux_get_row_count (T_NET_BUF * net_buf);
@@ -70,7 +70,7 @@ extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc
 extern void ux_cursor_close (T_SRV_HANDLE * srv_handle);
 extern int ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf);
 extern int make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf,
-			    char desired_type);
+			    char desired_type, bool typed_null);
 extern int ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * net_buf, T_REQ_INFO *);
 extern int ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf);
 extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);

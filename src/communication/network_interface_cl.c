@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include <algorithm>
+#include <chrono>
 
 #include "porting.h"
 #include "network.h"
@@ -64,6 +65,7 @@
 #if !defined(CS_MODE)
 /* heap_file.h is server-only; the SA path below needs it, CS path does not */
 #include "heap_file.h"
+#include "xasl_cache.h"
 #endif /* !CS_MODE */
 #include "system_parameter.h"
 #include "replication.h"
@@ -99,8 +101,8 @@
 
 #if defined (CS_MODE)
 #define NET_DEFER_END_QUERIES_MAX 5
-static QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
-static int net_Deferred_end_queries_count = 0;
+static CUB_THREAD_LOCAL QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
+static CUB_THREAD_LOCAL int net_Deferred_end_queries_count = 0;
 #endif /* CS_MODE */
 
 /*
@@ -4000,6 +4002,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
 
+	  assert (server_credential != NULL);
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
 	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
@@ -4563,10 +4566,11 @@ boot_shutdown_server (ER_FINAL_CODE iserfinal)
  * session_id (in/out) : the id of the session to end
  * row_count (out)     : the value of row count for this session
  * server_session_key (in/out) :
+ * session_secret (in/out) :
  */
 int
-csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key, const char *db_user,
-				 const char *host, const char *program_name)
+csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
+				 char *session_secret, const char *db_user, const char *host, const char *program_name)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4586,6 +4590,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   request_size += length_const_string (db_user, &db_user_len);
   request_size += length_const_string (host, &host_len);
   request_size += length_const_string (program_name, &program_name_len);
+  request_size += or_packed_stream_length (SESSION_SECRET_SIZE);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4602,6 +4607,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   ptr = pack_const_string_with_length (ptr, db_user, db_user_len);
   ptr = pack_const_string_with_length (ptr, host, host_len);
   ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
+  ptr = or_pack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 
   req_error =
     net_client_request2 (NET_SERVER_SES_CHECK_SESSION, request, request_size, reply,
@@ -4627,6 +4633,10 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	    {
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
 	    }
+	  if (ptr != NULL)
+	    {
+	      ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
+	    }
 
 	  free_and_init (area);
 	}
@@ -4645,12 +4655,38 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	      free_and_init (request);
 	      return error;
 	    }
-	  sysprm_update_client_session_parameters (session_params);
+	}
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_is_sub_client ())
+	{
+	  /*
+	   * The parameter values on the client (prm_Def) are process-wide and shared with the main client and
+	   * the other sub-clients, so a sub-client must not rewrite them. Keep the session parameter values of
+	   * this sub-client in its own thread-local array instead (see sysprm_set_sub_client_session_parameters ()).
+	   * The session of a new sub-client is created with cached_session_parameters loaded by the main client.
+	   */
+	  error = sysprm_set_sub_client_session_parameters (update_parameter_values ? session_params :
+							    cached_session_parameters);
+	  if (error != NO_ERROR)
+	    {
+	      sysprm_free_session_parameters (&session_params);
+	      free_and_init (request);
+	      return error;
+	    }
 	}
       else
+#endif
 	{
-	  /* use the values stored in cached_session_parameters */
-	  sysprm_update_client_session_parameters (cached_session_parameters);
+	  if (update_parameter_values)
+	    {
+	      sysprm_update_client_session_parameters (session_params);
+	    }
+	  else
+	    {
+	      /* use the values stored in cached_session_parameters */
+	      sysprm_update_client_session_parameters (cached_session_parameters);
+	    }
 	}
       sysprm_free_session_parameters (&session_params);
     }
@@ -4665,15 +4701,15 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      result = xsession_create_new (thread_p, &id);
+      result = xsession_create_new (thread_p, &id, session_secret);
     }
   else
     {
       id = db_Session_id;
-      if (xsession_check_session (thread_p, id) != NO_ERROR)
+      if (xsession_check_session (thread_p, id, session_secret) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (thread_p, &id) != NO_ERROR)
+	  if (xsession_create_new (thread_p, &id, session_secret) != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }
@@ -4684,7 +4720,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   *session_id = db_Session_id;
 
   /* get row count */
-  if (result != ER_FAILED)
+  if (result == NO_ERROR)
     {
       xsession_get_row_count (thread_p, row_count);
     }
@@ -5779,7 +5815,8 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
  */
 int
 histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_type, int attr_unique, int max_buckets,
-				      int sample_size, double *null_frequency, char **blob, int *blob_length)
+				      int sample_size, int with_fullscan, UINT64 sample_seed, double *null_frequency,
+				      char **blob, int *blob_length)
 {
   /* The server handler is multi-column only. Issue a 1-column multi request so single-column
    * (named-attribute) histogram builds use the same wire protocol; this avoids the request/reply
@@ -5799,8 +5836,9 @@ histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_typ
   uniq[0] = attr_unique;
 
   status =
-    histogram_build_multi_by_reservoir_request (class_oid, 1, ids, types, uniq, max_buckets, sample_size, nf, blobs,
-						blens, ndv, &total_rows);
+    histogram_build_multi_by_reservoir_request (class_oid, 1, ids, types, uniq, max_buckets, sample_size,
+						with_fullscan, sample_seed, nf, blobs, blens, ndv, &total_rows,
+						NULL, NULL);
 
   *null_frequency = nf[0];
   *blob = blobs[0];
@@ -5813,18 +5851,29 @@ histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_typ
  *   Sends all columns in one request; the server reads the heap once and returns one blob
  *   per column. Output arrays (sized attr_cnt) are filled by the caller's storage.
  *
- *   reply variable-data layout: attr_cnt doubles (null_frequency), then attr_cnt ints
- *   (blob_length), then the blobs concatenated in column order.
+ *   reply variable-data layout: total_rows / pages_seen / pages_kept (int64), attr_cnt NDV
+ *   (int64), attr_cnt doubles (null_frequency), then attr_cnt ints (blob_length), then the
+ *   blobs concatenated in column order. out_pages_seen / out_pages_kept (may be NULL) report
+ *   the realized scan coverage: kept == seen means a full scan, kept < seen page sampling.
  */
 int
 histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const int *attr_ids,
 					    const int *attr_types, const int *attr_unique, int max_buckets,
-					    int sample_size, double *null_frequency, char **blob, int *blob_length,
-					    INT64 * out_ndv, INT64 * out_total_rows)
+					    int sample_size, int with_fullscan, UINT64 sample_seed,
+					    double *null_frequency, char **blob, int *blob_length, INT64 * out_ndv,
+					    INT64 * out_total_rows, INT64 * out_pages_seen, INT64 * out_pages_kept)
 {
   int i;
 
   *out_total_rows = 0;
+  if (out_pages_seen != NULL)
+    {
+      *out_pages_seen = 0;
+    }
+  if (out_pages_kept != NULL)
+    {
+      *out_pages_kept = 0;
+    }
   for (i = 0; i < attr_cnt; i++)
     {
       blob[i] = NULL;
@@ -5840,7 +5889,9 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
   char *area = NULL;
   int area_size = 0;
   char *ptr;
-  int request_size = OR_OID_SIZE + OR_INT_SIZE * 3 + attr_cnt * (OR_INT_SIZE * 3);
+  /* or_pack_int64 aligns to 8 bytes before writing, so reserve alignment slack too;
+   * the actually packed length (ptr - request) is what gets sent */
+  int request_size = OR_OID_SIZE + OR_INT_SIZE * 4 + MAX_ALIGNMENT + OR_INT64_SIZE + attr_cnt * (OR_INT_SIZE * 3);
   char *request = (char *) malloc ((size_t) request_size);
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5854,6 +5905,8 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
   ptr = or_pack_oid (request, class_oid);
   ptr = or_pack_int (ptr, max_buckets);
   ptr = or_pack_int (ptr, sample_size);
+  ptr = or_pack_int (ptr, with_fullscan);
+  ptr = or_pack_int64 (ptr, (INT64) sample_seed);
   ptr = or_pack_int (ptr, attr_cnt);
   for (i = 0; i < attr_cnt; i++)
     {
@@ -5863,7 +5916,7 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     }
 
   req_error =
-    net_client_request2 (NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR, request, request_size, reply,
+    net_client_request2 (NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR, request, (int) (ptr - request), reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   free (request);
 
@@ -5874,7 +5927,7 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
       ptr = or_unpack_int (reply, &data_len);
       ptr = or_unpack_int (ptr, &status);
 
-      if (area_size < OR_INT64_SIZE + attr_cnt * (OR_INT64_SIZE + OR_DOUBLE_SIZE + OR_INT_SIZE))
+      if (area_size < 3 * OR_INT64_SIZE + attr_cnt * (OR_INT64_SIZE + OR_DOUBLE_SIZE + OR_INT_SIZE))
 	{
 	  /* truncated reply: unpacking the fixed part below would read past the buffer */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
@@ -5884,6 +5937,19 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
 
       ap = or_unpack_int64 (ap, &tr);
       *out_total_rows = tr;
+      {
+	INT64 ps = 0, pk = 0;
+	ap = or_unpack_int64 (ap, &ps);
+	ap = or_unpack_int64 (ap, &pk);
+	if (out_pages_seen != NULL)
+	  {
+	    *out_pages_seen = ps;
+	  }
+	if (out_pages_kept != NULL)
+	  {
+	    *out_pages_kept = pk;
+	  }
+      }
       for (i = 0; i < attr_cnt; i++)
 	{
 	  INT64 nv = -1;
@@ -5950,7 +6016,8 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     }
 
   thread_p = enter_server ();
-  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL) != NO_ERROR)
+
+  if (heap_get_class_hfid (thread_p, class_oid, &hfid, NULL) != NO_ERROR)
     {
       exit_server (*thread_p);
       free (priv_blobs);
@@ -5959,8 +6026,9 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
   status =
     xhistogram_build_multi_by_fullscan_reservoir (thread_p, class_oid, &hfid, (const ATTR_ID *) attr_ids,
 						  (const DB_TYPE *) attr_types, attr_unique, attr_cnt, max_buckets,
-						  sample_size, null_frequency, priv_blobs, blob_length, out_ndv,
-						  out_total_rows);
+						  sample_size, with_fullscan != 0, sample_seed, null_frequency,
+						  priv_blobs, blob_length, out_ndv, out_total_rows, out_pages_seen,
+						  out_pages_kept);
   if (status == NO_ERROR)
     {
       for (i = 0; i < attr_cnt; i++)
@@ -6125,19 +6193,80 @@ is_top_level_class (MOBJ mobj)
 }
 
 /*
+ * stats_progress_clock_msec - monotonic clock for the progress of UPDATE STATISTICS ON ALL CLASSES
+ *
+ * return: msec from an arbitrary origin
+ */
+INT64
+stats_progress_clock_msec (void)
+{
+  return std::chrono::duration_cast < std::chrono::milliseconds >
+    (std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
+/*
+ * stats_log_update_progress - report the progress of UPDATE STATISTICS ON ALL CLASSES to the server event log
+ *
+ * return: none; a failure to report never fails the run and leaves the current error as it was
+ *
+ *   classop(in):
+ *   phase(in): STATS_PROGRESS_STATISTICS or STATS_PROGRESS_HISTOGRAM
+ *   state(in): STATS_PROGRESS_STARTED or STATS_PROGRESS_FINISHED
+ *   seq(in): 1-based position of the class in the phase
+ *   total(in): number of classes in the phase
+ *   class_start_msec(in): stats_progress_clock_msec () when the class started
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
+ *   error(in): result of the class (finished only)
+ */
+void
+stats_log_update_progress (MOP classop, int phase, int state, int seq, int total, INT64 class_start_msec,
+			   INT64 run_start_msec, int error)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE * 7) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  INT64 now = stats_progress_clock_msec ();
+  INT64 class_ms = now - class_start_msec;
+  INT64 elapsed_ms = now - run_start_msec;
+
+  ptr = or_pack_oid (request, WS_OID (classop));
+  ptr = or_pack_int (ptr, phase);
+  ptr = or_pack_int (ptr, state);
+  ptr = or_pack_int (ptr, seq);
+  ptr = or_pack_int (ptr, total);
+  ptr = or_pack_int (ptr, (int) std::min (class_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, (int) std::min (elapsed_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, error);
+
+  er_stack_push ();
+  (void) net_client_request (NET_SERVER_QST_LOG_STATS_PROGRESS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			     OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  er_stack_pop ();
+#endif /* CS_MODE */
+  /* SA_MODE has no server event log */
+}
+
+/*
  * stats_update_all_statistics -
  *
  * return:
  *   with_fullscan(in): true iff WITH FULLSCAN
+ *   print_summary(in): print the summary line here; true only for WITH NO HISTOGRAM, which skips the
+ *                      histogram pass that normally prints it
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
  *
- * NOTE:
+ * NOTE: the progress of each class goes to the server event log.
  */
 int
-stats_update_all_statistics (int with_fullscan)
+stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
   LIST_MOPS *lmops = NULL;
+  int n_tables = 0, n_cols = 0;
 
   lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
   if (lmops == NULL)
@@ -6150,21 +6279,56 @@ stats_update_all_statistics (int with_fullscan)
       class_mop = lmops->mops[i];
       if (locator_fetch_class (class_mop, DB_FETCH_READ) != NULL)
 	{
+	  INT64 class_start_msec = stats_progress_clock_msec ();
+
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, NO_ERROR);
 	  error = stats_update_statistics (class_mop, with_fullscan);
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, error);
 	  if (error != NO_ERROR)
 	    {
 	      break;
+	    }
+	  n_tables++;
+	  for (DB_ATTRIBUTE * att = db_get_attributes_force (class_mop); att != NULL; att = db_attribute_next (att))
+	    {
+	      n_cols++;
 	    }
 	}
     }
 
   locator_free_list_mops (lmops);
 
+  if (error == NO_ERROR && print_summary && n_tables > 0)
+    {
+      /* WITH NO HISTOGRAM skips the histogram pass that normally prints this summary */
+      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+      fflush (stdout);
+    }
+
   return error;
 }
 
+/*
+ * update_histogram_for_all_classes () - update the statistics and build the histograms of every top-level class
+ *                                       (UPDATE STATISTICS ON ALL CLASSES / optimizedb)
+ *   return: NO_ERROR or error code
+ *   with_fullscan(in): true iff WITH FULLSCAN
+ *   random_seed(in): sampling seed
+ *   skip_mops(in): classes to leave out of the histogram build (optimizedb --no-histogram-classes). Their
+ *                  statistics are still updated and their existing histograms are kept as they are. NULL if none
+ *   n_skip(in): number of entries in skip_mops
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
+ *
+ * NOTE: each class is done once, the way UPDATE STATISTICS ON <class> does it: the histogram scan also updates
+ *       the class statistics, from the same scan and in the caller's mode. A statistics pass ahead of it would
+ *       only be overwritten. The progress of each class goes to the server event log as one statistics event
+ *       pair.
+ */
 int
-update_histogram_for_all_classes (void)
+update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6181,29 +6345,118 @@ update_histogram_for_all_classes (void)
       return ER_FAILED;
     }
 
+  int n_tables = 0, n_cols = 0, n_hist_skipped = 0, n_excluded = 0;
+
   for (int i = 0; i < lmops->num; i++)
     {
+      bool excluded = false;
+
       class_mop = lmops->mops[i];
+
+      /* compare by OID rather than MOP pointer: the caller resolved its list through db_find_class (),
+       * which yields the same MOP for a cached class but the OID is what identifies it */
+      for (int k = 0; k < n_skip && skip_mops != NULL; k++)
+	{
+	  if (skip_mops[k] != NULL && OID_EQ (WS_OID (class_mop), WS_OID (skip_mops[k])))
+	    {
+	      excluded = true;
+	      break;
+	    }
+	}
+      INT64 class_start_msec = stats_progress_clock_msec ();
+
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, NO_ERROR);
 
       obj = db_find_class (sm_get_ch_name (class_mop));
       if (obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1,
+				     lmops->num, class_start_msec, run_start_msec, error);
 	  AU_RESTORE (save);
-	  return er_errid ();
+	  locator_free_list_mops (lmops);
+	  return error;
 	}
 
-      histogram_info.target_columns = NULL;
-      histogram_info.bucket_count = -1;
-      histogram_info.with_fullscan = false;
-      error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
-      if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+      if (excluded)
+	{
+	  /* no histogram scan updates the statistics of this class */
+	  error = sm_update_statistics (obj, with_fullscan);
+	}
+      else
+	{
+	  histogram_info.target_columns = NULL;
+	  histogram_info.bucket_count = -1;
+	  /* the histogram scan rewrites the class statistics as well, so it runs in the caller's mode: fixed to
+	   * sampling, it replaced the full-scan B-tree statistics of WITH FULLSCAN with sampled ones (CBRD-27836) */
+	  histogram_info.with_fullscan = with_fullscan;
+	  histogram_info.random_seed = random_seed;
+	  int hist_skipped = 0;
+
+	  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
+						   &hist_skipped);
+	  n_hist_skipped += hist_skipped;
+	  if (error == ER_OBJ_INVALID_ARGUMENTS)
+	    {
+	      /* kept for parity with UPDATE STATISTICS ON <class>; the all-columns build does not return this today
+	       * (a class with no histogrammable column is handled inside the helper, which updates its statistics) */
+	      error = sm_update_statistics (obj, with_fullscan);
+	    }
+	}
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, error);
+      if (error != NO_ERROR)
 	{
 	  AU_RESTORE (save);
+	  locator_free_list_mops (lmops);
 	  return error;
+	}
+
+      if (excluded)
+	{
+	  n_excluded++;
+	  continue;
+	}
+
+      n_tables++;
+      for (DB_ATTRIBUTE * att = db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
+	{
+	  n_cols++;
 	}
     }
   AU_RESTORE (save);
+  locator_free_list_mops (lmops);
+
+  if (n_excluded < n_skip)
+    {
+      /* an entry that is a class but not a top-level one (a partition of a partitioned class) never
+       * matches the list above; say so instead of dropping it silently */
+      int n_missed = n_skip - n_excluded;
+
+      fprintf (stderr, "Warning: %d of the %d classes to exclude %s and %s ignored.\n", n_missed, n_skip,
+	       (n_missed == 1) ? "is not a top-level class" : "are not top-level classes",
+	       (n_missed == 1) ? "was" : "were");
+      fflush (stderr);
+    }
+
+  if (error == NO_ERROR && (n_tables > 0 || n_excluded > 0))
+    {
+      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s", n_tables,
+	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+      if (n_hist_skipped > 0)
+	{
+	  fprintf (stdout, " (%d skipped: histogram type not supported)", n_hist_skipped);
+	}
+      if (n_excluded > 0)
+	{
+	  /* classes named by --no-histogram-classes: counted neither in the tables above nor as skipped */
+	  fprintf (stdout, " (%d excluded)", n_excluded);
+	}
+      fprintf (stdout, ".\n");
+      fflush (stdout);
+    }
 
   return error;
 }
@@ -6223,8 +6476,7 @@ update_histogram_for_all_classes (void)
  * NOTE:
  */
 int
-btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
-		 int deduplicate_key_pos)
+btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR;
@@ -6238,7 +6490,6 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   domain_size = or_packed_domain_size (key_type, 0);
   request_size = OR_BTID_ALIGNED_SIZE + domain_size + OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE;
-  request_size += OR_INT_SIZE;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6252,7 +6503,6 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attr_id);
   ptr = or_pack_int (ptr, unique_pk);
-  ptr = or_pack_int (ptr, deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
   req_error =
     net_client_request (NET_SERVER_BTREE_ADDINDEX, request, request_size, reply,
@@ -6279,7 +6529,7 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
+  btid = xbtree_add_index (thread_p, btid, key_type, class_oid, attr_id, unique_pk, 0, 0, 0);
   if (btid == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -6983,6 +7233,64 @@ btree_class_test_unique (char *buf, int buf_size)
 }
 
 /*
+ * btree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index on
+ *			       the server.
+ *
+ * return		: Error code.
+ * btid (in)		: B-tree identifier.
+ * fill_factor (in)	: Target fill ratio in percent.
+ * keys_compacted (out) : Number of keys whose chain lost at least one page.
+ * pages_freed (out)	: Number of overflow pages deallocated.
+ * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ */
+int
+btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
+			INT64 * pairs_skipped)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_NET_CLIENT_DATA_RECEIVE;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  char *reply;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_int (ptr, fill_factor);
+
+  req_error = net_client_request (NET_SERVER_BTREE_COMPACT_OVERFLOW, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &status);
+      ptr = or_unpack_int64 (ptr, keys_compacted);
+      ptr = or_unpack_int64 (ptr, pages_freed);
+      ptr = or_unpack_int64 (ptr, pairs_skipped);
+    }
+  else
+    {
+      status = req_error;
+    }
+
+  return status;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xbtree_compact_overflow (thread_p, btid, fill_factor, keys_compacted, pages_freed, pairs_skipped);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
  * qfile_get_list_file_page -
  *
  * return:
@@ -7211,6 +7519,78 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 #endif /* !CS_MODE */
 }
 
+#if !defined (CS_MODE)
+/* free the values qmgr_server_db_values made */
+static void
+qmgr_free_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, DB_VALUE * server_db_values)
+{
+  if (server_db_values != NULL)
+    {
+      for (int i = 0; i < dbval_cnt; i++)
+	{
+	  db_value_clear (&server_db_values[i]);
+	}
+      db_private_free (thread_p, server_db_values);
+    }
+}
+
+/*
+ * qmgr_server_db_values () - the bound values as the server takes them, in the server's allocation: an object as its
+ *   OID, as the client's packing sends it in CS mode (CBRD-27583: the plans the server makes before the rows take an
+ *   object's values as OIDs)
+ *   return: the values, NULL without values or on error (when *error is set)
+ */
+static DB_VALUE *
+qmgr_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, const DB_VALUE * dbvals, bool * error)
+{
+  DB_VALUE *server_db_values;
+  OID *oid;
+  int i;
+
+  *error = false;
+  if (dbval_cnt <= 0)
+    {
+      return NULL;
+    }
+
+  server_db_values = (DB_VALUE *) db_private_alloc (thread_p, dbval_cnt * sizeof (DB_VALUE));
+  if (server_db_values == NULL)
+    {
+      *error = true;
+      return NULL;
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      db_make_null (&server_db_values[i]);
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      switch (DB_VALUE_TYPE (&dbvals[i]))
+	{
+	case DB_TYPE_OBJECT:
+	  /* server cannot handle objects, convert to OID instead */
+	  oid = ws_identifier (db_get_object (&dbvals[i]));
+	  if (oid != NULL)
+	    {
+	      db_make_oid (&server_db_values[i], oid);
+	    }
+	  break;
+
+	default:
+	  /* Clone value */
+	  if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
+	    {
+	      qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
+	      *error = true;
+	      return NULL;
+	    }
+	  break;
+	}
+    }
+  return server_db_values;
+}
+#endif /* !CS_MODE */
+
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
  *
@@ -7418,69 +7798,20 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   return list_id;
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
-  DB_VALUE *server_db_values = NULL;
-  OID *oid;
-  int i;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
   /* reallocate dbvals to use server allocation */
-  if (dbval_cnt > 0)
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbvals, &error);
+  if (!error)
     {
-      size_t s = dbval_cnt * sizeof (DB_VALUE);
-
-      server_db_values = (DB_VALUE *) db_private_alloc (thread_p, s);
-      if (server_db_values == NULL)
-	{
-	  goto cleanup;
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_make_null (&server_db_values[i]);
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  switch (DB_VALUE_TYPE (&dbvals[i]))
-	    {
-	    case DB_TYPE_OBJECT:
-	      /* server cannot handle objects, convert to OID instead */
-	      oid = ws_identifier (db_get_object (&dbvals[i]));
-	      if (oid != NULL)
-		{
-		  db_make_oid (&server_db_values[i], oid);
-		}
-	      break;
-
-	    default:
-	      /* Clone value */
-	      if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
-		{
-		  goto cleanup;
-		}
-	      break;
-	    }
-	}
+      /* call the server routine of query execute */
+      list_id =
+	xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
+			     srv_cache_time, query_timeout, NULL);
     }
-  else
-    {
-      /* No dbvals */
-      server_db_values = NULL;
-    }
-
-  /* call the server routine of query execute */
-  list_id =
-    xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
-			 srv_cache_time, query_timeout, NULL);
-
-cleanup:
-  if (server_db_values != NULL)
-    {
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_value_clear (&server_db_values[i]);
-	}
-      db_private_free (thread_p, server_db_values);
-    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
@@ -7588,13 +7919,20 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   return regu_result;
 #else /* CS_MODE */
-  QFILE_LIST_ID *regu_result;
+  QFILE_LIST_ID *regu_result = NULL;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  regu_result =
-    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
-				     query_timeout);
+  /* CBRD-27583: an object as its OID, as qmgr_execute_query sends it */
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbval_ptr, &error);
+  if (!error)
+    {
+      regu_result =
+	xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt,
+					 server_db_values, &flag, query_timeout);
+    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
@@ -7728,11 +8066,97 @@ qmgr_drop_all_query_plans (void)
 }
 
 /*
+ * qmgr_bind_variant - Send a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to
+ *   (bind_variant.h). This function is a counter part to sqmgr_bind_variant().
+ *
+ * return     : error code
+ * req (in)   : the request
+ * reply (out): the outcome and the query's variant directory
+ */
+int
+qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply)
+{
+#if defined(CS_MODE)
+  int status = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, i, j;
+  OR_ALIGNED_BUF (OR_BIND_VARIANT_REQUEST_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIND_VARIANT_REPLY_SIZE) a_reply;
+  char *request, *reply_buf, *ptr;
+  INT64 sig;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply_buf = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_sha1 (request, &req->sha1);
+  OR_PACK_CACHE_TIME (ptr, &req->time_stored);
+  ptr = or_pack_int (ptr, req->op);
+  ptr = or_pack_int (ptr, req->limit);
+  ptr = or_pack_int (ptr, req->variant);
+  ptr = or_pack_int (ptr, req->fp.terms);
+  sig = (INT64) req->plan_sig;
+  ptr = or_pack_int64 (ptr, sig);
+  ptr = or_pack_double (ptr, req->band);
+  ptr = or_pack_double (ptr, req->floor);
+  for (i = 0; i < BIND_WATCH_MAX_TERMS; i++)
+    {
+      ptr = or_pack_double (ptr, (i < req->fp.terms) ? req->fp.rows[i] : 0.0);
+    }
+
+  req_error =
+    net_client_request (NET_SERVER_QM_BIND_VARIANT, request, OR_ALIGNED_BUF_SIZE (a_request), reply_buf,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (req_error)
+    {
+      return req_error;
+    }
+
+  ptr = or_unpack_int (reply_buf, &status);
+  ptr = or_unpack_int (ptr, &reply->result);
+  ptr = or_unpack_int (ptr, &reply->variant);
+  ptr = or_unpack_int (ptr, &reply->state);
+  ptr = or_unpack_int (ptr, &reply->compiles);
+  ptr = or_unpack_int (ptr, &reply->plans);
+  ptr = or_unpack_int (ptr, &reply->pending);
+  ptr = or_unpack_int (ptr, &reply->n_records);
+  if (reply->n_records < 0 || reply->n_records > BIND_VARIANT_MAX_COMPILES)
+    {
+      reply->n_records = 0;
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ptr = or_unpack_int (ptr, &reply->records[i].variant);
+      ptr = or_unpack_int (ptr, &reply->records[i].fp.terms);
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
+	{
+	  ptr = or_unpack_double (ptr, &reply->records[i].fp.rows[j]);
+	}
+    }
+
+  return status;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  status = xcache_bind_variant (thread_p, req, reply);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
  * qmgr_drop_query_plans_by_sha1 - Send a SERVER_QM_DROP_BY_SHA1 request to the server
  *
- * Request the server to clear sha1 XASL cache entires out. When the client
+ * Request the server to clear sha1 XASL cache entries out. When the client
  * want to delete cached query plans for sha1, this function will be used.
- * This function is a counter part to sqmgr_drop_all_query_plans().
+ * This function is a counter part to sqmgr_drop_query_plans_by_sha1().
  */
 /*
  * qmgr_drop_query_plans_by_sha1 -
@@ -7742,7 +8166,7 @@ qmgr_drop_all_query_plans (void)
  * NOTE:
  */
 int
-qmgr_drop_query_plans_by_sha1 (char *sha1)
+qmgr_drop_query_plans_by_sha1 (const char *sha1)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;
@@ -7782,6 +8206,60 @@ qmgr_drop_query_plans_by_sha1 (char *sha1)
 
   /* call the server routine of query drop plan */
   status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
+ * qmgr_drop_query_clones - Send a NET_SERVER_QM_QUERY_DROP_CLONES request to the server
+ *
+ * return: NO_ERROR or error code
+ *
+ *   sha1(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ */
+int
+qmgr_drop_query_clones (const char *sha1)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int request_size, strlen1 = 0;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int req_error;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (sha1, &strlen1);
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, sha1, strlen1);
+
+  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_CLONES, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  status = xqmgr_drop_query_clones (thread_p, sha1);
 
   exit_server (*thread_p);
 
@@ -8210,7 +8688,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
@@ -8261,7 +8739,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
@@ -8740,7 +9218,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
   int req_error, status = ER_FAILED;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply;
   char *ptr;
 
@@ -8758,7 +9236,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
       ptr = or_unpack_int (ptr, &stat_info->leafs);
       ptr = or_unpack_int (ptr, &stat_info->pages);
       ptr = or_unpack_int (ptr, &stat_info->height);
-      ptr = or_unpack_int (ptr, &stat_info->keys);
+      ptr = or_unpack_int64 (ptr, &stat_info->keys);
 
       assert_release (stat_info->leafs > 0);
       assert_release (stat_info->pages > 0);
@@ -9290,19 +9768,13 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
 
   return success;
 #else /* CS_MODE */
-  LOG_LSA *tmp_lsa = NULL;
   int r = ER_FAILED;
 
   THREAD_ENTRY *thread_p = enter_server ();
-  tmp_lsa = xrepl_log_get_append_lsa ();
-  if (lsa && tmp_lsa)
+  if (lsa != NULL)
     {
-      LSA_COPY (lsa, tmp_lsa);
+      *lsa = xrepl_log_get_append_lsa ();
       r = NO_ERROR;
-    }
-  else
-    {
-      r = ER_FAILED;
     }
   exit_server (*thread_p);
 
@@ -9585,7 +10057,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;

@@ -232,6 +232,10 @@ struct log_rec_replication
   int rcvindex;
 };
 
+/* after the key (int aligned), a _db_serial write-back's data record carries this marker, the packed length
+ * and the packed value (max aligned) of the cur_val it replaced; an older applier ignores what follows the key */
+#define LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC 0x53525056	/* "SRPV" */
+
 /* Log the time of termination of transaction */
 typedef struct log_rec_donetime LOG_REC_DONETIME;
 struct log_rec_donetime
@@ -463,6 +467,12 @@ struct log_rec_supplement
 #define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
   (((type) == LOG_MVCC_UNDO_DATA) \
    || ((type) == LOG_MVCC_REDO_DATA) \
+   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+/* Is record type a MVCC operation that carries an undo image */
+#define LOG_IS_MVCC_OP_UNDO_RECORD_TYPE(type) \
+  (((type) == LOG_MVCC_UNDO_DATA) \
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 

@@ -77,12 +77,6 @@
 #include "file_io.h"		/* needed for _wyield() */
 #endif /* WINDOWS */
 
-#if defined (SA_MODE)
-#include "boot_sr.h"
-#include "catalog_class.h"
-#endif
-
-
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -245,7 +239,7 @@ static void csql_print_buffer (void);
 static void csql_change_working_directory (const char *dirname);
 static void csql_exit_session (int error, bool exit_flag);
 
-static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, const int line_no);
+static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, bool is_single_line);
 
 static char *csql_get_external_command (SESSION_CMD cmd_no);
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
@@ -258,9 +252,6 @@ static int csql_connect (char *argument, CSQL_ARGUMENT * csql_arg);
 static void csql_set_server_output (CSQL_ARGUMENT * csql_arg, bool server_output);
 static void csql_print_server_output (const CSQL_ARGUMENT * csql_arg);
 static int csql_execute_query (const char *stmts);
-
-static inline void csql_apply_catalog_rebuild_mode (CSQL_ARGUMENT * csql_arg, int *client_type);
-static inline int csql_rebuild_catalog (const CSQL_ARGUMENT * csql_arg);
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 #if !defined(WINDOWS)
@@ -716,13 +707,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
   char *line_read = NULL;
   int line_length;
-  int line_no, start_line_no;
+  int line_no;
   char *ptr;			/* loop pointer */
   char *line_read_alloced = NULL;
   bool is_first_read_line = true;
-  bool read_whole_line;
+  bool read_whole_line = false;
   char *prompt;
-  bool found_noncomment = false;
 
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
@@ -756,12 +746,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   if (csql_arg->command)
     {
       /* command input */
-      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, -1), true);
+      csql_exit_session (csql_execute_statements (csql_arg, STRING_INPUT, csql_arg->command, false), true);
     }
 
   if (!csql_Is_interactive && !csql_arg->single_line_execution)
     {
-      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, -1), true);
+      csql_exit_session (csql_execute_statements (csql_arg, FILE_INPUT, csql_Input_fp, false), true);
     }
 
   /* Start interactive conversation or single line execution */
@@ -810,8 +800,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
-  start_line_no = 1;
-  for (line_no = 1; true; line_no++)
+  /* a line longer than LINE_BUFFER_SIZE is read in pieces, and a read interrupted by EINTR is retried,
+   * so count a line only when the previous read reached its end */
+  for (line_no = 1; true; line_no += (read_whole_line ? 1 : 0))
     {
       if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
 	{
@@ -886,7 +877,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      && feof (csql_Input_fp) && check_contents_has_noncomment ())
 	    {
 	      /* single-line-oriented execution */
-	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, true);
 	      csql_edit_contents_clear ();
 	    }
 
@@ -957,6 +948,13 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
+
+	  if (!csql_Is_interactive)
+	    {
+	      /* a session command line is not put into the buffer, but it is counted in the line numbers */
+	      csql_edit_contents_skip_input_line ();
+	    }
+
 	  if (ret == DO_CMD_EXIT || ret == DO_CMD_CONNECT)
 	    {
 	      if (line_read_alloced != NULL)
@@ -975,16 +973,17 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      goto error_continue;
 	    }
 
-	  if (csql_edit_contents_get ()[0] == '\0')
-	    {
-	      found_noncomment = false;
-	    }
-
 	  continue;
 	}
       else
 	{
 	  bool csql_execute = false;
+
+	  if (!csql_Is_interactive && csql_edit_contents_get ()[0] == '\0')
+	    {
+	      /* the lexer counts lines from the start of the buffer, including leading blank and comment lines */
+	      csql_edit_contents_set_start_line (line_no);
+	    }
 
 	  if (csql_edit_contents_append (line_read, read_whole_line) != CSQL_SUCCESS)
 	    {
@@ -996,22 +995,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      /* if eof is reached, execute all */
 	      csql_execute = true;
 	      is_in_block = false;
-
-	      if (!csql_Is_interactive && !found_noncomment)
-		{
-		  start_line_no = line_no;
-		}
 	    }
 	  else
 	    {
-	      if (csql_walk_statement (line_read))
-		{
-		  if (!csql_Is_interactive && !found_noncomment)
-		    {
-		      found_noncomment = true;
-		      start_line_no = line_no;
-		    }
-		}
+	      (void) csql_walk_statement (line_read);
 
 	      /* because we don't want to execute session commands in string block or comment block or identifier block */
 	      is_in_block = csql_is_statement_in_block ();
@@ -1029,10 +1016,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (csql_execute)
 	    {
 	      /* single-line-oriented execution */
-	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
-	      csql_yyset_lineno (csql_Is_interactive ? 1 : line_no + 1);
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, true);
 	      csql_edit_contents_clear ();
-	      found_noncomment = false;
 	    }
 	}
 
@@ -1217,11 +1202,11 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 
       /* Command stuffs */
     case S_CMD_RUN:
-      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
+      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, false);
       break;
 
     case S_CMD_XRUN:
-      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, -1);
+      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, false);
       csql_edit_contents_clear ();
       break;
 
@@ -2172,6 +2157,7 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
  *   csql_arg(in)
  *   type(in)
  *   stream(in)
+ *   is_single_line(in): true if the buffer holds one statement that the single-line-oriented execution runs
  *
  * Note:
  *   If `type' is STRING_INPUT, it regards `stream' points to command string.
@@ -2180,11 +2166,11 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
  *   buffer.
  */
 static int
-csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, const int line_no)
+csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, bool is_single_line)
 {
   char *stmts = NULL;		/* statements string */
   int num_stmts = 0;		/* # of stmts executed */
-  int stmt_start_line_no = line_no < 0 ? 0 : line_no;	/* starting line no of each stmt */
+  int stmt_start_line_no = 0;	/* starting line no of each stmt */
   DB_SESSION *session = NULL;	/* query compilation session id */
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
@@ -2198,9 +2184,22 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
     {
       csql_yyset_lineno (1);
     }
-  else if (stmt_start_line_no > 0)
+  else if (type == EDITOR_INPUT)
     {
-      csql_yyset_lineno (stmt_start_line_no);
+      /* includes the ;run and ;xrun session commands.
+       * a buffer loaded by ;read or ;edit is counted from its own first line. */
+      int buffer_start_line_no = csql_edit_contents_get_start_line ();
+
+      csql_yyset_lineno (buffer_start_line_no > 0 ? buffer_start_line_no : 1);
+    }
+
+  if (is_single_line)
+    {
+      /* the buffer holds one statement: its first line is shown for an error raised before the statement is parsed
+       * into a node, e.g. by SHOW THREADS of a non-DBA user */
+      int buffer_start_line_no = csql_Is_interactive ? 0 : csql_edit_contents_get_start_line ();
+
+      stmt_start_line_no = (buffer_start_line_no > 0) ? buffer_start_line_no : 1;
     }
 
   if (type == FILE_INPUT)
@@ -2286,6 +2285,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       CUBRID_STMT_TYPE stmt_type;	/* statement type */
       DB_QUERY_RESULT *result = NULL;	/* result pointer */
       int db_error;
+      int parsed_line_no;
       char stmt_msg[LINE_BUFFER_SIZE];
 
       /* Start the execution of stms */
@@ -2304,6 +2304,21 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  int t_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, num_stmts + 1);
 	  logddl_check_and_set_query_text (session->statements[num_stmts], t_type, session->parser);
+	}
+
+      /* the line of the first token of the statement, counted by the lexer.
+       * read it before checking the compilation: its errors may have no position of their own.
+       * for a failed compilation, the line only corrects one that is shown anyway: none is shown for the first
+       * statement of -c, -i without single-line execution, ;run or ;xrun. */
+      if (session->statements != NULL && num_stmts < session->dimension && session->statements[num_stmts] != NULL)
+	{
+	  parsed_line_no = db_get_start_line (session, num_stmts + 1);
+	  if (parsed_line_no > 0 && (stmt_id > 0 || stmt_start_line_no > 0))
+	    {
+	      /* add the session command lines that are not in the buffer */
+	      stmt_start_line_no =
+		(type == EDITOR_INPUT) ? csql_edit_contents_get_input_line (parsed_line_no) : parsed_line_no;
+	    }
 	}
 
       if (stmt_id <= 0)
@@ -2345,11 +2360,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    {
 	      goto error;
 	    }
-	}
-
-      if (line_no == -1)
-	{
-	  stmt_start_line_no = db_get_start_line (session, stmt_id);
 	}
 
       attr_spec = db_get_query_type_list (session, stmt_id);
@@ -2563,15 +2573,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
     }
 
-  if (csql_arg->sysadm_rebuild_catalog)
-    {
-      if (csql_rebuild_catalog (csql_arg) != NO_ERROR)
-	{
-	  csql_Error_code = CSQL_ERR_SYSTEM_CATALOG_COMPILE;
-	  goto error;
-	}
-    }
-
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
@@ -2596,11 +2597,6 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   return csql_Num_failures;
 
 error:
-  if (csql_arg->sysadm_rebuild_catalog)
-    {
-      do_abort_transaction = true;
-    }
-
   display_error (session, stmt_start_line_no);
   if (csql_arg->pl_server_output)
     {
@@ -3185,42 +3181,6 @@ csql_exit (int exit_status)
   longjmp (csql_Exit_env, 1);
 }
 
-/* --sysadm-rebuild-catalog option is only supported in SA_MODE */
-static inline void
-csql_apply_catalog_rebuild_mode (CSQL_ARGUMENT * csql_arg, int *client_type)
-{
-#if defined (SA_MODE)
-  *client_type = DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG;
-  csql_arg->sysadm = true;
-  csql_arg->auto_commit = false;
-  boot_set_skip_check_ct_classes (true);
-#endif /* SA_MODE */
-}
-
-static int
-csql_rebuild_catalog (const CSQL_ARGUMENT * csql_arg)
-{
-#if defined (SA_MODE)
-  assert (catcls_Enable == false);
-
-  if (catcls_compile_catalog_classes (NULL) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  if (sm_force_write_all_classes () != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  if (sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  db_commit_transaction ();
-#endif /* SA_MODE */
-  return NO_ERROR;
-}
-
 /*
  * csql() - "main" interface function for the csql interpreter
  *   return: EXIT_SUCCESS, EXIT_FAILURE
@@ -3350,14 +3310,10 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       client_type = DB_CLIENT_TYPE_CSQL;
     }
 
-  if (csql_arg->sysadm_rebuild_catalog)
-    {
-      csql_apply_catalog_rebuild_mode (csql_arg, &client_type);
-    }
-
   if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
     {
-      if (!csql_Is_interactive || csql_arg->passwd != NULL || db_error_code () != ER_AU_INVALID_PASSWORD)
+      if (!csql_Is_interactive || csql_arg->passwd != NULL
+	  || !(db_error_code () == ER_AU_REJECT_LOGIN && use_console_password))
 	{
 	  /* not INTERACTIVE mode, or password is given already, or the error code is not password related */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -3843,7 +3799,8 @@ csql_display_trace (void)
     {
       pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
       fprintf (pf, "\n=== Auto Trace ===\n");
-      fprintf (pf, "%s\n", db_get_char (&trace));
+      /* peeked value: the bytes are not NUL-terminated, print exactly the string size */
+      fprintf (pf, "%.*s\n", db_get_string_size (&trace), db_get_char (&trace));
       csql_pclose (pf, csql_Output_fp);
     }
 
@@ -3961,7 +3918,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 
   if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
     {
-      if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
+      if (csql_Is_interactive && (db_error_code () == ER_AU_REJECT_LOGIN && use_console_password))
 	{
 	  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
 

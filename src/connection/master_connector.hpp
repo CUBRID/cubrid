@@ -64,6 +64,13 @@ namespace cubconn::master
       bool m_stop;
 
       int m_eventfd;
+
+      /* dummy context registered to epoll for m_eventfd.
+       * it is owned by this connector and its m_conn does NOT point to a real connection entry.
+       * see the constructor.
+       */
+      context *m_eventfd_context;
+
       cubsocket::epoll m_events;
 
       cubthread::entry *m_entry;

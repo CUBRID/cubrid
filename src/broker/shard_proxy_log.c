@@ -92,6 +92,10 @@ proxy_log_open (char *br_name, int proxy_index)
 	  make_proxy_log_filename (log_filepath, BROKER_PATH_MAX, br_name, proxy_id);
 	}
 
+#if !defined(WINDOWS)
+      mode_t old_mask = umask (0177);
+#endif /* !WINDOWS */
+
       /* note: in "a+" mode, output is always appended */
       log_fp = fopen (log_filepath, "r+");
       if (log_fp != NULL)
@@ -102,6 +106,16 @@ proxy_log_open (char *br_name, int proxy_index)
 	{
 	  log_fp = fopen (log_filepath, "w");
 	}
+
+#if !defined(WINDOWS)
+      umask (old_mask);
+
+      if (log_fp != NULL)
+	{
+	  /* make sure a pre-existing log file (created before this fix) is not left world-readable */
+	  fchmod (fileno (log_fp), 0600);
+	}
+#endif /* !WINDOWS */
     }
   else
     {
@@ -278,7 +292,8 @@ proxy_access_log (struct timeval *start_time, int client_ip_addr, const char *db
   char *script = NULL;
   char *clt_ip;
   char *clt_appl = NULL;
-  struct tm ct1, ct2;
+  struct tm ct1 = { };
+  struct tm ct2 = { };
   time_t t1, t2;
   char *p;
   char err_str[4];

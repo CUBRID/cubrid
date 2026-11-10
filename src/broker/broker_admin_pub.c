@@ -59,6 +59,8 @@
 #include "porting.h"
 #include "tcp.h"
 #include "cas_common.h"
+#include "cas_ssl.h"
+#include "broker_ssl_cert.h"
 #include "broker_shm.h"
 #include "shard_metadata.h"
 #include "shard_shm.h"
@@ -71,6 +73,7 @@
 #include "broker_error.h"
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
+#include "query_replace.h"
 #include "chartype.h"
 #include "cubrid_getopt.h"
 #include "dbtype_def.h"
@@ -156,11 +159,14 @@ static void proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_in
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
 #endif
+static int admin_check_ssl_files (void);
 #endif /* !WINDOWS */
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
 
 char admin_err_msg[ADMIN_ERR_MSG_SIZE];
+/* set by a successful command that still needs the operator's attention */
+char admin_warn_msg[ADMIN_ERR_MSG_SIZE];
 
 #if !defined(WINDOWS) && !defined(LINUX)
 extern char **environ;
@@ -255,6 +261,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
 
+  admin_warn_msg[0] = '\0';
+
   if (br_num <= 0)
     {
 #if defined(FOR_ODBC_GATEWAY)
@@ -264,6 +272,22 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 #endif
       return -1;
     }
+
+#if !defined(WINDOWS)
+  for (i = 0; i < br_num; i++)
+    {
+      if (br_info[i].service_flag == ON && br_info[i].use_SSL == ON)
+	{
+	  /* all brokers share one key and certificate file, so check them once, before any broker starts */
+	  if (admin_check_ssl_files () < 0)
+	    {
+	      return -1;
+	    }
+	  break;
+	}
+    }
+#endif /* !WINDOWS */
+
   chdir ("..");
   broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path, BROKER_PATH_MAX));
@@ -944,6 +968,8 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
 
+  admin_warn_msg[0] = '\0';
+
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
@@ -985,6 +1011,14 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 	    }
 	  else
 	    {
+#if !defined(WINDOWS)
+	      if (shm_br->br_info[i].use_SSL == ON && admin_check_ssl_files () < 0)
+		{
+		  uw_shm_detach (shm_br);
+		  return -1;
+		}
+#endif /* !WINDOWS */
+
 	      if (shm_br->br_info[i].shard_flag == ON)
 		{
 		  shm_proxy_p = shard_shm_initialize_shm_proxy (&(shm_br->br_info[i]));
@@ -1319,6 +1353,149 @@ admin_info_cmd (int master_shm_id)
 
   uw_shm_detach (shm_br);
   return 0;
+}
+
+/* `cubrid broker qr status [broker-name]`
+ *   or
+ * `cubrid broker qr <add|reload|disable|enable> <broker-name> <user@dbname/file>`.
+ *
+ * status lists the rules (broker optional); the other subcommands require a broker and a
+ * rulepath, and act on the running broker's replace segment (see query_replace.c).
+ */
+int
+admin_qr_cmd (int master_shm_id, QRCMD subcmd, const char *subcmd_str, const char *broker_name, const char *rulepath)
+{
+  T_SHM_BROKER *shm_br;
+  int i, rc = 0;
+  char msg[BROKER_PATH_MAX + 256];
+
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
+  if (shm_br == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (), uw_get_os_error_code ());
+      return -1;
+    }
+
+  if (subcmd == QRCMD_STATUS)
+    {
+      int matched = 0;
+
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (broker_name != NULL && strcasecmp (broker_name, shm_br->br_info[i].name) != 0)
+	    {
+	      continue;
+	    }
+	  matched = 1;
+
+	  fprintf (stdout, "%% %s\n", shm_br->br_info[i].name);
+	  if (shm_br->br_info[i].shard_flag == ON || shm_br->br_info[i].appl_server == APPL_SERVER_CAS_CGW)
+	    {
+	      fprintf (stdout, "  query replace not applicable\n");
+	    }
+	  else if (shm_br->br_info[i].service_flag != ON)
+	    {
+	      fprintf (stdout, "  broker is not running\n");
+	    }
+	  else
+	    {
+	      qr_admin_dump_info (stdout, &shm_br->br_info[i]);
+	    }
+	  fprintf (stdout, "\n");
+	}
+
+      if (broker_name != NULL && matched == 0)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "Cannot find broker [%s]", broker_name);
+	  rc = -1;
+	}
+    }
+  else
+    {
+      /* cubrid broker qr <add|reload|disable|enable> <broker-name> <rulepath> */
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (strcasecmp (broker_name, shm_br->br_info[i].name) == 0)
+	    {
+	      break;
+	    }
+	}
+
+      if (i == shm_br->num_broker)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "Cannot find broker [%s]", broker_name);
+	  rc = -1;
+	  goto error;
+	}
+      else if (shm_br->br_info[i].service_flag != ON)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "broker [%s] is not running", broker_name);
+	  rc = -1;
+	  goto error;
+	}
+      else if (shm_br->br_info[i].shard_flag == ON || shm_br->br_info[i].appl_server == APPL_SERVER_CAS_CGW)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "query replace is not applicable for broker [%s]",
+		    broker_name);
+	  rc = -1;
+	  goto error;
+	}
+      else if (shm_br->br_info[i].query_replace_rule[0] == '\0')
+	{
+	  /* the subcommands below resolve .qr.lock and the rule file under this directory,
+	   * so it must be configured */
+	  snprintf (admin_err_msg, sizeof (admin_err_msg),
+		    "query replace is not enabled for broker [%s]; set QUERY_REPLACE_RULE in cubrid_broker.conf",
+		    broker_name);
+	  rc = -1;
+	  goto error;
+	}
+
+      msg[0] = '\0';
+      switch (subcmd)
+	{
+	case QRCMD_ADD:
+	  rc = qr_admin_add (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	case QRCMD_RELOAD:
+	  rc = qr_admin_reload (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	case QRCMD_DISABLE:
+	  rc = qr_admin_disable (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	case QRCMD_ENABLE:
+	  rc = qr_admin_enable (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	default:
+	  snprintf (msg, sizeof (msg), "unknown subcommand");
+	  rc = -1;
+	  break;
+	}
+
+      if (rc < 0)
+	{
+	  char reason[BROKER_PATH_MAX + 256 + 64];
+
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "%s", msg);
+	  snprintf (reason, sizeof (reason), "qr %s failed: %s", subcmd_str, msg);
+	  qr_rule_log_write (&shm_br->br_info[i], false, rulepath, reason);
+	}
+      else
+	{
+	  /* on success msg carries a policy warning, already tagged */
+	  if (msg[0] != '\0')
+	    {
+	      fprintf (stdout, "%s\n", msg);
+	      qr_rule_log_write (&shm_br->br_info[i], false, rulepath, msg);
+	    }
+	  fprintf (stdout, "Command completed successfully. Run 'qr status' to verify.\n");
+	}
+    }
+
+error:
+  uw_shm_detach (shm_br);
+
+  return rc;
 }
 
 static bool
@@ -2099,19 +2276,6 @@ admin_conf_change (int master_shm_id, const char *br_name, const char *conf_name
 	}
       br_info_p->keep_connection = keep_con;
       shm_as_p->keep_connection = keep_con;
-    }
-  else if (strcasecmp (conf_name, "CACHE_USER_INFO") == 0)
-    {
-      int val;
-
-      val = conf_get_value_table_on_off (conf_value);
-      if (val < 0)
-	{
-	  sprintf (admin_err_msg, "invalid value : %s", conf_value);
-	  goto set_conf_error;
-	}
-      br_info_p->cache_user_info = val;
-      shm_as_p->cache_user_info = val;
     }
   else if (strcasecmp (conf_name, "SQL_LOG2") == 0)
     {
@@ -4157,3 +4321,125 @@ get_upper_str (char *upper_str, int size, const char *value)
 
   upper_str[i] = '\0';
 }
+
+#if !defined(WINDOWS)
+/*
+ * admin_check_ssl_files () - check the SSL private key and certificate before a broker with SSL=ON starts
+ *   return: 0, or -1 with admin_err_msg set if only one of the key and the certificate exists, if the key is not a
+ *           regular file or others may have read it, or if the missing certificate cannot be created
+ *
+ * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
+ * With MANAGE_SSL_CERT, defined for cubrid_broker and cubrid_gateway, which link broker_ssl_cert.c with OpenSSL unlike
+ * broker_changer and libbrokeradmin, creates the key and the certificate if both are missing, refuses a key or a
+ * certificate without the other, and sets admin_warn_msg if they were created or if the certificate is for a private
+ * key shipped with CUBRID. Any other unreadable file is left to the CAS, which reports it on SSL connection.
+ *
+ * The private key must be a regular file owned by the broker user or root. If it is owned by the broker user, which
+ * may be root, group and others must have no access to it. If it is owned by root and the broker runs as another
+ * user, the group may read it, so that root can manage the key and let the group of the broker user read it, but
+ * others must have no access. The permission of the owner and the group of the file are not checked.
+ */
+static int
+admin_check_ssl_files (void)
+{
+  char key[BROKER_PATH_MAX];
+#if defined(MANAGE_SSL_CERT)
+  char cert[BROKER_PATH_MAX];
+  bool cert_missing;
+  bool key_missing;
+#endif /* MANAGE_SSL_CERT */
+  struct stat sbuf;
+  unsigned int mode;
+
+  snprintf (key, sizeof (key), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_KEY_FILE);
+#if defined(MANAGE_SSL_CERT)
+  snprintf (cert, sizeof (cert), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_CERT_FILE);
+  cert_missing = (stat (cert, &sbuf) != 0 && errno == ENOENT);
+  key_missing = (stat (key, &sbuf) != 0 && errno == ENOENT);
+  if (cert_missing && key_missing)
+    {
+      /* CUBRID ships no certificate, so the first start creates one for this host */
+      if (broker_create_ssl_cert (cert, key, admin_err_msg, ADMIN_ERR_MSG_SIZE) < 0)
+	{
+	  return -1;
+	}
+      snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
+		"Created a private key and a self-signed SSL certificate for this host: %s. "
+		"Give the certificate to the clients that verify the server certificate.", cert);
+      return 0;
+    }
+  if (cert_missing)
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		"SSL certificate is missing, but its private key exists: %s. "
+		"Provide the certificate for the key, or remove the key so that a new private key and "
+		"a self-signed certificate are created, and restart the service.", key);
+      return -1;
+    }
+  if (key_missing)
+    {
+      snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		"SSL private key is missing, but its certificate exists: %s. "
+		"Provide the private key for the certificate, or remove the certificate so that a new private key and "
+		"a self-signed certificate are created, and restart the service.", cert);
+      return -1;
+    }
+#endif /* MANAGE_SSL_CERT */
+
+  if (stat (key, &sbuf) == 0)
+    {
+      if (!S_ISREG (sbuf.st_mode))
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key is not a regular file: %s. "
+		    "Provide the private key as a regular file, and restart the service.", key);
+	  return -1;
+	}
+
+      /* the owner can read and replace the key whatever its mode */
+      if (sbuf.st_uid != geteuid () && sbuf.st_uid != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key has an invalid owner, but it must be owned by the authorized service user "
+		    "or root: %s. "
+		    "The key may already have been copied by its owner. Generate a new private key and certificate "
+		    "as the authorized user or root, and restart the service.", key);
+	  return -1;
+	}
+
+      /* group or other access means the key may have been copied already, so the operator is told to replace it,
+       * not only to chmod it */
+      mode = (unsigned int) (sbuf.st_mode & 0777);
+      if (sbuf.st_uid == geteuid () && (mode & (S_IRWXG | S_IRWXO)) != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key permission is %04o, but it must be 0600 or 0400: %s. "
+		    "The key may already have been copied by another user. "
+		    "Generate a new private key and certificate, "
+		    "set the key file permission to 600 or 400, and restart the service.", mode, key);
+	  return -1;
+	}
+      if (sbuf.st_uid == 0 && (mode & (S_IWGRP | S_IXGRP | S_IRWXO)) != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key permission is %04o, but it must be 0640, 0600, 0440 or 0400 "
+		    "when owned by root: %s. "
+		    "The key may already have been copied by another user. "
+		    "Generate a new private key and certificate, "
+		    "set the key file permission to 640 or less, and restart the service.", mode, key);
+	  return -1;
+	}
+    }
+
+#if defined(MANAGE_SSL_CERT)
+  if (broker_has_bundled_ssl_key (cert))
+    {
+      snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
+		"WARNING: the system uses the SSL private key shipped with CUBRID, which is public: %s. "
+		"Anyone can impersonate this service. Generate a new private key and certificate.", key);
+    }
+#endif /* MANAGE_SSL_CERT */
+
+  return 0;
+}
+#endif /* !WINDOWS */
