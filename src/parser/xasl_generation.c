@@ -457,6 +457,7 @@ static XASL_NODE *pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * sele
 static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static XASL_NODE *pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_buildvalue_output_reads_scan (XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static bool pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC_KEY_METADOMAIN * func_meta,
 				       PT_NODE ** index, int *index_size);
@@ -21438,6 +21439,57 @@ exit_on_error:
 }
 
 /*
+ * pt_buildvalue_output_reads_scan () - does the output list of a BUILDVALUE read a column of its own scans?
+ *   return: true when an output value reads a slot of the block's value list or of a scan_ptr's
+ *   xasl(in): the BUILDVALUE, its plan generated
+ *
+ * A BUILDVALUE evaluates its output list once, after its scans (qexec_end_buildvalueblock_iterations ()): its
+ * aggregates' results, constants and the outer blocks' values.  A column of its own scans there reads what the row
+ * loop last fetched into the slot, the last row that passed the filters.  A select list cannot name such a column
+ * beside an aggregate ("not single valued"), but two rewrites put one there: INSERT ... SELECT ... ON DUPLICATE KEY
+ * UPDATE appends the columns its assignments read to the SELECT's list (pt_append_assignment_references ()), and a
+ * select list of aggregates whose correlated subquery reads a column of the source becomes a derived table that
+ * carries the column (mq_rewrite_aggregate_as_derived ()).  A SELECT of aggregates without GROUP BY carries them so.
+ * The page batch (qexec_batch_eligible ()) accumulates the aggregates without fetching any row into the slots: such a
+ * block is marked XASL_OUTPUT_READS_SCAN and the page batch leaves it to the row loop, which copies the columns of each
+ * row it aggregates for the output list (qexec_keep_last_row ()).  A block that ends without the row loop, an
+ * aggregate answered from the index or the statistics or the buildvalue gather of a parallel scan, leaves the columns
+ * NULL (qexec_restore_last_row ()), as before the page batch.
+ */
+static bool
+pt_buildvalue_output_reads_scan (XASL_NODE * xasl)
+{
+  REGU_VARIABLE_LIST out;
+  bool reads = false;
+
+  for (out = xasl->outptr_list->valptrp; out != NULL && !reads; out = out->next)
+    {
+      // *INDENT-OFF*
+      out->value.map_regu ([&] (regu_variable_node & regu, bool & stop)
+	{
+	  if (regu.type != TYPE_CONSTANT)
+	    {
+	      return;
+	    }
+	  for (XASL_NODE * scan = xasl; scan != NULL && !reads; scan = scan->scan_ptr)
+	    {
+	      for (QPROC_DB_VALUE_LIST v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL;
+		   v = v->next)
+		{
+		  if (v->val == regu.value.dbvalptr)
+		    {
+		      reads = stop = true;
+		      break;
+		    }
+		}
+	    }
+	});
+      // *INDENT-ON*
+    }
+  return reads;
+}
+
+/*
  * pt_to_buildvalue_proc () - Make a buildvalue xasl proc
  *   return:
  *   parser(in):
@@ -21638,6 +21690,11 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   if (!xasl->outptr_list || !xasl->spec_list || !xasl->val_list || pt_has_error (parser))
     {
       goto exit_on_error;
+    }
+
+  if (pt_buildvalue_output_reads_scan (xasl))
+    {
+      XASL_SET_FLAG (xasl, XASL_OUTPUT_READS_SCAN);
     }
 
   /* set CONNECT BY xasl */
