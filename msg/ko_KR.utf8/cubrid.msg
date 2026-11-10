@@ -2020,6 +2020,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
+345 LEVEL은 sensitivity label grade에만 지정할 수 있습니다.
+346 ALTER SENSITIVITY LABEL에 대해 지정된 옵션이 없습니다.
+347 sensitivity label grade의 level은 1 이상이어야 합니다.
 
 
 
