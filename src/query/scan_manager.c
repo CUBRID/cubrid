@@ -6109,6 +6109,24 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	      isidp->curr_oidno = 0;	/* first oid number */
 	      scan_id->position = S_ON;
+	      if (!SCAN_IS_INDEX_COVERED (isidp))
+		{
+		  /* the OIDs were read again from the other end: point at the first one, as S_BEFORE does.  The pointer
+		   * was left at the slot where the forward scan found its row, so when a data filter had rejected the
+		   * keys ahead of it, the backward scan took another row for its first one (CBRD-28007) */
+		  if (isidp->multi_range_opt.use)
+		    {
+		      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
+		      assert (isidp->multi_range_opt.top_n_items[isidp->curr_oidno] != NULL);
+		      isidp->curr_oidp = &(isidp->multi_range_opt.top_n_items[isidp->curr_oidno]->inst_oid);
+		    }
+		  else
+		    {
+		      assert (isidp->oid_list != NULL);
+		      isidp->curr_oidp = GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
+		    }
+		  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
+		}
 	    }
 	  else if (scan_id->position == S_ON)
 	    {
