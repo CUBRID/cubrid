@@ -2549,6 +2549,7 @@ parser_reinit_node (PT_NODE * node)
       int sql_user_text_len = node->sql_user_text_len;
       int line_number = node->line_number;
       int column_number = node->column_number;
+      int stmt_start_line = node->stmt_start_line;
       CACHE_TIME cache_time = node->cache_time;
 
       memset (node, 0x00, sizeof (PT_NODE));
@@ -2562,6 +2563,7 @@ parser_reinit_node (PT_NODE * node)
       node->sql_user_text_len = sql_user_text_len;
       node->line_number = line_number;
       node->column_number = column_number;
+      node->stmt_start_line = stmt_start_line;
       node->cache_time = cache_time;
 
       if (pt_init_f[node->node_type])
