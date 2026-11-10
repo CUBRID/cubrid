@@ -538,6 +538,7 @@ valid options:\n\
 129 The binary section of the object file is truncated.\n
 130 The %%format command line of the object file is malformed.\n
 131 The object file uses the data format %1$d, which this build does not support.\n
+132 Line %1$d: a row of the binary section is %2$lld bytes, which is over the %3$lld bytes loaddb can send to the server at once in CS mode. Load the object file in SA mode (-S).\n
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages value is invalid.\n
 42 cached-page-size value is invalid.\n
@@ -551,6 +552,7 @@ $set 13 MSGCAT_UTIL_SET_UNLOADDB
 50 Maximum length of class name is %1$d bytes.\n
 51 Maximum length of user name is %1$d bytes.\n
 52 Class %1$s not found.\n
+53 A row of class %1$s is %2$lld bytes, which is over the %3$lld bytes a row of the binary format can hold. Unload the class without --data-format.\n
 60 \
 unloaddb: Export objects and schemas from the database.\n\
 usage: %1$s unloaddb [OPTION] database-name\n\

@@ -2283,7 +2283,17 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
     }
   else
     {
-      binary_fill_row_size (rec_ptr, binary_size_ptr);
+      int64_t row_size = 0;
+
+      if (binary_fill_row_size (obj_out, rec_ptr, binary_size_ptr, &row_size) != NO_ERROR)
+	{
+	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+					   UNLOADDB_MSG_BINARY_ROW_TOO_LARGE), sm_ch_name ((MOBJ) class_ptr),
+		   (long long) row_size, (long long) BIN_MAX_RECORD_SIZE);
+	  fflush (stderr);
+	  error = ER_FAILED;
+	  goto exit_on_error;
+	}
     }
   TIMER_END ((g_sampling_records >= 0), &(g_thr_param[obj_out->ref_thread_param_idx].wi_to_obj_str[1]));
 

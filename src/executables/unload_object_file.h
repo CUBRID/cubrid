@@ -123,7 +123,7 @@ extern void desc_value_print (print_output & output_ctx, DB_VALUE * value);
 extern int text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...);
 extern int binary_print (TEXT_OUTPUT * tout, const u_char * buf, int buflen, DB_TYPE type);
 extern int binary_reserve_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK ** rec_blk, char **rec_size_ptr);
-extern void binary_fill_row_size (TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr);
+extern int binary_fill_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr, int64_t * row_size);
 extern int text_print_request_flush (TEXT_OUTPUT * tout, bool force);
 
 extern volatile bool error_occurred;

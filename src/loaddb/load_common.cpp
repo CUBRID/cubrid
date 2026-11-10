@@ -28,6 +28,9 @@
 #include "error_manager.h"
 #include "release_string.h"
 #include "intl_support.h"
+#include "message_catalog.h"
+#include "util_func.h"
+#include "utility.h"
 
 #include <fstream>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -728,6 +731,9 @@ namespace cubload
 
 
 #define LOADDB_BUFFER_SIZE_LIMIT ((size_t)(((1024 * 1024 * 2) - 1) * 1024LL)) /* (2GB - 1K) */
+
+  /* size of the buffer for the "%format" command line of a class, which leads every batch of a binary section */
+#define LOADDB_FORMAT_LINE_SIZE (64)
   static int
   append_incomplete_row (std::string &batch_buffer, std::string &one_row_buffer, batch_handler &b_handler,
 			 class_id &clsid, batch_id &batch_id, int lineno,
@@ -759,8 +765,10 @@ namespace cubload
 
   /*
    * gathering_binary_record () - read one record of a binary section into one_row_buffer
-   *   return: NO_ERROR, or ER_LDR_CORRUPTED_BINARY_RECORD when the section is malformed
+   *   return: NO_ERROR, ER_LDR_CORRUPTED_BINARY_RECORD when the section is malformed, or ER_FAILED when
+   *           the record is too large to be sent to the server
    *   object_file(in/out): object file positioned on a record size field
+   *   lineno(in): line the record is counted as, from 1, for the message of a record too large
    *   class_is_ignored(in): true when the rows of the current class are not loaded
    *   binary_mode(out): set to false once the end of the section has been reached
    *   one_row_buffer(out): size field and row bytes, left untouched for an ignored class
@@ -770,7 +778,7 @@ namespace cubload
    *       into one_row_buffer as well, since the scanner of the server needs it to frame the row.
    */
   static int
-  gathering_binary_record (std::ifstream &object_file, bool class_is_ignored, bool &binary_mode,
+  gathering_binary_record (std::ifstream &object_file, int lineno, bool class_is_ignored, bool &binary_mode,
 			   std::string &one_row_buffer)
   {
     BIN_REC_SIZE_TYPE binary_length = 0;
@@ -806,10 +814,22 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    if (sizeof (binary_length) + binary_length >= LOADDB_BUFFER_SIZE_LIMIT) // TODO: 2GB?
+    /*
+     * A batch is sent to the server in one piece and has to stay under LOADDB_BUFFER_SIZE_LIMIT, see
+     * [CBRD-25517]. A record is never split over two batches, so one that does not fit an empty batch,
+     * together with the %format command line which leads it, cannot be sent at all. The record is not
+     * corrupted, it is only too large for CS mode: SA mode reads the object file itself and has no such
+     * limit, so the message points there.
+     */
+    const std::size_t max_record_size = LOADDB_BUFFER_SIZE_LIMIT - 1 - LOADDB_FORMAT_LINE_SIZE - sizeof (binary_length);
+    if ((std::size_t) binary_length > max_record_size)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
-	return ER_LDR_CORRUPTED_BINARY_RECORD;
+	const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+				 LOADDB_MSG_BINARY_ROW_TOO_LARGE);
+
+	fprintf (stderr, msg_format, lineno, (long long) binary_length, (long long) max_record_size);
+	util_log_write_errstr (msg_format, lineno, (long long) binary_length, (long long) max_record_size);
+	return ER_FAILED;
       }
 
     one_row_buffer.resize (sizeof (binary_length) + binary_length);
@@ -890,7 +910,7 @@ namespace cubload
     bool class_is_ignored = false;
     short single_quote_checker = 0;
     bool  size_over = false;
-    char format_string[64] = {0 };
+    char format_string[LOADDB_FORMAT_LINE_SIZE] = {0 };
     bool binary_mode = false;
     bool first_binary_batch = true;
 #define DEFAULT_STRING_SZ (4096)
@@ -1038,7 +1058,7 @@ namespace cubload
 	  }
 	else
 	  {
-	    error_code = gathering_binary_record (object_file, class_is_ignored, binary_mode, one_row_buffer);
+	    error_code = gathering_binary_record (object_file, lineno + 1, class_is_ignored, binary_mode, one_row_buffer);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();

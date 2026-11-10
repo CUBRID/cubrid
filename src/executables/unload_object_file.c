@@ -1204,20 +1204,79 @@ exit_on_error:
   return error;
 }
 
-void
-binary_fill_row_size (TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr)
+/*
+ * binary_discard_row - take a row of a binary section back out of TEXT_OUTPUT
+ *    return: void
+ *    tout(in/out): TEXT_OUTPUT the row was written to
+ *    rec_blk(in): block holding the size field of the row, see binary_reserve_row_size ()
+ *    rec_size_ptr(in): the size field
+ *
+ * Note: the bytes of the row are all still in tout, a row is handed to the writer only once it is complete
+ *       (text_print_request_flush () in process_object ()). What follows the size field is dropped and the
+ *       blocks the row went on to are released.
+ */
+static void
+binary_discard_row (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr)
 {
-  assert (rec_size_ptr != NULL && rec_blk != NULL);
-  TEXT_BUFFER_BLK *ptr = rec_blk;
-  BIN_REC_SIZE_TYPE length = (BIN_REC_SIZE_TYPE) (rec_blk->ptr - rec_size_ptr) - sizeof (BIN_REC_SIZE_TYPE);
-  while (ptr->next)
+  TEXT_BUFFER_BLK *next = rec_blk->next;
+
+  while (next != NULL)
     {
-      ptr = ptr->next;
+      TEXT_BUFFER_BLK *tp = next;
+
+      next = tp->next;
+      c_text_buf_mgr.release_text_buffer (tp);
+    }
+
+  rec_blk->next = NULL;
+  rec_blk->ptr = rec_size_ptr;
+  rec_blk->count = (int) (rec_size_ptr - rec_blk->buffer);
+  tout->tail_ptr = rec_blk;
+}
+
+/*
+ * binary_fill_row_size - write the size of a complete row of a binary section into its size field
+ *    return: NO_ERROR, or ER_FAILED when the row is larger than the size field can describe
+ *    tout(in/out): TEXT_OUTPUT the row was written to
+ *    rec_blk(in): block holding the size field, see binary_reserve_row_size ()
+ *    rec_size_ptr(in/out): the size field
+ *    row_size(out): size of the row, the size field excluded
+ *
+ * Note: The size field is set to BIN_END_OF_RECORDS until it's filled, which ends the section early.
+ *       If a row has an error, unloaddb drops it from the output instead of leaving it behind, 
+ *       because leaving it would cut the section short.
+ */
+int
+binary_fill_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr, int64_t * row_size)
+{
+  TEXT_BUFFER_BLK *ptr;
+  int64_t length;
+  BIN_REC_SIZE_TYPE size_field;
+
+  assert (rec_size_ptr != NULL && rec_blk != NULL);
+
+  /* counted in 64 bits, a row is made of values of up to 1GB each and can go past what the field holds */
+  length = (int64_t) (rec_blk->ptr - rec_size_ptr) - (int64_t) sizeof (BIN_REC_SIZE_TYPE);
+  for (ptr = rec_blk->next; ptr != NULL; ptr = ptr->next)
+    {
       length += ptr->count;
     }
-  // length_part(length of record_part) + record_part
+
+  *row_size = length;
+
+  if (length > BIN_MAX_RECORD_SIZE)
+    {
+      binary_discard_row (tout, rec_blk, rec_size_ptr);
+      return ER_FAILED;
+    }
+
+  /* a row has a column at least, so its size is never the end of records marker */
   assert (length > BIN_END_OF_RECORDS);
-  memcpy (rec_size_ptr, &length, sizeof (BIN_REC_SIZE_TYPE));
+
+  size_field = (BIN_REC_SIZE_TYPE) length;
+  memcpy (rec_size_ptr, &size_field, sizeof (BIN_REC_SIZE_TYPE));
+
+  return NO_ERROR;
 }
 
 /*

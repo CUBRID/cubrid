@@ -497,6 +497,8 @@ using load_status = cubload::load_status;
  */
 typedef uint32_t BIN_REC_SIZE_TYPE;
 #define BIN_END_OF_RECORDS  (0)
+/* the largest row the size field can describe */
+#define BIN_MAX_RECORD_SIZE ((int64_t) UINT32_MAX)
 
 #define UNLOAD_RAW_NUMERIC_SIZE  (sizeof (int) + sizeof (int) + DB_NUMERIC_BUF_SIZE + 1)
 #define UNLOAD_RAW_NUMERIC_NEGATIVE (0x02)
