@@ -666,7 +666,7 @@ static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 static int qexec_execute_increment (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 				    const HFID * class_hfid, ATTR_ID attrid, int n_increment, int pruning_type);
 static int qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-				      bool * joined);
+				      bool * release_locks);
 static int qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd, OID * oid,
 						 SELUPD_LIST * selupd, OID * class_oid, HFID * class_hfid,
 						 DB_CLASS_PARTITION_TYPE * needs_pruning, bool * found);
@@ -20259,11 +20259,11 @@ qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree
  *   xasl_state(in)     :
- *   joined(out): the increments went with the transaction instead of committing on their own
+ *   release_locks(out): the statement's row locks may end with it
  * Note: This routine executes update for a selected tuple
  */
 static int
-qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool * joined)
+qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool * release_locks)
 {
   SELUPD_LIST *list = NULL, *selupd = NULL;
   REGU_VARLIST_LIST outptr = NULL;
@@ -20308,7 +20308,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   assert (xasl->list_id->tuple_cnt == 1);
   OID_SET_NULL (&last_cached_class_oid);
 
-  *joined = false;
+  *release_locks = true;
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   if (QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
@@ -20559,9 +20559,17 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     }
   else
     {
-      /* Transaction case. */
+      /* Transaction case: the increments are uncommitted changes, as a DELETE/UPDATE leaves */
       log_sysop_attach_to_outer (thread_p);
-      *joined = true;
+      for (incr_info_index = 0; incr_info_index < all_incr_info.size (); incr_info_index++)
+	{
+	  if (!locator_can_release_row_lock_at_statement_end (thread_p, &all_incr_info[incr_info_index].m_class_oid,
+							      STMT_ROW_CHANGE_UNCOMMITTED))
+	    {
+	      *release_locks = false;
+	      break;
+	    }
+	}
     }
 
 exit:
@@ -21540,7 +21548,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool empty_result = false;
   bool scan_immediately_stop = false;
   bool selupd_transient_scope = false;
-  bool selupd_joined = false;
+  bool selupd_release = true;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
 
@@ -22578,15 +22586,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  lock_transient_scope_start (thread_p);
 		  selupd_transient_scope = true;
 		}
-	      error = qexec_execute_selupd_list (thread_p, xasl, xasl_state, &selupd_joined);
+	      error = qexec_execute_selupd_list (thread_p, xasl, xasl_state, &selupd_release);
 	      if (old_wait_msecs != XASL_WAIT_MSECS_NOCHANGE)
 		{
 		  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 		}
 
-	      /* Increments that went with the transaction keep their row locks to commit.  Given back, a writer could
-	       * take one and wait on us, and after a rollback to a savepoint we would wait on that writer. */
-	      lock_transient_scope_end (thread_p, !selupd_joined);
+	      lock_transient_scope_end (thread_p, selupd_release);
 	      selupd_transient_scope = false;
 
 	      if (error != NO_ERROR)
