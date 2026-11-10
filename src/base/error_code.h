@@ -1795,9 +1795,11 @@
 #define ER_SES_SESSION_SECRET_MISMATCH              -1390
 #define ER_SES_SESSION_NOT_ATTACHED                 -1391
 
-#define ER_STREAM_SESSION_ERROR                     -1392
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
 
-#define ER_LAST_ERROR                               -1393
+#define ER_STREAM_SESSION_ERROR                     -1393
+
+#define ER_LAST_ERROR                               -1394
 
 
 /*
