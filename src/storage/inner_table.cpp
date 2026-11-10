@@ -19,6 +19,8 @@
 /*
  * inner_table.cpp - Inner Table POC, see inner_table.hpp
  *
+ * VARBIT values move the same way: a large VARBIT is 0xFF, int bit_length, then the bits.
+ *
  * Reference format. A large VARCHAR is written as byte 0xFF, int compressed_len, int decompressed_len, then the
  * payload; compressed_len is never negative. A reference is byte 0xFF, int -1, int decompressed_len, bigint value_id,
  * int total_len (the bytes of the original encoding) and int chunk_count, padded to INNER_REF_SIZE. The chunks hold
@@ -191,7 +193,9 @@ namespace
     for (int a = 0; a < repr->n_attributes; a++)
       {
 	const OR_ATTRIBUTE &att = repr->attributes[a];
-	if (!att.is_fixed && att.type == DB_TYPE_STRING && att.location >= 0 && att.location < l.n_var)
+	/* VARCHAR and VARBIT values of 255 bytes or more both start with 0xFF and an int that is never negative */
+	if (!att.is_fixed && (att.type == DB_TYPE_STRING || att.type == DB_TYPE_VARBIT) && att.location >= 0
+	    && att.location < l.n_var)
 	  {
 	    l.string_attr[att.location] = att.id;
 	  }

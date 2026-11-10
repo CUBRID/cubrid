@@ -20,7 +20,7 @@
  * inner_table.hpp - Inner Table POC: large VARCHAR values stored as rows of a companion chunk class
  *
  * A table T is opted in when the parameter inner_table_threshold is positive and a class named T__inner exists with a
- * BIGINT key attribute, a BIT VARYING chunk attribute and a unique index on the key. A VARCHAR value of T whose disk
+ * BIGINT key attribute, a BIT VARYING chunk attribute and a unique index on the key. A VARCHAR or VARBIT value of T whose disk
  * encoding has at least the threshold bytes is split into chunk rows. The key of chunk ORD of value VALUE_ID is
  * (VALUE_ID << INNER_TABLE_ORD_BITS) | ORD. The parent record keeps a reference in the value's place.
  *

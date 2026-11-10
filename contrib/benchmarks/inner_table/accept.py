@@ -4,6 +4,10 @@
 Usage, from a built and cub-workenv-initialized worktree:
 
     python3 contrib/benchmarks/inner_table/accept.py --case storage-1 --root OUTDIR
+    python3 contrib/benchmarks/inner_table/accept.py --case storage-2 --root OUTDIR
+
+Case storage-2 adds VARBIT values, two cold columns in one row, binary zeros, a parent row
+that stays REC_BIGONE without its cold value, and a short-chunk control.
 
 Case storage-1 runs the same operations on an ordinary oracle table and on an
 opted-in table, and compares canonical query results after every operation.
@@ -133,6 +137,8 @@ class Case:
 
     def record(self, name, verdict, detail=''):
         self.results.append({'predicate': name, 'verdict': verdict, 'detail': detail})
+        if name.startswith('control: tampered oracle:'):
+            return  # the control's own verdict is printed after it is judged
         print(f'  {verdict:13} {name}{": " + detail if detail else ""}', flush=True)
 
     def both(self, template, autocommit=True):
@@ -236,7 +242,7 @@ class Case:
         self.results[before] = {'predicate': 'control: tampered oracle is detected',
                                 'verdict': 'VERIFIED' if last['verdict'] == 'FAILED' else 'FAILED',
                                 'detail': last['detail']}
-        print(f'  -> {self.results[before]["verdict"]} control: tampered oracle is detected', flush=True)
+        print(f'  {self.results[before]["verdict"]:13} control: tampered oracle is detected', flush=True)
 
         # Negative control 2: a missing chunk must be an error, not NULL or a partial value.
         rc, text = db.sql(f'select count(*) as c from t_inner{CHUNK_TABLE_SUFFIX};')
@@ -253,6 +259,154 @@ class Case:
             # Put the chunk back so that the final comparison and checkdb see a consistent database.
             db.sql(f'insert into {c} select * from saved_chunk;\ndrop table saved_chunk;')
             self.compare('after the chunk is restored')
+        return self.results
+
+
+def bits(n, rnd, zero=False):
+    """A BIT VARYING literal of n bytes."""
+    return "X'" + ('00' * n if zero else ''.join(f'{rnd.randrange(256):02x}' for _ in range(n))) + "'"
+
+
+class Case2(Case):
+    """storage-2: VARBIT, two cold columns, binary zeros, residual REC_BIGONE, malformed chunk sets."""
+
+    PAIRS = (('s_oracle', 's_inner'), ('g_oracle', 'g_inner'))
+    CANON_S = ('select id, k, n, octet_length(a) as la, sha2(a, 256) as ha, bit_length(b) as lb, '
+               'sha2(hex(b), 256) as hb, (a is null) as null_a, (b is null) as null_b from {t} order by id;')
+    CANON_G = ('select id, ' + ', '.join(f'sha2(c{i}, 256) as h{i}' for i in range(1, 11))
+               + ', octet_length(a) as la, sha2(a, 256) as ha from {t} order by id;')
+    LARGE = 2100  # far enough above the threshold that the disk header does not matter
+
+    def pair(self, template, which=0, autocommit=True):
+        for t in self.PAIRS[which]:
+            self.db.sql(template.format(t=t), autocommit)
+
+    def compare2(self, step, which=0, tamper=False):
+        canon = (self.CANON_S, self.CANON_G)[which]
+        o, i = self.PAIRS[which]
+        got = {}
+        for t in (o, i):
+            rc, text = self.db.sql(canon.format(t=t))
+            if rc or errors(text):
+                self.record(f'{step}: equal results', 'FAILED', f'{t} query failed: {errors(text)[:2]}')
+                return False
+            got[t] = rows(text)
+        if tamper and got[o]:
+            got[o][0]['id'] = '-1'
+        if not got[o]:
+            self.record(f'{step}: equal results', 'NOT VERIFIED', 'oracle returned no rows')
+            return False
+        ok = got[o] == got[i]
+        self.record(f'{step}: equal results', 'VERIFIED' if ok else 'FAILED',
+                    '' if ok else f'{len(got[o])} oracle rows vs {len(got[i])} inner rows differ')
+        return ok
+
+    def keys(self, table):
+        rc, text = self.db.sql(f'select ck from {table}{CHUNK_TABLE_SUFFIX} order by ck;')
+        return None if rc or errors(text) else [r['ck'] for r in rows(text)]
+
+    def check_chunks2(self, step, which=0):
+        t = self.PAIRS[which][1]
+        cols = ('a', 'b') if which == 0 else ('a',)
+        expect_sql = ' + '.join(f'(select count(*) from {t} where octet_length({c}) >= {self.LARGE})' for c in cols)
+        rc, text = self.db.sql(f'select {expect_sql} as n, (select count(distinct ck div 1048576) '
+                               f'from {t}{CHUNK_TABLE_SUFFIX}) as c from db_root;')
+        if rc or errors(text) or not rows(text):
+            self.record(f'{step}: chunk rows match large values', 'FAILED', 'query failed')
+            return
+        r = rows(text)[0]
+        ok = r['n'] == r['c']
+        self.record(f'{step}: chunk rows match large values', 'VERIFIED' if ok else 'FAILED',
+                    f'{r["c"]} chunk values for {r["n"]} large values')
+
+    def run(self):
+        db, rnd = self.db, random.Random(SEED + 2)
+        hexs = lambda n: "'" + ''.join(rnd.choice('0123456789abcdef') for _ in range(n)) + "'"
+        setup = ''
+        for t in ('s_oracle', 's_inner'):
+            setup += f'create table {t} (id int primary key, k varchar(20), n int, a varchar, b bit varying);\n'
+        for t in ('g_oracle', 'g_inner'):
+            cols = ', '.join(f'c{i} varchar' for i in range(1, 11))
+            setup += f'create table {t} (id int primary key, {cols}, a varchar);\n'
+        for t in ('s_inner', 'g_inner'):
+            setup += f'create table {t}{CHUNK_TABLE_SUFFIX} (ck bigint primary key, chunk bit varying);\n'
+        rc, text = db.sql(setup)
+        if rc or errors(text):
+            raise HarnessError(f'setup failed: {errors(text)[:3]}')
+
+        rows_s = [
+            (1, 'two-cold', hexs(5000), bits(5000, rnd)),
+            (2, 'bits-only', 'NULL', bits(70000, rnd)),
+            (3, 'chars-only', hexs(70000), 'NULL'),
+            (4, 'zeros', "'small'", bits(4096, rnd, zero=True)),
+            (5, 'inline', hexs(500), bits(500, rnd)),
+        ]
+        self.pair(''.join(f'insert into {{t}} values ({i}, \'{k}\', 0, {a}, {b});\n' for i, k, a, b in rows_s))
+        self.compare2('varbit: after insert')
+        self.check_chunks2('varbit: after insert')
+
+        before = self.keys('s_inner')
+        self.pair('update {t} set n = n + 1;')
+        self.compare2('varbit: after update of another column')
+        after = self.keys('s_inner')
+        self.record('varbit: unchanged columns keep their chunks', 'VERIFIED' if before and before == after else
+                    'FAILED', f'{len(before or [])} chunk keys before, {len(after or [])} after')
+
+        self.pair("update {t} set a = a || 'q' where id = 1;\nrollback;\n", autocommit=False)
+        self.compare2('varbit: after rolled-back update of one cold column')
+        self.pair("update {t} set a = a || 'q' where id = 1;")
+        self.compare2('varbit: after update of one of two cold columns')
+        self.check_chunks2('varbit: after update of one of two cold columns')
+        newer = self.keys('s_inner')
+        # Row 1 has one-chunk values in a and b. Only a's chunk may be retired and written again.
+        gone = len(set(after or []) - set(newer or []))
+        added = len(set(newer or []) - set(after or []))
+        b_kept = newer is not None and gone == 1 and added == 1
+        self.record('varbit: the other cold column keeps its chunks', 'VERIFIED' if b_kept else 'FAILED',
+                    f'{gone} chunk keys retired, {added} written')
+
+        self.pair('update {t} set b = ' + bits(3000, rnd) + ' where id = 4;')
+        self.compare2('varbit: after replacing binary zeros')
+        self.check_chunks2('varbit: after replacing binary zeros')
+
+        self.pair('delete from {t} where id = 1;\nrollback;\n', autocommit=False)
+        self.compare2('varbit: after rolled-back delete of two cold values')
+        self.pair('delete from {t} where id = 1;')
+        self.compare2('varbit: after delete of two cold values')
+        self.check_chunks2('varbit: after delete of two cold values')
+
+        # Residual REC_BIGONE: the hot remainder still exceeds a page after the cold value moves out.
+        cols = ', '.join(hexs(1900) for _ in range(10))
+        self.pair(f'insert into {{t}} values (1, {cols}, {hexs(6000)});\n'
+                  f'insert into {{t}} values (2, {cols}, NULL);\n', which=1)
+        self.compare2('bigone: after insert', which=1)
+        self.check_chunks2('bigone: after insert', which=1)
+        rc, text = db.sql('show heap capacity of g_inner;')
+        big = re.search(r'Num_overflowed_recs\s*:\s*(\d+)', text)
+        self.record('bigone: the parent row is still a big record', 'VERIFIED' if big and int(big.group(1)) >= 1
+                    else 'FAILED', f'Num_overflowed_recs {big.group(1) if big else "absent"}')
+        self.pair("update {t} set a = a || 'r';", which=1)
+        self.compare2('bigone: after update', which=1)
+        self.check_chunks2('bigone: after update', which=1)
+
+        # Negative controls: a wrong value, a malformed chunk and an extra chunk set must be detected.
+        before = len(self.results)
+        self.compare2('control: tampered oracle', tamper=True)
+        last = self.results[before]
+        self.results[before] = {'predicate': 'control: tampered oracle is detected',
+                                'verdict': 'VERIFIED' if last['verdict'] == 'FAILED' else 'FAILED',
+                                'detail': last['detail']}
+        print(f'  {self.results[before]["verdict"]:13} control: tampered oracle is detected', flush=True)
+        c = f's_inner{CHUNK_TABLE_SUFFIX}'
+        db.sql(f'create table saved_chunk as select * from {c} where ck = (select min(ck) from {c});\n'
+               f"update {c} set chunk = X'00' where ck = (select ck from saved_chunk);")
+        rc, text = db.sql('select id, sha2(hex(b), 256) as h from s_inner order by id;')
+        ok = rc != 0 or bool(errors(text))
+        self.record('control: a short chunk is an error', 'VERIFIED' if ok else 'FAILED',
+                    errors(text)[0][:120] if errors(text) else 'query returned rows')
+        db.sql(f'update {c} set chunk = (select chunk from saved_chunk) where ck = (select ck from saved_chunk);\n'
+               'drop table saved_chunk;')
+        self.compare2('after the chunk is restored')
         return self.results
 
 
@@ -292,7 +446,7 @@ def supports_inner(cubrid):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--case', required=True, choices=['storage-1'])
+    ap.add_argument('--case', required=True, choices=['storage-1', 'storage-2'])
     ap.add_argument('--root', required=True, type=Path)
     args = ap.parse_args()
     wt = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip())
@@ -323,7 +477,7 @@ def main():
         sh(['cubrid', 'server', 'start', name], log, timeout=300)
         started = True
         summary['server_pids'] = own_pids('cub_server')
-        results = Case(Db(root, name), inner).run()
+        results = (Case if args.case == 'storage-1' else Case2)(Db(root, name), inner).run()
         sh(['cubrid', 'server', 'stop', name], log, timeout=300)
         started = False
         ck = sh(['cubrid', 'checkdb', '-S', name], root / 'checkdb.log', check=False)
