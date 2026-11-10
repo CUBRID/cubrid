@@ -6079,6 +6079,24 @@ mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
 }
 
 /*
+ * mq_clear_or_derived_marks () - make a term pushed into a derived table an ordinary one
+ *   return:
+ *   term(in/out): the copy pushed into the derived table
+ *
+ * Note: a restriction qo_extract_or_restrictions () derived from an OR factor is marked as an
+ *	 implied duplicate of that factor, paired with it by qo_derived_term_compensate () and kept
+ *	 only when an index takes it.  Pushed into a derived table it is the filter there, with no
+ *	 factor to pair with in that query: left marked it would count for nothing and lose its key
+ *	 range.  The distributed factor's clauses used to be pushed as ordinary terms the same way.
+ */
+static void
+mq_clear_or_derived_marks (PT_NODE * term)
+{
+  PT_EXPR_INFO_CLEAR_FLAG (term, PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
+			   | PT_EXPR_INFO_OR_DERIVED_COLUMN);
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -6235,6 +6253,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
 		}
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
+	      mq_clear_or_derived_marks (new_term);
 	    }
 	  push_term_list = parser_append_node (new_term, push_term_list);
 
