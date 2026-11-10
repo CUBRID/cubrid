@@ -31,6 +31,7 @@
 #include "catch2/catch.hpp"
 
 #include "stream_client.h"
+#include "stream_debug_echo.hpp"
 #include "stream_handle.hpp"
 #include "stream_session.hpp"
 
@@ -795,3 +796,146 @@ TEST_CASE_METHOD (registry_fixture, "an open refused by its factory or its kind 
   CHECK (handle == 0);
   CHECK (test_Closed == 0);
 }
+
+#if !defined (NDEBUG)
+/* The echo kinds a debug build registers (stream_debug_echo.cpp), driven through the registry, the seam and the
+ * download table as the server and the CAS drive them. */
+namespace
+{
+  std::string
+  echo_config (int version, long long a, int b)
+  {
+    char c[16];
+    unsigned long long v = (unsigned long long) a;
+
+    for (int i = 3; i >= 0; i--)
+      {
+	c[i] = (char) ((unsigned) version >> (8 * (3 - i)));
+      }
+    for (int i = 11; i >= 4; i--, v >>= 8)
+      {
+	c[i] = (char) (v & 0xff);
+      }
+    for (int i = 15; i >= 12; i--)
+      {
+	c[i] = (char) ((unsigned) b >> (8 * (15 - i)));
+      }
+    return std::string (c, sizeof (c));
+  }
+
+  struct echo_fixture : registry_fixture
+  {
+    echo_fixture ()
+    {
+      static bool registered = false;
+
+      if (!registered)
+	{
+	  REQUIRE (stream_debug_echo_register_server () == NO_ERROR);
+	  REQUIRE (stream_debug_echo_register_client () == NO_ERROR);
+	  registered = true;
+	}
+    }
+  };
+}
+
+TEST_CASE_METHOD (echo_fixture, "the echo kinds are registered as a driver opens them", "[stream_echo]")
+{
+  REQUIRE (stream_kind_find (STREAM_KIND_DEBUG_ECHO_UPLOAD) != NULL);
+  REQUIRE (stream_kind_find (STREAM_KIND_DEBUG_ECHO_DOWNLOAD) != NULL);
+  CHECK (stream_kind_find (STREAM_KIND_DEBUG_ECHO_UPLOAD)->direction == STREAM_UPLOAD);
+  CHECK (stream_kind_find (STREAM_KIND_DEBUG_ECHO_UPLOAD)->ends_unit_of_work == false);
+  CHECK (stream_kind_find (STREAM_KIND_DEBUG_ECHO_DOWNLOAD)->direction == STREAM_DOWNLOAD);
+  CHECK (stream_kind_client_check_driver_open (STREAM_KIND_DEBUG_ECHO_UPLOAD) == NO_ERROR);
+  CHECK (stream_kind_client_check_driver_open (STREAM_KIND_DEBUG_ECHO_DOWNLOAD) == NO_ERROR);
+
+  /* a negative version stands for a privilege the user lacks */
+  std::string allowed = echo_config (1, -1, 0), refused = echo_config (-1, -1, 0);
+  CHECK (stream_kind_client_authorize (STREAM_KIND_DEBUG_ECHO_UPLOAD, allowed.data (), (int) allowed.size ())
+	 == NO_ERROR);
+  CHECK (stream_kind_client_authorize (STREAM_KIND_DEBUG_ECHO_DOWNLOAD, refused.data (), (int) refused.size ())
+	 == ER_STREAM_SESSION_ERROR);
+}
+
+TEST_CASE_METHOD (echo_fixture, "the echo upload counts the bytes and refuses past its limit", "[stream_echo]")
+{
+  int error_code = ER_FAILED;
+  stream_result result = { -1 };
+  std::string unlimited = echo_config (1, -1, 0), limited = echo_config (1, 10, 0);
+  std::string newer = echo_config (2, -1, 0);
+
+  stream_session *s = stream_session_create (NULL, STREAM_KIND_DEBUG_ECHO_UPLOAD, unlimited.data (),
+		      (int) unlimited.size (), &error_code);
+  REQUIRE (s != NULL);
+  CHECK (s->receive_chunk (NULL, "abcdef", 6) == NO_ERROR);
+  CHECK (s->receive_chunk (NULL, "gh", 2) == NO_ERROR);
+  CHECK (s->finish (NULL, &result) == NO_ERROR);
+  CHECK (result.count == 8);
+  delete s;
+
+  s = stream_session_create (NULL, STREAM_KIND_DEBUG_ECHO_UPLOAD, limited.data (), (int) limited.size (),
+			     &error_code);
+  REQUIRE (s != NULL);
+  CHECK (s->receive_chunk (NULL, "0123456789", 10) == NO_ERROR);
+  CHECK (s->receive_chunk (NULL, "x", 1) == ER_STREAM_SESSION_ERROR);
+  s->abort (NULL);
+  delete s;
+
+  /* the factory takes every version up to its own, and a config of the fields that version has */
+  CHECK (stream_session_create (NULL, STREAM_KIND_DEBUG_ECHO_UPLOAD, newer.data (), (int) newer.size (),
+				&error_code) == NULL);
+  CHECK (error_code == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_session_create (NULL, STREAM_KIND_DEBUG_ECHO_UPLOAD, unlimited.data (), 4, &error_code) == NULL);
+  CHECK (error_code == ER_STREAM_SESSION_ERROR);
+}
+
+TEST_CASE_METHOD (echo_fixture, "the echo download comes through the table byte for byte", "[stream_echo]")
+{
+  const long long length = 3 * 1024 * 1024 + 123;
+  const int seed = 7;
+  stream_handle_table table;
+  std::vector<char> buf (stream_read_bound (STREAM_READ_MAX_CHUNK));
+  int nread = 0, reply_flags = 0;
+  std::int64_t handle = 0;
+  std::string config = echo_config (1, length, seed);
+
+  /* unbundled: open, read to eof, release */
+  REQUIRE (stream_download_open (NULL, table, STREAM_KIND_DEBUG_ECHO_DOWNLOAD, config.data (), (int) config.size (),
+				 TRAN_1, CLIENT_1, 0, 0, NULL, &nread, &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (handle > 0);
+  std::string got = read_all (table, handle, STREAM_READ_MAX_CHUNK);
+  REQUIRE ((long long) got.size () == length);
+  bool same = true;
+  for (size_t i = 0; i < got.size (); i++)
+    {
+      same = same && (unsigned char) got[i] == (unsigned char) (seed + i);
+    }
+  CHECK (same);
+  table.release (NULL, handle);
+
+  /* bundled, within one read: the open is the whole value and leaves no handle */
+  config = echo_config (1, 1000, 200);
+  REQUIRE (stream_download_open (NULL, table, STREAM_KIND_DEBUG_ECHO_DOWNLOAD, config.data (), (int) config.size (),
+				 TRAN_1, CLIENT_1, 4096, STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread,
+				 &reply_flags, &handle) == NO_ERROR);
+  CHECK (handle == 0);
+  CHECK (nread == 1000);
+  CHECK ((unsigned char) buf[999] == (unsigned char) (200 + 999));
+  CHECK (reply_flags == (STREAM_FLAG_EOF | STREAM_FLAG_RELEASED));
+
+  /* empty: eof with the open */
+  config = echo_config (1, 0, 0);
+  REQUIRE (stream_download_open (NULL, table, STREAM_KIND_DEBUG_ECHO_DOWNLOAD, config.data (), (int) config.size (),
+				 TRAN_1, CLIENT_1, 64, STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags,
+				 &handle) == NO_ERROR);
+  CHECK (nread == 0);
+  CHECK ((reply_flags & STREAM_FLAG_EOF) != 0);
+
+  /* a negative length is the factory's to refuse */
+  config = echo_config (1, -5, 0);
+  CHECK (stream_download_open (NULL, table, STREAM_KIND_DEBUG_ECHO_DOWNLOAD, config.data (), (int) config.size (),
+			       TRAN_1, CLIENT_1, 0, 0, NULL, &nread, &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
+
+  table.clear (NULL);
+}
+#endif /* !NDEBUG */

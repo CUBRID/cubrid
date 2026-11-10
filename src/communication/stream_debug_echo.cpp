@@ -30,19 +30,20 @@
  * A negative version is refused by authorize, a version above 1 by the factory.
  */
 
+#include "stream_debug_echo.hpp"
+
 #include "stream_session.hpp"
 #include "stream_client.h"
 
 #include "error_code.h"
 #include "error_manager.h"
-#if defined (SERVER_MODE)
-#include "thread_manager.hpp"
-#endif /* SERVER_MODE */
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <thread>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -51,8 +52,6 @@
 
 namespace
 {
-  const int ECHO_KIND_UPLOAD = 5;
-  const int ECHO_KIND_DOWNLOAD = 6;
   const int ECHO_VERSION = 1;
   const int ECHO_UPLOAD_CONFIG_SIZE = 4 + 8 + 4;
   const int ECHO_DOWNLOAD_CONFIG_SIZE = 4 + 8 + 4;
@@ -76,7 +75,7 @@ namespace
     return ER_STREAM_SESSION_ERROR;
   }
 
-#if defined (SERVER_MODE)
+#if !defined (CS_MODE)
   /* the factory's check: the version the client half let through, and the fields this version has */
   int
   echo_check_config (const char *config, int config_len, int size)
@@ -112,7 +111,7 @@ namespace
 	(void) data;
 	if (m_delay_ms > 0)
 	  {
-	    thread_sleep (m_delay_ms);
+	    std::this_thread::sleep_for (std::chrono::milliseconds (m_delay_ms));
 	  }
 	m_total += data_len;
 	if (m_fail_after >= 0 && m_total > m_fail_after)
@@ -201,25 +200,9 @@ namespace
     return new echo_source (length, (int) echo_get_be (config + 12, 4));
   }
 
-  struct echo_registrar
-  {
-    echo_registrar ()
-    {
-      stream_kind_desc upload = { STREAM_UPLOAD, echo_session_create, NULL, false };
-      stream_kind_desc download = { STREAM_DOWNLOAD, NULL, echo_source_create, false };
+#endif /* !CS_MODE */
 
-      if (stream_kind_register (ECHO_KIND_UPLOAD, upload) != NO_ERROR
-	  || stream_kind_register (ECHO_KIND_DOWNLOAD, download) != NO_ERROR)
-	{
-	  assert (false);
-	}
-    }
-  };
-
-  echo_registrar echo_registrar_instance;
-#endif /* SERVER_MODE */
-
-#if defined (CS_MODE)
+#if !defined (SERVER_MODE)
   /* a negative version stands for a privilege the user lacks */
   int
   echo_authorize (const char *config, int config_len)
@@ -231,21 +214,61 @@ namespace
     return NO_ERROR;
   }
 
-  struct echo_client_registrar
-  {
-    echo_client_registrar ()
-    {
-      stream_kind_client_desc desc = { true, echo_authorize };
+#endif /* !SERVER_MODE */
+}
 
-      if (stream_kind_client_register (ECHO_KIND_UPLOAD, desc) != NO_ERROR
-	  || stream_kind_client_register (ECHO_KIND_DOWNLOAD, desc) != NO_ERROR)
+/* the server half needs the registry (stream_session.cpp), the client half stream_client.c */
+#if !defined (CS_MODE)
+int
+stream_debug_echo_register_server (void)
+{
+  stream_kind_desc upload = { STREAM_UPLOAD, echo_session_create, NULL, false };
+  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, echo_source_create, false };
+  int error_code = stream_kind_register (STREAM_KIND_DEBUG_ECHO_UPLOAD, upload);
+
+  return error_code != NO_ERROR ? error_code : stream_kind_register (STREAM_KIND_DEBUG_ECHO_DOWNLOAD, download);
+}
+
+#endif /* !CS_MODE */
+
+#if !defined (SERVER_MODE)
+int
+stream_debug_echo_register_client (void)
+{
+  stream_kind_client_desc desc = { true, echo_authorize };
+  int error_code = stream_kind_client_register (STREAM_KIND_DEBUG_ECHO_UPLOAD, desc);
+
+  return error_code != NO_ERROR ? error_code : stream_kind_client_register (STREAM_KIND_DEBUG_ECHO_DOWNLOAD, desc);
+}
+#endif /* !SERVER_MODE */
+
+/* each half registers at load time in the binary it belongs to */
+namespace
+{
+#if defined (SERVER_MODE)
+  struct echo_registrar
+  {
+    echo_registrar ()
+    {
+      if (stream_debug_echo_register_server () != NO_ERROR)
 	{
 	  assert (false);
 	}
     }
-  };
+  } echo_registrar_instance;
+#endif /* SERVER_MODE */
 
-  echo_client_registrar echo_client_registrar_instance;
+#if defined (CS_MODE)
+  struct echo_client_registrar
+  {
+    echo_client_registrar ()
+    {
+      if (stream_debug_echo_register_client () != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  } echo_client_registrar_instance;
 #endif /* CS_MODE */
 }
 
