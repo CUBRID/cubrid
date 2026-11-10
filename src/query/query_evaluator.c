@@ -423,14 +423,14 @@ eval_compare_values_with (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
 /*
  * eval_compare_values_resolved () - eval_compare_values_with over a comparison unpack decided: a merge column pair, a
  *				    LIMIT, an instnum bound, FIELD, NULLIF, LEAST and GREATEST
- *   compare(in): the decided comparison; NULL compares by the values (comparison method VALUES)
+ *   compare(in): the decided comparison; unpack decides one for every such pair
  */
 DB_VALUE_COMPARE_RESULT
 eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
 			      const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
 {
-  return eval_compare_values_with (thread_p, compare != NULL ? compare : &eval_Compare_values, vd, value1, value2,
-				   total_order, can_compare);
+  assert (compare != NULL);
+  return eval_compare_values_with (thread_p, compare, vd, value1, value2, total_order, can_compare);
 }
 
 /* a comparison's result as its relational operator reads it (eval_value_rel_cmp and the operator functions) */
@@ -3627,7 +3627,15 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 	  /* for all attributes specified in the filter */
 	  for (i = 0; i < scan_attrsp->num_attrs; i++)
 	    {
-	      if (filled_match_idx)
+	      bool is_func_result = (filterp->func_idx_col_id != -1
+				     && IS_FUNC_INDEX_RESULT_ATTR_ID (scan_attrsp->attr_ids[i]));
+
+	      if (is_func_result)
+		{
+		  /* not in btree_attr_ids, so resolve it before the matched index cache */
+		  j = filterp->func_idx_col_id;
+		}
+	      else if (filled_match_idx)
 		{
 		  j = filterp->matched_attid_idx_4_keyflt[i];
 		}
@@ -3647,7 +3655,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		    }
 		}
 
-	      if (j < filterp->btree_num_attrs)
+	      if (is_func_result || j < filterp->btree_num_attrs)
 		{
 		  /* now, found the attr */
 
@@ -3664,13 +3672,16 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		    }
 
 		  /* get j-th element value from the midxkey */
-		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
-		  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_midxkey : midxkey),
-						     ((j < func_idx_col_id) ? j : j + 1),
-						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
-		    {
-		      return V_ERROR;
-		    }
+		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.
+		  {
+		    int midx_pos = is_func_result ? filterp->func_idx_col_id : ((j < func_idx_col_id) ? j : j + 1);
+
+		    if (pr_midxkey_get_element_nocopy (((midx_pos < prefix_size) ? prefix_midxkey : midxkey), midx_pos,
+						       valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
+		      {
+			return V_ERROR;
+		      }
+		  }
 
 		  found_empty_str = false;
 		  if (oracle_style_empty_string && db_value_is_null (valp))

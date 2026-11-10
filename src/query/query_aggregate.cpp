@@ -2725,7 +2725,6 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
   int i, nloops, cmp;
   REGU_VARIABLE_LIST regu_var_list, regu_var_node, regu_tmp_node;
   AGGREGATE_DIST_PERCENT_INFO *info_p;
-  const PR_TYPE *pr_type_p;
   SORT_LIST *sort_p;
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
@@ -2836,12 +2835,10 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	}
       else
 	{
-	  /* non-NULL values comparison, in the ORDER BY item's domain the constant was coerced into; a list column of a
-	   * variable domain compares in its value's type */
+	  /* non-NULL values comparison, in the ORDER BY item's domain the constant was coerced into */
 	  const TP_DOMAIN *order_domain = regu_var_node->value.domain;
-	  pr_type_p = TP_DOMAIN_TYPE (order_domain) != DB_TYPE_VARIABLE ? order_domain->type
-		      : pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
-	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL, order_domain->collation_id);
+	  assert (TP_DOMAIN_TYPE (order_domain) != DB_TYPE_VARIABLE);
+	  cmp = order_domain->type->cmpval (val_node, info_p->const_array[i], 1, 0, NULL, order_domain->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}
@@ -3559,11 +3556,9 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
        * regu's, which types the partial list's column): they hash alike when they compare equal, but for JSON and
-       * a collation with expansions (qdata_hash_agg_hkey ()). Exception to deciding before the rows: keys whose
-       * domains leave a value's type to the data compare by their values */
-      result = ckey1->compares != NULL ? domain_compare_in_domain (ckey1->compares[i], ckey1->values[i],
-	       ckey2->values[i], 0, 1)
-	       : tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
+       * a collation with expansions (qdata_hash_agg_hkey ()) */
+      assert (ckey1->compares != NULL);
+      result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;

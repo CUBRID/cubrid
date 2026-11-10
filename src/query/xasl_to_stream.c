@@ -5798,8 +5798,13 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 {
   int offset;
 
-  /* we prepend the domain before we pack the regu_variable */
-  ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->domain, 0, 0);
+  /* the type, then the domain: a regu value list is a container of values, not a value, and carries none */
+  ptr = or_pack_int (ptr, regu_var->type);
+  assert ((regu_var->type == TYPE_REGU_VAR_LIST) == (regu_var->domain == NULL));
+  if (regu_var->type != TYPE_REGU_VAR_LIST)
+    {
+      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->domain, 0, 0);
+    }
 
   /* CBRD-27583: a value its consumer wants in another domain carries the domain it is read in and the mode */
   ptr = or_pack_int (ptr, xts_regu_converts (regu_var));
@@ -5808,8 +5813,6 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
       ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->original_domain, 0, 0);
       ptr = or_pack_int (ptr, regu_var->conv_mode);
     }
-
-  ptr = or_pack_int (ptr, regu_var->type);
 
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
@@ -7969,9 +7972,8 @@ static void
 xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan)
 {
   const TP_DOMAIN *argument = xts_argument_domain (aggregate->operands != NULL ? &aggregate->operands->value : NULL);
-  domain_plan_aggregate_accumulator (aggregate->function, aggregate->opr_dbtype,
-				     domain_key_value_domain (aggregate->domain), domain_key_value_domain (argument),
-				     plan);
+  domain_plan_aggregate_accumulator (aggregate->function, domain_key_value_domain (aggregate->domain),
+				     domain_key_value_domain (argument), plan);
 }
 
 /* an analytic function's accumulator plan (domain_plan_analytic_accumulator), from its domain and its argument's */
@@ -8511,10 +8513,9 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
       return 0;
     }
 
-  /* we prepend the domain before we pack the regu_variable */
-  size += (or_packed_domain_size (regu_var->domain, 0)	/* domain */
+  size += (OR_INT_SIZE		/* type */
+	   + (regu_var->type != TYPE_REGU_VAR_LIST ? or_packed_domain_size (regu_var->domain, 0) : 0)	/* domain */
 	   + OR_INT_SIZE	/* converts */
-	   + OR_INT_SIZE	/* type */
 	   + OR_INT_SIZE	/* flags */
 	   + PTR_SIZE		/* vfetch_to */
 	   + PTR_SIZE);		/* REGU_VARIABLE_XASL */
