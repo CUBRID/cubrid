@@ -168,7 +168,6 @@ std::string sp_get_entry_name (int index);
 std::string sp_args_get_entry_name (int index);
 
 // misc
-void sp_normalize_name (std::string &s);
 void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
 
 // package

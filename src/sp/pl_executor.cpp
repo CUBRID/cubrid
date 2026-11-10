@@ -67,7 +67,7 @@ namespace cubpl
 	arg_type[i] = arg.arg_type[i];
       }
 
-    transaction_control = (lang == PL_TYPE_PLCSQL) ? true : tc;
+    transaction_control = tc;
     no_server_side_sql = no_sql;
   }
 

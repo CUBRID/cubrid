@@ -1053,12 +1053,9 @@ namespace cubmethod
 	}
       else if (match_cnt == 2)
 	{
-	  err = res.err_id = ER_FAILED;
-#define ERR_MSG_TEMPLATE        ("Ambiguous: '%s' matches both <user>.<name> pattern and <package>.<name> pattern")
-	  char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
-	  snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, name.c_str());
-#undef ERR_MSG_TEMPLATE
-	  res.err_msg = buffer;
+	  res.err_id = err = ER_SP_AMBIGUOUS_NAME;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 1, name.c_str());
+	  res.err_msg = er_msg();
 	  return err;
 	}
 

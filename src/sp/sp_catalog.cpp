@@ -1153,12 +1153,6 @@ error:
   return err;
 }
 
-void sp_normalize_name (std::string &s)
-{
-  s.resize (SM_MAX_IDENTIFIER_LENGTH);
-  sm_downcase_name (s.data (), s.data (), SM_MAX_IDENTIFIER_LENGTH);
-}
-
 void
 sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth)
 {

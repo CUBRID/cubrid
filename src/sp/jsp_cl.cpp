@@ -1857,25 +1857,6 @@ jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
 
   AU_SAVE_AND_DISABLE (save);    // side effect 0
 
-  // A system generated package cannot be dropped. The statement level check in jsp_drop_package ()
-  // does not cover CREATE OR REPLACE, which drops the existing package through this function.
-  {
-    bool is_system;
-
-    err = jsp_is_system_generated_pkg (pkg_mop, &is_system);
-    if (err != NO_ERROR)
-      {
-	goto cleanup0;
-      }
-
-    if (is_system)
-      {
-	err = ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	goto cleanup0;
-      }
-  }
-
   // clear authorization settings of the dropped package
   {
     MOP save_user;
@@ -3835,7 +3816,7 @@ jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 int
 jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  int err = NO_ERROR, save;
+  int err = NO_ERROR;
   char downcased[DB_MAX_IDENTIFIER_LENGTH + 1];
   char owner_name[DB_MAX_USER_LENGTH];
   MOP owner_mop, pkg_mop;

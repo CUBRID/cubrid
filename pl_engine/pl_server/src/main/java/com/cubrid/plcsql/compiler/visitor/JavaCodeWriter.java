@@ -826,11 +826,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplNotNullVar =
             new String[] {
-                "%'MODIFIER'%%'TYPE'%[] %'NAME'% = new %'TYPE'%[] { checkNotNull(",
+                "%'TYPE'%[] %'NAME'% = new %'TYPE'%[] { checkNotNull(",
                 "  %'+VAL'%, \"NOT NULL constraint violated\") };"
             };
     private static final String[] tmplNullableVar =
-            new String[] {"%'MODIFIER'%%'TYPE'%[] %'NAME'% = new %'TYPE'%[] {", "  %'+VAL'%", "};"};
+            new String[] {"%'TYPE'%[] %'NAME'% = new %'TYPE'%[] {", "  %'+VAL'%", "};"};
 
     @Override
     public CodeToResolve visitDeclVar(DeclVar node) {
@@ -862,8 +862,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "DeclVar",
                     node.notNull ? Misc.getLineColumnOf(node.ctx) : Misc.UNKNOWN_LINE_COLUMN,
                     node.notNull ? tmplNotNullVar : tmplNullableVar,
-                    "%'MODIFIER'%",
-                    getModifier(node),
                     "%'TYPE'%",
                     tyJava,
                     "%'NAME'%",
@@ -879,11 +877,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static final String[] tmplNotNullConst =
             new String[] {
-                "%'MODIFIER'%final %'TYPE'% %'NAME'% = checkNotNull(",
+                "final %'TYPE'% %'NAME'% = checkNotNull(",
                 "  %'+VAL'%, \"NOT NULL constraint violated\");"
             };
     private static final String[] tmplNullableConst =
-            new String[] {"%'MODIFIER'%final %'TYPE'% %'NAME'% =", "  %'+VAL'%;"};
+            new String[] {"final %'TYPE'% %'NAME'% =", "  %'+VAL'%;"};
 
     @Override
     public CodeToResolve visitDeclConst(DeclConst node) {
@@ -901,8 +899,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "DeclConst",
                 node.notNull ? Misc.getLineColumnOf(node.ctx) : Misc.UNKNOWN_LINE_COLUMN,
                 node.notNull ? tmplNotNullConst : tmplNullableConst,
-                "%'MODIFIER'%",
-                getModifier(node),
                 "%'TYPE'%",
                 getJavaCodeOfType(node.typeSpec),
                 "%'NAME'%",
