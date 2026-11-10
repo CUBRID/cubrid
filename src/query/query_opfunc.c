@@ -2693,11 +2693,42 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
 }
 
 /*
+ * qdata_append_chars_to_dbval () - CBRD-27926: appends dbval2 to GROUP_CONCAT's accumulator dbval1 in its own buffer
+ *   return: NO_ERROR, or ER_FAILED as qdata_add_chars_to_dbval
+ *   spare_bytes(in): bytes of the multibyte character dbval2 was truncated in, which dbval1 keeps as zeros so that
+ *		      GROUP_CONCAT adds no shorter character after it; the accumulator keeps its codeset and collation
+ *   capacity_p(in/out), max_allowed_size(in): as qdata_concatenate_dbval
+ */
+static int
+qdata_append_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, int spare_bytes, int *capacity_p,
+			     int max_allowed_size)
+{
+  const int codeset = db_get_string_codeset (dbval1_p);
+  const int collation = db_get_string_collation (dbval1_p);
+
+  if (db_string_append (dbval1_p, dbval2_p, capacity_p, max_allowed_size) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (spare_bytes > 0)
+    {
+      if (db_string_append_zero_bytes (dbval1_p, spare_bytes, capacity_p, max_allowed_size) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      db_string_put_cs_and_collation (dbval1_p, codeset, collation);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qdata_concatenate_dbval () -
  *   return: NO_ERROR, or ER_code
- *   dbval1(in)		  : First db_value node
+ *   dbval1(in/out)	  : GROUP_CONCAT's accumulator, which dbval2 is appended to in its own buffer
  *   dbval2(in)		  : Second db_value node
- *   result_p(out)	  : Resultant db_value node
+ *   capacity_p(in/out)	  : bytes dbval1's buffer holds; 0 = unknown (CBRD-27926, db_string_append)
  *   domain_p(in)	  : DB domain of result
  *   max_allowed_size(in) : max allowed size for result
  *   warning_context(in)  : used only to display truncation warning context
@@ -2705,6 +2736,7 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  *			    a GROUP_CONCAT's argument); NULL none
  *
  * Note: Concatenates a db_values to string db value.
+ *	 The buffer grows to the next power of two only when the value does not fit (CBRD-27926).
  *	 Value to be added is truncated in case the allowed size would be
  *	 exceeded . Truncation is done without modifying the value (a new
  *	 temporary value is used).
@@ -2713,7 +2745,7 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  *	 logged).
  */
 int
-qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
+qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, int *capacity_p,
 			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context,
 			 DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
@@ -2723,7 +2755,6 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
   int res_size = 0, val_size = 0;
   bool warning_size_exceeded = false;
   int spare_bytes = 0;
-  bool save_need_clear;
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
@@ -2769,24 +2800,11 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 	      break;
 	    }
 
-	  error = qdata_add_chars_to_dbval (dbval1_p, &db_temp, result_p);
-
-	  if (spare_bytes > 0)
-	    {
-	      /* The adjusted 'db_temp' string was truncated to the last full multibyte character. Increase the
-	       * 'result' with 'spare_bytes' remained from the last truncated multibyte character. This prevents
-	       * GROUP_CONCAT to add other single-byte chars (or char with fewer bytes than 'spare_bytes' to current
-	       * aggregate. */
-	      save_need_clear = result_p->need_clear;
-	      qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-				      db_get_string (result_p), db_get_string_size (result_p) + spare_bytes,
-				      db_get_string_codeset (dbval1_p), db_get_string_collation (dbval1_p));
-	      result_p->need_clear = save_need_clear;
-	    }
+	  error = qdata_append_chars_to_dbval (dbval1_p, &db_temp, spare_bytes, capacity_p, max_allowed_size);
 	}
       else
 	{
-	  error = qdata_add_chars_to_dbval (dbval1_p, dbval2_p, result_p);
+	  error = qdata_append_chars_to_dbval (dbval1_p, dbval2_p, 0, capacity_p, max_allowed_size);
 	}
       break;
     case DB_TYPE_SHORT:
@@ -2830,20 +2848,11 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 		    break;
 		  }
 
-		error = qdata_add_chars_to_dbval (dbval1_p, &db_temp, result_p);
-
-		if (spare_bytes > 0)
-		  {
-		    save_need_clear = result_p->need_clear;
-		    qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-					    db_get_string (result_p), db_get_string_size (result_p) + spare_bytes,
-					    db_get_string_codeset (dbval1_p), db_get_string_collation (dbval1_p));
-		    result_p->need_clear = save_need_clear;
-		  }
+		error = qdata_append_chars_to_dbval (dbval1_p, &db_temp, spare_bytes, capacity_p, max_allowed_size);
 	      }
 	    else
 	      {
-		error = qdata_add_chars_to_dbval (dbval1_p, &arg_val, result_p);
+		error = qdata_append_chars_to_dbval (dbval1_p, &arg_val, 0, capacity_p, max_allowed_size);
 	      }
 	  }
 	else
