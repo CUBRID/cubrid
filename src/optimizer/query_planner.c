@@ -1752,7 +1752,8 @@ qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
 
       /* dropped from the data filter by make_pred_from_plan (): not evaluated at the scan */
       if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_EXPENSIVE)
-	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5))
+	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_ORIGIN)
+	      && QO_TERM_SELECTIVITY (term) > 0.5))
 	{
 	  continue;
 	}

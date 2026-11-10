@@ -10134,6 +10134,13 @@ qo_derived_term_compensate (QO_ENV * env)
       j = QO_TERM_IDX (origin);
       pair[i] = j;
       bitset_add (&taken, j);
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED_COLUMN) && QO_TERM_IS_FLAGED (origin, QO_TERM_OR_DERIVED))
+	{
+	  /* the division below leaves the restriction only what it rejects on top of the key range,
+	   * and make_pred_from_plan () would judge it by that share alone; the range itself is dropped
+	   * unless an index takes it, so the restriction has to stay as the scan's filter */
+	  QO_TERM_SET_FLAG (origin, QO_TERM_OR_DERIVED_ORIGIN);
+	}
       implied[j] = (implied[j] < 0.0) ? QO_TERM_SELECTIVITY (derived) : implied[j] * QO_TERM_SELECTIVITY (derived);
     }
 
