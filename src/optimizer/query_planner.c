@@ -4642,7 +4642,7 @@ qo_plan_semi_anti_join_type (QO_PLAN * plan)
 {
   while (plan != NULL)
     {
-      if (plan->info != NULL && (plan->info->is_distinct || plan->info->is_subquery))
+      if (plan->info != NULL && plan->info->form != QO_INFO_FORM_PLAIN)
 	{
 	  return PT_JOIN_NONE;
 	}
@@ -9060,8 +9060,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
   info->hit_prob = 1.0;
-  info->is_distinct = false;
-  info->is_subquery = false;
+  info->form = QO_INFO_FORM_PLAIN;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -9433,7 +9432,7 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	  QO_PLAN *planp;
 
 	  planp = qo_find_best_plan_on_planvec (&info->best_no_order, n);
-	  if (info->is_distinct && planp != NULL && planp->plan_type == QO_PLANTYPE_SORT)
+	  if (info->form == QO_INFO_FORM_DISTINCT && planp != NULL && planp->plan_type == QO_PLANTYPE_SORT)
 	    {
 	      /* qo_sort_new () would skip the DISTINCT plan below it and the removal with it */
 	      assert (planp->plan_un.sort.sort_type == SORT_DISTINCT);
@@ -9712,7 +9711,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 	  continue;
 	}
 
-      distinct_info->is_distinct = true;
+      distinct_info->form = QO_INFO_FORM_DISTINCT;
       planner->distinct_info[QO_NODE_IDX (node)] = distinct_info;
     }
 
@@ -9778,7 +9777,7 @@ qo_prepare_subquery_info (QO_PLANNER * planner)
 	  continue;
 	}
 
-      subquery_info->is_subquery = true;
+      subquery_info->form = QO_INFO_FORM_SUBQUERY;
       planner->subquery_info[QO_NODE_IDX (node)] = subquery_info;
     }
 }
@@ -10046,7 +10045,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  goto exit;
 	}
-      if (inner->is_subquery && !qo_plan_scans_subquery_dep_last (outer_plan, inner_node))
+      if (inner->form == QO_INFO_FORM_SUBQUERY && !qo_plan_scans_subquery_dep_last (outer_plan, inner_node))
 	{
 	  goto exit;
 	}
@@ -10109,7 +10108,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
     QO_INFO *inner_info = inner_plan->info;
 
     if (par_outer_plan != NULL && par_outer_plan != outer_plan
-	&& (!inner_info->is_subquery || qo_plan_scans_subquery_dep_last (par_outer_plan, inner_node)))
+	&& (inner_info->form != QO_INFO_FORM_SUBQUERY || qo_plan_scans_subquery_dep_last (par_outer_plan, inner_node)))
       {
 	inner_plan = qo_find_best_nljoin_inner_plan_on_info (par_outer_plan, inner_info, join_type, idx_join_plan_n);
 	if (inner_plan != NULL)
@@ -10124,7 +10123,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 
     /* and from the outer kept to drive a GROUP BY skip (qo_plan_drives_groupby_skip_only ()) */
     if (gby_outer_plan != NULL && gby_outer_plan != outer_plan
-	&& (!inner_info->is_subquery || qo_plan_scans_subquery_dep_last (gby_outer_plan, inner_node)))
+	&& (inner_info->form != QO_INFO_FORM_SUBQUERY || qo_plan_scans_subquery_dep_last (gby_outer_plan, inner_node)))
       {
 	inner_plan = qo_find_best_nljoin_inner_plan_on_info (gby_outer_plan, inner_info, join_type, idx_join_plan_n);
 	if (inner_plan != NULL)
@@ -11759,7 +11758,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_init (&fk_col_terms, planner->env);
 
       selectivity = 1.0;	/* init */
-      is_semi_anti = join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct;
+      is_semi_anti = (join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node)
+		      && tail_info->form != QO_INFO_FORM_DISTINCT);
       fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
       total_rows = head_info->total_rows * tail_info->total_rows;
@@ -12203,7 +12203,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* STEP 5-2: examine idx-join.  Not for a SEMI JOIN inner added ahead of the side it depends on:
 	 * qo_examine_correlated_index () builds index scans of the node itself, which read it with its
 	 * duplicates, and the only way to read the node in that position is the plan distinct_info holds. */
-	if (idx_join_cnt && !tail_info->is_distinct)
+	if (idx_join_cnt && tail_info->form != QO_INFO_FORM_DISTINCT)
 	  {
 	    idx_join_plan_n =
 	      qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
@@ -12233,7 +12233,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* there is no semi/anti merge join: a SEMI JOIN inner is merge joined read with the duplicates removed
 	 * (distinct_info), before or after the side it depends on */
 	sm_tail_info = tail_info;
-	if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct)
+	if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && tail_info->form != QO_INFO_FORM_DISTINCT)
 	  {
 	    sm_tail_info = NULL;
 	    if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI && planner->distinct_info != NULL)

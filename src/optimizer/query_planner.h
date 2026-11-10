@@ -67,6 +67,15 @@ typedef enum
   QO_JOINMETHOD_HASH_JOIN
 } QO_JOINMETHOD;
 
+typedef enum
+{
+  QO_INFO_FORM_PLAIN,		/* the nodes read as they are */
+  QO_INFO_FORM_DISTINCT,	/* a SEMI JOIN inner read once with the duplicates removed
+				 * (qo_prepare_distinct_info ()) */
+  QO_INFO_FORM_SUBQUERY		/* a SEMI / ANTI JOIN inner run as its subquery once per outer row
+				 * (qo_prepare_subquery_info ()) */
+} QO_INFO_FORM;
+
 typedef struct qo_plan_vtbl QO_PLAN_VTBL;
 struct qo_plan_vtbl
 {
@@ -364,10 +373,8 @@ struct qo_info
   double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost;
 				 * for semi/anti, the share of outer rows the join emits,
 				 * so the LIMIT estimate can tell how many outer rows to read for LIMIT rows */
-  bool is_distinct;		/* true only on an info built by qo_prepare_distinct_info (): the node read once
-				 * with the duplicates removed, so a join over it is an ordinary join */
-  bool is_subquery;		/* true only on an info built by qo_prepare_subquery_info (): the node run as its
-				 * subquery once per outer row */
+  QO_INFO_FORM form;		/* how the plans of this info read its nodes; a join over a node in the DISTINCT or
+				 * the subquery form is an ordinary join */
 
   /*
    * One plan for each equivalence class, in each case the best we have
