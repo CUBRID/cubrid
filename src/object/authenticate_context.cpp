@@ -40,11 +40,11 @@
 
 bool use_console_password = false; // If true, allows password input from the console
 
-static const struct
+static constexpr struct
 {
   const char *name;
   MOP authenticate_context::*mop;
-} system_users[] =
+} au_system_users[] =
 {
   { AU_DBA_USER_NAME, &authenticate_context::dba_user },
   { AU_PUBLIC_USER_NAME, &authenticate_context::public_user },
@@ -63,7 +63,7 @@ authenticate_context::reset (void)
   user_class = nullptr;
   password_class = nullptr;
   current_user = nullptr;
-  for (const auto &sys_user : system_users)
+  for (const auto &sys_user : au_system_users)
     {
       this->*sys_user.mop = nullptr;
     }
@@ -589,7 +589,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
   else
     {
       // start () fills these before any login
-      for (const auto &sys_user : system_users)
+      for (const auto &sys_user : au_system_users)
 	{
 	  assert (this->*sys_user.mop != NULL);
 	  if (this->*sys_user.mop == NULL)
@@ -1035,7 +1035,7 @@ authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls
 bool
 authenticate_context::load_system_users (void)
 {
-  for (const auto &sys_user : system_users)
+  for (const auto &sys_user : au_system_users)
     {
       this->*sys_user.mop = au_find_user (sys_user.name);
       if (this->*sys_user.mop == NULL)
@@ -1054,7 +1054,7 @@ authenticate_context::set_system_users_as_created (void)
   int error = NO_ERROR;
 
   db_make_int (&value, true);
-  for (const auto &sys_user : system_users)
+  for (const auto &sys_user : au_system_users)
     {
       error = obj_set (this->*sys_user.mop, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
       if (error != NO_ERROR)
@@ -1074,7 +1074,7 @@ authenticate_context::is_system_user (MOP user)
       return false;
     }
 
-  for (const auto &sys_user : system_users)
+  for (const auto &sys_user : au_system_users)
     {
       if (ws_is_same_object (user, this->*sys_user.mop))
 	{
