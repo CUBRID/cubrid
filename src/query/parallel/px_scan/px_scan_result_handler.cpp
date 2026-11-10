@@ -383,6 +383,28 @@ namespace parallel_scan
   }
 
   template <RESULT_TYPE result_type>
+  QFILE_LIST_ID *result_handler<result_type>::gby_list ()
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	return tl.writer_result_p;
+      }
+    return nullptr;
+  }
+
+  template <RESULT_TYPE result_type>
+  void result_handler<result_type>::gby_sync ()
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	if (tl.xasl != nullptr && tl.xasl->proc.buildlist.agg_hash_context != nullptr)
+	  {
+	    tl.agg_hash_state = tl.xasl->proc.buildlist.agg_hash_context->state;
+	  }
+      }
+  }
+
+  template <RESULT_TYPE result_type>
   void result_handler<result_type>::write_finalize (THREAD_ENTRY *thread_p)
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
@@ -475,8 +497,16 @@ namespace parallel_scan
 
 	  if (hash_aggregate_append)
 	    {
+	      AGGREGATE_HASH_CONTEXT *leader = m_.orig_xasl->proc.buildlist.agg_hash_context;
+
 	      m_.hgby_results.push_back (context->part_list_id);
 	      context->part_list_id = NULL;
+	      /* the keys this worker's table saw, for the leader's merge of the leftovers */
+	      if (leader != NULL)
+		{
+		  qdata_key_sketch_merge (leader->key_sketch, context->key_sketch);
+		  leader->key_sketch_partial |= (context->key_sketch_partial || context->state == HS_REJECT_ALL);
+		}
 	      /* a worker that read no rows neither kept nor gave up hashing */
 	      if (context->tuple_count > 0 && context->state > m_.hgby_state)
 		{
@@ -1304,6 +1334,8 @@ namespace parallel_scan
 	    /* Non-order GROUP_CONCAT: re-home value only. value2 holds the separator
 	     * (metadata set on the main thread at init) and must NOT be re-homed --
 	     * cloning it leaks the separator buffer (mr_setval_char) on the txn heap. */
+	    /* the clone is sized to the string, and the freed buffer's address may come back */
+	    orig_agg_p->info.group_concat.capacity = 0;
 	    if (rehome_agg_value (thread_p, orig_agg_p->accumulator.value, dir) != NO_ERROR)
 	      {
 		return S_ERROR;
@@ -2525,6 +2557,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
+		orig_agg_p->info.group_concat.capacity = 0;
 		if (pr_clone_value (cur_agg_p->accumulator.value, orig_agg_p->accumulator.value) != NO_ERROR)
 		  {
 		    db_change_private_heap (thread_p, prev_heap_id);

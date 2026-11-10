@@ -1792,12 +1792,17 @@
 #define ER_MAIN_CLIENT_NOT_READY                    -1388
 #define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_HA_REPLICATION_KEY_REQUIRED              -1390
-#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED -1391
-#define ER_HA_FK_CONSTRAINT_VIOLATION               -1392
-#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION      -1393
+#define ER_SES_SESSION_SECRET_MISMATCH              -1390
+#define ER_SES_SESSION_NOT_ATTACHED                 -1391
 
-#define ER_LAST_ERROR                               -1394
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
+
+#define ER_HA_REPLICATION_KEY_REQUIRED              -1393
+#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED -1394
+#define ER_HA_FK_CONSTRAINT_VIOLATION               -1395
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION      -1396
+
+#define ER_LAST_ERROR                               -1397
 
 
 /*

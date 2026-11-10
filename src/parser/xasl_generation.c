@@ -212,6 +212,7 @@ static int pt_table_compatible (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 static TABLE_INFO *pt_table_info_alloc (void);
 static PT_NODE *pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec);
 static PT_NODE *pt_is_hash_agg_eligible (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *pt_gby_reads_row (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_to_analytic_node (PARSER_CONTEXT * parser, PT_NODE * tree, ANALYTIC_INFO * analytic_info);
 static PT_NODE *pt_to_analytic_final_node (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE ** ex_list,
@@ -448,8 +449,6 @@ static PT_NODE *pt_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 static XASL_NODE *pt_to_corr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR id);
 static SELUPD_LIST *pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulist,
 						 SELUPD_LIST * selupd_list, DB_OBJECT * target_class);
-static OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr,
-				   UNBOX unbox);
 static void pt_to_fetch_proc_list_recurse (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static void pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static XASL_NODE *pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * root);
@@ -643,7 +642,6 @@ static int pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, 
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
-static bool pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p);
 static int pt_set_limit_optimization_flags (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_set_like_recompile_candidate (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, XASL_NODE * xasl);
 static DB_VALUE **pt_make_reserved_value_list (PARSER_CONTEXT * parser, PT_RESERVED_NAME_TYPE type);
@@ -665,6 +663,7 @@ int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
 static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							  int *continue_walk);
+static int pt_find_group_key_expr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list);
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
 
@@ -698,6 +697,50 @@ pt_init_xasl_supp_info ()
 
   xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
   xasl_Supp_info.includes_tde_class = 0;
+}
+
+/*
+ * pt_detach_xasl_supp_info () - take what the XASL generation of a statement has gathered so far (the classes its
+ *				  plan references, their locks and pages, TDE) out of the way of a statement compiled in
+ *				  the middle of it, whose XASL generation starts by clearing it
+ *   return: the gathered information, for pt_attach_xasl_supp_info (); NULL when out of memory
+ */
+struct xasl_supp_info *
+pt_detach_xasl_supp_info (void)
+{
+  XASL_SUPP_INFO *saved;
+
+  saved = (XASL_SUPP_INFO *) malloc (sizeof (XASL_SUPP_INFO));
+  if (saved == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_SUPP_INFO));
+      return NULL;
+    }
+  *saved = xasl_Supp_info;
+  xasl_Supp_info.query_list = NULL;
+  xasl_Supp_info.class_oid_list = NULL;
+  xasl_Supp_info.class_locks = NULL;
+  xasl_Supp_info.tcard_list = NULL;
+  xasl_Supp_info.n_oid_list = xasl_Supp_info.oid_list_size = 0;
+  xasl_Supp_info.includes_tde_class = 0;
+  return saved;
+}
+
+/*
+ * pt_attach_xasl_supp_info () - give back what pt_detach_xasl_supp_info () took, dropping what the statement compiled
+ *				  in between left
+ *   return: void
+ *   saved(in): a non-NULL result of pt_detach_xasl_supp_info (); freed. Each non-NULL detach takes exactly one
+ *		attach, before the statement's own XASL generation goes on. A NULL detach took nothing: then compile
+ *		no statement in between and do not call this (it would clear the lists, then dereference NULL)
+ */
+void
+pt_attach_xasl_supp_info (struct xasl_supp_info *saved)
+{
+  /* the query list of the statement in between belongs to its parser, already freed */
+  pt_init_xasl_supp_info ();
+  xasl_Supp_info = *saved;
+  free_and_init (saved);
 }
 
 
@@ -1745,8 +1788,10 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		}
 	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
 
-	      /* exists op must fetch one tuple */
-	      if (!pt_has_having_with_predicate (parser, node->info.expr.arg1) && regu_var1 && regu_var1->xasl)
+	      /* exists op must fetch one tuple; but not when HAVING or FOR ORDERBY_NUM() (e.g. LIMIT with offset)
+	       * may filter out the first tuple */
+	      if (!pt_has_having_with_predicate (parser, node->info.expr.arg1)
+		  && !pt_has_orderby_for_with_predicate (parser, node->info.expr.arg1) && regu_var1 && regu_var1->xasl)
 		{
 		  XASL_SET_FLAG (regu_var1->xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
 		}
@@ -3949,6 +3994,82 @@ pt_is_hash_agg_eligible (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int
 	  *eligible = 0;
 	  *continue_walk = PT_STOP_WALK;
 	}
+    }
+
+  return tree;
+}
+
+/* what pt_gby_reads_row () looks at */
+typedef struct pt_gby_row_read_info PT_GBY_ROW_READ_INFO;
+struct pt_gby_row_read_info
+{
+  PT_NODE *group_out_list;	/* the keys first, then every other value the groups read from their rows */
+  int key_count;
+  bool reads_row;		/* out: a group's output needs a value its keys and aggregates do not give */
+};
+
+/*
+ * pt_gby_reads_row () - does an output expression of a GROUP BY read a group's row beyond its keys?
+ *   return: tree node
+ *   parser(in): parser context
+ *   tree(in): node of the select list or the HAVING clause
+ *   arg(in/out): PT_GBY_ROW_READ_INFO
+ *   continue_walk(in/out): continue walk
+ *
+ * Note: a hash GROUP BY keeps each group's first row only when this finds one (XASL_G_FIRST_TUPLE_KEEP).  Anything
+ *       it does not prove to be a key or an aggregate counts as reading the row.
+ */
+static PT_NODE *
+pt_gby_reads_row (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_GBY_ROW_READ_INFO *info = (PT_GBY_ROW_READ_INFO *) arg;
+  int index;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (pt_is_aggregate_function (parser, tree))
+    {
+      /* an aggregate reads its accumulator; groupby_num () numbers the groups as they come out */
+      *continue_walk = PT_LIST_WALK;
+    }
+  else
+    {
+      switch (tree->node_type)
+	{
+	case PT_SELECT:
+	case PT_UNION:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	case PT_METHOD_CALL:
+	case PT_DOT_:
+	  info->reads_row = true;
+	  break;
+
+	case PT_EXPR:
+	  if (tree->info.expr.op == PT_INST_NUM || tree->info.expr.op == PT_ROWNUM
+	      || tree->info.expr.op == PT_ORDERBY_NUM || tree->info.expr.op == PT_LEVEL
+	      || tree->info.expr.op == PT_CONNECT_BY_ISLEAF || tree->info.expr.op == PT_CONNECT_BY_ISCYCLE)
+	    {
+	      info->reads_row = true;
+	    }
+	  break;
+
+	case PT_NAME:
+	  index = pt_find_attribute (parser, tree, info->group_out_list);
+	  if (index < 0 || index >= info->key_count)
+	    {
+	      info->reads_row = true;
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  if (info->reads_row)
+    {
+      *continue_walk = PT_STOP_WALK;
     }
 
   return tree;
@@ -17100,7 +17221,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulis
  *   selupd_list_ptr(in):
  *   unbox(in):
  */
-static OUTPTR_LIST *
+OUTPTR_LIST *
 pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr, UNBOX unbox)
 {
   OUTPTR_LIST *outlist;
@@ -17864,6 +17985,61 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
   return xasl;
 }
 
+/*
+ * ptqo_to_pass_through_wrapper () - build the list scan of a pass-through wrapper over listfile
+ *   return: xasl, or NULL on error
+ *   parser(in): parser context
+ *   xasl(in/out): the node that reads listfile; its val_list, spec_list and outptr_list are replaced
+ *   listfile(in): the XASL node holding the list file to read
+ *   namelist(in): this node's result columns in list file order, one entry per column
+ *
+ * ptqo_to_list_scan_proc () binds each scanned column to the DB_VALUE, looked up by name, that outptr_list reads.
+ * namelist may hold a PT_VALUE, the hash key placeholder or a constant, with no such DB_VALUE, so this gives every
+ * entry its own DB_VALUE and rebuilds outptr_list from them.
+ */
+XASL_NODE *
+ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * listfile, PT_NODE * namelist)
+{
+  REGU_VARIABLE_LIST scan_regu_list;
+
+  assert (parser != NULL);
+  assert (xasl != NULL);
+  assert (listfile != NULL);
+  assert (namelist != NULL);
+
+  xasl->val_list = pt_make_val_list (parser, namelist);
+  if (xasl->val_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  /* no offsets: column i of the list file goes to value i */
+  scan_regu_list = pt_to_position_regu_variable_list (parser, namelist, xasl->val_list, NULL);
+  if (scan_regu_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+  pt_set_list_position_domains (scan_regu_list, xasl->val_list, listfile, NULL);
+
+  xasl->spec_list =
+    pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, scan_regu_list, NULL, NULL, NULL);
+  if (xasl->spec_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  xasl->outptr_list = pt_make_outlist_from_vallist (parser, xasl->val_list);
+  if (xasl->outptr_list == NULL)
+    {
+      assert_release (er_errid () != NO_ERROR);
+      return NULL;
+    }
+
+  return xasl;
+}
 
 /*
  * ptqo_to_merge_list_proc () - Make a MERGELIST_PROC to merge an inner
@@ -19591,22 +19767,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 				   (void *) &buildlist->g_hash_eligible, NULL, NULL);
 	  (void) parser_walk_tree (parser, select_node->info.query.q.select.having, pt_is_hash_agg_eligible,
 				   (void *) &buildlist->g_hash_eligible, NULL, NULL);
-
-	  /* determine where we're storing the first tuple of each group */
-	  if (buildlist->g_hash_eligible)
-	    {
-	      if (select_node->info.query.q.select.group_by->flag.with_rollup)
-		{
-		  /* if using rollup groups, we must output the first tuple of each group so rollup will be correctly
-		   * handled during sort */
-		  buildlist->g_output_first_tuple = true;
-		}
-	      else
-		{
-		  /* in other cases just store everyting in hash table */
-		  buildlist->g_output_first_tuple = false;
-		}
-	    }
 	}
 
       /* this one will be altered further on and it's the actual output of the initial scan; will contain group key and
@@ -19731,6 +19891,53 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    {
 	      buildlist->g_hkey_size++;
 	      regu_list = regu_list->next;
+	    }
+	}
+
+      /* where a hash GROUP BY keeps each group's first row */
+      buildlist->g_first_tuple = XASL_G_FIRST_TUPLE_NONE;
+      if (buildlist->g_hash_eligible)
+	{
+	  PT_GBY_ROW_READ_INFO row_read = { group_out_list, buildlist->g_hkey_size, false };
+	  PT_NODE *item, *save_next;
+
+	  if (select_node->info.query.q.select.group_by->flag.with_rollup)
+	    {
+	      /* the sort finishes the rollup groups from every group's first row */
+	      buildlist->g_first_tuple = XASL_G_FIRST_TUPLE_OUTPUT;
+	    }
+	  else
+	    {
+	      /* hierarchical, analytic and multi-table update/delete outputs read their rows in ways not walked here */
+	      row_read.reads_row = (select_node->info.query.q.select.connect_by != NULL
+				    || pt_has_analytic (parser, select_node)
+				    || PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_MULTI_UPDATE_AGG));
+	      for (item = select_node->info.query.q.select.list; item != NULL && !row_read.reads_row; item = item->next)
+		{
+		  int is_pseudocolumn = 0;
+
+		  /* a select item that prints as a key reads the key (pt_make_result_ref () below) */
+		  (void) parser_walk_tree (parser, item, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
+		  if (!is_pseudocolumn && (item->node_type == PT_EXPR || item->node_type == PT_METHOD_CALL)
+		      && pt_find_group_key_expr (parser, item, select_node->info.query.q.select.group_by) >= 0)
+		    {
+		      continue;
+		    }
+
+		  save_next = item->next;
+		  item->next = NULL;
+		  (void) parser_walk_tree (parser, item, pt_gby_reads_row, &row_read, NULL, NULL);
+		  item->next = save_next;
+		}
+	      if (!row_read.reads_row)
+		{
+		  (void) parser_walk_tree (parser, select_node->info.query.q.select.having, pt_gby_reads_row,
+					   &row_read, NULL, NULL);
+		}
+	      if (row_read.reads_row)
+		{
+		  buildlist->g_first_tuple = XASL_G_FIRST_TUPLE_KEEP;
+		}
 	    }
 	}
 
@@ -21390,6 +21597,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   /* Check for join, path expr, and index optimizations */
   plan = qo_optimize_query (parser, select_node);
 
+  /* a planning read (row snapshot) that aborted the transaction, lost the server or was cancelled
+   * failed the statement: there is no plan to retry for */
+  if (!plan && pt_has_error (parser)
+      && (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()) || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	  || er_errid () == ER_INTERRUPTED))
+    {
+      return NULL;
+    }
+
   /* optimization fails, ignore join hint and retry optimization */
   if (!plan && select_node->info.query.q.select.hint != PT_HINT_NONE)
     {
@@ -22789,17 +23005,18 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
 
 /*
  * pt_fill_remote_odku_assigns () - Fill the ON DUPLICATE KEY UPDATE text the remote INSERT carries.
- *   The left-hand side is the remote column name -- a remote target gets no name resolution, so what
- *   the user wrote is the column -- and the right-hand side is printed with the flags the other text
- *   push paths use, so the same value cannot come out two ways. Which right-hand sides may arrive is
- *   the gate's decision, not this loop's: whatever it admitted is printed as it stands.
+ *   The left-hand side is the remote column name, as the user wrote it. A constant on the right-hand side is
+ *   printed with the flags the other text push paths use, so the same value cannot come out two ways. A value
+ *   bound from the source row (is_dblink_odku_value) is not printed: its text is left NULL, which the sink
+ *   sends as "?". Which right-hand sides may arrive is the gate's decision, not this loop's.
  *   return: true on success. false after PT_ERROR; the caller returns NULL.
  *   parser(in): parser context. custom_print is saved across the printing and restored on every return.
  *   statement(in): PT_INSERT node
  *   insert(out): remote_odku_cols, remote_odku_exprs, remote_num_odku. NULL and 0 when there is no clause.
+ *   num_bound(out): the number of values left NULL
  */
 static bool
-pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSERT_PROC_NODE * insert)
+pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSERT_PROC_NODE * insert, int *num_bound)
 {
   PT_NODE *assign;
   int n, i;
@@ -22807,6 +23024,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
   unsigned int save_custom_print;
   bool ok;
 
+  *num_bound = 0;
   if (statement->info.insert.odku_assignments == NULL)
     {
       insert->remote_odku_cols = NULL;
@@ -22834,9 +23052,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
     {
       PARSER_VARCHAR *printed;
 
-      /* the gate admits only an assignment to a plain name, and a remote target gets no local check on
-       * the clause, so nothing stands between that test and this one -- reaching here otherwise means a
-       * plan built wrong */
+      /* the gate admits only an assignment to a plain name -- reaching here otherwise means a plan built wrong */
       if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN || assign->info.expr.arg1 == NULL
 	  || assign->info.expr.arg2 == NULL || assign->info.expr.arg1->node_type != PT_NAME)
 	{
@@ -22852,6 +23068,21 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
       if (cols[i] == NULL || cols[i][0] == '\0')
 	{
 	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE column has no resolvable name");
+	  ok = false;
+	  break;
+	}
+
+      if (assign->info.expr.arg2->flag.is_dblink_odku_value)
+	{
+	  exprs[i] = NULL;
+	  (*num_bound)++;
+	  continue;
+	}
+
+      /* A column not marked would be printed as the user wrote it and read by the remote as its own column. */
+      if (assign->info.expr.arg2->node_type == PT_NAME)
+	{
+	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE value is a column the plan does not bind");
 	  ok = false;
 	  break;
 	}
@@ -22985,6 +23216,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *server_node = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
   PT_NODE *entity_name = NULL;
+  int num_odku_bound = 0;
 
   assert (parser != NULL && statement != NULL);
 
@@ -23026,7 +23258,20 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
   entity_name = into_spec->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, NULL, &insert->sink);
+  if (entity_name == NULL && PT_SPEC_IS_DERIVED (into_spec)
+      && into_spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
+    {
+      /* a target resolved with its columns keeps its name in the derived dblink table, already qualified */
+      insert->sink.is_remote = true;
+      insert->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
+      insert->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
+      insert->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+      insert->sink.table_name = into_spec->info.spec.derived_table->info.dblink_table.remote_table_name;
+    }
+  else
+    {
+      pt_fill_remote_dml_sink (parser, entity_name, pdblink, NULL, &insert->sink);
+    }
   if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -23035,8 +23280,8 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* num_vals drives the val_list read loop in the executor. Count only the visible projection
    * (EXCLUDE_HIDDEN_COLUMNS), matching the canonical local INSERT SELECT path: an ORDER BY / GROUP BY
    * key that is not in the select list adds a hidden sort column to val_list, which must not be sent
-   * to the remote. The executor reads the leading num_vals (visible) columns and ignores the hidden
-   * trailing ones. */
+   * to the remote. The executor reads the leading num_vals (visible) columns, then the bound ODKU values
+   * from remote_odku_val_start, and ignores the other hidden columns. */
   insert->num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
   insert->num_default_expr = 0;
   insert->att_id = NULL;
@@ -23102,9 +23347,39 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       insert->remote_num_attrs = 0;
     }
 
-  if (!pt_fill_remote_odku_assigns (parser, statement, insert))
+  if (!pt_fill_remote_odku_assigns (parser, statement, insert, &num_odku_bound))
     {
       return NULL;
+    }
+
+  /* The bound ODKU values are read from their copies in the source row. Semantic check appended them to the
+   * select list as hidden columns, so hidden sort keys may come before them, and those of a merged view after.
+   * Find where they start, and check that they are as many as the values and lie together. */
+  insert->remote_odku_val_start = insert->num_vals;
+  insert->remote_num_odku_bound = num_odku_bound;
+  if (num_odku_bound > 0)
+    {
+      PT_NODE *item;
+      int pos, start = -1, last = -1, num_marked = 0;
+
+      for (item = pt_get_select_list (parser, aptr_statement), pos = 0; item != NULL; item = item->next, pos++)
+	{
+	  if (item->flag.is_dblink_odku_value)
+	    {
+	      if (start < 0)
+		{
+		  start = pos;
+		}
+	      last = pos;
+	      num_marked++;
+	    }
+	}
+      if (num_marked != num_odku_bound || last - start + 1 != num_marked || start < insert->num_vals)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: the source row does not carry the bound ODKU values");
+	  return NULL;
+	}
+      insert->remote_odku_val_start = start;
     }
 
   /* the statement kind the sink sends: REPLACE INTO when the statement asked for it, INSERT INTO
@@ -24581,7 +24856,8 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
     PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_SCAN |
-    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
+    PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL | PT_HINT_ROW_SNAPSHOT |
+    PT_HINT_NO_ROW_SNAPSHOT;
   PT_NODE *arg = NULL;
 
   switch (node->node_type)
@@ -32208,44 +32484,6 @@ error_return:
 }
 
 /*
- * pt_is_sort_list_covered () - same as qfile_is_sort_list_covered ()
- *   return: true or false
- *   parser (in) : parser context
- *   covering_list(in): covering sort item list pointer
- *   covered_list(in): covered sort item list pointer
- *
- * Note: if covering_list covers covered_list returns true.
- *       otherwise, returns false.
- */
-static bool
-pt_is_sort_list_covered (PARSER_CONTEXT * parser, SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
-{
-  SORT_LIST *s1, *s2;
-
-  if (covered_list_p == NULL)
-    {
-      return false;
-    }
-
-  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
-    {
-      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
-	{
-	  return false;
-	}
-    }
-
-  if (s1 == NULL && s2)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
-}
-
-/*
  * pt_reserved_id_to_valuelist_index () - Generate the index of value for
  *					  reserved attribute in the array
  *					  of cached attribute values.
@@ -33547,12 +33785,54 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
   return node;
 }
 
+/*
+ * pt_find_group_key_expr () - which GROUP BY expression prints the same as an expression
+ *   return: its position in groupby_list, or -1
+ */
+static int
+pt_find_group_key_expr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list)
+{
+  PT_NODE *groupby;
+  char *str_select = parser_print_tree (parser, node);
+  int i;
+
+  for (groupby = groupby_list, i = 0; groupby; groupby = groupby->next, i++)
+    {
+      char *str_group = NULL;
+
+      if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
+	{
+	  /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
+	  int tmp_paren_type = -1;
+	  tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
+	  groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
+
+	  str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+
+	  groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
+	}
+      else
+	{
+	  str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
+	}
+
+      /* brute method, compare printed trees */
+      if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
+	{
+	  return i;
+	}
+    }
+
+  return -1;
+}
+
 static PT_NODE *
 pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list, VAL_LIST * vallist)
 {
   PT_NODE *new_node = NULL;
-  PT_NODE *groupby = groupby_list;
+  PT_NODE *save_next = NULL;
   QPROC_DB_VALUE_LIST db_list = vallist->valp;
+  int key;
 
   if (pt_has_error (parser))
     {
@@ -33560,48 +33840,37 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
     }
 
   int is_pseudocolumn = 0;
+
+  /* save and cut-off node link */
+  save_next = node->next;
+  node->next = NULL;
+
   (void) parser_walk_tree (parser, node, pt_is_pseudocolumn_node, &is_pseudocolumn, NULL, NULL);
+
+  /* restore node link */
+  node->next = save_next;
 
   if (!is_pseudocolumn && (node->node_type == PT_EXPR || node->node_type == PT_METHOD_CALL))
     {
-      char *str_select = parser_print_tree (parser, node);
-
-      for (; groupby && db_list; groupby = groupby->next, db_list = db_list->next)
+      key = pt_find_group_key_expr (parser, node, groupby_list);
+      for (; key > 0 && db_list; key--)
 	{
-	  char *str_group = NULL;
+	  db_list = db_list->next;
+	}
 
-	  if (node->node_type == PT_EXPR && groupby->info.sort_spec.expr->node_type == PT_EXPR)
+      if (key == 0 && db_list)
+	{
+	  assert (node->etc == NULL);
+	  new_node = pt_point_ref (parser, node);
+	  if (new_node == NULL)
 	    {
-	      /* Temporarily set paren_type for comparison if both nodes are PT_EXPR */
-	      int tmp_paren_type = -1;
-	      tmp_paren_type = groupby->info.sort_spec.expr->info.expr.paren_type;
-	      groupby->info.sort_spec.expr->info.expr.paren_type = node->info.expr.paren_type;
-
-	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
-
-	      groupby->info.sort_spec.expr->info.expr.paren_type = tmp_paren_type;
+	      /* allocation failed */
+	      PT_ERROR (parser, node,
+			msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+					MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	      return NULL;
 	    }
-	  else
-	    {
-	      str_group = parser_print_tree (parser, groupby->info.sort_spec.expr);
-	    }
-
-	  /* brute method, compare printed trees */
-	  if (pt_str_compare (str_select, str_group, CASE_INSENSITIVE) == 0)
-	    {
-	      assert (node->etc == NULL);
-	      new_node = pt_point_ref (parser, node);
-	      if (new_node == NULL)
-		{
-		  /* allocation failed */
-		  PT_ERROR (parser, node,
-			    msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-					    MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		  return NULL;
-		}
-	      new_node->etc = (void *) db_list->val;
-	      break;
-	    }
+	  new_node->etc = (void *) db_list->val;
 	}
     }
 
