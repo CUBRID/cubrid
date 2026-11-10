@@ -9951,7 +9951,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 {
   int n = 0;
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *inner_node;
+  QO_NODE *inner_node = NULL;
 
   if (join_type == JOIN_RIGHT)
     {
