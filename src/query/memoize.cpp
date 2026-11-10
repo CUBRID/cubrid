@@ -31,6 +31,7 @@
 #include "thread_manager.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
 #include "scope_exit.hpp"
 #include "xasl_iteration.hpp"
 
@@ -349,6 +350,37 @@ namespace memoize
 	      collect (agg->operands);
 	    }
 	  collect (node->proc.buildvalue.having_pred);
+	}
+      else if (node->type == BUILDLIST_PROC)
+	{
+	  BUILDLIST_PROC_NODE *buildlist = &node->proc.buildlist;
+
+	  for (AGGREGATE_TYPE *agg = buildlist->g_agg_list; agg != nullptr; agg = agg->next)
+	    {
+	      collect (agg->operands);
+	    }
+	  collect (buildlist->g_having_pred);
+	  collect (buildlist->g_grbynum_pred);
+	  if (buildlist->g_outptr_list != nullptr)
+	    {
+	      collect (buildlist->g_outptr_list->valptrp);
+	    }
+	  for (ANALYTIC_EVAL_TYPE *eval = buildlist->a_eval_list; eval != nullptr; eval = eval->next)
+	    {
+	      for (ANALYTIC_TYPE *func = eval->head; func != nullptr; func = func->next)
+		{
+		  collect (&func->operand);
+		}
+	    }
+	  if (buildlist->a_outptr_list != nullptr)
+	    {
+	      collect (buildlist->a_outptr_list->valptrp);
+	    }
+	}
+      else if (node->type == CONNECTBY_PROC)
+	{
+	  collect (node->proc.connect_by.start_with_pred);
+	  collect (node->proc.connect_by.after_connect_by_pred);
 	}
     }
 
