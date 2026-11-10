@@ -6666,6 +6666,43 @@ locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid)
 }
 
 /*
+ * locator_statement_ends_row_locks () - may the running statement's row locks end with it, as far as the statement
+ *					 decides?
+ *   return: true when they may; the class has its own say, locator_class_keeps_row_locks ()
+ *   thread_p(in): thread entry
+ *   change(in): what the statement did to the rows
+ *
+ * Note: an uncommitted change is guarded by its stamp and our MVCCID self-lock, so its row lock may end unless the
+ *	 stamp can go before commit: under a savepoint (a system one counts too), or in a statement nested in another.
+ *	 REPEATABLE READ keeps its row locks for now.  Ask with the statement's transient scope open.
+ */
+bool
+locator_statement_ends_row_locks (THREAD_ENTRY * thread_p, STMT_ROW_CHANGE change)
+{
+  if (change != STMT_ROW_CHANGE_UNCOMMITTED)
+    {
+      return true;
+    }
+
+  return (!logtb_has_active_savepoint (thread_p) && lock_transient_scope_is_outermost (thread_p)
+	  && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+}
+
+/*
+ * locator_can_release_row_lock_at_statement_end () - may a row lock the running statement took end with it?
+ *   return: true when it may
+ *   thread_p(in): thread entry
+ *   class_oid(in): class of the row
+ *   change(in): what the statement did to the row
+ */
+bool
+locator_can_release_row_lock_at_statement_end (THREAD_ENTRY * thread_p, const OID * class_oid, STMT_ROW_CHANGE change)
+{
+  return (locator_statement_ends_row_locks (thread_p, change)
+	  && (change != STMT_ROW_CHANGE_UNCOMMITTED || !locator_class_keeps_row_locks (thread_p, class_oid)));
+}
+
+/*
  * locator_delete_force () - Delete the given object
  *
  * return: NO_ERROR if all OK, ER_ status otherwise

@@ -10967,15 +10967,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
-  /* Whether these row locks end with the statement: yes for a READ COMMITTED DML target and for a click counter's
-   * scope, not for SELECT ... FOR UPDATE.  The facts sit on the top node only, so the caller passes the answer in.  The
-   * opener adds the per-class condition for a DML target (the pruned partition, after a switch).  A click counter
-   * (force_select_lock) needs no condition, nested or not: by the statement end its increments are committed, or have
-   * joined the transaction and keep the locks. */
-  upddel_target_scan = (mvcc_select_lock_needed && stmt_scoped_locks
-			&& (force_select_lock
-			    || (lock_transient_scope_is_outermost (thread_p)
-				&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED)));
+  /* Whether these row locks are the statement's (a DML target or a click counter's scan), not SELECT ... FOR UPDATE's.
+   * The fact sits on the top node only, so the caller passes it in; the opener decides per class whether they end. */
+  upddel_target_scan = (mvcc_select_lock_needed && stmt_scoped_locks);
 
   /* Finalize cached-scan activation once per open, before dispatching on access method. The
    * driving-scan gate is assigned next to fixed_scan in qexec_execute_mainblock_internal ();
@@ -16271,9 +16265,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	}
     }
 
-  /* Later writers wait on our MVCCID self-lock, so the row locks can end here -- except under a savepoint, whose
-   * partial rollback would undo a change a writer is waiting on. */
-  lock_transient_scope_end (thread_p, !logtb_has_active_savepoint (thread_p));
+  /* Later writers wait on our MVCCID self-lock, so the row locks can end here unless our stamp can go before commit */
+  lock_transient_scope_end (thread_p, locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED));
 
   qexec_close_scan (thread_p, specp);
 
@@ -16918,9 +16911,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
-  /* As in qexec_execute_update (); the prepare record carries our MVCCID self-lock across 2PC.
-   * logtb_has_active_savepoint () also counts system savepoints, which keeps the locks more often than needed. */
-  lock_transient_scope_end (thread_p, !logtb_has_active_savepoint (thread_p));
+  /* As in qexec_execute_update (); the prepare record carries our MVCCID self-lock across 2PC. */
+  lock_transient_scope_end (thread_p, locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED));
 
   qexec_close_scan (thread_p, specp);
 
@@ -33794,15 +33786,14 @@ qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INF
  *   thread_p(in): thread entry
  *
  * Note: the scope opens either way to keep the nesting balanced; every exit closes it with lock_transient_scope_end ().
- *	 qexec_open_scan () decides the select phase on the same two conditions (outermost, READ COMMITTED), so both
- *	 phases agree.
+ *	 The select phase asks the same function (scan_set_upddel_target ()), so both phases agree.
  */
 static bool
 qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
 {
-  bool outermost = lock_transient_scope_start (thread_p);
+  (void) lock_transient_scope_start (thread_p);
 
-  return outermost && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED;
+  return locator_statement_ends_row_locks (thread_p, STMT_ROW_CHANGE_UNCOMMITTED);
 }
 
 /*

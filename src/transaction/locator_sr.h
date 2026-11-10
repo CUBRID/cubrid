@@ -79,8 +79,19 @@ typedef enum
 #define LOCATOR_LOCK_IS_TRANSIENT(policy) \
   ((policy) == LOCATOR_LOCK_AT_SELECT_TRANSIENT || (policy) == LOCATOR_LOCK_AT_FORCE_TRANSIENT)
 
+/* what a statement did to a row it locked, which decides whether the row lock may end with the statement */
+typedef enum
+{
+  STMT_ROW_NOT_CHANGED,		/* read, or rejected by the predicate */
+  STMT_ROW_CHANGE_COMMITTED,	/* changed and already committed: a click counter increment committed on its own */
+  STMT_ROW_CHANGE_UNCOMMITTED	/* changed, not committed: DELETE/UPDATE, an increment that joined the transaction */
+} STMT_ROW_CHANGE;
+
 extern bool locator_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid);
 extern bool locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid);
+extern bool locator_statement_ends_row_locks (THREAD_ENTRY * thread_p, STMT_ROW_CHANGE change);
+extern bool locator_can_release_row_lock_at_statement_end (THREAD_ENTRY * thread_p, const OID * class_oid,
+							   STMT_ROW_CHANGE change);
 
 
 extern int locator_initialize (THREAD_ENTRY * thread_p);

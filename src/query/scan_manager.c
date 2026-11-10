@@ -2647,14 +2647,13 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
  *   return: void
  *   thread_p(in): thread entry
  *   scan_id(in/out): the scan being opened
- *   upddel_target_scan(in): the row locks are the statement's (outermost READ COMMITTED DELETE/UPDATE target, or a
- *			   click counter's scan); kept across a partition switch
- *   click_counter_scan(in): the locks are a click counter's, whose increments the class condition does not concern;
+ *   upddel_target_scan(in): the row locks are the statement's (a DELETE/UPDATE target, or a click counter's scan);
+ *			   kept across a partition switch
+ *   click_counter_scan(in): a click counter's scan, which changes no row: its increments decide at the statement end;
  *			   kept across a partition switch
  *   cls_oid(in): the class this scan is on -- the pruned partition, on a partition switch
  *
- * Note: decided per class for a DML target, since a partition can differ from its root; see
- *	 locator_class_keeps_row_locks ().
+ * Note: decided per class, since a partition can differ from its root.
  */
 static void
 scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, bool click_counter_scan,
@@ -2662,8 +2661,11 @@ scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_
 {
   scan_id->upddel_target_scan = upddel_target_scan;
   scan_id->click_counter_scan = click_counter_scan;
-  scan_id->lock_ends_with_statement = (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
-				       && (click_counter_scan || !locator_class_keeps_row_locks (thread_p, cls_oid)));
+  scan_id->lock_ends_with_statement =
+    (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
+     && locator_can_release_row_lock_at_statement_end (thread_p, cls_oid,
+						       click_counter_scan ? STMT_ROW_NOT_CHANGED :
+						       STMT_ROW_CHANGE_UNCOMMITTED));
 }
 
 /*

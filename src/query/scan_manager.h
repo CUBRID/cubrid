@@ -589,12 +589,10 @@ struct scan_id_struct
   SCAN_POSITION position;	/* Scan Position */
   SCAN_DIRECTION direction;	/* Forward/Backward Direction */
   bool mvcc_select_lock_needed;	/* true if lock at scanning needed in mvcc */
-  bool upddel_target_scan;	/* the row locks are the statement's: the outermost READ COMMITTED DELETE/UPDATE
-				 * target or a click counter's scan, not SELECT ... FOR UPDATE.  Kept across a partition
-				 * switch. */
-  bool lock_ends_with_statement;	/* the same, narrowed by the class this scan is on now */
-  bool click_counter_scan;	/* the locks are a click counter's: not narrowed by the class.  Kept across a partition
-				 * switch. */
+  bool upddel_target_scan;	/* the row locks are the statement's: a DELETE/UPDATE target or a click counter's scan,
+				 * not SELECT ... FOR UPDATE.  Kept across a partition switch. */
+  bool lock_ends_with_statement;	/* they end with the statement, for the class this scan is on now */
+  bool click_counter_scan;	/* a click counter's scan, which changes no row.  Kept across a partition switch. */
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
