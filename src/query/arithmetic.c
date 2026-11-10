@@ -4578,7 +4578,10 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	    }
 	  else
 	    {
-	      /* floor ((v1-v2)/((v3-v2)/v4)) + 1 */
+	      /* floor ((v1-v2)/(v3-v2)*v4) + 1: the fraction of the range below v1, times the number of buckets.
+	       * Dividing by the width of a bucket, (v3-v2)/v4, divided by 0 once that width fell below the smallest
+	       * NUMERIC (scale 252) and was rounded to 0 -- SIGFPE (CBRD-28024). Multiplying (v1-v2)*v4 first can
+	       * overflow instead; the fraction is below 1. v3-v2 is not 0 here: v2 <= v1 < v3 */
 	      er_status = float_numeric_db_value_sub (value1, value2, &n1);
 	      if (er_status != NO_ERROR)
 		{
@@ -4591,13 +4594,13 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-	      er_status = float_numeric_db_value_div (&n2, value4, &n3);
+	      er_status = float_numeric_db_value_div (&n1, &n2, &n3);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = float_numeric_db_value_div (&n1, &n3, &n4);
+	      er_status = float_numeric_db_value_mul (&n3, value4, &n4);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
@@ -4644,7 +4647,7 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	    }
 	  else
 	    {
-	      /* floor ((v2-v1)/((v2-v3)/v4)) + 1 */
+	      /* floor ((v2-v1)/(v2-v3)*v4) + 1, as in the ascending case. v2-v3 is not 0 here: v3 < v2 */
 	      er_status = float_numeric_db_value_sub (value2, value1, &n1);
 	      if (er_status != NO_ERROR)
 		{
@@ -4657,13 +4660,13 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 		  return er_status;
 		}
 
-	      er_status = float_numeric_db_value_div (&n2, value4, &n3);
+	      er_status = float_numeric_db_value_div (&n1, &n2, &n3);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
 		}
 
-	      er_status = float_numeric_db_value_div (&n1, &n3, &n4);
+	      er_status = float_numeric_db_value_mul (&n3, value4, &n4);
 	      if (er_status != NO_ERROR)
 		{
 		  return er_status;
