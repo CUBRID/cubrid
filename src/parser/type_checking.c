@@ -10566,6 +10566,12 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      pt_chop_to_one_select_item (parser, arg1);
 	    }
 	}
+      else if (PT_IS_VALUE_NODE (arg1) && arg1->info.value.is_false_where)
+	{
+	  /* a subquery that returns no row, folded to a NULL value: EXISTS over it is false, never NULL. With the NULL
+	   * type the folded value 0 would print as null and share the XASL cache key of an expression that is NULL. */
+	  node->type_enum = PT_TYPE_LOGICAL;
+	}
       else if (arg1_type == PT_TYPE_NA || arg1_type == PT_TYPE_NULL)
 	{
 	  node->type_enum = PT_TYPE_NULL;
