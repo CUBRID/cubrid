@@ -8479,111 +8479,18 @@ end:
 }
 
 /*
- * qexec_finish_group_by_domains () - the accumulator domains of aggregates that saw only NULL values and the domains
- *   of the hash aggregation lists, before the GROUP BY reads its input
+ * qexec_finish_group_by_domains () - CBRD-27583: every aggregate's accumulator has the domains the compilation decided
+ *   (domain_plan_aggregate_accumulator) and the hash aggregation lists were opened with them
  */
 static void
 qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist)
 {
-  REGU_VARIABLE_LIST group_regu = NULL;
-  AGGREGATE_TYPE *agg_p;
-
-  /* treat case with only NULL values */
-  for (agg_p = buildlist->g_agg_list; agg_p; agg_p = agg_p->next)
+#if !defined (NDEBUG)
+  for (AGGREGATE_TYPE * agg_p = buildlist->g_agg_list; agg_p != NULL; agg_p = agg_p->next)
     {
-      AGGREGATE_ACCUMULATOR_DOMAIN *accumulator = &agg_p->accumulator_domain;
-      if (accumulator->value_dom == NULL)
-	{
-	  accumulator->value_dom = &tp_Null_domain;
-	}
-
-      if (accumulator->value2_dom == NULL)
-	{
-	  accumulator->value2_dom = &tp_Null_domain;
-	}
+      assert (agg_p->accumulator_domain.value_dom != NULL && agg_p->accumulator_domain.value2_dom != NULL);
     }
-
-  /* update hash aggregation domains */
-  if (buildlist->g_hash_eligible)
-    {
-      AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
-      int i;
-
-      /* update key domains */
-      group_regu = buildlist->g_hk_sort_regu_list;
-      for (i = 0; i < buildlist->g_hkey_size && group_regu != NULL; i++, group_regu = group_regu->next)
-	{
-	  if (domain_is_variable (context->key_domains[i]))
-	    {
-	      context->key_domains[i] = group_regu->value.domain;
-	    }
-	}
-
-      /* the list columns the setup left variable: an accumulator that saw only NULL values */
-      qexec_setup_hash_aggregate_lists (buildlist);
-    }
-}
-
-/*
- * qexec_setup_hash_aggregate_lists () - the domains of the columns of a GROUP BY's hash aggregation lists (the partial
- *   list and the sorted partial list: the keys, then each aggregate's value, value2 and count) that are still
- *   variable, set before the first row
- *
- * The lists' tuples are laid out by their column domains (qfile_set_layout), and the hash aggregation writes partial
- * results during the scan, so every column takes its domain before a tuple holds a value there: a key its compiled
- * domain, an accumulator the domain its plan names (domain_plan_aggregate_accumulator). A column without one yet -
- * an accumulator that sees only NULL values - takes only NULLs until qexec_finish_group_by_domains gives it the NULL
- * domain. A column that has a domain keeps it: tuples may hold values there already.
- */
-void
-qexec_setup_hash_aggregate_lists (BUILDLIST_PROC_NODE * buildlist)
-{
-  AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
-  if (!buildlist->g_hash_eligible || context == NULL || context->part_list_id == NULL
-      || context->sorted_part_list_id == NULL)
-    {
-      return;
-    }
-  QFILE_TUPLE_VALUE_TYPE_LIST *lists[2] =
-    { &context->part_list_id->type_list, &context->sorted_part_list_id->type_list };
-  bool changed = false;
-  REGU_VARIABLE_LIST key = buildlist->g_hk_scan_regu_list;
-  for (int i = 0; i < buildlist->g_hkey_size && key != NULL; i++, key = key->next)
-    {
-      TP_DOMAIN *domain = key->value.domain;
-      for (int l = 0; l < 2; l++)
-	{
-	  if (domain != NULL && !domain_is_variable (domain) && domain_is_variable (lists[l]->domp[i]))
-	    {
-	      lists[l]->domp[i] = domain;
-	      changed = true;
-	    }
-	}
-    }
-  for (int i = 0; i < buildlist->g_func_count; i++)
-    {
-      const int index = buildlist->g_hkey_size + i * 3;
-      TP_DOMAIN *const accumulator[2] = {
-	context->accumulator_domains[i]->value_dom, context->accumulator_domains[i]->value2_dom
-      };
-      for (int l = 0; l < 2; l++)
-	{
-	  for (int k = 0; k < 2; k++)
-	    {
-	      if (accumulator[k] != NULL && TP_DOMAIN_TYPE (lists[l]->domp[index + k]) == DB_TYPE_VARIABLE)
-		{
-		  lists[l]->domp[index + k] = accumulator[k];
-		  changed = true;
-		}
-	    }
-	}
-    }
-  if (changed)
-    {
-      /* recompute layout after mutating domp */
-      qfile_set_layout (lists[0]);
-      qfile_set_layout (lists[1]);
-    }
+#endif /* !NDEBUG */
 }
 
 /*
@@ -9187,6 +9094,8 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
   bool left_is_set, right_is_set, left_null, right_null;
 
   cmp = DB_UNK;			/* init */
+  /* unpack decides each column pair's comparison */
+  assert (tval_cnt == 0 || compares != NULL);
 
   for (i = 0; i < tval_cnt; i++)
     {
@@ -9225,9 +9134,7 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
 
       /* both left_dbval, right_dbval is non-null: the comparison unpack decided for the column pair, as
        * tp_value_compare asks it */
-      cmp =
-	eval_compare_values_resolved (thread_p, compares != NULL ? &compares[i] : NULL, vd, &left_dbval, &right_dbval,
-				      0, NULL);
+      cmp = eval_compare_values_resolved (thread_p, &compares[i], vd, &left_dbval, &right_dbval, 0, NULL);
 
       if (left_is_set && cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
 	{
@@ -21842,8 +21749,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	       * them again (qdata_agg_operand_prog_ensure ()), as a page batch plan kept from an earlier run of the block
 	       * (a correlated subquery runs once per outer row) expects them */
 	      xasl->proc.buildlist.g_agg_list->operand_prog_link_stamp = 0;
-	      /* the hash aggregation writes partial results during the scan: its lists take their domains now */
-	      qexec_setup_hash_aggregate_lists (&xasl->proc.buildlist);
 	    }
 
 	  if (xasl->proc.buildlist.a_eval_list)
@@ -22213,10 +22118,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       if (xasl->spec_list)
 	{
 	  /* Decide which scan will use fixed flags and which won't. There are several cases here: 1. Do not use fixed
-	   * scans if locks on objects are required. 2. Disable all fixed scans if any index scan is used (this is
-	   * legacy and should be reconsidered). 3. Disable fixed scan for outer scans. Fixed cannot be allowed while
-	   * new scans start which also need to fix pages. This may lead to page deadlocks. NOTE: Only the innermost
-	   * scans are allowed fixed scans. */
+	   * scans if locks on objects are required. 2. If any index scan is used, only the innermost scan of the chain
+	   * may be fixed, and only when it reads the heap sequentially: it releases its page before another level of the
+	   * chain runs (heap_next () at the end of the heap, scan_handle_single_scan () on an early stop). 3. Disable
+	   * fixed scan for outer scans. Fixed cannot be allowed while new scans start which also need to fix pages. This
+	   * may lead to page deadlocks. NOTE: Only the innermost scans are allowed fixed scans. */
 	  if (COMPOSITE_LOCK (xasl->scan_op_type))
 	    {
 	      /* Do locking on each instance instead of composite locking */
@@ -22263,8 +22169,27 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	  if (has_index_scan)
 	    {
-	      /* Index found, no fixed is allowed */
-	      fixed_scan_xasl = NULL;
+	      /* Index found: only an innermost sequential heap scan stays fixed */
+	      for (xptr = xasl; xptr->scan_ptr != NULL; xptr = xptr->scan_ptr)
+		{
+		  ;
+		}
+	      /* a subquery run for each of its rows would fix pages while it holds its own */
+	      fixed_scan_xasl = (xptr->merge_spec == NULL && xptr->dptr_list == NULL) ? xptr : NULL;
+	      for (specp = xptr->spec_list; specp != NULL && fixed_scan_xasl != NULL; specp = specp->next)
+		{
+		  if (specp->type != TARGET_CLASS || specp->access != ACCESS_METHOD_SEQUENTIAL)
+		    {
+		      fixed_scan_xasl = NULL;
+		    }
+		}
+	      for (xptr2 = xptr->aptr_list; xptr2 != NULL && fixed_scan_xasl != NULL; xptr2 = xptr2->next)
+		{
+		  if (XASL_IS_FLAGED (xptr2, XASL_LINK_TO_REGU_VARIABLE))
+		    {
+		      fixed_scan_xasl = NULL;
+		    }
+		}
 	    }
 	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
 	    {
@@ -22303,13 +22228,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    {
 		      specp->fixed_scan = (xptr == fixed_scan_xasl);
 
-		      /* Cached (copy-to-local-cache) scan is allowed only on the driving scan --
-		       * the level-0 spec_list of the scan chain. An inner scan re-visits its pages
-		       * once per outer row, so the single-page local cache would be re-copied
-		       * constantly for no latch-avoidance benefit. This is only the gate: final
-		       * activation is ANDed with eligibility in qexec_open_scan (), where
+		      /* Cached (copy-to-local-cache) scan is allowed on every spec_list scan that is not fixed: an
+		       * inner scan that is not fixed would otherwise fix its page for every row, and copying the page
+		       * once per pass costs less (scan_reset_scan_block () drops the copy for the next pass). This is
+		       * only the gate: final activation is ANDed with eligibility in qexec_open_scan (), where
 		       * mvcc_select_lock_needed becomes known. */
-		      specp->cached_scan = (level == 0 && spec_level == 0);
+		      specp->cached_scan = (spec_level == 0);
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
@@ -27977,8 +27901,9 @@ qexec_gby_skip_key_cmp (const GBY_SKIP_STATE * st, DB_VALUE * const *a, DB_VALUE
 	}
       else
 	{
-	  /* total order, as a sorted GROUP BY compares */
-	  c = tp_value_compare (a[i], b[i], 1, 1);
+	  /* total order in the key's domain, as a sorted GROUP BY compares */
+	  assert (col->pos_descr.dom != NULL && !domain_is_variable (col->pos_descr.dom));
+	  c = domain_compare_in_domain (col->pos_descr.dom, a[i], b[i], 1, 1);
 	  if (c == DB_EQ)
 	    {
 	      continue;
@@ -28094,7 +28019,7 @@ qexec_gby_skip_end_group (THREAD_ENTRY * thread_p, GBY_SKIP_STATE * st, int roll
 }
 
 /* the domain the scan gives a g_val_list value: its regu's, as the hash key columns take theirs
- * (qexec_setup_hash_aggregate_lists ()) */
+ * (qexec_alloc_agg_hash_context ()) */
 static TP_DOMAIN *
 qexec_gby_skip_value_domain (REGU_VARIABLE_LIST scan_regu, const DB_VALUE * val)
 {
@@ -30272,19 +30197,18 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
       ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
 
       if ((QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p) || func_p->function == PT_NTILE
-	   || func_p->function == PT_FIRST_VALUE || func_p->function == PT_LAST_VALUE)
-	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
+	   || func_p->function == PT_FIRST_VALUE || func_p->function == PT_LAST_VALUE) && !analytic_state->is_skip_sort)
 	{
 	  /* inst_num() predicate is evaluated at group processing for these functions, as the result is computed at
 	   * this stage using all group values */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
 
-      if ((instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
-	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
+      if ((instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER) && !analytic_state->is_skip_sort)
 	{
 	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file. Without the sort, the output
-	   * file is written by qexec_analytic_update_group_result () at ANALYTIC_INTERM_PROC */
+	   * file is written by qexec_analytic_update_group_result () at ANALYTIC_INTERM_PROC. The sort is skipped only
+	   * for the first evaluation group, so check this group's state, not the xasl flag */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
     }
@@ -31775,13 +31699,10 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	    {
 	      const DB_VALUE *current = &a_eval_list->current_values[sort_list_idx];
 	      const DB_VALUE *value = &a_eval_list->temp_values[sort_list_idx];
-	      const bool by_value = key->pos_descr.dom == NULL || domain_is_variable (key->pos_descr.dom);
-	      /* CBRD-27583: a key compares in its domain; a key without one is not reached (a release build compares
-	       * the values). Total order: NULL keys are equal and form one group, as they do after the sort
-	       * (CBRD-27469) */
-	      assert (!by_value);
-	      if ((by_value ? tp_value_compare (current, value, 1, 1)
-		   : domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 1)) != DB_EQ)
+	      /* CBRD-27583: a key compares in its domain. Total order: NULL keys are equal and form one group, as they
+	       * do after the sort (CBRD-27469) */
+	      assert (key->pos_descr.dom != NULL && !domain_is_variable (key->pos_descr.dom));
+	      if (domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 1) != DB_EQ)
 		{
 		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
 		  break;
@@ -34507,8 +34428,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
  *   sort_items(in): the ORDER BY list
  *   domains(out): one per sort item
  *
- * A key compares with its domain's cmpval; a session variable column has its read's type. A key whose domain leaves
- * its values' type to them, which XASL generation does not make, gets none.
+ * A key compares with its domain's cmpval; a session variable column has its read's type.
  */
 static void
 qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
@@ -34516,8 +34436,8 @@ qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
   int i = 0;
   for (SORT_LIST * key = sort_items; key != NULL; key = key->next, i++)
     {
-      assert (!domain_is_variable (key->pos_descr.dom));
-      domains[i] = domain_is_variable (key->pos_descr.dom) ? NULL : key->pos_descr.dom;
+      assert (key->pos_descr.dom != NULL && !domain_is_variable (key->pos_descr.dom));
+      domains[i] = key->pos_descr.dom;
     }
 }
 
@@ -34771,15 +34691,7 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec, con
     }
   else
     {
-      if (domain == NULL)
-	{
-	  /* a key without a domain (qexec_topn_sort_domains): its values' types decide */
-	  cmp = tp_value_compare (left, right, 1, 1);
-	}
-      else
-	{
-	  cmp = domain->type->cmpval (left, right, 1, 1, NULL, domain->collation_id);
-	}
+      cmp = domain->type->cmpval (left, right, 1, 1, NULL, domain->collation_id);
     }
   if (sort_spec->s_order == S_DESC)
     {
@@ -35531,6 +35443,27 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
    * create partial list file
    */
 
+  /* the lists are laid out by their columns' domains, which the compilation decided: the keys' and the accumulators' */
+  regu_list = proc->g_hk_scan_regu_list;
+  for (i = 0; i < proc->g_hkey_size; i++, regu_list = regu_list->next)
+    {
+      if (regu_list->value.domain == NULL || domain_is_variable (regu_list->value.domain))
+	{
+	  error_code = domain_unresolved_error (i, DB_TYPE_VARIABLE);
+	  goto exit_on_error;
+	}
+    }
+  for (i = 0; i < proc->g_func_count; i++)
+    {
+      const AGGREGATE_ACCUMULATOR_DOMAIN *accumulator = proc->agg_hash_context->accumulator_domains[i];
+      if (accumulator->value_dom == NULL || domain_is_variable (accumulator->value_dom)
+	  || accumulator->value2_dom == NULL || domain_is_variable (accumulator->value2_dom))
+	{
+	  error_code = domain_unresolved_error (proc->g_hkey_size + i * 3, DB_TYPE_VARIABLE);
+	  goto exit_on_error;
+	}
+    }
+
   /* compute number of values and alloc type list */
   type_list.type_cnt = proc->g_hkey_size + proc->g_func_count * 3 + 1;
   type_list.domp = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * type_list.type_cnt);
@@ -35552,9 +35485,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /* register accumulator domains */
   for (i = 0; i < proc->g_func_count; i++)
     {
-      /* value and value2 are variable */
-      type_list.domp[value_count++] = &tp_Variable_domain;
-      type_list.domp[value_count++] = &tp_Variable_domain;
+      type_list.domp[value_count++] = proc->agg_hash_context->accumulator_domains[i]->value_dom;
+      type_list.domp[value_count++] = proc->agg_hash_context->accumulator_domains[i]->value2_dom;
 
       /* third one is integer counter */
       type_list.domp[value_count++] = &tp_Integer_domain;
