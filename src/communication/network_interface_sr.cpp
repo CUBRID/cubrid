@@ -13645,6 +13645,12 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       error_code = ER_STREAM_SESSION_ERROR;
       goto send_reply;
     }
+  if ((flags & ~STREAM_FLAG_FINAL) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream request flags");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
+    }
 
   /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
   error_code = session_check_stream_slot (thread_p);
@@ -13961,6 +13967,12 @@ sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_int (ptr, &stream_kind);
   ptr = or_unpack_int (ptr, &first_max);
   ptr = or_unpack_int (ptr, &flags);
+  if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream request flags");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, &handle);
+      return;
+    }
 
   handles = session_get_stream_handles (thread_p);
   if (handles == NULL)
@@ -14013,6 +14025,12 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
   ptr = or_unpack_int64 (ptr, &handle);
   ptr = or_unpack_int (ptr, &max);
   ptr = or_unpack_int (ptr, &flags);
+  if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream request flags");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, NULL);
+      return;
+    }
 
   handles = session_get_stream_handles (thread_p);
   if (handles == NULL)

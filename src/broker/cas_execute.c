@@ -11217,16 +11217,17 @@ ux_stream_error (int err_code, T_NET_BUF * net_buf)
 /*
  * ux_stream_init () - Open a stream session the driver asked for directly
  *   final(in): CAS_STREAM_FLAG_FINAL -- data is the whole value, and the reply is END's
+ *   auto_commit(in): the connection runs in auto-commit (CAS_STREAM_FLAG_AUTO_COMMIT)
  *   data(in), data_len(in): the first chunk, or none
  *
  * The statement path does not come through here: a statement that opens a
  * stream defers its own auto-commit in do_commit_after_execute (), with the
  * mode that statement ran in. A driver-opened stream has no such statement, so
  * what END owes is settled here instead -- from the kind's own answer, which
- * the open reply carries, and this connection's mode.
+ * the open reply carries, and the mode the driver sent.
  */
 int
-ux_stream_init (int stream_kind, char *config, int config_len, bool final, char *data, int data_len,
+ux_stream_init (int stream_kind, char *config, int config_len, bool final, bool auto_commit, char *data, int data_len,
 		T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
@@ -11243,22 +11244,28 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, char 
       return ux_stream_error (err_code, net_buf);
     }
   err_code = stream_kind_client_authorize (stream_kind, config, config_len);
-  if (err_code == NO_ERROR && stream_from_is_open ())
+  if (err_code < 0)
+    {
+      /* the check may have read and locked classes; in auto-commit nothing else ends that, unless something the
+       * client still holds keeps the transaction */
+      if (auto_commit && !stream_from_holds_download () && !hm_has_result_tied_to_tran ())
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	}
+      return ux_stream_error (err_code, net_buf);
+    }
+  if (stream_from_is_open ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
 	      "a stream session is already active on this connection");
-      err_code = ER_STREAM_SESSION_ERROR;
-    }
-  if (err_code < 0)
-    {
-      return ux_stream_error (err_code, net_buf);
+      return ux_stream_error (ER_STREAM_SESSION_ERROR, net_buf);
     }
 
   ux_stream_log_open (stream_kind);
   ux_stream_log_chunk (data_len);
   err_code = stream_from_init (stream_kind, config, config_len, final ? STREAM_FLAG_FINAL : 0, data, data_len,
 			       &count, &ends_unit_of_work);
-  auto_commit_owed = (ends_unit_of_work && as_info->auto_commit_mode == TRUE);
+  auto_commit_owed = (ends_unit_of_work && auto_commit);
   if (!ends_unit_of_work && !(err_code == NO_ERROR && final))
     {
       /* an upload, or an open refused before it did anything */
