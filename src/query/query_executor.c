@@ -6651,6 +6651,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
   while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
     {
       QEXEC_GBY_SLOT *s;
+      AGGREGATE_HASH_VALUE *value;
       AGGREGATE_TYPE *agg;
       unsigned int h;
       int i;
@@ -6670,10 +6671,9 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
       s = qexec_gby_mtable_find (t, rd->temp_part_key, h);
       if (s->key == NULL && rd->no_first_tuple)
 	{
-	  AGGREGATE_HASH_VALUE *added;
-
-	  /* the group's rows all went into partial entries: the entry's key makes the group */
-	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &added);
+	  /* the group's rows all went into partial entries: the entry's key makes the group.  The add can grow the
+	   * table, which frees the slots s points into: the group is read through the value it returns */
+	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &value);
 	  if (rc != NO_ERROR)
 	    {
 	      break;
@@ -6696,9 +6696,13 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	  rc = ER_FAILED;
 	  break;
 	}
+      else
+	{
+	  value = s->value;
+	}
       for (agg = rd->agg_template, i = 0; agg != NULL; agg = agg->next, i++)
 	{
-	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &s->value->accumulators[i],
+	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &value->accumulators[i],
 							   &agg->accumulator_domain, agg->function, agg->domain,
 							   &rd->temp_part_value->accumulators[i]);
 	  if (rc != NO_ERROR)
@@ -6710,7 +6714,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	{
 	  break;
 	}
-      s->value->tuple_count += rd->temp_part_value->tuple_count;
+      value->tuple_count += rd->temp_part_value->tuple_count;
     }
   if (sc == S_ERROR && rc == NO_ERROR)
     {
