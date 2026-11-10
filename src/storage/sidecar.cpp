@@ -312,10 +312,8 @@ struct sidecar_stored_form_record
   const char *end;
 };
 
-/* An UPDATE admits two records, a lazy scan one per row it keeps as stored and one per page its batch keeps rows of
- * (P1c).  Past this many, the oldest is overwritten, which only weakens the assert.  The ranges are dropped when the
- * outermost UPDATE window closes; a scan's ranges go when the ring wraps, so a stale range can only let a record
- * through that lies where an admitted one lay. */
+/* An UPDATE admits two records.  Past this many, the oldest is overwritten.  The ranges are dropped when the outermost
+ * UPDATE window closes. */
 #define SIDECAR_STORED_FORM_RECORDS 16
 static thread_local sidecar_stored_form_record sidecar_Stored_form_records[SIDECAR_STORED_FORM_RECORDS];
 static thread_local int sidecar_Stored_form_admitted = 0;
@@ -333,13 +331,57 @@ sidecar_stored_form_admit (const char *data, int length)
 
       if (l.begin <= data && data + length <= l.end)
 	{
-	  /* the page batch admits a page once for its rows */
+	  /* already admitted by the previous record */
 	  return;
 	}
     }
   r.begin = data;
   r.end = data + length;
   sidecar_Stored_form_admitted++;
+}
+
+/* What each open lazy scan of the thread keeps as stored: its latest record, batch page and batch copies (P1c).  An
+ * outer scan's keep stays admitted however many rows an inner scan keeps meanwhile; the scan's end drops its own. */
+enum sidecar_lazy_kind
+{
+  SIDECAR_LAZY_RECORD,
+  SIDECAR_LAZY_PAGE,
+  SIDECAR_LAZY_COPIES
+};
+
+struct sidecar_lazy_admitted
+{
+  const HEAP_SCANCACHE *scan;
+  sidecar_lazy_kind kind;
+  const char *begin;
+  const char *end;
+};
+
+static thread_local std::vector<sidecar_lazy_admitted> sidecar_Lazy_admitted;
+
+static void
+sidecar_lazy_admit (const HEAP_SCANCACHE *scan_cache, sidecar_lazy_kind kind, const char *data, size_t length)
+{
+  for (sidecar_lazy_admitted &a : sidecar_Lazy_admitted)
+    {
+      if (a.scan == scan_cache && a.kind == kind)
+	{
+	  a.begin = data;
+	  a.end = data + length;
+	  return;
+	}
+    }
+  sidecar_Lazy_admitted.push_back ({ scan_cache, kind, data, data + length });
+}
+
+static void
+sidecar_lazy_admitted_drop (const HEAP_SCANCACHE *scan_cache)
+{
+  sidecar_Lazy_admitted.erase (std::remove_if (sidecar_Lazy_admitted.begin (), sidecar_Lazy_admitted.end (),
+			       [scan_cache] (const sidecar_lazy_admitted &a)
+  {
+    return a.scan == scan_cache;
+  }), sidecar_Lazy_admitted.end ());
 }
 
 /* inside one of the admitted records */
@@ -351,6 +393,13 @@ sidecar_stored_form_is_admitted (const char *p)
   for (int i = 0; i < n; i++)
     {
       if (sidecar_Stored_form_records[i].begin <= p && p < sidecar_Stored_form_records[i].end)
+	{
+	  return true;
+	}
+    }
+  for (const sidecar_lazy_admitted &a : sidecar_Lazy_admitted)
+    {
+      if (a.begin <= p && p < a.end)
 	{
 	  return true;
 	}
@@ -1966,11 +2015,15 @@ struct sidecar_lazy_keep
 
 static thread_local sidecar_lazy_keep sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
 
-/* The transaction of the thread's first lazy keep since its request began.  A newer keep replaces sidecar_Lazy while an
- * older one may still be read, e.g. the next copied row of a filter iterator driving a join after the inner scan kept
- * its row (scan_batch_iter_next ()).  Trids only advance within a request, so the first keep is the oldest: while it
- * is the current transaction, so is every keep of the request. */
+/* The transaction of the thread's first lazy keep since it last had no open scan that kept one, and the number of
+ * those scans.  A newer keep replaces sidecar_Lazy while an older one may still be read, e.g. the next copied row of a
+ * filter iterator driving a join after the inner scan kept its row (scan_batch_iter_next ()).  A keep can be read only
+ * while its scan is open, and trids only advance on a thread, so the first keep is the oldest one still readable:
+ * while it is the current transaction, so is every keep that can still be read.  Once every scan that kept ended, no
+ * keep is left to read, and the next keep starts over: a later transaction of the same request or of an SA_MODE
+ * process, which has no request boundary, is not checked against an ended one (P3 868). */
 static thread_local TRANID sidecar_Lazy_first_trid = NULL_TRANID;
+static thread_local int sidecar_Lazy_scans = 0;
 
 static TRANID
 sidecar_current_trid (THREAD_ENTRY *thread_p)
@@ -1991,7 +2044,7 @@ sidecar_lazy_holds (const char *p)
  * itself hold a page across the processing of a row, and only there is the store page held no longer than the hot
  * page (E18).  Any other keep releases the cursor. */
 static void
-sidecar_lazy_note (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, const char *begin, size_t length,
+sidecar_lazy_note (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const char *begin, size_t length,
 		   bool page_held)
 {
   const bool cursor = (page_held && scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
@@ -2005,6 +2058,11 @@ sidecar_lazy_note (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, con
   sidecar_Lazy.begin = begin;
   sidecar_Lazy.end = begin + length;
   sidecar_Lazy.trid = sidecar_current_trid (thread_p);
+  if (!scan_cache->sidecar_kept)
+    {
+      scan_cache->sidecar_kept = true;
+      sidecar_Lazy_scans++;
+    }
   if (sidecar_Lazy_first_trid == NULL_TRANID)
     {
       sidecar_Lazy_first_trid = sidecar_Lazy.trid;
@@ -2015,10 +2073,10 @@ sidecar_lazy_note (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, con
 
 /* A record a query scan keeps as stored for the attribute layer. */
 static void
-sidecar_keep_lazy (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, const RECDES *recdes)
+sidecar_keep_lazy (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const RECDES *recdes)
 {
 #if !defined (NDEBUG)
-  sidecar_stored_form_admit (recdes->data, recdes->length);
+  sidecar_lazy_admit (scan_cache, SIDECAR_LAZY_RECORD, recdes->data, (size_t) recdes->length);
 #endif /* !NDEBUG */
   sidecar_lazy_note (thread_p, scan_cache, recdes->data, (size_t) recdes->length, true);
   sidecar_count (thread_p, PSTAT_SC_LAZY_RECORDS);
@@ -2050,7 +2108,7 @@ sidecar_batch_keeps (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, PAGE_PT
   assert (sidecar_scan_is_protected (thread_p, scan_cache));
 #if !defined (NDEBUG)
   /* the rows are peeked from the page */
-  sidecar_stored_form_admit (page, DB_PAGESIZE);
+  sidecar_lazy_admit (scan_cache, SIDECAR_LAZY_PAGE, page, DB_PAGESIZE);
 #endif /* !NDEBUG */
   if (!sidecar_lazy_holds (page) || sidecar_Lazy.scan != scan_cache
       || sidecar_Lazy.trid != sidecar_current_trid (thread_p))
@@ -2068,7 +2126,7 @@ sidecar_batch_copied (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache, const 
       return;
     }
 #if !defined (NDEBUG)
-  sidecar_stored_form_admit (data, (int) length);
+  sidecar_lazy_admit (scan_cache, SIDECAR_LAZY_COPIES, data, length);
 #endif /* !NDEBUG */
   /* the page is let go while the copies' rows go out: no store page is kept for them */
   sidecar_lazy_note (thread_p, scan_cache, data, length, false);
@@ -2111,7 +2169,7 @@ sidecar_cursor_release (THREAD_ENTRY *thread_p)
 }
 
 __attribute__ ((noinline)) void
-sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache)
+sidecar_scan_end (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache)
 {
   if (thread_p == NULL)
     {
@@ -2126,6 +2184,19 @@ sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache)
     {
       sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
     }
+  if (scan_cache->sidecar_kept)
+    {
+      scan_cache->sidecar_kept = false;
+      /* the thread that kept ends the scan */
+      assert (sidecar_Lazy_scans > 0);
+      if (sidecar_Lazy_scans > 0 && --sidecar_Lazy_scans == 0)
+	{
+	  sidecar_Lazy_first_trid = NULL_TRANID;
+	}
+#if !defined (NDEBUG)
+      sidecar_lazy_admitted_drop (scan_cache);
+#endif /* !NDEBUG */
+    }
 }
 
 /* Request boundaries (net_server_request ()): no store page, owner or lazy keep crosses them.  A scan whose end was
@@ -2136,6 +2207,10 @@ sidecar_request_end (THREAD_ENTRY *thread_p)
   sidecar_cursor_release (thread_p);
   sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
   sidecar_Lazy_first_trid = NULL_TRANID;
+  sidecar_Lazy_scans = 0;
+#if !defined (NDEBUG)
+  sidecar_Lazy_admitted.clear ();
+#endif /* !NDEBUG */
 }
 
 #if !defined (NDEBUG)
@@ -2144,7 +2219,7 @@ sidecar_assert_request_start (THREAD_ENTRY *thread_p)
 {
   assert (thread_p->sidecar_cursor_page == NULL && thread_p->sidecar_cursor_owner == NULL);
   assert (sidecar_Lazy.scan == NULL && sidecar_Lazy.begin == NULL && sidecar_Lazy.trid == NULL_TRANID);
-  assert (sidecar_Lazy_first_trid == NULL_TRANID);
+  assert (sidecar_Lazy_first_trid == NULL_TRANID && sidecar_Lazy_scans == 0);
 }
 #endif /* !NDEBUG */
 

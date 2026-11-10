@@ -177,6 +177,7 @@ struct heap_scancache
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
     unsigned char sidecar_lazy;	/* HEAP_SIDECAR_LAZY: which reads through this cache keep a record with Sidecar refs
 				 * as stored, for a caller that decodes it through the attribute layer */
+    bool sidecar_kept;		/* a lazy keep of this scan is counted in the thread's open lazy scans (sidecar.cpp) */
 
     void start_area ();
     void end_area ();

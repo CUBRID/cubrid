@@ -6920,6 +6920,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
+  scan_cache->sidecar_kept = false;
   if (copy_to_local_cache && is_queryscan)
     {
       scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
@@ -6956,6 +6957,7 @@ exit_on_error:
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
+  scan_cache->sidecar_kept = false;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -7249,6 +7251,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
+  scan_cache->sidecar_kept = false;
 
   return NO_ERROR;
 }

@@ -101,6 +101,8 @@ typedef enum
 							 * before its hot write */
   FI_TEST_SIDECAR_PAGE_HELD_AT_APPLY = 700006,	/* an UPDATE or DELETE that would write the store finds the
 						 * thread holding a data page, and fails as a release build does */
+  FI_TEST_SIDECAR_MISS_ROUTINE_MARK = 700007,	/* a statement that calls a routine still reads lazily, as if
+						 * the mark missed the routine (E22): the trid backstop's case */
 
   /* etc .... */
 

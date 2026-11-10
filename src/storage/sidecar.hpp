@@ -163,7 +163,7 @@ extern void sidecar_assert_request_start (THREAD_ENTRY *thread_p);
 #define sidecar_assert_request_start(thread_p) ((void) 0)
 #endif /* NDEBUG */
 /* heap_scancache_quick_end () of an opted-in scan: the store page its decodes kept is released */
-extern void sidecar_scan_end (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache);
+extern void sidecar_scan_end (THREAD_ENTRY *thread_p, HEAP_SCANCACHE *scan_cache);
 /* releases the store page the thread's cursor keeps */
 extern void sidecar_cursor_release (THREAD_ENTRY *thread_p);
 
