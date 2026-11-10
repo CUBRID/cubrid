@@ -170,10 +170,10 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
-  /* an open stream is one statement still running, and nothing commits inside it */
+  /* an open stream is one statement still running, and nothing commits inside it. Every client refuses first, but a
+   * client that does not wait for a reply can still get here, so this is a refusal, not an assertion */
   if (session_has_stream_session (thread_p))
     {
-      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "commit inside an open stream session");
       state = TRAN_ACTIVE;
     }
@@ -3606,10 +3606,9 @@ stran_server_partial_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   ptr = or_unpack_string_nocopy (request, &savept_name);
 
-  /* for the reason stran_server_commit_internal () gives: the savepoint may predate the stream */
+  /* for the reasons stran_server_commit_internal () gives: the savepoint may predate the stream */
   if (session_has_stream_session (thread_p))
     {
-      assert (false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
 	      "rollback to a savepoint inside an open stream session");
       state = TRAN_ACTIVE;
@@ -13505,7 +13504,7 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
  *   aborted(in): true when it did not finish, so whatever it holds is discarded first
  */
 static void
-stream_drop_session (THREAD_ENTRY *thread_p, stream_session *session, bool aborted)
+stream_drop_session (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, bool aborted)
 {
   if (aborted)
     {
@@ -13517,7 +13516,7 @@ stream_drop_session (THREAD_ENTRY *thread_p, stream_session *session, bool abort
       er_stack_pop ();
     }
   delete session;
-  (void) session_set_stream_session (thread_p, NULL, -1);
+  session_clear_stream_session (thread_p, held);
 }
 
 /*
@@ -13544,7 +13543,7 @@ stream_check_interrupt (THREAD_ENTRY *thread_p)
  * stream_receive () - Hand one chunk to the open session; a chunk it cannot consume, or a cancel, ends the stream
  */
 static int
-stream_receive (THREAD_ENTRY *thread_p, stream_session *session, const char *data, int data_len)
+stream_receive (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, const char *data, int data_len)
 {
   int error_code = stream_check_interrupt (thread_p);
 
@@ -13554,7 +13553,7 @@ stream_receive (THREAD_ENTRY *thread_p, stream_session *session, const char *dat
     }
   if (error_code != NO_ERROR)
     {
-      stream_drop_session (thread_p, session, true);
+      stream_drop_session (thread_p, held, session, true);
     }
 
   return error_code;
@@ -13568,7 +13567,7 @@ stream_receive (THREAD_ENTRY *thread_p, stream_session *session, const char *dat
  * bundled request and separate ones are one path the consumer cannot tell apart.
  */
 static int
-stream_finish (THREAD_ENTRY *thread_p, stream_session *session, int kind, INT64 *count)
+stream_finish (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, int kind, INT64 *count)
 {
   const stream_kind_desc *desc = stream_kind_find (kind);
   stream_result result = { 0, NULL };
@@ -13582,7 +13581,7 @@ stream_finish (THREAD_ENTRY *thread_p, stream_session *session, int kind, INT64 
     {
       error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
     }
-  stream_drop_session (thread_p, session, error_code != NO_ERROR);
+  stream_drop_session (thread_p, held, session, error_code != NO_ERROR);
   if (error_code != NO_ERROR)
     {
       assert (result.staged == NULL);
@@ -13632,6 +13631,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   INT64 count = 0;
   const stream_kind_desc *opened = NULL;
   stream_session *session = NULL;
+  session_state *held = NULL;
 
   if (reqlen >= header_size)
     {
@@ -13670,23 +13670,26 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
     }
 
   /* another connection of the session may have taken the slot since the check above */
-  error_code = session_set_stream_session (thread_p, session, stream_kind);
+  error_code = session_set_stream_session (thread_p, session, stream_kind, &held);
   if (error_code != NO_ERROR)
     {
-      stream_drop_session (thread_p, session, true);
+      stream_drop_session (thread_p, held, session, true);
       goto send_reply;
     }
 
   if (reqlen - header_size - config_len > 0)
     {
-      error_code = stream_receive (thread_p, session, ptr + config_len, reqlen - header_size - config_len);
+      error_code = stream_receive (thread_p, held, session, ptr + config_len, reqlen - header_size - config_len);
     }
   if (error_code == NO_ERROR && (flags & STREAM_FLAG_FINAL))
     {
-      error_code = stream_finish (thread_p, session, stream_kind, &count);
+      error_code = stream_finish (thread_p, held, session, stream_kind, &count);
     }
 
 send_reply:
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
+
   /* On error, stage the error (code + message) so it travels with the reply;
    * the reply itself is always sent (the request/reply protocol requires it). */
   if (error_code != NO_ERROR)
@@ -13710,17 +13713,19 @@ send_reply:
 }
 
 /*
- * stream_open_session () - The connection's active stream session, or NULL with the transport-common error
+ * stream_use_session () - Hold the connection's active stream session for this request, or NULL with the error
+ *
+ * The request lets it go with session_unuse_stream_session () before it replies.
  */
 static stream_session *
-stream_open_session (THREAD_ENTRY *thread_p, int *kind)
+stream_use_session (THREAD_ENTRY *thread_p, int *kind, session_state **held)
 {
   stream_session *session = NULL;
+  int error_code = session_use_stream_session (thread_p, session, kind, held);
 
-  if (session_get_stream_session (thread_p, session, kind) != NO_ERROR || session == NULL)
+  if (error_code == NO_ERROR && session == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
-      return NULL;
     }
 
   return session;
@@ -13735,7 +13740,8 @@ void
 sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error_code = NO_ERROR;
-  stream_session *session = stream_open_session (thread_p, NULL);
+  session_state *held = NULL;
+  stream_session *session = stream_use_session (thread_p, NULL, &held);
 
   if (session == NULL)
     {
@@ -13743,8 +13749,11 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
     }
   else
     {
-      error_code = stream_receive (thread_p, session, request, reqlen);
+      error_code = stream_receive (thread_p, held, session, request, reqlen);
     }
+
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
 
   /* On error, stage the error (code + message) so it travels with the reply;
    * the reply itself is always sent (the request/reply protocol requires it). */
@@ -13774,7 +13783,8 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
   int error_code = NO_ERROR;
   int kind = -1;
   INT64 count = 0;
-  stream_session *session = stream_open_session (thread_p, &kind);
+  session_state *held = NULL;
+  stream_session *session = stream_use_session (thread_p, &kind, &held);
 
   if (session == NULL)
     {
@@ -13784,13 +13794,16 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     {
       if (reqlen > 0)
 	{
-	  error_code = stream_receive (thread_p, session, request, reqlen);
+	  error_code = stream_receive (thread_p, held, session, request, reqlen);
 	}
       if (error_code == NO_ERROR)
 	{
-	  error_code = stream_finish (thread_p, session, kind, &count);
+	  error_code = stream_finish (thread_p, held, session, kind, &count);
 	}
     }
+
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
 
   if (error_code != NO_ERROR)
     {
@@ -13826,7 +13839,8 @@ sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 {
   int error_code = NO_ERROR;
   bool continue_checking = true;
-  stream_session *session = stream_open_session (thread_p, NULL);
+  session_state *held = NULL;
+  stream_session *session = stream_use_session (thread_p, NULL, &held);
 
   if (session == NULL)
     {
@@ -13836,8 +13850,11 @@ sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
     {
       /* a cancel the CAS left for the stream is answered by this abort, which must not see it */
       (void) logtb_is_interrupted (thread_p, true, &continue_checking);
-      stream_drop_session (thread_p, session, true);
+      stream_drop_session (thread_p, held, session, true);
     }
+
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
 
   if (error_code != NO_ERROR)
     {

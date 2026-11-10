@@ -153,6 +153,8 @@ struct session_state
   int stream_session_kind;
   int stream_session_client_id;	/* the connection that owns stream_session_p */
   int stream_session_tran_index;	/* the transaction it was opened in */
+  THREAD_ENTRY *stream_user;	/* the worker running a request of the owner on the slot, or NULL */
+  pthread_cond_t stream_cond;	/* signalled when that request lets the slot go */
   stream_handle_table *stream_handles_p;
   PL_SESSION *pl_session_p;
 
@@ -261,6 +263,7 @@ session_state::session_state ()
 {
   pthread_mutex_init (&mutex, NULL);
   pthread_mutex_init (&stream_mutex, NULL);
+  pthread_cond_init (&stream_cond, NULL);
   stream_handles_p = new stream_handle_table ();
 }
 
@@ -268,6 +271,7 @@ session_state::~session_state ()
 {
   pthread_mutex_destroy (&mutex);
   pthread_mutex_destroy (&stream_mutex);
+  pthread_cond_destroy (&stream_cond);
   delete stream_handles_p;
 }
 // *INDENT-ON*
@@ -287,6 +291,7 @@ session_state_alloc (void)
       pthread_mutex_init (&state->mutex, NULL);
       /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
       pthread_mutex_init (&state->stream_mutex, NULL);
+      pthread_cond_init (&state->stream_cond, NULL);
       state->stream_handles_p = new stream_handle_table ();
     }
   return (void *) state;
@@ -304,6 +309,7 @@ session_state_free (void *st)
     {
       pthread_mutex_destroy (&((SESSION_STATE *) st)->mutex);
       pthread_mutex_destroy (&((SESSION_STATE *) st)->stream_mutex);
+      pthread_cond_destroy (&((SESSION_STATE *) st)->stream_cond);
       delete ((SESSION_STATE *) st)->stream_handles_p;
       free (st);
       return NO_ERROR;
@@ -351,6 +357,7 @@ session_state_init (void *st)
   session_p->stream_session_kind = -1;
   session_p->stream_session_client_id = 0;
   session_p->stream_session_tran_index = NULL_TRAN_INDEX;
+  session_p->stream_user = NULL;
   memset (session_p->secret, 0, SESSION_SECRET_SIZE);
 
   return NO_ERROR;
@@ -3377,26 +3384,45 @@ session_stream_client_id (THREAD_ENTRY * thread_p)
 #endif /* !SERVER_MODE */
 }
 
+/* the caller holds stream_mutex */
+static bool
+session_stream_slot_matches (SESSION_STATE * state_p, int client_id, int tran_index)
+{
+  return ((client_id == SESSION_STREAM_ALL_CLIENTS || state_p->stream_session_client_id == client_id)
+	  && (tran_index == SESSION_STREAM_ANY_TRAN || state_p->stream_session_tran_index == tran_index));
+}
+
 /*
  * session_take_stream_session () - Empty the slot if client_id owns it
  *   return: what the slot held for client_id, or NULL
  *   client_id(in): the owner, or SESSION_STREAM_ALL_CLIENTS for any
  *   tran_index(in): the transaction it was opened in, or SESSION_STREAM_ANY_TRAN for any
+ *
+ * Requests of one connection run on separate workers, so one may still be running on the session; the caller waits
+ * until that request lets the slot go, and the session is ended only after it. The worker running it takes the
+ * session at once, and keeps the slot until it lets it go.
  */
 static stream_session *
-session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_index)
+session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_index, THREAD_ENTRY * taker)
 {
   stream_session *taken = NULL;
 
   pthread_mutex_lock (&state_p->stream_mutex);
-  if ((client_id == SESSION_STREAM_ALL_CLIENTS || state_p->stream_session_client_id == client_id)
-      && (tran_index == SESSION_STREAM_ANY_TRAN || state_p->stream_session_tran_index == tran_index))
+  while (state_p->stream_user != NULL && state_p->stream_user != taker
+	 && session_stream_slot_matches (state_p, client_id, tran_index))
+    {
+      pthread_cond_wait (&state_p->stream_cond, &state_p->stream_mutex);
+    }
+  if (session_stream_slot_matches (state_p, client_id, tran_index))
     {
       taken = state_p->stream_session_p;
       state_p->stream_session_p = NULL;
       state_p->stream_session_kind = -1;
-      state_p->stream_session_client_id = 0;
       state_p->stream_session_tran_index = NULL_TRAN_INDEX;
+      if (state_p->stream_user == NULL)
+	{
+	  state_p->stream_session_client_id = 0;
+	}
     }
   pthread_mutex_unlock (&state_p->stream_mutex);
 
@@ -3407,14 +3433,26 @@ session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_in
 static int
 session_refuse_taken_stream_slot (SESSION_STATE * state_p, int client_id)
 {
-  if (state_p->stream_session_p == NULL)
+  const char *why;
+
+  if (state_p->stream_session_p == NULL && state_p->stream_user == NULL)
     {
       return NO_ERROR;
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
-	  state_p->stream_session_client_id == client_id ? "a stream session is already active on this connection"
-	  : "another connection of this session still holds a stream session");
+  if (state_p->stream_session_client_id != client_id)
+    {
+      why = "another connection of this session still holds a stream session";
+    }
+  else if (state_p->stream_session_p != NULL)
+    {
+      why = "a stream session is already active on this connection";
+    }
+  else
+    {
+      why = "another request of this connection is still ending its stream session";
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, why);
   return ER_STREAM_SESSION_ERROR;
 }
 
@@ -3444,25 +3482,25 @@ session_check_stream_slot (THREAD_ENTRY * thread_p)
 }
 
 /*
- * session_set_stream_session () - Put the caller's stream session in the slot, or take it out with NULL
+ * session_set_stream_session () - Put the caller's stream session in the slot and hold it for the open request
+ *   held(out): the session state the slot is in, for session_clear_stream_session () and
+ *		session_unuse_stream_session (); the connection may move to another session during the request
  */
 int
-session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p, int kind)
+session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p, int kind,
+			    struct session_state **held)
 {
   SESSION_STATE *state_p = NULL;
   int client_id = session_stream_client_id (thread_p);
   int error_code = NO_ERROR;
 
+  assert (stream_session_p != NULL);
+  *held = NULL;
+
   state_p = session_get_session_state (thread_p);
   if (state_p == NULL)
     {
       return ER_FAILED;
-    }
-
-  if (stream_session_p == NULL)
-    {
-      (void) session_take_stream_session (state_p, client_id, SESSION_STREAM_ANY_TRAN);
-      return NO_ERROR;
     }
 
   pthread_mutex_lock (&state_p->stream_mutex);
@@ -3475,6 +3513,9 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
       state_p->stream_session_kind = kind;
       state_p->stream_session_client_id = client_id;
       state_p->stream_session_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      /* the open is a request on the session too: it lets the slot go before its reply */
+      state_p->stream_user = thread_p;
+      *held = state_p;
     }
   pthread_mutex_unlock (&state_p->stream_mutex);
 
@@ -3482,9 +3523,36 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
 }
 
 /*
- * session_get_stream_session () - The caller's stream session; another connection's is not seen
+ * session_clear_stream_session () - Empty the slot the caller holds, after it ended the stream session
+ *   held(in): what session_set_stream_session () or session_use_stream_session () gave, or NULL
+ *
+ * Only the request that holds the slot empties it: an open that lost the slot to another request of the connection
+ * holds nothing, and must not take that request's session out.
  */
-int
+void
+session_clear_stream_session (THREAD_ENTRY * thread_p, struct session_state *held)
+{
+  if (held == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&held->stream_mutex);
+  if (held->stream_user == thread_p)
+    {
+      held->stream_session_p = NULL;
+      held->stream_session_kind = -1;
+      held->stream_session_tran_index = NULL_TRAN_INDEX;
+    }
+  pthread_mutex_unlock (&held->stream_mutex);
+}
+
+/*
+ * session_get_stream_session () - The caller's stream session; another connection's is not seen
+ *
+ * Without the hold: only for asking whether there is one (session_has_stream_session).
+ */
+static int
 session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr), int *kind)
 {
   SESSION_STATE *state_p = NULL;
@@ -3516,6 +3584,90 @@ session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
   return NO_ERROR;
 }
 
+/*
+ * session_use_stream_session () - Hold the caller's stream session for one request
+ *   return: NO_ERROR, with NULL when the connection has none open; ER_STREAM_SESSION_ERROR while another request of
+ *	     the connection holds it
+ *   held(out): the session state held, for session_clear_stream_session () and session_unuse_stream_session ()
+ *
+ * A client that does not wait for a reply can have two requests of the connection running on separate workers. Only
+ * one at a time runs on the session; session_unuse_stream_session () lets it go before the reply.
+ */
+int
+session_use_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr), int *kind,
+			    struct session_state **held)
+{
+  SESSION_STATE *state_p = NULL;
+  int client_id = session_stream_client_id (thread_p);
+  int error_code = NO_ERROR;
+
+  stream_session_ref_ptr = NULL;
+  *held = NULL;
+  if (kind != NULL)
+    {
+      *kind = -1;
+    }
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  if (state_p->stream_session_client_id == client_id
+      && (state_p->stream_session_p != NULL || state_p->stream_user != NULL))
+    {
+      if (state_p->stream_user != NULL && state_p->stream_user != thread_p)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		  "another request of this connection is using the stream session");
+	  error_code = ER_STREAM_SESSION_ERROR;
+	}
+      else if (state_p->stream_session_p != NULL)
+	{
+	  state_p->stream_user = thread_p;
+	  *held = state_p;
+	  stream_session_ref_ptr = state_p->stream_session_p;
+	  if (kind != NULL)
+	    {
+	      *kind = state_p->stream_session_kind;
+	    }
+	}
+    }
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return error_code;
+}
+
+/*
+ * session_unuse_stream_session () - Let the slot go after a request that opened or held the stream session
+ *   held(in): what session_set_stream_session () or session_use_stream_session () gave, or NULL
+ *
+ * The caller does it before it replies: the next request of a client that waits for the reply must find the slot free.
+ * It goes by the state held, not by the connection's session, which a request of the connection may have changed.
+ */
+void
+session_unuse_stream_session (THREAD_ENTRY * thread_p, struct session_state *held)
+{
+  if (held == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&held->stream_mutex);
+  if (held->stream_user == thread_p)
+    {
+      held->stream_user = NULL;
+      if (held->stream_session_p == NULL)
+	{
+	  held->stream_session_client_id = 0;
+	}
+      pthread_cond_broadcast (&held->stream_cond);
+    }
+  pthread_mutex_unlock (&held->stream_mutex);
+}
+
 bool
 session_has_stream_session (THREAD_ENTRY * thread_p)
 {
@@ -3545,9 +3697,8 @@ session_has_stream_session (THREAD_ENTRY * thread_p)
  * therefore ends the stream, and the next chunk is refused with "no active
  * stream session". Nothing commits inside a stream (stran_server_commit_internal).
  *
- * Unlike the interrupt path, this is safe to free here: the transaction is
- * ended by the same worker that would be running receive_chunk, and the stream
- * protocol is lockstep, so no chunk can be in flight.
+ * A request of the connection still running on the session is waited for
+ * (session_take_stream_session), so the session is freed only after it.
  */
 void
 session_end_stream_session (THREAD_ENTRY * thread_p)
@@ -3571,7 +3722,7 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
 
   /* only the caller's: another connection of the session runs another transaction */
   stream_session_p =
-    session_take_stream_session (state_p, session_stream_client_id (thread_p), SESSION_STREAM_ANY_TRAN);
+    session_take_stream_session (state_p, session_stream_client_id (thread_p), SESSION_STREAM_ANY_TRAN, thread_p);
   if (stream_session_p == NULL)
     {
       return;
@@ -3621,7 +3772,7 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
     }
   state_p = thread_p->conn_entry->session_p;
 
-  stream_session_p = session_take_stream_session (state_p, session_stream_client_id (thread_p), tran_index);
+  stream_session_p = session_take_stream_session (state_p, session_stream_client_id (thread_p), tran_index, thread_p);
   if (stream_session_p != NULL)
     {
       /* as in session_end_stream_session (), and the error the transaction end reports stays its own */
@@ -3767,7 +3918,7 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, i
       session->load_session_p = NULL;
     }
 
-  stream_session_p = session_take_stream_session (session, client_id, SESSION_STREAM_ANY_TRAN);
+  stream_session_p = session_take_stream_session (session, client_id, SESSION_STREAM_ANY_TRAN, thread_p);
   if (stream_session_p != NULL)
     {
       /* the close set the interrupt to stop the workers that have drained; the abort must not see it. Only a
