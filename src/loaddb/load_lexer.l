@@ -664,6 +664,14 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 
 <BINARY_MODE>\r?\n {
     PRINT ("BINARY_MODE begin %s\n", "");
+    /*
+     * Each row of the section counts as one line and the end of records marker, together with the
+     * new line which follows it, as one more; split () in load_common.cpp counts the same way, so
+     * the line a row is reported at is the same in SA and CS mode. The rows are not lines of the
+     * file, so the new line of this command line is not counted here: the BINARY_BLOCK rule counts
+     * a row when it hands it over, which makes the first row the line after this one.
+     */
+    yylineno--;
     BEGIN BINARY_BLOCK;
     return token::NL;
 }
@@ -714,8 +722,12 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 
     if (rec_size == BIN_END_OF_RECORDS)
       {
-	/* the section is over, the new line which follows it is scanned in INITIAL */
+	/*
+	 * The section is over, the new line which follows it is scanned in INITIAL. The last row ends
+	 * here, so the marker is on the next line, and that new line ends the marker's own.
+	 */
 	PRINT ("BINARY_BLOCK end %s\n", "");
+	yylineno++;
 	BEGIN INITIAL;
       }
     else

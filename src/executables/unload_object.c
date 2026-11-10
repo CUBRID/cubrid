@@ -1878,6 +1878,21 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
   TIMER_CLEAR (&wi_unload_class);
   TIMER_BEGIN ((g_sampling_records >= 0), &wi_unload_class);
 
+  if (data_format != OBJECT_FORMAT_TEXT && !datafile_per_class && referenced_class)
+    {
+      /*
+       * Another class refers to the objects of this one, so each of its rows is written with the
+       * instance number the references name, see process_object (). A binary section has no place
+       * for it.
+       */
+      fprintf (stderr, "warning: %s%s%s is referenced by an object type.\n",
+	       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+      fprintf (stderr, "So for class %s%s%s, '--data-format' option is ignored.\n",
+	       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));
+      fflush (stderr);
+      data_format = OBJECT_FORMAT_TEXT;
+    }
+
   if (nthreads > 0 || data_format != OBJECT_FORMAT_TEXT)
     {
       const char *optmsg1 = "'--thread-count' option is ignored.";
@@ -2327,10 +2342,11 @@ process_set (DB_SET * set, TEXT_OUTPUT * obj_out)
     }
   else
     {
-      for (it = set_iterate (set); (element_value = set_iterator_value (it)) != NULL; set_iterator_next (it))
-	{
-	  check_nelem++;
-	}
+      /*
+       * The number of elements leads them, and each element follows as a column of its own.
+       * See binary_to_collection () in src/loaddb/load_db_value_converter.cpp for the reader.
+       */
+      check_nelem = set_size (set);
 
       CHECK_PRINT_ERROR (binary_print (obj_out, (u_char *) & check_nelem, sizeof (check_nelem), DB_TYPE_SET));
       for (it = set_iterate (set); (element_value = set_iterator_value (it)) != NULL; set_iterator_next (it))
@@ -2537,9 +2553,14 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 		  }
 		else
 		  {
+		    /*
+		     * The text between the quotes of ^E'...' only. The type of the column already says it
+		     * is an external LOB reference, and the reader hands the text to to_db_elo_ext (), the
+		     * converter of the quoted text of the text form.
+		     */
 		    char tmp[512];
 		    char *ptr = tmp;
-		    int len = snprintf (NULL, 0, "^E'%c%" PRId64 "|%s|%s'", dts, elo->size, elo->locator,
+		    int len = snprintf (NULL, 0, "%c%" PRId64 "|%s|%s", dts, elo->size, elo->locator,
 					elo->meta_data != NULL ? elo->meta_data : "");
 		    if (len >= (int) sizeof (tmp))
 		      {
@@ -2553,7 +2574,7 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 		      }
 
 		    /* the size has to include the terminating null, or the closing quote is cut off */
-		    snprintf (ptr, len + 1, "^E'%c%" PRId64 "|%s|%s'", dts, elo->size, elo->locator,
+		    snprintf (ptr, len + 1, "%c%" PRId64 "|%s|%s", dts, elo->size, elo->locator,
 			      elo->meta_data != NULL ? elo->meta_data : "");
 		    error = binary_print (obj_out, (u_char *) ptr, len, dt);
 		    if (ptr != tmp)

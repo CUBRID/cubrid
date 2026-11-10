@@ -783,6 +783,19 @@ namespace cubload
 	return ER_LDR_CORRUPTED_BINARY_RECORD;
       }
 
+    if (binary_length == BIN_END_OF_RECORDS)
+      {
+	/*
+	 * The marker and the new line which follows it make one line, see the BINARY_BLOCK rules in
+	 * load_lexer.l, so the new line is consumed with it rather than read as an empty text line.
+	 */
+	if (object_file.get () != '\n')
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
+	    return ER_LDR_CORRUPTED_BINARY_RECORD;
+	  }
+      }
+
     if (class_is_ignored)
       {
 	object_file.seekg (binary_length, std::ios::cur);
@@ -807,7 +820,7 @@ namespace cubload
 	 * A section is closed by the end of records marker and by the new line which follows it in
 	 * the object file. The grammar needs that new line to complete the line the rows of the
 	 * section make up, and a batch can end right here, so it is carried along in the batch
-	 * content. The one of the object file is consumed as an empty text line by the caller.
+	 * content.
 	 */
 	one_row_buffer.resize (sizeof (binary_length) + 1);
 	one_row_buffer[sizeof (binary_length)] = '\n';
@@ -1032,7 +1045,10 @@ namespace cubload
 		return error_code;
 	      }
 
-	    // TODO:  check '\n' character to lineno?
+	    /*
+	     * A record counts as one line, whatever bytes it holds, and the end of records marker as
+	     * one more; the scanner counts the same way, see the BINARY_BLOCK rules in load_lexer.l.
+	     */
 
 	    if (class_is_ignored)
 	      {
@@ -1274,3 +1290,85 @@ decode_varint64 (u_char *buf, int buf_sz, int64_t *val_ptr, int *consumed)
 
   return false;
 }
+
+namespace cubload
+{
+  binary_row_reader::binary_row_reader (const char *row, std::size_t size)
+    : m_row (row)
+    , m_size (size)
+    , m_pos (0)
+    , m_corrupted (false)
+  {
+    //
+  }
+
+  int
+  binary_row_reader::set_corrupted ()
+  {
+    m_corrupted = true;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) m_pos);
+    return ER_LDR_CORRUPTED_BINARY_RECORD;
+  }
+
+  /*
+   * next () - read the next column of the row
+   *   return: NO_ERROR, or ER_LDR_CORRUPTED_BINARY_RECORD when the row does not follow the layout
+   *   col(out): the column, its data points into the row
+   */
+  int
+  binary_row_reader::next (binary_column &col)
+  {
+    int64_t length = 0;
+    int consumed = 0;
+
+    if (m_corrupted || m_pos >= m_size)
+      {
+	return set_corrupted ();
+      }
+
+    col.offset = m_pos;
+
+    /* a varint64 takes ten bytes at most */
+    std::size_t avail = m_size - m_pos;
+    if (avail > 10)
+      {
+	avail = 10;
+      }
+
+    if (!decode_varint64 ((u_char *) (m_row + m_pos), (int) avail, &length, &consumed) || length < 0)
+      {
+	return set_corrupted ();
+      }
+    m_pos += consumed;
+
+    if (length == 0)
+      {
+	/* NULL, there is no type byte */
+	col.type = DB_TYPE_NULL;
+	col.data = NULL;
+	col.size = 0;
+	return NO_ERROR;
+      }
+
+    /* the length counts the data only, the type byte follows the length and is not in it */
+    std::size_t data_size = (std::size_t) (length - 1);
+    if (m_pos >= m_size || data_size > m_size - m_pos - 1)
+      {
+	return set_corrupted ();
+      }
+
+    col.type = (DB_TYPE) (unsigned char) m_row[m_pos];
+    m_pos++;
+
+    if (col.type == DB_TYPE_NULL || col.type > DB_TYPE_LAST)
+      {
+	return set_corrupted ();
+      }
+
+    col.data = m_row + m_pos;
+    col.size = data_size;
+    m_pos += data_size;
+
+    return NO_ERROR;
+  }
+} // namespace cubload

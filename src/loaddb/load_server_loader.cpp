@@ -685,6 +685,118 @@ namespace cubload
       }
   }
 
+  /*
+   * process_binary_line - load one row of a binary section
+   *    row(in): the row, as the scanner took it out of the object file
+   * Note:
+   *    The counterpart of process_line () for a row unloaddb --data-format wrote. The columns of
+   *    the row are taken in the order of the attributes, the way the constants of a text line are,
+   *    and the errors are reported the same way.
+   *
+   *    A row that does not follow the layout of a binary section stops where the layout was lost:
+   *    the columns behind that point cannot be told apart, so the row fails with that one error.
+   */
+  void
+  server_object_loader::process_binary_line (const string_type *row)
+  {
+    if (m_session.is_failed ())
+      {
+	return;
+      }
+
+    if (m_session.get_args ().syntax_check)
+      {
+	++m_rows;
+      }
+
+    std::size_t attr_index = 0;
+    std::size_t attr_size = m_class_entry->get_attributes_size ();
+    binary_row_reader reader (row->val, row->size);
+
+    if (reader.has_more () && attr_size == 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	m_error_handler.on_syntax_failure ();
+	return;
+      }
+
+    for (; reader.has_more (); attr_index++)
+      {
+	binary_column col;
+
+	if (attr_index == attr_size)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, attr_index);
+	    m_error_handler.on_syntax_failure ();
+	    return;
+	  }
+
+	int error_code = reader.next (col);
+	if (error_code == NO_ERROR)
+	  {
+	    const attribute &attr = m_class_entry->get_attribute (attr_index);
+
+	    error_code = process_binary_value (reader, col, attr);
+	    if (error_code == NO_ERROR)
+	      {
+		error_code = sink_heap (attr, get_attribute_db_value (attr_index));
+	      }
+	  }
+
+	if (error_code != NO_ERROR && !report_value_error ())
+	  {
+	    return;
+	  }
+
+	if (reader.is_corrupted ())
+	  {
+	    /* reported above, nothing behind it can be read */
+	    return;
+	  }
+      }
+
+    if (attr_index < attr_size)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MISSING_ATTRIBUTES, 2, attr_size, attr_index);
+	m_error_handler.on_syntax_failure ();
+	return;
+      }
+  }
+
+  /*
+   * process_binary_value - build the value of an attribute from a column of a binary section row
+   *    return: NO_ERROR or an error code
+   *    reader(in/out): the row, a collection reads its elements from it
+   *    col(in): the column
+   *    attr(in): attribute being set
+   * Note:
+   *    The counterpart of process_generic_constant () and process_collection_constant ().
+   */
+  int
+  server_object_loader::process_binary_value (binary_row_reader &reader, const binary_column &col,
+      const attribute &attr)
+  {
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+
+    int error_code = binary_to_db_value (reader, col, &attr, NULL, &db_val);
+    if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+      {
+	/* name the class as well, as process_generic_constant () does */
+	char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
+
+	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
+      }
+    else if (error_code != NO_ERROR && er_errid () == NO_ERROR)
+      {
+	/* see process_generic_constant () */
+	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      }
+
+    return error_code;
+  }
+
   void
   server_object_loader::finish_line ()
   {

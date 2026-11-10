@@ -76,6 +76,7 @@ static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
+static int binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_length, DB_TYPE type);
 
 static int write_object_file (TEXT_BUFFER_BLK * head);
 
@@ -994,8 +995,9 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+      /* db_get_bit () answers the length in bits, not in bytes */
       bits = db_get_bit (value, &len);
-      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) bits, len, type));
+      CHECK_PRINT_ERROR (binary_print_bit (tout, (const u_char *) bits, len, type));
       break;
 
     case DB_TYPE_NUMERIC:
@@ -1218,20 +1220,26 @@ binary_fill_row_size (TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr)
   memcpy (rec_size_ptr, &length, sizeof (BIN_REC_SIZE_TYPE));
 }
 
-int
-binary_print (TEXT_OUTPUT * tout, const u_char * buf, int buf_size, DB_TYPE type)
+/*
+ * binary_print_header - print the header of one column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    is_null(in): the column is NULL
+ *    buf_size(in): number of data bytes which follow the header
+ *    type(in): type of the value
+ *
+ * Note: a column is [varint64 (size + 1)][type, 1 byte][size bytes of data]. One is added to the
+ *       size to tell an empty string from NULL, and a NULL column is a single 0x00 byte without a
+ *       type byte. The reader is binary_row_reader in src/loaddb/load_common.cpp.
+ */
+static int
+binary_print_header (TEXT_OUTPUT * tout, bool is_null, int buf_size, DB_TYPE type)
 {
   int error = NO_ERROR;
   int header_bytes = 0;
   u_char column_header[13];	// varint64(10) + type(1) + safety(2)
 
-  /*
-   * Column information consists of length + type + column_data(buf).
-   * length holds (buf_size + 1), the type byte follows it and is not counted in it 
-   * A length of 0 indicates that the data was NULL.
-   */
-
-  if (buf == NULL)
+  if (is_null)
     {
       assert (buf_size == 0);
       column_header[0] = 0;
@@ -1239,7 +1247,6 @@ binary_print (TEXT_OUTPUT * tout, const u_char * buf, int buf_size, DB_TYPE type
     }
   else
     {
-      /* The reason for adding 1 to buf_size is to distinguish between an empty string and NULL. */
       int64_t tlen = (int64_t) buf_size + 1;
       assert (buf_size >= 0);
       header_bytes = encode_varint64 (tlen, column_header);
@@ -1253,7 +1260,55 @@ binary_print (TEXT_OUTPUT * tout, const u_char * buf, int buf_size, DB_TYPE type
     }
 
   CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) column_header, header_bytes));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_print - print one column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    buf(in): data of the column, NULL for a NULL value
+ *    buf_size(in): size of the data
+ *    type(in): type of the value
+ */
+int
+binary_print (TEXT_OUTPUT * tout, const u_char * buf, int buf_size, DB_TYPE type)
+{
+  int error = NO_ERROR;
+
+  CHECK_PRINT_ERROR (binary_print_header (tout, (buf == NULL), buf_size, type));
   CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) buf, buf_size));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_print_bit - print a BIT or VARBIT column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    bits(in): the bytes holding the bits
+ *    bit_length(in): length of the value in bits
+ *    type(in): DB_TYPE_BIT or DB_TYPE_VARBIT
+ *
+ * Note: the length in bits cannot be told from the number of bytes, so it leads the data:
+ *       [int bit length][(bit length + 7) / 8 bytes]
+ */
+static int
+binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_length, DB_TYPE type)
+{
+  int error = NO_ERROR;
+  int byte_size = (bit_length + 7) / 8;
+
+  CHECK_PRINT_ERROR (binary_print_header (tout, false, (int) UNLOAD_RAW_BIT_LENGTH_SIZE + byte_size, type));
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (const char *) &bit_length, (int) UNLOAD_RAW_BIT_LENGTH_SIZE));
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (const char *) bits, byte_size));
 
   return error;
 exit_on_error:

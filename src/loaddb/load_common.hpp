@@ -447,6 +447,15 @@ namespace cubload
       virtual void process_line (constant_type *cons) = 0;
 
       /*
+       * Process and inserts a row of a binary section. The row holds the raw attribute values the way
+       * unloaddb --data-format wrote them, see binary_row_reader below for the layout.
+       *
+       *    return: void
+       *    row(in): bytes of one row, the record size field excluded
+       */
+      virtual void process_binary_line (const string_type *row) = 0;
+
+      /*
        * Called after process_line, should implement login for cleaning up data after insert if required.
        */
       virtual void finish_line () = 0;
@@ -493,6 +502,9 @@ typedef uint32_t BIN_REC_SIZE_TYPE;
 #define UNLOAD_RAW_NUMERIC_NEGATIVE (0x02)
 #define UNLOAD_RAW_NUMERIC_FLOATING (0x01)
 
+/* a BIT or VARBIT value is written as its length in bits followed by the bytes holding the bits */
+#define UNLOAD_RAW_BIT_LENGTH_SIZE (sizeof (int))
+
 typedef enum
 {
   OBJECT_FORMAT_TEXT = 0,
@@ -520,5 +532,63 @@ extern int encode_varint (int v, u_char *buf);
 extern int encode_varint64 (int64_t v, u_char *buf);
 extern bool decode_varint (u_char *buf, int buf_sz, int *val_ptr, int *consumed);
 extern bool decode_varint64 (u_char *buf, int buf_sz, int64_t *val_ptr, int *consumed);
+
+namespace cubload
+{
+  /*
+   * binary_column - one value of a row of a binary section
+   *
+   *    type is DB_TYPE_NULL for a NULL value, which carries no bytes. A collection is a column of its
+   *    own, whose bytes hold the number of elements as an int, and the elements follow it as the next
+   *    columns of the row. See binary_row_reader for the whole layout.
+   */
+  struct binary_column
+  {
+    DB_TYPE type;
+    const char *data;
+    std::size_t size;
+    std::size_t offset;		/* offset of the column in the row, for error messages */
+  };
+
+  /*
+   * binary_row_reader - walks the columns of one row of a binary section
+   *
+   *    A row is the sequence of its attribute values, each of them written by binary_print () in
+   *    src/executables/unload_object_file.c as
+   *
+   *      [varint64 (size + 1)][db type, 1 byte][size bytes of raw data]
+   *
+   *    where a varint of zero, a single 0x00 byte, stands for NULL and has no type byte.
+   *
+   *    A row that does not follow the layout is corrupted. next () then sets
+   *    ER_LDR_CORRUPTED_BINARY_RECORD, and every later call fails the same way: a column boundary that
+   *    was lost cannot be found again, so nothing behind it can be read.
+   */
+  class binary_row_reader
+  {
+    public:
+      binary_row_reader (const char *row, std::size_t size);
+
+      bool has_more () const
+      {
+	return !m_corrupted && m_pos < m_size;
+      }
+
+      bool is_corrupted () const
+      {
+	return m_corrupted;
+      }
+
+      int next (binary_column &col);
+
+    private:
+      int set_corrupted ();
+
+      const char *m_row;
+      std::size_t m_size;
+      std::size_t m_pos;
+      bool m_corrupted;
+  };
+} // namespace cubload
 
 #endif /* _LOAD_COMMON_HPP_ */

@@ -276,27 +276,24 @@ binary_row :
   BINARY_ROW
   {
     /*
-     * TODO: decode the [varint (size + 1)][db type][raw bytes] attributes of $1 into db values
-     *       and load the row the way instance_line does:
+     * A row of a binary section is loaded the way an instance_line is, see process_binary_line ()
+     * of the object loaders for the decoding of its columns.
      *
-     *         m_driver.get_object_loader ().start_line (-1);
-     *         m_driver.get_object_loader ().process_binary_line ($1);
-     *         m_driver.get_object_loader ().finish_line ();
-     *
-     *       finish_line () is left out until then, calling it here would insert a row of default
-     *       values for every row of the section.
-     *
-     * TODO: an enumeration value is written by unloaddb as its index only, see
-     *       desc_value_special_fprint_binary () in src/executables/unload_object_file.c, so the
-     *       decoder resolves it through the enumeration of the attribute domain of this database.
-     *       That assumes the enumeration is defined exactly as it was when the object file was
-     *       written. Decide whether the assumption has to be verified, and against what, since
-     *       the object file carries no description of the enumeration it was written with.
+     * An enumeration value is written by unloaddb as its index only, see
+     * desc_value_special_fprint_binary () in src/executables/unload_object_file.c, so it is
+     * resolved through the enumeration of the attribute domain of this database. That assumes the
+     * enumeration lists its elements in the order the one the file was written from did, which the
+     * object file carries nothing to check against. An index it does not have is refused.
      *
      * reset_after_line () releases the row buffer. That is safe here because the parser reduces
      * this rule without reading a look ahead token, so the scanner has not produced the next row
      * yet.
      */
+    /* the rows of a section make up one line of the grammar, so each one updates the line it is reported at */
+    m_driver.update_start_line ();
+    m_driver.get_object_loader ().start_line (-1);
+    m_driver.get_object_loader ().process_binary_line ($1);
+    m_driver.get_object_loader ().finish_line ();
     m_driver.get_semantic_helper ().reset_after_line ();
   }
   ;

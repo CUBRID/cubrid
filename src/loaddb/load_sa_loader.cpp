@@ -695,6 +695,9 @@ static void clist_final (void);
 static int is_internal_class (DB_OBJECT *class_);
 static void ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static void ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
+static void ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader,
+				  const cubload::binary_column &col);
+static void ldr_report_binary_error (LDR_CONTEXT *context, int error);
 static void ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_mismatch (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_ignore (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -1009,6 +1012,76 @@ error_exit:
       }
 
     process_values (cons, false);
+  }
+
+  /*
+   * sa_object_loader::process_binary_line - load one row of a binary section
+   *    row(in): the row, as the scanner took it out of the object file
+   * Note:
+   *    The counterpart of process_line (). A row that does not follow the layout of a binary
+   *    section stops where the layout was lost, nothing behind that point can be read.
+   */
+  void
+  sa_object_loader::process_binary_line (const string_type *row)
+  {
+    cubload::binary_row_reader reader (row->val, row->size);
+
+    CHECK_SKIP ();
+
+    if (er_errid () != NO_ERROR)
+      {
+	display_error (0);
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    if (reader.has_more () && ldr_Current_context->num_attrs == 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	if (ldr_Current_context->valid)
+	  {
+	    display_error (0);
+	  }
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    if (ldr_Current_context->act_mode == LDR_ACT_METH)
+      {
+	/* unloaddb never writes a binary section for a %class line with a constructor */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_STATE, 0);
+	display_error (0);
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    /* a column that breaks the layout ends the row, ldr_act_binary_value () reports one inside a collection */
+    while (reader.has_more () && ldr_Current_context->valid)
+      {
+	cubload::binary_column col;
+
+	if (reader.next (col) != NO_ERROR)
+	  {
+	    ldr_report_binary_error (ldr_Current_context, ER_LDR_CORRUPTED_BINARY_RECORD);
+	    break;
+	  }
+
+	ldr_act_binary_value (ldr_Current_context, reader, col);
+      }
+
+    if (reader.is_corrupted ())
+      {
+	/*
+	 * The row was reported where its layout was lost, and what is left of it cannot be read.
+	 * Do not let finish_line () report the attributes it never reached as missing on top of
+	 * that: the row is one failure, and with --error-control-file ignoring it, that second
+	 * error would still fail the load.
+	 */
+	ldr_Current_context->next_attr = ldr_Current_context->num_attrs;
+      }
   }
 
   /*
@@ -2339,6 +2412,134 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 error_exit:
   /* The element was cloned into the collection, so release whatever the conversion and the cast allocated. */
   db_value_clear (&tempval);
+  ldr_increment_err_count (context, (err != NO_ERROR));
+}
+
+/*
+ * ldr_skip_binary_elements - step over the elements of a collection column
+ *    return: NO_ERROR, or ER_LDR_CORRUPTED_BINARY_RECORD
+ *    reader(in/out): the row, positioned after col
+ *    col(in): the column, nothing is done unless it is a collection
+ * Note:
+ *    The elements of a collection follow it as columns of their own, so a collection that is not
+ *    converted still has to be read through to reach the next attribute.
+ */
+static int
+ldr_skip_binary_elements (cubload::binary_row_reader &reader, const cubload::binary_column &col)
+{
+  int count = 0;
+  cubload::binary_column elem;
+
+  if (!TP_IS_SET_TYPE (col.type))
+    {
+      return NO_ERROR;
+    }
+
+  if (col.size != sizeof (count))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) col.offset);
+      return ER_LDR_CORRUPTED_BINARY_RECORD;
+    }
+
+  memcpy (&count, col.data, sizeof (count));
+  for (int i = 0; i < count; i++)
+    {
+      if (reader.next (elem) != NO_ERROR)
+	{
+	  return ER_LDR_CORRUPTED_BINARY_RECORD;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * ldr_report_binary_error - report an error of a binary section row that belongs to no attribute
+ *    return: void
+ *    context(in/out): current context
+ *    error(in): the error, already set
+ */
+static void
+ldr_report_binary_error (LDR_CONTEXT *context, int error)
+{
+  int err = NO_ERROR;
+
+  CHECK_ERR (err, error);
+
+error_exit:
+  ldr_increment_err_count (context, (err != NO_ERROR));
+}
+
+/*
+ * ldr_act_binary_value - store one column of a binary section row
+ *    return: void
+ *    context(in/out): current context
+ *    reader(in/out): the row, positioned after col. A collection reads its elements from it
+ *    col(in): the column
+ * Note:
+ *    The counterpart of ldr_act_attr () for a row unloaddb --data-format wrote. The value is
+ *    built by binary_to_db_value (), which the server side uses as well, and handed to the sink
+ *    a collection goes to on a text line, see ldr_collection_db_collection ().
+ */
+static void
+ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader, const cubload::binary_column &col)
+{
+  LDR_ATTDESC *attdesc;
+  DB_VALUE val;
+  int err = NO_ERROR;
+  int conv_err;
+
+  db_make_null (&val);
+
+  if (context->next_attr >= context->num_attrs)
+    {
+      context->valid = false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      goto error_exit;
+    }
+
+  if (context->validation_only)
+    {
+      /* there are no attribute descriptors to convert with, see ldr_act_add_attr () */
+      CHECK_ERR (err, ldr_skip_binary_elements (reader, col));
+      goto error_exit;
+    }
+
+  attdesc = &context->attrs[context->next_attr];
+
+  conv_err = cubload::binary_to_db_value (reader, col, attdesc->conv_att, attdesc->collection_domain, &val);
+  if (conv_err == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+    {
+      /* name the class as well, see ldr_convert_value () */
+      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
+
+      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, attdesc->att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, conv_err, 1, class_attr);
+    }
+
+  ENSURE_ERR_SET (conv_err);
+  CHECK_ERR (err, conv_err);
+
+  if (conv_err != NO_ERROR)
+    {
+      /* --error-control-file ignores the error and the instance is skipped, there is no value to store */
+      goto error_exit;
+    }
+
+  if (context->attr_type == LDR_ATTRIBUTE_ANY)
+    {
+      CHECK_ERR (err, ldr_generic (context, &val));
+    }
+  else
+    {
+      CHECK_ERR (err, ldr_sink_class_object (context, attdesc->att, &val));
+    }
+
+error_exit:
+  /* a collection is not freed by this, it was handed to the object, see ldr_collection_db_collection () */
+  db_value_clear (&val);
+  context->next_attr += 1;
   ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
