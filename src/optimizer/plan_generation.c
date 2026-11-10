@@ -1642,8 +1642,7 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
 	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
 	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
 		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE)
-	      && !xasl->spec_list->indexptr->key_info.is_user_given_keylimit
-	      && xasl->spec_list->where_pred == NULL)
+	      && !xasl->spec_list->indexptr->key_info.is_user_given_keylimit && xasl->spec_list->where_pred == NULL)
 	    {
 	      assert (xasl->instnum_pred == NULL);
 	      assert (xasl->ordbynum_pred != NULL);
