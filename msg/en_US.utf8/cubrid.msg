@@ -1507,9 +1507,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
-1393 stream session error: %1$s.
+1393 Altering system generated stored procedure is not allowed.
 
-1394 Last Error
+1394 Granting or revoking privileges on system generated stored procedure is not allowed.
+
+1395 stream session error: %1$s.
+
+1396 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
