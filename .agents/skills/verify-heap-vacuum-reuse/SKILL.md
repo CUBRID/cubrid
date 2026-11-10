@@ -19,6 +19,23 @@ The script prints a temporary artifact directory. It derives both release positi
 
 At sync, home passes and forward has a model finding. Vacuum logs the forward slot and releases its latch before its sysop commit. The model allows an INSERT to reuse that slot, commit and flush its WAL, and then a crash before the sysop commit is durable. Restart undo then targets the committed row's slot. The replay injects this interleaving at the release boundary; it does not run the allocator, WAL, or restart. `heap_add_bestpage` and `spage_find_free_slot` support the reuse assumption, but do not establish the entire concurrent execution.
 
+## Engine replay
+
+The model finding has an engine replay. From a built debug worktree with an initialized `cub-workenv`, run:
+
+```sh
+.agents/skills/verify-heap-vacuum-reuse/scripts/engine_replay.sh OUTDIR
+```
+
+It needs `gdb`, and it creates a new disposable database for each run. It signals only this environment's `cub_master` and `cub_server`, which it selects by `/proc/PID/exe`. It relocates one row, deletes the row and commits. It then stops the vacuum worker under gdb in non-stop mode just before `log_sysop_commit` in the `REC_RELOCATION` branch, which it locates in the current source. While the worker is stopped, it commits a competing INSERT of the same size, SIGKILLs the master and the server, restarts the server and runs SA `checkdb`. Exit 0 means the restart and `checkdb` succeeded, and the competing row survived if its INSERT committed. Exit 1 is a finding, and `OUTDIR/restart-gdb.out` holds the restart backtrace. Exit 2 is a setup or harness error. Pass `DONT_REUSE_OID` as the second argument to test a non-reuse heap.
+
+Observed on 2026-11-10, debug_gcc:
+
+- Baseline `vacuum.c` at the sync commit: exit 1. The competing INSERT commits into the vacuumed forward slot 3. Restart undo of `RVVAC_HEAP_RECORD_VACUUM` (`vacuum_rv_undo_vacuum_heap_record` → `heap_rv_redo_insert`) fails the assertion `slot_p->offset_to_record == SPAGE_EMPTY_OFFSET` in `spage_insert_for_recovery`. Under `cub_master` auto-restart, the server crash-loops.
+- With the CBRD-27935 fix, which keeps the forward page fixed until the sysop ends: exit 0. The competing INSERT waits on the forward page while the worker is stopped, and never commits. The restart succeeds with the 14 committed rows, and `checkdb` passes.
+
+The replay covers the slot form of the window on a reuse heap. It does not cover the byte-only form, a non-reuse heap, release builds (where the occupied slot would be overwritten instead of asserting), or a competitor that the fixed latch sends to another page. After the fix, `check.py` reports `OUT OF SYNC` because its source matcher does not recognize the `DONT_FREE`, commit, unfix shape. Update the matcher before relying on the model for the fixed source.
+
 ## Bounds and assumptions
 
 One `REC_RELOCATION` sysop, one home slot and one forward slot on distinct pages, one competing INSERT, and one crash/restart are modeled. The home slot is assumed reusable. Each INSERT is assumed able to select the target page and slot, with sufficient space. Page lifetime, bytes, non-reusable home slots, losing INSERT undo order, other record types, multiple workers, replication, and HA are outside scope. The model retains the committed insert at restart. It treats its commit as flushing all earlier WAL, and allows a later vacuum log or sysop commit to be either durable or lost only where WAL order permits. Sysop commit completion means its end record was appended; it does not require a forced flush. If that append precedes the INSERT log and the INSERT commits, its flush also makes the sysop end durable. The baseline finding requires the INSERT commit to flush before the sysop end is appended. The model overapproximates page selection and persistence; a pass establishes only these modeled cases. Ordinary relocation has no explicit abort after the forward release in the covered branch; this check covers crash undo.
