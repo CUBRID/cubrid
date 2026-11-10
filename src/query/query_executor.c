@@ -807,6 +807,9 @@ static int qexec_connect_by_sort_siblings (THREAD_ENTRY * thread_p, CONNECT_BY_D
 					   SORTKEY_INFO * key_info_p, const QFILE_TUPLE_VALUE_TYPE_LIST * tpl_layout);
 static int qexec_listfile_orderby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QFILE_LIST_ID * list_file,
 				   SORT_LIST * orderby_list, XASL_STATE * xasl_state, OUTPTR_LIST * outptr_list);
+static int qexec_keep_last_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static void qexec_restore_last_row (XASL_NODE * xasl);
+static void qexec_clear_last_row (THREAD_ENTRY * thread_p, BUILDVALUE_PROC_NODE * buildvalue);
 static int qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 						 QFILE_TUPLE_RECORD * tplrec);
 static int qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -1512,6 +1515,10 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 				&& xasl->curr_spec->indexptr) ? xasl->curr_spec->indexptr->use_desc_index : false;
 	  if (qdata_evaluate_aggregate_list
 	      (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd, NULL, is_desc_index) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  if (XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN) && qexec_keep_last_row (thread_p, xasl) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -2814,6 +2821,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    scan_end_scan (thread_p, &xasl->merge_spec->s_id);
 	    scan_close_scan (thread_p, &xasl->merge_spec->s_id);
 	  }
+	qexec_clear_last_row (thread_p, buildvalue);
 	if (is_final)
 	  {
 	    pg_cnt += qexec_clear_agg_list (thread_p, xasl, buildvalue->agg_list, is_final, false);
@@ -3434,6 +3442,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	    scan_end_scan (thread_p, &xasl->merge_spec->s_id);
 	    scan_close_scan (thread_p, &xasl->merge_spec->s_id);
 	  }
+	qexec_clear_last_row (thread_p, buildvalue);
 	if (is_final)
 	  {
 	    pg_cnt += qexec_clear_agg_list (thread_p, xasl, buildvalue->agg_list, is_final, true);
@@ -13091,7 +13100,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
  *           per row
  *   xasl(in): the block, its first spec opened
  *
- * The questions in order: the block's kind (a BUILDVALUE with aggregates; a BUILDLIST projection or hash GROUP BY,
+ * The questions in order: the block's kind (a BUILDVALUE with aggregates whose output reads no column of the scan,
+ * XASL_OUTPUT_READS_SCAN; a BUILDLIST projection or hash GROUP BY,
  * not a sort-only GROUP BY, ROLLUP, analytics or a DML scan), then its one spec (a sequential heap scan of a class,
  * no locking read, not the min/max index scan), then what its row loop does besides -- the object fetches, the
  * correlated subqueries, the join and if predicates, inst_num (), the hierarchy, the single-tuple stop -- each of
@@ -13114,7 +13124,8 @@ qexec_batch_eligible (const XASL_NODE * xasl)
 
   if (xasl->type == BUILDVALUE_PROC)
     {
-      if (xasl->proc.buildvalue.agg_list == NULL || xasl->proc.buildvalue.is_always_false)
+      if (xasl->proc.buildvalue.agg_list == NULL || xasl->proc.buildvalue.is_always_false
+	  || XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
 	{
 	  return false;
 	}
@@ -20777,6 +20788,9 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
       {
 	BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
 
+	/* no row of this run aggregated yet (qexec_keep_last_row ()) */
+	buildvalue->last_row_kept = false;
+
 	/* set groupby_num() value as 1 for BUILDVALUE_PROC */
 	if (buildvalue->grbynum_val)
 	  {
@@ -20853,6 +20867,132 @@ exit_on_error:
 }
 
 /*
+ * qexec_keep_last_row () - copy the scan columns of the row a BUILDVALUE just aggregated
+ *   return: NO_ERROR, or an error code
+ *   xasl(in): a BUILDVALUE marked XASL_OUTPUT_READS_SCAN
+ *
+ * The block's output list reads its scans' value lists once the scans are closed
+ * (qexec_end_buildvalueblock_iterations ()), but a value there is valid only while its row is the scan's current
+ * one.  A heap scan shares the row's values with its attribute cache: a string is decoded in place, pointing into the
+ * row's page, which the scan unfixes as soon as it moves to the next one, and a compressed string is decompressed
+ * into the cache's buffers, which the cache frees when the filter reads the next row
+ * (heap_attrinfo_read_dbvalues ()).  The row is copied here, while its values are valid, and the copy goes back into
+ * the value lists before the output list reads them (qexec_restore_last_row ()).
+ */
+static int
+qexec_keep_last_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
+  XASL_NODE *scan;
+  QPROC_DB_VALUE_LIST v;
+  const PR_TYPE *type;
+  int i = 0, n = 0, error;
+
+  if (buildvalue->last_row == NULL)
+    {
+      for (scan = xasl; scan != NULL; scan = scan->scan_ptr)
+	{
+	  n += (scan->val_list != NULL) ? scan->val_list->val_cnt : 0;
+	}
+      if (n == 0)
+	{
+	  return NO_ERROR;
+	}
+      buildvalue->last_row = (DB_VALUE *) db_private_alloc (thread_p, n * sizeof (DB_VALUE));
+      if (buildvalue->last_row == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (n * sizeof (DB_VALUE)));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (i = 0; i < n; i++)
+	{
+	  db_make_null (&buildvalue->last_row[i]);
+	}
+      buildvalue->last_row_cnt = n;
+      i = 0;
+    }
+
+  for (scan = xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL && i < buildvalue->last_row_cnt;
+	   v = v->next, i++)
+	{
+	  pr_clear_value (&buildvalue->last_row[i]);
+	  if (DB_IS_NULL (v->val))
+	    {
+	      /* a NULL keeps its domain and allocates nothing */
+	      (void) pr_clone_value (v->val, &buildvalue->last_row[i]);
+	      continue;
+	    }
+	  /* pr_clone_value () would hide a copy that failed behind a NULL: the type's setval tells */
+	  type = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (v->val));
+	  error = (type != NULL) ? type->setval (&buildvalue->last_row[i], v->val, true) : ER_FAILED;
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	}
+    }
+  buildvalue->last_row_kept = true;
+  return NO_ERROR;
+}
+
+/*
+ * qexec_restore_last_row () - put the copy of the last aggregated row back into the value lists the output list reads
+ *   xasl(in): a BUILDVALUE marked XASL_OUTPUT_READS_SCAN, its scans closed
+ *
+ * The value lists take the copies over (qexec_clear_xasl () frees them, as the next row a slot takes would).  When no
+ * row passed the filters, or the block ended without the row loop (an aggregate answered from the index or the
+ * statistics, the buildvalue gather of a parallel scan), the columns are NULL.
+ */
+static void
+qexec_restore_last_row (XASL_NODE * xasl)
+{
+  BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
+  XASL_NODE *scan;
+  QPROC_DB_VALUE_LIST v;
+  int i = 0;
+
+  for (scan = xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL; v = v->next, i++)
+	{
+	  pr_clear_value (v->val);
+	  if (buildvalue->last_row_kept && i < buildvalue->last_row_cnt)
+	    {
+	      *v->val = buildvalue->last_row[i];
+	      db_make_null (&buildvalue->last_row[i]);
+	    }
+	  else
+	    {
+	      /* a slot the scan peeked into keeps its pointer through pr_clear_value () */
+	      db_make_null (v->val);
+	    }
+	}
+    }
+  buildvalue->last_row_kept = false;
+}
+
+/* free the copy qexec_keep_last_row () made, by the thread that made it */
+static void
+qexec_clear_last_row (THREAD_ENTRY * thread_p, BUILDVALUE_PROC_NODE * buildvalue)
+{
+  int i;
+
+  if (buildvalue->last_row != NULL)
+    {
+      for (i = 0; i < buildvalue->last_row_cnt; i++)
+	{
+	  pr_clear_value (&buildvalue->last_row[i]);
+	}
+      db_private_free_and_init (thread_p, buildvalue->last_row);
+    }
+  buildvalue->last_row_cnt = 0;
+  buildvalue->last_row_kept = false;
+}
+
+/*
  * qexec_end_buildvalueblock_iterations () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -20874,6 +21014,12 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_ID *output = NULL;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
+
+  if (XASL_IS_FLAGED (xasl, XASL_OUTPUT_READS_SCAN))
+    {
+      /* the output list reads the scans' columns: the last row the filters kept, copied as it was aggregated */
+      qexec_restore_last_row (xasl);
+    }
 
   /* make final pass on aggregate list nodes */
   /* Sharing needs the resolved accumulator domains. A parallel BUILDVALUE
