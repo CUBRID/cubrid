@@ -1193,6 +1193,7 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
     {
       SP_ARG_INFO arg_info (sp_info.unique_name);
 
+      arg_info.is_system_generated = sp_info.is_system_generated;
       arg_info.index_of = param_count++;
       arg_info.arg_name = PT_NODE_SP_ARG_NAME (p);
       arg_info.data_type = pt_type_enum_to_db (p->type_enum);
