@@ -10771,6 +10771,13 @@ encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned char cas_typ
  * END pays it once the transfer is done. */
 static bool stream_Deferred_auto_commit = false;
 
+/* An upload (a kind whose END finishes no statement) does no work in the transaction: its bytes go to the session.
+ * Given up -- refused, or aborted -- it would leave the connection marked in a transaction with nothing to end it,
+ * so the connection returns to the status it had before the upload opened. */
+static int stream_Status_before_request = CON_STATUS_OUT_TRAN;
+static int stream_Status_before_upload = -1;	/* while a driver-opened upload is open */
+static int stream_Status_to_restore = -1;
+
 static bool
 do_commit_after_execute (const t_srv_handle & server_handle)
 {
@@ -11053,6 +11060,8 @@ ux_stream_reset (void)
   stream_from_reset ();
   stream_Deferred_auto_commit = false;
   stream_Log.open = false;
+  stream_Status_before_upload = -1;
+  stream_Status_to_restore = -1;
 }
 
 /*
@@ -11124,6 +11133,41 @@ ux_stream_finds_no_upload (int func_code)
     }
 }
 
+/* the status the connection had before the request now being processed */
+void
+ux_stream_note_status_before (int con_status)
+{
+  stream_Status_before_request = con_status;
+}
+
+static void
+ux_stream_give_up_upload (void)
+{
+  if (stream_Status_before_upload != -1)
+    {
+      stream_Status_to_restore = stream_Status_before_upload;
+      stream_Status_before_upload = -1;
+    }
+}
+
+/*
+ * ux_stream_status_to_restore () - The status to set after a request that gave up an upload, or -1
+ *
+ * Only back out of a transaction, and only when nothing else the client holds keeps it: a download or a result set.
+ */
+int
+ux_stream_status_to_restore (void)
+{
+  int status = stream_Status_to_restore;
+
+  stream_Status_to_restore = -1;
+  if (status != CON_STATUS_OUT_TRAN || stream_from_holds_download () || hm_has_result_tied_to_tran ())
+    {
+      return -1;
+    }
+  return status;
+}
+
 /*
  * refuse_stream_opened_mid_request () - Give up a stream a statement opened with more of its request to run
  *
@@ -11192,10 +11236,13 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, char 
 
   /* the server cannot tell a driver's open from a statement's, so the client half answers who may open the kind */
   err_code = stream_kind_client_check_driver_open (stream_kind);
-  if (err_code == NO_ERROR)
+  if (err_code < 0)
     {
-      err_code = stream_kind_client_authorize (stream_kind, config, config_len);
+      /* refused before anything ran in the transaction */
+      stream_Status_to_restore = stream_Status_before_request;
+      return ux_stream_error (err_code, net_buf);
     }
+  err_code = stream_kind_client_authorize (stream_kind, config, config_len);
   if (err_code == NO_ERROR && stream_from_is_open ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
@@ -11212,6 +11259,15 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, char 
   err_code = stream_from_init (stream_kind, config, config_len, final ? STREAM_FLAG_FINAL : 0, data, data_len,
 			       &count, &ends_unit_of_work);
   auto_commit_owed = (ends_unit_of_work && as_info->auto_commit_mode == TRUE);
+  if (!ends_unit_of_work && !(err_code == NO_ERROR && final))
+    {
+      /* an upload, or an open refused before it did anything */
+      stream_Status_before_upload = stream_Status_before_request;
+      if (err_code < 0)
+	{
+	  ux_stream_give_up_upload ();
+	}
+    }
   if (err_code < 0)
     {
       ux_stream_log_end (false, err_code, 0);
@@ -11250,6 +11306,7 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO *
   err_code = stream_from_send_data (data, data_len);
   if (err_code < 0)
     {
+      ux_stream_give_up_upload ();
       ux_stream_log_end (false, err_code, 0);
 
       /* The server dropped the session on the failed chunk, so the statement
@@ -11286,6 +11343,11 @@ ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
   ux_stream_log_chunk (data_len);
   err_code = stream_from_end (&count, data, data_len);
+  if (err_code < 0)
+    {
+      ux_stream_give_up_upload ();
+    }
+  stream_Status_before_upload = -1;
   ux_stream_log_end (false, err_code, count);
   if (err_code < 0)
     {
@@ -11323,6 +11385,7 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int err_code;
   bool auto_commit_owed;
 
+  ux_stream_give_up_upload ();
   auto_commit_owed = stream_Deferred_auto_commit;
   stream_Deferred_auto_commit = false;
 
@@ -11431,6 +11494,13 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
 	  NET_BUF_ERR_SET (net_buf);
 	  return err_code;
 	}
+    }
+
+  /* the download reads in the transaction, and its commit waits while the upload is open (ux_stream_settle_release):
+   * giving the upload up must not take the connection out of it */
+  if (stream_Status_before_upload != -1)
+    {
+      stream_Status_before_upload = CON_STATUS_IN_TRAN;
     }
 
   err_code = stream_from_read_open (stream_kind, config, config_len, first_max, ux_stream_server_read_flags (flags),

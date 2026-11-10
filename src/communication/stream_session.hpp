@@ -151,7 +151,10 @@ struct stream_kind_desc
    * does -- the transfer is the whole of it. A kind that only stages bytes for
    * a later statement does not, and committing at its END would commit that
    * statement's transaction early. Declared here rather than read off the wire,
-   * because a client cannot claim a commit its consumer never promised. */
+   * because a client cannot claim a commit its consumer never promised.
+   * Such a kind, its client authorize included, writes nothing and takes no lock in
+   * the transaction before that statement runs: the CAS takes a connection whose
+   * upload was given up back out of the transaction. */
   bool ends_unit_of_work;
 
   /* Upload only: END issues a handle for stream_result::staged and returns it in the count. */
