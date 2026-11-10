@@ -6501,7 +6501,12 @@ ldr_sa_load (load_args *args, int *status, volatile bool *interrupted)
   int ldr_init_ret = NO_ERROR;
   int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
 
-  std::ifstream object_file (args->object_file);
+  /*
+   * Opened in binary mode, as the insert pass below and split () in load_common.cpp open it. A binary
+   * section holds raw bytes, which a text mode stream on Windows changes ("\r\n" into "\n", and 0x1A
+   * taken as the end of the file), and the scanner reads "\r\n" as a new line by itself.
+   */
+  std::ifstream object_file (args->object_file, std::fstream::in | std::fstream::binary);
 
   ldr_init_driver ();
 
