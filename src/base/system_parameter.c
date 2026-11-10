@@ -12883,6 +12883,37 @@ sysprm_get_session_parameters_count (void)
 
 #if defined (CS_MODE)
 /*
+ * sysprm_get_cached_session_param_int () - the value of the conf of an integer session parameter, kept for the
+ *					     sessions to create
+ *
+ * return : the value, or default_value if prm_id is not a session parameter or the values are not loaded
+ * prm_id (in)	      : a session parameter of PRM_INTEGER or PRM_KEYWORD
+ * default_value (in) : the value to return otherwise
+ *
+ * Note: for a broker, whose current values may be those of the session its client reconnected to.
+ */
+int
+sysprm_get_cached_session_param_int (PARAM_ID prm_id, int default_value)
+{
+  int idx;
+
+  if (cached_session_parameters == NULL || prm_id < 0 || prm_id > PRM_LAST_ID)
+    {
+      return default_value;
+    }
+
+  idx = prm_Def_session_idx[prm_id];
+  if (idx < 0)
+    {
+      return default_value;
+    }
+
+  assert (cached_session_parameters[idx].datatype == PRM_INTEGER
+	  || cached_session_parameters[idx].datatype == PRM_KEYWORD);
+  return cached_session_parameters[idx].value.i;
+}
+
+/*
  * sysprm_update_cached_session_param_val () - updates value of a cached
  *		 session parameter
  * prm_id (in) : cached session system paramater id to update

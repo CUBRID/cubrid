@@ -1237,8 +1237,10 @@ struct dbdef_vol_ext_info
 #define SESSION_SECRET_SIZE			8
 
 /* session variable the broker (CAS) keeps the state it restores for a client that reconnects to the session in.
- * It is not counted against the limit of session variables a user may define. */
-#define SESSION_CAS_RESTORE_VARIABLE		"cas_session_restore"
+ * It is not counted against the limit of session variables a user may define. The brackets keep it out of reach of
+ * SQL: the parser refuses an identifier with '[' or ']' (pt_check_identifier ()), so a user can neither set, read nor
+ * drop it, and no variable of an application can take its name. The CAS reads and writes it through the API. */
+#define SESSION_CAS_RESTORE_VARIABLE		"[cas_session_restore]"
 
 typedef enum
 {

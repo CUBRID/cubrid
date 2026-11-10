@@ -397,15 +397,13 @@ struct cas_client_prm
 static CAS_CLIENT_PRM *cas_client_prms = NULL;
 static int cas_num_client_prms = 0;
 
-/* the values of the conf for new sessions, in the client library (system_parameter.h declares it for CS_MODE only) */
-extern SESSION_PARAM *cached_session_parameters;
-
 static int ux_prm_lock_timeout_to_msec (int lock_timeout);
 static void ux_get_prm_tran_setting (int *isolation_level, int *lock_timeout);
 static void ux_apply_tran_setting (int isolation_level, int lock_timeout);
 static void ux_reset_tran_setting_from_prm (void);
 static void ux_init_client_prms (void);
 static void ux_get_changed_client_prms (char *buf, int size, bool revert);
+static bool ux_restore_client_prms (const char *prms);
 static void ux_write_session_restore (void);
 static bool ux_read_session_restore (void);
 static bool ux_read_int_pair (const char **p, int *first, int *second);
@@ -625,15 +623,10 @@ ux_is_database_connected (void)
 void
 ux_get_default_setting ()
 {
-  int idx;
-
   /* The values of the conf, kept for new sessions. The transaction may already have the values of the session the
    * first client of this CAS reconnected to, which must not become the defaults for the next clients. */
-  idx = prm_Def_session_idx[PRM_ID_LOG_ISOLATION_LEVEL];
-  cas_default_isolation_level = (idx >= 0) ? cached_session_parameters[idx].value.i : 0;
-
-  idx = prm_Def_session_idx[PRM_ID_LK_TIMEOUT];
-  cas_default_lock_timeout = ux_prm_lock_timeout_to_msec ((idx >= 0) ? cached_session_parameters[idx].value.i : -1);
+  cas_default_isolation_level = sysprm_get_cached_session_param_int (PRM_ID_LOG_ISOLATION_LEVEL, 0);
+  cas_default_lock_timeout = ux_prm_lock_timeout_to_msec (sysprm_get_cached_session_param_int (PRM_ID_LK_TIMEOUT, -1));
 
   if (!IS_VALID_ISOLATION_LEVEL (cas_default_isolation_level))
     {
@@ -840,6 +833,58 @@ ux_get_changed_client_prms (char *buf, int size, bool revert)
 }
 
 /*
+ * ux_restore_client_prms () - set the parameters for the client only kept in the session, one by one
+ *
+ * return : false if one was refused
+ * prms (in) : "name=value;..." as ux_get_changed_client_prms () makes it
+ *
+ * Note: db_set_system_parameters () refuses the whole list for one it cannot set (a parameter for the test only once
+ *	 test_mode is off in the conf the broker was started with, or one another version of the broker does not know),
+ *	 so each is set on its own and only the refused one is lost. A string value is quoted and may hold ';'.
+ */
+static bool
+ux_restore_client_prms (const char *prms)
+{
+  char prm[CAS_RESTORE_BUF_SIZE];
+  const char *p = prms, *start;
+  bool in_quote = false, all_set = true;
+  int len;
+
+  while (*p != '\0')
+    {
+      start = p;
+      for (; *p != '\0' && (in_quote || *p != ';'); p++)
+	{
+	  if (*p == '"')
+	    {
+	      in_quote = !in_quote;
+	    }
+	}
+
+      len = (int) (p - start);
+      if (len > 0)
+	{
+	  /* prms is not longer than cas_restore.prm, so neither is one of them */
+	  memcpy (prm, start, len);
+	  prm[len] = '\0';
+	  if (db_set_system_parameters (prm) != NO_ERROR)
+	    {
+	      cas_log_write_and_end (0, false, "cannot restore %s, error:%d", prm, er_errid ());
+	      er_clear ();
+	      all_set = false;
+	    }
+	}
+
+      if (*p == ';')
+	{
+	  p++;
+	}
+    }
+
+  return all_set;
+}
+
+/*
  * ux_write_session_restore () - write the state of the client to the session, if it has changed
  */
 static void
@@ -899,7 +944,6 @@ ux_read_session_restore (void)
 {
   DB_VALUE name, value;
   const char *str, *p, *q;
-  char *end;
   bool found = false;
 
   db_make_char (&name, (int) strlen (SESSION_CAS_RESTORE_VARIABLE), SESSION_CAS_RESTORE_VARIABLE,
@@ -1098,6 +1142,7 @@ ux_restore_session_state (bool is_reused_session)
 {
   int isolation_level, lock_timeout;
   int error;
+  bool prm_refused = false;
 
   /* What the previous client of this CAS changed out of its session. prm has all of it (recorded after each request),
    * so most connections, whose previous client changed none, skip comparing every parameter. */
@@ -1127,10 +1172,11 @@ ux_restore_session_state (bool is_reused_session)
 
       cas_restore.in_resend_window = true;
 
-      if (cas_restore.prm[0] != '\0' && db_set_system_parameters (cas_restore.prm) != NO_ERROR)
+      if (cas_restore.prm[0] != '\0' && !ux_restore_client_prms (cas_restore.prm))
 	{
-	  cas_log_write_and_end (0, false, "cannot restore %s, error:%d", cas_restore.prm, er_errid ());
-	  er_clear ();
+	  /* keep in the session what is in effect, not the parameters this CAS refused */
+	  ux_get_changed_client_prms (cas_restore.prm, sizeof (cas_restore.prm), false);
+	  prm_refused = true;
 	}
     }
 
@@ -1153,6 +1199,11 @@ ux_restore_session_state (bool is_reused_session)
   cas_restore.user = Au_user;
   cas_restore.prm_generation = db_get_system_parameters_generation ();
   ux_get_tran_setting (&cas_restore.base_lock_timeout, &cas_restore.base_isolation);
+
+  if (prm_refused)
+    {
+      ux_write_session_restore ();
+    }
 
   return 0;
 }

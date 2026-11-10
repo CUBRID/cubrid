@@ -863,6 +863,8 @@ extern "C"
   extern int sysprm_print_assign_values (SYSPRM_ASSIGN_VALUE * prm_values, char *buffer, int length);
   extern int sysprm_set_error (SYSPRM_ERR rc, const char *data);
   extern int sysprm_get_session_parameters_count (void);
+  /* in the client library only (CS_MODE); for a broker */
+  extern int sysprm_get_cached_session_param_int (PARAM_ID prm_id, int default_value);
 
 #if defined (WINDOWS)
   /* FIXME!!! Segmentation fault when using inline function on Window. Temporarily, disable inline functions on Window. */
