@@ -34,6 +34,23 @@ Observed on 2026-11-10, debug_gcc:
 - Baseline `vacuum.c` at the sync commit: exit 1. The competing INSERT commits into the vacuumed forward slot 3. Restart undo of `RVVAC_HEAP_RECORD_VACUUM` (`vacuum_rv_undo_vacuum_heap_record` → `heap_rv_redo_insert`) fails the assertion `slot_p->offset_to_record == SPAGE_EMPTY_OFFSET` in `spage_insert_for_recovery`. Under `cub_master` auto-restart, the server crash-loops.
 - With the CBRD-27935 fix, which keeps the forward page fixed until the sysop ends: exit 0. The competing INSERT waits on the forward page while the worker is stopped, and never commits. The restart succeeds with the 14 committed rows, and `checkdb` passes.
 
+### Commit saved-space window (CBRD-27936)
+
+The heap-slot-undo model reports a related byte window. `log_commit_local` frees a transaction's saved page space before it appends the commit record. To replay it, run:
+
+```sh
+.agents/skills/verify-heap-vacuum-reuse/scripts/engine_replay_commit.sh OUTDIR
+```
+
+The script uses the same process and database rules. It puts two rows of 8000 and 7000 bytes on one page, which leaves 128 free bytes. Session U shrinks row 1 to 100 bytes in place. That is an MVCC UPDATE with no postpone, so it works on the default REUSE_OID heap. U then commits. gdb stops U's worker on the statement after `spage_free_saved_spaces` in `log_commit_local`, and the script reports whether the commit record is appended before that point. Session T grows row 2 to 12000 bytes in place, which fits only with U's released bytes, and commits. The script then SIGKILLs the master and the server, and restarts. The exit codes are the same as those of `engine_replay.sh`.
+
+Observed on 2026-11-10, debug_gcc:
+
+- Free before the commit record (sync commit with the CBRD-27935 fix): exit 1. T commits in place. U is a loser at restart. Undo of U's `RVHF_UPDATE_NOTIFY_VACUUM` (`heap_rv_undo_update` → `heap_rv_undoredo_update` → `heap_update_physical`) gets `SP_DOESNT_FIT` from `spage_update`. It has to write 7972 bytes into a 140-byte slot, and the page has 3232 free bytes. The debug build stops at `assert (false)` in `heap_update_physical`. The DB cannot restart.
+- With the CBRD-27936 fix, which frees saved spaces after the commit record is appended: exit 0. T's commit flushes U's commit record, so restart treats U as committed. Row 1 is 100 bytes, row 2 is 12000 bytes, and `checkdb` passes.
+
+Neither replay covers release builds, the DELETE form of the CBRD-27936 window, or 2PC.
+
 The replay covers the slot form of the window on a reuse heap. It does not cover the byte-only form, a non-reuse heap, release builds (where the occupied slot would be overwritten instead of asserting), or a competitor that the fixed latch sends to another page. After the fix, `check.py` reports `OUT OF SYNC` because its source matcher does not recognize the `DONT_FREE`, commit, unfix shape. Update the matcher before relying on the model for the fixed source.
 
 ## Bounds and assumptions
