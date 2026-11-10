@@ -5,6 +5,7 @@ Usage, from a built and cub-workenv-initialized worktree:
 
     python3 contrib/benchmarks/inner_table/accept.py --case storage-1 --root OUTDIR
     python3 contrib/benchmarks/inner_table/accept.py --case storage-2 --root OUTDIR
+    python3 contrib/benchmarks/inner_table/accept.py --case recovery --root OUTDIR   (needs gdb; see recovery.py)
 
 Case storage-2 adds VARBIT values, two cold columns in one row, binary zeros, a parent row
 that stays REC_BIGONE without its cold value, and a short-chunk control.
@@ -446,7 +447,7 @@ def supports_inner(cubrid):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--case', required=True, choices=['storage-1', 'storage-2'])
+    ap.add_argument('--case', required=True, choices=['storage-1', 'storage-2', 'recovery'])
     ap.add_argument('--root', required=True, type=Path)
     args = ap.parse_args()
     wt = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip())
@@ -469,6 +470,21 @@ def main():
     started = False
     conf = Path(os.environ.get('CUBRID_CONF_FILE') or Path(os.environ['CUBRID']) / 'conf/cubrid.conf')
     conf_backup = None
+    if args.case == 'recovery':
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import recovery
+        conf_text = conf.read_text()
+        try:
+            results = recovery.RecoveryCase(root, wt).run(conf, conf_text)
+        finally:
+            conf.write_text(conf_text)
+        summary['results'] = results
+        verdicts = {r['verdict'] for r in results}
+        rc = 0 if verdicts == {'VERIFIED'} else 1 if 'FAILED' in verdicts else 2
+        summary['overall'] = {0: 'VERIFIED', 1: 'FAILED', 2: 'NOT VERIFIED'}[rc]
+        (root / 'result.json').write_text(json.dumps(summary, indent=2) + '\n')
+        print(f'{args.case}: {summary["overall"]} (exit {rc}); {root / "result.json"}')
+        return rc
     try:
         sh(['cub-workenv', 'create-db', name], log)
         if inner:
