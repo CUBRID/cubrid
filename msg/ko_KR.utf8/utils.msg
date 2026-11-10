@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -181,6 +180,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     restoreslave\n\
     spacedb\n\
     unloaddb\n\
+    upgradedb\n\
     paramdump\n\
     statdump\n\
     changemode\n\
@@ -284,6 +284,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     acl         <status|reload> [게이트웨이 이름]\n
 46 owner_name의 길이는 %1$d 미만이어야 하고 class_name의 길이는 %2$d 바이트 미만이어야 합니다.\n
 47 테이블 이름('%1$s')을 owner_name.class_name 형식으로 입력하십시오.\n
+51 "%1$s"은(는) 뷰입니다. 이 작업은 테이블을 대상으로 합니다.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
@@ -414,7 +415,10 @@ optimizedb: 데이터베이스 최적화.\n\
 사용법: %1$s optimizedb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n
+  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n\
+      --no-histogram           클래스 통계만 갱신함; 히스토그램은 만들지도 지우지도 않음\n\
+      --no-histogram-classes=NAME[,NAME...]\n\
+                               해당 클래스들의 히스토그램 생성을 제외함; 나머지 클래스는 그대로 갱신\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
@@ -569,7 +573,6 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
       --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n\
-      --skip-index-detail     인덱스를 생성할 때 지정된 WITH 절 옵션을 인쇄하지 않음; 기본값: 사용 안 함\n\
       --as-dba                로그인 사용자가 DBA 그룹의 구성원인 경우 DBA와 동일한 스키마 파일을 추출합니다.\n
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
@@ -892,26 +895,6 @@ killtran: 데이터베이스 transaction 제거 관리\n\
   -f, --force                        사용자 확인 없이 지정된 트랜잭션 종료\n
 
 
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1  데이터베이스-이름
-2  필수 인자; 기본값: 없음
-3  호환성 검사
-4  호환성 검사만 수행
-5  백업 경로
-6  백업 볼륨을 저장할 디렉터리 경로나 디바이스 이름
-20 데이터베이스 '%1$s'가 존재하지 않습니다.
-21 '%1$s'는(은) 버전이 너무 낮아 %2$s으로 마이그레이션 할 수 없습니다.\n
-22 '%1$s'는(은) 마이그레이션이 필요 없습니다.\n
-23 '%1$s'는(은) 마이그레이션이 필요합니다.\n
-24 마이그레이션 후 백업하는 것을 권장합니다. 지금 백업하시겠습니까? (y/n):
-25 마이그레이션 후 백업하는 것을 권장합니다.
-26 \n*** 경고: %1$s 으로 마이그레이션 수행 전에 데이터베이스를 백업하십시오 ***\n\n마이그레이션 중 발생할 수 있는 장애를 복구하기 위해서는 반드시 백업이 필요합니다.\n백업 하셨습니까? (y/n):
-27 \n1. backupdb 실행 \n2. 새로운 데이터베이스에 대한 새로운 백업 경로 입력. (현재 경로: %1$s) \n3. 종료 \n
-28 \n새로운 데이터베이스에 대한 백업 경로:
-29 \n마이그레이션 및 백업을 정상적으로 수행했습니다.
-30 백업에 실패했습니다. 다시 백업하십시오.
-31 \n\n*** 경고: 마이그레이션 완료 이후에는 이전 버전의 백업 파일을 이용하여 복구할 수 없습니다.\n이전 버전의 백업 파일은 해당 버전에서만 복구가 가능합니다.\n이전 버전의 백업 파일을 보존하십시오. ***\n
-
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
 alterdbhost: 데이터베이스의 호스트 변경\n\
@@ -936,12 +919,14 @@ valid options:\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n
+16 에러: --drop-clone과 --drop은 함께 사용할 수 없습니다.\n
 59 plandump는 독립 모드에서 실행할 수 없습니다.\n
 60 \
 plandump: 쿼리 플랜 표시 및 관리\n\
 사용법: %1$s plandump [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
+  -c, --drop-clone             캐시된 플랜의 XASL clone 삭제(플랜은 유지); -s 와 함께 쓰면 sha1 플랜만\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
   -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n
@@ -1366,3 +1351,25 @@ valid options:\n\
     -o, --output-file=FILE        출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -l, --list                    모든 파일 항목 출력\n\
     -c, --clean-invalid-file      유효하지 않은 파일 정리\n
+
+$set 61 MSGCAT_UTIL_SET_UPGRADEDB
+1 데이터베이스 시스템 메타데이터를 업그레이드할 수 없습니다. 현재 CUBRID 버전으로 데이터베이스를 다시 생성하십시오.\n
+2 데이터베이스 시스템 메타데이터가 현재 CUBRID 버전보다 최신입니다. 다운그레이드는 지원하지 않습니다.\n
+3 시스템 메타데이터 업그레이드 스크립트를 적용하시겠습니까? (y/n)\n
+4 --check, --force 옵션은 동시에 사용할 수 없습니다.\n
+5 시스템 메타데이터 업그레이드 스크립트 디코딩 실패: %1$s\n
+6 시스템 메타데이터 업그레이드 스크립트 검증 실패: %1$s\n
+7 시스템 메타데이터 업그레이드 스크립트 읽기 실패: %1$s\n
+8 적용할 시스템 메타데이터 업그레이드 스크립트가 없습니다: %1$s\n
+9 시스템 메타데이터가 최신입니다. 업그레이드가 필요하지 않습니다.\n
+10 시스템 메타데이터 업그레이드가 필요합니다. 'cubrid upgradedb'를 실행하십시오.\n
+60 \
+upgradedb: 시스템 메타데이터를 현재 CUBRID 버전에 맞게 업그레이드합니다.\n\
+usage: %1$s upgradedb [옵션] database-name\n\
+\n\
+옵션:\n\
+      --check                  업그레이드 적용 없이 필요 여부만 확인합니다\n\
+                               종료 코드: 0 최신, 1 확인·업그레이드 불가,\n\
+                               2 업그레이드 필요\n\
+  -f, --force                  확인 프롬프트 없이 업그레이드를 적용합니다\n\
+  -v, --verbose                업그레이드 스크립트를 적용 전에 출력합니다\n

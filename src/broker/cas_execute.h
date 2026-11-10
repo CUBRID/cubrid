@@ -70,7 +70,7 @@ extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc
 extern void ux_cursor_close (T_SRV_HANDLE * srv_handle);
 extern int ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf);
 extern int make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf,
-			    char desired_type);
+			    char desired_type, bool typed_null);
 extern int ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * net_buf, T_REQ_INFO *);
 extern int ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf);
 extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);
@@ -90,15 +90,9 @@ extern int ux_get_generated_keys (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf
 extern SESSION_ID ux_get_session_id (void);
 extern void ux_set_session_id (const SESSION_ID session_id);
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-extern bool is_server_alive (void);
-#endif
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_lobfile_new (int lobfile_type, T_NET_BUF * net_buf);
 extern int ux_lobfile_write (DB_VALUE * lobfile_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
 extern int ux_lobfile_read (DB_VALUE * lobfile_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 

@@ -141,8 +141,8 @@ TEST (OosGrowthSweepTest, SweepReclaimsAfterCommittedDeleteBurst)
   const int pages_full = count_user_pages (oos_vfid);
   ASSERT_EQ (pages_full, 3);	// header + one page per record
 
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid1), NO_ERROR);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid2), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), pages_full);	// deletes alone deallocate nothing
 
@@ -164,7 +164,7 @@ TEST (OosGrowthSweepTest, TransientWriteLatchMissKeepsReclaimDebt)
 
   OID emptied_oid = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, emptied_oid), NO_ERROR);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, emptied_oid), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, emptied_oid), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), 2);
 
@@ -228,7 +228,7 @@ TEST (OosGrowthSweepTest, SweepLeavesAbortRestoredChunksAlone)
   ASSERT_EQ (count_user_pages (oos_vfid), 2);
 
   // Delete, then abort: undo restores the chunks; the pending-delete count is now stale.
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
   ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
 
   bool exists = false;
@@ -300,7 +300,7 @@ TEST (OosGrowthSweepTest, SweepIsIncrementalWithCursorContinuation)
 
   for (const OID &oid : oids)
     {
-      ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid), NO_ERROR);
+      ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid), NO_ERROR);
     }
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
@@ -349,7 +349,7 @@ TEST (OosGrowthSweepTest, SweepCursorWrapsAcrossSectorBoundary)
   ASSERT_EQ (pages_full, (int) oids.size () + 1);  // records + sticky header
 
   /* Reclaim the highest VPID first. Its VPID becomes the saved sweep cursor. */
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, high_oid), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, high_oid), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 
@@ -360,7 +360,7 @@ TEST (OosGrowthSweepTest, SweepCursorWrapsAcrossSectorBoundary)
 
   /* The only empty page is now below the cursor in another sector. The next sweep must walk
    * past the end of the sorted sector bitmap, wrap, and reclaim it before allocating. */
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, low_oid), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, low_oid), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 
@@ -382,7 +382,7 @@ TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
 
   OID oid1 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid1), NO_ERROR);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 
@@ -396,7 +396,7 @@ TEST (OosGrowthSweepTest, SweepCounterResetsOnCleanLapAndRearms)
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
 
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid2), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid2), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 
@@ -422,8 +422,8 @@ TEST (OosGrowthSweepTest, SweepDefersUncommittedDeletesButAllowsGrowth)
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
 
   // Empty both pages but stay uncommitted: this transaction is a live undo source.
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid1), NO_ERROR);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid2), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid2), NO_ERROR);
   simulate_hint_loss (oos_vfid);
 
   OID oid3 = OID_INITIALIZER;
@@ -457,7 +457,7 @@ TEST (OosGrowthSweepTest, BootRuleSweepsUnconditionallyAfterRestart)
     }
   for (const OID &oid : oids)
     {
-      ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid), NO_ERROR);
+      ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid), NO_ERROR);
     }
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   ASSERT_EQ (count_user_pages (oos_vfid), 3);
@@ -489,7 +489,7 @@ TEST (OosGrowthSweepTest, SweepSkipsRefilledPageAndNeverReclaimsHeader)
 
   OID oid1 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid1), NO_ERROR);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
   // Hints are still alive: this insert refills the emptied page through bestspace, leaving the
@@ -508,8 +508,8 @@ TEST (OosGrowthSweepTest, SweepSkipsRefilledPageAndNeverReclaimsHeader)
 
   // Empty EVERY data page, then grow: the sweep may reclaim only data pages — the sticky first
   // page survives even though the lap visits it.
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid2), NO_ERROR);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, oid3), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid2), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid3), NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
   simulate_hint_loss (oos_vfid);
 

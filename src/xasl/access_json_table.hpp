@@ -51,6 +51,7 @@ namespace cubxasl
 	json_table_column_behavior m_on_error;
 	json_table_column_behavior m_on_empty;
 	db_value *m_output_value_pointer;     // should match xasl->outptr_list value pointers
+	TP_VALUE_CONVERTER m_converter;	// CBRD-27583: the value into m_domain, chosen at unpack
 
 	// there are three types of columns based on how they function:
 	// extract from path, exists at path or ordinality

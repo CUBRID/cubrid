@@ -83,12 +83,12 @@ struct sm_constraint_info
   SM_INDEX_STATUS index_status;	// Used to save index_status in case of rebuild or moving the constraint
 };
 
-extern ROOT_CLASS sm_Root_class;
+extern CUB_THREAD_LOCAL ROOT_CLASS sm_Root_class;
 
 extern const char TEXT_CONSTRAINT_PREFIX[];
 
-extern MOP sm_Root_class_mop;
-extern HFID *sm_Root_class_hfid;
+extern CUB_THREAD_LOCAL MOP sm_Root_class_mop;
+extern CUB_THREAD_LOCAL HFID *sm_Root_class_hfid;
 extern const char *sm_Root_class_name;
 
 extern int sm_finish_class (SM_TEMPLATE * template_, MOP * classmop);
@@ -118,15 +118,14 @@ extern int sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, 
 			       const char **att_names, bool class_attributes, bool mysql_index_name);
 extern int sm_drop_index (MOP classop, const char *constraint_name);
 extern int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
+extern TP_DOMAIN *sm_constraint_key_domain (const SM_CLASS_CONSTRAINT * con);
 
 /* Misc schema operations */
 extern int sm_rename_class (MOP op, const char *new_name);
 extern int sm_update_all_catalog_statistics (bool with_fullscan);
 extern int sm_update_catalog_statistics (const char *class_name, bool with_fullscan);
 extern int sm_force_write_all_classes (void);
-#ifdef SA_MODE
-extern void sm_mark_system_class_for_catalog (void);
-#endif /* SA_MODE */
+extern bool sm_is_catcls_disabled (void);
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
 extern bool sm_is_reuse_oid_class (MOP op);
@@ -198,7 +197,8 @@ struct class_attr_ndv;
 /* provided_ndv (optional): pre-computed per-column NDV (e.g. from the histogram full scan) so the
  * server reuses it and skips its own NDV scan. NULL => server computes NDV itself. */
 extern int sm_update_statistics (MOP classop, bool with_fullscan, struct class_attr_ndv *provided_ndv = NULL);
-extern int sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram);
+extern int sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
+				     MOP * skip_histogram_mops, int n_skip);
 
 /* Misc information functions */
 extern const char *sm_get_ch_name (MOP op);
@@ -298,8 +298,10 @@ extern void sm_fee_resident_classes_virtual_query_cache (void);
 extern void sm_final (void);
 extern void sm_transaction_boundary (void);
 
+#if defined(SA_MODE)
 extern void sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid);
-extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid);
+#endif
+extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid, bool is_sub);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 extern int sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all);
 #endif /* ENABLE_UNUSED_FUNCTION */

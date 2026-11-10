@@ -95,7 +95,8 @@ struct disk_volume_header
   INT64 vol_creation;		/* Volume creation time */
   LOG_LSA chkpt_lsa;		/* Lowest log sequence address to start the recovery process of this volume */
   HFID boot_hfid;		/* System Heap file for booting purposes and multi volumes */
-  INT32 reserved0;		/* reserved area */
+  INT32 storage_format;		/* DISK_STORAGE_FORMAT_REVISION of the build that formatted the volume. Volumes
+				 * formatted before the stamp existed hold 0 here, which was the reserved area. */
   INT32 reserved1;		/* reserved area */
   INT32 reserved2;		/* reserved area */
   INT32 reserved3;		/* reserved area */
@@ -109,6 +110,10 @@ struct disk_volume_header
 				 * var_fields */
 
 };
+
+/* unit_tests/oos/scripts/test_storage_format_guard.sh rewrites the stamp at this file offset of volume 0 */
+static_assert (offsetof (FILEIO_PAGE, page) + offsetof (DISK_VOLUME_HEADER, storage_format) == 140,
+	       "storage_format moved in the volume header page");
 
 typedef struct disk_recv_link_perm_volume DISK_RECV_LINK_PERM_VOLUME;
 struct disk_recv_link_perm_volume
@@ -609,7 +614,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
   vhdr->db_charset = lang_charset ();
   vhdr->hint_allocsect = NULL_SECTID;
   vhdr->dummy1 = vhdr->dummy2 = 0;	/* alignment. You may use it. */
-  vhdr->reserved0 = vhdr->reserved1 = vhdr->reserved2 = vhdr->reserved3 = 0;	/* for future extension */
+  vhdr->storage_format = DISK_STORAGE_FORMAT_REVISION;
+  vhdr->reserved1 = vhdr->reserved2 = vhdr->reserved3 = 0;	/* for future extension */
 
   /* set sector table info in volume header */
   disk_volume_header_set_stab (vol_purpose, vhdr);
@@ -3012,7 +3018,8 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
       goto exit;
     }
 
-  db_make_int (out_values[idx], vhdr->iopagesize);
+  /* CBRD-27583: in the column's declared type (show_meta.c, short), which the output keeps as it comes */
+  db_make_short (out_values[idx], vhdr->iopagesize);
   idx++;
 
   db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
@@ -3154,6 +3161,7 @@ disk_vhdr_dump (FILE * fp, const DISK_VOLUME_HEADER * vhdr)
   (void) fprintf (fp, "Boot_hfid: volid %d, fileid %d header_pageid %d\n", vhdr->boot_hfid.vfid.volid,
 		  vhdr->boot_hfid.vfid.fileid, vhdr->boot_hfid.hpgid);
   (void) fprintf (fp, " db_charset = %d\n", vhdr->db_charset);
+  (void) fprintf (fp, " storage_format = %d\n", vhdr->storage_format);
 }
 
 /*
@@ -3224,12 +3232,17 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
   )
 {
   VPID vpid_volheader;
+  int old_wait_msecs;
   int error_code = NO_ERROR;
 
   vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
 
+  /* this fix has no conditional variant and the caller cannot act on a refusal; a no-wait
+   * transaction must still wait for the volume header */
+  old_wait_msecs = pgbuf_force_latch_wait (thread_p);
   *page_volheader_out = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   if (*page_volheader_out == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -3493,6 +3506,7 @@ STATIC_INLINE int
 disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_LATCH_MODE latch_mode)
 {
   VPID vpid = VPID_INITIALIZER;
+  int old_wait_msecs;
   int error_code = NO_ERROR;
 
   assert (cursor->page == NULL);
@@ -3502,7 +3516,11 @@ disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_
   /* Fix page. */
   vpid.volid = cursor->volheader->volid;
   vpid.pageid = cursor->pageid;
+  /* same as the volume header: a no-wait transaction must still wait for the sector allocation
+   * table page */
+  old_wait_msecs = pgbuf_force_latch_wait (thread_p);
   cursor->page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   if (cursor->page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -3972,6 +3990,42 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * disk_rv_note_unreserved_sectors () - tell the page buffer which sectors a sector unreserve record frees, while crash
+ *                                      recovery replays it (see pgbuf_rv_discard_unreserved_pages).
+ *
+ * return             : void
+ * stab_vpid (in)     : sector table page of the record
+ * unit_offset (in)   : offset of the unit in the sector table page (the record offset)
+ * data (in)          : record data (the unreserved bits of the unit)
+ * unreserve_lsa (in) : LSA of the record
+ */
+void
+disk_rv_note_unreserved_sectors (const VPID * stab_vpid, int unit_offset, const char *data,
+				 const LOG_LSA * unreserve_lsa)
+{
+  DISK_STAB_UNIT unit_bits;
+  VSID vsid;
+  int bit;
+
+  assert (stab_vpid != NULL && data != NULL && unreserve_lsa != NULL);
+  assert (unit_offset >= 0 && unit_offset < DISK_STAB_PAGE_UNITS_COUNT);
+  /* the sector table starts right after the volume header (see disk_stab_cursor_set_at_sectid) */
+  assert (stab_vpid->pageid > DISK_VOLHEADER_PAGE);
+
+  memcpy (&unit_bits, data, sizeof (unit_bits));
+  vsid.volid = stab_vpid->volid;
+  for (bit = 0; bit < DISK_STAB_UNIT_BIT_COUNT; bit++)
+    {
+      if (bit64_is_set (unit_bits, bit))
+	{
+	  vsid.sectid = ((stab_vpid->pageid - (DISK_VOLHEADER_PAGE + 1)) * DISK_STAB_PAGE_BIT_COUNT
+			 + unit_offset * DISK_STAB_UNIT_BIT_COUNT + bit);
+	  pgbuf_rv_add_unreserved_sector (&vsid, unreserve_lsa);
+	}
+    }
+}
+
+/*
  * disk_rv_unreserve_sectors () - Apply recovery for unreserving sectors.
  *
  * return	   : Error code.
@@ -4197,7 +4251,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   int old_wait_msecs;
 
   old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  old_wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
@@ -4237,7 +4291,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
 
 exit:
-  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (page_volheader)
@@ -4419,7 +4473,13 @@ error:
   /* abort any changes */
   log_sysop_abort (thread_p);
 
+  /* The IO entries cover the volume extension half of this function; the latch entry covers the page fix half
+   * (disk_get_volheader (), disk_stab_cursor_fix ()). What is left is a logic failure - see
+   * disk_reserve_sectors_in_volume (), which returns ER_FAILED when the cache promised sectors the sector table
+   * does not have. That is the case disk_check () below can actually repair. */
   if (error_code == ER_INTERRUPTED	/* interrupted error */
+      || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED	/* temp_file_max_size_in_pages reached */
+      || PGBUF_IS_LATCH_REFUSED_ERROR (error_code)	/* a page fix was refused, or its wait timed out */
       || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
       || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
     {
@@ -4504,7 +4564,6 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining > disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
-	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
 		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);
@@ -5906,6 +5965,44 @@ disk_get_boot_db_charset (THREAD_ENTRY * thread_p, INT16 volid, INTL_CODESET * d
   *db_charset = (INTL_CODESET) vhdr->db_charset;
 
   pgbuf_unfix_and_init (thread_p, pgptr);
+
+  return NO_ERROR;
+}
+
+/*
+ * disk_check_storage_format () - Reject a volume formatted with another storage format
+ *   return: NO_ERROR or ER_BO_INCOMPATIBLE_STORAGE_FORMAT
+ *   volid(in): Permanent volume identifier
+ *
+ * Note: Unreleased builds of one disk compatibility level can still change the storage format. Their databases
+ *       must be recreated, and this check makes boot refuse them before any other page is read or recovered.
+ */
+int
+disk_check_storage_format (THREAD_ENTRY * thread_p, INT16 volid)
+{
+  DISK_VOLUME_HEADER *vhdr;
+  PAGE_PTR pgptr = NULL;
+  INT32 storage_format;
+
+  int error_code = NO_ERROR;
+
+  error_code = disk_get_volheader (thread_p, volid, PGBUF_LATCH_READ, &pgptr, &vhdr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  storage_format = vhdr->storage_format;
+
+  pgbuf_unfix_and_init (thread_p, pgptr);
+
+  if (storage_format != DISK_STORAGE_FORMAT_REVISION)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_INCOMPATIBLE_STORAGE_FORMAT, 2, storage_format,
+	      DISK_STORAGE_FORMAT_REVISION);
+      return ER_BO_INCOMPATIBLE_STORAGE_FORMAT;
+    }
 
   return NO_ERROR;
 }

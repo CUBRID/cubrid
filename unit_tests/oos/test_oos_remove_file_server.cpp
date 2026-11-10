@@ -29,6 +29,9 @@
 
 #include <vector>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* bridge functions defined in oos_file.cpp */
 int bridge_oos_get_max_chunk_size_within_page ();
 
@@ -159,7 +162,7 @@ TEST (OosFileDestroyServerTest, OosPageReclaimBasic)
 
   // Commit before reclaiming: reclaim requires committed deletes, or this transaction's teardown
   // rollback replays the RVOOS_DELETE undo onto a deallocated page. {vpid, vpid} exercises dedupe.
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 
@@ -208,7 +211,7 @@ TEST (OosFileDestroyServerTest, OosPageReclaimLsaGateDefersUncommitted)
   VPID vpid = {oid.pageid, oid.volid};
 
   // Deliberately uncommitted: this transaction is still a live undo source.
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   std::vector<VPID> candidates {vpid};

@@ -223,7 +223,7 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 
   for (int i = 0; i < num_summary; i++)
     {
-      FLASHBACK_SUMMARY_INFO info = { 0, LSA_INITIALIZER, LSA_INITIALIZER };
+      FLASHBACK_SUMMARY_INFO info = { 0, "", LSA_INITIALIZER, LSA_INITIALIZER };
 
       tmp_ptr = or_unpack_int (tmp_ptr, &trid);
       tmp_ptr = or_unpack_string_nocopy (tmp_ptr, &user);

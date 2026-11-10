@@ -4854,6 +4854,11 @@ locator_mflush (MOP mop, void *mf)
       LC_ONEOBJ_SET_TRIGGER_INVOLVED (mflush->obj);
     }
 
+  if (WS_IS_SERIAL_RESTART (mop))
+    {
+      LC_ONEOBJ_SET_SERIAL_RESTART (mflush->obj);
+    }
+
   HFID_COPY (&mflush->obj->hfid, hfid);
   COPY_OID (&mflush->obj->class_oid, ws_oid (class_mop));
   COPY_OID (&mflush->obj->oid, oid);
@@ -5356,6 +5361,7 @@ locator_all_flush (void)
   return error_code;
 }
 
+#if defined(SA_MODE)
 /*
  * locator_add_root () - Insert root
  *
@@ -5402,6 +5408,7 @@ locator_add_root (OID * root_oid, MOBJ class_root)
 
   return root_mop;
 }
+#endif // #if defined(SA_MODE)
 
 /*
  * locator_add_class () - Insert a class
@@ -5636,6 +5643,9 @@ locator_add_instance (MOBJ instance, MOP class_mop)
    * recycle the temporarily OIDs.
    */
 
+  /* TODO: 
+   * It is necessary to check whether a lock is required for operations in a multithreaded environment
+   */
   OID_ASSIGN_TEMPOID (&temp_oid);
   if (OID_ISNULL (&temp_oid))
     {
@@ -5732,7 +5742,7 @@ locator_remove_class (MOP class_mop)
 	{
 	  attr = &class_->attributes[i];
 
-	  if (TP_IS_LOB_TYPE (attr->type->id))
+	  if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	    {
 	      lob_attr_exist = true;
 	      break;
@@ -6877,7 +6887,7 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
     {
       attr = &class_->attributes[i];
 
-      if (TP_IS_LOB_TYPE (attr->type->id))
+      if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	{
 	  lob_attrid_arr_length++;
 	}
@@ -6907,7 +6917,7 @@ locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
   for (int i = 0, index = 0; i < class_->att_count; i++)
     {
       attr = &class_->attributes[i];
-      if (TP_IS_LOB_TYPE (attr->type->id))
+      if (TP_IS_LOBFILE_TYPE (attr->type->id))
 	{
 	  lob_attrid_arr[index++] = attr->id;
 	}
@@ -7034,6 +7044,10 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       /* includes leading and trailing alignment */
       required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  required_length += repl_obj->packed_prior_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+	}
       if (repl_obj->operation != LC_FLUSH_DELETE)
 	{
 	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
@@ -7091,6 +7105,15 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
 
+      /* the value a _db_serial write-back replaced follows the key, in the same form */
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+	  memcpy (ptr, repl_obj->packed_prior_value, repl_obj->packed_prior_value_length);
+	  ptr += repl_obj->packed_prior_value_length;
+	  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+	}
+
       key_length = CAST_BUFLEN (ptr - obj_start_p);
       mflush->recdes.data = ptr;
 
@@ -7109,9 +7132,14 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       mflush->mobjs->num_objs++;
       mflush->obj->operation = (LC_COPYAREA_OPERATION) repl_obj->operation;
+      mflush->obj->flag = 0;
       if (repl_obj->has_index == true)
 	{
 	  LC_ONEOBJ_SET_HAS_INDEX (mflush->obj);
+	}
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  LC_ONEOBJ_SET_HAS_PRIOR_VALUE (mflush->obj);
 	}
 
       COPY_OID (&mflush->obj->class_oid, &repl_obj->class_oid);

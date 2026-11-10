@@ -40,14 +40,13 @@ import com.cubrid.jsp.classloader.ClassPathHelper;
 import com.cubrid.jsp.classloader.FileClassLoaderDynamic;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.plcsql.builtin.MessageBuffer;
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.file.attribute.FileTime;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Context {
     // To recognize unique DB session
@@ -62,8 +61,6 @@ public class Context {
     // single server-side connection per Context
     private CUBRIDServerSideConnection connection = null;
 
-    private LinkedBlockingQueue<ByteBuffer> inBound = null;
-
     // CAS client information connecting with this Context
     private Properties clientInfo = null;
 
@@ -72,7 +69,11 @@ public class Context {
     private FileClassLoaderDynamic fileClassLoader = null; // file
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
-    private boolean transactionControl = false;
+    // volatile: written by the executing thread on every invocation and read from
+    // CUBRIDServerSideConnection.commit()/rollback(). One Context can be associated with more
+    // than one thread, so the reader needs the writer's value to be visible; there is no
+    // compound action here, so a plain write/read barrier is enough.
+    private volatile boolean transactionControl = false;
 
     // Connection Properties
     private static Properties DEFAULT_CONNECTION_INFO = new Properties();
@@ -81,8 +82,8 @@ public class Context {
     // message buffer for DBMS_OUTPUT
     private MessageBuffer messageBuffer;
 
-    // context system parameters
-    private HashMap<Integer, SysParam> systemParameters = null;
+    // context system parameters; a session can be executing on several threads at once
+    private Map<Integer, SysParam> systemParameters = null;
 
     public Context(long id) {
         sessionId = id;
@@ -110,28 +111,21 @@ public class Context {
         }
     }
 
-    public Properties getClientInfo() {
+    public synchronized Properties getClientInfo() {
         if (clientInfo == null) {
             clientInfo = new Properties();
         }
         return clientInfo;
     }
 
-    public LinkedBlockingQueue<ByteBuffer> getInboundQueue() {
-        if (inBound == null) {
-            inBound = new LinkedBlockingQueue<ByteBuffer>();
-        }
-        return inBound;
-    }
-
-    public HashMap<Integer, SysParam> getSystemParameters() {
+    public synchronized Map<Integer, SysParam> getSystemParameters() {
         if (systemParameters == null) {
-            systemParameters = new HashMap<Integer, SysParam>();
+            systemParameters = new ConcurrentHashMap<Integer, SysParam>();
         }
         return systemParameters;
     }
 
-    public void checkTranId(int tid) {
+    public synchronized void checkTranId(int tid) {
         if (tranactionId == -1) {
             tranactionId = tid;
             fileClassLoader = new FileClassLoaderDynamic();
@@ -178,14 +172,14 @@ public class Context {
         }
     }
 
-    public MessageBuffer getMessageBuffer() {
+    public synchronized MessageBuffer getMessageBuffer() {
         if (messageBuffer == null) {
             messageBuffer = new MessageBuffer();
         }
         return messageBuffer;
     }
 
-    public CatalogClassLoaderRelay getCatalogClassLoaderRelay() {
+    public synchronized CatalogClassLoaderRelay getCatalogClassLoaderRelay() {
         if (catalogClassLoaderRelay == null) {
             catalogClassLoaderRelay = new CatalogClassLoaderRelay();
         }
@@ -193,7 +187,7 @@ public class Context {
         return catalogClassLoaderRelay;
     }
 
-    public ClassLoader getFileClassLoader() {
+    public synchronized ClassLoader getFileClassLoader() {
         if (fileClassLoader == null) {
             fileClassLoader = new FileClassLoaderDynamic();
         }
@@ -205,7 +199,8 @@ public class Context {
         this.transactionControl = tc;
     }
 
-    public boolean canTransactionControl() {
+    // synchronized: reads connectionInfo, which getConnection() sets under this monitor.
+    public synchronized boolean canTransactionControl() {
         if (transactionControl) {
             return true;
         }

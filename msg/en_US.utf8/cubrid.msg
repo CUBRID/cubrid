@@ -718,7 +718,7 @@ $ LOADDB
 645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
 647 Backup "%1$s" does not belong to the given database.
-648 Backup is incompatible with current "%1$s" release "%2$s".
+648 Backup (release "%3$s") is incompatible with current "%1$s" release "%2$s".
 649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
 650 Cannot create enough threads for 'max_clients=%1$d'.
 651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
@@ -1324,7 +1324,7 @@ $ LOADDB
 1251 Error while TDE-encrypting.
 1252 Error while TDE-decrypting.
 1253 TDE Module is not loaded.
-1254 Cannot create a key.
+1254 Cannot create or verify a key.
 1255 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
 1256 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
@@ -1483,17 +1483,49 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1378 Cannot change the login capability of user "%1$s".
 
-1379 Vacuum master daemon is not running; the server may be still booting or already shut down.
+1379 CDC: the extraction position (%1$lld|%2$d) handed to the client keeps archive log volume %3$d.
 
-1380 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+1380 A stored procedure/function declared PARALLEL_ENABLE or running in a parallel query worker cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
 
-1381 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
+1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
 
-1382 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1383 Internal error: invalid out-of-row storage argument.
+1384 Session variable @%1$s has the type %2$s in this statement, not %3$s.
 
-1384 Last Error
+1385 Invalid username or password.
+
+1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
+
+1387 %1$s cannot be executed while %2$d sub-clients are alive.
+1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
+1389 %1$s cannot be called by the main client thread.
+
+1390 The secret of session %1$u does not match.
+1391 Cannot end or keep session %1$u because it is not attached to this connection.
+
+1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
+
+1393 Altering system generated stored procedure is not allowed.
+
+1394 Granting or revoking privileges on system generated stored procedure is not allowed.
+
+1395 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+
+1396 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+
+1397 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+
+1398 Internal error: invalid out-of-row storage argument.
+
+1399 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
+
+1400 The database was created by a CUBRID build with an incompatible storage format (format %1$d, this build %2$d). Unload it with the build that created it, then load it into a database created by this build.
+
+1401 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
+
+1402 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1659,8 +1691,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
-138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
+140 FILL_FACTOR argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -2007,6 +2039,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 339 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
 340 STORAGE options can be set only on variable-type normal attributes of a class: '%1$s'.
+341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
+342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
+343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
+344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 
 
 

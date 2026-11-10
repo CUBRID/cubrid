@@ -101,22 +101,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-#ifdef CCI_XA
-  if (is_xa_prepared ())
-    {
-      /*
-       * In the 2PC Prepare state, end_tran (commit or rollback) must not be processed.
-       * In this state, commit and rollback must be processed
-       * through the commit decision or abort decision from the coordinator.
-       * In other words, it must be processed with fn_xa_end_tran.
-       */
-      ;
-    }
-  else
-#endif
-    {
-      err_code = ux_end_tran ((char) tran_type, false, false);
-    }
+  err_code = ux_end_tran ((char) tran_type, false, false);
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
@@ -193,12 +178,10 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   if (!ux_is_database_connected ())
     {
-      cas_log_debug (ARG_FILE_LINE, "fn_end_tran: !ux_is_database_connected()");
       return FN_CLOSE_CONN;
     }
   else if (restart_is_needed () || as_info->reset_flag == TRUE)
     {
-      cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed() || reset_flag");
       db_set_keep_session (true);
       return FN_KEEP_SESS;
     }
@@ -250,7 +233,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *effective_sql;		/* query actually prepared (original or replacement) */
   int effective_size;
   int replace_rule_idx = -1;
+  int replace_failed_err = 0;
   char *log_sql;		/* writable alias of effective_sql for the compile-end log */
+  char *app_sql = NULL;		/* copy of the client's text, handed over to a replaced handle */
 
   if (argc < 2)
     {
@@ -301,7 +286,15 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       const char *replace_query = qr_get_replace_query (replace_rule_idx);
 
-      if (replace_query == NULL)
+      /* a replaced handle must be able to go back to the client's own text (the demote in
+       * fn_execute_internal / fn_execute_array), so that text is secured before the replacement
+       * is prepared.  without it -- out of memory -- the query is simply not replaced: the
+       * rule's ORIG is a normalized matching key, not a statement to fall back to. */
+      if (replace_query != NULL)
+	{
+	  ALLOC_COPY_STRLEN (app_sql, sql_stmt);
+	}
+      if (replace_query == NULL || app_sql == NULL)
 	{
 	  replace_rule_idx = -1;
 	}
@@ -376,8 +369,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  snprintf (qr_reason, sizeof (qr_reason), "replacement prepare failed (err:%d)", err_info.err_number);
 	}
 
-      cas_log_write (query_seq_num_current_value (), false,
-		     "[REPLACE-FAILED] prepare err:%d, disabled, fallback to orig", err_info.err_number);
+      FREE_MEM (app_sql);	/* back to the original query: nothing to demote to */
+
+      replace_failed_err = err_info.err_number;	/* logged after the statement is masked */
 #if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "query replace [debug] prepare rejected: %s reason=%s (err:%d)\n",
 		     qr_get_rulepath (replace_rule_idx), qr_reason, err_info.err_number);
@@ -429,13 +423,22 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
+  /* hand the client's text over to the replaced handle, so a demote at execute time runs the
+   * original query.  ux_prepare always returns a fresh handle (hm_new_srv_handle). */
+  if (replace_rule_idx >= 0 && srv_handle != NULL)
+    {
+      assert (srv_handle->qr_app_sql == NULL);
+      srv_handle->qr_app_sql = app_sql;
+      app_sql = NULL;
+    }
+  FREE_MEM (app_sql);		/* any path that did not hand it over */
+
   /* when the query was rewritten, effective_sql points into the read-only (SHM_RDONLY)
    * replace rule segment, but cas_log_compile_end_write_query_string() hides passwords
    * by temporarily NUL-terminating its argument in place (hide_password.cpp) -- writing
    * through that pointer would fault.  ux_prepare() already made a writable heap copy of
    * the very same text in srv_handle->sql_stmt, so log through that instead of copying
-   * again.  the copy is skipped for CCI_PREPARE_CALL (never rewritten), whose handle
-   * text ux_prepare() trims in place. */
+   * again. */
   log_sql = (replace_rule_idx >= 0 && srv_handle != NULL) ? srv_handle->sql_stmt : effective_sql;
   effective_size = (int) strlen (log_sql) + 1;
 
@@ -448,6 +451,12 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   else
     {
       cas_log_compile_end_write_query_string (log_sql, effective_size - 1, NULL);
+    }
+
+  if (replace_failed_err != 0)
+    {
+      cas_log_write (query_seq_num_current_value (), false,
+		     "[REPLACE-FAILED] prepare err:%d, disabled, fallback to orig", replace_failed_err);
     }
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
@@ -669,8 +678,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &psr->hide_pwd_info);
 	}
     }
-  cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
-		 forward_only_cursor ? "forward_only_cursor " : "");
 
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -908,23 +915,19 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
    * replace in place. */
   if (qr_demote && srv_handle->replace_rule_idx >= 0)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
-      char *orig_dup = NULL;
-
-      if (orig_query != NULL)
-	{
-	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
-	}
-      if (orig_dup != NULL)
+      /* a replaced handle always carries the client's text (fn_prepare_internal does not
+       * replace without it).  it is handed over, not copied, so a demote never allocates. */
+      assert (srv_handle->qr_app_sql != NULL);
+      if (srv_handle->qr_app_sql != NULL)
 	{
 	  FREE_MEM (srv_handle->sql_stmt);
-	  srv_handle->sql_stmt = orig_dup;	/* recompiled at next execute */
+	  srv_handle->sql_stmt = srv_handle->qr_app_sql;	/* recompiled at next execute */
+	  srv_handle->qr_app_sql = NULL;
 	  srv_handle->num_markers = srv_handle->num_orig_markers;	/* the driver already binds K_orig */
 	  srv_handle->replace_rule_idx = -1;	/* stop replace: no remap, block won't re-fire */
 	  srv_handle->is_prepared = FALSE;	/* force db_open_buffer + compile of sql_stmt */
 	  srv_handle->replace_fallback = 1;	/* adopt the recompiled original as prepared */
 	}
-      /* orig_dup == NULL (OOM): leave the handle unchanged */
     }
 
   return FN_KEEP_CONN;
@@ -1658,7 +1661,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 
   if (value_index > 0)
     {
-      err_code = make_bind_value (1, 2, argv + value_index, &ele_val, net_buf, db_type);
+      err_code = make_bind_value (1, 2, argv + value_index, &ele_val, net_buf, db_type, false);
       if (err_code < 0)
 	{
 	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
@@ -1958,19 +1961,15 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
    * (same ordering rule as fn_execute_internal). */
   if (srv_handle->qr_demote_pending)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
-      char *orig_dup = NULL;
-
       srv_handle->qr_demote_pending = 0;
 
-      if (orig_query != NULL)
-	{
-	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
-	}
-      if (orig_dup != NULL)
+      /* the same hand-over as fn_execute_internal */
+      assert (srv_handle->qr_app_sql != NULL);
+      if (srv_handle->qr_app_sql != NULL)
 	{
 	  FREE_MEM (srv_handle->sql_stmt);
-	  srv_handle->sql_stmt = orig_dup;
+	  srv_handle->sql_stmt = srv_handle->qr_app_sql;
+	  srv_handle->qr_app_sql = NULL;
 	  srv_handle->num_markers = srv_handle->num_orig_markers;
 	  srv_handle->replace_rule_idx = -1;
 	  srv_handle->is_prepared = FALSE;

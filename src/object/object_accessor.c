@@ -140,6 +140,7 @@ static int obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
 static int obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval,
 				  DB_VALUE ** argarray);
 
+static bool find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain);
 static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode);
 static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
@@ -3338,6 +3339,30 @@ obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, 
  */
 
 /*
+ * find_unique_key_matches () - CBRD-27583: an uncompiled lookup's key must have the indexed attribute's type and, for
+ *   a string, its collation: the B-tree compares its own domain only (btree_compare_own_values), nothing casts the
+ *   key for the caller
+ *   return: true if the key compares as the index's own; otherwise ER_TP_CANT_COERCE is set
+ *   value(in): the caller's value, not NULL
+ *   domain(in): the indexed attribute's domain
+ */
+static bool
+find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (TP_ARE_COMPARABLE_KEY_TYPES (type, TP_DOMAIN_TYPE (domain))
+      && (!TP_IS_STRING_TYPE (type) || db_get_string_collation (value) == domain->collation_id))
+    {
+      return true;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type),
+	  pr_type_name (TP_DOMAIN_TYPE (domain)));
+  return false;
+}
+
+/*
  * find_unique - Internal function called by the various flavors of functions
  *               that look for unique attribute values.
  *    return: object pointer
@@ -3434,6 +3459,11 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
 	{
 	  return NULL;
 	}
+    }
+
+  if (!find_unique_key_matches (value, att->domain))
+    {
+      return NULL;
     }
 
   /* now search the index */
@@ -3661,8 +3691,9 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 }
 
 /*
- * obj_find_multi_attr - This can be used to locate the instance whose key
- *                       has a particular unique value
+ * obj_find_multi_attr_internal - Work function of obj_find_multi_attr (),
+ *                                obj_find_multi_attr_committed () and
+ *                                obj_find_multi_attr_for_update ()
  *   return :  object with the key value
  *   op(in): class pointer
  *   size(in): size of value array
@@ -3670,10 +3701,26 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
  *   values(in): array of value to look for
  *   fetchmode(in): access type AU_FETCH_READ
  *                              AU_FETCH_UPDATE
+ *   lookup(in): OBJ_FIND_LOCKED_READ  -- S-lock the found object (btree_find_unique () is
+ *                                        S_SELECT_WITH_LOCK) and fetch its dirty version;
+ *                                        an AU_FETCH_UPDATE fetch then upgrades that S to X
+ *               OBJ_FIND_COMMITTED_READ -- read the latest committed version without a lock
+ *                                        (fetchmode must be AU_FETCH_READ)
+ *               OBJ_FIND_FOR_UPDATE    -- X-lock the found object already at the index lookup
+ *                                        (S_UPDATE), so a writer never holds an intermediate S
+ *                                        (fetchmode must be AU_FETCH_UPDATE)
  *
  */
-MOP
-obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[], AU_FETCHMODE fetchmode)
+typedef enum
+{
+  OBJ_FIND_LOCKED_READ,
+  OBJ_FIND_COMMITTED_READ,
+  OBJ_FIND_FOR_UPDATE
+} OBJ_FIND_LOOKUP;
+
+static MOP
+obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const DB_VALUE * values[],
+			      AU_FETCHMODE fetchmode, OBJ_FIND_LOOKUP lookup)
 {
   int error = NO_ERROR;
   SM_CLASS_CONSTRAINT *cons;
@@ -3687,6 +3734,9 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
   DB_VALUE unique_key;
   BTREE_SEARCH result;
   OID oid;
+
+  assert (lookup != OBJ_FIND_COMMITTED_READ || fetchmode == AU_FETCH_READ);
+  assert (lookup != OBJ_FIND_FOR_UPDATE || fetchmode == AU_FETCH_UPDATE);
 
   if (op == NULL || attr_names == NULL || values == NULL || size < 1)
     {
@@ -3779,13 +3829,42 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
 
   BTID_COPY (&unique_btid, &cons->index_btid);
 
-  result = btree_find_unique (&unique_btid, &unique_key, ws_oid (op), &oid);
+  if (lookup != OBJ_FIND_LOCKED_READ)
+    {
+      /* btree_find_unique () is fixed to S_SELECT_WITH_LOCK; go through btree_find_multi_uniques () to choose the
+       * lookup's own lock: S_SELECT answers without a lock for the classes that allow it (see xbtree_find_unique ()),
+       * and the found object is then fetched as its latest committed version, unlocked; S_UPDATE X-locks the found
+       * object right at the lookup, so the write fetch below finds the X already held and no S is ever taken.
+       * NOTE: no partition pruning here (DB_NOT_PARTITIONED_CLASS), unlike btree_find_unique () -- these two
+       * lookups are meant for catalog-like, non-partitioned classes such as _db_histogram; on a partitioned
+       * class they would search only the root index and silently report the key as not found. */
+      OID *found_oids = NULL;
+      int found_count = 0;
 
+      result =
+	btree_find_multi_uniques (ws_oid (op), DB_NOT_PARTITIONED_CLASS, &unique_btid, &unique_key, 1,
+				  (lookup == OBJ_FIND_COMMITTED_READ) ? S_SELECT : S_UPDATE, &found_oids, &found_count);
+      if (result == BTREE_KEY_FOUND)
+	{
+	  assert (found_oids != NULL && found_count == 1);
+	  COPY_OID (&oid, &found_oids[0]);
+	}
+      if (found_oids != NULL)
+	{
+	  free_and_init (found_oids);
+	}
+    }
+  else
+    {
+      result = btree_find_unique (&unique_btid, &unique_key, ws_oid (op), &oid);
+    }
 
   if (result == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&oid, NULL);
-      if (au_fetch_instance_force (obj, NULL, fetchmode, LC_FETCH_DIRTY_VERSION) != NO_ERROR)
+      if (au_fetch_instance_force (obj, NULL, fetchmode,
+				   (lookup == OBJ_FIND_COMMITTED_READ) ? LC_FETCH_COMMITTED_VERSION :
+				   LC_FETCH_DIRTY_VERSION) != NO_ERROR)
 	{
 	  obj = NULL;
 	}
@@ -3806,6 +3885,73 @@ end_find:
   db_value_clear (&unique_key);
 
   return obj;
+}
+
+/*
+ * obj_find_multi_attr - This can be used to locate the instance whose key
+ *                       has a particular unique value
+ *   return :  object with the key value
+ *   op(in): class pointer
+ *   size(in): size of value array
+ *   attr_names(in): array of attribute names
+ *   values(in): array of value to look for
+ *   fetchmode(in): access type AU_FETCH_READ
+ *                              AU_FETCH_UPDATE
+ *
+ */
+MOP
+obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[], AU_FETCHMODE fetchmode)
+{
+  return obj_find_multi_attr_internal (op, size, attr_names, values, fetchmode, OBJ_FIND_LOCKED_READ);
+}
+
+/*
+ * obj_find_multi_attr_committed - Locate the instance whose key has a
+ *                                 particular unique value and read its latest
+ *                                 committed version without locking it
+ *   return :  object with the key value
+ *   op(in): class pointer
+ *   size(in): size of value array
+ *   attr_names(in): array of attribute names
+ *   values(in): array of value to look for
+ *
+ * Note: obj_find_multi_attr () S-locks the object it finds and fetches its
+ *       dirty version, so a concurrent writer holding the row X-locked blocks
+ *       the caller until it commits. This variant instead returns the last
+ *       committed state of the row -- lookup and fetch take no lock and do not
+ *       build the transaction's MVCC snapshot (LC_FETCH_COMMITTED_VERSION). It
+ *       is for catalog data whose last committed value is good enough for the
+ *       reader, e.g. the optimizer's histogram read (CBRD-27369); the returned
+ *       object must not be used as the base of an update. The server honors the
+ *       unlocked lookup only for the classes listed in xbtree_find_unique ().
+ */
+MOP
+obj_find_multi_attr_committed (MOP op, int size, const char *attr_names[], const DB_VALUE * values[])
+{
+  return obj_find_multi_attr_internal (op, size, attr_names, values, AU_FETCH_READ, OBJ_FIND_COMMITTED_READ);
+}
+
+/*
+ * obj_find_multi_attr_for_update - locate the instance with a unique key value and
+ *                                  X-lock it at the index lookup (S_UPDATE), for a caller
+ *                                  that is about to update it
+ *
+ *    return: object with the key value, fetched for update
+ *    op(in): class pointer
+ *    size(in): size of value array
+ *    attr_names(in): array of attribute names
+ *    values(in): array of value to look for
+ *
+ * Note (CBRD-27369): obj_find_multi_attr (AU_FETCH_UPDATE) still S-locks the row at the
+ *       lookup (btree_find_unique () is S_SELECT_WITH_LOCK) and only upgrades to X in the
+ *       fetch, so two writers of the same row both hold S and both wait for the other's S
+ *       to go away: the classic upgrade deadlock. This variant takes X right away, so two
+ *       writers contend X vs X and simply serialize.
+ */
+MOP
+obj_find_multi_attr_for_update (MOP op, int size, const char *attr_names[], const DB_VALUE * values[])
+{
+  return obj_find_multi_attr_internal (op, size, attr_names, values, AU_FETCH_UPDATE, OBJ_FIND_FOR_UPDATE);
 }
 
 /*
@@ -4122,7 +4268,8 @@ obj_find_primary_key (MOP op, const DB_VALUE ** values, int size, AU_FETCHMODE f
   obj = obj_find_object_by_pkey (op, key, fetchmode);
 
 notfound:
-  if (obj == NULL)
+  /* a key of another type than the index's keeps its error (find_unique_key_matches) */
+  if (obj == NULL && er_errid () != ER_TP_CANT_COERCE)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
     }
@@ -4210,6 +4357,12 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 	      goto notfound;
 	    }
 	}
+    }
+
+  /* a multi-column key is a sequence of the columns' values, not a value of the first column's domain */
+  if (cons->attributes[1] == NULL && !find_unique_key_matches (key, cons->attributes[0]->domain))
+    {
+      return NULL;
     }
 
   btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);

@@ -218,9 +218,11 @@ function set_compiler_env() {
       export CC="clang"
       export CXX="clang++"
     fi
-    # Add 'Wno' flags, otherwise Modern Clang treats them to be errors
-    export CFLAGS="${CFLAGS:+$CFLAGS }-Wno-int-conversion -Wno-implicit-function-declaration -w"
-    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-Wno-c++11-narrowing -Wno-non-pod-varargs -w"
+    # Silence the few Clang-only diagnostics that the C-compiled-as-C++ sources trip on.
+    # NOTE: never add -w here. It disables every warning enabled afterwards,
+    # including -Werror=format-security set by CMakeLists.txt.
+    export CFLAGS="${CFLAGS:+$CFLAGS }-Wno-int-conversion -Wno-implicit-function-declaration"
+    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-Wno-c++11-narrowing -Wno-non-pod-varargs"
   else
     print_fatal "Unknown compiler for -C option: $compiler"
   fi
@@ -542,7 +544,6 @@ function show_usage ()
   echo " TARGET"
   echo "  all     Build and create packages (default)"
   echo "  build   Build only"
-  echo "  test    Run unit tests (auto-enables -DUNIT_TESTS=ON and creates test DB)"
   echo "  dist    Create packages only"
   echo ""
   echo " EXAMPLES"
@@ -666,25 +667,6 @@ function build_dist ()
 function build_build ()
 {
   build_configure && build_compile && build_install
-
-  # Auto-run unit tests if any unit test option is enabled
-  if grep -qE "UNIT_TEST[A-Z_]*:BOOL=ON" "$build_dir/CMakeCache.txt" 2>/dev/null; then
-    build_test
-  fi
-}
-
-
-function build_test ()
-{
-  # Set up environment for test database creation
-  export CUBRID="$prefix_dir"
-  export CUBRID_DATABASES="$prefix_dir/databases"
-  export PATH="$prefix_dir/bin:$PATH"
-
-  # Run unit tests (unittestdb is created/cleaned by CTest fixtures)
-  print_check "Running unit tests"
-  ctest --test-dir "$build_dir" --output-on-failure
-  [ $? -eq 0 ] && print_result "OK" || print_fatal "Unit tests failed"
 }
 
 

@@ -250,6 +250,8 @@ struct la_item
   int packed_key_value_length;
   char *packed_key_value;	/* disk image of pkey value */
   DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
+  int packed_prior_value_length;
+  char *packed_prior_value;	/* _db_serial write-back: disk image of the value it replaced, or NULL */
   LOG_LSA lsa;			/* the LSA of the replication log record */
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
@@ -257,6 +259,7 @@ struct la_item
 typedef struct la_oos_cache_entry LA_OOS_CACHE_ENTRY;
 struct la_oos_cache_entry
 {
+  bool consumed;		/* decoded by the heap item; retain until its retry decision */
   LA_OOS_CACHE_ENTRY *next;
   TRANID tranid;		/* tx scope guard against cross-tx OID reuse across SYSOP_END */
   OID head_oid;			/* hash key: master's chunk_index=0 OID */
@@ -437,8 +440,9 @@ LA_RECDES_POOL la_recdes_pool;
 
 /* OOS sql.log value cache: one entry per OOS column value, keyed by master's
  * head OID (chunk_index=0).  Linked list owns memory; hash gives O(1) lookup.
- * Lazily allocated; cleared (not destroyed) on tx boundaries so the bucket
- * array survives.  Single-threaded — see CBRD-26618 TODO below for parallel
+ * Decoded payloads are released when their heap item retires; unresolved
+ * values survive until consumed or batch cleanup. The hash table is kept
+ * across transactions. Single-threaded — see CBRD-26618 TODO below for parallel
  * applylogdb migration plan.  Cache miss is treated as an invariant
  * violation: la_resolve_oos_value_for_sql_log returns ER_FAILED so the
  * operator sees a loud error rather than a silently synthesized placeholder. */
@@ -521,6 +525,7 @@ static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
 
 static DB_VALUE *la_get_item_pk_value (LA_ITEM * item);
 static LA_ITEM *la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
+static int la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end);
 static void la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_all_repl_items_except_head (LA_APPLY * apply);
@@ -574,6 +579,8 @@ static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
+static bool la_is_done_state (int ha_server_state);
+static bool la_record_end_is_stale (void);
 static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
 static unsigned long la_get_mem_size (void);
@@ -1114,7 +1121,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
   /* get the physical page id */
   phy_pageid = la_log_phypageid (pageid);
 
-  if (la_Info.act_log.log_hdr->append_lsa.pageid < pageid)
+  if (la_Info.act_log.log_hdr->append_lsa.load ().pageid < pageid)
     {
       /* check it again */
       error = la_fetch_log_hdr (&la_Info.act_log);
@@ -1124,7 +1131,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	}
 
       /* check it again */
-      if (la_Info.act_log.log_hdr->append_lsa.pageid < pageid)
+      if (la_Info.act_log.log_hdr->append_lsa.load ().pageid < pageid)
 	{
 	  return ER_LOG_NOTIN_ARCHIVE;
 	}
@@ -1186,7 +1193,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
     }
   while (error == NO_ERROR && --retry > 0);
 
-  if (retry <= 0 || la_Info.act_log.log_hdr->append_lsa.pageid < pageid)
+  if (retry <= 0 || la_Info.act_log.log_hdr->append_lsa.load ().pageid < pageid)
     {
 #if defined (LA_VERBOSE_DEBUG)
       /* it will nagging you */
@@ -3075,6 +3082,8 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   db_make_null (&item->key);
   item->packed_key_value_length = 0;
   item->packed_key_value = NULL;
+  item->packed_prior_value_length = 0;
+  item->packed_prior_value = NULL;
 
   item->next = NULL;
   item->prev = NULL;
@@ -3130,6 +3139,50 @@ la_get_item_pk_value (LA_ITEM * item)
 
   /* statement replication or key was already unpacked */
   return &item->key;
+}
+
+/*
+ * la_copy_serial_prior_value () - keep the packed value a _db_serial write-back replaced
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
+ *   item(in/out): its packed_prior_value stays NULL for a record that carries no value
+ *   ptr(in): the end of the packed key
+ *   end(in): the end of the record
+ *
+ * Note: see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC for the layout. PTR_ALIGN is not used: debug builds zero
+ *       the padding it skips, which may lie past the end of the record.
+ */
+static int
+la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end)
+{
+  int magic, prior_len;
+
+  ptr = (char *) DB_ALIGN ((UINTPTR) ptr, INT_ALIGNMENT);
+  if (ptr + 2 * OR_INT_SIZE > end)
+    {
+      return NO_ERROR;
+    }
+  ptr = or_unpack_int (ptr, &magic);
+  if (magic != LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
+    {
+      return NO_ERROR;
+    }
+  ptr = or_unpack_int (ptr, &prior_len);
+  ptr = (char *) DB_ALIGN ((UINTPTR) ptr, MAX_ALIGNMENT);
+  if (prior_len <= 0 || ptr + prior_len > end)
+    {
+      return NO_ERROR;
+    }
+
+  item->packed_prior_value = (char *) malloc (prior_len);
+  if (item->packed_prior_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) prior_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (item->packed_prior_value, ptr, prior_len);
+  item->packed_prior_value_length = prior_len;
+
+  return NO_ERROR;
 }
 
 static LA_ITEM *
@@ -3203,6 +3256,14 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
       ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
       memcpy (item->packed_key_value, ptr, item->packed_key_value_length);
 
+      if (strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
+	{
+	  if (la_copy_serial_prior_value (item, ptr + item->packed_key_value_length, area + length) != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
+	}
+
       item->item_type = repl_log->rcvindex;
 
       break;
@@ -3260,6 +3321,11 @@ error_return:
       if (item->packed_key_value != NULL)
 	{
 	  free_and_init (item->packed_key_value);
+	}
+
+      if (item->packed_prior_value != NULL)
+	{
+	  free_and_init (item->packed_prior_value);
 	}
 
       free_and_init (item);
@@ -3333,6 +3399,11 @@ la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
   if (item->packed_key_value != NULL)
     {
       free_and_init (item->packed_key_value);
+    }
+
+  if (item->packed_prior_value != NULL)
+    {
+      free_and_init (item->packed_prior_value);
     }
 
   free_and_init (item);
@@ -3630,6 +3701,46 @@ la_lookup_oos_value (const OID * head_oid)
 }
 
 static void
+la_release_consumed_oos_values (void)
+{
+  LA_OOS_CACHE_ENTRY *entry = la_oos_cache_head;
+  LA_OOS_CACHE_ENTRY *prev_entry = NULL;
+  LA_OOS_CACHE_ENTRY *next_entry;
+
+  while (entry != NULL)
+    {
+      next_entry = entry->next;
+      if (!entry->consumed)
+	{
+	  prev_entry = entry;
+	  entry = next_entry;
+	  continue;
+	}
+
+      /* A later admission may have replaced this OID's key and data. Remove
+       * only this owner's mapping, before freeing the embedded OID key. */
+      if (mht_get (la_oos_cache_hash, &entry->head_oid) == entry)
+	{
+	  (void) mht_rem (la_oos_cache_hash, &entry->head_oid, NULL, NULL);
+	}
+      if (prev_entry == NULL)
+	{
+	  la_oos_cache_head = next_entry;
+	}
+      else
+	{
+	  prev_entry->next = next_entry;
+	}
+      if (la_oos_cache_tail == entry)
+	{
+	  la_oos_cache_tail = prev_entry;
+	}
+      free_and_init (entry);
+      entry = next_entry;
+    }
+}
+
+static void
 la_clear_oos_cache (void)
 {
   LA_OOS_CACHE_ENTRY *entry = la_oos_cache_head;
@@ -3798,10 +3909,11 @@ la_cache_oos_value (const OID * head_oid, const char *payload, int payload_lengt
   entry->tranid = la_oos_current_tranid;
   entry->head_oid = *head_oid;
   entry->length = payload_length;
+  entry->consumed = false;
   memcpy (entry->data, payload, payload_length);
 
   /* mht_put overwrites a stale mapping for the same OID (cross-tx OID reuse).
-   * The previous owner's entry stays in the linked list until next clear,
+   * The previous owner stays in the list until retirement or full cleanup,
    * but is no longer reachable via lookup. */
   if (mht_put (la_oos_cache_hash, &entry->head_oid, entry) == NULL)
     {
@@ -3838,6 +3950,7 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
 {
   LA_OOS_CACHE_ENTRY *entry;
   OR_BUF buf;
+  int error;
 
   entry = la_lookup_oos_value (head_oid);
   if (entry == NULL)
@@ -3854,8 +3967,81 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
     }
 
   or_init (&buf, entry->data, entry->length);
-  return att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+  error = att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+  if (error == NO_ERROR)
+    {
+      /* copy=true makes the decoded value independent of the cache. The same
+       * entry remains available to later attributes and retries of this item. */
+      entry->consumed = true;
+    }
+  return error;
 }
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+int
+bridge_la_oos_cache_store (TRANID tranid, const OID * oid, const char *data, int length)
+{
+  la_oos_current_tranid = tranid;
+  return la_cache_oos_value (oid, data, length);
+}
+
+int
+bridge_la_oos_cache_resolve (TRANID tranid, const OID * oid, int length, TP_DOMAIN * domain, DB_VALUE * value)
+{
+  SM_ATTRIBUTE att;
+
+  la_oos_current_tranid = tranid;
+  memset (&att, 0, sizeof (att));
+  att.domain = domain;
+  att.type = domain->type;
+  return la_resolve_oos_value_for_sql_log (oid, length, &att, value);
+}
+
+bool
+bridge_la_oos_cache_contains (TRANID tranid, const OID * oid)
+{
+  la_oos_current_tranid = tranid;
+  return la_lookup_oos_value (oid) != NULL;
+}
+
+void
+bridge_la_oos_cache_retire (void)
+{
+  la_release_consumed_oos_values ();
+}
+
+void
+bridge_la_oos_cache_clear (void)
+{
+  la_clear_oos_cache ();
+}
+
+size_t
+bridge_la_oos_cache_bytes (void)
+{
+  LA_OOS_CACHE_ENTRY *entry;
+  size_t bytes = 0;
+
+  for (entry = la_oos_cache_head; entry != NULL; entry = entry->next)
+    {
+      bytes += entry->length;
+    }
+  return bytes;
+}
+
+int
+bridge_la_oos_cache_count (void)
+{
+  LA_OOS_CACHE_ENTRY *entry;
+  int count = 0;
+
+  for (entry = la_oos_cache_head; entry != NULL; entry = entry->next)
+    {
+      ++count;
+    }
+  return count;
+}
+#endif
 
 /*
  * la_get_current()
@@ -3977,6 +4163,8 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 	  OID oos_oid = OID_INITIALIZER;
 	  DB_BIGINT oos_length = 0;
 
+	  /* The stub is [head OOS OID (8B) | full length (8B) | identity stamp (8B)]; the SQL log
+	   * needs only the first two fields to look up the cached value. */
 	  if (vars[j] >= OR_OOS_INLINE_SIZE)
 	    {
 	      or_init (&inline_buf, buf->ptr, vars[j]);
@@ -5029,7 +5217,9 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes, OID * head_oid_out)
       if (found_head_chunk)
 	{
 	  int offset = OOS_RECORD_HEADER_SIZE;
-	  OOS_RECORD_HEADER merged_header = { total_data_length, 0, OID_INITIALIZER };
+	  /* The merged image is transient applier memory: locator_oos_insert_force strips this header
+	   * and the slave's own oos_insert issues the identity stamp, so NULL is right here. */
+	  OOS_RECORD_HEADER merged_header = { total_data_length, 0, OID_INITIALIZER, NULL_LSA };
 	  int chunk_index;
 
 	  if (total_body_length != total_data_length)
@@ -5643,7 +5833,8 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   error =
     __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
-					   operation, has_index);
+					   operation, has_index, item->packed_prior_value,
+					   item->packed_prior_value_length);
   return error;
 }
 
@@ -6793,6 +6984,17 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	    }
 	}
 
+      /* INSERT/UPDATE SQL decoding has finished and the item will not retry.
+       * The current protocol publishes fresh OOS values before each heap row;
+       * no later row consumes these decoded entries. Shared-chain reuse would
+       * need an explicit remaining-consumer protocol before using this rule.
+       * Unresolved entries remain available to pending rows across SYSOP_END. */
+      if (item->log_type == LOG_REPLICATION_DATA
+	  && (item->item_type == RVREPL_DATA_INSERT || item->item_type == RVREPL_DATA_UPDATE
+	      || item->item_type == RVREPL_DATA_UPDATE_START || item->item_type == RVREPL_DATA_UPDATE_END))
+	{
+	  la_release_consumed_oos_values ();
+	}
       next_item = la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa);
       la_free_repl_item (apply, item);
       item = next_item;
@@ -7319,6 +7521,34 @@ la_get_hostname_from_log_path (char *log_path)
   return hostname + 1;
 }
 
+/*
+ * la_is_done_state() - check whether the applier reports done at the record end of a source in this state
+ *   return: true if done is reported
+ *   ha_server_state(in): source state in the copied log header
+ */
+static bool
+la_is_done_state (int ha_server_state)
+{
+  return (ha_server_state == HA_SERVER_STATE_DEAD || ha_server_state == HA_SERVER_STATE_STANDBY
+	  || ha_server_state == HA_SERVER_STATE_MAINTENANCE);
+}
+
+/*
+ * la_record_end_is_stale() - check whether the record end an iteration reached is short of the copied log
+ *   return: true if the source has stopped and the copied log header's eof is past final_lsa
+ *
+ * Note: an iteration reads its page once. If the copied log grows meanwhile, the END_OF_LOG it reaches
+ *       in that page is not the end of the copied log, although the header may have been re-read since.
+ *       Only a stopped source matters: it is the one that lets the applier report done.
+ */
+static bool
+la_record_end_is_stale (void)
+{
+  const LOG_HEADER *log_hdr = la_Info.act_log.log_hdr;
+
+  return la_is_done_state (log_hdr->ha_server_state) && LSA_GT (&log_hdr->eof_lsa, &la_Info.final_lsa);
+}
+
 static int
 la_change_state (void)
 {
@@ -7350,21 +7580,18 @@ la_change_state (void)
   if (la_Info.is_end_of_record == true && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED))
     {
       /* check server's state with log header */
-      switch (la_Info.act_log.log_hdr->ha_server_state)
+      if (la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_ACTIVE
+	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_STANDBY
+	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	{
-	case HA_SERVER_STATE_ACTIVE:
-	case HA_SERVER_STATE_TO_BE_STANDBY:
-	case HA_SERVER_STATE_TO_BE_ACTIVE:
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_WORKING)
 	    {
 	      /* notify to slave db */
 	      new_state = HA_LOG_APPLIER_STATE_WORKING;
 	    }
-	  break;
-
-	case HA_SERVER_STATE_DEAD:
-	case HA_SERVER_STATE_STANDBY:
-	case HA_SERVER_STATE_MAINTENANCE:
+	}
+      else if (la_is_done_state (la_Info.act_log.log_hdr->ha_server_state))
+	{
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_DONE)
 	    {
 	      /* notify to slave db */
@@ -7376,11 +7603,11 @@ la_change_state (void)
 		  la_clear_all_repl_and_commit_list ();
 		}
 	    }
-	  break;
-	default:
+	}
+      else
+	{
 	  er_log_debug (ARG_FILE_LINE, "BUG. Unknown LOG_HA_SRVSTAT (%x)", la_Info.act_log.log_hdr->ha_server_state);
 	  return ER_FAILED;
-	  break;
 	}
 
     }
@@ -7461,7 +7688,7 @@ la_log_commit (bool update_commit_time)
 
   (void) la_find_required_lsa (&la_Info.required_lsa);
 
-  LSA_COPY (&la_Info.append_lsa, &la_Info.act_log.log_hdr->append_lsa);
+  la_Info.append_lsa = la_Info.act_log.log_hdr->append_lsa;
   LSA_COPY (&la_Info.eof_lsa, &la_Info.act_log.log_hdr->eof_lsa);
 
   if (update_commit_time)
@@ -8060,7 +8287,10 @@ la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
   printf ("%-30s : %s (%ld)\n", "DB creation time", db_creation_time_buf, db_creation_time);
   printf ("%-30s : %s (%ld)\n", "Vol creation time", vol_creation_time_buf, vol_creation_time);
   printf ("%-30s : %lld | %d\n", "EOF LSA", (long long int) hdr->eof_lsa.pageid, (int) hdr->eof_lsa.offset);
-  printf ("%-30s : %lld | %d\n", "Append LSA", (long long int) hdr->append_lsa.pageid, (int) hdr->append_lsa.offset);
+
+  const LOG_LSA append_lsa = hdr->append_lsa;
+
+  printf ("%-30s : %lld | %d\n", "Append LSA", (long long int) append_lsa.pageid, (int) append_lsa.offset);
   printf ("%-30s : %s\n", "HA server state", css_ha_server_state_string ((HA_SERVER_STATE) hdr->ha_server_state));
   if (verbose)
     {
@@ -8373,9 +8603,12 @@ check_copied_log_volume_info_end:
 	    {
 	      lrec = LOG_GET_LOG_RECORD_HEADER (logpage, &lsa);
 
-	      printf ("offset:%04ld (tid:%d bck p:%lld,o:%ld frw p:%lld,o:%ld type:%d)\n", lsa.offset, lrec->trid,
-		      (long long int) lrec->back_lsa.pageid, lrec->back_lsa.offset,
-		      (long long int) lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->type);
+	      /* LOG_LSA::offset is a 16 bit bitfield of int64_t. Clang promotes it to int when
+	       * it is passed through "...", GCC passes it as a long, so neither %d nor %ld is
+	       * right for both. Cast explicitly to settle the argument type. */
+	      printf ("offset:%04d (tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n", (int) lsa.offset,
+		      lrec->trid, (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset,
+		      (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset, lrec->type);
 	      LSA_COPY (&lsa, &lrec->forw_lsa);
 	    }
 	}
@@ -9321,12 +9554,12 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  continue;
 		}
 	      /* request page is greater then append_lsa.(in log_header) */
-	      else if (final_log_hdr.append_lsa.pageid < la_Info.final_lsa.pageid)
+	      else if (final_log_hdr.append_lsa.load ().pageid < la_Info.final_lsa.pageid)
 		{
 		  er_log_debug (ARG_FILE_LINE,
 				"requested pageid (%lld) is greater than append_las.pageid (%lld) in log header",
 				(long long int) la_Info.final_lsa.pageid,
-				(long long int) final_log_hdr.append_lsa.pageid);
+				(long long int) final_log_hdr.append_lsa.load ().pageid);
 		  usleep (100 * 1000);
 		  continue;
 		}
@@ -9361,11 +9594,14 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		      && ((la_Info.final_lsa.pageid + 1) <= final_log_hdr.eof_lsa.pageid)
 		      && (la_does_page_exist (la_Info.final_lsa.pageid + 1) != LA_PAGE_DOESNOT_EXIST))
 		    {
+		      const LOG_LSA hdr_append_lsa = final_log_hdr.append_lsa;
+
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
 			      log_buf->logpage.hdr.logical_pageid, log_buf->logpage.hdr.offset,
-			      la_Info.final_lsa.pageid, la_Info.final_lsa.offset, final_log_hdr.append_lsa.pageid,
-			      final_log_hdr.append_lsa.offset, final_log_hdr.eof_lsa.pageid,
-			      final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status, la_Info.is_end_of_record);
+			      la_Info.final_lsa.pageid, la_Info.final_lsa.offset,
+			      hdr_append_lsa.pageid, hdr_append_lsa.offset,
+			      final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status,
+			      la_Info.is_end_of_record);
 
 		      /* make sure to target page does not exist */
 		      if (la_does_page_exist (la_Info.final_lsa.pageid) == LA_PAGE_DOESNOT_EXIST
@@ -9374,7 +9610,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 			  er_log_debug (ARG_FILE_LINE, "skip this page (pageid=%lld/%lld/%lld)",
 					(long long int) la_Info.final_lsa.pageid,
 					(long long int) final_log_hdr.eof_lsa.pageid,
-					(long long int) final_log_hdr.append_lsa.pageid);
+					(long long int) final_log_hdr.append_lsa.load ().pageid);
 			  /* skip it */
 			  la_Info.final_lsa.pageid++;
 			  la_Info.final_lsa.offset = 0;
@@ -9385,7 +9621,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 #if defined (LA_VERBOSE_DEBUG)
 		  er_log_debug (ARG_FILE_LINE, "refetch this page... (pageid=%lld/%lld/%lld)",
 				(long long int) la_Info.final_lsa.pageid, (long long int) final_log_hdr.eof_lsa.pageid,
-				(long long int) final_log_hdr.append_lsa.pageid);
+				(long long int) final_log_hdr.append_lsa.load ().pageid);
 #endif
 		  /* wait a moment and retry it */
 		  usleep (100 * 1000);
@@ -9398,9 +9634,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 	  else
 	    {
+	      const LOG_LSA hdr_append_lsa = final_log_hdr.append_lsa;
+
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
 		      log_buf->logpage.hdr.logical_pageid, log_buf->logpage.hdr.offset, la_Info.final_lsa.pageid,
-		      la_Info.final_lsa.offset, final_log_hdr.append_lsa.pageid, final_log_hdr.append_lsa.offset,
+		      la_Info.final_lsa.offset, hdr_append_lsa.pageid, hdr_append_lsa.offset,
 		      final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status,
 		      la_Info.is_end_of_record);
 
@@ -9429,18 +9667,20 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      if (LSA_GT (&la_Info.final_lsa, &final_log_hdr.eof_lsa))
 		{
 #if defined (LA_VERBOSE_DEBUG)
+		  const LOG_LSA hdr_append_lsa = final_log_hdr.append_lsa;
+
 		  er_log_debug (ARG_FILE_LINE,
 				"this page is grater than eof_lsa. (%lld|%d) > eof (%lld|%d). appended (%lld|%d)",
 				(long long int) la_Info.final_lsa.pageid, la_Info.final_lsa.offset,
 				(long long int) final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset,
-				(long long int) final_log_hdr.append_lsa.pageid, final_log_hdr.append_lsa.offset);
+				(long long int) hdr_append_lsa.pageid, hdr_append_lsa.offset);
 #endif
 		  la_Info.is_end_of_record = true;
 		  /* it should be refetched and release later */
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
-	      else if (LSA_GT (&la_Info.final_lsa, &final_log_hdr.append_lsa))
+	      else if (la_Info.final_lsa > final_log_hdr.append_lsa.load ())
 		{
 		  la_invalidate_page_buffer (log_buf);
 		  break;
@@ -9535,6 +9775,13 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      break;
 	    }
 
+	  if (la_Info.is_end_of_record == true && la_record_end_is_stale ())
+	    {
+	      er_log_debug (ARG_FILE_LINE, "record end %lld|%d is short of the copied log eof %lld|%d",
+			    LSA_AS_ARGS (&la_Info.final_lsa), LSA_AS_ARGS (&la_Info.act_log.log_hdr->eof_lsa));
+	      la_Info.is_end_of_record = false;
+	    }
+
 	  /* check and change state */
 	  error = la_change_state ();
 	  if (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error))
@@ -9549,7 +9796,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  if (la_Info.final_lsa.pageid >= final_log_hdr.eof_lsa.pageid
-	      || la_Info.final_lsa.pageid >= final_log_hdr.append_lsa.pageid || la_Info.is_end_of_record == true)
+	      || la_Info.final_lsa.pageid >= final_log_hdr.append_lsa.load ().pageid
+	      || la_Info.is_end_of_record == true)
 	    {
 	      /* it should be refetched and release */
 	      la_invalidate_page_buffer (log_buf);

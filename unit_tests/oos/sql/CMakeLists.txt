@@ -22,13 +22,16 @@ project(test_oos_sql_project)
 # =============================================================================
 file(GLOB TEST_SQL_SOURCES test_oos_sql_*.cpp)
 
+# The parent directory holds helpers shared with the storage-level OOS tests (test_oos_error_log.hpp).
+get_filename_component(TEST_OOS_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+
 foreach(src ${TEST_SQL_SOURCES})
   get_filename_component(test_name ${src} NAME_WE)
 
   add_executable(${test_name} ${src})
   target_link_libraries(${test_name} PRIVATE ${EP_LIBS} cubridsa GTest::gtest)
   target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SA_MODE)
-  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR} ${TEST_OOS_DIR})
 endforeach()
 
 # Register SA_MODE tests
@@ -42,7 +45,9 @@ add_test(NAME test_oos_sql_bigone COMMAND test_oos_sql_bigone)
 add_test(NAME test_oos_sql_eager_cleanup COMMAND test_oos_sql_eager_cleanup)
 add_test(NAME test_oos_sql_storage COMMAND test_oos_sql_storage)
 add_test(NAME test_oos_sql_show COMMAND test_oos_sql_show)
+add_test(NAME test_oos_sql_deferred_write COMMAND test_oos_sql_deferred_write)
 add_test(NAME test_oos_sql_visible_version COMMAND test_oos_sql_visible_version)
+add_test(NAME test_oos_sql_workspace_bytes COMMAND test_oos_sql_workspace_bytes)
 
 set_tests_properties(
   test_oos_sql_crud test_oos_sql_ddl test_oos_sql_delete
@@ -51,6 +56,21 @@ set_tests_properties(
   test_oos_sql_eager_cleanup
   test_oos_sql_storage
   test_oos_sql_show
+  test_oos_sql_deferred_write
   test_oos_sql_visible_version
+  test_oos_sql_workspace_bytes
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
+
+# OOS values survive a crash through their persisted inline-stub identity (CBRD-26950). Owns
+# oosrecoverydb (fixture in the parent directory) because it kills a process that has the database
+# open, and boots per test rather than once per binary. Multi-chunk loads plus two or three boots,
+# one of them through the redo phase, need more headroom than the other SQL binaries.
+add_test(NAME test_oos_sql_crash_recovery COMMAND test_oos_sql_crash_recovery)
+set_tests_properties(
+  test_oos_sql_crash_recovery
+  PROPERTIES FIXTURES_REQUIRED OOS_RECOVERY_DB RUN_SERIAL TRUE TIMEOUT 180
+)
+
+# Expected-error tests also collect debug stack traces at allocation, storage and export failure boundaries.
+set_tests_properties(test_oos_sql_deferred_write PROPERTIES TIMEOUT 180)

@@ -46,6 +46,7 @@
 
 #include "error_manager.h"
 #include "db.h"
+#include "boot.h"		/* BOOT_CSQL_CLIENT_TYPE */
 #include "dbi.h"
 #include "dbtype.h"
 #include "parser.h"
@@ -65,7 +66,7 @@
 #include "server_interface.h"
 #include "transaction_cl.h"
 #include "object_print.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "jsp_cl.h"
 #include "optimizer.h"
 #include "memory_alloc.h"
@@ -104,6 +105,7 @@
 #define DB_SERIAL_MIN "-99999999999999999999999999999999999999"
 
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
+#define UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER "cREATEbLOCKtRIGGER"
 
 #define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
 /*
@@ -1190,6 +1192,47 @@ update_auto_increment_error:
 }
 
 /*
+ * do_finish_serial_object () - finish a template of a _db_serial row, and write a restart at once
+ *   return: Error code
+ *   obj_tmpl(in/out): set to NULL once dbt_finish_object () has released it
+ *   serial_object(in): the row the template edits
+ *   restart(in): the template sets current_val and started to restart the serial
+ *
+ * Without serial_restart the server keeps the current_val and started on the page (serial_row_write_keep_value ()).
+ * The flag is set before dbt_finish_object (), which writes the row itself at REPEATABLE READ and above, and is
+ * cleared on return. On failure the row is decached: a failed write leaves it dirty, and a later flush would apply
+ * the statement that failed.
+ */
+static int
+do_finish_serial_object (DB_OTMPL ** obj_tmpl, MOP serial_object, bool restart)
+{
+  MOP finished;
+  int error = NO_ERROR;
+
+  serial_object->serial_restart = restart;
+  finished = dbt_finish_object (*obj_tmpl);
+  if (finished == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  else
+    {
+      assert (finished == serial_object);
+      *obj_tmpl = NULL;
+      if (restart)
+	{
+	  error = locator_flush_instance (serial_object);
+	}
+    }
+  serial_object->serial_restart = 0;
+  if (error != NO_ERROR)
+    {
+      ws_decache (serial_object);
+    }
+  return error;
+}
+
+/*
  * do_reset_auto_increment_serial() -
  *   return: Error code
  *   serial_obj(in/out):
@@ -1199,7 +1242,6 @@ do_reset_auto_increment_serial (MOP serial_obj)
 {
   int error_code = NO_ERROR;
   DB_OBJECT *const serial_object = serial_obj;
-  DB_OBJECT *edit_serial_object = NULL;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE start_value;
   DB_VALUE started_flag;
@@ -1211,6 +1253,11 @@ do_reset_auto_increment_serial (MOP serial_obj)
 
   db_make_null (&start_value);
   db_make_null (&started_flag);
+
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the reset value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
 
   error_code = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &start_value);
   if (error_code != NO_ERROR)
@@ -1239,26 +1286,11 @@ do_reset_auto_increment_serial (MOP serial_obj)
       goto error_exit;
     }
 
-  edit_serial_object = dbt_finish_object (obj_tmpl);
-  if (edit_serial_object == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error_exit;
-    }
-
-  assert (edit_serial_object == serial_object);
-  obj_tmpl = NULL;
-
-  error_code = locator_flush_instance (edit_serial_object);
+  error_code = do_finish_serial_object (&obj_tmpl, serial_object, true);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial does not serve
-   * stale values after TRUNCATE-reset (do_alter_serial / do_drop_serial already decache). */
-  (void) serial_decache (ws_oid (serial_object));
 
   db_value_clear (&start_value);
   db_value_clear (&started_flag);
@@ -1290,7 +1322,6 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
 {
   int error_code = NO_ERROR;
   DB_OBJECT *const serial_object = serial_obj;
-  DB_OBJECT *edit_serial_object = NULL;
   DB_OTMPL *obj_tmpl = NULL;
 
   DB_VALUE max_val;
@@ -1316,6 +1347,11 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the rebase value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
 
   db_make_null (&max_val);
   db_make_null (&new_val);
@@ -1413,26 +1449,11 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
       goto error_exit;
     }
 
-  edit_serial_object = dbt_finish_object (obj_tmpl);
-  if (edit_serial_object == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error_exit;
-    }
-
-  assert (edit_serial_object == serial_object);
-  obj_tmpl = NULL;
-
-  error_code = locator_flush_instance (edit_serial_object);
+  error_code = do_finish_serial_object (&obj_tmpl, serial_object, true);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
-
-  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial reflects the new
-   * base after ALTER ... AUTO_INCREMENT = n (matches do_alter_serial / do_drop_serial). */
-  (void) serial_decache (ws_oid (serial_object));
 
   goto normal_exit;
 
@@ -1576,8 +1597,11 @@ do_get_serial_cached_num (int *cached_num, MOP serial_obj)
 {
   DB_VALUE cached_num_val;
   int error;
+  int save;
 
+  AU_SAVE_AND_DISABLE (save);
   error = db_get (serial_obj, SERIAL_ATTR_CACHED_NUM, &cached_num_val);
+  AU_RESTORE (save);
   if (error != NO_ERROR)
     {
       return error;
@@ -2353,8 +2377,10 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 
   /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
    * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
-   * cached path. A column whose whole range holds fewer values than one block goes uncached: the
-   * parameter is a global default, so it cannot fail the DDL the way CREATE SERIAL ... CACHE n does. */
+   * cached path. A column whose whole range holds fewer values than one block goes uncached - the
+   * parameter is a default this column did not spell out, so it cannot fail the DDL the way
+   * CREATE SERIAL ... CACHE n does. It is a session parameter, and a serial keeps the size it was
+   * created with. */
   cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
   if (cached_num > 1)
     {
@@ -2472,6 +2498,10 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
    */
   assert (WS_ISDIRTY (serial_mop) == false);
 
+  /* as in do_alter_serial: decache before the refetch takes the write lock; under it the write-back would be
+   * skipped with HA, and the template's block end would overwrite it at commit */
+  (void) serial_decache ((OID *) (&serial_obj_id));
+
   ws_decache (serial_mop);
 
   /* no need to get the last version for serial - actually, AU_FETCH_WRITE will get only last version, for locking */
@@ -2480,6 +2510,9 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     {
       goto end;
     }
+
+  AU_SAVE_AND_DISABLE (save);
+  au_disable_flag = true;
 
   /* get current value */
   error = db_get (serial_mop, SERIAL_ATTR_CURRENT_VAL, &current_val);
@@ -2536,9 +2569,6 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     }
 
   /* update serial object in _db_serial */
-  AU_SAVE_AND_DISABLE (save);
-  au_disable_flag = true;
-
   obj_tmpl = dbt_edit_object (serial_mop);
   if (obj_tmpl == NULL)
     {
@@ -2694,6 +2724,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
+
+  /* Drop the server-side cache before the refetch below takes the write lock, so the value this
+   * statement reads, checks its invariants against and writes back is the last one actually issued
+   * rather than the block end. At the end label instead, the template is already filled from the
+   * block end and its stale cur_val overwrites the write-back when the ALTER commits. */
+  (void) serial_decache (&serial_obj_id);
 
   ws_decache (serial_object);
 
@@ -3270,16 +3306,11 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  serial_object = dbt_finish_object (obj_tmpl);
-  if (serial_object == NULL)
+  error = do_finish_serial_object (&obj_tmpl, serial_object, cur_val_change);
+  if (error != NO_ERROR)
     {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
       goto end;
     }
-
-  /* obj_tmpl has been released by dbt_finish_object */
-  obj_tmpl = NULL;
 
 end:
   if (!OID_ISNULL (&serial_obj_id))
@@ -3405,12 +3436,13 @@ end:
 #define ER_PT_UNKNOWN_STATEMENT ER_GENERIC_ERROR
 #define UNIQUE_SAVEPOINT_EXTERNAL_STATEMENT "eXTERNALsTATEMENT"
 
-bool do_Trigger_involved;
+/* statement execution state; per connection (thread-local for multiple connections) */
+CUB_THREAD_LOCAL bool do_Trigger_involved;
 
 /* do_Trigger_involved does not accurately distinguish
  * whether the corresponding query is a trigger syntax.
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
-bool cdc_Trigger_involved = false;
+CUB_THREAD_LOCAL bool cdc_Trigger_involved = false;
 
 /*
  * do_statement() -
@@ -3430,6 +3462,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
+  unsigned save_compile_uncached = parser->flag.compile_uncached;
+
+  /* what compiles here is not cached: a trigger action at every firing, a statement that cannot be prepared */
+  parser->flag.compile_uncached = 1;
 
   /* save old read fetch instance version */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
@@ -3557,6 +3593,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SERVER:
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
+
+	case PT_ALTER_SYNONYM:
+	case PT_CREATE_SYNONYM:
+	case PT_DROP_SYNONYM:
+	case PT_RENAME_SYNONYM:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3784,6 +3825,14 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = jsp_drop_stored_procedure (parser, statement);
 	  break;
 
+	case PT_SET_SESSION_VARIABLES:
+	  error = do_set_session_variables (parser, statement);
+	  break;
+
+	case PT_DROP_SESSION_VARIABLES:
+	  error = do_drop_session_variables (parser, statement);
+	  break;
+
 	case PT_SET_NAMES:
 	  error = do_set_names (parser, statement);
 	  break;
@@ -3810,6 +3859,30 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_ALTER_SERVER:
 	  error = do_alter_server (parser, statement);
+	  break;
+
+	case PT_VACUUM:
+	  error = do_vacuum (parser, statement);
+	  break;
+
+	case PT_KILL_STMT:
+	  error = do_kill (parser, statement);
+	  break;
+
+	case PT_ALTER_SYNONYM:
+	  error = do_alter_synonym (parser, statement);
+	  break;
+
+	case PT_CREATE_SYNONYM:
+	  error = do_create_synonym (parser, statement);
+	  break;
+
+	case PT_DROP_SYNONYM:
+	  error = do_drop_synonym (parser, statement);
+	  break;
+
+	case PT_RENAME_SYNONYM:
+	  error = do_rename_synonym (parser, statement);
 	  break;
 
 	default:
@@ -3886,6 +3959,7 @@ end:
 	  error = ER_GENERIC_ERROR;
 	}
     }
+  parser->flag.compile_uncached = save_compile_uncached;
   return error;
 }
 
@@ -4014,11 +4088,6 @@ do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
        || stmt->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && stmt->info.query.correlation_level == 0
       && (stmt->info.query.hint & PT_HINT_QUERY_CACHE))
     {
-      /* 
-       * This condition is identical to the one used in parser_print_tree.
-       * Both functions must maintain the same condition to ensure consistency.
-       * Be careful not to modify only one of them.
-       */
       *err = do_prepare_subquery (parser, stmt);
 
       if (*err != NO_ERROR)
@@ -4805,7 +4874,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
 					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
 					statement->info.update_stats.random_seed,
-					statement->info.update_stats.no_histogram);
+					statement->info.update_stats.no_histogram, NULL, 0);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -5190,7 +5259,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
   switch (cst_item.item)
     {
     case CST_NOBJECTS:
-      db_make_int (db_val, class_statsp->heap_num_objects);
+      db_make_bigint (db_val, class_statsp->heap_num_objects);
       break;
     case CST_NPAGES:
       db_make_int (db_val, class_statsp->heap_num_pages);
@@ -5253,7 +5322,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	}
       else
 	{
-	  db_make_int (db_val, bt_statsp->keys);
+	  db_make_bigint (db_val, bt_statsp->keys);
 	}
       break;
     default:
@@ -6138,6 +6207,13 @@ get_savepoint_name_from_db_value (DB_VALUE * val)
   ((statement)->node_type == PT_TRIGGER_ACTION \
    && (statement)->info.trigger_action.action_type == PT_PRINT)
 
+#define IS_PLCSQL_BLOCK_ACTION_STATEMENT(statement) \
+  ((statement)->node_type == PT_TRIGGER_ACTION \
+   && (statement)->info.trigger_action.action_type == PT_PLCSQL_BLOCK)
+
+/* name prefix of the internal procedures made from PL/CSQL block actions */
+#define TRIGGER_BLOCK_SP_PREFIX "__trsp_"
+
 #define PT_NODE_TR_NAME(node) \
  ((node)->info.create_trigger.trigger_name->info.name.original)
 #define PT_NODE_TR_STATUS(node) \
@@ -6183,6 +6259,9 @@ static int check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, P
 static char **find_update_columns (int *count_ptr, PT_NODE * statement);
 static void get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char **source,
 			       PT_NODE * statement);
+static const char *skip_blanks_and_comments (const char *text);
+static int create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block,
+					   char *sp_name, int sp_name_size, const char **call_source);
 
 /*
  * merge_mop_list_extension() -
@@ -7189,6 +7268,183 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char
 }
 
 /*
+ * skip_blanks_and_comments() - Skips the blanks and the comments of PL/CSQL at the start of a text.
+ *   return: the first token of the text, or its end
+ *   text(in): PL/CSQL text
+ */
+static const char *
+skip_blanks_and_comments (const char *text)
+{
+  const char *end;
+
+  while (true)
+    {
+      while (char_isspace (*text))
+	{
+	  text++;
+	}
+
+      if ((text[0] == '-' && text[1] == '-') || (text[0] == '/' && text[1] == '/'))
+	{
+	  end = strchr (text, '\n');
+	  text = (end != NULL) ? end : text + strlen (text);
+	}
+      else if (text[0] == '/' && text[1] == '*')
+	{
+	  end = strstr (text + 2, "*/");
+	  text = (end != NULL) ? end + 2 : text + strlen (text);
+	}
+      else
+	{
+	  return text;
+	}
+    }
+}
+
+/*
+ * create_trigger_block_procedure() - Makes the internal procedure that runs a PL/CSQL block action of a trigger.
+ *   return: Error code
+ *   parser(in): Parse context of the create trigger statement
+ *   trigger_name(in): name of the trigger being created
+ *   block(in): PL/CSQL block text
+ *   sp_name(out): unique name of the procedure
+ *   sp_name_size(in): size of sp_name
+ *   call_source(out): action source that calls the procedure
+ *
+ * Note:
+ *    The procedure belongs to the trigger owner and its name has a random part,
+ *    so it does not depend on the trigger name. The call names the owner because
+ *    it is compiled when the trigger is created, possibly by another user.
+ */
+static int
+create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block, char *sp_name,
+				int sp_name_size, const char **call_source)
+{
+  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char *user_name;
+  MOP owner;
+  DB_VALUE uuid;
+  char *quoted_name;
+  char *create_sql;
+  char call_buf[DB_MAX_IDENTIFIER_LENGTH + 16] = { '\0' };
+  char *call;
+  char *compile_msg;
+  int i;
+  int error = NO_ERROR;
+
+  *call_source = NULL;
+
+  /* the owner is decided as tr_create_trigger does */
+  if (sm_qualifier_name (trigger_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
+    {
+      ERROR_SET_ERROR (error, ER_TR_CREATE_NOT_ALLOWED);
+      return error;
+    }
+
+  user_name = au_get_user_name (owner);
+  if (user_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  sm_downcase_name (user_name, downcase_owner_name, DB_MAX_USER_LENGTH);
+  db_ws_free_and_init (user_name);
+
+  error = db_uuidv4 (&uuid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  snprintf (sp_name, sp_name_size, "%s.%s%s", downcase_owner_name, TRIGGER_BLOCK_SP_PREFIX, db_get_string (&uuid));
+  pr_clear_value (&uuid);
+
+  /* the random part is in upper case hex, and names are kept in lower case */
+  for (i = strlen (downcase_owner_name); sp_name[i] != '\0'; i++)
+    {
+      sp_name[i] = (char) tolower ((unsigned char) sp_name[i]);
+    }
+
+  /*
+   * The procedure takes the shape of its stored code: the header on the first line and the body,
+   * without a leading DECLARE and the blanks and comments after it, from the second line.
+   * The stored code is what is compiled again when the owner changes, and it starts the body at its first token,
+   * so both compilations report errors at the same lines.
+   */
+  if (strncasecmp (block, "declare", strlen ("declare")) == 0)
+    {
+      block = skip_blanks_and_comments (block + strlen ("declare"));
+    }
+
+  /* the owner name may need quoting, for example a reserved word */
+  quoted_name = pt_append_string (parser, NULL, "[");
+  quoted_name = pt_append_string (parser, quoted_name, downcase_owner_name);
+  quoted_name = pt_append_string (parser, quoted_name, "].[");
+  quoted_name = pt_append_string (parser, quoted_name, sp_name + strlen (downcase_owner_name) + 1);
+  quoted_name = pt_append_string (parser, quoted_name, "]");
+
+  create_sql = pt_append_string (parser, NULL, "CREATE PROCEDURE ");
+  create_sql = pt_append_string (parser, create_sql, quoted_name);
+  create_sql = pt_append_string (parser, create_sql, " AS\n");
+  create_sql = pt_append_string (parser, create_sql, block);
+
+  if (quoted_name == NULL || create_sql == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* the call is made first, so nothing in this function fails after the procedure is made */
+  error = tr_make_block_procedure_call (sp_name, call_buf, sizeof (call_buf));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  call = pt_append_string (parser, NULL, call_buf);
+  if (call == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = jsp_create_system_generated_procedure (create_sql);
+  if (error == ER_SP_COMPILE_ERROR)
+    {
+      /* report it as a compile error of the action, as for an action that is a statement */
+      compile_msg = pt_append_string (parser, NULL, er_msg ());
+      if (compile_msg == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      error = ER_TR_ACTION_COMPILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name, compile_msg);
+      return error;
+    }
+  else if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  *call_source = call;
+
+  return NO_ERROR;
+}
+
+/*
  * do_create_trigger() -
  *   return: Error code
  *   parser(in): Parse context
@@ -7210,8 +7466,11 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_TRIGGER_ACTION cond_type, action_type;
   DB_TRIGGER_TIME cond_time, action_time;
   const char *cond_source, *action_source;
+  const char *block_source = NULL;
+  char block_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_OBJECT *trigger;
   SM_CLASS *smclass = NULL;
+  bool has_savepoint = false;
   int error = NO_ERROR;
   CHECK_MODIFICATION_ERROR ();
 
@@ -7283,16 +7542,42 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   action = PT_NODE_ACTION (statement);
   action_time = PT_NODE_ACTION_TIME (statement);
-  get_activity_info (parser, &action_type, &action_source, action);
+  if (action != NULL && IS_PLCSQL_BLOCK_ACTION_STATEMENT (action))
+    {
+      /* the trigger calls an internal procedure made from the block */
+      assert (action->info.trigger_action.plcsql_block != NULL);
+      block_source = (const char *) action->info.trigger_action.plcsql_block->info.value.data_value.str->bytes;
+
+      /* the procedure and the trigger are made together or not at all */
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      has_savepoint = true;
+
+      error =
+	create_trigger_block_procedure (parser, name, block_source, block_sp_name, sizeof (block_sp_name),
+					&action_source);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      action_type = TR_ACT_EXPRESSION;
+    }
+  else
+    {
+      get_activity_info (parser, &action_type, &action_source, action);
+    }
 
   trigger =
     tr_create_trigger (name, status, priority, event, class_, attribute, cond_time, cond_source, action_time,
-		       action_type, action_source, comment);
+		       action_type, action_source, comment, block_source != NULL ? block_sp_name : NULL, block_source);
 
   if (trigger == NULL)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
     }
 
   /* Save the new trigger object in the parse tree. Actually, we probably should also allow INTO variable sub-clause to
@@ -7312,14 +7597,10 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = (void *) value;
 #endif
 
-  if (smclass != NULL && smclass->users != NULL && TM_TRAN_ISOLATION () < TRAN_REP_READ)
+end:
+  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      /* We have to flush the newly created trigger if the class it belongs to has subclasses. This is because the same
-       * trigger is assigned to the whole hierarchy and we have to make sure it does not remain a temporary object when
-       * it is first compiled. Since the class that this trigger belongs to might also be a temporary object, we
-       * actually have to flush the whole workspace. No need to flush in isolation levels >= repeatable read since
-       * already flushed in tr_create_trigger */
-      error = locator_all_flush ();
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER);
     }
 
   return error;
@@ -7653,12 +7934,23 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   const char *old_name, *new_name;
+  const char *old_qualifier_name, *new_qualifier_name;
   DB_OBJECT *trigger;
 
   CHECK_MODIFICATION_ERROR ();
 
   old_name = statement->info.rename_trigger.old_name->info.name.original;
   new_name = statement->info.rename_trigger.new_name->info.name.original;
+
+  old_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.old_name);
+  new_qualifier_name = pt_get_qualifier_name (parser, statement->info.rename_trigger.new_name);
+
+  if (old_qualifier_name == NULL || new_qualifier_name == NULL
+      || intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+    {
+      ERROR_SET_ERROR (error, ER_SM_RENAME_CANT_ALTER_OWNER);
+      return error;
+    }
 
   trigger = tr_find_trigger (old_name);
   if (trigger == NULL)
@@ -7843,6 +8135,7 @@ static int update_check_for_constraints (PARSER_CONTEXT * parser, int *has_uniqu
 static bool update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * assignment);
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
+static int do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
 static int is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
 				     int *const server_allowed, const PT_NODE * statement);
 static int delete_object_tuple (DB_OBJECT * obj);
@@ -9917,6 +10210,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err = do_append_bind_variant_key (parser, contextp, statement);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -9941,6 +10239,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   *  build UPDATE_PROC XASL
 	   */
 
+	  /* the plan about to be looked up or compiled says again whether the statement is a target */
+	  statement->flag.bind_watch_candidate = 0;
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
@@ -9969,6 +10269,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   * driver-neutral recording as do_prepare_select ()) */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
+	      if (err == NO_ERROR && stream.xasl_id != NULL && (xasl_header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  /* the cached plan passed target selection for bind-value plan variants */
+		  statement->flag.bind_watch_candidate = 1;
+		}
 	    }
 
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -9987,6 +10292,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  /* freshly compiled with unbound host-variable markers */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  statement->flag.bind_watch_candidate = 1;
 		}
 	      AU_RESTORE (au_save);
 
@@ -10013,8 +10322,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
-		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
-				   er_msg (), NULL);
+		  /* CBRD-27583: a failure the generation left in er only is recorded at the statement (-494); one
+		   * the generation already recorded in the parser is not recorded again */
+		  if (!pt_has_error (parser))
+		    {
+		      pt_record_error (parser, parser->statement_number, statement->line_number,
+				       statement->column_number, er_msg (), NULL);
+		    }
 		}
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
@@ -10292,7 +10606,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* check host variables are filled : values from orderby_for may not have been auto-parameterized as host
 	   * variables; if that is the case, do it now */
-	  if (statement->info.update.orderby_for != NULL && parser->auto_param_count == 0)
+	  if (statement->info.update.orderby_for != NULL && PT_AUTO_PARAM_LITERAL_COUNT (parser) == 0)
 	    {
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));
@@ -11299,6 +11613,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err = do_append_bind_variant_key (parser, contextp, statement);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -11315,6 +11634,8 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	      break;
 	    }
 
+	  /* the plan about to be looked up or compiled says again whether the statement is a target */
+	  statement->flag.bind_watch_candidate = 0;
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
@@ -11342,6 +11663,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		   * driver-neutral recording as do_prepare_select ()) */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
+	      if (err == NO_ERROR && stream.xasl_id != NULL && (xasl_header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  /* the cached plan passed target selection for bind-value plan variants */
+		  statement->flag.bind_watch_candidate = 1;
+		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
@@ -11360,6 +11686,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		  /* freshly compiled with unbound host-variable markers */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  statement->flag.bind_watch_candidate = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -11375,8 +11705,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
-		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
-				   er_msg (), NULL);
+		  /* CBRD-27583: a failure the generation left in er only is recorded at the statement (-494); one
+		   * the generation already recorded in the parser is not recorded again */
+		  if (!pt_has_error (parser))
+		    {
+		      pt_record_error (parser, parser->statement_number, statement->line_number,
+				       statement->column_number, er_msg (), NULL);
+		    }
 		}
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
@@ -14648,19 +14983,23 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* for dblink: no need to check xasl_id is NULL */
-  if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
+  if (statement->xasl_id == NULL)
     {
-      if (statement->xasl_id == NULL)
+      /* Nothing to execute for a remote target, e.g. false where or not prepared correctly -- the same as
+       * do_execute_delete (). The do_insert () fallback below is for local targets only. */
+      if (statement->info.insert.spec->info.spec.remote_server_name != NULL)
 	{
-	  /* check if it is not necessary to execute this statement */
-	  if (qo_need_skip_execution ())
-	    {
-	      statement->etc = NULL;
-	      return NO_ERROR;
-	    }
-	  return do_insert (parser, statement);
+	  statement->etc = NULL;
+	  return NO_ERROR;
 	}
+
+      /* check if it is not necessary to execute this statement */
+      if (qo_need_skip_execution ())
+	{
+	  statement->etc = NULL;
+	  return NO_ERROR;
+	}
+      return do_insert (parser, statement);
     }
 
   query_flag = DEFAULT_EXEC_MODE;
@@ -15199,6 +15538,51 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * do_append_bind_variant_key () - name a bind-value plan variant: its key goes after the hash text
+ *   of the statement, so the variant is a cache entry of its own (bind_variant.h)
+ * return : error code
+ */
+static int
+do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement)
+{
+  const char *key = NULL;
+  size_t text_len, key_len;
+  char *variant_text;
+
+  if (PT_IS_QUERY (statement))
+    {
+      key = statement->info.query.bind_variant_key;
+    }
+  else if (statement->node_type == PT_UPDATE)
+    {
+      key = statement->info.update.bind_variant_key;
+    }
+  else if (statement->node_type == PT_DELETE)
+    {
+      key = statement->info.delete_.bind_variant_key;
+    }
+  if (key == NULL || contextp->sql_hash_text == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  text_len = strlen (contextp->sql_hash_text);
+  key_len = strlen (key);
+  variant_text = (char *) parser_alloc (parser, (int) (text_len + key_len + 1));
+  if (variant_text == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  memcpy (variant_text, contextp->sql_hash_text, text_len);
+  memcpy (variant_text + text_len, key, key_len + 1);
+  contextp->sql_hash_text = variant_text;
+  return NO_ERROR;
+}
+
+/*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
  *   return: Error code
@@ -15259,6 +15643,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
+  err = do_append_bind_variant_key (parser, contextp, statement);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
   err =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 		 &contextp->sha1);
@@ -15274,6 +15663,9 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
+  /* the plan about to be looked up or compiled says again whether the statement is a target */
+  statement->flag.bind_watch_candidate = 0;
+  statement->info.query.limit_opt_flags = 0;
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
@@ -15321,6 +15713,13 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
 	      statement->flag.hv_pred_plan_unpeeked = 1;
 	    }
+	  if (stream.xasl_header->xasl_flag & BIND_WATCH_CANDIDATE)
+	    {
+	      /* the cached plan passed target selection for bind-value plan variants; record it so
+	       * the driver-neutral path chooses among the variants too */
+	      statement->flag.bind_watch_candidate = 1;
+	    }
+	  statement->info.query.limit_opt_flags = stream.xasl_header->xasl_flag & XASL_LIMIT_OPT_FLAGS;
 	}
     }
 
@@ -15342,6 +15741,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
 	  statement->flag.hv_pred_plan_unpeeked = 1;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+	{
+	  statement->flag.bind_watch_candidate = 1;
+	}
+      if (contextp->xasl)
+	{
+	  statement->info.query.limit_opt_flags = contextp->xasl->header.xasl_flag & XASL_LIMIT_OPT_FLAGS;
 	}
       AU_RESTORE (au_save);
 
@@ -15441,6 +15848,120 @@ do_prepare_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   return NO_ERROR;
 }
 
+/* CBRD-27583: whether a derived position the subquery holds (host_var_p) derives from user position user */
+static bool
+do_subquery_derives_from (const PARSER_CONTEXT * parser, PT_NODE ** host_var_p, int var_count, int user)
+{
+  for (int k = parser->host_var_count; k < var_count; k++)
+    {
+      if (host_var_p[k] != NULL && pt_is_derived_host_var (parser, k) && parser->host_var_derived_from[k] == user)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* an array of n elements of size for the subquery's positions, when the statement's array exists */
+static void *
+do_subquery_position_array (const void *statement_array, int n, size_t size, bool * failed)
+{
+  if (statement_array == NULL || n <= 0)
+    {
+      return NULL;
+    }
+  void *array = calloc (n, size);
+  *failed = *failed || array == NULL;
+  return array;
+}
+
+/*
+ * do_subquery_positions () - CBRD-27583: the subquery's positions keep their kinds and what its plan reads them in:
+ *   a user position (sub_host_var_index holds them first) the user position's domains, format class, ELT index and
+ *   bind domain, a derived position its domains and its user position's new number, an auto-parameter its own.
+ *   The caller frees the arrays.
+ */
+static int
+do_subquery_positions (const PARSER_CONTEXT * parser, PARSER_CONTEXT * context, const PT_NODE * stmt)
+{
+  const int count = stmt->sub_host_var_count;
+  int users = 0;
+  bool failed = false;
+
+  while (users < count && stmt->sub_host_var_index[users] < parser->host_var_count)
+    {
+      users++;
+    }
+  context->host_var_count = users;
+  context->auto_param_count = count - users;
+  context->host_var_derived_count = 0;
+
+  /* the domains of the user positions, and of every position once the compilation assigned derived positions
+   * (pt_grow_host_var_positions) */
+  const int typed = parser->host_var_derived_from != NULL ? count : users;
+  context->host_var_expected_domains =
+    (TP_DOMAIN **) do_subquery_position_array (parser->host_var_expected_domains, typed, sizeof (TP_DOMAIN *), &failed);
+  context->host_var_compiled_domains =
+    (TP_DOMAIN **) do_subquery_position_array (parser->host_var_compiled_domains, typed, sizeof (TP_DOMAIN *), &failed);
+  context->host_var_derived_from =
+    (int *) do_subquery_position_array (parser->host_var_derived_from, count, sizeof (int), &failed);
+  context->host_var_derived_pads =
+    (bool *) do_subquery_position_array (parser->host_var_derived_pads, count, sizeof (bool), &failed);
+  context->host_var_format_classes =
+    (int *) do_subquery_position_array (parser->host_var_format_classes, users, sizeof (int), &failed);
+  context->host_var_elt_indexes =
+    (DB_BIGINT *) do_subquery_position_array (parser->host_var_elt_indexes, users, sizeof (DB_BIGINT), &failed);
+  context->host_var_bind_domains =
+    (TP_DOMAIN **) do_subquery_position_array (parser->host_var_bind_domains, users, sizeof (TP_DOMAIN *), &failed);
+  if (failed)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (TP_DOMAIN *));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (int s = 0; s < count; s++)
+    {
+      const int i = stmt->sub_host_var_index[s];
+      if (context->host_var_expected_domains != NULL && s < typed)
+	{
+	  context->host_var_expected_domains[s] = parser->host_var_expected_domains[i];
+	}
+      if (context->host_var_compiled_domains != NULL && s < typed)
+	{
+	  context->host_var_compiled_domains[s] = parser->host_var_compiled_domains[i];
+	}
+      if (context->host_var_format_classes != NULL && s < users)
+	{
+	  context->host_var_format_classes[s] = parser->host_var_format_classes[i];
+	}
+      if (context->host_var_elt_indexes != NULL && s < users)
+	{
+	  context->host_var_elt_indexes[s] = parser->host_var_elt_indexes[i];
+	}
+      if (context->host_var_bind_domains != NULL && s < users)
+	{
+	  context->host_var_bind_domains[s] = parser->host_var_bind_domains[i];
+	}
+      if (context->host_var_derived_from != NULL)
+	{
+	  context->host_var_derived_from[s] = -1;
+	  for (int u = 0; pt_is_derived_host_var (parser, i) && u < users; u++)
+	    {
+	      if (stmt->sub_host_var_index[u] == parser->host_var_derived_from[i])
+		{
+		  context->host_var_derived_from[s] = u;
+		  context->host_var_derived_count++;
+		  if (context->host_var_derived_pads != NULL)
+		    {
+		      context->host_var_derived_pads[s] = pt_is_padded_host_var (parser, i);
+		    }
+		}
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
 /*
  * do_prepare_subquery () - prepare subquery statements for query cache
  * return : Error code
@@ -15484,7 +16005,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  goto err_exit;
 	}
 
-      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      /* this scope operates on context, so alloc through it rather than parser.
+       * blocks added to context's string_blocks move to parser's own list
+       * after do_prepare_select, for parser_free_parser() to free later. */
+      stmt->sub_host_var_index = (int *) parser_alloc (&context, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
@@ -15503,6 +16027,15 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   for (i = 0; i < var_count; i++)
     {
+      if (host_var_p[i] == NULL && i < parser->host_var_count
+	  && do_subquery_derives_from (parser, host_var_p, var_count, i))
+	{
+	  /* CBRD-27583: a user position the subquery reads only by its derived positions, whose plan domain takes the
+	   * user's value (pt_decide_position_collation) */
+	  stmt->sub_host_var_index[stmt->sub_host_var_count] = i;
+	  db_value_clone (&parser->host_variables[i], &context.host_variables[stmt->sub_host_var_count]);
+	  stmt->sub_host_var_count++;
+	}
       if (host_var_p[i])
 	{
 	  for (hv = host_var_p[i]; hv; hv = hv->info.host_var.next)
@@ -15530,12 +16063,18 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
     }
 
-  context.host_var_count = stmt->sub_host_var_count;
+  err = do_subquery_positions (parser, &context, stmt);
 
   /* save the flag for main query's prepare */
   save_flag = stmt->info.query.is_subquery;
 
-  err = do_prepare_select (&context, stmt);
+  if (err == NO_ERROR)
+    {
+      err = do_prepare_select (&context, stmt);
+    }
+
+  /* move blocks context added into parser's own list to avoid leaking them. */
+  parser->string_blocks = context.string_blocks;
 
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
@@ -15567,6 +16106,13 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	}
       free (context.host_variables);
     }
+  free (context.host_var_expected_domains);
+  free (context.host_var_compiled_domains);
+  free (context.host_var_format_classes);
+  free (context.host_var_elt_indexes);
+  free (context.host_var_derived_from);
+  free (context.host_var_derived_pads);
+  free (context.host_var_bind_domains);
 
   return err;
 
@@ -15596,11 +16142,11 @@ int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
 {
   int i, q, err = NO_ERROR;
-  QUERY_ID query_id;
-  QFILE_LIST_ID *list_id;
 
   for (q = 0; q < num_query; q++)
     {
+      QUERY_ID query_id = NULL_QUERY_ID;
+      QFILE_LIST_ID *list_id = NULL;
       DB_VALUE *host_variables = NULL;
 
       if (info[q].host_var_count > 0)
@@ -15634,6 +16180,16 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	  free (host_variables);
 	}
 
+      if (list_id != NULL)
+	{
+	  cursor_free_self_list_id (list_id);
+	}
+
+      if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+	{
+	  qmgr_end_query (query_id);
+	}
+
       if (err != NO_ERROR)
 	{
 	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
@@ -15660,7 +16216,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 int
 do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  QUERY_ID query_id;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables = NULL;
   CACHE_TIME clt_cache_time;
@@ -15695,6 +16251,19 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  db_value_clear (&host_variables[i]);
 	}
       free (host_variables);
+    }
+
+  /* server already cached the result (RESULT_CACHE_REQUIRED); this only triggers that, does not read rows back. */
+  if (list_id != NULL)
+    {
+      cursor_free_self_list_id (list_id);
+    }
+
+  /* only unpins this query from the cache entry; the entry is not cleared and stays for reuse.
+   * skipping this leaks a query entry per call, exhausting max_query_per_tran and raising ER_QM_QENTRY_RUNOUT. */
+  if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+    {
+      qmgr_end_query (query_id);
     }
 
   if (err == ER_QPROC_RESULT_CACHE_INVALID)
@@ -15936,7 +16505,9 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (ws_need_flush ())
 	{
+#if defined(SA_MODE)
 	  if (tm_Use_OID_preflush)
+#endif
 	    {
 	      (void) locator_assign_all_permanent_oids ();
 	    }
@@ -18290,7 +18861,17 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  server_op = (server_insert && server_update);
+  if (statement->info.merge.into->info.spec.remote_server_name)
+    {
+      /* A remote MERGE is sent to the remote server as one statement, so either WHEN clause
+       * alone is complete. With AND it would take the client path, which needs a local class
+       * (class_obj and flat are NULL here). */
+      server_op = (server_insert || server_update);
+    }
+  else
+    {
+      server_op = (server_insert && server_update);
+    }
 
   if (server_op)
     {
@@ -18357,9 +18938,12 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* generate MERGE XASL */
 	  /* Note: Autoparameterization is redundant as the merge XASL generation is already performed. Therefore, this step can be safely omitted. */
 	  bool backup_flag = parser->flag.is_skip_auto_parameterize;
+	  bool backup_merge_flag = parser->flag.is_generating_merge_xasl;
 	  parser->flag.is_skip_auto_parameterize = 1;
+	  parser->flag.is_generating_merge_xasl = 1;
 	  contextp->xasl = pt_to_merge_xasl (parser, statement, &non_nulls_upd, &non_nulls_ins, default_expr_attrs);
 	  parser->flag.is_skip_auto_parameterize = backup_flag;
+	  parser->flag.is_generating_merge_xasl = backup_merge_flag;
 
 	  stream.buffer = NULL;
 
@@ -18392,7 +18976,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert (er_errid () != NO_ERROR);
 #endif
 	      err = er_errid ();
-	      if (err != NO_ERROR)
+	      /* CBRD-27583: a failure the generation left in er only is recorded at the statement (-494); one the
+	       * generation already recorded in the parser is not recorded again */
+	      if (err != NO_ERROR && !pt_has_error (parser))
 		{
 		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
 				   er_msg (), NULL);
@@ -20586,10 +21172,14 @@ do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 /*
  * do_set_query_trace() - Set query trace
- *   return: NO_ERROR
+ *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a set statement
  *
+ * Note: The values go through db_set_system_parameters() rather than prm_set_*_value(),
+ *   because only the former also stores them in the server session state. A value set by
+ *   prm_set_*_value() lives in this client process alone, so it is lost once CAS restarts and
+ *   the driver reconnects with the same session id. SET NAMES and SET TIMEZONE do the same.
  */
 int
 do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -20597,25 +21187,25 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if defined(SA_MODE)
   return NO_ERROR;
 #else
+#define MAX_LEN  50
+  int error = NO_ERROR;
+  char sys_prm_chg[MAX_LEN];
+
   if (statement->info.trace.on_off == PT_TRACE_ON)
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
+      const char *trace_format = (statement->info.trace.format == PT_TRACE_FORMAT_JSON) ? "json" : "text";
 
-      if (statement->info.trace.format == PT_TRACE_FORMAT_TEXT)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_TEXT);
-	}
-      else if (statement->info.trace.format == PT_TRACE_FORMAT_JSON)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_JSON);
-	}
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=y; query_trace_format=%s", trace_format);
     }
   else
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, false);
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=n");
     }
 
-  return NO_ERROR;
+  error = db_set_system_parameters (sys_prm_chg);
+
+#undef MAX_LEN
+  return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
 #endif /* SA_MODE */
 }
 
@@ -21217,6 +21807,15 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
     {
       *query_flag |= XASL_TRACE_JSON;
     }
+  /* a csql session that dumps its plans in detail (;plan detail sets the level's 0x200 bit) gets the compiled
+   * expression programs in its trace as well: the server cannot see the client's optimization level otherwise.
+   * Only csql: a CAS raises the level itself to log a query plan (cas_optimization.c, CCI_EXEC_QUERY_INFO), which
+   * must not switch the section on under a JDBC/CCI client (CTP's traced test answers, 2026-10-13). */
+  if (BOOT_CSQL_CLIENT_TYPE (db_get_client_type ())
+      && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
+    {
+      *query_flag |= XASL_TRACE_PLAN_DETAIL;
+    }
 }
 
 /*
@@ -21267,16 +21866,16 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
     }
   else if (format == QUERY_TRACE_JSON)
     {
-      json_t *jplan;
+      trace_json_t *jplan;
 
       if (parser->num_plan_trace > 1)
 	{
-	  jplan = json_array ();
+	  jplan = trace_json_array ();
 
 	  for (i = 0; i < parser->num_plan_trace; i++)
 	    {
 	      assert (parser->plan_trace[i].format == format);
-	      json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
+	      trace_json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
 	      parser->plan_trace[i].trace.json_plan = NULL;
 	    }
 	}
@@ -21286,10 +21885,9 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 	  parser->plan_trace[0].trace.json_plan = NULL;
 	}
 
-      plan_str = json_dumps (jplan, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+      plan_str = trace_json_dumps (jplan);
 
-      json_object_clear (jplan);
-      json_decref (jplan);
+      trace_json_decref (jplan);
     }
 
   parser->num_plan_trace = 0;
@@ -22557,7 +23155,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 	    {
 	      goto err;
 	    }
-	  /* check if user is creator or DBA  */
+	  /* check if user is the owner, a member of the owning group, or a DBA */
 	  if (au_is_server_authorized_user (&values[1]))
 	    {
 	      rec_cnt++;
@@ -22577,7 +23175,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
       if (rec_cnt == 0)
 	{
-	  error = ER_DBLINK_SERVER_ALTER_NOT_ALLOWED;	// ER_DBLINK_CANNOT_UPDATE_SERVER
+	  /* Treat "exists but not authorized" as missing - a distinct error would tell the caller that
+	   * this name is taken in another user's schema. The duplicate-name checks read a miss as "this
+	   * name is free", which holds because pt_check_server_owners () has authorized the caller for
+	   * the owner they look up. Query name resolution is what still arrives here unauthorized. */
+	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
 

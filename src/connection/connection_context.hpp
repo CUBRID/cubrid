@@ -165,8 +165,9 @@ namespace cubconn::connection
       state m_state;
       receiver m_receiver;
 
-      cubbase::span<std::byte> m_header;
+      NET_HEADER m_header;
       int m_request_id;
+      unsigned short m_command_flags;
 
       /* if received command packet, task will be pushed into worker pool */
       /* when data packet is completely received. */
@@ -183,6 +184,9 @@ namespace cubconn::connection
       /* shared by every sender blocked on this transmitter (bad case) all of them are woken */
       /* together (notify_all) when the pending transmission drains or is discarded */
       std::shared_ptr<message_blocker> m_blocker;
+
+      /* woken on a freed slot or teardown; m_blocker waits for a full drain, which a congested queue rarely gets */
+      std::shared_ptr<message_blocker> m_room;
     } m_send;
 
     /* --------------------------------------------------------------------------- */

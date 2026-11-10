@@ -146,6 +146,7 @@ struct btree_node_split_info
 typedef char *PAGE_PTR;		/* Pointer to a page */
 
 /* TODO - PAGE_TYPE is used for debugging */
+/* Page types are stored in every page header: append new types, never insert. PERF_PAGE_TYPE mirrors them. */
 typedef enum
 {
   PAGE_UNKNOWN = 0,		/* used for initialized page */
@@ -156,14 +157,14 @@ typedef enum
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
   PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
-  PAGE_OOS,			/* oos page */
   PAGE_AREA,			/* area page */
   PAGE_CATALOG,			/* catalog page */
   PAGE_BTREE,			/* b+tree index page (with ovf_OIDs) */
   PAGE_LOG,			/* NONE - log page (unused) */
   PAGE_DROPPED_FILES,		/* Dropped files page.  */
   PAGE_VACUUM_DATA,		/* Vacuum data. */
-  PAGE_LAST = PAGE_VACUUM_DATA
+  PAGE_OOS,			/* oos page */
+  PAGE_LAST = PAGE_OOS
 } PAGE_TYPE;
 
 /* Index scan OID buffer size as set by system parameter. */
@@ -312,6 +313,18 @@ struct lorecdes
 #define BTID_COPY(btid_ptr1, btid_ptr2) *(btid_ptr1) = *(btid_ptr2)
 
 #define BTID_IS_NULL(btid)  (((btid)->vfid.fileid == NULL_FILEID) ? 1 : 0)
+
+/* CBRD-27401: ALTER INDEX ... COMPACT [WITH FILL_FACTOR = n]. Target fill ratio (percent) of the overflow OID data
+ * pages left behind by compaction. 100 would make the next scattered insert split the page again right away. The
+ * default matches PostgreSQL's B-tree fillfactor (90). It is a per-command argument for now; making it an index
+ * attribute shared with split and load is a separate issue. */
+#define BTREE_COMPACT_MIN_FILL_FACTOR 50
+#define BTREE_COMPACT_MAX_FILL_FACTOR 100
+#define BTREE_COMPACT_DEFAULT_FILL_FACTOR 90
+/* CBRD-27401: committed merges after which btree_ovf_compact_chain () stops so that the caller can yield the leaf
+ * WRITE latch to concurrent DML on that leaf and come back to the same key. Bounds the stall a very long chain would
+ * otherwise cause; re-walking the chain is idempotent. */
+#define BTREE_COMPACT_MERGES_PER_LATCH 64
 
 #define BTID_IS_EQUAL(b1,b2) \
   (((b1)->vfid.fileid == (b2)->vfid.fileid) && \
@@ -606,6 +619,8 @@ typedef int ATTR_ID;		/* attribute identifier */
 
 #define NULL_REPRID       -1	/* Null Representation Identifier */
 #define NULL_ATTRID       -1	/* Null Attribute Identifier */
+#define FUNC_INDEX_RESULT_ATTRID  -2	/* function result in a function index key; real ids are >= 0 */
+#define IS_FUNC_INDEX_RESULT_ATTR_ID(id)   ((id) == FUNC_INDEX_RESULT_ATTRID)
 
 /************************************************************************/
 /* b-tree common                                                        */
@@ -979,6 +994,15 @@ typedef enum
   SHOWSTMT_END
 } SHOWSTMT_TYPE;
 
+/* Scan mode of the show statements which acquire a class lock (SHOW HEAP HEADER/CAPACITY for now).
+ * It is passed as the last show argument; a request which does not carry it at all gets the
+ * default, EXACT. */
+typedef enum
+{
+  SHOWSTMT_SCAN_EXACT = 0,	/* S_LOCK: statistics consistent with the committed DML */
+  SHOWSTMT_SCAN_APPROX		/* IS_LOCK: concurrent with DML, but approximate */
+} SHOWSTMT_SCAN_MODE;
+
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
 
@@ -1041,8 +1065,7 @@ typedef enum
   SM_FK_INFO_REF_CLASS_PK_BTID_INDEX = 1,
   SM_FK_INFO_DELETE_ACTION_INDEX = 2,
   SM_FK_INFO_UPDATE_ACTION_INDEX = 3,
-  SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX = 4,
-  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 5,
+  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 4,
 
   SM_FK_INFO_SIZE
 } SM_FOREIGN_KEY_INFO_INDEX;
@@ -1228,6 +1251,7 @@ struct dbdef_vol_ext_info
 };
 
 #define SERVER_SESSION_KEY_SIZE			8
+#define SESSION_SECRET_SIZE			8
 
 typedef enum
 {

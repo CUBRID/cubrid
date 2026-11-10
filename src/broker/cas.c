@@ -70,103 +70,6 @@ static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
 static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
 
-/* CAS global variables are defined in cas_common_vars.c (declared via cas_common_vars.h). */
-
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-static T_SERVER_FUNC server_fn_table[] = {
-  fn_end_tran,			/* CAS_FC_END_TRAN */
-  fn_prepare,			/* CAS_FC_PREPARE */
-  fn_execute,			/* CAS_FC_EXECUTE */
-  fn_not_supported,		/* CAS_FC_GET_DB_PARAMETER */
-  fn_not_supported,		/* CAS_FC_SET_DB_PARAMETER */
-  fn_close_req_handle,		/* CAS_FC_CLOSE_REQ_HANDLE */
-  fn_not_supported,		/* CAS_FC_CURSOR */
-  fn_fetch,			/* CAS_FC_FETCH */
-  fn_not_supported,		/* CAS_FC_SCHEMA_INFO */
-  fn_not_supported,		/* CAS_FC_OID_GET */
-  fn_not_supported,		/* CAS_FC_OID_SET */
-  fn_not_supported,		/* CAS_FC_DEPRECATED1 */
-  fn_not_supported,		/* CAS_FC_DEPRECATED2 */
-  fn_not_supported,		/* CAS_FC_DEPRECATED3 */
-  fn_get_db_version,		/* CAS_FC_GET_DB_VERSION */
-  fn_not_supported,		/* CAS_FC_GET_CLASS_NUM_OBJS */
-  fn_not_supported,		/* CAS_FC_OID_CMD */
-  fn_not_supported,		/* CAS_FC_COLLECTION */
-  fn_not_supported,		/* CAS_FC_NEXT_RESULT */
-  fn_not_supported,		/* CAS_FC_EXECUTE_BATCH */
-  fn_execute_array,		/* CAS_FC_EXECUTE_ARRAY */
-  fn_not_supported,		/* CAS_FC_CURSOR_UPDATE */
-  fn_not_supported,		/* CAS_FC_GET_ATTR_TYPE_STR */
-  fn_not_supported,		/* CAS_FC_GET_QUERY_INFO */
-  fn_not_supported,		/* CAS_FC_DEPRECATED4 */
-  fn_not_supported,		/* CAS_FC_SAVEPOINT */
-  fn_not_supported,		/* CAS_FC_PARAMETER_INFO */
-  fn_not_supported,		/* CAS_FC_XA_PREPARE */
-  fn_not_supported,		/* CAS_FC_XA_RECOVER */
-  fn_not_supported,		/* CAS_FC_XA_END_TRAN */
-  fn_con_close,			/* CAS_FC_CON_CLOSE */
-  fn_check_cas,			/* CAS_FC_CHECK_CAS */
-  fn_make_out_rs,		/* CAS_FC_MAKE_OUT_RS */
-  fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
-  fn_not_supported,		/* CAS_FC_LOBFILE_NEW */
-  fn_not_supported,		/* CAS_FC_LOBFILE_WRITE */
-  fn_not_supported,		/* CAS_FC_LOBFILE_READ */
-  fn_not_supported,		/* CAS_FC_END_SESSION */
-  fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
-  fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
-  fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
-  fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
-  fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
-};
-#elif defined(CAS_FOR_CGW)
-static T_SERVER_FUNC server_fn_table[] = {
-  fn_end_tran,			/* CAS_FC_END_TRAN */
-  fn_prepare,			/* CAS_FC_PREPARE */
-  fn_execute,			/* CAS_FC_EXECUTE */
-  fn_not_supported,		/* CAS_FC_GET_DB_PARAMETER */
-  fn_not_supported,		/* CAS_FC_SET_DB_PARAMETER */
-  fn_close_req_handle,		/* CAS_FC_CLOSE_REQ_HANDLE */
-  fn_cursor,			/* CAS_FC_CURSOR */
-  fn_fetch,			/* CAS_FC_FETCH */
-  fn_not_supported,		/* CAS_FC_SCHEMA_INFO */
-  fn_not_supported,		/* CAS_FC_OID_GET */
-  fn_not_supported,		/* CAS_FC_OID_SET */
-  fn_not_supported,		/* CAS_FC_DEPRECATED1 */
-  fn_not_supported,		/* CAS_FC_DEPRECATED2 */
-  fn_not_supported,		/* CAS_FC_DEPRECATED3 */
-  fn_get_db_version,		/* CAS_FC_GET_DB_VERSION */
-  fn_not_supported,		/* CAS_FC_GET_CLASS_NUM_OBJS */
-  fn_not_supported,		/* CAS_FC_OID_CMD */
-  fn_not_supported,		/* CAS_FC_COLLECTION */
-  fn_not_supported,		/* CAS_FC_NEXT_RESULT */
-  fn_not_supported,		/* CAS_FC_EXECUTE_BATCH */
-  fn_not_supported,		/* CAS_FC_EXECUTE_ARRAY */
-  fn_not_supported,		/* CAS_FC_CURSOR_UPDATE */
-  fn_not_supported,		/* CAS_FC_GET_ATTR_TYPE_STR */
-  fn_not_supported,		/* CAS_FC_GET_QUERY_INFO */
-  fn_not_supported,		/* CAS_FC_DEPRECATED4 */
-  fn_not_supported,		/* CAS_FC_SAVEPOINT */
-  fn_not_supported,		/* CAS_FC_PARAMETER_INFO */
-  fn_not_supported,		/* CAS_FC_XA_PREPARE */
-  fn_not_supported,		/* CAS_FC_XA_RECOVER */
-  fn_not_supported,		/* CAS_FC_XA_END_TRAN */
-  fn_con_close,			/* CAS_FC_CON_CLOSE */
-  fn_check_cas,			/* CAS_FC_CHECK_CAS */
-  fn_not_supported,		/* CAS_FC_MAKE_OUT_RS */
-  fn_not_supported,		/* CAS_FC_GET_GENERATED_KEYS */
-  fn_not_supported,		/* CAS_FC_LOBFILE_NEW */
-  fn_not_supported,		/* CAS_FC_LOBFILE_WRITE */
-  fn_not_supported,		/* CAS_FC_LOBFILE_READ */
-  fn_not_supported,		/* CAS_FC_END_SESSION */
-  fn_not_supported,		/* CAS_FC_GET_ROW_COUNT */
-  fn_not_supported,		/* CAS_FC_GET_LAST_INSERT_ID */
-  fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
-  fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
-  fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
-};
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 /* ========================================================================
  * Function Tables
  * ======================================================================== */
@@ -216,7 +119,6 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
   fn_set_cas_change_mode	/* CAS_FC_SET_CAS_CHANGE_MODE */
 };
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 static const char *server_func_name[] = {
   "end_tran",
@@ -293,9 +195,9 @@ static void cas_post_db_connect (void *context, struct timeval *cas_start_time, 
 static void cas_cleanup_session (void);
 
 /* Protocol functions */
-static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
+static void cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info);
 static void cas_make_session_for_driver (char *out);
-static void cas_set_session_id (T_CAS_PROTOCOL protocol, char *session);
+static void cas_set_session_id (T_BROKER_VERSION protocol, char *session);
 
 #if defined(WINDOWS)
 int WINAPI
@@ -312,17 +214,7 @@ main (int argc, char *argv[])
   int res = 0;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cas_sig_handler);
-  signal (SIGINT, cas_sig_handler);
-  signal (SIGSEGV, cas_sig_handler);
-  signal (SIGABRT, cas_sig_handler);
-  signal (SIGFPE, cas_sig_handler);
-  signal (SIGILL, cas_sig_handler);
-  signal (SIGBUS, cas_sig_handler);
-  signal (SIGSYS, cas_sig_handler);
-  signal (SIGUSR1, SIG_IGN);
-  signal (SIGPIPE, SIG_IGN);
-  signal (SIGXFSZ, SIG_IGN);
+  cas_register_signal_handlers ();
 #endif /* WINDOWS */
 
   if (cas_init () < 0)
@@ -390,6 +282,9 @@ cas_main (void)
   return cas_main_loop (&ops);
 }
 
+static_assert (SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID) + SESSION_SECRET_SIZE == DRIVER_SESSION_SIZE,
+	       "server session key + session id + session secret must be exactly the driver session id size");
+
 static void
 cas_make_session_for_driver (char *out)
 {
@@ -403,19 +298,20 @@ cas_make_session_for_driver (char *out)
   session = htonl (session);
   memcpy (out + size, &session, sizeof (SESSION_ID));
   size += sizeof (SESSION_ID);
-  memset (out + size, 0, DRIVER_SESSION_SIZE - size);
+  memcpy (out + size, db_get_session_secret (), SESSION_SECRET_SIZE);
 }
 
 static void
-cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
+cas_set_session_id (T_BROKER_VERSION protocol, char *session)
 {
   SESSION_ID id = DB_EMPTY_SESSION;
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
-      id = *(SESSION_ID *) (session + 8);
+      id = *(SESSION_ID *) (session + SERVER_SESSION_KEY_SIZE);
       id = ntohl (id);
       db_set_server_session_key (session);
+      db_set_session_secret (session + SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID));
       db_set_session_id (id);
       cas_log_write_and_end (0, false, "session id for connection %u", id);
     }
@@ -424,15 +320,17 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       /* always create new session for old drivers */
       char key[] =
 	{ (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
+      char secret[SESSION_SECRET_SIZE] = { 0 };
 
       cas_log_write_and_end (0, false, "session id (old protocol) for connection 0");
       db_set_server_session_key (key);
+      db_set_session_secret (secret);
       db_set_session_id (DB_EMPTY_SESSION);
     }
 }
 
 static void
-cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
+cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info)
 {
   char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
   char *p = msgbuf;
@@ -563,6 +461,17 @@ cas_cleanup_session (void)
 	}
     }
 
+  if (cas_shutdown_signo)
+    {
+      /*
+       * Shutting down due to a signal.
+       * Leaves the server-side session intact so the client can restore it upon 
+       * reconnecting to another CAS; cas_final() disconnects without sending 
+       * a session termination request to the server.
+       */
+      return;
+    }
+
   if (cas_main_fn_ret != FN_KEEP_SESS)
     {
       ux_end_session ();
@@ -597,8 +506,6 @@ shard_cas_main (void)
 
   bool is_first = true;
 
-  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
-
   net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (SHARD_NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
@@ -623,6 +530,16 @@ conn_retry:
       do
 	{
 	  SLEEP_SEC (1);
+	  /*
+	   * Waits for the RESTART/STOP status set on our slot by the broker to clear.
+	   * Because sleep() returns early upon receiving a signal, we must check for 
+	   * shutdown signals here; otherwise, the wait will simply resume and the 
+	   * shutdown request will be ignored without being acted on.
+	   */
+	  if (cas_shutdown_signo)
+	    {
+	      cas_final ();	/* does not return */
+	    }
 	}
       while (as_info->uts_status == UTS_STATUS_RESTART || as_info->uts_status == UTS_STATUS_STOP);
     }
@@ -656,7 +573,6 @@ conn_retry:
 
   if (as_info->reset_flag == TRUE)
     {
-      cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
       cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
       as_info->reset_flag = FALSE;
     }
@@ -684,6 +600,15 @@ conn_retry:
     as_info->uts_status = UTS_STATUS_IDLE;
 
   conn_proxy_retry:
+    /*
+     * Both retry branches below sleep and jump back here. Without this check,
+     * a shutdown signal arriving while the proxy is unreachable would be ignored.
+     */
+    if (cas_shutdown_signo)
+      {
+	cas_final ();		/* does not return */
+      }
+
     net_timeout_set (NET_DEFAULT_TIMEOUT);
 
 #if defined(WINDOWS)
@@ -756,8 +681,10 @@ conn_retry:
 	cas_log_error_handler_begin ();
 	fn_ret = FN_KEEP_CONN;
 	as_info->con_status = CON_STATUS_OUT_TRAN;
+	/* keeping a session was decided for the previous connection's session, do not carry it over */
+	db_set_keep_session (false);
 
-	while (fn_ret == FN_KEEP_CONN)
+	while (fn_ret == FN_KEEP_CONN && !cas_shutdown_signo)
 	  {
 #if !defined(WINDOWS)
 	    signal (SIGUSR1, query_cancel);
@@ -779,8 +706,6 @@ conn_retry:
 	/* This is a only use in proxy-cas internal message */
 	req_info.client_version = CAS_PROTO_CURRENT_VER;
 
-	prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
-
 	if (as_info->cur_statement_pooling)
 	  {
 	    hm_srv_handle_free_all (true);
@@ -791,12 +716,13 @@ conn_retry:
 	    ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
 	  }
 
-	if (fn_ret != FN_KEEP_SESS)
+	/* On a shutdown signal, keep the session on the server alone. See cas_cleanup_session (). */
+	if (fn_ret != FN_KEEP_SESS && !cas_shutdown_signo)
 	  {
 	    ux_end_session ();
 	  }
 
-	if (as_info->reset_flag == TRUE || is_xa_prepared ())
+	if ((as_info->reset_flag == TRUE || is_xa_prepared ()) && !cas_shutdown_signo)
 	  {
 	    ux_database_shutdown (true);
 	    as_info->reset_flag = FALSE;
@@ -821,7 +747,7 @@ conn_retry:
 #endif /* WINDOWS */
 	CLOSE_SOCKET (proxy_sock_fd);
 
-	if (restart_is_needed ())
+	if (restart_is_needed () || cas_shutdown_signo)
 	  {
 	    cas_final ();
 	    return 0;
@@ -867,6 +793,12 @@ cas_init ()
 
   /* Set database shutdown callback for cas.c specific implementation */
   cas_set_database_shutdown_callback (ux_database_shutdown);
+
+  /*
+   * Registered unconditionally: a shard CAS must notice a shutdown request while
+   * waiting on the server, just as a CAS does.
+   */
+  css_register_abort_server_wait_fn (cas_abort_server_wait);
 
   if (cas_shard_flag == OFF)
     {
@@ -1080,7 +1012,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	  if (cas_log_msg == NULL)
 	    {
-	      if (is_net_timed_out ())
+	      if (cas_shutdown_signo)
+		{
+		  cas_log_msg = "SHUTDOWN REQUESTED";
+		}
+	      else if (is_net_timed_out ())
 		{
 		  if (as_info->reset_flag == TRUE)
 		    {
@@ -1207,23 +1143,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   server_fn = server_fn_table[func_code - 1];
 
-  if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
-    {
-      assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
-      if (prev_cas_info[CAS_INFO_STATUS] != client_msg_header.info_ptr[CAS_INFO_STATUS])
-	{
-	  cas_log_debug (ARG_FILE_LINE,
-			 "[%d][PREV : %d, RECV : %d], " "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
-			 "[JID : %d] \n", func_code - 1, prev_cas_info[CAS_INFO_STATUS],
-			 client_msg_header.info_ptr[CAS_INFO_STATUS], prev_cas_info[CAS_INFO_RESERVED_1],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1], prev_cas_info[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
-	}
-#endif /* end for debug */
-    }
-
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
   cas_send_result_flag = TRUE;
@@ -1276,9 +1195,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
     {
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
-
-  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
-		 err_info.err_number);
 
   if (con_status_to_restore != -1)
     {
@@ -1390,15 +1306,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	{
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
 	}
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
-      prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
-      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
-      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
-#endif /* end for debug */
-
-
 
       *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
       memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr, NET_BUF_HEADER_MSG_SIZE);
@@ -1432,7 +1339,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       ((as_info->con_status != CON_STATUS_IN_TRAN && as_info->num_holdable_results < 1
 	&& as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO) || (cas_get_db_connect_status () == -1)))
     {
-      cas_log_debug (ARG_FILE_LINE, "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       fn_ret = FN_KEEP_SESS;
       db_set_keep_session (true);
       goto exit_on_end;
@@ -1518,7 +1424,6 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 
 	      if (restart_is_needed ())
 		{
-		  cas_log_debug (ARG_FILE_LINE, "net_read_process: " "restart_is_needed()");
 		  ret_value = -1;
 		  break;
 		}
@@ -1677,8 +1582,6 @@ set_db_connection_info (void)
 
   strncpy (cas_db_passwd, as_info->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
   cas_db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
-
-  cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s", cas_db_name, cas_db_user);
 }
 
 static void

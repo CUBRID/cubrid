@@ -202,6 +202,12 @@ typedef enum
   PGBUF_CONDITIONAL_LATCH
 } PGBUF_LATCH_CONDITION;
 
+/* A page fix can be refused without anything being wrong - another worker holds the latch, or the latch
+ * watchdog cut the wait short. A caller that cannot retry has to return such an error rather than treat it
+ * as a broken invariant. The set is the one pgbuf_fix_with_retry () already retries on. */
+#define PGBUF_IS_LATCH_REFUSED_ERROR(err) \
+  ((err) == ER_LK_PAGE_TIMEOUT || (err) == ER_PAGE_LATCH_TIMEDOUT || (err) == ER_LK_UNILATERALLY_ABORTED)
+
 typedef enum
 {
   PGBUF_PROMOTE_ONLY_READER,
@@ -271,6 +277,14 @@ extern void pgbuf_flush (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool free_page
 PAGE_PTR pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need_fix);
 void pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 int pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free);
+
+/* discard the buffered pages of a destroyed file's sectors without flushing or logging */
+extern void pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects);
+/* keep a checkpoint redo point out of the log ranges that discarded dirty pages miss on disk */
+extern void pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_lsa);
+/* crash recovery: drop the pages that redo re-created for files destroyed later in the log */
+extern void pgbuf_rv_add_unreserved_sector (const VSID * vsid, const LOG_LSA * unreserve_lsa);
+extern void pgbuf_rv_discard_unreserved_pages (THREAD_ENTRY * thread_p);
 
 #if !defined(NDEBUG)
 
@@ -375,6 +389,7 @@ extern void pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_
 #endif /* NDEBUG */
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				 bool do_fetch);
+extern void *pgbuf_copy_temp_page_to_area_and_discard (THREAD_ENTRY * thread_p, const VPID * vpid, void *area);
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch, TDE_ALGORITHM tde_algo);
 
@@ -410,6 +425,7 @@ extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
 extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
+extern int pgbuf_force_latch_wait (THREAD_ENTRY * thread_p);
 extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
 extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);

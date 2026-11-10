@@ -186,6 +186,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_ESTIMATE_INDEX, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_LOADDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_UNLOADDB, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_UPGRADEDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_COMPACTDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_PARAMDUMP, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_STATDUMP, MASK_ADMIN},
@@ -262,6 +263,13 @@ static UTIL_SERVICE_PROPERTY_T us_Property_map[] = {
 
 static const char **Argv;
 static int ha_mode_in_common;
+
+// TODO: Unless multi-threading is involved, variables may be declared separately for independent operation
+#if 0
+class client_support __gv_client_support_local;
+#undef __gv_cvar
+#define __gv_cvar (__gv_client_support_local)
+#endif
 
 static int util_get_service_option_mask (int util_type);
 static int util_get_command_option_mask (int command_type);

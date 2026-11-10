@@ -18,6 +18,7 @@
 
 #include "memoize.hpp"
 
+#include "domain_rules.h"
 #include "error_code.h"
 #include "memory_alloc.h"
 #include "memory_hash.h"
@@ -29,6 +30,7 @@
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
 #include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -45,7 +47,7 @@ namespace memoize
       VAL_LIST *val_list = xasl->val_list;
       bool subquery_result = true;
 
-      if (spec == nullptr || val_list == nullptr || val_list->val_cnt == 0)
+      if (spec == nullptr || val_list == nullptr)
 	{
 	  return false;
 	}
@@ -142,6 +144,19 @@ namespace memoize
 
       if (level >= 1)
 	{
+	  /* key_maker keys a subquery by the correlated references it finds in the subquery. It does not visit
+	   * GROUP BY keys, analytic functions, HAVING subqueries or CONNECT BY, so refuse those shapes (CBRD-27567). */
+	  if (xasl->connect_by_ptr != nullptr)
+	    {
+	      return false;
+	    }
+	  if (xasl->type == BUILDLIST_PROC
+	      && (xasl->proc.buildlist.groupby_list != nullptr || xasl->proc.buildlist.a_eval_list != nullptr
+		  || xasl->proc.buildlist.eptr_list != nullptr))
+	    {
+	      return false;
+	    }
+
 	  if (xasl->aptr_list)
 	    {
 	      for (XASL_NODE *aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
@@ -159,11 +174,182 @@ namespace memoize
     }
   } const checker;
 
+  /* RANDOM (), SYS_GUID (), a serial's NEXT_VALUE and the like give another value at every evaluation. A memo replays
+   * the first result of a key to every outer row of that key, so the inner must not evaluate one, as the correlated
+   * subquery cache does not cache them (pt_check_corr_subquery_not_cachable_expr ()) (CBRD-27734). */
+  struct nondeterministic_check
+  {
+    /* is_subquery: the inner itself keeps its scan_ptr (the next inner, with its own memo) and its aptr (run once)
+     * out of the memo, as key_maker does */
+    bool operator() (xasl_node *xasl, bool is_subquery) const noexcept
+    {
+      for (ACCESS_SPEC_TYPE *spec = xasl->spec_list; spec != nullptr; spec = spec->next)
+	{
+	  if ((*this) (spec->where_key) || (*this) (spec->where_pred) || (*this) (spec->where_range))
+	    {
+	      return true;
+	    }
+	}
+      if ((*this) (xasl->if_pred) || (*this) (xasl->after_join_pred))
+	{
+	  return true;
+	}
+      for (XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+	{
+	  if ((*this) (dptr, true))
+	    {
+	      return true;
+	    }
+	}
+      if (!is_subquery)
+	{
+	  return false;
+	}
+
+      for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
+	{
+	  if ((*this) (aptr, true))
+	    {
+	      return true;
+	    }
+	}
+      if (xasl->scan_ptr != nullptr && (*this) (xasl->scan_ptr, true))
+	{
+	  return true;
+	}
+      if ((xasl->outptr_list != nullptr && (*this) (xasl->outptr_list->valptrp)) || (*this) (xasl->instnum_pred)
+	  || (*this) (xasl->ordbynum_pred))
+	{
+	  return true;
+	}
+      if (xasl->type == BUILDVALUE_PROC)
+	{
+	  for (AGGREGATE_TYPE *agg = xasl->proc.buildvalue.agg_list; agg != nullptr; agg = agg->next)
+	    {
+	      if ((*this) (agg->operands)
+		  || ((agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+		      && (*this) (agg->info.percentile.percentile_reguvar)))
+		{
+		  return true;
+		}
+	    }
+	  return (*this) (xasl->proc.buildvalue.having_pred);
+	}
+      return false;
+    }
+
+    bool operator() (cubxasl::pred_expr *pred_expr) const noexcept
+    {
+      if (pred_expr == nullptr)
+	{
+	  return false;
+	}
+
+      switch (pred_expr->type)
+	{
+	case T_PRED:
+	  return (*this) (pred_expr->pe.m_pred.lhs) || (*this) (pred_expr->pe.m_pred.rhs);
+
+	case T_EVAL_TERM:
+	{
+	  cubxasl::eval_term *et = &pred_expr->pe.m_eval_term;
+	  switch (et->et_type)
+	    {
+	    case T_COMP_EVAL_TERM:
+	      return (*this) (et->et.et_comp.lhs) || (*this) (et->et.et_comp.rhs);
+	    case T_ALSM_EVAL_TERM:
+	      return (*this) (et->et.et_alsm.elem) || (*this) (et->et.et_alsm.elemset);
+	    case T_LIKE_EVAL_TERM:
+	      return (*this) (et->et.et_like.src) || (*this) (et->et.et_like.pattern)
+		     || (*this) (et->et.et_like.esc_char);
+	    case T_RLIKE_EVAL_TERM:
+	      return (*this) (et->et.et_rlike.src) || (*this) (et->et.et_rlike.pattern)
+		     || (*this) (et->et.et_rlike.case_sensitive);
+	    }
+	  return false;
+	}
+
+	case T_NOT_TERM:
+	  return (*this) (pred_expr->pe.m_not_term);
+	}
+      return false;
+    }
+
+    bool operator() (regu_variable_node *regu_var) const noexcept
+    {
+      if (regu_var == nullptr)
+	{
+	  return false;
+	}
+
+      switch (regu_var->type)
+	{
+	case TYPE_INARITH:
+	case TYPE_OUTARITH:
+	{
+	  ARITH_TYPE *arith = regu_var->value.arithptr;
+	  switch (arith->opcode)
+	    {
+	    case T_RAND:
+	    case T_DRAND:
+	    case T_RANDOM:
+	    case T_DRANDOM:
+	    case T_SYS_GUID:
+	    case T_UUID:
+	    case T_CURRENT_VALUE:
+	    case T_NEXT_VALUE:
+	      return true;
+	    default:
+	      break;
+	    }
+	  return (*this) (arith->leftptr) || (*this) (arith->rightptr) || (*this) (arith->thirdptr)
+		 || (*this) (arith->pred);
+	}
+
+	case TYPE_FUNC:
+	  return (*this) (regu_var->value.funcp->operand);
+
+	case TYPE_SP:
+	  /* shortcut: pl_signature does not send DETERMINISTIC to the server, so a stored function is not checked;
+	   * check it once the server gets the flag */
+	  return (*this) (regu_var->value.sp_ptr->args);
+
+	case TYPE_REGU_VAR_LIST:
+	  return (*this) (regu_var->value.regu_var_list);
+
+	case TYPE_REGUVAL_LIST:
+	  for (REGU_VALUE_ITEM *item = regu_var->value.reguval_list->regu_list; item != nullptr; item = item->next)
+	    {
+	      if ((*this) (item->value))
+		{
+		  return true;
+		}
+	    }
+	  return false;
+
+	default:
+	  return false;
+	}
+    }
+
+    bool operator() (REGU_VARIABLE_LIST regu_var_list) const noexcept
+    {
+      for (; regu_var_list != nullptr; regu_var_list = regu_var_list->next)
+	{
+	  if ((*this) (&regu_var_list->value))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+    }
+  } const nondeterministic;
+
   template <TARGET_TYPE target_type>
   struct key_maker
   {
-    int operator() (THREAD_ENTRY *thread_p, xasl_node *xasl,
-		    std::vector<DB_VALUE *> &key_ptr_src) const noexcept
+    int operator() (THREAD_ENTRY *thread_p, xasl_node *xasl, std::vector<DB_VALUE *> &key_ptr_src,
+		    std::vector<const TP_DOMAIN *> &key_domains) const noexcept
     {
       std::vector<REGU_VARIABLE *> const_regu_var_vector;
       ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
@@ -198,6 +384,21 @@ namespace memoize
 	    {
 	      (*this) (thread_p, dptr, const_regu_var_vector);
 	    }
+
+	  /* a correlated subquery runs again for every inner row, after the memo is probed, so its result is not an
+	   * input of the probe. Its correlated references, collected just above, key it instead (CBRD-27567). */
+	  const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+				       const_regu_var_vector.end(), [xasl] (regu_variable_node *regu_var)
+	  {
+	    for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
+	      {
+		if (regu_var->xasl == dptr)
+		  {
+		    return true;
+		  }
+	      }
+	    return false;
+	  }), const_regu_var_vector.end());
 	}
 
       if constexpr (target_type == TARGET_LIST)
@@ -267,6 +468,8 @@ namespace memoize
       for (auto &regu_var : const_regu_var_vector)
 	{
 	  key_ptr_src.push_back (regu_var->value.dbvalptr);
+	  /* the slot holds the value as its producer wrote it, before this reader's conversion */
+	  key_domains.push_back (regu_produced_domain (regu_var));
 	}
 
       return key_ptr_src.size();
@@ -330,6 +533,38 @@ namespace memoize
 	{
 	  (*this) (subquery->outptr_list->valptrp, subquery_const_regu_var_vector);
 	}
+      if (subquery->instnum_pred)
+	{
+	  (*this) (subquery->instnum_pred, subquery_const_regu_var_vector);
+	}
+      if (subquery->ordbynum_pred)
+	{
+	  (*this) (subquery->ordbynum_pred, subquery_const_regu_var_vector);
+	}
+      if (subquery->type == BUILDVALUE_PROC)
+	{
+	  for (AGGREGATE_TYPE *agg = subquery->proc.buildvalue.agg_list; agg != NULL; agg = agg->next)
+	    {
+	      (*this) (agg->operands, subquery_const_regu_var_vector);
+	      if (agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+		{
+		  (*this) (agg->info.percentile.percentile_reguvar, subquery_const_regu_var_vector);
+		}
+	    }
+	  if (subquery->proc.buildvalue.having_pred)
+	    {
+	      (*this) (subquery->proc.buildvalue.having_pred, subquery_const_regu_var_vector);
+	    }
+	}
+
+      /* only the subquery's correlated references come from outside it. Every other constant (its own columns, an
+       * aggregate's accumulator, a nested subquery's result) is computed by the subquery itself, so its value when
+       * the memo is probed is left over from the previous row and must not be part of the key (CBRD-27567). */
+      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+					    subquery_const_regu_var_vector.end(), [] (regu_variable_node *regu_var)
+      {
+	return !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CORRELATED);
+      }), subquery_const_regu_var_vector.end());
 
       if constexpr (target_type == TARGET_LIST)
 	{
@@ -678,10 +913,10 @@ namespace memoize
   bool key::equal::operator() (const key *k1, const key *k2) const
   {
     size_t sz = k1->m_values.size();
-    assert (sz == k2->m_values.size());
+    assert (sz == k2->m_values.size() && sz == m_domains->size ());
     for (size_t i = 0; i < sz; i++)
       {
-	if (!mht_compare_dbvalues_are_equal (&k1->m_values[i], &k2->m_values[i]))
+	if (!domain_key_values_equal ((*m_domains)[i], &k1->m_values[i], &k2->m_values[i]))
 	  {
 	    return false;
 	  }
@@ -689,14 +924,15 @@ namespace memoize
     return true;
   }
 
-  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl)
+  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only)
   {
     ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
     VAL_LIST *val_list = xasl->val_list;
     int key_cnt, value_cnt;
     std::vector<DB_VALUE *> key_ptr_src;
+    std::vector<const TP_DOMAIN *> key_domains;
 
-    if (!checker (xasl))
+    if (!checker (xasl) || nondeterministic (xasl, false))
       {
 	return nullptr;
       }
@@ -705,11 +941,11 @@ namespace memoize
 
     if (spec->type == TARGET_CLASS)
       {
-	key_cnt = cls_key_maker (thread_p, xasl, key_ptr_src);
+	key_cnt = cls_key_maker (thread_p, xasl, key_ptr_src, key_domains);
       }
     else if (spec->type == TARGET_LIST)
       {
-	key_cnt = list_key_maker (thread_p, xasl, key_ptr_src);
+	key_cnt = list_key_maker (thread_p, xasl, key_ptr_src, key_domains);
       }
     else
       {
@@ -717,7 +953,7 @@ namespace memoize
 	return nullptr;
       }
 
-    if (key_cnt == 0 || value_cnt == 0)
+    if (key_cnt == 0 || (value_cnt == 0 && !match_only))
       {
 	return nullptr;
       }
@@ -728,18 +964,21 @@ namespace memoize
       {
 	return NULL;
       }
-    storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list);
-    storage_p->init (key_ptr_src);
+    storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list, match_only);
+    storage_p->init (key_ptr_src, key_domains);
 
     return storage_p;
   }
 
-  storage::storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list)
+  storage::storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list,
+		    bool match_only)
     : hit (0)
     , miss (0)
     , m_max_storage_size (max_storage_size)
     , m_key_cnt (key_cnt)
     , m_value_cnt (value_cnt)
+    , m_match_only (match_only)
+    , m_matched ()
     , m_thread_p (thread_p)
     , m_val_list (val_list)
     , m_key_fixed_allocator ()
@@ -748,9 +987,11 @@ namespace memoize
     , m_hash_sz (0)
     , m_last_key (nullptr)
     , m_keyptr_src ()
-    , m_key_value_map ()
+    , m_key_domains ()
+    , m_key_value_map (0, key::hash (), key::equal {&m_key_domains})
     , m_current_value_list ()
     , disabled (false)
+    , insert_stopped (false)
     , has_range (false)
     , key_changed (false)
     , current_key_joined (false)
@@ -774,7 +1015,7 @@ namespace memoize
     for (auto it = m_key_value_map.begin(); it != m_key_value_map.end(); it++)
       {
 	it->first->~key();
-	if (it->second != nullptr)
+	if (it->second != nullptr && it->second != &m_matched)
 	  {
 	    it->second->~value();
 	    free (it->second);
@@ -784,6 +1025,7 @@ namespace memoize
 
     m_keyptr_src.clear();
     m_key_value_map.clear();
+    m_key_domains.clear();
     db_change_private_heap (thread_get_thread_entry_info(), heap_id);
   }
 
@@ -801,12 +1043,13 @@ namespace memoize
     TSC_ADD_TIMEVAL (m_elapsed_time, tv_diff);
   }
 
-  void storage::init (std::vector<DB_VALUE *> &arg_key_ptr_src)
+  void storage::init (std::vector<DB_VALUE *> &arg_key_ptr_src, std::vector<const TP_DOMAIN *> &key_domains)
   {
     for (auto &dbval : arg_key_ptr_src)
       {
 	m_keyptr_src.push_back (dbval);
       }
+    m_key_domains = key_domains;
   }
 
   result_code storage::get ()
@@ -817,9 +1060,8 @@ namespace memoize
       db_change_private_heap (thread_get_thread_entry_info(), heap_id);
     });
     value *v;
-    if (disabled || get_current_size() >= m_max_storage_size)
+    if (disabled)
       {
-	disabled = true;
 	return result_code::FULL;
       }
 
@@ -834,6 +1076,11 @@ namespace memoize
 
 	m_last_key = get_key();
 	key_changed = false;
+	/* a new key starts with no replay range. Without this a caller that stops after one
+	 * SUCCESS (an ANTI inner drops the outer on a cached match and is not re-entered) leaves
+	 * has_range set; the next key's cached "no match" then answers ENDED twice, once here and
+	 * once on the re-entry below, and the outer is emitted twice (CBRD-27465). */
+	has_range = false;
 
 	auto range = m_key_value_map.equal_range (m_last_key);
 
@@ -899,29 +1146,23 @@ namespace memoize
 
     try
       {
-	if (disabled || get_current_size() >= m_max_storage_size)
+	if (!can_insert ())
 	  {
-	    disabled = true;
-	    return result_code::FULL;
-	  }
-	if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
-	  {
-	    if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
-	      {
-		disabled = true;
-		return result_code::FULL;
-	      }
+	    return disabled ? result_code::FULL : result_code::SUCCESS;
 	  }
 
 	current_key_joined = true;
 	assert (m_last_key != nullptr);
 
 	key *k = get_key();
-	value *v = get_value();
+	value *v = m_match_only ? &m_matched : get_value();
 
 	m_key_sz += k->get_size();
 	m_hash_sz += hash_entry_sz;
-	m_value_sz += v->get_size();
+	if (!m_match_only)
+	  {
+	    m_value_sz += v->get_size();
+	  }
 
 	m_key_value_map.insert ({k, v});
 
@@ -945,19 +1186,9 @@ namespace memoize
       {
 	if (!current_key_joined)
 	  {
-	    if (disabled || get_current_size() >= m_max_storage_size)
+	    if (!can_insert ())
 	      {
-		disabled = true;
-		return result_code::FULL;
-	      }
-
-	    if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
-	      {
-		if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
-		  {
-		    disabled = true;
-		    return result_code::FULL;
-		  }
+		return disabled ? result_code::FULL : result_code::SUCCESS;
 	      }
 
 	    assert (m_last_key != nullptr);
@@ -975,6 +1206,76 @@ namespace memoize
       {
 	return result_code::ERROR;
       }
+  }
+
+  /* Whether put () and put_nullptr () may add an entry; false either because the storage was disabled just now
+   * or before (the caller then returns FULL and frees it) or because its budget is used up. */
+  bool storage::can_insert ()
+  {
+    if (disabled)
+      {
+	return false;
+      }
+
+    size_t size = get_current_size ();
+
+    /* Until the storage holds 60% of its budget every key has cost one miss at most, so a low hit ratio says
+     * nothing yet: keys that repeat but have not come round again look like distinct keys. Judging after a fixed
+     * 1,000 probes turned memoize off whenever the keys outnumbered ~630 (CBRD-27487).
+     * Once inserts have stopped, every miss is judged whatever the size: taking out the partial key in
+     * stop_insert () can bring the storage back under 60%, and it must not then be kept unjudged. */
+    if ((insert_stopped || size > m_max_storage_size * MEMOIZE_HIT_RATIO_CHECK_SIZE)
+	&& ((double) hit) / (hit + miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
+      {
+	disabled = true;
+	return false;
+      }
+
+    if (insert_stopped)
+      {
+	return false;
+      }
+
+    if (size >= m_max_storage_size)
+      {
+	stop_insert ();
+	return false;
+      }
+
+    return true;
+  }
+
+  /* The budget is used up: keep answering from what is stored instead of dropping it all (CBRD-27487);
+   * can_insert () goes on judging the hit ratio on every miss and releases the storage below the threshold.
+   * put () stores one entry per inner row, so the current key holds only part of its result; a later hit
+   * would replay just that part, so its entries are taken out. */
+  void storage::stop_insert ()
+  {
+    if (current_key_joined)
+      {
+	auto range = m_key_value_map.equal_range (m_last_key);
+
+	for (auto it = range.first; it != range.second;)
+	  {
+	    key *k = it->first;
+	    value *v = it->second;
+
+	    m_key_sz -= k->get_size ();
+	    m_hash_sz -= hash_entry_sz;
+	    it = m_key_value_map.erase (it);
+
+	    k->~key ();
+	    m_key_fixed_allocator.deallocate (k);
+	    if (v != nullptr && v != &m_matched)
+	      {
+		m_value_sz -= v->get_size ();
+		v->~value ();
+		free (v);
+	      }
+	  }
+      }
+
+    insert_stopped = true;
   }
 
   key *storage::get_key()
@@ -1024,6 +1325,10 @@ namespace memoize
   result_code storage::set_value (value *v)
   {
     int i=0;
+    if (v == &m_matched)
+      {
+	return result_code::SUCCESS;
+      }
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next, i++)
       {
 	pr_clear_value (it->val);
@@ -1041,7 +1346,7 @@ namespace memoize
 extern "C"
 {
   using namespace memoize;
-  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
+  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl, bool match_only)
   {
     UINT64 storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
 
@@ -1050,12 +1355,18 @@ extern "C"
 	return NO_ERROR;
       }
 
+    if (XASL_IS_FLAGED (xasl, XASL_NO_MEMOIZE))
+      {
+	/* the optimizer found from statistics that the outer key hardly repeats (CBRD-27543) */
+	return NO_ERROR;
+      }
+
     if (xasl->memoize_storage != nullptr)
       {
 	clear_memoize_storage (thread_p, xasl);
       }
 
-    xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl);
+    xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl, match_only);
 
     return NO_ERROR;
   }

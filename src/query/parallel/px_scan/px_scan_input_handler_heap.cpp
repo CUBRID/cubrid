@@ -24,6 +24,7 @@
 #include "error_code.h"
 #include "bit.h"
 #include "heap_file.h"
+#include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -31,7 +32,6 @@
 namespace parallel_scan
 {
   thread_local HEAP_SCANCACHE *input_handler_heap::m_tl_scan_cache = NULL;
-  thread_local PGBUF_WATCHER input_handler_heap::m_tl_old_page_watcher = {0};
   thread_local ftab_set *input_handler_heap::m_tl_ftab_set = NULL;
   thread_local VPID input_handler_heap::m_tl_vpid = VPID_INITIALIZER;
   thread_local size_t input_handler_heap::m_tl_pgoffset = 0;
@@ -42,7 +42,6 @@ namespace parallel_scan
     m_tl_scan_cache = &scan_id->s.hsid.scan_cache;
     /* open_scan should have succeeded */
     assert (m_tl_scan_cache->debug_initpattern == 12345);
-    PGBUF_INIT_WATCHER (&m_tl_old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
     int idx = m_splited_ftab_set_idx.fetch_add (1);
     if (idx < 0 || (size_t) idx >= m_splited_ftab_set.size ())
       {
@@ -61,6 +60,14 @@ namespace parallel_scan
     FILE_FTAB_COLLECTOR collector;
     int error_code;
     m_hfid = hfid;
+
+    /* The bitmap below misses every page allocated after it. With the statement's snapshot taken first, the rows on
+     * those pages all belong to transactions the snapshot does not see. */
+    if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+	return ER_MVCC_CANT_GET_SNAPSHOT;
+      }
 
     error_code = file_get_all_data_sectors (thread_p, &m_hfid.vfid, &collector);
     if (error_code != NO_ERROR)
@@ -95,10 +102,6 @@ namespace parallel_scan
 	    m_tl_ftab = m_tl_ftab_set->get_next();
 	    if (VSID_IS_NULL (&m_tl_ftab.vsid))
 	      {
-		if (m_tl_old_page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-		  }
 		return S_END;
 	      }
 	    m_tl_pgoffset = 0;
@@ -118,9 +121,11 @@ namespace parallel_scan
 	      {
 		found = true;
 
+		/* release the current page first: the next VPID comes from the scan-start bitmap, not from this page's
+		 * chain link, and holding this page while waiting deadlocks with vacuum deallocating an empty page */
 		if (m_tl_scan_cache->page_watcher.pgptr != NULL)
 		  {
-		    pgbuf_replace_watcher (thread_p, &m_tl_scan_cache->page_watcher, &m_tl_old_page_watcher);
+		    pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
 		  }
 
 		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
@@ -136,18 +141,9 @@ namespace parallel_scan
 			return S_ERROR;
 		      }
 		    /* page valid at bitmap build time but deallocated since; ignorable. */
-		    if (m_tl_old_page_watcher.pgptr != NULL)
-		      {
-			pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-		      }
 		    er_clear ();
 		    found = false;
 		    continue;
-		  }
-
-		if (m_tl_old_page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
 		  }
 
 		assert (pgbuf_get_page_ptype (thread_p, m_tl_scan_cache->page_watcher.pgptr) == PAGE_HEAP);
@@ -185,16 +181,11 @@ namespace parallel_scan
 
   int input_handler_heap::finalize (THREAD_ENTRY *thread_p)
   {
-    if (m_tl_old_page_watcher.pgptr != NULL)
-      {
-	pgbuf_ordered_unfix (thread_p, &m_tl_old_page_watcher);
-      }
     if (m_tl_scan_cache->page_watcher.pgptr != NULL)
       {
 	pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
       }
     m_tl_scan_cache = NULL;
-    m_tl_old_page_watcher.pgptr = NULL;
     return NO_ERROR;
   }
 }

@@ -32,7 +32,7 @@
 #include "db_client_type.hpp"
 #include "db.h"
 #include "dbi.h"
-#include "dbtype_function.h"
+#include "dbtype.h"
 #include "error_manager.h"
 
 #if defined(SA_MODE)
@@ -40,11 +40,7 @@
 #include "file_manager.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
-#include "vacuum.h"
 #endif /* SA_MODE */
-
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
 
 // ============================================================================
 // Server environment (reusable across all SQL test binaries)
@@ -170,15 +166,6 @@ fetch_single_int (const char *sql, int *out_val)
   return NO_ERROR;
 }
 
-// Execute DDL/DML and commit. Asserts success.
-static void
-exec_sql_commit (const char *sql)
-{
-  int rc = exec_sql (sql);
-  assert (rc >= 0);
-  db_commit_transaction ();
-}
-
 // ============================================================================
 // OOS file inspection helpers
 // ============================================================================
@@ -205,7 +192,7 @@ get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
 
   HFID hfid;
   FILE_TYPE ftype;
-  int err = heap_get_class_info (thread_p, class_oid, &hfid, &ftype, NULL);
+  int err = heap_get_class_hfid (thread_p, class_oid, &hfid, &ftype);
   if (err != NO_ERROR)
     {
       return false;
@@ -237,17 +224,5 @@ get_oos_page_count (const char *table_name)
   return num_pages;
 }
 #endif /* SA_MODE */
-
-// Trigger vacuum (SA_MODE only: calls xvacuum() directly, synchronous).
-static int
-run_vacuum ()
-{
-#if defined(SA_MODE)
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  return xvacuum (thread_p);
-#else
-  return NO_ERROR;
-#endif
-}
 
 #endif /* _TEST_OOS_SQL_COMMON_HPP_ */

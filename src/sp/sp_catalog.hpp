@@ -95,6 +95,7 @@ enum sp_directive : int
   SP_DIRECTIVE_RIGHTS_OWNER = 0x00,
   SP_DIRECTIVE_RIGHTS_CALLER = (0x01 << 0),
   SP_DIRECTIVE_DETERMINISTIC = (0x01 << 1),
+  SP_DIRECTIVE_PARALLEL_ENABLE = (0x01 << 2),
 };
 typedef sp_directive SP_DIRECTIVE_ENUM;
 
@@ -104,7 +105,7 @@ struct sp_code_info
   std::string created_time;
   MOP owner;
   int is_static;
-  int is_system_generated;
+  int is_system_generated {0};
   int stype;
   std::string scode;
   int otype;

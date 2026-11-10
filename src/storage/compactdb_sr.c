@@ -214,7 +214,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 
   /* get object with X_LOCK */
   scan_code = locator_lock_and_get_object (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes, upd_scancache,
-					   X_LOCK, COPY, NULL_CHN, LOG_WARNING_IF_DELETED,
+					   X_LOCK, COPY, NULL_CHN, LOG_WARNING_IF_DELETED, false, false,
 					   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan_code != S_SUCCESS)
     {
@@ -263,7 +263,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 	locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				      UPDATE_INPLACE_NONE, &copy_recdes, false);
+				      UPDATE_INPLACE_NONE, &copy_recdes, LOCATOR_LOCK_AT_SELECT);
       if (error_code != NO_ERROR)
 	{
 	  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -577,7 +577,9 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int s
 	  continue;
 	}
 
-      if (heap_get_class_info (thread_p, class_oids + i, &hfid, NULL, NULL) != NO_ERROR)
+      bool found = false;
+
+      if (heap_get_class_info (thread_p, class_oids + i, &hfid, NULL, &found) != NO_ERROR || !found)
 	{
 	  lock_unlock_object (thread_p, class_oids + i, oid_Root_class_oid, IX_LOCK, true);
 	  OID_SET_NULL (last_processed_oid);

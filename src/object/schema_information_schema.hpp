@@ -28,8 +28,8 @@
 #include <string_view>
 #include <vector>
 
-void info_schema_init (void);
 int info_schema_install (void);
+int info_schema_rebuild_vclasses (void);
 bool sm_is_information_schema_views (const std::string_view name);
 
 namespace cubschema

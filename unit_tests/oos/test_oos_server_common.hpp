@@ -53,9 +53,6 @@
 #include "file_manager.h"
 #include "heap_file.h"
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
-
 /* Global thread entry — set during ServerModeEnv::SetUp(). */
 static THREAD_ENTRY *thread_p;
 
@@ -174,96 +171,6 @@ class ServerModeEnv : public ::testing::Environment
     }
 };
 
-// ============================================================================
-// Utility functions (mode-independent, shared with SA_MODE tests)
-// ============================================================================
-
-namespace test_oos_utils
-{
-
-  inline std::string
-  make_repeated_pattern_string (int size)
-  {
-    const std::string pattern = "ABCDEFGHIJK"; /* pattern size is 11 */
-    if (size <= 0)
-      {
-	return {};
-      }
-
-    std::string large_data;
-    large_data.reserve (size);
-
-    for (int i = 0; i < size; ++i)
-      {
-	large_data.push_back (pattern[i % pattern.size ()]);
-      }
-
-    return large_data;
-  }
-
-  inline int
-  from_string_into_recdes (const std::string &large_data, RECDES &rec)
-  {
-    int err = recdes_allocate_data_area (&rec, static_cast<int> (large_data.size () + 1));
-    if (err != NO_ERROR)
-      {
-	return err;
-      }
-
-    rec.type = REC_HOME;
-    rec.length = static_cast<int> (large_data.size () + 1);
-
-    /* copy data including null terminator */
-    std::memcpy (rec.data, large_data.c_str (), large_data.size () + 1);
-    return NO_ERROR;
-  }
-
-  /* Wraps a test RECDES as the oos_buffer src that oos_insert expects. */
-  inline int oos_insert_from_recdes (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const RECDES &recdes, OID &oid)
-  {
-    return oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, static_cast<std::size_t> (recdes.length)), oid);
-  }
-
-  /* Reads OID into a fresh RECDES, sized via oos_get_length (tests have no heap-inline length). */
-  inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
-  {
-    recdes = RECDES{};
-    int len = oos_get_length (thread_p, oid);
-    if (len < 0)
-      {
-	return er_errid ();
-      }
-    int err = recdes_allocate_data_area (&recdes, len);
-    if (err != NO_ERROR)
-      {
-	return err;
-      }
-    err = oos_read (thread_p, oid, oos_buffer (recdes.data, static_cast<std::size_t> (len)));
-    if (err != NO_ERROR)
-      {
-	recdes_free_data_area (&recdes);
-	return err;
-      }
-    recdes.length = len;
-    return NO_ERROR;
-  }
-
-  /* RAII helpers */
-
-  struct page_auto_unfix
-  {
-    THREAD_ENTRY *thread_p;
-    void operator() (PAGE_PTR p) const noexcept
-    {
-      if (p)
-	{
-	  pgbuf_unfix (thread_p, p);
-	}
-    }
-  };
-  using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
-  using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
-
-} /* namespace test_oos_utils */
+#include "test_oos_utils.hpp"
 
 #endif /* _TEST_OOS_SERVER_COMMON_HPP_ */

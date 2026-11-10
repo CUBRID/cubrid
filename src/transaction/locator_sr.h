@@ -61,6 +61,28 @@ enum
 
 extern bool locator_Dont_check_foreign_key;
 
+/* Which phase takes the row lock for a modified object, and whether it is kept to commit or given up when the
+ * statement ends. */
+typedef enum
+{
+  LOCATOR_LOCK_AT_SELECT,	/* the select phase locked the object; the force phase must not lock again */
+  LOCATOR_LOCK_AT_SELECT_TRANSIENT,	/* the same, and both phases' requests end with the statement */
+  LOCATOR_LOCK_AT_FORCE,	/* the force phase locks the object and holds the lock to commit */
+  LOCATOR_LOCK_AT_FORCE_TRANSIENT	/* the force phase locks the object and gives it up at statement end */
+} LOCATOR_LOCK_POLICY;
+
+/* the select phase already holds a row lock, so the force phase reevaluation is not needed */
+#define LOCATOR_LOCKED_AT_SELECT(policy) \
+  ((policy) == LOCATOR_LOCK_AT_SELECT || (policy) == LOCATOR_LOCK_AT_SELECT_TRANSIENT)
+
+/* the request the force phase makes ends with the statement rather than with the transaction */
+#define LOCATOR_LOCK_IS_TRANSIENT(policy) \
+  ((policy) == LOCATOR_LOCK_AT_SELECT_TRANSIENT || (policy) == LOCATOR_LOCK_AT_FORCE_TRANSIENT)
+
+extern bool locator_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid);
+extern bool locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid);
+
+
 extern int locator_initialize (THREAD_ENTRY * thread_p);
 extern void locator_finalize (THREAD_ENTRY * thread_p);
 extern int locator_drop_transient_class_name_entries (THREAD_ENTRY * thread_p, LOG_LSA * savep_lsa);
@@ -80,10 +102,14 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 					 int pruning_type, PRUNING_CONTEXT * pcontext,
 					 FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
 					 UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor,
-					 bool need_locking);
+					 LOCATOR_LOCK_POLICY lock_policy);
+
+/* *INDENT-OFF* */
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
 							     const int copyarea_length_hint, int lob_create_flag);
+/* *INDENT-ON* */
+
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, BTID * btid,
 					bool btid_dup_key_locked, HFID * newhfid, OID * newoid,
 					HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache, int *force_count,
@@ -98,7 +124,7 @@ extern DISK_ISVALID locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID *
 						 const char *btname, bool repair);
 extern int locator_delete_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, MVCC_REEV_DATA * mvcc_reev_data,
-				 bool need_locking);
+				 LOCATOR_LOCK_POLICY lock_policy);
 extern int locator_add_or_remove_index (THREAD_ENTRY * thread_p, RECDES * recdes, OID * inst_oid, OID * class_oid,
 					int is_insert, int op_type, HEAP_SCANCACHE * scan_cache, bool datayn,
 					bool replyn, HFID * hfid, FUNC_PRED_UNPACK_INFO * func_preds, bool has_BU_lock,
@@ -115,13 +141,15 @@ extern int locator_rv_redo_rename (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
 extern SCAN_CODE locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 					      RECDES * recdes, HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking,
-					      int old_chn, NON_EXISTENT_HANDLING non_ex_handling_type,
+					      int old_chn, NON_EXISTENT_HANDLING non_ex_handling_type, bool transient,
+					      bool owner_bypass_ok,
 					      HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid,
 							      RECDES * recdes, HEAP_SCANCACHE * scan_cache,
 							      int ispeeking, int old_chn,
 							      MVCC_REEV_DATA * mvcc_reev_data,
 							      NON_EXISTENT_HANDLING non_ex_handling_type,
+							      bool transient, bool owner_bypass_ok,
 							      HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				     HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode,
@@ -129,16 +157,42 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 
+/* Bit flags adjusting the behavior of locator_insert_force (). Combine with bitwise OR into its force_flags
+ * argument. */
+typedef enum
+{
+  LC_FORCE_FLAG_NONE = 0x00,	/* default force behavior */
+  LC_FORCE_FLAG_HAS_BU_LOCK = 0x01,	/* the transaction inserts under BU_LOCK (bulk insert) */
+  LC_FORCE_FLAG_DONT_CHECK_FK = 0x02,	/* skip foreign key constraint checking */
+  LC_FORCE_FLAG_BULK_LOGGING = 0x04,	/* use bulk (page granularity) logging */
+  LC_FORCE_FLAG_FROM_WORKSPACE = 0x08	/* recdes was serialized from a workspace object; OOS demotion has not
+					 * been applied yet and must happen at force time */
+} LOCATOR_FORCE_FLAG;
+
+/* *INDENT-OFF* */
 extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
 				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
 				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-				 bool dont_check_fk, bool use_bulk_logging = false);
+				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p,
+				 int force_flags = LC_FORCE_FLAG_NONE, bool from_copyarea = false,
+                                 heap_pending_record *pending = nullptr);
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+/* Observe adapter return before the caller can alter the record during heap insertion. */
+extern int locator_test_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES **record,
+                                           bool from_copyarea, heap_pending_record *pending,
+                                           heap_pending_record *received, RECDES *converted,
+                                           bool from_workspace = false);
+#endif
+/* *INDENT-ON* */
 
 extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes);
+/* Publish one already-expanded fetch row. Rejection leaves both descriptors and count untouched. */
+extern int locator_copyarea_add_fetch (const OID * class_oid, const OID * oid, const RECDES * recdes, int offset,
+				       LC_COPYAREA_MANYOBJS * mobjs, LC_COPYAREA_ONEOBJ * obj);
+
  // *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-				       const std::vector<record_descriptor> &recdes, int has_index, int op_type,
+				       std::vector<heap_pending_record> &recdes, int has_index, int op_type,
 				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				       UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk);

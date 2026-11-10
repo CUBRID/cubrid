@@ -120,6 +120,7 @@ extern void sboot_find_last_temp (THREAD_ENTRY * thread_p, unsigned int rid, cha
 extern void sboot_change_ha_mode (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_update_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqst_log_stats_progress (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_add_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_load_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_delete_index (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -127,6 +128,7 @@ extern void slocator_remove_class_from_index (THREAD_ENTRY * thread_p, unsigned 
 extern void sbtree_find_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_find_multi_uniques (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sbtree_class_test_unique (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sbtree_compact_overflow (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_totalpgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_freepgs (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sdk_remarks (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -137,7 +139,9 @@ extern void sqmgr_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *re
 extern void sqmgr_prepare_and_execute_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_end_query (THREAD_ENTRY * thrd, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_all_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqmgr_bind_variant (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqmgr_drop_query_clones (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_plans (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqmgr_dump_query_cache (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqp_get_sys_timestamp (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -226,7 +230,6 @@ extern void ssession_drop_session_variables (THREAD_ENTRY * thread_p, unsigned i
 extern void sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void soos_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -258,6 +261,8 @@ extern void scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 extern void scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void scdc_auth_response (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 /* flashback */
 extern void sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

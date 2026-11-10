@@ -20,7 +20,8 @@
  * test_oos_log.hpp
  */
 
-#pragma once
+#ifndef _TEST_OOS_LOG_HPP_
+#define _TEST_OOS_LOG_HPP_
 
 #include <cstdio>
 #include <cstdarg>
@@ -133,3 +134,4 @@ namespace test_oos_log
 
 } // namespace test_oos_log
 
+#endif /* _TEST_OOS_LOG_HPP_ */

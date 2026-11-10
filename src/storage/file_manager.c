@@ -708,7 +708,6 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 					      bool * stop, void *args);
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
-static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
 static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
@@ -3981,65 +3980,6 @@ file_table_collect_all_vsids (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE
 }
 
 /*
- * file_sector_map_dealloc () - FILE_EXTDATA_ITEM_FUNC to deallocate user pages
- *
- * return        : error code
- * thread_p (in) : thread entry
- * data (in)     : FILE_PARTIAL_SECTOR * or VSID *
- * index (in)    : unused
- * stop (in)     : unused
- * args (in)     : is_partial
- */
-static int
-file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
-{
-  bool is_partial = *(bool *) args;
-  FILE_PARTIAL_SECTOR partsect = FILE_PARTIAL_SECTOR_INITIALIZER;
-  int offset = 0;
-  VPID vpid;
-  PAGE_PTR page = NULL;
-  int error_code = NO_ERROR;
-
-  if (is_partial)
-    {
-      partsect = *(FILE_PARTIAL_SECTOR *) data;
-    }
-  else
-    {
-      partsect.vsid = *(VSID *) data;
-    }
-
-  vpid.volid = partsect.vsid.volid;
-  for (offset = 0, vpid.pageid = SECTOR_FIRST_PAGEID (partsect.vsid.sectid); offset < DISK_SECTOR_NPAGES;
-       offset++, vpid.pageid++)
-    {
-      if (is_partial && !file_partsect_is_bit_set (&partsect, offset))
-	{
-	  /* not allocated */
-	  continue;
-	}
-
-      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
-	}
-
-      if (pgbuf_get_page_ptype (thread_p, page) == PAGE_FTAB)
-	{
-	  /* table page, do not deallocate yet */
-	  pgbuf_unfix_and_init (thread_p, page);
-	  continue;
-	}
-      pgbuf_dealloc_page (thread_p, page);
-      page = NULL;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * file_sector_map_dealloc_temp () - FILE_EXTDATA_ITEM_FUNC to dealloc user pages of temp table
  *
  * return        : error code
@@ -4167,7 +4107,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   if (file_get_tde_algorithm_internal (fhead) != TDE_ALGORITHM_NONE)
     {
       tde_er_log
-	("file_destroy(): clear tde bit in pflag in all user pages, VFID = %d|%d, # of encrypting (user) pages = %d, tde algorithm = %s\n",
+	("file_destroy(): destroy encrypted file; buffered pages are discarded and never written again, "
+	 "VFID = %d|%d, # of (user) pages = %d, tde algorithm = %s\n",
 	 VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
 	 tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
     }
@@ -4190,7 +4131,12 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 
   if (!FILE_IS_TEMPORARY (fhead))
     {
-      /* we need to deallocate pages */
+      /* bulk destroy: the removal is fully logged by the tracker unregister (above) and the sector unreserve (below),
+       * so pages are not fixed and deallocated one by one; buffered pages are discarded instead.
+       *
+       * exception: the header and file table pages are read again from disk if recovery re-runs this postpone.
+       * discarding them would drop their unflushed updates out of a later checkpoint's redo range, so flush the
+       * resident dirty ones first (a handful of pages at most). */
       ftab_collector.npages = 0;
       ftab_collector.nsects = 0;
       ftab_collector.partsect_ftab =
@@ -4202,30 +4148,24 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto exit;
 	}
-
       FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
-      is_partial = true;
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-				  file_sector_map_dealloc, &is_partial, true, NULL, NULL);
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector, NULL, NULL,
+				  false, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
-
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
-      is_partial = false;
       error_code =
-	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-				  file_sector_map_dealloc, &is_partial, true, NULL, NULL);
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector, NULL, NULL,
+				  false, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
-
-      /* deallocate table pages - other than header page */
       for (iter_sects = 0; iter_sects < ftab_collector.nsects; iter_sects++)
 	{
 	  vpid_ftab.volid = ftab_collector.partsect_ftab[iter_sects].vsid.volid;
@@ -4233,22 +4173,45 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	       vpid_ftab.pageid = SECTOR_FIRST_PAGEID (ftab_collector.partsect_ftab[iter_sects].vsid.sectid);
 	       offset < DISK_SECTOR_NPAGES; offset++, vpid_ftab.pageid++)
 	    {
-	      if (file_partsect_is_bit_set (&ftab_collector.partsect_ftab[iter_sects], offset))
+	      if (!file_partsect_is_bit_set (&ftab_collector.partsect_ftab[iter_sects], offset))
 		{
-		  page_ftab = pgbuf_fix (thread_p, &vpid_ftab, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-		  if (page_ftab == NULL)
+		  continue;
+		}
+	      /* not buffered = already current on disk */
+	      page_ftab =
+		pgbuf_fix (thread_p, &vpid_ftab, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (page_ftab == NULL)
+		{
+		  if (er_errid () != NO_ERROR)
 		    {
 		      ASSERT_ERROR_AND_SET (error_code);
 		      goto exit;
 		    }
-		  pgbuf_dealloc_page (thread_p, page_ftab);
-		  page_ftab = NULL;
+		  continue;
 		}
+	      if (pgbuf_flush_with_wal (thread_p, page_ftab) == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  pgbuf_unfix_and_init (thread_p, page_ftab);
+		  goto exit;
+		}
+	      pgbuf_unfix_and_init (thread_p, page_ftab);
 	    }
 	}
-      /* deallocate header page */
-      pgbuf_dealloc_page (thread_p, page_fhead);
-      page_fhead = NULL;
+      if (pgbuf_flush_with_wal (thread_p, page_fhead) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
+      pgbuf_unfix_and_init (thread_p, page_fhead);
+
+      pgbuf_discard_pages_of_sectors (thread_p, vsid_collector.vsids, vsid_collector.n_vsids);
+
+      {
+	/* lets a test checkpoint and crash after the pages are gone and before the sectors are freed */
+	int hold_seconds = 10;
+	(void) FI_TEST_ARG (thread_p, FI_TEST_FILE_MANAGER_DESTROY_HOLD, &hold_seconds, FI_INIT_STATE);
+      }
     }
   else
     {
@@ -8775,7 +8738,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (page_ftab == NULL)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -8796,7 +8759,14 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (error_code != NO_ERROR)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code == NO_ERROR)
+	    {
+	      /* the reservation failed without setting an error - do not let NO_ERROR report success below */
+	      assert (false);
+	      error_code = ER_FAILED;
+	    }
+	  else if (error_code != ER_INTERRUPTED && error_code != ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED
+		   && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -8906,7 +8876,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (page_ftab == NULL)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -11670,6 +11640,15 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
   {
     log_sysop_start (thread_p);
 
+    /* unlike a DROP, nothing notified vacuum of this file. do it first, so that no vacuum worker fixes its pages
+     * while they are discarded or after their sectors are freed. */
+    if (vacuum_notify_dropped_file (thread_p, &vfid) != NO_ERROR)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	log_sysop_abort (thread_p);
+	return error_code;
+      }
+
     if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
       {
 	ASSERT_ERROR_AND_SET (error_code);
@@ -11859,6 +11838,16 @@ file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 	}
       else
 	{
+	  /* as in file_delete_invalid_file: no vacuum worker may fix the pages of the file */
+	  if (vacuum_notify_dropped_file (thread_p, target_vfid) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+
+	      log_sysop_abort (thread_p);
+
+	      return error_code;
+	    }
+
 	  if (file_destroy (thread_p, target_vfid, false) != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
@@ -12500,9 +12489,16 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   assert (tde_algo != TDE_ALGORITHM_NONE);
 
   /* apply to heap file and heap overflow file */
-  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  bool hfid_found;		/* always written by heap_get_class_info () */
+
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found);
   if (error_code != NO_ERROR)
     {
+      goto exit;
+    }
+  if (!hfid_found)
+    {
+      /* no heap - nothing to apply the TDE algorithm to. */
       goto exit;
     }
 
@@ -12521,6 +12517,28 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  goto exit;
 	}
     }
+
+  /* apply to OOS file (if it has been lazily created already).
+   * Lazy creation that happens after this point applies TDE inline in
+   * heap_oos_find_vfid (docreate=true branch). */
+  {
+    VFID oos_vfid;
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+      {
+	/* genuine failure reading the heap header, not "no OOS file" */
+	ASSERT_ERROR_AND_SET (error_code);
+	goto exit;
+      }
+    if (!VFID_ISNULL (&oos_vfid))
+      {
+	error_code = file_apply_tde_algorithm (thread_p, &oos_vfid, tde_algo);
+	if (error_code != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+      }
+  }
 
   or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);
   if (or_repr == NULL)

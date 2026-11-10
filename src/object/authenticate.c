@@ -84,7 +84,7 @@
  *
  * 
  */
-static authenticate_context *au_ctx_obj = nullptr;
+static CUB_THREAD_LOCAL authenticate_context *au_ctx_obj = nullptr;
 
 int
 au_login (const char *name, const char *password, bool ignore_dba_privilege)
@@ -101,6 +101,18 @@ au_ctx (void)
     }
   return au_ctx_obj;
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+void
+au_ctx_destructor (void)
+{
+  if (au_ctx_obj != nullptr)
+    {
+      delete au_ctx_obj;
+      au_ctx_obj = nullptr;
+    }
+}
+#endif
 
 /*
  * DB_ EXTENSION FUNCTIONS
@@ -237,14 +249,14 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
 }
 
 /*
- * au_dump_auth() - Prints authorization info for all users.
+ * au_dump_auth() - Prints authorization info for the users visible in db_user.
  *   return: none
  *   fp(in): output file
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
  *       eliminated for performance reasons.  A query on the _db_user class is
- *       new used to find all users.
+ *       now used to find the users visible in db_user.
  */
 void
 au_dump_auth (FILE * fp)
@@ -255,13 +267,13 @@ au_dump_auth (FILE * fp)
   DB_QUERY_ERROR query_error;
   int error;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
+  const char *qp1 = "select [%s] from [%s] where [name] in (select [name] from [%s]);";
 
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
+  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2 + strlen (CTV_USER_NAME));
 
   if (query)
     {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, CTV_USER_NAME);
 
       error = db_compile_and_execute_local (query, &query_result, &query_error);
       /* error is row count if not negative. */
@@ -371,7 +383,7 @@ au_dump_user (MOP user, FILE * fp)
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
  *       eliminated for performance reasons.  A query on the _db_user class is
- *       new used to find all users.
+ *       now used to find the users visible in db_user.
  */
 void
 au_dump_to_file (FILE * fp)
@@ -383,18 +395,21 @@ au_dump_to_file (FILE * fp)
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
+  const char *qp1 = "select [%s] from [%s] where [name] in (select [name] from [%s]);";
+  int save;
 
   /* NOTE: We should be getting the real user name here ! */
 
   fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CURRENT_USER),
 	   Au_user_name);
 
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
+  AU_SAVE_AND_DISABLE (save);
+
+  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2 + strlen (CTV_USER_NAME));
 
   if (query)
     {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, CTV_USER_NAME);
 
       error = db_compile_and_execute_local (query, &query_result, &query_error);
       /* error is row count if not negative. */
@@ -441,6 +456,8 @@ au_dump_to_file (FILE * fp)
 
   fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_AUTH_TITLE));
   au_dump_auth (fp);
+
+  AU_RESTORE (save);
 }
 
 /*
@@ -464,16 +481,21 @@ au_check_serial_authorization (MOP serial_object)
 {
   DB_VALUE creator_val;
   int ret_val;
+  int save;
+
+  AU_SAVE_AND_DISABLE (save);
 
   ret_val = db_get (serial_object, "owner", &creator_val);
   if (ret_val != NO_ERROR)
     {
+      AU_RESTORE (save);
       return ret_val;
     }
 
   assert (!DB_IS_NULL (&creator_val));
 
   ret_val = au_check_owner (&creator_val);
+  AU_RESTORE (save);
   if (ret_val != NO_ERROR)
     {
       ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;
@@ -510,7 +532,16 @@ au_check_server_authorization (MOP server_object)
 bool
 au_is_server_authorized_user (DB_VALUE * owner_val)
 {
-  return (au_check_owner (owner_val) == NO_ERROR);
+  bool authorized;
+  int save;
+
+  /* au_check_owner () reads Au_user's "groups" bare: without this its group term drops out, and with
+   * no error. Disabling here rather than in each caller keeps every caller on the same predicate. */
+  AU_SAVE_AND_DISABLE (save);
+  authorized = (au_check_owner (owner_val) == NO_ERROR);
+  AU_RESTORE (save);
+
+  return authorized;
 }
 
 void

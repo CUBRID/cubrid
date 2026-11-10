@@ -23,6 +23,7 @@
 #include "vacuum_oos.hpp"
 
 #include "error_manager.h"
+#include "fault_injection.h"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "log_manager.h"
@@ -34,7 +35,6 @@
 #include "vacuum.h"
 
 #include <algorithm>
-#include <cstdlib>		/* abort - TODO: remove before develop merge (temporary CI crash) */
 #include <cstring>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -58,7 +58,7 @@ typedef enum
 static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p,
     VACUUM_OOS_VFID_MEMO *memo, const VFID *heap_vfid, VFID *out_oos_vfid);
 static int vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-    std::vector<OID> oos_oids);
+    OOS_REF_VECTOR oos_refs);
 
 /*
  * vacuum_oos_vfid_lookup () - Find the OOS file that belongs to a given heap file.
@@ -138,56 +138,51 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
  *   points to. As vacuum walks the undo log, it finds the "pre-image" (how the row looked before an
  *   UPDATE); that old image may still reference OOS records nobody can reach anymore.
  *
- *   The OID list comes in BY VALUE so this helper owns its own copy. That matters: oos_delete can
- *   rotate (swap out) the log page that the caller's original undo_data points into, so we must work
- *   from a copy that does not live in that buffer.
+ *   The reference list comes in BY VALUE so this helper owns its own copy. That matters: oos_delete
+ *   can rotate (swap out) the log page that the caller's original undo_data points into, so we must
+ *   work from a copy that does not live in that buffer.
  *
  *   All the deletes run inside one "sysop" (system operation) - the engine's unit of
  *   all-or-nothing work for crash recovery - so the whole multi-chunk delete either fully happens
  *   or fully rolls back. (Contrast vacuum_heap_oos_delete_within_sysop: that one runs inside the caller's
  *   existing sysop and must NOT open its own.)
  *
- *   The caller only calls this for RVHF_UPDATE_NOTIFY_VACUUM records; see commit fc0e35ced for why
- *   other log record types must be excluded.
+ *   The only caller is vacuum_forward_walk_reclaim_oos, which vacuum.c calls for RVHF_UPDATE_NOTIFY_VACUUM
+ *   and RVHF_DELETE_NEWHOME_NOTIFY_VACUUM only. Other heap log records stay out: for example
+ *   RVHF_MVCC_DELETE_MODIFY_HOME logs the same OOS OIDs that its slot still holds, so the REMOVE path
+ *   frees them and a second delete here would be a double free.
  */
 static int
-vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid, std::vector<OID> oos_oids)
+vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid, OOS_REF_VECTOR oos_refs)
 {
   int error_code = NO_ERROR;
 
-  /* Sort the OIDs by (volid, pageid, slotid). Deleting in this order means back-to-back oos_delete
-   * calls touch nearby pages, so a page we just loaded stays in the buffer pool (better locality).
-   * This matches how the heap itself is scanned. We own this vector (passed by value), so we can
-   * sort it in place. */
-  std::sort (oos_oids.begin (), oos_oids.end (),
-	     [] (const OID &a, const OID &b)
+  /* Sort the references by head OID (volid, pageid, slotid). Deleting in this order means
+   * back-to-back oos_delete calls touch nearby pages, so a page we just loaded stays in the buffer
+   * pool (better locality). This matches how the heap itself is scanned. We own this vector (passed
+   * by value), so we can sort it in place. */
+  std::sort (oos_refs.begin (), oos_refs.end (),
+	     [] (const oos_chain_ref &a, const oos_chain_ref &b)
   {
-    return oid_compare (&a, &b) < 0;
+    return oid_compare (&a.head_oid, &b.head_oid) < 0;
   });
 
-  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The OIDs above are already
-   * sorted into page order, so one day we should group the OIDs that share a page and delete them
-   * under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
-  VACUUM_OOS_TOUCHED_PAGES touched_pages;
+  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The references above are
+   * already sorted into page order, so one day we should group the ones that share a page and
+   * delete them under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
+  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
 
   log_sysop_start (thread_p);
-  for (const OID &oid : oos_oids)
+  for (const oos_chain_ref &ref : oos_refs)
     {
       /* This has to be safe to run twice. If the whole block is retried, an earlier forward-walk in
-       * this block may have already committed its deletes, so an OID's chunk can already be gone. In
-       * that case just skip it instead of failing inside oos_delete. We still report a real failure
+       * this block may have already committed its deletes, so a chunk can already be gone, or its
+       * slot can already hold ANOTHER live chain (OOS OIDs are physical addresses and freed slots
+       * are reused). oos_delete tells these apart from the stub's identity stamp and no-ops on
+       * both, so a retry can never destroy the reusing chain (CBRD-26950). An occupancy probe
+       * cannot make that distinction and must not be used here. We still report a real failure
        * (I/O error, interrupt, etc.) as an error. */
-      bool exists;
-      error_code = oos_chunk_exists (thread_p, oid, &exists);
-      if (error_code != NO_ERROR)
-	{
-	  break;
-	}
-      if (!exists)
-	{
-	  continue;
-	}
-      error_code = oos_delete (thread_p, *oos_vfid, oid, &touched_pages);
+      error_code = oos_delete (thread_p, *oos_vfid, ref, &emptied_pages);
       if (error_code != NO_ERROR)
 	{
 	  break;
@@ -199,7 +194,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 
       /* Must run after the commit: an aborted sysop would restore the chunks, and undo cannot
        * re-insert into a deallocated page. */
-      int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
+      int reclaim_err = vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &emptied_pages);
       if (reclaim_err != NO_ERROR)
 	{
 	  assert (reclaim_err == ER_INTERRUPTED);
@@ -225,17 +220,17 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
  * return                 : NO_ERROR or ER_INTERRUPTED.
  * thread_p (in)          : Thread entry.
  * oos_vfid (in)          : OOS file the pages belong to.
- * touched_pages (in/out) : Pages the delete batch touched (duplicates allowed); cleared on return.
+ * emptied_pages (in/out) : Pages the delete batch emptied; cleared on return.
  */
 int
 vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-				VACUUM_OOS_TOUCHED_PAGES *touched_pages)
+				VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
 {
   assert (oos_vfid != NULL && !VFID_ISNULL (oos_vfid));
-  assert (touched_pages != NULL);
+  assert (emptied_pages != NULL);
 
-  int error_code = oos_reclaim_empty_pages (thread_p, *oos_vfid, *touched_pages);
-  touched_pages->clear ();
+  int error_code = oos_reclaim_empty_pages (thread_p, *oos_vfid, *emptied_pages);
+  emptied_pages->clear ();
 
   if (error_code == ER_INTERRUPTED)
     {
@@ -293,7 +288,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
    * REC_BIGONE / REC_RELOCATION slot, which is only an 8-byte OID. If we handed one of those to
    * heap_recdes_contains_oos, it would read the OID's pageid as if it were an MVCC header. A pageid
    * that happens to have bit 27 set would look like the "has OOS" flag, and then
-   * heap_recdes_get_oos_oids would chase a garbage reference list and hit assert_release. So we
+   * heap_recdes_get_oos_refs would chase a garbage reference list and hit assert_release. So we
    * check the record type first - the same guard the eager-delete paths use (REC_HOME / REC_NEWHOME).
    */
   if (! ((undo_recdes.type == REC_HOME || undo_recdes.type == REC_NEWHOME) && heap_recdes_contains_oos (&undo_recdes)))
@@ -307,8 +302,8 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
    * vacuum_forward_walk_oos_delete_atomic). If that happened, we would be parsing whatever bytes landed
    * there - usually zeros or another page's data - and quietly find nothing. (Seen live: the flags
    * byte at this address changed from 0x69 to 0x00 across the lookup.) The copy also fixes
-   * alignment: the image starts at undo_data + sizeof (INT16), and the OR_BUF readers used by
-   * heap_recdes_get_oos_oids would assert on that unaligned pointer in debug builds. */
+   * alignment: the image starts at undo_data + sizeof (INT16), while heap_recdes_get_oos_refs reads the
+   * offset table entries and the stubs as aligned integers. */
   RECDES parse_recdes = undo_recdes;
   char *stable_copy = (char *) db_private_alloc (thread_p, undo_recdes.length);
   if (stable_copy == NULL)
@@ -336,12 +331,12 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
     }
   else if (lookup_result == VACUUM_OOS_VFID_FOUND)
     {
-      std::vector<OID> oos_oids;
-      int oos_err = heap_recdes_get_oos_oids (&parse_recdes, oos_oids);
+      OOS_REF_VECTOR oos_refs;
+      int oos_err = heap_recdes_get_oos_refs (&parse_recdes, oos_refs);
 
       if (oos_err == NO_ERROR)
 	{
-	  oos_err = vacuum_forward_walk_oos_delete_atomic (thread_p, &oos_vfid, std::move (oos_oids));
+	  oos_err = vacuum_forward_walk_oos_delete_atomic (thread_p, &oos_vfid, std::move (oos_refs));
 	}
 
       if (oos_err != NO_ERROR)
@@ -365,15 +360,11 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
     }
   else
     {
-      /* VACUUM_OOS_VFID_NONE. TODO(do not review, remove before develop merge): the guard above already
-       * confirmed this undo image is REC_HOME/REC_NEWHOME and heap_recdes_contains_oos, so reaching here
-       * means the record's OOS flag is set but its heap has no OOS file - an invariant violation, not the
-       * benign "nothing to do" case. CI runs the release build where assert_release only logs, so abort()
-       * to crash and surface the bug now instead of leaking silently. */
       vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			   "forward-walk oos cleanup: undo image has OOS flag but heap has no OOS file; "
 			   "heap_vfid=%d|%d", VFID_AS_ARGS (heap_vfid));
-      abort ();
+      assert_release (false);
+      er_clear ();
     }
 
   db_private_free_and_init (thread_p, stable_copy);
@@ -381,64 +372,75 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 }
 
 /*
- * vacuum_oos_find_vfid_for_heap_record () - Look up the heap's OOS file the first time it is needed.
- *   Called when the current record has the "has OOS" flag set but the caller has not found the OOS
- *   file yet. At this point a missing OOS file should not happen; it would mean a wrongly-set flag, a
- *   dropped file, or an odd recovery ordering. Either way it must not stop vacuum, so we log it,
- *   clear the error, leave oos_vfid NULL, and skip OOS cleanup for this one record (a small leak).
- *   Debug builds assert first, so if a future bug starts setting the flag wrongly we catch it in
- *   debug runs instead of leaking silently in release.
+ * vacuum_oos_find_vfid_for_heap_record () - Look up the heap's OOS file the first time it is needed, waiting for
+ *   the heap header latch.
+ *   return            : Error code. A failed lookup (header latch timeout or read error) is returned, never skipped:
+ *                       the caller must not vacuum the record without its OOS cleanup.
  *
  * thread_p (in)     : Thread entry.
  * hfid (in)         : Heap file of the record being vacuumed.
  * record (in)       : The record's data.
- * slotid (in)       : The record's slot (for logging only).
- * record_type (in)  : The record's type (for logging only).
- * oos_vfid (in/out) : The caller's OOS file id. Left alone if already found, filled in on success,
- *                     or set to VFID_NULL when the lookup legitimately fails (then skip cleanup).
+ * oos_vfid (in/out) : The caller's OOS file id. Left alone if already found, filled in on success (VFID_NULL when the
+ *                     heap has no OOS file), set to VFID_NULL on error.
  */
 int
-vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
-				      PGSLOTID slotid, INT16 record_type, VFID *oos_vfid)
+vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record, VFID *oos_vfid)
 {
   if (!VFID_ISNULL (oos_vfid) || !heap_recdes_contains_oos (record))
     {
       return NO_ERROR;
     }
-  if (heap_oos_find_vfid (thread_p, hfid, oos_vfid, false))
+
+  bool found;
+  if (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))
+    {
+      /* A latch timeout stops debug builds in pgbuf_timed_sleep, so a busy header fails here at once instead. */
+      found = heap_oos_find_vfid_nowait (thread_p, hfid, oos_vfid);
+      if (!found)
+	{
+	  VPID header_vpid = { hfid->hpgid, hfid->vfid.volid };
+	  (void) FI_TEST_ARG (thread_p, FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, &header_vpid, 0);
+	}
+    }
+  else
+    {
+      found = heap_oos_find_vfid (thread_p, hfid, oos_vfid, false);
+    }
+  if (found)
     {
       return NO_ERROR;
     }
-  /* A record that says "I have OOS" but whose heap has no OOS file is a real problem, not a
-   * not-yet-created file: the OOS file is always created (docreate=true) when the OOS data is
-   * written, which happens before the flag is committed. So this means a wrongly-set flag, a
-   * dropped OOS file, or an odd recovery ordering. We still must not fail vacuum here. Returning
-   * ER_FAILED would restart a release-build spin in the vacuum_heap_page loop (it clears the error
-   * and retries the same page without moving forward). Instead, log it, clear the error, and skip
-   * OOS cleanup for this record (a small, logged leak). See commit 1bf7dda05. */
-  {
-    int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
-    int record_flags = OR_GET_RECORD_FLAGS (record->data);
-    int offset_size = OR_GET_OFFSET_SIZE (record->data);
-    vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			 "OOS flag set but no OOS VFID for hfid %d|%d slotid=%d rectype=%d rec_len=%d "
-			 "repid_and_flags=0x%08x record_flags=0x%02x offset_size=%d - skipping OOS cleanup "
-			 "(bounded leak)",
-			 VFID_AS_ARGS (&hfid->vfid), (int) slotid, (int) record_type,
-			 record->length, repid_and_flags, record_flags, offset_size);
-  }
-  /* TODO(do not review, remove before develop merge): force a hard crash in CI. CI runs the release
-   * build (NDEBUG), where assert_release below only logs a notification - which the er_clear() then
-   * wipes - so it never aborts. This case is an invariant violation (the record's OOS flag is set but
-   * its heap has no OOS file), so abort() to surface the bug in CI instead of leaking silently. */
-  abort ();
-  /* In debug builds, abort so the bug that set the bad flag is caught the first time vacuum sees it.
-   * In release builds, assert_release only records a notification error, which the er_clear() below
-   * wipes out before we skip - so vacuum keeps running. */
-  assert_release (false);
-  er_clear ();
+
+  int error_code;
+  ASSERT_ERROR_AND_SET (error_code);
   VFID_SET_NULL (oos_vfid);
-  return NO_ERROR;
+  return error_code;
+}
+
+/*
+ * vacuum_oos_report_missing_oos_file () - Report a record with the OOS flag whose heap has no OOS file.
+ *   The OOS file is created before an OOS value is written, so this is a wrongly set flag, a dropped OOS file or an
+ *   odd recovery order. Debug builds stop here. Release builds log it, and the caller skips the OOS cleanup of this
+ *   record (a bounded leak).
+ *
+ * hfid (in)        : Heap file of the record being vacuumed.
+ * record (in)      : The record's data.
+ * slotid (in)      : The record's slot (for logging only).
+ * record_type (in) : The record's type (for logging only).
+ */
+void
+vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSLOTID slotid, INT16 record_type)
+{
+  int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
+  int record_flags = OR_GET_RECORD_FLAGS (record->data);
+  int offset_size = OR_GET_OFFSET_SIZE (record->data);
+  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+		       "OOS flag set but no OOS VFID for hfid %d|%d slotid=%d rectype=%d rec_len=%d "
+		       "repid_and_flags=0x%08x record_flags=0x%02x offset_size=%d - skipping OOS cleanup "
+		       "(bounded leak)",
+		       VFID_AS_ARGS (&hfid->vfid), (int) slotid, (int) record_type,
+		       record->length, repid_and_flags, record_flags, offset_size);
+  assert (false);
 }
 
 /*
@@ -457,38 +459,41 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
  * thread_p (in)  : Thread entry.
  * oos_vfid (in)  : OOS file of the record's heap (must be valid).
  * record (in)	  : Heap record whose OOS references are deleted.
- * touched_pages_out (out) : Optional; pages that lost chunks are appended, for reclaim AFTER the
+ * emptied_pages_out (out) : Optional; pages the deletes emptied are appended, for reclaim AFTER the
  *			     caller's sysop commits. On error, this call's appends are removed.
  */
 int
 vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
-				     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out)
+				     VACUUM_OOS_EMPTIED_PAGES *emptied_pages_out)
 {
   assert (!VFID_ISNULL (oos_vfid));
-  size_t n_touched_on_entry = touched_pages_out != NULL ? touched_pages_out->size () : 0;
-  std::vector<OID> oos_oids;
-  int error_code = heap_recdes_get_oos_oids (record, oos_oids);
+  size_t n_emptied_on_entry = emptied_pages_out != NULL ? emptied_pages_out->size () : 0;
+  OOS_REF_VECTOR oos_refs;
+  int error_code = heap_recdes_get_oos_refs (record, oos_refs);
   if (error_code != NO_ERROR)
     {
-      assert_release (false);
+      if (error_code != ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  assert_release (false);
+	}
       return error_code;
     }
 
-  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. When a record references
-   * several OOS values on the same page, one day we should sort/group them by page and delete all of
-   * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
-  for (const OID &oos_oid : oos_oids)
+  /* TODO(perf): oos_delete re-fixes the page per OID, as noted in vacuum_forward_walk_oos_delete_atomic. These
+   * references are not even sorted by page yet. */
+  for (const oos_chain_ref &oos_ref : oos_refs)
     {
-      error_code = oos_delete (thread_p, *oos_vfid, oos_oid, touched_pages_out);
+      const OID &oos_oid = oos_ref.head_oid;
+      error_code = oos_delete (thread_p, *oos_vfid, oos_ref, emptied_pages_out);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "Failed to delete OOS record %d|%d|%d.", oos_oid.volid, oos_oid.pageid, oos_oid.slotid);
 	  /* The caller's abort restores these deletes — keep its batch list committed-only. (An
 	   * OOM inside oos_delete_chain may already have cleared the list; never grow it.) */
-	  if (touched_pages_out != NULL && touched_pages_out->size () > n_touched_on_entry)
+	  if (emptied_pages_out != NULL && emptied_pages_out->size () > n_emptied_on_entry)
 	    {
-	      touched_pages_out->resize (n_touched_on_entry);
+	      emptied_pages_out->resize (n_emptied_on_entry);
 	    }
 	  return error_code;
 	}

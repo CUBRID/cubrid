@@ -581,7 +581,7 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
   return (-1 * err_num);
 }
 
-/* Returns -1 for an unknown token. BLOB/CLOB resolve to CCI_U_TYPE_NULL.
+/* Returns -1 for an unknown token. BLOB/CLOB/BFILE/CFILE resolve to CCI_U_TYPE_NULL.
  * Keep in sync with get_cci_type () in broker_log_replay.c. */
 static int
 get_bind_type (const char *tok)
@@ -599,7 +599,7 @@ get_bind_type (const char *tok)
 	{
 	  type = CCI_U_TYPE_BIT;
 	}
-      else if (strcmp (tok, "BLOB") == 0)
+      else if (strcmp (tok, "BLOB") == 0 || strcmp (tok, "BFILE") == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
 	}
@@ -610,7 +610,7 @@ get_bind_type (const char *tok)
 	{
 	  type = CCI_U_TYPE_CHAR;
 	}
-      else if (strcmp (tok, "CLOB") == 0)
+      else if (strcmp (tok, "CLOB") == 0 || strcmp (tok, "CFILE") == 0)
 	{
 	  type = CCI_U_TYPE_NULL;
 	}
@@ -1182,7 +1182,7 @@ parse_bind_line (const char *line, T_BR_STMT * st)
     }
   if (mode != BR_PM_OUT && type != CCI_U_TYPE_NULL && *val_start == '\0')
     {
-      /* NULL (and BLOB/CLOB mapped to NULL) carries no value by design; every
+      /* NULL (and BLOB/CLOB/BFILE/CFILE mapped to NULL) carries no value by design; every
        * other IN/INOUT type must have one. */
       fprintf (stderr, "in/inout parameter requires a value (use '' for an empty string)\n");
       return -1;

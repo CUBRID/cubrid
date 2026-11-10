@@ -26,22 +26,22 @@
 
 #include <string_view>
 
-#include "porting.h"
+int catcls_install (void);
+int catcls_rebuild_vclasses (void);
 
-extern EXPORT_IMPORT void catcls_init (void);
-extern EXPORT_IMPORT int catcls_install (void);
+bool sm_check_system_class_by_name (const std::string_view class_name);
 
-extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
-
-extern EXPORT_IMPORT bool sm_is_system_class (const std::string_view name);
-extern EXPORT_IMPORT bool sm_is_system_vclass (const std::string_view name);
+bool sm_is_system_class (const std::string_view name);
+bool sm_is_system_vclass (const std::string_view name);
 
 #if defined (CS_MODE) || defined (SA_MODE)
 struct db_object;
 
-extern EXPORT_IMPORT int catcls_add_data_type (struct db_object *class_mop);
-extern EXPORT_IMPORT int catcls_add_charsets (struct db_object *class_mop);
-extern EXPORT_IMPORT int catcls_add_collations (struct db_object *class_mop);
+int catcls_add_collations (struct db_object *class_mop);
+#endif
+
+#if defined (SA_MODE)
+int sm_mark_system_classes (void);
 #endif
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */

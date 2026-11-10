@@ -36,6 +36,9 @@
 
 #include "test_oos_sql_common.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 // ============================================================================
 // Test fixture
 // ============================================================================

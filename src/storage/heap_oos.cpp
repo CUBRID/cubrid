@@ -26,11 +26,12 @@
 #include "heap_oos.hpp"
 
 #include "dbtype.h"
-#include "deduplicate_key.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "file_manager.h"
 #include "heap_file.h"
+#include "heap_oos_value_ref.hpp"
+#include "heap_pending_record.hpp"
 #include "heap_show_scan_context.hpp"
 #include "log_impl.h"
 #include "object_representation.h"
@@ -45,11 +46,234 @@
 #endif
 #include <cassert>
 #include <cstring>
+#include <climits>
 #include <new>
 #include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+int
+heap_oos_validate_disk_record (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *record)
+{
+  if (OID_IS_ROOTOID (class_oid) || (record != nullptr && record->type == REC_ASSIGN_ADDRESS))
+    {
+      return NO_ERROR;
+    }
+  if (!heap_recdes_has_valid_header (record))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oid_Null_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  if (!heap_recdes_contains_oos (record))
+    {
+      return NO_ERROR;
+    }
+
+  int cache_index = -1;
+  RECDES view = *record;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, class_oid, nullptr, or_rep_id (&view), &cache_index);
+  if (repr == nullptr)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  int error = NO_ERROR;
+  bool found_oos = false;
+  const int table_entries = (record->length - OR_HEADER_SIZE (record->data)) / OR_GET_OFFSET_SIZE (record->data);
+  if (repr->n_variable < 1 || repr->n_variable >= table_entries)
+    {
+      error = ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  for (int i = 0; i < repr->n_attributes && error == NO_ERROR; ++i)
+    {
+      const OR_ATTRIBUTE &attr = repr->attributes[i];
+      if (attr.is_fixed)
+	{
+	  continue;
+	}
+      int entry = 0;
+      if (attr.location < 0 || attr.location >= repr->n_variable
+	  || heap_recdes_get_var_offset_entry (record, attr.location, &entry) != NO_ERROR)
+	{
+	  error = ER_HEAP_OOS_BAD_INLINE_HEADER;
+	  break;
+	}
+      if (OR_IS_OOS (entry))
+	{
+	  oos_chain_ref ref;
+	  DB_BIGINT length;
+	  found_oos = true;
+	  error = heap_oos_parse_inline_ref (record, attr.location, &ref, &length);
+	}
+    }
+  heap_classrepr_free_and_init (repr, &cache_index);
+  if (error != NO_ERROR || !found_oos)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oid_Null_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  return NO_ERROR;
+}
+
+int
+heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *record,
+				   bool *needs_preparation)
+{
+  *needs_preparation = true;
+  if (!heap_recdes_has_valid_header (record))
+    {
+      return heap_oos_validate_disk_record (thread_p, class_oid, record);
+    }
+  /* Reserve the full MVCC header, even when part of it is already present. Existing stubs must be
+   * rebuilt in the destination heap regardless of the compact record's size. */
+  if (record->length > DB_PAGESIZE / 4 - OR_MVCC_MAX_HEADER_SIZE || heap_recdes_contains_oos (record))
+    {
+      return NO_ERROR;
+    }
+
+  int cache_index = -1;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, class_oid, nullptr, NULL_REPRID, &cache_index);
+  if (repr == nullptr)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  /* Older representations may acquire defaults or change layout when decoded into the current one. */
+  *needs_preparation = or_rep_id (record) != repr->id;
+  for (int i = 0; i < repr->n_attributes && !*needs_preparation; ++i)
+    {
+      if (!repr->attributes[i].is_fixed
+	  && repr->attributes[i].oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE)
+	{
+	  *needs_preparation = true;
+	}
+    }
+  heap_classrepr_free_and_init (repr, &cache_index);
+  return NO_ERROR;
+}
+
+int
+heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
+			  heap_pending_record *pending)
+{
+  if (pending == nullptr)
+    {
+      return heap_oos_validate_disk_record (thread_p, destination, record);
+    }
+  if (!heap_recdes_has_valid_header (record) || !pending->owns (*record)
+      || (!pending->is_prepared () && !pending->is_finalized ()))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  if (pending->is_finalized ())
+    {
+      return heap_oos_validate_disk_record (thread_p, destination, record);
+    }
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+    {
+      pending->finish (false);
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  if (!heap_recdes_contains_oos (record))
+    {
+      pending->record ().set_record_length (record->length);
+      pending->finish (true);
+      return NO_ERROR;
+    }
+
+  int cache_index = -1;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, destination, nullptr, or_rep_id (record), &cache_index);
+  if (repr == nullptr)
+    {
+      pending->finish (false);
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  struct pending_value
+  {
+    char *stub;
+    oos_buffer payload;
+    oos_chain_ref result;
+  };
+  std::vector<pending_value> values;
+  std::vector<oos_insert_request> requests;
+  int error = NO_ERROR;
+  try
+    {
+      values.reserve (repr->n_variable);
+      requests.reserve (repr->n_variable);
+      for (int i = 0; i < repr->n_attributes; ++i)
+	{
+	  OR_ATTRIBUTE &attr = repr->attributes[i];
+	  if (attr.is_fixed)
+	    {
+	      continue;
+	    }
+	  int entry = 0;
+	  error = heap_recdes_get_var_offset_entry (record, attr.location, &entry);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  if (!OR_IS_OOS (entry))
+	    {
+	      continue;
+	    }
+	  char *stub = nullptr;
+	  (void) heap_recdes_get_oos_inline_stub (record, attr.location, &stub);
+	  heap_oos_value_ref ref;
+	  error = heap_oos_value_ref::decode_stub (*record, stub, ref, pending);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  if (ref.m_kind != heap_oos_value_ref::kind::memory)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      error = ER_GENERIC_ERROR;
+	      break;
+	    }
+	  values.push_back ({ stub, oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()), {} });
+	}
+      if (error == NO_ERROR)
+	{
+	  /* Collect every value before borrowing result addresses for the batch. */
+	  for (auto &value : values)
+	    {
+	      requests.push_back ({ value.payload, &value.result.head_oid, &value.result.identity_stamp });
+	    }
+	  cubbase::span<oos_insert_request> batch { requests.data (), requests.size () };
+	  if (heap_oos_insert_serialized_values (thread_p, destination, batch) != S_SUCCESS)
+	    {
+	      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+	    }
+	}
+      if (error == NO_ERROR)
+	{
+	  for (const auto &value : values)
+	    {
+	      OR_BUF buf;
+	      or_init (&buf, value.stub, OR_OOS_INLINE_SIZE);
+	      or_put_oid (&buf, &value.result.head_oid);
+	      or_put_bigint (&buf, (DB_BIGINT) value.payload.size ());
+	      or_put_bigint (&buf, oos_pack_identity_stamp (value.result.identity_stamp));
+	    }
+	  pending->record ().set_record_length (record->length);
+	}
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (std::size_t) repr->n_variable * (sizeof (pending_value) + sizeof (oos_insert_request)));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  heap_classrepr_free_and_init (repr, &cache_index);
+  pending->finish (error == NO_ERROR);
+  if (error != NO_ERROR)
+    {
+      (void) heap_oos_begin_insert_publication (thread_p);
+    }
+  return error;
+}
 
 /*
  * State shared across heap_record_replace_oos_oids() sub-functions.
@@ -71,7 +295,13 @@ struct HEAP_OOS_EXPAND_STATE
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 static std::atomic<bool> heap_Oos_test_fail_before_vfid_lookup { false };
+static std::atomic<int> heap_Oos_test_skipped_cleanup_diagnostics { 0 };
+static std::atomic<int> heap_Oos_test_last_skipped_cleanup_outcome { -1 };
+static std::atomic<int> heap_Oos_test_last_skipped_cleanup_count { 0 };
 #endif
+
+static void heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
+    const oos_chain_ref &first_ref, oos_delete_outcome first_outcome, int skipped_count);
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
@@ -150,20 +380,19 @@ heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	  continue;
 	}
 
-      const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
-      OID oos_oid;
+      oos_chain_ref oos_ref;
       DB_BIGINT oos_len;
 
-      /* Reuse the single inline-reference parser (same [OID (8B) | full_length (8B)] layout and
-       * the same corruption checks the lazy Resolve path uses). It has already er_set on error. */
-      RECDES rec = { state->src_length, state->src_length, REC_HOME, (char *) state->src };
-      if (heap_oos_parse_inline_ref (&rec, state->src + value_offset, &oos_oid, &oos_len) != NO_ERROR)
+      /* Reuse the single inline-stub parser (same [OID | full_length | identity stamp] layout, the same
+       * field-boundary and corruption checks the lazy Resolve path uses). It has already er_set on error. */
+      const RECDES rec = { state->src_length, state->src_length, REC_HOME, (char *) state->src };
+      if (heap_oos_parse_inline_ref (&rec, i, &oos_ref, &oos_len) != NO_ERROR)
 	{
 	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
 
       state->oos_payloads[i].resize ((std::size_t) oos_len);
-      oos_read_request request = { oos_oid,
+      oos_read_request request = { oos_ref,
 				   oos_buffer (state->oos_payloads[i].data (), (std::size_t) oos_len)
 				 };
       requests.push_back (request);
@@ -417,82 +646,77 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
 }
 
 /*
- * heap_oos_parse_inline_ref () - Validate and parse the inline OOS reference of an OOS-marked
- *   variable attribute. Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
+ * heap_oos_parse_inline_ref () - Validate and parse the OOS inline stub of an OOS-marked variable
+ *   attribute. Stub layout: [head OOS OID (8B) | full_length (8B bigint) | identity stamp (8B, a
+ *   LOG_LSA packed into one bigint, CBRD-26950)].
  *
- *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the reference is corrupted.
+ *   The attribute's field is located through heap_recdes_get_oos_inline_stub, which checks that the
+ *   variable offset table marks it OOS, makes it exactly one stub wide and keeps it inside the record.
+ *   Those bounds are the oracle: a field that is too short cannot borrow the next attribute's bytes
+ *   as its identity stamp, and nothing is read before the check passes.
+ *
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the field or the stub is corrupted.
  *   recdes(in): heap record holding the attribute (only data/length are read)
- *   inline_ptr(in): start of the OOS-marked variable region inside recdes
- *   oos_oid(out): forwarder OID of the OOS record
- *   oos_len(out): full byte length of the referenced OOS payload
+ *   location(in): the attribute's index in the variable offset table
+ *   oos_ref(out): chain reference (head OOS OID + identity stamp) for oos_read / oos_delete
+ *   oos_len(out): full byte length of the referenced OOS value
  */
 int
-heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid, DB_BIGINT *oos_len)
+heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oos_ref, DB_BIGINT *oos_len)
 {
-  OR_BUF buf;
-  int rc = NO_ERROR;
+  char *stub = NULL;
+  DB_BIGINT packed_identity_stamp = 0;
 
-  /* Keep the OOS OID well-defined for corruption errors raised before it is read. */
-  OID_SET_NULL (oos_oid);
+  /* Keep the reference well-defined for corruption errors raised before it is read. */
+  OID_SET_NULL (&oos_ref->head_oid);
+  LSA_SET_NULL (&oos_ref->identity_stamp);
   *oos_len = 0;
 
-  buf.ptr = (char *) inline_ptr;
-  buf.endptr = recdes->data + recdes->length;
-
-  /* The OOS-marked variable region must start with [OID | bigint]. */
-  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+  if (heap_recdes_get_oos_inline_stub (recdes, location, &stub) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_ref->head_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
-  or_get_oid (&buf, oos_oid);
-  *oos_len = or_get_bigint (&buf, &rc);
+  /* The field is exactly one stub, so the three fixed-width reads below cannot run past it. */
+  OR_GET_OID (stub, &oos_ref->head_oid);
+  OR_GET_BIGINT (stub + OR_OID_SIZE, oos_len);
+  OR_GET_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
 
-  /* Reject an unreadable length, a NULL OOS OID, or a length outside the stored-value range. */
-  if (rc != NO_ERROR || OID_ISNULL (oos_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
+  /* Reject a NULL OOS OID or a length outside the stored-value range.
+   * A NULL identity stamp is an ordinary value and is not rejected. */
+  if (OID_ISNULL (&oos_ref->head_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_ref->head_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
+  oos_ref->identity_stamp = oos_unpack_identity_stamp (packed_identity_stamp);
   return NO_ERROR;
 }
 
 /*
- * heap_oos_find_attr_inline_ref () - Find the OOS inline reference stored in a heap record for
- *   a requested variable attribute.
+ * heap_oos_attr_has_inline_ref () - Tell whether a requested variable attribute is OOS-marked in a heap
+ *   record, that is, whether its variable area holds an OOS inline stub instead of an inline value.
  *
- *   return: pointer to the 16-byte [OOS OID | full length] reference in the variable area, or
- *           NULL when this requested attribute has no OOS reference in this record. NULL also
- *           covers conditions the per-attribute read path skips or reports itself, including corrupt
- *           offset-size metadata.
+ *   return: true when the attribute is OOS-marked here. false otherwise, which also covers conditions
+ *           the per-attribute read path skips or reports itself, including corrupt offset-size metadata.
  */
-static const char *
-heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
+static bool
+heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 {
   OR_ATTRIBUTE *attrepr = value->read_attrepr;
   int vot_entry;
-
-  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
-    {
-      return NULL;
-    }
 
   if (recdes == NULL || recdes->data == NULL || attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
       || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0
       || OR_VAR_IS_NULL (recdes->data, attrepr->location))
     {
-      return NULL;
+      return false;
     }
 
-  if (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) != NO_ERROR
-      || !OR_IS_OOS (vot_entry))
-    {
-      return NULL;
-    }
-
-  return recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+  return (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) == NO_ERROR
+	  && OR_IS_OOS (vot_entry));
 }
 
 /*
@@ -508,7 +732,8 @@ heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
  */
 int
 heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
-				std::vector<RECDES> &oos_payloads, bool *grouped_applied)
+				std::vector<RECDES> &oos_payloads, bool *grouped_applied,
+				const heap_pending_record *pending)
 {
   const RECDES empty_payload = { -1, -1, REC_UNKNOWN, NULL };
   std::vector<oos_read_request> requests;
@@ -522,7 +747,7 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values; i++)
     {
-      if (heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]) != NULL)
+      if (heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i]))
 	{
 	  requested_oos_count++;
 	}
@@ -549,16 +774,16 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
     {
-      const char *inline_ptr = heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]);
-      OID oos_oid;
-      DB_BIGINT oos_len;
+      heap_oos_value_ref ref;
+      std::size_t oos_len = 0;
 
-      if (inline_ptr == NULL)
+      if (!heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i]))
 	{
 	  continue;		/* not OOS here: the per-attribute reader handles it */
 	}
 
-      error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_oid, &oos_len);
+      error = heap_oos_value_ref::decode (*recdes, attr_info->values[i].read_attrepr->location, ref, pending);
+      oos_len = ref.length ();
       if (error == NO_ERROR && recdes_allocate_data_area (&oos_payloads[i], (int) oos_len) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
@@ -567,12 +792,19 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
       if (error == NO_ERROR)
 	{
 	  oos_payloads[i].length = (int) oos_len;
-	  oos_read_request request = { oos_oid, oos_buffer (oos_payloads[i].data, (std::size_t) oos_len) };
-	  requests.push_back (request);
+	  oos_buffer dest (oos_payloads[i].data, oos_len);
+	  if (ref.m_kind == heap_oos_value_ref::kind::memory)
+	    {
+	      error = ref.read_into (thread_p, dest);
+	    }
+	  else
+	    {
+	      requests.push_back ({ ref.m_value.disk, dest });
+	    }
 	}
     }
 
-  if (error == NO_ERROR)
+  if (error == NO_ERROR && !requests.empty ())
     {
       error = oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()));
     }
@@ -634,7 +866,7 @@ heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
   HFID oos_hfid;
   VFID oos_vfid;
 
-  if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
+  if (heap_get_class_hfid (thread_p, class_oid, &oos_hfid, NULL) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -694,7 +926,22 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
  *
  * Strict failure handling: the OOS header flag is set by the record transformer and read via
  * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
- * indicates real corruption — log and propagate.
+ * indicates real corruption — log and propagate. A failed OOS file lookup (I/O, interrupt) is an
+ * operational error and is propagated as the error it set.
+ *
+ * Skipped targets (CBRD-26950): oos_delete skips a reference whose head page is deallocated or no
+ * longer an OOS page, whose head slot is empty, or whose head chunk carries another identity stamp,
+ * because the chain the reference described is gone. Vacuum expects that on a block retry and stays
+ * quiet. Here the old record was the chain's only reference and nothing has been retried, so a skip
+ * is unexpected: the DML still completes (accepted policy), but the skips are reported through
+ * heap_oos_diagnose_skipped_cleanup as a notification that leaves the error stack clean. A
+ * stamp-matching non-head target and operational failures remain errors.
+ *
+ * The report is one notification per call, naming how many of the record's chains were skipped and
+ * describing the first, rather than one per chain: the caller holds a write latch on the heap page
+ * across this function and each notification is a synchronous flushed write to the server error log,
+ * so a record with many OOS-backed attributes must not turn into many latch-held writes. A call that
+ * fails part way reports nothing, because its DML is about to be rolled back.
  *
  * Empty-page reclaim (oos_reclaim_empty_pages) must NOT be wired here: this runs inside a live
  * user transaction whose abort replays the per-chunk undo, and undo cannot re-insert chunks
@@ -706,37 +953,37 @@ int
 heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
 			      const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx)
 {
-  std::vector<OID> old_oos_oids;
-  std::vector<OID> new_oos_oids;
+  OOS_REF_VECTOR old_oos_refs;
+  OOS_REF_VECTOR new_oos_refs;
   VFID oos_vfid;
   int error_code;
 
-  error_code = heap_recdes_get_oos_oids (old_recdes, old_oos_oids);
+  error_code = heap_recdes_get_oos_refs (old_recdes, old_oos_refs);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       er_log_debug (ARG_FILE_LINE,
-		    "SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_oids(old) failed"
+		    "SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_refs(old) failed"
 		    " (hfid=%d|%d, oid=%d|%d|%d, old_rec_len=%d).",
 		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 		    context->oid.volid, context->oid.pageid, context->oid.slotid, old_recdes->length);
       return error_code;
     }
-  if (old_oos_oids.empty ())
+  if (old_oos_refs.empty ())
     {
       return NO_ERROR;
     }
 
   if (new_recdes != NULL)
     {
-      /* heap_recdes_get_oos_oids returns NO_ERROR with an empty vector when the new record has no
+      /* heap_recdes_get_oos_refs returns NO_ERROR with an empty vector when the new record has no
        * OOS — no heap_recdes_contains_oos guard needed. */
-      error_code = heap_recdes_get_oos_oids (new_recdes, new_oos_oids);
+      error_code = heap_recdes_get_oos_refs (new_recdes, new_oos_refs);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  er_log_debug (ARG_FILE_LINE,
-			"SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_oids(new) failed"
+			"SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_refs(new) failed"
 			" (hfid=%d|%d, oid=%d|%d|%d, new_rec_len=%d).",
 			op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 			context->oid.volid, context->oid.pageid, context->oid.slotid, new_recdes->length);
@@ -746,38 +993,135 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 
   if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
     {
+      /* A false return is a failure to read the heap header (I/O, interrupt), never "no OOS file";
+       * it is an operational error with its own code, not a skip and not corruption. */
+      ASSERT_ERROR_AND_SET (error_code);
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (%s): OOS file lookup failed for hfid %d|%d (oid=%d|%d|%d).",
+		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid);
+      return error_code;
+    }
+  if (VFID_ISNULL (&oos_vfid))
+    {
       er_log_debug (ARG_FILE_LINE,
 		    "SA_MODE eager OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"
 		    " (oid=%d|%d|%d).",
 		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 		    context->oid.volid, context->oid.pageid, context->oid.slotid);
       assert_release (false);
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
 
-  for (const OID &old_oid : old_oos_oids)
+  int skipped_count = 0;
+  oos_chain_ref first_skipped_ref = old_oos_refs[0];
+  oos_delete_outcome first_skipped_outcome = OOS_DELETE_OUTCOME_UNKNOWN;
+
+  for (const oos_chain_ref &old_ref : old_oos_refs)
     {
-      if (oos_oid_in_vector (new_oos_oids, &old_oid))
+      if (oos_refs_contain_head_oid (new_oos_refs, &old_ref.head_oid))
 	{
-	  /* Same physical OOS referenced by both old and new recdes; keep it. */
+	  /* The new image still names this address; keep the chain. */
 	  continue;
 	}
-      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      /* A stale reference (page gone, slot empty, stamp mismatch) is skipped rather than failed, so the
+       * DML completes; the skips are diagnosed after the loop because, unlike a vacuum retry, they are
+       * unexpected here (CBRD-26950). A stamp-matching non-head reference and operational failures are
+       * errors. */
+      oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
+      error_code = oos_delete (thread_p, oos_vfid, old_ref, NULL, &outcome);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  er_log_debug (ARG_FILE_LINE,
 			"SA_MODE eager OOS cleanup (%s): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
 			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
-			op_ctx, VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
-			VFID_AS_ARGS (&context->hfid.vfid),
+			op_ctx, VFID_AS_ARGS (&oos_vfid), old_ref.head_oid.volid, old_ref.head_oid.pageid,
+			old_ref.head_oid.slotid, VFID_AS_ARGS (&context->hfid.vfid),
 			context->oid.volid, context->oid.pageid, context->oid.slotid);
 	  return error_code;
 	}
+      if (outcome != OOS_DELETE_RECLAIMED)
+	{
+	  if (skipped_count == 0)
+	    {
+	      first_skipped_ref = old_ref;
+	      first_skipped_outcome = outcome;
+	    }
+	  skipped_count++;
+	}
+    }
+
+  if (skipped_count > 0)
+    {
+      heap_oos_diagnose_skipped_cleanup (context, op_ctx, first_skipped_ref, first_skipped_outcome,
+					 skipped_count);
     }
 
   return NO_ERROR;
 }
+
+/*
+ * heap_oos_diagnose_skipped_cleanup () - Report the OOS value chains one eager cleanup could not
+ *   reclaim because their targets were gone or reused.
+ *   context(in): heap operation whose old record held the references
+ *   op_ctx(in): short operation tag, e.g. "delete home"
+ *   first_ref(in): the first skipped chain reference, the one the message describes
+ *   first_outcome(in): why oos_delete skipped that one (never OOS_DELETE_RECLAIMED)
+ *   skipped_count(in): how many of the record's chains were skipped, at least one
+ *
+ * The report is a notification: it is written to the server error log and does not become the current
+ * error, so the DML that continues past it still reports success (accepted policy, CBRD-26950). Note
+ * that oos_delete already clears the error stack in each skip branch, so a notification here has no
+ * earlier error to preserve.
+ */
+static void
+heap_oos_diagnose_skipped_cleanup (const HEAP_OPERATION_CONTEXT *context, const char *op_ctx,
+				   const oos_chain_ref &first_ref, oos_delete_outcome first_outcome,
+				   int skipped_count)
+{
+  assert (first_outcome != OOS_DELETE_RECLAIMED && first_outcome != OOS_DELETE_OUTCOME_UNKNOWN);
+  assert (skipped_count > 0);
+
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED, 9, op_ctx,
+	  OID_AS_ARGS (&context->oid), OID_AS_ARGS (&first_ref.head_oid),
+	  oos_delete_outcome_string (first_outcome), skipped_count);
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  heap_Oos_test_skipped_cleanup_diagnostics.fetch_add (1, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_outcome.store ((int) first_outcome, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_count.store (skipped_count, std::memory_order_relaxed);
+#endif
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+int
+heap_oos_test_skipped_cleanup_notifications ()
+{
+  return heap_Oos_test_skipped_cleanup_diagnostics.load (std::memory_order_relaxed);
+}
+
+int
+heap_oos_test_last_skipped_cleanup_outcome ()
+{
+  return heap_Oos_test_last_skipped_cleanup_outcome.load (std::memory_order_relaxed);
+}
+
+int
+heap_oos_test_last_skipped_cleanup_count ()
+{
+  return heap_Oos_test_last_skipped_cleanup_count.load (std::memory_order_relaxed);
+}
+
+void
+heap_oos_test_reset_skipped_cleanup_diagnostics ()
+{
+  heap_Oos_test_skipped_cleanup_diagnostics.store (0, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_outcome.store (-1, std::memory_order_relaxed);
+  heap_Oos_test_last_skipped_cleanup_count.store (0, std::memory_order_relaxed);
+}
+#endif
 
 /*
  * heap_oos_next_scan () - next scan function for
