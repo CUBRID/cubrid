@@ -2993,12 +2993,26 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		     * entry then goes back to the pool for another client: read it once, with its session, before waking
 		     * the worker, which may then end its request */
 		    CSS_CONN_ENTRY *tran_conn = tran_worker->conn_entry;
-		    SESSION_ID tran_session = (tran_conn != NULL) ? tran_conn->session_id : DB_EMPTY_SESSION;
+		    SESSION_ID tran_session = DB_EMPTY_SESSION;
+
+		    if (tran_conn != NULL)
+		      {
+			tran_session = tran_conn->session_id;
+			/* the client may close the connection at any time, its worker then ends the request by itself, and
+			 * the entry may already serve another client. A new client takes its client_id
+			 * (css_initialize_conn ()) before it opens its session: read the client_id after the session, and
+			 * take the session only while the entry still serves the client of this transaction */
+			std::atomic_thread_fence (std::memory_order_acquire);
+			if (tran_conn->client_id != tdes->client_id)
+			  {
+			    tran_session = DB_EMPTY_SESSION;
+			  }
+		      }
 
 		    /* single regular SQL: wake this transaction's own suspended worker */
 		    thread_check_suspend_reason_and_wakeup (tran_worker, THREAD_RESUME_DUE_TO_INTERRUPT,
 							    THREAD_SLEEP_FUNC_SUSPENDED);
-		    if (tran_conn != NULL)
+		    if (tran_session != DB_EMPTY_SESSION)
 		      {
 			/* parallel sibling workers, or nested SLEEP() in a PL/CSQL procedure:
 			 * wake all suspended workers of the same session */
