@@ -1351,7 +1351,10 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 
 	      /* aliases and the names deferred by name binding have no type. resolve them before the type checking
 	       * below */
-	      table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
+	      if (!pt_has_error (parser))
+		{
+		  table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
+		}
 	    }
 	  spec->info.spec.derived_table = table;
 
@@ -11520,7 +11523,10 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 					pt_bind_names_post, bind_arg);
 
   /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
-  non_recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, non_recursive_cte);
+  if (!pt_has_error (parser))
+    {
+      non_recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, non_recursive_cte);
+    }
 
   /* must bind any expr types in non recursive part; required for types binding */
   save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
@@ -11557,7 +11563,10 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 	}
 
       /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
-      recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, recursive_cte);
+      if (!pt_has_error (parser))
+	{
+	  recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, recursive_cte);
+	}
 
       cte_def->info.cte.recursive_part = recursive_cte;
 
