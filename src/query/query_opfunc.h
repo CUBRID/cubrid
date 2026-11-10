@@ -85,7 +85,7 @@ extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::ag
 extern int qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1, DB_VALUE * dbval2,
 			      DB_VALUE * res, tp_domain * domain_p, TP_VALUE_CONVERTER result_conv);
 /* CBRD-27583: conv casts a dbval2 of type planned into domain (NULL: none planned) */
-extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
+extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, int *capacity,
 				    tp_domain * domain, const int max_allowed_size, const char *warning_context,
 				    DB_TYPE planned, TP_VALUE_CONVERTER conv);
 extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res, int incval);
