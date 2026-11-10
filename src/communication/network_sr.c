@@ -464,6 +464,10 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
 
+  req_p = &net_Requests[NET_SERVER_QST_LOG_STATS_PROGRESS];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sqst_log_stats_progress;
+
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;
@@ -761,7 +765,8 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
   req_p->processing_function = scdc_auth_response;
 
-  /* flashback */
+  /* flashback : DBA-only, checked first thing in each handler with
+   * log_extract_check_authorization (), the function CDC uses too */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
   req_p->processing_function = sflashback_get_summary;
 
@@ -816,6 +821,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   net_server_func func;
   int status = CSS_NO_ERRORS;
   int error_code;
+  int lost_tran_index;
   CSS_CONN_ENTRY *conn;
 
   conn = thread_p->conn_entry;
@@ -854,6 +860,17 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ, 0);
       return_error_to_client (thread_p, rid);
+      goto end;
+    }
+
+  /* the connection's transaction has moved to another connection (2PC attach), so it has
+   * no transaction to run the request in */
+  lost_tran_index = conn->get_lost_tran_index ();
+  if (lost_tran_index != NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, lost_tran_index);
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (conn, rid);
       goto end;
     }
 
