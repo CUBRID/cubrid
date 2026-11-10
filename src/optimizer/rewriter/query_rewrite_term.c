@@ -3602,6 +3602,10 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 		    }
 		  sibling->info.expr.arg2 = NULL;
 		  r_uop = PT_LE;
+		  /* an EQ range keeps its one value in arg1, and r_uv aliased r_lv there (never a copy): arg1
+		   * was freed above, so take the upper bound from the arg2 just set, or the validity check
+		   * below reads freed memory and may drop the merged range as always false */
+		  r_uv = pt_value_to_db (parser, range->info.expr.arg2);
 		  need_to_determine_upper_bound = false;
 		}
 

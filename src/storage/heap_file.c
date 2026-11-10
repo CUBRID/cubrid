@@ -103,7 +103,12 @@ static int rv;
 #define HEAP_GUESS_NUM_ATTRS_REFOIDS 100
 #define HEAP_GUESS_NUM_INDEXED_ATTRS 100
 
-#define HEAP_CLASSREPR_MAXCACHE	1024
+/* Number of class representations kept in the server-wide cache. One partition is one class, and a single table
+ * may have up to MAX_PARTITIONS (1024) partitions, so 1024 entries were exhausted by one partitioned table plus the
+ * system classes. Each entry costs 112 bytes plus a DEFAULT_REPR_INCREMENT (16) slot pointer array (128 bytes) and
+ * two 64-byte hash buckets up front, about 3 MB for 8192 entries; the representations themselves are allocated only
+ * for classes that are actually used. */
+#define HEAP_CLASSREPR_MAXCACHE	8192
 
 #define HEAP_DEBUG_SCANCACHE_INITPATTERN (12345)
 
@@ -421,6 +426,9 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
   while (0)
 
 #define HEAP_CHNGUESS_FUDGE_MININDICES (100)
+/* Number of entries of the client CHN guess table. Kept apart from HEAP_CLASSREPR_MAXCACHE: heap_chnguess_clear ()
+ * walks every entry on each client disconnect, so the table should not grow with the class representation cache. */
+#define HEAP_CHNGUESS_MAXENTRIES 1024
 #define HEAP_NBITS_IN_BYTE	     (8)
 #define HEAP_NSHIFTS                   (3)	/* For multiplication/division by 8 */
 #define HEAP_BITMASK                   (HEAP_NBITS_IN_BYTE - 1)
@@ -16729,7 +16737,7 @@ heap_chnguess_initialize (void)
 
   heap_Guesschn_area.schema_change = false;
   heap_Guesschn_area.clock_hand = -1;
-  heap_Guesschn_area.num_entries = HEAP_CLASSREPR_MAXCACHE;
+  heap_Guesschn_area.num_entries = HEAP_CHNGUESS_MAXENTRIES;
 
   /*
    * Start with at least the fude factor of clients. Make sure that every
@@ -16747,7 +16755,7 @@ heap_chnguess_initialize (void)
 
   /* Build the hash table from OID to CHN */
   heap_Guesschn_area.ht =
-    mht_create ("Memory hash OID to chn at clients", HEAP_CLASSREPR_MAXCACHE, oid_hash, oid_compare_equals);
+    mht_create ("Memory hash OID to chn at clients", HEAP_CHNGUESS_MAXENTRIES, oid_hash, oid_compare_equals);
   if (heap_Guesschn_area.ht == NULL)
     {
       goto exit_on_error;
