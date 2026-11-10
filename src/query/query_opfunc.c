@@ -7809,8 +7809,11 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
   RECDES recdes;
   HEAP_SCANCACHE scan_cache;
   bool scan_cache_opened = false;
+  OR_PARTITION *parts = NULL;
+  int parts_count = 0, i;
   int npages, avg_length;
   INT64 nobjs;
+  DB_BIGINT total_npages, total_nobjs, total_length;
   int error = NO_ERROR;
   int str_len;
 
@@ -7877,20 +7880,44 @@ qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name
       goto exit;
     }
 
+  total_npages = npages;
+  total_nobjs = nobjs;
+  total_length = nobjs * avg_length;
+
+  /* parts[0] is the table itself */
+  error = heap_get_class_partitions (thread_p, &class_oid, &parts, &parts_count);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  for (i = 1; i < parts_count; i++)
+    {
+      if (heap_estimate (thread_p, &parts[i].class_hfid, &npages, &nobjs, &avg_length) < 0)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto exit;
+	}
+
+      total_npages += npages;
+      total_nobjs += nobjs;
+      total_length += nobjs * avg_length;
+    }
+
   switch (op)
     {
     case T_ESTIMATED_TABLE_ROWS:
-      db_make_bigint (result_p, (DB_BIGINT) nobjs);
+      db_make_bigint (result_p, total_nobjs);
       break;
     case T_ESTIMATED_AVG_ROW_LENGTH:
-      db_make_bigint (result_p, (DB_BIGINT) avg_length);
+      db_make_bigint (result_p, total_nobjs > 0 ? total_length / total_nobjs : 0);
       break;
     case T_ESTIMATED_DATA_LENGTH:
-      db_make_bigint (result_p, (DB_BIGINT) npages * DB_PAGESIZE);
+      db_make_bigint (result_p, total_npages * DB_PAGESIZE);
       break;
     case T_ESTIMATED_DATA_FREE:
       {
-	DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
+	DB_BIGINT data_free = total_npages * DB_PAGESIZE - total_length;
 	db_make_bigint (result_p, data_free > 0 ? data_free : 0);
       }
       break;
@@ -7903,6 +7930,10 @@ exit:
   if (scan_cache_opened)
     {
       (void) heap_scancache_end (thread_p, &scan_cache);
+    }
+  if (parts != NULL)
+    {
+      heap_clear_partition_info (thread_p, parts, parts_count);
     }
   return error;
 }
