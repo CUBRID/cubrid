@@ -917,6 +917,17 @@ name (const EXPR_PRED * pred) \
   return (get (v1) op get (v2)) ? V_TRUE : V_FALSE; \
 }
 
+/* a DOUBLE leaf: cond on a and b, the two values, in the order of the type (expr_double_eq (), expr_double_lt ()) */
+#define EXPR_PRED_DOUBLE_LEAF(name, cond) \
+static DB_LOGICAL \
+name (const EXPR_PRED * pred) \
+{ \
+  EXPR_PRED_CMP_PROLOGUE (v1, v2); \
+  const double a = db_get_double (v1); \
+  const double b = db_get_double (v2); \
+  return (cond) ? V_TRUE : V_FALSE; \
+}
+
 /* *INDENT-OFF* */
 EXPR_PRED_CMP_LEAF (expr_pred_int_eq, db_get_int, ==)
 EXPR_PRED_CMP_LEAF (expr_pred_int_ne, db_get_int, !=)
@@ -930,12 +941,12 @@ EXPR_PRED_CMP_LEAF (expr_pred_bigint_lt, db_get_bigint, <)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_le, db_get_bigint, <=)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_gt, db_get_bigint, >)
 EXPR_PRED_CMP_LEAF (expr_pred_bigint_ge, db_get_bigint, >=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_eq, db_get_double, ==)
-EXPR_PRED_CMP_LEAF (expr_pred_double_ne, db_get_double, !=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_lt, db_get_double, <)
-EXPR_PRED_CMP_LEAF (expr_pred_double_le, db_get_double, <=)
-EXPR_PRED_CMP_LEAF (expr_pred_double_gt, db_get_double, >)
-EXPR_PRED_CMP_LEAF (expr_pred_double_ge, db_get_double, >=)
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_eq, expr_double_eq (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_ne, !expr_double_eq (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_lt, expr_double_lt (a, b))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_le, !expr_double_lt (b, a))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_gt, expr_double_lt (b, a))
+EXPR_PRED_DOUBLE_LEAF (expr_pred_double_ge, !expr_double_lt (a, b))
 /* a DATE is one unsigned int (mr_cmpval_date () orders it the same way) */
 #define EXPR_GET_DATE(v) (*db_get_date (v))
 EXPR_PRED_CMP_LEAF (expr_pred_date_eq, EXPR_GET_DATE, ==)
@@ -1115,7 +1126,7 @@ expr_pred_eval (const EXPR_PRED * pred)
 	    result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
 	    break;
 	  case DB_TYPE_DOUBLE:
-	    result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
+	    result = expr_double_eq (db_get_double (v1), db_get_double (v2)) ? DB_EQ : DB_NE;
 	    break;
 	  default:
 	    result = expr_pred_compare (pred, v1, v2, 1, &comparable);
