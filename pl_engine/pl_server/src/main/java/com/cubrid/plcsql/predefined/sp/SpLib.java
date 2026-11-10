@@ -197,8 +197,26 @@ public class SpLib {
             throw new SQL_ERROR(
                     "cannot find executable binary of " + uniqueName + " (was it dropped?)");
         }
+        if (context.isPkgInitByOtherThread(targetClass[slot])) {
+            // The package initialization calls the server, and this call through the server came
+            // back to the package. Waiting for the initialization to end would never end.
+            throw new SQL_ERROR(
+                    "the package instance of "
+                            + uniqueName
+                            + " is being initialized by a caller through the DB server");
+        }
 
         return ownerRef[0];
+    }
+
+    // Called from the class initialization of a package whose initialization can call the server
+    // (see checkExecuteAuthorization).
+    public static void beginPkgInit(Class<?> pkgClass) {
+        ContextManager.getContextofCurrentThread().beginPkgInit(pkgClass);
+    }
+
+    public static void endPkgInit(Class<?> pkgClass) {
+        ContextManager.getContextofCurrentThread().endPkgInit(pkgClass);
     }
 
     // push and pop Execution rights around a direct call of an external PL/CSQL routine.

@@ -187,6 +187,22 @@ public class Context {
         return catalogClassLoaderRelay;
     }
 
+    // package classes being initialized in this session, and the threads initializing them
+    private final Map<Class<?>, Thread> pkgInitThreads = new ConcurrentHashMap<>();
+
+    public void beginPkgInit(Class<?> pkgClass) {
+        pkgInitThreads.put(pkgClass, Thread.currentThread());
+    }
+
+    public void endPkgInit(Class<?> pkgClass) {
+        pkgInitThreads.remove(pkgClass);
+    }
+
+    public boolean isPkgInitByOtherThread(Class<?> pkgClass) {
+        Thread t = pkgInitThreads.get(pkgClass);
+        return t != null && t != Thread.currentThread();
+    }
+
     public synchronized ClassLoader getFileClassLoader() {
         if (fileClassLoader == null) {
             fileClassLoader = new FileClassLoaderDynamic();

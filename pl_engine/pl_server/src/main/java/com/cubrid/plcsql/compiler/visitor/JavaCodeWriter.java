@@ -66,7 +66,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // assignments of the initial values of the package variables/constants, in their declaration
     // order. They run after all the variable holders are created, so that a variable read before
     // its initialization (e.g. by a function called in an earlier initial value) is NULL.
-    private CodeTemplateList pkgVarInits;
+    private CodeTemplateList pkgClassInits;
 
     private String getModifier(Decl decl) {
         if (decl.isPkgItem) {
@@ -297,12 +297,29 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
-    private static final String[] tmplPkgInit =
+    // the package initialization: the initial values of the package variables/constants, and the
+    // call to initPkg() if the package has an initializer
+    private static final String[] tmplPkgClassInitUnmarked =
+            new String[] {"static {", "  %'+INITS'%", "}"};
+
+    // The package initialization calls the server, and a call through the server runs in another
+    // thread. Mark the initialization so that such a call coming back to the package fails instead
+    // of waiting for the initialization to end (see SpLib.checkExecuteAuthorization).
+    private static final String[] tmplPkgClassInitMarked =
+            new String[] {
+                "static {",
+                "  beginPkgInit(%'CLASS-NAME'%.class);",
+                "  try {",
+                "    %'+INITS'%",
+                "  } finally {",
+                "    endPkgInit(%'CLASS-NAME'%.class);",
+                "  }",
+                "}"
+            };
+
+    private static final String[] tmplPkgInitBlockWrapper =
             new String[] {
                 // a method, not the static block itself, so that it can have a RETURN statement
-                "static {",
-                "  initPkg();",
-                "}",
                 "private static void initPkg() {",
                 "  Long[] sql_rowcount = new Long[] { null };",
                 "  %'+BODY'%",
@@ -319,8 +336,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'+GET-CONNECTION'%",
                 "  %'+DCC-INIT-DECL'%",
                 "  %'+DECLARATIONS'%",
-                "  %'+PKG-VAR-INITS'%",
-                "  %'+OPT-INITIALIZER'%",
+                "  %'+PKG-CLASS-INIT'%",
+                "  %'+OPT-PKG-INIT-BLOCK-WRAPPER'%",
                 "  %'+DCC-INIT-RELEASE'%",
                 "  %'+RECORD-DEFS'%",
                 "  %'+RECORD-ASSIGN-FUNCS'%",
@@ -361,24 +378,27 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return lines.toArray(DUMMY_STRING_ARRAY);
     }
 
+    // whether the package spec has a PARALLEL_ENABLE function
+    private static boolean hasPublicParallelEnable(DeclPackage pkg) {
+        for (Decl d : pkg.pkgItems.nodes) {
+            if (d instanceof DeclRoutine
+                    && d.isPkgPublic
+                    && (((DeclRoutine) d).directive & DeclRoutine.DIRECTIVE_PARALLEL_ENABLE) != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public CodeToResolve visitUnitPkg(UnitPkg node) {
 
-        pkgVarInits = new CodeTemplateList();
+        pkgClassInits = new CodeTemplateList();
         CodeToResolve pkgItemsCode = visitNodeList(node.pkg.pkgItems);
-        Object pkgVarInitsCode =
-                pkgVarInits.elements.isEmpty()
-                        ? ""
-                        : new CodeTemplate(
-                                "package variable initialization",
-                                Misc.UNKNOWN_LINE_COLUMN,
-                                new String[] {"static {", "  %'+INITS'%", "}"},
-                                "%'+INITS'%",
-                                pkgVarInits);
 
-        Object pkgInitCode;
+        Object pkgInitBlockWrapper;
         if (node.pkg.initializer == null) {
-            pkgInitCode = "";
+            pkgInitBlockWrapper = "";
         } else {
             dccVar = "dccInit"; // runs in the class initialization
             CodeToResolve initBody = visitBody(node.pkg.initializer);
@@ -392,15 +412,47 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 initBody = wrapWithStmtDeclareAndClose(loopOptimizableSqlUses, initBody);
             }
 
-            pkgInitCode =
+            pkgInitBlockWrapper =
                     new CodeTemplate(
                             "package initializer",
                             Misc.UNKNOWN_LINE_COLUMN,
-                            tmplPkgInit,
+                            tmplPkgInitBlockWrapper,
                             "%'+BODY'%",
                             initBody);
             dccVar = "dcc";
+
+            pkgClassInits.addElement(
+                    new CodeTemplate(
+                            "package initializer call", Misc.UNKNOWN_LINE_COLUMN, "initPkg();"));
         }
+
+        Object pkgClassInitCode;
+        if (pkgClassInits.elements.isEmpty()) {
+            pkgClassInitCode = "";
+        } else if (hasPublicParallelEnable(node.pkg)) {
+            // the initialization cannot call the server: see
+            // ParseTreeConverter.isPkgInitUnderParallelEnable.
+            // Leave a class being initialized to JVM, which makes the parallel workers using it
+            // wait.
+            pkgClassInitCode =
+                    new CodeTemplate(
+                            "package initialization",
+                            Misc.UNKNOWN_LINE_COLUMN,
+                            tmplPkgClassInitUnmarked,
+                            "%'+INITS'%",
+                            pkgClassInits);
+        } else {
+            pkgClassInitCode =
+                    new CodeTemplate(
+                            "package initialization",
+                            Misc.UNKNOWN_LINE_COLUMN,
+                            tmplPkgClassInitMarked,
+                            "%'CLASS-NAME'%",
+                            node.getClassName(),
+                            "%'+INITS'%",
+                            pkgClassInits);
+        }
+
         String[] recordDefs = getRecordDefs();
         String[] recordAssignFuncs = getRecordAssignFuncs();
 
@@ -427,10 +479,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 getDirectCallCacheInitDecl(),
                 "%'+DECLARATIONS'%",
                 pkgItemsCode,
-                "%'+PKG-VAR-INITS'%",
-                pkgVarInitsCode,
-                "%'+OPT-INITIALIZER'%",
-                pkgInitCode,
+                "%'+PKG-CLASS-INIT'%",
+                pkgClassInitCode,
+                "%'+OPT-PKG-INIT-BLOCK-WRAPPER'%",
+                pkgInitBlockWrapper,
                 "%'+DCC-INIT-RELEASE'%",
                 getDirectCallCacheInitRelease(),
                 "%'+RECORD-DEFS'%",
@@ -867,7 +919,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {"%'TARGET'% =", "  %'+VAL'%;"};
 
     private void addPkgVarInit(Decl decl, String target, boolean notNull, Expr val) {
-        pkgVarInits.addElement(
+        pkgClassInits.addElement(
                 new CodeTemplate(
                         "PkgVarInit",
                         notNull ? Misc.getLineColumnOf(decl.ctx) : Misc.UNKNOWN_LINE_COLUMN,
