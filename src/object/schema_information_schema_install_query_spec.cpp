@@ -77,9 +77,14 @@ sm_define_view_columns_spec (void)
       "IF ([attr].[is_nullable] = 1, 'YES', 'NO') AS [is_nullable], "
       "[dt].[type_name] AS [data_type], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[prec], NULL) AS [character_maximum_length], "
+      "IF ([attr].[data_type] IN (%d, %d, %d, %d), "
+        /* TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH; integer -> bigint */
+        "CAST (IF ([dom].[prec] = %d, %d, [dom].[prec]) AS BIGINT), NULL) AS [character_maximum_length], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
+      "IF ([attr].[data_type] IN (%d, %d), "
+        /* TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH */
+        "CAST (IF ([dom].[prec] = %d, %d, [dom].[prec]) AS BIGINT) * [charset].[char_size], "
+        "NULL) AS [character_octet_length], "
       "CASE "
         /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column precision */
         "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN NULL "
@@ -94,12 +99,17 @@ sm_define_view_columns_spec (void)
         "WHEN [attr].[data_type] IN (%d, %d, %d, %d) THEN [dom].[scale] "
         "ELSE NULL "
       "END AS [numeric_scale], "
-      /* DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [datetime_precision], "
-      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d), [charset].[charset_name], NULL) AS [character_set_name], "
-      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
-      "IF ([attr].[data_type] IN (%d, %d), [coll].[coll_name], NULL) AS [collation_name], "
+      "CASE "
+        /* DB_TYPE_DATETIME, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
+        "WHEN [attr].[data_type] IN (%d, %d, %d) THEN 3 "
+        /* DB_TYPE_DATE, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ */
+        "WHEN [attr].[data_type] IN (%d, %d, %d, %d, %d) THEN 0 "
+        "ELSE NULL "
+      "END AS [datetime_precision], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR, DB_TYPE_ENUMERATION */
+      "IF ([attr].[data_type] IN (%d, %d, %d), [charset].[charset_name], NULL) AS [character_set_name], "
+      /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR, DB_TYPE_ENUMERATION */
+      "IF ([attr].[data_type] IN (%d, %d, %d), [coll].[coll_name], NULL) AS [collation_name], "
       "NULL AS [domain_catalog], "
       "NULL AS [domain_schema], "
       "NULL AS [domain_name], "
@@ -107,8 +117,8 @@ sm_define_view_columns_spec (void)
       "NULL AS [udt_schema], "
       "NULL AS [udt_name], "
       "CASE "
-        /* DB_TYPE_STRING/VARCHAR */
-        "WHEN [attr].[data_type] = %d THEN CONCAT ('VARCHAR(', [dom].[prec], ')') "
+        /* DB_TYPE_STRING/VARCHAR; TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('VARCHAR(', IF ([dom].[prec] = %d, %d, [dom].[prec]), ')') "
         /* DB_TYPE_CHAR */
         "WHEN [attr].[data_type] = %d THEN CONCAT ('CHAR(', [dom].[prec], ')') "
         /* DB_TYPE_BIT */
@@ -173,18 +183,21 @@ sm_define_view_columns_spec (void)
           "[idx].[class_of], [idx_key].[key_attr_name]"
       ") AS [key_info] "
         "ON [key_info].[class_of] = [cls] AND [key_info].[key_attr_name] = [attr].[attr_name] "
+          /* attr_type 1: CLASS ATTRIBUTE */
+          "AND [attr].[attr_type] <> 1 "
     "WHERE "
       AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
-    DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
-    DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
+    DB_TYPE_STRING, DB_TYPE_CHAR, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
     DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
     DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
-    DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
-    DB_TYPE_STRING, DB_TYPE_CHAR,
-    DB_TYPE_STRING, DB_TYPE_CHAR,
-    DB_TYPE_STRING,
+    DB_TYPE_DATETIME, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
+    DB_TYPE_DATE, DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ,
+    DB_TYPE_STRING, DB_TYPE_CHAR, DB_TYPE_ENUMERATION,
+    DB_TYPE_STRING, DB_TYPE_CHAR, DB_TYPE_ENUMERATION,
+    DB_TYPE_STRING, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
     DB_TYPE_CHAR,
     DB_TYPE_BIT,
     DB_TYPE_VARBIT,
@@ -406,7 +419,7 @@ sm_define_view_partitions_spec (void)
       "NULL AS [partition_ordinal_position], "
       /* DB_PARTITION_HASH, DB_PARTITION_RANGE, DB_PARTITION_LIST */
       "DECODE ([part].[ptype], %d, 'HASH', %d, 'RANGE', %d, 'LIST') AS [partition_method], "
-      "[part_info].[pexpr] AS [partition_expression], "
+      "TRIM (SUBSTRING ([part_info].[pexpr] FROM 8 FOR (POSITION (' FROM ' IN [part_info].[pexpr]) - 8))) AS [partition_expression], "
       /* DB_PARTITION_RANGE, DB_PARTITION_LIST */
       "IF ([part].[ptype] IN (%d, %d), COLLECTION_TO_STRING ([part].[pvalues]), NULL) AS [partition_description], "
       "NULL AS [subpartition_name], "
@@ -571,7 +584,7 @@ sm_define_view_routines_spec (void)
           "AND " AUTH_CHECK_USER ("[sp].[owner].[name]") ", "
           "[sp_code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
-      "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
+      "IF ([sp].[lang] = %d, CONCAT ([sp].[target_class], '.', [sp].[target_method]), NULL) AS [external_name], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
       "DECODE ([sp].[lang], %d, 'PLCSQL', %d, 'JAVA') AS [external_language], "
       "'SQL' AS [parameter_style], "
@@ -683,7 +696,7 @@ sm_define_view_sequences_spec (void)
       "[serial].[owner].[name] AS [sequence_schema], "
       "[serial].[name] AS [sequence_name], "
       "'NUMERIC' AS [data_type], "
-      /* DB_MAX_NUMERIC_PRECISION */
+      /* DB_MAX_FIXED_NUMERIC_PRECISION */
       "%d AS [numeric_precision], "
       "10 AS [numeric_precision_radix], "
       /* DB_DEFAULT_NUMERIC_SCALE */
@@ -693,7 +706,7 @@ sm_define_view_sequences_spec (void)
       "[serial].[max_val] AS [maximum_value], "
       "[serial].[increment_val] AS [increment], "
       "IF ([serial].[cyclic] = 1, 'YES', 'NO') AS [cycle_option], "
-      "IF ([serial].[cached_num] > 0, 'YES', 'NO') AS [is_cached], "
+      "IF ([serial].[cached_num] > 1, 'YES', 'NO') AS [is_cached], "
       "[serial].[comment] AS [sequence_comment], "
       "[serial].[created_time] AS [create_time], "
       "[serial].[updated_time] AS [update_time] "
@@ -702,7 +715,7 @@ sm_define_view_sequences_spec (void)
       "[%s] AS [serial] "
     "WHERE "
       "[serial].[class_name] IS NULL",
-    DB_MAX_NUMERIC_PRECISION,
+    DB_MAX_FIXED_NUMERIC_PRECISION,
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
   // *INDENT-ON*
@@ -737,7 +750,7 @@ sm_define_view_statistics_spec (void)
         "[idx].[index_name], "
         "[idx_key].[key_order]"
       ") AS INTEGER) AS [cardinality], "
-      "[idx_key].[key_prefix_length] AS [sub_part], "
+      "IF ([idx_key].[key_prefix_length] > -1, [idx_key].[key_prefix_length], NULL) AS [sub_part], "
       "IF ([idx_key].[key_attr_name] IS NULL, 'YES', "
         "IF ([attr].[is_nullable] = 1, 'YES', 'NO')) AS [nullable], "
       "'BTREE' AS [index_type], "
@@ -758,6 +771,8 @@ sm_define_view_statistics_spec (void)
       "INNER JOIN [%s] AS [cls] ON [cls] = [idx].[class_of] "
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
+        /* attr_type 1: CLASS ATTRIBUTE */
+        "AND [attr].[attr_type] <> 1 "
     "WHERE "
       AUTH_CHECK_PRIVILEGE ("[cls].[owner].[name]", "[cls].[class_of]", "SELECT"),
     CT_INDEXKEY_NAME,
@@ -782,7 +797,8 @@ sm_define_view_synonyms_spec (void)
       "[syn].[owner].[name] AS [synonym_schema], "
       "[syn].[name] AS [synonym_name], "
       "IF ([syn].[is_public] = 1, 'YES', 'NO') AS [is_public_synonym], "
-      "CAST (DATABASE () AS VARCHAR (255)) AS [target_catalog], " /* string -> varchar(255) */
+      /* string -> varchar(255) */
+      "CAST (IF (INSTR ([syn].[target_name], '@') > 0, NULL, DATABASE ()) AS VARCHAR (255)) AS [target_catalog], "
       "[syn].[target_owner].[name] AS [target_schema], "
       "[syn].[target_name] AS [target_name], "
       "[syn].[comment] AS [synonym_comment], "
@@ -893,7 +909,8 @@ sm_define_view_tables_spec (void)
       "estimated_avg_row_length ([cls].[unique_name]) AS [avg_row_length], "
       "estimated_data_length ([cls].[unique_name]) AS [data_length], "
       "estimated_data_free ([cls].[unique_name]) AS [data_free], "
-      "CASE "
+      /* numeric -> numeric(38,0) */
+      "CAST (CASE "
         "WHEN [serial].[current_val] IS NULL THEN NULL "
         "WHEN [serial].[started] = 0 THEN [serial].[current_val] "
         /* Check overflow: increment_val > 0 and current_val > max_val - increment_val */
@@ -903,7 +920,7 @@ sm_define_view_tables_spec (void)
         "WHEN [serial].[increment_val] < 0 "
           "AND [serial].[current_val] < [serial].[min_val] - [serial].[increment_val] THEN NULL "
         "ELSE [serial].[current_val] + [serial].[increment_val] "
-      "END AS [auto_increment], "
+      "END AS NUMERIC (38, 0)) AS [auto_increment], "
       "[coll].[coll_name] AS [table_collation], "
       /* SM_CLASSFLAG_REUSE_OID */
       "IF (([cls].[flags] & %d) <> 0, 'REUSE_OID', 'DONT_REUSE_OID') || "
@@ -966,7 +983,15 @@ sm_define_view_triggers_spec (void)
       "[tr].[target_attribute] AS [event_object_column], "
       "NULL AS [action_order], "
       "[tr].[condition] AS [action_condition], "
-      "[tr].[action_definition] AS [action_statement], "
+      "CASE [tr].[action_type] "
+        /* TR_ACT_REJECT */
+        "WHEN %d THEN 'REJECT' "
+        /* TR_ACT_INVALIDATE */
+        "WHEN %d THEN 'INVALIDATE TRANSACTION' "
+        /* TR_ACT_PRINT */
+        "WHEN %d THEN CONCAT ('PRINT ''', [tr].[action_definition], '''') "
+        "ELSE [tr].[action_definition] "
+      "END AS [action_statement], "
       /* row events: TR_EVENT_UPDATE/DELETE/INSERT; statement events: TR_EVENT_STATEMENT_*; NULL for COMMIT/ROLLBACK */
       "CASE "
         "WHEN [tr].[event] IN (%d, %d, %d) THEN 'ROW' "
@@ -995,6 +1020,7 @@ sm_define_view_triggers_spec (void)
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE,
     TR_EVENT_DELETE, TR_EVENT_STATEMENT_DELETE,
     TR_EVENT_INSERT, TR_EVENT_STATEMENT_INSERT,
+    TR_ACT_REJECT, TR_ACT_INVALIDATE, TR_ACT_PRINT,
     TR_EVENT_UPDATE, TR_EVENT_DELETE, TR_EVENT_INSERT,
     TR_EVENT_STATEMENT_UPDATE, TR_EVENT_STATEMENT_DELETE, TR_EVENT_STATEMENT_INSERT,
     TR_TIME_BEFORE, TR_TIME_AFTER, TR_TIME_DEFERRED,
