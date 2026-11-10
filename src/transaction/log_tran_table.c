@@ -2989,9 +2989,11 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		THREAD_ENTRY *tran_worker = logtb_find_thread_by_tran_index_except_me (tran_index);
 		if (tran_worker != NULL)
 		  {
-		    /* that worker clears its conn_entry when it ends its request, with no lock this thread holds:
-		     * read it once */
+		    /* that worker clears its conn_entry when it ends its request, with no lock this thread holds, and the
+		     * entry then goes back to the pool for another client: read it once, with its session, before waking
+		     * the worker, which may then end its request */
 		    CSS_CONN_ENTRY *tran_conn = tran_worker->conn_entry;
+		    SESSION_ID tran_session = (tran_conn != NULL) ? tran_conn->session_id : DB_EMPTY_SESSION;
 
 		    /* single regular SQL: wake this transaction's own suspended worker */
 		    thread_check_suspend_reason_and_wakeup (tran_worker, THREAD_RESUME_DUE_TO_INTERRUPT,
@@ -3000,7 +3002,7 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		      {
 			/* parallel sibling workers, or nested SLEEP() in a PL/CSQL procedure:
 			 * wake all suspended workers of the same session */
-			logtb_interrupt_session_sleepers (thread_p, tran_conn->session_id);
+			logtb_interrupt_session_sleepers (thread_p, tran_session);
 		      }
 		  }
 	      }
