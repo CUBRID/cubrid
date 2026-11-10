@@ -3750,7 +3750,7 @@ session_get_stream_handles (THREAD_ENTRY * thread_p)
 }
 
 /*
- * session_end_tran_streams () - End the stream session and the STREAM_SCOPE_TRAN handles of an ending transaction
+ * session_end_tran_streams () - End the stream session and the download handles of an ending transaction
  *   tran_index(in): the transaction that ends
  *
  * Every transaction end comes through here, including those on threads with no
@@ -3896,8 +3896,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
  *   client_id(in): the closing connection, or SESSION_STREAM_ALL_CLIENTS when the session itself ends
  *
  * The session outlives the connection, and another connection may already have attached to it. Only the closing
- * connection's stream session and STREAM_SCOPE_TRAN handles go; STREAM_SCOPE_OWNER handles stay for a client that
- * attaches again, until the session itself ends.
+ * connection's stream session and download handles go.
  */
 void
 session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, int client_id)

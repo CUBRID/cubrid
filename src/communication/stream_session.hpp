@@ -74,20 +74,14 @@ enum stream_direction
   STREAM_DOWNLOAD
 };
 
-/* How long the handles a kind issues live (stream_handle.hpp). */
-enum stream_handle_scope
-{
-  STREAM_SCOPE_TRAN,		/* released at the end of the transaction that opened it */
-  STREAM_SCOPE_OWNER		/* released by its owner, at the latest when the session ends */
-};
-
-/* Anything the client keeps between requests: a download's source, an upload's staged result. */
+/* What the client keeps between requests: a download's source. Its handle lives until it is released, at the
+ * latest until the transaction that opened it ends (stream_handle.hpp). */
 class stream_handle_object
 {
   public:
     virtual ~stream_handle_object () {}
 
-    /* Drop it. Called once: on release, at scope end, or at session teardown. */
+    /* Drop it. Called once: on release, at the transaction's end, or at session teardown. */
     virtual void close (THREAD_ENTRY *thread_p) = 0;
 };
 
@@ -95,8 +89,7 @@ class stream_handle_object
  * with more to report does not change every other one's signature to say it. */
 struct stream_result
 {
-  std::int64_t count;		/* rows for COPY and LOB DML; a result_is_handle kind's staged bytes */
-  stream_handle_object *staged;	/* result_is_handle kinds: what END issues the client a handle for */
+  std::int64_t count;		/* rows for COPY and LOB DML */
 };
 
 /* An upload is one statement still running, so its methods never end the
@@ -114,8 +107,7 @@ class stream_session
     virtual int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) = 0;
 
     /* Flush pending work and report the binding's result: a row count for COPY
-     * and LOB DML, or, for a result_is_handle kind, the object it staged and its
-     * size, for which the core issues the handle END returns. */
+     * and LOB DML. */
     virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
     /* Discard in-flight state so no partial result survives an error. */
@@ -163,11 +155,6 @@ struct stream_kind_desc
    * the transaction before that statement runs: the CAS takes a connection whose
    * upload was given up back out of the transaction. */
   bool ends_unit_of_work;
-
-  /* Upload only: END issues a handle for stream_result::staged and returns it in the count. */
-  bool result_is_handle;
-
-  stream_handle_scope scope;	/* of the handles this kind issues */
 };
 
 /* A consumer registers its own kind once, at load time, before any connection

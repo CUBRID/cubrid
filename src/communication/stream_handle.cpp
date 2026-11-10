@@ -73,8 +73,6 @@ stream_handle_table::stream_handle_table ()
   : m_mutex ()
   , m_entries ()
   , m_tran_counts ()
-  , m_owner_count (0)
-  , m_owner_bytes (0)
   , m_size (0)
 {
 }
@@ -86,7 +84,7 @@ stream_handle_table::~stream_handle_table ()
 }
 
 int
-stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, std::int64_t size,
+stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id,
 			    stream_handle_object *object, std::int64_t *handle)
 {
   const stream_kind_desc *desc = stream_kind_find (kind);
@@ -97,18 +95,13 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
   {
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    if (desc == NULL)
+    if (desc == NULL || desc->direction != STREAM_DOWNLOAD)
       {
 	error_code = set_handle_error ("unknown stream kind");
       }
-    else if (desc->scope == STREAM_SCOPE_TRAN && m_tran_counts[tran_index] >= STREAM_HANDLE_MAX_PER_TRAN)
+    else if (m_tran_counts[tran_index] >= STREAM_HANDLE_MAX_PER_TRAN)
       {
 	error_code = set_handle_error ("too many stream handles open in this transaction");
-      }
-    else if (desc->scope == STREAM_SCOPE_OWNER
-	     && (m_owner_count >= STREAM_HANDLE_MAX_OWNER || size > STREAM_HANDLE_MAX_OWNER_BYTES - m_owner_bytes))
-      {
-	error_code = set_handle_error ("too many staged stream bytes in this session");
       }
     else
       {
@@ -122,26 +115,14 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
 
 	entry &e = m_entries[value];
 
-	e.kind = kind;
 	e.tran_index = tran_index;
 	e.client_id = client_id;
-	e.scope = desc->scope;
-	e.exclusive = (desc->direction == STREAM_DOWNLOAD);
 	e.counted = true;
 	e.release_pending = false;
 	e.pins = 0;
-	e.size = size;
 	e.object = object;
 
-	if (e.scope == STREAM_SCOPE_TRAN)
-	  {
-	    m_tran_counts[tran_index]++;
-	  }
-	else
-	  {
-	    m_owner_count++;
-	    m_owner_bytes += size;
-	  }
+	m_tran_counts[tran_index]++;
 	m_size++;
 
 	*handle = value;
@@ -153,41 +134,28 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
   return error_code;
 }
 
-stream_handle_object *
-stream_handle_table::get (std::int64_t handle, int kind, int tran_index)
-{
-  return pin (handle, kind, false, tran_index);
-}
-
 stream_source *
 stream_handle_table::get_source (std::int64_t handle, int tran_index)
-{
-  /* only a download kind issues an exclusive handle, and its object is the source */
-  return static_cast<stream_source *> (pin (handle, -1, true, tran_index));
-}
-
-stream_handle_object *
-stream_handle_table::pin (std::int64_t handle, int kind, bool any_download, int tran_index)
 {
   std::lock_guard<std::mutex> lock (m_mutex);
   entry_map::iterator it = m_entries.find (handle);
 
-  if (it == m_entries.end () || (any_download ? !it->second.exclusive : it->second.kind != kind)
-      || (it->second.scope == STREAM_SCOPE_TRAN && it->second.tran_index != tran_index) || it->second.release_pending)
+  if (it == m_entries.end () || it->second.tran_index != tran_index || it->second.release_pending)
     {
       (void) set_handle_error ("unknown stream handle");
       return NULL;
     }
 
   /* a client that sends a request before the previous reply arrives: refused rather than serialized */
-  if (it->second.exclusive && it->second.pins > 0)
+  if (it->second.pins > 0)
     {
       (void) set_handle_error ("stream handle is in use");
       return NULL;
     }
 
   it->second.pins++;
-  return it->second.object;
+  /* only a download kind is issued a handle, and its object is the source */
+  return static_cast<stream_source *> (it->second.object);
 }
 
 void
@@ -250,7 +218,7 @@ stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index)
       {
 	entry_map::iterator next = std::next (it);
 
-	if (it->second.scope == STREAM_SCOPE_TRAN && it->second.tran_index == tran_index)
+	if (it->second.tran_index == tran_index)
 	  {
 	    release_locked (it, to_close);
 	  }
@@ -279,7 +247,7 @@ stream_handle_table::end_client (THREAD_ENTRY *thread_p, int client_id)
 	entry_map::iterator next = std::next (it);
 
 	/* by connection, not by tran_index: a late close must not reach a handle of a reused index */
-	if (it->second.scope == STREAM_SCOPE_TRAN && it->second.client_id == client_id)
+	if (it->second.client_id == client_id)
 	  {
 	    release_locked (it, to_close);
 	  }
@@ -319,19 +287,11 @@ stream_handle_table::uncount (entry &e)
     }
   e.counted = false;
 
-  if (e.scope == STREAM_SCOPE_TRAN)
-    {
-      std::map<int, int>::iterator count = m_tran_counts.find (e.tran_index);
+  std::map<int, int>::iterator count = m_tran_counts.find (e.tran_index);
 
-      if (count != m_tran_counts.end () && --count->second <= 0)
-	{
-	  m_tran_counts.erase (count);
-	}
-    }
-  else
+  if (count != m_tran_counts.end () && --count->second <= 0)
     {
-      m_owner_count--;
-      m_owner_bytes -= e.size;
+      m_tran_counts.erase (count);
     }
 }
 
@@ -459,7 +419,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
 	}
     }
 
-  error_code = table.issue (thread_p, kind, tran_index, client_id, 0, source, handle);
+  error_code = table.issue (thread_p, kind, tran_index, client_id, source, handle);
   if (error_code != NO_ERROR)
     {
       /* the bytes already read go with the refusal */

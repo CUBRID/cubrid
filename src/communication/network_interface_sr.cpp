@@ -13561,16 +13561,15 @@ stream_receive (THREAD_ENTRY *thread_p, session_state *held, stream_session *ses
 
 /*
  * stream_finish () - End the stream and produce what END returns
- *   count(out): the binding's count, or the handle a result_is_handle kind issued for what it staged
+ *   count(out): the binding's count
  *
  * END, and the FINAL flag of a bundled INIT or SEND_DATA, all come here, so a
  * bundled request and separate ones are one path the consumer cannot tell apart.
  */
 static int
-stream_finish (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, int kind, INT64 *count)
+stream_finish (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, INT64 *count)
 {
-  const stream_kind_desc *desc = stream_kind_find (kind);
-  stream_result result = { 0, NULL };
+  stream_result result = { 0 };
   int error_code;
 
   *count = 0;
@@ -13584,34 +13583,11 @@ stream_finish (THREAD_ENTRY *thread_p, session_state *held, stream_session *sess
   stream_drop_session (thread_p, held, session, error_code != NO_ERROR);
   if (error_code != NO_ERROR)
     {
-      assert (result.staged == NULL);
       return error_code;
     }
 
-  if (desc == NULL || !desc->result_is_handle)
-    {
-      assert (result.staged == NULL);
-      *count = (INT64) result.count;
-      return NO_ERROR;
-    }
-
-  if (result.staged == NULL)
-    {
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "stream session staged nothing");
-      return ER_STREAM_SESSION_ERROR;
-    }
-
-  stream_handle_table *handles = session_get_stream_handles (thread_p);
-  if (handles == NULL)
-    {
-      result.staged->close (thread_p);
-      delete result.staged;
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-    }
-
-  return handles->issue (thread_p, kind, LOG_FIND_THREAD_TRAN_INDEX (thread_p), session_stream_client_id (thread_p),
-			 result.count, result.staged, count);
+  *count = (INT64) result.count;
+  return NO_ERROR;
 }
 
 /*
@@ -13689,7 +13665,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
     }
   if (error_code == NO_ERROR && (flags & STREAM_FLAG_FINAL))
     {
-      error_code = stream_finish (thread_p, held, session, stream_kind, &count);
+      error_code = stream_finish (thread_p, held, session, &count);
     }
 
 send_reply:
@@ -13777,8 +13753,8 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 /*
  * sstream_end () - End the stream and report the session's result
  *   request format: the last chunk (raw, may be empty) -- what a FINAL SEND_DATA carries on the driver wire
- *   reply format: error_code (int), padding (int), count (int64) -- rows for COPY and LOB DML, or
- *                 the handle of a result_is_handle kind; the binding interprets it
+ *   reply format: error_code (int), padding (int), count (int64) -- rows for COPY and LOB DML; the binding
+ *                 interprets it
  *
  * The last chunk rides here rather than as a flag on SEND_DATA so that every
  * other chunk still reaches the session as the request buffer itself.
@@ -13804,7 +13780,7 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
 	}
       if (error_code == NO_ERROR)
 	{
-	  error_code = stream_finish (thread_p, held, session, kind, &count);
+	  error_code = stream_finish (thread_p, held, session, &count);
 	}
     }
 

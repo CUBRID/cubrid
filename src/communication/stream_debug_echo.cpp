@@ -126,7 +126,6 @@ namespace
       int finish (THREAD_ENTRY *thread_p, stream_result *result) override
       {
 	result->count = m_total;
-	result->staged = NULL;
 	return NO_ERROR;
       }
 
@@ -206,8 +205,8 @@ namespace
   {
     echo_registrar ()
     {
-      stream_kind_desc upload = { STREAM_UPLOAD, echo_session_create, NULL, false, false, STREAM_SCOPE_TRAN };
-      stream_kind_desc download = { STREAM_DOWNLOAD, NULL, echo_source_create, false, false, STREAM_SCOPE_TRAN };
+      stream_kind_desc upload = { STREAM_UPLOAD, echo_session_create, NULL, false };
+      stream_kind_desc download = { STREAM_DOWNLOAD, NULL, echo_source_create, false };
 
       if (stream_kind_register (ECHO_KIND_UPLOAD, upload) != NO_ERROR
 	  || stream_kind_register (ECHO_KIND_DOWNLOAD, download) != NO_ERROR)

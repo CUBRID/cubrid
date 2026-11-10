@@ -11628,8 +11628,7 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
 /*
  * ux_stream_release () - Release a download the driver holds
  *
- * Download handles only: a staged upload belongs to the statement handles that bound it, and the CAS releases
- * it itself. A handle the CAS does not hold is released already, which is not an error.
+ * A handle the CAS does not hold is released already, which is not an error.
  */
 int
 ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info)

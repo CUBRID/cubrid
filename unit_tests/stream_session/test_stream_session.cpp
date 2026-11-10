@@ -137,7 +137,7 @@ namespace
     return NULL;
   }
 
-  /* What a staged upload or a download's source is to the table: something to close once. */
+  /* What a handle holds, to the table: something to close once. */
   class fake_object : public stream_handle_object
   {
     public:
@@ -234,7 +234,7 @@ namespace
   }
 
   const int KIND_A = STREAM_KIND_MIN;		/* upload whose END finishes the statement */
-  const int KIND_STAGED = STREAM_KIND_MIN + 1;	/* upload that stages a value for a later statement */
+  const int KIND_STAGING = STREAM_KIND_MIN + 1;	/* upload whose END finishes no statement */
   const int KIND_UNREGISTERED = STREAM_KIND_MIN + 2;
   /* its own tag, so the case below need not hand the slot back -- a registry
    * slot is never registered back to empty */
@@ -251,7 +251,7 @@ namespace
   stream_kind_desc
   upload_desc (stream_session_factory sink, bool ends_unit_of_work)
   {
-    stream_kind_desc desc = { STREAM_UPLOAD, sink, NULL, ends_unit_of_work, false, STREAM_SCOPE_TRAN };
+    stream_kind_desc desc = { STREAM_UPLOAD, sink, NULL, ends_unit_of_work };
 
     return desc;
   }
@@ -266,17 +266,16 @@ namespace
 
       if (!registered)
 	{
-	  stream_kind_desc staged = { STREAM_UPLOAD, make_fake<'B'>, NULL, false, true, STREAM_SCOPE_OWNER };
-	  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, make_source, false, false, STREAM_SCOPE_TRAN };
+	  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, make_source, false };
 	  stream_kind_client_desc download_client = { true, authorize_all };
-	  stream_kind_client_desc staged_client = { false, authorize_none };
+	  stream_kind_client_desc staging_client = { false, authorize_none };
 
 	  REQUIRE (stream_kind_register (KIND_A, upload_desc (make_fake<'A'>, true)) == NO_ERROR);
-	  REQUIRE (stream_kind_register (KIND_STAGED, staged) == NO_ERROR);
+	  REQUIRE (stream_kind_register (KIND_STAGING, upload_desc (make_fake<'B'>, false)) == NO_ERROR);
 	  REQUIRE (stream_kind_register (KIND_REFUSING, upload_desc (refuse, true)) == NO_ERROR);
 	  REQUIRE (stream_kind_register (KIND_DOWNLOAD, download) == NO_ERROR);
 	  REQUIRE (stream_kind_client_register (KIND_DOWNLOAD, download_client) == NO_ERROR);
-	  REQUIRE (stream_kind_client_register (KIND_STAGED, staged_client) == NO_ERROR);
+	  REQUIRE (stream_kind_client_register (KIND_STAGING, staging_client) == NO_ERROR);
 	  registered = true;
 	}
 
@@ -318,7 +317,7 @@ TEST_CASE_METHOD (registry_fixture, "a registered kind reaches its own factory",
   delete a;
 
   error_code = ER_FAILED;
-  stream_session *b = stream_session_create (NULL, KIND_STAGED, NULL, 0, &error_code);
+  stream_session *b = stream_session_create (NULL, KIND_STAGING, NULL, 0, &error_code);
   REQUIRE (b != NULL);
   CHECK (error_code == NO_ERROR);
   CHECK (static_cast<fake_session *> (b)->tag () == 'B');
@@ -384,7 +383,7 @@ TEST_CASE_METHOD (registry_fixture, "the config blob reaches the factory bounded
 TEST_CASE_METHOD (registry_fixture, "the seam carries bytes through to the binding's count", "[stream_session]")
 {
   int error_code = ER_FAILED;
-  stream_result result = { -1, NULL };
+  stream_result result = { -1 };
 
   stream_session *s = stream_session_create (NULL, KIND_A, NULL, 0, &error_code);
   REQUIRE (s != NULL);
@@ -408,32 +407,24 @@ TEST_CASE_METHOD (registry_fixture, "each kind answers for its own unit of work"
   /* the transport reads this off the registry rather than off the wire, so a
    * client cannot claim a commit its consumer never promised */
   REQUIRE (stream_kind_find (KIND_A) != NULL);
-  REQUIRE (stream_kind_find (KIND_STAGED) != NULL);
+  REQUIRE (stream_kind_find (KIND_STAGING) != NULL);
   CHECK (stream_kind_find (KIND_A)->ends_unit_of_work == true);
-  CHECK (stream_kind_find (KIND_STAGED)->ends_unit_of_work == false);
-  CHECK (stream_kind_find (KIND_STAGED)->result_is_handle == true);
+  CHECK (stream_kind_find (KIND_STAGING)->ends_unit_of_work == false);
   CHECK (stream_kind_find (KIND_DOWNLOAD)->direction == STREAM_DOWNLOAD);
 }
 
 TEST_CASE_METHOD (registry_fixture, "a record that does not hold together is refused", "[stream_session]")
 {
-  stream_kind_desc ends_download = { STREAM_DOWNLOAD, NULL, make_source, true, false, STREAM_SCOPE_TRAN };
-  stream_kind_desc staging_download = { STREAM_DOWNLOAD, NULL, make_source, false, true, STREAM_SCOPE_TRAN };
-  stream_kind_desc sinking_download = { STREAM_DOWNLOAD, make_fake<'X'>, make_source, false, false,
-					STREAM_SCOPE_TRAN
-				      };
-  stream_kind_desc sourceless_download = { STREAM_DOWNLOAD, NULL, NULL, false, false, STREAM_SCOPE_TRAN };
-  stream_kind_desc lasting_download = { STREAM_DOWNLOAD, NULL, make_source, false, false, STREAM_SCOPE_OWNER };
-  stream_kind_desc sourced_upload = { STREAM_UPLOAD, make_fake<'X'>, make_source, true, false, STREAM_SCOPE_TRAN };
-  stream_kind_desc sinkless_upload = { STREAM_UPLOAD, NULL, NULL, true, false, STREAM_SCOPE_TRAN };
+  stream_kind_desc ends_download = { STREAM_DOWNLOAD, NULL, make_source, true };
+  stream_kind_desc sinking_download = { STREAM_DOWNLOAD, make_fake<'X'>, make_source, false };
+  stream_kind_desc sourceless_download = { STREAM_DOWNLOAD, NULL, NULL, false };
+  stream_kind_desc sourced_upload = { STREAM_UPLOAD, make_fake<'X'>, make_source, true };
+  stream_kind_desc sinkless_upload = { STREAM_UPLOAD, NULL, NULL, true };
 
-  /* nothing a download ends or stages, and a factory only of the kind's own direction */
+  /* a download ends no statement, and a factory only of the kind's own direction */
   CHECK (stream_kind_register (KIND_UNREGISTERED, ends_download) == ER_STREAM_SESSION_ERROR);
-  CHECK (stream_kind_register (KIND_UNREGISTERED, staging_download) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sinking_download) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sourceless_download) == ER_STREAM_SESSION_ERROR);
-  /* the client forgets its downloads at every transaction end, so one that outlived it could never be released */
-  CHECK (stream_kind_register (KIND_UNREGISTERED, lasting_download) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sourced_upload) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sinkless_upload) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (STREAM_KIND_MAX, upload_desc (make_fake<'X'>, true)) == ER_STREAM_SESSION_ERROR);
@@ -465,13 +456,13 @@ TEST_CASE_METHOD (registry_fixture, "the client half answers who may open a kind
   CHECK (stream_kind_client_check_driver_open (KIND_UNREGISTERED) == ER_STREAM_SESSION_ERROR);
 
   CHECK (stream_kind_client_check_driver_open (KIND_DOWNLOAD) == NO_ERROR);
-  CHECK (stream_kind_client_check_driver_open (KIND_STAGED) == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_kind_client_check_driver_open (KIND_STAGING) == ER_STREAM_SESSION_ERROR);
   /* a kind that no client half names -- COPY's, opened by its statement -- is not a driver's to open */
   CHECK (stream_kind_client_check_driver_open (KIND_A) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_client_check_driver_open (STREAM_KIND_MAX) == ER_STREAM_SESSION_ERROR);
 
   CHECK (stream_kind_client_authorize (KIND_DOWNLOAD, "x", 1) == NO_ERROR);
-  CHECK (stream_kind_client_authorize (KIND_STAGED, "x", 1) == ER_AU_SELECT_FAILURE);
+  CHECK (stream_kind_client_authorize (KIND_STAGING, "x", 1) == ER_AU_SELECT_FAILURE);
   CHECK (test_Authorized == 2);
 
   /* the question was never answered, so it is not taken as yes */
@@ -482,29 +473,23 @@ TEST_CASE_METHOD (registry_fixture, "the client half answers who may open a kind
 TEST_CASE_METHOD (registry_fixture, "a handle resolves only where it was issued", "[stream_handle]")
 {
   stream_handle_table table, other_session;
-  std::int64_t download = 0, staged = 0;
+  std::int64_t download = 0, refused = -1;
 
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &download) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 10, new fake_object (), &staged) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
   CHECK (download > 0);
-  CHECK (staged > 0);
-  CHECK (download != staged);
 
-  /* the issuing transaction for a STREAM_SCOPE_TRAN handle, any of the session's for STREAM_SCOPE_OWNER */
+  /* only in the transaction that opened it, and only in its session */
   stream_source *source = table.get_source (download, TRAN_1);
   CHECK (source != NULL);
   table.put (NULL, download);
   CHECK (table.get_source (download, TRAN_2) == NULL);
-  CHECK (table.get (staged, KIND_STAGED, TRAN_2) != NULL);
-  table.put (NULL, staged);
-
-  /* another kind, another direction, another session */
-  CHECK (table.get (staged, KIND_A, TRAN_1) == NULL);
-  CHECK (table.get_source (staged, TRAN_1) == NULL);
-  CHECK (table.get (download, KIND_STAGED, TRAN_1) == NULL);
   CHECK (other_session.get_source (download, TRAN_1) == NULL);
-  CHECK (other_session.get (staged, KIND_STAGED, TRAN_1) == NULL);
   CHECK (test_Last_error == ER_STREAM_SESSION_ERROR);
+
+  /* only a download is issued a handle; what was refused is closed */
+  CHECK (table.issue (NULL, KIND_STAGING, TRAN_1, CLIENT_1, new fake_object (), &refused) == ER_STREAM_SESSION_ERROR);
+  CHECK (refused == 0);
+  CHECK (test_Closed == 1);
 
   table.clear (NULL);
   CHECK (test_Closed == 2);
@@ -521,7 +506,7 @@ TEST_CASE_METHOD (registry_fixture, "handle numbers are positive and never repea
 	{
 	  std::int64_t h = 0;
 
-	  REQUIRE (t.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &h) == NO_ERROR);
+	  REQUIRE (t.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
 	  CHECK (h > 0);
 	  CHECK (seen.insert (h).second);
 	  t.release (NULL, h);
@@ -529,13 +514,12 @@ TEST_CASE_METHOD (registry_fixture, "handle numbers are positive and never repea
     }
 }
 
-TEST_CASE_METHOD (registry_fixture, "a download pin is exclusive and an upload pin is shared", "[stream_handle]")
+TEST_CASE_METHOD (registry_fixture, "a pin is exclusive", "[stream_handle]")
 {
   stream_handle_table table;
-  std::int64_t download = 0, staged = 0;
+  std::int64_t download = 0;
 
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &download) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &staged) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
 
   REQUIRE (table.get_source (download, TRAN_1) != NULL);
   /* a second READ sent before the first one's reply: refused, not serialized */
@@ -544,57 +528,42 @@ TEST_CASE_METHOD (registry_fixture, "a download pin is exclusive and an upload p
   CHECK (table.get_source (download, TRAN_1) != NULL);
   table.put (NULL, download);
 
-  /* several rows of one statement read the same staged value */
-  CHECK (table.get (staged, KIND_STAGED, TRAN_1) != NULL);
-  CHECK (table.get (staged, KIND_STAGED, TRAN_1) != NULL);
-  table.put (NULL, staged);
-  table.put (NULL, staged);
-
   table.clear (NULL);
 }
 
-TEST_CASE_METHOD (registry_fixture, "a release during a pin waits for the last put and refuses new pins",
+TEST_CASE_METHOD (registry_fixture, "a release during a pin waits for the put and refuses new pins",
 		  "[stream_handle]")
 {
   stream_handle_table table;
-  std::int64_t staged = 0;
+  std::int64_t download = 0;
 
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &staged) == NO_ERROR);
-  REQUIRE (table.get (staged, KIND_STAGED, TRAN_1) != NULL);
-  REQUIRE (table.get (staged, KIND_STAGED, TRAN_1) != NULL);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.get_source (download, TRAN_1) != NULL);
 
-  table.release (NULL, staged);
+  table.release (NULL, download);
   CHECK (test_Closed == 0);
-  CHECK (table.get (staged, KIND_STAGED, TRAN_1) == NULL);
+  CHECK (table.get_source (download, TRAN_1) == NULL);
 
-  table.put (NULL, staged);
-  CHECK (test_Closed == 0);
-  table.put (NULL, staged);
+  table.put (NULL, download);
   CHECK (test_Closed == 1);
 
   /* gone, and releasing it again is not an error */
-  table.release (NULL, staged);
+  table.release (NULL, download);
   table.release (NULL, 12345);
   CHECK (test_Closed == 1);
 }
 
-TEST_CASE_METHOD (registry_fixture, "a transaction end releases only that transaction's STREAM_SCOPE_TRAN handles",
-		  "[stream_handle]")
+TEST_CASE_METHOD (registry_fixture, "a transaction end releases only that transaction's handles", "[stream_handle]")
 {
   stream_handle_table table;
-  std::int64_t d1 = 0, d2 = 0, staged = 0;
+  std::int64_t d1 = 0, d2 = 0;
 
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("a"), &d1) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, 0, new fake_source ("b"), &d2) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 0, new fake_object (), &staged) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("a"), &d1) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, new fake_source ("b"), &d2) == NO_ERROR);
 
   table.end_tran (NULL, TRAN_1);
   CHECK (test_Closed == 1);
   CHECK (table.get_source (d1, TRAN_1) == NULL);
-
-  /* a staged upload outlives the commit, so a statement can run again with it */
-  CHECK (table.get (staged, KIND_STAGED, TRAN_1) != NULL);
-  table.put (NULL, staged);
   CHECK (table.get_source (d2, TRAN_2) != NULL);
   table.put (NULL, d2);
 
@@ -606,7 +575,7 @@ TEST_CASE_METHOD (registry_fixture, "a transaction end releases only that transa
   CHECK (test_Closed == 2);
 
   table.clear (NULL);
-  CHECK (test_Closed == 3);
+  CHECK (test_Closed == 2);
 }
 
 TEST_CASE_METHOD (registry_fixture, "a connection's close leaves the handles another connection issued",
@@ -616,7 +585,7 @@ TEST_CASE_METHOD (registry_fixture, "a connection's close leaves the handles ano
   std::int64_t download = 0;
 
   /* the old connection's close, processed after its client attached again on a new one */
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, 0, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, new fake_source ("v"), &download) == NO_ERROR);
   table.end_client (NULL, CLIENT_1);
   CHECK (test_Closed == 0);
   CHECK (table.get_source (download, TRAN_1) != NULL);
@@ -626,15 +595,15 @@ TEST_CASE_METHOD (registry_fixture, "a connection's close leaves the handles ano
   CHECK (test_Closed == 1);
 }
 
-TEST_CASE_METHOD (registry_fixture, "a connection's close releases its STREAM_SCOPE_TRAN handles", "[stream_handle]")
+TEST_CASE_METHOD (registry_fixture, "a connection's close releases its handles", "[stream_handle]")
 {
   stream_handle_table table;
   std::int64_t mine = 0, pinned = 0, reused = 0;
 
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("a"), &mine) == NO_ERROR);
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("b"), &pinned) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("a"), &mine) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("b"), &pinned) == NO_ERROR);
   /* the same tran_index, issued to the next connection that was given it */
-  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, 0, new fake_source ("c"), &reused) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, new fake_source ("c"), &reused) == NO_ERROR);
 
   REQUIRE (table.get_source (pinned, TRAN_1) != NULL);
   table.end_client (NULL, CLIENT_1);
@@ -653,24 +622,6 @@ TEST_CASE_METHOD (registry_fixture, "a connection's close releases its STREAM_SC
   CHECK (test_Closed == 3);
 }
 
-TEST_CASE_METHOD (registry_fixture, "STREAM_SCOPE_OWNER handles survive their connection's close", "[stream_handle]")
-{
-  stream_handle_table table;
-  std::int64_t staged = 0;
-
-  REQUIRE (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, 10, new fake_object (), &staged) == NO_ERROR);
-  table.end_client (NULL, CLIENT_1);
-  CHECK (test_Closed == 0);
-
-  /* the client attached again on another connection, in another transaction */
-  CHECK (table.get (staged, KIND_STAGED, TRAN_2) != NULL);
-  table.put (NULL, staged);
-
-  /* the session's end takes them */
-  table.clear (NULL);
-  CHECK (test_Closed == 1);
-}
-
 TEST_CASE_METHOD (registry_fixture, "the limits refuse an issue and close what was refused", "[stream_handle]")
 {
   stream_handle_table table;
@@ -679,27 +630,22 @@ TEST_CASE_METHOD (registry_fixture, "the limits refuse an issue and close what w
 
   for (int i = 0; i < STREAM_HANDLE_MAX_PER_TRAN; i++)
     {
-      REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &h) == NO_ERROR);
+      REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
       handles.push_back (h);
     }
 
-  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &h) == ER_STREAM_SESSION_ERROR);
+  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &h) == ER_STREAM_SESSION_ERROR);
   CHECK (h == 0);
   CHECK (test_Closed == 1);
 
   /* per transaction: another one is not charged for it */
-  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, 0, new fake_source ("v"), &h) == NO_ERROR);
+  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
 
   /* a release requested during a pin frees the slot at once */
   REQUIRE (table.get_source (handles[0], TRAN_1) != NULL);
   table.release (NULL, handles[0]);
-  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, 0, new fake_source ("v"), &h) == NO_ERROR);
+  CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
   table.put (NULL, handles[0]);
-
-  /* staged bytes are counted per session */
-  CHECK (table.issue (NULL, KIND_STAGED, TRAN_1, CLIENT_1, STREAM_HANDLE_MAX_OWNER_BYTES, new fake_object (),
-		      &h) == NO_ERROR);
-  CHECK (table.issue (NULL, KIND_STAGED, TRAN_2, CLIENT_1, 1, new fake_object (), &h) == ER_STREAM_SESSION_ERROR);
 
   table.clear (NULL);
 }

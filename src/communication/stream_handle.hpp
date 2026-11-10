@@ -19,11 +19,10 @@
 /*
  * stream_handle.hpp - The handles a client holds between stream requests.
  *
- * One table per session state, next to the stream-session slot, for every
- * kind and both directions: a download's source, and an upload's staged result
- * that a later statement consumes. A handle resolves only in the session that
- * issued it, only for the kind it was issued for, and a STREAM_SCOPE_TRAN
- * handle only in the transaction that opened it.
+ * One table per session state, next to the stream-session slot, for the
+ * downloads its client has open. A handle resolves only in the session that
+ * issued it and only in the transaction that opened it, and is released at the
+ * latest when that transaction ends.
  */
 
 #ifndef _STREAM_HANDLE_HPP_
@@ -38,9 +37,7 @@
 #include <vector>
 
 /* A client that never releases gets a refused open, not unbounded server memory. */
-const int STREAM_HANDLE_MAX_PER_TRAN = 1024;	/* STREAM_SCOPE_TRAN, per transaction */
-const int STREAM_HANDLE_MAX_OWNER = 1024;	/* STREAM_SCOPE_OWNER, per session */
-const std::int64_t STREAM_HANDLE_MAX_OWNER_BYTES = 16LL * 1024 * 1024 * 1024;
+const int STREAM_HANDLE_MAX_PER_TRAN = 1024;
 
 class stream_handle_table
 {
@@ -51,26 +48,23 @@ class stream_handle_table
     stream_handle_table (const stream_handle_table &) = delete;
     stream_handle_table &operator= (const stream_handle_table &) = delete;
 
-    /* Take object over and return the number the client sends back. object is
-     * closed on a refusal too, so the caller never keeps it. client_id is the
-     * connection that asked (end_client). size counts against the
-     * STREAM_SCOPE_OWNER byte limit. */
-    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, std::int64_t size,
-	       stream_handle_object *object, std::int64_t *handle);
+    /* Take a download's source over and return the number the client sends
+     * back. source is closed on a refusal too, so the caller never keeps it.
+     * client_id is the connection that asked (end_client). */
+    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, stream_handle_object *object,
+	       std::int64_t *handle);
 
-    /* Pin a handle for one call; put () ends the pin. A download pin is
-     * exclusive, because a reader is not thread-safe; an upload pin is shared.
-     * NULL, with the transport-common error set, for a handle that does not
-     * resolve, is being released or is pinned exclusively already. */
-    stream_handle_object *get (std::int64_t handle, int kind, int tran_index);
+    /* Pin a handle for one call; put () ends the pin. The pin is exclusive,
+     * because a reader is not thread-safe. NULL, with the transport-common error
+     * set, for a handle that does not resolve, is being released or is pinned
+     * already. */
     stream_source *get_source (std::int64_t handle, int tran_index);
     void put (THREAD_ENTRY *thread_p, std::int64_t handle);
 
-    /* Release one handle, or every handle of a scope. A handle that does not
-     * resolve is not an error -- a purge may have run first. A release during a
-     * pin is deferred to the last put () and never blocks. end_client () is a
-     * connection's close: its STREAM_SCOPE_TRAN handles go, and the session keeps
-     * its STREAM_SCOPE_OWNER ones for a client that attaches again. */
+    /* Release one handle, or every handle of a transaction, of a connection or
+     * of the session. A handle that does not resolve is not an error -- a purge
+     * may have run first. A release during a pin is deferred to the last put ()
+     * and never blocks. end_client () is a connection's close. */
     void release (THREAD_ENTRY *thread_p, std::int64_t handle);
     void end_tran (THREAD_ENTRY *thread_p, int tran_index);
     void end_client (THREAD_ENTRY *thread_p, int client_id);
@@ -79,21 +73,16 @@ class stream_handle_table
   private:
     struct entry
     {
-      int kind;
       int tran_index;
       int client_id;
-      stream_handle_scope scope;
-      bool exclusive;
-      bool counted;		/* against the limits; dropped as soon as a release is requested */
+      bool counted;		/* against the limit; dropped as soon as a release is requested */
       bool release_pending;
       int pins;
-      std::int64_t size;
       stream_handle_object *object;
     };
 
     using entry_map = std::map<std::int64_t, entry>;
 
-    stream_handle_object *pin (std::int64_t handle, int kind, bool any_download, int tran_index);
     void uncount (entry &e);
     void release_locked (entry_map::iterator it, std::vector<stream_handle_object *> &to_close);
     static void close_all (THREAD_ENTRY *thread_p, std::vector<stream_handle_object *> &to_close);
@@ -101,8 +90,6 @@ class stream_handle_table
     std::mutex m_mutex;
     entry_map m_entries;
     std::map<int, int> m_tran_counts;
-    int m_owner_count;
-    std::int64_t m_owner_bytes;
 
     /* readable without m_mutex, so a transaction end with nothing here -- the usual case -- takes no lock */
     std::atomic<int> m_size;

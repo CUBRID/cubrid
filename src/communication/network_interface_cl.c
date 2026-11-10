@@ -12735,8 +12735,7 @@ stream_from_send_data (const char *data, int data_len)
 /*
  * stream_from_end () - End the stream and retrieve the session's result
  *   return: error code
- *   count(out): the binding's count -- rows for COPY and LOB DML -- or the handle
- *               issued for what a result_is_handle kind staged
+ *   count(out): the binding's count -- rows for COPY and LOB DML
  *   data(in), data_len(in): a last chunk to consume before ending, or none
  */
 int
@@ -12992,9 +12991,9 @@ stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *
 }
 
 /*
- * stream_from_release () - Release a handle this client holds, of either direction
+ * stream_from_release () - Release a download handle this client holds
  *   return: error code; a handle the server no longer has is not an error
- *   handle(in): a download handle, or an upload's staged result
+ *   handle(in): a download handle
  */
 int
 stream_from_release (INT64 handle)
