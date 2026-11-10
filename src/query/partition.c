@@ -4086,15 +4086,31 @@ partition_load_uncached_pruning_context (THREAD_ENTRY * thread_p, const OID * cl
   pinfo->thread_p = thread_p;
   pinfo->pruning_type = DB_PARTITION_CLASS;
 
+  /* A partitioned class may have superclasses of its own, so class_oid itself is checked before its superclass.
+   * heap_get_class_partitions returns no partitions for a partition, which has no subclasses. */
+  error = heap_get_class_partitions (thread_p, class_oid, &pinfo->partitions, &pinfo->count);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
+
+  if (pinfo->partitions != NULL)
+    {
+      *pruning_type = DB_PARTITIONED_CLASS;
+      partition_clear_pruning_context (pinfo);
+      partition_init_pruning_context (pinfo);
+      return NO_ERROR;
+    }
+
   error = partition_find_root_class_oid (thread_p, class_oid, &pinfo->root_oid);
   if (error != NO_ERROR)
     {
       goto error_return;
     }
 
-  if (OID_ISNULL (&pinfo->root_oid))
+  if (OID_ISNULL (&pinfo->root_oid) || OID_EQ (&pinfo->root_oid, class_oid))
     {
-      /* several superclasses: class_oid is not a partition */
+      /* several superclasses, or none: class_oid is not a partition */
       partition_init_pruning_context (pinfo);
       return NO_ERROR;
     }
@@ -4107,15 +4123,7 @@ partition_load_uncached_pruning_context (THREAD_ENTRY * thread_p, const OID * cl
 
   if (pinfo->partitions == NULL)
     {
-      /* the class, or its superclass, is not partitioned */
-      partition_init_pruning_context (pinfo);
-      return NO_ERROR;
-    }
-
-  if (OID_EQ (&pinfo->root_oid, class_oid))
-    {
-      *pruning_type = DB_PARTITIONED_CLASS;
-      partition_clear_pruning_context (pinfo);
+      /* the superclass is not partitioned */
       partition_init_pruning_context (pinfo);
       return NO_ERROR;
     }
@@ -4149,7 +4157,10 @@ partition_load_uncached_pruning_context (THREAD_ENTRY * thread_p, const OID * cl
       /* A DDL that adds or coalesces hash partitions changes the subclass list of the partitioned class before its
        * size, and can only finish (with the size changed in the class record) after locking every partition, including
        * class_oid. So, while the caller holds its lock on class_oid, a count that does not match the size means that
-       * such a DDL is in progress. */
+       * such a DDL is in progress. This does happen: the DDL locks the partitions it has already fetched only with
+       * SCH_S before it changes the list, which does not conflict with the caller's lock. Hashing with this
+       * definition could accept a row of another partition, and the caller cannot wait for the DDL, which waits for
+       * the caller's lock; so the load fails. */
       db_make_null (&hash_size);
       error = db_set_get (master->values, 1, &hash_size);
       if (error != NO_ERROR)
