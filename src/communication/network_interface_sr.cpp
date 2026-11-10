@@ -430,9 +430,8 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
        * same reason as in stran_server_abort_internal () -- the next chunk would otherwise build on work
        * that was already rolled back. Before the rollback, so the session never sees a transaction
        * that has ended, and inside the pushed stack, because the error being reported to the client is
-       * the one that has to survive whatever the stream's abort () sets. Freeing it is safe here for
-       * the reason it is safe there: this is the worker that would be running receive_chunk, and the
-       * stream is lockstep. */
+       * the one that has to survive whatever the stream's abort () sets. A request of the connection
+       * still running on the session is waited for (session_take_stream_session). */
       session_end_stream_session (thread_p);
 
       tran_state = tran_server_unilaterally_abort_tran (thread_p);
@@ -14027,7 +14026,7 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
 }
 
 /*
- * sstream_release () - Release a handle the client held, of either direction
+ * sstream_release () - Release a download handle the client held
  *   request format: handle (int64)
  *   reply format: error_code (int)
  *
