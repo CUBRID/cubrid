@@ -719,6 +719,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> procedure_or_function_name
 %type <node> procedure_or_function_name_list
 %type <node> opt_alter_synonym
+%type <node> sensitivity_label_name
 %type <node> opt_sensitivity_label_level
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
@@ -3287,7 +3288,7 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| CREATE SENSITIVITY LABEL sensitivity_label_kind char_string_literal opt_sensitivity_label_level
+	| CREATE SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name opt_sensitivity_label_level
 	  opt_comment_spec
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SENSITIVITY_LABEL);
@@ -4291,7 +4292,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| ALTER SENSITIVITY LABEL sensitivity_label_kind char_string_literal opt_sensitivity_label_level
+	| ALTER SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name opt_sensitivity_label_level
 	  opt_comment_spec
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
@@ -4307,7 +4308,7 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| ALTER SENSITIVITY LABEL sensitivity_label_kind char_string_literal RENAME AS char_string_literal
+	| ALTER SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name RENAME AS sensitivity_label_name
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
 
@@ -4765,7 +4766,7 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| DROP SENSITIVITY LABEL sensitivity_label_kind char_string_literal
+	| DROP SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SENSITIVITY_LABEL);
 
@@ -22851,6 +22852,27 @@ sensitivity_label_kind
 	| SOURCE
 		{{
 			$$ = PT_SENSITIVITY_LABEL_SOURCE;
+		}}
+	;
+
+sensitivity_label_name
+	: char_string_literal
+		{{
+			PT_NODE *node = $1;
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_VARCHAR;
+
+			    if (node->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
+			      {
+				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_MAX_SENSITIVITY_LABEL_NAME_LEN, DB_MAX_IDENTIFIER_LENGTH - 1);
+			      }
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			  }
+
+			$$ = node;
 		}}
 	;
 
