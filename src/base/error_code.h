@@ -1794,8 +1794,11 @@
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1390
 #define ER_SES_SESSION_NOT_ATTACHED                 -1391
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
+#define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
+#define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1392
+#define ER_LAST_ERROR                               -1395
 
 
 /*

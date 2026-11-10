@@ -103,7 +103,12 @@ static int rv;
 #define HEAP_GUESS_NUM_ATTRS_REFOIDS 100
 #define HEAP_GUESS_NUM_INDEXED_ATTRS 100
 
-#define HEAP_CLASSREPR_MAXCACHE	1024
+/* Number of class representations kept in the server-wide cache. One partition is one class, and a single table
+ * may have up to MAX_PARTITIONS (1024) partitions, so 1024 entries were exhausted by one partitioned table plus the
+ * system classes. Each entry costs 112 bytes plus a DEFAULT_REPR_INCREMENT (16) slot pointer array (128 bytes) and
+ * two 64-byte hash buckets up front, about 3 MB for 8192 entries; the representations themselves are allocated only
+ * for classes that are actually used. */
+#define HEAP_CLASSREPR_MAXCACHE	8192
 
 #define HEAP_DEBUG_SCANCACHE_INITPATTERN (12345)
 
@@ -421,6 +426,9 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
   while (0)
 
 #define HEAP_CHNGUESS_FUDGE_MININDICES (100)
+/* Number of entries of the client CHN guess table. Kept apart from HEAP_CLASSREPR_MAXCACHE: heap_chnguess_clear ()
+ * walks every entry on each client disconnect, so the table should not grow with the class representation cache. */
+#define HEAP_CHNGUESS_MAXENTRIES 1024
 #define HEAP_NBITS_IN_BYTE	     (8)
 #define HEAP_NSHIFTS                   (3)	/* For multiplication/division by 8 */
 #define HEAP_BITMASK                   (HEAP_NBITS_IN_BYTE - 1)
@@ -10596,13 +10604,26 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
+      int max_attrs = (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs
+		       + attr_info->last_classrepr->n_class_attrs);
+
+      /* the function index result is requested on top of the class attributes */
+      for (i = 0; i < requested_num_attrs; i++)
+	{
+	  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrids[i]))
+	    {
+	      max_attrs++;
+	    }
+	}
+
+      if (requested_num_attrs > max_attrs)
+	{
 #ifndef NDEBUG
-      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
+	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
 #endif
-      requested_num_attrs =
-	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	attr_info->last_classrepr->n_class_attrs;
+	  requested_num_attrs = max_attrs;
+	}
     }
 
   if (requested_num_attrs > 0)
@@ -10730,6 +10751,19 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	{
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
+	}
+      else if (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
+	{
+	  /* no heap representation; the value is filled from the index key */
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  value->last_attrepr = NULL;
+	  value->read_attrepr = NULL;
+	  if (value->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      db_make_null (&value->dbvalue);
+	    }
+	  num_found_attrs++;
+	  continue;
 	}
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
@@ -11063,7 +11097,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 	       * of the object
 	       */
 	      attrepr = ((value->read_attrepr != NULL) ? value->read_attrepr : value->last_attrepr);
-	      if (attrepr != NULL)
+	      if (attrepr != NULL || IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
 		{
 		  if (pr_clear_value (&value->dbvalue) != NO_ERROR)
 		    {
@@ -11592,6 +11626,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   HEAP_REC_LAYOUT own_layout;
   OR_ATTRIBUTE *attrepr;
+
+  if (unlikely (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid)))
+    {
+      /* the function result exists only in the index key; the planner must not let such a scan read the heap */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
@@ -12898,11 +12940,72 @@ heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
 }
 
 /*
+ * heap_attrinfo_can_share_string () - CBRD-27847: whether an attribute takes a string or bit string value as it is,
+ *   sharing the value's buffer: the value is of the attribute's domain - precision and collation, as the match
+ *   heap_attrinfo_set tries first (TP_EXACT_MATCH), and the codeset -, fits its precision (a CHAR or BIT fills it),
+ *   and owns no buffer. The cast would only copy such a value: the same codeset is copied as it is, and a full CHAR
+ *   or BIT is padded by neither the cast nor writing it, which pad a shorter one differently (the cast with the
+ *   codeset's pad character, writing with a space). A value that owns its buffer is cast into a copy: its holder may
+ *   clear it before the record is written (locator_mvcc_reev_cond_assigns clears it right after the assignment).
+ *   return: true to share the value's buffer
+ *   value(in): a value, not NULL, of the attribute's type
+ *   domain(in): the attribute's domain
+ */
+static bool
+heap_attrinfo_can_share_string (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  int precision;
+
+  if (!TP_IS_CHAR_BIT_TYPE (type) || DB_NEED_CLEAR (value))
+    {
+      return false;
+    }
+
+  if (TP_IS_CHAR_TYPE (type)
+      && (db_get_string_codeset (value) != TP_DOMAIN_CODESET (domain)
+	  || db_get_string_collation (value) != TP_DOMAIN_COLLATION (domain)))
+    {
+      return false;
+    }
+
+  /* the value's precision as tp_domain_resolve_value makes it - an unset variable one is the maximum -, but for an
+   * oversized one, which the shared setval refuses (ER_INVALID_PRECISION) where the cast stores the value */
+  precision = db_value_precision (value);
+  if ((type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+      && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE))
+    {
+      precision = (type == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION;
+    }
+  if (precision != domain->precision)
+    {
+      return false;
+    }
+
+  /* and the value fits it, whatever its precision says. A CHAR or BIT fills it: one read from a list tuple, a record
+   * or a plan comes padded, with its precision as its length. A VARCHAR's size in bytes bounds its length in
+   * characters, which is counted only when the size does not decide; a bit string's length is in bits */
+  if (type == DB_TYPE_CHAR || type == DB_TYPE_BIT)
+    {
+      return db_get_string_length (value) == precision;
+    }
+  if (type == DB_TYPE_VARCHAR && db_get_string_size (value) <= precision)
+    {
+      return true;
+    }
+  return db_get_string_length (value) <= precision;
+}
+
+/*
  * heap_attrinfo_set_converted () - CBRD-27583: set the value an INSERT, UPDATE or MERGE assigns to an
  *   attribute with the converter its plan chose at unpack for the value's type into the attribute's type, as
  *   heap_attrinfo_set's coercion does it (tp_value_auto_cast_with_precision_check) into the catalog's domain, without
- *   the match it tries first
+ *   the match it tries first - but for a string the attribute can share (heap_attrinfo_can_share_string), which the
+ *   cast would only copy
  *   return: NO_ERROR, or the conversion's error
+ *   attr_val(in): the value; a string the attribute shares is borrowed, not copied: its buffer must stay as it is
+ *		   until the record is built (locator_attribute_info_force), so a value read through the scan cache that
+ *		   the force rereads the old record with is copied first
  *   domain(in): the attribute's domain the XASL streams, of the catalog's type (a client builds a collection's,
  *		 MONETARY's or an object's domain that tp_domain_match does not find the catalog's)
  *   value_type(in), conv(in): the plan's - the type the value comes in and its converter into domain's type, which a
@@ -12930,12 +13033,14 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
       /* NULL, and an object reference, which the server takes as it is (tp_domain_check) */
       ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
     }
-  else if (value_type == TP_DOMAIN_TYPE (catalog) && heap_attrinfo_is_fixed_copy_type (value_type)
+  else if (value_type == TP_DOMAIN_TYPE (catalog)
 	   /* guard: the plan's premise; a mismatch takes the converter path */
-	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type)
+	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type
+	   && (heap_attrinfo_is_fixed_copy_type (value_type) || heap_attrinfo_can_share_string (attr_val, catalog)))
     {
-      /* the plan's value of the attribute's own fixed-size type: the cast would only clone it (no precision, codeset
-       * or zone) */
+      /* the plan's value of the attribute's own type that the cast would only copy: a fixed-size type (no precision,
+       * codeset or zone) is cloned; a string's buffer is shared, so the value's holder keeps it until the record is
+       * written - a list tuple, a record or a plan constant does, for the row */
       ret = pr_type->setval (&value->dbvalue, attr_val, false);
     }
   else
@@ -16695,7 +16800,7 @@ heap_chnguess_initialize (void)
 
   heap_Guesschn_area.schema_change = false;
   heap_Guesschn_area.clock_hand = -1;
-  heap_Guesschn_area.num_entries = HEAP_CLASSREPR_MAXCACHE;
+  heap_Guesschn_area.num_entries = HEAP_CHNGUESS_MAXENTRIES;
 
   /*
    * Start with at least the fude factor of clients. Make sure that every
@@ -16713,7 +16818,7 @@ heap_chnguess_initialize (void)
 
   /* Build the hash table from OID to CHN */
   heap_Guesschn_area.ht =
-    mht_create ("Memory hash OID to chn at clients", HEAP_CLASSREPR_MAXCACHE, oid_hash, oid_compare_equals);
+    mht_create ("Memory hash OID to chn at clients", HEAP_CHNGUESS_MAXENTRIES, oid_hash, oid_compare_equals);
   if (heap_Guesschn_area.ht == NULL)
     {
       goto exit_on_error;
