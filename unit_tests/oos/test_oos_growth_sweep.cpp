@@ -590,6 +590,36 @@ TEST (OosGrowthSweepTest, PageLatchedByRollbackStaysCandidate)
   remove_file_and_commit (oos_vfid);
 }
 
+// A page the lap finds busy is still reused when an earlier step left ER_PB_BAD_PAGEID set: the failed
+// conditional fix of a latched page sets no error, so that error must not mark the page deallocated, which would
+// keep it out of the set and make the file grow (PR #8434 review U-2).
+TEST (OosGrowthSweepTest, StaleBadPageIdErrorDoesNotStrandABusyPage)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID oid1 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2);
+
+  oos_test_reclaim_reset_side_map ();
+  simulate_hint_loss (oos_vfid);
+
+  // The lap's READ fix of the emptied page fails as for a latched page, with no error of its own.
+  oos_test_fail_next_reclaim_read_fix ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, oid1.pageid, "stale volume");
+  OID oid2 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
+  er_clear ();
+  ASSERT_EQ (count_user_pages (oos_vfid), 2) << "a stale error made the busy page look deallocated";
+  ASSERT_EQ (oid2.pageid, oid1.pageid);
+  assert_value_intact (oid2);
+
+  remove_file_and_commit (oos_vfid);
+}
+
 // ADR-0010 consequence 5: a delete that leaves records on its page arms nothing, so the next growth
 // checks no page.
 TEST (OosGrowthSweepTest, DeleteThatEmptiesNoPageCostsGrowthNothing)
