@@ -6312,19 +6312,23 @@ stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_sta
 }
 
 /*
- * update_histogram_for_all_classes () - build histograms for every top-level class after the class statistics
- *                                       were refreshed (UPDATE STATISTICS ON ALL CLASSES / optimizedb)
+ * update_histogram_for_all_classes () - update the statistics and build the histograms of every top-level class
+ *                                       (UPDATE STATISTICS ON ALL CLASSES / optimizedb)
  *   return: NO_ERROR or error code
+ *   with_fullscan(in): true iff WITH FULLSCAN
  *   random_seed(in): sampling seed
  *   skip_mops(in): classes to leave out of the histogram build (optimizedb --no-histogram-classes). Their
- *                  existing histograms are kept as they are. NULL if none
+ *                  statistics are still updated and their existing histograms are kept as they are. NULL if none
  *   n_skip(in): number of entries in skip_mops
  *   run_start_msec(in): stats_progress_clock_msec () when the run started
  *
- * NOTE: the progress of each class goes to the server event log.
+ * NOTE: each class is done once, the way UPDATE STATISTICS ON <class> does it: the histogram scan also updates
+ *       the class statistics, from the same scan and in the caller's mode. A statistics pass ahead of it would
+ *       only be overwritten. The progress of each class goes to the server event log as one statistics event
+ *       pair.
  */
 int
-update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec)
+update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6359,15 +6363,9 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, 
 	      break;
 	    }
 	}
-      if (excluded)
-	{
-	  n_excluded++;
-	  continue;
-	}
-
       INT64 class_start_msec = stats_progress_clock_msec ();
 
-      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
 				 class_start_msec, run_start_msec, NO_ERROR);
 
       obj = db_find_class (sm_get_ch_name (class_mop));
@@ -6375,29 +6373,51 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, 
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
-				     class_start_msec, run_start_msec, error);
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1,
+				     lmops->num, class_start_msec, run_start_msec, error);
 	  AU_RESTORE (save);
 	  locator_free_list_mops (lmops);
 	  return error;
 	}
 
-      histogram_info.target_columns = NULL;
-      histogram_info.bucket_count = -1;
-      histogram_info.with_fullscan = false;
-      histogram_info.random_seed = random_seed;
-      int hist_skipped = 0;
+      if (excluded)
+	{
+	  /* no histogram scan updates the statistics of this class */
+	  error = sm_update_statistics (obj, with_fullscan);
+	}
+      else
+	{
+	  histogram_info.target_columns = NULL;
+	  histogram_info.bucket_count = -1;
+	  /* the histogram scan rewrites the class statistics as well, so it runs in the caller's mode: fixed to
+	   * sampling, it replaced the full-scan B-tree statistics of WITH FULLSCAN with sampled ones (CBRD-27836) */
+	  histogram_info.with_fullscan = with_fullscan;
+	  histogram_info.random_seed = random_seed;
+	  int hist_skipped = 0;
 
-      error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
-					       &hist_skipped);
-      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+	  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
+						   &hist_skipped);
+	  n_hist_skipped += hist_skipped;
+	  if (error == ER_OBJ_INVALID_ARGUMENTS)
+	    {
+	      /* kept for parity with UPDATE STATISTICS ON <class>; the all-columns build does not return this today
+	       * (a class with no histogrammable column is handled inside the helper, which updates its statistics) */
+	      error = sm_update_statistics (obj, with_fullscan);
+	    }
+	}
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
 				 class_start_msec, run_start_msec, error);
-      n_hist_skipped += hist_skipped;
-      if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+      if (error != NO_ERROR)
 	{
 	  AU_RESTORE (save);
 	  locator_free_list_mops (lmops);
 	  return error;
+	}
+
+      if (excluded)
+	{
+	  n_excluded++;
+	  continue;
 	}
 
       n_tables++;
