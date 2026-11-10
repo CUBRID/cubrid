@@ -135,6 +135,10 @@ extern int css_Num_access_user;
 extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
 extern void css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
+extern void css_push_running_sp (CSS_CONN_ENTRY * conn, CSS_RUNNING_SP * sp);
+extern void css_remove_running_sp (CSS_CONN_ENTRY * conn, CSS_RUNNING_SP * sp);
+extern int css_get_running_sp (CSS_CONN_ENTRY * conn, int depth, char *name, int name_size, char *target_class,
+			       int target_class_size, char *target_method, int target_method_size);
 extern int css_init_conn_list (void);
 extern void css_final_conn_list (void);
 

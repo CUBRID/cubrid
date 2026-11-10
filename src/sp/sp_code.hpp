@@ -32,4 +32,6 @@
 #include "query_manager.h"
 
 int sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OID *sp_oidp, DB_VALUE *result);
+int sp_get_exec_rights (THREAD_ENTRY *thread_p, const char *unique_name, const char *target_class,
+			const char *target_method, bool *is_owner_rights, char *owner_name, int owner_name_size);
 #endif				/* _SP_CODE_HPP_ */

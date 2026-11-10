@@ -211,6 +211,7 @@ extern const OID oid_Null_oid;
 extern OID *oid_Root_class_oid;
 extern OID *oid_Serial_class_oid;
 extern OID *oid_User_class_oid;
+extern OID *oid_Sp_class_oid;
 extern OID *oid_Sp_code_class_oid;
 
 extern CUB_THREAD_LOCAL PAGEID oid_Next_tempid;

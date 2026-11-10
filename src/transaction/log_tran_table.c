@@ -67,8 +67,11 @@
 #include "db_date.h"
 #include "dbtype.h"
 #include "authenticate_password.hpp"
+#include "sp_code.hpp"
+#include "schema_system_catalog_constants.h"
 #if defined (SERVER_MODE)
 #include "server_support.h"
+#include "connection_sr.h"
 #endif // SERVER_MODE
 #include "string_buffer.hpp"
 #if defined (SA_MODE)
@@ -787,8 +790,68 @@ logtb_am_i_dba_client (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_am_i_dba_group_client () - is the caller DBA, or a member of the DBA
- *   group, according to the catalog?
+ * logtb_find_exec_rights_user () - the account whose rights the client executes
+ *   with: the owner of the innermost stored procedure it is running that executes
+ *   with its owner's rights, or else the logged-in user. Procedures that execute
+ *   with their caller's rights are looked through to what called them. Each one is
+ *   read from the catalog; one that cannot be read leaves the logged-in user.
+ *   user_name (out): DB_MAX_USER_LENGTH + 1 bytes
+ */
+static void
+logtb_find_exec_rights_user (THREAD_ENTRY * thread_p, char *user_name, int user_name_size)
+{
+  const char *login_user = logtb_find_current_client_name (thread_p);
+
+  user_name[0] = '\0';
+  if (login_user != NULL)
+    {
+      strncpy (user_name, login_user, user_name_size - 1);
+      user_name[user_name_size - 1] = '\0';
+    }
+
+#if defined (SERVER_MODE)
+  /* the catalog columns count characters, so leave room for 4-byte ones; anything
+   * longer is not found and leaves the logged-in user */
+  char sp_name[DB_MAX_IDENTIFIER_LENGTH * 4 + 1];
+  char target_class[1024 * 4 + 1];
+  char target_method[SP_ATTR_TARGET_METHOD_LEN * 4 + 1];
+  char owner_name[DB_MAX_USER_LENGTH + 1];
+  bool is_owner_rights;
+  int depth, found;
+
+  if (thread_p == NULL || thread_p->conn_entry == NULL)
+    {
+      return;
+    }
+
+  for (depth = 0;; depth++)
+    {
+      found = css_get_running_sp (thread_p->conn_entry, depth, sp_name, sizeof (sp_name), target_class,
+				  sizeof (target_class), target_method, sizeof (target_method));
+      if (found != 1)
+	{
+	  return;		/* none running, or all with the caller's rights */
+	}
+
+      if (sp_get_exec_rights (thread_p, sp_name, target_class, target_method, &is_owner_rights, owner_name,
+			      sizeof (owner_name)) != NO_ERROR)
+	{
+	  return;
+	}
+
+      if (is_owner_rights)
+	{
+	  strncpy (user_name, owner_name, user_name_size - 1);
+	  user_name[user_name_size - 1] = '\0';
+	  return;
+	}
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * logtb_am_i_dba_group_client () - is the account the client executes with DBA,
+ *   or a member of the DBA group, according to the catalog?
  *
  * Replaces the flag kill_or_interrupt took from the client.
  */
@@ -796,6 +859,7 @@ static bool
 logtb_am_i_dba_group_client (THREAD_ENTRY * thread_p)
 {
   char password[AU_MAX_PASSWORD_BUF + 4];
+  char user_name[DB_MAX_USER_LENGTH + 1];
   bool is_dba_group = false, found;
 
   if (logtb_am_i_dba_client (thread_p))
@@ -803,8 +867,9 @@ logtb_am_i_dba_group_client (THREAD_ENTRY * thread_p)
       return true;
     }
 
-  found = cdc_get_user_info (thread_p, logtb_find_current_client_name (thread_p), password, sizeof (password),
-			     &is_dba_group);
+  logtb_find_exec_rights_user (thread_p, user_name, sizeof (user_name));
+
+  found = cdc_get_user_info (thread_p, user_name, password, sizeof (password), &is_dba_group);
   memset (password, 0, sizeof (password));	/* only the group answer is needed */
 
   return found && is_dba_group;

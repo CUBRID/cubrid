@@ -445,6 +445,20 @@ namespace cubconn::connection
 // *INDENT-ON*
 
 /*
+ * A stored procedure running for a client. The node lives on the stack of the
+ * thread running the procedure, which links it to the connection for the run
+ * and unlinks it before returning (css_push_running_sp, css_remove_running_sp).
+ */
+typedef struct css_running_sp CSS_RUNNING_SP;
+struct css_running_sp
+{
+  const char *name;		/* unique name, as the catalog keeps it */
+  const char *target_class;
+  const char *target_method;
+  CSS_RUNNING_SP *next;		/* the procedure it was called from, if any */
+};
+
+/*
  * This data structure is the interface between the client and the
  * communication software to identify the data connection.
  */
@@ -467,6 +481,7 @@ struct css_conn_entry
    * challenge-response of its own and the outcome is kept here. */
   bool cdc_auth_done;		/* a DBA answered a challenge on this connection */
   volatile int cdc_auth_busy;	/* an account lookup for the handshake is running */
+  CSS_RUNNING_SP *running_sp;	/* innermost stored procedure running for the client, under rmutex */
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */
