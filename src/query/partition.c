@@ -1275,7 +1275,8 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 	}
     }
 
-  if (op == PO_EQ && status == MATCH_NOT_FOUND && (pinfo->use_join_values || !DB_IS_NULL (val)))
+  if (op == PO_EQ && status == MATCH_NOT_FOUND
+      && (pinfo->use_join_values || (!DB_IS_NULL (val) && !db_value_type_is_collection (val))))
     {
       /* every partition was compared and none holds the value: no row can match it (CBRD-28000), and the value of an
        * outer row joins with no row of any partition (CBRD-27866). A NULL constant of <=> still reads all partitions,
@@ -1445,6 +1446,13 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
       if (size < 0)
 	{
 	  pinfo->error_code = ER_FAILED;
+	  status = MATCH_NOT_FOUND;
+	  goto cleanup;
+	}
+
+      if (size == 0)
+	{
+	  /* no element: "= ALL" of it holds for every row, so the term does not prune */
 	  status = MATCH_NOT_FOUND;
 	  goto cleanup;
 	}
