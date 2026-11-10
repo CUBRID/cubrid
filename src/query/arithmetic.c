@@ -4634,7 +4634,8 @@ db_width_bucket_calculate_numeric (double *result, const DB_VALUE * value1, cons
 	}
       else
 	{
-	  er_status = numeric_db_value_compare (value2, value3, &cmp_result);
+	  /* v1 <= v3, at or past the end of the range: bucket v4 + 1, as for v3 <= v1 in the ascending case */
+	  er_status = numeric_db_value_compare (value1, value3, &cmp_result);
 	  if (er_status != NO_ERROR)
 	    {
 	      return er_status;
