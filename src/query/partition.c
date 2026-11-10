@@ -1276,6 +1276,13 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 	}
     }
 
+  if (pinfo->use_join_values && op == PO_EQ && status == MATCH_NOT_FOUND)
+    {
+      /* every partition was compared and none holds the value of the outer row: it joins with no row of any partition
+       * (CBRD-27866) */
+      status = MATCH_OK;
+    }
+
   return status;
 }
 
@@ -1622,8 +1629,11 @@ cleanup:
   pr_clear_value (&min);
   pr_clear_value (&max);
 
-  if (status == MATCH_OK && added == 0)
+  if (status == MATCH_OK && added == 0
+      && !(pinfo->use_join_values && op == PO_EQ && !db_value_type_is_collection (val)))
     {
+      /* no partition holds the value: the term does not prune, except for the value of an outer row, which then
+       * joins with no row of any partition (CBRD-27866) */
       status = MATCH_NOT_FOUND;
     }
 
