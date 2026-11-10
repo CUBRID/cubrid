@@ -19117,8 +19117,9 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   line = union_node->line_number;
   column = union_node->column_number;
   alias_print = union_node->alias_print;
-  /* the parser puts the length of a statement's text only on the statement node; when the set operation is the
-   * statement, its arms carry none, and a driver session compiles the text again for the types of its bind values */
+  /* the parser puts a statement's length only on the statement node; its other nodes keep the length of the statement
+   * before it in the text (0 for the first). The node that takes the place of the statement takes its text, which a
+   * driver session compiles again for the types of its bind values */
   sql_user_text = union_node->sql_user_text;
   sql_user_text_len = union_node->sql_user_text_len;
   next = union_node->next;
