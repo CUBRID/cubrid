@@ -6246,6 +6246,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   VPID_SET_NULL (&(root_header->node.next_vpid));
   root_header->node.node_level = 1;
   root_header->node.max_key_len = 0;
+  /* a root leaf has no fence keys and is never compressed; a multi-column index reads this field as the number of
+   * leading key columns the keys of the leaf share */
+  root_header->node.common_prefix = 0;
 
   if (unique_pk)
     {
@@ -21826,6 +21829,36 @@ btree_get_next_key_info (THREAD_ENTRY * thread_p, BTID * btid, BTREE_SCAN * bts,
       perfmon_inc_stat (thread_p, PSTAT_BT_NUM_RESUMES);
 
       error_code = btree_range_scan_resume (thread_p, bts);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
+  while (!bts->end_scan && bts->force_restart_from_root)
+    {
+      /* Descending scan could not latch the previous leaf and returned without a key, its leaf released: reading the
+       * current position here would make a row of the released leaf's slot 0. Locate again as btree_range_scan does,
+       * from the start if no key was found yet, else from the last consumed key. */
+      assert (bts->use_desc_index);
+      btree_log_if_enabled ("Notification: descending key info scan had to be interrupted and restarted from root.\n");
+      if (bts->C_page != NULL)
+	{
+	  /* The btree_range_scan_resume() function assumes that cur_key is decompressed.
+	   * Decompress it before doing pgbuf_unfix() on C_page. */
+	  btree_check_decompress_key (bts);
+	  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+	  pgbuf_unfix_and_init (thread_p, bts->C_page);
+	}
+      if (!bts->is_scan_started)
+	{
+	  error_code = btree_range_scan_start (thread_p, bts);
+	}
+      else
+	{
+	  error_code = btree_range_scan_resume (thread_p, bts);
+	}
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

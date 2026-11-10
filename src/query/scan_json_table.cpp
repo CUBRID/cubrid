@@ -202,8 +202,11 @@ namespace cubscan
       m_specp->m_root_node->clear_xasl (is_final_clear);
       reset_ordinality (*m_specp->m_root_node);
 
-      // all json documents should be released depending on is_final
-      if (is_final)
+      // all json documents should be released depending on is_final. A NULL cursor array means a final clear has
+      // released them already: an XASL that is not a cached clone is cleared once more before it is freed, with
+      // is_final_clear false this time (qmgr_process_query (), xcache_retire_clone () without clones, a parallel scan
+      // worker of a one-shot query)
+      if (is_final && m_scan_cursor != NULL)
 	{
 	  for (size_t i = 0; i < m_tree_height; ++i)
 	    {
@@ -222,6 +225,7 @@ namespace cubscan
 	  if (is_final_clear)
 	    {
 	      delete [] m_scan_cursor;
+	      m_scan_cursor = NULL;
 	    }
 	}
     }

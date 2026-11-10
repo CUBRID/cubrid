@@ -4585,6 +4585,17 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      /* convert to SORT_LIST */
 	      aggregate_list->sort_list =
 		pt_agg_orderby_to_sort_list (parser, tree->info.function.order_by, tree->info.function.arg_list);
+	      if (aggregate_list->function == PT_CUME_DIST || aggregate_list->function == PT_PERCENT_RANK)
+		{
+		  /* CBRD-27817: no list is sorted by these keys - the hypothetical values compare with the ORDER BY
+		   * items - and each key carries its item's domain, not the hypothetical argument's */
+		  SORT_LIST *key = aggregate_list->sort_list;
+		  for (PT_NODE * item = tree->info.function.order_by; key != NULL && item != NULL;
+		       key = key->next, item = item->next)
+		    {
+		      key->pos_descr.dom = pt_xasl_node_to_domain (parser, item->info.sort_spec.expr);
+		    }
+		}
 	    }
 	  else
 	    {
@@ -9344,6 +9355,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 
 	  if (xasl->single_tuple)
 	    {
+	      /* the value is read in the list's column domain (qdata_get_single_tuple_from_list_id), as regu's */
+	      xasl->single_tuple->valp->dom = regu->domain;
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
 	      /* mark uncorrelated scalar subquery (precompute/inject/checker-relax):
@@ -9363,8 +9376,10 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	}
       else
 	{
-	  /* CBRD-27583: a list a type checking left variable reads as its first column, as a single tuple does */
-	  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	  /* CBRD-27583: a list a type checking left variable, or whose collation it left to an enforced or bound one,
+	   * reads as its first column, as a single tuple does */
+	  if (regu->domain != NULL && (TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
+				       || TP_DOMAIN_COLLATION_FLAG (regu->domain) != TP_DOMAIN_COLL_NORMAL))
 	    {
 	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	    }
@@ -17400,6 +17415,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->domain =
 			pt_reader_domain (pt_xasl_node_to_domain (parser, col), domain_list_column_of (xasl, i));
 		      regu->value.dbvalptr = value_list->val;
+		      value_list->dom = regu->domain;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
 		      if (pt_prepare_corr_subquery_hash_result_cache (parser, node, xasl))
@@ -20717,6 +20733,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   /* CBRD-27583: the sort keys over the block's lists, whose columns are decided by now */
   pt_set_sort_list_domains (buildlist->groupby_list, NULL, xasl->outptr_list);
+  /* CBRD-27817: the GROUP BY's output list is sorted by its keys over the output columns */
+  pt_set_sort_list_domains (buildlist->after_groupby_list, NULL, buildlist->g_outptr_list);
   for (ANALYTIC_EVAL_TYPE * eval = buildlist->a_eval_list; eval != NULL; eval = eval->next)
     {
       pt_set_sort_list_domains (eval->sort_list, NULL, buildlist->a_outptr_list_ex);
@@ -32614,7 +32632,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
 
   regu->type = TYPE_REGU_VAR_LIST;
   /* CBRD-27583: a container of values, not a value: no domain of its own */
-  regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
+  regu->domain = NULL;
   /* for cume_dist and percent_rank, regu_variable should be hidden */
   REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);
   arg_list = tree->info.function.arg_list;

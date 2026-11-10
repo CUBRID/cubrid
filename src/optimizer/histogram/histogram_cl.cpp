@@ -225,7 +225,7 @@ get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogr
 /*
  * store_one_histogram () - write one column's blob + exact null frequency into its
  *   _db_histogram catalog entry, creating the entry again if it went missing
- *   with_fullscan(in): the collection mode to record if the entry has to be recreated
+ *   with_fullscan(in): the collection mode of this blob, recorded in the entry
  */
 static int
 store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
@@ -234,7 +234,7 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
   int error = NO_ERROR;
   DB_OBJECT *histogram_obj = NULL, *fin = NULL;
   DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE nfv, hv;
+  DB_VALUE nfv, fsv, hv;
 
   db_make_null (&hv);
 
@@ -280,6 +280,13 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
 
   db_make_double (&nfv, null_freq);
   error = dbt_put (obj_tmpl, "null_frequency", &nfv);
+  if (error == NO_ERROR)
+    {
+      /* smt_add_histogram () records the mode only when it creates the entry; a later collection in the other
+       * mode would leave db_histogram.scan_type telling the first one */
+      db_make_int (&fsv, with_fullscan);
+      error = dbt_put (obj_tmpl, "with_fullscan", &fsv);
+    }
   if (error == NO_ERROR && blob != NULL && blob_length > 0)
     {
       /*  SM_MAX_STRING_LENGTH = 1073741823 */
