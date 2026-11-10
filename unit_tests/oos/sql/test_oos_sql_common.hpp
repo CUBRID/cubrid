@@ -32,7 +32,7 @@
 #include "db_client_type.hpp"
 #include "db.h"
 #include "dbi.h"
-#include "dbtype_function.h"
+#include "dbtype.h"
 #include "error_manager.h"
 
 #if defined(SA_MODE)
@@ -42,7 +42,6 @@
 #include "oos_file.hpp"
 #include "slotted_page.h"
 #include "system_parameter.h"
-#include "vacuum.h"
 #endif /* SA_MODE */
 
 // ============================================================================
@@ -169,15 +168,6 @@ fetch_single_int (const char *sql, int *out_val)
   return NO_ERROR;
 }
 
-// Execute DDL/DML and commit. Asserts success.
-static void
-exec_sql_commit (const char *sql)
-{
-  int rc = exec_sql (sql);
-  assert (rc >= 0);
-  db_commit_transaction ();
-}
-
 // ============================================================================
 // OOS file inspection helpers
 // ============================================================================
@@ -244,17 +234,5 @@ table_has_oos_file (const char *table_name)
   return get_oos_vfid_for_table (table_name, &oos_vfid) && !VFID_ISNULL (&oos_vfid);
 }
 #endif /* SA_MODE */
-
-// Trigger vacuum (SA_MODE only: calls xvacuum() directly, synchronous).
-static int
-run_vacuum ()
-{
-#if defined(SA_MODE)
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  return xvacuum (thread_p);
-#else
-  return NO_ERROR;
-#endif
-}
 
 #endif /* _TEST_OOS_SQL_COMMON_HPP_ */

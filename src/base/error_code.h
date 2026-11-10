@@ -1782,25 +1782,37 @@
 
 #define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
 
-#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+#define ER_SES_VARIABLE_TYPE_FIXED                  -1384
 
 #define ER_AU_REJECT_LOGIN                          -1385
 
 #define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
 
-#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1387
+#define ER_SUB_CLIENTS_ALIVE                        -1387
+#define ER_MAIN_CLIENT_NOT_READY                    -1388
+#define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1388
+#define ER_SES_SESSION_SECRET_MISMATCH              -1390
+#define ER_SES_SESSION_NOT_ATTACHED                 -1391
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
+#define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
+#define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_HEAP_OOS_CORRUPTED_RECORD                -1389
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1395
 
-#define ER_HEAP_OOS_INVALID_ARGUMENT                -1390
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1396
 
-#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1391
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1397
 
-#define ER_BO_INCOMPATIBLE_STORAGE_FORMAT           -1392
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1398
 
-#define ER_LAST_ERROR                               -1393
+#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1399
+
+#define ER_BO_INCOMPATIBLE_STORAGE_FORMAT           -1400
+
+#define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1401
+
+#define ER_LAST_ERROR                               -1402
 
 
 /*

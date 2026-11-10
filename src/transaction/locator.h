@@ -123,10 +123,8 @@ typedef enum
   LC_FETCH_VERIFY_CHN
 } LC_COPYAREA_OPERATION;
 
-/* TODO:
- *    Handle LC_FLUSH_INSERT_OOS in LC_IS_FLUSH_INSERT usage to prevent malfunctions.
- *    Post-POC, refactor by separating macros or implementing exception handling for OOS call sites.
- */
+/* LC_FLUSH_INSERT_OOS is included on purpose: xlocator_repl_force handles an OOS item like an insert (it has no
+ * primary key to look up). locator_mflush never produces it. */
 #define LC_IS_FLUSH_INSERT(operation) \
   (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE \
    || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS)

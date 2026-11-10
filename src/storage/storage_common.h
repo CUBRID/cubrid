@@ -619,6 +619,8 @@ typedef int ATTR_ID;		/* attribute identifier */
 
 #define NULL_REPRID       -1	/* Null Representation Identifier */
 #define NULL_ATTRID       -1	/* Null Attribute Identifier */
+#define FUNC_INDEX_RESULT_ATTRID  -2	/* function result in a function index key; real ids are >= 0 */
+#define IS_FUNC_INDEX_RESULT_ATTR_ID(id)   ((id) == FUNC_INDEX_RESULT_ATTRID)
 
 /************************************************************************/
 /* b-tree common                                                        */
@@ -1240,6 +1242,7 @@ struct dbdef_vol_ext_info
 };
 
 #define SERVER_SESSION_KEY_SIZE			8
+#define SESSION_SECRET_SIZE			8
 
 typedef enum
 {

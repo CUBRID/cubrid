@@ -236,6 +236,7 @@ struct db_value_slist
 };
 
 static int drop_class_name (const char *name, bool is_cascade_constraints);
+static int check_procedure_grantable (MOP proc_mop);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
@@ -282,6 +283,8 @@ static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctempl
 static int build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attr_def,
 				  PT_NODE * attr_old_name, PT_NODE * constraints,
 				  SM_ATTR_PROP_CHG * attr_chg_properties);
+
+static void build_attr_flag_change_property (int *prop, bool was_set, bool is_unspecified, bool is_requested);
 
 static int build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 				      SM_ATTR_PROP_CHG * attr_chg_properties);
@@ -2043,6 +2046,39 @@ error_exit:
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
 /*
+ * check_procedure_grantable() - Refuses privileges on a procedure the engine created.
+ *   return: Error code
+ *   proc_mop(in): stored procedure object
+ *
+ * Note:
+ *    Unloading writes the privileges of every procedure but not the system generated procedures,
+ *    so a privilege on one would fail loading the schema.
+ */
+static int
+check_procedure_grantable (MOP proc_mop)
+{
+  DB_VALUE generated_val;
+  int error = NO_ERROR;
+  int au_save;
+
+  /* the grantor may not be able to read the catalog */
+  AU_SAVE_AND_DISABLE (au_save);
+  error = db_get (proc_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  AU_RESTORE (au_save);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (db_get_int (&generated_val) == 1)
+    {
+      ERROR_SET_ERROR (error, ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED);
+    }
+
+  return error;
+}
+
+/*
  * do_grant() - Grants priviledges
  *   return: Error code if grant fails
  *   parser(in): Parser context
@@ -2114,6 +2150,12 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = check_procedure_grantable (proc_mop);
+		  if (error != NO_ERROR)
+		    {
 		      goto end;
 		    }
 
@@ -2222,6 +2264,12 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = check_procedure_grantable (proc_mop);
+		  if (error != NO_ERROR)
+		    {
 		      goto end;
 		    }
 
@@ -4551,7 +4599,13 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
 	      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
 		{
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, or the caller
+		   * takes a class whose statistics were never updated (they are updated after this loop) for a
+		   * finished one */
+		  if (!quiet)
+		    {
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
+		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}
@@ -4722,9 +4776,11 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      if (error != ER_LC_CLASSNAME_EXIST)
 		{
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, as the all-columns
+		   * path does, or the statement reports success after the savepoint rollback below */
 		  if (!quiet)
 		    {
-		      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
 		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
@@ -5120,11 +5176,19 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
 	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {			/* reused partition */
-	      newpci->obj = ws_find_class (newpci->pname);
+	      /* part_name keeps the case the user typed, but subclass names are stored in lower case and the
+	       * workspace class name cache compares them case-sensitively. sm_find_class () normalizes the name. */
+	      newpci->obj = sm_find_class (newpci->pname);
 	      if (newpci->obj == NULL)
 		{
-		  assert (er_errid () != NO_ERROR);
+		  /* Never leave with NO_ERROR here: the new partitions are already created, and the statement would
+		   * succeed without updating the reused partition or moving its rows. */
 		  error = er_errid ();
+		  if (error == NO_ERROR || error == ER_LC_UNKNOWN_CLASSNAME)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
+		      error = ER_PARTITION_NOT_EXIST;
+		    }
 		  goto end_create;
 		}
 
@@ -9462,8 +9526,8 @@ add_query_to_virtual_class (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const
 /*
  * add_union_query() - Adds a query to a virtual class object.
  *			  If the query is a union all query
- *			  without limit and order_by, it is
- * 			  divided into its component queries
+ *			  without limit, order_by and with clause,
+ * 			  it is divided into its component queries
  *   return: Error code
  *   parser(in): Parser context
  *   ctemplate(in/out): Class template
@@ -9479,7 +9543,7 @@ add_union_query (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const PT_NODE * 
   /* Add each query listed in the virtual class definition. */
 
   if (query->node_type == PT_UNION && query->info.query.all_distinct == PT_ALL && query->info.query.limit == NULL
-      && query->info.query.order_by == NULL)
+      && query->info.query.order_by == NULL && query->info.query.with == NULL)
     {
       error = add_union_query (parser, ctemplate, query->info.query.q.union_.arg1);
 
@@ -9786,7 +9850,11 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       goto error_exit;
     }
 
+  /* CBRD-27583: the CREATE's translation gave the host variables their positions; its select's terms move into the
+   * INSERT's own compilation (LIMIT ? becomes an INST_NUM () bound), which every execution translates */
+  parser->flag.host_var_derive_later = 1;
   insert_into = mq_translate (parser, insert_into);
+  parser->flag.host_var_derive_later = 0;
   if (!insert_into || pt_has_error (parser))
     {
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, insert_into);
@@ -12111,6 +12179,40 @@ exit:
 }
 
 /*
+ * build_attr_flag_change_property() - Builds the change property of an attribute flag (INVISIBLE, STORAGE option)
+ *   return: none
+ *   prop(out): change property to build
+ *   was_set(in): the flag is set on the existing attribute
+ *   is_unspecified(in): the new attribute definition does not mention the flag's clause
+ *   is_requested(in): the new attribute definition sets the flag
+ *
+ */
+static void
+build_attr_flag_change_property (int *prop, bool was_set, bool is_unspecified, bool is_requested)
+{
+  *prop = 0;
+  if (was_set)
+    {
+      *prop |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (is_unspecified)
+    {
+      *prop |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (is_requested)
+    {
+      /* PRESENT_NEW without PRESENT_OLD becomes GAINED in the consolidate loop of build_attr_change_map */
+      *prop |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (*prop & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /* the flag was set and the new definition clears it: the attribute lost it */
+      *prop |= ATT_CHG_PROPERTY_LOST;
+      *prop &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+}
+
+/*
  * build_attr_change_map() - This builds a map of changes on the attribute
  *   return: Error code
  *   parser(in): Parser context
@@ -12298,85 +12400,23 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   /* constraint CHECK : not supported, just mark as checked */
   attr_chg_properties->p[P_CONSTR_CHECK] = 0;
 
-  /* INVISIBLE COLUMN */
-  attr_chg_properties->p[P_INVISIBLE] = 0;
-  if (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
-    {
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
-  if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET)
-    {
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
-    }
-  else if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
-    {
-      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-    }
-  else if (attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
-    {
-      /*
-       * attr_invisible == PT_ATTR_VISIBLE  -> NOW VISIBLE
-       * P_INVISIBLE & PRESENT_OLD          -> WAS INVISIBLE
-       *
-       * it changed from invisible to visible.
-       * This means the attribute has lost its invisible state
-       */
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
+  /* INVISIBLE COLUMN: lost when the new definition says VISIBLE */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_INVISIBLE],
+				   (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN) != 0,
+				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET,
+				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE);
 
-  /* STORAGE PREFER_INLINE */
-  attr_chg_properties->p[P_OOS_PREFER_INLINE] = 0;
-  if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
-    {
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
-  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET)
-    {
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_UNCHANGED;
-    }
-  else if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
-    {
-      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-    }
-  else if (attr_chg_properties->p[P_OOS_PREFER_INLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
-    {
-      /*
-       * attr_storage == PT_ATTR_STORAGE_DEFAULT/PREFER_OUTLINE -> NOW size-order OOS
-       * P_OOS_PREFER_INLINE & PRESENT_OLD                      -> WAS prefer-inline
-       *
-       * it changed from prefer-inline to default/prefer-outline; the attribute lost its prefer-inline state
-       */
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
+  /* STORAGE PREFER_INLINE: lost when the new definition sets another STORAGE option */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_PREFER_INLINE],
+				   (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE) != 0,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE);
 
-  /* STORAGE FORCE_OUTLINE */
-  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] = 0;
-  if (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
-    {
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
-  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET)
-    {
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_UNCHANGED;
-    }
-  else if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
-    {
-      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-    }
-  else if (attr_chg_properties->p[P_OOS_FORCE_OUTLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
-    {
-      /*
-       * attr_storage != PT_ATTR_STORAGE_FORCE_OUTLINE -> NOW not force-outline
-       * P_OOS_FORCE_OUTLINE & PRESENT_OLD             -> WAS force-outline
-       */
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
+  /* STORAGE FORCE_OUTLINE: lost when the new definition sets another STORAGE option */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_FORCE_OUTLINE],
+				   (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) != 0,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE);
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)

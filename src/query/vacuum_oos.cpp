@@ -23,6 +23,7 @@
 #include "vacuum_oos.hpp"
 
 #include "error_manager.h"
+#include "fault_injection.h"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "log_manager.h"
@@ -146,8 +147,10 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
  *   or fully rolls back. (Contrast vacuum_heap_oos_delete_within_sysop: that one runs inside the caller's
  *   existing sysop and must NOT open its own.)
  *
- *   The caller only calls this for RVHF_UPDATE_NOTIFY_VACUUM records; see commit fc0e35ced for why
- *   other log record types must be excluded.
+ *   The only caller is vacuum_forward_walk_reclaim_oos, which vacuum.c calls for RVHF_UPDATE_NOTIFY_VACUUM
+ *   and RVHF_DELETE_NEWHOME_NOTIFY_VACUUM only. Other heap log records stay out: for example
+ *   RVHF_MVCC_DELETE_MODIFY_HOME logs the same OOS OIDs that its slot still holds, so the REMOVE path
+ *   frees them and a second delete here would be a double free.
  */
 static int
 vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid, OOS_REF_VECTOR oos_refs)
@@ -369,59 +372,75 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 }
 
 /*
- * vacuum_oos_find_vfid_for_heap_record () - Look up the heap's OOS file the first time it is needed.
- *   Called when the current record has the "has OOS" flag set but the caller has not found the OOS
- *   file yet. At this point a missing OOS file should not happen; it would mean a wrongly-set flag, a
- *   dropped file, or an odd recovery ordering. Either way it must not stop vacuum, so we log it,
- *   clear the error, leave oos_vfid NULL, and skip OOS cleanup for this one record (a small leak).
- *   Debug builds assert first, so if a future bug starts setting the flag wrongly we catch it in
- *   debug runs instead of leaking silently in release.
+ * vacuum_oos_find_vfid_for_heap_record () - Look up the heap's OOS file the first time it is needed, waiting for
+ *   the heap header latch.
+ *   return            : Error code. A failed lookup (header latch timeout or read error) is returned, never skipped:
+ *                       the caller must not vacuum the record without its OOS cleanup.
  *
  * thread_p (in)     : Thread entry.
  * hfid (in)         : Heap file of the record being vacuumed.
  * record (in)       : The record's data.
- * slotid (in)       : The record's slot (for logging only).
- * record_type (in)  : The record's type (for logging only).
- * oos_vfid (in/out) : The caller's OOS file id. Left alone if already found, filled in on success,
- *                     or set to VFID_NULL when the lookup legitimately fails (then skip cleanup).
+ * oos_vfid (in/out) : The caller's OOS file id. Left alone if already found, filled in on success (VFID_NULL when the
+ *                     heap has no OOS file), set to VFID_NULL on error.
  */
 int
-vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
-				      PGSLOTID slotid, INT16 record_type, VFID *oos_vfid)
+vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record, VFID *oos_vfid)
 {
   if (!VFID_ISNULL (oos_vfid) || !heap_recdes_contains_oos (record))
     {
       return NO_ERROR;
     }
-  if (heap_oos_find_vfid (thread_p, hfid, oos_vfid, false))
+
+  bool found;
+  if (FI_INSERTED (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT))
+    {
+      /* A latch timeout stops debug builds in pgbuf_timed_sleep, so a busy header fails here at once instead. */
+      found = heap_oos_find_vfid_nowait (thread_p, hfid, oos_vfid);
+      if (!found)
+	{
+	  VPID header_vpid = { hfid->hpgid, hfid->vfid.volid };
+	  (void) FI_TEST_ARG (thread_p, FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, &header_vpid, 0);
+	}
+    }
+  else
+    {
+      found = heap_oos_find_vfid (thread_p, hfid, oos_vfid, false);
+    }
+  if (found)
     {
       return NO_ERROR;
     }
-  /* A record that says "I have OOS" but whose heap has no OOS file is a real problem, not a
-   * not-yet-created file: the OOS file is always created (docreate=true) when the OOS data is
-   * written, which happens before the flag is committed. So this means a wrongly-set flag, a
-   * dropped OOS file, or an odd recovery ordering. We still must not fail vacuum here. Returning
-   * ER_FAILED would restart a release-build spin in the vacuum_heap_page loop (it clears the error
-   * and retries the same page without moving forward). Instead, log it, clear the error, and skip
-   * OOS cleanup for this record (a small, logged leak). See commit 1bf7dda05. */
-  {
-    int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
-    int record_flags = OR_GET_RECORD_FLAGS (record->data);
-    int offset_size = OR_GET_OFFSET_SIZE (record->data);
-    vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-			 "OOS flag set but no OOS VFID for hfid %d|%d slotid=%d rectype=%d rec_len=%d "
-			 "repid_and_flags=0x%08x record_flags=0x%02x offset_size=%d - skipping OOS cleanup "
-			 "(bounded leak)",
-			 VFID_AS_ARGS (&hfid->vfid), (int) slotid, (int) record_type,
-			 record->length, repid_and_flags, record_flags, offset_size);
-  }
-  /* In debug builds, abort so the bug that set the bad flag is caught the first time vacuum sees it.
-   * In release builds, assert_release only records a notification error, which the er_clear() below
-   * wipes out before we skip - so vacuum keeps running. */
-  assert_release (false);
-  er_clear ();
+
+  int error_code;
+  ASSERT_ERROR_AND_SET (error_code);
   VFID_SET_NULL (oos_vfid);
-  return NO_ERROR;
+  return error_code;
+}
+
+/*
+ * vacuum_oos_report_missing_oos_file () - Report a record with the OOS flag whose heap has no OOS file.
+ *   The OOS file is created before an OOS value is written, so this is a wrongly set flag, a dropped OOS file or an
+ *   odd recovery order. Debug builds stop here. Release builds log it, and the caller skips the OOS cleanup of this
+ *   record (a bounded leak).
+ *
+ * hfid (in)        : Heap file of the record being vacuumed.
+ * record (in)      : The record's data.
+ * slotid (in)      : The record's slot (for logging only).
+ * record_type (in) : The record's type (for logging only).
+ */
+void
+vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSLOTID slotid, INT16 record_type)
+{
+  int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
+  int record_flags = OR_GET_RECORD_FLAGS (record->data);
+  int offset_size = OR_GET_OFFSET_SIZE (record->data);
+  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+		       "OOS flag set but no OOS VFID for hfid %d|%d slotid=%d rectype=%d rec_len=%d "
+		       "repid_and_flags=0x%08x record_flags=0x%02x offset_size=%d - skipping OOS cleanup "
+		       "(bounded leak)",
+		       VFID_AS_ARGS (&hfid->vfid), (int) slotid, (int) record_type,
+		       record->length, repid_and_flags, record_flags, offset_size);
+  assert (false);
 }
 
 /*
@@ -460,9 +479,8 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
       return error_code;
     }
 
-  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. When a record references
-   * several OOS values on the same page, one day we should sort/group them by page and delete all of
-   * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
+  /* TODO(perf): oos_delete re-fixes the page per OID, as noted in vacuum_forward_walk_oos_delete_atomic. These
+   * references are not even sorted by page yet. */
   for (const oos_chain_ref &oos_ref : oos_refs)
     {
       const OID &oos_oid = oos_ref.head_oid;

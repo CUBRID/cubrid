@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <float.h>
 #include "query_rewrite.h"
 
 static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where);
@@ -489,6 +490,126 @@ qo_is_reduceable_const (PT_NODE * expr)
 }
 
 /*
+ * qo_is_exact_compare_const () - does 'expr = val' fix expr to a single value?
+ *   return: false if the comparison may be done in an approximate numeric type
+ *   parser(in):
+ *   expr(in): expression compared with the constant
+ *   val(in): constant side of the comparison
+ *
+ * Note: BIGINT/NUMERIC compared with a non exact numeric value is done in DOUBLE, so distinct values can match.
+ *   A host variable is judged by the type its position is compiled for (a plan is not reused for another bind
+ *   type); an untyped one is not exact.
+ *   NUMERIC of precision DBL_DIG or less is exact anyway: DOUBLE keeps its distinct values distinct.
+ */
+bool
+qo_is_exact_compare_const (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * val)
+{
+  if (expr->type_enum != PT_TYPE_BIGINT && expr->type_enum != PT_TYPE_NUMERIC)
+    {
+      return true;
+    }
+
+  if (expr->type_enum == PT_TYPE_NUMERIC && expr->data_type != NULL
+      && expr->data_type->info.data_type.precision <= DBL_DIG)
+    {
+      return true;
+    }
+
+  if (val->node_type == PT_HOST_VAR && val->info.host_var.var_type == PT_HOST_IN && val->info.host_var.index >= 0)
+    {
+      TP_DOMAIN *domain = pt_host_var_position_domain (parser, val->info.host_var.index);
+      if (domain != NULL)
+	{
+	  switch (TP_DOMAIN_TYPE (domain))
+	    {
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_BIGINT:
+	    case DB_TYPE_NUMERIC:
+	      return true;
+	    default:
+	      return false;
+	    }
+	}
+    }
+
+  switch (val->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * qo_bind_copy_user_position () - CBRD-27583: the user position a bind's copies read: a user host variable's own,
+ *   or that of a bind copy a translation already positioned (a later translation, or a copy copied again); -1 for an
+ *   auto-parameterized literal or another derived position, whose copies share its value as a literal's do
+ */
+static int
+qo_bind_copy_user_position (PARSER_CONTEXT * parser, PT_NODE * hv)
+{
+  const int index = hv->info.host_var.index;
+  if (hv->info.host_var.var_type != PT_HOST_IN || index < 0)
+    {
+      return -1;
+    }
+  if (index < parser->host_var_count)
+    {
+      return index;
+    }
+  return pt_is_padded_host_var (parser, index) ? parser->host_var_derived_from[index] : -1;
+}
+
+/*
+ * qo_bind_copy_domain () - CBRD-27583: the domain the copies of a bind equal to CHAR column column read, the
+ *   column's (length, codeset, collation), as the reduction of a literal casts it, so a copy compares as c4 = vc does
+ *   (c4 = vc and c4 = ? with 12 rejects vc = '12'). NULL when they cannot read it:
+ *   a value with no text (pt_cast_bind_copy_value refuses it: the terms stay unreduced), or a later translation that
+ *   finds no such position of the first one
+ */
+static TP_DOMAIN *
+qo_bind_copy_domain (PARSER_CONTEXT * parser, PT_NODE * column, PT_NODE * hv)
+{
+  const int user = qo_bind_copy_user_position (parser, hv);
+  if (user < 0)
+    {
+      return NULL;
+    }
+  /* as the reduction of a literal takes arg1's domain below */
+  TP_DOMAIN *domain = pt_node_to_db_domain (parser, column, NULL);
+  domain = domain != NULL ? tp_domain_cache (domain) : NULL;
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_CHAR)
+    {
+      return NULL;
+    }
+  /* without a value (a PREPARE without values, a NULL) the copies share the bind: a later value with no text
+   * fails at its bind (pt_set_derived_host_variable) */
+  const DB_VALUE *value = parser->host_variables != NULL ? &parser->host_variables[user] : NULL;
+  if (value != NULL && !DB_IS_NULL (value))
+    {
+      DB_VALUE cast;
+      db_make_null (&cast);
+      const bool casts = pt_cast_bind_copy_value (value, &cast, domain);
+      pr_clear_value (&cast);
+      if (!casts)
+	{
+	  return NULL;
+	}
+    }
+  if (parser->host_var_derived_from != NULL && !parser->flag.host_var_derive_later
+      && !pt_padded_host_var_position_exists (parser, user, domain))
+    {
+      return NULL;
+    }
+  return domain;
+}
+
+/*
  * qo_reduce_equality_terms () -
  *   return:
  *   parser(in):
@@ -519,6 +640,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
   PT_NODE *expr_prev = NULL;
   PT_NODE *opd1, *opd2;
   DB_VALUE *dbv1, *dbv2;
+  TP_DOMAIN *pad_domain;
+  int pad_user;
 
   /* init */
   orgp = wherep;
@@ -538,6 +661,8 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
 
       col = NULL;		/* init - reserve for constant column of derived-table */
+      pad_domain = NULL;	/* CBRD-27583: the CHAR(n) a bind's copies read, for an equality with a CHAR column */
+      pad_user = -1;
 
       /* check for 1st phase; keep out OR conjunct; 1st init */
       found_equality_term = (expr->or_next == NULL) ? true : false;
@@ -599,10 +724,30 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	  if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
 	    {
+	      if (arg2->node_type == PT_HOST_VAR && arg1->type_enum == PT_TYPE_CHAR
+		  && qo_bind_copy_user_position (parser, arg2) >= 0)
+		{
+		  /* CBRD-27583: the client sends a VARCHAR bind of a CHAR column unpadded, so a plain copy
+		   * would not compare as c4 = ? does (c4 = vc and c4 = ? must not become vc = ?), and a cast of the
+		   * copy would preset the position's domain for every use (PT_CAST type checking). The copies read
+		   * the column's CHAR(n), padded, from a derived position of their own; without a string value to
+		   * pad, or in a later translation the first one gave no such position, the terms stay as they are.
+		   * An auto-parameterized literal has its value: its copies share it */
+		  pad_domain = qo_bind_copy_domain (parser, arg1, arg2);
+		  if (pad_domain == NULL)
+		    {
+		      continue;
+		    }
+		  pad_user = qo_bind_copy_user_position (parser, arg2);
+		}
 	      if (qo_is_reduceable_const (arg2))
 		{
-		  found_equality_term = true;
-		  break;	/* immediately break */
+		  if (qo_is_exact_compare_const (parser, arg1, arg2))
+		    {
+		      found_equality_term = true;
+		      break;	/* immediately break */
+		    }
+		  continue;
 		}
 	      else if (pt_is_attr (arg2))
 		{
@@ -944,6 +1089,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		  *wherep = save_where_next;
 		  continue;	/* give up */
+		}
+	      if (pad_domain != NULL && temp->node_type == PT_HOST_VAR)
+		{
+		  /* every copy reads the user value as arg1's CHAR(n), padded (pt_assign_host_var_position) */
+		  temp->info.host_var.index = pad_user;
+		  temp->info.host_var.pads_to = pad_domain;
 		}
 	    }
 
@@ -2302,7 +2453,9 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * 
     }
   bound->info.expr.location = like->info.expr.location;
 
-  bound->type_enum = pattern->type_enum;
+  /* CBRD-27583: the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), in the pattern's
+   * codeset and collation, not a CHAR pattern's CHAR: a key element of a CHAR column keeps its own domain */
+  bound->type_enum = pattern->type_enum == PT_TYPE_CHAR ? PT_TYPE_VARCHAR : pattern->type_enum;
 
   expr_pattern = parser_copy_tree (parser, pattern);
   if (expr_pattern == NULL)
@@ -2354,6 +2507,10 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * 
   /* copy data type */
   assert (bound->data_type == NULL);
   bound->data_type = parser_copy_tree (parser, pattern->data_type);
+  if (bound->data_type != NULL)
+    {
+      bound->data_type->type_enum = bound->type_enum;
+    }
 
   return bound;
 
@@ -3152,6 +3309,21 @@ qo_compare_dbvalue_with_optype (DB_VALUE * val1, PT_OP_TYPE op1, DB_VALUE * val2
 }
 
 /*
+ * qo_range_has_null_bound () - check if a bound of a range spec is a NULL value
+ *   return: true if the lower or the upper bound is a NULL value
+ *   lv(in): lower bound value, NULL for -INF
+ *   uv(in): upper bound value, NULL for +INF
+ *
+ * Note: a range with a NULL bound is UNKNOWN for every row. Its NULL must not be compared as the smallest value,
+ *       or the range absorbs or bounds the other range specs.
+ */
+static bool
+qo_range_has_null_bound (DB_VALUE * lv, DB_VALUE * uv)
+{
+  return (lv != NULL && DB_IS_NULL (lv)) || (uv != NULL && DB_IS_NULL (uv));
+}
+
+/*
  * qo_range_optype_rank () -
  *   return:
  *   op(in):
@@ -3343,6 +3515,13 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 	      s_uv = pt_value_to_db (parser, sibling->info.expr.arg2);
 	    }
 
+	  if (qo_range_has_null_bound (r_lv, r_uv) || qo_range_has_null_bound (s_lv, s_uv))
+	    {
+	      /* a range with a NULL bound is UNKNOWN; keep it as it is */
+	      current = current->or_next;
+	      continue;
+	    }
+
 	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_EMPTY_RANGE);
 	  /* check if the two range specs are mergable */
 	  cmp1 = qo_compare_dbvalue_with_optype (r_lv, r_lop, s_lv, s_lop);
@@ -3423,6 +3602,10 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 		    }
 		  sibling->info.expr.arg2 = NULL;
 		  r_uop = PT_LE;
+		  /* an EQ range keeps its one value in arg1, and r_uv aliased r_lv there (never a copy): arg1
+		   * was freed above, so take the upper bound from the arg2 just set, or the validity check
+		   * below reads freed memory and may drop the merged range as always false */
+		  r_uv = pt_value_to_db (parser, range->info.expr.arg2);
 		  need_to_determine_upper_bound = false;
 		}
 
@@ -3818,9 +4001,9 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser, PT_NODE * node1, PT
 	  r_uv = pt_value_to_db (parser, range->info.expr.arg2);
 	}
 
-      if (DB_IS_NULL (r_lv) && DB_IS_NULL (r_uv))
+      if ((DB_IS_NULL (r_lv) && DB_IS_NULL (r_uv)) || qo_range_has_null_bound (r_lv, r_uv))
 	{
-	  /* if both are null, this expr is false. */
+	  /* if a bound is null, this expr is false. */
 	  prev = prev ? prev->or_next : range;
 	  dont_remove_sibling = true;
 	  continue;
@@ -3886,9 +4069,9 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser, PT_NODE * node1, PT
 	      s_uv = pt_value_to_db (parser, sibling->info.expr.arg2);
 	    }
 
-	  if (DB_IS_NULL (s_lv) && DB_IS_NULL (s_uv))
+	  if ((DB_IS_NULL (s_lv) && DB_IS_NULL (s_uv)) || qo_range_has_null_bound (s_lv, s_uv))
 	    {
-	      /* if both are null, this expr is false. */
+	      /* if a bound is null, this expr is false. */
 	      PT_EXPR_INFO_SET_FLAG (sibling, PT_EXPR_INFO_EMPTY_RANGE);
 	      dont_remove_sibling = true;
 	      continue;

@@ -454,6 +454,19 @@ extern SCAN_CODE heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * cl
 extern SCAN_CODE heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid,
 				  OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 
+/* one record of a page, peeked: valid while the page stays fixed */
+typedef struct heap_page_row HEAP_PAGE_ROW;
+struct heap_page_row
+{
+  OID oid;
+  RECDES recdes;
+  int hdr_size;			/* the record header's bytes, OR_HEADER_SIZE (recdes.data), from the header the collector read */
+};
+extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
+					    HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap,
+					    int *n_rows, const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid);
+
+
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 
@@ -521,6 +534,9 @@ extern int heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, H
 extern DB_VALUE *heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
 			      HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
+					HEAP_CACHE_ATTRINFO * attr_info, const TP_DOMAIN * domain, DB_TYPE value_type,
+					TP_VALUE_CONVERTER conv);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
@@ -549,6 +565,9 @@ extern DB_VALUE *heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, in
 
 extern HEAP_ATTRVALUE *heap_attrvalue_locate (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out);
+extern int heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out,
+					  int *disk_size);
 /* *INDENT-OFF* */
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
@@ -764,6 +783,7 @@ extern int heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV
 extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data);
 
 extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
+extern bool heap_oos_find_vfid_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid);
 extern bool heap_recdes_contains_oos (const RECDES * record);
 extern bool heap_recdes_has_valid_header (const RECDES * record);
 

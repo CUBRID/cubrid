@@ -199,6 +199,47 @@ set_tests_properties(test_oos_storage_format_guard
   PROPERTIES FIXTURES_REQUIRED OOS_FORMAT_GUARD_DB TIMEOUT 120
 )
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+add_test(NAME oos_setup_concurrent_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosconcurdb
+)
+set_tests_properties(oos_setup_concurrent_db
+  PROPERTIES FIXTURES_SETUP OOS_CONCURRENT_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
+
+add_test(NAME oos_cleanup_concurrent_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosconcurdb
+)
+set_tests_properties(oos_cleanup_concurrent_db
+  PROPERTIES FIXTURES_CLEANUP OOS_CONCURRENT_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
+add_test(NAME test_oos_concurrent_insert
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_concurrent_insert.py"
+    oosconcurdb "${CMAKE_CURRENT_BINARY_DIR}/concurrent-insert" --sessions 8 --rows 1500 --rounds 3
+)
+set_tests_properties(test_oos_concurrent_insert
+  PROPERTIES FIXTURES_REQUIRED OOS_CONCURRENT_DB TIMEOUT 600
+)
+
+add_test(NAME test_oos_concurrent_insert_driver
+  COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_concurrent_insert_driver.py"
+)
+set_tests_properties(test_oos_concurrent_insert_driver PROPERTIES TIMEOUT 30)
+
 # =============================================================================
 # Register SA_MODE tests
 # =============================================================================
@@ -257,11 +298,32 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 
-# Ten real-vacuum cases each allow up to 60 seconds for asynchronous reclamation.
-# Cover those deadlines plus setup, teardown, and Debug diagnostic overhead.
+# Ten real-vacuum cases each allow up to 60 seconds for asynchronous reclamation, and the heap header
+# latch case allows 60 seconds twice. Cover those deadlines plus setup, teardown, and Debug diagnostic overhead.
 set_tests_properties(
   test_oos_real_vacuum_server
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 720
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 840
+)
+
+# The server reads CUBRID_<PARAMETER> at every parameter load, so these runs have a short page latch timeout and a
+# vacuum wait for the heap header can fail. Debug builds stop at that timeout, so fault injection 700000
+# (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT) makes the wait fail at once instead. The list is set before the vacuum
+# workers exist and never changes. UnrelatedHeapVacuumedWhileHeaderLookupKeepsFailing needs one vacuum worker
+# (CUBRID_VACUUM_WORKER_COUNT=1). With ten, a second worker vacuums the unrelated heap's block while the first one
+# retries the held header, so the case passes even if vacuum retries in place.
+set(OOS_HEADER_HELD_ENV
+  "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000;CUBRID_FAULT_INJECTION_IDS=700000;CUBRID_VACUUM_WORKER_COUNT=1")
+add_test(NAME test_oos_real_vacuum_latch_timeout
+  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.*:-OosRealVacuumHeaderHeld.Shutdown*
+)
+# Stopping the vacuum workers ends vacuum for the rest of the process, so this case runs alone.
+add_test(NAME test_oos_real_vacuum_latch_timeout_shutdown
+  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.Shutdown*
+)
+set_tests_properties(
+  test_oos_real_vacuum_latch_timeout test_oos_real_vacuum_latch_timeout_shutdown
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 600
+    ENVIRONMENT "${OOS_HEADER_HELD_ENV}"
 )
 
 # Note: add_test vs. gtest_discover_tests

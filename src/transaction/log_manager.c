@@ -53,6 +53,7 @@
 #include "replication.h"
 #include "xserver_interface.h"
 #include "page_buffer.h"
+#include "disk_manager.h"
 #include "porting_inline.hpp"
 #include "query_manager.h"
 #include "message_catalog.h"
@@ -8718,6 +8719,12 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 
       error_code = (*RV_fun[rcvindex].redofun) (thread_p, &rcv);
       assert (error_code == NO_ERROR);
+
+      if (rcvindex == RVDK_UNRESERVE_SECTORS && log_Gl.rcv_phase == LOG_RECOVERY_REDO_PHASE)
+	{
+	  /* recovery finishes the postpone of a destroy (see pgbuf_rv_discard_unreserved_pages) */
+	  disk_rv_note_unreserved_sectors (&rcv_vpid, rcv.offset, rcv.data, log_lsa);
+	}
     }
 
   if (rcv.pgptr != NULL)
@@ -12810,10 +12817,7 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
       if (current_log_record->trid != trid || current_log_record->type == LOG_DUMMY_OVF_RECORD
 	  || current_log_record->type == LOG_DUMMY_OOS_RECORD)
 	{
-	  if (current_log_record->type == LOG_DUMMY_OOS_RECORD)
-	    {
-	      /* TODO: add CDC support for rebuilding multi-chunk OOS records after this marker. */
-	    }
+	  /* TODO: add CDC support for rebuilding multi-chunk OOS records after a LOG_DUMMY_OOS_RECORD marker. */
 
 	  if (!is_redo && current_log_record->type == LOG_DUMMY_OVF_RECORD)
 	    {
@@ -16557,6 +16561,14 @@ cdc_free_extraction_filter ()
     {
       free_and_init (cdc_Gl.producer.extraction_classoids);
     }
+
+  /* The counts pair with the arrays just freed. cdc_is_filtered_user() and
+   * cdc_is_filtered_class() decide by count, not by a NULL array, so leaving a
+   * stale non-zero count here makes the producer dereference the freed (NULL)
+   * array when it next wakes. Reset both so the pair stays consistent. */
+  cdc_Gl.producer.num_extraction_user = 0;
+  cdc_Gl.producer.num_extraction_class = 0;
+
   return NO_ERROR;
 }
 

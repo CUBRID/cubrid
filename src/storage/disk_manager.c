@@ -3018,7 +3018,8 @@ disk_volume_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** o
       goto exit;
     }
 
-  db_make_int (out_values[idx], vhdr->iopagesize);
+  /* CBRD-27583: in the column's declared type (show_meta.c, short), which the output keeps as it comes */
+  db_make_short (out_values[idx], vhdr->iopagesize);
   idx++;
 
   db_make_string (out_values[idx], disk_purpose_to_string (vhdr->purpose));
@@ -3989,6 +3990,42 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * disk_rv_note_unreserved_sectors () - tell the page buffer which sectors a sector unreserve record frees, while crash
+ *                                      recovery replays it (see pgbuf_rv_discard_unreserved_pages).
+ *
+ * return             : void
+ * stab_vpid (in)     : sector table page of the record
+ * unit_offset (in)   : offset of the unit in the sector table page (the record offset)
+ * data (in)          : record data (the unreserved bits of the unit)
+ * unreserve_lsa (in) : LSA of the record
+ */
+void
+disk_rv_note_unreserved_sectors (const VPID * stab_vpid, int unit_offset, const char *data,
+				 const LOG_LSA * unreserve_lsa)
+{
+  DISK_STAB_UNIT unit_bits;
+  VSID vsid;
+  int bit;
+
+  assert (stab_vpid != NULL && data != NULL && unreserve_lsa != NULL);
+  assert (unit_offset >= 0 && unit_offset < DISK_STAB_PAGE_UNITS_COUNT);
+  /* the sector table starts right after the volume header (see disk_stab_cursor_set_at_sectid) */
+  assert (stab_vpid->pageid > DISK_VOLHEADER_PAGE);
+
+  memcpy (&unit_bits, data, sizeof (unit_bits));
+  vsid.volid = stab_vpid->volid;
+  for (bit = 0; bit < DISK_STAB_UNIT_BIT_COUNT; bit++)
+    {
+      if (bit64_is_set (unit_bits, bit))
+	{
+	  vsid.sectid = ((stab_vpid->pageid - (DISK_VOLHEADER_PAGE + 1)) * DISK_STAB_PAGE_BIT_COUNT
+			 + unit_offset * DISK_STAB_UNIT_BIT_COUNT + bit);
+	  pgbuf_rv_add_unreserved_sector (&vsid, unreserve_lsa);
+	}
+    }
+}
+
+/*
  * disk_rv_unreserve_sectors () - Apply recovery for unreserving sectors.
  *
  * return	   : Error code.
@@ -4441,6 +4478,7 @@ error:
    * disk_reserve_sectors_in_volume (), which returns ER_FAILED when the cache promised sectors the sector table
    * does not have. That is the case disk_check () below can actually repair. */
   if (error_code == ER_INTERRUPTED	/* interrupted error */
+      || error_code == ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED	/* temp_file_max_size_in_pages reached */
       || PGBUF_IS_LATCH_REFUSED_ERROR (error_code)	/* a page fix was refused, or its wait timed out */
       || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
       || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
@@ -4526,7 +4564,6 @@ disk_reserve_from_cache (THREAD_ENTRY * thread_p, DISK_RESERVE_CONTEXT * context
       if (extend_info->nsect_total - extend_info->nsect_free + context->n_cache_reserve_remaining > disk_Temp_max_sects)
 	{
 	  /* too much temporary space */
-	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MAXTEMP_SPACE_HAS_BEEN_EXCEEDED, 1,
 		  disk_Temp_max_sects * DISK_SECTOR_NPAGES);
 	  disk_cache_unlock_reserve_for_purpose (context->purpose);

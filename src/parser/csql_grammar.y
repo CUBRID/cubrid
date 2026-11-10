@@ -49,6 +49,7 @@ typedef struct YYLTYPE
   int last_line;
   int last_column;
   int buffer_pos; /* position in the buffer being parsed */
+  int start_line; /* line of the first token in the symbol, 0 if the symbol is empty */
 
 } YYLTYPE;
 #define YYLTYPE_IS_DECLARED 1
@@ -110,6 +111,7 @@ extern int g_msg[1024];
 extern int msg_ptr;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int expecting_trigger_plcsql_block;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
@@ -470,6 +472,8 @@ int g_query_string_len;
 int g_original_buffer_len;
 
 static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end);
+static char *pt_read_input_file(int start, int end);
+static PT_NODE *pt_make_trigger_plcsql_block(PT_NODE* node, int end);
 static int g_plcsql_text_pos;
 
 /*
@@ -477,6 +481,9 @@ static int g_plcsql_text_pos;
  * take into account the context information. The left-side symbol in a rule
  * will have the same context information as the last symbol from its
  * right side
+ *
+ * An empty rule takes first_line from the symbol before it, so start_line
+ * is kept separately: the start_line of the first non-empty symbol.
  */
 #define YYLLOC_DEFAULT(Current, Rhs, N)				        \
     do									\
@@ -487,6 +494,18 @@ static int g_plcsql_text_pos;
 	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
 	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
+          (Current).start_line   = YYRHSLOC (Rhs, 1).start_line;	\
+          if ((Current).start_line == 0)				\
+          {								\
+            for (int yyi_ = 2; yyi_ <= (int) (N); yyi_++)		\
+            	{							\
+                  if (YYRHSLOC (Rhs, yyi_).start_line > 0)		\
+                    {							\
+                      (Current).start_line = YYRHSLOC (Rhs, yyi_).start_line; \
+                      break;						\
+                    }							\
+                }							\
+          }								\
 	}								\
       else								\
 	{								\
@@ -495,6 +514,7 @@ static int g_plcsql_text_pos;
 	  (Current).first_column = (Current).last_column =		\
 	    YYRHSLOC (Rhs, 0).last_column;				\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, 0).buffer_pos;	\
+	  (Current).start_line   = 0;					\
 	}								\
     while (0)
 
@@ -817,6 +837,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> event_target
 %type <node> trigger_condition
 %type <node> trigger_action
+%type <node> create_trigger_action
 %type <node> trigger_action_in
 %type <node> trigger_spec_list
 %type <node> trace_spec
@@ -1944,6 +1965,12 @@ stmt
 			parser_restore_si_tran_id ();
 			parser_restore_cannot_prepare ();
 
+			if (node)
+			  {
+			    /* line_number may be past the start, e.g. the SELECT after WITH or the UNION node */
+			    node->stmt_start_line = @3.start_line;
+			  }
+
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2397,6 +2424,7 @@ session_variable_assignment
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2413,6 +2441,7 @@ session_variable_definition
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2425,6 +2454,7 @@ session_variable_expression
 			expr = parser_make_expression (this_parser, PT_EVALUATE_VARIABLE, $1, NULL,
 										   NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2894,11 +2924,14 @@ create_stmt
 	  event_spec 					/* 9 */
 	  opt_if_trigger_condition			/* 10 */
 	  EXECUTE					/* 11 */
-	  opt_trigger_action_time 			/* 12 */
-	  trigger_action				/* 13 */
-	  opt_comment_spec				/* 14 */
+		{ expecting_trigger_plcsql_block = 1; }	/* 12 */
+	  opt_trigger_action_time 			/* 13 */
+	  create_trigger_action				/* 14 */
+	  opt_comment_spec				/* 15 */
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_TRIGGER);
+
+			expecting_trigger_plcsql_block = 0;
 
 			if (node)
 			  {
@@ -2909,9 +2942,9 @@ create_stmt
 			    node->info.create_trigger.trigger_event = $9;
 			    node->info.create_trigger.trigger_reference = NULL;
 			    node->info.create_trigger.trigger_condition = $10;
-			    node->info.create_trigger.action_time = $12;
-			    node->info.create_trigger.trigger_action = $13;
-			    node->info.create_trigger.comment = $14;
+			    node->info.create_trigger.action_time = $13;
+			    node->info.create_trigger.trigger_action = $14;
+			    node->info.create_trigger.comment = $15;
 			  }
 
 			$$ = node;
@@ -11499,6 +11532,27 @@ trigger_action
 	     }}
 	;
 
+create_trigger_action
+	: trigger_action
+	    {{
+		$$ = $1;
+		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+	     }}
+	| plcsql_text
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_ACTION);
+
+			if (node)
+			  {
+			    node->info.trigger_action.action_type = PT_PLCSQL_BLOCK;
+			    node->info.trigger_action.plcsql_block = pt_make_trigger_plcsql_block (node, @1.buffer_pos);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
 trigger_spec_list
 	: trigger_name_list
 		{{
@@ -13484,6 +13538,8 @@ select_list
 			if (node)
 			  node->type_enum = PT_TYPE_STAR;
 
+			/* the end of "*" (see pt_record_static_sql_star ()) */
+			PARSER_SAVE_ERR_CONTEXT (node, @1.buffer_pos)
 			$$ = parser_make_link (node, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -15827,6 +15883,7 @@ reserved_func
 	| ELT '(' opt_expression_list ')'
 		{{
                     $$ = parser_make_func_with_arg_count (this_parser, F_ELT, $3, 1, 0);
+                    this_parser->flag.has_str_to_date_or_elt = 1;
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| POSITION '(' expression_ IN_ expression_ ')'
@@ -16477,6 +16534,7 @@ reserved_func
 		{ pop_msg(); }
 		{{
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, $6, parser_make_date_lang (2, NULL));
+			this_parser->flag.has_str_to_date_or_elt = 1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| STR_TO_DATE
@@ -16492,6 +16550,7 @@ reserved_func
 			  }
 
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, node, parser_make_date_lang (2, NULL));
+			this_parser->flag.has_str_to_date_or_elt = 1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| CHARSET
@@ -24015,6 +24074,7 @@ parser_main (PARSER_CONTEXT * parser)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_trigger_plcsql_block = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -24132,6 +24192,7 @@ parse_one_statement (int state)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_trigger_plcsql_block = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -24194,6 +24255,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
   INIT_PT_HINT("DBLINK_NO_PUSH_DOWN_SUBQ", PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ),
+  INIT_PT_HINT("ROW_SNAPSHOT", PT_HINT_ROW_SNAPSHOT),
+  INIT_PT_HINT("NO_ROW_SNAPSHOT", PT_HINT_NO_ROW_SNAPSHOT),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
@@ -24232,6 +24295,10 @@ parser_keyword_func (const char *name, PT_NODE * args)
     return NULL;
 
   parser_function_code = key->op;
+  if (key->op == PT_STR_TO_DATE)
+    {
+      this_parser->flag.has_str_to_date_or_elt = 1;
+    }
 
   a1 = a2 = a3 = NULL;
   switch (key->op)
@@ -26306,23 +26373,9 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start,
     // The arguments start, spec_start, spec_end, and end are got from the tokens' buffer_pos
     // but they are also actual positions in the file in these two cases.
 
-    int r, read_sz = end - start;   // texts from pos start to pos (end - 1)
-    char* buff = (char*) parser_alloc(this_parser, read_sz + 1);
-
-    int file_pos = ftell(this_parser->file);
-
-    r = fseek(this_parser->file, start, SEEK_SET);
-    if (r != 0) {
-        return -1;
-    }
-
-    r = (int) fread(buff, 1, read_sz, this_parser->file);
-    if (r != read_sz) {
-        return -1;
-    }
-
-    r = fseek(this_parser->file, file_pos, SEEK_SET);   // restore it to the original position
-    if (r != 0){
+    int read_sz = end - start;   // texts from pos start to pos (end - 1)
+    char* buff = pt_read_input_file(start, end);
+    if (buff == NULL) {
         return -1;
     }
 
@@ -26330,7 +26383,6 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start,
         return -1;
     }
 
-    buff[read_sz] = '\0';
     char* impl = buff + (spec_start - start);
 
     node->sql_user_text = buff;
@@ -26339,4 +26391,68 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start,
     body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, (spec_end - spec_start));
 
     return 0;
+}
+
+// Read the text from pos start to pos (end - 1) of this_parser->file, which has no original buffer.
+// Returns NULL on failure.
+static char *
+pt_read_input_file(int start, int end)
+{
+    int r, read_sz = end - start;
+    char* buff = (char*) parser_alloc(this_parser, read_sz + 1);
+
+    int file_pos = ftell(this_parser->file);
+
+    r = fseek(this_parser->file, start, SEEK_SET);
+    if (r != 0) {
+        return NULL;
+    }
+
+    r = (int) fread(buff, 1, read_sz, this_parser->file);
+
+    // restore it to the original position, also when the read fails
+    if (fseek(this_parser->file, file_pos, SEEK_SET) != 0 || r != read_sz) {
+        return NULL;
+    }
+
+    buff[read_sz] = '\0';
+
+    return buff;
+}
+
+// Make the string node holding a PL/CSQL block of a trigger action.
+// The block starts at g_plcsql_text_pos and ends right before end, a buffer position of the parser.
+// The positions, not the lengths of the tokens, give the range, so the text is exactly what the user wrote.
+static PT_NODE *
+pt_make_trigger_plcsql_block(PT_NODE* node, int end)
+{
+    const char* text;
+    int len;
+
+    assert(g_plcsql_text_pos >= 0);
+
+    end -= g_query_string_pos;
+    len = end - g_plcsql_text_pos;
+
+    if (g_query_string) {
+        text = g_query_string + g_plcsql_text_pos;
+    } else {
+        // csql -i <file> --no-single-line, or cubrid loaddb, has no original buffer.
+        // The positions are those in the input file then.
+        assert(this_parser->original_buffer == NULL);
+        assert(this_parser->file);
+
+        text = pt_read_input_file(g_plcsql_text_pos, end);
+        if (text == NULL) {
+            PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+            return NULL;
+        }
+    }
+
+    // END of the block takes the blanks after it
+    while (len > 0 && char_isspace(text[len - 1])) {
+        len--;
+    }
+
+    return pt_create_string_literal_node_w_charset_coll(text, len);
 }
