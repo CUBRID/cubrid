@@ -488,6 +488,11 @@ struct css_conn_entry
   void set_tran_index (int tran_index);
   int get_tran_index (void);
 
+  // the index the server assigned, as opposed to one a packet claims
+  void assign_tran_index (int tran_index);
+  bool claim_tran_index (int tran_index);
+  void release_tran_index (void);
+
   // request count manipulation
   void add_pending_request ();
   void start_request ();
@@ -498,10 +503,14 @@ private:
   // note - I want to protect this.
   int transaction_id;
   // *INDENT-OFF*
+  std::atomic<int> owned_tran_index;	/* assigned by the server, or NULL_TRAN_INDEX */
+  std::atomic<bool> reported_foreign_tran_index;	/* a mismatching claim is logged once */
   std::atomic<size_t> pending_request_count;
   // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;
+  int owned_tran_index;
+  bool reported_foreign_tran_index;
 #endif				// not c++ = c
 };
 
