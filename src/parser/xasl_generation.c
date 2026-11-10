@@ -23870,8 +23870,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * carries a qstr -- the whole statement is pushed down to that server -- and goes through
        * pt_to_xasl_for_dblink. */
       PT_NODE *remote_spec = statement->info.insert.spec->info.spec.remote_server_name;
-      if (pt_get_subquery_of_insert_select (statement) != NULL
-	  && remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
+      if (pt_get_subquery_of_insert_select (statement) != NULL && PT_DBLINK_DML_IS_SINK (remote_spec))
 	{
 	  return pt_to_insert_xasl_remote_select (parser, statement);
 	}
@@ -25772,8 +25771,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       {
 	PT_NODE *remote_spec = from->info.spec.remote_server_name;
 
-	if (statement->info.delete_.search_cond != NULL && remote_spec != NULL
-	    && remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
+	if (statement->info.delete_.search_cond != NULL && PT_DBLINK_DML_IS_SINK (remote_spec))
 	  {
 	    return pt_to_delete_xasl_remote_subquery (parser, statement);
 	  }
@@ -26500,8 +26498,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       /* remote UPDATE + local subquery: qstr == NULL means the gate chose the value-push sink, so build the
        * plan the sink runs instead of the pushdown text below, which would ship a statement whose local
        * subqueries cannot run on the remote server. */
-      if (from->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
-	  && from->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
+      if (PT_DBLINK_DML_IS_SINK (from->info.spec.remote_server_name))
 	{
 	  XASL_NODE *sink_xasl = pt_to_update_xasl_remote_subquery (parser, statement);
 

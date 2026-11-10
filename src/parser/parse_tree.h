@@ -789,6 +789,15 @@ struct trace_json_t;
 #define PT_SPEC_IS_ENTITY(spec_) \
   ((spec_)->info.spec.entity_name != NULL)
 
+/* PT_SPEC node is a remote DML target with no columns here. The remote resolves its names.
+ * A target given the derived dblink table shape has its columns and is resolved here. */
+#define PT_SPEC_IS_REMOTE_WITHOUT_COLUMNS(spec_) \
+  ((spec_)->info.spec.remote_server_name != NULL && !PT_SPEC_IS_DERIVED (spec_))
+
+/* PT_DBLINK_TABLE_DML node of a remote DML that sends values to a sink, not its text */
+#define PT_DBLINK_DML_IS_SINK(dml_) \
+  ((dml_) != NULL && (dml_)->node_type == PT_DBLINK_TABLE_DML && (dml_)->info.dblink_table.qstr == NULL)
+
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
   && ((node)->type_enum == PT_TYPE_NULL \
