@@ -3311,7 +3311,7 @@ static bool
 round_bigint (DB_BIGINT num, DB_BIGINT place, DB_BIGINT * result)
 {
   /* 10^0 .. 10^18, the powers of ten a BIGINT holds */
-  static const DB_BIGINT pow10[] = {
+  static const DB_BIGINT powers_of_ten[] = {
     1LL, 10LL, 100LL, 1000LL, 10000LL, 100000LL, 1000000LL, 10000000LL, 100000000LL, 1000000000LL, 10000000000LL,
     100000000000LL, 1000000000000LL, 10000000000000LL, 100000000000000LL, 1000000000000000LL, 10000000000000000LL,
     100000000000000000LL, 1000000000000000000LL
@@ -3338,7 +3338,7 @@ round_bigint (DB_BIGINT num, DB_BIGINT place, DB_BIGINT * result)
       return (num >= 5000000000000000000LL || num <= -5000000000000000000LL);
     }
 
-  unit = pow10[-place];
+  unit = powers_of_ten[-place];
   rest = num % unit;		/* has the sign of num, and |rest| < unit <= 10^18, so 2 * rest does not overflow */
   num -= rest;
 
