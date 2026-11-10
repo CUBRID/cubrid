@@ -152,6 +152,7 @@ struct session_state
   stream_session *stream_session_p;
   int stream_session_kind;
   int stream_session_client_id;	/* the connection that owns stream_session_p */
+  int stream_session_tran_index;	/* the transaction it was opened in */
   stream_handle_table *stream_handles_p;
   PL_SESSION *pl_session_p;
 
@@ -349,6 +350,7 @@ session_state_init (void *st)
   session_p->stream_session_p = NULL;
   session_p->stream_session_kind = -1;
   session_p->stream_session_client_id = 0;
+  session_p->stream_session_tran_index = NULL_TRAN_INDEX;
   memset (session_p->secret, 0, SESSION_SECRET_SIZE);
 
   return NO_ERROR;
@@ -3350,6 +3352,8 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 
 /* session_destroy_attached_sessions () at the end of the session itself, when every connection's share goes */
 static const int SESSION_STREAM_ALL_CLIENTS = -1;
+/* session_take_stream_session () for a stream of any transaction; no transaction has this index */
+static const int SESSION_STREAM_ANY_TRAN = -2;
 
 /*
  * session_stream_client_id () - The connection a stream session or a handle belongs to
@@ -3377,19 +3381,22 @@ session_stream_client_id (THREAD_ENTRY * thread_p)
  * session_take_stream_session () - Empty the slot if client_id owns it
  *   return: what the slot held for client_id, or NULL
  *   client_id(in): the owner, or SESSION_STREAM_ALL_CLIENTS for any
+ *   tran_index(in): the transaction it was opened in, or SESSION_STREAM_ANY_TRAN for any
  */
 static stream_session *
-session_take_stream_session (SESSION_STATE * state_p, int client_id)
+session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_index)
 {
   stream_session *taken = NULL;
 
   pthread_mutex_lock (&state_p->stream_mutex);
-  if (client_id == SESSION_STREAM_ALL_CLIENTS || state_p->stream_session_client_id == client_id)
+  if ((client_id == SESSION_STREAM_ALL_CLIENTS || state_p->stream_session_client_id == client_id)
+      && (tran_index == SESSION_STREAM_ANY_TRAN || state_p->stream_session_tran_index == tran_index))
     {
       taken = state_p->stream_session_p;
       state_p->stream_session_p = NULL;
       state_p->stream_session_kind = -1;
       state_p->stream_session_client_id = 0;
+      state_p->stream_session_tran_index = NULL_TRAN_INDEX;
     }
   pthread_mutex_unlock (&state_p->stream_mutex);
 
@@ -3454,7 +3461,7 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
 
   if (stream_session_p == NULL)
     {
-      (void) session_take_stream_session (state_p, client_id);
+      (void) session_take_stream_session (state_p, client_id, SESSION_STREAM_ANY_TRAN);
       return NO_ERROR;
     }
 
@@ -3467,6 +3474,7 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
       state_p->stream_session_p = stream_session_p;
       state_p->stream_session_kind = kind;
       state_p->stream_session_client_id = client_id;
+      state_p->stream_session_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
     }
   pthread_mutex_unlock (&state_p->stream_mutex);
 
@@ -3562,7 +3570,8 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
     }
 
   /* only the caller's: another connection of the session runs another transaction */
-  stream_session_p = session_take_stream_session (state_p, session_stream_client_id (thread_p));
+  stream_session_p =
+    session_take_stream_session (state_p, session_stream_client_id (thread_p), SESSION_STREAM_ANY_TRAN);
   if (stream_session_p == NULL)
     {
       return;
@@ -3590,22 +3599,41 @@ session_get_stream_handles (THREAD_ENTRY * thread_p)
 }
 
 /*
- * session_end_tran_stream_handles () - Release the STREAM_SCOPE_TRAN handles of an ending transaction
+ * session_end_tran_streams () - End the stream session and the STREAM_SCOPE_TRAN handles of an ending transaction
  *   tran_index(in): the transaction that ends
  *
  * Every transaction end comes through here, including those on threads with no
- * session; they hold no handles and are passed over without an error.
+ * session; they hold neither and are passed over without an error. A stream is
+ * matched on its transaction too: a loaddb worker commits batches of its own on
+ * the connection that holds the stream.
  */
 void
-session_end_tran_stream_handles (THREAD_ENTRY * thread_p, int tran_index)
+session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
+  SESSION_STATE *state_p = NULL;
+  stream_session *stream_session_p = NULL;
+  bool continue_checking = true;
+
   if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
     {
       return;
     }
+  state_p = thread_p->conn_entry->session_p;
 
-  thread_p->conn_entry->session_p->stream_handles_p->end_tran (thread_p, tran_index);
+  stream_session_p = session_take_stream_session (state_p, session_stream_client_id (thread_p), tran_index);
+  if (stream_session_p != NULL)
+    {
+      /* as in session_end_stream_session (), and the error the transaction end reports stays its own */
+      (void) logtb_is_interrupted (thread_p, true, &continue_checking);
+      er_stack_push ();
+      stream_session_p->abort (thread_p);
+      er_stack_pop ();
+
+      delete stream_session_p;
+    }
+
+  state_p->stream_handles_p->end_tran (thread_p, tran_index);
 #endif /* SERVER_MODE */
 }
 
@@ -3739,7 +3767,7 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, i
       session->load_session_p = NULL;
     }
 
-  stream_session_p = session_take_stream_session (session, client_id);
+  stream_session_p = session_take_stream_session (session, client_id, SESSION_STREAM_ANY_TRAN);
   if (stream_session_p != NULL)
     {
       stream_session_p->abort (thread_p);

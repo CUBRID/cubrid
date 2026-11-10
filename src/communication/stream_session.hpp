@@ -97,6 +97,8 @@ struct stream_result
   stream_handle_object *staged;	/* result_is_handle kinds: what END issues the client a handle for */
 };
 
+/* An upload is one statement still running, so its methods never end the
+ * transaction: the transaction's end frees the session (session_end_tran_streams). */
 class stream_session
 {
   public:
