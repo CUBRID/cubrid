@@ -55,10 +55,10 @@ namespace
   }
 
   int
-  set_handle_error (const char *what)
+  set_handle_error (int error_code, const char *what)
   {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, what);
-    return ER_STREAM_SESSION_ERROR;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, what);
+    return error_code;
   }
 
   void
@@ -97,11 +97,11 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
 
     if (desc == NULL || desc->direction != STREAM_DOWNLOAD)
       {
-	error_code = set_handle_error ("unknown stream kind");
+	error_code = set_handle_error (ER_STREAM_NOT_SUPPORTED, "unknown stream kind");
       }
     else if (m_tran_counts[tran_index] >= STREAM_HANDLE_MAX_PER_TRAN)
       {
-	error_code = set_handle_error ("too many stream handles open in this transaction");
+	error_code = set_handle_error (ER_STREAM_INVALID_USE, "too many stream handles open in this transaction");
       }
     else
       {
@@ -135,21 +135,21 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
 }
 
 stream_source *
-stream_handle_table::get_source (std::int64_t handle, int tran_index)
+stream_handle_table::get_source (std::int64_t handle, int tran_index, int *error_code)
 {
   std::lock_guard<std::mutex> lock (m_mutex);
   entry_map::iterator it = m_entries.find (handle);
 
   if (it == m_entries.end () || it->second.tran_index != tran_index || it->second.release_pending)
     {
-      (void) set_handle_error ("unknown stream handle");
+      *error_code = set_handle_error (ER_STREAM_NOT_OPEN, "unknown stream handle");
       return NULL;
     }
 
   /* a client that sends a request before the previous reply arrives: refused rather than serialized */
   if (it->second.pins > 0)
     {
-      (void) set_handle_error ("stream handle is in use");
+      *error_code = set_handle_error (ER_STREAM_INVALID_USE, "stream handle is in use");
       return NULL;
     }
 
@@ -348,7 +348,7 @@ stream_source_read_checked (THREAD_ENTRY *thread_p, stream_source *source, char 
   if (*nread < 0 || *nread > max || (*nread == 0 && !*eof))
     {
       *nread = 0;
-      return set_handle_error ("stream source broke its read contract");
+      return set_handle_error (ER_STREAM_SESSION_ERROR, "stream source broke its read contract");
     }
 
   return NO_ERROR;
@@ -383,7 +383,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
 
   if (first_max < 0)
     {
-      return set_handle_error ("negative read size");
+      return set_handle_error (ER_STREAM_INVALID_USE, "negative read size");
     }
 
   source = stream_source_create (thread_p, kind, config, config_len, &error_code);
@@ -393,7 +393,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
 	{
 	  /* a factory lives outside the transport; without this the client would read "opened" */
 	  assert (false);
-	  error_code = set_handle_error ("stream source was not opened");
+	  error_code = set_handle_error (ER_STREAM_SESSION_ERROR, "stream source was not opened");
 	}
       return error_code;
     }
@@ -454,13 +454,13 @@ stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::i
 
   if (max <= 0)
     {
-      return set_handle_error ("read size must be positive");
+      return set_handle_error (ER_STREAM_INVALID_USE, "read size must be positive");
     }
 
-  source = table.get_source (handle, tran_index);
+  source = table.get_source (handle, tran_index, &error_code);
   if (source == NULL)
     {
-      return ER_STREAM_SESSION_ERROR;
+      return error_code;
     }
 
   error_code = stream_source_read_checked (thread_p, source, buf, stream_read_bound (max), nread, &eof);

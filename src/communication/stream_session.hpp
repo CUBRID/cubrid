@@ -130,8 +130,10 @@ class stream_source : public stream_handle_object
 /* Build a session or a source of one kind from that kind's config blob. The
  * blob comes straight off the wire, so the factory decodes it bounded by
  * config_len. It starts with the kind's own version int: a factory accepts
- * every version up to its own and refuses a newer one naming the highest it
- * accepts, which is the only way a consumer grows without a new function code. */
+ * every version up to its own and refuses a newer one with ER_STREAM_NOT_SUPPORTED
+ * naming the highest it accepts, which is the only way a consumer grows without
+ * a new function code. Any other refusal of a consumer uses its own error code,
+ * or ER_STREAM_SESSION_ERROR. */
 using stream_session_factory = stream_session * (*) (THREAD_ENTRY *thread_p, const char *config, int config_len,
 			       int *error_code);
 using stream_source_factory = stream_source * (*) (THREAD_ENTRY *thread_p, const char *config, int config_len,

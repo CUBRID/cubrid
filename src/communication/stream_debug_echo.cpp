@@ -27,7 +27,7 @@
  *		   a chunk that brings the total past fail_after is refused; each chunk first sleeps delay_ms
  *   download (6): version int32 | length int64 | seed int32
  *		   byte i is (seed + i) & 0xff
- * A negative version is refused by authorize, a version above 1 by the factory.
+ * A negative version is refused by authorize, a version above 1 by the factory with ER_STREAM_NOT_SUPPORTED.
  */
 
 #include "stream_debug_echo.hpp"
@@ -69,10 +69,10 @@ namespace
   }
 
   int
-  echo_refuse (const char *what)
+  echo_refuse (int error_code, const char *what)
   {
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, what);
-    return ER_STREAM_SESSION_ERROR;
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, what);
+    return error_code;
   }
 
 #if !defined (CS_MODE)
@@ -84,12 +84,12 @@ namespace
 
     if (config == NULL || config_len < size)
       {
-	return echo_refuse ("debug echo: config too short");
+	return echo_refuse (ER_STREAM_SESSION_ERROR, "debug echo: config too short");
       }
     if (echo_get_be (config, 4) > ECHO_VERSION)
       {
 	snprintf (msg, sizeof (msg), "debug echo: config version above %d", ECHO_VERSION);
-	return echo_refuse (msg);
+	return echo_refuse (ER_STREAM_NOT_SUPPORTED, msg);
       }
     return NO_ERROR;
   }
@@ -117,7 +117,7 @@ namespace
 	if (m_fail_after >= 0 && m_total > m_fail_after)
 	  {
 	    snprintf (msg, sizeof (msg), "debug echo: refused past %lld bytes", (long long) m_fail_after);
-	    return echo_refuse (msg);
+	    return echo_refuse (ER_STREAM_SESSION_ERROR, msg);
 	  }
 	return NO_ERROR;
       }
@@ -194,7 +194,7 @@ namespace
     length = echo_get_be (config + 4, 8);
     if (length < 0)
       {
-	*error_code = echo_refuse ("debug echo: negative length");
+	*error_code = echo_refuse (ER_STREAM_SESSION_ERROR, "debug echo: negative length");
 	return NULL;
       }
     return new echo_source (length, (int) echo_get_be (config + 12, 4));
@@ -209,7 +209,7 @@ namespace
   {
     if (config != NULL && config_len >= 4 && echo_get_be (config, 4) < 0)
       {
-	return echo_refuse ("debug echo: refused by authorize");
+	return echo_refuse (ER_STREAM_SESSION_ERROR, "debug echo: refused by authorize");
       }
     return NO_ERROR;
   }

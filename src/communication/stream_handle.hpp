@@ -55,10 +55,10 @@ class stream_handle_table
 	       std::int64_t *handle);
 
     /* Pin a handle for one call; put () ends the pin. The pin is exclusive,
-     * because a reader is not thread-safe. NULL, with the transport-common error
-     * set, for a handle that does not resolve, is being released or is pinned
-     * already. */
-    stream_source *get_source (std::int64_t handle, int tran_index);
+     * because a reader is not thread-safe. NULL, with the error set and in
+     * error_code: ER_STREAM_NOT_OPEN for a handle that does not resolve or is
+     * being released, ER_STREAM_INVALID_USE for one pinned already. */
+    stream_source *get_source (std::int64_t handle, int tran_index, int *error_code);
     void put (THREAD_ENTRY *thread_p, std::int64_t handle);
 
     /* Release one handle, or every handle of a transaction, of a connection or

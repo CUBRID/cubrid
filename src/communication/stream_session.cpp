@@ -62,7 +62,7 @@ namespace
     return desc.direction == STREAM_DOWNLOAD && desc.source != NULL && desc.sink == NULL && !desc.ends_unit_of_work;
   }
 
-  /* the registered record of kind in direction, or NULL with the transport-common error set */
+  /* the registered record of kind in direction, or NULL with ER_STREAM_NOT_SUPPORTED set */
   const stream_kind_desc *
   kind_open_desc (int kind, stream_direction direction, int *error_code)
   {
@@ -70,9 +70,9 @@ namespace
 
     if (desc == NULL || desc->direction != direction)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_SUPPORTED, 1,
 		desc == NULL ? "unknown stream kind" : "stream kind opened in the wrong direction");
-	*error_code = ER_STREAM_SESSION_ERROR;
+	*error_code = ER_STREAM_NOT_SUPPORTED;
 	return NULL;
       }
 

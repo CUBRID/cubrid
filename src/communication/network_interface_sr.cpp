@@ -174,7 +174,7 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
    * client that does not wait for a reply can still get here, so this is a refusal, not an assertion */
   if (session_has_stream_session (thread_p))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "commit inside an open stream session");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "commit inside an open stream session");
       state = TRAN_ACTIVE;
     }
   else
@@ -3608,7 +3608,7 @@ stran_server_partial_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   /* for the reasons stran_server_commit_internal () gives: the savepoint may predate the stream */
   if (session_has_stream_session (thread_p))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "rollback to a savepoint inside an open stream session");
       state = TRAN_ACTIVE;
       LSA_SET_NULL (&savept_lsa);
@@ -13616,14 +13616,14 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
     }
   if (reqlen < header_size || config_len < 0 || config_len > reqlen - header_size)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
-      error_code = ER_STREAM_SESSION_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      error_code = ER_STREAM_INVALID_USE;
       goto send_reply;
     }
   if ((flags & ~STREAM_FLAG_FINAL) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream request flags");
-      error_code = ER_STREAM_SESSION_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      error_code = ER_STREAM_INVALID_USE;
       goto send_reply;
     }
 
@@ -13694,19 +13694,20 @@ send_reply:
 }
 
 /*
- * stream_use_session () - Hold the connection's active stream session for this request, or NULL with the error
+ * stream_use_session () - Hold the connection's active stream session for this request, or NULL with the error set
  *
  * The request lets it go with session_unuse_stream_session () before it replies.
  */
 static stream_session *
-stream_use_session (THREAD_ENTRY *thread_p, int *kind, session_state **held)
+stream_use_session (THREAD_ENTRY *thread_p, int *kind, session_state **held, int *error_code)
 {
   stream_session *session = NULL;
-  int error_code = session_use_stream_session (thread_p, session, kind, held);
 
-  if (error_code == NO_ERROR && session == NULL)
+  *error_code = session_use_stream_session (thread_p, session, kind, held);
+  if (*error_code == NO_ERROR && session == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_OPEN, 1, "no active stream session");
+      *error_code = ER_STREAM_NOT_OPEN;
     }
 
   return session;
@@ -13722,13 +13723,9 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 {
   int error_code = NO_ERROR;
   session_state *held = NULL;
-  stream_session *session = stream_use_session (thread_p, NULL, &held);
+  stream_session *session = stream_use_session (thread_p, NULL, &held, &error_code);
 
-  if (session == NULL)
-    {
-      error_code = ER_STREAM_SESSION_ERROR;
-    }
-  else
+  if (session != NULL)
     {
       error_code = stream_receive (thread_p, held, session, request, reqlen);
     }
@@ -13765,13 +13762,9 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
   int kind = -1;
   INT64 count = 0;
   session_state *held = NULL;
-  stream_session *session = stream_use_session (thread_p, &kind, &held);
+  stream_session *session = stream_use_session (thread_p, &kind, &held, &error_code);
 
-  if (session == NULL)
-    {
-      error_code = ER_STREAM_SESSION_ERROR;
-    }
-  else
+  if (session != NULL)
     {
       if (reqlen > 0)
 	{
@@ -13821,13 +13814,9 @@ sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
   int error_code = NO_ERROR;
   bool continue_checking = true;
   session_state *held = NULL;
-  stream_session *session = stream_use_session (thread_p, NULL, &held);
+  stream_session *session = stream_use_session (thread_p, NULL, &held, &error_code);
 
-  if (session == NULL)
-    {
-      error_code = ER_STREAM_SESSION_ERROR;
-    }
-  else
+  if (session != NULL)
     {
       /* a cancel the CAS left for the stream is answered by this abort, which must not see it */
       (void) logtb_is_interrupted (thread_p, true, &continue_checking);
@@ -13934,8 +13923,8 @@ sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   if (reqlen < header_size)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
-      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, &handle);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, &handle);
       return;
     }
 
@@ -13944,8 +13933,8 @@ sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   ptr = or_unpack_int (ptr, &flags);
   if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream request flags");
-      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, &handle);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, &handle);
       return;
     }
 
@@ -13992,8 +13981,8 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
 
   if (reqlen < OR_BIGINT_SIZE + 2 * OR_INT_SIZE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
-      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, NULL);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, NULL);
       return;
     }
 
@@ -14002,8 +13991,8 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
   ptr = or_unpack_int (ptr, &flags);
   if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream request flags");
-      stream_send_read_reply (thread_p, rid, ER_STREAM_SESSION_ERROR, NULL, 0, 0, NULL);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, NULL);
       return;
     }
 
@@ -14042,8 +14031,8 @@ sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 
   if (reqlen < OR_BIGINT_SIZE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
-      error_code = ER_STREAM_SESSION_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      error_code = ER_STREAM_INVALID_USE;
     }
   else
     {

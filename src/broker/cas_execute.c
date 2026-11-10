@@ -979,9 +979,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 	{
 	  return err_code;
 	}
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "a COMMIT inside an open stream session rolls the transaction back");
-      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+      return ERROR_INFO_SET (ER_STREAM_INVALID_USE, DBMS_ERROR_INDICATOR);
     }
 
   ux_end_tran_cleanup (tran_type);
@@ -1273,8 +1273,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (refuse_stream_client_cannot_carry (client_version))
     {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
       db_query_end (result);
-      err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
       goto execute_error;
     }
 
@@ -1679,7 +1679,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       if ((db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
 	  || refuse_stream_client_cannot_carry (req_info->client_version))
 	{
-	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
     }
@@ -11193,7 +11193,7 @@ refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version)
     }
 
   (void) stream_from_abort ();
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_SUPPORTED, 1,
 	  cas_shard_flag == ON ? "a statement that opens a stream cannot run through a SHARD broker"
 	  : "a statement that opens a stream needs a PROTOCOL_V13 driver");
   return true;
@@ -11214,7 +11214,7 @@ refuse_stream_opened_mid_request (void)
     }
 
   (void) stream_from_abort ();
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	  "a statement that opens a stream must be executed on its own");
   return true;
 }
@@ -11287,9 +11287,9 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, bool 
     }
   if (stream_from_is_open ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "a stream session is already active on this connection");
-      return ux_stream_error (ER_STREAM_SESSION_ERROR, net_buf);
+      return ux_stream_error (ER_STREAM_INVALID_USE, net_buf);
     }
 
   ux_stream_log_open (stream_kind);

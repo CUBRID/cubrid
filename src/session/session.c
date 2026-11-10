@@ -3452,13 +3452,13 @@ session_refuse_taken_stream_slot (SESSION_STATE * state_p, int client_id)
     {
       why = "another request of this connection is still ending its stream session";
     }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, why);
-  return ER_STREAM_SESSION_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, why);
+  return ER_STREAM_INVALID_USE;
 }
 
 /*
  * session_check_stream_slot () - May the caller open a stream session?
- *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR while any connection of the session holds the slot
+ *   return: NO_ERROR, or ER_STREAM_INVALID_USE while any connection of the session holds the slot
  *
  * Asked before a kind's factory runs, so it counts another connection's stream too, which the caller cannot see.
  */
@@ -3586,7 +3586,7 @@ session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
 
 /*
  * session_use_stream_session () - Hold the caller's stream session for one request
- *   return: NO_ERROR, with NULL when the connection has none open; ER_STREAM_SESSION_ERROR while another request of
+ *   return: NO_ERROR, with NULL when the connection has none open; ER_STREAM_INVALID_USE while another request of
  *	     the connection holds it
  *   held(out): the session state held, for session_clear_stream_session () and session_unuse_stream_session ()
  *
@@ -3620,9 +3620,9 @@ session_use_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
     {
       if (state_p->stream_user != NULL && state_p->stream_user != thread_p)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 		  "another request of this connection is using the stream session");
-	  error_code = ER_STREAM_SESSION_ERROR;
+	  error_code = ER_STREAM_INVALID_USE;
 	}
       else if (state_p->stream_session_p != NULL)
 	{

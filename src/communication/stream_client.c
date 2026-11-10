@@ -42,8 +42,8 @@ stream_client_kind_table (void)
 static int
 stream_client_refuse (const char *what)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, what);
-  return ER_STREAM_SESSION_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_SUPPORTED, 1, what);
+  return ER_STREAM_NOT_SUPPORTED;
 }
 
 /*
@@ -67,7 +67,7 @@ stream_kind_client_register (int kind, const stream_kind_client_desc & desc)
 
 /*
  * stream_kind_client_check_driver_open () - May a driver open this kind directly?
- *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR (set) for a kind no statement checks for it
+ *   return: NO_ERROR, or ER_STREAM_NOT_SUPPORTED (set) for a kind no statement checks for it
  *   kind(in): STREAM_KIND_* taken off the driver wire, not yet trusted
  */
 int
