@@ -1795,7 +1795,9 @@
 #define ER_SES_SESSION_SECRET_MISMATCH              -1390
 #define ER_SES_SESSION_NOT_ATTACHED                 -1391
 
-#define ER_LAST_ERROR                               -1392
+#define ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS    -1392
+
+#define ER_LAST_ERROR                               -1393
 
 
 /*
