@@ -11229,24 +11229,30 @@ pt_omitted_defaults_read_client (PARSER_CONTEXT * parser, PT_NODE * statement)
  *	(is_own_default): the DEFAULT keyword, or DEFAULT (c) in the place of c
  *   return: the tree, or NULL if the value is not such a DEFAULT or its DEFAULT is a constant
  *   value(in): an INSERT value
+ *
+ * The DEFAULT reference and the coercion of the INSERT value may wrap the tree in casts for the column, and only
+ * the outermost node of the reference is marked is_own_default.  The tree itself may be a cast the DEFAULT holds.
  */
 PT_NODE *
 pt_own_default_tree (PT_NODE * value)
 {
-  PT_NODE *tree = value;
+  PT_NODE *tree;
+  bool is_own_default = false;
 
-  if (value == NULL || !value->flag.is_own_default)
+  for (tree = value; tree != NULL; tree = tree->info.expr.arg1)
     {
-      return NULL;
+      is_own_default = is_own_default || tree->flag.is_own_default;
+      if (tree->flag.is_restored_default)
+	{
+	  return is_own_default ? tree : NULL;
+	}
+      if (tree->node_type != PT_EXPR || tree->info.expr.op != PT_CAST)
+	{
+	  return NULL;
+	}
     }
 
-  /* the cast the DEFAULT reference wraps it in for the column */
-  if (tree->node_type == PT_EXPR && tree->info.expr.op == PT_CAST && tree->info.expr.arg1 != NULL)
-    {
-      tree = tree->info.expr.arg1;
-    }
-
-  return tree->flag.is_restored_default ? tree : NULL;
+  return NULL;
 }
 
 /*
