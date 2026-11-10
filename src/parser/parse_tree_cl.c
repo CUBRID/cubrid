@@ -475,6 +475,9 @@ static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE 
 static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -3918,6 +3921,12 @@ pt_show_misc_type (PT_MISC_TYPE p)
       return "public";
     case PT_SYNONYM:
       return "synonym";
+    case PT_SENSITIVITY_LABEL_GRADE:
+      return "grade";
+    case PT_SENSITIVITY_LABEL_INFO_TYPE:
+      return "info_type";
+    case PT_SENSITIVITY_LABEL_SOURCE:
+      return "source";
     default:
       return "MISC_TYPE: type unknown";
     }
@@ -5803,6 +5812,9 @@ pt_init_print_f (void)
   pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
   pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
   pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
+  pt_print_func_array[PT_CREATE_SENSITIVITY_LABEL] = pt_print_create_sensitivity_label;
+  pt_print_func_array[PT_ALTER_SENSITIVITY_LABEL] = pt_print_alter_sensitivity_label;
+  pt_print_func_array[PT_DROP_SENSITIVITY_LABEL] = pt_print_drop_sensitivity_label;
   pt_print_func_array[PT_SP_BODY] = pt_print_sp_body;
 
   pt_print_f = pt_print_func_array;
@@ -21329,4 +21341,81 @@ pt_apply_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg
 {
   PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
   return p;
+}
+
+static PARSER_VARCHAR *
+pt_print_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
+  q = pt_append_nulstring (parser, q, "create sensitivity label ");
+  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sensitivity_label.kind));
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.sensitivity_label.level != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.level);
+      q = pt_append_nulstring (parser, q, " level ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (p->info.sensitivity_label.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.comment);
+      q = pt_append_nulstring (parser, q, " comment ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
+  q = pt_append_nulstring (parser, q, "alter sensitivity label ");
+  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sensitivity_label.kind));
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_varchar (parser, q, r1);
+
+  if (p->info.sensitivity_label.new_name != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.new_name);
+      q = pt_append_nulstring (parser, q, " rename as ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (p->info.sensitivity_label.level != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.level);
+      q = pt_append_nulstring (parser, q, " level ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (p->info.sensitivity_label.comment != NULL)
+    {
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.comment);
+      q = pt_append_nulstring (parser, q, " comment ");
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  return q;
+}
+
+static PARSER_VARCHAR *
+pt_print_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
+  q = pt_append_nulstring (parser, q, "drop sensitivity label ");
+  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sensitivity_label.kind));
+  q = pt_append_nulstring (parser, q, " ");
+  q = pt_append_varchar (parser, q, r1);
+
+  return q;
 }
