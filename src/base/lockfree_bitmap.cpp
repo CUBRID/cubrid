@@ -195,21 +195,9 @@ restart:			/* wait-free process */
 	return -1;
       }
 
-    /* find first empty slot in chunk */
-    for (i = 0, mask = 1; i < LF_BITFIELD_WORD_SIZE; i++, mask <<= 1)
-      {
-	if ((~chunk) & mask)
-	  {
-	    slot_idx = i;
-	    break;
-	  }
-      }
-
-    if (slot_idx == -1)
-      {
-	/* chunk was filled in the meantime */
-	goto restart;
-      }
+    /* find first empty slot in chunk (~chunk is not 0: the search above stopped at it) */
+    slot_idx = __builtin_ctz (~chunk);
+    mask = 1U << slot_idx;
 
     assert ((chunk_idx * LF_BITFIELD_WORD_SIZE + slot_idx) < bitmap->entry_count);
     do

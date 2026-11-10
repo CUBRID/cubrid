@@ -1288,6 +1288,297 @@ db_string_concatenate (const DB_VALUE * string1, const DB_VALUE * string2, DB_VA
 }
 
 /*
+ * qstr_reserve () - CBRD-27926: makes a string's buffer hold at least needed bytes, growing it to the next power of
+ *   two but not past limit unless needed is larger
+ *   return: NO_ERROR or error code
+ *   value(in/out): a medium string or bit string, not NULL
+ *   capacity(in/out): bytes value's buffer holds; 0 = unknown
+ *   needed(in): bytes the buffer has to hold, its terminator included
+ *   limit(in): bytes the buffer stops doubling at
+ */
+static int
+qstr_reserve (DB_VALUE * value, int *capacity, int needed, size_t limit)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  const int precision = DB_VALUE_PRECISION (value);
+  const int size_unit = value->data.ch.medium.size;	/* bits for a bit string */
+  const int length = value->data.ch.medium.length;
+  const int codeset = db_get_string_codeset (value);
+  const int collation = db_get_string_collation (value);
+  const int size = db_get_string_size (value);
+  size_t new_capacity;
+  char *buf;
+
+  if (needed <= *capacity)
+    {
+      return NO_ERROR;
+    }
+
+  assert (value->data.ch.info.style == MEDIUM_STRING);
+
+  for (new_capacity = 64; new_capacity < (size_t) needed; new_capacity <<= 1)
+    {
+      ;
+    }
+  if (new_capacity > limit)
+    {
+      new_capacity = MAX ((size_t) needed, limit);
+    }
+
+  buf = (char *) db_private_alloc (NULL, new_capacity);
+  if (buf == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  if (size > 0)
+    {
+      memcpy (buf, db_get_string (value), size);
+    }
+
+  (void) pr_clear_value (value);
+  qstr_make_typed_string (type, value, precision, buf, size_unit, codeset, collation);
+  value->data.ch.medium.length = length;
+  /* oracle_style_empty_string makes an empty string NULL; the accumulator is not */
+  value->domain.general_info.is_null = 0;
+  value->need_clear = true;
+  *capacity = (int) new_capacity;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_string_append () - CBRD-27926: appends string2 to string1 in string1's own buffer, leaving string1 what
+ *   db_string_concatenate (string1, string2, string1) leaves it; the buffer grows only when string2 does not fit
+ *   return: NO_ERROR or error code
+ *   string1(in/out): a VARCHAR or VARBIT (GROUP_CONCAT's accumulator), not NULL
+ *   string2(in): a string or bit string, not NULL
+ *   capacity(in/out): bytes string1's buffer holds; 0 = unknown
+ *   max_size(in): the buffer stops doubling at max_size + 1 bytes (group_concat_max_len)
+ */
+int
+db_string_append (DB_VALUE * string1, const DB_VALUE * string2, int *capacity, int max_size)
+{
+  const DB_TYPE type1 = DB_VALUE_DOMAIN_TYPE (string1);
+  const DB_TYPE type2 = DB_VALUE_DOMAIN_TYPE (string2);
+  const size_t limit = (size_t) max_size + 1;
+  const int max_string_size = (int) prm_get_bigint_value (PRM_ID_STRING_MAX_SIZE_BYTES);
+  int precision1 = DB_VALUE_PRECISION (string1);
+  int precision2 = DB_VALUE_PRECISION (string2);
+  int error_status = NO_ERROR;
+  int size;
+
+  assert (!DB_IS_NULL (string1));
+
+  if (DB_IS_NULL (string2))
+    {
+      /* oracle_style_empty_string makes an empty string NULL, which db_string_concatenate adds as nothing */
+      return NO_ERROR;
+    }
+
+  if (type1 != DB_TYPE_VARCHAR && type1 != DB_TYPE_VARBIT)
+    {
+      /* a CHAR or BIT accumulator (the group's empty start value) becomes the VARCHAR or VARBIT that
+       * db_string_concatenate makes, once; its exact-size buffer regrows at the next append */
+      DB_VALUE result;
+      DB_DATA_STATUS data_status;
+
+      db_make_null (&result);
+      error_status = db_string_concatenate (string1, string2, &result, &data_status);
+      if (error_status != NO_ERROR || data_status != DATA_STATUS_OK)
+	{
+	  pr_clear_value (&result);
+	  return (error_status != NO_ERROR) ? error_status : ER_FAILED;
+	}
+      pr_clear_value (string1);
+      *string1 = result;
+      *capacity = 0;
+      return NO_ERROR;
+    }
+
+  if (!QSTR_IS_ANY_CHAR_OR_BIT (type2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_DATA_TYPE, 0);
+      return ER_QSTR_INVALID_DATA_TYPE;
+    }
+  if (qstr_get_category (string1) != qstr_get_category (string2))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_CODE_SETS, 0);
+      return ER_QSTR_INCOMPATIBLE_CODE_SETS;
+    }
+
+  if (type1 == DB_TYPE_VARBIT)
+    {
+      /* qstr_bit_concatenate: the bits of string1, then those of string2; DB_MAX_BIT_LENGTH lies past
+       * string_max_size_bytes */
+      const int length1 = db_get_string_length (string1);
+      const int length2 = db_get_string_length (string2);
+
+      size = QSTR_NUM_BYTES (length1 + length2);
+      if (size > max_string_size)
+	{
+	  goto size_error;
+	}
+      assert (length1 + length2 <= DB_MAX_BIT_LENGTH);
+
+      error_status = qstr_reserve (string1, capacity, size + 1, limit);
+      if (error_status != NO_ERROR)
+	{
+	  return error_status;
+	}
+      bit_ncat ((unsigned char *) db_get_string (string1), length1, DB_GET_UCHAR (string2), length2);
+      string1->data.ch.medium.size = length1 + length2;
+      string1->data.ch.medium.length = -1;
+      /* db_string_concatenate's db_make_varbit turns a floating precision into the maximum */
+      string1->domain.char_info.length =
+	(precision1 == TP_FLOATING_PRECISION_VALUE || precision2 == TP_FLOATING_PRECISION_VALUE)
+	? DB_MAX_VARBIT_PRECISION : MIN (DB_MAX_BIT_LENGTH, precision1 + precision2);
+      return NO_ERROR;
+    }
+  else
+    {
+      DB_VALUE temp;
+      int common_coll;
+      INTL_CODESET codeset = db_get_string_codeset (string1);
+      int length1, size1, length2, logical2, size2, result_length;
+      bool pad2;
+      char *buf;
+
+      LANG_RT_COMMON_COLL (db_get_string_collation (string1), db_get_string_collation (string2), common_coll);
+      if (common_coll == -1)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	}
+
+      db_make_null (&temp);
+      if (db_get_string_codeset (string1) != db_get_string_codeset (string2))
+	{
+	  DB_DATA_STATUS data_status;
+	  const DB_VALUE *coerced;
+
+	  codeset = lang_get_collation (common_coll)->codeset;
+	  coerced = (db_get_string_codeset (string1) != codeset) ? string1 : string2;
+
+	  db_value_domain_init (&temp, DB_VALUE_DOMAIN_TYPE (coerced), (int) QSTR_VALUE_PRECISION (coerced), 0);
+	  db_string_put_cs_and_collation (&temp, codeset, common_coll);
+	  error_status = db_char_string_coerce (coerced, &temp, &data_status);
+	  if (error_status != NO_ERROR)
+	    {
+	      pr_clear_value (&temp);
+	      return error_status;
+	    }
+	  assert (data_status == DATA_STATUS_OK);
+
+	  if (coerced == string1)
+	    {
+	      /* string1 itself changes codeset: it becomes the coerced copy, which the append below regrows */
+	      pr_clear_value (string1);
+	      *string1 = temp;
+	      db_make_null (&temp);
+	      *capacity = 0;
+	      precision1 = DB_VALUE_PRECISION (string1);
+	    }
+	  else
+	    {
+	      string2 = &temp;
+	      precision2 = DB_VALUE_PRECISION (string2);
+	    }
+	}
+
+      /* qstr_concatenate, string1 being of variable length: its characters, then string2's; a padded string2's
+       * pad characters land past the size, except when string2 has no bytes at all */
+      length1 = db_get_string_length (string1);
+      size1 = db_get_string_size (string1);
+      length2 = db_get_string_length (string2);
+      size2 = db_get_string_size (string2);
+      logical2 =
+	QSTR_IS_PADDED_LENGTH (DB_VALUE_DOMAIN_TYPE (string2)) ? (int) QSTR_VALUE_PRECISION (string2) : length2;
+      pad2 = (size2 == 0 && logical2 > 0);
+      if (pad2)
+	{
+	  size2 = logical2;
+	}
+      result_length = length1 + logical2;
+
+      size = size1 + size2;
+      if (size > max_string_size)
+	{
+	  pr_clear_value (&temp);
+	  goto size_error;
+	}
+      if (result_length > DB_MAX_VARCHAR_PRECISION)
+	{
+	  /* shortcut: qstr_concatenate truncates past DB_MAX_VARCHAR_PRECISION characters, which only padded string2s
+	   * of no bytes reach under string_max_size_bytes; fail as a truncation does, port the truncation if one does */
+	  assert (false);
+	  pr_clear_value (&temp);
+	  return ER_FAILED;
+	}
+
+      /* a pad character takes up to two bytes */
+      error_status = qstr_reserve (string1, capacity, size1 + (pad2 ? 2 * logical2 : size2) + 1, limit);
+      if (error_status != NO_ERROR)
+	{
+	  pr_clear_value (&temp);
+	  return error_status;
+	}
+      buf = (char *) db_get_string (string1);
+      if (pad2)
+	{
+	  (void) qstr_pad_string ((unsigned char *) buf + size1, logical2, codeset);
+	}
+      else if (size2 > 0)
+	{
+	  memcpy (buf + size1, db_get_string (string2), size2);
+	}
+      buf[size] = 0;
+      pr_clear_value (&temp);
+
+      string1->data.ch.medium.size = size;
+      string1->data.ch.medium.length = result_length;
+      /* db_string_concatenate's db_make_varchar turns a floating precision into the maximum */
+      string1->domain.char_info.length =
+	(precision1 == TP_FLOATING_PRECISION_VALUE || precision2 == TP_FLOATING_PRECISION_VALUE)
+	? DB_MAX_VARCHAR_PRECISION : MIN (DB_MAX_VARCHAR_PRECISION, precision1 + precision2);
+      db_string_put_cs_and_collation (string1, codeset, common_coll);
+      return NO_ERROR;
+    }
+
+size_error:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (size_t) size, max_string_size);
+  return ER_QPROC_STRING_SIZE_TOO_BIG;
+}
+
+/*
+ * db_string_append_zero_bytes () - CBRD-27926: extends a string by zero bytes in its own buffer; GROUP_CONCAT keeps
+ *   the bytes of a multibyte character it truncated at group_concat_max_len this way (qdata_concatenate_dbval)
+ *   return: NO_ERROR or error code
+ *   string(in/out): a VARCHAR, not NULL
+ *   bytes(in): zero bytes to add
+ *   capacity(in/out), max_size(in): as db_string_append
+ */
+int
+db_string_append_zero_bytes (DB_VALUE * string, int bytes, int *capacity, int max_size)
+{
+  const int size = db_get_string_size (string);
+  int error_status;
+
+  assert (DB_VALUE_DOMAIN_TYPE (string) == DB_TYPE_VARCHAR && bytes > 0);
+
+  error_status = qstr_reserve (string, capacity, size + bytes + 1, (size_t) max_size + 1);
+  if (error_status != NO_ERROR)
+    {
+      return error_status;
+    }
+  memset ((char *) db_get_string (string) + size, 0, bytes + 1);
+  string->data.ch.medium.size = size + bytes;
+  string->data.ch.medium.length = -1;
+
+  return NO_ERROR;
+}
+
+/*
  * db_string_chr () - take character of db_value
  *   return: NO_ERROR, or ER_code
  *   res(OUT)   : resultant db_value node

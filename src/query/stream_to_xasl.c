@@ -1927,7 +1927,7 @@ stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
   if (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT
       || compare->method == DOMAIN_COMPARE_COLLATIONS)
     {
-      compare->cmp = pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
+      compare->cmp = domain_compare_cmp (compare);
     }
   return ptr;
 }
@@ -7876,6 +7876,11 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       aggregate->info.dist_percent.const_array = NULL;
       aggregate->info.dist_percent.list_len = 0;
       aggregate->info.dist_percent.nlargers = 0;
+    }
+  else if (aggregate->function == PT_GROUP_CONCAT)
+    {
+      aggregate->info.group_concat.buf = NULL;
+      aggregate->info.group_concat.capacity = 0;
     }
   else
     {
