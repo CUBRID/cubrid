@@ -594,7 +594,7 @@ struct btree_find_fk_object
 #if defined (SERVER_MODE)
   OID locked_object;
   LOCK lock_mode;
-  const OID *seen;		/* the entries the caller saw being written after it marked the key */
+  const BTREE_FK_SEEN *seen;	/* the entries the caller saw being written after it marked the key */
   int n_seen;
   MVCCID deferred_writer;	/* the writer to wait for when no committed child turned up */
 #endif				/* SERVER_MODE */
@@ -6338,14 +6338,15 @@ error_return:
  * found_oid (out) : Outputs OID of found object. If no object is found outputs NULL.
  * seen (in)	   : the entries the caller saw being written after it marked the parent key, sorted by OID.
  *		     Any other entry still being inserted was written later, by a writer that waits on that mark,
- *		     and is not a child.
+ *		     and is not a child; so is an insert at a seen OID by another inserter, which took the slot of
+ *		     an insert undone since.
  * n_seen (in)	   : the number of seen
  *
  * Note: a committed child is looked for before any writer is waited for.
  */
 int
 btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * found_oid,
-			const OID * seen, int n_seen)
+			const BTREE_FK_SEEN * seen, int n_seen)
 {
   BTREE_SCAN btree_scan;
   int error_code = NO_ERROR;
@@ -31566,8 +31567,14 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 #if defined (SERVER_MODE)
       if (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
 	{
-	  if (find_fk_obj->n_seen == 0
-	      || bsearch (oid, find_fk_obj->seen, find_fk_obj->n_seen, sizeof (OID), oid_compare) == NULL)
+	  const BTREE_FK_SEEN *seen = NULL;
+
+	  if (find_fk_obj->n_seen > 0)
+	    {
+	      seen = (const BTREE_FK_SEEN *) bsearch (oid, find_fk_obj->seen, find_fk_obj->n_seen,
+						      sizeof (BTREE_FK_SEEN), oid_compare);
+	    }
+	  if (seen == NULL || (seen->inserter != MVCCID_NULL && seen->inserter != BTREE_MVCC_INFO_INSID (mvcc_info)))
 	    {
 	      return NO_ERROR;
 	    }

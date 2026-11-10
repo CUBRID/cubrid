@@ -754,8 +754,16 @@ struct btree_key
  */
 typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
 
+/* an entry a parent key's check saw being written; inserter is MVCCID_NULL unless it saw an insert in progress */
+typedef struct btree_fk_seen BTREE_FK_SEEN;
+struct btree_fk_seen
+{
+  OID oid;			/* first, so that oid_compare () orders an array of them */
+  MVCCID inserter;
+};
+
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
-				   OID * found_oid, const OID * seen, int n_seen);
+				   OID * found_oid, const BTREE_FK_SEEN * seen, int n_seen);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 extern void bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
