@@ -4501,7 +4501,6 @@ exit:
   return error_code;
 }
 
-
 /*
  * heap_build_bestspace () - Load and rebuild a bestspace from heap file
  *   return:
@@ -5486,7 +5485,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-
   return NO_ERROR;
 }
 
@@ -5528,7 +5526,6 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
     }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
-
 
   return ret;
 }
@@ -7601,7 +7598,6 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   return S_ERROR;
 }
 
-
 /*
  * heap_next_internal () - Retrieve of peek next object.
  *
@@ -8218,7 +8214,6 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
-
       if (scan == S_SUCCESS)
 	{
 	  /*
@@ -8265,7 +8260,6 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
   return scan;
 }
-
 
 /* A page whose first chunk the batch collects, its lines asked for at once: heap_page_collect_visible () reads nearly
  * every record of it -- the slot, then the record's header first, then its columns -- and a header's first load waited
@@ -11168,110 +11162,6 @@ heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP
 }
 
 /*
- * heap_attrinfo_start_private () - start an attribute cache on a class representation of its own
- *   return: NO_ERROR, or error code
- *   thread_p(in):
- *   class_oid(in): the class
- *   requested_num_attrs(in), attrids(in): as heap_attrinfo_start ()
- *   attr_info(out): the cache
- *
- * Note: heap_attrinfo_start () fixes the class representation in the server-wide cache until the attribute cache
- *	 ends. A cache kept for a partition a scan left would hold that entry for the rest of the query, and a scan
- *	 over many partitions would hold many of the 1024 entries every session shares. This cache builds its own
- *	 representation from the class record instead (the one heap_classrepr_get () hands out when the cache is
- *	 full), which heap_attrinfo_end () frees (CBRD-27866). The class lock the scan holds keeps it valid.
- */
-int
-heap_attrinfo_start_private (THREAD_ENTRY * thread_p, const OID * class_oid, int requested_num_attrs,
-			     const ATTR_ID * attrids, HEAP_CACHE_ATTRINFO * attr_info)
-{
-  OR_CLASSREP *repr;
-  int i, error;
-
-  error = heap_attrinfo_start (thread_p, class_oid, requested_num_attrs, attrids, attr_info);
-  if (error != NO_ERROR || attr_info->num_values == -1 || attr_info->last_cacheindex < 0)
-    {
-      return error;
-    }
-
-  repr = heap_classrepr_get_from_record (thread_p, NULL, class_oid, NULL, NULL_REPRID);
-  if (repr == NULL)
-    {
-      /* keep the representation from the cache */
-      er_clear ();
-      return NO_ERROR;
-    }
-
-  (void) heap_attrinfo_recache (thread_p, NULL_REPRID, attr_info);
-  heap_classrepr_free_and_init (attr_info->last_classrepr, &attr_info->last_cacheindex);
-  attr_info->last_classrepr = repr;
-  attr_info->last_cacheindex = -1;
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      attr_info->values[i].last_attrepr = NULL;
-      attr_info->values[i].read_attrepr = NULL;
-      attr_info->values[i].rd_attrepr = NULL;
-    }
-
-  if (heap_attrinfo_recache_attrepr (attr_info, true) != NO_ERROR)
-    {
-      heap_attrinfo_end (thread_p, attr_info);
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * heap_attrinfo_park () - leave an attribute cache holding only what it keeps for its class
- *   return: void
- *   thread_p(in):
- *   attr_info(in/out): the cache, to be kept for a partition a scan leaves
- *
- * Note: the values of the last record are cleared and a representation of an older record is released, so the
- *	 cache holds its value array and its own class representation only (CBRD-27866).
- */
-void
-heap_attrinfo_park (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
-{
-  if (attr_info->num_values == -1)
-    {
-      return;
-    }
-
-  (void) heap_attrinfo_clear_dbvalues (attr_info);
-  (void) heap_attrinfo_recache (thread_p, NULL_REPRID, attr_info);
-  OID_SET_NULL (&attr_info->inst_oid);
-  attr_info->inst_chn = NULL_CHN;
-  attr_info->lazy_recdes = NULL;
-}
-
-/*
- * heap_attrinfo_kept_size () - about how much memory an attribute cache keeps on its own
- *   return: bytes
- *   attr_info(in): the cache
- */
-size_t
-heap_attrinfo_kept_size (const HEAP_CACHE_ATTRINFO * attr_info)
-{
-  const OR_CLASSREP *repr = attr_info->last_classrepr;
-  size_t size = sizeof (HEAP_CACHE_ATTRINFO);
-
-  if (attr_info->num_values > 0)
-    {
-      size += attr_info->num_values * sizeof (HEAP_ATTRVALUE);
-    }
-  if (repr != NULL && attr_info->last_cacheindex < 0)
-    {
-      size += sizeof (OR_CLASSREP);
-      size += (repr->n_attributes + repr->n_shared_attrs + repr->n_class_attrs) * sizeof (OR_ATTRIBUTE);
-      size += repr->n_indexes * sizeof (OR_INDEX);
-    }
-
-  return size;
-}
-
-/*
  * heap_attrinfo_clear_dbvalues () - Clear current dbvalues of attribute
  *                                 information
  *   return: NO_ERROR
@@ -11322,7 +11212,6 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 
   return ret;
 }
-
 
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
  * live, derived once per record instead of once per attribute.  The body is written out here
@@ -14329,7 +14218,6 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
 
   return id;
 }
-
 
 /*
  * heap_attrinfo_start_with_btid () - Initialize an attribute information structure
@@ -20786,7 +20674,6 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL);
 }
 
-
 /*
  * heap_next_record_info () - Retrieve or peek next object.
  *
@@ -25145,7 +25032,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 					  LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
 
-
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -25354,7 +25240,6 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
 					  LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
     }
-
 
 error:
 
@@ -25630,7 +25515,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
 					  &context->supp_redo_lsa);
     }
-
 
 exit:
 

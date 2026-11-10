@@ -182,7 +182,6 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 typedef struct gby_skip_state GBY_SKIP_STATE;
 struct pruning_context;
-typedef struct partition_scan_cache PARTITION_SCAN_CACHE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -1239,17 +1238,6 @@ struct topn_tuple
   int values_size;		/* total size in bytes occupied by the objects stored in the values array */
 };
 
-/* the range, key, pred and rest attribute caches of an index scan */
-#define PARTITION_SCAN_CACHE_COUNT 4
-
-/* the attribute caches an index scan walked per outer row keeps for a partition it left, to take them back when it
- * comes back instead of binding them to the class again (scan_switch_index_partition ()) */
-struct partition_scan_cache
-{
-  HEAP_CACHE_ATTRINFO attrs[PARTITION_SCAN_CACHE_COUNT];	/* num_values -1 when none is kept */
-  bool parked;			/* attrs hold the partition's caches; false while the scan is on it */
-};
-
 struct partition_spec_node
 {
   OID oid;			/* class oid */
@@ -1260,7 +1248,6 @@ struct partition_spec_node
   bool row_pruned;		/* left out for the current outer row (partition_prune_spec_for_row ()) */
   bool btid_int_cached;		/* btid_int is read from the partition's root page (scan_switch_index_partition ()) */
   bool scan_locked;		/* an index scan switched to this partition holds its IS_LOCK */
-  PARTITION_SCAN_CACHE *scan_cache;	/* the attribute caches kept for the partition, or NULL */
   BTID_INT btid_int;		/* the B+tree header of btid, for an index scan switched to this partition */
   SCAN_STATS scan_stats;
   const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
@@ -1290,8 +1277,6 @@ struct access_spec_node
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   struct pruning_context *row_pruning;	/* pruning by the outer row's join values, loaded on its first row, or NULL */
   bool row_rewind_pending;	/* rewound for a new outer row, its partition not opened yet (qexec_open_row_partition ()) */
-  PARTITION_SPEC_TYPE *attr_cache_part;	/* the partition whose kept caches the index scan's attribute caches hold */
-  size_t part_scan_cache_bytes;	/* memory the partitions' kept caches take (partition_scan_cache) */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
   bool cached_scan;		/* runtime-only cached-scan activation; not serialized */
