@@ -1797,7 +1797,12 @@
 
 #define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
 
-#define ER_LAST_ERROR                               -1393
+#define ER_HA_REPLICATION_KEY_REQUIRED              -1393
+#define ER_HA_REPLICATION_OPTION_CHANGE_NOT_ALLOWED -1394
+#define ER_HA_FK_CONSTRAINT_VIOLATION               -1395
+#define ER_HA_REPLICATION_CONSTRAINT_VIOLATION      -1396
+
+#define ER_LAST_ERROR                               -1397
 
 
 /*

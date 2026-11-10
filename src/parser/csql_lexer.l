@@ -788,6 +788,8 @@ IDL       [a-zA-Z0-9_]
 									  return REUSE_OID; }
 [rR][eE][vV][eE][rR][sS][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return REVERSE; }
+[rR][eE][pP][lL][iI][cC][aA][tT][iI][oO][nN]				{ csql_yylval.cptr = pt_makename(yytext);
+									  return REPLICATION; }
 [dD][iI][sS][kK][_][sS][iI][zZ][Ee]				        { csql_yylval.cptr = pt_makename(yytext);
 									  return DISK_SIZE; }
 [rR][eE][vV][oO][kK][eE]						{ return REVOKE; }

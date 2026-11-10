@@ -117,4 +117,5 @@ extern int update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT *
 					    PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram,
 					    int *out_histogram_skipped);
 
+extern int log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp);
 #endif /* _EXECUTE_SCHEMA_H_ */

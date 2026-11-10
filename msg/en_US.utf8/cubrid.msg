@@ -1507,8 +1507,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
-1393 Last Error
+1393 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
 
+1394 HA constraint violation: Changing replication option is not allowed in HA mode.
+
+1395 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
+
+1396 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
+
+1397 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
