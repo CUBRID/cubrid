@@ -569,11 +569,6 @@ struct log_tdes
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
-  /* the wake of our self-lock waiters an undo deferred (lock_deferred_wake_mark ()); __atomic access */
-  UINT64 deferred_wake_epoch;	/* the epoch of the undo whose wake is due, or 0 */
-  UINT64 deferred_wake_last_epoch;
-  UINT64 hand_row;		/* packed OID of the row we ask to be handed while the wake is deferred, or 0 */
-
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -1206,8 +1201,7 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen);
-extern int logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, const OID * row_oid,
-					   int *owner_tran_index);
+extern int logtb_wait_for_tran_end_on_row (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);

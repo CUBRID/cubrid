@@ -14714,6 +14714,7 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	{
 	  /* read while the page the stamp was seen on is still fixed: see lock_get_tran_wake_generation () */
 	  UINT64 wake_gen = lock_get_tran_wake_generation ();
+	  LK_HELD_ROW held = { context->oid_p, context->class_oid_p, transient, false };
 
 	  if (context->scan_cache != NULL && context->scan_cache->cache_last_fix_page
 	      && context->home_page_watcher.pgptr != NULL)
@@ -14722,38 +14723,17 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
 	    }
 	  heap_clean_get_context (thread_p, context);
-	  {
-	    int owner_tran_index = NULL_TRAN_INDEX;
-	    int wait_rc = logtb_wait_for_tran_end_on_row (thread_p, owner_mvccid, wake_gen,
-							  (*lock_acquired) ? context->oid_p : NULL, &owner_tran_index);
-
-	    while (wait_rc == LK_RECHECK_HAND)
-	      {
-		int hand_rc = lock_hand_row_to_owner (thread_p, context->oid_p, context->class_oid_p, owner_tran_index,
-						      owner_mvccid, transient);
-
-		if (hand_rc == LK_HANDED_LOST)
-		  {
-		    *lock_acquired = false;
-		    return S_ERROR;
-		  }
-		/* read again; but if the owner no longer asks for the row, wait again while its wake is deferred */
-		wait_rc = NO_ERROR;
-		if (hand_rc == LK_NOT_HANDED_STALE
-		    && lock_recheck_decide (thread_p, owner_mvccid, NULL, &wake_gen,
-					    &owner_tran_index) == LK_RECHECK_REWAIT)
-		  {
-		    wait_rc = logtb_wait_for_tran_end_on_row (thread_p, owner_mvccid, wake_gen, context->oid_p,
-							      &owner_tran_index);
-		  }
-	      }
-	    if (wait_rc != NO_ERROR)
-	      {
-		return S_ERROR;
-	      }
-	    assert (!*lock_acquired || lock_get_object_lock (context->class_oid_p, oid_Root_class_oid) == BU_LOCK
-		    || lock_get_object_lock (context->oid_p, context->class_oid_p) >= S_LOCK);
-	  }
+	  if (logtb_wait_for_tran_end_on_row (thread_p, owner_mvccid, wake_gen, (*lock_acquired) ? &held : NULL) !=
+	      NO_ERROR)
+	    {
+	      if (held.lost)
+		{
+		  *lock_acquired = false;
+		}
+	      return S_ERROR;
+	    }
+	  assert (!*lock_acquired || lock_get_object_lock (context->class_oid_p, oid_Root_class_oid) == BU_LOCK
+		  || lock_get_object_lock (context->oid_p, context->class_oid_p) >= S_LOCK);
 
 	  /* committed or rolled back, read the header again; it may name another owner */
 	  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);

@@ -354,6 +354,23 @@ struct lk_deadlock_wake
 
 #define LK_MAX_DEADLOCK_WAKES 64
 
+/* lock_recheck_decide () results */
+enum
+{
+  LK_RECHECK_READ,
+  LK_RECHECK_REWAIT,
+  LK_RECHECK_HAND
+};
+
+/* lock_hand_row_to_owner () results */
+enum
+{
+  LK_NOT_HANDED,
+  LK_NOT_HANDED_STALE,
+  LK_HANDED_REGAINED,
+  LK_HANDED_LOST
+};
+
 /*
  * Lock Entry Block Structure
  */
@@ -408,6 +425,11 @@ struct lk_tran_lock
   int class_hold_count;		/* # of entries in class_hold_list */
 
   LK_ENTRY *waiting;		/* waiting lock entry */
+
+  /* the wake of our self-lock waiters an undo deferred (lock_deferred_wake_mark ()); __atomic access */
+  UINT64 deferred_wake_epoch;	/* the epoch of the undo whose wake is due, or 0 */
+  UINT64 deferred_wake_last_epoch;
+  UINT64 hand_row;		/* packed OID of the row we ask to be handed while the wake is deferred, or 0 */
 
   /* non two phase lock list */
   pthread_mutex_t non2pl_mutex;	/* mutex for non2pl_list */
@@ -653,13 +675,17 @@ static int lock_transaction_mvccid_with_wait (THREAD_ENTRY * thread_p, MVCCID mv
 static INT64 lock_monotonic_msecs (void);
 static int lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs,
 				   INT64 * waited_msecs);
-static bool lock_deferred_wake_send (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvccid, UINT64 epoch);
+static int lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
+				int *owner_tran_index);
+static bool lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid, UINT64 epoch);
 static void lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_row);
 static UINT64 lock_pack_row_oid (const OID * oid);
 static LK_ENTRY *lock_find_row_hand_owner (LK_RES * res_ptr, int tran_index, int owner_tran_index, MVCCID owner_mvccid,
 					   bool transient, LK_ENTRY ** mine, bool * stale);
 static void lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mine, int tran_index,
 				    bool transient);
+static int lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
+				   int owner_tran_index, MVCCID owner_mvccid, bool transient);
 #endif /* SERVER_MODE */
 
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
@@ -3741,24 +3767,25 @@ static bool
 lock_ask_row_hand (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK_ENTRY * entry_ptr, bool conversion,
 		   bool * asked)
 {
+  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
   LOG_TDES *tdes;
   LK_ENTRY *e, *prev;
   UINT64 packed_row;
   bool granted;
 
   tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL || __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_ACQUIRE) == 0 || conversion)
+  if (tdes == NULL || __atomic_load_n (&tran_lock->deferred_wake_epoch, __ATOMIC_ACQUIRE) == 0 || conversion)
     {
       return false;
     }
   assert (entry_ptr->thrd_entry == thread_p && thread_p->lockwait_prequeued == NULL);
   /* one thread of a transaction takes row locks (parallel query workers do not) */
-  assert (__atomic_load_n (&tdes->hand_row, __ATOMIC_RELAXED) == 0);
+  assert (__atomic_load_n (&tran_lock->hand_row, __ATOMIC_RELAXED) == 0);
 
   thread_p->lockwait_prequeued = (void *) entry_ptr;
   thread_p->lockwait_stime = 0;
   packed_row = lock_pack_row_oid (&res_ptr->key.oid);
-  __atomic_store_n (&tdes->hand_row, packed_row, __ATOMIC_RELAXED);
+  __atomic_store_n (&tran_lock->hand_row, packed_row, __ATOMIC_RELAXED);
   *asked = true;
   pthread_mutex_unlock (&res_ptr->res_mutex);
 
@@ -4511,7 +4538,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   if (hand_row_asked)
     {
       /* however the request ended, it no longer waits on that row */
-      __atomic_store_n (&LOG_FIND_TDES (tran_index)->hand_row, (UINT64) 0, __ATOMIC_RELAXED);
+      __atomic_store_n (&lk_Gl.tran_lock_table[tran_index].hand_row, (UINT64) 0, __ATOMIC_RELAXED);
     }
 
   if (entry_ptr != NULL && ret_val == LK_GRANTED)
@@ -5427,7 +5454,7 @@ lock_resolve_cycle_by_wake (int s, int t)
   for (v = s;; v = TWFG_node[v].ancestor)
     {
       tdes = LOG_FIND_TDES (v);
-      epoch = (tdes != NULL) ? __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_ACQUIRE) : 0;
+      epoch = (tdes != NULL) ? __atomic_load_n (&lk_Gl.tran_lock_table[v].deferred_wake_epoch, __ATOMIC_ACQUIRE) : 0;
       if (epoch != 0)
 	{
 	  found = true;
@@ -5468,7 +5495,7 @@ lock_send_deadlock_wakes (THREAD_ENTRY * thread_p)
       wake = &lk_Gl.deadlock_wakes[k];
       if (logtb_find_tranid (wake->tran_index) == wake->trid)
 	{
-	  (void) lock_deferred_wake_send (thread_p, LOG_FIND_TDES (wake->tran_index), wake->mvccid, wake->epoch);
+	  (void) lock_deferred_wake_send (thread_p, wake->tran_index, wake->mvccid, wake->epoch);
 	}
     }
   lk_Gl.n_deadlock_wakes = 0;
@@ -7095,8 +7122,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 
   /* no request of ours is queued but not asleep (lock_ask_row_hand ()): its grant would add to the hold list this
    * walks without hold_mutex */
-  assert (LOG_FIND_TDES (tran_index) == NULL
-	  || __atomic_load_n (&LOG_FIND_TDES (tran_index)->hand_row, __ATOMIC_RELAXED) == 0);
+  assert (__atomic_load_n (&tran_lock->hand_row, __ATOMIC_RELAXED) == 0);
 
   left = tran_lock->transient_total;
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = next_ptr)
@@ -7522,34 +7548,32 @@ lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, 
  * lock_wait_transaction_mvccid - Wait until the transaction working under mvccid ends, or until what the caller saw
  *				  may be gone
  *
- * return: LK_GRANTED once it ended; LK_NOTGRANTED_DUE_RECHECK to read again, or to hand held_row first when
- *	   *owner_tran_index is set; another LK_NOTGRANTED_* on failure
+ * return: LK_GRANTED once it ended; LK_NOTGRANTED_DUE_RECHECK to read again; another LK_NOTGRANTED_* on failure,
+ *	   with held->lost set when the row was handed to the owner and not had back
  *
  *   wake_gen(in): lock_get_tran_wake_generation (), read as that function says
- *   held_row(in): the row the caller holds X while it waits, or NULL; owner_tran_index may be NULL with it
+ *   held(in/out): the row the caller holds X while it waits, or NULL
  *
- * Note: while the owner's wake is deferred, a recheck waits again. Waits on one owner in one request share one lock
- *	 timeout, or an owner rolling back again and again would keep the waiter from ever timing out.
+ * Note: while the owner's wake is deferred, a recheck waits again, and an owner that comes back to the held row is
+ *	 handed it (lock_hand_row_to_owner ()). Waits on one owner in one request share one lock timeout, or an owner
+ *	 rolling back again and again would keep the waiter from ever timing out.
  */
 int
-lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, const OID * held_row,
-			      int *owner_tran_index)
+lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held)
 {
 #if !defined (SERVER_MODE)
   return LK_GRANTED;
 #else /* !SERVER_MODE */
   LOG_TDES *tdes;
+  const OID *held_row = (held != NULL) ? held->oid : NULL;
   UINT64 packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
   INT64 start_msecs, waited_msecs;
-  int trid, wait_msecs, wait_left, granted;
+  int trid, wait_msecs, wait_left, granted, hand;
+  int owner_tran_index = NULL_TRAN_INDEX;
 
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
-    }
-  if (owner_tran_index != NULL)
-    {
-      *owner_tran_index = NULL_TRAN_INDEX;
     }
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
@@ -7574,27 +7598,43 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wak
       thread_p->lockwait_recheck.trid = trid;
       thread_p->lockwait_recheck.wait_msecs = wait_msecs;
       thread_p->lockwait_recheck.waited_msecs = waited_msecs + lock_monotonic_msecs () - start_msecs;
-      if (lock_recheck_decide (thread_p, mvccid, held_row, &wake_gen, owner_tran_index) != LK_RECHECK_REWAIT)
+      switch (lock_recheck_decide (thread_p, mvccid, held_row, &wake_gen, &owner_tran_index))
 	{
+	case LK_RECHECK_REWAIT:
+	  continue;
+	case LK_RECHECK_HAND:
+	  hand =
+	    lock_hand_row_to_owner (thread_p, held->oid, held->class_oid, owner_tran_index, mvccid, held->transient);
+	  if (hand == LK_HANDED_LOST)
+	    {
+	      held->lost = true;
+	      return LK_NOTGRANTED_DUE_ERROR;
+	    }
+	  /* the owner no longer asks for the row: wait again while its wake is deferred */
+	  if (hand == LK_NOT_HANDED_STALE
+	      && lock_recheck_decide (thread_p, mvccid, NULL, &wake_gen, &owner_tran_index) == LK_RECHECK_REWAIT)
+	    {
+	      continue;
+	    }
+	  return LK_NOTGRANTED_DUE_RECHECK;
+	default:
 	  return LK_NOTGRANTED_DUE_RECHECK;
 	}
     }
 #endif /* !SERVER_MODE */
 }
 
+#if defined (SERVER_MODE)
 /*
  * lock_recheck_decide - a self-lock wait came back to read again: LK_RECHECK_READ, LK_RECHECK_REWAIT while the
  *			 owner's wake is deferred (with *wake_gen), or LK_RECHECK_HAND when it asks for held_row
  *
  * Note: the generation is read before the owner's hand_row and epoch; a wake writes those before its bump.
  */
-int
+static int
 lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
 		     int *owner_tran_index)
 {
-#if !defined (SERVER_MODE)
-  return LK_RECHECK_READ;
-#else /* !SERVER_MODE */
   UINT64 gen, packed_held, hand_row, epoch;
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
@@ -7625,8 +7665,8 @@ lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_ro
     {
       return LK_RECHECK_READ;
     }
-  hand_row = __atomic_load_n (&tdes->hand_row, __ATOMIC_RELAXED);
-  epoch = __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_RELAXED);
+  hand_row = __atomic_load_n (&lk_Gl.tran_lock_table[owner].hand_row, __ATOMIC_RELAXED);
+  epoch = __atomic_load_n (&lk_Gl.tran_lock_table[owner].deferred_wake_epoch, __ATOMIC_RELAXED);
 
   packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
   if (packed_held != 0 && hand_row == packed_held)
@@ -7640,8 +7680,8 @@ lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_ro
       return LK_RECHECK_REWAIT;
     }
   return LK_RECHECK_READ;
-#endif /* !SERVER_MODE */
 }
+#endif /* SERVER_MODE */
 
 /*
  * lock_reset_request_state - a request starts or ends: its waits do not go on with an earlier request's, and no
@@ -7664,17 +7704,20 @@ lock_reset_request_state (THREAD_ENTRY * thread_p)
  *	 wake drop the new one.
  */
 void
-lock_deferred_wake_mark (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  LK_TRAN_LOCK *tran_lock;
   UINT64 epoch;
 
-  if (!MVCCID_IS_NORMAL (tdes->mvccinfo.id))
+  if (tdes == NULL || !MVCCID_IS_NORMAL (tdes->mvccinfo.id))
     {
       return;
     }
-  epoch = ++tdes->deferred_wake_last_epoch;
-  __atomic_store_n (&tdes->deferred_wake_epoch, epoch, __ATOMIC_RELEASE);
+  tran_lock = &lk_Gl.tran_lock_table[tran_index];
+  epoch = ++tran_lock->deferred_wake_last_epoch;
+  __atomic_store_n (&tran_lock->deferred_wake_epoch, epoch, __ATOMIC_RELEASE);
 #endif /* SERVER_MODE */
 }
 
@@ -7682,14 +7725,11 @@ lock_deferred_wake_mark (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
  * lock_deferred_wake_clear - the transaction ends, also by COMMIT WORK RETAIN LOCK: no deferred wake is due
  */
 void
-lock_deferred_wake_clear (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+lock_deferred_wake_clear (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
-  if (tdes != NULL)
-    {
-      __atomic_store_n (&tdes->deferred_wake_epoch, (UINT64) 0, __ATOMIC_RELAXED);
-      __atomic_store_n (&tdes->hand_row, (UINT64) 0, __ATOMIC_RELAXED);
-    }
+  __atomic_store_n (&lk_Gl.tran_lock_table[tran_index].deferred_wake_epoch, (UINT64) 0, __ATOMIC_RELAXED);
+  __atomic_store_n (&lk_Gl.tran_lock_table[tran_index].hand_row, (UINT64) 0, __ATOMIC_RELAXED);
 #endif /* SERVER_MODE */
 }
 
@@ -7716,7 +7756,8 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
     {
       return;
     }
-  thread_p->deferred_wake_epoch_seen = __atomic_load_n (&tdes->deferred_wake_epoch, __ATOMIC_ACQUIRE);
+  thread_p->deferred_wake_epoch_seen =
+    __atomic_load_n (&lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake_epoch, __ATOMIC_ACQUIRE);
 #endif /* SERVER_MODE */
 }
 
@@ -7741,7 +7782,7 @@ lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p)
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (tdes != NULL)
     {
-      (void) lock_deferred_wake_send (thread_p, tdes, tdes->mvccinfo.id, epoch);
+      (void) lock_deferred_wake_send (thread_p, tdes->tran_index, tdes->mvccinfo.id, epoch);
     }
 #endif /* SERVER_MODE */
 }
@@ -7753,13 +7794,13 @@ lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p)
  * return: whether it was still due
  */
 static bool
-lock_deferred_wake_send (THREAD_ENTRY * thread_p, LOG_TDES * tdes, MVCCID mvccid, UINT64 epoch)
+lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid, UINT64 epoch)
 {
   UINT64 expected = epoch;
 
   if (epoch == 0
-      || !__atomic_compare_exchange_n (&tdes->deferred_wake_epoch, &expected, (UINT64) 0, false, __ATOMIC_SEQ_CST,
-				       __ATOMIC_RELAXED))
+      || !__atomic_compare_exchange_n (&lk_Gl.tran_lock_table[tran_index].deferred_wake_epoch, &expected, (UINT64) 0,
+				       false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED))
     {
       return false;
     }
@@ -7922,7 +7963,6 @@ lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mi
   lock_free_entry (tran_index, thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT), &lk_Gl.obj_free_entry_list,
 		   mine);
 }
-#endif /* SERVER_MODE */
 
 /*
  * lock_hand_row_to_owner - a waiter back from a recheck hands the row it holds to the owner asking for it, and waits
@@ -7935,13 +7975,10 @@ lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mi
  * Note: the hand-over is one step under the row's resource mutex and the owner's thread mutex, so the owner cannot
  *	 time out in between and no writer queued behind us gets the row.
  */
-int
+static int
 lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, int owner_tran_index,
 			MVCCID owner_mvccid, bool transient)
 {
-#if !defined (SERVER_MODE)
-  return LK_NOT_HANDED;
-#else /* !SERVER_MODE */
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
@@ -8057,8 +8094,8 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
 
   lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
   return LK_HANDED_LOST;
-#endif /* !SERVER_MODE */
 }
+#endif /* SERVER_MODE */
 
 /*
  * lock_has_xlock_or_self_lock () - Debug precondition for an in-place update: does the current
@@ -8827,7 +8864,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   lock_reset_transient_state (tran_lock);
 
   /* releasing the self-lock grants its waiters; a deferred wake is no longer due */
-  lock_deferred_wake_clear (thread_p, LOG_FIND_TDES (tran_index));
+  lock_deferred_wake_clear (thread_p, tran_index);
 
   /* remove all instance locks */
   entry_ptr = tran_lock->inst_hold_list;

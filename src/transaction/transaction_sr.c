@@ -318,7 +318,7 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	  if (logged)
 	    {
 	      /* the undo may have erased stamps others wait on, as a rollback to a savepoint does */
-	      lock_deferred_wake_mark (thread_p, tdes);
+	      lock_deferred_wake_mark (thread_p, tdes->tran_index);
 	    }
 	}
       break;

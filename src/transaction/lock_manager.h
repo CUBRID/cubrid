@@ -70,21 +70,14 @@ enum
 enum
 { LK_UNCOND_LOCK, LK_COND_LOCK };
 
-/* lock_recheck_decide () results */
-enum
+/* the row a self-lock waiter holds X while it waits: the owner may be handed it (lock_wait_transaction_mvccid ()) */
+typedef struct lk_held_row LK_HELD_ROW;
+struct lk_held_row
 {
-  LK_RECHECK_READ = 0,
-  LK_RECHECK_REWAIT = 1,
-  LK_RECHECK_HAND = 2
-};
-
-/* lock_hand_row_to_owner () results */
-enum
-{
-  LK_NOT_HANDED = 0,
-  LK_NOT_HANDED_STALE = 1,
-  LK_HANDED_REGAINED = 2,
-  LK_HANDED_LOST = 3
+  const OID *oid;
+  const OID *class_oid;
+  bool transient;		/* the row lock request was counted transient */
+  bool lost;			/* out: handed to the owner and not had back */
 };
 
 typedef enum
@@ -262,17 +255,12 @@ extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvcc
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern bool lock_is_transaction_mvccid_held (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern UINT64 lock_get_tran_wake_generation (void);
-extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, const OID * held_row,
-					 int *owner_tran_index);
-extern int lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
-				int *owner_tran_index);
+extern int lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wake_gen, LK_HELD_ROW * held);
 extern void lock_reset_request_state (THREAD_ENTRY * thread_p);
-extern void lock_deferred_wake_mark (THREAD_ENTRY * thread_p, struct log_tdes *tdes);
-extern void lock_deferred_wake_clear (THREAD_ENTRY * thread_p, struct log_tdes *tdes);
+extern void lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index);
+extern void lock_deferred_wake_clear (THREAD_ENTRY * thread_p, int tran_index);
 extern void lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p);
 extern void lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p);
-extern int lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
-				   int owner_tran_index, MVCCID owner_mvccid, bool transient);
 extern bool lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);
