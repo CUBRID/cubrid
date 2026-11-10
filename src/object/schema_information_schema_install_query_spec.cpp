@@ -983,7 +983,15 @@ sm_define_view_triggers_spec (void)
       "[tr].[target_attribute] AS [event_object_column], "
       "NULL AS [action_order], "
       "[tr].[condition] AS [action_condition], "
-      "[tr].[action_definition] AS [action_statement], "
+      "CASE [tr].[action_type] "
+        /* TR_ACT_REJECT */
+        "WHEN %d THEN 'REJECT' "
+        /* TR_ACT_INVALIDATE */
+        "WHEN %d THEN 'INVALIDATE TRANSACTION' "
+        /* TR_ACT_PRINT */
+        "WHEN %d THEN CONCAT ('PRINT ''', [tr].[action_definition], '''') "
+        "ELSE [tr].[action_definition] "
+      "END AS [action_statement], "
       /* row events: TR_EVENT_UPDATE/DELETE/INSERT; statement events: TR_EVENT_STATEMENT_*; NULL for COMMIT/ROLLBACK */
       "CASE "
         "WHEN [tr].[event] IN (%d, %d, %d) THEN 'ROW' "
@@ -1012,6 +1020,7 @@ sm_define_view_triggers_spec (void)
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_UPDATE,
     TR_EVENT_DELETE, TR_EVENT_STATEMENT_DELETE,
     TR_EVENT_INSERT, TR_EVENT_STATEMENT_INSERT,
+    TR_ACT_REJECT, TR_ACT_INVALIDATE, TR_ACT_PRINT,
     TR_EVENT_UPDATE, TR_EVENT_DELETE, TR_EVENT_INSERT,
     TR_EVENT_STATEMENT_UPDATE, TR_EVENT_STATEMENT_DELETE, TR_EVENT_STATEMENT_INSERT,
     TR_TIME_BEFORE, TR_TIME_AFTER, TR_TIME_DEFERRED,
