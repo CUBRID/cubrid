@@ -25703,7 +25703,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
   if (PT_SELECT_INFO_IS_FLAGED (statement, PT_SELECT_INFO_MVCC_LOCK_NEEDED))
     {
-      pt_mark_spec_list_for_update_clause (parser, statement, PT_SPEC_FLAG_UPDATE);
+      pt_mark_spec_list_for_update_clause (parser, statement,
+					   (scan_op_type == S_DELETE) ? PT_SPEC_FLAG_DELETE : PT_SPEC_FLAG_UPDATE);
     }
 
   return statement;
