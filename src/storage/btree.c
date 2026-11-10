@@ -13775,7 +13775,9 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
   thread_p->read_ovfl_pages_count = 0;	/* For Vacuum only; directory fixes below count too. */
 
   PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-  first_ovf_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  first_ovf_page =
+    pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, btree_purpose_object_page_latch (purpose),
+	       PGBUF_UNCONDITIONAL_LATCH);
   btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
   if (first_ovf_page == NULL)
     {
@@ -13882,7 +13884,9 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	  if (!VPID_ISNULL (&prev_vpid))
 	    {
 	      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-	      prev_data_page = pgbuf_fix (thread_p, &prev_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	      prev_data_page =
+		pgbuf_fix (thread_p, &prev_vpid, OLD_PAGE, btree_purpose_object_page_latch (purpose),
+			   PGBUF_UNCONDITIONAL_LATCH);
 	      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
 	      if (prev_data_page == NULL)
 		{
@@ -13893,7 +13897,9 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	}
 
       PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
-      target_page = pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      target_page =
+	pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, btree_purpose_object_page_latch (purpose),
+		   PGBUF_UNCONDITIONAL_LATCH);
       btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
       if (target_page == NULL)
 	{
