@@ -201,6 +201,7 @@ extern int do_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_kill (PARSER_CONTEXT * parser, PT_NODE * statement);

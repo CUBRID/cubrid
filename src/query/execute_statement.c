@@ -153,6 +153,8 @@ static int do_drop_synonym_internal (const char *synonym_name, const int is_publ
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
 static int do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const int level,
 						 const char *comment);
+static int do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const char *new_name,
+						const int level, const char *comment);
 static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -3602,6 +3604,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_RENAME_SYNONYM:
 
 	case PT_CREATE_SENSITIVITY_LABEL:
+	case PT_ALTER_SENSITIVITY_LABEL:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3891,6 +3894,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_CREATE_SENSITIVITY_LABEL:
 	  error = do_create_sensitivity_label (parser, statement);
+	  break;
+
+	case PT_ALTER_SENSITIVITY_LABEL:
+	  error = do_alter_sensitivity_label (parser, statement);
 	  break;
 
 	default:
@@ -4352,6 +4359,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_RENAME_SYNONYM:
 
     case PT_CREATE_SENSITIVITY_LABEL:
+    case PT_ALTER_SENSITIVITY_LABEL:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -4583,6 +4591,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_SENSITIVITY_LABEL:
       err = do_create_sensitivity_label (parser, statement);
+      break;
+    case PT_ALTER_SENSITIVITY_LABEL:
+      err = do_alter_sensitivity_label (parser, statement);
       break;
 
     default:
@@ -20381,6 +20392,199 @@ do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name,
     }
 
   error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  instance_obj = dbt_finish_object (obj_tmpl);
+  if (instance_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (instance_obj);
+
+end:
+  if (obj_tmpl != NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
+  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
+    }
+
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * do_alter_sensitivity_label () - ALTER SENSITIVITY LABEL GRADE/INFO_TYPE/SOURCE, RENAME AS included
+ *   return: error code
+ *   parser(in): parser context
+ *   statement(in): the statement
+ */
+int
+do_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_SENSITIVITY_LABEL_INFO *info = &statement->info.sensitivity_label;
+  const char *comment = (const char *) PT_VALUE_GET_BYTES (info->comment);
+  const char *new_name = NULL;
+  char name[DB_MAX_IDENTIFIER_LENGTH];
+  char new_name_buf[DB_MAX_IDENTIFIER_LENGTH];
+  int level = 0;
+  int error;
+
+  CHECK_MODIFICATION_ERROR ();
+
+  error = au_check_system_object_authorization (DB_OBJECT_SENSITIVITY_LABEL, DB_AUTH_ALTER);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  sm_downcase_name ((const char *) PT_VALUE_GET_BYTES (info->name), name, DB_MAX_IDENTIFIER_LENGTH);
+
+  if (info->new_name != NULL)
+    {
+      sm_downcase_name ((const char *) PT_VALUE_GET_BYTES (info->new_name), new_name_buf, DB_MAX_IDENTIFIER_LENGTH);
+      new_name = new_name_buf;
+    }
+
+  if (info->level != NULL)
+    {
+      level = info->level->info.value.data_value.i;
+    }
+
+  return do_alter_sensitivity_label_internal (info->kind, name, new_name, level, comment);
+}
+
+/*
+ * do_alter_sensitivity_label_internal () - update a grade, info_type or source row
+ *   return: error code
+ *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
+ *   name(in): the lowercased name
+ *   new_name(in): the lowercased new name, or NULL to keep the name
+ *   level(in): the new grade_level, or 0 to keep it
+ *   comment(in): the new comment, or NULL to keep it
+ */
+static int
+do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const char *new_name, const int level,
+				     const char *comment)
+{
+  DB_OBJECT *class_obj;
+  DB_OBJECT *instance_obj;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_VALUE value;
+  const char *class_name;
+  bool has_savepoint = false;
+  int error;
+  int save;
+
+  switch (kind)
+    {
+    case PT_SENSITIVITY_LABEL_GRADE:
+      class_name = CT_SENSITIVITY_LABEL_GRADE_NAME;
+      break;
+    case PT_SENSITIVITY_LABEL_INFO_TYPE:
+      class_name = CT_SENSITIVITY_LABEL_INFO_TYPE_NAME;
+      break;
+    default:
+      class_name = CT_SENSITIVITY_LABEL_SOURCE_NAME;
+      break;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+
+  class_obj = db_find_class (class_name);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  /* X-lock the row now: an S lock upgraded at the update can deadlock with another ALTER of the row */
+  db_make_string (&value, name);
+  instance_obj = obj_find_unique (class_obj, "name", &value, AU_FETCH_WRITE);
+  if (instance_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_NOT_FOUND, pt_show_misc_type (kind), name);
+	}
+      goto end;
+    }
+
+  if (new_name != NULL)
+    {
+      db_make_string (&value, new_name);
+      if (db_find_unique (class_obj, "name", &value) != NULL)
+	{
+	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS, pt_show_misc_type (kind), new_name);
+	  goto end;
+	}
+
+      ASSERT_ERROR_AND_SET (error);
+      if (error != ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  goto end;
+	}
+      er_clear ();
+    }
+
+  /* a failed flush leaves the row dirty in the workspace */
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  has_savepoint = true;
+
+  obj_tmpl = dbt_edit_object (instance_obj);
+  if (obj_tmpl == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  if (new_name != NULL)
+    {
+      db_make_string (&value, new_name);
+      error = dbt_put_internal (obj_tmpl, "name", &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (level > 0)
+    {
+      db_make_int (&value, level);
+      error = dbt_put_internal (obj_tmpl, "grade_level", &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (comment != NULL)
+    {
+      db_make_string (&value, comment);
+      error = dbt_put_internal (obj_tmpl, "comment", &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  error = db_update_otmpl_timestamp (obj_tmpl);
   if (error != NO_ERROR)
     {
       goto end;
