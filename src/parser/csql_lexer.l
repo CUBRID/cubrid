@@ -2237,7 +2237,7 @@ parser_yy_user_action (void)
 
   if (YY_START == INITIAL)	/* token start (not a continuation) */
     {
-      yytoken_start_line = csql_yylloc.first_line = yylineno;
+      yytoken_start_line = csql_yylloc.first_line = csql_yylloc.start_line = yylineno;
       yytoken_start_column = csql_yylloc.first_column = parser_column_position();
     }
 
