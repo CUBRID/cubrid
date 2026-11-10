@@ -3217,6 +3217,12 @@ struct pt_merge_info
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *no_use_hash;		/* NO_USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *use_hash;		/* USE_HASH hint's arguments (PT_NAME list) */
+  /* remote target, local source. remote_source_select is the SELECT over the source. Its row
+   * holds the values bound per MERGE, in pt_dblink_merge_walk_binds () order.
+   * remote_stmt_as_written is the statement before type checking, its clauses as written. No walk
+   * visits it, so a copy of the statement shares it. It is only read after it is made. */
+  PT_NODE *remote_source_select;
+  PT_NODE *remote_stmt_as_written;
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
 #define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */
