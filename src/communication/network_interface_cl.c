@@ -7669,10 +7669,11 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
-  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included */
+  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included: EXECUTE_QUERY_WITH_COMMIT
+   * is the bit the server commits on */
   if (stream_from_is_open ())
     {
-      flag &= ~TRAN_AUTO_COMMIT;
+      flag &= ~(TRAN_AUTO_COMMIT | EXECUTE_QUERY_WITH_COMMIT);
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
