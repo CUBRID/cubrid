@@ -53,8 +53,10 @@ enum STREAM_KIND
    *   2  internal-LOB DML       (not landed; CBRD-26780)
    *   3  loaddb                 (not landed; CBRD-26780)
    *   4  internal-LOB read      (not landed; CBRD-26780)
+   *   5  debug echo upload      (debug builds only, stream_debug_echo.cpp)
+   *   6  debug echo download    (debug builds only, stream_debug_echo.cpp)
    */
-  STREAM_KIND_MAX = 5		/* registry slots; raise when a sixth consumer lands */
+  STREAM_KIND_MAX = 7		/* registry slots; raise when another consumer lands */
 };
 
 /* Flags of the bundled forms on the server requests (see the CAS_STREAM_FLAG_* masks for the driver wire). */
@@ -98,7 +100,10 @@ struct stream_result
 };
 
 /* An upload is one statement still running, so its methods never end the
- * transaction: the transaction's end frees the session (session_end_tran_streams). */
+ * transaction: the transaction's end frees the session (session_end_tran_streams).
+ * For the same reason no savepoint rollback runs while it is open: a consumer's
+ * statement that fails with its stream open calls stream_from_abort () before it
+ * rolls back to its own savepoint. */
 class stream_session
 {
   public:
