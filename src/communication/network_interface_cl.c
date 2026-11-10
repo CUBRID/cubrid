@@ -12367,13 +12367,13 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 /* Whether this client holds an open stream session. The caller of a statement
  * that opened one needs to know that bytes are still to come, without knowing
  * which consumer opened it. */
-static bool stream_Is_open = false;
+static CUB_THREAD_LOCAL bool stream_Is_open = false;
 
 /* The download handles this client holds, as the READ_OPEN replies named them. Each ties the transaction as an
  * open result set does, and the server releases them all when the transaction ends (stream_from_reset). */
-static INT64 *stream_Downloads = NULL;
-static int stream_Download_count = 0;
-static int stream_Download_capacity = 0;
+static CUB_THREAD_LOCAL INT64 *stream_Downloads = NULL;
+static CUB_THREAD_LOCAL int stream_Download_count = 0;
+static CUB_THREAD_LOCAL int stream_Download_capacity = 0;
 
 static int
 stream_download_add (INT64 handle)
