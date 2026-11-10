@@ -8191,6 +8191,35 @@ pt_cast_derived_columns_to_bound_types (PARSER_CONTEXT * parser, PT_NODE * query
       prev_col = NULL;
       for (col = query->info.query.q.select.list; col != NULL && attr != NULL; prev_col = col, col = col->next)
 	{
+	  /* a set operation unified its operands with a cast it marks with etc (pt_make_cast_with_compatible_info ());
+	   * when the item no longer has the column type, drop that cast so the value goes to the column type straight,
+	   * not through the unified type (DOUBLE for a number and a string) */
+	  if (col->type_enum != attr->type_enum && col->node_type == PT_EXPR && col->info.expr.op == PT_CAST
+	      && col->etc != NULL && col->info.expr.arg1 != NULL)
+	    {
+	      new_col = col->info.expr.arg1;
+	      new_col->next = col->next;
+	      if (new_col->alias_print == NULL)
+		{
+		  new_col->alias_print = col->alias_print;
+		}
+	      if (prev_col == NULL)
+		{
+		  query->info.query.q.select.list = new_col;
+		  query->type_enum = new_col->type_enum;
+		  if (query->data_type != NULL)
+		    {
+		      parser_free_tree (parser, query->data_type);
+		    }
+		  query->data_type = parser_copy_tree_list (parser, new_col->data_type);
+		}
+	      else
+		{
+		  prev_col->next = new_col;
+		}
+	      col = new_col;
+	    }
+
 	  /* NULL, NA and MAYBE fit any column; objects and collections keep their own domains */
 	  if (col->type_enum != attr->type_enum && col->type_enum != PT_TYPE_NULL && col->type_enum != PT_TYPE_NA
 	      && col->type_enum != PT_TYPE_MAYBE && col->type_enum != PT_TYPE_NONE && attr->type_enum != PT_TYPE_NULL
