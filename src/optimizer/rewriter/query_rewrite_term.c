@@ -5441,52 +5441,6 @@ qo_or_extract_mark_derived (PT_NODE * derived, bool index_only)
 }
 
 /*
- * qo_or_extract_null_supplied_before () - is a spec null-supplied by an outer join that comes
- *					     before an ON condition?
- *   return: true when a restriction derived from that ON condition must not reach the spec
- *   spec_list(in): FROM specs
- *   spec(in): the spec a restriction would be derived for
- *   location(in): the location of the ON condition the factor comes from (> 0)
- *
- * Note: a restriction derived for a spec becomes a scan filter of that spec.  When an outer join
- *	 before the ON condition null-supplies the spec, filtering its scan turns a matching
- *	 row into a NULL padded one, which the ON condition may then accept: an INNER JOIN after a
- *	 LEFT JOIN keeps its ON terms out of the outer join classification, so nothing holds the
- *	 filter at its join.  The spec is null-supplied when it is the inner side of a LEFT (or
- *	 FULL) OUTER JOIN itself, or when a RIGHT (or FULL) OUTER JOIN after it and before the ON
- *	 condition takes it to the null-supplying side.  The outer join the ON condition belongs to
- *	 is not one of them: a restriction it puts on its own null-supplying side is pushed into that
- *	 side, as the distributed factor's clause was.
- */
-static bool
-qo_or_extract_null_supplied_before (PT_NODE * spec_list, PT_NODE * spec, short location)
-{
-  PT_NODE *later;
-
-  if (spec->info.spec.location >= location)
-    {
-      return false;		/* the spec this ON condition joins: its own join type governs */
-    }
-
-  if (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER || spec->info.spec.join_type == PT_JOIN_FULL_OUTER)
-    {
-      return true;
-    }
-
-  for (later = spec_list; later != NULL; later = later->next)
-    {
-      if (later->node_type == PT_SPEC && later->info.spec.location > spec->info.spec.location
-	  && later->info.spec.location < location
-	  && (later->info.spec.join_type == PT_JOIN_RIGHT_OUTER || later->info.spec.join_type == PT_JOIN_FULL_OUTER))
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * qo_extract_or_restrictions () - derive single-spec scan filters and key ranges from OR terms
  *   return:
  *   parser(in):
@@ -5507,10 +5461,11 @@ qo_or_extract_null_supplied_before (PT_NODE * spec_list, PT_NODE * spec, short l
  *	 the disjunction of those restrictions is a key range on C.  pt_cnf () keeps such factors
  *	 whole rather than distributing them, so this is where both kinds of restriction come from,
  *	 for a factor over one spec as well as over several.  A factor from a join's ON condition
- *	 derives restrictions with the same location, evaluated at that join as the factor is, but
- *	 none for a spec an outer join before it null-supplies (qo_or_extract_null_supplied_before ());
- *	 a conjunct that must not be evaluated twice stays only in the factor.  A factor is a source
- *	 once: UPDATE and DELETE rewrite their subqueries twice (PT_EXPR_INFO_OR_EXTRACTED).
+ *	 derives restrictions with the same location, evaluated at that join as the factor is (a
+ *	 restriction on the side an earlier outer join null-supplies is held at its join by
+ *	 qo_classify_outerjoin_terms (), CBRD-27341); a conjunct that must not be evaluated twice
+ *	 stays only in the factor.  A factor is a source once: UPDATE and DELETE rewrite their
+ *	 subqueries twice (PT_EXPR_INFO_OR_EXTRACTED).
  *
  *	 The derived factor's selectivity is counted at the node scan (qo_node_add_sarg ()), so
  *	 the scan cardinality reflects the filter and the join order can react to it; to keep the
@@ -5590,11 +5545,6 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 	  (void) parser_walk_tree (parser, cnf, qo_or_extract_check_ref_pre, &info, NULL, NULL);
 	  cnf->next = save_next;
 	  if (!info.refers_spec)
-	    {
-	      continue;
-	    }
-	  if (cnf->info.expr.location > 0 && qo_or_extract_null_supplied_before (spec_list, spec,
-										 cnf->info.expr.location))
 	    {
 	      continue;
 	    }
