@@ -367,6 +367,11 @@ struct buildvalue_proc_node
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
   int is_always_false;		/* always-false agg-query? */
+  /* XASL_OUTPUT_READS_SCAN: the scan columns of the last row the filters kept, copied as the row is aggregated
+   * (qexec_keep_last_row ()) for the output list, which reads them after the scans are closed; not serialized */
+  DB_VALUE *last_row;
+  int last_row_cnt;
+  bool last_row_kept;
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
@@ -597,6 +602,7 @@ struct cte_proc_node
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
 #define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
+#define XASL_OUTPUT_READS_SCAN		(0x1 << 30)	/* a BUILDVALUE whose output reads a column of its scans (pt_buildvalue_output_reads_scan ()) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
