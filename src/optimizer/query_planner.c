@@ -14537,10 +14537,10 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 
   for (i = planner->E; i < (signed) planner->T; ++i)
     {
-      /* a term that reads no node goes to the topmost plan, except the ON condition of an outer join
-       * (QO_TC_DURING_JOIN): planner_visit_node () evaluates it at that outer join. On a plan above the outer join,
-       * the cross join of the partitions or a join over it, it would also filter the rows the outer join
-       * preserves, and a false condition would leave no row */
+      /* a term that reads no node goes to the topmost plan, except the ON condition of an outer or anti join
+       * (QO_TC_DURING_JOIN): planner_visit_node () evaluates it at that join. On a plan above the join, the cross
+       * join of the partitions or a join over it, it would also filter the rows the join preserves, and a false
+       * condition would leave no row */
       if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i])))
 	  && QO_TERM_CLASS (&planner->term[i]) != QO_TC_DURING_JOIN)
 	{
