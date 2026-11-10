@@ -3198,11 +3198,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return Misc.isEmpty(node.decl.paramList)
                 ? new CodeTemplate(
                         "StmtLocalProcCall",
-                        Misc.UNKNOWN_LINE_COLUMN,
+                        Misc.getLineColumnOf(node.ctx),
                         callee + "(" + getLocalCallArgs(node.decl, "") + ");")
                 : new CodeTemplate(
                         "StmtLocalProcCall",
-                        Misc.UNKNOWN_LINE_COLUMN,
+                        Misc.getLineColumnOf(node.ctx),
                         tmplStmtLocalProcCall,
                         "%'CALLEE'%",
                         callee,
