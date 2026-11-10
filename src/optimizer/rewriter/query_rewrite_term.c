@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <float.h>
 #include "query_rewrite.h"
 
 static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where);
@@ -489,6 +490,62 @@ qo_is_reduceable_const (PT_NODE * expr)
 }
 
 /*
+ * qo_is_exact_compare_const () - does 'expr = val' fix expr to a single value?
+ *   return: false if the comparison may be done in an approximate numeric type
+ *   parser(in):
+ *   expr(in): expression compared with the constant
+ *   val(in): constant side of the comparison
+ *
+ * Note: BIGINT/NUMERIC compared with a non exact numeric value is done in DOUBLE, so distinct values can match.
+ *   A host variable is judged by the type its position is compiled for (a plan is not reused for another bind
+ *   type); an untyped one is not exact.
+ *   NUMERIC of precision DBL_DIG or less is exact anyway: DOUBLE keeps its distinct values distinct.
+ */
+bool
+qo_is_exact_compare_const (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * val)
+{
+  if (expr->type_enum != PT_TYPE_BIGINT && expr->type_enum != PT_TYPE_NUMERIC)
+    {
+      return true;
+    }
+
+  if (expr->type_enum == PT_TYPE_NUMERIC && expr->data_type != NULL
+      && expr->data_type->info.data_type.precision <= DBL_DIG)
+    {
+      return true;
+    }
+
+  if (val->node_type == PT_HOST_VAR && val->info.host_var.var_type == PT_HOST_IN && val->info.host_var.index >= 0)
+    {
+      TP_DOMAIN *domain = pt_host_var_position_domain (parser, val->info.host_var.index);
+      if (domain != NULL)
+	{
+	  switch (TP_DOMAIN_TYPE (domain))
+	    {
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_BIGINT:
+	    case DB_TYPE_NUMERIC:
+	      return true;
+	    default:
+	      return false;
+	    }
+	}
+    }
+
+  switch (val->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+    case PT_TYPE_BIGINT:
+    case PT_TYPE_NUMERIC:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_bind_copy_user_position () - CBRD-27583: the user position a bind's copies read: a user host variable's own,
  *   or that of a bind copy a translation already positioned (a later translation, or a copy copied again); -1 for an
  *   auto-parameterized literal or another derived position, whose copies share its value as a literal's do
@@ -685,8 +742,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 	      if (qo_is_reduceable_const (arg2))
 		{
-		  found_equality_term = true;
-		  break;	/* immediately break */
+		  if (qo_is_exact_compare_const (parser, arg1, arg2))
+		    {
+		      found_equality_term = true;
+		      break;	/* immediately break */
+		    }
+		  continue;
 		}
 	      else if (pt_is_attr (arg2))
 		{
@@ -3541,6 +3602,10 @@ qo_merge_range_helper (PARSER_CONTEXT * parser, PT_NODE * node)
 		    }
 		  sibling->info.expr.arg2 = NULL;
 		  r_uop = PT_LE;
+		  /* an EQ range keeps its one value in arg1, and r_uv aliased r_lv there (never a copy): arg1
+		   * was freed above, so take the upper bound from the arg2 just set, or the validity check
+		   * below reads freed memory and may drop the merged range as always false */
+		  r_uv = pt_value_to_db (parser, range->info.expr.arg2);
 		  need_to_determine_upper_bound = false;
 		}
 

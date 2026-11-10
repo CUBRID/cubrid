@@ -97,9 +97,16 @@ typedef struct
   CSQL_STATEMENT_SUBSTATE substate;
   int plcsql_begin_end_balance;
   int plcsql_nest_level;
+  // following fields map the lines in contents to the input lines (non-interactive mode only)
+  int line_count;		/* number of new line chars in contents */
+  int start_line_no;		/* input line number of the first line, 0 if the lines do not come from the input */
+  int *skipped_lines;		/* line_count when each input line was skipped (session commands) */
+  int skipped_count;
+  int skipped_alloc;
 } CSQL_EDIT_CONTENTS;
 
-static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
+static CSQL_EDIT_CONTENTS csql_Edit_contents =
+  { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0, 0, 0, NULL, 0, 0 };
 
 
 static bool is_identifier_letter (const char c);
@@ -626,7 +633,9 @@ csql_display_csql_err (int line_no, int col_no)
  *                            for this session
  *   return: none
  *   session(in): context of query compilation
- *   line_no(in): statement starting line number
+ *   line_no(in): statement starting line number, as a line of the input
+ *
+ * Note: an error with no position of its own, e.g. one raised while the statement is executed, is shown at line_no.
  */
 void
 csql_display_session_err (DB_SESSION * session, int line_no)
@@ -641,7 +650,15 @@ csql_display_session_err (DB_SESSION * session, int line_no)
   do
     {
       csql_Scratch_text[0] = '\0';
-      err = db_get_next_error (err, &line_no, &col_no);
+      if (err != NULL)
+	{
+	  /* the position in the error list is a line counted by the lexer; line_no is a line of the input already */
+	  err = db_get_next_error (err, &line_no, &col_no);
+	  if (line_no > 0)
+	    {
+	      line_no = csql_edit_contents_get_input_line (line_no);
+	    }
+	}
       if (line_no > 0)
 	{
 	  csql_fputs ("\n", csql_Error_fp);
@@ -1041,9 +1058,101 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
   if (flag_append_new_line)
     {
       csql_Edit_contents.contents[csql_Edit_contents.data_size++] = '\n';
+      csql_Edit_contents.line_count++;
     }
   csql_Edit_contents.contents[csql_Edit_contents.data_size] = '\0';
+
+  for (const char *p = strchr (str, '\n'); p != NULL; p = strchr (p + 1, '\n'))
+    {
+      csql_Edit_contents.line_count++;
+    }
+
   return CSQL_SUCCESS;
+}
+
+/*
+ * csql_edit_contents_set_start_line() - set the input line number of the first line in the editor contents
+ *   return: none
+ *   line_no(in): input line number
+ */
+void
+csql_edit_contents_set_start_line (int line_no)
+{
+  csql_Edit_contents.start_line_no = line_no;
+  csql_Edit_contents.skipped_count = 0;
+}
+
+/*
+ * csql_edit_contents_get_start_line() - get the input line number of the first line in the editor contents
+ *   return: input line number, or 0 if the lines do not come from the input
+ */
+int
+csql_edit_contents_get_start_line (void)
+{
+  return csql_Edit_contents.start_line_no;
+}
+
+/*
+ * csql_edit_contents_skip_input_line() - record an input line that is not put into the editor contents
+ *   return: none
+ *
+ * Note: a session command line between the lines of a statement is not put into the contents,
+ *       so that the statement text stays as it is. The line is counted by csql_edit_contents_get_input_line().
+ */
+void
+csql_edit_contents_skip_input_line (void)
+{
+  if (csql_Edit_contents.start_line_no <= 0 || csql_Edit_contents.data_size <= 0)
+    {
+      return;
+    }
+
+  if (csql_Edit_contents.skipped_count >= csql_Edit_contents.skipped_alloc)
+    {
+      int new_alloc = (csql_Edit_contents.skipped_alloc <= 0) ? 16 : csql_Edit_contents.skipped_alloc * 2;
+      int *new_lines = (int *) realloc (csql_Edit_contents.skipped_lines, new_alloc * sizeof (int));
+
+      if (new_lines == NULL)
+	{
+	  /* the lines cannot be mapped any more; they are counted from the start of the contents */
+	  csql_Edit_contents.start_line_no = 0;
+	  csql_Edit_contents.skipped_count = 0;
+	  return;
+	}
+      csql_Edit_contents.skipped_lines = new_lines;
+      csql_Edit_contents.skipped_alloc = new_alloc;
+    }
+
+  csql_Edit_contents.skipped_lines[csql_Edit_contents.skipped_count++] = csql_Edit_contents.line_count;
+}
+
+/*
+ * csql_edit_contents_get_input_line() - convert a line number counted by the lexer to the input line number
+ *   return: input line number
+ *   line_no(in): line number counted by the lexer from csql_edit_contents_get_start_line()
+ */
+int
+csql_edit_contents_get_input_line (int line_no)
+{
+  int input_line_no = line_no;
+  int i;
+
+  if (csql_Edit_contents.start_line_no <= 0)
+    {
+      return line_no;
+    }
+
+  for (i = 0; i < csql_Edit_contents.skipped_count; i++)
+    {
+      /* skipped_lines[i] lines in the contents come before the skipped input line */
+      if (csql_Edit_contents.skipped_lines[i] > line_no - csql_Edit_contents.start_line_no)
+	{
+	  break;
+	}
+      input_line_no++;
+    }
+
+  return input_line_no;
 }
 
 /*
@@ -1548,6 +1657,9 @@ csql_edit_contents_clear ()
   csql_Edit_contents.substate = CSQL_SUBSTATE_INITIAL;
   csql_Edit_contents.plcsql_begin_end_balance = 0;
   csql_Edit_contents.plcsql_nest_level = 0;
+  csql_Edit_contents.line_count = 0;
+  csql_Edit_contents.start_line_no = 0;
+  csql_Edit_contents.skipped_count = 0;
 }
 
 void
@@ -1556,6 +1668,8 @@ csql_edit_contents_finalize ()
   csql_edit_contents_clear ();
   free_and_init (csql_Edit_contents.contents);
   csql_Edit_contents.alloc_size = 0;
+  free_and_init (csql_Edit_contents.skipped_lines);
+  csql_Edit_contents.skipped_alloc = 0;
 }
 
 /*
@@ -1583,6 +1697,10 @@ csql_edit_read_file (FILE * fp)
 
       if (csql_edit_contents_append (line_begin, false) != CSQL_SUCCESS)
 	return CSQL_FAILURE;
+
+      /* the lines of the file are not input lines; the contents are counted from its first line */
+      csql_Edit_contents.start_line_no = 0;
+      csql_Edit_contents.skipped_count = 0;
 
       // to continue recognizing the end of PL/CSQL SP CREATE statements
       // at the right recognizer status (state, substate, etc of csql_Edit_contents)
