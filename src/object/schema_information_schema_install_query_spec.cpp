@@ -909,7 +909,8 @@ sm_define_view_tables_spec (void)
       "estimated_avg_row_length ([cls].[unique_name]) AS [avg_row_length], "
       "estimated_data_length ([cls].[unique_name]) AS [data_length], "
       "estimated_data_free ([cls].[unique_name]) AS [data_free], "
-      "CASE "
+      /* numeric -> numeric(38,0) */
+      "CAST (CASE "
         "WHEN [serial].[current_val] IS NULL THEN NULL "
         "WHEN [serial].[started] = 0 THEN [serial].[current_val] "
         /* Check overflow: increment_val > 0 and current_val > max_val - increment_val */
@@ -919,7 +920,7 @@ sm_define_view_tables_spec (void)
         "WHEN [serial].[increment_val] < 0 "
           "AND [serial].[current_val] < [serial].[min_val] - [serial].[increment_val] THEN NULL "
         "ELSE [serial].[current_val] + [serial].[increment_val] "
-      "END AS [auto_increment], "
+      "END AS NUMERIC (38, 0)) AS [auto_increment], "
       "[coll].[coll_name] AS [table_collation], "
       /* SM_CLASSFLAG_REUSE_OID */
       "IF (([cls].[flags] & %d) <> 0, 'REUSE_OID', 'DONT_REUSE_OID') || "
