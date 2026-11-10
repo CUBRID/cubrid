@@ -12765,6 +12765,8 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
   int upd_cls_cnt = 0;
   int remote = 0, local = 0;
   bool has_remote_spec = false;
+  bool *counted;
+  int i;
 
   PT_ASSIGNMENTS_HELPER ea;
   PT_NODE *node = NULL, *assignments, *spec;
@@ -12782,7 +12784,15 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
       spec = spec->next;
     }
 
-  spec = statement->info.update.spec;
+  /* local_upd and remote_upd count target specs, not assignments: a spec counts once however many of its
+   * columns are assigned, the way DELETE counts its target classes. The dblink sinks read remote_upd == 1
+   * as "a single remote target". counted[i] is set once the i-th spec has been counted. */
+  counted = (bool *) parser_alloc (parser, upd_cls_cnt * sizeof (bool));
+  if (counted == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
+    }
 
   pt_init_assignments_helper (parser, &ea, assignments);
 
@@ -12792,10 +12802,11 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
       char *tbl_alias = NULL;
       char *lhs_name;
       bool found = false;
+      PT_NODE *target = NULL;	/* the spec this assignment updates */
+      int target_pos = 0;
 
       lhs_name = (char *) ea.lhs->info.name.original;
-      spec = statement->info.update.spec;
-      while (spec && !found)
+      for (spec = statement->info.update.spec, i = 0; spec && !found; spec = spec->next, i++)
 	{
 	  if (spec->info.spec.entity_name)
 	    {
@@ -12809,17 +12820,10 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 		  || upd_cls_cnt == 1)
 		{
 		  found = true;
-		  if (spec->info.spec.remote_server_name)
-		    {
-		      remote++;
-		    }
-		  else
-		    {
-		      local++;
-		    }
+		  target = spec;
+		  target_pos = i;
 		}
 	    }
-	  spec = spec->next;
 	}
 
       if (!found && has_remote_spec)
@@ -12830,7 +12834,7 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 	   * This only routes the rewrite - a name both sides own still fails at name
 	   * binding as ambiguous, like the native path. */
 	  er_stack_push ();
-	  for (spec = statement->info.update.spec; spec && !found; spec = spec->next)
+	  for (spec = statement->info.update.spec, i = 0; spec && !found; spec = spec->next, i++)
 	    {
 	      /* DB_MAX_IDENTIFIER_LENGTH is the budget for the qualified form already:
 	       * DB_MAX_CLASS_LENGTH is derived from it as owner + '.' + class */
@@ -12865,15 +12869,36 @@ pt_check_update_set (PARSER_CONTEXT * parser, PT_NODE * statement, int *local_up
 	      if (db_get_attribute_by_name (cls_name, lhs_name) != NULL)
 		{
 		  found = true;
-		  local++;
+		  target = spec;
+		  target_pos = i;
 		}
 	    }
 	  er_stack_pop ();
 
 	  if (!found)
 	    {
+	      /* which remote spec owns the name is unknown until its columns are fetched, so it is charged
+	       * to the first one and several remote specs can count as one. The sinks need a single
+	       * spec anyway, and name binding still resolves the real target. */
 	      found = true;
+	      for (target = statement->info.update.spec, target_pos = 0; target->info.spec.remote_server_name == NULL;
+		   target = target->next, target_pos++)
+		{
+		  ;
+		}
+	    }
+	}
+
+      if (found && !counted[target_pos])
+	{
+	  counted[target_pos] = true;
+	  if (target->info.spec.remote_server_name)
+	    {
 	      remote++;
+	    }
+	  else
+	    {
+	      local++;
 	    }
 	}
 
