@@ -308,7 +308,6 @@ static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
-static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
 static bool qo_node_is_multi_class (QO_NODE * node);
 static double qo_seg_ndv (QO_SEGMENT * seg);
 static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
@@ -5252,7 +5251,7 @@ qo_plan_semi_anti_join_type (QO_PLAN * plan)
  * An index join places the join term in the inner index scan instead of the join's terms. A sort
  * (temp list) is built once, so only the terms of the list scan over it can see the outer row.
  */
-static void
+void
 qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
 {
   while (plan != NULL)
@@ -5565,7 +5564,7 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
  *   return: true if the inner scan should not memoize
  *   outer(in): the outer plan of the NL join
  *   inner(in): the inner plan of the NL join
- *   key_terms(in): the join terms pushed into the inner scan
+ *   key_segs(in): the segments of the outer columns in the inner's memoize key
  *
  * The executor memoizes every NL inner and gives up at run time when the hit ratio stays low. At run
  * time a unique key looks the same as a key that repeats with a long period, so a unique key pays the
@@ -5586,16 +5585,15 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
  *   (plan_generation.c), since the executor then runs the outer again for every scan block of it.
  */
 bool
-qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms)
+qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_segs)
 {
   QO_ENV *env;
   QO_TERM *term;
-  BITSET scan_terms, key_segs;
   BITSET_ITERATOR bi;
   int i;
   double calls, key_ndv = 0.0;
 
-  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_terms == NULL)
+  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_segs == NULL)
     {
       return false;
     }
@@ -5619,17 +5617,8 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 	}
     }
 
-  /* the outer columns referenced by the terms the inner scan evaluates are its memoize key */
-  bitset_init (&scan_terms, env);
-  bitset_init (&key_segs, env);
-  bitset_assign (&scan_terms, key_terms);
-  qo_collect_inner_scan_terms (inner, &scan_terms);
-  for (i = bitset_iterate (&scan_terms, &bi); i != -1; i = bitset_next_member (&bi))
-    {
-      bitset_union (&key_segs, &QO_TERM_SEGS (QO_ENV_TERM (env, i)));
-    }
-
-  for (i = bitset_iterate (&key_segs, &bi); i != -1; i = bitset_next_member (&bi))
+  /* key_segs: the segments of the memoize key the inner's XASL carries (plan_generation.c, CBRD-27993) */
+  for (i = bitset_iterate (key_segs, &bi); i != -1; i = bitset_next_member (&bi))
     {
       QO_SEGMENT *seg = QO_ENV_SEG (env, i);
       QO_NODE *node = QO_SEG_HEAD (seg);
@@ -5668,9 +5657,6 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
       /* distinct values left in the rows of its table the outer holds */
       key_ndv = MAX (key_ndv, qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv));
     }
-
-  bitset_delset (&scan_terms);
-  bitset_delset (&key_segs);
 
   if (key_ndv <= 0.0)
     {

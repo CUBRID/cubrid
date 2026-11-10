@@ -509,7 +509,8 @@ extern PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * pars
 							   int *continue_walk);
 
 extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
-extern bool qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms);
+extern bool qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_segs);
+extern void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
 
 /* selectivity of one between-range operator straight from the column histogram, with no
  * QO_ENV around it. Shared with the bind-value plan watch (histogram_cl.cpp), which prices the

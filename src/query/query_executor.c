@@ -22423,6 +22423,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
 			    }
+#if !defined (NDEBUG)
+			  memoize_check_key (xasl, xptr);
+#endif
 			}
 		    }
 		}

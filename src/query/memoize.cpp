@@ -32,20 +32,82 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "scope_exit.hpp"
+#include "xasl_iteration.hpp"
+
+#include <algorithm>
+#include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace memoize
 {
+  /* a spec a subquery of the inner reads keeps its result for the whole statement: no class outside MVCC, no physical
+   * or catalog view, no method or remote call. The subquery's shape (joins, GROUP BY, analytic functions, HAVING
+   * subqueries, CONNECT BY) does not matter: the memoize key comes from its parse tree, which sees all of it
+   * (CBRD-27993). */
+  static bool
+  spec_reads_snapshot (ACCESS_SPEC_TYPE *spec)
+  {
+    switch (spec->type)
+      {
+      case TARGET_CLASS:
+      {
+	OID cls_oid = ACCESS_SPEC_CLS_OID (spec);
+	if (oid_is_system_class (&cls_oid) || mvcc_is_mvcc_disabled_class (&cls_oid))
+	  {
+	    return false;
+	  }
+	break;
+      }
+      case TARGET_LIST:
+      case TARGET_SET:
+      case TARGET_JSON_TABLE:
+      case TARGET_REGUVAL_LIST:
+	break;
+      default:
+	/* TARGET_CLASS_ATTR, TARGET_METHOD, TARGET_SHOWSTMT, TARGET_DBLINK */
+	return false;
+      }
+
+    switch (spec->access)
+      {
+      case ACCESS_METHOD_SEQUENTIAL:
+      case ACCESS_METHOD_INDEX:
+      case ACCESS_METHOD_JSON_TABLE:
+	return true;
+      default:
+	return false;
+      }
+  }
+
+  static bool
+  node_reads_snapshot (XASL_NODE *xasl)
+  {
+    for (ACCESS_SPEC_TYPE *spec = xasl->spec_list; spec != nullptr; spec = spec->next)
+      {
+	if (!spec_reads_snapshot (spec))
+	  {
+	    return false;
+	  }
+      }
+    for (ACCESS_SPEC_TYPE *spec = xasl->merge_spec; spec != nullptr; spec = spec->next)
+      {
+	if (!spec_reads_snapshot (spec))
+	  {
+	    return false;
+	  }
+      }
+    return true;
+  }
+
   struct possible_check
   {
-    bool operator() (xasl_node *xasl, int level = 0) const noexcept
+    bool operator() (xasl_node *xasl) const noexcept
     {
       OID cls_oid;
       ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
       VAL_LIST *val_list = xasl->val_list;
-      bool subquery_result = true;
 
       if (spec == nullptr || val_list == nullptr)
 	{
@@ -126,47 +188,12 @@ namespace memoize
 	    }
 	}
 
-      if (xasl->dptr_list)
+      for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
 	{
-	  for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
-	    {
-	      if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
-		{
-		  return false;
-		}
-	      subquery_result = (*this) (dptr, level + 1);
-	      if (!subquery_result)
-		{
-		  return false;
-		}
-	    }
-	}
-
-      if (level >= 1)
-	{
-	  /* key_maker keys a subquery by the correlated references it finds in the subquery. It does not visit
-	   * GROUP BY keys, analytic functions, HAVING subqueries or CONNECT BY, so refuse those shapes (CBRD-27567). */
-	  if (xasl->connect_by_ptr != nullptr)
+	  if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE)
+	      || !cubxasl::iterate_xasl_tree<bool> (dptr, node_reads_snapshot, true))
 	    {
 	      return false;
-	    }
-	  if (xasl->type == BUILDLIST_PROC
-	      && (xasl->proc.buildlist.groupby_list != nullptr || xasl->proc.buildlist.a_eval_list != nullptr
-		  || xasl->proc.buildlist.eptr_list != nullptr))
-	    {
-	      return false;
-	    }
-
-	  if (xasl->aptr_list)
-	    {
-	      for (XASL_NODE *aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
-		{
-		  subquery_result = (*this) (aptr, level + 1);
-		  if (!subquery_result)
-		    {
-		      return false;
-		    }
-		}
 	    }
 	}
 
@@ -174,666 +201,166 @@ namespace memoize
     }
   } const checker;
 
-  /* RANDOM (), SYS_GUID (), a serial's NEXT_VALUE and the like give another value at every evaluation. A memo replays
-   * the first result of a key to every outer row of that key, so the inner must not evaluate one, as the correlated
-   * subquery cache does not cache them (pt_check_corr_subquery_not_cachable_expr ()) (CBRD-27734). */
-  struct nondeterministic_check
+#if !defined (NDEBUG)
+  /* CBRD-27993 census: the old run-time key walk over the inner's predicates, its index key range and the subqueries
+   * those read. A slot of a scan before the inner that it finds is an input of the inner's result, so the key
+   * chosen at XASL generation (plan_generation.c) must hold it. */
+  struct key_census
   {
-    /* is_subquery: the inner itself keeps its scan_ptr (the next inner, with its own memo) and its aptr (run once)
-     * out of the memo, as key_maker does */
-    bool operator() (xasl_node *xasl, bool is_subquery) const noexcept
-    {
-      for (ACCESS_SPEC_TYPE *spec = xasl->spec_list; spec != nullptr; spec = spec->next)
-	{
-	  if ((*this) (spec->where_key) || (*this) (spec->where_pred) || (*this) (spec->where_range))
-	    {
-	      return true;
-	    }
-	}
-      if ((*this) (xasl->if_pred) || (*this) (xasl->after_join_pred))
-	{
-	  return true;
-	}
-      for (XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
-	{
-	  if ((*this) (dptr, true))
-	    {
-	      return true;
-	    }
-	}
-      if (!is_subquery)
-	{
-	  return false;
-	}
+    std::vector<DB_VALUE *> m_outer_slots;
+    std::vector<regu_variable_node *> m_regus;
 
-      for (XASL_NODE *aptr = xasl->aptr_list; aptr != nullptr; aptr = aptr->next)
+    void collect (regu_variable_node *regu)
+    {
+      if (regu == nullptr)
 	{
-	  if ((*this) (aptr, true))
+	  return;
+	}
+      switch (regu->type)
+	{
+	case TYPE_CONSTANT:
+	  m_regus.push_back (regu);
+	  if (regu->xasl != nullptr)
 	    {
-	      return true;
+	      cubxasl::iterate_xasl_tree<bool> (regu->xasl, [this] (XASL_NODE *node)
+	      {
+		collect_node (node);
+		return true;
+	      }, true);
 	    }
-	}
-      if (xasl->scan_ptr != nullptr && (*this) (xasl->scan_ptr, true))
-	{
-	  return true;
-	}
-      if ((xasl->outptr_list != nullptr && (*this) (xasl->outptr_list->valptrp)) || (*this) (xasl->instnum_pred)
-	  || (*this) (xasl->ordbynum_pred))
-	{
-	  return true;
-	}
-      if (xasl->type == BUILDVALUE_PROC)
-	{
-	  for (AGGREGATE_TYPE *agg = xasl->proc.buildvalue.agg_list; agg != nullptr; agg = agg->next)
+	  break;
+	case TYPE_INARITH:
+	case TYPE_OUTARITH:
+	  collect (regu->value.arithptr->leftptr);
+	  collect (regu->value.arithptr->rightptr);
+	  collect (regu->value.arithptr->thirdptr);
+	  collect (regu->value.arithptr->pred);
+	  break;
+	case TYPE_FUNC:
+	  collect (regu->value.funcp->operand);
+	  break;
+	case TYPE_REGUVAL_LIST:
+	  for (REGU_VALUE_ITEM *item = regu->value.reguval_list->regu_list; item != nullptr; item = item->next)
 	    {
-	      if ((*this) (agg->operands)
-		  || ((agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
-		      && (*this) (agg->info.percentile.percentile_reguvar)))
-		{
-		  return true;
-		}
+	      collect (item->value);
 	    }
-	  return (*this) (xasl->proc.buildvalue.having_pred);
+	  break;
+	case TYPE_REGU_VAR_LIST:
+	  collect (regu->value.regu_var_list);
+	  break;
+	case TYPE_SP:
+	  collect (regu->value.sp_ptr->args);
+	  break;
+	default:
+	  break;
 	}
-      return false;
     }
 
-    bool operator() (cubxasl::pred_expr *pred_expr) const noexcept
+    void collect (REGU_VARIABLE_LIST list)
     {
-      if (pred_expr == nullptr)
+      for (; list != nullptr; list = list->next)
 	{
-	  return false;
+	  collect (&list->value);
 	}
+    }
 
-      switch (pred_expr->type)
+    void collect (cubxasl::pred_expr *pred)
+    {
+      if (pred == nullptr)
+	{
+	  return;
+	}
+      switch (pred->type)
 	{
 	case T_PRED:
-	  return (*this) (pred_expr->pe.m_pred.lhs) || (*this) (pred_expr->pe.m_pred.rhs);
-
+	  collect (pred->pe.m_pred.lhs);
+	  collect (pred->pe.m_pred.rhs);
+	  break;
 	case T_EVAL_TERM:
 	{
-	  cubxasl::eval_term *et = &pred_expr->pe.m_eval_term;
+	  cubxasl::eval_term *et = &pred->pe.m_eval_term;
 	  switch (et->et_type)
 	    {
 	    case T_COMP_EVAL_TERM:
-	      return (*this) (et->et.et_comp.lhs) || (*this) (et->et.et_comp.rhs);
+	      collect (et->et.et_comp.lhs);
+	      collect (et->et.et_comp.rhs);
+	      break;
 	    case T_ALSM_EVAL_TERM:
-	      return (*this) (et->et.et_alsm.elem) || (*this) (et->et.et_alsm.elemset);
+	      collect (et->et.et_alsm.elem);
+	      collect (et->et.et_alsm.elemset);
+	      break;
 	    case T_LIKE_EVAL_TERM:
-	      return (*this) (et->et.et_like.src) || (*this) (et->et.et_like.pattern)
-		     || (*this) (et->et.et_like.esc_char);
+	      collect (et->et.et_like.src);
+	      collect (et->et.et_like.pattern);
+	      collect (et->et.et_like.esc_char);
+	      break;
 	    case T_RLIKE_EVAL_TERM:
-	      return (*this) (et->et.et_rlike.src) || (*this) (et->et.et_rlike.pattern)
-		     || (*this) (et->et.et_rlike.case_sensitive);
-	    }
-	  return false;
-	}
-
-	case T_NOT_TERM:
-	  return (*this) (pred_expr->pe.m_not_term);
-	}
-      return false;
-    }
-
-    bool operator() (regu_variable_node *regu_var) const noexcept
-    {
-      if (regu_var == nullptr)
-	{
-	  return false;
-	}
-
-      switch (regu_var->type)
-	{
-	case TYPE_INARITH:
-	case TYPE_OUTARITH:
-	{
-	  ARITH_TYPE *arith = regu_var->value.arithptr;
-	  switch (arith->opcode)
-	    {
-	    case T_RAND:
-	    case T_DRAND:
-	    case T_RANDOM:
-	    case T_DRANDOM:
-	    case T_SYS_GUID:
-	    case T_UUID:
-	    case T_CURRENT_VALUE:
-	    case T_NEXT_VALUE:
-	      return true;
-	    default:
+	      collect (et->et.et_rlike.src);
+	      collect (et->et.et_rlike.pattern);
+	      collect (et->et.et_rlike.case_sensitive);
 	      break;
 	    }
-	  return (*this) (arith->leftptr) || (*this) (arith->rightptr) || (*this) (arith->thirdptr)
-		 || (*this) (arith->pred);
-	}
-
-	case TYPE_FUNC:
-	  return (*this) (regu_var->value.funcp->operand);
-
-	case TYPE_SP:
-	  /* shortcut: pl_signature does not send DETERMINISTIC to the server, so a stored function is not checked;
-	   * check it once the server gets the flag */
-	  return (*this) (regu_var->value.sp_ptr->args);
-
-	case TYPE_REGU_VAR_LIST:
-	  return (*this) (regu_var->value.regu_var_list);
-
-	case TYPE_REGUVAL_LIST:
-	  for (REGU_VALUE_ITEM *item = regu_var->value.reguval_list->regu_list; item != nullptr; item = item->next)
-	    {
-	      if ((*this) (item->value))
-		{
-		  return true;
-		}
-	    }
-	  return false;
-
-	default:
-	  return false;
-	}
-    }
-
-    bool operator() (REGU_VARIABLE_LIST regu_var_list) const noexcept
-    {
-      for (; regu_var_list != nullptr; regu_var_list = regu_var_list->next)
-	{
-	  if ((*this) (&regu_var_list->value))
-	    {
-	      return true;
-	    }
-	}
-      return false;
-    }
-  } const nondeterministic;
-
-  template <TARGET_TYPE target_type>
-  struct key_maker
-  {
-    int operator() (THREAD_ENTRY *thread_p, xasl_node *xasl, std::vector<DB_VALUE *> &key_ptr_src,
-		    std::vector<const TP_DOMAIN *> &key_domains) const noexcept
-    {
-      std::vector<REGU_VARIABLE *> const_regu_var_vector;
-      ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
-      PRED_EXPR *if_pred = xasl->if_pred;
-      PRED_EXPR *after_join_pred = xasl->after_join_pred;
-
-      if (spec->where_key)
-	{
-	  (*this) (spec->where_key, const_regu_var_vector);
-	}
-      if (spec->where_pred)
-	{
-	  (*this) (spec->where_pred, const_regu_var_vector);
-	}
-      if (spec->where_range)
-	{
-	  (*this) (spec->where_range, const_regu_var_vector);
-	}
-
-      if (if_pred)
-	{
-	  (*this) (if_pred, const_regu_var_vector);
-	}
-      if (after_join_pred)
-	{
-	  (*this) (after_join_pred, const_regu_var_vector);
-	}
-
-      if (xasl->dptr_list)
-	{
-	  for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
-	    {
-	      (*this) (thread_p, dptr, const_regu_var_vector);
-	    }
-
-	  /* a correlated subquery runs again for every inner row, after the memo is probed, so its result is not an
-	   * input of the probe. Its correlated references, collected just above, key it instead (CBRD-27567). */
-	  const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
-				       const_regu_var_vector.end(), [xasl] (regu_variable_node *regu_var)
-	  {
-	    for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
-	      {
-		if (regu_var->xasl == dptr)
-		  {
-		    return true;
-		  }
-	      }
-	    return false;
-	  }), const_regu_var_vector.end());
-	}
-
-      if constexpr (target_type == TARGET_LIST)
-	{
-	  REGU_VARIABLE_LIST pred = spec->s.list_node.list_regu_list_pred, rest = spec->s.list_node.list_regu_list_rest;
-	  while (pred != NULL)
-	    {
-	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
-					   const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == pred->value.vfetch_to;
-	      }), const_regu_var_vector.end());
-	      pred = pred->next;
-	    }
-	  while (rest != NULL)
-	    {
-	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
-					   const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == rest->value.vfetch_to;
-	      }), const_regu_var_vector.end());
-	      rest = rest->next;
-	    }
-	}
-      if constexpr (target_type == TARGET_CLASS)
-	{
-	  REGU_VARIABLE_LIST pred = spec->s.cls_node.cls_regu_list_pred, rest = spec->s.cls_node.cls_regu_list_rest,
-			     range = spec->s.cls_node.cls_regu_list_range, key = spec->s.cls_node.cls_regu_list_key;
-	  while (pred != NULL)
-	    {
-	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
-					   const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == pred->value.vfetch_to;
-	      }), const_regu_var_vector.end());
-	      pred = pred->next;
-	    }
-	  while (rest != NULL)
-	    {
-	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
-					   const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == rest->value.vfetch_to;
-	      }), const_regu_var_vector.end());
-	      rest = rest->next;
-	    }
-	  while (range != NULL)
-	    {
-	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
-					   const_regu_var_vector.end(), [range] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == range->value.vfetch_to;
-	      }), const_regu_var_vector.end());
-	      range = range->next;
-	    }
-	  while (key != NULL)
-	    {
-	      const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
-					   const_regu_var_vector.end(), [key] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == key->value.vfetch_to;
-	      }), const_regu_var_vector.end());
-	      key = key->next;
-	    }
-	}
-
-      for (auto &regu_var : const_regu_var_vector)
-	{
-	  key_ptr_src.push_back (regu_var->value.dbvalptr);
-	  /* the slot holds the value as its producer wrote it, before this reader's conversion */
-	  key_domains.push_back (regu_produced_domain (regu_var));
-	}
-
-      return key_ptr_src.size();
-    }
-
-    void operator() (THREAD_ENTRY *thread_p, xasl_node *subquery,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      if (subquery == NULL)
-	{
-	  return;
-	}
-
-      std::vector<REGU_VARIABLE *> subquery_const_regu_var_vector;
-      ACCESS_SPEC_TYPE *spec = subquery->curr_spec ? subquery->curr_spec : subquery->spec_list;
-      PRED_EXPR *if_pred = subquery->if_pred;
-      PRED_EXPR *after_join_pred = subquery->after_join_pred;
-
-      if (spec->where_key)
-	{
-	  (*this) (spec->where_key, subquery_const_regu_var_vector);
-	}
-      if (spec->where_pred)
-	{
-	  (*this) (spec->where_pred, subquery_const_regu_var_vector);
-	}
-      if (spec->where_range)
-	{
-	  (*this) (spec->where_range, subquery_const_regu_var_vector);
-	}
-
-      if (if_pred)
-	{
-	  (*this) (if_pred, subquery_const_regu_var_vector);
-	}
-      if (after_join_pred)
-	{
-	  (*this) (after_join_pred, subquery_const_regu_var_vector);
-	}
-
-      if (subquery->dptr_list)
-	{
-	  for (XASL_NODE *dptr = subquery->dptr_list; dptr != NULL; dptr = dptr->next)
-	    {
-	      (*this) (thread_p, dptr, subquery_const_regu_var_vector);
-	    }
-	}
-      if (subquery->aptr_list)
-	{
-	  for (XASL_NODE *aptr = subquery->aptr_list; aptr != NULL; aptr = aptr->next)
-	    {
-	      (*this) (thread_p, aptr, subquery_const_regu_var_vector);
-	    }
-	}
-      if (subquery->scan_ptr)
-	{
-	  (*this) (thread_p, subquery->scan_ptr, subquery_const_regu_var_vector);
-	}
-
-      if (subquery->outptr_list)
-	{
-	  (*this) (subquery->outptr_list->valptrp, subquery_const_regu_var_vector);
-	}
-      if (subquery->instnum_pred)
-	{
-	  (*this) (subquery->instnum_pred, subquery_const_regu_var_vector);
-	}
-      if (subquery->ordbynum_pred)
-	{
-	  (*this) (subquery->ordbynum_pred, subquery_const_regu_var_vector);
-	}
-      if (subquery->type == BUILDVALUE_PROC)
-	{
-	  for (AGGREGATE_TYPE *agg = subquery->proc.buildvalue.agg_list; agg != NULL; agg = agg->next)
-	    {
-	      (*this) (agg->operands, subquery_const_regu_var_vector);
-	      if (agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
-		{
-		  (*this) (agg->info.percentile.percentile_reguvar, subquery_const_regu_var_vector);
-		}
-	    }
-	  if (subquery->proc.buildvalue.having_pred)
-	    {
-	      (*this) (subquery->proc.buildvalue.having_pred, subquery_const_regu_var_vector);
-	    }
-	}
-
-      /* only the subquery's correlated references come from outside it. Every other constant (its own columns, an
-       * aggregate's accumulator, a nested subquery's result) is computed by the subquery itself, so its value when
-       * the memo is probed is left over from the previous row and must not be part of the key (CBRD-27567). */
-      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
-					    subquery_const_regu_var_vector.end(), [] (regu_variable_node *regu_var)
-      {
-	return !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CORRELATED);
-      }), subquery_const_regu_var_vector.end());
-
-      if constexpr (target_type == TARGET_LIST)
-	{
-	  REGU_VARIABLE_LIST pred = spec->s.list_node.list_regu_list_pred, rest = spec->s.list_node.list_regu_list_rest;
-	  while (pred != NULL)
-	    {
-	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
-						    subquery_const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == pred->value.vfetch_to;
-	      }), subquery_const_regu_var_vector.end());
-	      pred = pred->next;
-	    }
-	  while (rest != NULL)
-	    {
-	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
-						    subquery_const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == rest->value.vfetch_to;
-	      }), subquery_const_regu_var_vector.end());
-	      rest = rest->next;
-	    }
-	}
-      if constexpr (target_type == TARGET_CLASS)
-	{
-	  REGU_VARIABLE_LIST pred = spec->s.cls_node.cls_regu_list_pred, rest = spec->s.cls_node.cls_regu_list_rest,
-			     range = spec->s.cls_node.cls_regu_list_range, key = spec->s.cls_node.cls_regu_list_key;
-	  while (pred != NULL)
-	    {
-	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
-						    subquery_const_regu_var_vector.end(), [pred] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == pred->value.vfetch_to;
-	      }), subquery_const_regu_var_vector.end());
-	      pred = pred->next;
-	    }
-	  while (rest != NULL)
-	    {
-	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
-						    subquery_const_regu_var_vector.end(), [rest] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == rest->value.vfetch_to;
-	      }), subquery_const_regu_var_vector.end());
-	      rest = rest->next;
-	    }
-	  while (range != NULL)
-	    {
-	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
-						    subquery_const_regu_var_vector.end(), [range] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == range->value.vfetch_to;
-	      }), subquery_const_regu_var_vector.end());
-	      range = range->next;
-	    }
-	  while (key != NULL)
-	    {
-	      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
-						    subquery_const_regu_var_vector.end(), [key] (regu_variable_node *regu_var)
-	      {
-		return regu_var->value.dbvalptr == key->value.vfetch_to;
-	      }), subquery_const_regu_var_vector.end());
-	      key = key->next;
-	    }
-	}
-
-      for (auto &regu_var : subquery_const_regu_var_vector)
-	{
-	  const_regu_var_vector.push_back (regu_var);
-	}
-    }
-
-    void operator() (cubxasl::pred_expr *pred_expr,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      if (pred_expr == NULL)
-	{
-	  return;
-	}
-
-      switch (pred_expr->type)
-	{
-	case T_PRED:
-	  (*this) (&pred_expr->pe.m_pred, const_regu_var_vector);
 	  break;
-
-	case T_EVAL_TERM:
-	  (*this) (&pred_expr->pe.m_eval_term, const_regu_var_vector);
-	  break;
-
+	}
 	case T_NOT_TERM:
-	  (*this) (pred_expr->pe.m_not_term, const_regu_var_vector);
+	  collect (pred->pe.m_not_term);
 	  break;
 	}
-      return;
     }
 
-    void operator() (cubxasl::pred *pred,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+    /* where_range is left out: pt_get_mvcc_reev_range_data () copies the WHERE's later terms into it, the terms of
+     * later scans; its range terms are in the index key range */
+    void collect_spec (ACCESS_SPEC_TYPE *spec)
     {
-      (*this) (pred->lhs, const_regu_var_vector);
-      (*this) (pred->rhs, const_regu_var_vector);
-    }
-
-    void operator() (cubxasl::eval_term *eval_term,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      switch (eval_term->et_type)
+      collect (spec->where_key);
+      collect (spec->where_pred);
+      if (spec->type == TARGET_CLASS && spec->indexptr != nullptr)
 	{
-	case T_COMP_EVAL_TERM:
-	  (*this) (&eval_term->et.et_comp, const_regu_var_vector);
-	  break;
-
-	case T_ALSM_EVAL_TERM:
-	  (*this) (&eval_term->et.et_alsm, const_regu_var_vector);
-	  break;
-
-	case T_LIKE_EVAL_TERM:
-	  (*this) (&eval_term->et.et_like, const_regu_var_vector);
-	  break;
-
-	case T_RLIKE_EVAL_TERM:
-	  (*this) (&eval_term->et.et_rlike, const_regu_var_vector);
-	  break;
-
+	  KEY_INFO *key_info = &spec->indexptr->key_info;
+	  for (int i = 0; i < key_info->key_cnt; i++)
+	    {
+	      collect (key_info->key_ranges[i].key1);
+	      collect (key_info->key_ranges[i].key2);
+	    }
+	  collect (key_info->key_limit_l);
+	  collect (key_info->key_limit_u);
 	}
-      return;
     }
 
-    void operator() (cubxasl::comp_eval_term *comp_eval_term,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+    /* a node of a subquery the inner's predicates read */
+    void collect_node (XASL_NODE *node)
     {
-      (*this) (comp_eval_term->lhs, const_regu_var_vector);
-      (*this) (comp_eval_term->rhs, const_regu_var_vector);
-    }
-
-    void operator() (cubxasl::alsm_eval_term *alsm_eval_term,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      (*this) (alsm_eval_term->elem, const_regu_var_vector);
-      (*this) (alsm_eval_term->elemset, const_regu_var_vector);
-    }
-
-    void operator() (cubxasl::like_eval_term *like_eval_term,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      (*this) (like_eval_term->src, const_regu_var_vector);
-      (*this) (like_eval_term->pattern, const_regu_var_vector);
-      (*this) (like_eval_term->esc_char, const_regu_var_vector);
-    }
-
-    void operator() (cubxasl::rlike_eval_term *rlike_eval_term,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      (*this) (rlike_eval_term->src, const_regu_var_vector);
-      (*this) (rlike_eval_term->pattern, const_regu_var_vector);
-      (*this) (rlike_eval_term->case_sensitive, const_regu_var_vector);
-    }
-
-    void operator() (regu_variable_node *regu_var,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      if (regu_var == NULL)
+      for (ACCESS_SPEC_TYPE *spec = node->spec_list; spec != nullptr; spec = spec->next)
 	{
-	  return;
+	  collect_spec (spec);
 	}
-
-      switch (regu_var->type)
+      collect (node->if_pred);
+      collect (node->after_join_pred);
+      collect (node->instnum_pred);
+      collect (node->ordbynum_pred);
+      if (node->outptr_list != nullptr)
 	{
-	case TYPE_CONSTANT:
-	  const_regu_var_vector.push_back (regu_var);
-	  return;
-	  break;
-
-	case TYPE_INARITH:
-	case TYPE_OUTARITH:
-	  (*this) (regu_var->value.arithptr, const_regu_var_vector);
-	  return;
-	  break;
-
-	case TYPE_FUNC:
-	  (*this) (regu_var->value.funcp, const_regu_var_vector);
-	  return;
-	  break;
-
-	case TYPE_REGUVAL_LIST:
-	  (*this) (regu_var->value.reguval_list, const_regu_var_vector);
-	  return;
-	  break;
-
-	case TYPE_REGU_VAR_LIST:
-	  (*this) (regu_var->value.regu_var_list, const_regu_var_vector);
-	  return;
-	  break;
-
-	case TYPE_SP:
-	  (*this) (regu_var->value.sp_ptr, const_regu_var_vector);
-	  return;
-	  break;
-
-	case TYPE_DBVAL:
-	case TYPE_ORDERBY_NUM:
-	case TYPE_ATTR_ID:
-	case TYPE_CLASS_ATTR_ID:
-	case TYPE_SHARED_ATTR_ID:
-	case TYPE_POSITION:
-	case TYPE_LIST_ID:
-	case TYPE_POS_VALUE:
-	case TYPE_OID:
-	case TYPE_CLASSOID:
-	  return;
-	  break;
-
-	default:
-	  assert (false);
-	  return;
-	  break;
+	  collect (node->outptr_list->valptrp);
 	}
-      return;
-    }
-
-    void operator() (ARITH_TYPE *arith,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      (*this) (arith->leftptr, const_regu_var_vector);
-      (*this) (arith->rightptr, const_regu_var_vector);
-      (*this) (arith->thirdptr, const_regu_var_vector);
-      (*this) (arith->pred, const_regu_var_vector);
-      return;
-    }
-
-    void operator() (REGU_VARIABLE_LIST regu_var_list,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      while (regu_var_list != NULL)
+      if (node->type == BUILDVALUE_PROC)
 	{
-	  (*this) (&regu_var_list->value, const_regu_var_vector);
-	  regu_var_list = regu_var_list->next;
+	  for (AGGREGATE_TYPE *agg = node->proc.buildvalue.agg_list; agg != nullptr; agg = agg->next)
+	    {
+	      collect (agg->operands);
+	    }
+	  collect (node->proc.buildvalue.having_pred);
 	}
-      return;
     }
 
-    void operator() (REGU_VALUE_LIST *regu_value_list,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
+    void add_slots (VAL_LIST *val_list)
     {
-      REGU_VALUE_ITEM *regu_value_item = regu_value_list->regu_list;
-      while (regu_value_item != NULL)
+      for (QPROC_DB_VALUE_LIST it = val_list != nullptr ? val_list->valp : nullptr; it != nullptr; it = it->next)
 	{
-	  (*this) (regu_value_item->value, const_regu_var_vector);
-	  regu_value_item = regu_value_item->next;
+	  m_outer_slots.push_back (it->val);
 	}
-      return;
-    }
-
-    void operator() (struct function_node *function_node,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      (*this) (function_node->operand, const_regu_var_vector);
-      return;
-    }
-
-    void operator() (cubxasl::sp_node *sp_node,
-		     std::vector<REGU_VARIABLE *> &const_regu_var_vector) const noexcept
-    {
-      (*this) (sp_node->args, const_regu_var_vector);
-      return;
     }
   };
-  key_maker<TARGET_CLASS> const cls_key_maker;
-  key_maker<TARGET_LIST> const list_key_maker;
+#endif /* !NDEBUG */
 
   key::key ()
     : m_size (0)
@@ -926,34 +453,28 @@ namespace memoize
 
   storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only)
   {
-    ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
     VAL_LIST *val_list = xasl->val_list;
+    const SQ_KEY *memoize_key = xasl->memoize_key;
     int key_cnt, value_cnt;
     std::vector<DB_VALUE *> key_ptr_src;
     std::vector<const TP_DOMAIN *> key_domains;
 
-    if (!checker (xasl) || nondeterministic (xasl, false))
+    /* the key and the reuse check were decided at XASL generation (CBRD-27993); an inner without a key, or whose
+     * terms a reuse must not replay, is not memoized. An empty key (the inner reads no outer value) is one key. */
+    if (memoize_key == nullptr || !checker (xasl))
       {
 	return nullptr;
       }
 
     value_cnt = val_list->val_cnt;
-
-    if (spec->type == TARGET_CLASS)
+    key_cnt = memoize_key->n_elements;
+    for (int i = 0; i < key_cnt; i++)
       {
-	key_cnt = cls_key_maker (thread_p, xasl, key_ptr_src, key_domains);
-      }
-    else if (spec->type == TARGET_LIST)
-      {
-	key_cnt = list_key_maker (thread_p, xasl, key_ptr_src, key_domains);
-      }
-    else
-      {
-	assert (false);
-	return nullptr;
+	key_ptr_src.push_back (memoize_key->dbv_array[i]);
+	key_domains.push_back (memoize_key->domains[i]);
       }
 
-    if (key_cnt == 0 || (value_cnt == 0 && !match_only))
+    if (value_cnt == 0 && !match_only)
       {
 	return nullptr;
       }
@@ -1346,6 +867,53 @@ namespace memoize
 extern "C"
 {
   using namespace memoize;
+#if !defined (NDEBUG)
+  /* CBRD-27993: every slot of a scan before inner (head .. inner on the scan_ptr chain) that inner's predicates read
+   * is a key slot (key_census) */
+  void memoize_check_key (xasl_node *head, xasl_node *inner)
+  {
+    key_census census;
+    const SQ_KEY *key = inner->memoize_key;
+    ACCESS_SPEC_TYPE *spec = inner->curr_spec ? inner->curr_spec : inner->spec_list;
+
+    if (inner->memoize_storage == nullptr || key == nullptr || spec == nullptr)
+      {
+	return;
+      }
+
+    for (xasl_node *node = head; node != nullptr && node != inner; node = node->scan_ptr)
+      {
+	census.add_slots (node->val_list);
+	for (xasl_node *fetch = node->fptr_list; fetch != nullptr; fetch = fetch->next)
+	  {
+	    census.add_slots (fetch->val_list);
+	  }
+      }
+    census.collect_spec (spec);
+    if (spec->type == TARGET_LIST && ACCESS_SPEC_XASL_NODE (spec) != nullptr)
+      {
+	/* the list the inner reads, made again for every outer row when it reads an outer column */
+	cubxasl::iterate_xasl_tree<bool> (ACCESS_SPEC_XASL_NODE (spec), [&census] (XASL_NODE *node)
+	{
+	  census.collect_node (node);
+	  return true;
+	}, true);
+      }
+    census.collect (inner->if_pred);
+    census.collect (inner->after_join_pred);
+
+    for (regu_variable_node *regu : census.m_regus)
+      {
+	DB_VALUE *slot = regu->value.dbvalptr;
+	if (std::find (census.m_outer_slots.begin (), census.m_outer_slots.end (), slot) == census.m_outer_slots.end ())
+	  {
+	    continue;
+	  }
+	assert (std::find (key->dbv_array, key->dbv_array + key->n_elements, slot) != key->dbv_array + key->n_elements);
+      }
+  }
+#endif /* !NDEBUG */
+
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl, bool match_only)
   {
     UINT64 storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
