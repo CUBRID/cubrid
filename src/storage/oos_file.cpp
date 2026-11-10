@@ -1507,27 +1507,34 @@ oos_reclaim_fix_candidate (THREAD_ENTRY *thread_p, const VPID &vpid, PGBUF_LATCH
 {
   is_gone = false;
 
+  /* A conditional fix that fails only because the page is latched sets no error. Read the error of this fix
+   * alone: an error an earlier step left set must not make a busy page look deallocated or interrupted. */
+  er_stack_push ();
+
 #if defined(CUBRID_UNIT_TEST_ENABLED)
   std::atomic<bool> &fail_armed = latch_mode == PGBUF_LATCH_WRITE
 				  ? oos_Test_fail_next_reclaim_write_fix_armed : oos_Test_fail_next_reclaim_read_fix_armed;
   if (fail_armed.exchange (false, std::memory_order_relaxed))
     {
+      /* A latched page: no fix, no error. */
       page_out = NULL;
-      return NO_ERROR;
     }
+  else
 #endif
-
-  page_out = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, PGBUF_CONDITIONAL_LATCH);
+    {
+      page_out = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, latch_mode, PGBUF_CONDITIONAL_LATCH);
+    }
   if (page_out == NULL)
     {
       int err = er_errid ();
       if (err == ER_INTERRUPTED)
 	{
+	  er_stack_pop_and_keep_error ();
 	  return err;
 	}
       is_gone = err == ER_PB_BAD_PAGEID;
-      er_clear ();
     }
+  er_stack_pop ();
   return NO_ERROR;
 }
 
