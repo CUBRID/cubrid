@@ -662,6 +662,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_access_modifier
 %type <number> opt_authid
 %type <number> opt_deterministic
+%type <number> sensitivity_label_kind
 %type <c3> opt_sp_option_list
 %type <c3> sp_option_list
 %type <c2> sp_option_item
@@ -718,6 +719,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> procedure_or_function_name
 %type <node> procedure_or_function_name_list
 %type <node> opt_alter_synonym
+%type <node> opt_sensitivity_label_level
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -3285,6 +3287,22 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| CREATE SENSITIVITY LABEL sensitivity_label_kind char_string_literal opt_sensitivity_label_level
+	  opt_comment_spec
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.level = $6;
+			    node->info.sensitivity_label.comment = $7;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 class_name_for_synonym
@@ -4273,6 +4291,36 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| ALTER SENSITIVITY LABEL sensitivity_label_kind char_string_literal opt_sensitivity_label_level
+	  opt_comment_spec
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.level = $6;
+			    node->info.sensitivity_label.comment = $7;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER SENSITIVITY LABEL sensitivity_label_kind char_string_literal RENAME AS char_string_literal
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.new_name = $8;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 view_or_vclass
@@ -4712,6 +4760,19 @@ drop_stmt
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| DROP SENSITIVITY LABEL sensitivity_label_kind char_string_literal
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
 			  }
 
 			$$ = node;
@@ -22773,6 +22834,32 @@ opt_alter_synonym
 			$$ = NULL;
 		}}
 	| For class_name_for_synonym
+		{{
+			$$ = $2;
+		}}
+	;
+
+sensitivity_label_kind
+	: GRADE
+		{{
+			$$ = PT_SENSITIVITY_LABEL_GRADE;
+		}}
+	| INFO_TYPE
+		{{
+			$$ = PT_SENSITIVITY_LABEL_INFO_TYPE;
+		}}
+	| SOURCE
+		{{
+			$$ = PT_SENSITIVITY_LABEL_SOURCE;
+		}}
+	;
+
+opt_sensitivity_label_level
+	: /* empty */
+		{{
+			$$ = NULL;
+		}}
+	| LEVEL unsigned_int32
 		{{
 			$$ = $2;
 		}}
