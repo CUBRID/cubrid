@@ -205,11 +205,10 @@ struct DOMAIN_ACCUMULATOR_PLAN
 /* domain_resolve_operand_coercion's operand coercion as a plan */
 void domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_COERCION_PLAN * plan);
 
-/* The accumulator of an aggregate function (FUNC_CODE function, its domain, the operand's type and its argument's
- * domain) or of an analytic function (QUERY_OPTIONS option): from the domains XASL generation decided, as the server
+/* The accumulator of an aggregate function (FUNC_CODE function, its domain and its argument's domain) or of an analytic function (QUERY_OPTIONS option): from the domains XASL generation decided, as the server
  * reads them (an OBJECT as OID). */
-void domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
-					const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
+void domain_plan_aggregate_accumulator (int function, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
+					DOMAIN_ACCUMULATOR_PLAN * plan);
 void domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain,
 				       const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
 
