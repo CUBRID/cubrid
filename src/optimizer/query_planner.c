@@ -12114,7 +12114,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    {
 	      term = QO_ENV_TERM (planner->env, i);
 
-	      /* a term on a path node not visited yet is left for that node's follow plan */
+	      /* a path value is not fetched yet at this join; leave a term that needs one to the follow plan */
 	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN && bitset_subset (visited_nodes, &(QO_TERM_NODES (term))))
 		{
 		  bitset_add (&afj_terms, i);
