@@ -418,14 +418,14 @@ eval_compare_values_with (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
 /*
  * eval_compare_values_resolved () - eval_compare_values_with over a comparison unpack decided: a merge column pair, a
  *				    LIMIT, an instnum bound, FIELD, NULLIF, LEAST and GREATEST
- *   compare(in): the decided comparison; NULL compares by the values (comparison method VALUES)
+ *   compare(in): the decided comparison; unpack decides one for every such pair
  */
 DB_VALUE_COMPARE_RESULT
 eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
 			      const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
 {
-  return eval_compare_values_with (thread_p, compare != NULL ? compare : &eval_Compare_values, vd, value1, value2,
-				   total_order, can_compare);
+  assert (compare != NULL);
+  return eval_compare_values_with (thread_p, compare, vd, value1, value2, total_order, can_compare);
 }
 
 /* a comparison's result as its relational operator reads it (eval_value_rel_cmp and the operator functions) */
