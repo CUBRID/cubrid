@@ -3770,6 +3770,14 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, i
   stream_session_p = session_take_stream_session (session, client_id, SESSION_STREAM_ANY_TRAN);
   if (stream_session_p != NULL)
     {
+      /* the close set the interrupt to stop the workers that have drained; the abort must not see it. Only a
+       * connection's close runs with that connection's transaction on the thread */
+      if (client_id != SESSION_STREAM_ALL_CLIENTS)
+	{
+	  bool continue_checking = true;
+
+	  (void) logtb_is_interrupted (thread_p, true, &continue_checking);
+	}
       stream_session_p->abort (thread_p);
 
       delete stream_session_p;
