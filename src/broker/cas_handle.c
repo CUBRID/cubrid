@@ -42,7 +42,6 @@
 #define SRV_HANDLE_ALLOC_SIZE		256
 
 static void srv_handle_content_free (T_SRV_HANDLE * srv_handle);
-static void col_update_info_free (T_QUERY_RESULT * q_result);
 static void srv_handle_rm_tmp_file (int h_id, T_SRV_HANDLE * srv_handle);
 extern bool tran_is_in_libcas (void);
 
@@ -239,6 +238,36 @@ hm_srv_handle_unset_prepare_flag_all (void)
   hm_srv_handle_qresult_end_all (true);
 }
 
+/*
+ * hm_srv_handle_end_transaction_all () - mark every handle as no longer belonging to the running
+ *                                        transaction.
+ *
+ * Note: a handle records is_from_current_transaction when its statement is executed.  Once the
+ *       transaction ends, a result that outlives it (a holdable one, or the out values a CALL keeps in
+ *       prepare_call_info) belongs to the previous transaction, and an auto-commit deferred by that
+ *       statement must not be applied to whatever transaction is open now.  Call this after the
+ *       per-handle cleanup, which still needs the flag to tell the two apart.
+ *
+ *       Walk the whole table rather than max_handle_id: hm_srv_handle_free_all () lowers that bound to
+ *       the index of the last surviving handle, which would leave the handle itself unvisited.
+ *       hm_find_srv_handle () bounds ids by max_srv_handle, so the table is what keeps them reachable.
+ */
+void
+hm_srv_handle_end_transaction_all (void)
+{
+  T_SRV_HANDLE *srv_handle;
+  int i;
+
+  for (i = 0; i < max_srv_handle; i++)
+    {
+      srv_handle = srv_handle_table[i];
+      if (srv_handle != NULL)
+	{
+	  srv_handle->is_from_current_transaction = false;
+	}
+    }
+}
+
 void
 hm_srv_handle_qresult_end_all (bool end_holdable)
 {
@@ -270,7 +299,7 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
 	  || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
 	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY
-	  || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM)
+	  || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM || srv_handle->schema_type == CCI_SCH_SCHEMAS)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
 	}
@@ -334,8 +363,9 @@ hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag)
 	  q_result[i].column_info = NULL;
 	  if (free_flag == TRUE)
 	    {
-	      col_update_info_free (&(q_result[i]));
+	      hm_col_update_info_free (&(q_result[i]));
 	      FREE_MEM (q_result[i].null_type_column);
+	      FREE_MEM (q_result[i].untyped_column);
 	    }
 	}
 
@@ -376,6 +406,7 @@ static void
 srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
   FREE_MEM (srv_handle->sql_stmt);
+  FREE_MEM (srv_handle->qr_app_sql);
   FREE_MEM (srv_handle->cgw_schema_info);	/* gateway schema_info rows; always NULL outside the gateway */
   FREE_MEM (srv_handle->cgw_schema_class_name);
   if (!is_cgw_mode)
@@ -392,6 +423,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	case CCI_SCH_DIRECT_SUPER_CLASS:
 	case CCI_SCH_PRIMARY_KEY:
 	case CCI_SCH_ATTR_WITH_SYNONYM:
+	case CCI_SCH_SCHEMAS:
 	  hm_qresult_end (srv_handle, TRUE);
 	  hm_session_free (srv_handle);
 	  break;
@@ -442,8 +474,8 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
     }
 }
 
-static void
-col_update_info_free (T_QUERY_RESULT * q_result)
+void
+hm_col_update_info_free (T_QUERY_RESULT * q_result)
 {
   int i;
 

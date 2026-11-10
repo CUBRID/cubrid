@@ -1782,11 +1782,22 @@
 
 #define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
 
-#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+#define ER_SES_VARIABLE_TYPE_FIXED                  -1384
 
 #define ER_AU_REJECT_LOGIN                          -1385
 
-#define ER_LAST_ERROR                               -1386
+#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
+
+#define ER_SUB_CLIENTS_ALIVE                        -1387
+#define ER_MAIN_CLIENT_NOT_READY                    -1388
+#define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
+
+#define ER_SES_SESSION_SECRET_MISMATCH              -1390
+#define ER_SES_SESSION_NOT_ATTACHED                 -1391
+
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
+
+#define ER_LAST_ERROR                               -1393
 
 
 /*

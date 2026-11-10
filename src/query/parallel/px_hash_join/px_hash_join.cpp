@@ -90,9 +90,12 @@ namespace parallel_query
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
@@ -122,9 +125,12 @@ namespace parallel_query
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	}
 
@@ -170,9 +176,6 @@ error_exit:
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-      HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       task_cnt = manager->num_parallel_threads;
@@ -194,9 +197,12 @@ error_exit:
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->parallel, &start_stats);
 
 	  stats->build.range_elapsed_time.min = shared_info.build_range_time.min;
@@ -245,11 +251,7 @@ error_exit:
 	      continue;
 	    }
 
-	  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
-	  HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				   (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
-
 	  if (error != NO_ERROR)
 	    {
 	      assert_release_error (er_errid () != NO_ERROR);
@@ -279,13 +281,11 @@ error_exit:
       context->outer.list_id = single_context->outer.list_id;
       context->outer.input = single_context->outer.input;
       context->outer.coerce_domains = single_context->outer.coerce_domains;
-      context->outer.need_coerce_domains = single_context->outer.need_coerce_domains;
       context->outer.regu_list_pred = single_context->outer.regu_list_pred;
 
       context->inner.list_id = single_context->inner.list_id;
       context->inner.input = single_context->inner.input;
       context->inner.coerce_domains = single_context->inner.coerce_domains;
-      context->inner.need_coerce_domains = single_context->inner.need_coerce_domains;
       context->inner.regu_list_pred = single_context->inner.regu_list_pred;
 
       assert (context->list_id == nullptr);
@@ -297,11 +297,13 @@ error_exit:
       switch (manager->join_type)
 	{
 	case JOIN_INNER:
+	case JOIN_SEMI:
 	  context->outer.fill_record = nullptr;
 	  context->inner.fill_record = nullptr;
 	  break;
 
 	case JOIN_LEFT:
+	case JOIN_ANTI:
 	  context->outer.fill_record = &context->outer.tuple_record;
 	  context->inner.fill_record = nullptr;
 	  break;
@@ -492,9 +494,6 @@ error_exit:
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-      HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       contexts = manager->contexts;
@@ -525,9 +524,12 @@ error_exit:
 
       task_manager.join ();
 
-      if (thread_is_on_trace (&thread_ref))
+      if (manager->px_worker_stats != nullptr)
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	}
+      if (thread_is_on_trace (&thread_ref))
+	{
 	  hjoin_trace_end (&thread_ref, &stats->probe, &start_stats);
 
 	  stats->probe.range.elapsed_time.min = shared_info.probe_range.elapsed_time.min;
@@ -578,11 +580,7 @@ error_exit:
 	      continue;
 	    }
 
-	  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
-	  HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				   (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
-
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;

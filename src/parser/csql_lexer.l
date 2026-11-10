@@ -120,7 +120,7 @@ int expecting_pl_lang_spec = 0;
     _Pragma("GCC diagnostic push")                         \
     _Pragma("GCC diagnostic ignored \"-Wsign-compare\"")   \
     _Pragma("GCC diagnostic ignored \"-Wredundant-decls\"")\
-    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
 
   #define END_SUPPRESS_WARNING_BISON_FLEX                  \
     _Pragma("GCC diagnostic pop")
@@ -2237,7 +2237,7 @@ parser_yy_user_action (void)
 
   if (YY_START == INITIAL)	/* token start (not a continuation) */
     {
-      yytoken_start_line = csql_yylloc.first_line = yylineno;
+      yytoken_start_line = csql_yylloc.first_line = csql_yylloc.start_line = yylineno;
       yytoken_start_column = csql_yylloc.first_column = parser_column_position();
     }
 
