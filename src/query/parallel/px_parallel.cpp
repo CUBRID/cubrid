@@ -39,15 +39,16 @@ namespace parallel_query
    * is_under_system_operation () - would a worker of this thread block on the transaction's system operation?
    *   return: true if no worker may be started
    *
-   * Workers share the leader's transaction index. A worker that opens a system operation (e.g. file_create ->
-   * disk_reserve_sectors -> log_sysop_start for a temp file) blocks on rmutex_topop while the leader waits for it
-   * (CBRD-27492). The result depends on who owns the open system operation:
-   *   - none is open: false
-   *   - this thread owns it (or the owner is empty because it ended between the two reads): true. The leader waits
-   *     for its workers while holding it, e.g. the statement-level system operation of MERGE.
+   * Workers share the leader's transaction index. A worker that opens a system operation blocks on rmutex_topop while
+   * the leader waits for it (CBRD-27492).
+   *   e.g. file_create -> disk_reserve_sectors -> log_sysop_start for a temp file.
+   * The result depends on who owns the open system operation:
+   *   - none is open, or it ended between the two reads (the owner is empty): false
+   *   - this thread owns it: true. The leader waits for its workers while holding it.
+   *       e.g. the statement-level system operation of MERGE.
    *   - a thread of the PL session owns it: true. lock_topop () lets those threads re-enter rmutex_topop.
-   *   - any other thread owns it, e.g. a sibling worker in disk_reserve_sectors: false. It ends without waiting for
-   *     this thread (CBRD-27938).
+   *   - any other thread owns it: false. It ends without waiting for this thread (CBRD-27938).
+   *       e.g. a sibling worker in disk_reserve_sectors.
    *
    * rmutex_topop.owner is read without synchronization; a value other than this thread's only means "not this thread".
    * TODO: with CBRD-27562 a worker no longer opens a system operation for temp files; check whether the owner
@@ -64,8 +65,12 @@ namespace parallel_query
 
     const thread_id_t owner = tdes->rmutex_topop.owner;
 
-    if (owner == thread_id_t () /* not locked, or ended between the two reads */
-	|| owner == thread_get_thread_entry_info ()->get_id ())
+    if (owner == thread_id_t ())
+      {
+	return false;	/* ended between the two reads */
+      }
+
+    if (owner == thread_get_thread_entry_info ()->get_id ())
       {
 	return true;
       }
