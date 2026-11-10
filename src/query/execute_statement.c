@@ -579,7 +579,8 @@ struct cdt_eval_set
   SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
   int count;			/* number of residual entries */
   CDT_EVAL_ENTRY *entries;
-  struct pt_rand_state *rand_states;	/* seeded random generators of this statement (pt_free_rand_states) */
+  struct pt_rand_state *rand_states;	/* seeded random generators of this statement, of its DEFAULTs and its ON
+					 * DUPLICATE KEY UPDATE assignments (pt_free_rand_states) */
 };
 
 /*
@@ -11850,7 +11851,8 @@ static PT_NODE *test_check_option (PARSER_CONTEXT * parser, PT_NODE * node, void
 static int insert_local (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert);
 static int do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** oids, int *oids_count);
-static int do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tpl, PT_NODE * update_stmt);
+static int do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tpl, PT_NODE * update_stmt,
+				       struct pt_rand_state **rand_states);
 static int do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * spec, PT_NODE * class_specs);
 static int is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed);
 static PT_NODE *pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -12971,6 +12973,8 @@ cleanup:
  *   tmpl(in)	      : object template to be inserted
  *   update_stmt(in)  : the update statement to run if there are unique
  *			constraint violations
+ *   rand_states(in/out): seeded random generators of the statement, so a seeded
+ *			random of update_stmt advances per updated row
  *
  * Notes: This function creates a SELECT statement based on the values
  *        supplied in the template object and runs update_stmt for one
@@ -12979,12 +12983,14 @@ cleanup:
  *	  should proceed with the insert.
  */
 static int
-do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * update_stmt)
+do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * update_stmt,
+			    struct pt_rand_state **rand_states)
 {
   int retval = NO_ERROR;
   int ret_code = 0;
   OID *oids = NULL;
   int oids_count = 0;
+  struct pt_rand_state **save_rand_states;
 
   retval = do_find_unique_constraint_violations (tmpl, true, &oids, &oids_count);
   if (retval != NO_ERROR)
@@ -13000,7 +13006,10 @@ do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * 
 
   update_stmt->info.update.object = ws_mop (oids, NULL);
 
+  save_rand_states = parser->rand_states;
+  parser->rand_states = rand_states;
   ret_code = update_object_by_oid (parser, update_stmt, ON_DUPLICATE_KEY_UPDATE);
+  parser->rand_states = save_rand_states;
   update_stmt->info.update.object = NULL;
   if (ret_code < NO_ERROR)
     {
@@ -13434,7 +13443,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	  if ((*otemplate) != NULL && statement->info.insert.odku_assignments)
 	    {
 	      assert (update != NULL);
-	      error = do_on_duplicate_key_update (parser, *otemplate, update);
+	      error = do_on_duplicate_key_update (parser, *otemplate, update, &cdt_eval.rand_states);
 	      if (error < 0)
 		{
 		  dbt_abort_object (*otemplate);
@@ -13950,7 +13959,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			      goto cleanup;
 			    }
 			}
-		      error = do_on_duplicate_key_update (parser, otemplate, update);
+		      error = do_on_duplicate_key_update (parser, otemplate, update, &cdt_eval.rand_states);
 		      if (error < 0)
 			{
 			  /* there was an error, cleanup and return */
