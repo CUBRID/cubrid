@@ -6,6 +6,7 @@ Usage, from a built and cub-workenv-initialized worktree:
     python3 contrib/benchmarks/inner_table/accept.py --case storage-1 --root OUTDIR
     python3 contrib/benchmarks/inner_table/accept.py --case storage-2 --root OUTDIR
     python3 contrib/benchmarks/inner_table/accept.py --case recovery --root OUTDIR   (needs gdb; see recovery.py)
+    python3 contrib/benchmarks/inner_table/accept.py --case reclamation --root OUTDIR   (see reclamation.py)
 
 Case storage-2 adds VARBIT values, two cold columns in one row, binary zeros, a parent row
 that stays REC_BIGONE without its cold value, and a short-chunk control.
@@ -447,7 +448,7 @@ def supports_inner(cubrid):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--case', required=True, choices=['storage-1', 'storage-2', 'recovery'])
+    ap.add_argument('--case', required=True, choices=['storage-1', 'storage-2', 'recovery', 'reclamation'])
     ap.add_argument('--root', required=True, type=Path)
     args = ap.parse_args()
     wt = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip())
@@ -493,7 +494,12 @@ def main():
         sh(['cubrid', 'server', 'start', name], log, timeout=300)
         started = True
         summary['server_pids'] = own_pids('cub_server')
-        results = (Case if args.case == 'storage-1' else Case2)(Db(root, name), inner).run()
+        if args.case == 'reclamation':
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import reclamation
+            results = reclamation.ReclamationCase(root, name).run(log)
+        else:
+            results = (Case if args.case == 'storage-1' else Case2)(Db(root, name), inner).run()
         sh(['cubrid', 'server', 'stop', name], log, timeout=300)
         started = False
         ck = sh(['cubrid', 'checkdb', '-S', name], root / 'checkdb.log', check=False)
