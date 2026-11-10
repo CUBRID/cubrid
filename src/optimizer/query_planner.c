@@ -360,7 +360,6 @@ static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BI
 				  BITSET *);
 static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				 BITSET *);
-static bool qo_hash_join_is_possible (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *);
 static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
 static void qo_compute_projected_segs (QO_PLANNER *, BITSET *, BITSET *, BITSET *);
@@ -10436,12 +10435,11 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  /* the side to be the inner is already a join, so no table of it is the inner: read the hint from the table
 	   * written right of RIGHT OUTER JOIN, as qo_examine_hash_join () does.  Only a hash join is forced from here,
-	   * and only when it can be built: idx-join needs a single class inner, and merge-join may not be possible
-	   * for this join, so nl-join is kept for them. */
+	   * and only when there is a hash term: idx-join needs a single class inner, and merge-join may not be
+	   * possible for this join, so nl-join is kept for them. */
 	  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 	  if (!(QO_NODE_HINT (inner_node) & (PT_HINT_NO_USE_HASH | PT_HINT_USE_NL))
-	      && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	      && qo_hash_join_is_possible (info, JOIN_RIGHT, outer, inner, hash_terms, sarged_terms))
+	      && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH) && !bitset_is_empty (hash_terms))
 	    {
 	      /* join hint: force hash-join; skip nl-join */
 	      goto exit;
@@ -10783,38 +10781,34 @@ exit:
 }
 
 /*
- * qo_hash_join_is_possible () - can the join be made a hash join, join method hints aside
- *   return: true if qo_examine_hash_join () may build a hash join plan for it
+ * qo_examine_hash_join () -
+ *   return:
  *   info(in):
  *   join_type(in):
  *   outer(in):
  *   inner(in):
  *   hash_join_terms(in):
+ *   duj_terms(in):
+ *   afj_terms(in):
  *   sarged_terms(in):
- *
- * Note: qo_examine_nl_join () asks this before it leaves a join to the hash join for a USE_HASH hint: a join left
- *       with no plan at all fails the planning, and the retry drops every hint of the statement.
+ *   pinned_subqueries(in):
  */
-static bool
-qo_hash_join_is_possible (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner,
-			  BITSET * hash_join_terms, BITSET * sarged_terms)
+static int
+qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
+		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
-  QO_NODE *outer_node, *inner_node;
+  QO_PLAN *outer_plan, *inner_plan;
+  QO_NODE *outer_node, *inner_node, *hint_node;
   QO_NODE_INDEX *node_index;
   QO_TERM *term;
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
-  int i;
-
-  if (bitset_is_empty (hash_join_terms))
-    {
-      return false;
-    }
+  int i, n = 0;
 
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   if (mem_limit <= 0)
     {
-      return false;		/* give up */
+      goto exit;		/* give up */
     }
 
   /* If any of the sarged terms are fake terms, we can't implement this join as a merge join, because the timing
@@ -10822,7 +10816,7 @@ qo_hash_join_is_possible (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, 
    */
   if (bitset_intersects (sarged_terms, &info->env->fake_terms))
     {
-      return false;
+      goto exit;
     }
 
   /* A query using a predicate for an oid is rewritten as a path join query.  The path join query is executed
@@ -10855,7 +10849,7 @@ qo_hash_join_is_possible (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, 
       term = QO_ENV_TERM (info->env, bitset_index);
       if (QO_IS_PATH_TERM (term) && QO_TERM_JOIN_TYPE (term) != JOIN_INNER)
 	{
-	  return false;		/* give up */
+	  goto exit;		/* give up */
 	}
     }
 
@@ -10888,78 +10882,10 @@ qo_hash_join_is_possible (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, 
 	    }
 	  if (has_subquery)
 	    {
-	      return false;	/* give up */
+	      goto exit;	/* give up */
 	    }
 	}
     }
-
-  /* Check if a click counter is set. */
-  if (QO_ENV_PT_TREE (info->env)->flag.is_click_counter)
-    {
-      return false;		/* give up */
-    }
-
-  /* Check if a key limit is set. */
-  node_index = QO_NODE_INDEXES (inner_node);
-  if (node_index != NULL)
-    {
-      for (i = 0; i < QO_NI_N (node_index); i++)
-	{
-	  if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
-	    {
-	      return false;	/* give up */
-	    }
-	}
-    }
-
-  for (bitset_index = bitset_iterate (&outer->nodes, &bitset_iter); bitset_index != -1;
-       bitset_index = bitset_next_member (&bitset_iter))
-    {
-      outer_node = QO_ENV_NODE (outer->env, bitset_index);
-
-      node_index = QO_NODE_INDEXES (outer_node);
-      if (node_index != NULL)
-	{
-	  for (i = 0; i < QO_NI_N (node_index); i++)
-	    {
-	      if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
-		{
-		  return false;	/* give up */
-		}
-	    }
-	}
-    }
-
-  return true;
-}
-
-/*
- * qo_examine_hash_join () -
- *   return:
- *   info(in):
- *   join_type(in):
- *   outer(in):
- *   inner(in):
- *   hash_join_terms(in):
- *   duj_terms(in):
- *   afj_terms(in):
- *   sarged_terms(in):
- *   pinned_subqueries(in):
- */
-static int
-qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * hash_join_terms,
-		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
-{
-  QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *inner_node, *hint_node;
-  int n = 0;
-
-  if (!qo_hash_join_is_possible (info, join_type, outer, inner, hash_join_terms, sarged_terms))
-    {
-      goto exit;
-    }
-
-  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 
   /* Determine the node that carries the join-method hint.  For a right outer join the
    * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
@@ -10996,6 +10922,43 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
       else
 	{
 	  /* fall through */
+	}
+    }
+
+  /* Check if a click counter is set. */
+  if (QO_ENV_PT_TREE (info->env)->flag.is_click_counter)
+    {
+      goto exit;		/* give up */
+    }
+
+  /* Check if a key limit is set. */
+  node_index = QO_NODE_INDEXES (inner_node);
+  if (node_index != NULL)
+    {
+      for (i = 0; i < QO_NI_N (node_index); i++)
+	{
+	  if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+	    {
+	      goto exit;	/* give up */
+	    }
+	}
+    }
+
+  for (bitset_index = bitset_iterate (&outer->nodes, &bitset_iter); bitset_index != -1;
+       bitset_index = bitset_next_member (&bitset_iter))
+    {
+      outer_node = QO_ENV_NODE (outer->env, bitset_index);
+
+      node_index = QO_NODE_INDEXES (outer_node);
+      if (node_index != NULL)
+	{
+	  for (i = 0; i < QO_NI_N (node_index); i++)
+	    {
+	      if (QO_NI_ENTRY (node_index, i)->head->key_limit != NULL)
+		{
+		  goto exit;	/* give up */
+		}
+	    }
 	}
     }
 
