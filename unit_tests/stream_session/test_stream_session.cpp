@@ -61,6 +61,21 @@ er_set (int severity, const char *file_name, const int line_no, int err_id, int 
 
 namespace
 {
+  /* A config the core takes: its version, a big-endian int, then the kind's own bytes. */
+  std::string
+  versioned (const std::string &payload, int version = 1)
+  {
+    std::string config (4, '\0');
+
+    for (int i = 0; i < 4; i++)
+      {
+	config[i] = (char) ((unsigned int) version >> (24 - 8 * i));
+      }
+    return config + payload;
+  }
+
+  const std::string EMPTY_CONFIG = versioned ("");
+
   /* A consumer stands in for COPY / internal-LOB: it records what the transport
    * handed it, which is all the seam promises to carry. */
   class fake_session : public stream_session
@@ -201,6 +216,9 @@ namespace
     (void) thread_p;
 
     test_Factory_calls++;
+    /* the core checked the version; the value is what follows it */
+    config += 4;
+    config_len -= 4;
     if (config_len > 0 && config[0] == '!')
       {
 	*error_code = ER_STREAM_SESSION_ERROR;
@@ -252,7 +270,7 @@ namespace
   stream_kind_desc
   upload_desc (stream_session_factory sink, bool ends_unit_of_work)
   {
-    stream_kind_desc desc = { STREAM_UPLOAD, sink, NULL, ends_unit_of_work };
+    stream_kind_desc desc = { STREAM_UPLOAD, sink, NULL, ends_unit_of_work, 1 };
 
     return desc;
   }
@@ -267,7 +285,7 @@ namespace
 
       if (!registered)
 	{
-	  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, make_source, false };
+	  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, make_source, false, 1 };
 	  stream_kind_client_desc download_client = { true, authorize_all };
 	  stream_kind_client_desc staging_client = { false, authorize_none };
 
@@ -307,18 +325,33 @@ namespace
   }
 }
 
+namespace
+{
+  /* stream_download_open () in TRAN_1 for CLIENT_1, with payload behind version 1 */
+  int
+  open_payload (stream_handle_table &table, int kind, const std::string &payload, int first_max, int flags, char *buf,
+		int *nread, int *reply_flags, std::int64_t *handle)
+  {
+    std::string config = versioned (payload);
+
+    return stream_download_open (NULL, table, kind, config.data (), (int) config.size (), TRAN_1, CLIENT_1, first_max,
+				 flags, buf, nread, reply_flags, handle);
+  }
+}
+
 TEST_CASE_METHOD (registry_fixture, "a registered kind reaches its own factory", "[stream_session]")
 {
   int error_code = ER_FAILED;
 
-  stream_session *a = stream_session_create (NULL, KIND_A, NULL, 0, &error_code);
+  stream_session *a = stream_session_create (NULL, KIND_A, EMPTY_CONFIG.data (), (int) EMPTY_CONFIG.size (), &error_code);
   REQUIRE (a != NULL);
   CHECK (error_code == NO_ERROR);
   CHECK (static_cast<fake_session *> (a)->tag () == 'A');
   delete a;
 
   error_code = ER_FAILED;
-  stream_session *b = stream_session_create (NULL, KIND_STAGING, NULL, 0, &error_code);
+  stream_session *b = stream_session_create (NULL, KIND_STAGING, EMPTY_CONFIG.data (), (int) EMPTY_CONFIG.size (),
+		      &error_code);
   REQUIRE (b != NULL);
   CHECK (error_code == NO_ERROR);
   CHECK (static_cast<fake_session *> (b)->tag () == 'B');
@@ -360,25 +393,48 @@ TEST_CASE_METHOD (registry_fixture, "the factory's own refusal is passed through
 {
   int error_code = NO_ERROR;
 
-  CHECK (stream_session_create (NULL, KIND_REFUSING, NULL, 0, &error_code) == NULL);
+  CHECK (stream_session_create (NULL, KIND_REFUSING, EMPTY_CONFIG.data (), (int) EMPTY_CONFIG.size (), &error_code)
+	 == NULL);
   CHECK (error_code == ER_STREAM_SESSION_ERROR);
 }
 
 TEST_CASE_METHOD (registry_fixture, "the config blob reaches the factory bounded by its length", "[stream_session]")
 {
-  const char config[] = "kind-specific bytes";
+  std::string config = versioned ("kind-specific bytes");
   int error_code = ER_FAILED;
 
-  stream_session *s = stream_session_create (NULL, KIND_A, config, (int) sizeof (config), &error_code);
+  stream_session *s = stream_session_create (NULL, KIND_A, config.data (), (int) config.size (), &error_code);
   REQUIRE (s != NULL);
   CHECK (error_code == NO_ERROR);
   delete s;
 
-  /* a length the blob cannot honour is the factory's to refuse, not the
-   * registry's to guess at */
+  /* a length that cannot hold the version is refused before any factory reads the blob */
   error_code = NO_ERROR;
   CHECK (stream_session_create (NULL, KIND_A, NULL, -1, &error_code) == NULL);
-  CHECK (error_code == ER_STREAM_SESSION_ERROR);
+  CHECK (error_code == ER_STREAM_INVALID_USE);
+  CHECK (test_Factory_calls == 1);
+}
+
+TEST_CASE_METHOD (registry_fixture, "the core checks the config version before the factory runs", "[stream_session]")
+{
+  std::string zero = versioned ("x", 0), negative = versioned ("x", -1), newer = versioned ("x", 2);
+  int error_code = NO_ERROR;
+
+  CHECK (stream_session_create (NULL, KIND_A, "abc", 3, &error_code) == NULL);
+  CHECK (error_code == ER_STREAM_INVALID_USE);
+  CHECK (stream_session_create (NULL, KIND_A, zero.data (), (int) zero.size (), &error_code) == NULL);
+  CHECK (error_code == ER_STREAM_INVALID_USE);
+  CHECK (stream_session_create (NULL, KIND_A, negative.data (), (int) negative.size (), &error_code) == NULL);
+  CHECK (error_code == ER_STREAM_INVALID_USE);
+
+  /* newer than the kind takes: the client is told, and may send an older one */
+  CHECK (stream_session_create (NULL, KIND_A, newer.data (), (int) newer.size (), &error_code) == NULL);
+  CHECK (error_code == ER_STREAM_NOT_SUPPORTED);
+  CHECK (test_Last_error == ER_STREAM_NOT_SUPPORTED);
+  CHECK (stream_source_create (NULL, KIND_DOWNLOAD, newer.data (), (int) newer.size (), &error_code) == NULL);
+  CHECK (error_code == ER_STREAM_NOT_SUPPORTED);
+
+  CHECK (test_Factory_calls == 0);
 }
 
 TEST_CASE_METHOD (registry_fixture, "the seam carries bytes through to the binding's count", "[stream_session]")
@@ -386,7 +442,7 @@ TEST_CASE_METHOD (registry_fixture, "the seam carries bytes through to the bindi
   int error_code = ER_FAILED;
   stream_result result = { -1 };
 
-  stream_session *s = stream_session_create (NULL, KIND_A, NULL, 0, &error_code);
+  stream_session *s = stream_session_create (NULL, KIND_A, EMPTY_CONFIG.data (), (int) EMPTY_CONFIG.size (), &error_code);
   REQUIRE (s != NULL);
 
   CHECK (s->receive_chunk (NULL, "abc", 3) == NO_ERROR);
@@ -416,11 +472,14 @@ TEST_CASE_METHOD (registry_fixture, "each kind answers for its own unit of work"
 
 TEST_CASE_METHOD (registry_fixture, "a record that does not hold together is refused", "[stream_session]")
 {
-  stream_kind_desc ends_download = { STREAM_DOWNLOAD, NULL, make_source, true };
-  stream_kind_desc sinking_download = { STREAM_DOWNLOAD, make_fake<'X'>, make_source, false };
-  stream_kind_desc sourceless_download = { STREAM_DOWNLOAD, NULL, NULL, false };
-  stream_kind_desc sourced_upload = { STREAM_UPLOAD, make_fake<'X'>, make_source, true };
-  stream_kind_desc sinkless_upload = { STREAM_UPLOAD, NULL, NULL, true };
+  stream_kind_desc ends_download = { STREAM_DOWNLOAD, NULL, make_source, true, 1 };
+  stream_kind_desc sinking_download = { STREAM_DOWNLOAD, make_fake<'X'>, make_source, false, 1 };
+  stream_kind_desc sourceless_download = { STREAM_DOWNLOAD, NULL, NULL, false, 1 };
+  stream_kind_desc sourced_upload = { STREAM_UPLOAD, make_fake<'X'>, make_source, true, 1 };
+  stream_kind_desc sinkless_upload = { STREAM_UPLOAD, NULL, NULL, true, 1 };
+  stream_kind_desc unversioned = upload_desc (make_fake<'X'>, true);
+
+  unversioned.config_version_max = 0;
 
   /* a download ends no statement, and a factory only of the kind's own direction */
   CHECK (stream_kind_register (KIND_UNREGISTERED, ends_download) == ER_STREAM_SESSION_ERROR);
@@ -429,6 +488,8 @@ TEST_CASE_METHOD (registry_fixture, "a record that does not hold together is ref
   CHECK (stream_kind_register (KIND_UNREGISTERED, sourced_upload) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (KIND_UNREGISTERED, sinkless_upload) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_register (STREAM_KIND_MAX, upload_desc (make_fake<'X'>, true)) == ER_STREAM_SESSION_ERROR);
+  /* every config starts with a version, so a kind names the highest it takes */
+  CHECK (stream_kind_register (KIND_UNREGISTERED, unversioned) == ER_STREAM_SESSION_ERROR);
 
   CHECK (stream_kind_find (KIND_UNREGISTERED) == NULL);
 }
@@ -673,16 +734,16 @@ TEST_CASE_METHOD (registry_fixture, "a value within one read comes back with the
   int nread = 0, reply_flags = 0;
   std::int64_t handle = -1;
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "hello", 5, TRAN_1, CLIENT_1, 64,
-				 STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (open_payload (table, KIND_DOWNLOAD, "hello", 64,
+			 STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags, &handle) == NO_ERROR);
   CHECK (handle == 0);
   CHECK (std::string (buf.data (), (size_t) nread) == "hello");
   CHECK (reply_flags == (STREAM_FLAG_EOF | STREAM_FLAG_RELEASED));
   CHECK (test_Closed == 1);
 
   /* without RELEASE_AT_EOF the client keeps the handle and releases it itself */
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "hello", 5, TRAN_1, CLIENT_1, 64, 0, buf.data (), &nread,
-				 &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (open_payload (table, KIND_DOWNLOAD, "hello", 64, 0, buf.data (), &nread,
+			 &reply_flags, &handle) == NO_ERROR);
   CHECK (handle > 0);
   CHECK (reply_flags == STREAM_FLAG_EOF);
 
@@ -709,8 +770,8 @@ TEST_CASE_METHOD (registry_fixture, "a larger value reads to eof and releases at
       value[i] = (char) ('a' + i % 26);
     }
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, value.data (), (int) value.size (), TRAN_1, CLIENT_1,
-				 4096, STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags, &handle)
+  REQUIRE (open_payload (table, KIND_DOWNLOAD, value,
+			 4096, STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread, &reply_flags, &handle)
 	   == NO_ERROR);
   REQUIRE (handle > 0);
   CHECK (nread == 4096);
@@ -738,8 +799,8 @@ TEST_CASE_METHOD (registry_fixture, "an unbundled open issues a handle and reads
   int nread = -1, reply_flags = -1;
   std::int64_t handle = 0;
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
-				 &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (open_payload (table, KIND_DOWNLOAD, "abc", 0, 0, NULL, &nread,
+			 &reply_flags, &handle) == NO_ERROR);
   CHECK (handle > 0);
   CHECK (nread == 0);
   CHECK (reply_flags == 0);
@@ -755,8 +816,8 @@ TEST_CASE_METHOD (registry_fixture, "a failed read releases its handle", "[strea
   int nread = 0, reply_flags = 0;
   std::int64_t handle = 0;
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "?fail", 5, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
-				 &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (open_payload (table, KIND_DOWNLOAD, "?fail", 0, 0, NULL, &nread,
+			 &reply_flags, &handle) == NO_ERROR);
   CHECK (stream_download_read (NULL, table, handle, TRAN_1, 16, 0, buf.data (), &nread, &reply_flags)
 	 == ER_STREAM_SESSION_ERROR);
   CHECK (test_Closed == 1);
@@ -765,8 +826,8 @@ TEST_CASE_METHOD (registry_fixture, "a failed read releases its handle", "[strea
   CHECK (error_code == ER_STREAM_NOT_OPEN);
 
   /* a failed first read in a bundled open leaves no handle either */
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "?fail", 5, TRAN_1, CLIENT_1, 16, 0, buf.data (), &nread,
-				 &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
+  REQUIRE (open_payload (table, KIND_DOWNLOAD, "?fail", 16, 0, buf.data (), &nread,
+			 &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
   CHECK (handle == 0);
   CHECK (test_Closed == 2);
 }
@@ -780,8 +841,8 @@ TEST_CASE_METHOD (registry_fixture, "the core holds a source to its read contrac
   std::int64_t handle = 0;
 
   /* nothing and no eof would keep a client reading forever */
-  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "~", 1, TRAN_1, CLIENT_1, 16, 0, buf.data (), &nread,
-			       &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
+  CHECK (open_payload (table, KIND_DOWNLOAD, "~", 16, 0, buf.data (), &nread,
+		       &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
   CHECK (handle == 0);
   CHECK (test_Closed == 1);
 
@@ -789,12 +850,12 @@ TEST_CASE_METHOD (registry_fixture, "the core holds a source to its read contrac
   CHECK (stream_read_bound (1 << 30) == STREAM_READ_MAX_CHUNK);
   CHECK (stream_read_bound (100) == 100);
 
-  REQUIRE (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
-				 &reply_flags, &handle) == NO_ERROR);
+  REQUIRE (open_payload (table, KIND_DOWNLOAD, "abc", 0, 0, NULL, &nread,
+			 &reply_flags, &handle) == NO_ERROR);
   CHECK (stream_download_read (NULL, table, handle, TRAN_1, 0, 0, buf.data (), &nread, &reply_flags)
 	 == ER_STREAM_INVALID_USE);
-  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "abc", 3, TRAN_1, CLIENT_1, -1, 0, NULL, &nread,
-			       &reply_flags, &handle) == ER_STREAM_INVALID_USE);
+  CHECK (open_payload (table, KIND_DOWNLOAD, "abc", -1, 0, NULL, &nread,
+		       &reply_flags, &handle) == ER_STREAM_INVALID_USE);
   table.clear (NULL);
 }
 
@@ -804,11 +865,11 @@ TEST_CASE_METHOD (registry_fixture, "an open refused by its factory or its kind 
   int nread = 0, reply_flags = 0;
   std::int64_t handle = -1;
 
-  CHECK (stream_download_open (NULL, table, KIND_DOWNLOAD, "!no", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread,
-			       &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
+  CHECK (open_payload (table, KIND_DOWNLOAD, "!no", 0, 0, NULL, &nread,
+		       &reply_flags, &handle) == ER_STREAM_SESSION_ERROR);
   CHECK (handle == 0);
-  CHECK (stream_download_open (NULL, table, KIND_A, "abc", 3, TRAN_1, CLIENT_1, 0, 0, NULL, &nread, &reply_flags,
-			       &handle) == ER_STREAM_NOT_SUPPORTED);
+  CHECK (open_payload (table, KIND_A, "abc", 0, 0, NULL, &nread, &reply_flags,
+		       &handle) == ER_STREAM_NOT_SUPPORTED);
   CHECK (handle == 0);
   CHECK (test_Closed == 0);
 }

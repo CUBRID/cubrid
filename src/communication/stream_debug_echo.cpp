@@ -27,7 +27,7 @@
  *		   a chunk that brings the total past fail_after is refused; each chunk first sleeps delay_ms
  *   download (6): version int32 | length int64 | seed int32
  *		   byte i is (seed + i) & 0xff
- * A negative version is refused by authorize, a version above 1 by the factory with ER_STREAM_NOT_SUPPORTED.
+ * A negative version is refused by authorize, a version above 1 by the core with ER_STREAM_NOT_SUPPORTED.
  */
 
 #include "stream_debug_echo.hpp"
@@ -76,20 +76,13 @@ namespace
   }
 
 #if !defined (CS_MODE)
-  /* the factory's check: the version the client half let through, and the fields this version has */
+  /* the core checked the version; the factory checks the fields that version has */
   int
   echo_check_config (const char *config, int config_len, int size)
   {
-    char msg[64];
-
     if (config == NULL || config_len < size)
       {
 	return echo_refuse (ER_STREAM_SESSION_ERROR, "debug echo: config too short");
-      }
-    if (echo_get_be (config, 4) > ECHO_VERSION)
-      {
-	snprintf (msg, sizeof (msg), "debug echo: config version above %d", ECHO_VERSION);
-	return echo_refuse (ER_STREAM_NOT_SUPPORTED, msg);
       }
     return NO_ERROR;
   }
@@ -222,8 +215,8 @@ namespace
 int
 stream_debug_echo_register_server (void)
 {
-  stream_kind_desc upload = { STREAM_UPLOAD, echo_session_create, NULL, false };
-  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, echo_source_create, false };
+  stream_kind_desc upload = { STREAM_UPLOAD, echo_session_create, NULL, false, ECHO_VERSION };
+  stream_kind_desc download = { STREAM_DOWNLOAD, NULL, echo_source_create, false, ECHO_VERSION };
   int error_code = stream_kind_register (STREAM_KIND_DEBUG_ECHO_UPLOAD, upload);
 
   return error_code != NO_ERROR ? error_code : stream_kind_register (STREAM_KIND_DEBUG_ECHO_DOWNLOAD, download);

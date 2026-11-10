@@ -129,11 +129,14 @@ class stream_source : public stream_handle_object
 
 /* Build a session or a source of one kind from that kind's config blob. The
  * blob comes straight off the wire, so the factory decodes it bounded by
- * config_len. It starts with the kind's own version int: a factory accepts
- * every version up to its own and refuses a newer one with ER_STREAM_NOT_SUPPORTED
- * naming the highest it accepts, which is the only way a consumer grows without
- * a new function code. Any other refusal of a consumer uses its own error code,
- * or ER_STREAM_SESSION_ERROR. */
+ * config_len. It starts with the kind's version, a big-endian int as
+ * or_pack_int () writes it. Before the factory runs, the core refuses a blob
+ * with no version or a version below 1 (ER_STREAM_INVALID_USE), and a version
+ * above the kind's config_version_max (ER_STREAM_NOT_SUPPORTED, naming that
+ * highest): the version is the only way a consumer grows without a new
+ * function code. The factory reads the version again for the fields it has.
+ * Any other refusal of a consumer uses its own error code, or
+ * ER_STREAM_SESSION_ERROR. */
 using stream_session_factory = stream_session * (*) (THREAD_ENTRY *thread_p, const char *config, int config_len,
 			       int *error_code);
 using stream_source_factory = stream_source * (*) (THREAD_ENTRY *thread_p, const char *config, int config_len,
@@ -157,6 +160,9 @@ struct stream_kind_desc
    * the transaction before that statement runs: the CAS takes a connection whose
    * upload was given up back out of the transaction. */
   bool ends_unit_of_work;
+
+  /* The highest config version the kind accepts, 1 or more. */
+  int config_version_max;
 };
 
 /* A consumer registers its own kind once, at load time, before any connection
