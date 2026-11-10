@@ -866,6 +866,13 @@ namespace cubmethod
     // copy the user prepened string regardless of whether the result is true or false
     sm_downcase_name (temp.c_str(), buf, buf_size);
 
+    // A system class name cannot be a package name. sm_user_specified_name () does not prepend the
+    // current user name to it, and temp is then the same as name.
+    if (sm_check_system_class_by_name (pkg))
+      {
+	return false;
+      }
+
     return identifier_fits (temp);
   }
 

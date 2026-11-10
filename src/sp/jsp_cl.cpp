@@ -4292,10 +4292,12 @@ jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_
 
   *sp_mop_p = NULL;
 
-  // <package>.<routine> of the current user
-  if (dot != NULL && strchr (dot + 1, '.') == NULL)
+  std::string pkg_name = (dot == NULL) ? "" : std::string (name, dot - name);
+
+  // <package>.<routine> of the current user. A system class name cannot be a package name, and
+  // jsp_user_specified_name () would not prepend the current user name to it.
+  if (dot != NULL && strchr (dot + 1, '.') == NULL && !sm_check_system_class_by_name (pkg_name))
     {
-      std::string pkg_name (name, dot - name);
       char *user_pkg_name = jsp_user_specified_name (pkg_name.c_str ());
 
       if (user_pkg_name != NULL && user_pkg_name[0] != '\0')
