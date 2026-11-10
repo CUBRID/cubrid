@@ -4357,6 +4357,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      scan_batch_rewind (thread_p, s_id);
 	    }
 	}
+      /* the next pass reads its pages afresh, not from the copy the last pass took */
+      VPID_SET_NULL (&s_id->s.hsid.scan_cache.local_cache_vpid);
       break;
 
 
@@ -7364,6 +7366,12 @@ end:
   /* maintain what is apparently supposed to be an invariant-- S_END implies position is "after" the scan */
   if (result == S_END)
     {
+      /* a fixed heap scan that stopped at its first match still holds its page: release it before the outer scans
+       * of the chain move */
+      if (s_id->type == S_HEAP_SCAN && s_id->s.hsid.scan_cache.page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &s_id->s.hsid.scan_cache.page_watcher);
+	}
       if (s_id->direction != S_BACKWARD)
 	{
 	  s_id->position = S_AFTER;
@@ -8889,7 +8897,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1, NULL);
+					iscan_id->rest_attrs.attr_cache, iscan_id->indx_cov.func_index_col_id, NULL);
   if (error != NO_ERROR)
     {
       return error;

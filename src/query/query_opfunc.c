@@ -2171,24 +2171,15 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
       db_make_null (result_p);
       return NO_ERROR;
     }
-  TP_DOMAIN_STATUS dom_status;
-  if (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p))
+  /* CBRD-27583: the value has the planned type and the domain fixes its type and collation (checked also for
+   * compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT results) */
+  assert (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p));
+  /* the plan's converter, which the cast takes in place of its lookup */
+  if (conv == NULL)
     {
-      /* the plan's converter, which the cast takes in place of its lookup */
-      if (conv == NULL)
-	{
-	  return NO_ERROR;
-	}
-      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
+      return NO_ERROR;
     }
-  else
-    {
-      /* CBRD-27583: not reached - a value of another type than planned, or a domain that leaves the value's type or
-       * collation to it (checked also for compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT
-       * results); a release build coerces it by its own type */
-      assert (false);
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-    }
+  const TP_DOMAIN_STATUS dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       const int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
@@ -2693,11 +2684,42 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
 }
 
 /*
+ * qdata_append_chars_to_dbval () - CBRD-27926: appends dbval2 to GROUP_CONCAT's accumulator dbval1 in its own buffer
+ *   return: NO_ERROR, or ER_FAILED as qdata_add_chars_to_dbval
+ *   spare_bytes(in): bytes of the multibyte character dbval2 was truncated in, which dbval1 keeps as zeros so that
+ *		      GROUP_CONCAT adds no shorter character after it; the accumulator keeps its codeset and collation
+ *   capacity_p(in/out), max_allowed_size(in): as qdata_concatenate_dbval
+ */
+static int
+qdata_append_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, int spare_bytes, int *capacity_p,
+			     int max_allowed_size)
+{
+  const int codeset = db_get_string_codeset (dbval1_p);
+  const int collation = db_get_string_collation (dbval1_p);
+
+  if (db_string_append (dbval1_p, dbval2_p, capacity_p, max_allowed_size) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (spare_bytes > 0)
+    {
+      if (db_string_append_zero_bytes (dbval1_p, spare_bytes, capacity_p, max_allowed_size) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      db_string_put_cs_and_collation (dbval1_p, codeset, collation);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qdata_concatenate_dbval () -
  *   return: NO_ERROR, or ER_code
- *   dbval1(in)		  : First db_value node
+ *   dbval1(in/out)	  : GROUP_CONCAT's accumulator, which dbval2 is appended to in its own buffer
  *   dbval2(in)		  : Second db_value node
- *   result_p(out)	  : Resultant db_value node
+ *   capacity_p(in/out)	  : bytes dbval1's buffer holds; 0 = unknown (CBRD-27926, db_string_append)
  *   domain_p(in)	  : DB domain of result
  *   max_allowed_size(in) : max allowed size for result
  *   warning_context(in)  : used only to display truncation warning context
@@ -2705,6 +2727,7 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  *			    a GROUP_CONCAT's argument); NULL none
  *
  * Note: Concatenates a db_values to string db value.
+ *	 The buffer grows to the next power of two only when the value does not fit (CBRD-27926).
  *	 Value to be added is truncated in case the allowed size would be
  *	 exceeded . Truncation is done without modifying the value (a new
  *	 temporary value is used).
@@ -2713,7 +2736,7 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  *	 logged).
  */
 int
-qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
+qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, int *capacity_p,
 			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context,
 			 DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
@@ -2723,7 +2746,6 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
   int res_size = 0, val_size = 0;
   bool warning_size_exceeded = false;
   int spare_bytes = 0;
-  bool save_need_clear;
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
@@ -2769,24 +2791,11 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 	      break;
 	    }
 
-	  error = qdata_add_chars_to_dbval (dbval1_p, &db_temp, result_p);
-
-	  if (spare_bytes > 0)
-	    {
-	      /* The adjusted 'db_temp' string was truncated to the last full multibyte character. Increase the
-	       * 'result' with 'spare_bytes' remained from the last truncated multibyte character. This prevents
-	       * GROUP_CONCAT to add other single-byte chars (or char with fewer bytes than 'spare_bytes' to current
-	       * aggregate. */
-	      save_need_clear = result_p->need_clear;
-	      qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-				      db_get_string (result_p), db_get_string_size (result_p) + spare_bytes,
-				      db_get_string_codeset (dbval1_p), db_get_string_collation (dbval1_p));
-	      result_p->need_clear = save_need_clear;
-	    }
+	  error = qdata_append_chars_to_dbval (dbval1_p, &db_temp, spare_bytes, capacity_p, max_allowed_size);
 	}
       else
 	{
-	  error = qdata_add_chars_to_dbval (dbval1_p, dbval2_p, result_p);
+	  error = qdata_append_chars_to_dbval (dbval1_p, dbval2_p, 0, capacity_p, max_allowed_size);
 	}
       break;
     case DB_TYPE_SHORT:
@@ -2830,20 +2839,11 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
 		    break;
 		  }
 
-		error = qdata_add_chars_to_dbval (dbval1_p, &db_temp, result_p);
-
-		if (spare_bytes > 0)
-		  {
-		    save_need_clear = result_p->need_clear;
-		    qstr_make_typed_string (DB_VALUE_DOMAIN_TYPE (result_p), result_p, DB_VALUE_PRECISION (result_p),
-					    db_get_string (result_p), db_get_string_size (result_p) + spare_bytes,
-					    db_get_string_codeset (dbval1_p), db_get_string_collation (dbval1_p));
-		    result_p->need_clear = save_need_clear;
-		  }
+		error = qdata_append_chars_to_dbval (dbval1_p, &db_temp, spare_bytes, capacity_p, max_allowed_size);
 	      }
 	    else
 	      {
-		error = qdata_add_chars_to_dbval (dbval1_p, &arg_val, result_p);
+		error = qdata_append_chars_to_dbval (dbval1_p, &arg_val, 0, capacity_p, max_allowed_size);
 	      }
 	  }
 	else
@@ -5147,10 +5147,6 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 {
   DB_TYPE type1, type2;
   int error = NO_ERROR;
-  DB_VALUE cast_value1;
-  DB_VALUE cast_value2;
-  TP_DOMAIN *cast_dom1 = NULL;
-  TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
 
   if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
@@ -5161,51 +5157,10 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
   type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
 
-  /* string STRCAT date: cast date to string, concat as strings */
-  /* string STRCAT number: cast number to string, concat as strings */
-  if (TP_IS_CHAR_TYPE (type1) && (TP_IS_DATE_OR_TIME_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2)))
-    {
-      cast_dom2 = tp_domain_resolve_value (dbval1_p, NULL);
-    }
-  else if ((TP_IS_DATE_OR_TIME_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1)) && TP_IS_CHAR_TYPE (type2))
-    {
-      cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
-    }
-  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row reaches
-   * the cast of a value by its type here */
-  assert (cast_dom1 == NULL && cast_dom2 == NULL);
-
-  db_make_null (&cast_value1);
-  db_make_null (&cast_value2);
-
-  if (cast_dom1 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  pr_clear_value (&cast_value1);
-	  pr_clear_value (&cast_value2);
-	  return error;
-	}
-      dbval1_p = &cast_value1;
-    }
-
-  if (cast_dom2 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  pr_clear_value (&cast_value1);
-	  pr_clear_value (&cast_value2);
-	  return error;
-	}
-      dbval2_p = &cast_value2;
-    }
-
-  type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
-  type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
+  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row concatenates
+   * a string with a date or a number */
+  assert (!(TP_IS_CHAR_TYPE (type1) && (TP_IS_DATE_OR_TIME_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2))));
+  assert (!((TP_IS_DATE_OR_TIME_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1)) && TP_IS_CHAR_TYPE (type2)));
 
   if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
@@ -5225,13 +5180,15 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  /* CBRD-27583: the other operand is the value: one of another type than planned takes the node's domain by the
 	   * converter its operand's type found at unpack, as the row coerced it before */
 	  const int i = DB_IS_NULL (dbval1_p) ? 1 : 0;
-	  const DB_TYPE type = i == 0 ? type1 : type2;
-	  if (arith != NULL && domain_p == arith->domain && type != planned && type == arith->conv_type[i])
+	  if (arith != NULL && domain_p == arith->domain && arith->conv[i] != NULL && arith->conv_type[i] != planned)
 	    {
-	      dom_status = tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p, type,
-							      arith->conv[i]);
-	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR
-		: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, i == 0 ? dbval1_p : dbval2_p, domain_p);
+	      assert ((i == 0 ? type1 : type2) == arith->conv_type[i]);
+	      dom_status =
+		tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p,
+						   arith->conv_type[i], arith->conv[i]);
+	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR : tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+											   i == 0 ? dbval1_p : dbval2_p,
+											   domain_p);
 	    }
 	}
       else
@@ -5250,17 +5207,21 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_NUMERIC:
     case DB_TYPE_MONETARY:
       {
-	/* a number first operand adds, as the typed additions did: a number or a date or time second operand, no
-	 * value for any other */
-	DB_TYPE left_target, right_target;
-	DOMAIN_ARITH arith;
-
-	(void) domain_arith_rule (T_ADD, type1, type2, &left_target, &right_target, &arith);
-	if (arith.kind == DOMAIN_ARITH_NUMBER)
+	/* a number first operand adds, as the typed additions do: only an addition whose value its consumer reads as
+	 * a string (oracle_style_empty_string) comes here, by what its node decided (a concatenation's operands are
+	 * strings); a number or a date or time second operand, no value for any other */
+	if (arith == NULL || !arith_decides_arith (arith))
 	  {
-	    error = qdata_number_operator (T_ADD, arith.type, dbval1_p, dbval2_p, result_p);
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	    return ER_QPROC_INVALID_DATATYPE;
 	  }
-	else if (arith.kind == DOMAIN_ARITH_DATE)
+	const DOMAIN_ARITH *decided = arith_decided_arith (arith);
+	if (decided->kind == DOMAIN_ARITH_NUMBER)
+	  {
+	    error = qdata_number_operator (T_ADD, decided->type, dbval1_p, dbval2_p, result_p);
+	  }
+	else if (decided->kind == DOMAIN_ARITH_DATE)
 	  {
 	    error = qdata_add_datetime_value (dbval1_p, dbval2_p, result_p, domain_p);
 	  }
@@ -5332,15 +5293,6 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   if (error != NO_ERROR)
     {
       return error;
-    }
-
-  if (cast_dom1)
-    {
-      pr_clear_value (&cast_value1);
-    }
-  if (cast_dom2)
-    {
-      pr_clear_value (&cast_value2);
     }
 
   return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
@@ -6190,11 +6142,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      /* exception to deciding before the rows: an argument whose domain leaves its values' type to the data reads the
-       * list's column as the list holds it */
       assert (!domain_is_variable (regu_p->domain));
-      TP_DOMAIN *column_domain = domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
-      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, column_domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, regu_p->domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -6523,9 +6472,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  /* get the required column, as CONNECT_BY_ROOT reads its argument */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      TP_DOMAIN *column_domain =
-		domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
-	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, column_domain) != NO_ERROR)
+	      assert (!domain_is_variable (regu_p->domain));
+	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, regu_p->domain) != NO_ERROR)
 		{
 		  goto error;
 		}

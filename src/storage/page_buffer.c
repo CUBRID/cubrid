@@ -1279,6 +1279,8 @@ STATIC_INLINE void pgbuf_add_bufptr_to_batch (PGBUF_BCB * bufptr, int idx) __att
 STATIC_INLINE int pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * expected_vpid,
 					     bool * flushed) __attribute__ ((ALWAYS_INLINE));
 
+static bool pgbuf_ordered_unfix_reused_page (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+					     PAGE_PTR * pgptr);
 static int pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_PTR * pgptr,
 					VPID * groupid, bool do_unfix);
 #if !defined(NDEBUG)
@@ -13079,6 +13081,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   ret_pgptr = pgbuf_fix_release (thread_p, req_vpid, fetch_mode, request_mode, latch_condition);
 #endif
 
+  if (ret_pgptr != NULL && pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &ret_pgptr))
+    {
+      er_status = ER_PB_BAD_PAGEID;
+      goto exit;
+    }
+
   if (ret_pgptr != NULL)
     {
       for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
@@ -13486,7 +13494,12 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
 	      has_dealloc_prevent_flag = false;
 	    }
-	  if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
+	  if (pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &pgptr))
+	    {
+	      er_status_get_hfid = ER_PB_BAD_PAGEID;
+	      /* continue (re-latch old pages) */
+	    }
+	  else if (pgbuf_get_page_ptype (thread_p, pgptr) == PAGE_HEAP)
 	    {
 	      er_status = pgbuf_get_groupid_and_unfix (thread_p, req_vpid, &pgptr, &req_page_groupid, true);
 	      if (er_status != NO_ERROR)
@@ -13610,6 +13623,13 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3, ordered_holders_info[i].vpid.volid,
 		      ordered_holders_info[i].vpid.pageid, prev_er_status);
 	    }
+	  goto exit;
+	}
+
+      if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid))
+	  && pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &pgptr))
+	{
+	  er_status = ER_PB_BAD_PAGEID;
 	  goto exit;
 	}
 
@@ -14117,6 +14137,33 @@ exit:
     }
 
   return er_status;
+}
+
+/*
+ * pgbuf_ordered_unfix_reused_page () - unfix a page fixed with OLD_PAGE_MAYBE_DEALLOCATED that was deallocated and
+ *					 allocated again as a page type ordered fix does not handle
+ *   return: true if the page was unfixed; ER_PB_BAD_PAGEID is set as a warning, as for a deallocated page
+ *   thread_p(in):
+ *   vpid(in): page identifier
+ *   fetch_mode(in): fetch mode of the fix
+ *   pgptr(in/out): the fixed page; NULL when unfixed
+ *
+ * Note: a heap page vacuum deallocates stays in its file's sectors and can come back as the file's table page
+ *	 (file_perm_dealloc); a caller holding a VPID from before the deallocation must not read it as a heap page.
+ */
+static bool
+pgbuf_ordered_unfix_reused_page (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE fetch_mode,
+				 PAGE_PTR * pgptr)
+{
+  if (fetch_mode != OLD_PAGE_MAYBE_DEALLOCATED || PGBUF_IS_ORDERED_PAGETYPE (pgbuf_get_page_ptype (thread_p, *pgptr)))
+    {
+      return false;
+    }
+
+  pgbuf_unfix_and_init (thread_p, *pgptr);
+  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
+	  fileio_get_volume_label (vpid->volid, PEEK));
+  return true;
 }
 
 /*
