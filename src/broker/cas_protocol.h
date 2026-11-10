@@ -124,6 +124,8 @@ extern "C"
  * with CAS_INFO_RESERVED_DEFAULT, so every bit above the three older masks
  * reads as 1 from any earlier server. */
 #define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
+/* Bits no server sets yet. Every reply clears them, so a bit a later release defines reads 0 from this one. */
+#define CAS_INFO_FLAG_MASK_RESERVED             0xF0
 
 /* The optional trailing flags byte of the bundled stream requests and replies. A
  * driver that does not send it gets the unbundled behavior. A request with a bit
@@ -264,6 +266,10 @@ extern "C"
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
     CAS_FC_MAX,
+
+    /* A code from CAS_FC_MAX below this one is answered with CAS_ER_NOT_IMPLEMENTED, and the connection stays, so a
+     * driver may try a code a later release adds. One at or above it closes the connection, as a corrupt request does. */
+    CAS_FC_PROBE_MAX = 64,
 
     /* function code list of protocol version V2 - 9.0.0.xxxx */
     CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2 = 41,
