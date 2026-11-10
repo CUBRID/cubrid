@@ -1966,6 +1966,12 @@ struct sidecar_lazy_keep
 
 static thread_local sidecar_lazy_keep sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
 
+/* The transaction of the thread's first lazy keep since its request began.  A newer keep replaces sidecar_Lazy while an
+ * older one may still be read, e.g. the next copied row of a filter iterator driving a join after the inner scan kept
+ * its row (scan_batch_iter_next ()).  Trids only advance within a request, so the first keep is the oldest: while it
+ * is the current transaction, so is every keep of the request. */
+static thread_local TRANID sidecar_Lazy_first_trid = NULL_TRANID;
+
 static TRANID
 sidecar_current_trid (THREAD_ENTRY *thread_p)
 {
@@ -1999,6 +2005,10 @@ sidecar_lazy_note (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, con
   sidecar_Lazy.begin = begin;
   sidecar_Lazy.end = begin + length;
   sidecar_Lazy.trid = sidecar_current_trid (thread_p);
+  if (sidecar_Lazy_first_trid == NULL_TRANID)
+    {
+      sidecar_Lazy_first_trid = sidecar_Lazy.trid;
+    }
   sidecar_Lazy.cursor = cursor;
   thread_p->sidecar_cursor_owner = cursor ? scan_cache : NULL;
 }
@@ -2125,6 +2135,7 @@ sidecar_request_end (THREAD_ENTRY *thread_p)
 {
   sidecar_cursor_release (thread_p);
   sidecar_Lazy = { NULL, NULL, NULL, NULL_TRANID, false };
+  sidecar_Lazy_first_trid = NULL_TRANID;
 }
 
 #if !defined (NDEBUG)
@@ -2133,6 +2144,7 @@ sidecar_assert_request_start (THREAD_ENTRY *thread_p)
 {
   assert (thread_p->sidecar_cursor_page == NULL && thread_p->sidecar_cursor_owner == NULL);
   assert (sidecar_Lazy.scan == NULL && sidecar_Lazy.begin == NULL && sidecar_Lazy.trid == NULL_TRANID);
+  assert (sidecar_Lazy_first_trid == NULL_TRANID);
 }
 #endif /* !NDEBUG */
 
@@ -2501,11 +2513,14 @@ sidecar_resolve_slot (HEAP_CACHE_ATTRINFO *attr_info, int attrid, const char *sl
     }
   assert (sidecar_attr_pages_ok (thread_p, attr_info));
   std::vector<char> bytes (MAX (ref.length, 1));
-  if (sidecar_lazy_holds (slot) && sidecar_Lazy.trid != sidecar_current_trid (thread_p))
+  /* the latest keep's own transaction for its records; for any other record, that of the oldest keep, which may be
+   * the record's (P3 868) */
+  const TRANID kept_trid = sidecar_lazy_holds (slot) ? sidecar_Lazy.trid : sidecar_Lazy_first_trid;
+  if (kept_trid != NULL_TRANID && kept_trid != sidecar_current_trid (thread_p))
     {
       /* the transaction that kept the record lazy ended (a COMMIT inside a stored procedure), and with it the
        * protection of its store records: never dereference (E19) */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_LAZY_AFTER_TRAN_END, 2, sidecar_Lazy.trid,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_LAZY_AFTER_TRAN_END, 2, kept_trid,
 	      sidecar_current_trid (thread_p));
       return NULL;
     }
