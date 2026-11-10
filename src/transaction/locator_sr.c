@@ -4388,10 +4388,13 @@ locator_peek_last_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, M
  *
  * return: NO_ERROR or error code
  *
- * Note: the writer holds no row lock on its version, an inserter none at all and an updater none past its statement.
- *	 Locking the child first and then waiting in the locked read would hold the lock against the writer, and a
- *	 writer that reaches the row again where no owner check lets it pass (a unique-key check of the same key, say)
- *	 would wait for us: a deadlock. The locked read that follows settles whatever is left.
+ * Note: a writer is found by its stamp, not by a row lock: an inserter takes none, and a READ COMMITTED updater
+ *	 gives its own back at the end of a successful statement. Locking the child first and waiting in the locked
+ *	 read would hold the lock against such a writer, and one that reaches the row again where no owner check lets
+ *	 it pass (a unique-key check of the same key, say) would wait for us: a deadlock. A transaction that holds
+ *	 the child's X with no stamp (a failed statement, a statement under a savepoint, SELECT ... FOR UPDATE, an
+ *	 updater before its heap write) is not seen here, and the locked read waits for it with the earlier children
+ *	 of the key held.
  */
 static int
 locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid)
