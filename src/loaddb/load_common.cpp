@@ -1193,14 +1193,6 @@ namespace cubload
 
 
 int
-binary_format_compat_level (void)
-{
-  // "+ 0.5f" is a rounding operation to prevent floating-point truncation errors.
-  // ex) 8.4f = 8.39999961853..., (8.40 * 100) --> 839
-  return (int) (rel_disk_compatible () * 100.0f + 0.5f);
-}
-
-int
 binary_format_bit_platform (void)
 {
   return rel_bit_platform ();

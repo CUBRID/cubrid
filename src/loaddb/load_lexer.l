@@ -912,32 +912,33 @@ cubload::scanner::read_binary (char *buf, size_t len)
  * set_ldr_data_format () - select the data format of the class being scanned
  *   return : void
  *   data_format (in): data format argument of the "%format" command line
- *   compat_level (in): disk image compatibility level the object file was written with
+ *   format_version (in): version of the binary encoding the object file was written with
  *   bit_platform (in): word size the object file was written with
  *   endian (in): byte order the object file was written with
  *
- * Note: the three arguments which follow the data format describe the memory image the payloads
- *       of a binary section were copied from, they are meaningless for a text format.
+ * Note: the three arguments which follow the data format describe the encoding of a binary
+ *       section, they are meaningless for a text format. See BIN_FORMAT_VERSION.
  *
  * Note: BEGIN expands to an assignment to yy_start, a protected member of yyFlexLexer.
  *       That is why this function has to be defined here, as a member of cubload::scanner.
  */
 void
-cubload::scanner::set_ldr_data_format (int data_format, int compat_level, int bit_platform, int endian)
+cubload::scanner::set_ldr_data_format (int data_format, int format_version, int bit_platform, int endian)
 {
   if (data_format != OBJECT_FORMAT_TEXT
-      && (compat_level != binary_format_compat_level () || bit_platform != binary_format_bit_platform ()
+      && (format_version < 1 || format_version > BIN_FORMAT_VERSION || bit_platform != binary_format_bit_platform ()
 	  || endian != binary_format_endian ()))
     {
       /*
-       * A binary section holds raw memory of the DB_VALUE payloads, a build which lays them out
-       * differently cannot read it back.
+       * A version newer than BIN_FORMAT_VERSION was written by a later release with an encoding
+       * this build does not know. Fixed size values are written in host byte order, so a section
+       * of another bit platform or byte order cannot be read either.
        */
       m_data_format = OBJECT_FORMAT_TEXT;
       BEGIN ABORTED;
 
-      fail_binary_section (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, compat_level, bit_platform, endian,
-			   binary_format_compat_level (), binary_format_bit_platform (), binary_format_endian ());
+      fail_binary_section (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, format_version, bit_platform, endian,
+			   BIN_FORMAT_VERSION, binary_format_bit_platform (), binary_format_endian ());
       return;
     }
 

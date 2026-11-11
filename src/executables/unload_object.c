@@ -2011,7 +2011,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
   if (data_format != OBJECT_FORMAT_TEXT)
     {
       CHECK_PRINT_ERROR (text_print (&(g_thr_param[0].text_output), NULL, 0, "%cformat %d %d %d %d\n", '%',
-				     data_format, binary_format_compat_level (), binary_format_bit_platform (),
+				     data_format, BIN_FORMAT_VERSION, binary_format_bit_platform (),
 				     binary_format_endian ()));
     }
 

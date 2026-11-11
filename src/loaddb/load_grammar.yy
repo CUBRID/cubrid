@@ -353,7 +353,7 @@ class_command :
 format_command :
   CMD_FORMAT FORMAT_ARG_LIT FORMAT_ARG_LIT FORMAT_ARG_LIT FORMAT_ARG_LIT
   {
-    /* %format <data format> <compatibility level> <bit platform> <byte order> */
+    /* %format <data format> <format version> <bit platform> <byte order> */
     m_driver.get_scanner ().set_ldr_data_format ($2, $3, $4, $5);
   }
   |

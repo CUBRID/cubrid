@@ -516,16 +516,26 @@ typedef enum
 } OBJECT_DATA_FORMAT;
 
 /*
- * A binary section holds raw memory of the DB_VALUE payloads, so it can only be read back by a
- * build which lays those out the very same way. The "%format" command line of a class therefore
- * carries, next to the data format itself, the three properties which decide that:
+ * The "%format" command line of a class carries, next to the data format itself, the three
+ * properties a reader needs to decide whether it can read the binary section that follows:
  *
- *   %format <data format> <compatibility level> <bit platform> <byte order>
+ *   %format <data format> <format version> <bit platform> <byte order>
+ *
+ * The format version identifies the encoding of the binary section, not the release that wrote
+ * it. unloaddb and loaddb move values through DB_VALUE rather than through disk images, so the
+ * disk compatibility level of the release says nothing about it: a release may change its disk
+ * image and keep this encoding, or the other way around. Bump BIN_FORMAT_VERSION whenever the
+ * bytes written for any type change, and keep the reader able to decode every earlier version.
+ * A reader refuses a version newer than its own.
+ *
+ * Fixed size values are still written in host byte order, so the bit platform and the byte order
+ * must match those of the reader.
  */
+#define BIN_FORMAT_VERSION       (1)
+
 #define BIN_FORMAT_ENDIAN_LITTLE (0)
 #define BIN_FORMAT_ENDIAN_BIG    (1)
 
-extern int binary_format_compat_level (void);
 extern int binary_format_bit_platform (void);
 extern int binary_format_endian (void);
 

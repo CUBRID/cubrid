@@ -72,7 +72,7 @@ namespace cubload
       /* The function is defined in load_lexer.l
        * because it requires access to yyFlexLexer member variables such as yy_start.
        */
-      void set_ldr_data_format (int data_format, int compat_level, int bit_platform, int endian);
+      void set_ldr_data_format (int data_format, int format_version, int bit_platform, int endian);
 
       OBJECT_DATA_FORMAT get_ldr_data_format () const
       {
