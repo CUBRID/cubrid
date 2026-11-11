@@ -829,7 +829,8 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkip
   const long log_offset = error_log_size ();
   ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
   er_clear ();
-  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &stale_rec, &emptied_pages), NO_ERROR);
+  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */, &stale_rec,
+	     &emptied_pages), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
   EXPECT_TRUE (emptied_pages.empty ());
   EXPECT_TRUE (chunk_is_present (reused_oid)) << "the live occupant must survive the stale reference";
@@ -846,7 +847,8 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkip
   RECDES live_rec {};
   ASSERT_EQ (build_heap_recdes_with_oos ({live_oid}, { (INT64) live_chunk.length}, live_rec), NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr d4 (&live_rec, recdes_free_data_area);
-  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &live_rec, &emptied_pages), NO_ERROR);
+  ASSERT_EQ (vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */, &live_rec,
+	     &emptied_pages), NO_ERROR);
   EXPECT_FALSE (chunk_is_present (live_oid)) << "the live reference must reclaim its chain";
   EXPECT_TRUE (chunk_is_present (reused_oid));
 }
