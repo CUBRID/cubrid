@@ -141,7 +141,9 @@ sm_define_view_columns_spec (void)
       "CAST (COALESCE ([key_info].[column_key], '') AS VARCHAR (3)) AS [column_key], "
       "CONCAT_WS (' ', "
         "IF (([attr].[flags] & %d) <> 0, 'auto_increment', NULL), "
-        "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL)"
+        "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL), "
+        /* attr_type 1: CLASS ATTRIBUTE */
+        "IF ([attr].[attr_type] = 1, 'class_attribute', NULL)"
       ") AS [extra], "
       "NULL AS [privileges], "
       "[attr].[comment] AS [column_comment], "
