@@ -225,6 +225,7 @@ static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALU
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -7782,7 +7783,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
     case PT_EXPR:
       {
-	PT_NODE *recurs_expr = node, *node_tmp = NULL;
+	PT_NODE *recurs_expr = node;
 	PT_TYPE_ENUM common_type = PT_TYPE_NONE;
 	bool has_enum = false;
 	PT_NODE **recurs_arg = NULL, **norm_arg = NULL;
@@ -7817,12 +7818,10 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    /* In order to correctly compute the common type we need to know the type of each argument and therefore we
 	     * compute it. */
-	    node_tmp = pt_semantic_type (parser, *norm_arg, (SEMANTIC_CHK_INFO *) arg);
-	    if (*norm_arg == NULL || pt_has_error (parser))
+	    if (pt_semantic_type_in_place (parser, norm_arg, (SEMANTIC_CHK_INFO *) arg) != NO_ERROR)
 	      {
 		return node;
 	      }
-	    *norm_arg = node_tmp;
 	    if ((*norm_arg)->type_enum != PT_TYPE_ENUMERATION)
 	      {
 		if (common_type == PT_TYPE_NONE)
@@ -7840,12 +7839,10 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    if (*recurs_arg == NULL || !PT_IS_RECURSIVE_EXPRESSION (*recurs_arg) || op != (*recurs_arg)->info.expr.op)
 	      {
-		node_tmp = pt_semantic_type (parser, *recurs_arg, (SEMANTIC_CHK_INFO *) arg);
-		if (node_tmp == NULL || pt_has_error (parser))
+		if (pt_semantic_type_in_place (parser, recurs_arg, (SEMANTIC_CHK_INFO *) arg) != NO_ERROR)
 		  {
 		    return node;
 		  }
-		*recurs_arg = node_tmp;
 		if ((*recurs_arg)->type_enum != PT_TYPE_ENUMERATION)
 		  {
 		    if (common_type == PT_TYPE_NONE)
@@ -7864,12 +7861,11 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    if (recurs_expr->info.expr.arg3 != NULL)
 	      {
-		node_tmp = pt_semantic_type (parser, recurs_expr->info.expr.arg3, (SEMANTIC_CHK_INFO *) arg);
-		if (node_tmp == NULL || pt_has_error (parser))
+		if (pt_semantic_type_in_place (parser, &recurs_expr->info.expr.arg3, (SEMANTIC_CHK_INFO *) arg) !=
+		    NO_ERROR)
 		  {
 		    return node;
 		  }
-		recurs_expr->info.expr.arg3 = node_tmp;
 	      }
 	    recurs_expr = *recurs_arg;
 	  }
@@ -8701,7 +8697,8 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
  *  result: query with all lists updated
  *  parser(in):
  *  query(in):
- *  attrs(in): list of attributes to append to the query
+ *  attrs(in): list of attributes to append to the query; a set operation
+ *	       appends a separate copy to each of its arms
  */
 PT_NODE *
 pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * attrs)
@@ -8723,9 +8720,21 @@ pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE *
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
-      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs);
-      break;
+      {
+	/* a node can be linked into only one select list, so the second arm gets its own copy */
+	PT_NODE *attrs_copy = parser_copy_tree_list (parser, attrs);
+
+	if (attrs_copy == NULL)
+	  {
+	    PT_INTERNAL_ERROR (parser, "allocate new node");
+	    break;
+	  }
+
+	query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
+	query->info.query.q.union_.arg2 =
+	  pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs_copy);
+	break;
+      }
     default:
       break;
     }
@@ -19947,23 +19956,25 @@ end:
 }
 
 /*
- * pt_semantic_type () - sets data types for all expressions in a parse tree
- * 			 and evaluates constant sub expressions
- *   return:
+ * pt_semantic_type_in_place () - pt_semantic_type () that keeps *tree pointing to the resulting tree even on error
+ *   return: NO_ERROR or ER_FAILED
  *   parser(in):
- *   tree(in/out):
+ *   tree(in/out): replaced with the resulting tree, which may differ from the input tree; kept if the result is NULL
  *   sc_info_ptr(in):
+ *
+ * Note: pt_semantic_type () returns NULL on error, so a caller cannot get the node that replaced (and freed) the input
+ *       tree during type checking or constant folding.
  */
-
-PT_NODE *
-pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
+static int
+pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
   PT_NODE *spec = NULL;
-  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, false };
+  PT_NODE *result = NULL;
+  SEMANTIC_CHK_INFO sc_info = { *tree, NULL, 0, 0, 0, false, false, false };
 
   if (pt_has_error (parser))
     {
-      return NULL;
+      return ER_FAILED;
     }
   if (sc_info_ptr == NULL)
     {
@@ -19972,18 +19983,18 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
 
   sc_info_ptr->has_dblink = false;
 
-  if (tree)
+  if (*tree)
     {
-      switch (tree->node_type)
+      switch ((*tree)->node_type)
 	{
 	case PT_DELETE:
-	  spec = tree->info.delete_.spec;
+	  spec = (*tree)->info.delete_.spec;
 	  break;
 	case PT_INSERT:
-	  spec = tree->info.insert.spec;
+	  spec = (*tree)->info.insert.spec;
 	  break;
 	case PT_UPDATE:
-	  spec = tree->info.update.spec;
+	  spec = (*tree)->info.update.spec;
 	  break;
 	default:
 	  break;
@@ -19996,11 +20007,15 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     }
 
   /* do type checking */
-  tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
+  result = parser_walk_tree (parser, *tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
+  if (result == NULL)
+    {
+      return ER_FAILED;
+    }
+  *tree = result;
   if (pt_has_error (parser))
     {
-      tree = NULL;
-      return tree;
+      return ER_FAILED;
     }
 
   /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
@@ -20008,11 +20023,36 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     {
       PT_NODE *spec_list = NULL;
       /* do constant folding */
-      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, &spec_list, pt_fold_constants_post, sc_info_ptr);
+      result = parser_walk_tree (parser, *tree, pt_fold_constants_pre, &spec_list, pt_fold_constants_post, sc_info_ptr);
+      if (result == NULL)
+	{
+	  return ER_FAILED;
+	}
+      *tree = result;
       if (pt_has_error (parser))
 	{
-	  tree = NULL;
+	  return ER_FAILED;
 	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_semantic_type () - sets data types for all expressions in a parse tree
+ * 			 and evaluates constant sub expressions
+ *   return:
+ *   parser(in):
+ *   tree(in/out):
+ *   sc_info_ptr(in):
+ */
+
+PT_NODE *
+pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  if (pt_semantic_type_in_place (parser, &tree, sc_info_ptr) != NO_ERROR)
+    {
+      return NULL;
     }
 
   return tree;
