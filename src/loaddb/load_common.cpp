@@ -947,7 +947,7 @@ namespace cubload
   {
     /* [리뷰] 사이드카가 없으면 NO_ERROR·available=false. 참조 유무 검사는 커밋 31·32.
      * 엔트리 파싱 실패는 ER_FAILED를 돌려준다(er_set은 -1405).
-     * 반환값으로 분기하는 호출자는 -1390을 못 본다. */
+     * 반환값으로 분기하는 호출자는 -1405를 못 본다. */
     std::string path;
     std::ifstream sidecar_file;
     std::string line;

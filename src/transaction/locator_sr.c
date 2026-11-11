@@ -7949,7 +7949,7 @@ locator_resolve_internal_lob_dml_slots (THREAD_ENTRY * thread_p, const OID * cla
       /* An adopted locator is refused, as the XASL path does, rather than sharing a chain it does not own. */
       /* [리뷰] 클라이언트 레코드는 마커가 붙은 값만 로케이터로 본다(로케이터 모양 문자열은 내용).
        * 클래스 OID는 heap_does_exist·LOB 파일 소유 검사로 따로 확인한다.
-       * 클라이언트 로케이터는 항상 체인 복사, adopted는 -1389로 거부. */
+       * 클라이언트 로케이터는 항상 체인 복사, adopted는 -1404로 거부. */
       if (internal_lob_db_value_is_locator (value, &round_tripped_locator))
 	{
 	  if (round_tripped_locator.adopted)

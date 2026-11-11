@@ -46,7 +46,7 @@ typedef struct dbvalue_buf
 } DBVALUE_BUF;
 
 /*
- * How an OOS-backed attribute (16-byte inline stub, payload in the class' OOS or Internal LOB file) reaches the
+ * How an OOS-backed attribute (24-byte inline stub, payload in the class' OOS or Internal LOB file) reaches the
  * object descriptor:
  *   DESC_OOS_EXPANDED     server replaced the stub with the payload bytes; wrong for BLOB/CLOB (value is a locator)
  *   DESC_OOS_TEXT_LOCATOR unloaddb: Internal LOB stub -> text locator in the object file; payload goes to the sidecar

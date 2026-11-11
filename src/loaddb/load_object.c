@@ -155,7 +155,7 @@ desc_keep_oos_stub (OR_BUF * buf, DESC_OBJ * obj, int value_index)
       return ER_TF_BUFFER_UNDERFLOW;
     }
 
-  /* Kept verbatim -- the 16 bytes carry the stub's kind along with them, and they are handed back
+  /* Kept verbatim -- the stub bytes carry its kind and identity stamp along with them, and they are handed back
    * unchanged by or_put_data () below. Do not parse a length out of this copy; use
    * or_get_oos_stub () if a caller ever needs to look inside. */
   memcpy (obj->oos_stubs + (size_t) value_index * OR_OOS_INLINE_SIZE, buf->ptr, OR_OOS_INLINE_SIZE);
