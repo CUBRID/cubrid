@@ -3849,10 +3849,12 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
     }
 
   /* as session_take_stream_session () above: a deadlock victim among the reads waits for this thread too */
+  // *INDENT-OFF*
   state_p->stream_handles_p->end_tran (thread_p, tran_index, [thread_p, tran_index] ()
   {
     return session_stream_tran_ending (thread_p, tran_index);
   });
+  // *INDENT-ON*
 #endif /* SERVER_MODE */
 }
 

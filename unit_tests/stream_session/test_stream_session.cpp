@@ -331,7 +331,8 @@ namespace
   {
     std::string config = versioned (payload);
 
-    return stream_download_open (NULL, table, kind, config.data (), (int) config.size (), TRAN_1, TRID_1, CLIENT_1, first_max,
+    return stream_download_open (NULL, table, kind, config.data (), (int) config.size (), TRAN_1, TRID_1, CLIENT_1,
+				 first_max,
 				 flags, buf, nread, reply_flags, handle);
   }
 }
@@ -566,7 +567,8 @@ TEST_CASE_METHOD (registry_fixture, "a handle resolves only where it was issued"
   table.put (NULL, download);
 
   /* only a download is issued a handle; what was refused is closed */
-  CHECK (table.issue (NULL, KIND_STAGING, TRAN_1, TRID_1, CLIENT_1, new fake_source ("v"), &refused) == ER_STREAM_NOT_SUPPORTED);
+  CHECK (table.issue (NULL, KIND_STAGING, TRAN_1, TRID_1, CLIENT_1, new fake_source ("v"),
+		      &refused) == ER_STREAM_NOT_SUPPORTED);
   CHECK (refused == 0);
   CHECK (test_Closed == 1);
 
@@ -922,7 +924,7 @@ TEST_CASE_METHOD (registry_fixture, "reads, releases and a transaction end on se
 
 	for (int i = 0; i < READS; i++)
 	  {
-	    std::int64_t h = handles[(i + offset) % HANDLES];
+	    std::int64_t h = handles[ (i + offset) % HANDLES];
 	    stream_source *source = table.get_source (worker, h, TRAN_1, TRID_1, &error_code);
 
 	    if (source != NULL)
@@ -985,7 +987,8 @@ TEST_CASE_METHOD (registry_fixture, "a value within one read comes back with the
   CHECK (reply_flags == STREAM_FLAG_EOF);
 
   /* a read after eof is not an error */
-  REQUIRE (stream_download_read (NULL, table, handle, TRAN_1, TRID_1, 64, 0, buf.data (), &nread, &reply_flags) == NO_ERROR);
+  REQUIRE (stream_download_read (NULL, table, handle, TRAN_1, TRID_1, 64, 0, buf.data (), &nread,
+				 &reply_flags) == NO_ERROR);
   CHECK (nread == 0);
   CHECK (reply_flags == STREAM_FLAG_EOF);
 
@@ -1016,9 +1019,11 @@ TEST_CASE_METHOD (registry_fixture, "a larger value reads to eof and releases at
 
   std::string got (buf.data (), (size_t) nread);
 
-  REQUIRE (stream_download_read (NULL, table, handle, TRAN_1, TRID_1, 4096, 0, buf.data (), &nread, &reply_flags) == NO_ERROR);
+  REQUIRE (stream_download_read (NULL, table, handle, TRAN_1, TRID_1, 4096, 0, buf.data (), &nread,
+				 &reply_flags) == NO_ERROR);
   got.append (buf.data (), (size_t) nread);
-  REQUIRE (stream_download_read (NULL, table, handle, TRAN_1, TRID_1, 4096, STREAM_FLAG_RELEASE_AT_EOF, buf.data (), &nread,
+  REQUIRE (stream_download_read (NULL, table, handle, TRAN_1, TRID_1, 4096, STREAM_FLAG_RELEASE_AT_EOF, buf.data (),
+				 &nread,
 				 &reply_flags) == NO_ERROR);
   got.append (buf.data (), (size_t) nread);
   CHECK (reply_flags == (STREAM_FLAG_EOF | STREAM_FLAG_RELEASED));
