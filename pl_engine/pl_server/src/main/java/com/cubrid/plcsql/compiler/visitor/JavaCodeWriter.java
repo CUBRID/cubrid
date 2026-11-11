@@ -4548,10 +4548,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplateList decls = new CodeTemplateList();
         CodeTemplateList closes = new CodeTemplateList();
 
-        int cnt = 0;
         for (SqlUse u : sqlUses) {
-
-            cnt++;
 
             String klass = u.ofCallableStmt() ? "CallableStatement" : "PreparedStatement";
 
@@ -4580,11 +4577,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
             closes.addElement(
                     new CodeTemplate("StatementCloseMoved", Misc.UNKNOWN_LINE_COLUMN, close));
-        }
-
-        if (cnt == 0) {
-            // just return the code without wrapping
-            return code;
         }
 
         return new CodeTemplate(
