@@ -26,6 +26,7 @@
 #include "page_buffer.h"
 #include "slotted_page.h"
 #include "storage_common.h"
+#include "xserver_interface.h"
 #include "oos_file.hpp"
 #include "test_oos_common.hpp"
 #include "page_buffer_util.hpp"
@@ -1539,6 +1540,81 @@ TEST (OosBestspaceTest, DeletePartialChainUpdatesBestspace)
 
   err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);
+}
+
+
+// ===========================================================================
+// TEST: ChurnDoesNotGrowPastTheFirstPeak
+//
+// The churn of the CBRD-27872 file-size check at the OOS level: two values per page, every value rewritten (new
+// values inserted, then the old ones deleted, as vacuum does after an UPDATE), then 30% of the values deleted and
+// inserted again. The deletes empty more pages than the bestspace cache holds (1000 entries) and leave one page in
+// five half full. The second rewrite fits in the half-full and empty pages the first one left, so the file must not
+// grow past the first peak.
+// ===========================================================================
+TEST (OosBestspaceTest, ChurnDoesNotGrowPastTheFirstPeak)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  const int num_values = 2000;
+  auto data = test_oos_utils::make_repeated_pattern_string (7000);
+  RECDES rec{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (data, rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+
+  auto count_pages = [&] ()
+  {
+    OOS_STATS_INFO info;
+    EXPECT_EQ (oos_get_stats_by_vfid (thread_p, oos_vfid, &info), NO_ERROR);
+    return info.num_user_pages;
+  };
+  auto insert_values = [&] (std::vector<OID> &oids, int count)
+  {
+    for (int i = 0; i < count; i++)
+      {
+	OID oid = OID_INITIALIZER;
+	ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid), NO_ERROR);
+	oids.push_back (oid);
+      }
+    ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  };
+  auto delete_values = [&] (const std::vector<OID> &oids)
+  {
+    for (const OID &oid : oids)
+      {
+	ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid), NO_ERROR);
+      }
+    ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  };
+
+  std::vector<OID> live;
+  insert_values (live, num_values);
+
+  std::vector<OID> rewritten;
+  insert_values (rewritten, num_values);
+  const int first_peak = count_pages ();
+  ASSERT_EQ (first_peak, 1 + num_values) << "two values per page, for the old and the new values";
+  delete_values (live);
+  live.swap (rewritten);
+  rewritten.clear ();
+
+  std::vector<OID> deleted, kept;
+  for (int i = 0; i < num_values; i++)
+    {
+      (i % 10 < 3 ? deleted : kept).push_back (live[i]);
+    }
+  delete_values (deleted);
+  live.swap (kept);
+  insert_values (live, (int) deleted.size ());
+
+  insert_values (rewritten, num_values);
+  EXPECT_LE (count_pages (), first_peak) << "the second rewrite grew the file past the first peak";
+  delete_values (live);
+  delete_values (rewritten);
+
+  ASSERT_EQ (oos_remove_file (thread_p, oos_vfid), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 }
 
 

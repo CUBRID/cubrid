@@ -3497,11 +3497,18 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
 
-      /* Update bestspace cache — page now has more free space after delete */
-      oos_stats_update (thread_p, page_ptr, &oos_vfid);
-
-      const VPID chunk_vpid = {chunk.head_oid.pageid, chunk.head_oid.volid};
-      oos_reclaim_add_if_emptied (oos_vfid, chunk_vpid, page_ptr);
+      VPID chunk_vpid = {chunk.head_oid.pageid, chunk.head_oid.volid};
+      if (spage_number_of_records (page_ptr) == 0)
+	{
+	  /* An empty page reaches inserts through the emptied-page set. A bestspace entry for it would take one of
+	   * the cache's fixed number of entries from a partly filled page, which only bestspace hints offer. */
+	  (void) oos_stats_del_bestspace_by_vpid (thread_p, &chunk_vpid);
+	  oos_reclaim_add_emptied (oos_vfid, chunk_vpid);
+	}
+      else
+	{
+	  oos_stats_update (thread_p, page_ptr, &oos_vfid);
+	}
 
       oos_debug ("deleted chunk %zu at oid={vol=%d,page=%d,slot=%d}", i, OID_AS_ARGS (&chunk.head_oid));
     }
