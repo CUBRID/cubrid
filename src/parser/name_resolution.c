@@ -187,6 +187,7 @@ static PT_NODE *pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * const node);
+static bool pt_default_arg_names_own_attr (const PT_NODE * arg, const PT_NODE * attr, const PT_NODE * spec);
 static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * name);
 static bool pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt);
 static bool pt_class_defaults_read_statement_clock (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * stmt);
@@ -1986,6 +1987,34 @@ pt_mark_translated_default_clock (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_default_arg_names_own_attr () - whether the argument of DEFAULT (arg) in the place of attr names attr
+ *	itself: c, or t.c where t is the range variable of the target
+ *   return: true if it does
+ *   arg(in): the argument of DEFAULT
+ *   attr(in): the attribute of the place
+ *   spec(in): the target of the INSERT or MERGE
+ */
+static bool
+pt_default_arg_names_own_attr (const PT_NODE * arg, const PT_NODE * attr, const PT_NODE * spec)
+{
+  const PT_NODE *range_var = spec->info.spec.range_var;
+
+  if (arg->node_type == PT_DOT_)
+    {
+      if (arg->info.dot.arg1 == NULL || arg->info.dot.arg1->node_type != PT_NAME || range_var == NULL
+	  || pt_user_specified_name_compare (arg->info.dot.arg1->info.name.original,
+					     range_var->info.name.original) != 0)
+	{
+	  return false;
+	}
+      arg = arg->info.dot.arg2;
+    }
+
+  return (arg != NULL && arg->node_type == PT_NAME && arg->info.name.original != NULL
+	  && pt_str_compare (arg->info.name.original, attr->info.name.original, CASE_INSENSITIVE) == 0);
+}
+
+/*
  * fill_in_insert_default_function_arguments () - Fills in the argument of the
  *                                                DEFAULT function when used
  *                                                for INSERT, MERGE INSERT
@@ -2002,6 +2031,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
   PT_NODE *crt_attr = NULL;
   PT_NODE *crt_value = NULL;
   PT_NODE *crt_list = NULL;
+  PT_NODE *spec = NULL;
   PT_NODE *cls_name = NULL;
   PT_NODE *values_list = NULL;
   PT_NODE *attrs_list = NULL;
@@ -2012,16 +2042,17 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
    * client-side evaluation path uses the cached default value. */
   if (node->node_type == PT_INSERT)
     {
-      cls_name = node->info.insert.spec->info.spec.entity_name;
+      spec = node->info.insert.spec;
       values_list = node->info.insert.value_clauses;
       attrs_list = node->info.insert.attr_list;
     }
   else
     {
-      cls_name = node->info.merge.into->info.spec.entity_name;
+      spec = node->info.merge.into;
       values_list = node->info.merge.insert.value_clauses;
       attrs_list = node->info.merge.insert.attr_list;
     }
+  cls_name = spec->info.spec.entity_name;
 
   /* a residual DEFAULT expression referencing the statement clock needs the server time synchronized before the
    * Local Evaluation path evaluates it */
@@ -2112,10 +2143,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 		}
 	      if (crt_value->info.expr.arg1 != NULL)
 		{
-		  /* DEFAULT (c) in the place of c is the DEFAULT of its own column too */
-		  crt_arg = crt_value->info.expr.arg1;
-		  if (crt_arg->node_type == PT_NAME && crt_arg->info.name.original != NULL
-		      && !pt_str_compare (crt_arg->info.name.original, crt_attr->info.name.original, CASE_INSENSITIVE))
+		  /* DEFAULT (c) or DEFAULT (t.c) in the place of c is the DEFAULT of its own column too */
+		  if (pt_default_arg_names_own_attr (crt_value->info.expr.arg1, crt_attr, spec))
 		    {
 		      crt_value->flag.is_own_default = 1;
 		    }
