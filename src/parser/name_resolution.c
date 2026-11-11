@@ -108,12 +108,6 @@ enum
   DISCARD_NO_MATCH = true
 };
 
-static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
-/* a name in group by/having/order by of a static SQL, not resolved by name binding. it is resolved as an alias or
- * converted to a host variable after the alias resolution. it is compared by its address because etc of a PT_NAME
- * may hold a non-pointer value (e.g. PT_IDX_HINT_FORCE of an index name) */
-static const char *CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL = "name_deferred_for_static_sql";
-
 typedef struct pt_bind_names_data_type PT_BIND_NAMES_DATA_TYPE;
 struct pt_bind_names_data_type
 {
@@ -226,10 +220,12 @@ static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, N
 static bool is_pt_name_in_group_having (PT_NODE * node);
 
 static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
+static bool is_group_having_alias_resolved (PT_NODE * node);
 
 static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							      int *continue_walk);
 static PT_NODE *pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_clear_group_having_marks (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -1321,11 +1317,15 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  else
 	    {
 	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+	      /* aliases and the names deferred by name binding have no type. resolve them before the type checking
+	       * below */
+	      if (!pt_has_error (parser))
+		{
+		  table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
+		}
 	    }
 	  spec->info.spec.derived_table = table;
-
-	  /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
-	  table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
 	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
@@ -3435,7 +3435,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		if (is_pt_name_in_group_having (node))
 		  {
 		    // it may be an alias of the select list. it will be converted after pt_resolve_group_having_alias ()
-		    node->etc = (void *) CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL;
+		    PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
+		    PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL);
 		  }
 		else
 		  {
@@ -9070,17 +9071,12 @@ pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_pare
 static bool
 is_pt_name_in_group_having (PT_NODE * node)
 {
-  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+  if (node == NULL || node->node_type != PT_NAME)
     {
       return false;
     }
 
-  if (strcmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
-    {
-      return true;
-    }
-
-  return false;
+  return PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_IN_GROUP_HAVING);
 }
 
 /*
@@ -9097,7 +9093,19 @@ is_pt_name_deferred_for_static_sql (PT_NODE * node)
       return false;
     }
 
-  return node->etc == (void *) CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL;
+  return PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL);
+}
+
+/*
+ * is_group_having_alias_resolved () - check if the node is a query already done by
+ *                                     pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE
+ *   return:
+ *   node(in):
+ */
+static bool
+is_group_having_alias_resolved (PT_NODE * node)
+{
+  return PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved;
 }
 
 /*
@@ -9116,9 +9124,8 @@ pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE *
 {
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+  if (is_group_having_alias_resolved (node))
     {
-      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
       *continue_walk = PT_LIST_WALK;
       return node;
     }
@@ -9171,6 +9178,37 @@ pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NOD
 }
 
 /*
+ * pt_clear_group_having_marks () - clear the marks which are meaningful only in a pt_resolve_names () pass:
+ *                                  PT_NAME_INFO_IN_GROUP_HAVING of names and group_having_alias_resolved of queries
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_clear_group_having_marks (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (node->node_type == PT_NAME)
+    {
+      PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      node->info.query.flag.group_having_alias_resolved = 0;
+    }
+
+  return node;
+}
+
+/*
  * pt_mark_pt_name () -
  *   return:
  *   parser(in):
@@ -9187,7 +9225,7 @@ pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int 
     {
       return node;
     }
-  node->etc = (void *) pt_append_string (parser, NULL, CPTR_PT_NAME_IN_GROUP_HAVING);
+  PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
 
   return node;
 }
@@ -9419,9 +9457,8 @@ pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *ch
       return node;
     }
 
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+  if (is_group_having_alias_resolved (node))
     {
-      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
       *continue_walk = PT_LIST_WALK;
       return node;
     }
@@ -9536,6 +9573,9 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	{
 	  return NULL;
 	}
+
+      /* the marks must not be left for another pt_resolve_names () on this tree or its copy */
+      statement = parser_walk_tree (parser, statement, pt_clear_group_having_marks, NULL, NULL, NULL);
 
       /*
        * The process converts natural join to inner/outer join.
@@ -11339,7 +11379,10 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 					pt_bind_names_post, bind_arg);
 
   /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
-  non_recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, non_recursive_cte);
+  if (!pt_has_error (parser))
+    {
+      non_recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, non_recursive_cte);
+    }
 
   /* must bind any expr types in non recursive part; required for types binding */
   save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
@@ -11376,7 +11419,10 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 	}
 
       /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
-      recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, recursive_cte);
+      if (!pt_has_error (parser))
+	{
+	  recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, recursive_cte);
+	}
 
       cte_def->info.cte.recursive_part = recursive_cte;
 
