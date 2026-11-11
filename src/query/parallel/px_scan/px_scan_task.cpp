@@ -596,8 +596,8 @@ namespace parallel_scan
 	  }
 	/* this clone's compiled programs are still alive here (qexec_clear_xasl () below frees them) */
 	m_trace_handler->add_expr_compile_dump (m_xasl, m_scan_id);
-	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time, m_scan_id,
-				    elapsed_time);
+	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time,
+				    m_scan_fixes.oos_reads, m_scan_id, elapsed_time);
       }
     if (m_handlers_initialized)
       {
@@ -714,7 +714,8 @@ namespace parallel_scan
   {
     return { perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
-	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) };
+	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
+	     thread_ref.oos_read_stats };
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
@@ -724,6 +725,7 @@ namespace parallel_scan
     m_scan_fixes.fetches += now.fetches - since.fetches;
     m_scan_fixes.ioreads += now.ioreads - since.ioreads;
     m_scan_fixes.fetch_time += now.fetch_time - since.fetch_time;
+    scan_add_oos_read_stats (&m_scan_fixes.oos_reads, &since.oos_reads, &now.oos_reads);
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>

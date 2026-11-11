@@ -37,6 +37,8 @@
 #include "porting_inline.hpp"
 #include "scope_exit.hpp"
 #include "slotted_page.h"
+#include "perf_monitor.h"
+#include "tsc_timer.h"
 #include "page_buffer_util.hpp"
 #include "log_comm.h"
 #include "log_impl.h"
@@ -2772,6 +2774,49 @@ oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, con
 
 
 
+/* Adds one OOS value read to the thread's oos_read_stats while the thread traces, so SQL trace can show the share
+ * of a scan's fetch, ioread and time that went to OOS values. Costs nothing when the session does not trace. */
+class oos_read_trace_scope
+{
+  public:
+    explicit oos_read_trace_scope (THREAD_ENTRY *thread_p)
+      : m_thread_p (thread_p != NULL && thread_is_on_trace (thread_p) ? thread_p : NULL)
+    {
+      if (m_thread_p != NULL)
+	{
+	  m_fetches = perfmon_get_from_statistic (m_thread_p, PSTAT_PB_NUM_FETCHES);
+	  m_ioreads = perfmon_get_from_statistic (m_thread_p, PSTAT_PB_NUM_IOREADS);
+	  tsc_getticks (&m_start_tick);
+	}
+    }
+
+    ~oos_read_trace_scope ()
+    {
+      if (m_thread_p != NULL)
+	{
+	  TSC_TICKS end_tick;
+	  TSCTIMEVAL tv_diff;
+	  OOS_READ_STATS &stats = m_thread_p->oos_read_stats;
+
+	  tsc_getticks (&end_tick);
+	  tsc_elapsed_time_usec (&tv_diff, end_tick, m_start_tick);
+	  TSC_ADD_TIMEVAL (stats.elapsed, tv_diff);
+	  stats.fetches += perfmon_get_from_statistic (m_thread_p, PSTAT_PB_NUM_FETCHES) - m_fetches;
+	  stats.ioreads += perfmon_get_from_statistic (m_thread_p, PSTAT_PB_NUM_IOREADS) - m_ioreads;
+	}
+    }
+
+    oos_read_trace_scope (const oos_read_trace_scope &) = delete;
+    oos_read_trace_scope &operator= (const oos_read_trace_scope &) = delete;
+
+  private:
+    THREAD_ENTRY *m_thread_p;
+    UINT64 m_fetches = 0;
+    UINT64 m_ioreads = 0;
+    TSC_TICKS m_start_tick = {};
+};
+
+
 /* Reads the chain ref names into dest. The head page goes through oos_fix_page_if_oos, so a reference
  * whose page was deallocated or retyped fails with ER_HEAP_OOS_CORRUPTED_RECORD instead of tripping
  * the page buffer's dead-page assertion; a missing slot, a stamp mismatch and a non-head target fail
@@ -2783,6 +2828,7 @@ oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest)
 {
   assert (dest.data () != nullptr && dest.size () > 0);
 
+  oos_read_trace_scope trace_scope (thread_p);
   const OID &oid = ref.head_oid;
   const int expected_length = static_cast<int> (dest.size ());
 
@@ -2851,6 +2897,8 @@ oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
 
   OOS_COUNTER_INC (read_many_calls);
   OOS_COUNTER_ADD (read_many_requests, requests.size ());
+
+  oos_read_trace_scope trace_scope (thread_p);
 
   for (std::size_t i = 0; i < requests.size (); i++)
     {

@@ -14215,6 +14215,7 @@ struct qexec_batch_trace
   bool on;
   UINT64 fetches;
   UINT64 ioreads;
+  OOS_READ_STATS oos_reads;
   TSC_TICKS tick;
   SCAN_STATS before;		/* the scan's stats at the stretch's start, when a partition takes its share */
 };
@@ -14226,6 +14227,7 @@ qexec_batch_trace_begin (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, const S
     {
       t->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       t->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      t->oos_reads = thread_p->oos_read_stats;
       tsc_getticks (&t->tick);
       if (s_id->partition_stats != NULL)
 	{
@@ -14247,6 +14249,7 @@ qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID *
       TSC_ADD_TIMEVAL (s_id->scan_stats.elapsed_scan, tv_diff);
       s_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - t->fetches;
       s_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - t->ioreads;
+      scan_add_oos_read_stats (&s_id->scan_stats.oos_reads, &t->oos_reads, &thread_p->oos_read_stats);
       if (s_id->partition_stats != NULL)
 	{
 	  SCAN_STATS *part = s_id->partition_stats;
@@ -14255,6 +14258,7 @@ qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID *
 	  perfmon_add_timeval (&part->elapsed_scan, &t->before.elapsed_scan, &now->elapsed_scan);
 	  part->num_fetches += now->num_fetches - t->before.num_fetches;
 	  part->num_ioreads += now->num_ioreads - t->before.num_ioreads;
+	  scan_add_oos_read_stats (&part->oos_reads, &t->before.oos_reads, &now->oos_reads);
 	  part->read_rows += now->read_rows - t->before.read_rows;
 	  part->qualified_rows += now->qualified_rows - t->before.qualified_rows;
 	  part->batch_pages += now->batch_pages - t->before.batch_pages;

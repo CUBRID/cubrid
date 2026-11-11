@@ -46,6 +46,7 @@
 #include "access_json_table.hpp"
 #include "scan_json_table.hpp"
 #include "storage_common.h"	/* for PAGEID */
+#include "thread_entry.hpp"	/* for OOS_READ_STATS */
 #include "query_hash_scan.h"
 
 // forward definitions
@@ -555,6 +556,7 @@ struct scan_stats
   struct timeval elapsed_scan;
   UINT64 num_fetches;
   UINT64 num_ioreads;
+  OOS_READ_STATS oos_reads;	/* the part of elapsed_scan, num_fetches and num_ioreads spent reading OOS values */
 
   /* for heap & list scan */
   UINT64 read_rows;		/* # of rows read */
@@ -821,6 +823,7 @@ extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern void scan_add_oos_read_stats (OOS_READ_STATS * total, const OOS_READ_STATS * since, const OOS_READ_STATS * now);
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);

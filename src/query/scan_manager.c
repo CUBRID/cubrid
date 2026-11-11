@@ -5168,6 +5168,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   SCAN_STATS old_scan_stats;
+  OOS_READ_STATS old_oos_reads;
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -5176,6 +5177,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      old_oos_reads = thread_p->oos_read_stats;
 
       if (scan_id->partition_stats != NULL)
 	{
@@ -5270,6 +5272,7 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       scan_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
       scan_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+      scan_add_oos_read_stats (&scan_id->scan_stats.oos_reads, &old_oos_reads, &thread_p->oos_read_stats);
 
       if (scan_id->partition_stats != NULL)
 	{
@@ -5277,6 +5280,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 			       &scan_id->scan_stats.elapsed_scan);
 	  scan_id->partition_stats->num_fetches += scan_id->scan_stats.num_fetches - old_scan_stats.num_fetches;
 	  scan_id->partition_stats->num_ioreads += scan_id->scan_stats.num_ioreads - old_scan_stats.num_ioreads;
+	  scan_add_oos_read_stats (&scan_id->partition_stats->oos_reads, &old_scan_stats.oos_reads,
+				   &scan_id->scan_stats.oos_reads);
 
 	  switch (scan_id->type)
 	    {
@@ -8925,6 +8930,20 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
 }
 
 
+/*
+ * scan_add_oos_read_stats () - add to total the OOS reads counted between two readings of the same counters
+ */
+void
+scan_add_oos_read_stats (OOS_READ_STATS * total, const OOS_READ_STATS * since, const OOS_READ_STATS * now)
+{
+  struct timeval since_elapsed = since->elapsed;
+  struct timeval now_elapsed = now->elapsed;
+
+  perfmon_add_timeval (&total->elapsed, &since_elapsed, &now_elapsed);
+  total->fetches += now->fetches - since->fetches;
+  total->ioreads += now->ioreads - since->ioreads;
+}
+
 #if defined (SERVER_MODE)
 /*
  * scan_print_stats_json () -
@@ -9062,6 +9081,16 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
     default:
       trace_json_object_set_new (scan_stats, "noscan", scan);
       break;
+    }
+
+  if (scan_id->scan_stats.oos_reads.fetches > 0)
+    {
+      /* only a scan that read OOS values shows it, as a part of the figures above */
+      trace_json_object_set_new (scan_stats, "oos",
+				 trace_json_pack ("{s:i, s:I, s:I}", "time",
+						  TO_MSEC (scan_id->scan_stats.oos_reads.elapsed), "fetch",
+						  scan_id->scan_stats.oos_reads.fetches, "ioread",
+						  scan_id->scan_stats.oos_reads.ioreads));
     }
 }
 
@@ -9255,6 +9284,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     default:
       fprintf (fp, ")");
       break;
+    }
+
+  if (scan_id->scan_stats.oos_reads.fetches > 0)
+    {
+      /* only a scan that read OOS values shows it, as a part of the figures above */
+      fprintf (fp, " (oos time: %d, fetch: %llu, ioread: %llu)", TO_MSEC (scan_id->scan_stats.oos_reads.elapsed),
+	       (unsigned long long int) scan_id->scan_stats.oos_reads.fetches,
+	       (unsigned long long int) scan_id->scan_stats.oos_reads.ioreads);
     }
 }
 #endif /* SERVER_MODE */
