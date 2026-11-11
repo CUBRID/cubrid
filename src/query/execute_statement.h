@@ -32,6 +32,7 @@
 
 #include "dbi.h"
 #include "parser.h"
+#include "db_multi_threads_connections.h"
 
 #define CDC_TRIGGER_INVOLVED_BACKUP(is_trigger_involved) \
   do \
@@ -85,9 +86,9 @@ extern int get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE
 
 typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 
-extern bool do_Trigger_involved;
+extern CUB_THREAD_LOCAL bool do_Trigger_involved;
 
-extern bool cdc_Trigger_involved;
+extern CUB_THREAD_LOCAL bool cdc_Trigger_involved;
 
 extern int do_alter (PARSER_CONTEXT * parser, PT_NODE * statement);
 

@@ -177,3 +177,10 @@ schema_fk_info_meta (T_NET_BUF * net_buf)
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "FK_NAME");
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "PK_NAME");
 }
+
+void
+schema_schemas_meta (T_NET_BUF * net_buf)
+{
+  net_buf_cp_int (net_buf, 1, NULL);
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "NAME");
+}

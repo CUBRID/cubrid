@@ -109,6 +109,7 @@
 #include "object_representation.h"
 #include "flashback.h"
 #include "system_metadata_version.h"
+#include "fault_injection.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -6049,7 +6050,8 @@ logpb_archive_active_log (THREAD_ENTRY * thread_p)
   for (; pageid <= last_pageid; pageid += num_pages, ar_phy_pageid += num_pages)
     {
       logpb_log ("Dump page %lld in logpb_archive_active_log, num_pages = %d\n", (long long int) pageid, num_pages);
-      num_pages = (int) MIN (LOGPB_IO_NPAGES, last_pageid - pageid + 1);
+      /* the loop condition guarantees last_pageid - pageid + 1 >= 1, so both operands are non-negative */
+      num_pages = (int) MIN ((INT64) LOGPB_IO_NPAGES, last_pageid - pageid + 1);
       num_pages = logpb_read_page_from_active_log (thread_p, pageid, num_pages, false, log_pgptr);
       if (num_pages <= 0)
 	{
@@ -7432,6 +7434,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       goto error_cannot_chkpt;
     }
 
+  {
+    /* lets a test destroy files while the checkpoint start is fixed and the flush has not run */
+    int hold_seconds = 10;
+    (void) FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_CHECKPOINT_HOLD, &hold_seconds, FI_INIT_STATE);
+  }
+
   detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
       NO_ERROR)
@@ -7451,6 +7459,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       LSA_COPY (&tmp_chkpt.redo_lsa, &newchkpt_lsa);
     }
+  /* the flush cannot see the dirty pages destroyed files discarded */
+  pgbuf_discard_redo_bound_apply (&tmp_chkpt.redo_lsa, &chkpt_redo_lsa);
 
   assert (LSA_LE (&tmp_chkpt.redo_lsa, &newchkpt_lsa));
 
@@ -9086,6 +9096,10 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	    {
 	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CANNOT_ACCESS_BACKUP, 1, from_volbackup);
 	    }
+	  else if (er_errid () == ER_LOG_BKUP_INCOMPATIBLE)
+	    {
+	      error_expected = true;
+	    }
 	  error_code = ER_LOG_CANNOT_ACCESS_BACKUP;
 	  LOG_CS_EXIT (thread_p);
 	  goto error;
@@ -9157,10 +9171,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       if (compat != REL_FULLY_COMPATIBLE && compat != REL_BACKWARD_COMPATIBLE)
 	{
 	  /* Database is incompatible with current release */
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_INCOMPATIBLE, 2, rel_name (),
-		  rel_release_string ());
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_BKUP_INCOMPATIBLE, 3, rel_name (),
+		  rel_release_string (), session->bkup.bkuphdr->db_release);
 	  error_code = ER_LOG_BKUP_INCOMPATIBLE;
 	  LOG_CS_EXIT (thread_p);
+	  error_expected = true;
 	  goto error;
 	}
 
@@ -11616,7 +11631,8 @@ logpb_background_archiving (THREAD_ENTRY * thread_p)
   /* Now start dumping the current active pages to archive */
   for (; page_id <= last_page_id; page_id += num_pages, phy_pageid += num_pages)
     {
-      num_pages = MIN (LOGPB_IO_NPAGES, (int) (last_page_id - page_id + 1));
+      /* the loop condition guarantees last_page_id - page_id + 1 >= 1, so both operands are non-negative */
+      num_pages = MIN ((int) LOGPB_IO_NPAGES, (int) (last_page_id - page_id + 1));
 
       num_pages = logpb_read_page_from_active_log (thread_p, page_id, num_pages, false, log_pgptr);
       if (num_pages <= 0)

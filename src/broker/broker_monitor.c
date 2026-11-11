@@ -49,7 +49,7 @@
 #include <regex.h>
 #include <sys/time.h>
 #include <fcntl.h>
-#include <termio.h>
+#include <termios.h>
 #include <dlfcn.h>
 #endif
 
