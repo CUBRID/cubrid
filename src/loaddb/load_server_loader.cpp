@@ -737,7 +737,7 @@ namespace cubload
 	else
 	  {
 	    heap_pending_record record;
-	    if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false) != S_SUCCESS)
+	    if (prepare_record (record) != NO_ERROR)
 	      {
 		m_error_handler.on_failure ();
 		m_error_handler.set_error_on_current_line (false);
@@ -776,6 +776,43 @@ namespace cubload
     int64_t lineno = m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1;
     m_session.stats_update_current_line (lineno);
     clear_db_values ();
+  }
+
+  /*
+   * prepare_record - build the line's record; Internal LOB values are written while it is built
+   *    return: NO_ERROR or the error
+   * Note: the LOB values go to the LOB file of m_attrinfo's class, so a partitioned class picks the row's
+   *       partition first, as locator_attribute_info_force () does for INSERT.
+   */
+  int
+  server_object_loader::prepare_record (heap_pending_record &record)
+  {
+    OID class_oid = m_attrinfo.class_oid;
+
+    if (m_pruning_type != DB_NOT_PARTITIONED_CLASS)
+      {
+	OID part_class_oid = class_oid;
+	HFID part_hfid = m_scancache.node.hfid;
+
+	/* columns the line leaves out take their defaults now (preparation does the same), so the key can be read */
+	int error_code = heap_attrinfo_set_uninitialized_global (m_thread_ref, &m_attrinfo.inst_oid, NULL, &m_attrinfo);
+	if (error_code == NO_ERROR)
+	  {
+	    error_code = partition_prune_insert_attr_info (m_thread_ref, &class_oid, &m_attrinfo, NULL, m_pruning_type,
+			 &part_class_oid, &part_hfid);
+	  }
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+	COPY_OID (&m_attrinfo.class_oid, &part_class_oid);
+      }
+
+    SCAN_CODE scan = heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false);
+    /* flush_records () inserts into the class the line named and routes the record itself */
+    COPY_OID (&m_attrinfo.class_oid, &class_oid);
+
+    return scan == S_SUCCESS ? NO_ERROR : ER_FAILED;
   }
 
   void

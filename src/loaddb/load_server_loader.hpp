@@ -107,6 +107,7 @@ namespace cubload
 
       void clear_db_values ();
       db_value &get_attribute_db_value (size_t attr_index);
+      int prepare_record (heap_pending_record &record);
 
       void start_scancache (const OID &class_oid);
       void stop_scancache ();

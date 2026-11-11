@@ -20862,7 +20862,6 @@ exit_on_error:
   return ret;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * heap_attrinfo_set_uninitialized_global () -
  *   return: NO_ERROR
@@ -20881,7 +20880,6 @@ heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid,
 
   return heap_attrinfo_set_uninitialized (thread_p, inst_oid, recdes, attr_info);
 }
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
  * heap_get_class_info () - get HFID and file type for class.
