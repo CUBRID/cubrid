@@ -1218,6 +1218,97 @@ TEST_CASE ("a string key under a loaded single-level collation hashes like its c
     }
 }
 
+TEST_CASE ("trailing zero weights follow string comparison and preserve writeset dependencies", "[writeset]")
+{
+  ws_history_guard history;
+  OID class_oid = oid_of (1, 209, 1);
+  const char *names[] = { "utf8_bin", "utf8_en_cs", "utf8_gen", "utf8_gen_ci", "utf8_gen_ai_ci", "utf8_es_cs" };
+  const char *texts[] = { "k1", "k1\x01", "k1\x01 \x01", "k1\xcc\x81", "", "\x01", "k\x01" "1", "n\xcc\x83",
+                         "n\xcc\x83\x01", "\xc3\xb1" };
+
+  for (const char *name : names)
+    {
+      LANG_COLLATION *coll = lang_get_collation_by_name (name);
+      if (coll == NULL)
+        {
+          WARN (name << " not loaded");
+          continue;
+        }
+      INFO (name);
+
+      for (DB_TYPE type : { DB_TYPE_CHAR, DB_TYPE_VARCHAR })
+        {
+          for (bool ignore_trailing_space : { false, true })
+            {
+              ws_trailing_space_guard guard (ignore_trailing_space);
+              bool ignore = type == DB_TYPE_CHAR || ignore_trailing_space;
+              INFO ("type=" << type << " ignore_trailing_space=" << ignore_trailing_space);
+
+              auto hash_of = [&] (const char *text)
+              {
+                DB_VALUE value;
+                int size = (int) strlen (text);
+
+                if (type == DB_TYPE_CHAR)
+                  {
+                    REQUIRE (db_make_char (&value, 20, text, size, INTL_CODESET_UTF8,
+                                           coll->coll.coll_id) == NO_ERROR);
+                  }
+                else
+                  {
+                    REQUIRE (db_make_varchar (&value, 20, text, size, INTL_CODESET_UTF8,
+                                              coll->coll.coll_id) == NO_ERROR);
+                  }
+                UINT64 hash = write_key_hash (&class_oid, &value);
+                pr_clear_value (&value);
+                return hash;
+              };
+
+              for (const char *left : texts)
+                {
+                  for (const char *right : texts)
+                    {
+                      int cmp = coll->fastcmp (coll, (const unsigned char *) left, (int) strlen (left),
+                                               (const unsigned char *) right, (int) strlen (right), ignore);
+                      if (cmp == 0)
+                        {
+                          CHECK (hash_of (left) == hash_of (right));
+                        }
+                    }
+                }
+
+              /* CHR(1) is significant in utf8_en_cs and when VARCHAR retains trailing characters. */
+              if (!ignore || strcmp (name, "utf8_en_cs") == 0)
+                {
+                  CHECK (hash_of ("k1") != hash_of ("k1\x01"));
+                }
+            }
+        }
+
+      if (coll->fastcmp (coll, (const unsigned char *) "k1", 2,
+                        (const unsigned char *) "k1\x01", 3, true) == 0)
+        {
+          DB_VALUE before, after;
+          LOG_LSA commit_lsa = lsa_of (10, 0);
+          log_tdes *deleter = make_tdes (1);
+          log_tdes *inserter = make_tdes (2);
+
+          REQUIRE (db_make_char (&before, 20, "k1", 2, INTL_CODESET_UTF8, coll->coll.coll_id) == NO_ERROR);
+          REQUIRE (db_make_char (&after, 20, "k1\x01", 3, INTL_CODESET_UTF8, coll->coll.coll_id) == NO_ERROR);
+          REQUIRE (wset_add_write_key (deleter, &class_oid, &WS_DEFAULT_VFID, &before) == NO_ERROR);
+          commit_tx (deleter, &commit_lsa);
+          REQUIRE (wset_add_write_key (inserter, &class_oid, &WS_DEFAULT_VFID, &after) == NO_ERROR);
+          LOG_LSA dependency = probe (inserter);
+          CHECK (LSA_EQ (&dependency, &commit_lsa));
+
+          pr_clear_value (&before);
+          pr_clear_value (&after);
+          delete deleter;
+          delete inserter;
+        }
+    }
+}
+
 TEST_CASE ("independent transaction gets a NULL dependency", "[writeset]")
 {
   ws_history_guard history;
