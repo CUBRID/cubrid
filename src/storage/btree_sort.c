@@ -350,6 +350,8 @@ static INT16 btsort_spage_get_numrecs (PAGE_PTR pgptr);
 static INT16 btsort_spage_find_free (PAGE_PTR pgptr, BTSORT_PAGE_SLOT ** sptr, INT16 length, INT16 * space);
 static INT16 btsort_spage_insert (PAGE_PTR pgptr, RECDES * recdes);
 static SCAN_CODE btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool peek_p);
+STATIC_INLINE int btsort_compare_keys (const void *first, const void *second, void *arg)
+  __attribute__ ((ALWAYS_INLINE));
 static int btsort_compare_records (const void *first, const void *second, void *arg);
 static char *btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * memory);
 
@@ -698,23 +700,22 @@ btsort_spage_get_record (PAGE_PTR pgptr, INT16 slotid, RECDES * recdes, bool pee
 }
 
 /*
- * btsort_compare_records () - Compares two sort records in index key order
- *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ * btsort_compare_keys () - Compares the keys of two sort records, without the OID
+ *   return: DB_LT, DB_EQ or DB_GT
  *   first(in): sort record (bt_load_put_buf_to_record ())
  *   second(in): sort record
  *   arg(in): SORT_ARGS *
  *
  * Note: The key is compared by bt_load_cmp_key_bytes (), in the order the leaf loader expects.
  */
-static int
-btsort_compare_records (const void *first, const void *second, void *arg)
+STATIC_INLINE int
+btsort_compare_keys (const void *first, const void *second, void *arg)
 {
   char *mem1 = (char *) first;
   char *mem2 = (char *) second;
   int has_null;
   SORT_ARGS *sort_args;
   TP_DOMAIN *key_type;
-  char *oidptr1, *oidptr2;
   int c = DB_UNK;
 
   sort_args = (SORT_ARGS *) arg;
@@ -725,9 +726,6 @@ btsort_compare_records (const void *first, const void *second, void *arg)
 
   /* key_off skips the OIDs and the MVCCIDs at once */
   has_null = BTSORT_REC_HDR (mem1)->has_null || BTSORT_REC_HDR (mem2)->has_null;
-
-  oidptr1 = BTSORT_REC_OID (mem1);
-  oidptr2 = BTSORT_REC_OID (mem2);
 
   mem1 = BTSORT_REC_KEY (mem1);
   mem2 = BTSORT_REC_KEY (mem2);
@@ -764,13 +762,28 @@ btsort_compare_records (const void *first, const void *second, void *arg)
   /* the sort engine reads DB_UNK (-2) as "less than", which would silently break the order */
   assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
 
+  return c;
+}
+
+/*
+ * btsort_compare_records () - Compares two sort records in index key order
+ *   return: DB_LT or DB_GT (a key tie is broken by OID)
+ *   first(in): sort record (bt_load_put_buf_to_record ())
+ *   second(in): sort record
+ *   arg(in): SORT_ARGS *
+ */
+static int
+btsort_compare_records (const void *first, const void *second, void *arg)
+{
+  int c = btsort_compare_keys (first, second, arg);
+
   /* compare OID for non-unique index */
   if (c == DB_EQ)
     {
       OID first_oid, second_oid;
 
-      OR_GET_OID (oidptr1, &first_oid);
-      OR_GET_OID (oidptr2, &second_oid);
+      OR_GET_OID (BTSORT_REC_OID (first), &first_oid);
+      OR_GET_OID (BTSORT_REC_OID (second), &second_oid);
 
       assert_release (!OID_EQ (&first_oid, &second_oid));
       return (OID_LT (&first_oid, &second_oid) ? DB_LT : DB_GT);
@@ -1300,6 +1313,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 
   *total_numrecs = 0;
   BTSORT_RUN_INIT (&run, sort_param->internal_memory, output_buffer, sort_param->cmp_fn, sort_param->cmp_arg);
+  run.key_cmp_fn = btsort_compare_keys;
 
   rec_ptr = NULL;
   temp_recdes.area_size = BTSORT_MAXREC_LENGTH;

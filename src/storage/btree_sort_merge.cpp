@@ -22,8 +22,9 @@
  * One 4-byte slot per record. The ascending/descending stretches of the input are merged between two
  * slot arrays. Not to be confused with btsort_exphase_merge (), which merges the temp file runs.
  *
- * A run wider than a few L2 caches is split first (sample sort): splitters picked from a sample put each record in a
- * bucket in one pass over the run, and the buckets are merged one by one, each in L2.
+ * A run wider than a few L2 caches is split first (sample sort), unless its sample arrives nearly in order or in long
+ * stretches: splitters picked from the sample put each record in a bucket in one pass over the run, and the buckets
+ * are merged one by one, each in L2.
  *
  *   top  ┌───────────────────┐
  *        │ context           │  with the splitters and the buckets of the sample sort
@@ -87,9 +88,11 @@ static BTSORT_RUN_SLOT *btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *
 /* a run splits only into this many buckets or more */
 #define BTSORT_SAMPLE_MIN_BUCKETS   16
 /* the sample holds this many records a bucket */
-#define BTSORT_SAMPLE_OVERSAMPLING  8
+#define BTSORT_SAMPLE_OVERSAMPLING  16
 /* the fewest records a bucket holds on average */
 #define BTSORT_SAMPLE_MIN_BUCKET_RECORDS  256
+/* the fewest buckets a stretch spans on average in a run that is merged whole for its long stretches */
+#define BTSORT_SAMPLE_MIN_STRETCH_BUCKETS  4
 
 typedef UINT16 BTSORT_BUCKET_ID;
 
@@ -106,13 +109,14 @@ namespace
 }
 
 static int btsort_sample_bucket_count (const merge_sorter_ctx *ctx, const BTSORT_RUN *run);
-static void btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
+static bool btsort_sample_nearly_in_order (const BTSORT_RUN *run, const BTSORT_RUN_SLOT *sample, int sample_count);
+static int btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
     BTSORT_RUN_SLOT *other_slots, int bucket_count);
 STATIC_INLINE int btsort_sample_bucket_of (const char *base, const BTSORT_RUN_SLOT *splitters, int splitter_count,
     BTSORT_RUN_SLOT slot, BTSORT_CMP_FUNC *compare, void *comp_arg) __attribute__ ((ALWAYS_INLINE));
 static void btsort_sample_fill_buckets (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
 					BTSORT_RUN_SLOT *other_slots, int bucket_count);
-static void btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLOT *slots,
+static bool btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLOT *slots,
 				BTSORT_RUN_SLOT *other_slots, int bucket_count);
 #if !defined (NDEBUG)
 static void btsort_merge_validate (const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots);
@@ -474,8 +478,80 @@ btsort_sample_bucket_count (const merge_sorter_ctx *ctx, const BTSORT_RUN *run)
 }
 
 /*
+ * btsort_sample_nearly_in_order () - Whether the sample arrives nearly in order, rising or falling, or in long
+ *                                    stretches that do
+ *   return: true when the pairs a bucket apart change their way only where long stretches meet, but for one record
+ *           far out of place
+ *   run(in): the full run
+ *   sample(in): the sample, unsorted
+ *   sample_count(in): BTSORT_SAMPLE_OVERSAMPLING records a bucket
+ *
+ * Note: A pair is a sample record and the one a bucket after it.
+ *       A row is a series of pairs going the same way, up or down.
+ *       A turn is where one row ends and the next begins.
+ *       Where two long stretches meet, a row of pairs goes the other way.
+ *       That row makes two turns, one on each side.
+ *       A row of one pair between two turns is a stray.
+ *       A stray is a record far out of place.
+ *
+ *       In the pairs below, + goes up, - goes down and | is a turn.
+ *
+ *         + + + + + | - | + + + + + | - - - - - - - - - - - - - - - - | + + + + +
+ *                     ^             ^------- a bucket of pairs -------^
+ *                  a stray                two long stretches meet
+ *
+ *       They make 4 turns and 1 stray.
+ */
+static bool
+btsort_sample_nearly_in_order (const BTSORT_RUN *run, const BTSORT_RUN_SLOT *sample, int sample_count)
+{
+  /* the keys alone, as the records of a key arrive in OID order whichever way the keys arrive */
+  BTSORT_CMP_FUNC *compare = run->key_cmp_fn;
+  int bucket_count = sample_count / BTSORT_SAMPLE_OVERSAMPLING;
+  int turns = 0, strays = 0;
+  int length = 0;		/* the pairs in a row going the way of falling */
+  bool falling = false;
+  int at, c;
+
+  assert (compare != NULL);
+
+  /* compare each sample record with the one a bucket after it, and count the turns, where the pairs change their way.
+   * A record out of place by less than a bucket reverses no pair, and the merge of the whole run puts it right within
+   * the cache, as the merge of its bucket does */
+  for (at = 0; at + BTSORT_SAMPLE_OVERSAMPLING < sample_count; at++)
+    {
+      c = (*compare) (run->base + sample[at], run->base + sample[at + BTSORT_SAMPLE_OVERSAMPLING], run->cmp_arg);
+      if (c == 0)
+	{
+	  /* a pair of equal keys goes neither way */
+	  continue;
+	}
+
+      if (length > 0 && (c > 0) != falling)
+	{
+	  /* a lone pair between two turns is a record far out of place. The rows at the ends of the sample may go on
+	   * past it */
+	  if (length == 1 && turns > 0)
+	    {
+	      strays++;
+	    }
+	  turns++;
+	  length = 0;
+	}
+
+      falling = (c > 0);
+      length++;
+    }
+
+  /* allow one record far out of place, which costs the whole merge little, and two turns where long stretches meet,
+   * into the pairs they reverse and out of them, which the whole merge joins with fewer compares than the split
+   * spends */
+  return strays <= 1 && turns <= 2 * (bucket_count / BTSORT_SAMPLE_MIN_STRETCH_BUCKETS);
+}
+
+/*
  * btsort_sample_pick_splitters () - Picks the splitters of the buckets from a sample of the run
- *   return: void
+ *   return: the number of splitters, 0 when the sample arrives nearly in order
  *   ctx(in/out): the splitters
  *   run(in): the full run
  *   slots(in): the slots of the run
@@ -484,7 +560,7 @@ btsort_sample_bucket_count (const merge_sorter_ctx *ctx, const BTSORT_RUN *run)
  *
  * Note: Every BTSORT_SAMPLE_OVERSAMPLING-th record of the sorted sample is a splitter.
  */
-static void
+static int
 btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
 			      BTSORT_RUN_SLOT *other_slots, int bucket_count)
 {
@@ -501,11 +577,19 @@ btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, cons
   /* the sample and its spare fit the second slot array */
   assert (bucket_count <= ctx->max_buckets && 2 * sample_count <= record_count);
 
-  /* the sample sorts in the second slot array, which the slots fill later */
+  /* the sample, in the order of the run and then sorted, in the second slot array, which the slots fill later */
   for (at = 0; at < sample_count; at++)
     {
       other_slots[at] = slots[at * stride];
     }
+
+  /* do not split a run that arrives nearly in order or in long stretches, which the merge of the whole run sorts with
+   * fewer compares */
+  if (btsort_sample_nearly_in_order (run, other_slots, sample_count))
+    {
+      return 0;
+    }
+
   sample = btsort_run_sort (base, other_slots, sample_count, other_slots + sample_count, compare, comp_arg);
 
   /* take the splitters evenly apart in the sorted sample, so that the buckets get about as many records each */
@@ -513,6 +597,8 @@ btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, cons
     {
       ctx->splitters[bucket_id] = sample[BTSORT_SAMPLE_OVERSAMPLING * (bucket_id + 1) - 1];
     }
+
+  return splitter_count;
 }
 
 /*
@@ -601,8 +687,8 @@ btsort_sample_fill_buckets (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const 
 }
 
 /*
- * btsort_sample_sort () - Sorts the run in buckets that each sort in L2
- *   return: void
+ * btsort_sample_sort () - Sorts the run in buckets that each sort in L2, unless its sample arrives nearly in order
+ *   return: false when the run is left as it came, for the merge of the whole
  *   ctx(in): the splitters and the bucket bounds
  *   run(in): the full run
  *   slots(in/out): the slots of the run, in order on return
@@ -611,7 +697,7 @@ btsort_sample_fill_buckets (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const 
  *
  * Note: Each bucket is merged on its own while it stays in L2.
  */
-static void
+static bool
 btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLOT *slots,
 		    BTSORT_RUN_SLOT *other_slots, int bucket_count)
 {
@@ -622,7 +708,11 @@ btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLO
   int bucket_id, start, count;
 
   /* pick the splitters that bound the buckets from a sample of the run */
-  btsort_sample_pick_splitters (ctx, run, slots, other_slots, bucket_count);
+  if (btsort_sample_pick_splitters (ctx, run, slots, other_slots, bucket_count) == 0)
+    {
+      /* the sample arrives nearly in order, and the run is merged whole */
+      return false;
+    }
 
   /* move the slots into their buckets in the second slot array */
   btsort_sample_fill_buckets (ctx, run, slots, other_slots, bucket_count);
@@ -638,6 +728,8 @@ btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLO
 	  memcpy (slots + start, sorted, count * sizeof (BTSORT_RUN_SLOT));
 	}
     }
+
+  return true;
 }
 
 #if !defined (NDEBUG)
@@ -783,9 +875,8 @@ btsort_merge_sorter_sort (THREAD_ENTRY *thread_p, BTSORT_RUN *run)
   assert (run->numrecs <= INT_MAX);
 
   bucket_count = btsort_sample_bucket_count (ctx, run);
-  if (bucket_count > 0)
+  if (bucket_count > 0 && btsort_sample_sort (ctx, run, slots, other_slots, bucket_count))
     {
-      btsort_sample_sort (ctx, run, slots, other_slots, bucket_count);
       sorted = slots;
       run->split_runs++;
     }

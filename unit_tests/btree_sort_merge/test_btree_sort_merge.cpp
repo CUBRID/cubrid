@@ -71,13 +71,13 @@ namespace
     return id;
   }
 
+  /* the keys alone, 0 on a tie, as btsort_compare_keys () */
   int
-  compare_records (const void *first, const void *second, void *arg)
+  compare_keys (const void *first, const void *second, void *arg)
   {
     const char *rec1 = (const char *) first;
     const char *rec2 = (const char *) second;
     uint16_t length1, length2;
-    uint64_t id1, id2;
     int c;
 
     memcpy (&length1, rec1 + KEY_LENGTH_OFFSET, sizeof (length1));
@@ -88,9 +88,22 @@ namespace
       {
 	c = (int) length1 - (int) length2;
       }
+
+    return (c < 0) ? -1 : (c > 0) ? 1 : 0;
+  }
+
+  int
+  compare_records (const void *first, const void *second, void *arg)
+  {
+    const char *rec1 = (const char *) first;
+    const char *rec2 = (const char *) second;
+    uint64_t id1, id2;
+    int c;
+
+    c = compare_keys (first, second, arg);
     if (c != 0)
       {
-	return (c < 0) ? -1 : 1;
+	return c;
       }
 
     id1 = id_of (rec1);
@@ -145,6 +158,7 @@ namespace
     size_t at = 0;
 
     BTSORT_RUN_INIT (&run, base, base + buffer_bytes, compare_records, NULL);
+    run.key_cmp_fn = compare_keys;
     sorter.init (&run, NULL);
 
     while (at < input.size ())
@@ -274,20 +288,41 @@ TEST_CASE ("merge sorter: random keys", "[btree_sort_merge]")
 
 TEST_CASE ("merge sorter: keys arriving in order", "[btree_sort_merge]")
 {
+  /* the sample goes one way throughout, so no run splits */
   SECTION ("rising")
   {
-    check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [] (size_t i)
+    std::vector<long> split_runs = check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [] (size_t i)
     {
       return key_of_number (i);
     }));
+
+    REQUIRE (split_runs == std::vector<long> (split_runs.size (), 0));
   }
   SECTION ("falling")
   {
-    check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [] (size_t i)
+    std::vector<long> split_runs = check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [] (size_t i)
     {
       return key_of_number (FIXED_KEY_COUNT - i);
     }));
+
+    REQUIRE (split_runs == std::vector<long> (split_runs.size (), 0));
   }
+}
+
+TEST_CASE ("merge sorter: keys arriving nearly in order", "[btree_sort_merge]")
+{
+  /* a record out of place in 16 and in 1024, which the sample sends to the split or lets through as its pairs fall */
+  const size_t spacings[] = { 16, 1024 };
+
+  for (size_t every : spacings)
+    {
+      std::mt19937_64 rng (every);
+
+      check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [&rng, every] (size_t i)
+      {
+	return key_of_number ((rng () % every == 0) ? rng () % FIXED_KEY_COUNT : i);
+      }));
+    }
 }
 
 TEST_CASE ("merge sorter: a few long rising stretches", "[btree_sort_merge]")
@@ -309,6 +344,17 @@ TEST_CASE ("merge sorter: a few long rising stretches", "[btree_sort_merge]")
   check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [&numbers] (size_t i)
   {
     return key_of_number (numbers[i]);
+  }));
+}
+
+TEST_CASE ("merge sorter: long groups of a key, the keys falling", "[btree_sort_merge]")
+{
+  /* the ids of a group rise as the keys fall from group to group, each group longer than a bucket */
+  const size_t groups = 40;
+
+  check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [groups] (size_t i)
+  {
+    return key_of_number (groups - i * groups / FIXED_KEY_COUNT);
   }));
 }
 
