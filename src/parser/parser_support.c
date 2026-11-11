@@ -13801,10 +13801,18 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   if (remote_target)
     {
       parser_walk_tree (parser, source, pt_get_server_name_list, snl, NULL, NULL);
-      if (snl->local_cnt > 0)
+      if (snl->local_cnt > 0 && snl->has_dblink_query)
 	{
-	  /* not allowed to merge multi-server */
+	  /* a source that mixes local tables and DBLINK () */
 	  PT_ERROR (parser, source, "dblink: multi-remote DML is not allowed");
+	}
+      else if (snl->local_cnt > 0)
+	{
+	  /* The source reads local tables. It is evaluated here, and each row is sent as one MERGE.
+	   * Its shapes are checked after the semantic check (pt_dblink_merge_is_inscope). A source
+	   * that also reads remote tables keeps the sink only if they are on the target's server
+	   * (pt_convert_dblink_dml_query). */
+	  snl->sink_kind = DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC;
 	}
       else
 	{
@@ -15035,7 +15043,7 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 }
 
 /*
- * pt_setup_dblink_sink_spec () - Build PT_DBLINK_TABLE_DML sink on spec (INSERT SELECT / DELETE local-subq).
+ * pt_setup_dblink_sink_spec () - Build PT_DBLINK_TABLE_DML sink on spec (any remote DML sink).
  *   Allocates wrapper, peels owner (server->next), frees snl server nodes, re-resolves connection.
  *   On missing remote_server_name sets a parser error and returns (every caller returns right after this).
  */
@@ -15157,6 +15165,14 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     case PT_MERGE:
       into_spec = node->info.merge.into;
       upd_spec = node->info.merge.using_clause;
+      if (snl->sink_kind == DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC)
+	{
+	  /* the remote servers the USING source reads, as for the subquery of the other sinks. The
+	   * walk repeats the one pt_convert_dblink_merge_query () made, harmless as for
+	   * pt_dblink_dml_subq_servers (). */
+	  parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
+	  sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
+	}
       break;
     default:
       assert (false);
@@ -15207,6 +15223,28 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	    {
 	      parser_walk_tree (parser, vlist, pt_check_sub_query_spec, snl, NULL, NULL);
 	    }
+	}
+      else
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+	}
+    }
+
+  /* A MERGE source that reads remote tables besides local ones keeps the sink when they are all
+   * on the target's server, as an INSERT ... SELECT source does. Its remote specs become dblink
+   * scans, run here with the rest of the source. Any other server goes to the rejections below. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC && sub_sel_server_cnt > 0)
+    {
+      if (snl->local_cnt > 0 && snl->distinct_cnt == 1)
+	{
+	  /* The rewrite counts each SELECT's FROM after the SELECTs inside it are rewritten.
+	   * A remote spec one derived table deep is a dblink scan by then, and it raises
+	   * has_dblink_query. pt_convert_dblink_merge_query () already refused a source that reads
+	   * DBLINK () itself, so the flag goes back. */
+	  bool had_dblink_before = snl->has_dblink_query;
+
+	  parser_walk_tree (parser, upd_spec, pt_check_sub_query_spec, snl, NULL, NULL);
+	  snl->has_dblink_query = had_dblink_before;
 	}
       else
 	{
@@ -15268,6 +15306,16 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       node->flag.cannot_prepare = 0;
       pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
+      return;
+    }
+
+  /* A remote MERGE with a local source has no remote text (qstr) either, as the remote does not
+   * have the source. The USING source and the clauses stay as trees for the per-row push. The
+   * sink is set up on the target. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC)
+    {
+      node->flag.cannot_prepare = 0;
+      pt_setup_dblink_sink_spec (parser, node, into_spec, snl);
       return;
     }
 
