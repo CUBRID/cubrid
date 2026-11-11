@@ -2226,11 +2226,12 @@ error:
 
 int
 locator_copyarea_add_fetch (const OID * class_oid, const OID * oid, const RECDES * recdes, int offset,
-			    LC_COPYAREA_MANYOBJS * mobjs, LC_COPYAREA_ONEOBJ * obj)
+			    LC_COPYAREA_MANYOBJS * mobjs, LC_COPYAREA_ONEOBJ * obj, bool keeps_oos_stubs)
 {
   /* These producers requested Expand. A non-root heap row must have no OOS
    * stubs left, including a copied temporary image with no external owner. */
-  if (!OID_IS_ROOTOID (class_oid) && (!heap_recdes_has_valid_header (recdes) || heap_recdes_contains_oos (recdes)))
+  if (!OID_IS_ROOTOID (class_oid)
+      && (!heap_recdes_has_valid_header (recdes) || (!keeps_oos_stubs && heap_recdes_contains_oos (recdes))))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oid_Null_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
@@ -2996,7 +2997,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 				keep_oos_locators ? HEAP_RECDES_DONT_CONSUME_RAW_BYTES
 				: HEAP_RECDES_CONSUME_RAW_BYTES)) == S_SUCCESS)
 	{
-	  if (locator_copyarea_add_fetch (class_oid, &oid, &recdes, offset, mobjs, obj) != NO_ERROR)
+	  if (locator_copyarea_add_fetch (class_oid, &oid, &recdes, offset, mobjs, obj, keep_oos_locators) != NO_ERROR)
 	    {
 	      scan = S_ERROR;
 	      break;

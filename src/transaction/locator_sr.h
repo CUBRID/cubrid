@@ -191,9 +191,11 @@ extern int locator_test_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *
 
 extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes,
 				     int operation, int attrid);
-/* Publish one already-expanded fetch row. Rejection leaves both descriptors and count untouched. */
+/* Publish one already-expanded fetch row. Rejection leaves both descriptors and count untouched.
+ * keeps_oos_stubs: the caller asked for the stored inline OOS stubs (compactdb), so they are allowed. */
 extern int locator_copyarea_add_fetch (const OID * class_oid, const OID * oid, const RECDES * recdes, int offset,
-				       LC_COPYAREA_MANYOBJS * mobjs, LC_COPYAREA_ONEOBJ * obj);
+				       LC_COPYAREA_MANYOBJS * mobjs, LC_COPYAREA_ONEOBJ * obj,
+				       bool keeps_oos_stubs = false);
 
 // *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
