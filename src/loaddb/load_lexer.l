@@ -791,6 +791,18 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
     BEGIN ABORTED;
 }
 
+<BINARY_BLOCK><<EOF>> {
+    /*
+     * The input ended on a record boundary, which is what a batch cut in the middle of a section
+     * looks like, see split () in load_common.cpp. The end of records marker and the new line
+     * which closes the section stayed in a later batch, so the line the rows of this one make up
+     * is closed from here. Scanning goes on in INITIAL, where the end of input terminates it.
+     */
+    PRINT ("BINARY_BLOCK batch end %s\n", "");
+    BEGIN INITIAL;
+    return token::NL;
+}
+
   /*
    * Entered once an object file has been found unreadable and the failure has been reported. The
    * rest of the input is raw data the text rules cannot match, scanning it would report a lexical
@@ -814,18 +826,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 }
 
 <ABORTED><<EOF>> {
-    BEGIN INITIAL;
-    return token::NL;
-}
-
-<BINARY_BLOCK><<EOF>> {
-    /*
-     * The input ended on a record boundary, which is what a batch cut in the middle of a section
-     * looks like, see split () in load_common.cpp. The end of records marker and the new line
-     * which closes the section stayed in a later batch, so the line the rows of this one make up
-     * is closed from here. Scanning goes on in INITIAL, where the end of input terminates it.
-     */
-    PRINT ("BINARY_BLOCK batch end %s\n", "");
     BEGIN INITIAL;
     return token::NL;
 }

@@ -698,6 +698,7 @@ static void ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, dat
 static void ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader,
 				  const cubload::binary_column &col);
 static void ldr_report_binary_error (LDR_CONTEXT *context, int error);
+static const LDR_STORE_SPEC *ldr_binary_store_slot (LDR_ATTDESC *attdesc, const DB_VALUE *val);
 static void ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_mismatch (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_ignore (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -711,6 +712,7 @@ static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len,
 static int ldr_null_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val);
+static int ldr_sink_instance (LDR_CONTEXT *context, LDR_ATTDESC *attdesc, DB_VALUE *val, bool direct, bool bound_bit);
 static void ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sys_class_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -2471,6 +2473,92 @@ error_exit:
 }
 
 /*
+ * ldr_binary_store_slot - the store slot a value of a binary section row is written through
+ *    return: the slot, or NULL to store the value through the object template
+ *    attdesc(in): descriptor of the attribute being set
+ *    val(in): the value, already in the attribute's domain (binary_to_db_value ())
+ * Note:
+ *    A value of the text form is written the way ldr_act_add_attr () set up the slot of its token:
+ *    straight into the instance image (setmem) for the token that names the attribute's own type,
+ *    through the object template (obj_desc_set ()) otherwise. A binary value carries no token, but
+ *    it reaches the attribute in the attribute's domain, which is what the token of that domain
+ *    makes of it. So it takes the slot of that token and is written the same way. A domain no
+ *    token names directly, NUMERIC or BIT for instance, keeps the template, as it does in the text
+ *    form.
+ */
+static const LDR_STORE_SPEC *
+ldr_binary_store_slot (LDR_ATTDESC *attdesc, const DB_VALUE *val)
+{
+  DB_TYPE dom_type = TP_DOMAIN_TYPE (attdesc->att->domain);
+  data_type token;
+
+  if (db_value_type (val) != dom_type)
+    {
+      return NULL;
+    }
+
+  switch (dom_type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      token = LDR_INT;
+      break;
+    case DB_TYPE_FLOAT:
+      token = LDR_FLOAT;
+      break;
+    case DB_TYPE_DOUBLE:
+      token = LDR_DOUBLE;
+      break;
+    case DB_TYPE_DATE:
+      token = LDR_DATE;
+      break;
+    case DB_TYPE_TIME:
+      token = LDR_TIME;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      token = LDR_TIMESTAMP;
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      token = LDR_TIMESTAMPLTZ;
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+      token = LDR_TIMESTAMPTZ;
+      break;
+    case DB_TYPE_DATETIME:
+      token = LDR_DATETIME;
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      token = LDR_DATETIMELTZ;
+      break;
+    case DB_TYPE_DATETIMETZ:
+      token = LDR_DATETIMETZ;
+      break;
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      token = LDR_STR;
+      break;
+    case DB_TYPE_MONETARY:
+      token = LDR_MONETARY;
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      token = LDR_ELO_EXT;
+      break;
+    default:
+      return NULL;
+    }
+
+  const LDR_STORE_SPEC *slot = &attdesc->store[token];
+  if (slot->handler != NULL || !slot->direct)
+    {
+      return NULL;
+    }
+
+  return slot;
+}
+
+/*
  * ldr_act_binary_value - store one column of a binary section row
  *    return: void
  *    context(in/out): current context
@@ -2527,13 +2615,27 @@ ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader, 
       goto error_exit;
     }
 
-  if (context->attr_type == LDR_ATTRIBUTE_ANY)
+  if (context->attr_type != LDR_ATTRIBUTE_ANY)
     {
-      CHECK_ERR (err, ldr_generic (context, &val));
+      CHECK_ERR (err, ldr_sink_class_object (context, attdesc->att, &val));
+    }
+  else if (DB_IS_NULL (&val))
+    {
+      /* what a NULL token of the text form does, see ldr_act_add_attr () */
+      CHECK_ERR (err, ldr_null_db_generic (context, NULL, 0, attdesc));
     }
   else
     {
-      CHECK_ERR (err, ldr_sink_class_object (context, attdesc->att, &val));
+      const LDR_STORE_SPEC *slot = ldr_binary_store_slot (attdesc, &val);
+
+      if (slot != NULL)
+	{
+	  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
+	}
+      else
+	{
+	  CHECK_ERR (err, ldr_generic (context, &val));
+	}
     }
 
 error_exit:
