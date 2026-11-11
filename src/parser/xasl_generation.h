@@ -82,6 +82,15 @@ typedef enum
   UNBOX_AS_TABLE
 } UNBOX;
 
+typedef struct pt_func_index_cover PT_FUNC_INDEX_COVER;
+struct pt_func_index_cover
+{
+  PT_FUNC_INDEX_COVER *next;
+  const char *expr_str;
+  UINTPTR spec_id;
+  PT_NODE *result_attr;		/* pseudo attribute holding the function result read from the index key */
+};
+
 typedef struct symbol_info SYMBOL_INFO;
 struct symbol_info
 {
@@ -95,6 +104,8 @@ struct symbol_info
   int listfile_attr_offset;
   PT_NODE *query_node;		/* the query node that is being translated */
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
+  PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* function index expressions to route to their result attribute */
+  PT_FUNC_INDEX_COVER *func_idx_routed_list;	/* covered scans of the query whose output is routed */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;
