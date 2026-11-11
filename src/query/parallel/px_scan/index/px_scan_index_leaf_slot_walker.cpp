@@ -556,178 +556,196 @@ namespace parallel_index_scan
     return slot_result::ERROR;
   }
 
-  leaf_slot_walker::slot_result
-  leaf_slot_walker::evaluate_slot (THREAD_ENTRY *thread_p, int *slot, bool ahead, ahead_key *out, int *read_keys)
+  /* inlined into both callers: the key loop runs once per key, as it did inside scan_next_slot */
+  inline __attribute__ ((ALWAYS_INLINE)) leaf_slot_walker::slot_result
+  leaf_slot_walker::next_key (THREAD_ENTRY *thread_p, int *slot, bool ahead, ahead_key *out, int *read_keys)
   {
     INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
 
-    {
-      RECDES rec;
-      rec.data = nullptr;
-      rec.area_size = -1;
-
-      if (spage_get_record (thread_p, m_page, *slot, &rec, PEEK) != S_SUCCESS)
+    while (m_use_desc_index ? (*slot >= 1) : (*slot <= m_num_keys))
+      {
+	const int at = *slot;
+	const int at_range_idx = m_current_range_idx;
+	const int at_read_keys = *read_keys;
+	/* ahead, the key it stops at is left unread: check_key_in_range may have moved m_current_range_idx, and the
+	 * lookups read this slot again when they reach it, so it raises the error or signals the end then */
+	auto stop = [&] (slot_result r)
 	{
-	  m_use_desc_index ? (*slot)-- : (*slot)++;
-	  return slot_result::SKIPPED;
-	}
-
-      /* fence keys duplicate adjacent-leaf keys; counting them double-inflates aggregate / group-by. */
-      if (btree_leaf_record_is_fence (&rec))
-	{
-	  m_use_desc_index ? (*slot)-- : (*slot)++;
-	  return slot_result::SKIPPED;
-	}
-
-      DB_VALUE key;
-      db_make_null (&key);
-      LEAF_REC leaf_rec_info;
-      bool clear_key = false;
-      int offset = 0;
-
-      int rerr = btree_read_record (thread_p, m_btid_int, m_page, &rec, &key,
-				    &leaf_rec_info, BTREE_LEAF_NODE,
-				    &clear_key, &offset, COPY, nullptr);
-      m_use_desc_index ? (*slot)-- : (*slot)++;
-
-      if (rerr != NO_ERROR)
-	{
-	  if (clear_key)
+	  if (ahead)
 	    {
-	      pr_clear_value (&key);
+	      *slot = at;
+	      *read_keys = at_read_keys;
+	      m_current_range_idx = at_range_idx;
 	    }
-	  return stop_at_error (thread_p, ahead);
-	}
+	  return r;
+	};
+	RECDES rec;
+	rec.data = nullptr;
+	rec.area_size = -1;
 
-      (*read_keys)++;
+	if (spage_get_record (thread_p, m_page, *slot, &rec, PEEK) != S_SUCCESS)
+	  {
+	    m_use_desc_index ? (*slot)-- : (*slot)++;
+	    continue;
+	  }
 
-      bool in_range = false;
-      bool past_upper = false;
-      int matched_range_idx = -1;
-      int kr_err = check_key_in_range (&key, &in_range, &past_upper, &matched_range_idx);
-      if (kr_err != NO_ERROR)
-	{
-	  if (clear_key)
-	    {
-	      pr_clear_value (&key);
-	    }
-	  return stop_at_error (thread_p, ahead);
-	}
+	/* fence keys duplicate adjacent-leaf keys; counting them double-inflates aggregate / group-by. */
+	if (btree_leaf_record_is_fence (&rec))
+	  {
+	    m_use_desc_index ? (*slot)-- : (*slot)++;
+	    continue;
+	  }
 
-      if (!in_range)
-	{
-	  if (clear_key)
-	    {
-	      pr_clear_value (&key);
-	    }
-	  if (past_upper)
-	    {
-	      if (!ahead)
-		{
-		  m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
-		}
-	      return slot_result::END;
-	    }
-	  return slot_result::SKIPPED;
-	}
+	DB_VALUE key;
+	db_make_null (&key);
+	LEAF_REC leaf_rec_info;
+	bool clear_key = false;
+	int offset = 0;
 
-      /* mirrors btree_apply_key_range_and_filter need_to_check_null (btree.c:16549–16614); ISS/ILS gated upstream. */
-      if (matched_range_idx >= 0 && DB_VALUE_DOMAIN_TYPE (&key) == DB_TYPE_MIDXKEY)
-	{
-	  key_val_range *kvr = &m_input_handler->get_key_val_ranges ()[matched_range_idx];
-	  if (kvr->num_index_term > 0)
-	    {
-	      DB_MIDXKEY *mkey = db_get_midxkey (&key);
-	      DB_VALUE ep;
-	      if (mkey != nullptr
-		  && pr_midxkey_get_element_nocopy (mkey, kvr->num_index_term - 1, &ep, NULL, NULL) == NO_ERROR)
-		{
-		  if (DB_IS_NULL (&ep))
-		    {
-		      bool allow_null = false;
-		      if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) && ep.need_clear)
-			{
-			  DB_TYPE etype = DB_VALUE_DOMAIN_TYPE (&ep);
-			  if (QSTR_IS_ANY_CHAR_OR_BIT (etype) && ep.data.ch.medium.buf != nullptr)
-			    {
-			      allow_null = true;	/* Oracle-style empty string */
-			    }
-			}
-		      if (!allow_null)
-			{
-			  if (clear_key)
-			    {
-			      pr_clear_value (&key);
-			    }
-			  return slot_result::SKIPPED;
-			}
-		    }
-		  if (!DB_IS_NULL (&ep) && ep.need_clear)
-		    {
-		      pr_clear_value (&ep);
-		    }
-		}
-	    }
-	}
+	int rerr = btree_read_record (thread_p, m_btid_int, m_page, &rec, &key,
+				      &leaf_rec_info, BTREE_LEAF_NODE,
+				      &clear_key, &offset, COPY, nullptr);
+	m_use_desc_index ? (*slot)-- : (*slot)++;
 
-      if (isidp->key_pred.pr_eval_fnc != nullptr && isidp->key_pred.pred_expr != nullptr)
-	{
-	  FILTER_INFO key_filter;
-	  memset (&key_filter, 0, sizeof (key_filter));
-	  key_filter.scan_pred = &isidp->key_pred;
-	  key_filter.scan_attrs = &isidp->key_attrs;
-	  key_filter.val_list = m_scan_id->val_list;
-	  key_filter.val_descr = m_vd;
-	  key_filter.class_oid = &isidp->cls_oid;
-	  key_filter.btree_attr_ids = isidp->bt_attr_ids;
-	  key_filter.num_vstr_ptr = &isidp->num_vstr;
-	  key_filter.vstr_ids = isidp->vstr_ids;
-	  key_filter.btree_num_attrs = isidp->bt_num_attrs;
-	  key_filter.func_idx_col_id = isidp->indx_info->func_idx_col_id;
+	if (rerr != NO_ERROR)
+	  {
+	    if (clear_key)
+	      {
+		pr_clear_value (&key);
+	      }
+	    return stop (stop_at_error (thread_p, ahead));
+	  }
 
-	  DB_LOGICAL ev_res = eval_key_filter (thread_p, &key, 0, nullptr, &key_filter);
-	  if (ev_res != V_TRUE)
-	    {
-	      if (clear_key)
-		{
-		  pr_clear_value (&key);
-		}
-	      if (ev_res == V_ERROR)
-		{
-		  return stop_at_error (thread_p, ahead);
-		}
-	      return slot_result::SKIPPED;
-	    }
-	}
+	(*read_keys)++;
 
-      /* qualified_keys (btree.c:25414: only after the key filter passes) is added by the caller with the OIDs */
+	bool in_range = false;
+	bool past_upper = false;
+	int matched_range_idx = -1;
+	int kr_err = check_key_in_range (&key, &in_range, &past_upper, &matched_range_idx);
+	if (kr_err != NO_ERROR)
+	  {
+	    if (clear_key)
+	      {
+		pr_clear_value (&key);
+	      }
+	    return stop (stop_at_error (thread_p, ahead));
+	  }
 
-      /* Gather leaf-resident OIDs only; overflow pulled lazily after leaf-OID buffer drains. */
-      std::vector<OID> leaf_oids;
-      leaf_collect_helper oid_helper;
-      oid_helper.oid_vec = &leaf_oids;
-      oid_helper.snapshot = isidp->scan_cache.mvcc_snapshot;
+	if (!in_range)
+	  {
+	    if (clear_key)
+	      {
+		pr_clear_value (&key);
+	      }
+	    if (past_upper)
+	      {
+		if (!ahead)
+		  {
+		    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
+		  }
+		return stop (slot_result::END);
+	      }
+	    continue;
+	  }
 
-      bool record_stop = false;
-      int proc_err = btree_record_process_objects (thread_p, m_btid_int, BTREE_LEAF_NODE,
-		     &rec, offset, &record_stop,
-		     collect_oid_callback, &oid_helper);
-      if (proc_err != NO_ERROR)
-	{
-	  if (clear_key)
-	    {
-	      pr_clear_value (&key);
-	    }
-	  return stop_at_error (thread_p, ahead);
-	}
+	/* mirrors btree_apply_key_range_and_filter need_to_check_null (btree.c:16549–16614); ISS/ILS gated upstream. */
+	if (matched_range_idx >= 0 && DB_VALUE_DOMAIN_TYPE (&key) == DB_TYPE_MIDXKEY)
+	  {
+	    key_val_range *kvr = &m_input_handler->get_key_val_ranges ()[matched_range_idx];
+	    if (kvr->num_index_term > 0)
+	      {
+		DB_MIDXKEY *mkey = db_get_midxkey (&key);
+		DB_VALUE ep;
+		if (mkey != nullptr
+		    && pr_midxkey_get_element_nocopy (mkey, kvr->num_index_term - 1, &ep, NULL, NULL) == NO_ERROR)
+		  {
+		    if (DB_IS_NULL (&ep))
+		      {
+			bool allow_null = false;
+			if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) && ep.need_clear)
+			  {
+			    DB_TYPE etype = DB_VALUE_DOMAIN_TYPE (&ep);
+			    if (QSTR_IS_ANY_CHAR_OR_BIT (etype) && ep.data.ch.medium.buf != nullptr)
+			      {
+				allow_null = true;	/* Oracle-style empty string */
+			      }
+			  }
+			if (!allow_null)
+			  {
+			    if (clear_key)
+			      {
+				pr_clear_value (&key);
+			      }
+			    continue;
+			  }
+		      }
+		    if (!DB_IS_NULL (&ep) && ep.need_clear)
+		      {
+			pr_clear_value (&ep);
+		      }
+		  }
+	      }
+	  }
 
-      out->key = key;
-      out->clear_key = clear_key;
-      out->oids = std::move (leaf_oids);
-      out->ovfl = leaf_rec_info.ovfl;
-      out->next_slot = *slot;
-      return slot_result::QUALIFIED;
-    }
+	if (isidp->key_pred.pr_eval_fnc != nullptr && isidp->key_pred.pred_expr != nullptr)
+	  {
+	    FILTER_INFO key_filter;
+	    memset (&key_filter, 0, sizeof (key_filter));
+	    key_filter.scan_pred = &isidp->key_pred;
+	    key_filter.scan_attrs = &isidp->key_attrs;
+	    key_filter.val_list = m_scan_id->val_list;
+	    key_filter.val_descr = m_vd;
+	    key_filter.class_oid = &isidp->cls_oid;
+	    key_filter.btree_attr_ids = isidp->bt_attr_ids;
+	    key_filter.num_vstr_ptr = &isidp->num_vstr;
+	    key_filter.vstr_ids = isidp->vstr_ids;
+	    key_filter.btree_num_attrs = isidp->bt_num_attrs;
+	    key_filter.func_idx_col_id = isidp->indx_info->func_idx_col_id;
+
+	    DB_LOGICAL ev_res = eval_key_filter (thread_p, &key, 0, nullptr, &key_filter);
+	    if (ev_res != V_TRUE)
+	      {
+		if (clear_key)
+		  {
+		    pr_clear_value (&key);
+		  }
+		if (ev_res == V_ERROR)
+		  {
+		    return stop (stop_at_error (thread_p, ahead));
+		  }
+		continue;
+	      }
+	  }
+
+	/* qualified_keys (btree.c:25414: only after the key filter passes) is added by the caller with the OIDs */
+
+	/* Gather leaf-resident OIDs only; overflow pulled lazily after leaf-OID buffer drains. */
+	std::vector<OID> leaf_oids;
+	leaf_collect_helper oid_helper;
+	oid_helper.oid_vec = &leaf_oids;
+	oid_helper.snapshot = isidp->scan_cache.mvcc_snapshot;
+
+	bool record_stop = false;
+	int proc_err = btree_record_process_objects (thread_p, m_btid_int, BTREE_LEAF_NODE,
+		       &rec, offset, &record_stop,
+		       collect_oid_callback, &oid_helper);
+	if (proc_err != NO_ERROR)
+	  {
+	    if (clear_key)
+	      {
+		pr_clear_value (&key);
+	      }
+	    return stop (stop_at_error (thread_p, ahead));
+	  }
+
+	out->key = key;
+	out->clear_key = clear_key;
+	out->oids = std::move (leaf_oids);
+	out->ovfl = leaf_rec_info.ovfl;
+	out->next_slot = *slot;
+	return slot_result::QUALIFIED;
+      }
+    return slot_result::LEAF_END;
   }
 
   void
@@ -747,43 +765,25 @@ namespace parallel_index_scan
 
   /* evaluates the next key of m_page ahead of the lookups; false when there is none to queue (end of the leaf, the
    * range's end, an error): the look-ahead ends there (m_ahead_end) and the lookups go on from m_ahead_slot, past the
-   * slots it skipped */
+   * keys it skipped */
   bool
   leaf_slot_walker::evaluate_ahead (THREAD_ENTRY *thread_p)
   {
     int slot = m_ahead.empty () ? m_current_slot : m_ahead_slot;
     int read_keys = 0;
+    ahead_key k;
 
-    while (m_use_desc_index ? (slot >= 1) : (slot <= m_num_keys))
+    if (next_key (thread_p, &slot, true, &k, &read_keys) != slot_result::QUALIFIED)
       {
-	const int at = slot;
-	const int at_range_idx = m_current_range_idx;
-	const int at_read_keys = read_keys;
-	ahead_key k;
-	slot_result r = evaluate_slot (thread_p, &slot, true, &k, &read_keys);
-	if (r == slot_result::SKIPPED)
-	  {
-	    continue;
-	  }
-	if (r != slot_result::QUALIFIED)
-	  {
-	    /* the range's end or an error: check_key_in_range may have moved m_current_range_idx; the lookups read this
-	     * slot again when they reach it, so it raises the error or signals the end then */
-	    m_current_range_idx = at_range_idx;
-	    m_ahead_slot = at;
-	    m_ahead_skipped_keys = at_read_keys;
-	    m_ahead_end = true;
-	    return false;
-	  }
-	k.read_keys = read_keys;
-	m_ahead.push_back (std::move (k));
 	m_ahead_slot = slot;
-	return true;
+	m_ahead_skipped_keys = read_keys;
+	m_ahead_end = true;
+	return false;
       }
+    k.read_keys = read_keys;
+    m_ahead.push_back (std::move (k));
     m_ahead_slot = slot;
-    m_ahead_skipped_keys = read_keys;
-    m_ahead_end = true;
-    return false;
+    return true;
   }
 
   void
@@ -883,15 +883,11 @@ namespace parallel_index_scan
 		m_scan_id->scan_stats.read_keys += m_ahead_skipped_keys;
 		m_ahead_end = false;
 	      }
-	    if (m_use_desc_index ? (m_current_slot < 1) : (m_current_slot > m_num_keys))
+	    slot_result r = next_key (thread_p, &m_current_slot, false, &k, &read_keys);
+	    m_scan_id->scan_stats.read_keys += read_keys;
+	    if (r == slot_result::LEAF_END)
 	      {
 		break;
-	      }
-	    slot_result r = evaluate_slot (thread_p, &m_current_slot, false, &k, &read_keys);
-	    m_scan_id->scan_stats.read_keys += read_keys;
-	    if (r == slot_result::SKIPPED)
-	      {
-		continue;
 	      }
 	    if (r == slot_result::END)
 	      {

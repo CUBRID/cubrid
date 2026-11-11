@@ -126,9 +126,9 @@ namespace parallel_index_scan
       struct ahead_key
       {
 	DB_VALUE key;
-	bool clear_key;
+	bool clear_key = false;
 	std::vector<OID> oids;
-	VPID ovfl;
+	VPID ovfl = VPID_INITIALIZER;
 	int next_slot;                                /* the slot after this key */
 	int read_keys;                                /* keys read since the key before it, itself included */
       };
@@ -136,16 +136,17 @@ namespace parallel_index_scan
       enum class slot_result
       {
 	QUALIFIED,
-	SKIPPED,
+	LEAF_END,                                     /* no key left on m_page */
 	END,                                          /* past this worker's range */
 	ERROR
       };
 
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
 
-      /* reads the key at *slot (and moves *slot on): range, key filter, visible OIDs. Ahead: errors are cleared and the
-       * range's end is not signaled (the slot is read again when the lookups reach it), counters go to the entry */
-      slot_result evaluate_slot (THREAD_ENTRY *thread_p, int *slot, bool ahead, ahead_key *out, int *read_keys);
+      /* reads the keys of m_page from *slot on (range, key filter) until one qualifies, with its visible OIDs; *slot
+       * moves past it and *read_keys counts the keys read. Ahead: an error is cleared and the range's end is not
+       * signaled; *slot, *read_keys and the range stay at that key, which the lookups read again when they reach it */
+      slot_result next_key (THREAD_ENTRY *thread_p, int *slot, bool ahead, ahead_key *out, int *read_keys);
       slot_result stop_at_error (THREAD_ENTRY *thread_p, bool ahead);
       bool evaluate_ahead (THREAD_ENTRY *thread_p);
 
