@@ -33,7 +33,7 @@ extern bool la_gate_get_order_tail (LOG_LSA *commit_lsa);
 extern bool la_gate_bound_dependency (LOG_LSA *dep);
 extern int la_gate_order_push (const LOG_LSA *commit_lsa);
 extern void la_gate_advance_frontier (void);
-extern void la_gate_mark_completed (const LOG_LSA *commit_seq);
+extern void la_gate_mark_completed (const LOG_LSA *commit_lsa);
 extern bool la_gate_is_satisfied (const LOG_LSA *dep);
 
 #endif /* _LOG_APPLIER_GATE_HPP_ */

@@ -114,7 +114,7 @@ la_pending_mark_ready (UINT64 now_ns)
 
   for (node = la_Pending_head; node != NULL; node = node->next)
     {
-      if (node->task.ready_ns == 0 && la_gate_is_satisfied (&node->task.dependency_seq))
+      if (node->task.ready_ns == 0 && la_gate_is_satisfied (&node->task.dependency_lsa))
 	{
 	  node->task.ready_ns = now_ns;
 	}
@@ -140,7 +140,7 @@ la_pending_pop_ready (LA_TASK *task)
 
   for (cur = la_Pending_head; cur != NULL; prev = cur, cur = cur->next)
     {
-      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_seq) == false)
+      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_lsa) == false)
 	{
 	  continue;
 	}

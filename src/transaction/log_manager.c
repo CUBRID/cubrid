@@ -4109,8 +4109,8 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[WSET] SYSOP master commit_order trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
 			 "dropped_keys=%zu overflow=%d reason=%s\n",
-			 tdes->trid, (long long) tdes->wset_dependency_seq.pageid,
-			 (int) tdes->wset_dependency_seq.offset, (long long) sysop_lsa.pageid,
+			 tdes->trid, (long long) tdes->wset_dependency_lsa.pageid,
+			 (int) tdes->wset_dependency_lsa.offset, (long long) sysop_lsa.pageid,
 			 (int) sysop_lsa.offset, sysop_key_count, tdes->wset_overflow ? 1 : 0, sysop_reason);
 	}
     }
@@ -4907,7 +4907,7 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 {
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-  wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_seq);
+  wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_lsa);
   log_append_wset_label_with_lock (thread_p, tdes);
   log_append_sysop_end_internal (thread_p, tdes, sysop_end, data_size, data, true, sysop_end_lsa_out);
   wset_order_advance_barrier (sysop_end_lsa_out, "SYSOP_COMMIT_ORDER");
@@ -5045,7 +5045,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
    * logged. Decided before the lock, a label could miss a commit logged in between, and a later commit could
    * decide its label before a commit-order transaction logged ahead of it raised the history floor: a statement
    * would then not be a barrier on the slave. */
-  wset_order_find_dependency (tdes, &tdes->wset_dependency_seq);
+  wset_order_find_dependency (tdes, &tdes->wset_dependency_lsa);
   log_append_wset_label_with_lock (thread_p, tdes);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
   wset_order_record_commit (tdes, commit_lsa);
@@ -5060,7 +5060,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
  *
  * NOTE: Appended inside prior_lsa_mutex, immediately before the transaction's commit record.
  *       No-op for crash recovery; read by the replication applier to set the apply task's
- *       dependency_seq.
+ *       dependency_lsa.
  */
 static void
 log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
@@ -5076,7 +5076,7 @@ log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     }
 
   wset_label = (LOG_REC_WSET_LABEL *) node->data_header;
-  LSA_COPY (&wset_label->dependency_seq, &tdes->wset_dependency_seq);
+  LSA_COPY (&wset_label->dependency_lsa, &tdes->wset_dependency_lsa);
 
   (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
 }
@@ -5635,8 +5635,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      /* for the replication agent guarantee the order of transaction */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
-	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
-			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_lsa)
+			      || LSA_LE (&tdes->wset_dependency_lsa, &commit_lsa));
 	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else
@@ -6408,8 +6408,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	       * right before the label is written, and the keys are published once the commit LSA is known, so a
 	       * two-phase commit orders on the slave like any other commit. */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
-	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
-			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_lsa)
+			      || LSA_LE (&tdes->wset_dependency_lsa, &commit_lsa));
 	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else

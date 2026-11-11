@@ -548,7 +548,7 @@ static void la_clear_all_repl_lists (void);
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
-static int la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq);
+static int la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_lsa);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
@@ -4651,14 +4651,14 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
  *   return: NO_ERROR, or ER_IO_READ when a log page the record spans cannot be read
  *   pgptr(in): log page holding the label record
  *   lsa(in): LSA of the label record
- *   dependency_seq(out): dependency read from the label; NULL LSA if it cannot be read, which the caller must
+ *   dependency_lsa(out): dependency read from the label; NULL LSA if it cannot be read, which the caller must
  *                        not use: a NULL dependency means the transaction waits for no earlier commit
  *
  * Note:
  *   Reads the data header that follows the record header, as la_retrieve_eot_time() does.
  */
 static int
-la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
+la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_lsa)
 {
   int error = NO_ERROR;
   LOG_REC_WSET_LABEL *wset_label;
@@ -4666,7 +4666,7 @@ la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
   PGLENGTH offset;
   LOG_PAGE *pg;
 
-  LSA_SET_NULL (dependency_seq);
+  LSA_SET_NULL (dependency_lsa);
 
   pageid = lsa->pageid;
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
@@ -4685,7 +4685,7 @@ la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
     }
 
   wset_label = (LOG_REC_WSET_LABEL *) ((char *) pg->area + offset);
-  LSA_COPY (dependency_seq, &wset_label->dependency_seq);
+  LSA_COPY (dependency_lsa, &wset_label->dependency_lsa);
 
   return NO_ERROR;
 }
@@ -7346,7 +7346,7 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	  task.log_record_time = 0;
 	  task.apply = fragment;
 	  task.has_items = true;
-	  (void) la_wset_label_take (lrec->trid, &task.dependency_seq);
+	  (void) la_wset_label_take (lrec->trid, &task.dependency_lsa);
 
 	  /* The outer transaction's final commit must wait for this fragment to commit first. */
 	  LSA_COPY (&sysop_apply->last_sysop_fragment_lsa, final);
@@ -7362,7 +7362,7 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 			     "[WSET] SYSOP slave fragment assemble trid=%d sysop_lsa=%lld|%d "
 			     "dependency=%lld|%d items=%d long=%d\n",
 			     task.tranid, (long long) final->pageid, (int) final->offset,
-			     (long long) task.dependency_seq.pageid, (int) task.dependency_seq.offset,
+			     (long long) task.dependency_lsa.pageid, (int) task.dependency_lsa.offset,
 			     fragment->num_items, (int) fragment->is_long_trans);
 	    }
 
@@ -7442,20 +7442,20 @@ la_coordinator_set_commit_dependency (LA_TASK * task)
   bool has_label;
   LOG_LSA previous_lsa;
 
-  has_label = la_wset_label_take (task->tranid, &task->dependency_seq);
+  has_label = la_wset_label_take (task->tranid, &task->dependency_lsa);
 
   if (task->apply != NULL && !LSA_ISNULL (&task->apply->last_sysop_fragment_lsa))
     {
-      if (LSA_GT (&task->apply->last_sysop_fragment_lsa, &task->dependency_seq))
+      if (LSA_GT (&task->apply->last_sysop_fragment_lsa, &task->dependency_lsa))
 	{
-	  LSA_COPY (&task->dependency_seq, &task->apply->last_sysop_fragment_lsa);
+	  LSA_COPY (&task->dependency_lsa, &task->apply->last_sysop_fragment_lsa);
 	}
     }
 
   if (task->has_items && !has_label && la_gate_get_order_tail (&previous_lsa)
-      && (LSA_ISNULL (&task->dependency_seq) || LSA_GT (&previous_lsa, &task->dependency_seq)))
+      && (LSA_ISNULL (&task->dependency_lsa) || LSA_GT (&previous_lsa, &task->dependency_lsa)))
     {
-      LSA_COPY (&task->dependency_seq, &previous_lsa);
+      LSA_COPY (&task->dependency_lsa, &previous_lsa);
     }
 
   return has_label;
@@ -7524,7 +7524,7 @@ la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PA
 		     "path=%s\n",
 		     lrec->trid, (long long) final->pageid, (int) final->offset,
 		     task.apply == NULL ? 0 : task.apply->num_items, (int) has_label,
-		     (long long) task.dependency_seq.pageid, (int) task.dependency_seq.offset, "parallel");
+		     (long long) task.dependency_lsa.pageid, (int) task.dependency_lsa.offset, "parallel");
     }
 
   error = la_coordinator_submit_task (&task);
@@ -7701,24 +7701,24 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       /* keep the label in the holder; the next LOG_COMMIT or LOG_SYSOP_END of the same trid takes it.
        * A label that cannot be read is read again: the error leaves final_lsa on this record. */
       {
-	LOG_LSA dependency_seq;
+	LOG_LSA dependency_lsa;
 
-	error = la_get_wset_label (pg_ptr, final, &dependency_seq);
+	error = la_get_wset_label (pg_ptr, final, &dependency_lsa);
 	if (error != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to read LOG_DUMMY_WSET_LABEL");
 	    return error;
 	  }
-	la_wset_label_store (lrec->trid, &dependency_seq);
-	LA_DEBUG_LOG (ARG_FILE_LINE, "coordinator ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
-		      (long long) dependency_seq.pageid, (int) dependency_seq.offset,
+	la_wset_label_store (lrec->trid, &dependency_lsa);
+	LA_DEBUG_LOG (ARG_FILE_LINE, "coordinator ws_label trid=%d dependency_lsa=%lld|%d at=%lld|%d\n", lrec->trid,
+		      (long long) dependency_lsa.pageid, (int) dependency_lsa.offset,
 		      (long long) final->pageid, (int) final->offset);
 	if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
 	  {
 	    _er_log_debug (ARG_FILE_LINE,
 			   "[WSET] coordinator label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
 			   lrec->trid, (long long) final->pageid, (int) final->offset,
-			   (long long) dependency_seq.pageid, (int) dependency_seq.offset);
+			   (long long) dependency_lsa.pageid, (int) dependency_lsa.offset);
 	  }
       }
       break;

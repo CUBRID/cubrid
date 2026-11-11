@@ -262,7 +262,7 @@ la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status
 		 "[WSET] coordinator schedule trid=%d commit_lsa=%lld|%d type=%d dependency=%lld|%d "
 		 "status=%d dispatch=%llu\n",
 		 task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset, task->rectype,
-		 (long long) task->dependency_seq.pageid, (int) task->dependency_seq.offset, (int) sched_status,
+		 (long long) task->dependency_lsa.pageid, (int) task->dependency_lsa.offset, (int) sched_status,
 		 (unsigned long long) dispatch_seq);
 }
 
@@ -627,16 +627,16 @@ la_coordinator_submit_task (LA_TASK *task)
 
   la_gate_set_initial_frontier (la_Coordinator_config.restart_lsa);
 
-  LSA_COPY (&label, &task->dependency_seq);
-  if (la_gate_bound_dependency (&task->dependency_seq)
+  LSA_COPY (&label, &task->dependency_lsa);
+  if (la_gate_bound_dependency (&task->dependency_lsa)
       && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] coordinator label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
 		     "dependency=%lld|%d\n",
 		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset,
-		     (long long) label.pageid, (int) label.offset, (long long) task->dependency_seq.pageid,
-		     (int) task->dependency_seq.offset);
+		     (long long) label.pageid, (int) label.offset, (long long) task->dependency_lsa.pageid,
+		     (int) task->dependency_lsa.offset);
     }
 
   error = la_gate_order_push (&task->commit_lsa);
@@ -661,7 +661,7 @@ la_coordinator_submit_task (LA_TASK *task)
       return error;
     }
 
-  dependency_ready = la_gate_is_satisfied (&task->dependency_seq);
+  dependency_ready = la_gate_is_satisfied (&task->dependency_lsa);
   if (dependency_ready)
     {
       task->ready_ns = la_coordinator_clock_ns ();

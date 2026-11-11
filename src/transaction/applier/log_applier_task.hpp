@@ -44,7 +44,7 @@ struct la_task
   LA_APPLY *apply;		/* repl_list pre-mapped by the coordinator so the worker never calls
 				 * la_find_apply_list, avoiding the la_Info.repl_lists realloc / slot-reuse race */
   bool has_items;		/* false for a commit without replicated items; the worker does not trace it */
-  LOG_LSA dependency_seq;	/* dependency ordering key in the master's commit_seq space, decoded from the
+  LOG_LSA dependency_lsa;	/* dependency commit LSA from the master, decoded from the
 				 * LOG_DUMMY_WSET_LABEL right before the commit; the gate waits for the transaction
 				 * at this LSA to finish. null = no dependency */
 

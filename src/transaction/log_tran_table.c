@@ -1624,7 +1624,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->wset_overflow = false;
   tdes->wset_fallback_reason = 0;
   tdes->wset_hashes.clear ();
-  LSA_SET_NULL (&tdes->wset_dependency_seq);
+  LSA_SET_NULL (&tdes->wset_dependency_lsa);
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
   if (tdes->ddl_sql_user_text != NULL)
@@ -1709,7 +1709,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->wset_overflow = false;
   tdes->wset_fallback_reason = 0;
   tdes->wset_hashes.clear ();
-  LSA_SET_NULL (&tdes->wset_dependency_seq);
+  LSA_SET_NULL (&tdes->wset_dependency_lsa);
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
   tdes->last_query_deadline = 0;
@@ -6713,7 +6713,7 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, wset_hashes);
   REPLACE_COPY_2_DEST (dest, wset_overflow);
   REPLACE_COPY_2_DEST (dest, wset_fallback_reason);
-  REPLACE_COPY_2_DEST (dest, wset_dependency_seq);
+  REPLACE_COPY_2_DEST (dest, wset_dependency_lsa);
   REPLACE_COPY_2_DEST (dest, first_save_entry);
   REPLACE_COPY_2_DEST (dest, suppress_replication);
   REPLACE_COPY_2_DEST (dest, lob_locator_root);

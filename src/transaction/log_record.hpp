@@ -261,7 +261,7 @@ struct log_rec_ha_server_state
 typedef struct log_rec_wset_label LOG_REC_WSET_LABEL;
 struct log_rec_wset_label
 {
-  LOG_LSA dependency_seq;	/* dependency LSA selected from the writeset history at commit time */
+  LOG_LSA dependency_lsa;	/* dependency LSA selected from the writeset history at commit time */
 };
 
 /* Information of database external redo log records */

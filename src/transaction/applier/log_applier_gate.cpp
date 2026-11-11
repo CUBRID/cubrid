@@ -179,7 +179,7 @@ la_gate_get_order_tail (LOG_LSA *commit_lsa)
 /*
  * la_gate_bound_dependency() - lower a label that lies above the latest commit read to that commit
  *   return: true if the label was lowered
- *   dep(in/out): the transaction's dependency_seq, the master's label
+ *   dep(in/out): the transaction's dependency_lsa, the master's label
  *
  * Note:
  *   Called for a transaction before its own commit is pushed on the commit-order ring.
@@ -281,19 +281,19 @@ la_gate_advance_frontier (void)
 
 /*
  * la_gate_mark_completed() - record that a commit on the commit-order ring is applied
- *   commit_seq(in): commit LSA of the applied transaction
+ *   commit_lsa(in): commit LSA of the applied transaction
  *
  * Note:
  *   A commit that is not on the ring (already behind the frontier) needs nothing and is ignored.
  */
 void
-la_gate_mark_completed (const LOG_LSA *commit_seq)
+la_gate_mark_completed (const LOG_LSA *commit_lsa)
 {
   LA_GATE_ORDER *entry;
 
-  assert (commit_seq != NULL && !LSA_ISNULL (commit_seq));
+  assert (commit_lsa != NULL && !LSA_ISNULL (commit_lsa));
 
-  entry = la_gate_order_find (commit_seq);
+  entry = la_gate_order_find (commit_lsa);
   if (entry != NULL)
     {
       entry->completed = true;
@@ -303,7 +303,7 @@ la_gate_mark_completed (const LOG_LSA *commit_seq)
 /*
  * la_gate_is_satisfied() - decide whether a transaction may be dispatched now
  *   return: true if everything the label stands for is applied, false if it must be parked in the pending list
- *   dep(in): the transaction's dependency_seq, the master's label
+ *   dep(in): the transaction's dependency_lsa, the master's label
  *
  * Note:
  *   Passes only when dep is NULL (nothing earlier conflicts) or dep <= frontier (every commit up to

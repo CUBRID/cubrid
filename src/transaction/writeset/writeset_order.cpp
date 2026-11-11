@@ -67,10 +67,10 @@ wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *depe
 	}
 
       WSET_TRACE (3,
-		  "PROBE trid=%d kind=%s hash=%016llx write_seq=%lld|%d ref_seq=%lld|%d candidate=%lld|%d source=%s\n",
+		  "PROBE trid=%d kind=%s hash=%016llx write_lsa=%lld|%d ref_lsa=%lld|%d candidate=%lld|%d source=%s\n",
 		  tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash,
-		  (long long) slots.write_seq.pageid, (int) slots.write_seq.offset,
-		  (long long) slots.ref_seq.pageid, (int) slots.ref_seq.offset,
+		  (long long) slots.write_lsa.pageid, (int) slots.write_lsa.offset,
+		  (long long) slots.ref_lsa.pageid, (int) slots.ref_lsa.offset,
 		  (long long) candidate.pageid, (int) candidate.offset,
 		  candidate_is_ref ? "REF_SLOT" : "WRITE_SLOT");
 
@@ -160,7 +160,7 @@ wset_order_publish_commit_keys (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
   WSET_TRACE (1,
 	      "COMMIT trid=%d commit_lsa=%lld|%d dependency=%lld|%d entries=%zu fallback=%d\n",
 	      tdes->trid, (long long) commit_lsa->pageid, (int) commit_lsa->offset,
-	      (long long) tdes->wset_dependency_seq.pageid, (int) tdes->wset_dependency_seq.offset,
+	      (long long) tdes->wset_dependency_lsa.pageid, (int) tdes->wset_dependency_lsa.offset,
 	      tdes->wset_hashes.size (), tdes->wset_overflow ? 1 : 0);
 
   wset_stat_count_commit (tdes->wset_overflow, (WSET_FALLBACK_REASON) tdes->wset_fallback_reason);
