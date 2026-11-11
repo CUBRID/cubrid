@@ -120,18 +120,14 @@ extern "C"
  * is not finished and its auto-commit is owed to END. A driver that commits
  * from its own side reads this and holds that commit back; the CAS pays it.
  *
- * Only a PROTOCOL_V13 client may read it: every bit above the three older
- * masks reads as 1 from any earlier server, which fills this byte with
- * CAS_INFO_RESERVED_DEFAULT. */
+ * Only a PROTOCOL_V13 client may read it: an earlier server leaves every bit
+ * above the three older masks at 1. */
 #define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
-/* Bits no server sets yet. Every reply has them at 0 (CAS_INFO_ADDITIONAL_FLAG_DEFAULT), so a bit a later release
- * defines reads 0 from this one. */
+/* Bits no server sets yet, 0 in every reply, so a bit a later release defines reads 0 from this one. */
 #define CAS_INFO_FLAG_MASK_RESERVED             0xF0
 
-/* The flags byte of the stream requests and replies. INIT, READ_OPEN and READ
- * always carry it: the auto-commit mode the driver keeps on its own side reaches
- * the CAS only this way. On SEND_DATA it is optional. A request with a bit not
- * listed for it is refused with CAS_ER_ARGS. */
+/* The flags byte of the stream requests and replies, required on INIT, READ_OPEN and READ: only it carries the
+ * auto-commit mode the driver keeps on its own side. A bit not listed for a request is refused with CAS_ER_ARGS. */
 #define CAS_STREAM_FLAG_FINAL			0x01	/* INIT, SEND_DATA: end the stream with this chunk */
 #define CAS_STREAM_FLAG_RELEASE_AT_EOF		0x01	/* READ_OPEN, READ: release the handle at eof */
 #define CAS_STREAM_FLAG_AUTO_COMMIT		0x02	/* INIT, READ_OPEN, READ: the connection runs in auto-commit */
@@ -140,9 +136,7 @@ extern "C"
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
-/* What the flags byte of every reply starts as, the connection's first reply included: the three older masks at 1,
- * as every earlier server leaves them, and STREAM_OPEN and the reserved bits at 0, so that they read 1 only where
- * a reply sets them. */
+/* The flags byte every reply starts from: the three older masks at 1, as every earlier server left them, the rest 0 */
 #define CAS_INFO_ADDITIONAL_FLAG_DEFAULT \
   ((char) (CAS_INFO_RESERVED_DEFAULT & ~(CAS_INFO_FLAG_MASK_STREAM_OPEN | CAS_INFO_FLAG_MASK_RESERVED)))
 

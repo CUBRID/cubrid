@@ -13627,8 +13627,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       goto send_reply;
     }
 
-  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back, and a
-   * commit or rollback the client sends behind this request must find the open in progress */
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
   error_code = session_reserve_stream_slot (thread_p, &held);
   if (error_code != NO_ERROR)
     {
@@ -14021,8 +14020,7 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
  *   reply format: error_code (int)
  *
  * A handle the session no longer has is released already -- a purge may have
- * run first -- so that is not an error. One of another transaction is left as
- * it is, without an error either.
+ * run first -- so that is not an error, nor is one of another transaction.
  */
 void
 sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)

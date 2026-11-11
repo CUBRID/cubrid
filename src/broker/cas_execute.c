@@ -11149,12 +11149,7 @@ ux_stream_note_status_before (int con_status)
   stream_Status_before_request = con_status;
 }
 
-/*
- * ux_stream_refused_before_server () - The request was refused before it reached the server
- *
- * It did nothing in the transaction, so the connection goes back to the status it had before it. Marked in a
- * transaction, an auto-commit connection would keep this CAS bound to its client with nothing left to end it.
- */
+/* A request refused before it reached the server did nothing in the transaction: the connection keeps its status. */
 void
 ux_stream_refused_before_server (void)
 {
@@ -11506,7 +11501,7 @@ ux_stream_driver_read_flags (int reply_flags)
 
 /*
  * ux_stream_read_open () - Open a download the driver asked for
- *   first_max(in): the bytes of the first piece, which goes back with the handle; 0 opens only
+ *   first_max(in): the bytes of the first piece; 0 opens only
  *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
  */
 int
@@ -11588,8 +11583,7 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, int first_ma
  * ux_stream_read () - Read the next piece of a download
  *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
  *
- * A handle the CAS does not hold is gone from the server too (ux_stream_release): the transaction that ended it
- * released it, or a read at eof did. It is answered here, so that the request leaves the connection as it found it.
+ * A handle the CAS does not hold is gone from the server too, as ux_stream_release () assumes.
  */
 int
 ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info)

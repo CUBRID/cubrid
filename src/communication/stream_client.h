@@ -39,8 +39,7 @@ struct stream_kind_client_desc
   stream_authorize_fn authorize;	/* required when driver_openable, and for every download kind */
 };
 
-/* Refused, leaving the kind unregistered, when driver_openable comes without authorize; refused, keeping the first
- * record, for a kind registered already. */
+/* Refused when driver_openable comes without authorize, or when the kind is registered already. */
 extern int stream_kind_client_register (int kind, const stream_kind_client_desc & desc);
 
 /* May a driver open this kind? Checked by the CAS before it forwards INIT or READ_OPEN. */

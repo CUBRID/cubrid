@@ -131,12 +131,9 @@ namespace
 /*
  * stream_kind_register () - Register the server half of one kind
  *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together or a kind registered
- *           already
+ *           already: consumers pick their own numbers, so two can collide
  *   kind(in): the STREAM_KIND_* value the consumer owns
  *   desc(in): its direction, factory and answers
- *
- * Each consumer picks its own number, so two of them can pick the same one; the second is told rather than taking
- * the first one's kind over in whatever order the load-time initializers ran.
  */
 int
 stream_kind_register (int kind, const stream_kind_desc &desc)

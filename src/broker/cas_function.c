@@ -2499,7 +2499,6 @@ stream_args_fit (int argc, void **argv, const int *widths)
   return true;
 }
 
-/* a request refused here never reached the server, so the connection keeps the status it had before it */
 static FN_RETURN
 stream_refuse_args (T_NET_BUF * net_buf)
 {
@@ -2571,9 +2570,7 @@ fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   return FN_KEEP_CONN;
 }
 
-/* INIT: kind, config, flags, data. The data is the first chunk, possibly empty; with CAS_STREAM_FLAG_FINAL it is the
- * whole value, and the reply is END's. The flags are not optional: the driver keeps its auto-commit mode on its own
- * side (as_info's is set only through SET_DB_PARAMETER, which no driver sends for it), so only the request says it. */
+/* INIT: kind, config, flags, data. With CAS_STREAM_FLAG_FINAL the data is the whole value, and the reply is END's. */
 FN_RETURN
 fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2618,8 +2615,7 @@ fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   return FN_KEEP_CONN;
 }
 
-/* READ_OPEN: kind, config, first_max, flags. The first piece, up to first_max bytes (0 opens only), comes back with
- * the handle. The flags carry the auto-commit mode, as INIT's do. */
+/* READ_OPEN: kind, config, first_max, flags. The first piece comes back with the handle; first_max 0 opens only. */
 FN_RETURN
 fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {

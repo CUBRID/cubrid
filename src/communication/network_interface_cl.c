@@ -12455,16 +12455,13 @@ stream_from_reset (void)
 }
 
 /*
- * stream_from_final () - Free the list of downloads this client kept
- *
- * The list is per thread: a sub-client of MULTI_CONN_TO_A_SERVER frees it when its thread finishes the client.
+ * stream_from_final () - Free this thread's download list, as a MULTI_CONN_TO_A_SERVER sub-client finishes
  */
 void
 stream_from_final (void)
 {
 #if defined(CS_MODE)
-  free (stream_Downloads);
-  stream_Downloads = NULL;
+  free_and_init (stream_Downloads);
   stream_Download_count = 0;
   stream_Download_capacity = 0;
   stream_Is_open = false;
