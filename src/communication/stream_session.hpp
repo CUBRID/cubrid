@@ -122,7 +122,10 @@ class stream_session
  * is not the transport's; a reader that starts at an offset carries it in its
  * config. The core opens it under its transaction's snapshot, so vacuum keeps
  * what was visible at the open until the transaction ends; a value already
- * deleted by then can still vanish mid-read, and the source reports that. */
+ * deleted by then can still vanish mid-read, and the source reports that.
+ * The end of the transaction waits for a read in progress, except when the
+ * transaction is being aborted under it (a deadlock victim, a killtran): then
+ * that read, and the close at its end, can run after the transaction is gone. */
 class stream_source : public stream_handle_object
 {
   public:

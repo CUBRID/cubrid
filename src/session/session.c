@@ -166,7 +166,6 @@ struct session_state
 };
 
 /* session state manipulation functions */
-static void session_stream_cond_init (pthread_cond_t * cond);
 static void *session_state_alloc (void);
 static int session_state_free (void *st);
 static int session_state_init (void *st);
@@ -265,7 +264,7 @@ session_state::session_state ()
 {
   pthread_mutex_init (&mutex, NULL);
   pthread_mutex_init (&stream_mutex, NULL);
-  session_stream_cond_init (&stream_cond);
+  pthread_cond_init (&stream_cond, NULL);
   stream_handles_p = new stream_handle_table ();
 }
 
@@ -293,7 +292,7 @@ session_state_alloc (void)
       pthread_mutex_init (&state->mutex, NULL);
       /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
       pthread_mutex_init (&state->stream_mutex, NULL);
-      session_stream_cond_init (&state->stream_cond);
+      pthread_cond_init (&state->stream_cond, NULL);
       /* NULL on failure, as the malloc above: the server's operator new does not throw (memory_wrapper.hpp) */
       state->stream_handles_p = new stream_handle_table ();
       if (state->stream_handles_p == NULL)
@@ -3442,17 +3441,6 @@ session_stream_tran_ending (THREAD_ENTRY * thread_p, int tran_index)
   return logtb_is_interrupted_tran (thread_p, false, &continue_checking, tran_index);
 }
 
-/* the slot's condition variable waits on the monotonic clock, so a step of the wall clock cannot stretch a slice */
-static void
-session_stream_cond_init (pthread_cond_t * cond)
-{
-  pthread_condattr_t attr;
-
-  pthread_condattr_init (&attr);
-  pthread_condattr_setclock (&attr, CLOCK_MONOTONIC);
-  pthread_cond_init (cond, &attr);
-  pthread_condattr_destroy (&attr);
-}
 
 /*
  * session_take_stream_session () - Empty the slot if client_id owns it
@@ -3476,6 +3464,7 @@ session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_in
   while (state_p->stream_user != NULL && state_p->stream_user != taker
 	 && session_stream_slot_matches (state_p, client_id, tran_index))
     {
+      struct timeval now, deadline;
       struct timespec until;
 
       if (session_stream_tran_ending (taker, state_p->stream_session_tran_index))
@@ -3484,13 +3473,10 @@ session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_in
 	  return NULL;
 	}
 
-      clock_gettime (CLOCK_MONOTONIC, &until);
-      until.tv_nsec += SESSION_STREAM_WAIT_SLICE_MSEC * 1000 * 1000;
-      if (until.tv_nsec >= 1000 * 1000 * 1000)
-	{
-	  until.tv_sec++;
-	  until.tv_nsec -= 1000 * 1000 * 1000;
-	}
+      /* as the group commit's wait (logpb_flush_pages): the porting layer of Windows takes the deadline this way */
+      gettimeofday (&now, NULL);
+      (void) timeval_add_msec (&deadline, &now, SESSION_STREAM_WAIT_SLICE_MSEC);
+      (void) timeval_to_timespec (&until, &deadline);
       (void) pthread_cond_timedwait (&state_p->stream_cond, &state_p->stream_mutex, &until);
     }
   if (session_stream_slot_matches (state_p, client_id, tran_index))
