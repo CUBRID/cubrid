@@ -587,11 +587,13 @@ set(XASL_HEADERS
 set(HISTOGRAM_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
 )
 set(HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp
@@ -603,8 +605,10 @@ set(HISTOGRAM_HEADERS
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
   ${FLEX_loader_lexer_OUTPUTS}
+  ${LOADDB_DIR}/load_class_registry.cpp
   ${LOADDB_DIR}/load_common.cpp
   ${LOADDB_DIR}/load_db.c
+  ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
   ${LOADDB_DIR}/load_object.c
@@ -615,7 +619,9 @@ set(LOADDB_SOURCES
 
 set(LOADDB_HEADERS
   ${BISON_loader_grammar_OUTPUT_HEADER}
+  ${LOADDB_DIR}/load_class_registry.hpp
   ${LOADDB_DIR}/load_common.hpp
+  ${LOADDB_DIR}/load_db_value_converter.hpp
   ${LOADDB_DIR}/load_driver.hpp
   ${LOADDB_DIR}/load_error_handler.hpp
   ${LOADDB_DIR}/load_object.h

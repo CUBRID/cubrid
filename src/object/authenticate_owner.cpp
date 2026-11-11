@@ -35,6 +35,8 @@
 #include "object_primitive.h" /* pr_clear_value */
 #include "authenticate_access_auth.hpp" /* au_object_revoke_all_privileges */
 
+#define UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER "cHANGEtRIGGERoWNER"
+
 int
 au_check_owner (DB_VALUE *creator_val)
 {
@@ -308,10 +310,12 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   SM_CLASS *target_class = NULL;
 #endif
   DB_VALUE value;
-  const char *trigger_old_name = NULL;
+  char trigger_old_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  bool has_savepoint = false;
+  bool renamed = false;
   int save = 0;
   int error = NO_ERROR;
 
@@ -341,11 +345,14 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       goto end;
     }
 
-  if (!DB_IS_STRING (&value) || (trigger_old_name = db_get_string (&value)) == NULL)
+  if (!DB_IS_STRING (&value) || db_get_string (&value) == NULL)
     {
+      pr_clear_value (&value);
       ERROR_SET_WARNING_1ARG (error, ER_TR_TRIGGER_NOT_FOUND, "");
       goto end;
     }
+  strncpy (trigger_old_name, db_get_string (&value), sizeof (trigger_old_name) - 1);
+  pr_clear_value (&value);
 
   /* Check if the owner to be changed is the same. */
   error = obj_get (trigger_mop, TR_ATT_OWNER, &value);
@@ -396,12 +403,22 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   snprintf (trigger_new_name, SM_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
 	    sm_remove_qualifier_name (trigger_old_name));
 
+  /* the name, the owner and the internal procedure of a PL/CSQL block action change together or not at all */
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+  has_savepoint = true;
+
   error = tr_rename_trigger (trigger_mop, trigger_new_name, false, true);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto end;
     }
+  renamed = true;
 
   /* owner */
   db_make_object (&value, owner_mop);
@@ -409,12 +426,28 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      goto end;
+    }
 
-      /* abort on error */
-      if (tr_rename_trigger (trigger_mop, trigger_old_name, false, true) != NO_ERROR)
+  /* the internal procedure of a PL/CSQL block action belongs to the trigger owner */
+  error = tr_change_block_procedure_owner (trigger_mop, owner_mop);
+  if (error == ER_SP_COMPILE_ERROR)
+    {
+      /* report it as a compile error of the action, as when the trigger is created */
+      char *compile_msg = strdup (er_msg ());
+      if (compile_msg == NULL)
 	{
-	  assert (false);
+	  ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, strlen (er_msg ()) + 1);
+	  goto end;
 	}
+      error = ER_TR_ACTION_COMPILE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_old_name, compile_msg);
+      free_and_init (compile_msg);
+      goto end;
+    }
+  else if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
       goto end;
     }
 
@@ -430,6 +463,17 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 
 end:
   AU_RESTORE (save);
+
+  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TRIGGER_OWNER);
+    }
+
+  if (renamed && error != NO_ERROR)
+    {
+      /* the savepoint rolls back the trigger object, but not the name in the trigger cache */
+      tr_reset_renamed_trigger_cache (trigger_mop, trigger_old_name);
+    }
 
   return error;
 }
@@ -702,6 +746,7 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
   unique_name[0] = '\0';
   PARSER_CONTEXT *dummy_parser = NULL;
   MOP owner = NULL;
+  DB_VALUE generated_val;
 
   assert (sp_mop != NULL && new_owner_mop != NULL);
 
@@ -709,6 +754,21 @@ au_change_sp_owner_with_transfer_privileges (PARSER_CONTEXT *parser, MOP sp_mop,
     {
       error = ER_AU_DBA_ONLY;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "change_sp_owner");
+      goto end;
+    }
+
+  /*
+   * A system generated procedure belongs to the object that made it, such as the trigger of a PL/CSQL block action.
+   * Moving it alone would leave that object calling a name that no longer exists.
+   */
+  error = db_get (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  if (db_get_int (&generated_val) == 1)
+    {
+      ERROR_SET_ERROR (error, ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED);
       goto end;
     }
 
