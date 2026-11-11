@@ -295,7 +295,7 @@ extern int tr_drop_trigger (DB_OBJECT * obj, bool call_from_api);
 extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush);
 extern void tr_reset_renamed_trigger_cache (DB_OBJECT * trigger_object, const char *name);
 extern int tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner);
-extern int tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size);
+extern int tr_make_block_procedure_call (const char *sp_name, const char *arguments, char **call);
 
 extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);

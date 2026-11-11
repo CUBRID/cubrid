@@ -7293,7 +7293,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   DB_VALUE uuid;
   char *quoted_name;
   char *create_sql;
-  char call_buf[DB_MAX_IDENTIFIER_LENGTH + 16] = { '\0' };
+  char *call_buf = NULL;
   char *call;
   char *compile_msg;
   int i;
@@ -7371,12 +7371,13 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
     }
 
   /* the call is made first, so nothing in this function fails after the procedure is made */
-  error = tr_make_block_procedure_call (sp_name, call_buf, sizeof (call_buf));
+  error = tr_make_block_procedure_call (sp_name, NULL, &call_buf);
   if (error != NO_ERROR)
     {
       return error;
     }
   call = pt_append_string (parser, NULL, call_buf);
+  free_and_init (call_buf);
   if (call == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

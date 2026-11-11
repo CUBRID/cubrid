@@ -208,6 +208,7 @@ static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
 static int reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved);
 static bool trigger_activity_in_use (TR_TRIGGER * trigger);
+static bool block_call_has_arguments (TR_TRIGGER * trigger);
 static int follow_reloaded_block_trigger (TR_TRIGGER * trigger, TR_ACTIVITY ** act, bool * skip);
 
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
@@ -1914,25 +1915,34 @@ trigger_activity_in_use (TR_TRIGGER * trigger)
 }
 
 /*
- * tr_make_block_procedure_call() - Makes the action that calls the internal procedure of a PL/CSQL block action.
+ * tr_make_block_procedure_call() - Makes the action that calls the internal procedure of
+ *                                  a PL/CSQL block action.
  *    return: error code
  *    sp_name(in): procedure name qualified with its owner
- *    buf(out): buffer for the action
- *    buf_size(in): size of the buffer
+ *    arguments(in): arguments of the call without the parentheses, or NULL when there is none
+ *    call(out): the action, to be freed with free_and_init
  *
  * Note:
  *    The trigger is made and its owner is changed with the same text.
- *    The text is in lowercase as the parser prints it, so changing the owner stores the same text as creating.
+ *    The text is in lowercase as the parser prints it.
+ *    So changing the owner stores the same text as creating.
  *    The owner name is quoted, as it may be a reserved word.
+ *    The arguments are written as they are given. The caller gives them as the parser prints them.
  */
 int
-tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
+tr_make_block_procedure_call (const char *sp_name, const char *arguments, char **call)
 {
   const char *name;
+  char *buf;
   int owner_len;
-  int len;
+  size_t size;
 
-  /* an empty name gives NULL, and a name without an owner gives the name itself or follows an empty owner */
+  *call = NULL;
+
+  /*
+   * An empty name gives NULL.
+   * A name without an owner gives the name itself, or follows an empty owner.
+   */
   name = sm_remove_qualifier_name (sp_name);
   if (name == NULL || name <= sp_name + 1)
     {
@@ -1941,14 +1951,49 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
     }
   owner_len = (int) (name - sp_name) - 1;
 
-  len = snprintf (buf, buf_size, "call [%.*s].[%s]()", owner_len, sp_name, name);
-  if (len < 0 || len >= buf_size)
+  if (arguments == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_INTERNAL_ERROR, 1, sp_name);
-      return ER_TR_INTERNAL_ERROR;
+      arguments = "";
     }
 
+  /* the dot between the owner and the name is not written */
+  size = strlen ("call [].[]()") + strlen (sp_name) - 1 + strlen (arguments) + 1;
+  buf = (char *) malloc (size);
+  if (buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  snprintf (buf, size, "call [%.*s].[%s](%s)", owner_len, sp_name, name, arguments);
+
+  *call = buf;
+
   return NO_ERROR;
+}
+
+/*
+ * block_call_has_arguments() - Checks whether the call of a PL/CSQL block action passes arguments.
+ *    return: true if the action of the trigger is such a call with arguments
+ *    trigger(in): trigger structure
+ */
+static bool
+block_call_has_arguments (TR_TRIGGER * trigger)
+{
+  const char *source;
+  size_t source_len;
+  size_t prefix_len;
+
+  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger->action->source == NULL)
+    {
+      return false;
+    }
+
+  /* the arguments follow the name of the procedure, as tr_make_block_procedure_call writes it */
+  source = trigger->action->source;
+  source_len = strlen (source);
+  prefix_len = strlen ("call [].[](") + strlen (trigger->block_sp_name) - 1;
+
+  return source_len > prefix_len && source[prefix_len] != ')';
 }
 
 /*
@@ -4726,11 +4771,38 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  error = free_stale_statement (act);
 	  if (error == NO_ERROR && act->parser == NULL)
 	    {
+	      /*
+	       * A call with arguments to a procedure that has moved does not fail.
+	       * It compiles as a method call on its first argument.
+	       * So the procedure of such a call is looked up before the call is compiled.
+	       */
+	      if (!reloaded && block_call_has_arguments (trigger))
+		{
+		  bool moved = false;
+
+		  error = reload_moved_block_trigger (trigger, &moved);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+		  if (moved)
+		    {
+		      reloaded = true;
+
+		      error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
+		      if (error != NO_ERROR || skip_reloaded)
+			{
+			  break;
+			}
+		    }
+		}
+
 	      error = compile_trigger_activity (trigger, act, 0);
 	      used_cached_statement = false;
 
 	      /*
-	       * A call to a procedure that has moved compiles and fails when it runs, which is handled below.
+	       * A call without arguments to a procedure that has moved compiles.
+	       * It fails when it runs, which is handled below.
 	       * The trigger is read again here as well in case the compiling fails.
 	       */
 	      if (error != NO_ERROR && !reloaded)
@@ -6819,18 +6891,24 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   PARSER_CONTEXT *parser = NULL;
   MOP sp_mop;
   DB_VALUE old_sp_value;
+  DB_VALUE old_action_value;
   DB_VALUE value;
   const char *old_sp_name;
+  const char *old_action;
+  char *old_call = NULL;
+  char *arguments = NULL;
+  size_t prefix_len;
+  size_t old_action_len;
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char new_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *new_block_sp_name;
-  char new_call[DB_MAX_IDENTIFIER_LENGTH + 16] = { '\0' };
   char *new_source = NULL;
   int save;
   int error = NO_ERROR;
 
   db_make_null (&old_sp_value);
+  db_make_null (&old_action_value);
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -6863,15 +6941,40 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   snprintf (new_sp_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
 	    sm_remove_qualifier_name (old_sp_name));
 
-  error = tr_make_block_procedure_call (new_sp_name, new_call, sizeof (new_call));
+  /*
+   * The arguments of the call stay as they are, as the procedure keeps its parameters.
+   * They are the text between the parentheses of the stored call.
+   */
+  error = db_get (trigger_object, TR_ATT_ACTION, &old_action_value);
   if (error != NO_ERROR)
     {
       goto end;
     }
-  new_source = strdup (new_call);
-  if (new_source == NULL)
+  error = tr_make_block_procedure_call (old_sp_name, NULL, &old_call);
+  if (error != NO_ERROR)
     {
-      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, strlen (new_call) + 1);
+      goto end;
+    }
+  old_action = DB_IS_NULL (&old_action_value) ? "" : db_get_string (&old_action_value);
+  old_action_len = strlen (old_action);
+  prefix_len = strlen (old_call) - 1;
+  if (old_action_len <= prefix_len || strncmp (old_action, old_call, prefix_len) != 0
+      || old_action[old_action_len - 1] != ')')
+    {
+      /* the stored action is not the call of the procedure */
+      ERROR_SET_ERROR_1ARG (error, ER_TR_INTERNAL_ERROR, old_sp_name);
+      goto end;
+    }
+  arguments = strndup (old_action + prefix_len, old_action_len - prefix_len - 1);
+  if (arguments == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, old_action_len - prefix_len);
+      goto end;
+    }
+
+  error = tr_make_block_procedure_call (new_sp_name, arguments, &new_source);
+  if (error != NO_ERROR)
+    {
       goto end;
     }
 
@@ -6957,7 +7060,18 @@ end:
       free_and_init (new_source);
     }
 
+  if (arguments != NULL)
+    {
+      free_and_init (arguments);
+    }
+
+  if (old_call != NULL)
+    {
+      free_and_init (old_call);
+    }
+
   pr_clear_value (&old_sp_value);
+  pr_clear_value (&old_action_value);
 
   AU_RESTORE (save);
 
