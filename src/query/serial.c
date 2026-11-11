@@ -1554,7 +1554,19 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+#if defined (SERVER_MODE)
   lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp);
+#else
+  /* Without a lock manager every object reports X_LOCK, which does not mean this transaction created or altered the
+   * serial. The row below is logged redo-only while its new OOS chain is undoable, so only the topop keeps a rollback
+   * from deleting the chain the row names. The shutdown cache flush runs on the system transaction, which cannot
+   * open a topop and is never rolled back. */
+  lock_mode = X_LOCK;
+  if (LOG_FIND_TDES (tran_index)->is_active_worker_transaction ())
+    {
+      lock_mode = NULL_LOCK;
+    }
+#endif
 
   /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
    * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
@@ -1572,7 +1584,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   new_recdesc.set_external_buffer (copyarea);
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
+  scan = heap_attrinfo_transform_to_disk_keep_oos (thread_p, attr_info, recdesc, &new_recdesc);
   if (scan != S_SUCCESS)
     {
       assert (false);
