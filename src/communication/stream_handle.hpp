@@ -51,8 +51,12 @@ class stream_handle_table
     /* Take a download's source over and return the number the client sends
      * back. source is closed on a refusal too, so the caller never keeps it.
      * client_id is the connection that asked (end_client). */
-    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, stream_handle_object *object,
+    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, stream_source *source,
 	       std::int64_t *handle);
+
+    /* Is there room for one more handle of tran_index? Asked before a source is built, so that a refused open
+     * costs no factory; issue () decides. */
+    bool has_room (int tran_index);
 
     /* Pin a handle for one call; put () ends the pin. The pin is exclusive,
      * because a reader is not thread-safe. NULL, with the error set and in
@@ -61,11 +65,12 @@ class stream_handle_table
     stream_source *get_source (std::int64_t handle, int tran_index, int *error_code);
     void put (THREAD_ENTRY *thread_p, std::int64_t handle);
 
-    /* Release one handle, or every handle of a transaction, of a connection or
-     * of the session. A handle that does not resolve is not an error -- a purge
-     * may have run first. A release during a pin is deferred to the last put ()
-     * and never blocks. end_client () is a connection's close. */
-    void release (THREAD_ENTRY *thread_p, std::int64_t handle);
+    /* Release one handle of tran_index, or every handle of a transaction, of a
+     * connection or of the session. A handle that does not resolve for
+     * tran_index is not an error -- a purge may have run first. A release
+     * during a pin is deferred to the last put () and never blocks.
+     * end_client () is a connection's close. */
+    void release (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index);
     void end_tran (THREAD_ENTRY *thread_p, int tran_index);
     void end_client (THREAD_ENTRY *thread_p, int client_id);
     void clear (THREAD_ENTRY *thread_p);
@@ -78,14 +83,14 @@ class stream_handle_table
       bool counted;		/* against the limit; dropped as soon as a release is requested */
       bool release_pending;
       int pins;
-      stream_handle_object *object;
+      stream_source *source;
     };
 
     using entry_map = std::map<std::int64_t, entry>;
 
     void uncount (entry &e);
-    void release_locked (entry_map::iterator it, std::vector<stream_handle_object *> &to_close);
-    static void close_all (THREAD_ENTRY *thread_p, std::vector<stream_handle_object *> &to_close);
+    void release_locked (entry_map::iterator it, std::vector<stream_source *> &to_close);
+    static void close_all (THREAD_ENTRY *thread_p, std::vector<stream_source *> &to_close);
 
     std::mutex m_mutex;
     entry_map m_entries;

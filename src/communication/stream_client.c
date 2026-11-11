@@ -39,6 +39,15 @@ stream_client_kind_table (void)
   return table;
 }
 
+/* which kinds have their client half registered: a record that allows nothing looks the same as no record */
+static bool *
+stream_client_kind_registered (void)
+{
+  static bool registered[STREAM_KIND_MAX] = { };
+
+  return registered;
+}
+
 static int
 stream_client_refuse (const char *what)
 {
@@ -48,19 +57,22 @@ stream_client_refuse (const char *what)
 
 /*
  * stream_kind_client_register () - Register the client half of one kind
- *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together
+ *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together or a kind registered
+ *           already (stream_kind_register ())
  *   kind(in): the STREAM_KIND_* value the consumer owns
  *   desc(in): who may open it
  */
 int
 stream_kind_client_register (int kind, const stream_kind_client_desc & desc)
 {
-  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || (desc.driver_openable && desc.authorize == NULL))
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || stream_client_kind_registered ()[kind]
+      || (desc.driver_openable && desc.authorize == NULL))
     {
       return ER_STREAM_SESSION_ERROR;
     }
 
   stream_client_kind_table ()[kind] = desc;
+  stream_client_kind_registered ()[kind] = true;
 
   return NO_ERROR;
 }

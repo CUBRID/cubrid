@@ -62,11 +62,13 @@ namespace
   }
 
   void
-  close_object (THREAD_ENTRY *thread_p, stream_handle_object *object)
+  close_source (THREAD_ENTRY *thread_p, stream_source *source)
   {
-    object->close (thread_p);
-    delete object;
+    source->close (thread_p);
+    delete source;
   }
+
+  const char *const TOO_MANY_HANDLES = "too many stream handles open in this transaction";
 }
 
 stream_handle_table::stream_handle_table ()
@@ -84,8 +86,8 @@ stream_handle_table::~stream_handle_table ()
 }
 
 int
-stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id,
-			    stream_handle_object *object, std::int64_t *handle)
+stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, stream_source *source,
+			    std::int64_t *handle)
 {
   const stream_kind_desc *desc = stream_kind_find (kind);
   int error_code = NO_ERROR;
@@ -101,7 +103,7 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
       }
     else if (m_tran_counts[tran_index] >= STREAM_HANDLE_MAX_PER_TRAN)
       {
-	error_code = set_handle_error (ER_STREAM_INVALID_USE, "too many stream handles open in this transaction");
+	error_code = set_handle_error (ER_STREAM_INVALID_USE, TOO_MANY_HANDLES);
       }
     else
       {
@@ -120,7 +122,7 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
 	e.counted = true;
 	e.release_pending = false;
 	e.pins = 0;
-	e.object = object;
+	e.source = source;
 
 	m_tran_counts[tran_index]++;
 	m_size++;
@@ -130,8 +132,17 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
       }
   }
 
-  close_object (thread_p, object);
+  close_source (thread_p, source);
   return error_code;
+}
+
+bool
+stream_handle_table::has_room (int tran_index)
+{
+  std::lock_guard<std::mutex> lock (m_mutex);
+  std::map<int, int>::const_iterator count = m_tran_counts.find (tran_index);
+
+  return count == m_tran_counts.end () || count->second < STREAM_HANDLE_MAX_PER_TRAN;
 }
 
 stream_source *
@@ -154,14 +165,13 @@ stream_handle_table::get_source (std::int64_t handle, int tran_index, int *error
     }
 
   it->second.pins++;
-  /* only a download kind is issued a handle, and its object is the source */
-  return static_cast<stream_source *> (it->second.object);
+  return it->second.source;
 }
 
 void
 stream_handle_table::put (THREAD_ENTRY *thread_p, std::int64_t handle)
 {
-  std::vector<stream_handle_object *> to_close;
+  std::vector<stream_source *> to_close;
 
   {
     std::lock_guard<std::mutex> lock (m_mutex);
@@ -184,15 +194,16 @@ stream_handle_table::put (THREAD_ENTRY *thread_p, std::int64_t handle)
 }
 
 void
-stream_handle_table::release (THREAD_ENTRY *thread_p, std::int64_t handle)
+stream_handle_table::release (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index)
 {
-  std::vector<stream_handle_object *> to_close;
+  std::vector<stream_source *> to_close;
 
   {
     std::lock_guard<std::mutex> lock (m_mutex);
     entry_map::iterator it = m_entries.find (handle);
 
-    if (it != m_entries.end ())
+    /* as get_source (): another connection or transaction of the session cannot end a download it did not open */
+    if (it != m_entries.end () && it->second.tran_index == tran_index)
       {
 	release_locked (it, to_close);
       }
@@ -204,7 +215,7 @@ stream_handle_table::release (THREAD_ENTRY *thread_p, std::int64_t handle)
 void
 stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index)
 {
-  std::vector<stream_handle_object *> to_close;
+  std::vector<stream_source *> to_close;
 
   if (m_size.load () == 0)
     {
@@ -232,7 +243,7 @@ stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index)
 void
 stream_handle_table::end_client (THREAD_ENTRY *thread_p, int client_id)
 {
-  std::vector<stream_handle_object *> to_close;
+  std::vector<stream_source *> to_close;
 
   if (m_size.load () == 0)
     {
@@ -261,7 +272,7 @@ stream_handle_table::end_client (THREAD_ENTRY *thread_p, int client_id)
 void
 stream_handle_table::clear (THREAD_ENTRY *thread_p)
 {
-  std::vector<stream_handle_object *> to_close;
+  std::vector<stream_source *> to_close;
 
   {
     std::lock_guard<std::mutex> lock (m_mutex);
@@ -295,9 +306,9 @@ stream_handle_table::uncount (entry &e)
     }
 }
 
-/* the caller holds m_mutex; the object is closed by the caller after it lets the mutex go */
+/* the caller holds m_mutex; the source is closed by the caller after it lets the mutex go */
 void
-stream_handle_table::release_locked (entry_map::iterator it, std::vector<stream_handle_object *> &to_close)
+stream_handle_table::release_locked (entry_map::iterator it, std::vector<stream_source *> &to_close)
 {
   /* off the limits at once, so that a reused tran_index is never charged for it */
   uncount (it->second);
@@ -308,18 +319,18 @@ stream_handle_table::release_locked (entry_map::iterator it, std::vector<stream_
       return;
     }
 
-  to_close.push_back (it->second.object);
+  to_close.push_back (it->second.source);
   m_entries.erase (it);
   m_size--;
 }
 
 /* outside the mutex: a consumer's close may take as long as it needs */
 void
-stream_handle_table::close_all (THREAD_ENTRY *thread_p, std::vector<stream_handle_object *> &to_close)
+stream_handle_table::close_all (THREAD_ENTRY *thread_p, std::vector<stream_source *> &to_close)
 {
-  for (stream_handle_object *object : to_close)
+  for (stream_source *source : to_close)
     {
-      close_object (thread_p, object);
+      close_source (thread_p, source);
     }
 }
 
@@ -385,6 +396,10 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
     {
       return set_handle_error (ER_STREAM_INVALID_USE, "negative read size");
     }
+  if (!table.has_room (tran_index))
+    {
+      return set_handle_error (ER_STREAM_INVALID_USE, TOO_MANY_HANDLES);
+    }
 
   source = stream_source_create (thread_p, kind, config, config_len, &error_code);
   if (source == NULL)
@@ -403,7 +418,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
       error_code = stream_source_read_checked (thread_p, source, buf, stream_read_bound (first_max), nread, &eof);
       if (error_code != NO_ERROR)
 	{
-	  close_object (thread_p, source);
+	  close_source (thread_p, source);
 	  return error_code;
 	}
 
@@ -412,7 +427,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
 	  *reply_flags |= STREAM_FLAG_EOF;
 	  if (flags & STREAM_FLAG_RELEASE_AT_EOF)
 	    {
-	      close_object (thread_p, source);
+	      close_source (thread_p, source);
 	      *reply_flags |= STREAM_FLAG_RELEASED;
 	      return NO_ERROR;
 	    }
@@ -467,7 +482,7 @@ stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::i
   if (error_code != NO_ERROR || (eof && (flags & STREAM_FLAG_RELEASE_AT_EOF)))
     {
       /* deferred to the put below, which closes the source; the client is told on a failure too */
-      table.release (thread_p, handle);
+      table.release (thread_p, handle, tran_index);
       *reply_flags |= STREAM_FLAG_RELEASED;
     }
   table.put (thread_p, handle);

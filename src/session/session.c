@@ -3729,9 +3729,11 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
     }
 
   /* a cancel the CAS left for the stream is answered by this rollback; the abort runs while the transaction is
-   * still active, so it must not see it */
+   * still active, so it must not see it. The error the rollback reports stays its own. */
   (void) logtb_is_interrupted (thread_p, true, &continue_checking);
+  er_stack_push ();
   stream_session_p->abort (thread_p);
+  er_stack_pop ();
 
   delete stream_session_p;
 #endif /* SERVER_MODE */

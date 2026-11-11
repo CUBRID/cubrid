@@ -153,17 +153,6 @@ namespace
     return NULL;
   }
 
-  /* What a handle holds, to the table: something to close once. */
-  class fake_object : public stream_handle_object
-  {
-    public:
-      void close (THREAD_ENTRY *thread_p) override
-      {
-	(void) thread_p;
-	test_Closed++;
-      }
-  };
-
   /* A download of the config bytes themselves. Configs that start with a mark misbehave on purpose:
    * '!' refuses at open, '?' fails its first read, '~' returns nothing without eof. */
   class fake_source : public stream_source
@@ -492,6 +481,10 @@ TEST_CASE_METHOD (registry_fixture, "a record that does not hold together is ref
   CHECK (stream_kind_register (KIND_UNREGISTERED, unversioned) == ER_STREAM_SESSION_ERROR);
 
   CHECK (stream_kind_find (KIND_UNREGISTERED) == NULL);
+
+  /* two consumers that picked the same number: the second is told, and the first keeps its kind */
+  CHECK (stream_kind_register (KIND_A, upload_desc (make_fake<'X'>, false)) == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_kind_find (KIND_A)->ends_unit_of_work == true);
 }
 
 TEST_CASE_METHOD (registry_fixture, "a kind opened in the wrong direction is refused before its factory runs",
@@ -513,9 +506,14 @@ TEST_CASE_METHOD (registry_fixture, "the client half answers who may open a kind
 {
   stream_kind_client_desc unchecked = { true, NULL };
 
+  stream_kind_client_desc closed = { false, NULL };
+
   /* a driver-openable kind has to say who may open it */
   CHECK (stream_kind_client_register (KIND_UNREGISTERED, unchecked) == ER_STREAM_SESSION_ERROR);
   CHECK (stream_kind_client_check_driver_open (KIND_UNREGISTERED) == ER_STREAM_NOT_SUPPORTED);
+
+  /* a kind registered already keeps its first record */
+  CHECK (stream_kind_client_register (KIND_DOWNLOAD, closed) == ER_STREAM_SESSION_ERROR);
 
   CHECK (stream_kind_client_check_driver_open (KIND_DOWNLOAD) == NO_ERROR);
   CHECK (stream_kind_client_check_driver_open (KIND_STAGING) == ER_STREAM_NOT_SUPPORTED);
@@ -552,8 +550,15 @@ TEST_CASE_METHOD (registry_fixture, "a handle resolves only where it was issued"
   CHECK (error_code == ER_STREAM_NOT_OPEN);
   CHECK (test_Last_error == ER_STREAM_NOT_OPEN);
 
+  /* and released only by that transaction: another one's release passes over it, without an error */
+  table.release (NULL, download, TRAN_2);
+  other_session.release (NULL, download, TRAN_1);
+  CHECK (test_Closed == 0);
+  CHECK (table.get_source (download, TRAN_1, &error_code) != NULL);
+  table.put (NULL, download);
+
   /* only a download is issued a handle; what was refused is closed */
-  CHECK (table.issue (NULL, KIND_STAGING, TRAN_1, CLIENT_1, new fake_object (), &refused) == ER_STREAM_NOT_SUPPORTED);
+  CHECK (table.issue (NULL, KIND_STAGING, TRAN_1, CLIENT_1, new fake_source ("v"), &refused) == ER_STREAM_NOT_SUPPORTED);
   CHECK (refused == 0);
   CHECK (test_Closed == 1);
 
@@ -575,7 +580,7 @@ TEST_CASE_METHOD (registry_fixture, "handle numbers are positive and never repea
 	  REQUIRE (t.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
 	  CHECK (h > 0);
 	  CHECK (seen.insert (h).second);
-	  t.release (NULL, h);
+	  t.release (NULL, h, TRAN_1);
 	}
     }
 }
@@ -609,7 +614,7 @@ TEST_CASE_METHOD (registry_fixture, "a release during a pin waits for the put an
   REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
   REQUIRE (table.get_source (download, TRAN_1, &error_code) != NULL);
 
-  table.release (NULL, download);
+  table.release (NULL, download, TRAN_1);
   CHECK (test_Closed == 0);
   CHECK (table.get_source (download, TRAN_1, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_NOT_OPEN);
@@ -618,8 +623,8 @@ TEST_CASE_METHOD (registry_fixture, "a release during a pin waits for the put an
   CHECK (test_Closed == 1);
 
   /* gone, and releasing it again is not an error */
-  table.release (NULL, download);
-  table.release (NULL, 12345);
+  table.release (NULL, download, TRAN_1);
+  table.release (NULL, 12345, TRAN_1);
   CHECK (test_Closed == 1);
 }
 
@@ -714,12 +719,22 @@ TEST_CASE_METHOD (registry_fixture, "the limits refuse an issue and close what w
   CHECK (h == 0);
   CHECK (test_Closed == 1);
 
+  /* an open at the limit is refused before its source is built */
+  {
+    std::vector<char> buf (stream_read_bound (8));
+    int nread = 0, reply_flags = 0;
+
+    CHECK (open_payload (table, KIND_DOWNLOAD, "v", 8, 0, buf.data (), &nread, &reply_flags, &h)
+	   == ER_STREAM_INVALID_USE);
+    CHECK (test_Factory_calls == 0);
+  }
+
   /* per transaction: another one is not charged for it */
   CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
 
   /* a release requested during a pin frees the slot at once */
   REQUIRE (table.get_source (handles[0], TRAN_1, &error_code) != NULL);
-  table.release (NULL, handles[0]);
+  table.release (NULL, handles[0], TRAN_1);
   CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
   table.put (NULL, handles[0]);
 
@@ -752,7 +767,7 @@ TEST_CASE_METHOD (registry_fixture, "a value within one read comes back with the
   CHECK (nread == 0);
   CHECK (reply_flags == STREAM_FLAG_EOF);
 
-  table.release (NULL, handle);
+  table.release (NULL, handle, TRAN_1);
   CHECK (test_Closed == 2);
 }
 
@@ -988,7 +1003,7 @@ TEST_CASE_METHOD (echo_fixture, "the echo download comes through the table byte 
       same = same && (unsigned char) got[i] == (unsigned char) (seed + i);
     }
   CHECK (same);
-  table.release (NULL, handle);
+  table.release (NULL, handle, TRAN_1);
 
   /* bundled, within one read: the open is the whole value and leaves no handle */
   config = echo_config (1, 1000, 200);

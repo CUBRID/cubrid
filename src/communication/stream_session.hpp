@@ -167,7 +167,7 @@ struct stream_kind_desc
 
 /* A consumer registers its own kind once, at load time, before any connection
  * can open it. A record that does not hold together is refused and the kind
- * stays unregistered. */
+ * stays unregistered; a kind registered already is refused and keeps its record. */
 extern int stream_kind_register (int kind, const stream_kind_desc &desc);
 
 /* The record of a registered kind, or NULL for a tag the registry does not hold. */

@@ -14020,7 +14020,8 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
  *   reply format: error_code (int)
  *
  * A handle the session no longer has is released already -- a purge may have
- * run first -- so that is not an error.
+ * run first -- so that is not an error. One of another transaction is left as
+ * it is, without an error either.
  */
 void
 sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
@@ -14045,7 +14046,7 @@ sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 	}
       else
 	{
-	  handles->release (thread_p, handle);
+	  handles->release (thread_p, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	}
     }
 
