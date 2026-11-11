@@ -1768,6 +1768,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
 error:
 
+  if (er_errid () == NO_ERROR)
+    {
+      /* some failures of the build return an error code without setting an error; the caller expects one */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+    }
+
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
       _er_log_debug (ARG_FILE_LINE, "BTREE_DEBUG: load aborted index btid(%d, (%d, %d)).",
@@ -3137,17 +3143,15 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
 
       log_sysop_attach_to_outer (thread_p);
 
-      /* Recheck after attach; an unpublished span remains ledgered for statement rollback accounting. */
+      /* Recheck after attach; an unpublished span remains ledgered for statement rollback accounting.  It is kept
+       * as the ready span without making the slot READY: the worker reads its span lists without the mutex, and
+       * reads the ready span only of a READY slot. */
       pthread_mutex_lock (&provider->mtx);
       bt_load_append_ledger_entry (provider, ledger_entry);
-      if (provider->slots[selected].state != BT_LOAD_SLOT_ALLOCATING || provider->first_error != NO_ERROR)
+      assert (provider->slots[selected].ready_span == NULL);
+      provider->slots[selected].ready_span = published;
+      if (provider->slots[selected].state == BT_LOAD_SLOT_ALLOCATING && provider->first_error == NO_ERROR)
 	{
-	  bt_load_add_span (is_ovf ? &provider->slots[selected].ovf_spans
-			    : &provider->slots[selected].main_spans, published);
-	}
-      else
-	{
-	  provider->slots[selected].ready_span = published;
 	  provider->slots[selected].state = BT_LOAD_SLOT_READY;
 	}
       pthread_cond_signal (&provider->cond_worker[selected]);
