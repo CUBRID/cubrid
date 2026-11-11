@@ -201,8 +201,8 @@ static TR_STATE *make_state (void);
 static void free_state (TR_STATE * state);
 static DB_OBJECT *trigger_to_object (TR_TRIGGER * trigger);
 static int object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger);
-static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **curname,
-				 const char **tempname);
+static bool block_type_is_supported (DB_TYPE type);
+static void block_field_type (TP_DOMAIN * domain, const char *type_name, char *buf, int size);
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
 static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
@@ -1536,26 +1536,52 @@ error:
 /* EXPRESSION COMPILATION */
 
 /*
- * get_reference_names() - This determines which of the various reference names are valid for a particular trigger expression
- *    return: none
- *    trigger(in): trigger of interest
- *    activity(in): action
- *    curname(out): current name (returned)
- *    tempname(out): temp name (returned)
+ * tr_decide_action_time() - Decides the time the action of a trigger runs at.
+ *    return: action time
+ *    cond_time(in): condition time of the statement, or TR_TIME_NULL
+ *    action_time(in): action time of the statement, or TR_TIME_NULL
  *
+ * Note:
+ *    An action without a time runs at the time of the condition.
+ *    It runs after the event when the condition has no time either.
  */
-static void
-get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **curname, const char **tempname)
+DB_TRIGGER_TIME
+tr_decide_action_time (DB_TRIGGER_TIME cond_time, DB_TRIGGER_TIME action_time)
+{
+  if (action_time != TR_TIME_NULL)
+    {
+      return action_time;
+    }
+
+  return (cond_time != TR_TIME_NULL) ? cond_time : TR_TIME_AFTER;
+}
+
+/*
+ * tr_get_reference_names() - Returns the correlation names an action of a trigger can refer to.
+ *    return: none
+ *    event(in): trigger event
+ *    time(in): action time
+ *    curname(out): name of the current instance, or NULL
+ *    tempname(out): name of the new or old instance, or NULL
+ *
+ * Note:
+ *    The names are "obj" and "new" or "old".
+ *    When mysql_trigger_correlation_names is set, they are "new" and "old" as MySQL names them.
+ *    They depend on the event, the action time and that parameter only.
+ *    So a trigger that is being created can ask for them before it exists.
+ */
+void
+tr_get_reference_names (DB_TRIGGER_EVENT event, DB_TRIGGER_TIME time, const char **curname, const char **tempname)
 {
   *curname = NULL;
   *tempname = NULL;
 
   if (!prm_get_bool_value (PRM_ID_MYSQL_TRIGGER_CORRELATION_NAMES))
     {
-      switch (trigger->event)
+      switch (event)
 	{
 	case TR_EVENT_INSERT:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *tempname = NEW_REFERENCE_NAME;
@@ -1570,7 +1596,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_UPDATE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OBJ_REFERENCE_NAME;
@@ -1589,7 +1615,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_DELETE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OBJ_REFERENCE_NAME;
@@ -1608,10 +1634,10 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
     }
   else
     {
-      switch (trigger->event)
+      switch (event)
 	{
 	case TR_EVENT_INSERT:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *tempname = NEW_REFERENCE_NAME;
@@ -1626,7 +1652,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_UPDATE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OLD_REFERENCE_NAME;
@@ -1645,7 +1671,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_DELETE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OLD_REFERENCE_NAME;
@@ -1662,6 +1688,153 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 	}
     }
+}
+
+/*
+ * block_type_is_supported() - Tells whether an attribute of the type can be read through a
+ *                             correlation name of a block action.
+ *    return: true when PL/CSQL can take the type
+ *    type(in): attribute type
+ *
+ * Note:
+ *    The list follows DBTypeAdapter.isSupported () in the PL server.
+ *    NULL and RESULTSET are left out, as no column has them.
+ *    A type that is not in it cannot be a column of the cursor that declares a correlation name.
+ */
+static bool
+block_type_is_supported (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * block_field_type() - Writes the PL/CSQL type that a record field of a block action is declared
+ *                      with for an attribute.
+ *    return: none
+ *    domain(in): domain of the attribute
+ *    type_name(in): type name of pr_type_name () for the type of the domain
+ *    buf(out): the type, with the length of a string or the precision and scale of a numeric
+ *    size(in): size of buf
+ *
+ * Note:
+ *    The record keeps the length and the precision of the column.
+ *    A floating-point NUMERIC has no precision, so its type is the name alone.
+ */
+static void
+block_field_type (TP_DOMAIN * domain, const char *type_name, char *buf, int size)
+{
+  switch (TP_DOMAIN_TYPE (domain))
+    {
+    case DB_TYPE_NUMERIC:
+      if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  snprintf (buf, size, "%s", type_name);
+	}
+      else
+	{
+	  snprintf (buf, size, "%s(%d,%d)", type_name, domain->precision, domain->scale);
+	}
+      break;
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      snprintf (buf, size, "%s(%d)", type_name, domain->precision);
+      break;
+    default:
+      snprintf (buf, size, "%s", type_name);
+      break;
+    }
+}
+
+/*
+ * tr_get_block_action_columns() - Lists the columns of a class that a PL/CSQL block action can read
+ *                                 through a correlation name.
+ *    return: error code
+ *    class_mop(in): class the trigger is defined on
+ *    columns(out): array of the columns, in the definition order, or NULL when there is none
+ *    count(out): number of the columns
+ *
+ * Note:
+ *    The columns are the instance and shared attributes whose type PL/CSQL accepts.
+ *    The names point into the class, so they are to be used before the class can be decached.
+ *    The parameter type names are the ones of pr_type_name ().
+ *    The caller frees the array alone, with free_and_init ().
+ */
+int
+tr_get_block_action_columns (DB_OBJECT * class_mop, TR_BLOCK_COLUMN ** columns, int *count)
+{
+  SM_CLASS *class_;
+  SM_ATTRIBUTE *att;
+  TR_BLOCK_COLUMN *list;
+  const char *type_name;
+  int n;
+  int error;
+
+  assert (columns != NULL && count != NULL);
+
+  *columns = NULL;
+  *count = 0;
+
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  n = 0;
+  for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
+    {
+      if (block_type_is_supported (TP_DOMAIN_TYPE (att->domain)))
+	{
+	  n++;
+	}
+    }
+
+  if (n == 0)
+    {
+      return NO_ERROR;
+    }
+
+  list = (TR_BLOCK_COLUMN *) malloc (sizeof (TR_BLOCK_COLUMN) * n);
+  if (list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TR_BLOCK_COLUMN) * n);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  n = 0;
+  for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
+    {
+      if (block_type_is_supported (TP_DOMAIN_TYPE (att->domain)))
+	{
+	  type_name = pr_type_name (TP_DOMAIN_TYPE (att->domain));
+	  list[n].name = att->header.name;
+	  list[n].type_name = type_name;
+	  block_field_type (att->domain, type_name, list[n].field_type, sizeof (list[n].field_type));
+	  n++;
+	}
+    }
+
+  *columns = list;
+  *count = n;
+
+  return NO_ERROR;
 }
 
 /*
@@ -1722,7 +1895,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 	  return er_errid ();
 	}
 
-      get_reference_names (trigger, activity, &curname, &tempname);
+      tr_get_reference_names (trigger->event, activity->time, &curname, &tempname);
 
       /*
        * The pt_ interface doesn't like the first name to be NULL and the second name to be non-NULL.
@@ -3893,18 +4066,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	    }
 	}
 
-      if (action_time != TR_TIME_NULL)
-	{
-	  trigger->action->time = action_time;
-	}
-      else if (cond_time != TR_TIME_NULL)
-	{
-	  trigger->action->time = cond_time;
-	}
-      else
-	{
-	  trigger->action->time = TR_TIME_AFTER;
-	}
+      trigger->action->time = tr_decide_action_time (cond_time, action_time);
     }
 
   /* make sure everything looks ok */

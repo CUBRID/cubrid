@@ -297,6 +297,24 @@ extern void tr_reset_renamed_trigger_cache (DB_OBJECT * trigger_object, const ch
 extern int tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner);
 extern int tr_make_block_procedure_call (const char *sp_name, const char *arguments, char **call);
 
+/* PL/CSQL block actions */
+
+#define TR_BLOCK_FIELD_TYPE_SIZE 32	/* holds character varying(1073741823) */
+
+typedef struct tr_block_column TR_BLOCK_COLUMN;
+struct tr_block_column
+{
+  const char *name;		/* attribute name, points into the class */
+  const char *type_name;	/* type the attribute is passed as, of pr_type_name () */
+  /* PL/CSQL type of the record field, with the length or the precision */
+  char field_type[TR_BLOCK_FIELD_TYPE_SIZE];
+};
+
+extern DB_TRIGGER_TIME tr_decide_action_time (DB_TRIGGER_TIME cond_time, DB_TRIGGER_TIME action_time);
+extern void tr_get_reference_names (DB_TRIGGER_EVENT event, DB_TRIGGER_TIME time, const char **curname,
+				    const char **tempname);
+extern int tr_get_block_action_columns (DB_OBJECT * class_mop, TR_BLOCK_COLUMN ** columns, int *count);
+
 extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);
 extern int tr_set_comment (DB_OBJECT * trigger_object, const char *comment, bool call_from_api);
