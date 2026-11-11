@@ -10246,8 +10246,6 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-  log_Gl.hdr.eof_lsa.store (LOG_LSA (to_malloc_log_pgptr->hdr.logical_pageid, 0));
-
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
   if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
     {
