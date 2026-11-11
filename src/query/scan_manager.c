@@ -1309,6 +1309,25 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 
   cmp_1 = cmp_2 = cmp_3 = cmp_4 = ROP_NA;
 
+  /* remove empty key ranges (e.g. a NULL bound) first; they match no key, and merging one would swallow the other
+   * range. Keep one if all are empty. */
+  cur_n = 0;
+  while (key_cnt > 1 && cur_n < key_cnt)
+    {
+      curp = key_vals + cur_n;
+      if (curp->range == NA_NA)
+	{
+	  pr_clear_value (&curp->key1);
+	  pr_clear_value (&curp->key2);
+	  memmove (curp, curp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - cur_n - 1));
+	  key_cnt--;
+	}
+      else
+	{
+	  cur_n++;
+	}
+    }
+
   curp = key_vals;
   cur_n = 0;
   while (key_cnt > 1 && cur_n < key_cnt - 1)
@@ -1408,6 +1427,11 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  /* remove merged one(nextp) */
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - next_n - 1));
 	  key_cnt--;
+
+	  /* the merged range may now overlap one skipped as disjoint before it (e.g. k > 7 sorted ahead of
+	   * k between 7 and 59 when k < 7 is the current one); check them again */
+	  nextp = curp + 1;
+	  next_n = cur_n + 1;
 	}
 
       curp++;
@@ -4333,6 +4357,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	      scan_batch_rewind (thread_p, s_id);
 	    }
 	}
+      /* the next pass reads its pages afresh, not from the copy the last pass took */
+      VPID_SET_NULL (&s_id->s.hsid.scan_cache.local_cache_vpid);
       break;
 
 
@@ -7337,6 +7363,12 @@ end:
   /* maintain what is apparently supposed to be an invariant-- S_END implies position is "after" the scan */
   if (result == S_END)
     {
+      /* a fixed heap scan that stopped at its first match still holds its page: release it before the outer scans
+       * of the chain move */
+      if (s_id->type == S_HEAP_SCAN && s_id->s.hsid.scan_cache.page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &s_id->s.hsid.scan_cache.page_watcher);
+	}
       if (s_id->direction != S_BACKWARD)
 	{
 	  s_id->position = S_AFTER;
@@ -8862,7 +8894,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1, NULL);
+					iscan_id->rest_attrs.attr_cache, iscan_id->indx_cov.func_index_col_id, NULL);
   if (error != NO_ERROR)
     {
       return error;

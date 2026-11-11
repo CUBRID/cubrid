@@ -49,6 +49,9 @@ static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NOD
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
+static PT_NODE *qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static const char *qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * col);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
 static bool qo_is_semi_join_on_after (PT_NODE * spec, int location);
@@ -1477,6 +1480,195 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
 }
 
 /*
+ * qo_check_unmatchable_pre () - find a node that keeps an expression from being matched by its printed text
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   arg(out): bool, set to true when such a node is found
+ *   continue_walk(in/out): walk control
+ */
+static PT_NODE *
+qo_check_unmatchable_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+    {
+      *found = true;
+    }
+  /* a money value prints rounded to two decimals, so different amounts can print the same */
+  else if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_MONETARY)
+    {
+      *found = true;
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	case PT_UUID:
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	case PT_LEVEL:
+	case PT_PRIOR:
+	case PT_CONNECT_BY_ROOT:
+	case PT_SYS_CONNECT_BY_PATH:
+	case PT_CONNECT_BY_ISLEAF:
+	case PT_CONNECT_BY_ISCYCLE:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (*found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_print_without_paren () - print a node ignoring the parentheses of its top-level expression
+ *   return: printed string
+ *   parser(in): parser context
+ *   node(in): node to print
+ *
+ * Note: view/derived translation copies a select list expression with paren_type set, which only
+ *   affects printing, so it must not make otherwise equal expressions differ.
+ */
+static const char *
+qo_print_without_paren (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  const char *str;
+  int paren_type;
+
+  if (node->node_type != PT_EXPR)
+    {
+      return parser_print_tree (parser, node);
+    }
+
+  paren_type = node->info.expr.paren_type;
+  node->info.expr.paren_type = 0;
+  str = parser_print_tree (parser, node);
+  node->info.expr.paren_type = paren_type;
+
+  return str;
+}
+
+/*
+ * qo_is_constant_order_expr () - is the ORDER BY expression fixed to a constant by a WHERE term?
+ *   return: true if a top-level WHERE conjunct 'col = const' (or 'col range (const =)') exists
+ *   parser(in): parser context
+ *   where(in): WHERE clause of the query
+ *   col(in): select list node an ORDER BY item refers to
+ *
+ * Note: a plain column is handled by qo_reduce_equality_terms () through PT_NAME_INFO_CONSTANT;
+ *   'expr = const' is left in place there to keep function index usage, so it is matched here.
+ */
+static bool
+qo_is_constant_order_expr (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * col)
+{
+  PT_NODE *term, *arg1, *arg2, *other, *val, *col_next;
+  const char *col_str, *other_str;
+  bool unmatchable = false;
+
+  if (where == NULL || (col->node_type != PT_EXPR && col->node_type != PT_FUNCTION))
+    {
+      return false;
+    }
+
+  col_next = col->next;
+  col->next = NULL;
+  (void) parser_walk_tree (parser, col, qo_check_unmatchable_pre, &unmatchable, NULL, NULL);
+  col->next = col_next;
+  if (unmatchable)
+    {
+      return false;
+    }
+
+  col_str = qo_print_without_paren (parser, col);
+  if (col_str == NULL)
+    {
+      return false;
+    }
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      /* a term with location > 0 is an outer join ON condition and does not filter the rows */
+      if (term->node_type != PT_EXPR || term->or_next != NULL || term->info.expr.location != 0
+	  || PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_ANTI_JOIN_ON))
+	{
+	  continue;
+	}
+
+      arg1 = term->info.expr.arg1;
+      arg2 = term->info.expr.arg2;
+      if (arg1 == NULL || arg2 == NULL)
+	{
+	  continue;
+	}
+
+      if (term->info.expr.op == PT_EQ)
+	{
+	  if (qo_is_reduceable_const (arg2))
+	    {
+	      other = arg1;
+	      val = arg2;
+	    }
+	  else if (qo_is_reduceable_const (arg1))
+	    {
+	      other = arg2;
+	      val = arg1;
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+      else if (term->info.expr.op == PT_RANGE)
+	{
+	  if (arg2->node_type != PT_EXPR || arg2->or_next != NULL || arg2->info.expr.op != PT_BETWEEN_EQ_NA
+	      || !qo_is_reduceable_const (arg2->info.expr.arg1))
+	    {
+	      continue;
+	    }
+	  other = arg1;
+	  val = arg2->info.expr.arg1;
+	}
+      else
+	{
+	  continue;
+	}
+
+      if (!qo_is_exact_compare_const (parser, other, val))
+	{
+	  continue;
+	}
+
+      /* case sensitive and without stripping CAST: a collation cast on the WHERE side must not match */
+      other_str = qo_print_without_paren (parser, other);
+      if (other_str != NULL && strcmp (col_str, other_str) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_reduce_order_by () -
  *   return: NO_ERROR, if successful, otherwise returns error number
  *   parser(in): parser global context info for reentrancy
@@ -1496,6 +1688,8 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
   int const_order_count, order_move_count;
   bool need_merge_check;
   bool has_orderbynum_with_groupby;
+  bool is_const_col;
+  bool with_rollup;
 
   /* do not reduce order by siblings */
   if (node->node_type != PT_SELECT || node->info.query.q.select.connect_by)
@@ -1508,11 +1702,21 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
   need_merge_check = false;
   has_orderbynum_with_groupby = false;
 
-  /* check for merge order by to group by( without DISTINCT and HAVING clause) */
+  with_rollup = node->info.query.q.select.group_by != NULL && node->info.query.q.select.group_by->flag.with_rollup;
+
+  /* check for merge order by to group by( without DISTINCT, HAVING clause and ROLLUP) */
 
   if (node->info.query.all_distinct == PT_DISTINCT)
     {
       ;				/* give up */
+    }
+  else if (with_rollup)
+    {
+      /* give up: groupby_num () numbers the rows in the GROUP BY output order, a subtotal after its groups and the
+       * total last, and its bound is applied before the ORDER BY sorts the rows. Moving the orderby_num () bound of a
+       * LIMIT to groupby_num () would keep rows that are not the first rows of the ORDER BY, so the subtotal rows are
+       * dropped or shuffled. The semantic check rejects GROUPBY_NUM () with ROLLUP, but not the one this rewrite makes. */
+      ;
     }
   else
     {
@@ -1547,8 +1751,7 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	      goto exit_on_error;
 	    }
 
-	  if (node->info.query.orderby_for == NULL && !node->info.query.q.select.connect_by
-	      && !node->info.query.q.select.group_by->flag.with_rollup)
+	  if (node->info.query.orderby_for == NULL && !node->info.query.q.select.connect_by)
 	    {
 	      /* clear unnecessary node info */
 	      parser_free_tree (parser, node->info.query.order_by);
@@ -1591,27 +1794,41 @@ qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
 
       col = pt_get_end_path_node (col);
+      if (with_rollup)
+	{
+	  /* a super-aggregate row of ROLLUP outputs NULL for the grouped expression, so it is not constant */
+	  is_const_col = false;
+	}
+      else if (col->node_type == PT_NAME)
+	{
+	  is_const_col = PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT);
+	}
+      else
+	{
+	  is_const_col = qo_is_constant_order_expr (parser, node->info.query.q.select.where, col);
+	}
+
+      if (is_const_col)
+	{
+	  /* remove constant order node */
+	  if (order_prev == NULL)
+	    {			/* the first */
+	      node->info.query.order_by = order->next;	/* re-link */
+	    }
+	  else
+	    {
+	      order_prev->next = order->next;	/* re-link */
+	    }
+	  order->next = NULL;	/* cut-off */
+	  parser_free_tree (parser, order);
+
+	  const_order_count++;	/* increase const entry remove count */
+
+	  continue;		/* go ahead */
+	}
+
       if (col->node_type == PT_NAME)
 	{
-	  if (PT_NAME_INFO_IS_FLAGED (col, PT_NAME_INFO_CONSTANT))
-	    {
-	      /* remove constant order node */
-	      if (order_prev == NULL)
-		{		/* the first */
-		  node->info.query.order_by = order->next;	/* re-link */
-		}
-	      else
-		{
-		  order_prev->next = order->next;	/* re-link */
-		}
-	      order->next = NULL;	/* cut-off */
-	      parser_free_tree (parser, order);
-
-	      const_order_count++;	/* increase const entry remove count */
-
-	      continue;		/* go ahead */
-	    }
-
 	  /* for non-constant order, change order position to the same left-most col's position */
 	  col2 = node->info.query.q.select.list;
 	  for (j = 1; j < i; j++)
@@ -4382,77 +4599,205 @@ qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NOD
 }
 
 /*
- * qo_hq_strip_prior () - the operand of a PRIOR expression, or the node itself
+ * qo_hq_cast_walker () - detects a cast that can fail on a value it cannot
+ *   convert: any cast written in the query, or a cast the compiler wrapped
+ *   from a string to another type (its other wrapped casts only widen)
  */
 static PT_NODE *
-qo_hq_strip_prior (PT_NODE * node)
+qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_QPRIOR))
+  bool *found = (bool *) arg;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
-      return node->info.expr.arg1;
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_CAST)
+	   && (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP)
+	       || (node->info.expr.arg1 != NULL && PT_IS_CHAR_STRING_TYPE (node->info.expr.arg1->type_enum)
+		   && !PT_IS_CHAR_STRING_TYPE (node->type_enum))))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
     }
 
   return node;
 }
 
 /*
- * qo_hq_is_hashed_apart () - checks whether the hash list scan can hash values
- *   that one PT_EQ conjunct finds equal into different buckets, or fail on them
- * Note: the build values are coerced to the domain of the probe side, so sides
- *       of different types can raise a coercion error (INT into SMALLINT) or
- *       lose precision (DOUBLE into BIGINT). Same-type keys are hashed as is,
- *       JSON by its text and NUMERIC by its unscaled digits, so only NUMERIC
- *       columns of one scale hash alike.
+ * qo_hq_fixed_numeric_key () - the precision and scale of a fixed NUMERIC key
+ *   side
+ *   return: false for a float NUMERIC or a side without a data type
+ *   arg(in): a NUMERIC key side
+ *   precision(out), scale(out): its precision and scale
  */
 static bool
-qo_hq_is_hashed_apart (PT_NODE * term)
+qo_hq_fixed_numeric_key (PT_NODE * arg, int *precision, int *scale)
+{
+  /* PRIOR is typed float NUMERIC, but its values keep the form of its operand */
+  if ((PT_IS_EXPR_NODE_WITH_OPERATOR (arg, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (arg, PT_QPRIOR))
+      && arg->info.expr.arg1 != NULL)
+    {
+      arg = arg->info.expr.arg1;
+    }
+  if (arg->data_type == NULL)
+    {
+      return false;
+    }
+  *precision = arg->data_type->info.data_type.precision;
+  *scale = arg->data_type->info.data_type.dec_precision;
+
+  return *precision > 0 && *precision <= DB_MAX_FIXED_NUMERIC_PRECISION;
+}
+
+/*
+ * qo_hq_is_inexact_numeric_pair () - checks whether the hash list scan hashes
+ *   a pair whose common type is NUMERIC through a DOUBLE that can round equal
+ *   values of the two sides apart, or does not hash it at all
+ *   return: true for such a pair
+ *   prior(in): the side of a PT_EQ conjunct with PRIOR
+ *   build(in): the other side
+ * Note: the PRIOR key is typed float NUMERIC, so a pair with a NUMERIC PRIOR
+ *       side hashes as DOUBLE; equal values of one fixed scale convert alike.
+ *       A NUMERIC converts its coefficient with one rounding and then divides
+ *       it by 10^scale, which rounds again unless the coefficient is below
+ *       2^53 (15 digits); a negative scale or a float NUMERIC rounds as well.
+ *       An integer PRIOR side and a fixed NUMERIC column hash in their common
+ *       NUMERIC, or not at all beyond 38 digits.
+ */
+static bool
+qo_hq_is_inexact_numeric_pair (PT_NODE * prior, PT_NODE * build)
+{
+  PT_NODE *arg[2] = { prior, build };
+  bool fixed[2] = { false, false };
+  int precision[2] = { 0, 0 };
+  int scale[2] = { 0, 0 };
+  int i;
+
+  if (prior->type_enum != PT_TYPE_NUMERIC && build->type_enum != PT_TYPE_NUMERIC)
+    {
+      return false;
+    }
+
+  for (i = 0; i < 2; i++)
+    {
+      switch (arg[i]->type_enum)
+	{
+	case PT_TYPE_NUMERIC:
+	  fixed[i] = qo_hq_fixed_numeric_key (arg[i], &precision[i], &scale[i]);
+	  break;
+	case PT_TYPE_SMALLINT:
+	  precision[i] = DB_SMALLINT_PRECISION;
+	  break;
+	case PT_TYPE_INTEGER:
+	  precision[i] = DB_INTEGER_PRECISION;
+	  break;
+	case PT_TYPE_BIGINT:
+	  precision[i] = DB_BIGINT_PRECISION;
+	  break;
+	case PT_TYPE_MAYBE:
+	  break;
+	default:
+	  /* the common type is not NUMERIC */
+	  return false;
+	}
+    }
+
+  if (precision[0] > 0 && prior->type_enum != PT_TYPE_NUMERIC && fixed[1] && PT_IS_NAME_NODE (build))
+    {
+      return MAX (precision[0], precision[1] - scale[1]) + MAX (scale[1], 0) > DB_MAX_FIXED_NUMERIC_PRECISION;
+    }
+
+  if (fixed[0] && fixed[1] && scale[0] == scale[1])
+    {
+      return false;
+    }
+
+  for (i = 0; i < 2; i++)
+    {
+      if (arg[i]->type_enum == PT_TYPE_NUMERIC && (!fixed[i] || scale[i] < 0 || (scale[i] > 0 && precision[i] > 15)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_hq_is_unsafe_hash_key () - checks whether one PT_EQ conjunct, as a key of
+ *   the hash list scan, can give a result other than the single-table plan
+ * Note: a JSON key is hashed by its text, so JSON values that compare equal
+ *       ('1.0' and '"1"' against '1') can hash apart. The build key is
+ *       evaluated on every row, even one no parent reaches, so a cast there
+ *       can fail where the single-table plan never evaluates it. A NUMERIC
+ *       PRIOR key is hashed as DOUBLE (see qo_hq_is_inexact_numeric_pair).
+ */
+static bool
+qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
 {
   PT_NODE *arg1 = term->info.expr.arg1;
   PT_NODE *arg2 = term->info.expr.arg2;
+  QO_HQ_ARG_CLASS c1 = { false, false };
+  QO_HQ_ARG_CLASS c2 = { false, false };
+  bool found = false;
 
   if (arg1 == NULL || arg2 == NULL)
     {
       return false;
     }
 
-  if (arg1->type_enum != arg2->type_enum || arg1->type_enum == PT_TYPE_JSON)
+  if (arg1->type_enum == PT_TYPE_JSON || arg2->type_enum == PT_TYPE_JSON)
     {
       return true;
     }
 
-  if (arg1->type_enum != PT_TYPE_NUMERIC)
+  (void) parser_walk_tree (parser, arg1, qo_hq_classify_arg_walker, &c1, NULL, NULL);
+  (void) parser_walk_tree (parser, arg2, qo_hq_classify_arg_walker, &c2, NULL, NULL);
+  if (c1.has_prior == c2.has_prior)
     {
-      return false;
+      if (c1.has_prior || c1.has_name == c2.has_name)
+	{
+	  return false;
+	}
+
+      /* a column side paired with a constant is a build key too */
+      (void) parser_walk_tree (parser, c1.has_name ? arg1 : arg2, qo_hq_cast_walker, &found, NULL, NULL);
+
+      return found;
     }
 
-  arg1 = qo_hq_strip_prior (arg1);
-  arg2 = qo_hq_strip_prior (arg2);
+  /* TODO: a NUMERIC PRIOR key hashes as DOUBLE; drop the DOUBLE cases once it hashes exactly */
+  if (c1.has_prior ? qo_hq_is_inexact_numeric_pair (arg1, arg2) : qo_hq_is_inexact_numeric_pair (arg2, arg1))
+    {
+      return true;
+    }
 
-  return (arg1 == NULL || arg2 == NULL || !PT_IS_NAME_NODE (arg1) || !PT_IS_NAME_NODE (arg2)
-	  || arg1->data_type == NULL || arg2->data_type == NULL
-	  || arg1->data_type->info.data_type.dec_precision != arg2->data_type->info.data_type.dec_precision);
+  (void) parser_walk_tree (parser, c1.has_prior ? arg2 : arg1, qo_hq_cast_walker, &found, NULL, NULL);
+
+  return found;
 }
 
 /*
- * qo_hq_has_hashed_apart_eq_term () - checks the CONNECT BY predicate for an
- *   equality conjunct whose equal values the hash list scan can hash apart
+ * qo_hq_has_unsafe_hash_key () - checks the CONNECT BY predicate for an
+ *   equality conjunct that is unsafe as a hash key (see qo_hq_is_unsafe_hash_key)
  */
 static bool
-qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
+qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
 {
   for (; pred != NULL; pred = pred->next)
     {
       if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_AND))
 	{
-	  if (qo_hq_has_hashed_apart_eq_term (pred->info.expr.arg1)
-	      || qo_hq_has_hashed_apart_eq_term (pred->info.expr.arg2))
+	  if (qo_hq_has_unsafe_hash_key (parser, pred->info.expr.arg1)
+	      || qo_hq_has_unsafe_hash_key (parser, pred->info.expr.arg2))
 	    {
 	      return true;
 	    }
 	  continue;
 	}
 
-      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && qo_hq_is_hashed_apart (pred))
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && qo_hq_is_unsafe_hash_key (parser, pred))
 	{
 	  return true;
 	}
@@ -4475,9 +4820,10 @@ qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
  *       a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
  *       grp = 7 or grp IN (7, 8). An expression over the column
  *       (PRIOR id = pid + 0) cannot use any index. It is also kept when an
- *       equality conjunct would be hashed apart (see qo_hq_is_hashed_apart):
- *       sides of different types, a JSON side or NUMERIC sides of different
- *       scales.
+ *       equality conjunct is unsafe as a hash key (see
+ *       qo_hq_is_unsafe_hash_key): a JSON side, a build side with a cast
+ *       that can fail, or a NUMERIC pair whose DOUBLE hash can round equal
+ *       values apart.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
@@ -4500,8 +4846,8 @@ qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT
       return false;
     }
 
-  /* every equality conjunct becomes a hash key, so one key hashed apart loses children */
-  if (qo_hq_has_hashed_apart_eq_term (connect_by))
+  /* every equality conjunct becomes a hash key */
+  if (qo_hq_has_unsafe_hash_key (parser, connect_by))
     {
       return false;
     }

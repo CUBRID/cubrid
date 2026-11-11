@@ -171,7 +171,12 @@ struct t_attr_table
 
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 
-static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type);
+static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type,
+			    bool typed_null);
+static DB_TYPE netval_null_type (char u_type);
+static DB_DOMAIN *column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_result, int col_idx,
+				 T_BROKER_VERSION client_version);
+static bool column_types_vary (const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
 		      T_NET_BUF * net_buf);
 static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size,
@@ -270,6 +275,7 @@ static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * p
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
 static int sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle);
 static int sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle);
+static int sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle);
 static short constraint_dbtype_to_castype (int db_const_type);
 
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
@@ -327,6 +333,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
   fetch_result,			/* SCH_SCHEMAS */
+  fetch_result,			/* SCH_CURRENT_SCHEMA */
 };
 
 static char database_name[MAX_HA_DBINFO_LENGTH] = "";
@@ -1116,7 +1123,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (num_bind > 0)
     {
-      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
       if (err_code < 0)
 	{
 	  goto execute_error;
@@ -1337,7 +1344,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       int result_cache_lifetime;
       char include_column_info;
 
-      if (db_check_single_query (session) == NO_ERROR)
+      if (db_check_single_query (session) == NO_ERROR && !column_types_vary (srv_handle->q_result, client_version))
 	{
 	  include_column_info = 0;
 	}
@@ -1449,7 +1456,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   num_bind = srv_handle->num_markers;
   if (num_bind > 0)
     {
-      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
       if (err_code < 0)
 	{
 	  goto execute_all_error;
@@ -1688,7 +1695,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       int result_cache_lifetime;
       char include_column_info;
 
-      if (db_check_single_query (session) == NO_ERROR)
+      if (db_check_single_query (session) == NO_ERROR && !column_types_vary (&srv_handle->q_result[0], client_version))
 	{
 	  include_column_info = 0;
 	}
@@ -1785,7 +1792,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   if (num_bind > 0)
     {
-      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+      err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
       if (err_code < 0)
 	{
 	  goto execute_error;
@@ -2353,7 +2360,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	}
     }
 
-  err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+  err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL, true);
   FREE_MEM (remap_argv);	/* value_list now owns the bind values */
   if (err_code < 0)
     {
@@ -2950,7 +2957,7 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
 	}
 
       desired_type = get_attr_type (obj_p, attr_name);
-      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, desired_type);
+      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, desired_type, false);
       if (err_code < 0)
 	{
 	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
@@ -3249,7 +3256,7 @@ ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf)
 	}
 
       attr_type = get_attr_type (obj, attr_name);
-      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, attr_type);
+      err_code = make_bind_value (1, 2, argv + 1, &attr_val, net_buf, attr_type, false);
       if (err_code < 0)
 	{
 	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
@@ -3347,7 +3354,8 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale, char *db_t
 }
 
 int
-make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf, char desired_type)
+make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf, char desired_type,
+		 bool typed_null)
 {
   DB_VALUE *value_list = NULL;
   int i, type_idx, val_idx;
@@ -3372,7 +3380,7 @@ make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET
     {
       type_idx = 2 * i;
       val_idx = 2 * i + 1;
-      err_code = netval_to_dbval (argv[type_idx], argv[val_idx], &(value_list[i]), net_buf, desired_type);
+      err_code = netval_to_dbval (argv[type_idx], argv[val_idx], &(value_list[i]), net_buf, desired_type, typed_null);
       if (err_code < 0)
 	{
 	  for (i--; i >= 0; i--)
@@ -3715,6 +3723,9 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_SCHEMAS:
       err_code = sch_schemas (net_buf, arg1, flag, srv_handle);
       break;
+    case CCI_SCH_CURRENT_SCHEMA:
+      err_code = sch_current_schema (net_buf, srv_handle);
+      break;
     default:
       err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
       goto schema_info_error;
@@ -3728,7 +3739,8 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
   if (schema_type == CCI_SCH_CLASS || schema_type == CCI_SCH_VCLASS || schema_type == CCI_SCH_ATTRIBUTE
       || schema_type == CCI_SCH_CLASS_ATTRIBUTE || schema_type == CCI_SCH_QUERY_SPEC
       || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY
-      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS)
+      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS
+      || schema_type == CCI_SCH_CURRENT_SCHEMA)
     {
       srv_handle->cursor_pos = 0;
     }
@@ -3942,13 +3954,15 @@ set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec, char chars
 }
 
 static int
-netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF * net_buf, char desired_type)
+netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF * net_buf, char desired_type,
+		 bool typed_null)
 {
   char type;
   int err_code = 0;
   int data_size;
   DB_VALUE db_val;
   char coercion_flag = TRUE;
+  DB_TYPE null_type = DB_TYPE_NULL;
 
   net_arg_get_char (type, net_type);
 
@@ -3990,6 +4004,9 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
   net_arg_get_size (&data_size, net_value);
   if (data_size <= 0)
     {
+      /* a V13 driver binds a NULL with the type it declared: a NULL of the type the same type's value takes */
+      null_type = typed_null && DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13)
+	? netval_null_type (type) : DB_TYPE_NULL;
       type = CCI_U_TYPE_NULL;
       data_size = 0;
     }
@@ -3997,8 +4014,21 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
   switch (type)
     {
     case CCI_U_TYPE_NULL:
-      err_code = db_make_null (&db_val);
-      coercion_flag = FALSE;
+      if (null_type == DB_TYPE_NULL)
+	{
+	  err_code = db_make_null (&db_val);
+	  coercion_flag = FALSE;
+	  break;
+	}
+      err_code = db_value_domain_init (&db_val, null_type,
+				       null_type == DB_TYPE_NUMERIC ? DB_DEFAULT_NUMERIC_PRECISION
+				       : TP_FLOATING_PRECISION_VALUE,
+				       null_type == DB_TYPE_NUMERIC ? DB_DEFAULT_NUMERIC_SCALE : 0);
+      if (null_type == DB_TYPE_CHAR)
+	{
+	  db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
+	}
+      coercion_flag = !(null_type == DB_TYPE_OBJECT || null_type == DB_TYPE_BLOB || null_type == DB_TYPE_CLOB);
       break;
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
@@ -4322,7 +4352,7 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 		break;
 	      }
 
-	    ele_size = netval_to_dbval (ele_type_arg, cur_p, &ele_val, net_buf, desired_type);
+	    ele_size = netval_to_dbval (ele_type_arg, cur_p, &ele_val, net_buf, desired_type, false);
 	    if (ele_size < 0)
 	      {
 		return ele_size;
@@ -4430,6 +4460,64 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
   db_value_clear (&db_val);
 
   return data_size;
+}
+
+/*
+ * netval_null_type () - CBRD-27679: the type of the NULL a driver sent with its declared type: the type
+ *   netval_to_dbval makes of a value of that type; DB_TYPE_NULL for a type it gives no NULL of (a collection, whose
+ *   element type the NULL does not carry)
+ */
+static DB_TYPE
+netval_null_type (char u_type)
+{
+  switch (u_type)
+    {
+    case CCI_U_TYPE_CHAR:
+    case CCI_U_TYPE_STRING:
+    case CCI_U_TYPE_ENUM:
+      return DB_TYPE_CHAR;
+    case CCI_U_TYPE_BIT:
+    case CCI_U_TYPE_VARBIT:
+      return DB_TYPE_BIT;
+    case CCI_U_TYPE_NUMERIC:
+      return DB_TYPE_NUMERIC;
+    case CCI_U_TYPE_BIGINT:
+      return DB_TYPE_BIGINT;
+    case CCI_U_TYPE_INT:
+      return DB_TYPE_INTEGER;
+    case CCI_U_TYPE_SHORT:
+      return DB_TYPE_SHORT;
+    case CCI_U_TYPE_MONETARY:
+      return DB_TYPE_MONETARY;
+    case CCI_U_TYPE_FLOAT:
+      return DB_TYPE_FLOAT;
+    case CCI_U_TYPE_DOUBLE:
+      return DB_TYPE_DOUBLE;
+    case CCI_U_TYPE_DATE:
+      return DB_TYPE_DATE;
+    case CCI_U_TYPE_TIME:
+      return DB_TYPE_TIME;
+    case CCI_U_TYPE_TIMESTAMP:
+      return DB_TYPE_TIMESTAMP;
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
+      return DB_TYPE_TIMESTAMPTZ;
+    case CCI_U_TYPE_DATETIME:
+      return DB_TYPE_DATETIME;
+    case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
+      return DB_TYPE_DATETIMETZ;
+    case CCI_U_TYPE_OBJECT:
+      return DB_TYPE_OBJECT;
+    case CCI_U_TYPE_BLOB:
+      return DB_TYPE_BLOB;
+    case CCI_U_TYPE_CLOB:
+      return DB_TYPE_CLOB;
+    case CCI_U_TYPE_JSON:
+      return DB_TYPE_JSON;
+    default:
+      return DB_TYPE_NULL;
+    }
 }
 
 static int
@@ -6934,6 +7022,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
     {
       FREE_MEM (q_result->null_type_column);
     }
+  hm_col_update_info_free (q_result);
 
   if (stmt_type == CUBRID_STMT_SELECT)
     {
@@ -7029,7 +7118,7 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	      attr_name = (char *) "";
 	    }
 
-	  domain = db_query_format_domain (col);
+	  domain = column_domain (col, q_result, num_cols, client_version);
 	  db_type = TP_DOMAIN_TYPE (domain);
 
 
@@ -7075,6 +7164,17 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
 	}
 
       q_result->null_type_column = null_type_column;
+      if (q_result->result == NULL)
+	{
+	  /* the PREPARE reply: the column info a client holds until an execution sends it again */
+	  FREE_MEM (q_result->untyped_column);
+	  q_result->num_untyped_column = 0;
+	  if (num_cols > 0 && (q_result->untyped_column = (char *) MALLOC (num_cols)) != NULL)
+	    {
+	      memcpy (q_result->untyped_column, null_type_column, num_cols);
+	      q_result->num_untyped_column = num_cols;
+	    }
+	}
       net_buf_overwrite_int (net_buf, num_col_offset, num_cols);
       if (column_info)
 	{
@@ -7107,6 +7207,58 @@ prepare_column_list_info_set (DB_SESSION * session, char prepare_flag, T_QUERY_R
     }
 
   return 0;
+}
+
+/*
+ * column_domain () - CBRD-27679: the domain of a result column the client receives: the compiled one, or for a column
+ *   the PREPARE reply left untyped (a bind, a session variable, a NULL) the column's domain in the result of the plan
+ *   the execution ran, for a PROTOCOL_V13 or later client (an older one keeps the column info it has always received).
+ *   The PREPARE reply decides, not the compiled list at the execution: an EXECUTE statement compiles the list again
+ *   with its values.
+ */
+static DB_DOMAIN *
+column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_result, int col_idx, T_BROKER_VERSION client_version)
+{
+  const DB_QUERY_RESULT *result = (const DB_QUERY_RESULT *) q_result->result;
+
+  if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13) && col_idx < q_result->num_untyped_column
+      && q_result->untyped_column[col_idx] && result != NULL && result->type == T_SELECT)
+    {
+      /* an OID-including result carries the row's OID in its first list column (cursor_get_tuple_value) */
+      const int list_idx = col_idx + (result->res.s.cursor_id.is_oid_included ? 1 : 0);
+      if (list_idx < result->res.s.cursor_id.list_id.type_list.type_cnt)
+	{
+	  return result->res.s.cursor_id.list_id.type_list.domp[list_idx];
+	}
+    }
+  return db_query_format_domain (col);
+}
+
+/*
+ * column_types_vary () - CBRD-27679: whether an execution sends a PROTOCOL_V13 or later client the column info again:
+ *   when the PREPARE reply left a result column untyped, which column_domain types by the plan the execution ran. It
+ *   is sent at every such execution, not only when the types change: under a SHARD proxy connections share one handle
+ *   and its PREPARE reply, so the handle cannot know which column info the requesting client holds.
+ */
+static bool
+column_types_vary (const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version)
+{
+  int i;
+
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13) || q_result->stmt_type != CUBRID_STMT_SELECT)
+    {
+      return false;
+    }
+
+  for (i = 0; i < q_result->num_untyped_column; i++)
+    {
+      if (q_result->untyped_column[i])
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 static int
@@ -8870,6 +9022,24 @@ sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HA
     }
 
   STRING_APPEND (sql_p, avail_size, "ORDER BY name");
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_schemas_meta (net_buf);
+
+  return 0;
+}
+
+static int
+sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[] = "SELECT CURRENT_USER";
+  int num_result;
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
