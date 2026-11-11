@@ -926,19 +926,20 @@ void
 cubload::scanner::set_ldr_data_format (int data_format, int format_version, int bit_platform, int endian)
 {
   if (data_format != OBJECT_FORMAT_TEXT
-      && (format_version < 1 || format_version > BIN_FORMAT_VERSION || bit_platform != binary_format_bit_platform ()
-	  || endian != binary_format_endian ()))
+      && ((format_version != BIN_FORMAT_VERSION && format_version != BIN_FORMAT_VERSION_PRE_11_5)
+	  || bit_platform != binary_format_bit_platform () || endian != binary_format_endian ()))
     {
       /*
-       * A version newer than BIN_FORMAT_VERSION was written by a later release with an encoding
-       * this build does not know. Fixed size values are written in host byte order, so a section
-       * of another bit platform or byte order cannot be read either.
+       * A version this build has no reader for: a newer one written by a later release, or one no
+       * release writes. Fixed size values are written in host byte order, so a section of another
+       * bit platform or byte order cannot be read either.
        */
       m_data_format = OBJECT_FORMAT_TEXT;
       BEGIN ABORTED;
 
       fail_binary_section (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, format_version, bit_platform, endian,
-			   BIN_FORMAT_VERSION, binary_format_bit_platform (), binary_format_endian ());
+			   BIN_FORMAT_VERSION_PRE_11_5, BIN_FORMAT_VERSION, binary_format_bit_platform (),
+			   binary_format_endian ());
       return;
     }
 
@@ -947,6 +948,7 @@ cubload::scanner::set_ldr_data_format (int data_format, int format_version, int 
     case OBJECT_FORMAT_BINARY:
       //case OBJECT_FORMAT_BINARY_COMPRESSED:
       m_data_format = (OBJECT_DATA_FORMAT) data_format;
+      m_format_version = format_version;
       BEGIN BINARY_MODE;
       break;
 

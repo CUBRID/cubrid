@@ -711,7 +711,8 @@ namespace cubload
 
     std::size_t attr_index = 0;
     std::size_t attr_size = m_class_entry->get_attributes_size ();
-    binary_row_reader reader (row->val, row->size);
+    binary_row_reader reader (row->val, row->size,
+			      m_thread_ref->m_loaddb_driver->get_scanner ().get_format_version ());
 
     if (reader.has_more () && attr_size == 0)
       {

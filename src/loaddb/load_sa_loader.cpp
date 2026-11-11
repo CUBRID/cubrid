@@ -1026,7 +1026,7 @@ error_exit:
   void
   sa_object_loader::process_binary_line (const string_type *row)
   {
-    cubload::binary_row_reader reader (row->val, row->size);
+    cubload::binary_row_reader reader (row->val, row->size, ldr_Driver->get_scanner ().get_format_version ());
 
     CHECK_SKIP ();
 

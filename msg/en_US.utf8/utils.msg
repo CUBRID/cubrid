@@ -534,7 +534,7 @@ valid options:\n\
                                  WARNING: Cannot be used with the -s option.\n
 
 
-128 The object file was written in a binary format this build cannot read: format version %1$d, %2$d bit, byte order %3$d, while this build reads format version 1 to %4$d, %5$d bit, byte order %6$d.\n
+128 The object file was written in a binary format this build cannot read: format version %1$d, %2$d bit, byte order %3$d, while this build reads format version %4$d or %5$d, %6$d bit, byte order %7$d.\n
 129 The binary section of the object file is truncated.\n
 130 The %%format command line of the object file is malformed.\n
 131 The object file uses the data format %1$d, which this build does not support.\n

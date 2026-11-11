@@ -1529,6 +1529,134 @@ namespace cubload
   }
 
   /*
+   * binary_make_numeric - build a NUMERIC value from its magnitude
+   *    return: NO_ERROR or an error code
+   *    col(in): the column, for the error message
+   *    magnitude(in): the magnitude, unsigned big-endian in a buffer of DB_NUMERIC_BUF_SIZE bytes
+   *    precision, scale, is_negative, is_floating(in): the rest of the value
+   *    val(out): the value
+   */
+  static int
+  binary_make_numeric (const binary_column &col, const unsigned char *magnitude, int precision, int scale,
+		       bool is_negative, bool is_floating, db_value *val)
+  {
+    /*
+     * The size checks of the callers let through any magnitude that fits the buffer. One with more
+     * digits than its precision would be stored as it is and read back as a wrong value, so it is
+     * refused here, as a damaged section.
+     */
+    if (numeric_get_precision_digits (const_cast<unsigned char *> (magnitude)) > precision)
+      {
+	return binary_corrupted (col);
+      }
+
+    /* zero has no sign */
+    if (is_negative)
+      {
+	is_negative = false;
+	for (int i = 0; i < DB_NUMERIC_BUF_SIZE; i++)
+	  {
+	    if (magnitude[i] != 0)
+	      {
+		is_negative = true;
+		break;
+	      }
+	  }
+      }
+
+    return db_make_numeric (val, (DB_C_NUMERIC) magnitude, precision, scale, DB_NUMERIC_BUF_SIZE, is_negative,
+			    is_floating);
+  }
+
+  /*
+   * binary_numeric - read a NUMERIC column of BIN_FORMAT_VERSION
+   *    [int precision][int scale][1 byte flags][1 byte length][magnitude], see UNLOAD_RAW_NUMERIC_HEADER_SIZE
+   */
+  static int
+  binary_numeric (const binary_column &col, db_value *val)
+  {
+    int precision, scale;
+    unsigned char flags;
+    std::size_t length;
+    unsigned char buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+
+    if (col.size < UNLOAD_RAW_NUMERIC_HEADER_SIZE)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (&precision, col.data, sizeof (int));
+    std::memcpy (&scale, col.data + sizeof (int), sizeof (int));
+    flags = (unsigned char) col.data[sizeof (int) << 1];
+    length = (unsigned char) col.data[ (sizeof (int) << 1) + 1];
+
+    /* a magnitude longer than the buffer of this build does not fit any NUMERIC it can hold */
+    if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION || (flags & ~UNLOAD_RAW_NUMERIC_FLAGS) != 0
+	|| length > sizeof (buf) || col.size != UNLOAD_RAW_NUMERIC_HEADER_SIZE + length)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (buf + sizeof (buf) - length, col.data + UNLOAD_RAW_NUMERIC_HEADER_SIZE, length);
+
+    return binary_make_numeric (col, buf, precision, scale, (flags & UNLOAD_RAW_NUMERIC_NEGATIVE) != 0,
+				(flags & UNLOAD_RAW_NUMERIC_FLOATING) != 0, val);
+  }
+
+  /*
+   * binary_numeric_pre_11_5 - read a NUMERIC column of BIN_FORMAT_VERSION_PRE_11_5
+   *    [int precision][int scale][UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE bytes of the buffer]
+   * Note:
+   *    10.0 ~ 11.4 hold a NUMERIC as a two's complement big-endian integer of 16 bytes, the sign
+   *    being its top bit, and have no floating NUMERIC. The magnitude of a negative one is its
+   *    two's complement negation. No NUMERIC of those releases reaches -2^127, which has none:
+   *    38 digits stay below 2^127.
+   */
+  static int
+  binary_numeric_pre_11_5 (const binary_column &col, db_value *val)
+  {
+    const std::size_t old_size = UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE;
+    int precision, scale;
+    unsigned char buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+    unsigned char *digits = buf + sizeof (buf) - old_size;
+    bool is_negative;
+
+    static_assert (DB_NUMERIC_BUF_SIZE >= UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE,
+		   "the buffer of 10.0 ~ 11.4 must fit in the buffer of this release");
+
+    if (col.size != UNLOAD_RAW_NUMERIC_PRE_11_5_SIZE)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (&precision, col.data, sizeof (int));
+    std::memcpy (&scale, col.data + sizeof (int), sizeof (int));
+    if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION || scale < 0 || scale > precision)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (digits, col.data + (sizeof (int) << 1), old_size);
+
+    is_negative = (digits[0] & 0x80) != 0;
+    if (is_negative)
+      {
+	/* two's complement negation: invert every bit, then add one from the least significant byte */
+	unsigned int carry = 1;
+
+	for (std::size_t i = old_size; i-- > 0;)
+	  {
+	    unsigned int byte = (unsigned char) ~digits[i] + carry;
+
+	    digits[i] = (unsigned char) byte;
+	    carry = byte >> 8;
+	  }
+      }
+
+    return binary_make_numeric (col, buf, precision, scale, is_negative, false, val);
+  }
+
+  /*
    * binary_tz_value - build a TIMESTAMPTZ or DATETIMETZ value from its column
    *    return: NO_ERROR or an error code
    *    col(in): the column, of DB_TYPE_TIMESTAMPTZ or DB_TYPE_DATETIMETZ
@@ -1771,47 +1899,8 @@ namespace cubload
       }
 
       case DB_TYPE_NUMERIC:
-      {
-	/* [int precision][int scale][1 byte flags][1 byte length][magnitude], see UNLOAD_RAW_NUMERIC_HEADER_SIZE */
-	int precision, scale;
-	unsigned char flags;
-	std::size_t length;
-	unsigned char buf[DB_NUMERIC_BUF_SIZE] = { 0 };
-
-	if (col.size < UNLOAD_RAW_NUMERIC_HEADER_SIZE)
-	  {
-	    return binary_corrupted (col);
-	  }
-
-	std::memcpy (&precision, col.data, sizeof (int));
-	std::memcpy (&scale, col.data + sizeof (int), sizeof (int));
-	flags = (unsigned char) col.data[sizeof (int) << 1];
-	length = (unsigned char) col.data[ (sizeof (int) << 1) + 1];
-
-	/* a magnitude longer than the buffer of this build does not fit any NUMERIC it can hold */
-	if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION || (flags & ~UNLOAD_RAW_NUMERIC_FLAGS) != 0
-	    || length > sizeof (buf) || col.size != UNLOAD_RAW_NUMERIC_HEADER_SIZE + length)
-	  {
-	    return binary_corrupted (col);
-	  }
-
-	std::memcpy (buf + sizeof (buf) - length, col.data + UNLOAD_RAW_NUMERIC_HEADER_SIZE, length);
-
-	/*
-	 * The length check alone lets through any magnitude that fits the buffer. One with more
-	 * digits than its precision would be stored as it is and read back as a wrong value, so
-	 * it is refused here: a damaged section, or a writer that put out its buffer as it is
-	 * instead of the magnitude (the buffer of 11.4 and earlier holds a two's complement).
-	 */
-	if (numeric_get_precision_digits (buf) > precision)
-	  {
-	    return binary_corrupted (col);
-	  }
-
-	return db_make_numeric (val, (DB_C_NUMERIC) buf, precision, scale, DB_NUMERIC_BUF_SIZE,
-				(flags & UNLOAD_RAW_NUMERIC_NEGATIVE) != 0 && length > 0,
-				(flags & UNLOAD_RAW_NUMERIC_FLOATING) != 0);
-      }
+	return (col.format_version == BIN_FORMAT_VERSION_PRE_11_5) ? binary_numeric_pre_11_5 (col, val)
+	       : binary_numeric (col, val);
 
       case DB_TYPE_CHAR:
       case DB_TYPE_VARCHAR:

@@ -47,6 +47,7 @@ namespace cubload
 	, m_semantic_helper (semantic_helper)
 	, m_error_handler (error_handler)
 	, m_data_format (OBJECT_FORMAT_TEXT)
+	, m_format_version (BIN_FORMAT_VERSION)
 	, m_format_arg_count (0)
       {
 	//
@@ -77,6 +78,12 @@ namespace cubload
       OBJECT_DATA_FORMAT get_ldr_data_format () const
       {
 	return m_data_format;
+      }
+
+      /* format version of the binary section being scanned, see BIN_FORMAT_VERSION */
+      int get_format_version () const
+      {
+	return m_format_version;
       }
 
       /*
@@ -139,6 +146,7 @@ namespace cubload
       semantic_helper &m_semantic_helper;
       error_handler &m_error_handler;
       OBJECT_DATA_FORMAT m_data_format;
+      int m_format_version;
 
       /*
        * Number of arguments of the "%format" command line scanned so far, see the FORMAT_ARG rules in

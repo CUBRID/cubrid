@@ -514,6 +514,10 @@ typedef uint32_t BIN_REC_SIZE_TYPE;
 #define UNLOAD_RAW_NUMERIC_FLOATING    (0x01)
 #define UNLOAD_RAW_NUMERIC_FLAGS       (UNLOAD_RAW_NUMERIC_NEGATIVE | UNLOAD_RAW_NUMERIC_FLOATING)
 
+/* a NUMERIC of BIN_FORMAT_VERSION_PRE_11_5: [int precision][int scale][the 16 byte two's complement buffer] */
+#define UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE (16)
+#define UNLOAD_RAW_NUMERIC_PRE_11_5_SIZE     (sizeof (int) + sizeof (int) + UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE)
+
 /*
  * A MONETARY value is written field by field as well, rather than as DB_MONETARY, whose padding
  * would put bytes of no meaning into the file:
@@ -565,8 +569,22 @@ typedef enum
  *
  * Fixed size values are still written in host byte order, so the bit platform and the byte order
  * must match those of the reader.
+ *
+ * The first version is 3 rather than 1, to leave room for a backport of this format to an earlier
+ * release: a backport to 10.0 ~ 11.4 writes 2. An earlier release writes what its own DB_VALUE
+ * holds, so it is the reader of the later release that understands the earlier version, not the
+ * other way around.
+ *
+ * BIN_FORMAT_VERSION_PRE_11_5 is the version a backport to 10.0 ~ 11.4 writes. Those releases lay
+ * out every value the same way, and differ from BIN_FORMAT_VERSION in two points only:
+ *   - NUMERIC: [int precision][int scale][UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE bytes of the buffer],
+ *     the buffer being a two's complement big-endian integer (CBRD-26006 changed it to a magnitude
+ *     with the sign apart, and added the floating NUMERIC)
+ *   - NCHAR and VARNCHAR columns, of DB_TYPE_NCHAR and DB_TYPE_VARNCHAR, are read as CHAR and
+ *     VARCHAR, the way the text form reads N'...' (CBRD-24156 retired those types)
  */
-#define BIN_FORMAT_VERSION       (1)
+#define BIN_FORMAT_VERSION          (3)
+#define BIN_FORMAT_VERSION_PRE_11_5 (2)
 
 #define BIN_FORMAT_ENDIAN_LITTLE (0)
 #define BIN_FORMAT_ENDIAN_BIG    (1)
@@ -595,6 +613,7 @@ namespace cubload
     const char *data;
     std::size_t size;
     std::size_t offset;		/* offset of the column in the row, for error messages */
+    int format_version;		/* BIN_FORMAT_VERSION or an earlier one, which decides how to read data */
   };
 
   /*
@@ -610,11 +629,14 @@ namespace cubload
    *    A row that does not follow the layout is corrupted. next () then sets
    *    ER_LDR_CORRUPTED_BINARY_RECORD, and every later call fails the same way: a column boundary that
    *    was lost cannot be found again, so nothing behind it can be read.
+   *
+   *    The format version of the section, from its "%format" line, goes with every column so that
+   *    the data can be read the way that version wrote it. See BIN_FORMAT_VERSION.
    */
   class binary_row_reader
   {
     public:
-      binary_row_reader (const char *row, std::size_t size);
+      binary_row_reader (const char *row, std::size_t size, int format_version);
 
       bool has_more () const
       {
@@ -635,6 +657,7 @@ namespace cubload
       std::size_t m_size;
       std::size_t m_pos;
       bool m_corrupted;
+      int m_format_version;
   };
 } // namespace cubload
 

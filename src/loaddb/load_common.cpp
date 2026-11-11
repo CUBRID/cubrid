@@ -1305,11 +1305,12 @@ decode_varint64 (u_char *buf, int buf_sz, int64_t *val_ptr, int *consumed)
 
 namespace cubload
 {
-  binary_row_reader::binary_row_reader (const char *row, std::size_t size)
+  binary_row_reader::binary_row_reader (const char *row, std::size_t size, int format_version)
     : m_row (row)
     , m_size (size)
     , m_pos (0)
     , m_corrupted (false)
+    , m_format_version (format_version)
   {
     //
   }
@@ -1339,6 +1340,7 @@ namespace cubload
       }
 
     col.offset = m_pos;
+    col.format_version = m_format_version;
 
     /* a varint64 takes ten bytes at most */
     std::size_t avail = m_size - m_pos;
@@ -1375,6 +1377,19 @@ namespace cubload
     if (col.type == DB_TYPE_NULL || col.type > DB_TYPE_LAST)
       {
 	return set_corrupted ();
+      }
+
+    if (m_format_version == BIN_FORMAT_VERSION_PRE_11_5)
+      {
+	/* the NCHAR types that 10.0 ~ 11.4 have are the CHAR types here, see BIN_FORMAT_VERSION_PRE_11_5 */
+	if (col.type == DB_TYPE_NCHAR_DEPRECATED)
+	  {
+	    col.type = DB_TYPE_CHAR;
+	  }
+	else if (col.type == DB_TYPE_VARNCHAR_DEPRECATED)
+	  {
+	    col.type = DB_TYPE_VARCHAR;
+	  }
       }
 
     col.data = m_row + m_pos;
