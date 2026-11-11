@@ -292,7 +292,9 @@ sidecar_count (THREAD_ENTRY *thread_p, PERF_STAT_ID psid, UINT64 amount = 1)
 static unsigned long long
 sidecar_counted (PERF_STAT_ID psid)
 {
-  if (!pstat_Global.initialized)
+  /* perfmon_finalize () frees global_stats and leaves "initialized" set, and a failed database creation finalizes the
+   * stats before heap_manager_finalize () calls sidecar_finalize () */
+  if (!pstat_Global.initialized || pstat_Global.global_stats == NULL)
     {
       return 0;
     }
