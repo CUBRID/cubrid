@@ -382,6 +382,13 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  switch (trigger->action->type)
 	    {
 	    case TR_ACT_EXPRESSION:
+	      if (trigger->block_source != NULL)
+		{
+		  /* CREATE TRIGGER makes the internal procedure again from the block */
+		  output_ctx ("%s", trigger->block_source);
+		  break;
+		}
+
 	      parser = parser_create_parser ();
 	      if (parser == NULL)
 		{
