@@ -12369,6 +12369,10 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
  * which consumer opened it. */
 static CUB_THREAD_LOCAL bool stream_Is_open = false;
 
+/* The system savepoint the statement that opened the upload took before it (stream_from_set_savepoint), or NULL for
+ * an upload a driver opened. */
+static CUB_THREAD_LOCAL const char *stream_Savepoint = NULL;
+
 /* The download handles this client holds, as the READ_OPEN replies named them. Each ties the transaction as an
  * open result set does, and the server releases them all when the transaction ends (stream_from_reset). */
 static CUB_THREAD_LOCAL INT64 *stream_Downloads = NULL;
@@ -12407,6 +12411,27 @@ stream_download_find (INT64 handle)
 	}
     }
   return -1;
+}
+
+/*
+ * stream_roll_back_given_up () - Undo what an upload given up without its END flushed, as for a failed statement
+ *   reaches_transaction(in): false when the request failed on the wire, or the server already rolled back
+ */
+static void
+stream_roll_back_given_up (bool reaches_transaction)
+{
+  const char *savepoint = stream_Savepoint;
+
+  stream_Savepoint = NULL;
+  if (savepoint == NULL || !reaches_transaction)
+    {
+      return;
+    }
+
+  /* the error that ended the upload is the one to report */
+  er_stack_push ();
+  (void) tran_abort_upto_system_savepoint (savepoint);
+  er_stack_pop ();
 }
 
 static void
@@ -12450,6 +12475,7 @@ stream_from_reset (void)
 {
 #if defined(CS_MODE)
   stream_Is_open = false;
+  stream_Savepoint = NULL;
   stream_Download_count = 0;
 #endif /* CS_MODE */
 }
@@ -12465,6 +12491,7 @@ stream_from_final (void)
   stream_Download_count = 0;
   stream_Download_capacity = 0;
   stream_Is_open = false;
+  stream_Savepoint = NULL;
 #endif /* CS_MODE */
 }
 
@@ -12591,6 +12618,7 @@ stream_from_init (int stream_kind, const char *config, int config_len, int flags
   if (rc == NO_ERROR && !(flags & STREAM_FLAG_FINAL))
     {
       stream_Is_open = true;
+      stream_Savepoint = NULL;
     }
   if (count != NULL)
     {
@@ -12737,6 +12765,7 @@ stream_from_send_data (const char *data, int data_len)
     {
       /* the server drops the session on a failed chunk, so nothing is open here either */
       stream_Is_open = false;
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
     }
 
   return rc;
@@ -12776,6 +12805,11 @@ stream_from_end (INT64 * count, const char *data, int data_len)
       ptr = or_unpack_int64 (ptr, count);
     }
   rc = stream_request_error (req_error, rc);
+  if (rc != NO_ERROR)
+    {
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+  stream_Savepoint = NULL;
 
   return rc;
 #else /* CS_MODE */
@@ -12792,9 +12826,11 @@ stream_from_end (INT64 * count, const char *data, int data_len)
  * For the failure the server cannot see: the consumer's client half gave up
  * before it had a chunk to send -- its encoder failed, the statement it belongs
  * to unwound, the user cancelled. Sending a chunk just to make the server refuse
- * it would report the wrong error; this says so directly. Nothing in the
- * transaction is undone by it -- whatever the session already flushed stays
- * where it is, and the caller's own rollback is what removes it.
+ * it would report the wrong error; this says so directly. Whatever the
+ * session already flushed stays in the transaction: when the statement that
+ * opened the upload named its savepoint (stream_from_set_savepoint ()), the
+ * transaction goes back to it, as for a failed statement; otherwise the
+ * caller's own rollback is what removes it.
  */
 int
 stream_from_abort (void)
@@ -12816,12 +12852,30 @@ stream_from_abort (void)
       or_unpack_int (reply, &rc);
     }
   rc = stream_request_error (req_error, rc);
+  stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
 
   return rc;
 #else /* CS_MODE */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
   return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_set_savepoint () - Name the savepoint that giving the open upload up goes back to
+ *   savepoint_name(in): a system savepoint the statement that opened the upload took before the open, as a string that
+ *                       outlives the upload (the consumer's savepoint-name constant)
+ *
+ * An upload a statement opened is that statement still running. Given up -- a refused chunk, a failed END, an
+ * ABORT -- it ends as a failed statement does: the transaction goes back to the savepoint and goes on. An upload a
+ * driver opened names none; its driver decides.
+ */
+void
+stream_from_set_savepoint (const char *savepoint_name)
+{
+#if defined(CS_MODE)
+  stream_Savepoint = stream_Is_open ? savepoint_name : NULL;
+#endif /* CS_MODE */
 }
 
 #if defined(CS_MODE)

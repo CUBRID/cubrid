@@ -13507,9 +13507,9 @@ stream_drop_session (THREAD_ENTRY *thread_p, session_state *held, stream_session
 {
   if (aborted)
     {
-      /* the abort undoes what the session wrote, and the undo sets and clears
-       * errors of its own; the error that ended the stream is the one the
-       * reply has to carry */
+      /* the abort discards what the session had not flushed, and may set and
+       * clear errors of its own; the error that ended the stream is the one
+       * the reply has to carry */
       er_stack_push ();
       session->abort (thread_p);
       er_stack_pop ();
