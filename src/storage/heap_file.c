@@ -13405,11 +13405,12 @@ exit_on_error:
  * heap_attrinfo_start_set () - the value of an attribute heap_attrinfo_set or heap_attrinfo_set_converted writes:
  *   located, cleared and initialized in the attribute's type
  *   return: NO_ERROR, or the error
+ *   attr_val(in): the value to store; a csql stream marker is rejected
  *   value_p(out), pr_type_p(out): the attribute value and its primitive type
  */
 static int
-heap_attrinfo_start_set (const OID * inst_oid, ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info,
-			 HEAP_ATTRVALUE ** value_p, const PR_TYPE ** pr_type_p)
+heap_attrinfo_start_set (const OID * inst_oid, ATTR_ID attrid, const DB_VALUE * attr_val,
+			 HEAP_CACHE_ATTRINFO * attr_info, HEAP_ATTRVALUE ** value_p, const PR_TYPE ** pr_type_p)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   const PR_TYPE *pr_type;	/* Primitive type array function structure */
@@ -13499,7 +13500,7 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
 
-  ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);
+  ret = heap_attrinfo_start_set (inst_oid, attrid, attr_val, attr_info, &value, &pr_type);
   if (ret != NO_ERROR)
     {
       return ret;
@@ -13649,7 +13650,7 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 {
   HEAP_ATTRVALUE *value;
   const PR_TYPE *pr_type;
-  int ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);
+  int ret = heap_attrinfo_start_set (inst_oid, attrid, attr_val, attr_info, &value, &pr_type);
   if (ret != NO_ERROR)
     {
       return ret;
