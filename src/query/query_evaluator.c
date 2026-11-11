@@ -45,6 +45,7 @@
 #include "dbtype.h"
 #include "language_support.h"
 #include "string_opfunc.h"
+#include "query_hash_lookup.hpp"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
 
@@ -76,8 +77,12 @@ static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SE
 static int eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
 				       REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd);
+static DB_LOGICAL eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
+					 REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
+					 XASL_NODE * subquery);
 static DB_LOGICAL eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
-				      REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd);
+				      REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd,
+				      XASL_NODE * subquery);
 static int eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id);
 static DB_LOGICAL eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_LIST_ID * list_id);
 static DB_LOGICAL eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, DB_SET * set);
@@ -961,6 +966,8 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
     {
       return V_ERROR;
     }
+  /* PX scan workers read the leader's list too (hash_lookup_share): read latches, as PX list scans take */
+  s_id.is_read_only = true;
 
   pr_type = list_id->type_list.domp[0]->type;
   if (pr_type == NULL)
@@ -1005,6 +1012,115 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 }
 
 /*
+ * eval_is_hash_candidate () - the subquery's list may get a hash for its R_EQ lookups; hash_lookup_comparable then
+ *			       checks the comparison's types and collation. A correlated subquery executes again for
+ *			       each outer row, so its list is seldom looked up twice, and NO_HASH_LOOKUP turns the hash
+ *			       off. A PX hash join worker evaluates no term with a subquery (plan_generation.c keeps it
+ *			       out of the join's predicates)
+ */
+static bool
+eval_is_hash_candidate (const XASL_NODE * subquery, const QFILE_LIST_ID * list_id)
+{
+  return subquery != NULL && XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL)
+    && !XASL_IS_FLAGED (subquery, XASL_NO_HASH_LOOKUP) && list_id->type_list.type_cnt == 1;
+}
+
+/*
+ * eval_hash_lookup_prepare () - executes an uncorrelated list subquery an IN or NOT IN term looks up, and builds its
+ *				 hash, before the scans that look it up open: a PX scan's workers then share both
+ *				 (hash_lookup_share) in place of executing the subquery and building a hash each
+ *   return: error code
+ *   subquery(in): the subquery; hash_lookup_term is its term
+ *   vd(in): the value descriptor of the main block that evaluates the term
+ */
+int
+eval_hash_lookup_prepare (THREAD_ENTRY * thread_p, XASL_NODE * subquery, val_descr * vd)
+{
+  const ALSM_EVAL_TERM *et_alsm = subquery->hash_lookup_term;
+  QFILE_LIST_ID *list_id;
+  EVAL_ELEMENTS elements;
+  HASH_LOOKUP *hash;
+
+  /* = SOME looks up R_EQ, and <> ALL its negation (eval_all_list_eval) */
+  if (et_alsm->eq_flag == F_ALL ? et_alsm->rel_op != R_NE : et_alsm->rel_op != R_EQ)
+    {
+      return NO_ERROR;
+    }
+  if (!XASL_IS_FLAGED (subquery, XASL_ZERO_CORR_LEVEL))
+    {
+      return NO_ERROR;
+    }
+
+  EXECUTE_REGU_VARIABLE_XASL (thread_p, et_alsm->elemset, vd);
+  if (CHECK_REGU_VARIABLE_XASL_STATUS (et_alsm->elemset) != XASL_SUCCESS)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  list_id = et_alsm->elemset->value.srlist_id->list_id;
+  if (list_id->tuple_cnt == 0 || !eval_is_hash_candidate (subquery, list_id))
+    {
+      return NO_ERROR;
+    }
+  eval_resolved_elements (et_alsm, &elements);
+  return hash_lookup_get (thread_p, subquery, list_id, elements.all, &hash);
+}
+
+/*
+ * eval_some_list_lookup () - eval_some_list_eval; once the subquery's list has a hash (query_hash_lookup.cpp), the list
+ *			      values of the item's hash answer in place of the whole list
+ *   subquery(in): the subquery whose list list_id is
+ */
+static DB_LOGICAL
+eval_some_list_lookup (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator,
+		       const DOMAIN_COMPARE * compare, const val_descr * vd, XASL_NODE * subquery)
+{
+  HASH_LOOKUP *hash;
+  DB_VALUE *list_val;
+  SCAN_CODE qp_scan;
+  DB_LOGICAL res, t_res;
+
+  if (rel_operator != R_EQ || !eval_is_hash_candidate (subquery, list_id))
+    {
+      return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
+    }
+  if (hash_lookup_get (thread_p, subquery, list_id, compare, &hash) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
+  if (hash == NULL || !hash_lookup_start (hash, item))
+    {
+      return eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
+    }
+
+  res = hash_lookup_has_null (hash) ? V_UNKNOWN : V_FALSE;
+  while ((qp_scan = hash_lookup_next (thread_p, hash, &list_val)) == S_SUCCESS)
+    {
+      t_res = eval_value_rel_cmp (thread_p, item, list_val, R_EQ, NULL, vd, compare);
+      if (t_res == V_TRUE || t_res == V_ERROR)
+	{
+	  res = t_res;
+	  break;
+	}
+      else if (t_res == V_UNKNOWN)
+	{
+	  res = V_UNKNOWN;
+	}
+    }
+  hash_lookup_end (thread_p, hash);
+  if (qp_scan == S_ERROR)
+    {
+      return V_ERROR;
+    }
+
+#if !defined (NDEBUG)
+  /* the hash answers as reading the list does */
+  assert (res == V_ERROR || res == eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd));
+#endif
+  return res;
+}
+
+/*
  * eval_all_list_eval () -
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN, V_ERROR)
  *   item(in): db_value
@@ -1032,7 +1148,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
  */
 static DB_LOGICAL
 eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator,
-		    const DOMAIN_COMPARE * compare, const val_descr * vd)
+		    const DOMAIN_COMPARE * compare, const val_descr * vd, XASL_NODE * subquery)
 {
   DB_LOGICAL some_res;
 
@@ -1062,7 +1178,7 @@ eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * li
       return V_ERROR;
     }
 
-  some_res = eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
+  some_res = eval_some_list_lookup (thread_p, item, list_id, rel_operator, compare, vd, subquery);
   /* negate the result */
   return eval_negative (some_res);
 }
@@ -2424,12 +2540,12 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 		if (et_alsm->eq_flag == F_ALL)
 		  {
 		    result = eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op,
-						 elements.all, vd);
+						 elements.all, vd, et_alsm->elemset->xasl);
 		  }
 		else
 		  {
-		    result = eval_some_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op,
-						  elements.all, vd);
+		    result = eval_some_list_lookup (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op,
+						    elements.all, vd, et_alsm->elemset->xasl);
 		  }
 	      }
 	    else if (rhs_is_set)
@@ -2844,11 +2960,13 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
   eval_resolved_elements (et_alsm, &elements);
   if (et_alsm->eq_flag == F_ALL)
     {
-      return eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op, elements.all, vd);
+      return eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op, elements.all, vd,
+				 et_alsm->elemset->xasl);
     }
   else
     {
-      return eval_some_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op, elements.all, vd);
+      return eval_some_list_lookup (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op, elements.all, vd,
+				    et_alsm->elemset->xasl);
     }
 }
 

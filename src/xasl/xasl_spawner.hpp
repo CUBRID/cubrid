@@ -86,7 +86,7 @@ namespace cubxasl
       int spawn (const QFILE_TUPLE_VALUE_POSITION *src, QFILE_TUPLE_VALUE_POSITION *dest);
 
       QFILE_SORTED_LIST_ID *spawn (const QFILE_SORTED_LIST_ID *src);
-      QFILE_LIST_ID *spawn (const QFILE_LIST_ID *src);	/* TODO: unsupported */
+      QFILE_LIST_ID *spawn (const QFILE_LIST_ID *src);	/* the caller's, not a copy */
 
       FUNCTION_TYPE *spawn (const FUNCTION_TYPE *src);
       function_tmp_obj *spawn (const function_tmp_obj *src);	/* TODO: unsupported */

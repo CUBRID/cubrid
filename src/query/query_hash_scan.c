@@ -41,6 +41,7 @@
 #include "query_opfunc.h"
 #include "string_opfunc.h"
 #include "query_hash_scan.h"
+#include "list_file.h"
 #include "qfile_tuple_layout.h"
 #include "db_value_printer.hpp"
 #include "dbtype.h"
@@ -53,6 +54,7 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
+#include "numeric_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -279,55 +281,253 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
   db_private_free (thread_p, key);
 }
 
+/* 8 bytes a step: see qdata_hash_words */
+static const UINT64 QDATA_HASH_WORD_PRIME = 0x517cc1b727220a95ULL;
+
+/* the word with each byte that is NUL made a space */
+static UINT64
+qdata_hash_nul_as_space (UINT64 word)
+{
+  const UINT64 low7 = 0x7f7f7f7f7f7f7f7fULL;
+  /* 0x80 in exactly the bytes that are 0 */
+  const UINT64 nul = ~(((word & low7) + low7) | word | low7);
+  return word | ((nul >> 7) * ' ');
+}
+
+/* the bytes of a string a word at a time, without its trailing NULs: FxHash steps (rotate, xor, multiply), then
+ * MurmurHash3's fmix64, as a table takes the key's low bits. byte_cs (LANG_FASTCMP_BYTE_CS): a NUL hashes as a
+ * space, both weighing 0, and trailing spaces are left out too */
+static unsigned int
+qdata_hash_words (const unsigned char *str, int size, bool byte_cs)
+{
+  while (size > 0 && (str[size - 1] == 0 || (byte_cs && str[size - 1] == ' ')))
+    {
+      size--;
+    }
+  UINT64 hash_key = (UINT64) size;
+  UINT64 word;
+  int i = 0;
+  for (; i + 8 <= size; i += 8)
+    {
+      memcpy (&word, str + i, sizeof (word));
+      if (byte_cs)
+	{
+	  word = qdata_hash_nul_as_space (word);
+	}
+      hash_key = (((hash_key << 5) | (hash_key >> 59)) ^ word) * QDATA_HASH_WORD_PRIME;
+    }
+  if (i < size)
+    {
+      /* padded with NULs: the size hashed tells them from the string's own */
+      unsigned char tail[sizeof (word)] = { 0 };
+      for (int j = 0; i + j < size; j++)
+	{
+	  tail[j] = (byte_cs && str[i + j] == 0) ? ' ' : str[i + j];
+	}
+      memcpy (&word, tail, sizeof (word));
+      hash_key = (((hash_key << 5) | (hash_key >> 59)) ^ word) * QDATA_HASH_WORD_PRIME;
+    }
+  hash_key ^= hash_key >> 33;
+  hash_key *= 0xff51afd7ed558ccdULL;
+  hash_key ^= hash_key >> 33;
+  hash_key *= 0xc4ceb9fe1a85ec53ULL;
+  hash_key ^= hash_key >> 33;
+  return (unsigned int) hash_key;
+}
+
 /*
- * qdata_hash_scan_value () - hash one key value; -0.0 and +0.0 compare equal, so a zero hashes as +0
+ * qdata_hash_string () - the hash of a string as its collation's compare function weighs it: strings it finds equal
+ *			  hash alike, which the collations' own hashes (lang_mht2str_*) do not
+ *   lang_coll(in): the collation, whose compare function (fastcmp_kind) is not LANG_FASTCMP_OTHER
+ *
+ * The weights the collation's compare function compares the string by, from its start, a space weighing 0. Trailing
+ * weights 0 are left out: a compare function ignores them or tells the strings apart by them, which the caller's
+ * comparison does again.
+ */
+unsigned int
+qdata_hash_string (const LANG_COLLATION * lang_coll, const unsigned char *str, int size)
+{
+  const LANG_FASTCMP fastcmp = lang_coll->fastcmp_kind;
+  const unsigned int *weights = lang_coll->built_in ? lang_coll->coll.weights_ti : lang_coll->coll.weights;
+  unsigned int hash_key = MHT_FNV_OFFSET;
+  switch (fastcmp)
+    {
+    case LANG_FASTCMP_UTF8_CONTR:
+      return lang_hash_utf8_w_contr (lang_coll, str, size);
+    case LANG_FASTCMP_UTF8_UCA:
+      return lang_hash_utf8_uca (lang_coll, str, size);
+    case LANG_FASTCMP_BYTE_CS:
+    case LANG_FASTCMP_BINARY:
+      /* a weight is the byte itself, but NUL's and a space's (BYTE_CS): the bytes, 8 at a time */
+      return qdata_hash_words (str, size, fastcmp == LANG_FASTCMP_BYTE_CS);
+    case LANG_FASTCMP_BYTE:
+      /* a loop of their own: the loop below hashed 200-byte strings about 1.5 times slower. weights_ti weighs a space
+       * 0 */
+      while (size > 0 && lang_coll->coll.weights_ti[str[size - 1]] == 0)
+	{
+	  size--;
+	}
+      for (int i = 0; i < size; i++)
+	{
+	  hash_key = (hash_key ^ lang_coll->coll.weights_ti[str[i]]) * MHT_FNV_PRIME;
+	}
+      return hash_key;
+    default:
+      /* LANG_FASTCMP_KO, LANG_FASTCMP_UTF8: the loop below */
+      break;
+    }
+
+  const unsigned char *end = str + size;
+  int zeros = 0;		/* weights 0 not hashed yet */
+  while (str < end)
+    {
+      unsigned int weight = *str;
+      switch (fastcmp)
+	{
+	case LANG_FASTCMP_KO:
+	  /* the byte; an EUC space (0xA1 0xA1) weighs 0 as well */
+	  str++;
+	  if (weight == ' ')
+	    {
+	      weight = 0;
+	    }
+	  else if (weight == 0xa1 && str < end && *str == 0xa1)
+	    {
+	      weight = 0;
+	      str++;
+	    }
+	  break;
+	default:
+	  {
+	    /* LANG_FASTCMP_UTF8: a code point past the weights weighs itself */
+	    unsigned char *next;
+	    weight = intl_utf8_to_cp (str, (int) (end - str), &next);
+	    str = next;
+	    if (weight < (unsigned int) lang_coll->coll.w_count)
+	      {
+		weight = (weight == ' ') ? 0 : weights[weight];
+	      }
+	    break;
+	  }
+	}
+      if (weight == 0)
+	{
+	  zeros++;
+	  continue;
+	}
+      for (; zeros > 0; zeros--)
+	{
+	  hash_key *= MHT_FNV_PRIME;
+	}
+      hash_key = (hash_key ^ weight) * MHT_FNV_PRIME;
+    }
+  return hash_key;
+}
+
+/* FNV-1a over bytes */
+static unsigned int
+qdata_hash_bytes (const void *bytes, size_t size)
+{
+  const unsigned char *p = (const unsigned char *) bytes;
+  unsigned int hash_key = MHT_FNV_OFFSET;
+  size_t i;
+
+  for (i = 0; i < size; i++)
+    {
+      hash_key = (hash_key ^ p[i]) * MHT_FNV_PRIME;
+    }
+  return hash_key;
+}
+
+/*
+ * qdata_hash_number () - the hash of a NUMERIC, FLOAT, DOUBLE or MONETARY value: values their comparison finds equal
+ *			  hash alike, which mht_get_hash_number does not do for 1.0 and 1.00, or for 0.0 and -0.0
+ *   returns: false if the value is of another type or has no such hash: a NaN compares equal to every value (MR_CMP)
+ *   value(in): a value, not NULL
+ *   hash_key(out): its hash
+ */
+bool
+qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+
+  switch (type)
+    {
+    case DB_TYPE_NUMERIC:
+      {
+	/* the digits without trailing zeros, or with a negative scale's zeros appended up to the full precision
+	 * (mht_get_hash_number). A float NUMERIC keeps its scale in the value, not in its domain */
+	uint8_t digits[DB_NUMERIC_BUF_SIZE];
+	int precision, scale;
+
+	db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
+	if (scale == 0 || (scale < 0 && precision == DB_MAX_NUMERIC_PRECISION))
+	  {
+	    *hash_key = qdata_hash_bytes (db_locate_numeric (value), DB_NUMERIC_BUF_SIZE);
+	    return true;
+	  }
+	float_numeric_normalize_for_hash ((DB_C_NUMERIC) db_locate_numeric (value), digits, precision, scale);
+	*hash_key = qdata_hash_bytes (digits, DB_NUMERIC_BUF_SIZE);
+	return true;
+      }
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_MONETARY:
+      {
+	/* MONETARY compares its amount only (mr_cmpval_money) */
+	double d = (type == DB_TYPE_DOUBLE) ? db_get_double (value)
+	  : (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_monetary (value)->amount;
+
+	if (d != d)
+	  {
+	    return false;
+	  }
+	/* -0.0 compares equal to 0.0 */
+	d = (d == 0) ? 0 : d;
+	*hash_key = qdata_hash_bytes (&d, sizeof (d));
+	return true;
+      }
+    default:
+      return false;
+    }
+}
+
+/*
+ * qdata_hash_scan_value () - the hash of a key value: values the key comparison finds equal hash alike. A NUMERIC,
+ *			      FLOAT, DOUBLE or MONETARY is hashed by qdata_hash_number, a string in a collation
+ *			      qdata_hash_string takes by it; a hash partition keeps placing rows by
+ *			      mht_get_hash_number, which tells apart some values their comparison finds equal
  *   returns: hash value
  *   value(in): key value
  *   ht_size(in): hash table size (in buckets)
  *
  * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON value,
  * which hashes its text while its comparison takes a scalar's value (true as 'true', mr_cmpval_json ()), and a
- * string of a collation with expansions, which hashes the weights its comparison skips (lang_mht2str_utf8_exp ()).
+ * string of a codeset other than its collation's, which mht_get_hash_number hashes by the collation's mht2str (the
+ * weights its comparison skips for a collation with expansions: lang_mht2str_utf8_exp ()).
  */
 unsigned int
 qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 {
-  DB_VALUE zero;
+  unsigned int hash_key;
 
-  if (value != NULL && !DB_IS_NULL (value))
+  if (DB_IS_NULL (value))
     {
-      /* mht_get_hash_number hashes the raw bits (as qexec_connect_by_hash_column folds) */
-      switch (DB_VALUE_DOMAIN_TYPE (value))
+      return mht_get_hash_number (ht_size, value);
+    }
+  if (qdata_hash_number (value, &hash_key))
+    {
+      return hash_key % ht_size;
+    }
+  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value)))
+    {
+      const LANG_COLLATION *lang_coll = lang_get_collation (db_get_string_collation (value));
+      if (lang_coll->fastcmp_kind != LANG_FASTCMP_OTHER && db_get_string_codeset (value) == lang_coll->codeset)
 	{
-	case DB_TYPE_FLOAT:
-	  if (db_get_float (value) == 0.0f)
-	    {
-	      db_make_float (&zero, 0.0f);
-	      return mht_get_hash_number (ht_size, &zero);
-	    }
-	  break;
-
-	case DB_TYPE_DOUBLE:
-	  if (db_get_double (value) == 0.0)
-	    {
-	      db_make_double (&zero, 0.0);
-	      return mht_get_hash_number (ht_size, &zero);
-	    }
-	  break;
-
-	case DB_TYPE_MONETARY:
-	  if (db_get_monetary (value)->amount == 0.0)
-	    {
-	      db_make_monetary (&zero, db_get_monetary (value)->type, 0.0);
-	      return mht_get_hash_number (ht_size, &zero);
-	    }
-	  break;
-
-	default:
-	  break;
+	  return qdata_hash_string (lang_coll, (const unsigned char *) db_get_string (value),
+				    db_get_string_size (value)) % ht_size;
 	}
     }
-
   return mht_get_hash_number (ht_size, value);
 }
 
@@ -592,6 +792,281 @@ qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, HL_HEAPID heap_id, QFI
   simple_pos->vpid = scan_id_p->curr_vpid;
 
   return entry;
+}
+
+/*
+ * qdata_hscan_method () - the method a hash table over a list's tuples takes within mem_limit
+ *   return: HASH_METH_IN_MEM (the tuples in memory), HASH_METH_HYBRID (their positions in memory) or
+ *	     HASH_METH_HASH_FILE (a hash file)
+ *   list_id(in): the list the table is built over
+ *   mem_limit(in): the bytes the table may take in memory
+ */
+HASH_METHOD
+qdata_hscan_method (const QFILE_LIST_ID * list_id, UINT64 mem_limit)
+{
+  UINT64 slot_array_size, entries_size, in_mem_size, hybrid_size;
+
+  /* the IN_MEM/HYBRID table is int-indexed */
+  if (list_id->tuple_cnt > INT_MAX)
+    {
+      return HASH_METH_HASH_FILE;
+    }
+
+  slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
+  entries_size = (UINT64) list_id->tuple_cnt * sizeof (MHT_HLS_ENTRY);
+  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
+  in_mem_size = slot_array_size + entries_size + (UINT64) list_id->page_cnt * DB_PAGESIZE;
+  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
+  hybrid_size = slot_array_size + entries_size + (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS);
+
+  if (in_mem_size <= mem_limit)
+    {
+      return HASH_METH_IN_MEM;
+    }
+  if (hybrid_size <= mem_limit)
+    {
+      return HASH_METH_HYBRID;
+    }
+  return HASH_METH_HASH_FILE;
+}
+
+/*
+ * qdata_hscan_create () - the hash table of a method
+ *   return: error code
+ *   hash_scan(in/out): a hash scan with no table (HASH_METH_NOT_USE)
+ *   method(in): the table's method (qdata_hscan_method)
+ *   tuple_cnt(in): the tuples the table will hold
+ *   name(in): the name of a memory table
+ */
+int
+qdata_hscan_create (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, HASH_METHOD method, INT64 tuple_cnt,
+		    const char *name)
+{
+  assert (hash_scan->hash_list_scan_type == HASH_METH_NOT_USE);
+
+  switch (method)
+    {
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      hash_scan->memory.hash_table = mht_create_hls (name, (int) tuple_cnt, NULL, NULL);
+      if (hash_scan->memory.hash_table == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      hash_scan->memory.curr_hash_entry = NULL;
+      break;
+
+    case HASH_METH_HASH_FILE:
+      hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
+      if (hash_scan->file.hash_table == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      if (fhs_create (thread_p, hash_scan->file.hash_table, tuple_cnt) == NULL)
+	{
+	  db_private_free_and_init (thread_p, hash_scan->file.hash_table);
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      hash_scan->file.curr_oid = OID_INITIALIZER;
+      hash_scan->file.is_dk_bucket = false;
+      break;
+
+    case HASH_METH_NOT_USE:
+      /* a table always has a method */
+    default:
+      assert_release_error (false);
+      return er_errid ();
+    }
+
+  hash_scan->hash_list_scan_type = method;
+  return NO_ERROR;
+}
+
+/*
+ * qdata_hscan_destroy () - frees the hash table qdata_hscan_create made
+ *   hash_scan(in/out): the hash scan; it has no table (HASH_METH_NOT_USE) after
+ */
+void
+qdata_hscan_destroy (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
+{
+  switch (hash_scan->hash_list_scan_type)
+    {
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      mht_destroy_hls (hash_scan->memory.hash_table);
+      hash_scan->memory.hash_table = NULL;
+      break;
+
+    case HASH_METH_HASH_FILE:
+      fhs_destroy (thread_p, hash_scan->file.hash_table);
+      db_private_free_and_init (thread_p, hash_scan->file.hash_table);
+      break;
+
+    case HASH_METH_NOT_USE:
+    default:
+      break;
+    }
+
+  hash_scan->hash_list_scan_type = HASH_METH_NOT_USE;
+}
+
+/*
+ * qdata_hscan_set_key () - the key of the next insert or probe
+ *   hash_key(in): a hash value; a hash file takes its own hash of it, as for qdata_hash_scan_key
+ */
+void
+qdata_hscan_set_key (HASH_LIST_SCAN * hash_scan, unsigned int hash_key)
+{
+  hash_scan->curr_hash_key = qdata_hash_scan_key_finish (hash_key, hash_scan->hash_list_scan_type);
+}
+
+/*
+ * qdata_hscan_insert () - adds the tuple a list scan is on under the current key (qdata_hscan_set_key)
+ *   return: error code
+ *   list_scan_id(in): the scan of the list the table is built over, on the tuple
+ *   tuple_record(in): the tuple
+ */
+int
+qdata_hscan_insert (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
+		    QFILE_TUPLE_RECORD * tuple_record)
+{
+  MHT_HLS_ENTRY *entry = NULL;
+  TFTID tftid;
+
+  switch (hash_scan->hash_list_scan_type)
+    {
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      /* IN_MEM keeps a copy of the tuple, HYBRID its position */
+      entry = (hash_scan->hash_list_scan_type == HASH_METH_IN_MEM
+	       ? qdata_alloc_hscan_value (thread_p, hash_scan->memory.hash_table->heap_id, tuple_record->tpl)
+	       : qdata_alloc_hscan_value_OID (thread_p, hash_scan->memory.hash_table->heap_id, list_scan_id));
+      if (entry == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, entry) == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      break;
+
+    case HASH_METH_HASH_FILE:
+      SET_TFTID (tftid, list_scan_id->curr_vpid.volid, list_scan_id->curr_vpid.pageid, list_scan_id->curr_offset);
+      if (fhs_insert (thread_p, hash_scan->file.hash_table, (void *) &hash_scan->curr_hash_key, &tftid) == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      break;
+
+    case HASH_METH_NOT_USE:
+      /* an insert follows qdata_hscan_create */
+    default:
+      assert_release_error (false);
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qdata_hscan_probe () - the next tuple under the current key (qdata_hscan_set_key)
+ *   return: error code
+ *   list_scan_id(in): an open scan of the list the table is built over; a tuple read by its position keeps its page
+ *		       fixed in this scan
+ *   tuple_record(in/out): the tuple found, tpl NULL when no tuple is left; tpl NULL on entry starts the key's tuples
+ */
+int
+qdata_hscan_probe (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
+		   QFILE_TUPLE_RECORD * tuple_record)
+{
+  MHT_HLS_ENTRY *entry = NULL;
+  TFTID tftid;
+  EH_SEARCH eh_search;
+  QFILE_TUPLE_SIMPLE_POS *simple_pos;
+  QFILE_TUPLE_POSITION tuple_position;
+
+  switch (hash_scan->hash_list_scan_type)
+    {
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      if (tuple_record->tpl == NULL)
+	{
+	  entry =
+	    mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+			 &hash_scan->memory.curr_hash_entry);
+	}
+      else
+	{
+	  entry =
+	    mht_get_next_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+			      &hash_scan->memory.curr_hash_entry);
+	}
+      if (entry == NULL)
+	{
+	  qfile_slot_reset (tuple_record);
+	}
+      else if (hash_scan->hash_list_scan_type == HASH_METH_IN_MEM)
+	{
+	  /* the payload is a tuple of the list, owned by the table */
+	  qfile_slot_set_tuple_ptr_and_layout (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry), 0,
+					       &list_scan_id->list_id.type_list);
+	}
+      else
+	{
+	  simple_pos = (QFILE_TUPLE_SIMPLE_POS *) MHT_HLS_ENTRY_PAYLOAD (entry);
+	  MAKE_TUPLE_POSTION (tuple_position, simple_pos, list_scan_id);
+	  if (qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK) != S_SUCCESS)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+	}
+      break;
+
+    case HASH_METH_HASH_FILE:
+      if (tuple_record->tpl == NULL)
+	{
+	  eh_search = fhs_search (thread_p, hash_scan, &tftid);
+	}
+      else
+	{
+	  eh_search = fhs_search_next (thread_p, hash_scan, &tftid);
+	}
+      if (eh_search == EH_KEY_FOUND)
+	{
+	  MAKE_TFTID_TO_TUPLE_POSTION (tuple_position, tftid, list_scan_id);
+	  if (qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK) != S_SUCCESS)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+	}
+      else if (eh_search == EH_KEY_NOTFOUND)
+	{
+	  qfile_slot_reset (tuple_record);
+	}
+      else
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      break;
+
+    case HASH_METH_NOT_USE:
+      /* a probe follows qdata_hscan_create */
+    default:
+      assert_release_error (false);
+      return er_errid ();
+    }
+
+  return NO_ERROR;
 }
 
 /*

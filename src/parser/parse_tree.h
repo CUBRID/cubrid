@@ -1329,6 +1329,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_ROW_SNAPSHOT			(1ULL << 48)	/* read the rows a constant filter selects while planning,
 								 * even with row_snapshot_max_rows=0 (CBRD-27478) */
 #define  PT_HINT_NO_ROW_SNAPSHOT		(1ULL << 49)	/* do not read them (CBRD-27478) */
+#define  PT_HINT_NO_HASH_LOOKUP			(1ULL << 50)	/* don't hash the subquery's list for IN lookups */
 
 /* Codes for error messages */
 typedef enum

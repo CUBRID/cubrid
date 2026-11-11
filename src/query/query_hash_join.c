@@ -2692,40 +2692,11 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
   if (list_id != NULL)
     {
-      UINT64 in_mem_size = 0;
-      UINT64 hybrid_size = 0;
+      const HASH_METHOD method = qdata_hscan_method (list_id, mem_limit);
 
-      /* the slot array is int-indexed; the estimates are computable only when tuple_cnt fits in int */
-      if (list_id->tuple_cnt <= INT_MAX)
+      if (method == HASH_METH_IN_MEM || method == HASH_METH_HYBRID)
 	{
-	  UINT64 slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
-	  UINT64 entries_size = (UINT64) list_id->tuple_cnt * sizeof (MHT_HLS_ENTRY);
-	  UINT64 payload_size;
-
-	  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
-	  payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
-	  in_mem_size = slot_array_size + entries_size + payload_size;
-
-	  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
-	  payload_size = (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS);
-	  hybrid_size = slot_array_size + entries_size + payload_size;
-	}
-
-      if (list_id->tuple_cnt <= INT_MAX && in_mem_size <= mem_limit)
-	{
-	  hash_scan->hash_list_scan_type = HASH_METH_IN_MEM;
-
-	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
-	  if (hash_scan->memory.hash_table == NULL)
-	    {
-	      goto error_exit;
-	    }
-
-	  hash_scan->memory.curr_hash_entry = NULL;
-	}
-      else if (list_id->tuple_cnt <= INT_MAX && hybrid_size <= mem_limit)
-	{
-	  hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
+	  hash_scan->hash_list_scan_type = method;
 
 	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
 	  if (hash_scan->memory.hash_table == NULL)
@@ -5206,7 +5177,7 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
 
 /*
  * hjoin_prehash_value_ok () - the value, read back from its column of the list, hashes as it does now
- *   return: true when mht_get_hash_number () gives the value and the one the build reads back from the list
+ *   return: true when qdata_hash_scan_value () gives the value and the one the build reads back from the list
  *	     (qfile_slot_read_column_value () with the column's domain, hjoin_fetch_key () without coercion) the same
  *	     number; false for every other value
  *   v(in): the value the list's column was written from, after the write
@@ -5218,8 +5189,8 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
  *     the hash is of those bits.
  *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes
  *     and read back zero-filled into the same 17 bytes, with the precision and scale the write recorded (the
- *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes, a fixed numeric's not
- *     normalized (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric ()).
+ *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes and the scale
+ *     (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric (), qdata_hash_number ()).
  *   - CHAR, VARCHAR with the column's collation: the bytes are written as the value holds them after the write (a
  *     CHAR is padded in the value itself first), compressed or not, and read back as those bytes with the column's
  *     collation; the hash is of the bytes up to their trailing spaces, by the collation.

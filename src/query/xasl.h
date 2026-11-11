@@ -589,7 +589,7 @@ struct cte_proc_node
 #define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
 #define XASL_NEED_SINGLE_TUPLE_SCAN    (0x1 << 15)	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
-/* (0x1 << 17) was XASL_SAMPLING_SCAN, removed with the query-based statistics sampling path */
+#define XASL_NO_HASH_LOOKUP	       (0x1 << 17)	/* IN lookups read this subquery's list without a hash */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
@@ -1430,6 +1430,10 @@ struct xasl_node
 				 * filter on the node (the row loop, the page batch, a worker's clone), merged like them */
   HJOIN_PREHASH *hj_prehash;	/* a hash join's build input hashes this node's written tuples append to (not owned;
 				 * hjoin_prehash_arm ()), or NULL */
+  struct hash_lookup *hash_lookup;	/* the hash over this subquery's list for its IN lookups (query_hash_lookup.cpp) */
+  ALSM_EVAL_TERM *hash_lookup_term;	/* the ALL/SOME term that reads this list subquery, set as the term is
+					 * unpacked: a PX scan executes the subquery and builds its hash before its
+					 * workers start (eval_hash_lookup_prepare) */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

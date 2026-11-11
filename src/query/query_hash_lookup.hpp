@@ -1,0 +1,70 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * query_hash_lookup.hpp - the hash over a list subquery's values that answers the equality lookups of a predicate
+ *			 (IN, NOT IN, = SOME, <> ALL) in place of reading the whole list
+ */
+
+#ifndef _QUERY_HASH_LOOKUP_HPP_
+#define _QUERY_HASH_LOOKUP_HPP_
+
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include "dbtype_def.h"
+#include "storage_common.h"
+#include "thread_compat.hpp"
+
+struct DOMAIN_COMPARE;
+struct qfile_list_id;
+struct xasl_node;
+
+typedef struct hash_lookup HASH_LOOKUP;
+
+/* the trace of a subquery's hash (query_dump.c), kept with the hash as the subquery cache keeps its own */
+typedef struct hash_lookup_stats HASH_LOOKUP_STATS;
+struct hash_lookup_stats
+{
+  UINT64 builds;		/* tables built over the subquery's list */
+  UINT64 lookups;		/* the lookups those tables answered */
+  int method;			/* the tables' HASH_METHOD (query_hash_scan.h) */
+};
+
+extern const HASH_LOOKUP_STATS *hash_lookup_get_stats (const HASH_LOOKUP *hash);
+extern void hash_lookup_merge_stats (xasl_node *dst, const xasl_node *src);
+
+/* the hash's lifetime: a lookup creates it (hash_lookup_get), the subquery's XASL frees it */
+extern void hash_lookup_destroy (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
+extern void hash_lookup_release_tree (THREAD_ENTRY *thread_p, xasl_node *xasl);
+
+/* a PX scan worker's clone of the subquery: the leader's table */
+extern int hash_lookup_share (THREAD_ENTRY *thread_p, xasl_node *subquery, const xasl_node *leader);
+
+/* each lookup: the hash, built by the first lookup of the list */
+extern int hash_lookup_get (THREAD_ENTRY *thread_p, xasl_node *subquery, qfile_list_id *list_id,
+			    const DOMAIN_COMPARE *compare, HASH_LOOKUP **hash);
+
+/* the list values of one item, through the hash */
+extern bool hash_lookup_start (HASH_LOOKUP *hash, const DB_VALUE *item);
+extern bool hash_lookup_has_null (const HASH_LOOKUP *hash);
+extern SCAN_CODE hash_lookup_next (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash, DB_VALUE **value);
+extern void hash_lookup_end (THREAD_ENTRY *thread_p, HASH_LOOKUP *hash);
+
+#endif /* _QUERY_HASH_LOOKUP_HPP_ */

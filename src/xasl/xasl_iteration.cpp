@@ -22,6 +22,7 @@
 #include "error_manager.h"
 #include "tsc_timer.h"
 #include "memoize.hpp"
+#include "query_hash_lookup.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -201,6 +202,8 @@ extern "C" {
 	  dst_node->sq_cache->size_max += src_node->sq_cache->size_max;
 	  dst_node->sq_cache->enabled = dst_node->sq_cache->enabled ? true : src_node->sq_cache->enabled;
 	}
+
+      hash_lookup_merge_stats (dst_node, src_node);
 
       if (dst_node->memoize_storage != nullptr && src_node->memoize_storage != nullptr)
 	{
