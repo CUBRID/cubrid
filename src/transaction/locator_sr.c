@@ -2856,6 +2856,15 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
   switch (fetch_version_type)
     {
     case LC_FETCH_MVCC_VERSION:
+#if !defined (NDEBUG)
+      if (prm_get_bool_value (PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH))
+	{
+	  /* test only: the unprotected committed-snapshot reader of Sidecar acceptance A4 (5.6 c) */
+	  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_committed;
+	  mvcc_snapshot = &mvcc_snapshot_dirty;
+	  break;
+	}
+#endif /* !NDEBUG */
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
 	{
@@ -2926,8 +2935,34 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       mobjs->num_objs = 0;
       offset = 0;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while (true)
 	{
+	  const OID before = oid;
+
+	  scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
+	  if (unlikely (scan == S_SIDECAR_LOCK_NEEDED))
+	    {
+	      /* a committed-snapshot read of a row whose Sidecar store records kept vanishing (5.6 c); heap_next ()
+	       * left oid at the row, and the lock wait needs the scan's page released (I-7) */
+	      if (scan_cache.page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, &scan_cache.page_watcher);
+		}
+	      scan = sidecar_fetch_locked (thread_p, &oid, class_oid, &scan_cache, &recdes);
+	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+		{
+		  continue;
+		}
+	      if (scan == S_DOESNT_FIT)
+		{
+		  /* read the row again into a larger area */
+		  oid = before;
+		}
+	    }
+	  if (scan != S_SUCCESS)
+	    {
+	      break;
+	    }
 	  if (unlikely (sidecar_record_has_refs (&recdes)))
 	    {
 	      /* I-8: the scan never opts in to the stored form, so heap_next () expands every record with refs */

@@ -2337,7 +2337,8 @@ sidecar_on_absent (THREAD_ENTRY *thread_p, const HEAP_SCANCACHE *scan_cache, con
     }
   if (scan_cache->mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed)
     {
-      /* only xlocator_fetch () reads with the committed snapshot, and it reads the row again under an S lock */
+      /* only xlocator_fetch () reads with the committed snapshot, and xlocator_fetch_all () under the debug parameter
+       * sidecar_debug_committed_fetch; both read the row again under an S lock */
       er_log_debug (ARG_FILE_LINE, "Sidecar: retries exhausted after %d reads, the fetch takes the lock fallback",
 		    attempt + 1);
       return S_SIDECAR_LOCK_NEEDED;

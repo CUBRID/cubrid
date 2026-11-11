@@ -796,6 +796,9 @@ static PAGE_PTR heap_sidecar_fix_header (THREAD_ENTRY * thread_p, const HFID * h
 static void heap_sidecar_log_link (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, HEAP_HDR_STATS * heap_hdr,
 				   const HFID * link);
 static SCAN_CODE heap_sidecar_fetch_exit (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan);
+#if !defined (NDEBUG)
+static void heap_sidecar_delay_log_resolve (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+#endif /* !NDEBUG */
 static int heap_sidecar_plan (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 
 static int heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_index_info, int n_atts,
@@ -8336,6 +8339,11 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  continue;
 	}
 
+      if (scan == S_SIDECAR_LOCK_NEEDED)
+	{
+	  /* the caller reads this row again under a lock (xlocator_fetch_all ()) */
+	  *next_oid = oid;
+	}
       /* scan was not successful, stop scanning */
       break;
     }
@@ -27800,6 +27808,14 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
 					       context->scan_cache, context->old_chn, context);
+#if !defined (NDEBUG)
+	  if (FI_INSERTED (FI_TEST_SIDECAR_DELAY_LOG_RESOLVE) && scan == S_SUCCESS
+	      && mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed && context->recdes_p != NULL
+	      && sidecar_record_has_refs (context->recdes_p))
+	    {
+	      heap_sidecar_delay_log_resolve (thread_p, context);
+	    }
+#endif /* !NDEBUG */
 	  goto exit;
 	}
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
@@ -27871,6 +27887,32 @@ heap_sidecar_fetch_exit (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bo
   assert (scan != S_SIDECAR_RETRY);
   return scan;
 }
+
+#if !defined (NDEBUG)
+/*
+ * heap_sidecar_delay_log_resolve () - Fault 700012: widen the window between a committed-snapshot fetch's read of
+ *				       a version from the log and the resolve of its refs (Sidecar acceptance A4)
+ *   context(in/out): get context whose record came from the log; its pages are released
+ *
+ * Note: The log path may release the pages anyway, so the scan and the retry fix them again as they need.
+ */
+static void
+heap_sidecar_delay_log_resolve (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  if (context->home_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+    }
+  if (context->fwd_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+    }
+  er_log_debug (ARG_FILE_LINE, "Sidecar: committed fetch of %d|%d|%d read its version from the log, attempt %d; "
+		"resolving in %d ms", OID_AS_ARGS (context->oid_p), context->sidecar_attempt,
+		FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+  thread_sleep (FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+}
+#endif /* !NDEBUG */
 
 /*
  * heap_update_set_prev_version () - Set prev version lsa to record according to its type.

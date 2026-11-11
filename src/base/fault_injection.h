@@ -113,6 +113,9 @@ typedef enum
   FI_TEST_SIDECAR_KILL_COMMIT_WINDOW = 700011,	/* a commit that saved heap space freed it and has not
 						 * flushed its commit record: it waits FI_KILL_COMMIT_WINDOW_HOLD seconds, so another
 						 * transaction can take the bytes, then kills */
+  /* SIDECAR: the retry window of the A4 MVCC test */
+  FI_TEST_SIDECAR_DELAY_LOG_RESOLVE = 700012,	/* a committed-snapshot fetch that read a version with refs from the
+						 * log releases its pages and waits FI_SIDECAR_LOG_RESOLVE_DELAY_MS before it resolves */
 
   /* etc .... */
 
@@ -129,6 +132,9 @@ typedef enum
 
 /* seconds FI_TEST_SIDECAR_KILL_COMMIT_WINDOW waits before it kills */
 #define FI_KILL_COMMIT_WINDOW_HOLD 8
+
+/* milliseconds FI_TEST_SIDECAR_DELAY_LOG_RESOLVE waits */
+#define FI_SIDECAR_LOG_RESOLVE_DELAY_MS 200
 
 
 typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);

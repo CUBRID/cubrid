@@ -836,6 +836,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_SIDECAR_INLINE_TARGET "sidecar_inline_target"
 #define PRM_NAME_SIDECAR_MIN_VALUE_SIZE "sidecar_min_value_size"
 #define PRM_NAME_SIDECAR_FORCE_EXTERNAL "sidecar_force_external"
+#define PRM_NAME_SIDECAR_DEBUG_COMMITTED_FETCH "sidecar_debug_committed_fetch"
 
 // #endregion
 
@@ -5764,6 +5765,19 @@ SYSPRM_PARAM prm_Def[] = {
   /* debug: every eligible variable value of at least 64 bytes moves to the store, whatever the row's length */
   {PRM_ID_SIDECAR_FORCE_EXTERNAL,
    PRM_NAME_SIDECAR_FORCE_EXTERNAL,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* test only, debug builds: xlocator_fetch_all () reads with the committed snapshot (Sidecar acceptance A4) */
+  {PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH,
+   PRM_NAME_SIDECAR_DEBUG_COMMITTED_FETCH,
    (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,

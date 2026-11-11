@@ -457,7 +457,8 @@ typedef enum
   S_DOESNT_EXIST,		/* only for slotted page */
   S_SNAPSHOT_NOT_SATISFIED,
   S_SIDECAR_RETRY,		/* the heap fetch reads the row's current version again; never leaves it (5.6 c) */
-  S_SIDECAR_LOCK_NEEDED		/* a committed-snapshot fetch ran out of retries; only xlocator_fetch () handles it */
+  S_SIDECAR_LOCK_NEEDED		/* a committed-snapshot fetch ran out of retries; xlocator_fetch () and
+				 * xlocator_fetch_all () handle it */
 } SCAN_CODE;
 
 typedef enum
