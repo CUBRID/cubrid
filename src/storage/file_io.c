@@ -207,7 +207,7 @@
   (((off_t)(pagesize)) * ((off_t)(npages)))
 
 #define FILEIO_BACKUP_NO_ZIP_HEADER_VERSION        1
-#define FILEIO_BACKUP_LOG_END_HEADER_VERSION       3	/* start_log_end_lsa is present (CBRD-27298) */
+#define FILEIO_BACKUP_LOG_END_HEADER_VERSION       3	/* start_log_end_lsa is present */
 #define FILEIO_BACKUP_CURRENT_HEADER_VERSION       3
 #define FILEIO_CHECK_FOR_INTERRUPT_INTERVAL       100
 
