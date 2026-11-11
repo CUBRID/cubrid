@@ -507,7 +507,6 @@ static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
 static int la_update_ha_last_applied_info (void);
 static int la_delete_ha_apply_info (void);
-static int la_create_applied_tx_marker (void);
 static int la_load_applied_tx_markers (void);
 static void la_free_applied_tx_markers (void);
 static bool la_applied_tx_marker_exists (const LOG_LSA * commit_lsa);
@@ -2988,6 +2987,18 @@ la_get_last_ha_applied_info (void)
   if (insert_apply_info == true)
     {
       res = la_insert_ha_apply_info (&log_db_creation_time);
+
+      /* no apply info means the replication of this copied log starts over, so a marker left from an earlier
+       * stream must not skip its commits */
+      if (res > 0)
+	{
+	  int deleted = la_delete_applied_tx_markers (NULL);
+
+	  if (deleted < 0)
+	    {
+	      return deleted;
+	    }
+	}
     }
   else
     {
@@ -3208,13 +3219,18 @@ la_delete_ha_apply_info (void)
 }
 
 /*
- * The applied-transaction marker, table ha_applied_tx_marker on the slave: one row per transaction a worker
- * applied, holding the copied log it came from and its commit LSA. A worker commits a transaction on its own
+ * The applied-transaction marker, system catalog _db_ha_applied_tx_marker on the slave: one row per transaction a
+ * worker applied, holding the copied log it came from and its commit LSA. A worker commits a transaction on its own
  * connection before the coordinator stores the apply info, so a restart can meet a commit that is already on
  * the slave. The worker inserts the marker in the same slave transaction as the data, so the marker exists
  * exactly when the data is committed, and a restart skips the commits that have one. The markers at or below
  * the stored committed_lsa are deleted when it is stored. The copied log path keeps apart the markers of the
  * appliers a node runs, one per remote node.
+ *
+ * The markers only mean something next to the apply info of the same copied log: where the apply info is created
+ * anew or deleted, the markers of that copied log are deleted in the same transaction (la_get_last_ha_applied_info,
+ * la_delete_ha_apply_info, and restoreslave), so a marker left from another log stream cannot skip a commit.
+ * The table is a system catalog so that a user statement replicated from the master cannot drop or change it.
  *
  * A row change must not be applied twice. An INSERT of key 1 followed by an UPDATE of key 1 to 2 brings key 1
  * back on the second pass, and the slave keeps a row the master does not have.
@@ -3222,33 +3238,7 @@ la_delete_ha_apply_info (void)
  * A statement must not run twice either. A DDL fails the second time, and a DML replicated as a statement,
  * such as "UPDATE t SET n = n + 1", succeeds again and leaves n different from the master.
  */
-#define LA_APPLIED_TX_MARKER_NAME "ha_applied_tx_marker"
-
-/*
- * la_create_applied_tx_marker() - create the marker table if it does not exist yet
- *   return: NO_ERROR or error code
- *
- * Note: runs on the coordinator connection at startup, before the workers start, and commits.
- */
-static int
-la_create_applied_tx_marker (void)
-{
-  char query_buf[LA_QUERY_BUF_SIZE];
-  int res;
-
-  snprintf (query_buf, sizeof (query_buf),
-	    "CREATE TABLE IF NOT EXISTS [%s] (copied_log_path VARCHAR(4096), commit_pageid BIGINT, "
-	    "commit_offset INTEGER, PRIMARY KEY (copied_log_path, commit_pageid, commit_offset));",
-	    LA_APPLIED_TX_MARKER_NAME);
-  res = la_update_query_execute_with_values (query_buf, 0, NULL, true);
-  if (res < 0)
-    {
-      (void) db_abort_transaction ();
-      return res;
-    }
-
-  return db_commit_transaction ();
-}
+#define LA_APPLIED_TX_MARKER_NAME CT_HA_APPLIED_TX_MARKER_NAME
 
 /*
  * la_load_applied_tx_markers() - load the commit LSAs of this copied log marked above last_committed_lsa
@@ -9845,11 +9835,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
   /* the commits the previous run applied above the stored position are skipped whole by the workers (see
    * LA_APPLIED_TX_MARKER_NAME) */
-  error = la_create_applied_tx_marker ();
-  if (error == NO_ERROR)
-    {
-      error = la_load_applied_tx_markers ();
-    }
+  error = la_load_applied_tx_markers ();
   if (error != NO_ERROR)
     {
       er_stack_push ();
