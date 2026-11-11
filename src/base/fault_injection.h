@@ -116,6 +116,12 @@ typedef enum
   /* SIDECAR: the retry window of the A4 MVCC test */
   FI_TEST_SIDECAR_DELAY_LOG_RESOLVE = 700012,	/* a committed-snapshot fetch that read a version with refs from the
 						 * log releases its pages and waits FI_SIDECAR_LOG_RESOLVE_DELAY_MS before it resolves */
+  /* SIDECAR: holds of a store read of a relocated store record, for the store read model's findings.  Each one
+   * waits FI_SIDECAR_READ_HOLD seconds with no page fixed. */
+  FI_TEST_SIDECAR_READ_HOLD_AT_FORWARD = 700020,	/* the read released the home page that forwards, and has not
+							 * fixed the forward page */
+  FI_TEST_SIDECAR_READ_HOLD_AT_RECHECK = 700021,	/* the read released the forward page, and has not fixed the
+							 * home page again */
 
   /* etc .... */
 
@@ -135,6 +141,8 @@ typedef enum
 
 /* milliseconds FI_TEST_SIDECAR_DELAY_LOG_RESOLVE waits */
 #define FI_SIDECAR_LOG_RESOLVE_DELAY_MS 200
+/* seconds each FI_TEST_SIDECAR_READ_HOLD_* waits */
+#define FI_SIDECAR_READ_HOLD 6
 
 
 typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);

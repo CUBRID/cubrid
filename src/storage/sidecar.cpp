@@ -679,6 +679,23 @@ sidecar_copy_record (const RECDES *peeked, std::vector<char> &bytes, RECDES *rec
   record->type = REC_HOME;
 }
 
+/* a debug hold of a store read between two of its page fixes, with no page fixed; the log line lets a test act
+ * while the read waits */
+static void
+sidecar_read_hold (THREAD_ENTRY *thread_p, FI_TEST_CODE code)
+{
+#if !defined (NDEBUG)
+  if (FI_INSERTED (code))
+    {
+      int seconds = FI_SIDECAR_READ_HOLD;
+
+      _er_log_debug (ARG_FILE_LINE, "FAULT INJECTION: SIDECAR READ HOLD %d for %d seconds\n", (int) code, seconds);
+      fflush (NULL);
+      (void) FI_TEST_ARG (thread_p, code, &seconds, 0);
+    }
+#endif /* !NDEBUG */
+}
+
 /* the store record at oid, into bytes; record points into them; page is the store page fixed at each moment */
 static sidecar_read_result
 sidecar_read_store_record_at (THREAD_ENTRY *thread_p, const OID *oid, std::vector<char> &bytes, RECDES *record,
@@ -729,6 +746,7 @@ sidecar_read_store_record_at (THREAD_ENTRY *thread_p, const OID *oid, std::vecto
 	}
 
       pgbuf_unfix_and_init (thread_p, page);
+      sidecar_read_hold (thread_p, FI_TEST_SIDECAR_READ_HOLD_AT_FORWARD);
       result = sidecar_fix_store_page (thread_p, &forward, &page);
       if (result == SIDECAR_READ_FAILED)
 	{
@@ -747,6 +765,7 @@ sidecar_read_store_record_at (THREAD_ENTRY *thread_p, const OID *oid, std::vecto
 	}
 
       /* the home still forwards to what was read */
+      sidecar_read_hold (thread_p, FI_TEST_SIDECAR_READ_HOLD_AT_RECHECK);
       result = sidecar_fix_store_page (thread_p, oid, &page);
       if (result != SIDECAR_READ_PRESENT)
 	{
