@@ -492,6 +492,7 @@ extern void *fileio_writev (THREAD_ENTRY * thread_p, int vdes, void **arrayof_io
 extern bool fileio_fsync_pending (void);
 extern int fileio_synchronize_directory (THREAD_ENTRY * thread_p, const char *label);
 extern int fileio_synchronize (THREAD_ENTRY * thread_p, int vdes, const char *vlabel, bool ensure_metadata);
+extern void fileio_read_ahead_hint (int vol_fd, PAGEID page_id, int num_pages, size_t page_size);
 extern int fileio_synchronize_all (THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern void *fileio_read_user_area (THREAD_ENTRY * thread_p, int vdes, PAGEID pageid, off_t start_offset, size_t nbytes,

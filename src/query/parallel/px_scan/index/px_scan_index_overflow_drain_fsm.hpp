@@ -76,6 +76,22 @@ namespace parallel_index_scan
 	m_drain_state = drain_state::LEAF_OIDS;
       }
 
+      /* the drain's OID buffer and the index of the OID it takes next (the one being processed is the one before) */
+      const std::vector<OID> &buffer () const
+      {
+	return m_leaf_oids;
+      }
+      size_t buffer_next () const
+      {
+	return m_leaf_oid_idx;
+      }
+
+      /* after this buffer the drain moves to the next key of the leaf: leaf OIDs of a key with no overflow chain */
+      bool next_is_next_key () const
+      {
+	return m_drain_state == drain_state::LEAF_OIDS && VPID_ISNULL (&m_pending_ovf_vpid) && !m_in_helper_mode;
+      }
+
       /* Drives LEAF_OIDS → OVERFLOW_{SHARED,SOLO} → IDLE; returns S_SUCCESS / S_END / S_ERROR. */
       SCAN_CODE drain_next_oid (THREAD_ENTRY *thread_p);
 

@@ -29,6 +29,9 @@
 #include "scan_manager.h"
 #include "storage_common.h"
 
+#include <deque>
+#include <vector>
+
 namespace parallel_scan
 {
   class input_handler_index;
@@ -105,8 +108,46 @@ namespace parallel_index_scan
 	  }
       }
 
+      /* before the lookup of the OID the drain just took: the heap pages of the OIDs that follow it in lookup order
+       * go to the OS, a window ahead (the rest of this key, then the keys evaluated ahead on this leaf) */
+      void read_ahead (THREAD_ENTRY *thread_p);
+
+      /* the OIDs that follow start a new sequence (an overflow page, a new leaf) */
+      void restart_read_ahead ()
+      {
+	m_ahead_hinted = 0;
+      }
+
+      /* drops the keys evaluated ahead: their values are cleared, their slots are read again if the walk goes on */
+      void clear_ahead ();
+
     private:
+      /* a key evaluated ahead of the lookups: it qualified, its OIDs are collected, nothing of it is reported yet */
+      struct ahead_key
+      {
+	DB_VALUE key;
+	bool clear_key;
+	std::vector<OID> oids;
+	VPID ovfl;
+	int next_slot;                                /* the slot after this key */
+	int read_keys;                                /* keys read since the key before it, itself included */
+      };
+
+      enum class slot_result
+      {
+	QUALIFIED,
+	SKIPPED,
+	END,                                          /* past this worker's range */
+	ERROR
+      };
+
       int check_key_in_range (DB_VALUE *key, bool *in_range, bool *past_upper, int *matched_range_idx);
+
+      /* reads the key at *slot (and moves *slot on): range, key filter, visible OIDs. Ahead: errors are cleared and the
+       * range's end is not signaled (the slot is read again when the lookups reach it), counters go to the entry */
+      slot_result evaluate_slot (THREAD_ENTRY *thread_p, int *slot, bool ahead, ahead_key *out, int *read_keys);
+      slot_result stop_at_error (THREAD_ENTRY *thread_p, bool ahead);
+      bool evaluate_ahead (THREAD_ENTRY *thread_p);
 
       /* btree_key_process_objects callback (leaf-side gather). */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
@@ -130,6 +171,10 @@ namespace parallel_index_scan
       bool m_slot_key_valid;
       bool m_slot_clear_key;                          /* needs pr_clear_value. */
       bool m_key_values_ready;                        /* the scan values hold this key record's covered key. */
+
+      std::deque<ahead_key> m_ahead;                  /* keys of m_page evaluated ahead, in lookup order. */
+      int m_ahead_slot;                               /* the slot after the last key of m_ahead. */
+      int m_ahead_hinted;                             /* OIDs from the one being looked up on already told to the OS. */
   };
 }
 

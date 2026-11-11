@@ -91,6 +91,7 @@ namespace parallel_index_scan
       {
 	return rerr;
       }
+    m_owner->restart_read_ahead ();
     m_owner->m_scan_id->scan_stats.key_qualified_rows += m_leaf_oids.size ();
     m_owner->m_scan_id->scan_stats.read_rows += m_leaf_oids.size ();
     return NO_ERROR;
@@ -259,6 +260,7 @@ namespace parallel_index_scan
       {
 	walker->m_btid_int = handler->get_btid_int ();
       }
+    walker->clear_ahead ();
     /* Unfix any prior leaf page; handler owns the overflow page until we release it after reading. */
     if (walker->m_page != nullptr)
       {
