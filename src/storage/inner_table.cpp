@@ -43,6 +43,10 @@
 #include "xserver_interface.h"
 
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <map>
+#include <set>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -580,6 +584,37 @@ inner_table_is_opted_in (THREAD_ENTRY *thread_p, const OID *class_oid)
 }
 
 /*
+ * inner_table_reads_movable () - Whether a reader of ATTR_IDS of CLASS_OID can meet an Inner Table reference: one of
+ *				   the attributes has a type whose large values move to chunk rows.
+ */
+bool
+inner_table_reads_movable (THREAD_ENTRY *thread_p, const OID *class_oid, int n_attrs, const ATTR_ID *attr_ids)
+{
+  int idx = -1;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx);
+  bool movable = false;
+
+  if (repr == NULL)
+    {
+      er_clear ();
+      return true;
+    }
+  for (int i = 0; i < n_attrs && !movable; i++)
+    {
+      for (int a = 0; a < repr->n_attributes; a++)
+	{
+	  if (repr->attributes[a].id == attr_ids[i])
+	    {
+	      movable = repr->attributes[a].type == DB_TYPE_STRING || repr->attributes[a].type == DB_TYPE_VARBIT;
+	      break;
+	    }
+	}
+    }
+  heap_classrepr_free_and_init (repr, &idx);
+  return movable;
+}
+
+/*
  * inner_table_lock_for_load () - Give the load session of CLASS_OID the BU lock on its companion class too. The load
  *				   workers that insert the class write chunk rows under this lock.
  */
@@ -857,6 +892,10 @@ inner_table_expand (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes
     {
       return S_SUCCESS;
     }
+  if (scan_cache != NULL && scan_cache->inner_table_skip_expand)
+    {
+      return S_SUCCESS;
+    }
   std::shared_ptr<companion> c = companion_of (thread_p, class_oid);
   if (c == nullptr)
     {
@@ -922,3 +961,116 @@ inner_table_forget_classes (void)
   std::lock_guard<std::mutex> g (classes_mutex);
   classes.clear ();
 }
+
+#if !defined(NDEBUG)
+/*
+ * Page trace for the projection measurement, in debug builds only. When the server environment has
+ * INNER_TABLE_PAGE_TRACE_FILE, every page a transaction fixes is remembered, and each commit appends one line with
+ * the distinct pages it fixed: heap pages of user classes, chunk heap pages, overflow pages, index pages, catalog
+ * heap pages and the rest.
+ */
+namespace
+{
+  struct tran_pages
+  {
+    std::map<std::tuple<int, int, int>, std::set<INT64>> heap;	/* by class OID */
+    std::set<INT64> overflow, index, other;
+  };
+
+  std::mutex trace_mutex;
+  std::unordered_map<int, tran_pages> trace_by_tran;
+
+  const char *trace_path ()
+  {
+    static const char *path = std::getenv ("INNER_TABLE_PAGE_TRACE_FILE");
+    return path;
+  }
+}
+
+void
+inner_table_trace_fix (THREAD_ENTRY *thread_p, PAGE_PTR pgptr)
+{
+  if (trace_path () == NULL || thread_p == NULL || pgptr == NULL || thread_p->tran_index <= LOG_SYSTEM_TRAN_INDEX)
+    {
+      return;
+    }
+  VPID vpid;
+  pgbuf_get_vpid (pgptr, &vpid);
+  INT64 key = ((INT64) vpid.volid << 32) | (unsigned int) vpid.pageid;
+  PAGE_TYPE type = pgbuf_get_page_ptype (thread_p, pgptr);
+  OID class_oid = OID_INITIALIZER;
+  if (type == PAGE_HEAP && heap_get_class_oid_from_page (thread_p, pgptr, &class_oid) != NO_ERROR)
+    {
+      er_clear ();
+      type = PAGE_UNKNOWN;
+    }
+
+  std::lock_guard<std::mutex> g (trace_mutex);
+  tran_pages &t = trace_by_tran[thread_p->tran_index];
+  switch (type)
+    {
+    case PAGE_HEAP:
+      t.heap[std::make_tuple (class_oid.volid, class_oid.pageid, class_oid.slotid)].insert (key);
+      break;
+    case PAGE_OVERFLOW:
+      t.overflow.insert (key);
+      break;
+    case PAGE_BTREE:
+      t.index.insert (key);
+      break;
+    default:
+      t.other.insert (key);
+      break;
+    }
+}
+
+void
+inner_table_trace_commit (THREAD_ENTRY *thread_p)
+{
+  if (trace_path () == NULL || thread_p == NULL)
+    {
+      return;
+    }
+  tran_pages t;
+  {
+    std::lock_guard<std::mutex> g (trace_mutex);
+    auto it = trace_by_tran.find (thread_p->tran_index);
+    if (it == trace_by_tran.end ())
+      {
+	return;
+      }
+    t = std::move (it->second);
+    trace_by_tran.erase (it);
+  }
+  size_t heap = 0, chunk = 0, catalog = 0;
+  std::string classes;
+  for (const auto &e : t.heap)
+    {
+      OID oid = { std::get<1> (e.first), (short) std::get<2> (e.first), (short) std::get<0> (e.first) };
+      char *name = NULL;
+      bool is_catalog = OID_ISNULL (&oid) || OID_IS_ROOTOID (&oid) || oid_is_system_class (&oid);
+      if (!is_catalog && heap_get_class_name (thread_p, &oid, &name) == NO_ERROR && name != NULL)
+	{
+	  std::string n (name);
+	  free_and_init (name);
+	  size_t sl = strlen (INNER_SUFFIX);
+	  bool is_chunk = n.size () > sl && n.compare (n.size () - sl, sl, INNER_SUFFIX) == 0;
+	  (is_chunk ? chunk : heap) += e.second.size ();
+	  classes += " " + n + ":" + std::to_string (e.second.size ());
+	}
+      else
+	{
+	  er_clear ();
+	  catalog += e.second.size ();
+	}
+    }
+  FILE *f = std::fopen (trace_path (), "a");
+  if (f != NULL)
+    {
+      std::fprintf (f, "tran=%d heap=%zu chunk=%zu overflow=%zu index=%zu catalog=%zu other=%zu classes=%s\n",
+		    thread_p->tran_index, heap, chunk, t.overflow.size (), t.index.size (), catalog, t.other.size (),
+		    classes.c_str ());
+      std::fclose (f);
+    }
+}
+#endif /* !NDEBUG */

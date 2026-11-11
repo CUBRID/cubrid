@@ -31,6 +31,7 @@
 #include <atomic>
 
 #include "page_buffer.h"
+#include "inner_table.hpp"
 
 #include "storage_common.h"
 #include "memory_alloc.h"
@@ -2614,6 +2615,10 @@ fast_path:
     }
 
   PGBUF_BCB_CHECK_MUTEX_LEAKS ();
+
+#if !defined(NDEBUG)
+  inner_table_trace_fix (thread_p, pgptr);
+#endif
 
   return pgptr;
 }

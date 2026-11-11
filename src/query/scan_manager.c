@@ -4033,6 +4033,15 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  hsidp->scancache_inited = true;
+	  /* a scan that reads no VARCHAR or VARBIT attribute leaves Inner Table references unread */
+	  if (inner_table_enabled () && inner_table_is_opted_in (thread_p, &hsidp->cls_oid)
+	      && !inner_table_reads_movable (thread_p, &hsidp->cls_oid, hsidp->pred_attrs.num_attrs,
+					     hsidp->pred_attrs.attr_ids)
+	      && !inner_table_reads_movable (thread_p, &hsidp->cls_oid, hsidp->rest_attrs.num_attrs,
+					     hsidp->rest_attrs.attr_ids))
+	    {
+	      hsidp->scan_cache.inner_table_skip_expand = true;
+	    }
 	}
       if (hsidp->caches_inited != true)
 	{

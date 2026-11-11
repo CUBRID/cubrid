@@ -163,6 +163,7 @@ struct heap_scancache
     int insert_hint_l1_pos;	/* position of insert_hint_vpid in the bestspace L1 arrays, -1 if unknown;
 				 * lets bestspace::update_freespace skip the sweep over all shards */
     HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
+    bool inner_table_skip_expand;	/* the reader needs no attribute that can hold an Inner Table reference */
 
     void start_area ();
     void end_area ();

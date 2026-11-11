@@ -50,6 +50,8 @@ typedef struct inner_table_refs INNER_TABLE_REFS;
 
 extern bool inner_table_enabled (void);
 extern bool inner_table_is_opted_in (THREAD_ENTRY *thread_p, const OID *class_oid);
+extern bool inner_table_reads_movable (THREAD_ENTRY *thread_p, const OID *class_oid, int n_attrs,
+				       const ATTR_ID *attr_ids);
 
 extern int inner_table_rewrite (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes,
 				INNER_TABLE_REFS *old_refs, const ATTR_ID *att_id, int n_att_id, RECDES *out,
@@ -66,5 +68,9 @@ extern SCAN_CODE inner_table_expand (THREAD_ENTRY *thread_p, const OID *class_oi
 				     struct heap_scancache *scan_cache, int ispeeking, struct mvcc_snapshot *snapshot);
 
 extern void inner_table_forget_classes (void);
+#if !defined(NDEBUG)
+extern void inner_table_trace_fix (THREAD_ENTRY *thread_p, PAGE_PTR pgptr);
+extern void inner_table_trace_commit (THREAD_ENTRY *thread_p);
+#endif
 
 #endif /* _INNER_TABLE_HPP_ */

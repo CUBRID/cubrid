@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "transaction_sr.h"
+#include "inner_table.hpp"
 
 #include "locator_sr.h"
 #include "log_2pc.h"
@@ -79,6 +80,10 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+#if !defined(NDEBUG)
+  inner_table_trace_commit (thread_p);
+#endif
 
   /* dblink transaction commit first */
   QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);

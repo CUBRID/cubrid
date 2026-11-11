@@ -8,6 +8,7 @@ Usage, from a built and cub-workenv-initialized worktree:
     python3 contrib/benchmarks/inner_table/accept.py --case recovery --root OUTDIR   (needs gdb; see recovery.py)
     python3 contrib/benchmarks/inner_table/accept.py --case reclamation --root OUTDIR   (see reclamation.py)
     python3 contrib/benchmarks/inner_table/accept.py --case transport --root OUTDIR   (see transport.py)
+    python3 contrib/benchmarks/inner_table/accept.py --case projection --root OUTDIR   (debug build; see projection.py)
 
 Case storage-2 adds VARBIT values, two cold columns in one row, binary zeros, a parent row
 that stays REC_BIGONE without its cold value, and a short-chunk control.
@@ -451,7 +452,7 @@ def main():
     # The case modules import this file as 'accept'; make that the running module so that they share its classes.
     sys.modules.setdefault('accept', sys.modules[__name__])
     ap = argparse.ArgumentParser()
-    ap.add_argument('--case', required=True, choices=['storage-1', 'storage-2', 'recovery', 'reclamation', 'transport'])
+    ap.add_argument('--case', required=True, choices=['storage-1', 'storage-2', 'recovery', 'reclamation', 'transport', 'projection'])
     ap.add_argument('--root', required=True, type=Path)
     args = ap.parse_args()
     wt = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip())
@@ -505,6 +506,10 @@ def main():
             sys.path.insert(0, str(Path(__file__).resolve().parent))
             import transport
             results = transport.TransportCase(root, name).run(log)
+        elif args.case == 'projection':
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import projection
+            results = projection.ProjectionCase(root, name).run(log)
         else:
             results = (Case if args.case == 'storage-1' else Case2)(Db(root, name), inner).run()
         sh(['cubrid', 'server', 'stop', name], log, timeout=300)

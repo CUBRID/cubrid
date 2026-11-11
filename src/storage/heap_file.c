@@ -6529,6 +6529,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (&scan_cache->node.class_oid);
   scan_cache->node.classname = NULL;
   scan_cache->cache_last_fix_page = cache_last_fix_page;
+  scan_cache->inner_table_skip_expand = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
   scan_cache->start_area ();
   scan_cache->num_btids = 0;
@@ -6855,6 +6856,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->mvcc_disabled_class = true;
   scan_cache->node.classname = NULL;
   scan_cache->page_latch = PGBUF_LATCH_READ;
+  scan_cache->inner_table_skip_expand = false;
   scan_cache->cache_last_fix_page = true;
   scan_cache->start_area ();
   scan_cache->num_btids = 0;
@@ -6932,6 +6934,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->mvcc_disabled_class = true;
   scan_cache->page_latch = PGBUF_LATCH_INVALID;
+  scan_cache->inner_table_skip_expand = false;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
   scan_cache->end_area ();
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
