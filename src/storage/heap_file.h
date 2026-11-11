@@ -541,6 +541,8 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_
 						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, record_descriptor * new_recdes);
+extern SCAN_CODE heap_attrinfo_transform_to_disk_keep_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							   RECDES * old_recdes, record_descriptor * new_recdes);
 
 /* *INDENT-OFF* */
 extern SCAN_CODE heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info,

@@ -72,5 +72,13 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_RECOVERY_DB RUN_SERIAL TRUE TIMEOUT 180
 )
 
+# A _db_serial row reaches OOS only on small pages, so this binary owns oosserialdb, created with 4K pages
+# (fixture in the parent directory).
+add_test(NAME test_oos_sql_serial COMMAND test_oos_sql_serial)
+set_tests_properties(
+  test_oos_sql_serial
+  PROPERTIES FIXTURES_REQUIRED OOS_SERIAL_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+
 # Expected-error tests also collect debug stack traces at allocation, storage and export failure boundaries.
 set_tests_properties(test_oos_sql_deferred_write PROPERTIES TIMEOUT 180)
