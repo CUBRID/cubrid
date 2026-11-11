@@ -6315,6 +6315,16 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   int error_code = NO_ERROR;
   bool deleted = false;
   SCAN_CODE scan_code = S_SUCCESS;
+  /* the DELETE reads its old record as stored: its index keys, partition key and reevaluation decode only the values
+   * they need through the attribute layer, as the row's lock holder, so the large values it never decodes stay unread.
+   * A statement that calls a routine reads expanded: a routine in the reevaluation may commit before a later term
+   * decodes a ref (E22). */
+  /* *INDENT-OFF* */
+  const bool stored_form = (scan_cache != NULL
+			    && !thread_get_main_thread (thread_p != NULL ? thread_p : thread_get_thread_entry_info ())
+			    ->sidecar_no_lazy.load (std::memory_order_relaxed));
+  /* *INDENT-ON* */
+  unsigned char saved_sidecar_lazy = HEAP_SIDECAR_EXPAND;
 
   /* Update note : While scanning objects, the given scancache does not fix the last accessed page. So, the object must
    * be copied to the record descriptor. Changes : (1) variable name : peek_recdes => copy_recdes (2) function call :
@@ -6337,6 +6347,13 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       mvcc_reev_data = NULL;
     }
 
+  if (stored_form)
+    {
+      saved_sidecar_lazy = scan_cache->sidecar_lazy;
+      heap_scancache_allow_lazy_sidecar (scan_cache, HEAP_SIDECAR_LAZY_LOCKED);
+      sidecar_stored_form_begin ();
+    }
+
   /* IMPORTANT TODO: use a different get function when the select phase locked, but make sure it gets the last version,
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
   scan_code =
@@ -6344,9 +6361,15 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
 						 LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
 
+  if (stored_form)
+    {
+      heap_scancache_allow_lazy_sidecar (scan_cache, (HEAP_SIDECAR_LAZY) saved_sidecar_lazy);
+    }
+
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
-      return ER_MVCC_NOT_SATISFIED_REEVALUATION;
+      error_code = ER_MVCC_NOT_SATISFIED_REEVALUATION;
+      goto error;
     }
 
   if (scan_code != S_SUCCESS)
@@ -6573,6 +6596,10 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 #endif
 
 error:
+  if (stored_form)
+    {
+      sidecar_stored_form_end ();
+    }
 
   return error_code;
 }
