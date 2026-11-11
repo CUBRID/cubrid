@@ -5248,8 +5248,9 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      return TP_DOMAIN_COLLATION_FLAG (dom) == TP_DOMAIN_COLL_NORMAL
-	&& db_get_string_collation (v) == TP_DOMAIN_COLLATION (dom);
+      /* a key's collation is never left to its values (domain_decide_hash_join_key) */
+      assert (TP_DOMAIN_COLLATION_FLAG (dom) == TP_DOMAIN_COLL_NORMAL);
+      return db_get_string_collation (v) == TP_DOMAIN_COLLATION (dom);
 
     default:
       return false;
