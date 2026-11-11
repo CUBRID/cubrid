@@ -234,6 +234,7 @@ struct db_value_slist
 };
 
 static int drop_class_name (const char *name, bool is_cascade_constraints);
+static int check_procedure_grantable (MOP proc_mop);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
@@ -2041,6 +2042,39 @@ error_exit:
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
 /*
+ * check_procedure_grantable() - Refuses privileges on a procedure the engine created.
+ *   return: Error code
+ *   proc_mop(in): stored procedure object
+ *
+ * Note:
+ *    Unloading writes the privileges of every procedure but not the system generated procedures,
+ *    so a privilege on one would fail loading the schema.
+ */
+static int
+check_procedure_grantable (MOP proc_mop)
+{
+  DB_VALUE generated_val;
+  int error = NO_ERROR;
+  int au_save;
+
+  /* the grantor may not be able to read the catalog */
+  AU_SAVE_AND_DISABLE (au_save);
+  error = db_get (proc_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  AU_RESTORE (au_save);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (db_get_int (&generated_val) == 1)
+    {
+      ERROR_SET_ERROR (error, ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED);
+    }
+
+  return error;
+}
+
+/*
  * do_grant() - Grants priviledges
  *   return: Error code if grant fails
  *   parser(in): Parser context
@@ -2112,6 +2146,12 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = check_procedure_grantable (proc_mop);
+		  if (error != NO_ERROR)
+		    {
 		      goto end;
 		    }
 
@@ -2220,6 +2260,12 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = check_procedure_grantable (proc_mop);
+		  if (error != NO_ERROR)
+		    {
 		      goto end;
 		    }
 
@@ -4549,7 +4595,13 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
 	      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
 		{
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, or the caller
+		   * takes a class whose statistics were never updated (they are updated after this loop) for a
+		   * finished one */
+		  if (!quiet)
+		    {
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
+		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}
@@ -4720,9 +4772,11 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      if (error != ER_LC_CLASSNAME_EXIST)
 		{
+		  /* dump_histogram () answers NO_ERROR for an error it prints: keep the error itself, as the all-columns
+		   * path does, or the statement reports success after the savepoint rollback below */
 		  if (!quiet)
 		    {
-		      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		      (void) dump_histogram (obj, attname, attr_type, false, error, stdout);
 		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;

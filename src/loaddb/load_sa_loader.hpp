@@ -52,6 +52,16 @@ namespace cubload
 
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
+
+    private:
+      /*
+       * Walks a value list. Calls itself for a collection's element list, which is one
+       * level down in the same structure, so being inside a collection travels as an
+       * argument instead of as a change of shared state.
+       */
+      void process_values (constant_type *cons, bool is_element);
+
+    public:
       void finish_line () override;
       void flush_records () override;
       std::size_t get_rows_number () override;
