@@ -905,6 +905,11 @@ internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &loca
       int payload_len = 0;
 
       err = oos_chain_read_chunk (thread_p, locator.oid, oos_buffer (NULL, 0), payload_len, header);
+      if (err == ER_HEAP_OOS_CORRUPTED_RECORD)
+	{
+	  /* the head passed the length check above, so vacuum reclaimed it in between */
+	  return internal_lob_set_value_gone ();
+	}
       if (err != NO_ERROR)
 	{
 	  return err;
