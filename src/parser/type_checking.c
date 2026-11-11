@@ -7562,16 +7562,20 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
-      /* propagate to children */
+      /* propagate to children. An operand stays a query, whatever its is_subquery (a parenthesized one is
+       * PT_IS_SUBQUERY): the set operation decides with the same pt_false_where () whether to fold an empty one
+       * away (pt_check_union_is_foldable ()), and executes an operand it keeps. */
       arg1 = node->info.query.q.union_.arg1;
       arg2 = node->info.query.q.union_.arg2;
       if (arg1 != NULL)
 	{
 	  arg1->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
+	  arg1->flag.do_not_fold = 1;
 	}
       if (arg2 != NULL)
 	{
 	  arg2->info.query.flag.has_outer_spec = node->info.query.flag.has_outer_spec;
+	  arg2->flag.do_not_fold = 1;
 	}
 
       /* rewrite limit clause as numbering expression and add it to the corresponding predicate */
@@ -8312,7 +8316,8 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       is_subquery = node->info.query.is_subquery;
 
-      if (sc_info->donot_fold == false
+      /* a query marked do_not_fold stays a query: an operand of a set operation (pt_eval_type_pre ()) */
+      if (sc_info->donot_fold == false && !node->flag.do_not_fold
 	  && (is_subquery == PT_IS_SUBQUERY || is_subquery == PT_IS_UNION_SUBQUERY
 	      || is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || is_subquery == PT_IS_CTE_REC_SUBQUERY)
 	  && pt_false_where (parser, node))
