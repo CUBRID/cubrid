@@ -13548,8 +13548,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	    {
 	      /* A remote MERGE with a local source. The keys are checked on the statement, where
 	       * type checking marks a key that compares with a conversion. The gate reads the
-	       * clauses as they are sent, and the source SELECT is laid out from them too. So the
-	       * bound columns are the ones those clauses name. */
+	       * clauses as they are sent, and the source SELECT is laid out from them too, as
+	       * XASL generation lays out the remote text. So the bound columns are the ones those
+	       * clauses name. */
 	      if (pt_dblink_merge_check_key_types (parser, node) == NO_ERROR
 		  && pt_dblink_merge_is_inscope (parser, node->info.merge.remote_stmt_as_written))
 		{
