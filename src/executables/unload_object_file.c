@@ -979,7 +979,17 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 			 (tout, (u_char *) & (value->data.datetimetz), (int) sizeof (value->data.datetimetz), type));
       break;
     case DB_TYPE_MONETARY:
-      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.money), (int) sizeof (value->data.money), type));
+      {
+	/* see UNLOAD_RAW_MONETARY_SIZE for the layout */
+	const DB_MONETARY *money = db_get_monetary (value);
+	int currency = (int) money->type;
+	u_char tmp[UNLOAD_RAW_MONETARY_SIZE];
+
+	memcpy (tmp, &money->amount, sizeof (double));
+	memcpy (tmp + sizeof (double), &currency, sizeof (int));
+
+	CHECK_PRINT_ERROR (binary_print (tout, tmp, (int) UNLOAD_RAW_MONETARY_SIZE, type));
+      }
       break;
 
     case DB_TYPE_CHAR:

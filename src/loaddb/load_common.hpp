@@ -514,6 +514,14 @@ typedef uint32_t BIN_REC_SIZE_TYPE;
 #define UNLOAD_RAW_NUMERIC_FLOATING    (0x01)
 #define UNLOAD_RAW_NUMERIC_FLAGS       (UNLOAD_RAW_NUMERIC_NEGATIVE | UNLOAD_RAW_NUMERIC_FLOATING)
 
+/*
+ * A MONETARY value is written field by field as well, rather than as DB_MONETARY, whose padding
+ * would put bytes of no meaning into the file:
+ *
+ *   [double amount][int currency (DB_CURRENCY)]
+ */
+#define UNLOAD_RAW_MONETARY_SIZE (sizeof (double) + sizeof (int))
+
 /* a BIT or VARBIT value is written as its length in bits followed by the bytes holding the bits */
 #define UNLOAD_RAW_BIT_LENGTH_SIZE (sizeof (int))
 

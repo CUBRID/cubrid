@@ -1622,8 +1622,25 @@ namespace cubload
 
       case DB_TYPE_MONETARY:
       {
-	DB_MONETARY v;
-	return binary_read_raw (col, v) ? db_make_monetary (val, v.type, v.amount) : binary_corrupted (col);
+	/* [double amount][int currency], see UNLOAD_RAW_MONETARY_SIZE */
+	double amount;
+	int currency;
+
+	if (col.size != UNLOAD_RAW_MONETARY_SIZE)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	std::memcpy (&amount, col.data, sizeof (double));
+	std::memcpy (&currency, col.data + sizeof (double), sizeof (int));
+
+	/* db_make_monetary () refuses it too, but as a wrong currency rather than as a damaged section */
+	if (currency < 0 || currency >= (int) DB_CURRENCY_NULL)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	return db_make_monetary (val, (DB_CURRENCY) currency, amount);
       }
 
       case DB_TYPE_DATE:
