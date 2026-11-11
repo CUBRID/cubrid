@@ -289,7 +289,8 @@ catcls_get_class_definitions (void)
     system_catalog_initializer::get_histogram (),
     system_catalog_initializer::get_global_tran (),
     system_catalog_initializer::get_ha_apply_stat (),
-    system_catalog_initializer::get_ha_apply_worker_stat ()
+    system_catalog_initializer::get_ha_apply_worker_stat (),
+    system_catalog_initializer::get_ha_applied_tx_marker ()
   };
 }
 
@@ -1285,6 +1286,34 @@ namespace cubschema
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
+// initializer
+    nullptr
+	   );
+  }
+
+  /* commits an applylogdb on this node has applied above its stored position, one row per commit; a restart skips
+   * them. Written by the applier only; see log_applier.c */
+  system_metadata_definition
+  system_catalog_initializer::get_ha_applied_tx_marker ()
+  {
+    return system_metadata_definition (
+		   // name
+		   CT_HA_APPLIED_TX_MARKER_NAME,
+		   // columns
+    {
+      {"copied_log_path", format_varchar (4096)},
+      {"commit_pageid", "bigint"},
+      {"commit_offset", "integer"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"copied_log_path", "commit_pageid", "commit_offset", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"commit_pageid", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"commit_offset", nullptr}},
+    },
+// authorization
+    make_authorization (Au_dba_user),
 // initializer
     nullptr
 	   );

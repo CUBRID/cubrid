@@ -87,6 +87,7 @@ namespace cubschema
     CT_GLOBAL_TRAN_NAME,		// "_db_global_tran"
     CT_HA_APPLY_STAT_NAME,		// "_db_ha_apply_stat"
     CT_HA_APPLY_WORKER_STAT_NAME,	// "_db_ha_apply_worker_stat"
+    CT_HA_APPLIED_TX_MARKER_NAME,	// "_db_ha_applied_tx_marker"
     CT_TRIGGER_NAME,		// "_db_trigger"
     CT_HISTOGRAM_NAME		// "_db_histogram"
   };

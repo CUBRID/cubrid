@@ -57,6 +57,7 @@
 #define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
 #define CT_HA_APPLY_STAT_NAME      "_db_ha_apply_stat"
 #define CT_HA_APPLY_WORKER_STAT_NAME "_db_ha_apply_worker_stat"
+#define CT_HA_APPLIED_TX_MARKER_NAME "_db_ha_applied_tx_marker"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
