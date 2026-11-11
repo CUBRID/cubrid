@@ -2872,6 +2872,38 @@ heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
+ * heap_page_belongs_to_class () - Check, under the page latch, whether a heap page reached by a VPID remembered
+ *				   outside the page still belongs to the heap of a class.
+ *
+ * return	  : true if the page is a heap page of class_oid that is linked to its heap
+ * page_heap (in) : Page fixed by the remembered VPID
+ * class_oid (in) : Class of the rows to insert
+ *
+ * Note: A remembered VPID may name a page that was deallocated, reused by another file or class, or unlinked from its
+ *	 heap since. Every path that fixes a heap page by such a VPID to insert into it must check the page here.
+ */
+bool
+heap_page_belongs_to_class (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, const OID * class_oid)
+{
+  OID page_class_oid;
+
+  if (pgbuf_get_page_ptype (thread_p, page_heap) != PAGE_HEAP || heap_page_is_not_in_heap (thread_p, page_heap))
+    {
+      return false;
+    }
+
+  if (heap_get_class_oid_from_page (thread_p, page_heap, &page_class_oid) != NO_ERROR)
+    {
+      /* heap_page_is_not_in_heap () has just read the same record */
+      assert_release (false);
+      er_clear ();
+      return false;
+    }
+
+  return OID_EQ (&page_class_oid, class_oid);
+}
+
+/*
  * check_supplemental_log () - check if appending supplemental log is available
  *
  * return	  : available or not
@@ -22107,19 +22139,15 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      if (error_code == NO_ERROR)
 		{
 		  PAGE_PTR page_p = context->home_page_watcher_p->pgptr;
-		  OID page_class_oid;
 		  bool page_valid = false;
 
-		  /* step 4: mirrors the candidate checks of bestspace::shard::L1_find
+		  /* step 4: the page check of every path that fixes a page by a remembered VPID,
 		   * and the space rule of bestspace::find -- the hint keeps the unfill reservation */
 		  int consume_size = context->recdes_p->length + SPAGE_SLOT_SIZE;
 		  int needed_size = bestspace->get_needed_size (consume_size);
 		  int freespace = 0;
 
-		  if (pgbuf_get_page_ptype (thread_p, page_p) == PAGE_HEAP
-		      && !heap_page_is_not_in_heap (thread_p, page_p)
-		      && heap_get_class_oid_from_page (thread_p, page_p, &page_class_oid) == NO_ERROR
-		      && OID_EQ (&page_class_oid, &context->class_oid))
+		  if (heap_page_belongs_to_class (thread_p, page_p, &context->class_oid))
 		    {
 		      page_valid = true;
 		      freespace = spage_max_space_for_new_record (thread_p, page_p);

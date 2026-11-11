@@ -660,7 +660,6 @@ namespace cubstorage
     std::size_t freespace;
     VPID vpid, old_vpid;
     L1 expected, desired;
-    OID page_class_oid;
     status error;
 
     STATS_INC (fetch_L1, 1);
@@ -688,10 +687,7 @@ namespace cubstorage
       }
 
     // is this page still belongs to the class (class_oid) ?
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
-	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
-	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
-	|| !OID_EQ (&page_class_oid, class_oid))
+    if (!heap_page_belongs_to_class (thread_p, page_watcher.pgptr, class_oid))
       {
 	L1_remove (l2_index, l1_index, expected);
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -947,7 +943,6 @@ namespace cubstorage
       bool &valid, PGBUF_WATCHER &page_watcher)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
-    OID page_class_oid;
     VPID vpid;
     int error;
 
@@ -974,23 +969,7 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
-	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr))
-      {
-	valid = false;
-	pgbuf_ordered_unfix (thread_p, &page_watcher);
-	return status::NOT_FOUND;
-      }
-
-    error = heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid);
-    if (error != NO_ERROR)
-      {
-	valid = false;
-	pgbuf_ordered_unfix (thread_p, &page_watcher);
-	return status::FAILURE;
-      }
-
-    if (!OID_EQ (&page_class_oid, class_oid))
+    if (!heap_page_belongs_to_class (thread_p, page_watcher.pgptr, class_oid))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
