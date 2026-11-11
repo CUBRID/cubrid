@@ -67,6 +67,24 @@ public class PlcsqlRuntimeError extends RuntimeException {
         return nestedMsg == null ? super.getMessage() : nestedMsg;
     }
 
+    // line and column are -1 if the error is not from the PL/CSQL code (e.g., from the PL engine
+    // code or a package spec member without its implementation), and 0 if it is from the PL/CSQL
+    // code but its position is unknown (e.g., in a stack frame cut due to too many nests)
+    public static String prependLocationToErrMsg(int line, int column, String errMsg) {
+
+        String ret;
+
+        if (line == -1 && column == -1) {
+            ret = String.format("\n  %s", errMsg);
+        } else if (line == 0 && column == 0) {
+            ret = String.format("\n  (line ?, column ?) %s", errMsg);
+        } else {
+            ret = String.format("\n  (line %d, column %d) %s", line, column, errMsg);
+        }
+
+        return ret;
+    }
+
     // An error of a directly called routine reaches its caller as it is. Make its message the same
     // as the one of an error from a routine called through the server: the position in the callee
     // goes into the message, and the position is to be set again in the caller.
@@ -84,20 +102,14 @@ public class PlcsqlRuntimeError extends RuntimeException {
                     String.format(
                             "%s\n  ...%s",
                             MSG_SP_EXECUTE_ERROR, msg.substring(MSG_SP_EXECUTE_ERROR.length()));
-        } else if (line == -1 && column == -1) {
-            // not in the PL/CSQL code, e.g., in a package spec member without its implementation
-            nestedMsg = String.format("%s\n  %s", MSG_SP_EXECUTE_ERROR, msg);
-        } else if (line == 0 && column == 0) {
-            nestedMsg = String.format("%s\n  (line ?, column ?) %s", MSG_SP_EXECUTE_ERROR, msg);
         } else {
-            nestedMsg =
-                    String.format(
-                            "%s\n  (line %d, column %d) %s",
-                            MSG_SP_EXECUTE_ERROR, line, column, msg);
+            nestedMsg = MSG_SP_EXECUTE_ERROR + prependLocationToErrMsg(line, column, msg);
         }
+
         if (nestLevel <= MAX_NEST_LEVEL) {
             nestLevel++;
         }
+
         line = -1;
         column = -1;
         return this;

@@ -258,27 +258,11 @@ public class ExecuteThread extends Thread {
                                 PlcsqlRuntimeError plcsqlError = (PlcsqlRuntimeError) throwable;
                                 int line = plcsqlError.getLine();
                                 int col = plcsqlError.getColumn();
-                                String errMsg;
-                                if (line == -1 && col == -1) {
-                                    // exception was thrown not in the SP code but in the PL engine
-                                    // code
-                                    errMsg = String.format("\n  %s", plcsqlError.getMessage());
-                                } else if (line == 0 && col == 0) {
-                                    // thrown in the SP code but the position is unknown. for
-                                    // example,
-                                    // the position was in an exception stack frame which was cut
-                                    // due to
-                                    // too many nests.
-                                    errMsg =
-                                            String.format(
-                                                    "\n  (line ?, column ?) %s",
-                                                    plcsqlError.getMessage());
-                                } else {
-                                    errMsg =
-                                            String.format(
-                                                    "\n  (line %d, column %d) %s",
-                                                    line, col, plcsqlError.getMessage());
-                                }
+                                String errMsg = plcsqlError.getMessage();
+
+                                errMsg =
+                                        PlcsqlRuntimeError.prependLocationToErrMsg(
+                                                line, col, errMsg);
                                 sendError(errMsg);
                             } else {
                                 String msg = throwable.getMessage();
