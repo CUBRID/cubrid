@@ -5801,6 +5801,9 @@ xbtree_add_index (THREAD_ENTRY * thread_p, BTID * btid, TP_DOMAIN * key_type, OI
   VPID_SET_NULL (&(root_header->node.next_vpid));
   root_header->node.node_level = 1;
   root_header->node.max_key_len = 0;
+  /* a root leaf has no fence keys and is never compressed; a multi-column index reads this field as the number of
+   * leading key columns the keys of the leaf share */
+  root_header->node.common_prefix = 0;
 
   if (unique_pk)
     {

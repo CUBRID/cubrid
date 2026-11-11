@@ -337,6 +337,7 @@ static char *get_backslash_escape_string (void);
 static void update_query_execution_count (T_APPL_SERVER_INFO * as_info_p, char stmt_type);
 static bool need_reconnect_on_rctime (void);
 static void report_abnormal_host_status (int err_code);
+static void ux_database_shutdown_for_reconnect (void);
 
 static int set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values);
 static unsigned char set_extended_cas_type (T_CCI_U_TYPE u_set_type, DB_TYPE db_type);
@@ -537,7 +538,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       if (database_name[0] != '\0')
 	{
-	  ux_database_shutdown (true);
+	  ux_database_shutdown_for_reconnect ();
 	}
 
       if (shm_appl->access_mode == READ_ONLY_ACCESS_MODE)
@@ -633,7 +634,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
       err_code = au_login (db_user, db_passwd, true);
       if (err_code < 0)
 	{
-	  ux_database_shutdown (true);
+	  ux_database_shutdown_for_reconnect ();
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
@@ -790,6 +791,41 @@ ux_database_shutdown (bool request_server)
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
 #endif /* CAS_FOR_CGW */
+}
+
+/*
+ * ux_database_shutdown_for_reconnect () - close the connection to the database server before connecting again,
+ *					    leaving the session of the client alone
+ *
+ * Note: the session id and key are of the client the CAS connects for. cas_set_session_id () sets them for a new
+ *	 client while the CAS is still connected to the server of the previous client. db_shutdown () would end
+ *	 that session on the server the CAS leaves, which may not even be the server of the session, and clear the
+ *	 key. Hide the session from it and restore it after, so that the client finds its session again on the
+ *	 server the CAS connects to.
+ *	 A shard CAS does not take the session of a client (cas_set_session_id () is not called for it), so it
+ *	 shuts down as before.
+ */
+static void
+ux_database_shutdown_for_reconnect (void)
+{
+  SESSION_ID session_id;
+  char session_key[SERVER_SESSION_KEY_SIZE];
+
+  if (cas_shard_flag == ON)
+    {
+      ux_database_shutdown (true);
+      return;
+    }
+
+  session_id = db_get_session_id ();
+  memcpy (session_key, db_get_server_session_key (), SERVER_SESSION_KEY_SIZE);
+
+  /* db_end_session () does not send anything for an empty session */
+  db_set_session_id (DB_EMPTY_SESSION);
+  ux_database_shutdown (true);
+
+  db_set_server_session_key (session_key);
+  db_set_session_id (session_id);
 }
 
 #if !defined(CAS_FOR_CGW)

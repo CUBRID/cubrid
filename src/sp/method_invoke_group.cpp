@@ -154,7 +154,7 @@ namespace cubmethod
 	};
 
 	// get_return
-	error = xs_callback_receive (m_stack->get_thread_entry (), get_method_result);
+	error = xs_callback_receive (m_stack->get_thread_entry (), get_method_result, true);
 	if (error != NO_ERROR)
 	  {
 	    break;

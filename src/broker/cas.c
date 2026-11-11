@@ -739,6 +739,8 @@ conn_retry:
 #endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 	fn_ret = FN_KEEP_CONN;
 	as_info->con_status = CON_STATUS_OUT_TRAN;
+	/* keeping a session was decided for the previous connection's session, do not carry it over */
+	db_set_keep_session (false);
 
 	while (fn_ret == FN_KEEP_CONN)
 	  {
@@ -1202,6 +1204,10 @@ cas_main (void)
 	      }
 	    cas_log_write_and_end (0, false, "CLIENT VERSION %s", as_info->driver_version);
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+	    /* keeping a session was decided for the session of the client that left (CHANGE CLIENT, RESET, ...).
+	     * Do not carry it over to this client, or its session will also be kept. */
+	    db_set_keep_session (false);
+
 	    /* todo: casting T_BROKER_VERSION to T_CAS_PROTOCOL */
 	    cas_set_session_id ((T_CAS_PROTOCOL) req_info.client_version, db_sessionid);
 	    if (db_get_session_id () != DB_EMPTY_SESSION)
