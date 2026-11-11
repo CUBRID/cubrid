@@ -22864,10 +22864,11 @@ sensitivity_label_name
 			  {
 			    node->type_enum = PT_TYPE_VARCHAR;
 
-			    if (node->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
+			    if (node->info.value.data_value.str->length == 0
+				|| node->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
 			      {
 				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-					    MSGCAT_SYNTAX_MAX_SENSITIVITY_LABEL_NAME_LEN, DB_MAX_IDENTIFIER_LENGTH - 1);
+					    MSGCAT_SYNTAX_INVALID_SENSITIVITY_LABEL_NAME_LEN, DB_MAX_IDENTIFIER_LENGTH - 1);
 			      }
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }

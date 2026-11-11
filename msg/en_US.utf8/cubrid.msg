@@ -1680,7 +1680,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
-141 Maximum length of a sensitivity label name is %1$d bytes.
+141 Length of a sensitivity label name must be between 1 and %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
