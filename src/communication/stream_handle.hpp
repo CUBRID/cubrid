@@ -21,9 +21,8 @@
  *
  * One table per session state, next to the stream-session slot, for the
  * downloads its client has open. A handle resolves only in the session that
- * issued it and only in the transaction that opened it -- its index and its
- * id, since the next transaction of the index has a new id -- and is released
- * at the latest when a transaction of that index ends.
+ * issued it and only in the transaction that opened it, and is released at the
+ * latest when that transaction ends.
  */
 
 #ifndef _STREAM_HANDLE_HPP_
@@ -34,13 +33,15 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
-#include <functional>
 #include <map>
 #include <mutex>
 #include <vector>
 
 /* A client that never releases gets a refused open, not unbounded server memory. */
 const int STREAM_HANDLE_MAX_PER_TRAN = 1024;
+
+/* Would a wait for holder, a worker of tran_index, never end? */
+using stream_holder_stuck_fn = bool (*) (THREAD_ENTRY *holder, int tran_index);
 
 class stream_handle_table
 {
@@ -53,15 +54,12 @@ class stream_handle_table
 
     /* Take a download's source over and return the number the client sends
      * back. source is closed on a refusal too, so the caller never keeps it.
-     * trid is the id of the transaction the source was built in, and
-     * client_id the connection that asked (end_client). */
+     * client_id is the connection that asked (end_client). */
     int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int trid, int client_id, stream_source *source,
 	       std::int64_t *handle);
 
-    /* Start an open of tran_index, before its source is built; end_open ()
-     * ends it, after issue () or the refusal. Refused, with the error set and
-     * in error_code, when the transaction has no room for one more handle, so
-     * that a refused open costs no factory; issue () still decides. */
+    /* An open runs from begin_open (), before its factory, to end_open (). Refused
+     * when the transaction has no room for one more handle. */
     bool begin_open (THREAD_ENTRY *thread_p, int tran_index, int *error_code);
     void end_open (THREAD_ENTRY *thread_p);
 
@@ -72,22 +70,14 @@ class stream_handle_table
     stream_source *get_source (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index, int trid, int *error_code);
     void put (THREAD_ENTRY *thread_p, std::int64_t handle);
 
-    /* Release one handle of tran_index, or every handle of a transaction, of a
-     * connection or of the session. A handle that does not resolve for
-     * tran_index is not an error -- a purge may have run first. A release
-     * during a pin is deferred to the last put () and never blocks.
-     * end_tran () first waits for the opens and reads of the transaction that
-     * other workers are running -- a client that does not wait for replies can
-     * send the transaction's end behind them -- so that a source closes while
-     * its transaction is still there. The wait stops when stop_waiting says so
-     * (the transaction is interrupted: a deadlock victim among those workers
-     * waits for this one in turn), and what is pinned is then left to its put,
-     * as any release. A handle that an open issues after that carries the
-     * ending transaction's id and never resolves in the next one; the next end
-     * of the index releases it. end_client () is a connection's close, which
-     * runs after the connection's workers. */
+    /* Release one handle, or every handle of a transaction, of a connection or
+     * of the session. A handle that does not resolve is not an error -- a purge
+     * may have run first. A release during a pin is deferred to the last put ()
+     * and never blocks. end_tran () first waits for the opens and reads of the
+     * transaction on other workers, unless one of them is stuck. end_client ()
+     * is a connection's close. */
     void release (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index);
-    void end_tran (THREAD_ENTRY *thread_p, int tran_index, const std::function<bool ()> &stop_waiting = nullptr);
+    void end_tran (THREAD_ENTRY *thread_p, int tran_index, stream_holder_stuck_fn holder_is_stuck = NULL);
     void end_client (THREAD_ENTRY *thread_p, int client_id);
     void clear (THREAD_ENTRY *thread_p);
 
@@ -105,8 +95,7 @@ class stream_handle_table
 
     using entry_map = std::map<std::int64_t, entry>;
 
-    /* an open (handle 0) or a read running on a worker, between begin_open () and end_open () or get_source () and
-     * put () */
+    /* an open (handle 0) or a read in progress */
     struct request
     {
       int tran_index;
@@ -116,7 +105,7 @@ class stream_handle_table
 
     void add_request_locked (int tran_index, THREAD_ENTRY *thread_p, std::int64_t handle);
     void remove_request_locked (THREAD_ENTRY *thread_p, std::int64_t handle);
-    bool has_other_request_locked (int tran_index, THREAD_ENTRY *thread_p) const;
+    bool must_wait_locked (int tran_index, THREAD_ENTRY *thread_p, stream_holder_stuck_fn holder_is_stuck) const;
     void uncount (entry &e);
     void release_locked (entry_map::iterator it, std::vector<stream_source *> &to_close);
     static void close_all (THREAD_ENTRY *thread_p, std::vector<stream_source *> &to_close);

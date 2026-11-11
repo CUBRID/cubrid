@@ -70,10 +70,8 @@ namespace
 
   const char *const TOO_MANY_HANDLES = "too many stream handles open in this transaction";
 
-  /* how long a transaction end sleeps before it asks again whether to stop waiting */
   const std::chrono::milliseconds END_TRAN_WAIT_SLICE (10);
 
-  /* an open begun with begin_open (), ended on every way out of stream_download_open () */
   class open_request
   {
     public:
@@ -262,7 +260,7 @@ stream_handle_table::release (THREAD_ENTRY *thread_p, std::int64_t handle, int t
 }
 
 void
-stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index, const std::function<bool ()> &stop_waiting)
+stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index, stream_holder_stuck_fn holder_is_stuck)
 {
   std::vector<stream_source *> to_close;
 
@@ -274,13 +272,9 @@ stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index, const std
   {
     std::unique_lock<std::mutex> lock (m_mutex);
 
-    /* the source closes while the transaction is still there; a request of this thread is not waited for */
-    while (has_other_request_locked (tran_index, thread_p))
+    /* so that a source closes while its transaction is still there */
+    while (must_wait_locked (tran_index, thread_p, holder_is_stuck))
       {
-	if (stop_waiting && stop_waiting ())
-	  {
-	    break;
-	  }
 	(void) m_requests_done.wait_for (lock, END_TRAN_WAIT_SLICE);
       }
 
@@ -376,19 +370,27 @@ stream_handle_table::remove_request_locked (THREAD_ENTRY *thread_p, std::int64_t
   assert (false);
 }
 
-/* the caller holds m_mutex */
+/* the caller holds m_mutex; a request of the calling thread is not waited for */
 bool
-stream_handle_table::has_other_request_locked (int tran_index, THREAD_ENTRY *thread_p) const
+stream_handle_table::must_wait_locked (int tran_index, THREAD_ENTRY *thread_p,
+				       stream_holder_stuck_fn holder_is_stuck) const
 {
+  bool must_wait = false;
+
   for (const request &r : m_requests)
     {
-      if (r.tran_index == tran_index && r.thread_p != thread_p)
+      if (r.tran_index != tran_index || r.thread_p == thread_p)
 	{
-	  return true;
+	  continue;
 	}
+      if (holder_is_stuck != NULL && holder_is_stuck (r.thread_p, tran_index))
+	{
+	  return false;
+	}
+      must_wait = true;
     }
 
-  return false;
+  return must_wait;
 }
 
 void

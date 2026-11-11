@@ -94,10 +94,6 @@ struct stream_result
 
 /* An upload is one statement still running, so its methods never end the
  * transaction: the transaction's end frees the session (session_end_tran_streams).
- * A session that a request left behind a transaction end the client sent
- * without waiting for the reply is freed by the next end of that index, so
- * its abort () can run in a later transaction than the one it wrote in: it
- * must not undo by what it recorded of the earlier one.
  * For the same reason no savepoint rollback runs while it is open: a consumer's
  * statement that fails with its stream open calls stream_from_abort () before it
  * rolls back to its own savepoint. */
@@ -114,7 +110,10 @@ class stream_session
      * and LOB DML. */
     virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
-    /* Discard in-flight state so no partial result survives an error. */
+    /* Discard in-flight state so no partial result survives an error. With a
+     * client that does not wait for replies, this can run after the transaction
+     * the session wrote in has ended, so it must not undo by what it recorded
+     * of that transaction. */
     virtual void abort (THREAD_ENTRY *thread_p) = 0;
 };
 
@@ -123,9 +122,8 @@ class stream_session
  * config. The core opens it under its transaction's snapshot, so vacuum keeps
  * what was visible at the open until the transaction ends; a value already
  * deleted by then can still vanish mid-read, and the source reports that.
- * The end of the transaction waits for a read in progress, except when the
- * transaction is being aborted under it (a deadlock victim, a killtran): then
- * that read, and the close at its end, can run after the transaction is gone. */
+ * The end of the transaction waits for a read in progress, unless its worker
+ * is a deadlock victim: that read and its close run after the transaction. */
 class stream_source : public stream_handle_object
 {
   public:

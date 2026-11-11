@@ -34,6 +34,7 @@
 #include "session.h"
 #include "stream_session.hpp"
 #include "stream_handle.hpp"
+#include "lock_manager.h"
 
 #include "boot_sr.h"
 #include "crypt_opfunc.h"
@@ -3395,13 +3396,7 @@ session_stream_client_id (THREAD_ENTRY * thread_p)
 #endif /* !SERVER_MODE */
 }
 
-/*
- * session_stream_slot_is_callers () - Is the slot the caller's connection's, in the caller's transaction?
- *
- * The caller holds stream_mutex. A request that arrived while an earlier transaction of the same index was ending
- * can have left a session there (one opened behind a commit that a client sent without waiting for its reply). The
- * next transaction does not see it, and its own end frees it (session_end_tran_streams).
- */
+/* the caller holds stream_mutex; a session that an earlier transaction of the index left is not the caller's */
 static bool
 session_stream_slot_is_callers (SESSION_STATE * state_p, THREAD_ENTRY * thread_p)
 {
@@ -3417,28 +3412,15 @@ session_stream_slot_matches (SESSION_STATE * state_p, int client_id, int tran_in
 	  && (tran_index == SESSION_STREAM_ANY_TRAN || state_p->stream_session_tran_index == tran_index));
 }
 
-/* how long a wait for the slot sleeps before it looks at the holder's transaction again */
 static const int SESSION_STREAM_WAIT_SLICE_MSEC = 10;
 
-/*
- * session_stream_tran_ending () - Should a wait for a request of tran_index stop?
- *
- * A deadlock victim among the requests waits in lock_suspend () for every other worker of its transaction, the
- * waiter included. It interrupts the transaction meanwhile, but the abort of a stream clears that interrupt
- * (session_end_stream_session), so the abort reason, which only the victim's error reply resets, is asked too. A
- * killtran interrupts as well.
- */
+/* A deadlock victim waits in lock_suspend () for every other worker of its transaction, so none may wait for it. */
 static bool
-session_stream_tran_ending (THREAD_ENTRY * thread_p, int tran_index)
+session_stream_holder_is_victim (THREAD_ENTRY * holder, int tran_index)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-  bool continue_checking = true;
 
-  if (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL)
-    {
-      return true;
-    }
-  return logtb_is_interrupted_tran (thread_p, false, &continue_checking, tran_index);
+  return tdes != NULL && tdes->tran_abort_reason == TRAN_ABORT_DUE_DEADLOCK && lock_is_deadlock_victim (holder);
 }
 
 
@@ -3450,10 +3432,8 @@ session_stream_tran_ending (THREAD_ENTRY * thread_p, int tran_index)
  *
  * Requests of one connection run on separate workers, so one may still be running on the session; the caller waits
  * until that request lets the slot go, and the session is ended only after it. The worker running it takes the
- * session at once, and keeps the slot until it lets it go.
- *
- * The wait stops when the holder's transaction is being ended under it (session_stream_tran_ending), and the
- * session is then left to the holder: a deadlock victim ends the stream itself on its error path.
+ * session at once, and keeps the slot until it lets it go. A holder that is a deadlock victim is not waited for: it
+ * gives the session up itself, on its error path.
  */
 static stream_session *
 session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_index, THREAD_ENTRY * taker)
@@ -3467,13 +3447,12 @@ session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_in
       struct timeval now, deadline;
       struct timespec until;
 
-      if (session_stream_tran_ending (taker, state_p->stream_session_tran_index))
+      if (session_stream_holder_is_victim (state_p->stream_user, state_p->stream_session_tran_index))
 	{
 	  pthread_mutex_unlock (&state_p->stream_mutex);
 	  return NULL;
 	}
 
-      /* as the group commit's wait (logpb_flush_pages): the porting layer of Windows takes the deadline this way */
       gettimeofday (&now, NULL);
       (void) timeval_add_msec (&deadline, &now, SESSION_STREAM_WAIT_SLICE_MSEC);
       (void) timeval_to_timespec (&until, &deadline);
@@ -3526,14 +3505,10 @@ session_refuse_taken_stream_slot (SESSION_STATE * state_p, int client_id)
 /*
  * session_reserve_stream_slot () - Hold the slot for an open, before the kind's factory runs
  *   return: NO_ERROR, or ER_STREAM_INVALID_USE while any connection of the session holds the slot
- *   held(out): the session state the slot is in, for session_set_stream_session () and
- *		session_unuse_stream_session (); the connection may move to another session during the request
+ *   held(out): the session state held; the connection may move to another session during the request
  *
  * One stream session per session (the invariant the transport seam depends on); one another connection still holds
- * is ended by that connection's close. Held before the factory, because what it acquires for the transaction,
- * deleting the session does not give back: a commit of the connection that arrives meanwhile is refused
- * (session_has_stream_session), and a rollback or the transaction's end waits for the open
- * (session_take_stream_session) and then ends the stream with it.
+ * is ended by that connection's close.
  */
 int
 session_reserve_stream_slot (THREAD_ENTRY * thread_p, struct session_state **held)
@@ -3566,13 +3541,9 @@ session_reserve_stream_slot (THREAD_ENTRY * thread_p, struct session_state **hel
 }
 
 /*
- * session_set_stream_session () - Put the stream session the open built in the slot it reserved
- *   return: NO_ERROR, or ER_STREAM_INVALID_USE when the transaction the slot was reserved in ended meanwhile
+ * session_set_stream_session () - Put the session the open built in the slot it reserved
+ *   return: NO_ERROR, or ER_STREAM_INVALID_USE when the transaction ended while the factory ran
  *   held(in): what session_reserve_stream_slot () gave
- *
- * A commit the client sent behind the INIT without waiting for its reply can end the transaction while the factory
- * runs. What the factory did went into that transaction, so the session is not put into the next one; the caller
- * gives it up.
  */
 int
 session_set_stream_session (THREAD_ENTRY * thread_p, struct session_state *held, stream_session * stream_session_p,
@@ -3713,13 +3684,7 @@ session_unuse_stream_session (THREAD_ENTRY * thread_p, struct session_state *hel
   pthread_mutex_unlock (&held->stream_mutex);
 }
 
-/*
- * session_has_stream_session () - Has the caller's connection a stream session open, or a request on its slot?
- *
- * Another connection's is not seen. A request on the slot counts, for a client that does not wait for replies: a
- * commit sent behind an INIT whose factory is still running, or behind a chunk still being taken, is inside the
- * stream all the same.
- */
+/* another connection's stream is not seen; a request running on the slot counts as an open stream */
 bool
 session_has_stream_session (THREAD_ENTRY * thread_p)
 {
@@ -3791,7 +3756,7 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
     }
 
   /* a cancel the CAS left for the stream is answered by this rollback; the abort runs while the transaction is
-   * still active, so it must not see it. The error the rollback reports stays its own. */
+   * still active, so it must not see it */
   (void) logtb_is_interrupted (thread_p, true, &continue_checking);
   er_stack_push ();
   stream_session_p->abort (thread_p);
@@ -3848,13 +3813,7 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
       delete stream_session_p;
     }
 
-  /* as session_take_stream_session () above: a deadlock victim among the reads waits for this thread too */
-  // *INDENT-OFF*
-  state_p->stream_handles_p->end_tran (thread_p, tran_index, [thread_p, tran_index] ()
-  {
-    return session_stream_tran_ending (thread_p, tran_index);
-  });
-  // *INDENT-ON*
+  state_p->stream_handles_p->end_tran (thread_p, tran_index, session_stream_holder_is_victim);
 #endif /* SERVER_MODE */
 }
 

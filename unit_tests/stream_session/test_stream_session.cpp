@@ -753,8 +753,7 @@ TEST_CASE_METHOD (registry_fixture, "the limits refuse an issue and close what w
 
 namespace
 {
-  /* Workers of one connection, as a client that does not wait for replies spreads its requests over them. The table
-   * only compares them, so any distinct addresses do. */
+  /* workers of one connection; the table only compares them, so any distinct addresses do */
   THREAD_ENTRY *const WORKER_1 = reinterpret_cast<THREAD_ENTRY *> (static_cast<std::uintptr_t> (0x1000));
   THREAD_ENTRY *const WORKER_2 = reinterpret_cast<THREAD_ENTRY *> (static_cast<std::uintptr_t> (0x2000));
   THREAD_ENTRY *const WORKER_3 = reinterpret_cast<THREAD_ENTRY *> (static_cast<std::uintptr_t> (0x3000));
@@ -846,35 +845,43 @@ TEST_CASE_METHOD (registry_fixture, "a transaction end waits neither for its own
   CHECK (test_Closed == 2);
 }
 
-TEST_CASE_METHOD (registry_fixture, "a transaction end stops waiting when its transaction is interrupted",
-		  "[stream_handle]")
+namespace
+{
+  /* WORKER_1 turns into a deadlock victim, which waits for the other workers in turn */
+  std::atomic<bool> test_Victim (false);
+
+  bool
+  worker_1_is_victim (THREAD_ENTRY *holder, int tran_index)
+  {
+    (void) tran_index;
+    return test_Victim && holder == WORKER_1;
+  }
+}
+
+TEST_CASE_METHOD (registry_fixture, "a transaction end does not wait for a deadlock victim", "[stream_handle]")
 {
   stream_handle_table table;
   std::int64_t download = 0;
   int error_code = NO_ERROR;
-  std::atomic<bool> interrupted (false);
   std::atomic<bool> ended (false);
 
+  test_Victim = false;
   REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, TRID_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
   REQUIRE (table.get_source (WORKER_1, download, TRAN_1, TRID_1, &error_code) != NULL);
 
-  /* a deadlock victim among the readers waits for every other worker of the transaction, and interrupts it */
   std::thread commit ([&] ()
   {
-    table.end_tran (WORKER_2, TRAN_1, [&] ()
-    {
-      return interrupted.load ();
-    });
+    table.end_tran (WORKER_2, TRAN_1, worker_1_is_victim);
     ended = true;
   });
 
   std::this_thread::sleep_for (SETTLE);
   CHECK_FALSE (ended);
 
-  interrupted = true;
+  test_Victim = true;
   commit.join ();
   CHECK (ended);
-  /* the pinned handle is left to its put, as any release during a pin */
+  /* the victim's read gives its handle up at the put */
   CHECK (test_Closed == 0);
   table.put (WORKER_1, download);
   CHECK (test_Closed == 1);
@@ -924,7 +931,8 @@ TEST_CASE_METHOD (registry_fixture, "reads, releases and a transaction end on se
 
 	for (int i = 0; i < READS; i++)
 	  {
-	    std::int64_t h = handles[ (i + offset) % HANDLES];
+	    int k = (i + offset) % HANDLES;
+	    std::int64_t h = handles[k];
 	    stream_source *source = table.get_source (worker, h, TRAN_1, TRID_1, &error_code);
 
 	    if (source != NULL)
