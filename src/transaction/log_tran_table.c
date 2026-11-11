@@ -841,7 +841,7 @@ logtb_find_exec_rights_user (THREAD_ENTRY * thread_p, char *user_name, int user_
 
       if (is_owner_rights)
 	{
-	  strncpy (user_name, owner_name, user_name_size - 1);
+	  strncpy (user_name, owner_name, user_name_size);
 	  user_name[user_name_size - 1] = '\0';
 	  return;
 	}
