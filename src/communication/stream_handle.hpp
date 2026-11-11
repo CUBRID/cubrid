@@ -108,7 +108,6 @@ class stream_handle_table
 
     void add_request_locked (int tran_index, THREAD_ENTRY *thread_p, std::int64_t handle);
     void remove_request_locked (THREAD_ENTRY *thread_p, std::int64_t handle);
-    /* any_tran: a request of any transaction counts */
     bool must_wait_locked (int tran_index, bool any_tran, THREAD_ENTRY *thread_p,
 			   stream_holder_stuck_fn holder_is_stuck) const;
     void uncount (entry &e);

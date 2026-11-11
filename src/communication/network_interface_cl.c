@@ -12369,8 +12369,7 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
  * which consumer opened it. */
 static CUB_THREAD_LOCAL bool stream_Is_open = false;
 
-/* The system savepoint the statement that opened the upload took before it (stream_from_set_savepoint), or NULL for
- * an upload a driver opened. */
+/* where giving the upload up goes back to (stream_from_set_savepoint), or NULL */
 static CUB_THREAD_LOCAL const char *stream_Savepoint = NULL;
 
 /* The download handles this client holds, as the READ_OPEN replies named them. Each ties the transaction as an
@@ -12826,11 +12825,9 @@ stream_from_end (INT64 * count, const char *data, int data_len)
  * For the failure the server cannot see: the consumer's client half gave up
  * before it had a chunk to send -- its encoder failed, the statement it belongs
  * to unwound, the user cancelled. Sending a chunk just to make the server refuse
- * it would report the wrong error; this says so directly. Whatever the
- * session already flushed stays in the transaction: when the statement that
- * opened the upload named its savepoint (stream_from_set_savepoint ()), the
- * transaction goes back to it, as for a failed statement; otherwise the
- * caller's own rollback is what removes it.
+ * it would report the wrong error; this says so directly. What the session
+ * flushed is undone back to the savepoint the statement named
+ * (stream_from_set_savepoint ()), or else by the caller's rollback.
  */
 int
 stream_from_abort (void)
@@ -12862,13 +12859,8 @@ stream_from_abort (void)
 }
 
 /*
- * stream_from_set_savepoint () - Name the savepoint that giving the open upload up goes back to
- *   savepoint_name(in): a system savepoint the statement that opened the upload took before the open, as a string that
- *                       outlives the upload (the consumer's savepoint-name constant)
- *
- * An upload a statement opened is that statement still running. Given up -- a refused chunk, a failed END, an
- * ABORT -- it ends as a failed statement does: the transaction goes back to the savepoint and goes on. An upload a
- * driver opened names none; its driver decides.
+ * stream_from_set_savepoint () - Name where giving the open upload up goes back to, as for a failed statement
+ *   savepoint_name(in): a system savepoint the opening statement took before the open; it outlives the upload
  */
 void
 stream_from_set_savepoint (const char *savepoint_name)

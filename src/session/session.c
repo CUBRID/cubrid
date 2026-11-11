@@ -3776,13 +3776,9 @@ session_stream_handles_of (SESSION_STATE * state_p)
 }
 
 /*
- * session_get_stream_handles () - The handles this session's client holds between stream requests
+ * session_get_stream_handles () - The download handles this session's client holds
  *   return: NO_ERROR, or an error with *handles NULL
- *   create(in): a download's open makes the table; a read or a release finds it or nothing
- *   handles(out): the session's table, or NULL before the session's first download
- *
- * Made only when a session first downloads, so a session that never does holds none, and a failed allocation is a
- * failed open rather than a session without a table.
+ *   create(in): an open makes the table; a read or a release gets NULL before the session's first download
  */
 int
 session_get_stream_handles (THREAD_ENTRY * thread_p, bool create, stream_handle_table ** handles)

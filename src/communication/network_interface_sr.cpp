@@ -14037,7 +14037,7 @@ sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
     {
       (void) or_unpack_int64 (request, &handle);
 
-      /* without a table the session never opened a download, and a handle that does not resolve is no error */
+      /* no table: the session never downloaded, and a handle that does not resolve is no error */
       error_code = session_get_stream_handles (thread_p, false, &handles);
       if (handles != NULL)
 	{

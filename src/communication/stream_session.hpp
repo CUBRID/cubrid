@@ -110,13 +110,10 @@ class stream_session
      * and LOB DML. */
     virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
-    /* Discard in-flight state so no partial result survives an error. What the
-     * session already flushed stays in the transaction: the client takes it
-     * back, to the savepoint of the statement that opened the upload
-     * (stream_from_set_savepoint ()) or by its own rollback. With a client that
-     * does not wait for replies, this can run after the transaction the session
-     * wrote in has ended, so it must not undo by what it recorded of that
-     * transaction. */
+    /* Discard in-flight state so no partial result survives an error; what was
+     * flushed is the client's to roll back (stream_from_set_savepoint ()). With a
+     * client that does not wait for replies, this can run after the transaction
+     * the session wrote in has ended, so it must not undo by what it recorded. */
     virtual void abort (THREAD_ENTRY *thread_p) = 0;
 };
 

@@ -10780,8 +10780,7 @@ encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned char cas_typ
  * END pays it once the transfer is done. */
 static bool stream_Deferred_auto_commit = false;
 
-/* Auto-commit owed by a download released while an upload was open: the upload's close pays it
- * (ux_stream_settle_given_up (), ux_stream_end ()). */
+/* the auto-commit a release owed while an upload was open, for the upload's close to settle */
 static bool stream_Release_commit_owed = false;
 
 /* An upload (a kind whose END finishes no statement) does no work in the transaction: its bytes go to the session.
@@ -11347,12 +11346,8 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, bool 
 }
 
 /*
- * ux_stream_settle_given_up () - Pay what an upload given up owes, as a rollback
+ * ux_stream_settle_given_up () - Settle what an upload given up owes, as a rollback: what it flushed must not stay
  *   auto_commit_owed(in): the auto-commit its statement, or the driver, deferred to END
- *
- * Whatever the session flushed is still in the transaction, and left unpaid the next statement's auto-commit would
- * commit it. A download released beside the upload read only; its commit is paid here when nothing else the client
- * holds keeps the transaction, and otherwise by the release of what does.
  */
 static void
 ux_stream_settle_given_up (bool auto_commit_owed, T_REQ_INFO * req_info)
@@ -11418,8 +11413,7 @@ ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       return ux_stream_error (err_code, net_buf);
     }
 
-  /* A commit owed to a release goes with this one. Without one, the kind's END finished no statement, and the
-   * statement that uses its bytes runs in this transaction and commits it; committing here would end that first. */
+  /* a release's commit goes with this one, or with that of the statement that uses the bytes in this transaction */
   stream_Release_commit_owed = false;
   if (auto_commit_owed)
     {
@@ -11467,10 +11461,9 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
  *   err_code(in): the error the request ended with, or 0
  *
  * As a commit, a failed read included: a read writes nothing, and what the commit carries is the work of
- * statements the client was told had finished. While an upload is open the commit is owed to the upload's close:
- * giving the upload up pays it as a rollback, and an END that leaves a statement to come leaves it to that
- * statement's commit. A transaction the server already rolled back owes nothing, and the rollback is what brings
- * this connection in line with it.
+ * statements the client was told had finished. While an upload is open it is owed to the upload's close. A
+ * transaction the server already rolled back owes nothing, and the rollback is what brings this connection in line
+ * with it.
  */
 static void
 ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
