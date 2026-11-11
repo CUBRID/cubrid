@@ -614,14 +614,20 @@ hm_set_cgw_free_stmt_func (cgw_free_stmt_func_t func)
   cgw_free_stmt_func = func;
 }
 
-/* true if a commit would end a result set still open, or drop the locks a holdable updatable one updates under */
+/*
+ * hm_has_result_tied_to_tran () - Would a commit end a result set still open, or drop the locks a holdable updatable
+ *				   one updates under?
+ *
+ * Note: the whole table, as hm_srv_handle_end_transaction_all () walks it: hm_srv_handle_free_all () lowers
+ *	 max_handle_id to the index of the last surviving handle, which would leave that handle unvisited.
+ */
 bool
 hm_has_result_tied_to_tran (void)
 {
   T_SRV_HANDLE *srv_handle;
   int i, j;
 
-  for (i = 0; i < max_handle_id; i++)
+  for (i = 0; i < max_srv_handle; i++)
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle == NULL || srv_handle->q_result == NULL
