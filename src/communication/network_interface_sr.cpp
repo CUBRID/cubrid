@@ -13627,8 +13627,9 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       goto send_reply;
     }
 
-  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
-  error_code = session_check_stream_slot (thread_p);
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back, and a
+   * commit or rollback the client sends behind this request must find the open in progress */
+  error_code = session_reserve_stream_slot (thread_p, &held);
   if (error_code != NO_ERROR)
     {
       goto send_reply;
@@ -13650,13 +13651,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       goto send_reply;
     }
 
-  /* another connection of the session may have taken the slot since the check above */
-  error_code = session_set_stream_session (thread_p, session, stream_kind, &held);
-  if (error_code != NO_ERROR)
-    {
-      stream_drop_session (thread_p, held, session, true);
-      goto send_reply;
-    }
+  session_set_stream_session (thread_p, held, session, stream_kind);
 
   if (reqlen - header_size - config_len > 0)
     {

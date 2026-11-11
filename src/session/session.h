@@ -93,9 +93,9 @@ extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * loa
 extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 
 extern int session_stream_client_id (THREAD_ENTRY * thread_p);
-extern int session_check_stream_slot (THREAD_ENTRY * thread_p);
-extern int session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p, int kind,
-				       struct session_state **held);
+extern int session_reserve_stream_slot (THREAD_ENTRY * thread_p, struct session_state **held);
+extern void session_set_stream_session (THREAD_ENTRY * thread_p, struct session_state *held,
+					stream_session * stream_session_p, int kind);
 extern void session_clear_stream_session (THREAD_ENTRY * thread_p, struct session_state *held);
 extern int session_use_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr),
 				       int *kind, struct session_state **held);
