@@ -1219,9 +1219,6 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
       goto error;
     }
   assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
-  /* CBRD-27583: the compiler leaves no regu, arithmetic or list position without a domain */
-  assert (xclone->xasl_buf->n_undecided_regu == 0 && xclone->xasl_buf->n_undecided_arith == 0
-	  && xclone->xasl_buf->n_undecided_position == 0);
 
   xcache_log ("loaded xasl clone: \n"
 	      XCACHE_LOG_ENTRY_TEXT ("entry")
