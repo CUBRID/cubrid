@@ -845,6 +845,66 @@ TEST_CASE_METHOD (registry_fixture, "a transaction end waits neither for its own
   CHECK (test_Closed == 2);
 }
 
+TEST_CASE_METHOD (registry_fixture, "a session's end waits for the reads and opens of every transaction",
+		  "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t download = 0;
+  int error_code = NO_ERROR;
+  std::atomic<bool> ended (false);
+
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, TRID_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.get_source (WORKER_1, download, TRAN_1, TRID_1, &error_code) != NULL);
+  REQUIRE (table.begin_open (WORKER_3, TRAN_2, &error_code));
+
+  /* an END_SESSION sent behind a READ and a READ_OPEN */
+  std::thread end_session ([&] ()
+  {
+    table.clear (WORKER_2);
+    ended = true;
+  });
+
+  std::this_thread::sleep_for (SETTLE);
+  CHECK_FALSE (ended);
+  table.put (WORKER_1, download);
+  std::this_thread::sleep_for (SETTLE);
+  CHECK_FALSE (ended);
+  table.end_open (WORKER_3);
+  end_session.join ();
+  CHECK (ended);
+  CHECK (test_Closed == 1);
+
+  /* a request that found the table before the session ended opens nothing */
+  CHECK_FALSE (table.begin_open (WORKER_1, TRAN_1, &error_code));
+  CHECK (error_code == ER_STREAM_NOT_OPEN);
+
+  /* the entry's next session */
+  table.reopen ();
+  error_code = NO_ERROR;
+  CHECK (table.begin_open (WORKER_1, TRAN_1, &error_code));
+  table.end_open (WORKER_1);
+}
+
+TEST_CASE_METHOD (registry_fixture, "a session's end does not wait for a stuck worker", "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t download = 0;
+  int error_code = NO_ERROR;
+
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, TRID_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.get_source (WORKER_1, download, TRAN_1, TRID_1, &error_code) != NULL);
+
+  /* returns at once; the pinned source closes at its put */
+  table.clear (WORKER_2, [] (THREAD_ENTRY *holder, int tran_index)
+  {
+    (void) tran_index;
+    return holder == WORKER_1;
+  });
+  CHECK (test_Closed == 0);
+  table.put (WORKER_1, download);
+  CHECK (test_Closed == 1);
+}
+
 namespace
 {
   /* WORKER_1 turns into a deadlock victim, which waits for the other workers in turn */

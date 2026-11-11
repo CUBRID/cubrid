@@ -13938,12 +13938,8 @@ sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       return;
     }
 
-  handles = session_get_stream_handles (thread_p);
-  if (handles == NULL)
-    {
-      error_code = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-    }
-  else
+  error_code = session_get_stream_handles (thread_p, true, &handles);
+  if (error_code == NO_ERROR)
     {
       /* Before the factory runs: a transaction's first snapshot holds vacuum back until the transaction ends, so
        * what the source can see now stays for as long as its handle can live. */
@@ -13997,12 +13993,14 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
       return;
     }
 
-  handles = session_get_stream_handles (thread_p);
-  if (handles == NULL)
+  error_code = session_get_stream_handles (thread_p, false, &handles);
+  if (error_code == NO_ERROR && handles == NULL)
     {
-      error_code = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+      /* the session never opened a download */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_OPEN, 1, "unknown stream handle");
+      error_code = ER_STREAM_NOT_OPEN;
     }
-  else
+  else if (error_code == NO_ERROR)
     {
       buf = stream_read_buffer (max, &error_code);
       if (error_code == NO_ERROR)
@@ -14039,12 +14037,9 @@ sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
     {
       (void) or_unpack_int64 (request, &handle);
 
-      handles = session_get_stream_handles (thread_p);
-      if (handles == NULL)
-	{
-	  error_code = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-	}
-      else
+      /* without a table the session never opened a download, and a handle that does not resolve is no error */
+      error_code = session_get_stream_handles (thread_p, false, &handles);
+      if (handles != NULL)
 	{
 	  handles->release (thread_p, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	}

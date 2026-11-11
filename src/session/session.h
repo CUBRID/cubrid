@@ -102,7 +102,7 @@ extern int session_use_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_s
 extern void session_unuse_stream_session (THREAD_ENTRY * thread_p, struct session_state *held);
 extern bool session_has_stream_session (THREAD_ENTRY * thread_p);
 extern void session_end_stream_session (THREAD_ENTRY * thread_p);
-extern stream_handle_table *session_get_stream_handles (THREAD_ENTRY * thread_p);
+extern int session_get_stream_handles (THREAD_ENTRY * thread_p, bool create, stream_handle_table ** handles);
 extern void session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index);
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));

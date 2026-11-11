@@ -59,7 +59,7 @@ class stream_handle_table
 	       std::int64_t *handle);
 
     /* An open runs from begin_open (), before its factory, to end_open (). Refused
-     * when the transaction has no room for one more handle. */
+     * when the transaction has no room for one more handle, and after clear (). */
     bool begin_open (THREAD_ENTRY *thread_p, int tran_index, int *error_code);
     void end_open (THREAD_ENTRY *thread_p);
 
@@ -75,11 +75,14 @@ class stream_handle_table
      * may have run first. A release during a pin is deferred to the last put ()
      * and never blocks. end_tran () first waits for the opens and reads of the
      * transaction on other workers, except those that are stuck. end_client ()
-     * is a connection's close. */
+     * is a connection's close. clear () is the session's end: it waits as
+     * end_tran () does, for every transaction, and takes no open after it until
+     * reopen () gives the table to the next session. */
     void release (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index);
     void end_tran (THREAD_ENTRY *thread_p, int tran_index, stream_holder_stuck_fn holder_is_stuck = NULL);
     void end_client (THREAD_ENTRY *thread_p, int client_id);
-    void clear (THREAD_ENTRY *thread_p);
+    void clear (THREAD_ENTRY *thread_p, stream_holder_stuck_fn holder_is_stuck = NULL);
+    void reopen ();
 
   private:
     struct entry
@@ -105,7 +108,9 @@ class stream_handle_table
 
     void add_request_locked (int tran_index, THREAD_ENTRY *thread_p, std::int64_t handle);
     void remove_request_locked (THREAD_ENTRY *thread_p, std::int64_t handle);
-    bool must_wait_locked (int tran_index, THREAD_ENTRY *thread_p, stream_holder_stuck_fn holder_is_stuck) const;
+    /* any_tran: a request of any transaction counts */
+    bool must_wait_locked (int tran_index, bool any_tran, THREAD_ENTRY *thread_p,
+			   stream_holder_stuck_fn holder_is_stuck) const;
     void uncount (entry &e);
     void release_locked (entry_map::iterator it, std::vector<stream_source *> &to_close);
     static void close_all (THREAD_ENTRY *thread_p, std::vector<stream_source *> &to_close);
@@ -119,6 +124,7 @@ class stream_handle_table
     /* readable without m_mutex, so a transaction end with nothing here -- the usual case -- takes no lock */
     std::atomic<int> m_size;
     std::atomic<int> m_request_count;
+    bool m_closed;
 };
 
 /* Open a download of kind. With first_max > 0 the first piece comes back in the

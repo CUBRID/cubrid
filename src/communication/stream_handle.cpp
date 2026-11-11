@@ -103,6 +103,7 @@ stream_handle_table::stream_handle_table ()
   , m_requests_done ()
   , m_size (0)
   , m_request_count (0)
+  , m_closed (false)
 {
 }
 
@@ -170,6 +171,12 @@ stream_handle_table::begin_open (THREAD_ENTRY *thread_p, int tran_index, int *er
   std::lock_guard<std::mutex> lock (m_mutex);
   std::map<int, int>::const_iterator count = m_tran_counts.find (tran_index);
 
+  /* a request that found the table before its session ended */
+  if (m_closed)
+    {
+      *error_code = set_handle_error (ER_STREAM_NOT_OPEN, "the session of the stream has ended");
+      return false;
+    }
   if (count != m_tran_counts.end () && count->second >= STREAM_HANDLE_MAX_PER_TRAN)
     {
       *error_code = set_handle_error (ER_STREAM_INVALID_USE, TOO_MANY_HANDLES);
@@ -273,7 +280,7 @@ stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index, stream_ho
     std::unique_lock<std::mutex> lock (m_mutex);
 
     /* so that a source closes while its transaction is still there */
-    while (must_wait_locked (tran_index, thread_p, holder_is_stuck))
+    while (must_wait_locked (tran_index, false, thread_p, holder_is_stuck))
       {
 	(void) m_requests_done.wait_for (lock, END_TRAN_WAIT_SLICE);
       }
@@ -323,12 +330,19 @@ stream_handle_table::end_client (THREAD_ENTRY *thread_p, int client_id)
 }
 
 void
-stream_handle_table::clear (THREAD_ENTRY *thread_p)
+stream_handle_table::clear (THREAD_ENTRY *thread_p, stream_holder_stuck_fn holder_is_stuck)
 {
   std::vector<stream_source *> to_close;
 
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
+    std::unique_lock<std::mutex> lock (m_mutex);
+
+    /* a client that does not wait for replies can end its session while a read of it still runs */
+    while (must_wait_locked (-1, true, thread_p, holder_is_stuck))
+      {
+	(void) m_requests_done.wait_for (lock, END_TRAN_WAIT_SLICE);
+      }
+    m_closed = true;
 
     for (entry_map::iterator it = m_entries.begin (); it != m_entries.end ();)
       {
@@ -340,6 +354,14 @@ stream_handle_table::clear (THREAD_ENTRY *thread_p)
   }
 
   close_all (thread_p, to_close);
+}
+
+void
+stream_handle_table::reopen ()
+{
+  std::lock_guard<std::mutex> lock (m_mutex);
+
+  m_closed = false;
 }
 
 /* the caller holds m_mutex */
@@ -372,18 +394,18 @@ stream_handle_table::remove_request_locked (THREAD_ENTRY *thread_p, std::int64_t
 
 /* the caller holds m_mutex; a request of the calling thread is not waited for */
 bool
-stream_handle_table::must_wait_locked (int tran_index, THREAD_ENTRY *thread_p,
+stream_handle_table::must_wait_locked (int tran_index, bool any_tran, THREAD_ENTRY *thread_p,
 				       stream_holder_stuck_fn holder_is_stuck) const
 {
   bool must_wait = false;
 
   for (const request &r : m_requests)
     {
-      if (r.tran_index != tran_index || r.thread_p == thread_p)
+      if ((!any_tran && r.tran_index != tran_index) || r.thread_p == thread_p)
 	{
 	  continue;
 	}
-      if (holder_is_stuck == NULL || !holder_is_stuck (r.thread_p, tran_index))
+      if (holder_is_stuck == NULL || !holder_is_stuck (r.thread_p, r.tran_index))
 	{
 	  must_wait = true;
 	}

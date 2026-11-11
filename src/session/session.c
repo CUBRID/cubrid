@@ -157,7 +157,7 @@ struct session_state
   TRANID stream_session_trid;	/* and that transaction's id, which the next one of the same index does not have */
   THREAD_ENTRY *stream_user;	/* the worker running a request of the owner on the slot, or NULL */
   pthread_cond_t stream_cond;	/* signalled when that request lets the slot go */
-  stream_handle_table *stream_handles_p;
+  stream_handle_table *stream_handles_p;	/* made at the first download, kept while the entry lives */
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -266,7 +266,7 @@ session_state::session_state ()
   pthread_mutex_init (&mutex, NULL);
   pthread_mutex_init (&stream_mutex, NULL);
   pthread_cond_init (&stream_cond, NULL);
-  stream_handles_p = new stream_handle_table ();
+  stream_handles_p = NULL;
 }
 
 session_state::~session_state ()
@@ -294,16 +294,7 @@ session_state_alloc (void)
       /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
       pthread_mutex_init (&state->stream_mutex, NULL);
       pthread_cond_init (&state->stream_cond, NULL);
-      /* NULL on failure, as the malloc above: the server's operator new does not throw (memory_wrapper.hpp) */
-      state->stream_handles_p = new stream_handle_table ();
-      if (state->stream_handles_p == NULL)
-	{
-	  pthread_cond_destroy (&state->stream_cond);
-	  pthread_mutex_destroy (&state->stream_mutex);
-	  pthread_mutex_destroy (&state->mutex);
-	  free (state);
-	  return NULL;
-	}
+      state->stream_handles_p = NULL;
     }
   return (void *) state;
 }
@@ -370,6 +361,11 @@ session_state_init (void *st)
   session_p->stream_session_tran_index = NULL_TRAN_INDEX;
   session_p->stream_session_trid = NULL_TRANID;
   session_p->stream_user = NULL;
+  /* the entry's table, if an earlier session made one, was closed when that session ended */
+  if (session_p->stream_handles_p != NULL)
+    {
+      session_p->stream_handles_p->reopen ();
+    }
   memset (session_p->secret, 0, SESSION_SECRET_SIZE);
 
   return NO_ERROR;
@@ -3766,16 +3762,55 @@ session_end_stream_session (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 }
 
+/* the session's download handles, or NULL before its first download; a table once made stays with the entry */
+static stream_handle_table *
+session_stream_handles_of (SESSION_STATE * state_p)
+{
+  stream_handle_table *handles;
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  handles = state_p->stream_handles_p;
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return handles;
+}
+
 /*
  * session_get_stream_handles () - The handles this session's client holds between stream requests
- *   return: the session's table, or NULL with an error set
+ *   return: NO_ERROR, or an error with *handles NULL
+ *   create(in): a download's open makes the table; a read or a release finds it or nothing
+ *   handles(out): the session's table, or NULL before the session's first download
+ *
+ * Made only when a session first downloads, so a session that never does holds none, and a failed allocation is a
+ * failed open rather than a session without a table.
  */
-stream_handle_table *
-session_get_stream_handles (THREAD_ENTRY * thread_p)
+int
+session_get_stream_handles (THREAD_ENTRY * thread_p, bool create, stream_handle_table ** handles)
 {
   SESSION_STATE *state_p = session_get_session_state (thread_p);
+  int error_code = NO_ERROR;
 
-  return state_p != NULL ? state_p->stream_handles_p : NULL;
+  *handles = NULL;
+  if (state_p == NULL)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  if (state_p->stream_handles_p == NULL && create)
+    {
+      /* NULL on failure: the server's operator new does not throw (memory_wrapper.hpp) */
+      state_p->stream_handles_p = new stream_handle_table ();
+      if (state_p->stream_handles_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (stream_handle_table));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  *handles = state_p->stream_handles_p;
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return error_code;
 }
 
 /*
@@ -3793,6 +3828,7 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
 #if defined (SERVER_MODE)
   SESSION_STATE *state_p = NULL;
   stream_session *stream_session_p = NULL;
+  stream_handle_table *handles = NULL;
   bool continue_checking = true;
 
   if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
@@ -3813,7 +3849,11 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
       delete stream_session_p;
     }
 
-  state_p->stream_handles_p->end_tran (thread_p, tran_index, session_stream_holder_is_victim);
+  handles = session_stream_handles_of (state_p);
+  if (handles != NULL)
+    {
+      handles->end_tran (thread_p, tran_index, session_stream_holder_is_victim);
+    }
 #endif /* SERVER_MODE */
 }
 
@@ -3933,6 +3973,7 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, i
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
   stream_session *stream_session_p = NULL;
+  stream_handle_table *handles = NULL;
 
   assert (session != NULL);
 
@@ -3962,13 +4003,15 @@ session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg, i
       delete stream_session_p;
     }
 
-  if (client_id == SESSION_STREAM_ALL_CLIENTS)
+  handles = session_stream_handles_of (session);
+  if (handles != NULL && client_id == SESSION_STREAM_ALL_CLIENTS)
     {
-      session->stream_handles_p->clear (thread_p);
+      /* a client that does not wait for replies can end its session while a download request of it still runs */
+      handles->clear (thread_p, session_stream_holder_is_victim);
     }
-  else
+  else if (handles != NULL)
     {
-      session->stream_handles_p->end_client (thread_p, client_id);
+      handles->end_client (thread_p, client_id);
     }
 #endif
 }
