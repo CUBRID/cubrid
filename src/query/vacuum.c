@@ -719,8 +719,7 @@ static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID 
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool * pages_released);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
-			       VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out);
+static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -1693,8 +1692,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   int error_code = NO_ERROR;	/* Error code. */
   int obj_index = 0;		/* Index used to iterate the object array. */
 
-  VACUUM_OOS_EMPTIED_PAGES oos_emptied_pages;
-
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
   assert (n_heap_objects > 0);
@@ -1856,7 +1853,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
-	      error_code = vacuum_heap_record (thread_p, &helper, &oos_emptied_pages);
+	      error_code = vacuum_heap_record (thread_p, &helper);
 	    }
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
@@ -2022,18 +2019,6 @@ end:
   if (helper.home_page != NULL)
     {
       vacuum_heap_page_log_and_reset (thread_p, &helper, true, true);
-    }
-
-  /* Reclaim only after the home page is unfixed: the reclaim takes the OOS stats header WRITE
-   * latch and one dealloc sysop per page, which must not extend the home page latch hold. */
-  if (error_code == NO_ERROR && !oos_emptied_pages.empty ())
-    {
-      assert (!VFID_ISNULL (&helper.oos_vfid));
-      error_code = vacuum_oos_reclaim_empty_pages (thread_p, &helper.oos_vfid, &oos_emptied_pages);
-      if (error_code != NO_ERROR)
-	{
-	  vacuum_check_shutdown_interruption (thread_p, error_code);
-	}
     }
 
   return error_code;
@@ -2589,19 +2574,15 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
- * oos_emptied_pages_out (out) : OOS pages the sysop's reclaim emptied are appended, each once; the caller
- *				 reclaims them AFTER unfixing the home page, never here.
  */
 static int
-vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
-		    VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out)
+vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
   /* Assert expected arguments. */
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
-  assert (oos_emptied_pages_out != NULL);
 
   /* Does removing this record touch more than the home page?  Two independent axes decide:
    *
@@ -2701,7 +2682,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	    }
 	}
 
-      vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
+      log_sysop_commit (thread_p);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -2762,7 +2743,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 	      return oos_err;
 	    }
 
-	  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, oos_emptied_pages_out);
+	  log_sysop_commit (thread_p);
 	}
       else
 	{

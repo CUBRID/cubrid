@@ -152,12 +152,10 @@ make_stub_reference_stale (RECDES &rec, int n_oos, int index)
 }
 
 /* The REMOVE path as vacuum_heap_record runs it: the reclaim intent of rec's chains is recorded in a sysop
- * whose commit reclaims them, and the pages the reclaim empties are collected (ADR-0008). */
+ * whose commit reclaims them (ADR-0008). */
 static int
-reclaim_record_in_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *rec,
-			 VACUUM_OOS_EMPTIED_PAGES *emptied_pages)
+reclaim_record_in_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *rec)
 {
-  VACUUM_OOS_EMPTIED_PAGES ignored;
   OID owner = OID_INITIALIZER;
   log_sysop_start (thread_p);
   int err = vacuum_heap_oos_log_reclaim_intent (thread_p, oos_vfid, rec, &owner);
@@ -166,7 +164,7 @@ reclaim_record_in_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const REC
       log_sysop_abort (thread_p);
       return err;
     }
-  vacuum_oos_sysop_commit_collecting_emptied_pages (thread_p, emptied_pages != nullptr ? emptied_pages : &ignored);
+  log_sysop_commit (thread_p);
   return NO_ERROR;
 }
 
@@ -405,7 +403,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* OOS record must be gone */
@@ -452,7 +450,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All 3 OOS records must be gone */
@@ -507,7 +505,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Multi-chunk OOS must be fully gone */
@@ -545,7 +543,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES after {};
@@ -612,10 +610,6 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_GT (pages_after_insert, 0);
 
-  /* Accumulate reclaim candidates across the whole churn, like vacuum_heap_page does per
-   * heap-page batch. */
-  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
-
   /* Simulate UPDATE_ROUNDS of UPDATEs with vacuum cleanup */
   for (int round = 0; round < UPDATE_ROUNDS; round++)
     {
@@ -633,7 +627,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
-	  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
+	  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  recdes_free_data_area (&heap_rec);
@@ -676,19 +670,15 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	}
     }
 
-  /* The commit ends the test's transaction; reclaim does not wait for it (ADR-0008). */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
-  ASSERT_FALSE (emptied_pages.empty ());
-  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
-  ASSERT_EQ (err, NO_ERROR);
 
-  /* After the churn plus the batch reclaim, the file must be back at its initial footprint. */
+  /* Every new version reuses the space vacuum freed, so the churn never grows the file. */
   int pages_after_churn = -1;
   err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_churn);
   ASSERT_EQ (err, NO_ERROR);
   EXPECT_LE (pages_after_churn, pages_after_insert)
-      << "After " << (N_ROWS * UPDATE_ROUNDS) << " update+vacuum cycles and the batch reclaim, "
-      << "page count should return to the initial footprint (was " << pages_after_insert
+      << "After " << (N_ROWS * UPDATE_ROUNDS) << " update+vacuum cycles, "
+      << "page count should stay at the initial footprint (was " << pages_after_insert
       << ", now " << pages_after_churn << ")";
 
   /* All current OOS versions must still be readable */
@@ -705,7 +695,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 // TC-V9: Bulk vacuum reclaim — delete all, verify space reused by reinsert
 //
 // Inserts N OOS records, vacuums all via a single heap RECDES containing
-// N OOS OIDs, then reinserts N records and verifies page count stays bounded.
+// N OOS OIDs, then reinserts N records and verifies the reinsert grows nothing.
 // ============================================================================
 TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
 {
@@ -743,8 +733,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
-  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec, &emptied_pages);
+  err = reclaim_record_in_sysop (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All N OOS records must be gone */
@@ -759,20 +748,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
 	}
     }
 
-  /* The commit ends the test's transaction; reclaim does not wait for it (ADR-0008). */
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
-  ASSERT_FALSE (emptied_pages.empty ());
-  err = vacuum_oos_reclaim_empty_pages (thread_p, &oos_vfid, &emptied_pages);
-  ASSERT_EQ (err, NO_ERROR);
-
-  int pages_after_reclaim = -1;
-  err = file_get_num_user_pages (thread_p, &oos_vfid, &pages_after_reclaim);
-  ASSERT_EQ (err, NO_ERROR);
-  EXPECT_LT (pages_after_reclaim, pages_after_insert)
-      << "batch reclaim did not shrink the file (insert=" << pages_after_insert
-      << ", after reclaim=" << pages_after_reclaim << ")";
-  EXPECT_EQ (pages_after_reclaim, 1)
-      << "all data pages were emptied and committed — only the sticky first page should remain";
 
   /* Reinsert N records — should reuse freed space */
   OID new_oids[N];
@@ -831,14 +807,14 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkip
   test_oos_utils::auto_freed_recdes_ptr d3 (&stale_rec, recdes_free_data_area);
   make_stub_reference_stale (stale_rec, 1, 0);
 
-  VACUUM_OOS_EMPTIED_PAGES emptied_pages;
+  const std::size_t emptied = oos_test_reclaim_emptied_count (oos_vfid);
   notification_log_scope admit_notifications;
   const long log_offset = error_log_size ();
   ASSERT_GE (log_offset, 0) << "the fixture requires the error log to be a readable file";
   er_clear ();
-  ASSERT_EQ (reclaim_record_in_sysop (thread_p, &oos_vfid, &stale_rec, &emptied_pages), NO_ERROR);
+  ASSERT_EQ (reclaim_record_in_sysop (thread_p, &oos_vfid, &stale_rec), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR) << "a skipped reclamation must leave no stray error";
-  EXPECT_TRUE (emptied_pages.empty ());
+  EXPECT_EQ (oos_test_reclaim_emptied_count (oos_vfid), emptied);
   EXPECT_TRUE (chunk_is_present (reused_oid)) << "the live occupant must survive the stale reference";
   EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED))
       << "a vacuum skip is expected and must stay quiet";
@@ -853,7 +829,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteReclaimsLiveReferenceAndSkip
   RECDES live_rec {};
   ASSERT_EQ (build_heap_recdes_with_oos ({live_oid}, { (INT64) live_chunk.length}, live_rec), NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr d4 (&live_rec, recdes_free_data_area);
-  ASSERT_EQ (reclaim_record_in_sysop (thread_p, &oos_vfid, &live_rec, &emptied_pages), NO_ERROR);
+  ASSERT_EQ (reclaim_record_in_sysop (thread_p, &oos_vfid, &live_rec), NO_ERROR);
   EXPECT_FALSE (chunk_is_present (live_oid)) << "the live reference must reclaim its chain";
   EXPECT_TRUE (chunk_is_present (reused_oid));
 }

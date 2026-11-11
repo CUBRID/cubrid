@@ -413,18 +413,29 @@ class OosEagerDiagnostics : public ::testing::Test
       return true;
     }
 
-    /* Reclaims the chain ref names and its page, as vacuum's fast path would have done before a retry. The
-     * chain must have had its page to itself. */
+    int records_on_page (const VPID &vpid)
+    {
+      VPID probe = vpid;
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &probe, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == NULL)
+	{
+	  er_clear ();
+	  return -1;
+	}
+      const int n_records = spage_number_of_records (page_ptr);
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return n_records;
+    }
+
+    /* Reclaims the chain ref names and deallocates its page, so ref names a freed page. The chain must have had
+     * its page to itself. */
     void reclaim_chain_and_its_page (const oos_chain_ref &ref)
     {
       const VPID page = { ref.head_oid.pageid, ref.head_oid.volid };
-      std::vector<VPID> emptied;
-      ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref, &emptied), NO_ERROR);
-      ASSERT_EQ (emptied.size (), 1U) << "the scenario requires the chain to have had its page to itself";
-      ASSERT_TRUE (VPID_EQ (&emptied[0], &page));
+      ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref), NO_ERROR);
+      ASSERT_EQ (records_on_page (page), 0) << "the scenario requires the chain to have had its page to itself";
       commit ();
-      ASSERT_EQ (oos_reclaim_empty_pages (thread_p, oos_vfid, emptied), NO_ERROR);
-      ASSERT_TRUE (page_is_deallocated (page));
+      deallocate_page (page);
     }
 
     /* Reallocates the reclaimed page inside the same OOS file as sentinel-filled file-table metadata. */
@@ -445,7 +456,7 @@ class OosEagerDiagnostics : public ::testing::Test
 	  << vpid.volid << "|" << vpid.pageid;
     }
 
-    void release_metadata_page (const VPID &vpid)
+    void deallocate_page (const VPID &vpid)
     {
       VPID page = vpid;
       log_sysop_start (thread_p);
@@ -669,7 +680,7 @@ TEST_F (OosEagerDiagnostics, DeleteDiagnosesADeallocatedAndAReusedHeadPage)
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   EXPECT_TRUE (metadata_page_is_intact (page)) << "the skipped cleanup modified the metadata page";
   commit ();
-  release_metadata_page (page);
+  deallocate_page (page);
 }
 
 // ===========================================================================

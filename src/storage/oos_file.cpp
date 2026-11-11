@@ -93,7 +93,7 @@ static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid);
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-		  std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out);
+		  oos_delete_outcome *outcome_out);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
 int oos_get_max_chunk_size_within_page ();
@@ -164,9 +164,6 @@ static OOS_STATS_BESTSPACE_CACHE oos_Bestspace_cache_area =
 static OOS_STATS_BESTSPACE_CACHE *oos_Bestspace = NULL;
 
 static const int oos_Find_best_page_limit = 100;
-
-/* Set by an oos_emptied_page_sink in scope on this thread; see oos_file.hpp. */
-static thread_local std::vector<VPID> *oos_Emptied_page_sink = NULL;
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 #define OOS_DEBUG_COUNTER_FIELDS(OP) \
@@ -1293,8 +1290,7 @@ oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
 // INVARIANT: an OOS file reserves a new sector only when no safely reclaimable empty page
 // exists right now (ADR-0009). Every site that leaves an allocated OOS data page empty adds the
 // page to its file's emptied-page set (ADR-0010). The single growth point
-// (oos_alloc_page_with_reclaim) checks the set before it allocates; the vacuum fast path
-// (oos_reclaim_empty_pages) reclaims the pages a delete batch emptied without waiting for a growth.
+// (oos_alloc_page_with_reclaim) checks the set before it allocates.
 // When the set may be incomplete (boot, out of memory, size limit), the file is marked unknown and
 // its next growth walks the sector bitmap once. Truth is on disk; the set and the mark are hints
 // whose loss costs one lap, never a page.
@@ -1717,76 +1713,12 @@ oos_try_reclaim_page_internal (THREAD_ENTRY *thread_p, const VFID &oos_vfid, con
   return NO_ERROR;
 }
 
-/* Orders VPIDs by (volid, pageid). oos_reclaim_empty_pages sorts its candidates with it. The growth lap
- * compares its cursor to each page with it, so it must match the ascending order in which the lap visits pages. */
+/* Orders VPIDs by (volid, pageid). The growth lap compares its cursor to each page with it, so it must match the
+ * ascending order in which the lap visits pages. */
 static bool
 oos_vpid_lt (const VPID &a, const VPID &b)
 {
   return VPID_LT (&a, &b);
-}
-
-/*
- * oos_reclaim_empty_pages () - Reclaim the fully emptied pages of an explicit candidate list
- *   (vacuum's fast path). Public contract in oos_file.hpp.
- *
- *   Chunk deletes are redo-only and never undone (ADR-0008), so an empty page is reclaimable as
- *   soon as it is empty. Callers hold no heap page latch: deallocation takes the OOS header latch.
- *
- *   return: NO_ERROR or error code
- *   thread_p(in): thread entry
- *   oos_vfid(in): OOS file identifier
- *   candidates(in/out): candidate pages, duplicates allowed; sorted and deduped in place
- */
-int
-oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates)
-{
-  int err = NO_ERROR;
-
-  if (candidates.empty ())
-    {
-      return NO_ERROR;
-    }
-
-  VPID hdr_vpid;
-  err = file_get_sticky_first_page (thread_p, &oos_vfid, &hdr_vpid);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return err;
-    }
-
-  /* Dedupe: a value chain usually deletes several chunks from the same page. */
-  std::sort (candidates.begin (), candidates.end (), oos_vpid_lt);
-  candidates.erase (std::unique (candidates.begin (), candidates.end (),
-				 [] (const VPID &a, const VPID &b)
-  {
-    return VPID_EQ (&a, &b);
-  }), candidates.end ());
-
-  int n_reclaimed = 0;
-  int n_busy = 0;
-  for (const VPID &vpid : candidates)
-    {
-      OOS_RECLAIM_RESULT result = OOS_RECLAIM_SKIPPED;
-      err = oos_try_reclaim_page_internal (thread_p, oos_vfid, vpid, hdr_vpid, result);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-      if (result == OOS_RECLAIM_RECLAIMED)
-	{
-	  n_reclaimed++;
-	}
-      else if (result == OOS_RECLAIM_BUSY)
-	{
-	  n_busy++;
-	}
-    }
-
-  oos_trace ("reclaim batch on file %d|%d: %d reclaimed, %d busy of %d candidate(s)",
-	     VFID_AS_ARGS (&oos_vfid), n_reclaimed, n_busy, (int) candidates.size ());
-
-  return NO_ERROR;
 }
 
 /*
@@ -3520,9 +3452,6 @@ oos_collect_chain_prefix (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, std:
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
  *   ref(in): head OID of the chain plus the identity stamp the caller's OOS inline stub carries
- *   emptied_vpids(out): optional; every page that holds zero records after one of this chain's
- *			 chunks was deleted from it is appended, once. A page that still holds
- *			 other chunks is not a reclaim candidate and is not reported.
  *   outcome_out(out): OOS_DELETE_RECLAIMED when this call deleted the head, which stale condition made
  *		       the call a no-op, or OOS_DELETE_OUTCOME_UNKNOWN when the call failed
  *
@@ -3548,7 +3477,7 @@ oos_collect_chain_prefix (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, std:
  */
 static int
 oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-		  std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out)
+		  oos_delete_outcome *outcome_out)
 {
   *outcome_out = OOS_DELETE_OUTCOME_UNKNOWN;
 
@@ -3629,28 +3558,8 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
       /* Update bestspace cache — page now has more free space after delete */
       oos_stats_update (thread_p, page_ptr, &oos_vfid);
 
-      /* Report the page only when this delete emptied it: no reclaim can deallocate anything else,
-       * and a page empties at most once per delete, so this also keeps the list free of
-       * duplicates. */
       const VPID chunk_vpid = {chunk.head_oid.pageid, chunk.head_oid.volid};
       oos_reclaim_add_if_emptied (oos_vfid, chunk_vpid, page_ptr);
-      if (emptied_vpids != NULL && spage_number_of_records (page_ptr) == 0)
-	{
-	  try
-	    {
-	      emptied_vpids->push_back (chunk_vpid);
-	    }
-	  catch (std::bad_alloc &)
-	    {
-	      /* The candidate list is only the fast path; the file's emptied-page set already holds
-	       * the pages. Never fail a reclaim over it. */
-	      oos_warn ("dropping empty-page reclaim hints for file %d|%d: out of memory growing "
-			"the candidate list; the next growth reclaims the pages",
-			VFID_AS_ARGS (&oos_vfid));
-	      emptied_vpids->clear ();
-	      emptied_vpids = NULL;
-	    }
-	}
 
       oos_debug ("deleted chunk %zu at oid={vol=%d,page=%d,slot=%d}", i, OID_AS_ARGS (&chunk.head_oid));
     }
@@ -3720,7 +3629,6 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
  *   ref(in): head OOS OID plus the identity stamp stored in the caller's OOS inline stub
- *   emptied_vpids(out): optional reclaim candidate list, see oos_file.hpp
  *   outcome_out(out): optional; reclaimed, which stale condition was skipped, or unknown after a
  *		       failure, see oos_file.hpp
  *
@@ -3729,8 +3637,8 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       is no longer an OOS page (reclaimed and reused for another purpose), a missing head slot (a
  *       block retry re-deleting what an earlier committed sysop already reclaimed) and a stamp
  *       mismatch (the slot was freed and reused by a live chain) are all successful no-ops that
- *       modify nothing, leave the error stack clean and report no reclaim candidate. Without this
- *       identity check a retried delete would destroy the reusing chain's data (CBRD-26950). It
+ *       modify nothing and leave the error stack clean. Without this identity check a retried
+ *       delete would destroy the reusing chain's data (CBRD-26950). It
  *       discriminates the two occupants only for chains written with logging enabled: a skipped log
  *       append does not advance the page LSA, so two occupants of one slot can then carry the same
  *       stamp (see the invariants at the issuing site). A reference whose stamp matches a
@@ -3743,20 +3651,16 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       postpone callers stop the server rather than report the reclaim as done (fail-stop), so
  *       restart recovery reruns their durable postpone.
  *
- *       Page deallocation is NOT done here. Every page the delete empties enters the file's
- *       emptied-page set, which the next growth checks; vacuum also reclaims them at once via
- *       oos_reclaim_empty_pages after unfixing its heap page.
+ *       Every page the delete empties enters the file's emptied-page set, which the next growth checks.
  */
 int
-oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-	    std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out)
+oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref, oos_delete_outcome *outcome_out)
 {
   oos_debug ("arguments: oid={vol=%d,page=%d,slot=%d}, expected identity_stamp=%lld|%d",
 	     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp));
 
   oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-  int err = oos_delete_chain (thread_p, oos_vfid, ref, emptied_vpids != NULL ? emptied_vpids : oos_Emptied_page_sink,
-			      &outcome);
+  int err = oos_delete_chain (thread_p, oos_vfid, ref, &outcome);
   if (outcome_out != NULL)
     {
       *outcome_out = outcome;
@@ -3812,17 +3716,6 @@ struct oos_update_drop_prefix
 {
   MVCCID mvccid;		/* the UPDATE's MVCCID; vacuum reclaims once it precedes every snapshot */
 };
-
-oos_emptied_page_sink::oos_emptied_page_sink (std::vector<VPID> &pages)
-  : m_previous (oos_Emptied_page_sink)
-{
-  oos_Emptied_page_sink = &pages;
-}
-
-oos_emptied_page_sink::~oos_emptied_page_sink ()
-{
-  oos_Emptied_page_sink = m_previous;
-}
 
 static int
 oos_pack_reclaim_intent (const VFID &oos_vfid, const HFID &heap_hfid, const OID &owner_oid, int flags,
@@ -4041,7 +3934,7 @@ oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   for (const oos_chain_ref &ref : refs)
     {
       oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-      error = oos_delete (thread_p, header.oos_vfid, ref, NULL, &outcome);
+      error = oos_delete (thread_p, header.oos_vfid, ref, &outcome);
       if (error != NO_ERROR)
 	{
 	  (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
@@ -4146,9 +4039,7 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
  *   thread_p(in): vacuum worker
  *   notify_data(in): undo data of the record
  *   notify_length(in): its length
- *   oos_vfid_out(out): OOS file the chains belong to
  *   heap_hfid_out(out): heap file the notification names (for the caller's report of a failed lookup)
- *   emptied_vpids(out): pages the deletes emptied
  *   deferred_heaps(in): heaps whose OOS file lookup already failed in the caller's run of the block; may be NULL.
  *			 A notification that needs one of them is left for the next run without waiting again.
  *
@@ -4161,8 +4052,7 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
  * the copy fail-stops with the rest of the consumer.
  */
 int
-oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length, VFID *oos_vfid_out,
-			     HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids,
+oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length, HFID *heap_hfid_out,
 			     const std::vector<VFID> *deferred_heaps)
 {
   oos_reclaim_intent_header header {};
@@ -4209,7 +4099,6 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
 	  /* A false return sets the error. A busy or unreadable heap header is not a reclaim failure: the block runs
 	   * again later, as vacuum does when it cannot look up the OOS file of a heap record (CBRD-27933). */
 	  ASSERT_ERROR_AND_SET (error);
-	  VFID_SET_NULL (oos_vfid_out);
 	  return error;
 	}
       else if (VFID_ISNULL (&header.oos_vfid))
@@ -4226,11 +4115,9 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
 	  return error;
 	}
     }
-  *oos_vfid_out = header.oos_vfid;
-
   for (const oos_chain_ref &ref : refs)
     {
-      error = oos_delete (thread_p, header.oos_vfid, ref, emptied_vpids);
+      error = oos_delete (thread_p, header.oos_vfid, ref);
       if (error == ER_INTERRUPTED)
 	{
 	  /* Vacuum is shutting down; the block is not marked done and is processed again after restart. */

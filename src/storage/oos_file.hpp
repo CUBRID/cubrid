@@ -80,38 +80,20 @@ extern int oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 				   const char *op_ctx, const std::vector<oos_chain_ref> &refs);
 extern int oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid,
 				       const std::vector<oos_chain_ref> &refs);
-/* Vacuum's consumer of one RVOOS_NOTIFY_VACUUM record. emptied_vpids receives the pages the deletes
- * emptied. The notify record names its OOS file; it is returned through oos_vfid_out. Returns NO_ERROR,
- * ER_INTERRUPTED (shutdown), or the error of a failed heap header lookup for the OOS file, whose heap is
+/* Vacuum's consumer of one RVOOS_NOTIFY_VACUUM record. Returns NO_ERROR, ER_INTERRUPTED (shutdown), or the error of a failed heap header lookup for the OOS file, whose heap is
  * returned through heap_hfid_out (the caller leaves the block for a later run); any other failure stops the
  * server, so restart processes the block again. A notification that needs the OOS file of a heap in
  * deferred_heaps (may be NULL) is left alone: NO_ERROR, nothing reclaimed, because the caller already left the
  * block for a later run. notify_data is copied before the first page fix, so it may point into the caller's
  * log page. */
 extern int oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, int notify_length,
-					VFID *oos_vfid_out, HFID *heap_hfid_out, std::vector<VPID> *emptied_vpids,
-					const std::vector<VFID> *deferred_heaps);
-
-/* While one is in scope on a thread, the reclaim postpones that run on that thread report the pages
- * they empty to it instead of discarding them. Vacuum opens one around the sysop commit of a REMOVE,
- * then hands the pages to oos_reclaim_empty_pages after unfixing the heap page. */
-class oos_emptied_page_sink
-{
-  public:
-    explicit oos_emptied_page_sink (std::vector<VPID> &pages);
-    ~oos_emptied_page_sink ();
-    oos_emptied_page_sink (const oos_emptied_page_sink &) = delete;
-    oos_emptied_page_sink &operator= (const oos_emptied_page_sink &) = delete;
-
-  private:
-    std::vector<VPID> *m_previous;
-};
+					HFID *heap_hfid_out, const std::vector<VFID> *deferred_heaps);
 
 /* What oos_delete did with the chain a reference names. Every skip is a successful call that modified
- * nothing, set no error and reported no reclaim candidate: the chain the reference described is gone,
- * and whatever occupies its head location now belongs to another slot or page incarnation. The outcome
- * lets a caller tell a real reclamation from a skip without an occupancy probe, and name the reason when
- * it diagnoses the skip (CBRD-26950). A failed call reports OOS_DELETE_OUTCOME_UNKNOWN, so a caller that
+ * nothing and set no error: the chain the reference described is gone, and whatever occupies its head
+ * location now belongs to another slot or page incarnation. The outcome lets a caller tell a real
+ * reclamation from a skip without an occupancy probe, and name the reason when it diagnoses the skip
+ * (CBRD-26950). A failed call reports OOS_DELETE_OUTCOME_UNKNOWN, so a caller that
  * reads the outcome before the return code is never told a chain was reclaimed when it was not. */
 enum oos_delete_outcome
 {
@@ -208,12 +190,6 @@ extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 #endif /* CUBRID_UNIT_TEST_ENABLED */
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
-/* Batch empty-page reclaim for an explicit candidate list (vacuum's fast path). Candidates are
- * sorted and deduped in place. Idempotent and zero-wait per page: busy, already-deallocated,
- * re-filled and sticky-first-page candidates are skipped. Stops at the first error (notably
- * ER_INTERRUPTED) and propagates it; unprocessed candidates stay allocated for a future pass.
- * Chunk deletes are redo-only and never undone (ADR-0008), so no undo can target an empty page. */
-extern int oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. identity_stamp_out
  * (optional) receives the head chunk's identity stamp; a caller that persists an OOS inline stub
  * must store it next to the head OOS OID (CBRD-26950). */
@@ -240,22 +216,19 @@ extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request
  * it names carries the stamp stored in the link. It deletes from the tail and the head last, so an
  * interrupted reclaim leaves a linked prefix with an intact head and a rerun finishes it.
  * A deallocated head page, a head page that is no longer an OOS page, a missing head slot or a
- * mismatched head stamp is a successful no-op that modifies nothing, leaves the error stack clean
- * and reports no candidate, which gives every caller retry idempotency without extra state as long
+ * mismatched head stamp is a successful no-op that modifies nothing and leaves the error stack clean,
+ * which gives every caller retry idempotency without extra state as long
  * as the chain was written with logging enabled; the page type is checked under the latch before the
  * page is read as a slotted page.
  * A stamp-matching reference to a continuation chunk is malformed and fails with
  * ER_HEAP_OOS_CORRUPTED_RECORD before any chunk is modified, and a reference with no head OOS OID at
  * all fails with ER_HEAP_OOS_INVALID_ARGUMENT. Operational failures keep their own error (CBRD-26950).
- * emptied_vpids (optional): every page this delete left with zero records is appended once, so
- * batch-boundary callers can feed oos_reclaim_empty_pages after committing. Pages that still
- * hold other chunks are not candidates and are not reported.
  * outcome_out (optional): receives what happened, see oos_delete_outcome. Vacuum passes nothing and
  * stays quiet, because a retry finding its target gone is expected there; the eager cleanup of a
  * non-MVCC UPDATE or DELETE asks and diagnoses every skip, because the row it completes was the only
  * reference and a vanished or reused target is unexpected. */
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-		       std::vector<VPID> *emptied_vpids = NULL, oos_delete_outcome *outcome_out = NULL);
+		       oos_delete_outcome *outcome_out = NULL);
 /* Occupancy probe for tests and diagnostics: *out_exists is true iff SOME record occupies the slot
  * at oid. A deallocated page, a page that is no longer an OOS page and a removed slot all report
  * "gone" with NO_ERROR; any other failure is propagated. It proves occupancy, not identity: it

@@ -401,14 +401,13 @@ TEST (OosDeleteServerTest, OosDeleteStampMismatchAndGoneHeadAreCleanNoOps)
 			 &live.identity_stamp), NO_ERROR);
   live.head_oid = oid;
 
-  /* wrong stamp: successful no-op, chunk untouched, error stack clean, no candidate */
+  /* wrong stamp: successful no-op, chunk untouched, error stack clean, no emptied page */
   oos_chain_ref stale = live;
   stale.identity_stamp = LOG_LSA (live.identity_stamp.pageid + 1, (std::int16_t) live.identity_stamp.offset);
-  std::vector<VPID> emptied;
   er_clear ();
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
-  EXPECT_TRUE (emptied.empty ());
+  EXPECT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 0U);
 
   RECDES rec_out {};
   ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out), NO_ERROR);
@@ -416,7 +415,7 @@ TEST (OosDeleteServerTest, OosDeleteStampMismatchAndGoneHeadAreCleanNoOps)
   recdes_free_data_area (&rec_out);
 
   /* right stamp: reclaimed */
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live, &emptied), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live), NO_ERROR);
   RECDES rec_gone {};
   ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_gone), NO_ERROR);
   if (rec_gone.data != nullptr)
@@ -426,10 +425,10 @@ TEST (OosDeleteServerTest, OosDeleteStampMismatchAndGoneHeadAreCleanNoOps)
   er_clear ();
 
   /* gone head: a block-retry replay is a successful no-op with a clean error stack */
-  const std::size_t candidates = emptied.size ();
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live, &emptied), NO_ERROR);
+  const std::size_t emptied = oos_test_reclaim_emptied_count (oos_vfid);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
-  EXPECT_EQ (emptied.size (), candidates);
+  EXPECT_EQ (oos_test_reclaim_emptied_count (oos_vfid), emptied);
 }
 
 TEST (OosDeleteServerTest, OosDeleteStaleReferenceAfterSlotReuseKeepsLiveChain)

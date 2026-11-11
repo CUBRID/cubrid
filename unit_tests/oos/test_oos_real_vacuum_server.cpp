@@ -2053,33 +2053,35 @@ TEST_F (OosRealVacuumUpdateNotify, SavepointRolledBackUpdateKeepsItsChainAndLate
   expect_oos_gone (new_oos_oid, "the rolled-back UPDATE's own new chain (undone by the rollback)");
 }
 
-/* The pages the notification consumer empties go to the fast path (Work818 F3): a chain that filled a page
- * by itself returns that page without waiting for the file to grow. */
-TEST_F (OosRealVacuumUpdateNotify, CommittedUpdateReturnsThePageItsDroppedChainEmptied)
+/* A page the notification consumer empties is the next growth's page (Work818 F3): a chain that filled a page by
+ * itself leaves that page to the next insert, which takes it instead of growing the file. */
+TEST_F (OosRealVacuumUpdateNotify, CommittedUpdateLeavesThePageItsDroppedChainEmptiedToTheNextInsert)
 {
+  /* A string of max_chunk - 1 characters stores exactly max_chunk bytes: one chunk that fills a page. */
   const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+  const std::string page_filling = test_oos_utils::make_repeated_pattern_string (max_chunk - 1);
   OID heap_oid, old_oos_oid;
-  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (max_chunk), heap_oid, old_oos_oid);
+  insert_row_with_oos (page_filling, heap_oid, old_oos_oid);
 
   OID new_oos_oid;
-  update_row_uncommitted (heap_oid, test_oos_utils::make_repeated_pattern_string (max_chunk), new_oos_oid);
+  update_row_uncommitted (heap_oid, page_filling, new_oos_oid);
   const VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
   commit_current_tran ();
-
-  OOS_STATS_INFO before;
-  ASSERT_EQ (oos_get_stats_by_vfid (thread_p, oos_vfid, &before), NO_ERROR);
 
   close_log_block_containing (hfid, class_oid, scan_cache, update_block);
   ASSERT_TRUE (wait_for_vacuum ([this, &old_oos_oid] { return oos_unreadable (old_oos_oid); }, 60))
       << "vacuum did not reclaim the committed UPDATE's dropped chain";
 
+  OOS_STATS_INFO before;
+  ASSERT_EQ (oos_get_stats_by_vfid (thread_p, oos_vfid, &before), NO_ERROR);
+  OID next_heap_oid, next_oos_oid;
+  insert_row_with_oos (page_filling, next_heap_oid, next_oos_oid);
   OOS_STATS_INFO after;
-  ASSERT_TRUE (wait_for_vacuum ([this, &after, &before]
-  {
-    return oos_get_stats_by_vfid (thread_p, oos_vfid, &after) == NO_ERROR && after.num_user_pages < before.num_user_pages;
-  }, 10)) << "the emptied page was not returned by the fast path: pages before " << before.num_user_pages
-	  << ", after " << after.num_user_pages;
-  expect_value (new_oos_oid, max_chunk + 1, "the new version's chain must survive");
+  ASSERT_EQ (oos_get_stats_by_vfid (thread_p, oos_vfid, &after), NO_ERROR);
+  EXPECT_EQ (after.num_user_pages, before.num_user_pages) << "the insert grew the file past the page vacuum emptied";
+  EXPECT_EQ (next_oos_oid.pageid, old_oos_oid.pageid) << "the insert did not take the page vacuum emptied";
+  expect_value (new_oos_oid, max_chunk, "the new version's chain must survive");
+  expect_value (next_oos_oid, max_chunk, "the chain in the reused page must be readable");
 }
 
 int

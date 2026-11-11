@@ -176,7 +176,7 @@ TEST_F (OosReclaimTest, EnclosingAbortRestoresNoReclaimedChunkEvenAfterSlotReuse
 
   log_sysop_start (thread_p);
   oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, &outcome), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], &outcome), NO_ERROR);
   EXPECT_EQ (outcome, OOS_DELETE_RECLAIMED);
 
   /* Another unit takes the freed slot and commits: a nested system operation stands for it here, because
@@ -206,7 +206,7 @@ TEST_F (OosReclaimTest, RerunAfterAReclaimInterruptedPartWayFinishesTheChain)
 
   oos_test_fail_reclaim_after_chunk_deletes (2);
   oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-  EXPECT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, &outcome), ER_GENERIC_ERROR);
+  EXPECT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], &outcome), ER_GENERIC_ERROR);
   er_clear ();
   EXPECT_EQ (outcome, OOS_DELETE_OUTCOME_UNKNOWN);
 
@@ -216,7 +216,7 @@ TEST_F (OosReclaimTest, RerunAfterAReclaimInterruptedPartWayFinishesTheChain)
   EXPECT_FALSE (chunk_is_present (chunks[2]));
   EXPECT_FALSE (chunk_is_present (chunks[3]));
 
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, &outcome), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], &outcome), NO_ERROR);
   EXPECT_EQ (outcome, OOS_DELETE_RECLAIMED);
   for (std::size_t i = 0; i < chunks.size (); i++)
     {
@@ -224,7 +224,7 @@ TEST_F (OosReclaimTest, RerunAfterAReclaimInterruptedPartWayFinishesTheChain)
     }
 
   /* A third run finds nothing left and skips. */
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, &outcome), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], &outcome), NO_ERROR);
   EXPECT_NE (outcome, OOS_DELETE_RECLAIMED);
 }
 
@@ -235,7 +235,7 @@ TEST_F (OosReclaimTest, RerunDoesNotFollowALinkIntoASlotALaterInsertReused)
 
   /* The first run deletes the tail and fails before the head. */
   oos_test_fail_reclaim_after_chunk_deletes (1);
-  EXPECT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, NULL), ER_GENERIC_ERROR);
+  EXPECT_EQ (oos_delete (thread_p, oos_vfid, chunks[0]), ER_GENERIC_ERROR);
   er_clear ();
   ASSERT_TRUE (chunk_is_present (chunks[0]));
   ASSERT_FALSE (chunk_is_present (chunks[1]));
@@ -252,7 +252,7 @@ TEST_F (OosReclaimTest, RerunDoesNotFollowALinkIntoASlotALaterInsertReused)
   ASSERT_FALSE (LSA_EQ (&occupant[0].identity_stamp, &chunks[1].identity_stamp));
 
   oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, &outcome), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], &outcome), NO_ERROR);
   EXPECT_EQ (outcome, OOS_DELETE_RECLAIMED);
   EXPECT_FALSE (chunk_is_present (chunks[0]));
   EXPECT_TRUE (chunk_is_present (occupant[0])) << "the rerun followed a stale link and deleted another value";
@@ -273,19 +273,16 @@ TEST_F (OosReclaimTest, IntentOfAnAbortedUnitIsDiscardedAndOfACommittedUnitRecla
       EXPECT_TRUE (chunk_is_present (chunks[i])) << "an aborted unit reclaimed chunk " << i;
     }
 
-  std::vector<VPID> emptied;
+  const std::size_t emptied_before = oos_test_reclaim_emptied_count (oos_vfid);
   log_sysop_start (thread_p);
   ASSERT_EQ (oos_log_reclaim_intent (thread_p, oos_vfid, owner, 0, "unit test", {chunks[0]}), NO_ERROR);
-  {
-    oos_emptied_page_sink sink (emptied);
-    log_sysop_commit (thread_p);
-  }
+  log_sysop_commit (thread_p);
   for (std::size_t i = 0; i < chunks.size (); i++)
     {
       EXPECT_FALSE (chunk_is_present (chunks[i])) << "a committed intent left chunk " << i;
     }
-  /* Each chunk of a multi-page value fills its own page; the sink saw them emptied. */
-  EXPECT_FALSE (emptied.empty ());
+  /* Each chunk of a multi-page value fills its own page, so the reclaim emptied pages the next growth reuses. */
+  EXPECT_GT (oos_test_reclaim_emptied_count (oos_vfid), emptied_before);
 }
 
 TEST_F (OosReclaimTest, FailedReclaimOfACommittedIntentFailStopsInsteadOfReportingDone)
@@ -312,7 +309,7 @@ TEST_F (OosReclaimTest, FailedReclaimOfACommittedIntentFailStopsInsteadOfReporti
 
   /* The rerun recovery performs. */
   oos_test_set_reclaim_fail_stop_hook (NULL);
-  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0], NULL, NULL), NO_ERROR);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, chunks[0]), NO_ERROR);
   for (std::size_t i = 0; i < chunks.size (); i++)
     {
       EXPECT_FALSE (chunk_is_present (chunks[i])) << "chunk " << i;
