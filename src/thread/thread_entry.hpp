@@ -299,6 +299,7 @@ namespace cubthread
       int trace_format;
       bool on_trace;
       bool clear_trace;
+      bool trace_plan_detail;	/* XASL_TRACE_PLAN_DETAIL: the trace shows the compiled expression programs */
 
       /* for lock free structures */
       lf_tran_entry *tran_entries[THREAD_TS_COUNT];
@@ -306,6 +307,7 @@ namespace cubthread
       /* for supplemental log */
       bool no_supplemental_log;
       bool trigger_involved;
+      bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb

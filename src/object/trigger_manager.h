@@ -28,6 +28,7 @@
 #include "memory_alloc.h"
 #include "dbtype_def.h"
 #include "class_object.h"
+#include "db_multi_threads_connections.h"
 
 /*
  * TR_LOWEST_PRIORITY
@@ -95,6 +96,8 @@ typedef struct tr_trigger
   const char *comment;
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
+  char *block_sp_name;		/* unique name of the internal procedure that runs a PL/CSQL block action */
+  char *block_source;		/* PL/CSQL block text as written by the user */
 } TR_TRIGGER;
 
 
@@ -137,6 +140,7 @@ struct tr_activity
   void *parser;			/* parser for statement */
   void *statement;		/* PT_NODE* of statement */
   int exec_cnt;			/* number of executions */
+  int in_use;			/* executions in progress */
 };
 
 /*
@@ -223,16 +227,18 @@ extern const char *TR_ATT_PROPERTIES;
 extern const char *TR_ATT_COMMENT;
 extern const char *TR_ATT_CREATED_TIME;
 extern const char *TR_ATT_UPDATED_TIME;
+extern const char *TR_ATT_ACTION_BLOCK_SP;
+extern const char *TR_ATT_ACTION_BLOCK;
 
-extern int tr_Current_depth;
-extern int tr_Maximum_depth;
-extern bool tr_Invalid_transaction;
-extern char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
+extern CUB_THREAD_LOCAL int tr_Current_depth;
+extern CUB_THREAD_LOCAL int tr_Maximum_depth;
+extern CUB_THREAD_LOCAL bool tr_Invalid_transaction;
+extern CUB_THREAD_LOCAL char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
 
-extern bool tr_Trace;
+extern CUB_THREAD_LOCAL bool tr_Trace;
 
-extern TR_DEFERRED_CONTEXT *tr_Deferred_activities;
-extern TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail;
+extern CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities;
+extern CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail;
 
 extern int tr_Recursion_level;
 extern int tr_Recursion_level_max;
@@ -268,11 +274,14 @@ extern bool tr_set_execution_state (bool new_state);
 extern DB_OBJECT *tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority,
 				     DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute,
 				     DB_TRIGGER_TIME cond_time, const char *cond_source, DB_TRIGGER_TIME action_time,
-				     DB_TRIGGER_ACTION action_type, const char *action_source, const char *comment);
+				     DB_TRIGGER_ACTION action_type, const char *action_source, const char *comment,
+				     const char *block_sp_name, const char *block_source);
 
 /* Trigger location */
 
 extern int tr_find_all_triggers (DB_OBJLIST ** list);
+extern int tr_find_trigger_objects (DB_OBJLIST ** objects);
+extern int tr_map_trigger_if_exists (DB_OBJECT * object, TR_TRIGGER ** trigger);
 extern DB_OBJECT *tr_find_trigger (const char *name);
 extern int tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute, bool active,
 				   DB_OBJLIST ** list);
@@ -284,6 +293,9 @@ extern int tr_check_authorization (DB_OBJECT * trigger_object, int alter_flag);
 
 extern int tr_drop_trigger (DB_OBJECT * obj, bool call_from_api);
 extern int tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_api, bool deferred_flush);
+extern void tr_reset_renamed_trigger_cache (DB_OBJECT * trigger_object, const char *name);
+extern int tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner);
+extern int tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size);
 
 extern int tr_set_status (DB_OBJECT * trigger_object, DB_TRIGGER_STATUS status, bool call_from_api);
 extern int tr_set_priority (DB_OBJECT * trigger_object, double priority, bool call_from_api);
@@ -378,15 +390,13 @@ extern int tr_unmap_trigger (TR_TRIGGER * trigger);
 
 extern int tr_update_user_cache (void);
 extern void tr_invalidate_user_cache (void);
+extern void tr_mark_user_triggers_modified (void);
 
 /* Migration and information functions */
 
 extern const char *tr_time_as_string (DB_TRIGGER_TIME time);
 extern const char *tr_event_as_string (DB_TRIGGER_EVENT event);
 extern const char *tr_status_as_string (DB_TRIGGER_STATUS status);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int tr_dump_all_triggers (FILE * fp, bool quoted_id_flag);
-#endif
 extern void tr_free_trigger_list (TR_TRIGLIST * list);
 extern const char *tr_get_class_name (void);
 

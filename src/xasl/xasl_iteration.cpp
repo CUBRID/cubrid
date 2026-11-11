@@ -81,7 +81,8 @@ extern "C" {
     cubxasl::iterate_xasl_tree<bool> (xasl,dump_with_id,true);
 
     std::string result = oss.str();
-    _er_log_debug (ARG_FILE_LINE, result.c_str());
+    // the dump holds the query text, which can carry printf conversions such as %n: never pass it as the format
+    _er_log_debug (ARG_FILE_LINE, "%s", result.c_str());
   }
 
   void xasl_merge_stats (XASL_NODE *src, XASL_NODE *dst)
@@ -102,7 +103,11 @@ extern "C" {
       dst_node->xasl_stats.ioreads += src_node->xasl_stats.ioreads;
       dst_node->xasl_stats.fetches += src_node->xasl_stats.fetches;
 
-      dst_node->groupby_stats.groupby_hash = (src_node->groupby_stats.groupby_hash != HS_NONE) ? src_node->groupby_stats.groupby_hash : dst_node->groupby_stats.groupby_hash;
+      /* HS_NONE < HS_ACCEPT_ALL < HS_REJECT_ALL: one clone that gave up hashing keeps the GROUP BY partial */
+      if (src_node->groupby_stats.groupby_hash > dst_node->groupby_stats.groupby_hash)
+	{
+	  dst_node->groupby_stats.groupby_hash = src_node->groupby_stats.groupby_hash;
+	}
       dst_node->groupby_stats.groupby_sort = dst_node->groupby_stats.groupby_sort ? true : src_node->groupby_stats.groupby_sort;
       dst_node->groupby_stats.run_groupby = dst_node->groupby_stats.run_groupby ? true : src_node->groupby_stats.run_groupby;
       dst_node->groupby_stats.groupby_pages += src_node->groupby_stats.groupby_pages;
