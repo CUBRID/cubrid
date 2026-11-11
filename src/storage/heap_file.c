@@ -796,6 +796,7 @@ static PAGE_PTR heap_sidecar_fix_header (THREAD_ENTRY * thread_p, const HFID * h
 static void heap_sidecar_log_link (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, HEAP_HDR_STATS * heap_hdr,
 				   const HFID * link);
 static SCAN_CODE heap_sidecar_fetch_exit (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan);
+static SCAN_CODE heap_fix_home_page_unprotected (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 #if !defined (NDEBUG)
 static void heap_sidecar_delay_log_resolve (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 #endif /* !NDEBUG */
@@ -7572,6 +7573,17 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   assert (context->oid_p != NULL);
 
 try_again:
+
+  if (unlikely (context->scan_cache != NULL && context->scan_cache->mvcc_snapshot != NULL
+		&& context->scan_cache->mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed))
+    {
+      /* a committed-snapshot reader holds no vacuum horizon: a home page it does not hold may be gone */
+      scan = heap_fix_home_page_unprotected (thread_p, context);
+      if (scan != S_SUCCESS)
+	{
+	  return scan;
+	}
+    }
 
   /* First make sure object home_page is fixed. */
   ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, context->latch_mode);
@@ -27858,6 +27870,72 @@ exit:
       scan = heap_sidecar_fetch_exit (thread_p, context, is_heap_scan);
     }
   return scan;
+}
+
+/*
+ * heap_fix_home_page_unprotected () - Fix the home page of a committed-snapshot reader's OID, which may be gone
+ *   return: S_SUCCESS with the home page fixed, S_DOESNT_EXIST if the page is no longer a page of the OID's heap, or
+ *	     S_ERROR
+ *   context(in/out): get context; its home page watcher is fixed on success
+ *
+ * Note: A committed-snapshot reader (mvcc_satisfies_committed) holds no vacuum horizon.  When it holds no latch on
+ *	 the home page, as after the Sidecar retry of 5.6 (c), the lock fallback or a scan that released its live page,
+ *	 vacuum may remove every record of the page and deallocate it, and the page may then be allocated again to
+ *	 any file.  A record vacuum removed had a committed delete, so the row is absent for this reader.  The page is
+ *	 its row's page again only if it is still a data page of a hot heap of the row's class; the slot then holds
+ *	 whatever lives at this OID now, as for any OID fetch.
+ */
+static SCAN_CODE
+heap_fix_home_page_unprotected (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  VPID vpid;
+  OID page_class_oid;
+  PAGE_PTR page;
+  int error_code;
+
+  VPID_GET_FROM_OID (&vpid, context->oid_p);
+  if (context->home_page_watcher.pgptr != NULL)
+    {
+      if (VPID_EQ (pgbuf_get_vpid_ptr (context->home_page_watcher.pgptr), &vpid))
+	{
+	  /* still held, nothing can have removed it */
+	  return S_SUCCESS;
+	}
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+    }
+
+  /* nobody fixes a hot page while holding a store page (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
+
+  error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, context->latch_mode,
+				  &context->home_page_watcher);
+  if (error_code != NO_ERROR)
+    {
+      if (error_code == ER_PB_BAD_PAGEID)
+	{
+	  /* deallocated */
+	  er_clear ();
+	  return S_DOESNT_EXIST;
+	}
+      if (error_code == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, vpid.volid, vpid.pageid);
+	}
+      return S_ERROR;
+    }
+
+  page = context->home_page_watcher.pgptr;
+  if (pgbuf_get_page_ptype (thread_p, page) != PAGE_HEAP || heap_page_is_not_in_heap (thread_p, page)
+      || heap_page_is_sidecar_store (thread_p, page)
+      || heap_get_class_oid_from_page (thread_p, page, &page_class_oid) != NO_ERROR
+      || (context->class_oid_p != NULL && !OID_ISNULL (context->class_oid_p)
+	  && !OID_EQ (&page_class_oid, context->class_oid_p)))
+    {
+      /* deallocated and allocated again to another file */
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+      return S_DOESNT_EXIST;
+    }
+  return S_SUCCESS;
 }
 
 /*
