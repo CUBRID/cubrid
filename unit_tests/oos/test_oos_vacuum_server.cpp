@@ -539,23 +539,6 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
     }
 }
 
-// ============================================================================
-// Helper: get free space on the page containing an OOS OID
-// ============================================================================
-
-static int
-get_free_space_of_oid_page (const OID &oid)
-{
-  VPID vpid = {oid.pageid, oid.volid};
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
-				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
-    {
-      return -1;
-    }
-  test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
-  return spage_get_free_space (thread_p, page_ptr);
-}
 
 // ============================================================================
 // TC-V8: Multi-update vacuum reclaim — free space increases after each pass
@@ -607,7 +590,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	{
 	  OID old_oid = current_oids[i];
 
-	  int free_before = get_free_space_of_oid_page (old_oid);
+	  int free_before = test_oos_utils::get_free_space_of_oid_page (thread_p, old_oid);
 	  ASSERT_GE (free_before, 0);
 
 	  /* Build heap RECDES with old OOS OID and vacuum it */
@@ -621,7 +604,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 
 	  recdes_free_data_area (&heap_rec);
 
-	  int free_after = get_free_space_of_oid_page (old_oid);
+	  int free_after = test_oos_utils::get_free_space_of_oid_page (thread_p, old_oid);
 	  ASSERT_GE (free_after, 0);
 	  EXPECT_GT (free_after, free_before)
 	      << "Round " << round << ", row " << i
