@@ -12388,7 +12388,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    {
 	      term = QO_ENV_TERM (planner->env, i);
 
-	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN)
+	      /* a path value is not fetched yet at this join; leave a term that needs one to the follow plan */
+	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN && bitset_subset (visited_nodes, &(QO_TERM_NODES (term))))
 		{
 		  bitset_add (&afj_terms, i);
 		  bitset_add (&info_terms, i);	/* add to info term */
@@ -14811,7 +14812,12 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 
   for (i = planner->E; i < (signed) planner->T; ++i)
     {
-      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i]))))
+      /* a term that reads no node goes to the topmost plan, except the ON condition of an outer or anti join
+       * (QO_TC_DURING_JOIN): planner_visit_node () evaluates it at that join. On a plan above the join, the cross
+       * join of the partitions or a join over it, it would also filter the rows the join preserves, and a false
+       * condition would leave no row */
+      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i])))
+	  && QO_TERM_CLASS (&planner->term[i]) != QO_TC_DURING_JOIN)
 	{
 	  bitset_add (&sarged_terms, i);
 	}
