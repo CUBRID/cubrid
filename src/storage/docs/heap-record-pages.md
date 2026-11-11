@@ -10,6 +10,7 @@ changing heap scans, record insert/update/delete, MVCC visibility, class represe
 | `heap_file.c/h` | Heap file manager, object lifecycle, scans, MVCC versions, class representation/attribute helpers |
 | `slotted_page.c/h` | Generic slotted-page record layout and slot operations |
 | `overflow_file.c/h` | Multipage overflow records used for large heap records and other overflow payloads |
+| `bestspace.cpp/hpp` | In-memory heap free-space entries and candidate queues |
 
 ## Heap Concepts
 
@@ -29,7 +30,7 @@ changing heap scans, record insert/update/delete, MVCC visibility, class represe
 | Sequential scan | `heap_next()`, `heap_prev()`, `heap_first()`, `heap_last()`, `heap_next_1page()` |
 | Range scan | `heap_scanrange_start()`, `heap_scanrange_next()`, `heap_scanrange_end()` |
 | Logical mutation | `heap_create_insert_context()`, `heap_insert_logical()`, `heap_update_logical()`, `heap_delete_logical()` |
-| Physical mutation | `heap_insert_physical()`, `heap_update_physical()`, `heap_delete_physical()` |
+| Internal physical mutation | `heap_insert_physical()`, `heap_update_physical()`, `heap_delete_physical()`; static helpers |
 | MVCC visibility | `heap_get_visible_version()`, `heap_scan_get_visible_version()`, `heap_get_last_version()` |
 | Vacuum | `heap_vacuum_all_objects()`, `heap_remove_page_on_vacuum()`, `heap_page_get_vacuum_status()` |
 | Class representation | `heap_classrepr_get()`, `heap_classrepr_free()`, `heap_classrepr_decache()` |
@@ -41,17 +42,21 @@ changing heap scans, record insert/update/delete, MVCC visibility, class represe
 | Area | Entry Points |
 |------|--------------|
 | Initialization | `spage_initialize()`, `spage_boot()`, `spage_finalize()` |
-| Free space | `spage_get_free_space()`, `spage_max_space_for_new_record()`, `spage_need_compact()` |
+| Free space | `spage_get_free_space()`, `spage_max_space_for_new_record()`, `spage_need_compact()`, `spage_is_updatable()` |
 | Insert/update/delete | `spage_insert()`, `spage_insert_at()`, `spage_update()`, `spage_delete()` |
-| Partial record edits | `spage_split()`, `spage_append()`, `spage_take_out()`, `spage_put()`, `spage_overwrite()`, `spage_merge()` |
+| Recovery | `spage_insert_for_recovery()`, `spage_delete_for_recovery()` |
 | Scan/get | `spage_next_record()`, `spage_previous_record()`, `spage_get_record()` |
-| MVCC/reclaim | `spage_is_mvcc_updatable()`, `spage_vacuum_slot()`, `spage_reclaim()` |
-| Validation | `spage_check()`, `spage_check_num_slots()`, `spage_check_slot_owner()` |
+| Reclaim | `spage_vacuum_slot()`, `spage_reclaim()` |
+| Validation | `spage_check()`, `spage_check_slot_owner()` |
+
+`spage_check_num_slots()` is debug-only. `spage_is_mvcc_updatable()` and the partial-record edit helpers are built only
+with `ENABLE_UNUSED_FUNCTION`; see [slotted_page.h](../slotted_page.h) before using those APIs.
 
 ## Overflow Entry Points
 
 - `overflow_insert()`
 - `overflow_update()`
+- `overflow_delete()`
 - `overflow_get()`
 - `overflow_get_nbytes()`
 - `overflow_get_length()`
@@ -76,24 +81,34 @@ Use the logical context APIs when changing object lifecycle behavior:
 heap_create_insert_context/update_context/delete_context
   -> heap_insert_logical / heap_update_logical / heap_delete_logical
     -> location and lock/page preparation
-      -> physical slotted-page or overflow operation
-      -> log/recovery data and header/free-space updates
+      -> physical slotted-page or overflow operations, recovery logging,
+         and header/free-space updates in the order required by the operation
 ```
 
-Direct physical operations are for internal/recovery paths. They are usually not the right entry for SQL-visible object
-changes.
+The physical helpers are internal implementation functions, not SQL-visible entry points. Logging order varies by
+operation. For example, insert logs after physical insertion, while non-MVCC delete logs the old image before deletion.
+See `heap_insert_logical()` and `heap_delete_physical()` in [heap_file.c](../heap_file.c).
 
 ## MVCC And Visibility
 
-- Heap scan APIs use `HEAP_SCANCACHE` plus `MVCC_SNAPSHOT`.
+- Heap scans use `HEAP_SCANCACHE`. A supplied snapshot with a visibility callback controls visibility when the class
+  enables MVCC; otherwise the direct heap version is used.
 - `heap_get_visible_version*()` may need to inspect previous versions from log.
 - Update/delete paths must preserve MVCC header state and page vacuum status.
+- MVCC delete takes its MVCCID self-lock before publishing the delete ID. MVCC update takes that lock before its new
+  version becomes visible as an in-progress insert. Writer and uniqueness checks depend on this ordering.
 - B-tree MVCC data mirrors selected heap MVCC state; changes to heap MVCC record format can affect `btree.c`.
 
 ## Gotchas
 
 - Error paths must unfix all pages and end scan caches.
-- `RECDES` may point into a page when using `PEEK`; copy before mutating outside page context.
-- Slotted-page free-space hints and heap best-space stats are performance-critical and correctness-adjacent.
+- A `PEEK` descriptor points into the fixed page. Copy data that must outlive the page. After an ordered fix releases
+  and refixes the page, check `page_was_unfixed` and re-fetch or re-peek and revalidate the record.
+- Saving slotted pages reserve freed space for undo, and ordinary free-space checks subtract that reservation.
+  `ANCHORED` and `ANCHORED_DONT_REUSE_SLOTS` have different deleted-slot semantics. Recovery insertion into an anchored
+  slot expects the slot to be empty. Check vacuum and recovery paths when changing deletion, slot reuse, or saved space.
+- Bestspace candidates need revalidation after fixing the page. Link a new page into the heap before clearing
+  `HEAP_PAGE_FLAG_NOT_IN_HEAP` to expose it through bestspace. Persistent bestspace pages are metadata, not user-record
+  pages. See `heap_mark_page_in_heap()` and `heap_rv_postpone_mark_pages_in_heap()` in [heap_file.c](../heap_file.c).
 - Overflow records are logged and recovered separately from the heap home record.
 - Class representation and attribute helpers live in `heap_file.c`; heap is not only row storage.
