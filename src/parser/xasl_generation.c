@@ -26971,7 +26971,7 @@ pt_default_tree_to_regu (PARSER_CONTEXT * parser, PT_NODE * tree)
  * (heap_attrinfo_start / heap_attrinfo_read_dbvalues).  A DEFAULT expression
  * has no column references, so the empty attrinfo is never consulted at
  * evaluation time and costs only a few bytes in the stream
- * (see qexec_eval_default_expr_func_pred, which evaluates func_regu alone).
+ * (see qexec_eval_default_expr, which evaluates func_regu alone).
  */
 int
 pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *stream_size)
