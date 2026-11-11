@@ -356,6 +356,10 @@ namespace cubstorage
       // (group, 0) is marked lost under the lock, so the loader sees the mark
       record_result record_if (std::uint64_t group, std::uint64_t key, std::size_t offset, std::uint8_t code,
 			       bool (*check) (void *), void *arg);
+      // the pending table: rewrite one page of a sector the group already has (a rollback of a recorded change),
+      // never add one. false when the sector is not there, or when check (arg) fails under the stripe lock (rejected)
+      bool update_if_present (std::uint64_t group, std::uint64_t key, std::size_t offset, std::uint8_t code,
+			      bool (*check) (void *), void *arg, bool &rejected);
       // the recorded pages (mask) of one sector at once, owner and lsa 0 (pending table)
       bool record_sector (std::uint64_t group, std::uint64_t key, const std::uint64_t codes[4], std::uint64_t mask);
       // put taken pages of one sector back (pending table), except pages recorded again since the take (they have a

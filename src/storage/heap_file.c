@@ -4806,6 +4806,7 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
   // *INDENT-OFF*
   cubstorage::bestspace_sector_table::record_result result;
   // *INDENT-ON*
+  bool rejected;
 
   if (!LOG_ISRESTARTED ())
     {
@@ -4828,10 +4829,27 @@ heap_bestspace_feedback (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pg
 	{
 	  return;
 	}
+      creates = cubstorage::bestspaces.create_count ();
       bestspace = cubstorage::bestspaces.find (&found_hfid);
       if (bestspace != NULL && bestspace->is_absorbed ())
 	{
 	  (void) bestspace->get_map ()->feedback_if_known (vpid->volid, vpid->pageid, code);
+	  return;
+	}
+
+      /* the map is not loaded (or not absorbed yet): the change rolled back recorded the page in the pending table,
+       * and the load would take that code. Rewrite it there, never adding a sector, as above */
+      check.hfid = &found_hfid;
+      check.found = NULL;
+      check.creates = (bestspace == NULL) ? creates : HEAP_BSMAP_NO_CREATE_COUNT;
+      group = heap_bsmap_group_key (&found_hfid.vfid);
+      key = cubstorage::bestspace_map::make_key (vpid->volid, vpid->pageid);
+      offset = (std::uint32_t) vpid->pageid % cubstorage::bestspace_map::PAGES_PER_SECTOR;
+      if (!cubstorage::bestspace_pending.update_if_present (group, key, offset, code, heap_bsmap_still_unloaded,
+							    &check, rejected) && rejected)
+	{
+	  /* the loader has absorbed the group meanwhile */
+	  (void) check.found->get_map ()->feedback_if_known (vpid->volid, vpid->pageid, code);
 	}
       return;
     }

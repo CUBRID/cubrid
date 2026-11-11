@@ -1818,6 +1818,38 @@ namespace cubstorage
     return RECORDED;
   }
 
+  bool
+  bestspace_sector_table::update_if_present (std::uint64_t group, std::uint64_t key, std::size_t offset,
+      std::uint8_t code, bool (*check) (void *), void *arg, bool &rejected)
+  {
+    stripe &s = m_stripes[stripe_of (group, key)];
+    std::lock_guard<std::mutex> lock (s.mutex);
+    entry *e;
+
+    rejected = false;
+    if (check != nullptr && !check (arg))
+      {
+	rejected = true;
+	return false;
+      }
+    if (s.buckets == nullptr)
+      {
+	return false;
+      }
+    for (e = s.buckets[bucket_of (s, group, key)]; e != nullptr; e = e->next)
+      {
+	if (e->group == group && e->key == key && e->owner == 0)
+	  {
+	    std::size_t shift = (offset % 16) * 4;
+	    e->codes[offset / 16] = ((e->codes[offset / 16] & ~ (0xFULL << shift))
+				     | (static_cast<std::uint64_t> (code) << shift));
+	    e->mask |= 1ULL << offset;
+	    return true;
+	  }
+      }
+    return false;
+  }
+
   // caller holds s.mutex
   bool
   bestspace_sector_table::record_locked (stripe &s, std::uint64_t group, std::uint64_t key, std::size_t offset,
