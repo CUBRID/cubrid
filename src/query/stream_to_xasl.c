@@ -3774,6 +3774,11 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_N
 
   ptr = or_unpack_int (ptr, &stx_build_value_proc->is_always_false);
 
+  /* the copy of the last aggregated row lives with one execution (qexec_keep_last_row ()) */
+  stx_build_value_proc->last_row = NULL;
+  stx_build_value_proc->last_row_cnt = 0;
+  stx_build_value_proc->last_row_kept = false;
+
   return ptr;
 }
 
