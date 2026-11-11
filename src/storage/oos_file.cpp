@@ -3940,8 +3940,7 @@ oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID 
     }
 
   LOG_DATA_ADDR addr (NULL, NULL, -1);
-  log_append_postpone (thread_p, RVOOS_RECLAIM_POSTPONE, &addr, (int) payload.size (), payload.data ());
-  return NO_ERROR;
+  return log_append_postpone (thread_p, RVOOS_RECLAIM_POSTPONE, &addr, (int) payload.size (), payload.data ());
 }
 
 /*
@@ -3989,8 +3988,7 @@ oos_log_update_drop_intent (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const
   std::memcpy (payload.data (), &prefix, sizeof (prefix));
 
   LOG_DATA_ADDR addr (NULL, NULL, -1);
-  log_append_postpone (thread_p, RVOOS_UPDATE_DROP_POSTPONE, &addr, (int) payload.size (), payload.data ());
-  return NO_ERROR;
+  return log_append_postpone (thread_p, RVOOS_UPDATE_DROP_POSTPONE, &addr, (int) payload.size (), payload.data ());
 }
 
 /* Stops the server when a reclaim that the caller already committed cannot finish. The run-postpone
@@ -4123,8 +4121,16 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 
   /* vacuum_info.vfid is the heap file: vacuum skips the notification when the table was dropped. */
   LOG_DATA_ADDR addr (&header.heap_hfid.vfid, NULL, -1);
-  log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr, rcv->length - (int) sizeof (prefix),
-					 rcv->data + sizeof (prefix), prefix.mvccid);
+  error = log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr,
+	  rcv->length - (int) sizeof (prefix), rcv->data + sizeof (prefix),
+	  prefix.mvccid);
+  if (error != NO_ERROR)
+    {
+      /* Without the notification vacuum never reclaims the chains; marking this postpone done would leak them. */
+      oos_reclaim_fail_stop (thread_p, error, VFID {NULL_FILEID, NULL_VOLID},
+			     refs.empty () ? oos_chain_ref {oid_Null_oid, NULL_LSA} : refs.front ());
+      return NO_ERROR;
+    }
 #if defined(CUBRID_UNIT_TEST_ENABLED)
   if (oos_Test_exit_after_update_drop_notifications.load (std::memory_order_relaxed) > 0
       && oos_Test_exit_after_update_drop_notifications.fetch_sub (1, std::memory_order_relaxed) == 1)
