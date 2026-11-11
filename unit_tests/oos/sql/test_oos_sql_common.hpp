@@ -40,6 +40,8 @@
 #include "file_manager.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
+#include "slotted_page.h"
+#include "system_parameter.h"
 #endif /* SA_MODE */
 
 // ============================================================================
@@ -222,6 +224,14 @@ get_oos_page_count (const char *table_name)
     }
 
   return num_pages;
+}
+
+// Return true if a table has created its lazy OOS file. SA_MODE only.
+static bool
+table_has_oos_file (const char *table_name)
+{
+  VFID oos_vfid;
+  return get_oos_vfid_for_table (table_name, &oos_vfid) && !VFID_ISNULL (&oos_vfid);
 }
 #endif /* SA_MODE */
 
