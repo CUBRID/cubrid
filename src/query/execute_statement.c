@@ -151,7 +151,7 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const int level,
+static int do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int level,
 						 const char *comment);
 static int do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const char *new_name,
 						const int level, const char *comment);
@@ -20304,15 +20304,68 @@ do_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * do_get_next_sensitivity_label_grade_level () - the level of a grade created without LEVEL
+ *   return: error code
+ *   level(out): one above the highest grade_level, or 1 for the first grade
+ */
+static int
+do_get_next_sensitivity_label_grade_level (int *level)
+{
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_VALUE value;
+  int max_level;
+  int error;
+
+  error =
+    db_compile_and_execute_local ("SELECT MAX ([grade_level]) FROM [" CT_SENSITIVITY_LABEL_GRADE_NAME "]",
+				  &query_result, NULL);
+  if (error < NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = db_query_first_tuple (query_result);
+  if (error != DB_CURSOR_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_query_get_tuple_value (query_result, 0, &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  max_level = DB_IS_NULL (&value) ? 0 : db_get_int (&value);
+  if (max_level == DB_INT32_MAX)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_OVERFLOW, DB_INT32_MAX);
+    }
+  else
+    {
+      *level = max_level + 1;
+    }
+
+end:
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+    }
+
+  return error;
+}
+
+/*
  * do_create_sensitivity_label_internal () - insert a grade, info_type or source row
  *   return: error code
  *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
  *   name(in): the lowercased name
- *   level(in): the grade_level, or 0 to leave it out
+ *   level(in): the grade_level, or 0 to assign the next one to a grade
  *   comment(in): the comment, or NULL
  */
 static int
-do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const int level, const char *comment)
+do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int level, const char *comment)
 {
   DB_OBJECT *class_obj;
   DB_OBJECT *instance_obj;
@@ -20358,6 +20411,32 @@ do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name,
       goto end;
     }
   er_clear ();
+
+  /* only a grade has a level: the semantic check rejects LEVEL on INFO_TYPE and SOURCE */
+  if (level > 0)
+    {
+      db_make_int (&value, level);
+      if (db_find_unique (class_obj, "grade_level", &value) != NULL)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS, level);
+	  goto end;
+	}
+
+      ASSERT_ERROR_AND_SET (error);
+      if (error != ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  goto end;
+	}
+      er_clear ();
+    }
+  else if (kind == PT_SENSITIVITY_LABEL_GRADE)
+    {
+      error = do_get_next_sensitivity_label_grade_level (&level);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
 
   /* a failed flush leaves the row dirty in the workspace */
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
@@ -20489,6 +20568,7 @@ do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, 
 {
   DB_OBJECT *class_obj;
   DB_OBJECT *instance_obj;
+  DB_OBJECT *level_obj;
   DB_OTMPL *obj_tmpl = NULL;
   DB_VALUE value;
   const char *class_name;
@@ -20547,6 +20627,27 @@ do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, 
 	  goto end;
 	}
       er_clear ();
+    }
+
+  /* only a grade has a level: the semantic check rejects LEVEL on INFO_TYPE and SOURCE */
+  if (level > 0)
+    {
+      db_make_int (&value, level);
+      level_obj = db_find_unique (class_obj, "grade_level", &value);
+      if (level_obj == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  if (error != ER_OBJ_OBJECT_NOT_FOUND)
+	    {
+	      goto end;
+	    }
+	  er_clear ();
+	}
+      else if (level_obj != instance_obj)
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS, level);
+	  goto end;
+	}
     }
 
   /* a failed flush leaves the row dirty in the workspace */
