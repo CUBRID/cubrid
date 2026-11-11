@@ -3604,7 +3604,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * row (pt_check_union_is_foldable ()). */
 	  if (PT_IS_QUERY_NODE_TYPE (statement->node_type))
 	    {
-	      statement->flag.do_not_fold = 1;
+	      statement->info.query.flag.stays_query = 1;
 	    }
 
 	  sc_info.top_node = statement;

@@ -145,6 +145,7 @@ static bool pt_combine_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBL
 static bool pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinfo, PT_TYPE_ENUM common_type,
 				       SEMAN_COMPATIBLE_INFO * att1_info, SEMAN_COMPATIBLE_INFO * att2_info);
 static bool pt_select_takes_distinct (PARSER_CONTEXT * parser, PT_NODE * query);
+static bool pt_folds_without_distinct (PT_NODE * query);
 
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 static PT_NODE *pt_make_parameter (PARSER_CONTEXT * parser, const char *name, int is_out_parameter);
@@ -18724,7 +18725,8 @@ pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query, 
 /*
  * pt_mark_union_leaf_nodes () - walking function for setting for each UNION
  *				 DIFFERENCE/INTERSECTION query if it is a root
- *				 of a leaf node.
+ *				 of a leaf node, and for marking its operands to
+ *				 stay queries.
  *   return:
  *   parser(in):
  *   node(in):
@@ -18738,13 +18740,24 @@ pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
     {
       PT_NODE *arg;
 
+      /* An operand stays a query (pt_check_union_is_foldable ()). Typing marks it too (pt_eval_type_pre ()), but the
+       * semantic check folds a nested set operation, and types a parenthesized operand, before typing reaches the set
+       * operation (pt_semantic_check_local ()). */
       arg = node->info.query.q.union_.arg1;
+      if (arg != NULL && PT_IS_QUERY_NODE_TYPE (arg->node_type))
+	{
+	  arg->info.query.flag.stays_query = 1;
+	}
       if (PT_IS_UNION (arg) || PT_IS_INTERSECTION (arg) || PT_IS_DIFFERENCE (arg))
 	{
 	  arg->info.query.q.union_.is_leaf_node = 1;
 	}
 
       arg = node->info.query.q.union_.arg2;
+      if (arg != NULL && PT_IS_QUERY_NODE_TYPE (arg->node_type))
+	{
+	  arg->info.query.flag.stays_query = 1;
+	}
       if (PT_IS_UNION (arg) || PT_IS_INTERSECTION (arg) || PT_IS_DIFFERENCE (arg))
 	{
 	  arg->info.query.q.union_.is_leaf_node = 1;
@@ -19080,18 +19093,27 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
 	}
     }
 
-  if (fold_as == STATEMENT_SET_FOLD_AS_NULL && union_node->flag.do_not_fold)
+  if (fold_as == STATEMENT_SET_FOLD_AS_NULL && union_node->info.query.flag.stays_query)
     {
-      /* A set operation marked do_not_fold stays a query: an operand of a set operation (pt_eval_type_pre ()), or a
-       * prepared statement typed again with its bound values, which folded into a value would have nothing to
-       * execute (db_execute_and_keep_statement_local ()). It folds into an empty operand instead, which returns no
-       * row; a SELECT with a false WHERE on top is not even sent to the server (do_select_internal ()). */
-      fold_as = arg1_is_null ? STATEMENT_SET_FOLD_AS_ARG1 : STATEMENT_SET_FOLD_AS_ARG2;
+      /* A set operation that stays a query is not folded into a value: an operand of a set operation
+       * (pt_mark_union_leaf_nodes (), pt_eval_type_pre ()), or a prepared statement typed again with its bound values,
+       * which folded into a value would have nothing to execute (db_execute_and_keep_statement_local ()). It folds
+       * into an empty operand instead, which returns no row; a SELECT with a false WHERE on top is not even sent to
+       * the server (do_select_internal ()). An operand already folded into a value cannot take its place. */
+      if (arg1_is_null && PT_IS_QUERY_NODE_TYPE (arg1->node_type))
+	{
+	  fold_as = STATEMENT_SET_FOLD_AS_ARG1;
+	}
+      else if (arg2_is_null && PT_IS_QUERY_NODE_TYPE (arg2->node_type))
+	{
+	  fold_as = STATEMENT_SET_FOLD_AS_ARG2;
+	}
     }
 
   if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {
       PT_NODE *active = (fold_as == STATEMENT_SET_FOLD_AS_ARG1 ? arg1 : arg2);
+      PT_NODE *empty = (fold_as == STATEMENT_SET_FOLD_AS_ARG1 ? arg2 : arg1);
       bool active_is_null = (fold_as == STATEMENT_SET_FOLD_AS_ARG1 ? arg1_is_null : arg2_is_null);
 
       if (PT_IS_QUERY_NODE_TYPE (active->node_type) && active->info.query.with != NULL
@@ -19101,13 +19123,14 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
 	  fold_as = STATEMENT_SET_FOLD_NOTHING;
 	}
       else if (union_node->info.query.all_distinct == PT_DISTINCT && PT_IS_QUERY_NODE_TYPE (active->node_type)
-	       && active->info.query.all_distinct != PT_DISTINCT && active->info.query.into_list == NULL
-	       && !active_is_null && !pt_select_takes_distinct (parser, active))
+	       && active->info.query.all_distinct != PT_DISTINCT && !active_is_null
+	       && !pt_folds_without_distinct (active) && !pt_select_takes_distinct (parser, active)
+	       && PT_IS_QUERY_NODE_TYPE (empty->node_type) && !pt_folds_without_distinct (empty))
 	{
 	  /* the active node would have to remove the duplicates the set operation removes, which it cannot do in its
-	   * own block (pt_fold_union ()): keep the set operation, whose empty operand returns no row. An active node
-	   * with INTO folds as before, without DISTINCT: only a statement that is a SELECT assigns its INTO
-	   * (do_select_internal ()), and INTO takes one row, so DISTINCT changes only a result INTO refuses. */
+	   * own block (pt_fold_union ()): keep the set operation, whose empty operand returns no row. An empty operand
+	   * already folded into a value cannot stay in the set operation (mq_set_union_query ()), nor one with INTO or
+	   * FOR UPDATE, which a set operation refuses: the set operation then folds as before. */
 	  fold_as = STATEMENT_SET_FOLD_NOTHING;
 	}
     }
@@ -19125,12 +19148,14 @@ pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node)
  *  Note: a block removes the duplicates before its LIMIT and ORDERBY_NUM (), and compares its hidden columns
  *	  too, such as an ORDER BY key outside the select list; an ORDER BY of the select list only orders the
  *	  rows. The numbering and the analytic functions are left in their own block as well, so that the
- *	  duplicates are removed after them as the set operation did.
+ *	  duplicates are removed after them as the set operation did. An ORDER BY not matched to the select list
+ *	  yet (pt_check_order_by ()), as when the names of a derived table are resolved, may still need hidden
+ *	  columns.
  */
 static bool
 pt_select_takes_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
 {
-  PT_NODE *list;
+  PT_NODE *list, *order;
 
   if (query->node_type != PT_SELECT || PT_IS_VALUE_QUERY (query))
     {
@@ -19150,7 +19175,34 @@ pt_select_takes_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
       return false;
     }
 
-  return !pt_has_analytic (parser, query) && !pt_has_inst_or_orderby_num (parser, query);
+  for (order = query->info.query.order_by; order != NULL; order = order->next)
+    {
+      if (order->node_type != PT_SORT_SPEC || order->info.sort_spec.expr == NULL
+	  || order->info.sort_spec.expr->node_type != PT_VALUE)
+	{
+	  return false;
+	}
+    }
+
+  return !pt_has_analytic (parser, query) && !pt_has_inst_in_where_and_select_list (parser, query);
+}
+
+/*
+ * pt_folds_without_distinct - whether a set operation with this operand folds as before, without DISTINCT
+ *
+ *  return : true for an operand with INTO or FOR UPDATE
+ *  query (in) : an operand of the set operation
+ *
+ *  Note: only a statement that is a SELECT assigns its INTO (do_select_internal ()) or locks the rows it reads
+ *	  (FOR UPDATE); a set operation does neither, and refuses FOR UPDATE in its operands. The operand that takes
+ *	  the place of the set operation keeps them as it is: INTO takes one row, so DISTINCT changes only a result
+ *	  INTO refuses, and FOR UPDATE refuses DISTINCT (pt_for_update_prepare_query ()).
+ */
+static bool
+pt_folds_without_distinct (PT_NODE * query)
+{
+  return (query->info.query.into_list != NULL
+	  || (query->node_type == PT_SELECT && PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_FOR_UPDATE)));
 }
 
 /*
@@ -19204,13 +19256,12 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	}
 
       /* A set operation without ALL returns each row once, and the empty operand took none away: the active node
-       * takes over that duplicate elimination (R UNION {} = R EXCEPT {} = DISTINCT R), in its own block as
-       * pt_check_union_is_foldable () made sure. An empty active node has no row to remove, and one with INTO
-       * folds as before (pt_check_union_is_foldable ()). */
+       * takes over that duplicate elimination (R UNION {} = R EXCEPT {} = DISTINCT R) in its own block, where it can
+       * (pt_check_union_is_foldable ()). An empty active node has no row to remove, and one with INTO or FOR UPDATE
+       * folds as before. */
       keep_distinct = (union_node->info.query.all_distinct == PT_DISTINCT && PT_IS_QUERY_NODE_TYPE (active->node_type)
-		       && active->info.query.all_distinct != PT_DISTINCT && active->info.query.into_list == NULL
-		       && !pt_false_where (parser, active));
-      assert (!keep_distinct || pt_select_takes_distinct (parser, active));
+		       && active->info.query.all_distinct != PT_DISTINCT && !pt_false_where (parser, active)
+		       && !pt_folds_without_distinct (active) && pt_select_takes_distinct (parser, active));
 
       /* An operand is one scope deeper than its set operation, so its correlation levels are one higher. Lower them
        * since the operand takes the place of the set operation; otherwise a subquery correlated to the outer query
@@ -19249,12 +19300,10 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	  new_node = active;
 	}
 
-      /* the node takes the place of the set operation, and whether it must stay a query with it */
-      new_node->flag.do_not_fold = union_node->flag.do_not_fold;
-
-      if (keep_distinct)
+      /* the node takes the place of the set operation, and whether it stays a query with it */
+      if (PT_IS_QUERY_NODE_TYPE (new_node->node_type))
 	{
-	  new_node->info.query.all_distinct = PT_DISTINCT;
+	  new_node->info.query.flag.stays_query = union_node->info.query.flag.stays_query;
 	}
 
       /* free union node */
@@ -19279,6 +19328,16 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 
       /* check the union's orderby or limit clause if present */
       pt_check_order_by (parser, new_node);
+
+      /* DISTINCT goes on once the ORDER BY moved from the set operation is matched to the select list, before its
+       * LIMIT as the set operation removed the duplicates: a key outside the select list became a hidden column,
+       * which DISTINCT refuses, and then the node folds as before, without DISTINCT */
+      if (keep_distinct && !pt_has_error (parser)
+	  && (pt_length_of_select_list (new_node->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS)
+	      == pt_length_of_select_list (new_node->info.query.q.select.list, INCLUDE_HIDDEN_COLUMNS)))
+	{
+	  new_node->info.query.all_distinct = PT_DISTINCT;
+	}
     }
   else
     {
