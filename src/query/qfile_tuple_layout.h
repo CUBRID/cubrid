@@ -538,7 +538,7 @@ qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int c
 #endif
 
 /*
- * qfile_tuple_column_unresolved () - the unresolved-domain check (execution) of a value written into a column whose
+ * qfile_tuple_column_unresolved () - the unresolved-domain check (debug builds) of a value written into a column whose
  *   domain is still VARIABLE: a list opens with its columns' compiled domains, so no row resolves a column's domain
  *   return: ER_FAILED, with ER_QPROC_DOMAIN_UNRESOLVED set
  */
@@ -578,11 +578,13 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_COL_SRC *
 	{
 	  hn = true;
 	}
+#if !defined (NDEBUG)
       else if (src[i].val != NULL && type_list->column_layout_array[i].type_id == DB_TYPE_VARIABLE
 	       && !DB_IS_NULL (src[i].val))
 	{
 	  return qfile_tuple_column_unresolved (i);
 	}
+#endif
     }
   size = type_list->data_offset[hn ? 1 : 0];
 
@@ -845,10 +847,12 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE 
     {
       v = vals[i];
       column_layout = &type_list->column_layout_array[i];
+#if !defined (NDEBUG)
       if (column_layout->type_id == DB_TYPE_VARIABLE && !DB_IS_NULL (v))
 	{
 	  return qfile_tuple_column_unresolved (i);
 	}
+#endif
       values_size = qfile_tuple_size_add_value (column_layout, v, &lens[i], values_size, &hn);
       if (values_size < 0)
 	{
