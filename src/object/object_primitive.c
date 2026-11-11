@@ -10494,13 +10494,20 @@ mr_internal_lob_peek_marked_char (OR_BUF * buf)
 					      remaining);
 }
 
-/* A VARCHAR carries only the csql scalar-stream envelope, the one mr_writeval_string_internal () writes, and never in
- * an index key: a key (CHAR_ALIGNMENT) has no NUL after a string, so adjacent key bytes could take its shape. */
+/* A VARCHAR carries only the csql scalar-stream envelope, the one mr_writeval_string_internal () writes.  In the
+ * index encoding (CHAR_ALIGNMENT, a list file column) it counts only when it fills the exact size the caller passes:
+ * a plain string with the same 0x0f prefix is 16 bytes, shorter than any envelope, and adjacent bytes are excluded. */
 static bool
-mr_internal_lob_peek_varchar_stream (OR_BUF * buf, int align)
+mr_internal_lob_peek_varchar_stream (OR_BUF * buf, int align, int size)
 {
-  return align == INT_ALIGNMENT && mr_internal_lob_peek_marked_char (buf)
-    && OR_GET_INT (buf->ptr + OR_BYTE_SIZE) == DB_VALUE_INTERNAL_LOB_MARKER_STREAM;
+  if (!mr_internal_lob_peek_marked_char (buf)
+      || OR_GET_INT (buf->ptr + OR_BYTE_SIZE) != DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      return false;
+    }
+  return align == INT_ALIGNMENT
+    || (size > 0
+	&& size == MR_INTERNAL_LOB_CHAR_MARKER_HEADER_SIZE + OR_GET_INT (buf->ptr + OR_BYTE_SIZE + OR_INT_SIZE));
 }
 
 /*
@@ -11557,7 +11564,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     {
       if (size == -1)
 	{
-	  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+	  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align, size))
 	    {
 	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy_buf, copy_buf_len, align, type);
 	    }
@@ -11587,7 +11594,7 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     }
 
   /* only the csql scalar-stream marker rides in a VARCHAR; CLOB envelopes belong to mr_data_readval_clob () */
-  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align, size))
     {
       return mr_internal_lob_read_marked_char (buf, value, domain, size, copy_buf, copy_buf_len, align, type);
     }
@@ -11708,7 +11715,7 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
     {
       if (size == -1)
 	{
-	  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+	  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align, size))
 	    {
 	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy_buf, copy_buf_len, align, type);
 	    }
@@ -11748,7 +11755,7 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
     }
 
   /* only the csql scalar-stream marker rides in a VARCHAR; CLOB envelopes belong to mr_data_readval_clob () */
-  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align, size))
     {
       return mr_internal_lob_read_marked_char (buf, value, domain, size, copy_buf, copy_buf_len, align, type);
     }
