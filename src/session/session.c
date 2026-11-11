@@ -153,6 +153,7 @@ struct session_state
   int stream_session_kind;
   int stream_session_client_id;	/* the connection that owns stream_session_p */
   int stream_session_tran_index;	/* the transaction it was opened in */
+  TRANID stream_session_trid;	/* and that transaction's id, which the next one of the same index does not have */
   THREAD_ENTRY *stream_user;	/* the worker running a request of the owner on the slot, or NULL */
   pthread_cond_t stream_cond;	/* signalled when that request lets the slot go */
   stream_handle_table *stream_handles_p;
@@ -366,6 +367,7 @@ session_state_init (void *st)
   session_p->stream_session_kind = -1;
   session_p->stream_session_client_id = 0;
   session_p->stream_session_tran_index = NULL_TRAN_INDEX;
+  session_p->stream_session_trid = NULL_TRANID;
   session_p->stream_user = NULL;
   memset (session_p->secret, 0, SESSION_SECRET_SIZE);
 
@@ -3393,6 +3395,20 @@ session_stream_client_id (THREAD_ENTRY * thread_p)
 #endif /* !SERVER_MODE */
 }
 
+/*
+ * session_stream_slot_is_callers () - Is the slot the caller's connection's, in the caller's transaction?
+ *
+ * The caller holds stream_mutex. A request that arrived while an earlier transaction of the same index was ending
+ * can have left a session there (one opened behind a commit that a client sent without waiting for its reply). The
+ * next transaction does not see it, and its own end frees it (session_end_tran_streams).
+ */
+static bool
+session_stream_slot_is_callers (SESSION_STATE * state_p, THREAD_ENTRY * thread_p)
+{
+  return (state_p->stream_session_client_id == session_stream_client_id (thread_p)
+	  && state_p->stream_session_trid == logtb_find_current_tranid (thread_p));
+}
+
 /* the caller holds stream_mutex */
 static bool
 session_stream_slot_matches (SESSION_STATE * state_p, int client_id, int tran_index)
@@ -3400,6 +3416,9 @@ session_stream_slot_matches (SESSION_STATE * state_p, int client_id, int tran_in
   return ((client_id == SESSION_STREAM_ALL_CLIENTS || state_p->stream_session_client_id == client_id)
 	  && (tran_index == SESSION_STREAM_ANY_TRAN || state_p->stream_session_tran_index == tran_index));
 }
+
+/* how long a wait for the slot sleeps before it looks at the holder's transaction again */
+static const int SESSION_STREAM_WAIT_SLICE_MSEC = 10;
 
 /*
  * session_take_stream_session () - Empty the slot if client_id owns it
@@ -3410,17 +3429,38 @@ session_stream_slot_matches (SESSION_STATE * state_p, int client_id, int tran_in
  * Requests of one connection run on separate workers, so one may still be running on the session; the caller waits
  * until that request lets the slot go, and the session is ended only after it. The worker running it takes the
  * session at once, and keeps the slot until it lets it go.
+ *
+ * The wait stops when the holder's transaction is interrupted, and the session is then left to the holder. A
+ * deadlock victim waits for every other worker of its transaction, this caller included, and interrupts the
+ * transaction while it waits (lock_suspend); the holder ends the stream itself on its error path. A killtran
+ * stops the wait the same way.
  */
 static stream_session *
 session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_index, THREAD_ENTRY * taker)
 {
   stream_session *taken = NULL;
+  bool continue_checking = true;
 
   pthread_mutex_lock (&state_p->stream_mutex);
   while (state_p->stream_user != NULL && state_p->stream_user != taker
 	 && session_stream_slot_matches (state_p, client_id, tran_index))
     {
-      pthread_cond_wait (&state_p->stream_cond, &state_p->stream_mutex);
+      struct timespec until;
+
+      if (logtb_is_interrupted_tran (taker, false, &continue_checking, state_p->stream_session_tran_index))
+	{
+	  pthread_mutex_unlock (&state_p->stream_mutex);
+	  return NULL;
+	}
+
+      clock_gettime (CLOCK_REALTIME, &until);
+      until.tv_nsec += SESSION_STREAM_WAIT_SLICE_MSEC * 1000 * 1000;
+      if (until.tv_nsec >= 1000 * 1000 * 1000)
+	{
+	  until.tv_sec++;
+	  until.tv_nsec -= 1000 * 1000 * 1000;
+	}
+      (void) pthread_cond_timedwait (&state_p->stream_cond, &state_p->stream_mutex, &until);
     }
   if (session_stream_slot_matches (state_p, client_id, tran_index))
     {
@@ -3428,6 +3468,7 @@ session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_in
       state_p->stream_session_p = NULL;
       state_p->stream_session_kind = -1;
       state_p->stream_session_tran_index = NULL_TRAN_INDEX;
+      state_p->stream_session_trid = NULL_TRANID;
       if (state_p->stream_user == NULL)
 	{
 	  state_p->stream_session_client_id = 0;
@@ -3497,6 +3538,7 @@ session_reserve_stream_slot (THREAD_ENTRY * thread_p, struct session_state **hel
     {
       state_p->stream_session_client_id = session_stream_client_id (thread_p);
       state_p->stream_session_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      state_p->stream_session_trid = logtb_find_current_tranid (thread_p);
       /* the open is a request on the session too: it lets the slot go before its reply */
       state_p->stream_user = thread_p;
       *held = state_p;
@@ -3521,6 +3563,9 @@ session_set_stream_session (THREAD_ENTRY * thread_p, struct session_state *held,
   assert (held->stream_user == thread_p && held->stream_session_p == NULL);
   held->stream_session_p = stream_session_p;
   held->stream_session_kind = kind;
+  /* again: the open's own thread may have emptied them, had its factory ended the transaction */
+  held->stream_session_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  held->stream_session_trid = logtb_find_current_tranid (thread_p);
   pthread_mutex_unlock (&held->stream_mutex);
 }
 
@@ -3528,8 +3573,7 @@ session_set_stream_session (THREAD_ENTRY * thread_p, struct session_state *held,
  * session_clear_stream_session () - Empty the slot the caller holds, after it ended the stream session
  *   held(in): what session_reserve_stream_slot () or session_use_stream_session () gave, or NULL
  *
- * Only the request that holds the slot empties it: an open that lost the slot to another request of the connection
- * holds nothing, and must not take that request's session out.
+ * Only the request that holds the slot empties it.
  */
 void
 session_clear_stream_session (THREAD_ENTRY * thread_p, struct session_state *held)
@@ -3545,6 +3589,7 @@ session_clear_stream_session (THREAD_ENTRY * thread_p, struct session_state *hel
       held->stream_session_p = NULL;
       held->stream_session_kind = -1;
       held->stream_session_tran_index = NULL_TRAN_INDEX;
+      held->stream_session_trid = NULL_TRANID;
     }
   pthread_mutex_unlock (&held->stream_mutex);
 }
@@ -3580,7 +3625,7 @@ session_use_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
     }
 
   pthread_mutex_lock (&state_p->stream_mutex);
-  if (state_p->stream_session_client_id == client_id
+  if (session_stream_slot_is_callers (state_p, thread_p)
       && (state_p->stream_session_p != NULL || state_p->stream_user != NULL))
     {
       if (state_p->stream_user != NULL && state_p->stream_user != thread_p)
@@ -3628,6 +3673,7 @@ session_unuse_stream_session (THREAD_ENTRY * thread_p, struct session_state *hel
 	{
 	  held->stream_session_client_id = 0;
 	  held->stream_session_tran_index = NULL_TRAN_INDEX;
+	  held->stream_session_trid = NULL_TRANID;
 	}
       pthread_cond_broadcast (&held->stream_cond);
     }
@@ -3663,7 +3709,7 @@ session_has_stream_session (THREAD_ENTRY * thread_p)
     }
 
   pthread_mutex_lock (&state_p->stream_mutex);
-  has = (state_p->stream_session_client_id == session_stream_client_id (thread_p)
+  has = (session_stream_slot_is_callers (state_p, thread_p)
 	 && (state_p->stream_session_p != NULL || state_p->stream_user != NULL));
   pthread_mutex_unlock (&state_p->stream_mutex);
 
@@ -3769,7 +3815,13 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
       delete stream_session_p;
     }
 
-  state_p->stream_handles_p->end_tran (thread_p, tran_index);
+  /* as session_take_stream_session () above: a deadlock victim among the reads waits for this thread too */
+  state_p->stream_handles_p->end_tran (thread_p, tran_index, [thread_p, tran_index] ()
+  {
+    bool continue_checking = true;
+
+    return logtb_is_interrupted_tran (thread_p, false, &continue_checking, tran_index);
+  });
 #endif /* SERVER_MODE */
 }
 

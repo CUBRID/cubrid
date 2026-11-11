@@ -70,6 +70,9 @@ namespace
 
   const char *const TOO_MANY_HANDLES = "too many stream handles open in this transaction";
 
+  /* how long a transaction end sleeps before it asks again whether to stop waiting */
+  const std::chrono::milliseconds END_TRAN_WAIT_SLICE (10);
+
   /* an open begun with begin_open (), ended on every way out of stream_download_open () */
   class open_request
   {
@@ -112,8 +115,8 @@ stream_handle_table::~stream_handle_table ()
 }
 
 int
-stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, stream_source *source,
-			    std::int64_t *handle)
+stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int trid, int client_id,
+			    stream_source *source, std::int64_t *handle)
 {
   const stream_kind_desc *desc = stream_kind_find (kind);
   int error_code = NO_ERROR;
@@ -144,6 +147,7 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
 	entry &e = m_entries[value];
 
 	e.tran_index = tran_index;
+	e.trid = trid;
 	e.client_id = client_id;
 	e.counted = true;
 	e.release_pending = false;
@@ -187,12 +191,14 @@ stream_handle_table::end_open (THREAD_ENTRY *thread_p)
 }
 
 stream_source *
-stream_handle_table::get_source (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index, int *error_code)
+stream_handle_table::get_source (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index, int trid,
+				 int *error_code)
 {
   std::lock_guard<std::mutex> lock (m_mutex);
   entry_map::iterator it = m_entries.find (handle);
 
-  if (it == m_entries.end () || it->second.tran_index != tran_index || it->second.release_pending)
+  if (it == m_entries.end () || it->second.tran_index != tran_index || it->second.trid != trid
+      || it->second.release_pending)
     {
       *error_code = set_handle_error (ER_STREAM_NOT_OPEN, "unknown stream handle");
       return NULL;
@@ -256,7 +262,7 @@ stream_handle_table::release (THREAD_ENTRY *thread_p, std::int64_t handle, int t
 }
 
 void
-stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index)
+stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index, const std::function<bool ()> &stop_waiting)
 {
   std::vector<stream_source *> to_close;
 
@@ -268,12 +274,15 @@ stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index)
   {
     std::unique_lock<std::mutex> lock (m_mutex);
 
-    /* the source closes, and no handle comes out, while the transaction is still there; a request of this thread is
-     * not waited for */
-    m_requests_done.wait (lock, [&] ()
-    {
-      return !has_other_request_locked (tran_index, thread_p);
-    });
+    /* the source closes while the transaction is still there; a request of this thread is not waited for */
+    while (has_other_request_locked (tran_index, thread_p))
+      {
+	if (stop_waiting && stop_waiting ())
+	  {
+	    break;
+	  }
+	(void) m_requests_done.wait_for (lock, END_TRAN_WAIT_SLICE);
+      }
 
     for (entry_map::iterator it = m_entries.begin (); it != m_entries.end ();)
       {
@@ -464,7 +473,7 @@ stream_source_read_checked (THREAD_ENTRY *thread_p, stream_source *source, char 
  *   table(in): the session's handle table
  *   kind(in): STREAM_KIND_* taken off the wire, not yet trusted
  *   config(in), config_len(in): the kind's config blob
- *   tran_index(in): the transaction the handle belongs to
+ *   tran_index(in), trid(in): the transaction the handle belongs to, by index and id
  *   client_id(in): the connection that opened it
  *   first_max(in): 0 to open only, or the bytes to read at once
  *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
@@ -474,8 +483,8 @@ stream_source_read_checked (THREAD_ENTRY *thread_p, stream_source *source, char 
  */
 int
 stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int kind, const char *config,
-		      int config_len, int tran_index, int client_id, int first_max, int flags, char *buf, int *nread,
-		      int *reply_flags, std::int64_t *handle)
+		      int config_len, int tran_index, int trid, int client_id, int first_max, int flags, char *buf,
+		      int *nread, int *reply_flags, std::int64_t *handle)
 {
   stream_source *source;
   int error_code = NO_ERROR;
@@ -528,7 +537,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
 	}
     }
 
-  error_code = table.issue (thread_p, kind, tran_index, client_id, source, handle);
+  error_code = table.issue (thread_p, kind, tran_index, trid, client_id, source, handle);
   if (error_code != NO_ERROR)
     {
       /* the bytes already read go with the refusal */
@@ -544,7 +553,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
  *   return: error code; a failed read of a resolved handle releases it and says so in reply_flags
  *   table(in): the session's handle table
  *   handle(in): what READ_OPEN returned
- *   tran_index(in): the transaction asking
+ *   tran_index(in), trid(in): the transaction asking, by index and id
  *   max(in): bytes the client can take
  *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
  *   buf(out): stream_read_bound (max) bytes
@@ -552,7 +561,7 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
  */
 int
 stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::int64_t handle, int tran_index,
-		      int max, int flags, char *buf, int *nread, int *reply_flags)
+		      int trid, int max, int flags, char *buf, int *nread, int *reply_flags)
 {
   stream_source *source;
   int error_code;
@@ -566,7 +575,7 @@ stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::i
       return set_handle_error (ER_STREAM_INVALID_USE, "read size must be positive");
     }
 
-  source = table.get_source (thread_p, handle, tran_index, &error_code);
+  source = table.get_source (thread_p, handle, tran_index, trid, &error_code);
   if (source == NULL)
     {
       return error_code;

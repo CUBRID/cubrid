@@ -13948,8 +13948,9 @@ sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       if (error_code == NO_ERROR)
 	{
 	  error_code = stream_download_open (thread_p, *handles, stream_kind, ptr, reqlen - header_size,
-					     LOG_FIND_THREAD_TRAN_INDEX (thread_p), session_stream_client_id (thread_p),
-					     first_max, flags, buf, &nread, &reply_flags, &handle);
+					     LOG_FIND_THREAD_TRAN_INDEX (thread_p), logtb_find_current_tranid (thread_p),
+					     session_stream_client_id (thread_p), first_max, flags, buf, &nread, &reply_flags,
+					     &handle);
 	}
     }
 
@@ -14001,8 +14002,8 @@ sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
       buf = stream_read_buffer (max, &error_code);
       if (error_code == NO_ERROR)
 	{
-	  error_code = stream_download_read (thread_p, *handles, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p), max,
-					     flags, buf, &nread, &reply_flags);
+	  error_code = stream_download_read (thread_p, *handles, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+					     logtb_find_current_tranid (thread_p), max, flags, buf, &nread, &reply_flags);
 	}
     }
 

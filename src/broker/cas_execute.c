@@ -11541,6 +11541,7 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, int first_ma
       buffer = (char *) MALLOC (first_max);
       if (buffer == NULL)
 	{
+	  ux_stream_refused_before_server ();
 	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
 	  return err_code;
@@ -11617,6 +11618,7 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
   buffer = (char *) MALLOC (max);
   if (buffer == NULL)
     {
+      ux_stream_refused_before_server ();
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;

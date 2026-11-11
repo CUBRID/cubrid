@@ -21,8 +21,9 @@
  *
  * One table per session state, next to the stream-session slot, for the
  * downloads its client has open. A handle resolves only in the session that
- * issued it and only in the transaction that opened it, and is released at the
- * latest when that transaction ends.
+ * issued it and only in the transaction that opened it -- its index and its
+ * id, since the next transaction of the index has a new id -- and is released
+ * at the latest when a transaction of that index ends.
  */
 
 #ifndef _STREAM_HANDLE_HPP_
@@ -33,6 +34,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -51,8 +53,9 @@ class stream_handle_table
 
     /* Take a download's source over and return the number the client sends
      * back. source is closed on a refusal too, so the caller never keeps it.
-     * client_id is the connection that asked (end_client). */
-    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, stream_source *source,
+     * trid is the id of the transaction the source was built in, and
+     * client_id the connection that asked (end_client). */
+    int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int trid, int client_id, stream_source *source,
 	       std::int64_t *handle);
 
     /* Start an open of tran_index, before its source is built; end_open ()
@@ -66,7 +69,7 @@ class stream_handle_table
      * because a reader is not thread-safe. NULL, with the error set and in
      * error_code: ER_STREAM_NOT_OPEN for a handle that does not resolve or is
      * being released, ER_STREAM_INVALID_USE for one pinned already. */
-    stream_source *get_source (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index, int *error_code);
+    stream_source *get_source (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index, int trid, int *error_code);
     void put (THREAD_ENTRY *thread_p, std::int64_t handle);
 
     /* Release one handle of tran_index, or every handle of a transaction, of a
@@ -75,11 +78,16 @@ class stream_handle_table
      * during a pin is deferred to the last put () and never blocks.
      * end_tran () first waits for the opens and reads of the transaction that
      * other workers are running -- a client that does not wait for replies can
-     * send the transaction's end behind them -- so that no source reads, and
-     * no handle is issued, after its transaction is gone. end_client () is a
-     * connection's close, which runs after the connection's workers. */
+     * send the transaction's end behind them -- so that a source closes while
+     * its transaction is still there. The wait stops when stop_waiting says so
+     * (the transaction is interrupted: a deadlock victim among those workers
+     * waits for this one in turn), and what is pinned is then left to its put,
+     * as any release. A handle that an open issues after that carries the
+     * ending transaction's id and never resolves in the next one; the next end
+     * of the index releases it. end_client () is a connection's close, which
+     * runs after the connection's workers. */
     void release (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index);
-    void end_tran (THREAD_ENTRY *thread_p, int tran_index);
+    void end_tran (THREAD_ENTRY *thread_p, int tran_index, const std::function<bool ()> &stop_waiting = nullptr);
     void end_client (THREAD_ENTRY *thread_p, int client_id);
     void clear (THREAD_ENTRY *thread_p);
 
@@ -87,6 +95,7 @@ class stream_handle_table
     struct entry
     {
       int tran_index;
+      int trid;
       int client_id;
       bool counted;		/* against the limit; dropped as soon as a release is requested */
       bool release_pending;
@@ -128,13 +137,13 @@ class stream_handle_table
  * STREAM_FLAG_RELEASE_AT_EOF, no handle is issued (*handle is 0). buf holds
  * stream_read_bound (first_max) bytes. */
 extern int stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int kind, const char *config,
-				 int config_len, int tran_index, int client_id, int first_max, int flags, char *buf,
-				 int *nread, int *reply_flags, std::int64_t *handle);
+				 int config_len, int tran_index, int trid, int client_id, int first_max, int flags,
+				 char *buf, int *nread, int *reply_flags, std::int64_t *handle);
 
 /* The next piece of an open download; buf holds stream_read_bound (max) bytes.
  * A read that fails releases its handle, with STREAM_FLAG_RELEASED. */
 extern int stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::int64_t handle,
-				 int tran_index, int max, int flags, char *buf, int *nread, int *reply_flags);
+				 int tran_index, int trid, int max, int flags, char *buf, int *nread, int *reply_flags);
 
 /* What the core allocates for a read the client asked max bytes of. */
 extern int stream_read_bound (int max);
