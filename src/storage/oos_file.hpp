@@ -288,6 +288,8 @@ struct oos_debug_counters
   unsigned long long read_values_per_fixed_page;
   unsigned long long reclaim_growth_examined_pages;
   unsigned long long reclaim_growth_laps;
+  unsigned long long reclaim_growth_reused_pages;	/* empty pages a growth took instead of allocating */
+  unsigned long long reclaim_growth_reinit_pages;	/* of those, pages reinitialized for want of room */
 };
 
 /* One-shot publication failure seams used by focused SERVER_MODE tests. */
@@ -297,10 +299,11 @@ extern void oos_test_disarm_insert_publication_failures ();
 /* Simulates a process restart for the reclaim bookkeeping: the next growth of each file falls
  * under the boot rule. */
 extern void oos_test_reclaim_reset_side_map ();
-/* Deterministic concurrency seams for the growth-gate single-flight contract. */
+/* Deterministic concurrency seams for the growth lock: oos_test_reclaim_claim_growth takes the lock,
+ * waiting like a grower, and releases it at once. */
 extern void oos_test_reclaim_force_sweep_in_progress (const VFID &oos_vfid);
 extern void oos_test_reclaim_release_sweep (const VFID &oos_vfid);
-extern int oos_test_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
+extern int oos_test_reclaim_claim_growth (const VFID &oos_vfid);
 extern int oos_test_reclaim_waiter_count ();
 extern void oos_test_fail_next_reclaim_write_fix ();
 extern void oos_test_fail_next_reclaim_read_fix ();

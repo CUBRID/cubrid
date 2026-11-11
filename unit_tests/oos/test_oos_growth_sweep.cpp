@@ -16,10 +16,11 @@
  *
  */
 
-// Growth-side reclaim (CBRD-26786, ADR-0010): when the OOS file is about to allocate a new page while
-// its emptied-page set holds a reclaimable page, or while the file is unknown after a restart or a
-// set loss, it reclaims one empty page instead. Every test first calls simulate_hint_loss: with
-// bestspace hints alive an emptied page is reused directly and the growth path is never entered.
+// Growth-side reuse (ADR-0009, ADR-0010): when the OOS file is about to allocate a new page while its
+// emptied-page set holds an empty page, or while the file is unknown after a restart or a set loss,
+// it writes into an empty page in place instead. Every test first calls simulate_hint_loss: with
+// bestspace hints alive an emptied page is reused through bestspace and the growth path is never
+// entered.
 
 #include "gtest/gtest.h"
 #include <algorithm>
@@ -163,10 +164,13 @@ TEST (OosGrowthSweepTest, SweepReclaimsAfterCommittedDeleteBurst)
 
   simulate_hint_loss (oos_vfid);
 
+  bridge_oos_debug_counters_reset ();
   OID oid3 = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), pages_full)
       << "growth gate did not reuse an emptied page — the file grew";
+  EXPECT_TRUE (oid3.pageid == oid1.pageid || oid3.pageid == oid2.pageid) << "the insert went to a new page";
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_reused_pages, 1ULL);
   assert_value_intact (oid3);
 
   remove_file_and_commit (oos_vfid);
@@ -189,14 +193,15 @@ TEST (OosGrowthSweepTest, TransientWriteLatchMissKeepsReclaimDebt)
   OID first_growth_oid = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, first_growth_oid), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3)
-      << "the forced phase-2 latch miss should make this growth allocate";
+      << "the forced latch miss should make this growth allocate";
 
   simulate_hint_loss (oos_vfid);
 
   OID retry_oid = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, retry_oid), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 3)
-      << "the transient phase-2 latch miss lost reclaim debt and stranded the empty page";
+      << "the transient latch miss dropped the empty page from the set";
+  ASSERT_EQ (retry_oid.pageid, emptied_oid.pageid);
   assert_value_intact (first_growth_oid);
   assert_value_intact (retry_oid);
 
@@ -211,7 +216,7 @@ TEST (OosGrowthSweepTest, ConcurrentGrowerWaitsForActiveSweep)
   oos_test_reclaim_force_sweep_in_progress (oos_vfid);
   auto concurrent_sweep = std::async (std::launch::async, [&] ()
   {
-    return oos_test_reclaim_sweep_step (thread_p, oos_vfid);
+    return oos_test_reclaim_claim_growth (oos_vfid);
   });
 
   const auto waiter_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (1);
@@ -288,6 +293,7 @@ TEST (OosGrowthSweepTest, InsertRollbackAddsEmptiedPage)
       ASSERT_EQ (insert_page_filling_record (oos_vfid, retry_oid), NO_ERROR);
       ASSERT_EQ (count_user_pages (oos_vfid), 3)
 	  << "rollback cycle " << i << " stranded an empty page";
+      ASSERT_EQ (retry_oid.pageid, aborted_oid.pageid) << "rollback cycle " << i;
       ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
     }
 
@@ -553,8 +559,8 @@ TEST (OosGrowthSweepTest, SweepSkipsRefilledPageAndNeverReclaimsHeader)
 }
 
 // ADR-0010 consequence 5: an INSERT rollback empties a page and still holds its latch when a growth
-// checks it (Work818). The forced READ-fix miss stands in for that latch; the page must stay a
-// candidate, so the next growth reclaims it.
+// checks it (Work818). The forced WRITE-fix miss stands in for that latch; the page must stay a
+// candidate, so the next growth reuses it.
 TEST (OosGrowthSweepTest, PageLatchedByRollbackStaysCandidate)
 {
   VFID oos_vfid;
@@ -571,7 +577,7 @@ TEST (OosGrowthSweepTest, PageLatchedByRollbackStaysCandidate)
   ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 1U);
 
   simulate_hint_loss (oos_vfid);
-  oos_test_fail_next_reclaim_read_fix ();
+  oos_test_fail_next_reclaim_write_fix ();
   OID grown_oid = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, grown_oid), NO_ERROR);
   ASSERT_EQ (count_user_pages (oos_vfid), 4) << "the busy page should make this growth allocate";
@@ -738,6 +744,90 @@ TEST (OosGrowthSweepTest, SetOverflowFallsBackToOneLap)
   OID after_lap_oid = OID_INITIALIZER;
   ASSERT_EQ (insert_page_filling_record (oos_vfid, after_lap_oid), NO_ERROR);
   EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_laps, 0ULL) << "the completed lap left the file unknown";
+
+  remove_file_and_commit (oos_vfid);
+}
+
+// A page leaves the set under the latch it is taken with, so a growth after the set drained checks no
+// page. A page that stayed in the set after its refill would cost every later growth a page fix.
+TEST (OosGrowthSweepTest, ReusedPageLeavesTheSetAtOnce)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID oid1 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 1U);
+
+  simulate_hint_loss (oos_vfid);
+  OID oid2 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid2), NO_ERROR);
+  ASSERT_EQ (oid2.pageid, oid1.pageid);
+  EXPECT_EQ (oos_test_reclaim_emptied_count (oos_vfid), 0U) << "the reused page stayed in the set";
+
+  simulate_hint_loss (oos_vfid);
+  bridge_oos_debug_counters_reset ();
+  OID oid3 = OID_INITIALIZER;
+  ASSERT_EQ (insert_page_filling_record (oos_vfid, oid3), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 3);
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_examined_pages, 0ULL)
+      << "a growth with no empty page checked a page";
+  assert_value_intact (oid2);
+  assert_value_intact (oid3);
+
+  remove_file_and_commit (oos_vfid);
+}
+
+// An ANCHORED page keeps the slots of the chunks deleted from it, and with three or more of them a chunk of
+// the maximum size no longer fits the empty page. The growth reinitializes the page and still reuses it.
+TEST (OosGrowthSweepTest, EmptyPageWithDeadSlotsIsReinitializedForALargeChunk)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  std::vector<OID> small_oids (4, OID_INITIALIZER);
+  for (OID &oid : small_oids)
+    {
+      ASSERT_EQ (insert_small_record (oos_vfid, oid), NO_ERROR);
+      ASSERT_EQ (oid.pageid, small_oids[0].pageid) << "the scenario requires the small records to share a page";
+    }
+  for (const OID &oid : small_oids)
+    {
+      ASSERT_EQ (test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid), NO_ERROR);
+    }
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2);
+
+  /* A string of max_chunk - 1 characters stores exactly one chunk of the maximum size. */
+  const std::string largest = test_oos_utils::make_repeated_pattern_string (bridge_oos_get_max_chunk_size_within_page ()
+			      - 1);
+  RECDES rec{};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (largest, rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec, recdes_free_data_area);
+
+  simulate_hint_loss (oos_vfid);
+  bridge_oos_debug_counters_reset ();
+  OID large_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, large_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2) << "the empty page with dead slots was passed over and the file grew";
+  ASSERT_EQ (large_oid.pageid, small_oids[0].pageid);
+  EXPECT_EQ (bridge_oos_debug_counters_get ().reclaim_growth_reinit_pages, 1ULL);
+
+  RECDES rec_out{};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, large_oid, rec_out), NO_ERROR);
+  EXPECT_STREQ (rec_out.data, largest.c_str ());
+  recdes_free_data_area (&rec_out);
+
+  /* The reinitialization is not part of the inserting transaction: its rollback leaves an empty OOS page that
+   * the next growth reuses. */
+  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
+  simulate_hint_loss (oos_vfid);
+  OID retry_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, retry_oid), NO_ERROR);
+  ASSERT_EQ (count_user_pages (oos_vfid), 2) << "the rollback undid the reinitialization and stranded the page";
+  ASSERT_EQ (retry_oid.pageid, small_oids[0].pageid);
 
   remove_file_and_commit (oos_vfid);
 }

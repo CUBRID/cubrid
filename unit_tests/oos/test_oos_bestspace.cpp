@@ -386,7 +386,7 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
 // ===========================================================================
 // TEST: BestspaceStaleHintToNonOosPageIsRejected
 //
-// A stale bestspace hint may point at a page that reclaim deallocated and another file has since
+// A stale bestspace hint may point at a page that was deallocated and another file has since
 // REALLOCATED; such a page fixes successfully, so the lookup must re-validate ptype == PAGE_OOS.
 // The file's own file-table header page (PAGE_FTAB, vpid = {vfid.fileid, vfid.volid}) stands in
 // for "reallocated for another purpose".
@@ -428,7 +428,7 @@ TEST (OosBestspaceTest, BestspaceStaleHintToNonOosPageIsRejected)
 // ===========================================================================
 // TEST: BestspaceStaleHintToForeignOosPageIsRejected
 //
-// Page type alone cannot validate a stale hint: a reclaimed page may be reallocated to another
+// Page type alone cannot validate a stale hint: a deallocated page may be reallocated to another
 // OOS file and remain PAGE_OOS.  A lookup for file A must never hand out file B's data page.
 // ===========================================================================
 TEST (OosBestspaceTest, BestspaceStaleHintToForeignOosPageIsRejected)
