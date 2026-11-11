@@ -42,6 +42,7 @@
 #include "xasl_cache.h"
 #include "thread_lockfree_hash_map.hpp"
 #include "writeset.hpp"
+#include "writeset_trace.hpp"
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
@@ -1313,13 +1314,12 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 		  {
 		    goto exit_on_error;
 		  }
-		else if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+		else
 		  {
-		    _er_log_debug (ARG_FILE_LINE,
-				   "[WSET] SERIAL master collect trid=%d class_oid=%d|%d|%d index_vfid=%d|%d "
-				   "overflow=%d\n", serial_tdes->trid, serial_class_oidp->volid,
-				   serial_class_oidp->pageid, serial_class_oidp->slotid, serial_Cached_btid.vfid.volid,
-				   serial_Cached_btid.vfid.fileid, (int) serial_tdes->wset_overflow);
+		    WSET_TRACE (1, "SERIAL master collect trid=%d class_oid=%d|%d|%d index_vfid=%d|%d "
+				"overflow=%d\n", serial_tdes->trid, serial_class_oidp->volid,
+				serial_class_oidp->pageid, serial_class_oidp->slotid, serial_Cached_btid.vfid.volid,
+				serial_Cached_btid.vfid.fileid, (int) serial_tdes->wset_overflow);
 		  }
 	      }
 	  }

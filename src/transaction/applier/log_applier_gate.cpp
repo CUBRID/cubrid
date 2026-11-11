@@ -275,7 +275,7 @@ la_gate_advance_frontier (void)
   if (advanced > 0)
     {
       LA_DEBUG_LOG (ARG_FILE_LINE, "ws_gate frontier advanced by %d -> %lld|%d (ring=%d)\n", advanced,
-		    (long long) la_Gate_frontier.pageid, (int) la_Gate_frontier.offset, la_Gate_order_count);
+		    LSA_AS_ARGS (&la_Gate_frontier), la_Gate_order_count);
     }
 }
 

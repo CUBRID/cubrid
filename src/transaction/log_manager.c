@@ -4097,24 +4097,19 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
 
   /* a labeled (serial) fragment is traced at level 1; every other system operation at level 2 */
-  if (wset_trace_is_enabled (2) || (sysop_commit_order && wset_trace_is_enabled (1)))
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] SYSOP master trid=%d type=%s appended=%d sysop_lsa=%lld|%d repl_items=%d flushed_items=%d "
-		     "buffered_items=%d append_index=%d\n",
-		     tdes->trid, log_sysop_end_type_string (log_record->type), (int) sysop_end_appended,
-		     (long long) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, repl_item_count,
-		     flushed_item_count, tdes->cur_repl_record, tdes->append_repl_recidx);
+  WSET_TRACE (sysop_commit_order ? 1 : 2,
+	      "SYSOP master trid=%d type=%s appended=%d sysop_lsa=%lld|%d repl_items=%d flushed_items=%d "
+	      "buffered_items=%d append_index=%d\n",
+	      tdes->trid, log_sysop_end_type_string (log_record->type), (int) sysop_end_appended,
+	      LSA_AS_ARGS (&tdes->tail_lsa), repl_item_count, flushed_item_count,
+	      tdes->cur_repl_record, tdes->append_repl_recidx);
 
-      if (sysop_commit_order)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] SYSOP master commit_order trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
-			 "dropped_keys=%zu overflow=%d reason=%s\n",
-			 tdes->trid, (long long) tdes->wset_dependency_lsa.pageid,
-			 (int) tdes->wset_dependency_lsa.offset, (long long) sysop_lsa.pageid,
-			 (int) sysop_lsa.offset, sysop_key_count, tdes->wset_overflow ? 1 : 0, sysop_reason);
-	}
+  if (sysop_commit_order)
+    {
+      WSET_TRACE (1, "SYSOP master commit_order trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
+		  "dropped_keys=%zu overflow=%d reason=%s\n",
+		  tdes->trid, LSA_AS_ARGS (&tdes->wset_dependency_lsa), LSA_AS_ARGS (&sysop_lsa),
+		  sysop_key_count, tdes->wset_overflow ? 1 : 0, sysop_reason);
     }
 
   log_sysop_end_final (thread_p, tdes);
@@ -4789,7 +4784,7 @@ log_append_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC
 	  LSA_COPY (sysop_end_lsa_out, &start_lsa);
 	}
 
-      if (sysop_end->type == LOG_SYSOP_END_ABORT && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+      if (sysop_end->type == LOG_SYSOP_END_ABORT && wset_trace_is_enabled (1))
 	{
 	  int pending_item_count = 0;
 	  for (int item_index = 0; item_index < tdes->cur_repl_record; item_index++)
@@ -4803,11 +4798,10 @@ log_append_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC
 		}
 	    }
 
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] SYSOP master trid=%d type=%s appended=1 sysop_lsa=%lld|%d repl_items=%d "
-			 "flushed_items=0 buffered_items=%d append_index=%d\n",
-			 tdes->trid, log_sysop_end_type_string (sysop_end->type), (long long) start_lsa.pageid,
-			 (int) start_lsa.offset, pending_item_count, tdes->cur_repl_record, tdes->append_repl_recidx);
+	  WSET_TRACE (1, "SYSOP master trid=%d type=%s appended=1 sysop_lsa=%lld|%d repl_items=%d "
+		      "flushed_items=0 buffered_items=%d append_index=%d\n",
+		      tdes->trid, log_sysop_end_type_string (sysop_end->type), LSA_AS_ARGS (&start_lsa),
+		      pending_item_count, tdes->cur_repl_record, tdes->append_repl_recidx);
 	}
     }
 }

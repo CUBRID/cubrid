@@ -23,6 +23,7 @@
 #include "config.h"
 
 #include "log_applier_coordinator.hpp"
+#include "log_applier_debug.hpp"
 
 #include "log_applier_gate.hpp"
 #include "log_applier_pending.hpp"
@@ -253,16 +254,10 @@ la_coordinator_enqueue_task (const LA_TASK *task_in, LA_SCHED_STATUS sched_statu
 static void
 la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq)
 {
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) < 1)
-    {
-      return;
-    }
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "[WSET] coordinator schedule trid=%d commit_lsa=%lld|%d type=%d dependency=%lld|%d "
+  LA_WSET_TRACE (1, "coordinator schedule trid=%d commit_lsa=%lld|%d type=%d dependency=%lld|%d "
 		 "status=%d dispatch=%llu\n",
-		 task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset, task->rectype,
-		 (long long) task->dependency_lsa.pageid, (int) task->dependency_lsa.offset, (int) sched_status,
+		 task->tranid, LSA_AS_ARGS (&task->commit_lsa), task->rectype,
+		 LSA_AS_ARGS (&task->dependency_lsa), (int) sched_status,
 		 (unsigned long long) dispatch_seq);
 }
 
@@ -384,12 +379,8 @@ la_coordinator_complete_without_task (const LOG_LSA *lsa)
   la_gate_mark_completed (lsa);
   la_gate_advance_frontier ();
 
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-    {
-      _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator complete_without_task lsa=%lld|%d\n",
-		     (long long) lsa->pageid,
-		     (int) lsa->offset);
-    }
+  LA_WSET_TRACE (1, "coordinator complete_without_task lsa=%lld|%d\n",
+		 LSA_AS_ARGS (lsa));
 
   return la_coordinator_drain_ready ();
 }
@@ -528,24 +519,16 @@ la_coordinator_retire_results (void)
 
       if (result->error != NO_ERROR)
 	{
-	  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "[WSET] coordinator result trid=%d commit_lsa=%lld|%d type=%d worker=%d error=%d\n",
-			     result->tranid, (long long) result->commit_lsa.pageid,
-			     (int) result->commit_lsa.offset, result->rectype, result->worker_idx, result->error);
-	    }
+	  LA_WSET_TRACE (1, "coordinator result trid=%d commit_lsa=%lld|%d type=%d worker=%d error=%d\n",
+			 result->tranid, LSA_AS_ARGS (&result->commit_lsa), result->rectype,
+			 result->worker_idx, result->error);
 	  return result->error;
 	}
 
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] coordinator retire trid=%d commit_lsa=%lld|%d type=%d worker=%d dispatch=%llu\n",
-			 result->tranid, (long long) result->commit_lsa.pageid, (int) result->commit_lsa.offset,
-			 result->rectype, result->worker_idx,
-			 (unsigned long long) la_inflight_entry_get_sequence (entry));
-	}
+      LA_WSET_TRACE (1, "coordinator retire trid=%d commit_lsa=%lld|%d type=%d worker=%d dispatch=%llu\n",
+		     result->tranid, LSA_AS_ARGS (&result->commit_lsa),
+		     result->rectype, result->worker_idx,
+		     (unsigned long long) la_inflight_entry_get_sequence (entry));
 
       /* the call must stay outside assert(): a release build drops the whole assert expression */
       has_frontier = la_gate_get_frontier (&frontier);
@@ -628,15 +611,12 @@ la_coordinator_submit_task (LA_TASK *task)
   la_gate_set_initial_frontier (la_Coordinator_config.restart_lsa);
 
   LSA_COPY (&label, &task->dependency_lsa);
-  if (la_gate_bound_dependency (&task->dependency_lsa)
-      && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+  if (la_gate_bound_dependency (&task->dependency_lsa))
     {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] coordinator label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
+      LA_WSET_TRACE (1, "coordinator label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
 		     "dependency=%lld|%d\n",
-		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset,
-		     (long long) label.pageid, (int) label.offset, (long long) task->dependency_lsa.pageid,
-		     (int) task->dependency_lsa.offset);
+		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
+		     LSA_AS_ARGS (&label), LSA_AS_ARGS (&task->dependency_lsa));
     }
 
   error = la_gate_order_push (&task->commit_lsa);

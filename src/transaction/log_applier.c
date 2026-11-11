@@ -923,7 +923,7 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] worker apply end trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu "
 		     "rows=%d error=%d\n",
-		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset,
+		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
 		     task->rectype, (size_t) context->worker_idx, (unsigned long long) task->seq, total_rows,
 		     result->error);
     }
@@ -968,7 +968,7 @@ la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * t
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] worker flush begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu unflushed=%d\n",
-		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset,
+		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
 		     (size_t) context->worker_idx, (unsigned long long) task->seq, stats->num_unflushed);
     }
 
@@ -983,7 +983,7 @@ la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * t
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] worker flush end trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu error=%d\n",
-		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset,
+		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
 		     (size_t) context->worker_idx, (unsigned long long) task->seq, error);
     }
 
@@ -1015,7 +1015,7 @@ la_apply_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * 
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] worker commit begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu\n",
-		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset,
+		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
 		     (size_t) context->worker_idx, (unsigned long long) task->seq);
     }
 
@@ -2349,13 +2349,10 @@ la_find_required_lsa (LOG_LSA * required_lsa)
 
   /* Only a task whose slot is already gone can be the lowest here: a fragment that outlived its aborted outer
    * transaction. That is the case this scan exists for, so leave a trace of it. */
-  if (!LSA_ISNULL (&task_lowest) && (LSA_ISNULL (&slot_lowest) || LSA_LT (&task_lowest, &slot_lowest))
-      && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+  if (!LSA_ISNULL (&task_lowest) && (LSA_ISNULL (&slot_lowest) || LSA_LT (&task_lowest, &slot_lowest)))
     {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] coordinator required_lsa held by unretired task at %lld|%d (slots from %lld|%d)\n",
-		     (long long) task_lowest.pageid, (int) task_lowest.offset, (long long) slot_lowest.pageid,
-		     (int) slot_lowest.offset);
+      LA_WSET_TRACE (1, "coordinator required_lsa held by unretired task at %lld|%d (slots from %lld|%d)\n",
+		     LSA_AS_ARGS (&task_lowest), LSA_AS_ARGS (&slot_lowest));
     }
 
   /* every item a worker may still read lies at or before the position the coordinator has read to */
@@ -6298,7 +6295,7 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
    * return whatever error id the thread last had. */
   if (LSA_ISNULL (&item->target_lsa))
     {
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
+      if (la_wset_trace_is_enabled (2))
 	{
 	  string_buffer sb;
 
@@ -7064,15 +7061,11 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	      /* Surface a per-item apply failure (e.g. a unique-key violation) in the [WSET] stream with the
 	       * error code and the class/key it hit, so slave-side conflicts are visible alongside the
 	       * schedule/worker/retire traces. */
-	      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-		{
-		  _er_log_debug (ARG_FILE_LINE,
-				 "[WSET] worker error trid=%d commit_lsa=%lld|%d worker=%zu error=%d item_type=%d "
-				 "class=%s pk=%.255s%s\n",
-				 apply->tranid, (long long) commit_lsa->pageid,
-				 (int) commit_lsa->offset, (size_t) context->worker_idx, errid, item->item_type,
-				 item->class_name, pk_string, pk_ellipsis);
-		}
+	      LA_WSET_TRACE (1, "worker error trid=%d commit_lsa=%lld|%d worker=%zu error=%d item_type=%d "
+			     "class=%s pk=%.255s%s\n",
+			     apply->tranid, LSA_AS_ARGS (commit_lsa), (size_t) context->worker_idx,
+			     errid, item->item_type,
+			     item->class_name, pk_string, pk_ellipsis);
 
 	      if (ER_IS_SERVER_DOWN_ERROR (errid))
 		{
@@ -7356,15 +7349,11 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	      la_Info.status = LA_STATUS_BUSY;
 	    }
 
-	  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "[WSET] SYSOP slave fragment assemble trid=%d sysop_lsa=%lld|%d "
-			     "dependency=%lld|%d items=%d long=%d\n",
-			     task.tranid, (long long) final->pageid, (int) final->offset,
-			     (long long) task.dependency_lsa.pageid, (int) task.dependency_lsa.offset,
-			     fragment->num_items, (int) fragment->is_long_trans);
-	    }
+	  LA_WSET_TRACE (1, "SYSOP slave fragment assemble trid=%d sysop_lsa=%lld|%d "
+			 "dependency=%lld|%d items=%d long=%d\n",
+			 task.tranid, LSA_AS_ARGS (final),
+			 LSA_AS_ARGS (&task.dependency_lsa),
+			 fragment->num_items, (int) fragment->is_long_trans);
 
 	  return la_coordinator_submit_task (&task);
 	}
@@ -7385,19 +7374,14 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "coordinator defer_sysop_end trid=%d lsa=%lld|%d apply=%p head=%p committed=%lld|%d\n",
-		    lrec->trid, (long long) final->pageid, (int) final->offset, (void *) sysop_apply,
-		    (sysop_apply ? (void *) sysop_apply->head : NULL), (long long) la_Info.committed_lsa.pageid,
-		    (int) la_Info.committed_lsa.offset);
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= (labeled ? 1 : 2))
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
-			 "action=defer labeled=%d long=%d\n",
-			 lrec->trid, (long long) final->pageid, (int) final->offset,
-			 (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
-			 sysop_apply == NULL ? 0 : sysop_apply->num_items, (int) labeled,
-			 (int) (sysop_apply != NULL && sysop_apply->is_long_trans));
-	}
+		    lrec->trid, LSA_AS_ARGS (final), (void *) sysop_apply,
+		    (sysop_apply ? (void *) sysop_apply->head : NULL), LSA_AS_ARGS (&la_Info.committed_lsa));
+      LA_WSET_TRACE (labeled ? 1 : 2, "coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
+		     "action=defer labeled=%d long=%d\n",
+		     lrec->trid, LSA_AS_ARGS (final),
+		     LSA_AS_ARGS (&la_Info.committed_lsa),
+		     sysop_apply == NULL ? 0 : sysop_apply->num_items, (int) labeled,
+		     (int) (sysop_apply != NULL && sysop_apply->is_long_trans));
     }
   else
     {
@@ -7407,17 +7391,17 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
        * again with the outer commit; the items count in the trace below would show it. */
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "coordinator skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
-		    lrec->trid, (long long) final->pageid, (int) final->offset,
-		    (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
+		    lrec->trid, LSA_AS_ARGS (final),
+		    LSA_AS_ARGS (&la_Info.committed_lsa));
+      if (la_wset_trace_is_enabled (2))
 	{
 	  LA_APPLY *sysop_apply = la_find_apply_list (lrec->trid);
 
 	  _er_log_debug (ARG_FILE_LINE,
 			 "[WSET] coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
 			 "action=skip\n",
-			 lrec->trid, (long long) final->pageid, (int) final->offset,
-			 (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
+			 lrec->trid, LSA_AS_ARGS (final),
+			 LSA_AS_ARGS (&la_Info.committed_lsa),
 			 sysop_apply == NULL ? 0 : sysop_apply->num_items);
 	}
     }
@@ -7517,15 +7501,11 @@ la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PA
       la_stat_count_commit_read ();
     }
 
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] coordinator commit trid=%d commit_lsa=%lld|%d items=%d has_label=%d dependency=%lld|%d "
-		     "path=%s\n",
-		     lrec->trid, (long long) final->pageid, (int) final->offset,
-		     task.apply == NULL ? 0 : task.apply->num_items, (int) has_label,
-		     (long long) task.dependency_lsa.pageid, (int) task.dependency_lsa.offset, "parallel");
-    }
+  LA_WSET_TRACE (1, "coordinator commit trid=%d commit_lsa=%lld|%d items=%d has_label=%d dependency=%lld|%d "
+		 "path=%s\n",
+		 lrec->trid, LSA_AS_ARGS (final),
+		 task.apply == NULL ? 0 : task.apply->num_items, (int) has_label,
+		 LSA_AS_ARGS (&task.dependency_lsa), "parallel");
 
   error = la_coordinator_submit_task (&task);
   if (error != NO_ERROR)
@@ -7642,12 +7622,12 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_ABORT:
-      if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+      if (la_wset_trace_is_enabled (1))
 	{
 	  LA_APPLY *abort_apply = la_find_apply_list (lrec->trid);
 
 	  _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator abort trid=%d abort_lsa=%lld|%d items=%d path=%s\n",
-			 lrec->trid, (long long) final->pageid, (int) final->offset,
+			 lrec->trid, LSA_AS_ARGS (final),
 			 abort_apply == NULL ? 0 : abort_apply->num_items, "parallel");
 	}
       la_free_repl_items_by_tranid (lrec->trid);
@@ -7711,15 +7691,11 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  }
 	la_wset_label_store (lrec->trid, &dependency_lsa);
 	LA_DEBUG_LOG (ARG_FILE_LINE, "coordinator ws_label trid=%d dependency_lsa=%lld|%d at=%lld|%d\n", lrec->trid,
-		      (long long) dependency_lsa.pageid, (int) dependency_lsa.offset,
-		      (long long) final->pageid, (int) final->offset);
-	if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 2)
-	  {
-	    _er_log_debug (ARG_FILE_LINE,
-			   "[WSET] coordinator label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
-			   lrec->trid, (long long) final->pageid, (int) final->offset,
-			   (long long) dependency_lsa.pageid, (int) dependency_lsa.offset);
-	  }
+		      LSA_AS_ARGS (&dependency_lsa),
+		      LSA_AS_ARGS (final));
+	LA_WSET_TRACE (2, "coordinator label trid=%d label_lsa=%lld|%d dependency=%lld|%d\n",
+		       lrec->trid, LSA_AS_ARGS (final),
+		       LSA_AS_ARGS (&dependency_lsa));
       }
       break;
 
