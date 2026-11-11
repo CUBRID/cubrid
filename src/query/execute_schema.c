@@ -336,7 +336,7 @@ static bool is_attribute_primary_key (const char *class_name, const char *attr_n
 
 static const char *get_hard_default_for_type (PT_TYPE_ENUM type);
 
-static int do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id);
+static int do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id, bool check_only);
 
 static int do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list);
 
@@ -11056,6 +11056,30 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
   /* set NULL, avoid 'abort_class' in case of error */
   ctemplate = NULL;
 
+  /* ALTER does not move stored values, so a value already in OOS stays there after its column gains FORCE_INLINE.
+   * Reject the ALTER if any existing row would no longer fit in a page under FORCE_INLINE; otherwise every later
+   * UPDATE of that row, and loading its unloaded data, would fail. A row update already rewrites rows under the
+   * new policy. */
+  if (!is_srv_update_needed && attr_chg_prop.name_space == ID_ATTRIBUTE
+      && is_att_prop_set (attr_chg_prop.p[P_OOS_FORCE_INLINE], ATT_CHG_PROPERTY_GAINED))
+    {
+      if (has_partitions)
+	{
+	  for (i = 0; i < user_count && error == NO_ERROR; i++)
+	    {
+	      error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), attr_chg_prop.att_id, true);
+	    }
+	}
+      else
+	{
+	  error = do_run_upgrade_instances_domain (parser, &(class_mop->oid_info.oid), attr_chg_prop.att_id, true);
+	}
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   if (attr_chg_prop.constr_info != NULL)
     {
       SM_CONSTRAINT_INFO *saved_constr = NULL;
@@ -11150,7 +11174,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 
 	      for (i = 0; i < user_count; i++)
 		{
-		  error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), att_id);
+		  error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), att_id, false);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;
@@ -11159,7 +11183,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 	    }
 	  else
 	    {
-	      error = do_run_upgrade_instances_domain (parser, &class_oid, att_id);
+	      error = do_run_upgrade_instances_domain (parser, &class_oid, att_id, false);
 	      if (error != NO_ERROR)
 		{
 		  goto exit;
@@ -15051,9 +15075,10 @@ end:
  *  parser(in):
  *  p_class_oid(in): class OID
  *  att_id(in): constraint list
+ *  check_only(in): check that every instance fits the new schema, without rewriting it
  */
 static int
-do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id)
+do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id, bool check_only)
 {
   int error = NO_ERROR;
 
@@ -15061,7 +15086,7 @@ do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int
   assert (p_class_oid != NULL);
   assert (att_id >= 0);
 
-  error = locator_upgrade_instances_domain (p_class_oid, att_id);
+  error = locator_upgrade_instances_domain (p_class_oid, att_id, check_only);
 
   return error;
 

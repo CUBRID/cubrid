@@ -13136,14 +13136,18 @@ error:
  *   thread_p(in): thread context
  *   class_oid(in): class to upgrade
  *   att_id(in): attribute id within class to update
+ *   check_only(in): lay out each tuple with the latest representation but write nothing
  *
  *  Note: This function is used in context of ALTER CHANGE (type change
  *	  syntax). Proper lock (SCH_M_LOCK) is assumed when this function
  *	  is reached.
  *	  The entire tuple is rewritten using the new latest representation.
+ *	  With check_only, the scan reads only the tuples visible to this transaction and fails on the first one that
+ *	  the latest representation rejects, such as a row that no longer fits in a page after a column gains
+ *	  STORAGE FORCE_INLINE.
  */
 int
-xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id)
+xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id, bool check_only)
 {
   LOCK class_lock = SCH_M_LOCK;
   LOCK oid_lock = X_LOCK;
@@ -13213,7 +13217,8 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 
       error =
 	xlocator_lock_and_fetch_all (thread_p, &hfid, &oid_lock, NULL, class_oid, &class_lock, &nobjects, &nfetched,
-				     &nfailed_instances, &last_oid, &fetch_area, NULL);
+				     &nfailed_instances, &last_oid, &fetch_area,
+				     check_only ? logtb_get_mvcc_snapshot (thread_p) : NULL);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -13257,7 +13262,19 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 	      goto error_exit;
 	    }
 
-	  error = heap_object_upgrade_domain (thread_p, &upd_scancache, &attr_info, &obj->oid, att_id);
+	  if (check_only)
+	    {
+	      heap_pending_record layout;
+
+	      if (heap_attrinfo_prepare_record (thread_p, &attr_info, &recdes, &layout, false) != S_SUCCESS)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		}
+	    }
+	  else
+	    {
+	      error = heap_object_upgrade_domain (thread_p, &upd_scancache, &attr_info, &obj->oid, att_id);
+	    }
 
 	  if (error != NO_ERROR)
 	    {

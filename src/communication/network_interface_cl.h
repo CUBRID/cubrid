@@ -349,7 +349,7 @@ extern int es_posix_copy_file (const char *src_path, const char *metaname, char 
 extern int es_posix_rename_file (const char *src_path, const char *metaname, char *new_path);
 extern off_t es_posix_get_file_size (const char *path);
 
-extern int locator_upgrade_instances_domain (OID * class_oid, int attribute_id);
+extern int locator_upgrade_instances_domain (OID * class_oid, int attribute_id, bool check_only);
 extern int boot_get_server_locales (LANG_COLL_COMPAT ** server_collations, LANG_LOCALE_COMPAT ** server_locales,
 				    int *server_coll_cnt, int *server_locales_cnt);
 extern int boot_get_server_timezone_checksum (char *timezone_checksum);

@@ -1319,6 +1319,44 @@ TEST_F (OosSqlStorage, AlterForceInlineAppliesOnlyToNewWrites)
   EXPECT_EQ (bits, 8000 * 8);
 }
 
+/* An OOS value that would not fit inline makes the ALTER fail, so the row stays updatable and its unloaded data
+ * stays loadable. */
+TEST_F (OosSqlStorage, AlterForceInlineRejectsRowThatNoLongerFits)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, n INT, a BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  rc = exec_sql (("INSERT INTO t_oos_stg VALUES (1, 0, " + uncompressed_bit_varying (20000) + ")").c_str ());
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY a BIT VARYING STORAGE FORCE_INLINE");
+  int errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_FALSE (ddl_has_force_inline (ddl)) << "after failed ALTER, DDL was:\n" << ddl;
+
+  rc = exec_sql ("UPDATE t_oos_stg SET n = n + 1 WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("DELETE FROM t_oos_stg WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY a BIT VARYING STORAGE FORCE_INLINE");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_force_inline (ddl)) << "after ALTER on an empty table, DDL was:\n" << ddl;
+}
+
 TEST_F (OosSqlStorage, ForceInlineRemainsNonReservedIdentifier)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg (force_inline INT)");
