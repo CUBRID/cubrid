@@ -40,7 +40,7 @@ namespace parallel_scan
 	  m_err_messages_p (err_messages_p)
       {
       }
-      int init_on_main (THREAD_ENTRY *thread_p, HFID m_hfid, int parallelism);
+      int init_on_main (THREAD_ENTRY *thread_p, HFID m_hfid, int parallelism, const FILE_FTAB_COLLECTOR *page_list);
       SCAN_CODE get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid);
       int initialize (THREAD_ENTRY *thread_p, HFID *hfid, SCAN_ID *scan_id);
       int finalize (THREAD_ENTRY *thread_p);

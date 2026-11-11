@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "bit.h"
 #include "file_manager.h"
 
 
@@ -86,7 +87,7 @@ class ftab_set
       m_ftab_set.insert (m_ftab_set.end (), other.m_ftab_set.begin (), other.m_ftab_set.end ());
     }
 
-    void convert (FILE_FTAB_COLLECTOR *ftab_collector)
+    void convert (const FILE_FTAB_COLLECTOR *ftab_collector)
     {
       int i;
       m_ftab_set.resize (ftab_collector->nsects);
@@ -106,19 +107,38 @@ class ftab_set
 	  return sets;
 	}
 
+      /* contiguous runs of sectors with about the same number of pages each: a sector that lost its pages (a file
+       * keeps its sectors after its pages are deallocated) is no work, so equal sector counts are not equal work */
       size_t size = m_ftab_set.size();
-      size_t n_elements_per_set = size / (size_t)n_sets;
-      size_t remainder = size % (size_t)n_sets;
-      size_t start_idx = 0;
-
-      for (size_t i = 0; i < (size_t)n_sets; i++)
+      size_t total_pages = 0;
+      for (const FILE_PARTIAL_SECTOR &sector : m_ftab_set)
 	{
-	  size_t current_set_size = n_elements_per_set + (i < remainder ? 1 : 0);
+	  total_pages += (size_t) bit64_count_ones (sector.page_bitmap);
+	}
+
+      size_t start_idx = 0;
+      size_t pages_done = 0;
+      for (size_t i = 0; i < (size_t) n_sets; i++)
+	{
+	  size_t end_idx = start_idx;
+	  if (i + 1 == (size_t) n_sets)
+	    {
+	      end_idx = size;
+	    }
+	  else
+	    {
+	      /* up to this set's share of the pages; a sector goes to the set its first page falls in */
+	      size_t pages_goal = total_pages * (i + 1) / (size_t) n_sets;
+	      while (end_idx < size && pages_done < pages_goal)
+		{
+		  pages_done += (size_t) bit64_count_ones (m_ftab_set[end_idx].page_bitmap);
+		  end_idx++;
+		}
+	    }
 	  ftab_set set;
-	  set.m_ftab_set = std::vector<FILE_PARTIAL_SECTOR> (m_ftab_set.begin () + start_idx,
-			   m_ftab_set.begin () + start_idx + current_set_size);
+	  set.m_ftab_set = std::vector<FILE_PARTIAL_SECTOR> (m_ftab_set.begin () + start_idx, m_ftab_set.begin () + end_idx);
 	  sets.push_back (set);
-	  start_idx += current_set_size;
+	  start_idx = end_idx;
 	}
       return sets;
     }

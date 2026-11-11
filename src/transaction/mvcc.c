@@ -718,6 +718,7 @@ mvcc_snapshot::mvcc_snapshot ()
   , m_active_mvccs ()
   , snapshot_fnc (NULL)
   , valid (false)
+  , build_serial (0)
 {
 }
 
@@ -743,6 +744,7 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
   dest.highest_completed_mvccid = highest_completed_mvccid;
   dest.snapshot_fnc = snapshot_fnc;
   dest.valid = valid;
+  dest.build_serial = build_serial;
 }
 
 mvcc_info::mvcc_info ()

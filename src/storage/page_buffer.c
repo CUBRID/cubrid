@@ -2598,6 +2598,9 @@ fast_path:
 	   * it is not deallocated. However, if it is deallocated, no error is required. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* a deallocated page read from disk only to learn that: nobody reads it again, so it does not take a place
+	   * in the caller's LRU list (as pgbuf_dealloc_page () leaves the page it deallocates) */
+	  pgbuf_mark_page_for_lru_bottom (thread_p, pgptr);
 	  /* fall through to unfix */
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);

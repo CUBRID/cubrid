@@ -22,7 +22,6 @@
 
 #include "px_scan_input_handler_heap.hpp"
 #include "error_code.h"
-#include "bit.h"
 #include "heap_file.h"
 #include "log_impl.h"
 
@@ -55,47 +54,23 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  int input_handler_heap::init_on_main (THREAD_ENTRY *thread_p, HFID hfid, int parallelism)
+  int input_handler_heap::init_on_main (THREAD_ENTRY *thread_p, HFID hfid, int parallelism,
+					const FILE_FTAB_COLLECTOR *page_list)
   {
-    FILE_FTAB_COLLECTOR collector;
-    int error_code;
     m_hfid = hfid;
 
-    /* The bitmap below misses every page allocated after it. With the statement's snapshot taken first, the rows on
-     * those pages all belong to transactions the snapshot does not see. */
-    if (logtb_get_mvcc_snapshot (thread_p) == NULL)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
-	return ER_MVCC_CANT_GET_SNAPSHOT;
-      }
-
-    error_code = file_get_all_data_sectors (thread_p, &m_hfid.vfid, &collector);
-    if (error_code != NO_ERROR)
-      {
-	if (collector.partsect_ftab != NULL)
-	  {
-	    db_private_free_and_init (thread_p, collector.partsect_ftab);
-	  }
-	return error_code;
-      }
-    m_ftab_set.convert (&collector);
+    /* the page bitmap the scan's open took after the statement's snapshot (scan_heap_scan_page_list ()), split
+     * among the workers again at every open and rewind */
+    m_ftab_set.convert (page_list);
     m_splited_ftab_set = m_ftab_set.split (parallelism);
     m_splited_ftab_set_idx.store (0);
     m_ftab_set.clear();
-
-    if (collector.partsect_ftab != NULL)
-      {
-	db_private_free_and_init (thread_p, collector.partsect_ftab);
-      }
     return NO_ERROR;
   }
 
   SCAN_CODE input_handler_heap::get_next_vpid_with_fix (THREAD_ENTRY *thread_p, VPID *vpid)
   {
-    int error_code = NO_ERROR;
-
-    bool found = false;
-    while (!found)
+    for (;;)
       {
 	if (VPID_ISNULL (&m_tl_vpid))
 	  {
@@ -107,76 +82,23 @@ namespace parallel_scan
 	    m_tl_pgoffset = 0;
 	    m_tl_vpid.volid = m_tl_ftab.vsid.volid;
 	    m_tl_vpid.pageid = SECTOR_FIRST_PAGEID (m_tl_ftab.vsid.sectid);
-	    if (m_tl_vpid.volid == m_hfid.vfid.volid && m_tl_vpid.pageid == m_hfid.vfid.fileid)
-	      {
-		/* skip heap header page */
-		m_tl_pgoffset++;
-		m_tl_vpid.pageid++;
-	      }
 	  }
 
-	for (; m_tl_pgoffset < DISK_SECTOR_NPAGES; m_tl_pgoffset++, m_tl_vpid.pageid++)
+	SCAN_CODE code = heap_page_list_fix_next (thread_p, &m_hfid, &m_tl_ftab, &m_tl_pgoffset,
+			 &m_tl_scan_cache->page_watcher, vpid);
+	if (code == S_SUCCESS)
 	  {
-	    if (bit64_is_set (m_tl_ftab.page_bitmap, (int) m_tl_pgoffset))
-	      {
-		found = true;
-
-		/* release the current page first: the next VPID comes from the scan-start bitmap, not from this page's
-		 * chain link, and holding this page while waiting deadlocks with vacuum deallocating an empty page */
-		if (m_tl_scan_cache->page_watcher.pgptr != NULL)
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
-		  }
-
-		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
-						&m_tl_scan_cache->page_watcher);
-
-		if (m_tl_scan_cache->page_watcher.pgptr == NULL)
-		  {
-		    if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
-		      {
-			/* non-dealloc error (e.g. ER_INTERRUPTED): propagate */
-			m_err_messages_p->move_top_error_message_to_this ();
-			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			return S_ERROR;
-		      }
-		    /* page valid at bitmap build time but deallocated since; ignorable. */
-		    er_clear ();
-		    found = false;
-		    continue;
-		  }
-
-		assert (pgbuf_get_page_ptype (thread_p, m_tl_scan_cache->page_watcher.pgptr) == PAGE_HEAP);
-
-		if (error_code != NO_ERROR)
-		  {
-		    m_err_messages_p->move_top_error_message_to_this();
-		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    return S_ERROR;
-		  }
-
-		if (heap_page_is_bestspace (thread_p, m_tl_scan_cache->page_watcher.pgptr))
-		  {
-		    pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
-		    PGBUF_CLEAR_WATCHER (&m_tl_scan_cache->page_watcher);
-		    /* the manual advance is only needed on the S_SUCCESS return path */
-		    found = false;
-		    continue;
-		  }
-
-		*vpid = m_tl_vpid;
-		m_tl_pgoffset++;
-		m_tl_vpid.pageid++;
-		return S_SUCCESS;
-	      }
+	    return S_SUCCESS;
 	  }
-
-	if (m_tl_pgoffset >= DISK_SECTOR_NPAGES)
+	if (code == S_ERROR)
 	  {
-	    VPID_SET_NULL (&m_tl_vpid);
+	    m_err_messages_p->move_top_error_message_to_this ();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    return S_ERROR;
 	  }
+	/* the sector is done */
+	VPID_SET_NULL (&m_tl_vpid);
       }
-    return S_ERROR;	/* unreachable */
   }
 
   int input_handler_heap::finalize (THREAD_ENTRY *thread_p)

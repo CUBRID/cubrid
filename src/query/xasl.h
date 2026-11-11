@@ -1268,6 +1268,12 @@ struct access_spec_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
   SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
+  /* the heap's page bitmap between the scan's opens of one execution (scan_heap_scan_page_list ()): a scan opened
+   * again under the same snapshot (a correlated subquery, once per outer row) reads it instead of the file table */
+  FILE_FTAB_COLLECTOR page_list_keep;	/* partsect_ftab is NULL when nothing is kept */
+  HFID page_list_keep_hfid;	/* the heap it lists: another partition of the spec collects anew */
+  unsigned int page_list_keep_snapshot;	/* the snapshot build it follows (MVCC_SNAPSHOT.build_serial) */
+  int page_list_keep_npages;	/* its pages: the parallel decision's count */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */

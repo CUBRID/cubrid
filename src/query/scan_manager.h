@@ -185,6 +185,15 @@ struct heap_scan_id
   size_t batch_copy_cap;
   struct access_spec_node *batch_spec;	/* the spec the batch was opened on: scan_end_scan () parks the plan in its
 					 * keep (SCAN_BATCH_KEEP); NULL frees it */
+
+  /* sector-based heap scan (CBRD-28043): the scan reads the page bitmap its open took (after the statement's
+   * snapshot) in file order instead of following the page links; a rewind walks the same bitmap again */
+  bool sector_order;
+  const FILE_FTAB_COLLECTOR *page_list;	/* the page bitmap, the access spec's (page_list_keep); NULL when the scan
+					 * follows the links */
+  int page_list_sect;		/* the walk's sector in page_list */
+  size_t page_list_pgoffset;	/* the walk's next page offset in that sector */
+  VPID page_list_vpid;		/* the row path's page; NULL to take the next listed page */
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -228,6 +237,13 @@ struct parallel_heap_scan_id
   char *batch_copy;
   size_t batch_copy_cap;
   struct access_spec_node *batch_spec;
+  /* the sector-based heap scan fields of heap_scan_id, in the same place (a scan goes between the two layouts:
+   * the parallel fields below must survive a serial open, e.g. the trace storage across partitions) */
+  bool sector_order;
+  const FILE_FTAB_COLLECTOR *page_list;
+  int page_list_sect;
+  size_t page_list_pgoffset;
+  VPID page_list_vpid;
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -454,6 +470,19 @@ struct parallel_index_scan_id
 };				/* Index PARALLEL Scan Identifier */
 
 // *INDENT-OFF*
+/* pin phsid/hsid layout: a serial open (scan_open_heap_scan) writes the heap_scan_id fields and must not reach
+ * the parallel fields that outlive it */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+static_assert (offsetof (HEAP_SCAN_ID, batch_spec) == offsetof (PARALLEL_HEAP_SCAN_ID, batch_spec), "phsid mirror: batch_spec");
+static_assert (offsetof (HEAP_SCAN_ID, page_list) == offsetof (PARALLEL_HEAP_SCAN_ID, page_list), "phsid mirror: page_list");
+static_assert (offsetof (HEAP_SCAN_ID, page_list_vpid) == offsetof (PARALLEL_HEAP_SCAN_ID, page_list_vpid), "phsid mirror: page_list_vpid");
+static_assert (sizeof (HEAP_SCAN_ID) <= sizeof (PARALLEL_HEAP_SCAN_ID), "phsid mirror: heap_scan_id fits");
+#if !WINDOWS
+static_assert (offsetof (HEAP_SCAN_ID, page_list_vpid) + sizeof (VPID) <= offsetof (PARALLEL_HEAP_SCAN_ID, result_type), "phsid mirror: heap_scan_id ends before the parallel fields");
+#endif
+#pragma GCC diagnostic pop
+
 /* pin pisid/isid layout — drift fails build; offsetof on non-standard-layout is well-defined on GCC */
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -748,6 +777,11 @@ extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern int scan_heap_scan_page_list (THREAD_ENTRY * thread_p, struct access_spec_node *spec, const OID * cls_oid,
+				     const HFID * hfid, bool grouped, const FILE_FTAB_COLLECTOR ** page_list,
+				     int *num_data_pages);
+extern void scan_heap_scan_set_page_list (SCAN_ID * scan_id, const FILE_FTAB_COLLECTOR * page_list);
+extern void scan_heap_scan_page_list_free (THREAD_ENTRY * thread_p, struct access_spec_node *spec);
 /* page batch over a sequential heap scan (expr_batch.h): the consumer opens it with what it
  * aggregates, steps to a page with scan_batch_next_page () (serial; a parallel worker's walker
  * fixes its own), takes the page's rows a chunk at a time with scan_batch_collect_chunk () --

@@ -180,6 +180,8 @@ struct mvcc_snapshot
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
   bool valid;			/* true, if the snapshot is valid */
+  unsigned int build_serial;	/* counts the builds of this transaction's snapshot: what was read under one build
+				 * (a heap scan's page bitmap) is told from what a later build must read again */
 
   // *INDENT-OFF*
   mvcc_snapshot ();
