@@ -3164,10 +3164,14 @@ sidecar_verify_heap (THREAD_ENTRY *thread_p, const HFID *hfid)
       return DISK_INVALID;
     }
 
-  /* writers of the class add a store record before its hot record, so keep them out while the two scans run */
-  if (lock_object (thread_p, &v.class_oid, oid_Root_class_oid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  /* writers of the class add a store record before its hot record, so keep them out while the two scans run. the
+   * lock is conditional, as every lock of the consistency checks is: the caller already holds a class lock (the file
+   * tracker's SCH_S), so waiting here closes a cycle with a writer that upgrades, such as an online index build */
+  if (lock_object (thread_p, &v.class_oid, oid_Root_class_oid, S_LOCK, LK_COND_LOCK) != LK_GRANTED)
     {
-      return DISK_ERROR;
+      er_log_debug (ARG_FILE_LINE, "Skipping Sidecar check of heap %d|%d|%d because conditional lock failed.\n",
+		    HFID_AS_ARGS (hfid));
+      return DISK_VALID;
     }
 
   int error_code;
