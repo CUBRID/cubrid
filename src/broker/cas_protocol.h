@@ -120,11 +120,12 @@ extern "C"
  * is not finished and its auto-commit is owed to END. A driver that commits
  * from its own side reads this and holds that commit back; the CAS pays it.
  *
- * Only a PROTOCOL_V13 client may read it. init_msg_header () fills this byte
- * with CAS_INFO_RESERVED_DEFAULT, so every bit above the three older masks
- * reads as 1 from any earlier server. */
+ * Only a PROTOCOL_V13 client may read it: every bit above the three older
+ * masks reads as 1 from any earlier server, which fills this byte with
+ * CAS_INFO_RESERVED_DEFAULT. */
 #define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
-/* Bits no server sets yet. Every reply clears them, so a bit a later release defines reads 0 from this one. */
+/* Bits no server sets yet. Every reply has them at 0 (CAS_INFO_ADDITIONAL_FLAG_DEFAULT), so a bit a later release
+ * defines reads 0 from this one. */
 #define CAS_INFO_FLAG_MASK_RESERVED             0xF0
 
 /* The flags byte of the stream requests and replies. INIT, READ_OPEN and READ
@@ -139,6 +140,11 @@ extern "C"
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
+/* What the flags byte of every reply starts as, the connection's first reply included: the three older masks at 1,
+ * as every earlier server leaves them, and STREAM_OPEN and the reserved bits at 0, so that they read 1 only where
+ * a reply sets them. */
+#define CAS_INFO_ADDITIONAL_FLAG_DEFAULT \
+  ((char) (CAS_INFO_RESERVED_DEFAULT & ~(CAS_INFO_FLAG_MASK_STREAM_OPEN | CAS_INFO_FLAG_MASK_RESERVED)))
 
 #define MAX_HA_DBINFO_LENGTH    (SRV_CON_DBNAME_SIZE + MAX_CONN_INFO_LENGTH)
 
