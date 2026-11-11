@@ -31,7 +31,6 @@
 #include "serial.h"
 #include "storage_common.h"
 #include "heap_file.h"
-#include "heap_oos.hpp"
 #include "log_append.hpp"
 #include "log_impl.h"
 #include "numeric_opfunc.h"
@@ -215,9 +214,8 @@ static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACH
 static int serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static void serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
-					HEAP_CACHE_ATTRINFO * attr_info, HFID * serial_hfidp,
-					const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val,
-					DB_VALUE * prior_val);
+					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
+					const OID * serial_oidp, DB_VALUE * key_val, DB_VALUE * prior_val);
 static int serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val,
 					  DB_VALUE * max_val, DB_VALUE * cyclic, int nth, DB_VALUE * result_val,
 					  bool clamp_block);
@@ -1085,8 +1083,8 @@ serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
     }
 
   ret =
-    serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, &scan_cache.node.hfid,
-				 oid_Serial_class_oid, &entry->oid, &key_val, prior_val);
+    serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, oid_Serial_class_oid,
+				 &entry->oid, &key_val, prior_val);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -1445,8 +1443,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
     }
 
   ret =
-    serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, &scan_cache.node.hfid,
-				 oid_Serial_class_oid, serial_oidp, &key_val, NULL);
+    serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, oid_Serial_class_oid,
+				 serial_oidp, &key_val, NULL);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -1532,7 +1530,6 @@ exit_on_error:
  *   pgptr(in)         :
  *   recdesc(in)       :
  *   attr_info(in)     :
- *   serial_hfidp(in)  : heap file of _db_serial
  *   serial_class_oidp(in)   :
  *   serial_oidp(in)   :
  *   key_val(in)       :
@@ -1540,8 +1537,8 @@ exit_on_error:
  */
 static int
 serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc, HEAP_CACHE_ATTRINFO * attr_info,
-			     HFID * serial_hfidp, const OID * serial_class_oidp, const OID * serial_oidp,
-			     DB_VALUE * key_val, DB_VALUE * prior_val)
+			     const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val,
+			     DB_VALUE * prior_val)
 {
   // *INDENT-OFF*
   cubmem::stack_block<IO_MAX_PAGE_SIZE> copyarea;
@@ -1575,34 +1572,15 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   new_recdesc.set_external_buffer (copyarea);
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
+  scan = heap_attrinfo_transform_to_disk_keep_oos (thread_p, attr_info, recdesc, &new_recdesc);
   if (scan != S_SUCCESS)
     {
       assert (false);
       goto exit_on_error;
     }
 
-  new_recdesc.set_type (recdesc->type);
-
-  /* The transform wrote every OOS value of the row to a new chain. This path bypasses heap_update, so reclaim the
-   * chains of the old image here the way its non-MVCC branch does. recdesc still peeks the page, so this runs before
-   * spage_update overwrites it. */
-  if (heap_recdes_contains_oos (recdesc))
-    {
-      HEAP_OPERATION_CONTEXT oos_context;
-      RECDES new_image = new_recdesc.get_recdes ();
-      OID oid = *serial_oidp;
-      OID class_oid = *serial_class_oidp;
-
-      heap_create_update_context (&oos_context, serial_hfidp, &oid, &class_oid, &new_image, NULL, UPDATE_INPLACE_NONE);
-      ret = heap_oos_delete_unreferenced (thread_p, &oos_context, recdesc, &new_image, "serial update");
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-
   /* Log the changes */
+  new_recdesc.set_type (recdesc->type);
   addr.offset = serial_oidp->slotid;
   addr.pgptr = pgptr;
 

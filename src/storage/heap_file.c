@@ -760,6 +760,7 @@ struct heap_oos_column_plan
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
   LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
+  bool reused = false;		/* oid, length and identity_stamp name the old record's chain; nothing is inserted */
 };
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
@@ -861,7 +862,9 @@ static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
 							   int lob_create_flag, heap_pending_record * pending =
-							   nullptr);
+							   nullptr, bool keep_unchanged_oos = false);
+static int heap_attrinfo_keep_unchanged_oos (HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+					     std::vector<heap_oos_column_plan> * oos_plan);
 /* *INDENT-ON* */
 
 static int heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
@@ -14172,7 +14175,7 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
       heap_oos_column_plan & plan = (*oos_plan)[i];
       RECDES payload = { 0, 0, REC_HOME, NULL };
 
-      if (!plan.selected)
+      if (!plan.selected || plan.reused)
 	{
 	  continue;
 	}
@@ -14397,6 +14400,74 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
 {
   return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_EXCLUDE_LOB);
 }
+
+/*
+ * heap_attrinfo_transform_to_disk_keep_oos () - Transform to disk like heap_attrinfo_transform_to_disk, but an
+ *                           OOS-backed value that attr_info read from old_recdes and did not change keeps the
+ *                           OOS value chain old_recdes names instead of getting a new one.
+ *   return: SCAN_CODE
+ *   attr_info(in/out): read from old_recdes
+ *   old_recdes(in): the record the new one replaces
+ *   new_recdes(out):
+ *
+ * Note: For a writer that rewrites a non-MVCC row in place without heap_update. Nothing has to reclaim the kept
+ *       chain, so no concurrent reader that copied old_recdes can find it deleted.
+ */
+SCAN_CODE
+heap_attrinfo_transform_to_disk_keep_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+					  RECDES * old_recdes, record_descriptor * new_recdes)
+{
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB,
+						   nullptr, true);
+}
+
+/*
+ * heap_attrinfo_keep_unchanged_oos () - Point the OOS plan of every unchanged value at the chain old_recdes names
+ *   return: NO_ERROR or error code
+ *   attr_info(in): read from old_recdes, with the representation old_recdes has
+ *   old_recdes(in):
+ *   oos_plan(in/out): selected columns whose value is unchanged and OOS-backed in old_recdes become reused
+ */
+/* *INDENT-OFF* */
+static int
+heap_attrinfo_keep_unchanged_oos (HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
+				  std::vector<heap_oos_column_plan> * oos_plan)
+{
+  for (int i = 0; i < attr_info->num_values; i++)
+    {
+      HEAP_ATTRVALUE *value = &attr_info->values[i];
+      heap_oos_column_plan &plan = (*oos_plan)[i];
+      int entry, next_entry;
+      oos_chain_ref ref;
+
+      if (!plan.selected || value->state != HEAP_READ_ATTRVALUE || value->attr_type != HEAP_INSTANCE_ATTR)
+	{
+	  continue;
+	}
+
+      int error = heap_recdes_get_var_offset_pair (old_recdes, value->last_attrepr->location, &entry, &next_entry);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (OR_GET_VAR_OFFSET (entry) == OR_GET_VAR_OFFSET (next_entry) || !OR_IS_OOS (entry))
+	{
+	  continue;
+	}
+
+      error = heap_oos_parse_inline_ref (old_recdes, value->last_attrepr->location, &ref, &plan.length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      plan.oid = ref.head_oid;
+      plan.identity_stamp = ref.identity_stamp;
+      plan.reused = true;
+    }
+
+  return NO_ERROR;
+}
+/* *INDENT-ON* */
 
 /*
  * heap_attrinfo_transform_header_to_disk ()
@@ -14876,7 +14947,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag,
-					  heap_pending_record * pending)
+					  heap_pending_record * pending, bool keep_unchanged_oos)
 {
   OR_BUF buf;
   size_t inline_size_after_oos, mvcc_extra;
@@ -14943,6 +15014,13 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       return S_ERROR;
     }
 
+  if (keep_unchanged_oos && has_oos && pending == nullptr && old_recdes != NULL && heap_recdes_contains_oos (old_recdes)
+      && or_rep_id (old_recdes) == attr_info->last_classrepr->id
+      && heap_attrinfo_keep_unchanged_oos (attr_info, old_recdes, &oos_plan) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
   if (has_oos)
     {
       /* Retain selected values until routing, or publish immediately for legacy callers. */
@@ -14973,7 +15051,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
                 }
             }
         }
-      else
+      else if (std::any_of (oos_plan.begin (), oos_plan.end (),
+                            [] (const heap_oos_column_plan &plan) { return plan.selected && !plan.reused; }))
         {
           status = heap_attrinfo_insert_to_oos (thread_p, attr_info, lob_create_flag, &oos_plan);
         }
