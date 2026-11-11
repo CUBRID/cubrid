@@ -55,6 +55,7 @@ extern int inner_table_rewrite (THREAD_ENTRY *thread_p, const OID *class_oid, RE
 				INNER_TABLE_REFS *old_refs, const ATTR_ID *att_id, int n_att_id, RECDES *out,
 				bool *rewritten);
 extern void inner_table_free_record (RECDES *rec);
+extern int inner_table_lock_for_load (THREAD_ENTRY *thread_p, const OID *class_oid);
 
 extern int inner_table_collect_refs (THREAD_ENTRY *thread_p, const OID *class_oid, const OID *oid,
 				     INNER_TABLE_REFS **refs);

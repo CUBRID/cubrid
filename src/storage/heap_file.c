@@ -25641,6 +25641,8 @@ heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
    * the class record before this invalidation may not have published yet (nothing to delete), and the clock is
    * what makes it withdraw its stale publish afterwards (see heap_hfid_cache_get). */
   heap_Hfid_table->generation.fetch_add (1);
+  /* A class whose heap changes may be a companion class; its cached opt-in decision names the old heap. */
+  inner_table_forget_classes ();
 
   error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, &success);
   heap_hfid_table_log (thread_p, class_oid, "heap_delete_hfid_from_cache success=%d", success);

@@ -274,9 +274,18 @@ namespace
 	er_clear ();
 	return c;
       }
+    /* Read the HFID from the class record: TRUNCATE gives the class a new heap before the HFID cache learns it. */
     HFID hfid;
-    bool found = false;
-    if (heap_get_class_info (thread_p, &coid, &hfid, NULL, &found) != NO_ERROR || !found)
+    RECDES class_rec;
+    HEAP_SCANCACHE root_scan;
+    (void) heap_scancache_quick_start_root_hfid (thread_p, &root_scan);
+    bool found = heap_get_class_record (thread_p, &coid, &class_rec, &root_scan, PEEK) == S_SUCCESS;
+    if (found)
+      {
+	or_class_hfid (&class_rec, &hfid);
+      }
+    heap_scancache_end (thread_p, &root_scan);
+    if (!found)
       {
 	er_clear ();
 	return c;
@@ -366,6 +375,15 @@ namespace
 
   int lock_class (THREAD_ENTRY *thread_p, companion &c, LOCK lock)
   {
+    if (thread_p->type == TT_LOADDB)
+      {
+	/* A load worker takes no lock. inner_table_lock_for_load gave the session a BU lock on the companion. */
+	if (lock_has_lock_on_object (&c.class_oid, oid_Root_class_oid, BU_LOCK))
+	  {
+	    return NO_ERROR;
+	  }
+	return set_error ("Inner Table: the load session has no lock on the companion class");
+      }
     if (lock_object (thread_p, &c.class_oid, oid_Root_class_oid, lock, LK_UNCOND_LOCK) != LK_GRANTED)
       {
 	return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
@@ -422,7 +440,25 @@ namespace
 	  {
 	    error = heap_attrinfo_set (NULL, c.chunk_attr, &chunk, &attr_info);
 	  }
-	if (error == NO_ERROR)
+	if (error == NO_ERROR && thread_p->type == TT_LOADDB)
+	  {
+	    /* Like the parent records of a load, insert under the session's BU lock without an MVCCID. */
+	    RECDES rec = RECDES_INITIALIZER;
+	    LC_COPYAREA *area = locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, NULL, &rec, -1,
+				LOB_FLAG_INCLUDE_LOB);
+	    if (area == NULL)
+	      {
+		error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	      }
+	    else
+	      {
+		error = locator_insert_force (thread_p, &c.hfid, &c.class_oid, &oid, &rec, true, SINGLE_ROW_INSERT,
+					      &scan_cache, &force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
+					      UPDATE_INPLACE_NONE, NULL, true, true, false);
+		locator_free_copy_area (area);
+	      }
+	  }
+	else if (error == NO_ERROR)
 	  {
 	    error = locator_attribute_info_force (thread_p, &c.hfid, &oid, &attr_info, NULL, 0, LC_FLUSH_INSERT,
 						  SINGLE_ROW_INSERT, &scan_cache, &force_count, false,
@@ -541,6 +577,25 @@ bool
 inner_table_is_opted_in (THREAD_ENTRY *thread_p, const OID *class_oid)
 {
   return companion_of (thread_p, class_oid) != nullptr;
+}
+
+/*
+ * inner_table_lock_for_load () - Give the load session of CLASS_OID the BU lock on its companion class too. The load
+ *				   workers that insert the class write chunk rows under this lock.
+ */
+int
+inner_table_lock_for_load (THREAD_ENTRY *thread_p, const OID *class_oid)
+{
+  std::shared_ptr<companion> c = companion_of (thread_p, class_oid);
+  if (c == nullptr)
+    {
+      return NO_ERROR;
+    }
+  if (lock_object (thread_p, &c->class_oid, oid_Root_class_oid, BU_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  return NO_ERROR;
 }
 
 /*

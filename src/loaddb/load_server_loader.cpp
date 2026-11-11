@@ -23,6 +23,7 @@
 #include "load_server_loader.hpp"
 
 #include "btree.h"
+#include "inner_table.hpp"
 #include "dbtype.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
@@ -372,6 +373,12 @@ namespace cubload
 	  {
 	    m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
 	  }
+	return;
+      }
+
+    if (!is_syntax_check_only && inner_table_lock_for_load (&thread_ref, &class_oid) != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
 	return;
       }
 
