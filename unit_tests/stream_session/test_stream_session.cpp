@@ -38,15 +38,19 @@
 #include "error_code.h"
 #include "error_manager.h"
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 /* The registry reports refusals through the engine's error stack, which a unit
- * test has no use for; record the last code so the cases can assert on it. */
-static int test_Last_error = NO_ERROR;
+ * test has no use for; record the last code so the cases can assert on it.
+ * Atomic, as the cases with several workers refuse from more than one thread. */
+static std::atomic<int> test_Last_error (NO_ERROR);
 
 void
 er_set (int severity, const char *file_name, const int line_no, int err_id, int num_args, ...)
@@ -117,7 +121,7 @@ namespace
   };
 
   int test_Factory_calls = 0;
-  int test_Closed = 0;
+  std::atomic<int> test_Closed (0);
 
   /* Each factory stamps its own tag on what it builds, so a case can tell which
    * one the registry dispatched to. */
@@ -540,13 +544,13 @@ TEST_CASE_METHOD (registry_fixture, "a handle resolves only where it was issued"
   CHECK (download > 0);
 
   /* only in the transaction that opened it, and only in its session */
-  stream_source *source = table.get_source (download, TRAN_1, &error_code);
+  stream_source *source = table.get_source (NULL, download, TRAN_1, &error_code);
   CHECK (source != NULL);
   table.put (NULL, download);
-  CHECK (table.get_source (download, TRAN_2, &error_code) == NULL);
+  CHECK (table.get_source (NULL, download, TRAN_2, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_NOT_OPEN);
   error_code = NO_ERROR;
-  CHECK (other_session.get_source (download, TRAN_1, &error_code) == NULL);
+  CHECK (other_session.get_source (NULL, download, TRAN_1, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_NOT_OPEN);
   CHECK (test_Last_error == ER_STREAM_NOT_OPEN);
 
@@ -554,7 +558,7 @@ TEST_CASE_METHOD (registry_fixture, "a handle resolves only where it was issued"
   table.release (NULL, download, TRAN_2);
   other_session.release (NULL, download, TRAN_1);
   CHECK (test_Closed == 0);
-  CHECK (table.get_source (download, TRAN_1, &error_code) != NULL);
+  CHECK (table.get_source (NULL, download, TRAN_1, &error_code) != NULL);
   table.put (NULL, download);
 
   /* only a download is issued a handle; what was refused is closed */
@@ -593,12 +597,12 @@ TEST_CASE_METHOD (registry_fixture, "a pin is exclusive", "[stream_handle]")
 
   REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
 
-  REQUIRE (table.get_source (download, TRAN_1, &error_code) != NULL);
+  REQUIRE (table.get_source (NULL, download, TRAN_1, &error_code) != NULL);
   /* a second READ sent before the first one's reply: refused, not serialized */
-  CHECK (table.get_source (download, TRAN_1, &error_code) == NULL);
+  CHECK (table.get_source (NULL, download, TRAN_1, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_INVALID_USE);
   table.put (NULL, download);
-  CHECK (table.get_source (download, TRAN_1, &error_code) != NULL);
+  CHECK (table.get_source (NULL, download, TRAN_1, &error_code) != NULL);
   table.put (NULL, download);
 
   table.clear (NULL);
@@ -612,11 +616,11 @@ TEST_CASE_METHOD (registry_fixture, "a release during a pin waits for the put an
   int error_code = NO_ERROR;
 
   REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
-  REQUIRE (table.get_source (download, TRAN_1, &error_code) != NULL);
+  REQUIRE (table.get_source (NULL, download, TRAN_1, &error_code) != NULL);
 
   table.release (NULL, download, TRAN_1);
   CHECK (test_Closed == 0);
-  CHECK (table.get_source (download, TRAN_1, &error_code) == NULL);
+  CHECK (table.get_source (NULL, download, TRAN_1, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_NOT_OPEN);
 
   table.put (NULL, download);
@@ -639,13 +643,13 @@ TEST_CASE_METHOD (registry_fixture, "a transaction end releases only that transa
 
   table.end_tran (NULL, TRAN_1);
   CHECK (test_Closed == 1);
-  CHECK (table.get_source (d1, TRAN_1, &error_code) == NULL);
+  CHECK (table.get_source (NULL, d1, TRAN_1, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_NOT_OPEN);
-  CHECK (table.get_source (d2, TRAN_2, &error_code) != NULL);
+  CHECK (table.get_source (NULL, d2, TRAN_2, &error_code) != NULL);
   table.put (NULL, d2);
 
   /* an end that finds the handle pinned leaves it to the put */
-  REQUIRE (table.get_source (d2, TRAN_2, &error_code) != NULL);
+  REQUIRE (table.get_source (NULL, d2, TRAN_2, &error_code) != NULL);
   table.end_tran (NULL, TRAN_2);
   CHECK (test_Closed == 1);
   table.put (NULL, d2);
@@ -666,7 +670,7 @@ TEST_CASE_METHOD (registry_fixture, "a connection's close leaves the handles ano
   REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, new fake_source ("v"), &download) == NO_ERROR);
   table.end_client (NULL, CLIENT_1);
   CHECK (test_Closed == 0);
-  CHECK (table.get_source (download, TRAN_1, &error_code) != NULL);
+  CHECK (table.get_source (NULL, download, TRAN_1, &error_code) != NULL);
   table.put (NULL, download);
 
   table.clear (NULL);
@@ -684,18 +688,18 @@ TEST_CASE_METHOD (registry_fixture, "a connection's close releases its handles",
   /* the same tran_index, issued to the next connection that was given it */
   REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_2, new fake_source ("c"), &reused) == NO_ERROR);
 
-  REQUIRE (table.get_source (pinned, TRAN_1, &error_code) != NULL);
+  REQUIRE (table.get_source (NULL, pinned, TRAN_1, &error_code) != NULL);
   table.end_client (NULL, CLIENT_1);
   CHECK (test_Closed == 1);
-  CHECK (table.get_source (mine, TRAN_1, &error_code) == NULL);
+  CHECK (table.get_source (NULL, mine, TRAN_1, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_NOT_OPEN);
 
   /* one in use goes at its put, as with any release */
   table.put (NULL, pinned);
   CHECK (test_Closed == 2);
-  CHECK (table.get_source (pinned, TRAN_1, &error_code) == NULL);
+  CHECK (table.get_source (NULL, pinned, TRAN_1, &error_code) == NULL);
 
-  CHECK (table.get_source (reused, TRAN_1, &error_code) != NULL);
+  CHECK (table.get_source (NULL, reused, TRAN_1, &error_code) != NULL);
   table.put (NULL, reused);
 
   table.clear (NULL);
@@ -733,12 +737,175 @@ TEST_CASE_METHOD (registry_fixture, "the limits refuse an issue and close what w
   CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
 
   /* a release requested during a pin frees the slot at once */
-  REQUIRE (table.get_source (handles[0], TRAN_1, &error_code) != NULL);
+  REQUIRE (table.get_source (NULL, handles[0], TRAN_1, &error_code) != NULL);
   table.release (NULL, handles[0], TRAN_1);
   CHECK (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &h) == NO_ERROR);
   table.put (NULL, handles[0]);
 
   table.clear (NULL);
+}
+
+namespace
+{
+  /* Workers of one connection, as a client that does not wait for replies spreads its requests over them. The table
+   * only compares them, so any distinct addresses do. */
+  THREAD_ENTRY *const WORKER_1 = reinterpret_cast<THREAD_ENTRY *> (static_cast<std::uintptr_t> (0x1000));
+  THREAD_ENTRY *const WORKER_2 = reinterpret_cast<THREAD_ENTRY *> (static_cast<std::uintptr_t> (0x2000));
+  THREAD_ENTRY *const WORKER_3 = reinterpret_cast<THREAD_ENTRY *> (static_cast<std::uintptr_t> (0x3000));
+  THREAD_ENTRY *const WORKER_4 = reinterpret_cast<THREAD_ENTRY *> (static_cast<std::uintptr_t> (0x4000));
+
+  /* long enough for a transaction end that does not wait to have returned */
+  const std::chrono::milliseconds SETTLE (100);
+}
+
+TEST_CASE_METHOD (registry_fixture, "a transaction end waits for a read another worker is running", "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t download = 0;
+  int error_code = NO_ERROR;
+  std::atomic<bool> ended (false);
+
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.get_source (WORKER_1, download, TRAN_1, &error_code) != NULL);
+
+  /* a COMMIT sent behind the READ */
+  std::thread commit ([&] ()
+  {
+    table.end_tran (WORKER_2, TRAN_1);
+    ended = true;
+  });
+
+  std::this_thread::sleep_for (SETTLE);
+  CHECK_FALSE (ended);
+  CHECK (test_Closed == 0);
+
+  /* the source is closed after the read, while the transaction is still there */
+  table.put (WORKER_1, download);
+  commit.join ();
+  CHECK (ended);
+  CHECK (test_Closed == 1);
+  CHECK (table.get_source (NULL, download, TRAN_1, &error_code) == NULL);
+}
+
+TEST_CASE_METHOD (registry_fixture, "a transaction end waits for an open another worker is running",
+		  "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t download = 0;
+  int error_code = NO_ERROR;
+  std::atomic<bool> ended (false);
+
+  REQUIRE (table.begin_open (WORKER_1, TRAN_1, &error_code));
+
+  std::thread commit ([&] ()
+  {
+    table.end_tran (WORKER_2, TRAN_1);
+    ended = true;
+  });
+
+  std::this_thread::sleep_for (SETTLE);
+  CHECK_FALSE (ended);
+
+  /* the handle comes out in the transaction that built its source, and goes with it */
+  REQUIRE (table.issue (WORKER_1, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
+  table.end_open (WORKER_1);
+  commit.join ();
+  CHECK (ended);
+  CHECK (test_Closed == 1);
+  CHECK (table.get_source (NULL, download, TRAN_1, &error_code) == NULL);
+}
+
+TEST_CASE_METHOD (registry_fixture, "a transaction end waits neither for its own thread nor for another transaction",
+		  "[stream_handle]")
+{
+  stream_handle_table table;
+  std::int64_t d1 = 0, d2 = 0;
+  int error_code = NO_ERROR;
+
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("a"), &d1) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_2, CLIENT_2, new fake_source ("b"), &d2) == NO_ERROR);
+  REQUIRE (table.get_source (WORKER_1, d1, TRAN_1, &error_code) != NULL);
+  REQUIRE (table.get_source (WORKER_2, d2, TRAN_2, &error_code) != NULL);
+
+  /* the worker that holds the pin ends its own transaction: the release waits for its put */
+  table.end_tran (WORKER_1, TRAN_1);
+  CHECK (test_Closed == 0);
+  table.put (WORKER_1, d1);
+  CHECK (test_Closed == 1);
+
+  /* TRAN_2's read is not TRAN_1's; this returns at once */
+  table.end_tran (WORKER_1, TRAN_1);
+  table.put (WORKER_2, d2);
+  table.clear (NULL);
+  CHECK (test_Closed == 2);
+}
+
+TEST_CASE_METHOD (registry_fixture, "reads, releases and a transaction end on several workers close each source once",
+		  "[stream_handle]")
+{
+  const int ROUNDS = 50;
+  const int HANDLES = 8;
+  const int READS = 200;
+
+  for (int round = 0; round < ROUNDS; round++)
+    {
+      stream_handle_table table;
+      std::vector<std::int64_t> handles (HANDLES);
+      int closed_before = test_Closed;
+
+      for (std::int64_t &h : handles)
+	{
+	  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, CLIENT_1, new fake_source ("value"), &h) == NO_ERROR);
+	}
+
+      auto reader = [&] (THREAD_ENTRY *worker, int offset)
+      {
+	char buf[8];
+	int nread = 0;
+	bool eof = false;
+	int error_code = NO_ERROR;
+
+	for (int i = 0; i < READS; i++)
+	  {
+	    std::int64_t h = handles[(i + offset) % HANDLES];
+	    stream_source *source = table.get_source (worker, h, TRAN_1, &error_code);
+
+	    if (source != NULL)
+	      {
+		(void) source->read (worker, buf, (int) sizeof (buf), &nread, &eof);
+		table.put (worker, h);
+	      }
+	  }
+      };
+      std::thread r1 (reader, WORKER_1, 0);
+      std::thread r2 (reader, WORKER_2, HANDLES / 2);
+      std::thread releaser ([&] ()
+      {
+	for (int i = 0; i < HANDLES; i += 2)
+	  {
+	    table.release (WORKER_3, handles[i], TRAN_1);
+	  }
+      });
+      std::thread commit ([&] ()
+      {
+	table.end_tran (WORKER_4, TRAN_1);
+      });
+
+      r1.join ();
+      r2.join ();
+      releaser.join ();
+      commit.join ();
+
+      /* everything went with the transaction, each source closed by whoever let it go last */
+      CHECK (test_Closed - closed_before == HANDLES);
+      for (std::int64_t h : handles)
+	{
+	  int error_code = NO_ERROR;
+	  CHECK (table.get_source (NULL, h, TRAN_1, &error_code) == NULL);
+	}
+      table.clear (NULL);
+      CHECK (test_Closed - closed_before == HANDLES);
+    }
 }
 
 TEST_CASE_METHOD (registry_fixture, "a value within one read comes back with the open and leaves no handle",
@@ -837,7 +1004,7 @@ TEST_CASE_METHOD (registry_fixture, "a failed read releases its handle", "[strea
 	 == ER_STREAM_SESSION_ERROR);
   CHECK (test_Closed == 1);
   int error_code = NO_ERROR;
-  CHECK (table.get_source (handle, TRAN_1, &error_code) == NULL);
+  CHECK (table.get_source (NULL, handle, TRAN_1, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_NOT_OPEN);
 
   /* a failed first read in a bundled open leaves no handle either */

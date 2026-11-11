@@ -69,20 +69,46 @@ namespace
   }
 
   const char *const TOO_MANY_HANDLES = "too many stream handles open in this transaction";
+
+  /* an open begun with begin_open (), ended on every way out of stream_download_open () */
+  class open_request
+  {
+    public:
+      open_request (stream_handle_table &table, THREAD_ENTRY *thread_p)
+	: m_table (table)
+	, m_thread_p (thread_p)
+      {
+      }
+
+      ~open_request ()
+      {
+	m_table.end_open (m_thread_p);
+      }
+
+      open_request (const open_request &) = delete;
+      open_request &operator= (const open_request &) = delete;
+
+    private:
+      stream_handle_table &m_table;
+      THREAD_ENTRY *m_thread_p;
+  };
 }
 
 stream_handle_table::stream_handle_table ()
   : m_mutex ()
   , m_entries ()
   , m_tran_counts ()
+  , m_requests ()
+  , m_requests_done ()
   , m_size (0)
+  , m_request_count (0)
 {
 }
 
 stream_handle_table::~stream_handle_table ()
 {
   /* closing needs a thread: the owner clears the table first */
-  assert (m_entries.empty ());
+  assert (m_entries.empty () && m_requests.empty ());
 }
 
 int
@@ -137,16 +163,31 @@ stream_handle_table::issue (THREAD_ENTRY *thread_p, int kind, int tran_index, in
 }
 
 bool
-stream_handle_table::has_room (int tran_index)
+stream_handle_table::begin_open (THREAD_ENTRY *thread_p, int tran_index, int *error_code)
 {
   std::lock_guard<std::mutex> lock (m_mutex);
   std::map<int, int>::const_iterator count = m_tran_counts.find (tran_index);
 
-  return count == m_tran_counts.end () || count->second < STREAM_HANDLE_MAX_PER_TRAN;
+  if (count != m_tran_counts.end () && count->second >= STREAM_HANDLE_MAX_PER_TRAN)
+    {
+      *error_code = set_handle_error (ER_STREAM_INVALID_USE, TOO_MANY_HANDLES);
+      return false;
+    }
+
+  add_request_locked (tran_index, thread_p, 0);
+  return true;
+}
+
+void
+stream_handle_table::end_open (THREAD_ENTRY *thread_p)
+{
+  std::lock_guard<std::mutex> lock (m_mutex);
+
+  remove_request_locked (thread_p, 0);
 }
 
 stream_source *
-stream_handle_table::get_source (std::int64_t handle, int tran_index, int *error_code)
+stream_handle_table::get_source (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index, int *error_code)
 {
   std::lock_guard<std::mutex> lock (m_mutex);
   entry_map::iterator it = m_entries.find (handle);
@@ -165,6 +206,7 @@ stream_handle_table::get_source (std::int64_t handle, int tran_index, int *error
     }
 
   it->second.pins++;
+  add_request_locked (tran_index, thread_p, handle);
   return it->second.source;
 }
 
@@ -188,6 +230,7 @@ stream_handle_table::put (THREAD_ENTRY *thread_p, std::int64_t handle)
       {
 	release_locked (it, to_close);
       }
+    remove_request_locked (thread_p, handle);
   }
 
   close_all (thread_p, to_close);
@@ -217,13 +260,20 @@ stream_handle_table::end_tran (THREAD_ENTRY *thread_p, int tran_index)
 {
   std::vector<stream_source *> to_close;
 
-  if (m_size.load () == 0)
+  if (m_size.load () == 0 && m_request_count.load () == 0)
     {
       return;
     }
 
   {
-    std::lock_guard<std::mutex> lock (m_mutex);
+    std::unique_lock<std::mutex> lock (m_mutex);
+
+    /* the source closes, and no handle comes out, while the transaction is still there; a request of this thread is
+     * not waited for */
+    m_requests_done.wait (lock, [&] ()
+    {
+      return !has_other_request_locked (tran_index, thread_p);
+    });
 
     for (entry_map::iterator it = m_entries.begin (); it != m_entries.end ();)
       {
@@ -287,6 +337,49 @@ stream_handle_table::clear (THREAD_ENTRY *thread_p)
   }
 
   close_all (thread_p, to_close);
+}
+
+/* the caller holds m_mutex */
+void
+stream_handle_table::add_request_locked (int tran_index, THREAD_ENTRY *thread_p, std::int64_t handle)
+{
+  request r = { tran_index, thread_p, handle };
+
+  m_requests.push_back (r);
+  m_request_count++;
+}
+
+/* the caller holds m_mutex */
+void
+stream_handle_table::remove_request_locked (THREAD_ENTRY *thread_p, std::int64_t handle)
+{
+  for (std::vector<request>::iterator it = m_requests.begin (); it != m_requests.end (); ++it)
+    {
+      if (it->thread_p == thread_p && it->handle == handle)
+	{
+	  m_requests.erase (it);
+	  m_request_count--;
+	  m_requests_done.notify_all ();
+	  return;
+	}
+    }
+
+  assert (false);
+}
+
+/* the caller holds m_mutex */
+bool
+stream_handle_table::has_other_request_locked (int tran_index, THREAD_ENTRY *thread_p) const
+{
+  for (const request &r : m_requests)
+    {
+      if (r.tran_index == tran_index && r.thread_p != thread_p)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 void
@@ -396,10 +489,11 @@ stream_download_open (THREAD_ENTRY *thread_p, stream_handle_table &table, int ki
     {
       return set_handle_error (ER_STREAM_INVALID_USE, "negative read size");
     }
-  if (!table.has_room (tran_index))
+  if (!table.begin_open (thread_p, tran_index, &error_code))
     {
-      return set_handle_error (ER_STREAM_INVALID_USE, TOO_MANY_HANDLES);
+      return error_code;
     }
+  open_request opening (table, thread_p);
 
   source = stream_source_create (thread_p, kind, config, config_len, &error_code);
   if (source == NULL)
@@ -472,7 +566,7 @@ stream_download_read (THREAD_ENTRY *thread_p, stream_handle_table &table, std::i
       return set_handle_error (ER_STREAM_INVALID_USE, "read size must be positive");
     }
 
-  source = table.get_source (handle, tran_index, &error_code);
+  source = table.get_source (thread_p, handle, tran_index, &error_code);
   if (source == NULL)
     {
       return error_code;

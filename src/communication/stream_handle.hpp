@@ -31,6 +31,7 @@
 #include "stream_session.hpp"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <map>
 #include <mutex>
@@ -54,22 +55,29 @@ class stream_handle_table
     int issue (THREAD_ENTRY *thread_p, int kind, int tran_index, int client_id, stream_source *source,
 	       std::int64_t *handle);
 
-    /* Is there room for one more handle of tran_index? Asked before a source is built, so that a refused open
-     * costs no factory; issue () decides. */
-    bool has_room (int tran_index);
+    /* Start an open of tran_index, before its source is built; end_open ()
+     * ends it, after issue () or the refusal. Refused, with the error set and
+     * in error_code, when the transaction has no room for one more handle, so
+     * that a refused open costs no factory; issue () still decides. */
+    bool begin_open (THREAD_ENTRY *thread_p, int tran_index, int *error_code);
+    void end_open (THREAD_ENTRY *thread_p);
 
     /* Pin a handle for one call; put () ends the pin. The pin is exclusive,
      * because a reader is not thread-safe. NULL, with the error set and in
      * error_code: ER_STREAM_NOT_OPEN for a handle that does not resolve or is
      * being released, ER_STREAM_INVALID_USE for one pinned already. */
-    stream_source *get_source (std::int64_t handle, int tran_index, int *error_code);
+    stream_source *get_source (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index, int *error_code);
     void put (THREAD_ENTRY *thread_p, std::int64_t handle);
 
     /* Release one handle of tran_index, or every handle of a transaction, of a
      * connection or of the session. A handle that does not resolve for
      * tran_index is not an error -- a purge may have run first. A release
      * during a pin is deferred to the last put () and never blocks.
-     * end_client () is a connection's close. */
+     * end_tran () first waits for the opens and reads of the transaction that
+     * other workers are running -- a client that does not wait for replies can
+     * send the transaction's end behind them -- so that no source reads, and
+     * no handle is issued, after its transaction is gone. end_client () is a
+     * connection's close, which runs after the connection's workers. */
     void release (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index);
     void end_tran (THREAD_ENTRY *thread_p, int tran_index);
     void end_client (THREAD_ENTRY *thread_p, int client_id);
@@ -88,6 +96,18 @@ class stream_handle_table
 
     using entry_map = std::map<std::int64_t, entry>;
 
+    /* an open (handle 0) or a read running on a worker, between begin_open () and end_open () or get_source () and
+     * put () */
+    struct request
+    {
+      int tran_index;
+      THREAD_ENTRY *thread_p;
+      std::int64_t handle;
+    };
+
+    void add_request_locked (int tran_index, THREAD_ENTRY *thread_p, std::int64_t handle);
+    void remove_request_locked (THREAD_ENTRY *thread_p, std::int64_t handle);
+    bool has_other_request_locked (int tran_index, THREAD_ENTRY *thread_p) const;
     void uncount (entry &e);
     void release_locked (entry_map::iterator it, std::vector<stream_source *> &to_close);
     static void close_all (THREAD_ENTRY *thread_p, std::vector<stream_source *> &to_close);
@@ -95,9 +115,12 @@ class stream_handle_table
     std::mutex m_mutex;
     entry_map m_entries;
     std::map<int, int> m_tran_counts;
+    std::vector<request> m_requests;
+    std::condition_variable m_requests_done;
 
     /* readable without m_mutex, so a transaction end with nothing here -- the usual case -- takes no lock */
     std::atomic<int> m_size;
+    std::atomic<int> m_request_count;
 };
 
 /* Open a download of kind. With first_max > 0 the first piece comes back in the
