@@ -1426,18 +1426,21 @@ logddl_is_ddl_type (int node_type, PT_NODE * node)
     {
     case PT_ALTER:
     case PT_ALTER_INDEX:
+    case PT_ALTER_SENSITIVITY_LABEL:
     case PT_ALTER_SERIAL:
     case PT_ALTER_STORED_PROCEDURE:
     case PT_ALTER_SYNONYM:
     case PT_ALTER_TRIGGER:
     case PT_CREATE_ENTITY:
     case PT_CREATE_INDEX:
+    case PT_CREATE_SENSITIVITY_LABEL:
     case PT_CREATE_SERIAL:
     case PT_CREATE_STORED_PROCEDURE:
     case PT_CREATE_SYNONYM:
     case PT_CREATE_TRIGGER:
     case PT_DROP:
     case PT_DROP_INDEX:
+    case PT_DROP_SENSITIVITY_LABEL:
     case PT_DROP_SERIAL:
     case PT_DROP_SERVER:
     case PT_DROP_STORED_PROCEDURE:
