@@ -55,6 +55,12 @@ namespace cubxasl
     int list_len;
     int nlargers;
   };
+
+  struct aggregate_group_concat_info
+  {
+    const char *buf;		/* the accumulator's buffer that capacity was recorded for */
+    int capacity;		/* bytes buf holds; 0 = unknown (CBRD-27926, qdata_concatenate_dbval) */
+  };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   union aggregate_specific_function_info
@@ -62,6 +68,7 @@ namespace cubxasl
     aggregate_percentile_info percentile;	/* PERCENTILE_CONT and PERCENTILE_DISC */
 #if defined (SERVER_MODE) || defined (SA_MODE)
     aggregate_dist_percent_info dist_percent;	/* CUME_DIST and PERCENT_RANK */
+    aggregate_group_concat_info group_concat;	/* GROUP_CONCAT */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   };
 
@@ -156,6 +163,11 @@ namespace cubxasl
     unsigned long long operand_prog_link_stamp;	/* head only: the execution (query id) whose first
 						 * evaluation derived the cell-based accumulator links
 						 * (qdata_link_shared_accumulators_by_cell ()) */
+    /* head only, CBRD-27361: the operand program XASL generation compiled for the list
+     * (expr_agg_prog_image_at_generation ()), set by the unpack; the first evaluation binds it instead of
+     * compiling.  NULL: none was written; size 0: the operands keep their interpreted fetch. */
+    const char *operand_prog_image;
+    int operand_prog_image_size;
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
     struct
     {

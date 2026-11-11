@@ -144,6 +144,8 @@ static int classobj_representation_size (SM_REPRESENTATION * rep);
 static int classobj_query_spec_size (SM_QUERY_SPEC * query_spec);
 static void classobj_insert_ordered_attribute (SM_ATTRIBUTE ** attlist, SM_ATTRIBUTE * att);
 static SM_REPRESENTATION *classobj_capture_representation (SM_CLASS * class_);
+static void classobj_repoint_constraint_attributes (SM_CLASS * class_, SM_ATTRIBUTE * atts, SM_ATTRIBUTE * shared_atts,
+						    SM_ATTRIBUTE * class_atts);
 static void classobj_sort_attlist (SM_ATTRIBUTE ** source);
 static void classobj_sort_methlist (SM_METHOD ** source);
 static int classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute,
@@ -7203,6 +7205,97 @@ classobj_sort_methlist (SM_METHOD ** source)
 }
 
 /*
+ * classobj_repoint_constraint_attributes() - Point the attributes of the cached constraints
+ *    to the attributes that replace them. Each one is matched by its id within the same kind
+ *    of attribute list, or by its name when an inherited shared or class attribute got a new id.
+ *   return: none
+ *   class_(in/out): class structure whose attribute lists are about to be replaced
+ *   atts(in): new instance attributes
+ *   shared_atts(in): new shared attributes
+ *   class_atts(in): new class attributes
+ */
+static void
+classobj_repoint_constraint_attributes (SM_CLASS * class_, SM_ATTRIBUTE * atts, SM_ATTRIBUTE * shared_atts,
+					SM_ATTRIBUTE * class_atts)
+{
+  SM_CLASS_CONSTRAINT *con;
+  SM_ATTRIBUTE *old_list, *new_list, *att;
+  int i;
+
+  for (con = class_->constraints; con != NULL; con = con->next)
+    {
+      for (i = 0; con->attributes != NULL && con->attributes[i] != NULL; i++)
+	{
+	  new_list = NULL;
+	  for (old_list = class_->attributes; old_list != NULL; old_list = (SM_ATTRIBUTE *) old_list->header.next)
+	    {
+	      if (old_list == con->attributes[i])
+		{
+		  new_list = atts;
+		  break;
+		}
+	    }
+	  if (old_list == NULL)
+	    {
+	      for (old_list = class_->shared; old_list != NULL; old_list = (SM_ATTRIBUTE *) old_list->header.next)
+		{
+		  if (old_list == con->attributes[i])
+		    {
+		      new_list = shared_atts;
+		      break;
+		    }
+		}
+	    }
+	  if (old_list == NULL)
+	    {
+	      for (old_list = class_->class_attributes; old_list != NULL;
+		   old_list = (SM_ATTRIBUTE *) old_list->header.next)
+		{
+		  if (old_list == con->attributes[i])
+		    {
+		      new_list = class_atts;
+		      break;
+		    }
+		}
+	    }
+	  if (old_list == NULL)
+	    {
+	      /* not an attribute of this class */
+	      continue;
+	    }
+
+	  for (att = new_list; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	    {
+	      if (att->id == con->attributes[i]->id)
+		{
+		  break;
+		}
+	    }
+
+	  if (att == NULL && new_list != atts)
+	    {
+	      /* An inherited shared or class attribute may get a new id on every reinstall.
+	       * Match it the way assign_attribute_id () looks for the old one. */
+	      for (att = new_list; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+		{
+		  if (SM_COMPARE_NAMES (att->header.name, con->attributes[i]->header.name) == 0
+		      && att->class_mop == con->attributes[i]->class_mop && att->type == con->attributes[i]->type)
+		    {
+		      break;
+		    }
+		}
+	    }
+
+	  assert (att != NULL);
+	  if (att != NULL)
+	    {
+	      con->attributes[i] = att;
+	    }
+	}
+    }
+}
+
+/*
  * classobj_install_template() - This is called after a template has been flattened
  *    and validated to install the new definitions in the class.  If the newrep
  *    argument is non zero, a representation will be saved from the current
@@ -7380,6 +7473,13 @@ classobj_install_template (SM_CLASS * class_, SM_TEMPLATE * flat, int saverep)
   class_->fixed_count = fixed_count;
   class_->variable_count = variable_count;
   class_->fixed_size = fixed_size;
+
+  /* The constraints are kept while allocate_disk_structures () holds them.
+   * Point them to the new attributes before the old ones are freed. */
+  if (class_->dont_decache_constraints_or_flush)
+    {
+      classobj_repoint_constraint_attributes (class_, atts, shared_atts, class_atts);
+    }
 
   /* install attribute/method lists */
   classobj_free_threaded_array ((DB_LIST *) class_->attributes, (LFREEER) classobj_clear_attribute);
