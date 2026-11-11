@@ -2049,7 +2049,7 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
     {
       if (check_auto_commit_after_getting_result (srv_handle) == true)
 	{
-	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	  ux_stream_result_set_commit (req_info);
 	}
     }
 
@@ -9627,7 +9627,7 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
   if (srv_handle->auto_commit_mode == TRUE && srv_handle->is_from_current_transaction
       && !call_returns_cursor (call_info))
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   return 0;

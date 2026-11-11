@@ -259,7 +259,10 @@ extern "C"
      * the failure the server can see closes it. */
     CAS_FC_STREAM_INIT = 47,
     CAS_FC_STREAM_ABORT = 48,
-    /* Server->client: a download is a handle the client reads until eof and then releases. */
+    /* Server->client: a download is a handle the client reads until eof and then releases. It lives in its
+     * transaction: a COMMIT or ROLLBACK, or the auto-commit of a statement the connection executes, ends it. The
+     * auto-commits that only close something -- the end of a fetch, a request handle's close, the next result,
+     * GET_DB_VERSION -- wait while a download is open, and the last release pays them. */
     CAS_FC_STREAM_READ_OPEN = 49,
     CAS_FC_STREAM_READ = 50,
     CAS_FC_STREAM_RELEASE = 51,

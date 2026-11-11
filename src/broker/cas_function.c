@@ -1379,7 +1379,7 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   if (auto_commit_mode == TRUE)
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   return FN_KEEP_CONN;
