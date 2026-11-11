@@ -23,7 +23,7 @@
  * Kind 5 is an upload whose END finishes no statement: it counts the bytes and returns the count. Kind 6 is a
  * download that produces a byte sequence. A driver opens either directly (INIT, READ_OPEN). Both configs are
  * big-endian fields, and start with the version, 1:
- *   upload (5):   version int32 | fail_after int64 (-1: never) | delay_ms int32
+ *   upload (5):   version int32 | fail_after int64 (-1: never) | delay_ms int32 (0 to 10000)
  *		   a chunk that brings the total past fail_after is refused; each chunk first sleeps delay_ms
  *   download (6): version int32 | length int64 | seed int32
  *		   byte i is (seed + i) & 0xff
@@ -55,6 +55,7 @@ namespace
   const int ECHO_VERSION = 1;
   const int ECHO_UPLOAD_CONFIG_SIZE = 4 + 8 + 4;
   const int ECHO_DOWNLOAD_CONFIG_SIZE = 4 + 8 + 4;
+  const int ECHO_DELAY_MAX_MS = 10000;
 
   std::int64_t
   echo_get_be (const char *p, int size)
@@ -166,12 +167,21 @@ namespace
   stream_session *
   echo_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len, int *error_code)
   {
+    std::int64_t delay_ms;
+
     *error_code = echo_check_config (config, config_len, ECHO_UPLOAD_CONFIG_SIZE);
     if (*error_code != NO_ERROR)
       {
 	return NULL;
       }
-    return new echo_session (echo_get_be (config + 4, 8), (int) echo_get_be (config + 12, 4));
+    /* a chunk's sleep holds a server worker, which a delay off the wire must not keep for long */
+    delay_ms = echo_get_be (config + 12, 4);
+    if (delay_ms < 0 || delay_ms > ECHO_DELAY_MAX_MS)
+      {
+	*error_code = echo_refuse (ER_STREAM_SESSION_ERROR, "debug echo: delay out of range");
+	return NULL;
+      }
+    return new echo_session (echo_get_be (config + 4, 8), (int) delay_ms);
   }
 
   stream_source *

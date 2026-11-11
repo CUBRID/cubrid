@@ -292,7 +292,16 @@ session_state_alloc (void)
       /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
       pthread_mutex_init (&state->stream_mutex, NULL);
       pthread_cond_init (&state->stream_cond, NULL);
+      /* NULL on failure, as the malloc above: the server's operator new does not throw (memory_wrapper.hpp) */
       state->stream_handles_p = new stream_handle_table ();
+      if (state->stream_handles_p == NULL)
+	{
+	  pthread_cond_destroy (&state->stream_cond);
+	  pthread_mutex_destroy (&state->stream_mutex);
+	  pthread_mutex_destroy (&state->mutex);
+	  free (state);
+	  return NULL;
+	}
     }
   return (void *) state;
 }

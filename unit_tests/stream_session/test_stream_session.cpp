@@ -1146,6 +1146,15 @@ TEST_CASE_METHOD (echo_fixture, "the echo upload counts the bytes and refuses pa
   CHECK (error_code == ER_STREAM_NOT_SUPPORTED);
   CHECK (stream_session_create (NULL, STREAM_KIND_DEBUG_ECHO_UPLOAD, unlimited.data (), 4, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_SESSION_ERROR);
+
+  /* a chunk's sleep holds a server worker, so the delay is bounded */
+  std::string slow = echo_config (1, -1, 10001), backwards = echo_config (1, -1, -1);
+  CHECK (stream_session_create (NULL, STREAM_KIND_DEBUG_ECHO_UPLOAD, slow.data (), (int) slow.size (), &error_code)
+	 == NULL);
+  CHECK (error_code == ER_STREAM_SESSION_ERROR);
+  CHECK (stream_session_create (NULL, STREAM_KIND_DEBUG_ECHO_UPLOAD, backwards.data (), (int) backwards.size (),
+				&error_code) == NULL);
+  CHECK (error_code == ER_STREAM_SESSION_ERROR);
 }
 
 TEST_CASE_METHOD (echo_fixture, "the echo download comes through the table byte for byte", "[stream_echo]")
