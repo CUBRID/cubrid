@@ -867,7 +867,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'NAME'%",
                     node.name,
                     "%'+VAL'%",
-                    visitInitialValue(node, node.val));
+                    visit(node.val));
         }
     }
 
@@ -904,7 +904,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'NAME'%",
                 node.name,
                 "%'+VAL'%",
-                visitInitialValue(node, node.val));
+                visit(node.val));
     }
 
     private static final String[] tmplNotNullPkgVarInit =
@@ -915,6 +915,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {"%'TARGET'% =", "  %'+VAL'%;"};
 
     private void addPkgVarInit(Decl decl, String target, boolean notNull, Expr val) {
+
+        // the initial value of a package variable/constant is evaluated in the class initialization
+        dccVar = "dccInit";
+        CodeToResolve valCode = visit(val);
+        dccVar = "dcc";
+
         pkgClassInits.addElement(
                 new CodeTemplate(
                         "PkgVarInit",
@@ -923,19 +929,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'TARGET'%",
                         target,
                         "%'+VAL'%",
-                        visitInitialValue(decl, val)));
-    }
-
-    // the initial value of a package variable/constant is evaluated in the class initialization
-    private CodeToResolve visitInitialValue(Decl decl, Expr val) {
-        if (decl.isPkgItem) {
-            dccVar = "dccInit";
-            CodeToResolve ret = visit(val);
-            dccVar = "dcc";
-            return ret;
-        } else {
-            return visit(val);
-        }
+                        valCode));
     }
 
     @Override
