@@ -98,6 +98,31 @@ namespace
   /* Inside inner_table_collect_refs, fetches return records with their references. */
   thread_local int raw_depth = 0;
 
+  /* What the last expansion of this thread found in the record of LAST_OID. A writer that fetched the old version
+   * just before can skip reading it again to collect references. */
+  thread_local OID last_oid = OID_INITIALIZER;
+  thread_local bool last_had_refs = true;
+
+  void remember (const OID *oid, bool had_refs)
+  {
+    if (oid != NULL)
+      {
+	last_oid = *oid;
+	last_had_refs = had_refs;
+      }
+    else
+      {
+	OID_SET_NULL (&last_oid);
+      }
+  }
+
+  /* A reference starts with 0xFF and the int -1; a record without these five bytes has no reference. */
+  bool may_hold_reference (const RECDES *recdes)
+  {
+    static const char mark[5] = { (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
+    return memmem (recdes->data, recdes->length, mark, sizeof (mark)) != NULL;
+  }
+
   struct ref
   {
     ATTR_ID attr_id;
@@ -648,8 +673,14 @@ inner_table_rewrite (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recde
 		     const ATTR_ID *att_id, int n_att_id, RECDES *out, bool *rewritten)
 {
   *rewritten = false;
+  if (recdes == NULL || recdes->data == NULL
+      || recdes->length < std::max (prm_get_integer_value (PRM_ID_INNER_TABLE_THRESHOLD), INNER_REF_SIZE + 1))
+    {
+      /* no value of a record shorter than the threshold moves, and none of OLD_REFS is kept */
+      return NO_ERROR;
+    }
   std::shared_ptr<companion> c = companion_of (thread_p, class_oid);
-  if (c == nullptr || recdes == NULL || recdes->data == NULL)
+  if (c == nullptr)
     {
       return NO_ERROR;
     }
@@ -754,6 +785,11 @@ int
 inner_table_collect_refs (THREAD_ENTRY *thread_p, const OID *class_oid, const OID *oid, INNER_TABLE_REFS **refs)
 {
   *refs = NULL;
+  if (!last_had_refs && OID_EQ (&last_oid, oid))
+    {
+      /* the caller just fetched this version and it held no reference */
+      return NO_ERROR;
+    }
   std::shared_ptr<companion> c = companion_of (thread_p, class_oid);
   if (c == nullptr)
     {
@@ -879,14 +915,15 @@ inner_table_free_refs (INNER_TABLE_REFS *refs)
  * inner_table_expand () - Replace the references of a fetched record with the bytes of their chunks.
  *
  * return	    : S_SUCCESS, S_DOESNT_FIT (recdes->length is minus the needed size) or S_ERROR.
+ * oid (in)	    : Object of the record, or NULL.
  * recdes (in/out)  : Fetched record.
  * scan_cache (in)  : Scan cache whose area may hold the expanded record, or NULL.
  * ispeeking (in)   : PEEK or COPY, as the caller fetched.
  * snapshot (in)    : Snapshot that selected the record version, or NULL for the last version.
  */
 SCAN_CODE
-inner_table_expand (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes, HEAP_SCANCACHE *scan_cache,
-		    int ispeeking, MVCC_SNAPSHOT *snapshot)
+inner_table_expand (THREAD_ENTRY *thread_p, const OID *oid, const OID *class_oid, RECDES *recdes,
+		    HEAP_SCANCACHE *scan_cache, int ispeeking, MVCC_SNAPSHOT *snapshot)
 {
   if (raw_depth > 0 || recdes == NULL || recdes->data == NULL || recdes->length <= 0)
     {
@@ -894,11 +931,18 @@ inner_table_expand (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes
     }
   if (scan_cache != NULL && scan_cache->inner_table_skip_expand)
     {
+      remember (NULL, true);
+      return S_SUCCESS;
+    }
+  if (!may_hold_reference (recdes))
+    {
+      remember (oid, false);
       return S_SUCCESS;
     }
   std::shared_ptr<companion> c = companion_of (thread_p, class_oid);
   if (c == nullptr)
     {
+      remember (oid, false);
       return S_SUCCESS;
     }
 
@@ -929,6 +973,7 @@ inner_table_expand (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes
       replacement[i] = &values[i];
       any = true;
     }
+  remember (oid, any);
   if (!any)
     {
       return S_SUCCESS;

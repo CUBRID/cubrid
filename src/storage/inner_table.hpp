@@ -64,7 +64,7 @@ extern int inner_table_collect_refs (THREAD_ENTRY *thread_p, const OID *class_oi
 extern int inner_table_retire_refs (THREAD_ENTRY *thread_p, INNER_TABLE_REFS *refs);
 extern void inner_table_free_refs (INNER_TABLE_REFS *refs);
 
-extern SCAN_CODE inner_table_expand (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes,
+extern SCAN_CODE inner_table_expand (THREAD_ENTRY *thread_p, const OID *oid, const OID *class_oid, RECDES *recdes,
 				     struct heap_scancache *scan_cache, int ispeeking, struct mvcc_snapshot *snapshot);
 
 extern void inner_table_forget_classes (void);

@@ -7447,8 +7447,9 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
       return hsidp->batch_state;
     }
-  /* the batch peeks records on the page, so it would see Inner Table references instead of values */
-  if (inner_table_enabled () && inner_table_is_opted_in (thread_p, &hsidp->cls_oid))
+  /* the batch peeks records on the page, so it would see Inner Table references of attributes it reads */
+  if (inner_table_enabled () && !hsidp->scan_cache.inner_table_skip_expand
+      && inner_table_is_opted_in (thread_p, &hsidp->cls_oid))
     {
       hsidp->batch_why_not = "a scan the batch does not take (Inner Table class)";
       return hsidp->batch_state;

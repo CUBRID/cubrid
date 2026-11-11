@@ -26933,7 +26933,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    {
 	      /* recdes may point directly into the still-latched page */
 	      *recdes = *peeked_recdes;
-	      return inner_table_expand (thread_p, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+	      return inner_table_expand (thread_p, oid, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
 					 scan_cache->mvcc_snapshot);
 	    }
 
@@ -26943,7 +26943,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	       * local_pgptr was set from pgbuf_copy_buffer_get_page_ptr () whenever is_cached_scan
 	       * is true, so peeked_recdes->data is stable local-cache memory, not a live latched page. */
 	      *recdes = *peeked_recdes;
-	      return inner_table_expand (thread_p, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+	      return inner_table_expand (thread_p, oid, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
 					 scan_cache->mvcc_snapshot);
 	    }
 
@@ -26962,7 +26962,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	      memcpy (recdes->data, peeked_recdes->data, peeked_recdes->length);
 	      recdes->length = peeked_recdes->length;
 	      recdes->type = peeked_recdes->type;
-	      return inner_table_expand (thread_p, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+	      return inner_table_expand (thread_p, oid, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
 					 scan_cache->mvcc_snapshot);
 	    }
 	  /* recdes buffer too small (not expected for a single-page REC_HOME): fall through to the full path. */
@@ -27085,7 +27085,7 @@ exit:
   if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
     {
       /* the version may come from the heap or from a log undo image; both carry references */
-      scan = inner_table_expand (thread_p, context->class_oid_p, context->recdes_p, context->scan_cache,
+      scan = inner_table_expand (thread_p, context->oid_p, context->class_oid_p, context->recdes_p, context->scan_cache,
 				 context->ispeeking, context->scan_cache ? context->scan_cache->mvcc_snapshot : NULL);
     }
   return scan;
@@ -27263,7 +27263,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 exit:
   if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
     {
-      scan = inner_table_expand (thread_p, context->class_oid_p, context->recdes_p, context->scan_cache,
+      scan = inner_table_expand (thread_p, context->oid_p, context->class_oid_p, context->recdes_p, context->scan_cache,
 				 context->ispeeking, NULL);
     }
 
