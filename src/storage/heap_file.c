@@ -18001,9 +18001,19 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   /* A Sidecar store page carries its hot heap's class OID, so the class finds the hot heap: the store's free space
    * must not go to the hot heap's bestspace, or a row of the hot heap would be inserted into the store.  The store's
    * own HFID is not reachable from here without fixing the hot header while the store page is held (I-7). */
-  const bool add_bestpage = LOG_ISRESTARTED () && !heap_page_is_sidecar_store (thread_p, rcv->pgptr);
+  const bool sidecar_store = heap_page_is_sidecar_store (thread_p, rcv->pgptr);
+  const bool add_bestpage = LOG_ISRESTARTED () && !sidecar_store;
 
-  (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
+  if (sidecar_store)
+    {
+      /* a store slot holds one store record in its life: a reader that found a home forwarding here may still come
+       * to read this slot, and must not find another record in it (sidecar_read_store_record_at) */
+      (void) spage_delete (thread_p, rcv->pgptr, slotid);
+    }
+  else
+    {
+      (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
+    }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
   if (add_bestpage)

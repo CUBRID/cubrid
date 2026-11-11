@@ -607,10 +607,12 @@ sidecar_ref_equal (const SIDECAR_REF *a, const SIDECAR_REF *b)
  * REC_BIGONE is read with its home page held, as every reader and writer of an overflow record fixes the home page
  * first; vacuum and the undo of a stamp need that page exclusively before they free its overflow pages.  A store
  * record that a stamp relocated is read through its forward page after its home page is released, one store page at a
- * time, since a reader holding two store pages can close a cycle with store vacuum (12A).  Its home page is then read
- * once more: vacuum frees the forward slot in the same operation that makes the home slot REC_MARKDELETED, and the
- * undo of the stamp writes the record back home, so a home that still forwards to the same place shows that the
- * bytes read were the record's.  A home that changed but still holds the record is read again.
+ * time, since a reader holding two store pages can close a cycle with store vacuum (12A).  No store slot ever holds a
+ * second record: vacuum and undo leave a freed store slot REC_MARKDELETED (vacuum_heap_record, heap_rv_undo_insert).
+ * So a REC_NEWHOME record in the slot that the home forwarded to is the record itself, whose bytes never change, and
+ * the read needs no second look at the home.  A forward slot without it lost the record to the rollback of its stamp
+ * or to vacuum, which both change the home first, so the read starts over.  A home that again forwards to the slot
+ * that held nothing is a broken store, since no stamp can relocate a record into a slot that was freed.
  */
 enum sidecar_read_result
 {
@@ -618,9 +620,6 @@ enum sidecar_read_result
   SIDECAR_READ_ABSENT,		/* no record of the ref at its slot: vacuum removed it, or a bug */
   SIDECAR_READ_FAILED		/* an error is set */
 };
-
-/* how many times a reader follows a relocated store record that moves while it reads (guess) */
-#define SIDECAR_REREAD_BOUND 8
 
 static sidecar_read_result
 sidecar_fix_store_page (THREAD_ENTRY *thread_p, const OID *oid, PAGE_PTR *page)
@@ -701,7 +700,10 @@ static sidecar_read_result
 sidecar_read_store_record_at (THREAD_ENTRY *thread_p, const OID *oid, std::vector<char> &bytes, RECDES *record,
 			      PAGE_PTR &page)
 {
-  for (int round = 0; round < SIDECAR_REREAD_BOUND; round++)
+  OID missed = OID_INITIALIZER;	/* the forward slot of the last round, which held no REC_NEWHOME */
+
+  /* each further round follows a home that a rollback or vacuum changed since the last one */
+  while (true)
     {
       RECDES peeked;
       sidecar_read_result result = sidecar_fix_store_page (thread_p, oid, &page);
@@ -746,41 +748,36 @@ sidecar_read_store_record_at (THREAD_ENTRY *thread_p, const OID *oid, std::vecto
 	}
 
       pgbuf_unfix_and_init (thread_p, page);
+      if (OID_EQ (&forward, &missed))
+	{
+	  assert_release (false);
+	  return SIDECAR_READ_ABSENT;
+	}
+
       sidecar_read_hold (thread_p, FI_TEST_SIDECAR_READ_HOLD_AT_FORWARD);
       result = sidecar_fix_store_page (thread_p, &forward, &page);
       if (result == SIDECAR_READ_FAILED)
 	{
 	  return result;
 	}
-      bool read = false;
       if (result == SIDECAR_READ_PRESENT)
 	{
-	  if (spage_get_record_type (page, forward.slotid) == REC_NEWHOME
-	      && spage_get_record (thread_p, page, forward.slotid, &peeked, PEEK) == S_SUCCESS)
+	  const bool read = (spage_get_record_type (page, forward.slotid) == REC_NEWHOME
+			     && spage_get_record (thread_p, page, forward.slotid, &peeked, PEEK) == S_SUCCESS);
+	  if (read)
 	    {
 	      sidecar_copy_record (&peeked, bytes, record);
-	      read = true;
 	    }
 	  pgbuf_unfix_and_init (thread_p, page);
+	  if (read)
+	    {
+	      return SIDECAR_READ_PRESENT;
+	    }
 	}
 
-      /* the home still forwards to what was read */
+      missed = forward;
       sidecar_read_hold (thread_p, FI_TEST_SIDECAR_READ_HOLD_AT_RECHECK);
-      result = sidecar_fix_store_page (thread_p, oid, &page);
-      if (result != SIDECAR_READ_PRESENT)
-	{
-	  return result;
-	}
-      const bool same = (read && spage_get_record_type (page, oid->slotid) == REC_RELOCATION
-			 && spage_get_record (thread_p, page, oid->slotid, &peeked, PEEK) == S_SUCCESS
-			 && OID_EQ ((OID *) peeked.data, &forward));
-      pgbuf_unfix_and_init (thread_p, page);
-      if (same)
-	{
-	  return SIDECAR_READ_PRESENT;
-	}
     }
-  return SIDECAR_READ_ABSENT;
 }
 
 /* the copies into bytes may throw while a store page is fixed; the page is released before the exception goes on to
