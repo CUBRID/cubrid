@@ -1002,19 +1002,38 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 
     case DB_TYPE_NUMERIC:
       {
+	/* see UNLOAD_RAW_NUMERIC_HEADER_SIZE for the layout */
 	bool is_float_numeric;
-	u_char tmp[UNLOAD_RAW_NUMERIC_SIZE];
+	int precision, scale;
+	const u_char *digits = (const u_char *) value->data.num.d.buf;
+	int skip = 0;
+	int length;
+	u_char tmp[UNLOAD_RAW_NUMERIC_HEADER_SIZE + sizeof (value->data.num.d.buf)];
+	u_char *flags = tmp + (sizeof (int) << 1);
 
-	db_get_numeric_precision_and_scale (value, (int *) tmp, (int *) (tmp + sizeof (int)), &is_float_numeric);
-	memcpy (tmp + (sizeof (int) << 1), value->data.num.d.buf, sizeof (value->data.num.d.buf));
-	tmp[UNLOAD_RAW_NUMERIC_SIZE - 1] =
-	  (value->domain.numeric_info.is_value_negative ? UNLOAD_RAW_NUMERIC_NEGATIVE : 0x00);
+	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	memcpy (tmp, &precision, sizeof (int));
+	memcpy (tmp + sizeof (int), &scale, sizeof (int));
+
+	while (skip < (int) sizeof (value->data.num.d.buf) && digits[skip] == 0)
+	  {
+	    skip++;
+	  }
+	length = (int) sizeof (value->data.num.d.buf) - skip;
+
+	*flags = 0x00;
+	if (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value) && length > 0)
+	  {
+	    *flags |= UNLOAD_RAW_NUMERIC_NEGATIVE;
+	  }
 	if (is_float_numeric)
 	  {
-	    tmp[UNLOAD_RAW_NUMERIC_SIZE - 1] |= UNLOAD_RAW_NUMERIC_FLOATING;
+	    *flags |= UNLOAD_RAW_NUMERIC_FLOATING;
 	  }
+	flags[1] = (u_char) length;
+	memcpy (tmp + UNLOAD_RAW_NUMERIC_HEADER_SIZE, digits + skip, length);
 
-	CHECK_PRINT_ERROR (binary_print (tout, tmp, UNLOAD_RAW_NUMERIC_SIZE, type));
+	CHECK_PRINT_ERROR (binary_print (tout, tmp, (int) UNLOAD_RAW_NUMERIC_HEADER_SIZE + length, type));
       }
       break;
 

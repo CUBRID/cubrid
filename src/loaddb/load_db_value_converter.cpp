@@ -1676,27 +1676,44 @@ namespace cubload
 
       case DB_TYPE_NUMERIC:
       {
-	/* [int precision][int scale][DB_NUMERIC_BUF_SIZE bytes of the buffer][flags] */
+	/* [int precision][int scale][1 byte flags][1 byte length][magnitude], see UNLOAD_RAW_NUMERIC_HEADER_SIZE */
 	int precision, scale;
 	unsigned char flags;
+	std::size_t length;
+	unsigned char buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
-	if (col.size != UNLOAD_RAW_NUMERIC_SIZE)
+	if (col.size < UNLOAD_RAW_NUMERIC_HEADER_SIZE)
 	  {
 	    return binary_corrupted (col);
 	  }
 
 	std::memcpy (&precision, col.data, sizeof (int));
 	std::memcpy (&scale, col.data + sizeof (int), sizeof (int));
-	flags = (unsigned char) col.data[UNLOAD_RAW_NUMERIC_SIZE - 1];
+	flags = (unsigned char) col.data[sizeof (int) << 1];
+	length = (unsigned char) col.data[ (sizeof (int) << 1) + 1];
 
-	if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION)
+	/* a magnitude longer than the buffer of this build does not fit any NUMERIC it can hold */
+	if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION || (flags & ~UNLOAD_RAW_NUMERIC_FLAGS) != 0
+	    || length > sizeof (buf) || col.size != UNLOAD_RAW_NUMERIC_HEADER_SIZE + length)
 	  {
 	    return binary_corrupted (col);
 	  }
 
-	/* with DB_NUMERIC_BUF_SIZE as its size, the buffer is taken as it is */
-	return db_make_numeric (val, (DB_C_NUMERIC) (col.data + (sizeof (int) << 1)), precision, scale,
-				DB_NUMERIC_BUF_SIZE, (flags & UNLOAD_RAW_NUMERIC_NEGATIVE) != 0,
+	std::memcpy (buf + sizeof (buf) - length, col.data + UNLOAD_RAW_NUMERIC_HEADER_SIZE, length);
+
+	/*
+	 * The length check alone lets through any magnitude that fits the buffer. One with more
+	 * digits than its precision would be stored as it is and read back as a wrong value, so
+	 * it is refused here: a damaged section, or a writer that put out its buffer as it is
+	 * instead of the magnitude (the buffer of 11.4 and earlier holds a two's complement).
+	 */
+	if (numeric_get_precision_digits (buf) > precision)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	return db_make_numeric (val, (DB_C_NUMERIC) buf, precision, scale, DB_NUMERIC_BUF_SIZE,
+				(flags & UNLOAD_RAW_NUMERIC_NEGATIVE) != 0 && length > 0,
 				(flags & UNLOAD_RAW_NUMERIC_FLOATING) != 0);
       }
 

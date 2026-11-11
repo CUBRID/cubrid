@@ -500,9 +500,19 @@ typedef uint32_t BIN_REC_SIZE_TYPE;
 /* the largest row the size field can describe */
 #define BIN_MAX_RECORD_SIZE ((int64_t) UINT32_MAX)
 
-#define UNLOAD_RAW_NUMERIC_SIZE  (sizeof (int) + sizeof (int) + DB_NUMERIC_BUF_SIZE + 1)
-#define UNLOAD_RAW_NUMERIC_NEGATIVE (0x02)
-#define UNLOAD_RAW_NUMERIC_FLOATING (0x01)
+/*
+ * A NUMERIC value is written field by field, so that the size and the layout of the in-memory buffer
+ * (DB_NUMERIC_BUF_SIZE, the sign held apart from the digits) stay out of the file:
+ *
+ *   [int precision][int scale][1 byte flags][1 byte length][length bytes of the magnitude]
+ *
+ * The magnitude is an unsigned big-endian integer without its leading zero bytes, so zero has a
+ * length of 0. A reader right-aligns it in a buffer of its own size.
+ */
+#define UNLOAD_RAW_NUMERIC_HEADER_SIZE (sizeof (int) + sizeof (int) + 1 + 1)
+#define UNLOAD_RAW_NUMERIC_NEGATIVE    (0x02)
+#define UNLOAD_RAW_NUMERIC_FLOATING    (0x01)
+#define UNLOAD_RAW_NUMERIC_FLAGS       (UNLOAD_RAW_NUMERIC_NEGATIVE | UNLOAD_RAW_NUMERIC_FLOATING)
 
 /* a BIT or VARBIT value is written as its length in bits followed by the bytes holding the bits */
 #define UNLOAD_RAW_BIT_LENGTH_SIZE (sizeof (int))
