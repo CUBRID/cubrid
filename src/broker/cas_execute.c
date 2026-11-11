@@ -276,6 +276,7 @@ static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * p
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
 static int sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle);
 static int sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle);
+static int sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle);
 static short constraint_dbtype_to_castype (int db_const_type);
 
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
@@ -333,6 +334,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
   fetch_result,			/* SCH_SCHEMAS */
+  fetch_result,			/* SCH_CURRENT_SCHEMA */
 };
 
 static char database_name[MAX_HA_DBINFO_LENGTH] = "";
@@ -3722,6 +3724,9 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_SCHEMAS:
       err_code = sch_schemas (net_buf, arg1, flag, srv_handle);
       break;
+    case CCI_SCH_CURRENT_SCHEMA:
+      err_code = sch_current_schema (net_buf, srv_handle);
+      break;
     default:
       err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
       goto schema_info_error;
@@ -3735,7 +3740,8 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
   if (schema_type == CCI_SCH_CLASS || schema_type == CCI_SCH_VCLASS || schema_type == CCI_SCH_ATTRIBUTE
       || schema_type == CCI_SCH_CLASS_ATTRIBUTE || schema_type == CCI_SCH_QUERY_SPEC
       || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY
-      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS)
+      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS
+      || schema_type == CCI_SCH_CURRENT_SCHEMA)
     {
       srv_handle->cursor_pos = 0;
     }
@@ -9039,6 +9045,24 @@ sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HA
     }
 
   STRING_APPEND (sql_p, avail_size, "ORDER BY name");
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_schemas_meta (net_buf);
+
+  return 0;
+}
+
+static int
+sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[] = "SELECT CURRENT_USER";
+  int num_result;
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
