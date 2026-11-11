@@ -943,9 +943,11 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
     }
 
   /* Size estimate of an input temp file: its share of one sort buffer, so that the input files together reserve
-   * no more than one buffer of pages however small their runs are. A file that receives full runs grows a sector
-   * at a time as they are flushed. */
-  sort_param->tmp_file_pgs = CEIL_PTVDIV (sort_param->tot_buffers, sort_param->half_files);
+   * no more than one buffer of pages however small their runs are, and no more than a sector: file_create adds the
+   * file table to the size, so a file of 64 pages would take two sectors. A file that receives full runs grows a
+   * sector at a time as they are flushed. */
+  sort_param->tmp_file_pgs =
+    MIN (CEIL_PTVDIV (sort_param->tot_buffers, sort_param->half_files), DISK_SECTOR_NPAGES - 1);
 
   sort_param->tde_encrypted = includes_tde_class;
   sort_param->px_error_published = false;
@@ -1991,7 +1993,8 @@ btsort_copy_sort_param (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_param, B
       px_sort_param[i].half_files =
 	btsort_get_num_half_tmpfiles (sort_param->tot_buffers, sort_param->data_sects / parallel_num);
       px_sort_param[i].tot_tempfiles = px_sort_param[i].half_files * 2;
-      px_sort_param[i].tmp_file_pgs = CEIL_PTVDIV (sort_param->tot_buffers, px_sort_param[i].half_files);
+      px_sort_param[i].tmp_file_pgs =
+	MIN (CEIL_PTVDIV (sort_param->tot_buffers, px_sort_param[i].half_files), DISK_SECTOR_NPAGES - 1);
       error = btsort_alloc_temp_slots (&px_sort_param[i]);
       if (error != NO_ERROR)
 	{
