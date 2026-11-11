@@ -6259,6 +6259,8 @@ static int check_merge_trigger (PT_DO_FUNC * do_func, PARSER_CONTEXT * parser, P
 static char **find_update_columns (int *count_ptr, PT_NODE * statement);
 static void get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char **source,
 			       PT_NODE * statement);
+static char *append_block_text (PARSER_CONTEXT * parser, char *text, const char *tail);
+static char *make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, const char *block);
 static int create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block,
 					   char *sp_name, int sp_name_size, const char **call_source);
 
@@ -7267,6 +7269,54 @@ get_activity_info (PARSER_CONTEXT * parser, DB_TRIGGER_ACTION * type, const char
 }
 
 /*
+ * append_block_text() - Appends to a text made for a PL/CSQL block action.
+ *   return: the text, or NULL on an allocation failure
+ *   parser(in): Parse context the text is allocated in
+ *   text(in): text so far, or NULL once an append has failed
+ *   tail(in): text to append
+ *
+ * Note:
+ *    pt_append_string starts a new text from the tail when it is given NULL.
+ *    A text that failed once would then go on from its middle.
+ *    NULL stays NULL here, so a text is whole or missing.
+ */
+static char *
+append_block_text (PARSER_CONTEXT * parser, char *text, const char *tail)
+{
+  return text == NULL ? NULL : pt_append_string (parser, text, tail);
+}
+
+/*
+ * make_block_procedure_sql() - Makes the statement that creates the internal procedure of
+ *                              a PL/CSQL block action.
+ *   return: the statement, or NULL on an allocation failure
+ *   parser(in): Parse context the statement is allocated in
+ *   quoted_name(in): name of the procedure with its owner, quoted
+ *   block(in): PL/CSQL block text
+ *
+ * Note:
+ *    The procedure takes the shape of its stored code.
+ *    The header is on the first line, and the body starts on the second line.
+ *    The stored code is compiled again when the owner changes.
+ *    So both compilations report an error at the same line.
+ *    The block is nested in the body as the user wrote it, so its DECLARE stays valid.
+ *    The block ends at its END, and the statement terminator is added here.
+ */
+static char *
+make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, const char *block)
+{
+  char *sql;
+
+  sql = pt_append_string (parser, NULL, "CREATE PROCEDURE ");
+  sql = append_block_text (parser, sql, quoted_name);
+  sql = append_block_text (parser, sql, " () AS\nBEGIN\n");
+  sql = append_block_text (parser, sql, block);
+  sql = append_block_text (parser, sql, ";\nEND");
+
+  return sql;
+}
+
+/*
  * create_trigger_block_procedure() - Makes the internal procedure that runs a PL/CSQL block action of a trigger.
  *   return: Error code
  *   parser(in): Parse context of the create trigger statement
@@ -7291,7 +7341,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   char *user_name;
   MOP owner;
   DB_VALUE uuid;
-  char *quoted_name;
+  char quoted_name[DB_MAX_USER_LENGTH + DB_MAX_IDENTIFIER_LENGTH + 8] = { '\0' };
   char *create_sql;
   char *call_buf = NULL;
   char *call;
@@ -7345,26 +7395,11 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
     }
 
   /* the owner name may need quoting, for example a reserved word */
-  quoted_name = pt_append_string (parser, NULL, "[");
-  quoted_name = pt_append_string (parser, quoted_name, downcase_owner_name);
-  quoted_name = pt_append_string (parser, quoted_name, "].[");
-  quoted_name = pt_append_string (parser, quoted_name, sp_name + strlen (downcase_owner_name) + 1);
-  quoted_name = pt_append_string (parser, quoted_name, "]");
+  snprintf (quoted_name, sizeof (quoted_name), "[%s].[%s]", downcase_owner_name,
+	    sp_name + strlen (downcase_owner_name) + 1);
 
-  /*
-   * The procedure takes the shape of its stored code. The header is on the first line, and the body
-   * starts on the second line. The stored code is compiled again when the owner changes, so both
-   * compilations report an error at the same line.
-   * The block is nested in the body as the user wrote it, so its DECLARE stays valid.
-   * The block ends at its END, and the statement terminator is added here.
-   */
-  create_sql = pt_append_string (parser, NULL, "CREATE PROCEDURE ");
-  create_sql = pt_append_string (parser, create_sql, quoted_name);
-  create_sql = pt_append_string (parser, create_sql, " () AS\nBEGIN\n");
-  create_sql = pt_append_string (parser, create_sql, block);
-  create_sql = pt_append_string (parser, create_sql, ";\nEND");
-
-  if (quoted_name == NULL || create_sql == NULL)
+  create_sql = make_block_procedure_sql (parser, quoted_name, block);
+  if (create_sql == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
