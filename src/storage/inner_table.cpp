@@ -929,6 +929,12 @@ inner_table_expand (THREAD_ENTRY *thread_p, const OID *oid, const OID *class_oid
     {
       return S_SUCCESS;
     }
+  if (class_oid != NULL && OID_IS_ROOTOID (class_oid))
+    {
+      /* a class record holds no reference; a writer reads one between fetching a row and collecting its references,
+       * so it must not replace the remembered row */
+      return S_SUCCESS;
+    }
   if (scan_cache != NULL && scan_cache->inner_table_skip_expand)
     {
       remember (NULL, true);

@@ -17,13 +17,16 @@ Workloads, each an identical batch over all rows: select (COUNT(*), SUM(a), ten 
 into an empty table), update (SET a = a + 1 on a fresh copy), delete (all rows of a fresh copy). The table is
 restored outside the timed interval, and both servers must be idle before each sample.
 
-A sample is rows per second of csql-reported statement and commit time. Pairs alternate their order. After two
-warmup pairs, at least --pairs measured pairs; the geometric mean of candidate/baseline ratios is bootstrapped with a
-recorded seed. VERIFIED: lower 95% bound >= 0.95 and interval width <= 0.02. FAILED: width <= 0.02 and lower bound
+A sample records three throughputs of one batch: rows per second of csql-reported statement and commit time, rows per
+server instruction and rows per server cycle (perf stat attached to the server process for the batch). --metric picks
+the one the verdict uses; the default, instructions, does not move with the load of other processes on the host, which
+made the time metric INCONCLUSIVE on a shared host. Pairs alternate their order. After two warmup pairs, at least
+--pairs measured pairs; the geometric mean of candidate/baseline ratios is bootstrapped with a recorded seed. VERIFIED: lower 95% bound >= 0.95 and interval width <= 0.02. FAILED: width <= 0.02 and lower bound
 < 0.95, or upper bound < 0.95. Otherwise more pairs, up to --max-pairs, then INCONCLUSIVE.
 
-Control: the same procedure compares the baseline with itself plus an injected delay of 6% of its median warmup
-time. Each workload's control must not be VERIFIED.
+Control: the same procedure compares the baseline with itself plus injected work, an index range read of the seed
+table sized from the warmup pairs to cost 6% of the batch in the chosen metric. Each workload's control must not be
+VERIFIED.
 
 Exit 0: every workload VERIFIED and every control rejected. Exit 1: a FAILED workload or an accepted control.
 Exit 2: otherwise.
@@ -35,6 +38,7 @@ import math
 import os
 import random
 import re
+import signal
 import statistics
 import subprocess
 import sys
@@ -47,6 +51,7 @@ THRESHOLD = 2048
 KINDS = ('never', 'inline')
 WORKLOADS = ('select', 'insert', 'update', 'delete')
 SELECT_REPEAT = 10
+METRICS = ('time', 'instructions', 'cycles')
 
 
 class HarnessError(Exception):
@@ -159,13 +164,44 @@ def prepare(kind, workload):
     return f'truncate {t};\ninsert into {t} select * from seed order by id;\n'
 
 
-def batch(kind, workload, delay):
+def extra_work(rows, total):
+    """Statements that read TOTAL seed rows through the primary key."""
+    full, rest = divmod(int(total), rows)
+    return (f'select sum(a) from seed where id <= {rows};\n' * full
+            + (f'select sum(a) from seed where id <= {rest};\n' if rest else ''))
+
+
+def batch(kind, workload, extra):
     t = f'{kind}_{workload}'
     body = {'select': f'select count(*), sum(a) from {t};\n' * SELECT_REPEAT,
             'insert': f'insert into {t} select * from seed order by id;\n',
             'update': f'update {t} set a = a + 1;\n',
             'delete': f'delete from {t};\n'}[workload]
-    return body + (f'select sleep({delay:.4f});\n' if delay else '')
+    return body + extra
+
+
+class Counters:
+    """perf stat on a server process, from start to stop."""
+
+    def __init__(self, pid, path):
+        self.path = path
+        self.proc = subprocess.Popen(['perf', 'stat', '-x,', '-e', 'instructions,cycles', '-p', str(pid), '-o', str(path)],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.3)
+        if self.proc.poll() is not None:
+            raise HarnessError(f'perf stat exited with {self.proc.returncode}')
+
+    def stop(self):
+        self.proc.send_signal(signal.SIGINT)
+        self.proc.wait(timeout=60)
+        got = {}
+        for line in Path(self.path).read_text().splitlines():
+            f = line.split(',')
+            if len(f) > 2 and f[2] in ('instructions', 'cycles') and f[0].isdigit():
+                got[f[2]] = int(f[0])
+        if set(got) != {'instructions', 'cycles'}:
+            raise HarnessError(f'perf stat counted nothing; see {self.path}')
+        return got
 
 
 def geomean_ci(ratios, rnd):
@@ -231,12 +267,16 @@ class Run:
                 text += f'select count(*), sum(a) from {k}_select;\nshow trace;\nshow heap capacity of {k}_select;\n'
             inst.sql(text, 'evidence')
 
-    def sample(self, inst, kind, workload, delay=0.0):
+    def sample(self, inst, kind, workload, extra=''):
         prep = prepare(kind, workload)
         if prep:
             inst.sql(prep, f'{kind}-{workload}-prepare')
         wait_idle([self.base.pid, self.cand.pid])
-        out = inst.sql(batch(kind, workload, delay), f'{kind}-{workload}')
+        counters = Counters(inst.pid, inst.root / f'perf-{inst.n + 1:04d}.csv')
+        try:
+            out = inst.sql(batch(kind, workload, extra), f'{kind}-{workload}')
+        finally:
+            counts = counters.stop()
         rows = self.args.rows * (SELECT_REPEAT if workload == 'select' else 1)
         if workload != 'select':
             m = re.search(r'(\d+) rows? affected', out)
@@ -246,42 +286,58 @@ class Run:
             got = re.findall(r'^\s+(\d+)\s+(\d+)\s*$', out, re.M)
             if len(got) != SELECT_REPEAT or len(set(got)) != 1 or int(got[0][0]) != self.args.rows:
                 raise HarnessError(f'{inst.label} {kind} select: unexpected result')
-        return rows / timed(out)
+        return {'time': rows / timed(out), 'instructions': rows / counts['instructions'], 'cycles': rows / counts['cycles']}
+
+    def calibrate(self):
+        """Cost of one seed row of extra work on the baseline, per metric, from a full-range read."""
+        costs = []
+        for _ in range(3):
+            s = self.sample(self.base, 'never', 'select', extra_work(self.args.rows, self.args.rows))
+            t = self.sample(self.base, 'never', 'select')
+            costs.append({m: (1 / s[m] - 1 / t[m]) * self.args.rows * SELECT_REPEAT / self.args.rows for m in METRICS})
+        self.row_cost = {m: statistics.median(c[m] for c in costs) for m in METRICS}
+        self.summary['extra_work_cost_per_row'] = self.row_cost
 
     def measure(self, kind, workload, pair_of, control=False):
         """Return the measured pairs (baseline tput, other tput) and the verdict."""
         a, b = pair_of
-        delay = 0.0
+        metric = self.args.metric
+        extra, extra_rows = '', 0
         pairs, warm = [], []
         n = 0
         while True:
             first, second = ((a, False), (b, True)) if n % 2 == 0 else ((b, True), (a, False))
             got = {}
             for inst, is_other in (first, second):
-                got[is_other] = self.sample(inst, kind, workload, delay if is_other else 0.0)
+                got[is_other] = self.sample(inst, kind, workload, extra if is_other else '')
             if n < 2:
-                warm.append(got[False])
+                warm.append(got[False][metric])
                 if control and n == 1:
                     rows = self.args.rows * (SELECT_REPEAT if workload == 'select' else 1)
-                    delay = 0.06 * statistics.median(rows / t for t in warm)
+                    cost = statistics.median(rows / t for t in warm)
+                    extra_rows = max(1, round(0.06 * cost / self.row_cost[metric]))
+                    extra = extra_work(self.args.rows, extra_rows)
             else:
                 pairs.append((got[False], got[True]))
             n += 1
             m = len(pairs)
             if m >= self.args.pairs and (m - self.args.pairs) % 4 == 0:
-                ratios = [o / base for base, o in pairs]
-                g, lo, hi = geomean_ci(ratios, self.rnd)
-                v = verdict(lo, hi)
+                stats = {}
+                for x in METRICS:
+                    g, lo, hi = geomean_ci([o[x] / base[x] for base, o in pairs], self.rnd)
+                    stats[x] = {'geomean': g, 'lo': lo, 'hi': hi, 'verdict': verdict(lo, hi),
+                                'base_median': statistics.median(p[0][x] for p in pairs)}
+                v = stats[metric]['verdict']
                 if v != 'INCONCLUSIVE' or m >= self.args.max_pairs:
                     return {'kind': kind, 'workload': workload, 'control': control, 'pairs': pairs,
-                            'delay_seconds': delay, 'geomean': g, 'lo': lo, 'hi': hi, 'verdict': v,
-                            'base_median': statistics.median(p[0] for p in pairs),
-                            'other_median': statistics.median(p[1] for p in pairs)}
+                            'extra_rows': extra_rows, 'metric': metric, 'stats': stats, 'verdict': v,
+                            **{k: stats[metric][k] for k in ('geomean', 'lo', 'hi', 'base_median')}}
 
     def run(self):
         try:
             self.start()
             self.evidence()
+            self.calibrate()
             for kind in KINDS:
                 for workload in WORKLOADS:
                     for control in (False, True):
@@ -290,8 +346,10 @@ class Run:
                         self.summary['results'].append(r)
                         self.save()
                         name = f'{"control " if control else ""}{kind} {workload}'
-                        print(f'  {r["verdict"]:13} {name}: ratio {r["geomean"]:.4f} [{r["lo"]:.4f}, {r["hi"]:.4f}],'
-                              f' {len(r["pairs"])} pairs, baseline {r["base_median"]:.0f} rows/s', flush=True)
+                        other = ', '.join(f'{x} {r["stats"][x]["geomean"]:.4f} [{r["stats"][x]["lo"]:.4f}, '
+                                          f'{r["stats"][x]["hi"]:.4f}]' for x in METRICS if x != r['metric'])
+                        print(f'  {r["verdict"]:13} {name}: {r["metric"]} ratio {r["geomean"]:.4f} [{r["lo"]:.4f},'
+                              f' {r["hi"]:.4f}], {len(r["pairs"])} pairs; {other}', flush=True)
         finally:
             self.summary['loadavg_end'] = os.getloadavg()
             self.save()
@@ -311,6 +369,7 @@ def main():
     ap.add_argument('--rows', type=int, default=200000)
     ap.add_argument('--pairs', type=int, default=12)
     ap.add_argument('--max-pairs', type=int, default=40)
+    ap.add_argument('--metric', choices=METRICS, default='instructions')
     args = ap.parse_args()
     try:
         run = Run(args)
