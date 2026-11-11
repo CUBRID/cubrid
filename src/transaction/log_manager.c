@@ -5331,6 +5331,13 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
 	      tdes->first_save_entry = NULL;
+#if !defined (NDEBUG)
+	      {
+		int hold = FI_KILL_COMMIT_WINDOW_HOLD;
+
+		(void) FI_TEST_ARG (thread_p, FI_TEST_SIDECAR_KILL_COMMIT_WINDOW, &hold, 0);
+	      }
+#endif /* !NDEBUG */
 	    }
 
 	  if (retain_lock != true)

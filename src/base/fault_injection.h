@@ -103,6 +103,16 @@ typedef enum
 						 * thread holding a data page, and fails as a release build does */
   FI_TEST_SIDECAR_MISS_ROUTINE_MARK = 700007,	/* a statement that calls a routine still reads lazily, as if
 						 * the mark missed the routine (E22): the trid backstop's case */
+  /* SIDECAR: crash points of the A3 recovery test.  Each one kills the server with SIGKILL where it fires. */
+  FI_TEST_SIDECAR_KILL_AFTER_STORE_INSERT = 700008,	/* an operation wrote its new store records and no stamp
+							 * and no hot record yet */
+  FI_TEST_SIDECAR_KILL_AFTER_STAMP = 700009,	/* an UPDATE or DELETE stamped its dropped store records and
+						 * wrote no hot record yet */
+  FI_TEST_SIDECAR_KILL_AT_RELOCATE = 700010,	/* an UPDATE wrote the store with its hot pages released and
+						 * has not located its row again */
+  FI_TEST_SIDECAR_KILL_COMMIT_WINDOW = 700011,	/* a commit that saved heap space freed it and has not
+						 * flushed its commit record: it waits FI_KILL_COMMIT_WINDOW_HOLD seconds, so another
+						 * transaction can take the bytes, then kills */
 
   /* etc .... */
 
@@ -116,6 +126,9 @@ typedef enum
 } FI_GROUP_CODE;
 
 #define FI_INIT_STATE 0
+
+/* seconds FI_TEST_SIDECAR_KILL_COMMIT_WINDOW waits before it kills */
+#define FI_KILL_COMMIT_WINDOW_HOLD 8
 
 
 typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);

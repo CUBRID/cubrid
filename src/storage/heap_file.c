@@ -81,6 +81,7 @@
 #include "px_parallel.hpp"
 #include "ftab_set.hpp"
 #include "bit.h"		/* bit64_is_set */
+#include "fault_injection.h"
 #include "sidecar.hpp"
 
 #include <set>
@@ -25966,6 +25967,7 @@ relocate:
 		{
 		  goto exit;
 		}
+	      (void) FI_TEST (thread_p, FI_TEST_SIDECAR_KILL_AT_RELOCATE, 0);
 	      goto relocate;
 	    }
 	}

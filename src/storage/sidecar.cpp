@@ -1660,8 +1660,20 @@ sidecar_apply_plan_body (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context
   error_code = sidecar_insert_values (thread_p, context, plan, &store_hfid, store_context);
   if (error_code == NO_ERROR)
     {
+#if !defined (NDEBUG)
+      if (plan->has_fresh ())
+	{
+	  (void) FI_TEST (thread_p, FI_TEST_SIDECAR_KILL_AFTER_STORE_INSERT, 0);
+	}
+#endif /* !NDEBUG */
       error_code = sidecar_stamp_values (thread_p, context, plan, &store_hfid, store_context);
     }
+#if !defined (NDEBUG)
+  if (error_code == NO_ERROR && !plan->stamps.empty ())
+    {
+      (void) FI_TEST (thread_p, FI_TEST_SIDECAR_KILL_AFTER_STAMP, 0);
+    }
+#endif /* !NDEBUG */
   if (error_code == NO_ERROR && context->type != HEAP_OPERATION_INSERT
       && FI_INSERTED (FI_TEST_SIDECAR_FAIL_AFTER_STORE_WRITES))
     {
