@@ -522,6 +522,23 @@ typedef uint32_t BIN_REC_SIZE_TYPE;
  */
 #define UNLOAD_RAW_MONETARY_SIZE (sizeof (double) + sizeof (int))
 
+/*
+ * A TIMESTAMPTZ or DATETIMETZ value leads with a kind byte, since its TZ_ID is not always
+ * self-contained:
+ *
+ *   [UNLOAD_RAW_TZ_RAW][DB_TIMESTAMP | DB_DATE DB_TIME][TZ_ID]   an offset TZ_ID (+09:00)
+ *   [UNLOAD_RAW_TZ_TEXT][the value as the text form writes it]     a geographic TZ_ID (Asia/Seoul)
+ *
+ * An offset TZ_ID holds the offset itself and means the same to every build. A geographic one
+ * holds indexes into the timezone library (libcubrid_timezones), which differ between libraries
+ * built from different tzdata, so the value goes by its zone name instead and the reader looks the
+ * name up in its own library, as loading the text form does.
+ */
+#define UNLOAD_RAW_TZ_RAW      (0)
+#define UNLOAD_RAW_TZ_TEXT     (1)
+/* the longest text a geographic value is written as: a date, a time, a zone name and its abbreviation */
+#define UNLOAD_RAW_TZ_TEXT_MAX (256)
+
 /* a BIT or VARBIT value is written as its length in bits followed by the bytes holding the bits */
 #define UNLOAD_RAW_BIT_LENGTH_SIZE (sizeof (int))
 

@@ -61,6 +61,7 @@
 
 #include "message_catalog.h"
 #include "string_opfunc.h"
+#include "tz_support.h"
 #include "porting.h"
 
 volatile bool error_occurred = false;
@@ -77,6 +78,7 @@ static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int 
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 static int binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_length, DB_TYPE type);
+static int binary_print_tz (TEXT_OUTPUT * tout, DB_VALUE * value, DB_TYPE type);
 
 static int write_object_file (TEXT_BUFFER_BLK * head);
 
@@ -908,15 +910,11 @@ int
 desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  char buf[INTERNAL_BUFFER_SIZE];
-  char *ptr;
   const char *str_ptr = NULL;
   char *json_body = NULL;
   DB_CONST_C_BIT bits = NULL;
   DB_TYPE type;
   int len = 0;
-  DB_DATETIMETZ *dt_tz;
-  DB_TIMESTAMPTZ *ts_tz;
   type = DB_VALUE_TYPE (value);
 
   switch (type)
@@ -965,18 +963,14 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      CHECK_PRINT_ERROR (binary_print
-			 (tout, (u_char *) & (value->data.timestamptz), (int) sizeof (value->data.timestamptz), type));
+    case DB_TYPE_DATETIMETZ:
+      CHECK_PRINT_ERROR (binary_print_tz (tout, value, type));
       break;
 
     case DB_TYPE_DATETIME:
     case DB_TYPE_DATETIMELTZ:
       CHECK_PRINT_ERROR (binary_print
 			 (tout, (u_char *) & (value->data.datetime), (int) sizeof (value->data.datetime), type));
-      break;
-    case DB_TYPE_DATETIMETZ:
-      CHECK_PRINT_ERROR (binary_print
-			 (tout, (u_char *) & (value->data.datetimetz), (int) sizeof (value->data.datetimetz), type));
       break;
     case DB_TYPE_MONETARY:
       {
@@ -1397,6 +1391,83 @@ binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_length, DB_TY
   CHECK_PRINT_ERROR (binary_print_header (tout, false, (int) UNLOAD_RAW_BIT_LENGTH_SIZE + byte_size, type));
   CHECK_PRINT_ERROR (text_print_buffer (tout, (const char *) &bit_length, (int) UNLOAD_RAW_BIT_LENGTH_SIZE));
   CHECK_PRINT_ERROR (text_print_buffer (tout, (const char *) bits, byte_size));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_print_tz - print a TIMESTAMPTZ or DATETIMETZ column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    value(in): the value
+ *    type(in): DB_TYPE_TIMESTAMPTZ or DB_TYPE_DATETIMETZ
+ *
+ * Note: a value of an offset TZ_ID is written as it is, one of a geographic TZ_ID as the text
+ *       form writes it. See UNLOAD_RAW_TZ_RAW for why.
+ */
+static int
+binary_print_tz (TEXT_OUTPUT * tout, DB_VALUE * value, DB_TYPE type)
+{
+  int error = NO_ERROR;
+  u_char tmp[1 + UNLOAD_RAW_TZ_TEXT_MAX];
+  int size = 1;
+  DB_TIMESTAMPTZ *ts_tz = NULL;
+  DB_DATETIMETZ *dt_tz = NULL;
+  const TZ_ID *tz_id;
+  TZ_REGION region;
+
+  assert (type == DB_TYPE_TIMESTAMPTZ || type == DB_TYPE_DATETIMETZ);
+
+  if (type == DB_TYPE_TIMESTAMPTZ)
+    {
+      ts_tz = db_get_timestamptz (value);
+      tz_id = &ts_tz->tz_id;
+    }
+  else
+    {
+      dt_tz = db_get_datetimetz (value);
+      tz_id = &dt_tz->tz_id;
+    }
+
+  /* decodes the bits of the TZ_ID only, without looking into the timezone library */
+  tz_id_to_region (tz_id, &region);
+
+  if (region.type == TZ_REGION_OFFSET)
+    {
+      tmp[0] = UNLOAD_RAW_TZ_RAW;
+      if (ts_tz != NULL)
+	{
+	  memcpy (tmp + size, &ts_tz->timestamp, sizeof (DB_TIMESTAMP));
+	  size += sizeof (DB_TIMESTAMP);
+	}
+      else
+	{
+	  memcpy (tmp + size, &dt_tz->datetime.date, sizeof (unsigned int));
+	  size += sizeof (unsigned int);
+	  memcpy (tmp + size, &dt_tz->datetime.time, sizeof (unsigned int));
+	  size += sizeof (unsigned int);
+	}
+      memcpy (tmp + size, tz_id, sizeof (TZ_ID));
+      size += sizeof (TZ_ID);
+    }
+  else
+    {
+      /* the text form of the value, without the quotes and the type name around it */
+      tmp[0] = UNLOAD_RAW_TZ_TEXT;
+      if (ts_tz != NULL)
+	{
+	  size += db_timestamptz_to_string ((char *) tmp + 1, UNLOAD_RAW_TZ_TEXT_MAX, &ts_tz->timestamp, tz_id);
+	}
+      else
+	{
+	  size += db_datetimetz_to_string ((char *) tmp + 1, UNLOAD_RAW_TZ_TEXT_MAX, &dt_tz->datetime, tz_id);
+	}
+    }
+
+  CHECK_PRINT_ERROR (binary_print (tout, tmp, size, type));
 
   return error;
 exit_on_error:

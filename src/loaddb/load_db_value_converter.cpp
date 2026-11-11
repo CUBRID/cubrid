@@ -33,6 +33,7 @@
 #include "object_representation.h"
 #include "set_object.h"
 #include "string_opfunc.h"
+#include "tz_support.h"
 
 #include <array>
 #include <cassert>
@@ -1528,6 +1529,92 @@ namespace cubload
   }
 
   /*
+   * binary_tz_value - build a TIMESTAMPTZ or DATETIMETZ value from its column
+   *    return: NO_ERROR or an error code
+   *    col(in): the column, of DB_TYPE_TIMESTAMPTZ or DB_TYPE_DATETIMETZ
+   *    attr(in): attribute being set, for the text converters
+   *    val(out): the value
+   * Note:
+   *    See UNLOAD_RAW_TZ_RAW for the two kinds. A geographic value comes as text and goes through
+   *    the converter of the text form, which looks its zone up in the timezone library of this
+   *    build, so it loads and fails the way the text form does.
+   */
+  static int
+  binary_tz_value (const binary_column &col, const attribute *attr, db_value *val)
+  {
+    const bool is_timestamp = (col.type == DB_TYPE_TIMESTAMPTZ);
+    const char *payload = col.data + 1;
+    std::size_t payload_size;
+
+    if (col.size < 1)
+      {
+	return binary_corrupted (col);
+      }
+    payload_size = col.size - 1;
+
+    switch ((unsigned char) col.data[0])
+      {
+      case UNLOAD_RAW_TZ_RAW:
+      {
+	TZ_ID tz_id;
+	TZ_REGION region;
+	std::size_t time_size = is_timestamp ? sizeof (DB_TIMESTAMP) : sizeof (unsigned int) * 2;
+
+	if (payload_size != time_size + sizeof (TZ_ID))
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	/* a geographic TZ_ID is never written this way, its indexes would mean nothing here */
+	std::memcpy (&tz_id, payload + time_size, sizeof (TZ_ID));
+	tz_id_to_region (&tz_id, &region);
+	if (region.type != TZ_REGION_OFFSET)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	if (is_timestamp)
+	  {
+	    DB_TIMESTAMPTZ v;
+
+	    std::memcpy (&v.timestamp, payload, sizeof (DB_TIMESTAMP));
+	    v.tz_id = tz_id;
+	    return db_make_timestamptz (val, &v);
+	  }
+	else
+	  {
+	    DB_DATETIMETZ v;
+
+	    std::memcpy (&v.datetime.date, payload, sizeof (unsigned int));
+	    std::memcpy (&v.datetime.time, payload + sizeof (unsigned int), sizeof (unsigned int));
+	    v.tz_id = tz_id;
+	    return db_make_datetimetz (val, &v);
+	  }
+      }
+
+      case UNLOAD_RAW_TZ_TEXT:
+      {
+	char text[UNLOAD_RAW_TZ_TEXT_MAX + 1];
+
+	if (payload_size > UNLOAD_RAW_TZ_TEXT_MAX)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	/* the text converters take a null terminated string */
+	std::memcpy (text, payload, payload_size);
+	text[payload_size] = '\0';
+
+	return is_timestamp ? to_db_timestamptz (text, payload_size, attr, val)
+	       : to_db_datetimetz (text, payload_size, attr, val);
+      }
+
+      default:
+	return binary_corrupted (col);
+      }
+  }
+
+  /*
    * binary_value_hint - the domain a value of the given type is built after
    *    return: the domain, or NULL when none fits
    *    domain(in): attribute domain, or the domain of a collection
@@ -1668,10 +1755,8 @@ namespace cubload
       }
 
       case DB_TYPE_TIMESTAMPTZ:
-      {
-	DB_TIMESTAMPTZ v;
-	return binary_read_raw (col, v) ? db_make_timestamptz (val, &v) : binary_corrupted (col);
-      }
+      case DB_TYPE_DATETIMETZ:
+	return binary_tz_value (col, attr, val);
 
       case DB_TYPE_DATETIME:
       {
@@ -1683,12 +1768,6 @@ namespace cubload
       {
 	DB_DATETIME v;
 	return binary_read_raw (col, v) ? db_make_datetimeltz (val, &v) : binary_corrupted (col);
-      }
-
-      case DB_TYPE_DATETIMETZ:
-      {
-	DB_DATETIMETZ v;
-	return binary_read_raw (col, v) ? db_make_datetimetz (val, &v) : binary_corrupted (col);
       }
 
       case DB_TYPE_NUMERIC:
