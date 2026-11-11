@@ -21360,6 +21360,13 @@ pt_print_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " level ");
       q = pt_append_varchar (parser, q, r1);
     }
+  else if (p->info.sensitivity_label.assigned_level > 0)
+    {
+      char buf[32];
+
+      snprintf (buf, sizeof (buf), " level %d", p->info.sensitivity_label.assigned_level);
+      q = pt_append_nulstring (parser, q, buf);
+    }
 
   if (p->info.sensitivity_label.comment != NULL)
     {

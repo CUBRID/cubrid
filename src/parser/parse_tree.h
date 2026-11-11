@@ -3681,6 +3681,7 @@ struct pt_sensitivity_label_info
   PT_NODE *new_name;		/* PT_VALUE */
   PT_NODE *level;		/* PT_VALUE */
   PT_NODE *comment;		/* PT_VALUE */
+  int assigned_level;		/* the level given to a grade created without LEVEL */
 };
 
 /* Info field of the basic NODE

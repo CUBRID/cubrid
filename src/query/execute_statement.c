@@ -151,7 +151,7 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int level,
+static int do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int *level,
 						 const char *comment);
 static int do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const char *new_name,
 						const int level, const char *comment);
@@ -17348,6 +17348,18 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.statement_type = CUBRID_STMT_RENAME_SYNONYM;
       break;
 
+    case PT_ALTER_SENSITIVITY_LABEL:
+      repl_stmt.statement_type = CUBRID_STMT_ALTER_SENSITIVITY_LABEL;
+      break;
+
+    case PT_CREATE_SENSITIVITY_LABEL:
+      repl_stmt.statement_type = CUBRID_STMT_CREATE_SENSITIVITY_LABEL;
+      break;
+
+    case PT_DROP_SENSITIVITY_LABEL:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_SENSITIVITY_LABEL;
+      break;
+
     case PT_CREATE_USER:
       repl_stmt.statement_type = CUBRID_STMT_CREATE_USER;
       break;
@@ -17448,6 +17460,12 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   */
 	  PARSER_VARCHAR *dblink_str = pt_print_bytes (parser, statement);
 	  repl_stmt.stmt_text = (char *) pt_get_varchar_bytes (dblink_str);
+	}
+
+      if (statement->node_type == PT_CREATE_SENSITIVITY_LABEL && statement->info.sensitivity_label.assigned_level > 0)
+	{
+	  PARSER_VARCHAR *label_str = pt_print_bytes (parser, statement);
+	  repl_stmt.stmt_text = (char *) pt_get_varchar_bytes (label_str);
 	}
     }
   else
@@ -20300,7 +20318,14 @@ do_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
       level = info->level->info.value.data_value.i;
     }
 
-  return do_create_sensitivity_label_internal (info->kind, name, level, comment);
+  error = do_create_sensitivity_label_internal (info->kind, name, &level, comment);
+  if (error == NO_ERROR && info->level == NULL)
+    {
+      /* HA replicates this level: a replica would compute MAX + 1 again in its own commit order */
+      info->assigned_level = level;
+    }
+
+  return error;
 }
 
 /*
@@ -20361,11 +20386,11 @@ end:
  *   return: error code
  *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
  *   name(in): the lowercased name
- *   level(in): the grade_level, or 0 to assign the next one to a grade
+ *   level(in/out): the grade_level, or 0 to assign the next one to a grade; the level given on return
  *   comment(in): the comment, or NULL
  */
 static int
-do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int level, const char *comment)
+do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int *level, const char *comment)
 {
   DB_OBJECT *class_obj;
   DB_OBJECT *instance_obj;
@@ -20413,12 +20438,12 @@ do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name,
   er_clear ();
 
   /* only a grade has a level: the semantic check rejects LEVEL on INFO_TYPE and SOURCE */
-  if (level > 0)
+  if (*level > 0)
     {
-      db_make_int (&value, level);
+      db_make_int (&value, *level);
       if (db_find_unique (class_obj, "grade_level", &value) != NULL)
 	{
-	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS, level);
+	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS, *level);
 	  goto end;
 	}
 
@@ -20431,7 +20456,7 @@ do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name,
     }
   else if (kind == PT_SENSITIVITY_LABEL_GRADE)
     {
-      error = do_get_next_sensitivity_label_grade_level (&level);
+      error = do_get_next_sensitivity_label_grade_level (level);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -20460,9 +20485,9 @@ do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name,
       goto end;
     }
 
-  if (level > 0)
+  if (*level > 0)
     {
-      db_make_int (&value, level);
+      db_make_int (&value, *level);
       error = dbt_put_internal (obj_tmpl, "grade_level", &value);
       if (error != NO_ERROR)
 	{
