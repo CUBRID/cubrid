@@ -13000,7 +13000,8 @@ pt_expr_tree_reads_client_value (PARSER_CONTEXT * parser, PT_NODE * tree)
  * Seeded random state: while parser->rand_states is set, each seeded RAND, DRAND,
  * RANDOM and DRANDOM call node keeps its own generator, seeded on its first
  * evaluation and advanced on every later one, as the server keeps one per
- * arithmetic node.  Without it every evaluation reseeds and returns the first value.
+ * arithmetic node.  A seed read from a column reseeds on every evaluation, as on
+ * the server.  Without it every evaluation reseeds and returns the first value.
  */
 struct pt_rand_state
 {
@@ -13023,8 +13024,10 @@ pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, const PT_NODE * node, int seed
 {
   struct pt_rand_state *state = NULL;
   struct drand48_data local, *buf = &local;
+  const PT_NODE *seed_arg = (node != NULL) ? node->info.expr.arg1 : NULL;
+  bool column_seed = (seed_arg != NULL && (seed_arg->node_type == PT_NAME || seed_arg->node_type == PT_DOT_));
 
-  if (parser->rand_states != NULL)
+  if (parser->rand_states != NULL && !column_seed)
     {
       for (state = *parser->rand_states; state != NULL && state->node != node; state = state->next)
 	{
