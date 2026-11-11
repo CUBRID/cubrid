@@ -7221,7 +7221,8 @@ btree_class_test_unique (char *buf, int buf_size)
  * fill_factor (in)	: Target fill ratio in percent.
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow pages deallocated.
- * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ * pairs_skipped (out)	: Number of page pairs and keys that could not be compacted until vacuum catches up (no OID
+ *			  boundary in a page pair, or no stable object in a key's leaf record).
  */
 int
 btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,

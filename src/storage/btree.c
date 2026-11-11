@@ -15821,6 +15821,28 @@ btree_compact_leaf_has_stable_object (THREAD_ENTRY * thread_p, BTID_INT * btid_i
 }
 
 /*
+ * btree_compact_end_key () - Account for the key xbtree_compact_overflow () is leaving, possibly after several latch
+ *			      rounds, and clear the position kept for coming back to it. Called at every exit of the
+ *			      per-key loop, so a position left by one key is never taken up by the next one.
+ *
+ * keys_compacted (in/out) : Number of keys whose chain lost at least one page.
+ * pages_freed (in/out)	   : Number of overflow data pages deallocated.
+ * key_freed (in/out)	   : Pages freed for the key over its latch rounds; reset to 0.
+ * resume_oid (out)	   : Set to NULL OID.
+ */
+static void
+btree_compact_end_key (INT64 * keys_compacted, INT64 * pages_freed, int *key_freed, OID * resume_oid)
+{
+  *pages_freed += *key_freed;
+  if (*key_freed > 0)
+    {
+      (*keys_compacted)++;
+    }
+  *key_freed = 0;
+  OID_SET_NULL (resume_oid);
+}
+
+/*
  * xbtree_compact_overflow () - ALTER INDEX ... COMPACT: walk the leaf level of a non-unique index and compact every
  *				key's overflow OID chain to the requested fill factor. Online: no table lock, no
  *				sorting; only the leaf write latch of the key being compacted is held, and it is
@@ -15974,6 +15996,9 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE)
 	  || !btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
 	{
+	  /* Coming back to an unfinished chain, the key can be found without one: vacuum removed all of its overflow
+	   * objects while the leaf latch was yielded. The key ends here (CBRD-27972). */
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	  slot++;
 	  continue;
 	}
@@ -16008,13 +16033,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	  /* Leave the key for the next COMPACT. If the chain was left unfinished in an earlier latch round, it ends
 	   * here: account for the key, then move on to the next one. */
 	  (*pairs_skipped)++;
-	  *pages_freed += key_freed;
-	  if (key_freed > 0)
-	    {
-	      (*keys_compacted)++;
-	    }
-	  key_freed = 0;
-	  OID_SET_NULL (&resume_oid);
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	  btree_clear_key_value (&clear_key, &key);
 	  slot++;
 	  continue;
@@ -16038,12 +16057,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. A key whose
 	   * chain was finished in an earlier latch round also ends here, so account for the key at this point. */
 	  assert (!more && OID_ISNULL (&resume_oid));
-	  *pages_freed += key_freed;
-	  if (key_freed > 0)
-	    {
-	      (*keys_compacted)++;
-	    }
-	  key_freed = 0;
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	  btree_clear_key_value (&clear_key, &key);
 	  slot++;
 	  continue;
@@ -16077,13 +16091,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       else
 	{
 	  /* This key is done, possibly over several latch rounds: account for it once. */
-	  *pages_freed += key_freed;
-	  if (key_freed > 0)
-	    {
-	      (*keys_compacted)++;
-	    }
-	  key_freed = 0;
-	  OID_SET_NULL (&resume_oid);
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	}
     }
 
