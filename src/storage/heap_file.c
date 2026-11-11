@@ -3436,6 +3436,16 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       return false;
     }
 
+#if !defined (NDEBUG)
+  if (prm_get_bool_value (PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH))
+    {
+      /* test only: under this parameter xlocator_fetch_all () scans with the committed snapshot (Sidecar acceptance
+       * tests). Each call resumes the scan at the page of the last OID it returned, and with no snapshot nothing keeps
+       * vacuum from emptying that page, so no heap page is removed while the parameter is on. */
+      return false;
+    }
+#endif /* !NDEBUG */
+
   /* Use page watchers to do the ordered fix. */
   PGBUF_INIT_WATCHER (&crt_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
