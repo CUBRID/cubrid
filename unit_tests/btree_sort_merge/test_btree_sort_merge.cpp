@@ -325,6 +325,17 @@ TEST_CASE ("merge sorter: keys arriving nearly in order", "[btree_sort_merge]")
     }
 }
 
+TEST_CASE ("merge sorter: keys rising page by page, falling inside a page", "[btree_sort_merge]")
+{
+  /* as a heap loaded in key order is read, a few records of a key in OID order */
+  const size_t page = 100;
+
+  check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [page] (size_t i)
+  {
+    return key_of_number ((i / page) * page + (page - 1 - i % page) / 4);
+  }));
+}
+
 TEST_CASE ("merge sorter: a few long rising stretches", "[btree_sort_merge]")
 {
   const size_t stretches = 8;

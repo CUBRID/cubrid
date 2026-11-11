@@ -68,6 +68,9 @@ struct btsort_srun
 /* the merge stack holds a run a depth and the two runs found last, and a run of depth d holds 2^d records at least */
 #define BTSORT_MAX_SRUNS  32
 
+/* a merge searches the top it moves at once only between stretches this long */
+#define BTSORT_RUN_SEARCH_MIN  32
+
 typedef struct btsort_stack BTSORT_STACK;
 struct btsort_stack
 {
@@ -78,6 +81,8 @@ struct btsort_stack
 static void btsort_run_flip (BTSORT_RUN_SLOT *start, BTSORT_RUN_SLOT *stop);
 static void btsort_run_find (const char *base, BTSORT_RUN_SLOT *source, long *top, BTSORT_STACK *st_p, long limit,
 			     BTSORT_CMP_FUNC *compare, void *comp_arg);
+static BTSORT_RUN_SLOT *btsort_run_search_above (const char *base, BTSORT_RUN_SLOT *start, BTSORT_RUN_SLOT *stop,
+    const BTSORT_RUN_SLOT *target, BTSORT_CMP_FUNC *compare, void *comp_arg);
 static void btsort_run_merge (const char *base, BTSORT_RUN_SLOT *low, BTSORT_RUN_SLOT *high, BTSORT_STACK *st_p,
 			      BTSORT_CMP_FUNC *compare, void *comp_arg);
 static BTSORT_RUN_SLOT *btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit,
@@ -258,6 +263,52 @@ btsort_run_find (const char *base, BTSORT_RUN_SLOT *source, long *top, BTSORT_ST
 }
 
 /*
+ * btsort_run_search_above () - Finds the first record of an ordered stretch above a record, searching from the top
+ *   return: the slot of the first record above target
+ *   base(in):
+ *   start(in): the first slot of the stretch
+ *   stop(in): the last slot, whose record is above target
+ *   target(in):
+ *   compare(in):
+ *   comp_arg(in):
+ *
+ * Note: The step from the top doubles, so that k records above target take about 2 log2 k compares.
+ */
+static BTSORT_RUN_SLOT *
+btsort_run_search_above (const char *base, BTSORT_RUN_SLOT *start, BTSORT_RUN_SLOT *stop,
+			 const BTSORT_RUN_SLOT *target, BTSORT_CMP_FUNC *compare, void *comp_arg)
+{
+  BTSORT_RUN_SLOT *above = stop;
+  BTSORT_RUN_SLOT *low;
+  long step = 1;
+
+  while (stop - start >= step
+	 && (*compare) (BTSORT_REC_AT (base, stop - step), BTSORT_REC_AT (base, target), comp_arg) > 0)
+    {
+      above = stop - step;
+      step *= 2;
+    }
+
+  /* the first record above target lies from low to above */
+  low = (stop - start >= step) ? stop - step + 1 : start;
+  while (low < above)
+    {
+      BTSORT_RUN_SLOT *middle = low + (above - low) / 2;
+
+      if ((*compare) (BTSORT_REC_AT (base, middle), BTSORT_REC_AT (base, target), comp_arg) > 0)
+	{
+	  above = middle;
+	}
+      else
+	{
+	  low = middle + 1;
+	}
+    }
+
+  return above;
+}
+
+/*
  * btsort_run_merge () - Merges two runs from source to dest, updateing dest_top
  *   return:
  *   low(in):
@@ -350,6 +401,31 @@ btsort_run_merge (const char *base, BTSORT_RUN_SLOT *low, BTSORT_RUN_SLOT *high,
 	    {
 	      dest_low_high = 'L';
 	      dest_ptr = &low[right_srun_p->stop];
+	    }
+
+	  /* the top of the stretch with the larger last record, as far as it rises above the other stretch, moves at
+	   * once: pages that arrive in order, each in reverse, merge at a few compares a page */
+	  if (left_stop - left_start >= BTSORT_RUN_SEARCH_MIN - 1
+	      && right_stop - right_start >= BTSORT_RUN_SEARCH_MIN - 1)
+	    {
+	      BTSORT_RUN_SLOT *top;
+
+	      if ((*compare) (BTSORT_REC_AT (base, left_stop), BTSORT_REC_AT (base, right_stop), comp_arg) > 0)
+		{
+		  top = btsort_run_search_above (base, left_start, left_stop, right_stop, compare, comp_arg);
+		  while (left_stop >= top)
+		    {
+		      *dest_ptr-- = *left_stop--;
+		    }
+		}
+	      else
+		{
+		  top = btsort_run_search_above (base, right_start, right_stop, left_stop, compare, comp_arg);
+		  while (right_stop >= top)
+		    {
+		      *dest_ptr-- = *right_stop--;
+		    }
+		}
 	    }
 
 	  while (left_stop >= left_start && right_stop >= right_start)
