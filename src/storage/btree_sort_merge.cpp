@@ -656,6 +656,13 @@ btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, cons
   /* the sample and its spare fit the second slot array */
   assert (bucket_count <= ctx->max_buckets && 2 * sample_count <= record_count);
 
+  /* use an odd stride, which shares no factor with the page size, a power of two.
+   * At an even stride, records of one size can lie whole pages apart and crowd a few cache sets */
+  if (stride % 2 == 0)
+    {
+      stride--;
+    }
+
   /* the sample, in the order of the run and then sorted, in the second slot array, which the slots fill later */
   for (at = 0; at < sample_count; at++)
     {
