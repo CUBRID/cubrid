@@ -1704,60 +1704,61 @@ oos_reclaim_release_growth (const VFID &oos_vfid)
 /*
  * oos_reclaim_check_emptied () - Try the members of the file's emptied-page set, including pages added while this
  *   runs, each at most once per growth. Stops at the first page taken.
+ *
+ *   Members are picked one at a time. A member that is not taken leaves the set unless it is busy or found
+ *   deallocated, so the scan for the next unexamined member passes only those, and a growth costs O(log n) in a
+ *   large set instead of a copy of it.
  */
 static int
 oos_reclaim_check_emptied (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &hdr_vpid, int rec_length,
 			   std::set<VPID, oos_vpid_order> &examined, VPID &vpid_out, PAGE_PTR &page_out)
 {
   page_out = NULL;
-  std::vector<VPID> batch;
   while (true)
     {
-      batch.clear ();
+      bool picked = false;
+      VPID vpid;
+      VPID_SET_NULL (&vpid);
       (void) pthread_mutex_lock (&oos_Bestspace->bestspace_mutex);
-      try
+      auto it = oos_Reclaim_states.find (oos_vfid);
+      if (it != oos_Reclaim_states.end ())
 	{
-	  auto it = oos_Reclaim_states.find (oos_vfid);
-	  if (it != oos_Reclaim_states.end ())
+	  try
 	    {
-	      for (const VPID &vpid : it->second.emptied)
+	      for (const VPID &member : it->second.emptied)
 		{
-		  if (examined.insert (vpid).second)
+		  if (examined.insert (member).second)
 		    {
-		      batch.push_back (vpid);
+		      vpid = member;
+		      picked = true;
+		      break;
 		    }
 		}
 	    }
-	}
-      catch (std::bad_alloc &)
-	{
-	  /* Pages not taken stay in the set; marking the file unknown makes the lap cover them. */
-	  auto it = oos_Reclaim_states.find (oos_vfid);
-	  if (it != oos_Reclaim_states.end ())
+	  catch (std::bad_alloc &)
 	    {
+	      /* Pages not taken stay in the set; marking the file unknown makes the lap cover them. */
 	      it->second.unknown = true;
 	    }
 	}
       pthread_mutex_unlock (&oos_Bestspace->bestspace_mutex);
 
-      if (batch.empty ())
+      if (!picked)
 	{
 	  return NO_ERROR;
 	}
-      for (const VPID &vpid : batch)
+
+      OOS_REUSE_RESULT result = OOS_REUSE_SKIPPED;
+      OOS_COUNTER_INC (reclaim_growth_examined_pages);
+      int err = oos_try_reuse_page (thread_p, oos_vfid, vpid, hdr_vpid, rec_length, page_out, result);
+      if (err != NO_ERROR)
 	{
-	  OOS_REUSE_RESULT result = OOS_REUSE_SKIPPED;
-	  OOS_COUNTER_INC (reclaim_growth_examined_pages);
-	  int err = oos_try_reuse_page (thread_p, oos_vfid, vpid, hdr_vpid, rec_length, page_out, result);
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
-	  if (result == OOS_REUSE_TAKEN)
-	    {
-	      vpid_out = vpid;
-	      return NO_ERROR;
-	    }
+	  return err;
+	}
+      if (result == OOS_REUSE_TAKEN)
+	{
+	  vpid_out = vpid;
+	  return NO_ERROR;
 	}
     }
 }
