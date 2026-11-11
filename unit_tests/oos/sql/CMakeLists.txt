@@ -82,3 +82,10 @@ set_tests_properties(
 
 # Expected-error tests also collect debug stack traces at allocation, storage and export failure boundaries.
 set_tests_properties(test_oos_sql_deferred_write PROPERTIES TIMEOUT 180)
+
+# A rolled-back NEXT VALUE on a serial whose comment is in OOS (CBRD-28052). Shares oosserialdb (4K pages).
+add_test(NAME test_oos_sql_serial_rollback COMMAND test_oos_sql_serial_rollback)
+set_tests_properties(
+  test_oos_sql_serial_rollback
+  PROPERTIES FIXTURES_REQUIRED OOS_SERIAL_DB RUN_SERIAL TRUE TIMEOUT 60
+)
