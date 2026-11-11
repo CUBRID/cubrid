@@ -4789,12 +4789,19 @@ btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * c
  *   return: NO_ERROR, or error code
  *   thread_p(in):
  *   sort_param(in): sort parameters; get_arg names the classes
- *   n_sects(out): the data sectors of the heaps of the classes together; a class without a heap adds none
+ *   n_sects(out): the data sectors of the heaps of the classes together, with their overflow files; a class without
+ *                 a heap adds none
+ *
+ * Note: A record longer than a page lives in the overflow file of its heap, not in the heap file. A key longer than a
+ *       page makes runs of its own and mostly comes from such a record, so the overflow file is counted as well:
+ *       without it a table of long keys would hold many runs in few heap sectors and merge them with a fan-in below 4.
+ *       A function index can also lengthen a short value past a page (REPEAT, LPAD), and such keys are not counted.
  */
 static int
 btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_param, int *n_sects)
 {
   const SORT_ARGS *sort_args_p = (const SORT_ARGS *) sort_param->get_arg;
+  VFID ovf_vfid;
   int class_sects;
   int error;
   int i;
@@ -4815,6 +4822,34 @@ btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_
 	}
 
       *n_sects += class_sects;
+
+      /* heap_ovf_find_vfid returns NULL when the heap has no overflow file, and when it fails to read the heap header,
+       * an interrupt among the failures. Only a failure sets an error, so the error of this call alone tells them
+       * apart: an error left from before would fail a heap without an overflow file. */
+      er_stack_push ();
+      if (heap_ovf_find_vfid (thread_p, &sort_args_p->hfids[i], &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) == NULL)
+	{
+	  error = er_errid ();
+	  if (error != NO_ERROR)
+	    {
+	      er_stack_pop_and_keep_error ();
+	      return error;
+	    }
+
+	  /* the heap has no overflow file */
+	  er_stack_pop ();
+	  continue;
+	}
+      er_stack_pop ();
+
+      error = file_get_num_data_sectors (thread_p, &ovf_vfid, &class_sects);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+
+      *n_sects += class_sects;
     }
 
   return NO_ERROR;
@@ -4825,7 +4860,7 @@ btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_
  *                        during the sorting process
  *   return: half of the number of temporary files (the number of input files of a merge pass, its fan-in)
  *   tot_buffers(in): total number of buffers in the sort buffer
- *   data_sects(in): data sectors of the heap pages the sort reads, or 0 if unknown
+ *   data_sects(in): data sectors of the heaps the sort reads, with their overflow files, or 0 if unknown
  *
  * Note: A merge pass reads from as many files as half the sort buffer holds pages, one page per input at full
  *       fan-in, but from at least BTSORT_MIN_HALF_FILES (fewer files cannot merge). In a sweep of one to eight pages
@@ -4838,10 +4873,10 @@ btsort_get_num_data_sectors (THREAD_ENTRY * thread_p, const BTSORT_PARAM * sort_
  *       space of short runs: every file takes at least a sector, and keys longer than a page make runs of a page.
  *
  *       The data sectors bound the count as well: a file takes a sector however short its runs, so a sort that
- *       makes no more files than its input holds sectors reserves no more space for them than the heap takes. The
- *       bound leaves a large input alone, whose runs fill their files, and stops the short runs of a small one from
- *       taking a sector each. The workers of a parallel sort read a share of the sectors each, so their files
- *       together stay within the same bound.
+ *       makes no more files than its input holds sectors reserves no more space for them than the heap and its
+ *       overflow file take. The bound leaves a large input alone, whose runs fill their files, and stops the short
+ *       runs of a small one from taking a sector each. The workers of a parallel sort read a share of the sectors
+ *       each, so their files together stay within the same bound.
  */
 static int
 btsort_get_num_half_tmpfiles (int tot_buffers, int data_sects)
