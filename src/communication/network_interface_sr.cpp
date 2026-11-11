@@ -13627,7 +13627,8 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       goto send_reply;
     }
 
-  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back, and a
+   * commit or rollback sent behind this request must find the open in progress */
   error_code = session_reserve_stream_slot (thread_p, &held);
   if (error_code != NO_ERROR)
     {

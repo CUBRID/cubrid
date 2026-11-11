@@ -383,11 +383,10 @@ stream_handle_table::must_wait_locked (int tran_index, THREAD_ENTRY *thread_p,
 	{
 	  continue;
 	}
-      if (holder_is_stuck != NULL && holder_is_stuck (r.thread_p, tran_index))
+      if (holder_is_stuck == NULL || !holder_is_stuck (r.thread_p, tran_index))
 	{
-	  return false;
+	  must_wait = true;
 	}
-      must_wait = true;
     }
 
   return must_wait;

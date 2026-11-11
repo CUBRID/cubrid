@@ -22,7 +22,7 @@
  * One table per session state, next to the stream-session slot, for the
  * downloads its client has open. A handle resolves only in the session that
  * issued it and only in the transaction that opened it, and is released at the
- * latest when that transaction ends.
+ * latest when a transaction of that index ends.
  */
 
 #ifndef _STREAM_HANDLE_HPP_
@@ -74,7 +74,7 @@ class stream_handle_table
      * of the session. A handle that does not resolve is not an error -- a purge
      * may have run first. A release during a pin is deferred to the last put ()
      * and never blocks. end_tran () first waits for the opens and reads of the
-     * transaction on other workers, unless one of them is stuck. end_client ()
+     * transaction on other workers, except those that are stuck. end_client ()
      * is a connection's close. */
     void release (THREAD_ENTRY *thread_p, std::int64_t handle, int tran_index);
     void end_tran (THREAD_ENTRY *thread_p, int tran_index, stream_holder_stuck_fn holder_is_stuck = NULL);

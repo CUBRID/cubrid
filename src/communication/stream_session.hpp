@@ -123,7 +123,8 @@ class stream_session
  * what was visible at the open until the transaction ends; a value already
  * deleted by then can still vanish mid-read, and the source reports that.
  * The end of the transaction waits for a read in progress, unless its worker
- * is a deadlock victim: that read and its close run after the transaction. */
+ * is a deadlock victim; that read, and a source opened while the transaction
+ * was ending, can run or close after it. */
 class stream_source : public stream_handle_object
 {
   public:

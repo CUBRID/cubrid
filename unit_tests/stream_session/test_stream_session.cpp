@@ -861,13 +861,15 @@ namespace
 TEST_CASE_METHOD (registry_fixture, "a transaction end does not wait for a deadlock victim", "[stream_handle]")
 {
   stream_handle_table table;
-  std::int64_t download = 0;
+  std::int64_t download = 0, other = 0;
   int error_code = NO_ERROR;
   std::atomic<bool> ended (false);
 
   test_Victim = false;
   REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, TRID_1, CLIENT_1, new fake_source ("v"), &download) == NO_ERROR);
+  REQUIRE (table.issue (NULL, KIND_DOWNLOAD, TRAN_1, TRID_1, CLIENT_1, new fake_source ("w"), &other) == NO_ERROR);
   REQUIRE (table.get_source (WORKER_1, download, TRAN_1, TRID_1, &error_code) != NULL);
+  REQUIRE (table.get_source (WORKER_3, other, TRAN_1, TRID_1, &error_code) != NULL);
 
   std::thread commit ([&] ()
   {
@@ -878,13 +880,18 @@ TEST_CASE_METHOD (registry_fixture, "a transaction end does not wait for a deadl
   std::this_thread::sleep_for (SETTLE);
   CHECK_FALSE (ended);
 
+  /* the read on WORKER_3 is still waited for */
   test_Victim = true;
+  std::this_thread::sleep_for (SETTLE);
+  CHECK_FALSE (ended);
+
+  table.put (WORKER_3, other);
   commit.join ();
   CHECK (ended);
-  /* the victim's read gives its handle up at the put */
-  CHECK (test_Closed == 0);
-  table.put (WORKER_1, download);
   CHECK (test_Closed == 1);
+  /* the victim's read gives its handle up at the put */
+  table.put (WORKER_1, download);
+  CHECK (test_Closed == 2);
 }
 
 TEST_CASE_METHOD (registry_fixture, "a handle does not resolve in the next transaction of its index",
