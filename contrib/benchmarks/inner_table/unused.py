@@ -24,6 +24,10 @@ made the time metric INCONCLUSIVE on a shared host. Pairs alternate their order.
 --pairs measured pairs; the geometric mean of candidate/baseline ratios is bootstrapped with a recorded seed. VERIFIED: lower 95% bound >= 0.95 and interval width <= 0.02. FAILED: width <= 0.02 and lower bound
 < 0.95, or upper bound < 0.95. Otherwise more pairs, up to --max-pairs, then INCONCLUSIVE.
 
+Every metric gets its own verdict in the report. Instructions miss waits for I/O and locks, so the time verdict is
+reported next to the deciding one; --max-load makes each sample wait until the host's one-minute load average is at
+most that value, for a time verdict on a quiet host.
+
 Control: the same procedure compares the baseline with itself plus injected work, an index range read of the seed
 table sized from the warmup pairs to cost 6% of the batch in the chosen metric. Each workload's control must not be
 VERIFIED.
@@ -132,6 +136,15 @@ def wait_idle(pids):
     raise HarnessError('servers did not become idle')
 
 
+def wait_quiet_host(max_load):
+    """Wait until the one-minute load average is at most MAX_LOAD; no wait when MAX_LOAD is None."""
+    deadline = time.monotonic() + 6 * 3600
+    while max_load is not None and os.getloadavg()[0] > max_load:
+        if time.monotonic() > deadline:
+            raise HarnessError(f'load average stayed above {max_load} for six hours')
+        time.sleep(10)
+
+
 def timed(out):
     """Sum of csql-reported statement and commit times."""
     return sum(float(x) for x in re.findall(r'\((\d+\.\d+) sec\)', out))
@@ -227,7 +240,8 @@ class Run:
         self.cand = Install('cand', args.cand, self.root)
         self.rnd = random.Random(SEED)
         self.summary = {'seed': SEED, 'rows': args.rows, 'base_commit': self.base.commit,
-                        'cand_commit': self.cand.commit, 'loadavg_start': os.getloadavg(), 'results': []}
+                        'cand_commit': self.cand.commit, 'loadavg_start': os.getloadavg(),
+                        'metric': args.metric, 'max_load': args.max_load, 'results': []}
 
     def save(self):
         (self.root / 'summary.json').write_text(json.dumps(self.summary, indent=2) + '\n')
@@ -271,6 +285,7 @@ class Run:
         prep = prepare(kind, workload)
         if prep:
             inst.sql(prep, f'{kind}-{workload}-prepare')
+        wait_quiet_host(self.args.max_load)
         wait_idle([self.base.pid, self.cand.pid])
         counters = Counters(inst.pid, inst.root / f'perf-{inst.n + 1:04d}.csv')
         try:
@@ -346,8 +361,9 @@ class Run:
                         self.summary['results'].append(r)
                         self.save()
                         name = f'{"control " if control else ""}{kind} {workload}'
-                        other = ', '.join(f'{x} {r["stats"][x]["geomean"]:.4f} [{r["stats"][x]["lo"]:.4f}, '
-                                          f'{r["stats"][x]["hi"]:.4f}]' for x in METRICS if x != r['metric'])
+                        other = ', '.join(f'{x} {r["stats"][x]["verdict"]} {r["stats"][x]["geomean"]:.4f} '
+                                          f'[{r["stats"][x]["lo"]:.4f}, {r["stats"][x]["hi"]:.4f}]'
+                                          for x in METRICS if x != r['metric'])
                         print(f'  {r["verdict"]:13} {name}: {r["metric"]} ratio {r["geomean"]:.4f} [{r["lo"]:.4f},'
                               f' {r["hi"]:.4f}], {len(r["pairs"])} pairs; {other}', flush=True)
         finally:
@@ -370,6 +386,7 @@ def main():
     ap.add_argument('--pairs', type=int, default=12)
     ap.add_argument('--max-pairs', type=int, default=40)
     ap.add_argument('--metric', choices=METRICS, default='instructions')
+    ap.add_argument('--max-load', type=float, default=None)
     args = ap.parse_args()
     try:
         run = Run(args)
