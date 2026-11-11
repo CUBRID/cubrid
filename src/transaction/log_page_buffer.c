@@ -4144,7 +4144,10 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  need_wakeup_LFT = true;
 	}
 
-      while (LSA_LT (&nxio_lsa, flush_lsa))
+      /* flush_lsa is where the caller's record starts, and nxio_lsa is the lowest LSA not on disk yet: the record is
+       * durable only when nxio_lsa is past it. A flush that ran just before the record was appended leaves nxio_lsa
+       * equal to flush_lsa with the record still in memory. */
+      while (LSA_LE (&nxio_lsa, flush_lsa))
 	{
 	  gettimeofday (&start_time, NULL);
 	  (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
@@ -4152,7 +4155,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
 	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
-	  if (LSA_GE (&nxio_lsa, flush_lsa))
+	  if (LSA_GT (&nxio_lsa, flush_lsa))
 	    {
 	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
 	      break;
