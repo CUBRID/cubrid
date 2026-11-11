@@ -71,7 +71,9 @@ namespace parallel_index_scan
       m_key_values_ready (false),
       m_ahead (),
       m_ahead_slot (0),
-      m_ahead_hinted (0)
+      m_ahead_hinted (0),
+      m_ahead_end (false),
+      m_ahead_skipped_keys (0)
   {
     db_make_null (&m_slot_key);
   }
@@ -740,19 +742,23 @@ namespace parallel_index_scan
       }
     m_ahead.clear ();
     m_ahead_hinted = 0;
+    m_ahead_end = false;
   }
 
   /* evaluates the next key of m_page ahead of the lookups; false when there is none to queue (end of the leaf, the
-   * range's end, an error): the slots from m_ahead_slot on are then read again by scan_next_slot */
+   * range's end, an error): the look-ahead ends there (m_ahead_end) and the lookups go on from m_ahead_slot, past the
+   * slots it skipped */
   bool
   leaf_slot_walker::evaluate_ahead (THREAD_ENTRY *thread_p)
   {
-    const int range_idx = m_current_range_idx;
     int slot = m_ahead.empty () ? m_current_slot : m_ahead_slot;
     int read_keys = 0;
 
     while (m_use_desc_index ? (slot >= 1) : (slot <= m_num_keys))
       {
+	const int at = slot;
+	const int at_range_idx = m_current_range_idx;
+	const int at_read_keys = read_keys;
 	ahead_key k;
 	slot_result r = evaluate_slot (thread_p, &slot, true, &k, &read_keys);
 	if (r == slot_result::SKIPPED)
@@ -761,9 +767,12 @@ namespace parallel_index_scan
 	  }
 	if (r != slot_result::QUALIFIED)
 	  {
-	    /* the range's end or an error: check_key_in_range may have moved m_current_range_idx; the lookups read the
-	     * slot again when they reach it */
-	    m_current_range_idx = range_idx;
+	    /* the range's end or an error: check_key_in_range may have moved m_current_range_idx; the lookups read this
+	     * slot again when they reach it, so it raises the error or signals the end then */
+	    m_current_range_idx = at_range_idx;
+	    m_ahead_slot = at;
+	    m_ahead_skipped_keys = at_read_keys;
+	    m_ahead_end = true;
 	    return false;
 	  }
 	k.read_keys = read_keys;
@@ -771,6 +780,9 @@ namespace parallel_index_scan
 	m_ahead_slot = slot;
 	return true;
       }
+    m_ahead_slot = slot;
+    m_ahead_skipped_keys = read_keys;
+    m_ahead_end = true;
     return false;
   }
 
@@ -784,6 +796,11 @@ namespace parallel_index_scan
     int count = 0;
     bool more;
 
+    if (m_ahead_end)
+      {
+	/* the last window reached the end of what can be queued: every position left was hinted */
+	return;
+      }
     if (m_ahead_hinted > SCAN_INDEX_READ_AHEAD_DISTANCE / 2)
       {
 	m_ahead_hinted--;
@@ -859,6 +876,13 @@ namespace parallel_index_scan
 	  }
 	else
 	  {
+	    if (m_ahead_end)
+	      {
+		/* the look-ahead stopped at m_ahead_slot: the slots it skipped are not read again */
+		m_current_slot = m_ahead_slot;
+		m_scan_id->scan_stats.read_keys += m_ahead_skipped_keys;
+		m_ahead_end = false;
+	      }
 	    if (m_use_desc_index ? (m_current_slot < 1) : (m_current_slot > m_num_keys))
 	      {
 		break;

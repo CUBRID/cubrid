@@ -173,8 +173,10 @@ namespace parallel_index_scan
       bool m_key_values_ready;                        /* the scan values hold this key record's covered key. */
 
       std::deque<ahead_key> m_ahead;                  /* keys of m_page evaluated ahead, in lookup order. */
-      int m_ahead_slot;                               /* the slot after the last key of m_ahead. */
+      int m_ahead_slot;                               /* the slot after the last key of m_ahead, or where it stopped. */
       int m_ahead_hinted;                             /* OIDs from the one being looked up on already told to the OS. */
+      bool m_ahead_end;                               /* evaluate_ahead found no more key to queue on m_page. */
+      int m_ahead_skipped_keys;                       /* read_keys of the slots skipped before that stop. */
   };
 }
 
