@@ -424,6 +424,8 @@ static int pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO *
 static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink,
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
 
+static int pt_find_static_sql_host_var (const PARSER_CONTEXT * parser, const PT_NODE * name_node, const char *label);
+static int pt_add_static_sql_host_var (PARSER_CONTEXT * parser, PT_NODE * name_node, const char *label);
 static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
 
 /*
@@ -12181,6 +12183,115 @@ pt_print_pl_host_expr (PARSER_CONTEXT * parser, PT_NODE * node)
   return NULL;
 }
 
+/*
+ * pt_find_static_sql_host_var () - find the host variable that a PL/CSQL variable at the same place in the text was
+ *				     replaced with
+ *   return: the index of the host variable, or -1
+ *   parser(in):
+ *   name_node(in): the name or the path expression of the PL/CSQL variable
+ *   label(in): its label
+ *
+ * Note: only a copy that the parser made of the name has the same place; a different name there is not expected,
+ *	 and gets its own host variable (the text edits then overlap, and the statement is printed from the tree)
+ */
+static int
+pt_find_static_sql_host_var (const PARSER_CONTEXT * parser, const PT_NODE * name_node, const char *label)
+{
+  if (name_node->buffer_pos < 0 || parser->static_sql_host_vars == NULL)
+    {
+      return -1;
+    }
+
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      if (parser->static_sql_host_vars[i].end == name_node->buffer_pos)
+	{
+	  assert (parser->static_sql_host_vars[i].label != NULL
+		  && strcmp (parser->static_sql_host_vars[i].label, label) == 0);
+	  if (parser->static_sql_host_vars[i].label != NULL
+	      && strcmp (parser->static_sql_host_vars[i].label, label) == 0)
+	    {
+	      return i;
+	    }
+	}
+    }
+
+  return -1;
+}
+
+/*
+ * pt_add_static_sql_host_var () - add a host variable that a PL/CSQL variable is replaced with
+ *   return: the index of the host variable, or -1 on error
+ *   parser(in):
+ *   name_node(in): the name or the path expression of the PL/CSQL variable
+ *   label(in): its label
+ */
+static int
+pt_add_static_sql_host_var (PARSER_CONTEXT * parser, PT_NODE * name_node, const char *label)
+{
+  int index;
+
+  // Expand parser->host_variables by realloc
+  int count_to_realloc = parser->host_var_count + 1;
+
+  /* We actually allocate around twice more than needed so that we don't do useless copies too often. */
+  count_to_realloc = (count_to_realloc / 2) * 4;
+
+  if (count_to_realloc == 0)
+    {
+      count_to_realloc = 1;
+    }
+
+  DB_VALUE *larger_host_variables = (DB_VALUE *) realloc (parser->host_variables, count_to_realloc * sizeof (DB_VALUE));
+  if (larger_host_variables == NULL)
+    {
+      PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return -1;
+    }
+
+  TP_DOMAIN **larger_host_var_expected_domains =
+    (TP_DOMAIN **) realloc (parser->host_var_expected_domains, count_to_realloc * sizeof (TP_DOMAIN *));
+
+  parser->host_variables = larger_host_variables;
+  parser->host_var_expected_domains = larger_host_var_expected_domains;
+
+  /* keep the end and the label of the replaced name or path expression in the source text
+   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()) and for the copies of the name
+   * (see pt_find_static_sql_host_var ()).
+   * without them the text could still be printed from the tree, but the copies would get their own index and lose
+   * their bind positions, so it is an error as for the host variables */
+  {
+    PT_STATIC_SQL_HOST_VAR *larger_static_sql_host_vars =
+      (PT_STATIC_SQL_HOST_VAR *) realloc (parser->static_sql_host_vars,
+					  count_to_realloc * sizeof (PT_STATIC_SQL_HOST_VAR));
+
+    if (larger_static_sql_host_vars == NULL)
+      {
+	PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	return -1;
+      }
+    if (parser->static_sql_host_vars == NULL)
+      {
+	/* host variables written in the text ("?") come before */
+	for (int i = 0; i < parser->host_var_count; i++)
+	  {
+	    larger_static_sql_host_vars[i].end = -1;
+	    larger_static_sql_host_vars[i].label = NULL;
+	  }
+      }
+    parser->static_sql_host_vars = larger_static_sql_host_vars;
+    parser->static_sql_host_vars[parser->host_var_count].end = name_node->buffer_pos;
+    parser->static_sql_host_vars[parser->host_var_count].label = label;
+  }
+
+  db_make_null (&parser->host_variables[parser->host_var_count]);
+  parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);
+
+  index = parser->host_var_count++;
+
+  return index;
+}
+
 static PT_NODE *
 pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 {
@@ -12199,97 +12310,21 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
     }
   hostvar->info.host_var.label = host_expr_str;
   hostvar->info.host_var.var_type = PT_HOST_IN;
-  hostvar->info.host_var.index = parser->host_var_count;
   hostvar->type_enum = PT_TYPE_NONE;
 
   /* a copy that the parser made of the name (e.g. the first argument of FIELD, copied into each comparison) is the
    * same variable at the same place in the text: give it the same index, as "?" copied there keeps its index.
    * a new index for each copy would leave all but one of them out of the printed text */
-  if (name_node->buffer_pos >= 0 && parser->static_sql_host_var_end != NULL)
+  int index = pt_find_static_sql_host_var (parser, name_node, host_expr_str);
+  if (index < 0)
     {
-      for (int i = 0; i < parser->host_var_count; i++)
+      index = pt_add_static_sql_host_var (parser, name_node, host_expr_str);
+      if (index < 0)
 	{
-	  if (parser->static_sql_host_var_end[i] == name_node->buffer_pos)
-	    {
-	      /* a rewrite that gives a name the position of another one must not reach here; if it does, the name
-	       * gets its own index, and the text edits give up on the overlap and print the tree */
-	      assert (strcmp (parser->static_sql_host_var_label[i], host_expr_str) == 0);
-	      if (strcmp (parser->static_sql_host_var_label[i], host_expr_str) == 0)
-		{
-		  hostvar->info.host_var.index = i;
-		  PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
-		  parser_free_tree (parser, name_node);
-		  return hostvar;
-		}
-	    }
+	  return NULL;
 	}
     }
-
-  // Expand parser->host_variables by realloc
-  int count_to_realloc = parser->host_var_count + 1;
-
-  /* We actually allocate around twice more than needed so that we don't do useless copies too often. */
-  count_to_realloc = (count_to_realloc / 2) * 4;
-
-  if (count_to_realloc == 0)
-    {
-      count_to_realloc = 1;
-    }
-
-  DB_VALUE *larger_host_variables = (DB_VALUE *) realloc (parser->host_variables, count_to_realloc * sizeof (DB_VALUE));
-  if (larger_host_variables == NULL)
-    {
-      PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-      return NULL;
-    }
-
-  TP_DOMAIN **larger_host_var_expected_domains =
-    (TP_DOMAIN **) realloc (parser->host_var_expected_domains, count_to_realloc * sizeof (TP_DOMAIN *));
-
-  parser->host_variables = larger_host_variables;
-  parser->host_var_expected_domains = larger_host_var_expected_domains;
-
-  /* keep the end and the label of the replaced name or path expression in the source text
-   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()), and for the copies above */
-  {
-    bool was_null = (parser->static_sql_host_var_end == NULL);
-    int *larger_host_var_end = (int *) realloc (parser->static_sql_host_var_end, count_to_realloc * sizeof (int));
-    const char **larger_host_var_label;
-
-    if (larger_host_var_end == NULL)
-      {
-	PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	return NULL;
-      }
-    parser->static_sql_host_var_end = larger_host_var_end;
-
-    larger_host_var_label =
-      (const char **) realloc (parser->static_sql_host_var_label, count_to_realloc * sizeof (const char *));
-    if (larger_host_var_label == NULL)
-      {
-	PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	return NULL;
-      }
-    parser->static_sql_host_var_label = larger_host_var_label;
-
-    if (was_null)
-      {
-	for (int i = 0; i < parser->host_var_count; i++)
-	  {
-	    larger_host_var_end[i] = -1;
-	    larger_host_var_label[i] = NULL;
-	  }
-      }
-    larger_host_var_end[parser->host_var_count] = name_node->buffer_pos;
-    larger_host_var_label[parser->host_var_count] = host_expr_str;
-  }
-
-  db_make_null (&parser->host_variables[parser->host_var_count]);
-  parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);
-
-  ++parser->host_var_count;
-  larger_host_variables = NULL;
-  larger_host_var_expected_domains = NULL;
+  hostvar->info.host_var.index = index;
 
   PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
   parser_free_tree (parser, name_node);

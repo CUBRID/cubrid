@@ -1696,6 +1696,7 @@ typedef struct parser_varchar PARSER_VARCHAR;
 typedef struct parser_context PARSER_CONTEXT;
 typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
 typedef struct pt_static_sql_star PT_STATIC_SQL_STAR;
+typedef struct pt_static_sql_host_var PT_STATIC_SQL_HOST_VAR;
 
 typedef struct parser_node PT_NODE;
 
@@ -3986,6 +3987,13 @@ typedef enum
   PT_SS_MERGE_INSERT_COLUMNS	/* INSERT of MERGE without a column list; pos is not used */
 } PT_STATIC_SQL_STAR_KIND;
 
+/* a PL/CSQL variable of a static SQL statement replaced with a host variable (see pt_parameterize_for_static_sql ()) */
+struct pt_static_sql_host_var
+{
+  int end;			/* end of the name or the path expression in the original text, -1 if unknown */
+  const char *label;		/* the name or the path expression, NULL if unknown */
+};
+
 struct pt_static_sql_star
 {
   PT_STATIC_SQL_STAR_KIND kind;
@@ -4113,8 +4121,7 @@ struct parser_context
   PT_STATIC_SQL_EDIT *static_sql_edits;
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
-  int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
-  const char **static_sql_host_var_label;	/* label of each PL/CSQL variable replaced with a host variable */
+  PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;	/* each PL/CSQL variable replaced with a host variable */
   PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 

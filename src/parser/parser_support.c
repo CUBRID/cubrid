@@ -15154,10 +15154,10 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	  && node->info.host_var.index < parser->host_var_count)
 	{
 	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
-	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found from the
+	   * expression (e.g. rec.field) is kept in parser->static_sql_host_vars, and the start is found from the
 	   * tokens ending there */
-	  int end = (parser->static_sql_host_var_end != NULL)
-	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
+	  int end = (parser->static_sql_host_vars != NULL)
+	    ? parser->static_sql_host_vars[node->info.host_var.index].end : -1;
 	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
 	  char *hv = NULL;
 
