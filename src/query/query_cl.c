@@ -200,7 +200,7 @@ query_is_internal_lob_dml_source (const DB_VALUE * value)
 }
 
 /* a value the client would read from a file for this statement (CLOB_FROM_FILE/BLOB_FROM_FILE) */
-static bool
+bool
 query_is_internal_lob_file_source (const DB_VALUE * value)
 {
   int marker;

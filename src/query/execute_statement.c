@@ -10667,6 +10667,70 @@ do_get_internal_lob_used_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement
 }
 
 /*
+ * do_execute_query_with_host_vars () - execute_query () with the parser's host variables, except that a LOB file
+ *   source or pending value this statement does not use is sent as NULL
+ *   return: error code
+ *
+ * The statements of one buffer share the host variable array, so it can still hold such a value of an earlier
+ * statement, and the server refuses one from a client whether or not the statement uses it.
+ */
+static int
+do_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID ** list_id,
+				 QUERY_FLAG query_flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
+{
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+  DB_VALUE *vars = parser->host_variables;
+  int err;
+
+#if defined(CS_MODE)
+  bool *used_vars = NULL;
+  int i;
+
+  for (i = 0; i < var_count; i++)
+    {
+      if (query_is_internal_lob_file_source (&parser->host_variables[i]))
+	{
+	  break;
+	}
+    }
+  if (i < var_count)
+    {
+      err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      vars = (DB_VALUE *) malloc ((size_t) var_count * sizeof (DB_VALUE));
+      if (vars == NULL)
+	{
+	  free_and_init (used_vars);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) var_count * sizeof (DB_VALUE));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (i = 0; i < var_count; i++)
+	{
+	  /* the copy only lends the values to this request: it is freed, never cleared */
+	  vars[i] = parser->host_variables[i];
+	  if (used_vars != NULL && !used_vars[i] && query_is_internal_lob_file_source (&vars[i]))
+	    {
+	      db_make_null (&vars[i]);
+	    }
+	}
+      free_and_init (used_vars);
+    }
+#endif /* CS_MODE */
+
+  err = execute_query (statement->xasl_id, &parser->query_id, var_count, vars, list_id, query_flag, clt_cache_time,
+		       srv_cache_time);
+  if (vars != parser->host_variables)
+    {
+      free_and_init (vars);
+    }
+  return err;
+}
+
+/*
  * do_execute_update() - Execute the prepared UPDATE statement
  *   return: Error code
  *   parser(in): Parser context
@@ -10865,9 +10929,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 							  parser->host_variables, used_vars);
 	      if (err == NO_ERROR)
 		{
-		  err = execute_query (statement->xasl_id, &parser->query_id,
-				       parser->host_var_count + parser->auto_param_count, parser->host_variables,
-				       &list_id, query_flag, NULL, NULL);
+		  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, NULL, NULL);
 		}
 	    }
 	  free_and_init (used_vars);
@@ -12204,8 +12266,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
-      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+      err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, NULL, NULL);
 
       AU_RESTORE (au_save);
 
@@ -16721,9 +16782,8 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   CACHE_TIME_RESET (&statement->cache_time);
   statement->flag.clt_cache_reusable = 0;
 
-  err =
-    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
+  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, &clt_cache_time,
+					 &statement->cache_time);
 
   AU_RESTORE (au_save);
 
@@ -16923,9 +16983,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   CACHE_TIME_RESET (&statement->cache_time);
   statement->flag.clt_cache_reusable = 0;
 
-  err =
-    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
+  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, &clt_cache_time,
+					 &statement->cache_time);
 
   AU_RESTORE (au_save);
 
@@ -19700,9 +19759,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  list_id = NULL;
-	  err =
-	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+	  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, NULL, NULL);
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
 	    {
