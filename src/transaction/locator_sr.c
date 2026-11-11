@@ -6378,7 +6378,7 @@ locator_delete_moved_internal_lob_intermediates (THREAD_ENTRY * thread_p, const 
        * destination has its own copy, so both intermediates must be dropped. */
       if (is_lob)
 	{
-	  INTERNAL_LOB_LOCATOR locator = { ref->ref.head_oid, ref->ref.identity_stamp };
+	  INTERNAL_LOB_LOCATOR locator = { ref->ref.head_oid, ref->ref.identity_stamp, 0 };
 
 	  if (VFID_ISNULL (&lob_vfid))
 	    {

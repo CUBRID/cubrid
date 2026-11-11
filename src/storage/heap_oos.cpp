@@ -1290,7 +1290,7 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
       oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
       if (TP_IS_LOB_TYPE (old_reference.type))
 	{
-	  INTERNAL_LOB_LOCATOR locator = { old_ref.head_oid, old_ref.identity_stamp };
+	  INTERNAL_LOB_LOCATOR locator = { old_ref.head_oid, old_ref.identity_stamp, 0 };
 	  if (VFID_ISNULL (&internal_lob_vfid)
 	      && !heap_internal_lob_find_vfid (thread_p, &context->hfid, &internal_lob_vfid, false))
 	    {

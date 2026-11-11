@@ -168,7 +168,7 @@ vacuum_oos_delete_reference (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const
    * LOB 삭제는 emptied_pages에 넣지 않는다. LOB 파일은 빈 페이지를 반납하지 않기 때문. */
   if (TP_IS_LOB_TYPE (reference.type))
     {
-      INTERNAL_LOB_LOCATOR locator = { reference.ref.head_oid, reference.ref.identity_stamp };
+      INTERNAL_LOB_LOCATOR locator = { reference.ref.head_oid, reference.ref.identity_stamp, 0 };
 
       if (internal_lob_vfid == NULL || VFID_ISNULL (internal_lob_vfid))
 	{
