@@ -173,6 +173,7 @@ internal_lob_check_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOC
   VFID lob_vfid;
   VPID head_vpid;
   DISK_ISVALID owned;
+  bool found = false;
   int err;
 
   /* class_oid comes from a client locator and is not covered by the token; confirm it is a real class before
@@ -182,10 +183,15 @@ internal_lob_check_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOC
       return internal_lob_set_generic_error ();
     }
 
-  err = heap_get_class_info (thread_p, &locator.class_oid, &hfid, NULL, NULL);
+  err = heap_get_class_info (thread_p, &locator.class_oid, &hfid, NULL, &found);
   if (err != NO_ERROR)
     {
       return err;
+    }
+  if (!found)
+    {
+      /* a class without a heap has no LOB file */
+      return internal_lob_set_generic_error ();
     }
   if (!heap_oos_find_vfid_by_type (thread_p, &hfid, FILE_INTERNAL_LOB, &lob_vfid, false))
     {
