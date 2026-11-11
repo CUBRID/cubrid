@@ -87,6 +87,25 @@ extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 /* maximum number of functions that can be optimized */
 #define ANALYTIC_OPT_MAX_FUNCTIONS              32
 
+/* maximum number of combinations of the forms of the SEMI / ANTI JOIN specs planned as a whole query */
+#define SEMI_ANTI_FORMS_MAX_PLANS               27
+
+/* the forms a SEMI / ANTI JOIN spec may run in (pt_plan_semi_anti_forms ()) */
+typedef enum
+{
+  SEMI_ANTI_FORM_JOIN,		/* the SEMI / ANTI JOIN */
+  SEMI_ANTI_FORM_DISTINCT_INNER,	/* an INNER JOIN over its rows with the duplicates removed */
+  SEMI_ANTI_FORM_EXISTS		/* its [NOT] EXISTS subquery in the WHERE */
+} SEMI_ANTI_FORM;
+
+typedef struct semi_anti_forms SEMI_ANTI_FORMS;
+struct semi_anti_forms
+{
+  UINTPTR spec_id;
+  int n_forms;
+  SEMI_ANTI_FORM forms[3];
+};
+
 typedef struct hashable HASHABLE;
 struct hashable
 {
@@ -475,8 +494,11 @@ static XASL_NODE *pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PRO
 static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type);
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static QO_PLAN *pt_optimize_query_without_dump (PARSER_CONTEXT * parser, PT_NODE * select_node);
-static bool pt_plan_semi_anti_exists_conds (PARSER_CONTEXT * parser, PT_NODE * select_node);
-static void pt_plan_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static void pt_plan_semi_anti_exists_conds (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI_ANTI_FORMS * specs,
+					int n_specs, int combination, bool is_copy);
+static void pt_plan_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
 static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
@@ -21864,35 +21886,45 @@ pt_optimize_query_without_dump (PARSER_CONTEXT * parser, PT_NODE * select_node)
 }
 
 /*
- * pt_plan_semi_anti_exists_conds () - set the exists_cond of each unnested SEMI / ANTI JOIN spec, its derived table
- *      and its subquery planned for their cost only
- *   return: true if an exists_cond is set
+ * pt_plan_query_summary () - plan the select for its summary only (qo_plan_set_summary ()), without its XASL
+ *   return: false if the select has no plan or no summary
  *   parser(in): context
  *   select_node(in/out): of PT_SELECT type
  */
 static bool
+pt_plan_query_summary (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  QO_PLAN *plan;
+  bool is_costed;
+
+  plan = pt_optimize_query_without_dump (parser, select_node);
+  if (plan == NULL)
+    {
+      return false;
+    }
+  is_costed = qo_plan_set_summary ((plan->info)->env, plan, NULL);
+  qo_plan_discard (plan);
+
+  return is_costed;
+}
+
+/*
+ * pt_plan_semi_anti_exists_conds () - set the exists_cond of each unnested SEMI / ANTI JOIN spec, its derived table
+ *      and its subquery planned for their cost only
+ *   return: none
+ *   parser(in): context
+ *   select_node(in/out): of PT_SELECT type
+ */
+static void
 pt_plan_semi_anti_exists_conds (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   PT_NODE *spec, *expr, *subq;
-  QO_PLAN *plan;
-  bool is_costed, has_exists_cond = false;
 
   for (spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
     {
-      if (!(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY))
-	{
-	  continue;
-	}
-
       /* the rows of the derived table are read from its summary (qo_add_node ()) */
-      plan = pt_optimize_query_without_dump (parser, spec->info.spec.derived_table);
-      if (plan == NULL)
-	{
-	  continue;
-	}
-      is_costed = qo_plan_set_summary ((plan->info)->env, plan, NULL);
-      qo_plan_discard (plan);
-      if (!is_costed)
+      if (!(spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
+	  || !pt_plan_query_summary (parser, spec->info.spec.derived_table))
 	{
 	  continue;
 	}
@@ -21904,64 +21936,204 @@ pt_plan_semi_anti_exists_conds (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	}
 
       subq = (expr->info.expr.op == PT_NOT) ? expr->info.expr.arg1->info.expr.arg1 : expr->info.expr.arg1;
-      plan = pt_optimize_query_without_dump (parser, subq);
-      if (plan == NULL)
-	{
-	  continue;
-	}
-      if (qo_plan_set_summary ((plan->info)->env, plan, NULL))
+      if (pt_plan_query_summary (parser, subq))
 	{
 	  spec->info.spec.exists_cond = expr;
-	  has_exists_cond = true;
 	}
-      qo_plan_discard (plan);
     }
-
-  return has_exists_cond;
 }
 
 /*
- * pt_plan_semi_anti_as_exists () - put the unnested SEMI / ANTI JOIN specs the plan of the query runs as their
- *      subquery back into the WHERE as that subquery
- *   return: none
+ * pt_rewrite_semi_anti_forms () - put the SEMI / ANTI JOIN specs in the forms of a combination
+ *   return: false on failure
  *   parser(in): context
  *   select_node(in/out): of PT_SELECT type
+ *   specs(in): the specs and the forms each may run in
+ *   n_specs(in): the number of specs
+ *   combination(in): the form of each spec, digit i of it in base specs[i].n_forms
+ *   is_copy(in): select_node is a copy of the query, sharing the exists_cond of its specs with it
  *
- * Note: chosen before the XASL of the derived tables is made, so that only the form run has its XASL and its plan
- *   output.  The subquery put back has its XASL made with the other subqueries of the WHERE, evaluated with the last
- *   scan of the nodes it reads, where the plan weighed it (qo_plan_scans_subquery_dep_last ()).
+ * Note: the derived table of a spec joined INNER is planned for its rows and its cost, which the plan of the query
+ *   reads from its summary before its XASL is made (qo_add_node (), qo_sscan_cost ()).
  */
-static void
-pt_plan_semi_anti_as_exists (PARSER_CONTEXT * parser, PT_NODE * select_node)
+static bool
+pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI_ANTI_FORMS * specs, int n_specs,
+			    int combination, bool is_copy)
 {
-  PT_NODE *prev_spec, *spec, *next_spec;
-  QO_PLAN *plan;
+  PT_NODE *prev_spec, *spec;
+  SEMI_ANTI_FORM form;
+  int i;
 
-  if (!pt_plan_semi_anti_exists_conds (parser, select_node) || pt_has_error (parser))
+  for (i = 0; i < n_specs; i++)
     {
-      return;
-    }
-
-  plan = pt_optimize_query_without_dump (parser, select_node);
-
-  for (prev_spec = NULL, spec = select_node->info.query.q.select.from; spec != NULL; spec = next_spec)
-    {
-      next_spec = spec->next;
-      if (spec->info.spec.exists_cond != NULL && prev_spec != NULL && plan != NULL
-	  && qo_plan_has_subquery_scan (plan, spec))
+      form = specs[i].forms[combination % specs[i].n_forms];
+      combination /= specs[i].n_forms;
+      if (form == SEMI_ANTI_FORM_JOIN)
 	{
+	  continue;
+	}
+
+      for (prev_spec = NULL, spec = select_node->info.query.q.select.from;
+	   spec != NULL && spec->info.spec.id != specs[i].spec_id; prev_spec = spec, spec = spec->next)
+	{
+	  ;
+	}
+      if (spec == NULL || prev_spec == NULL)
+	{
+	  return false;
+	}
+
+      if (form == SEMI_ANTI_FORM_EXISTS)
+	{
+	  if (is_copy)
+	    {
+	      /* the WHERE of the copy owns it, freed with the copy */
+	      spec->info.spec.exists_cond = parser_copy_tree (parser, spec->info.spec.exists_cond);
+	      if (spec->info.spec.exists_cond == NULL)
+		{
+		  PT_INTERNAL_ERROR (parser, "copy tree");
+		  return false;
+		}
+	    }
 	  qo_rewrite_semi_anti_as_exists (parser, select_node, prev_spec, spec);
 	  continue;
 	}
 
-      /* not offered again when the query is planned */
-      spec->info.spec.exists_cond = NULL;
-      prev_spec = spec;
+      spec = qo_rewrite_distinct_semi_inner (parser, select_node, spec);
+      if (spec == NULL || !pt_plan_query_summary (parser, spec->info.spec.derived_table))
+	{
+	  return false;
+	}
     }
 
-  if (plan != NULL)
+  return true;
+}
+
+/*
+ * pt_plan_semi_anti_forms () - put each SEMI / ANTI JOIN spec in the form the plan of the query costs least with
+ *   return: none
+ *   parser(in): context
+ *   select_node(in/out): of PT_SELECT type
+ *
+ * Note: a SEMI / ANTI JOIN inner is searched once per outer row, behind the specs its ON reads.  A SEMI JOIN may also
+ *   be read once with the duplicates removed and joined as an INNER JOIN, which may come first (CBRD-27397,
+ *   qo_is_distinct_semi_inner ()), and a spec unnested from a subquery over several tables may run as that
+ *   subquery once per outer row instead of building its derived table (CBRD-27929, exists_cond).  Each combination of
+ *   the forms is planned as a copy of the whole query and the cheapest is kept, up to SEMI_ANTI_FORMS_MAX_PLANS
+ *   combinations.  USE_MERGE naming a SEMI JOIN spec leaves it the INNER JOIN, the one form a merge join applies to.
+ *
+ *   Chosen before the XASL of the derived tables is made, so that only the form run has its XASL and its plan output.
+ *   A subquery put back has its XASL made with the other subqueries of the WHERE.
+ */
+static void
+pt_plan_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  SEMI_ANTI_FORMS specs[SEMI_ANTI_FORMS_MAX_PLANS];
+  SEMI_ANTI_FORMS *cur;
+  PT_NODE *prev_spec, *spec, *query, *with;
+  TABLE_INFO *table_info;
+  QO_PLAN *plan;
+  double cost, best_cost = 0.0;
+  int n_specs = 0, n_plans = 1, combination, best_combination = -1;
+  bool can_distinct_inner, is_merge_hinted;
+
+  for (prev_spec = NULL, spec = select_node->info.query.q.select.from;
+       spec != NULL && n_specs < SEMI_ANTI_FORMS_MAX_PLANS; prev_spec = spec, spec = spec->next)
     {
-      qo_plan_discard (plan);
+      if (spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
+	{
+	  continue;
+	}
+
+      cur = &specs[n_specs];
+      cur->spec_id = spec->info.spec.id;
+      cur->n_forms = 0;
+      can_distinct_inner = qo_is_distinct_semi_inner (parser, select_node, spec, &is_merge_hinted);
+      if (!is_merge_hinted)
+	{
+	  cur->forms[cur->n_forms++] = SEMI_ANTI_FORM_JOIN;
+	}
+      if (can_distinct_inner)
+	{
+	  cur->forms[cur->n_forms++] = SEMI_ANTI_FORM_DISTINCT_INNER;
+	}
+      if (!is_merge_hinted && spec->info.spec.exists_cond != NULL && prev_spec != NULL)
+	{
+	  cur->forms[cur->n_forms++] = SEMI_ANTI_FORM_EXISTS;
+	}
+
+      if ((cur->n_forms == 1 && cur->forms[0] == SEMI_ANTI_FORM_JOIN)
+	  || n_plans * cur->n_forms > SEMI_ANTI_FORMS_MAX_PLANS)
+	{
+	  continue;
+	}
+      n_plans *= cur->n_forms;
+      n_specs++;
+    }
+
+  if (n_plans == 1)
+    {
+      best_combination = 0;
+    }
+  for (combination = 0; n_plans > 1 && combination < n_plans && !pt_has_error (parser); combination++)
+    {
+      /* the copy reads the CTEs of the query, whose XASL is made, rather than copies of them */
+      with = select_node->info.query.with;
+      select_node->info.query.with = NULL;
+      query = parser_copy_tree (parser, select_node);
+      select_node->info.query.with = with;
+      if (query == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "copy tree");
+	  return;
+	}
+
+      if (pt_rewrite_semi_anti_forms (parser, query, specs, n_specs, combination, true))
+	{
+	  plan = pt_optimize_query_without_dump (parser, query);
+	  if (plan != NULL)
+	    {
+	      cost = plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost;
+	      if (best_combination < 0 || cost < best_cost)
+		{
+		  best_cost = cost;
+		  best_combination = combination;
+		}
+	      qo_plan_discard (plan);
+	    }
+	}
+      parser_free_tree (parser, query);
+    }
+
+  if (n_specs > 0 && best_combination >= 0 && !pt_has_error (parser)
+      && pt_rewrite_semi_anti_forms (parser, select_node, specs, n_specs, best_combination, false))
+    {
+      /* a derived table that took the place of a table has no symbol: the symbols of the FROM were made before
+       * (pt_push_symbol_info ()) */
+      for (spec = select_node->info.query.q.select.from; spec != NULL; spec = spec->next)
+	{
+	  if (pt_find_table_info (spec->info.spec.id, parser->symbols->table_info) != NULL)
+	    {
+	      continue;
+	    }
+
+	  table_info = pt_make_table_info (parser, spec);
+	  if (table_info == NULL)
+	    {
+	      if (!pt_has_error (parser))
+		{
+		  PT_INTERNAL_ERROR (parser, "allocate new node");
+		}
+	      return;
+	    }
+	  table_info->next = parser->symbols->table_info;
+	  parser->symbols->table_info = table_info;
+	}
+    }
+
+  for (spec = select_node->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      spec->info.spec.exists_cond = NULL;
     }
 }
 
@@ -27523,7 +27695,11 @@ pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
     }
 
   /* CBRD-27929: a derived table unnested from a subquery is made only when the plan of the query keeps it */
-  pt_plan_semi_anti_as_exists (parser, query);
+  pt_plan_semi_anti_exists_conds (parser, query);
+  if (!pt_has_error (parser))
+    {
+      pt_plan_semi_anti_forms (parser, query);
+    }
   for (PT_NODE * spec = query->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
     {
       if (spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)

@@ -2851,7 +2851,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    }
 		  else
 		    {
-		      /* relaxed for a SEMI node read with the duplicates removed (qo_node_can_be_placed ()) */
 		      QO_ADD_SEMI_ANTI_DEP_SET (on_node, QO_ENV_NODE (env, t));
 		    }
 		}

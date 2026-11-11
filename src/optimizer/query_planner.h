@@ -55,8 +55,7 @@ typedef enum
   QO_SCANMETHOD_INDEX_ORDERBY_SCAN,
   QO_SCANMETHOD_INDEX_GROUPBY_SCAN,
   QO_SCANMETHOD_INDEX_SCAN_INSPECT,
-  QO_SCANMETHOD_INDEX_ANALYTIC_SCAN,
-  QO_SCANMETHOD_SUBQUERY_SCAN
+  QO_SCANMETHOD_INDEX_ANALYTIC_SCAN
 } QO_SCANMETHOD;
 
 typedef enum
@@ -66,15 +65,6 @@ typedef enum
   QO_JOINMETHOD_MERGE_JOIN,
   QO_JOINMETHOD_HASH_JOIN
 } QO_JOINMETHOD;
-
-typedef enum
-{
-  QO_INFO_FORM_PLAIN,		/* the nodes read as they are */
-  QO_INFO_FORM_DISTINCT,	/* a SEMI JOIN inner read once with the duplicates removed
-				 * (qo_prepare_distinct_info ()) */
-  QO_INFO_FORM_SUBQUERY		/* a SEMI / ANTI JOIN inner run as its subquery once per outer row
-				 * (qo_prepare_subquery_info ()) */
-} QO_INFO_FORM;
 
 typedef struct qo_plan_vtbl QO_PLAN_VTBL;
 struct qo_plan_vtbl
@@ -373,8 +363,6 @@ struct qo_info
   double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost;
 				 * for semi/anti, the share of outer rows the join emits,
 				 * so the LIMIT estimate can tell how many outer rows to read for LIMIT rows */
-  QO_INFO_FORM form;		/* how the plans of this info read its nodes; a join over a node in the DISTINCT or
-				 * the subquery form is an ordinary join */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -466,13 +454,6 @@ struct qo_planner
 
 
   QO_INFO **node_info;
-  QO_INFO **distinct_info;	/* per node: the plans that read it once with the duplicates removed, set for a
-				   SEMI JOIN inner that may be joined the other way round.  Kept apart from
-				   node_info because the two hold different numbers of rows; the join order
-				   search takes it in place of node_info only where it puts the node ahead of
-				   the side it depends on (qo_get_distinct_info_ahead ()) */
-  QO_INFO **subquery_info;	/* per node: the unnested SEMI/ANTI inner run as its subquery, weighed as an NL inner
-				   (qo_get_subquery_info ()) */
   QO_INFO **join_info;
   QO_INFO **cp_info;
   QO_INFO *best_info;
@@ -503,7 +484,6 @@ extern void qo_plans_stats (FILE *);
 extern void qo_info_stats (FILE *);
 
 extern bool qo_is_seq_scan (QO_PLAN *);
-extern bool qo_is_subquery_scan (QO_PLAN *);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);
