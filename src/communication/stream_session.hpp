@@ -94,6 +94,10 @@ struct stream_result
 
 /* An upload is one statement still running, so its methods never end the
  * transaction: the transaction's end frees the session (session_end_tran_streams).
+ * A session that a request left behind a transaction end the client sent
+ * without waiting for the reply is freed by the next end of that index, so
+ * its abort () can run in a later transaction than the one it wrote in: it
+ * must not undo by what it recorded of the earlier one.
  * For the same reason no savepoint rollback runs while it is open: a consumer's
  * statement that fails with its stream open calls stream_from_abort () before it
  * rolls back to its own savepoint. */

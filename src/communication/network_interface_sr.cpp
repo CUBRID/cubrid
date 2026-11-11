@@ -13651,7 +13651,12 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       goto send_reply;
     }
 
-  session_set_stream_session (thread_p, held, session, stream_kind);
+  error_code = session_set_stream_session (thread_p, held, session, stream_kind);
+  if (error_code != NO_ERROR)
+    {
+      stream_drop_session (thread_p, held, session, true);
+      goto send_reply;
+    }
 
   if (reqlen - header_size - config_len > 0)
     {

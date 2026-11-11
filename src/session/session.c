@@ -166,6 +166,7 @@ struct session_state
 };
 
 /* session state manipulation functions */
+static void session_stream_cond_init (pthread_cond_t * cond);
 static void *session_state_alloc (void);
 static int session_state_free (void *st);
 static int session_state_init (void *st);
@@ -264,7 +265,7 @@ session_state::session_state ()
 {
   pthread_mutex_init (&mutex, NULL);
   pthread_mutex_init (&stream_mutex, NULL);
-  pthread_cond_init (&stream_cond, NULL);
+  session_stream_cond_init (&stream_cond);
   stream_handles_p = new stream_handle_table ();
 }
 
@@ -292,7 +293,7 @@ session_state_alloc (void)
       pthread_mutex_init (&state->mutex, NULL);
       /* for the entry's whole life, as the mutex: the lock-free freelist may uninit an entry more than once */
       pthread_mutex_init (&state->stream_mutex, NULL);
-      pthread_cond_init (&state->stream_cond, NULL);
+      session_stream_cond_init (&state->stream_cond);
       /* NULL on failure, as the malloc above: the server's operator new does not throw (memory_wrapper.hpp) */
       state->stream_handles_p = new stream_handle_table ();
       if (state->stream_handles_p == NULL)
@@ -3421,6 +3422,39 @@ session_stream_slot_matches (SESSION_STATE * state_p, int client_id, int tran_in
 static const int SESSION_STREAM_WAIT_SLICE_MSEC = 10;
 
 /*
+ * session_stream_tran_ending () - Should a wait for a request of tran_index stop?
+ *
+ * A deadlock victim among the requests waits in lock_suspend () for every other worker of its transaction, the
+ * waiter included. It interrupts the transaction meanwhile, but the abort of a stream clears that interrupt
+ * (session_end_stream_session), so the abort reason, which only the victim's error reply resets, is asked too. A
+ * killtran interrupts as well.
+ */
+static bool
+session_stream_tran_ending (THREAD_ENTRY * thread_p, int tran_index)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  bool continue_checking = true;
+
+  if (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL)
+    {
+      return true;
+    }
+  return logtb_is_interrupted_tran (thread_p, false, &continue_checking, tran_index);
+}
+
+/* the slot's condition variable waits on the monotonic clock, so a step of the wall clock cannot stretch a slice */
+static void
+session_stream_cond_init (pthread_cond_t * cond)
+{
+  pthread_condattr_t attr;
+
+  pthread_condattr_init (&attr);
+  pthread_condattr_setclock (&attr, CLOCK_MONOTONIC);
+  pthread_cond_init (cond, &attr);
+  pthread_condattr_destroy (&attr);
+}
+
+/*
  * session_take_stream_session () - Empty the slot if client_id owns it
  *   return: what the slot held for client_id, or NULL
  *   client_id(in): the owner, or SESSION_STREAM_ALL_CLIENTS for any
@@ -3430,16 +3464,13 @@ static const int SESSION_STREAM_WAIT_SLICE_MSEC = 10;
  * until that request lets the slot go, and the session is ended only after it. The worker running it takes the
  * session at once, and keeps the slot until it lets it go.
  *
- * The wait stops when the holder's transaction is interrupted, and the session is then left to the holder. A
- * deadlock victim waits for every other worker of its transaction, this caller included, and interrupts the
- * transaction while it waits (lock_suspend); the holder ends the stream itself on its error path. A killtran
- * stops the wait the same way.
+ * The wait stops when the holder's transaction is being ended under it (session_stream_tran_ending), and the
+ * session is then left to the holder: a deadlock victim ends the stream itself on its error path.
  */
 static stream_session *
 session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_index, THREAD_ENTRY * taker)
 {
   stream_session *taken = NULL;
-  bool continue_checking = true;
 
   pthread_mutex_lock (&state_p->stream_mutex);
   while (state_p->stream_user != NULL && state_p->stream_user != taker
@@ -3447,13 +3478,13 @@ session_take_stream_session (SESSION_STATE * state_p, int client_id, int tran_in
     {
       struct timespec until;
 
-      if (logtb_is_interrupted_tran (taker, false, &continue_checking, state_p->stream_session_tran_index))
+      if (session_stream_tran_ending (taker, state_p->stream_session_tran_index))
 	{
 	  pthread_mutex_unlock (&state_p->stream_mutex);
 	  return NULL;
 	}
 
-      clock_gettime (CLOCK_REALTIME, &until);
+      clock_gettime (CLOCK_MONOTONIC, &until);
       until.tv_nsec += SESSION_STREAM_WAIT_SLICE_MSEC * 1000 * 1000;
       if (until.tv_nsec >= 1000 * 1000 * 1000)
 	{
@@ -3550,23 +3581,39 @@ session_reserve_stream_slot (THREAD_ENTRY * thread_p, struct session_state **hel
 
 /*
  * session_set_stream_session () - Put the stream session the open built in the slot it reserved
+ *   return: NO_ERROR, or ER_STREAM_INVALID_USE when the transaction the slot was reserved in ended meanwhile
  *   held(in): what session_reserve_stream_slot () gave
+ *
+ * A commit the client sent behind the INIT without waiting for its reply can end the transaction while the factory
+ * runs. What the factory did went into that transaction, so the session is not put into the next one; the caller
+ * gives it up.
  */
-void
+int
 session_set_stream_session (THREAD_ENTRY * thread_p, struct session_state *held, stream_session * stream_session_p,
 			    int kind)
 {
+  int error_code = NO_ERROR;
+
   assert (held != NULL && stream_session_p != NULL);
 
   pthread_mutex_lock (&held->stream_mutex);
   /* no other worker takes a slot while it is held (session_take_stream_session) */
   assert (held->stream_user == thread_p && held->stream_session_p == NULL);
-  held->stream_session_p = stream_session_p;
-  held->stream_session_kind = kind;
-  /* again: the open's own thread may have emptied them, had its factory ended the transaction */
-  held->stream_session_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  held->stream_session_trid = logtb_find_current_tranid (thread_p);
+  if (held->stream_session_tran_index == LOG_FIND_THREAD_TRAN_INDEX (thread_p)
+      && held->stream_session_trid == logtb_find_current_tranid (thread_p))
+    {
+      held->stream_session_p = stream_session_p;
+      held->stream_session_kind = kind;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
+	      "the transaction ended while the stream session was being opened");
+      error_code = ER_STREAM_INVALID_USE;
+    }
   pthread_mutex_unlock (&held->stream_mutex);
+
+  return error_code;
 }
 
 /*
@@ -3818,9 +3865,7 @@ session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index)
   /* as session_take_stream_session () above: a deadlock victim among the reads waits for this thread too */
   state_p->stream_handles_p->end_tran (thread_p, tran_index, [thread_p, tran_index] ()
   {
-    bool continue_checking = true;
-
-    return logtb_is_interrupted_tran (thread_p, false, &continue_checking, tran_index);
+    return session_stream_tran_ending (thread_p, tran_index);
   });
 #endif /* SERVER_MODE */
 }
