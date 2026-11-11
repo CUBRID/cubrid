@@ -7678,8 +7678,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_DUMMY_WSET_LABEL:
-      /* keep the label in the holder; the next LOG_COMMIT or LOG_SYSOP_END of the same trid takes it.
-       * A label that cannot be read is read again: the error leaves final_lsa on this record. */
+      /* keep the label in the holder; the next LOG_COMMIT or LOG_SYSOP_END of the same trid takes it. */
       {
 	LOG_LSA dependency_lsa;
 
