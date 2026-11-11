@@ -27675,7 +27675,7 @@ heap_update_physical (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR page_
 {
   int scancode;
   INT16 old_record_type;
-  int free_before;
+  int free_before, free_after;
 
   /* check input */
   assert (page_p != NULL);
@@ -27715,10 +27715,18 @@ heap_update_physical (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR page_
       spage_update_record_type (thread_p, page_p, slot_id, recdes_p->type);
     }
 
-  /* tell the bestspace map the freed space while the page is latched */
-  if (hfid != NULL && spage_get_free_space_without_saving (thread_p, page_p) > free_before)
+  /* tell the bestspace map the new tier while the page is latched: freed space, and space a grown record took (an MVCC
+   * delete adds its MVCCID to every record it deletes). A tier left too high makes every claim of the page fail its
+   * check until the page is fed back, and a refill whose claims all fail allocates new pages */
+  if (hfid != NULL)
     {
-      heap_bestspace_feedback (thread_p, hfid, page_p);
+      free_after = spage_get_free_space_without_saving (thread_p, page_p);
+      if (free_after > free_before
+	  || (cubstorage::bestspace::code_of ((std::uint16_t) MIN (MAX (free_after, 0), DB_PAGESIZE))
+	      < cubstorage::bestspace::code_of ((std::uint16_t) MIN (MAX (free_before, 0), DB_PAGESIZE))))
+	{
+	  heap_bestspace_feedback (thread_p, hfid, page_p);
+	}
     }
 
   /* mark as dirty */
