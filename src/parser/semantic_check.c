@@ -19124,6 +19124,9 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       parser_free_tree (parser, union_node);
       new_node = parser_new_node (parser, PT_VALUE);
       new_node->type_enum = PT_TYPE_NULL;
+      /* the set operation returns no row, as a subquery with a false WHERE folded by pt_to_false_subquery () does:
+       * EXISTS over it is false and NOT IN over it is true */
+      new_node->info.value.is_false_where = true;
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {

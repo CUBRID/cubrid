@@ -1271,10 +1271,12 @@ end:
        * clone's next execution -- the compiled expression programs -- before the tree goes.
        * This is the same two-pass contract xcache_clone_decache () applies to a clone (the
        * final clear at the end of the execution, then a full clear with XASL_DECACHE_CLONE
-       * set when the clone is retired), so qexec_clear_xasl () already has to be safe to
-       * re-enter on a cleared tree.  A one-shot tree was unpacked with use_xasl_clone off, so
-       * it carries no CLEAR_AT_CLONE_DECACHE marks: the flagged pass touches only the programs,
-       * the status of the sub-XASLs and the disposable signatures, nothing the first pass freed. */
+       * set when the clone is retired), so qexec_clear_xasl () has to be safe to re-enter on a
+       * cleared tree.  A one-shot tree was unpacked with use_xasl_clone off, so it carries no
+       * CLEAR_AT_CLONE_DECACHE marks and its first clear was already final: the flagged pass
+       * releases the programs, but it still runs every scan's clear again with is_final, and
+       * each of those has to skip what the first pass released (a JSON_TABLE scan did not --
+       * CBRD-27947). */
       if (xasl_p != NULL)
 	{
 	  XASL_SET_FLAG (xasl_p, XASL_DECACHE_CLONE);
