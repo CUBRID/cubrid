@@ -890,6 +890,12 @@ qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * 
 	  continue;
 	}
 
+      /* the key is unique in its own type; compared in a wider type (INT as FLOAT) two key values can be equal */
+      if (!pt_check_same_datatype (parser, mine, other))
+	{
+	  continue;
+	}
+
       /* the other side must not read the spec, or the equality fixes nothing */
       ref = spec->info.spec.id;
       (void) parser_walk_tree (parser, other, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
