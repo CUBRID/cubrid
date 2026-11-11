@@ -43,6 +43,7 @@
 
 #include "broker_util.h"
 #include "util_func.h"
+#include "release_string.h"
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
@@ -109,7 +110,7 @@ main (int argc, char **argv)
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
-      printf ("VERSION %s\n", makestring (BUILD_NUMBER));
+      printf ("VERSION %s\n", rel_build_number ());
       return 0;
     }
 

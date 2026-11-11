@@ -19,19 +19,22 @@
 #ifndef _VERSION_H_
 #define _VERSION_H_
 
+/*
+ * Only the values that stay the same across commits. The values that change at every commit (EXTRA_VERSION,
+ * BUILD_NUMBER, VERSION_STRING) are in build_version.h, so that a commit does not recompile every file
+ * that includes config.h.
+ */
+
 #define MAJOR_VERSION @CUBRID_MAJOR_VERSION@
 #define MINOR_VERSION @CUBRID_MINOR_VERSION@
 #define PATCH_VERSION @CUBRID_PATCH_VERSION@
-#define EXTRA_VERSION @CUBRID_EXTRA_VERSION@
 #define MAJOR_RELEASE_STRING @MAJOR_RELEASE_STRING@
 #define RELEASE_STRING @RELEASE_STRING@
 
-#define BUILD_NUMBER @BUILD_NUMBER@
 #define BUILD_OS @CMAKE_SYSTEM_NAME@
 #define BUILD_TYPE @BUILD_TYPE@
 
 #define PACKAGE_STRING "@PACKAGE_STRING@"
 #define PRODUCT_STRING "@PRODUCT_STRING@"
-#define VERSION_STRING "@CUBRID_VERSION@"
 
 #endif /* _VERSION_H_ */

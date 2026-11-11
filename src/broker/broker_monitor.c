@@ -68,6 +68,7 @@
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "util_func.h"
+#include "release_string.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -513,7 +514,7 @@ main (int argc, char **argv)
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
-      fprintf (stderr, "VERSION %s\n", makestring (BUILD_NUMBER));
+      fprintf (stderr, "VERSION %s\n", rel_build_number ());
       return 3;
     }
 
