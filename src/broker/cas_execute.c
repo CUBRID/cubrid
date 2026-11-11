@@ -11149,6 +11149,18 @@ ux_stream_note_status_before (int con_status)
   stream_Status_before_request = con_status;
 }
 
+/*
+ * ux_stream_refused_before_server () - The request was refused before it reached the server
+ *
+ * It did nothing in the transaction, so the connection goes back to the status it had before it. Marked in a
+ * transaction, an auto-commit connection would keep this CAS bound to its client with nothing left to end it.
+ */
+void
+ux_stream_refused_before_server (void)
+{
+  stream_Status_to_restore = stream_Status_before_request;
+}
+
 static void
 ux_stream_give_up_upload (void)
 {
@@ -11270,8 +11282,7 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, bool 
   err_code = stream_kind_client_check_driver_open (stream_kind);
   if (err_code < 0)
     {
-      /* refused before anything ran in the transaction */
-      stream_Status_to_restore = stream_Status_before_request;
+      ux_stream_refused_before_server ();
       return ux_stream_error (err_code, net_buf);
     }
   err_code = stream_kind_client_authorize (stream_kind, config, config_len);
@@ -11495,12 +11506,12 @@ ux_stream_driver_read_flags (int reply_flags)
 
 /*
  * ux_stream_read_open () - Open a download the driver asked for
- *   bundled(in): the driver sent first_max and flags; the first piece and its flags go back with the handle
- *   first_max(in), flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
+ *   first_max(in): the bytes of the first piece, which goes back with the handle; 0 opens only
+ *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
  */
 int
-ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled, int first_max, char flags,
-		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_stream_read_open (int stream_kind, char *config, int config_len, int first_max, char flags, T_NET_BUF * net_buf,
+		     T_REQ_INFO * req_info)
 {
   int err_code;
   INT64 handle = 0;
@@ -11508,18 +11519,20 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
   int nread = 0;
   int reply_flags = 0;
 
-  if (bundled && first_max < 0)
+  if (first_max < 0)
     {
+      ux_stream_refused_before_server ();
       err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
-  first_max = bundled ? MIN (first_max, STREAM_READ_MAX_CHUNK) : 0;
+  first_max = MIN (first_max, STREAM_READ_MAX_CHUNK);
 
   /* the client library runs the kind's authorize in stream_from_read_open () */
   err_code = stream_kind_client_check_driver_open (stream_kind);
   if (err_code < 0)
     {
+      ux_stream_refused_before_server ();
       return ux_stream_error (err_code, net_buf);
     }
 
@@ -11553,14 +11566,11 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
 
   net_buf_cp_int (net_buf, 0, NULL);
   net_buf_cp_bigint (net_buf, handle, NULL);
-  if (bundled)
+  net_buf_cp_int (net_buf, nread, NULL);
+  net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
+  if (nread > 0)
     {
-      net_buf_cp_int (net_buf, nread, NULL);
-      net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
-      if (nread > 0)
-	{
-	  net_buf_cp_str (net_buf, buffer, nread);
-	}
+      net_buf_cp_str (net_buf, buffer, nread);
     }
   FREE_MEM (buffer);
 
@@ -11575,7 +11585,10 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
 
 /*
  * ux_stream_read () - Read the next piece of a download
- *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT; 0 for a driver that sent none
+ *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
+ *
+ * A handle the CAS does not hold is gone from the server too (ux_stream_release): the transaction that ended it
+ * released it, or a read at eof did. It is answered here, so that the request leaves the connection as it found it.
  */
 int
 ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -11588,9 +11601,16 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
 
   if (max <= 0)
     {
+      ux_stream_refused_before_server ();
       err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
+    }
+  if (!stream_from_holds_handle (handle))
+    {
+      ux_stream_refused_before_server ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_OPEN, 1, "unknown stream handle");
+      return ux_stream_error (ER_STREAM_NOT_OPEN, net_buf);
     }
   max = MIN (max, STREAM_READ_MAX_CHUNK);
 

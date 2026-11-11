@@ -59,7 +59,7 @@ enum STREAM_KIND
   STREAM_KIND_MAX = 7		/* registry slots; raise when another consumer lands */
 };
 
-/* Flags of the bundled forms on the server requests (see the CAS_STREAM_FLAG_* masks for the driver wire). */
+/* Flags of the server requests and replies (see the CAS_STREAM_FLAG_* masks for the driver wire). */
 const int STREAM_FLAG_FINAL = 0x01;	/* upload request: the stream ends with this chunk */
 const int STREAM_FLAG_RELEASE_AT_EOF = 0x01;	/* download request: release the handle when eof comes back */
 const int STREAM_FLAG_EOF = 0x01;	/* download reply */

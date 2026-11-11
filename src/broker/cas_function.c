@@ -2499,6 +2499,16 @@ stream_args_fit (int argc, void **argv, const int *widths)
   return true;
 }
 
+/* a request refused here never reached the server, so the connection keeps the status it had before it */
+static FN_RETURN
+stream_refuse_args (T_NET_BUF * net_buf)
+{
+  ux_stream_refused_before_server ();
+  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+  return FN_KEEP_CONN;
+}
+
 /* a flags byte with a bit not listed for its request is refused, so that a bit a later release adds is never ignored */
 static bool
 stream_flags_refused (char flags, char known, T_NET_BUF * net_buf)
@@ -2508,8 +2518,7 @@ stream_flags_refused (char flags, char known, T_NET_BUF * net_buf)
       return false;
     }
 
-  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (net_buf);
+  (void) stream_refuse_args (net_buf);
   return true;
 }
 
@@ -2524,9 +2533,7 @@ fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   if (argc < 1 || argc > 2 || !stream_args_fit (argc, argv, widths))
     {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      return stream_refuse_args (net_buf);
     }
 
   net_arg_get_str (&data, &data_len, argv[0]);
@@ -2556,9 +2563,7 @@ fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 {
   if (argc != 0)
     {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      return stream_refuse_args (net_buf);
     }
 
   ux_stream_end (NULL, 0, net_buf, req_info);
@@ -2566,8 +2571,9 @@ fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   return FN_KEEP_CONN;
 }
 
-/* INIT: kind, config [, flags, data]. The data is the first chunk; with CAS_STREAM_FLAG_FINAL it is the whole
- * value, and the reply is END's. */
+/* INIT: kind, config, flags, data. The data is the first chunk, possibly empty; with CAS_STREAM_FLAG_FINAL it is the
+ * whole value, and the reply is END's. The flags are not optional: the driver keeps its auto-commit mode on its own
+ * side (as_info's is set only through SET_DB_PARAMETER, which no driver sends for it), so only the request says it. */
 FN_RETURN
 fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2577,34 +2583,24 @@ fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   char flags = 0;
   char *data = NULL;
   int data_len = 0;
-  bool auto_commit;
   static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_BYTE, STREAM_ARG_ANY_SIZE };
 
-  if ((argc != 2 && argc != 4) || !stream_args_fit (argc, argv, widths))
+  if (argc != 4 || !stream_args_fit (argc, argv, widths))
     {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      return stream_refuse_args (net_buf);
     }
 
   net_arg_get_int (&stream_kind, argv[0]);
   net_arg_get_str (&config, &config_len, argv[1]);
-  if (argc == 4)
-    {
-      net_arg_get_char (flags, argv[2]);
-      net_arg_get_str (&data, &data_len, argv[3]);
-    }
+  net_arg_get_char (flags, argv[2]);
+  net_arg_get_str (&data, &data_len, argv[3]);
   if (stream_flags_refused (flags, CAS_STREAM_FLAG_FINAL | CAS_STREAM_FLAG_AUTO_COMMIT, net_buf))
     {
       return FN_KEEP_CONN;
     }
 
-  /* the driver keeps its auto-commit mode on its own side (as_info's is set only through SET_DB_PARAMETER), so the
-   * bundled form says it; the unbundled form, which has no flags, keeps what the CAS knows */
-  auto_commit = (argc == 4) ? (flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0 : as_info->auto_commit_mode == TRUE;
-
-  ux_stream_init (stream_kind, config, config_len, (flags & CAS_STREAM_FLAG_FINAL) != 0, auto_commit, data, data_len,
-		  net_buf, req_info);
+  ux_stream_init (stream_kind, config, config_len, (flags & CAS_STREAM_FLAG_FINAL) != 0,
+		  (flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, data, data_len, net_buf, req_info);
 
   return FN_KEEP_CONN;
 }
@@ -2614,9 +2610,7 @@ fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 {
   if (argc != 0)
     {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      return stream_refuse_args (net_buf);
     }
 
   ux_stream_abort (net_buf, req_info);
@@ -2624,7 +2618,8 @@ fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   return FN_KEEP_CONN;
 }
 
-/* READ_OPEN: kind, config [, first_max, flags]. With the optional pair the first piece comes back with the handle. */
+/* READ_OPEN: kind, config, first_max, flags. The first piece, up to first_max bytes (0 opens only), comes back with
+ * the handle. The flags carry the auto-commit mode, as INIT's do. */
 FN_RETURN
 fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2635,31 +2630,26 @@ fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char flags = 0;
   static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_INT, NET_SIZE_BYTE };
 
-  if ((argc != 2 && argc != 4) || !stream_args_fit (argc, argv, widths))
+  if (argc != 4 || !stream_args_fit (argc, argv, widths))
     {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      return stream_refuse_args (net_buf);
     }
 
   net_arg_get_int (&stream_kind, argv[0]);
   net_arg_get_str (&config, &config_len, argv[1]);
-  if (argc == 4)
-    {
-      net_arg_get_int (&first_max, argv[2]);
-      net_arg_get_char (flags, argv[3]);
-    }
+  net_arg_get_int (&first_max, argv[2]);
+  net_arg_get_char (flags, argv[3]);
   if (stream_flags_refused (flags, CAS_STREAM_FLAG_RELEASE_AT_EOF | CAS_STREAM_FLAG_AUTO_COMMIT, net_buf))
     {
       return FN_KEEP_CONN;
     }
 
-  ux_stream_read_open (stream_kind, config, config_len, argc == 4, first_max, flags, net_buf, req_info);
+  ux_stream_read_open (stream_kind, config, config_len, first_max, flags, net_buf, req_info);
 
   return FN_KEEP_CONN;
 }
 
-/* READ: handle, max [, flags] */
+/* READ: handle, max, flags */
 FN_RETURN
 fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2668,19 +2658,14 @@ fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   char flags = 0;
   static const int widths[] = { NET_SIZE_BIGINT, NET_SIZE_INT, NET_SIZE_BYTE };
 
-  if (argc < 2 || argc > 3 || !stream_args_fit (argc, argv, widths))
+  if (argc != 3 || !stream_args_fit (argc, argv, widths))
     {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      return stream_refuse_args (net_buf);
     }
 
   net_arg_get_bigint (&handle, argv[0]);
   net_arg_get_int (&max, argv[1]);
-  if (argc > 2)
-    {
-      net_arg_get_char (flags, argv[2]);
-    }
+  net_arg_get_char (flags, argv[2]);
   if (stream_flags_refused (flags, CAS_STREAM_FLAG_RELEASE_AT_EOF | CAS_STREAM_FLAG_AUTO_COMMIT, net_buf))
     {
       return FN_KEEP_CONN;
@@ -2701,9 +2686,7 @@ fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   if (argc != 2 || !stream_args_fit (argc, argv, widths))
     {
-      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return FN_KEEP_CONN;
+      return stream_refuse_args (net_buf);
     }
 
   net_arg_get_bigint (&handle, argv[0]);
