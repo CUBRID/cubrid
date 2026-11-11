@@ -21324,6 +21324,7 @@ pt_apply_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *a
 {
   PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
   PT_APPLY_WALK (parser, p->info.sensitivity_label.level, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.comment, arg);
   return p;
 }
 
@@ -21333,6 +21334,7 @@ pt_apply_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *ar
   PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
   PT_APPLY_WALK (parser, p->info.sensitivity_label.new_name, arg);
   PT_APPLY_WALK (parser, p->info.sensitivity_label.level, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.comment, arg);
   return p;
 }
 
