@@ -274,6 +274,9 @@ struct qo_plan
 				   scan descend once per execution, and charging them per row taxed index
 				   scans with no qo_sscan_cost counterpart (broke exact plan ties on tiny
 				   and statistics-less tables) */
+  double iscan_uncover_io;	/* heap fetch cost of a covered scan that qo_is_func_index_cover_routed () holds,
+				   paid only where its output goes through a list file */
+  double iscan_uncover_cpu;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -491,6 +494,7 @@ extern void qo_plans_stats (FILE *);
 extern void qo_info_stats (FILE *);
 
 extern bool qo_is_seq_scan (QO_PLAN *);
+extern bool qo_is_func_index_cover_routed (QO_PLAN * plan);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);

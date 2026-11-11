@@ -81,7 +81,8 @@ extern "C" {
     cubxasl::iterate_xasl_tree<bool> (xasl,dump_with_id,true);
 
     std::string result = oss.str();
-    _er_log_debug (ARG_FILE_LINE, result.c_str());
+    // the dump holds the query text, which can carry printf conversions such as %n: never pass it as the format
+    _er_log_debug (ARG_FILE_LINE, "%s", result.c_str());
   }
 
   /* the statistics of one partition of a clone's scan into the main thread's (xasl_merge_stats ()) */

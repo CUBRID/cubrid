@@ -368,6 +368,11 @@ struct buildvalue_proc_node
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
   int is_always_false;		/* always-false agg-query? */
+  /* XASL_OUTPUT_READS_SCAN: the scan columns of the last row the filters kept, copied as the row is aggregated
+   * (qexec_keep_last_row ()) for the output list, which reads them after the scans are closed; not serialized */
+  DB_VALUE *last_row;
+  int last_row_cnt;
+  bool last_row_kept;
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
@@ -585,7 +590,8 @@ struct cte_proc_node
 #define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
 #define XASL_NEED_SINGLE_TUPLE_SCAN    (0x1 << 15)	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
-/* (0x1 << 17) was XASL_SAMPLING_SCAN, removed with the query-based statistics sampling path */
+#define XASL_NL_PER_ROW_PARTITIONS	(0x1 << 17)	/* a partitioned NL inner the optimizer drives per outer row: its partition
+							 * is opened on a memo miss (qexec_open_row_partition ()) */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
@@ -599,8 +605,7 @@ struct cte_proc_node
 #define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc is a partitioned NL inner, or comes after one or after a
 							 * NL semi/anti inner in the scan chain: driven per outer row */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
-#define XASL_NL_PER_ROW_PARTITIONS	(0x1 << 30)	/* a partitioned NL inner the optimizer drives per outer row: its partition
-							 * is opened on a memo miss (qexec_open_row_partition ()) */
+#define XASL_OUTPUT_READS_SCAN		(0x1 << 30)	/* a BUILDVALUE whose output reads a column of its scans (pt_buildvalue_output_reads_scan ()) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
