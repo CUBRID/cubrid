@@ -829,6 +829,18 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
+  /* the column stays NULL for user procedures */
+  if (info.is_system_generated == 1)
+    {
+      db_make_int (&value, 1);
+      err = dbt_put_internal (obt_p, SP_CODE_ATTR_IS_SYSTEM_GENERATED, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
   db_make_string (&value, info.name.data ());
   err = dbt_put_internal (obt_p, SP_CODE_ATTR_NAME, &value);
   pr_clear_value (&value);
