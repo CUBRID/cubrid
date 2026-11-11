@@ -1856,7 +1856,7 @@ static int
 is_follow_if_term (QO_TERM * term)
 {
   if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN	/* ? */
-      || QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+      || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
     {
       return 0;
     }
