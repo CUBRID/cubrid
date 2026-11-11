@@ -49,11 +49,9 @@ namespace parallel_scan
   /* the checked part calls an SP not declared PARALLEL_ENABLE or a method: a px worker cannot
    * run it, since its callbacks to the client are never answered (CBRD-27596) */
   const possible_flags CANNOT_RUN_IN_WORKER = 0x1 << 3;
-  /* survives a subquery boundary: workers running it would write the shared session or serial state concurrently */
-  const possible_flags WRITES_SESSION_STATE = 0x1 << 4;
-  /* survives a subquery boundary too: a worker read races with a write the leader makes during the scan */
-  const possible_flags READS_SESSION_STATE = 0x1 << 5;
-  const possible_flags SESSION_STATE_ACCESS = WRITES_SESSION_STATE | READS_SESSION_STATE;
+  /* survives a subquery boundary: a subquery that reads or writes the session or serial state keeps the
+   * scan serial as the same access in the block itself does */
+  const possible_flags SESSION_STATE_ACCESS = 0x1 << 4;
   const possible_flags SUBQUERY_BLOCKERS = CANNOT_RUN_IN_WORKER | SESSION_STATE_ACCESS;
 
   static bool
@@ -99,10 +97,6 @@ namespace parallel_scan
   /* sibling_check results, one map per is_outptr_list. A nested subquery is reached through its regu
    * and through its parent's aptr / dptr link, so without the cache deep nesting costs 2^depth. */
   thread_local std::unordered_map<XASL_NODE *, possible_flags> xasl_sibling_check_cache[2];
-
-  /* the scalar subqueries the leader evaluates once before the scan of the block being decided opens; its workers
-   * only read their values (px_scan_task.cpp). A correlated one is in a dptr_list and never here. */
-  thread_local std::unordered_set<XASL_NODE *> leader_precomputed;
 
   static void set_flag (possible_flags &flags, possible_flags flag)
   {
@@ -161,8 +155,6 @@ namespace parallel_scan
   possible_flags check (XASL_NODE *arg);
   template <bool is_outptr_list>
   possible_flags sibling_check (XASL_NODE *sibling);
-  template <bool is_outptr_list>
-  possible_flags sibling_check_block (XASL_NODE *sibling);
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg);
 
@@ -399,15 +391,7 @@ namespace parallel_scan
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
-      }
-    /* TRACE_STATS also marks the calling thread to clear the session's trace at query end */
-    if (arg->opcode == T_DEFINE_VARIABLE || arg->opcode == T_NEXT_VALUE || arg->opcode == T_TRACE_STATS)
-      {
-	set_flag (result, WRITES_SESSION_STATE);
-      }
-    else if (arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_CURRENT_VALUE)
-      {
-	set_flag (result, READS_SESSION_STATE);
+	set_flag (result, SESSION_STATE_ACCESS);
       }
     return result;
   }
@@ -668,21 +652,6 @@ namespace parallel_scan
   template <bool is_outptr_list>
   possible_flags sibling_check (XASL_NODE *sibling)
   {
-    possible_flags result = sibling_check_block<is_outptr_list> (sibling);
-    if (leader_precomputed.count (sibling) != 0)
-      {
-	return result & ~SESSION_STATE_ACCESS;
-      }
-    if (is_flag_set (result, WRITES_SESSION_STATE))
-      {
-	set_flag (result, CANNOT_PARALLEL_SCAN);
-      }
-    return result;
-  }
-
-  template <bool is_outptr_list>
-  possible_flags sibling_check_block (XASL_NODE *sibling)
-  {
     if (!sibling)
       {
 	return 0;
@@ -843,6 +812,10 @@ namespace parallel_scan
 	break;
       }
     result |= temp & SUBQUERY_BLOCKERS;
+    if (is_flag_set (result, SESSION_STATE_ACCESS))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
 
     cache[sibling] = result;
     return result;
@@ -1122,7 +1095,6 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & SESSION_STATE_ACCESS;
       }
 
     if (arg->if_pred)
@@ -1132,7 +1104,6 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
-	result |= temp & SESSION_STATE_ACCESS;
       }
 
     if (arg->instnum_pred || arg->instnum_val)
@@ -1167,21 +1138,6 @@ namespace parallel_scan
     xasl_check_cache[arg] = result;
 
     return result;
-  }
-
-  /* the leader evaluates a ROWNUM predicate and a row-by-row aggregate while the workers still scan */
-  static bool
-  leader_writes_during_scan (XASL_NODE *arg)
-  {
-    possible_flags flags = check<false> (arg->instnum_pred);
-    if (arg->type == BUILDVALUE_PROC)
-      {
-	for (AGGREGATE_TYPE *agg = arg->proc.buildvalue.agg_list; agg; agg = agg->next)
-	  {
-	    flags |= check<false> (agg);
-	  }
-      }
-    return is_flag_set (flags, WRITES_SESSION_STATE);
   }
 
   void process_xasl_node_recursive (XASL_NODE *arg)
@@ -1288,23 +1244,7 @@ namespace parallel_scan
 	process_xasl_node_recursive_force_cannot_parallel (xaslp);
       }
 
-    leader_precomputed.clear ();
-    for (XASL_NODE *xptr = arg; xptr; xptr = xptr->scan_ptr)
-      {
-	for (XASL_NODE *subq = xptr->aptr_list; subq; subq = subq->next)
-	  {
-	    if (subq->precomp_owner_regu != NULL)
-	      {
-		leader_precomputed.insert (subq);
-	      }
-	  }
-      }
-
     result |= check<false> (arg);
-    if (is_flag_set (result, READS_SESSION_STATE) && leader_writes_during_scan (arg))
-      {
-	set_flag (result, CANNOT_PARALLEL_SCAN);
-      }
 
     const bool block_index_spec =
 	    ((arg->instnum_pred || arg->instnum_val) && !is_renumberable_instnum (arg))
@@ -1378,7 +1318,6 @@ namespace parallel_scan
 	  }
       }
 
-    leader_precomputed.clear ();
   }
 
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel)
