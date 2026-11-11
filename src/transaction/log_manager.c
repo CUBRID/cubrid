@@ -4466,7 +4466,6 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 {
   LOG_REC_START_POSTPONE *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -4478,11 +4477,9 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
   start_posp->at_time = time (NULL);
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-
-  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
