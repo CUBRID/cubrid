@@ -5786,7 +5786,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
 	  pr_type = domains[i]->type;
-	  if (!(TP_IS_CHAR_TYPE (pr_type->id) || pr_type->id == DB_TYPE_CLOB))
+	  if (! (TP_IS_CHAR_TYPE (pr_type->id) || pr_type->id == DB_TYPE_CLOB))
 	    {
 	      continue;
 	    }

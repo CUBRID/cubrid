@@ -3390,7 +3390,7 @@ ldr_internal_lob_ref_db_lob (LDR_CONTEXT *context, const char *str, size_t len, 
   DB_VALUE val;
 
   CHECK_ERR (err, ldr_internal_lob_ref_make_value (context, str, len, attdesc->att,
-						   TP_DOMAIN_TYPE (attdesc->att->domain), &val));
+	     TP_DOMAIN_TYPE (attdesc->att->domain), &val));
   CHECK_ERR (err, ldr_generic (context, &val));
 
 error_exit:

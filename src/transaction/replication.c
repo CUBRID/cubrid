@@ -608,7 +608,8 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
   tdes->suppress_replication = 0;
 
   error = repl_log_insert_internal (thread_p, oid_Serial_class_oid, serial_oidp, LOG_REPLICATION_DATA,
-				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue, NULL_ATTRID);
+				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue,
+				    NULL_ATTRID);
   if (error == NO_ERROR)
     {
       error = repl_add_update_lsa (thread_p, serial_oidp);

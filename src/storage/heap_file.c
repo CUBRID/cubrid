@@ -11711,8 +11711,9 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
  */
 static int
 heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
-			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * oos_owned_buffer, bool * internal_lob_locator,
-			       char *oos_scratch, int oos_scratch_size, const heap_pending_record * pending)
+			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * oos_owned_buffer,
+			       bool * internal_lob_locator, char *oos_scratch, int oos_scratch_size,
+			       const heap_pending_record * pending)
 {
   int offset;
   int error;
@@ -14988,7 +14989,9 @@ heap_attrinfo_insert_internal_lob_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 
   if (thread_p->oos_oids.size () == oos_oid_count_before)
     {
+      /* *INDENT-OFF* */
       thread_p->oos_oids.push_back ({ plan->oid, plan->identity_stamp });	/* for replication log */
+      /* *INDENT-ON* */
     }
 
   thread_p->pair_oos_oids (thread_p->oos_oids.size (), attr_info->values[index].attrid, true);
