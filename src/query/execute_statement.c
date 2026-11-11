@@ -17461,12 +17461,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  PARSER_VARCHAR *dblink_str = pt_print_bytes (parser, statement);
 	  repl_stmt.stmt_text = (char *) pt_get_varchar_bytes (dblink_str);
 	}
-
-      if (statement->node_type == PT_CREATE_SENSITIVITY_LABEL && statement->info.sensitivity_label.assigned_level > 0)
-	{
-	  PARSER_VARCHAR *label_str = pt_print_bytes (parser, statement);
-	  repl_stmt.stmt_text = (char *) pt_get_varchar_bytes (label_str);
-	}
     }
   else
     {
@@ -17538,6 +17532,13 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       sbr_text[n] = 0;
       repl_stmt.stmt_text = sbr_text;
+    }
+
+  /* outside the host variable branch: host_var_count counts every statement of the parser */
+  if (statement->node_type == PT_CREATE_SENSITIVITY_LABEL && statement->info.sensitivity_label.assigned_level > 0)
+    {
+      PARSER_VARCHAR *label_str = pt_print_bytes (parser, statement);
+      repl_stmt.stmt_text = (char *) pt_get_varchar_bytes (label_str);
     }
 
   repl_stmt.db_user = db_get_user_name ();
