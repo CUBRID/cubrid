@@ -594,8 +594,11 @@ struct trace_json_t;
 /* CBRD-27583: a position that took its bind domain (host_var_bind_domains): the client's bind converts its value into
  * it, and the compilation planned it so (pt_take_host_var_bind_domains) */
 #define PT_HOST_VAR_BIND_DOMAIN 0x2000
+/* a position every occurrence of which is a value stored into a column (pt_classify_host_var_positions): the client
+ * converts its value into the column's domain, a CHAR padded, so its plan is that domain's */
+#define PT_HOST_VAR_ASSIGNMENT 0x4000
 /* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
-#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 14
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 15
 #define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
 #define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
 #define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
@@ -781,6 +784,11 @@ struct trace_json_t;
 /* PT_SPEC node contains a CTE pointer */
 #define PT_SPEC_IS_CTE(spec_) \
   ((spec_)->info.spec.cte_pointer != NULL)
+
+/* the spec is scanned with locks, so its rows are read and re-evaluated from the heap */
+#define PT_SPEC_NEEDS_HEAP_REEVAL(spec) \
+  (((spec)->info.spec.flag & (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE \
+			      | PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)) != 0)
 
 /* PT_SPEC node contains an entity spec */
 #define PT_SPEC_IS_ENTITY(spec_) \
@@ -2797,11 +2805,12 @@ struct pt_name_info
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
+#define PT_NAME_INFO_FUNC_INDEX_RESULT 32768	/* pseudo attribute for a function index result read from the key */
 
-  short flag;
-#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
-#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
-#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
+  int flag;
+#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (int) (f))
+#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (int) (f)
+#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (int) ~(f)
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */
@@ -3093,6 +3102,7 @@ struct pt_trigger_action_info
 {
   PT_NODE *expression;		/* parse tree for expression */
   PT_NODE *string;		/* PT_PRINT string */
+  PT_NODE *plcsql_block;	/* PT_PLCSQL_BLOCK text */
   PT_MISC_TYPE action_type;	/* REJECT, INVALIDATE_XACTION, etc. */
 };
 
@@ -3848,6 +3858,7 @@ struct parser_node
   int line_number;		/* the user line number originating this */
   int column_number;		/* the user column number originating this */
   int buffer_pos;		/* position in the parse buffer of the string originating this */
+  int stmt_start_line;		/* the user line number where the statement starts (top-level statements only) */
   char *sql_user_text;		/* user input sql string */
   int sql_user_text_len;	/* user input sql string length (one statement) */
 
@@ -4055,6 +4066,10 @@ struct parser_context
 					 * translation's type checking gave a node of it (pt_preset_hostvar's writes,
 					 * not a rule cast's target or an AGNOSTIC position's INTEGER), which the bind
 					 * casts the bound value into; NULL for none */
+  PT_NODE *host_var_classified;	/* the statement whose name resolution classifies its positions
+				 * (pt_classify_host_var_positions), while it compiles */
+  PT_NODE *host_var_assigned_later;	/* the statement whose class prefetch assigns its positions after its
+					 * translation (pt_assign_host_var_positions), while it compiles */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
@@ -4158,6 +4173,8 @@ struct parser_context
     unsigned plan_only_signature:1;	/* CBRD-27583: this compilation of a bind type signature was made while
 					 * execution is skipped (qo_need_skip_execution): it has no XASL and serves
 					 * that execution only */
+    unsigned host_var_assign_failed:1;	/* CBRD-27583: the positions of the compiled statement failed after its
+					 * translation (pt_assign_host_var_positions): a semantic error */
     unsigned compile_uncached:1;	/* CBRD-27478: the statement compiles through do_statement (), outside the XASL
 					 * cache, so it compiles again at every execution: the planner reads no rows
 					 * (row snapshot) for a plan nothing keeps */
