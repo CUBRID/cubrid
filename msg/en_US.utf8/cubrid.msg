@@ -2028,6 +2028,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
+345 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
 
 
 
