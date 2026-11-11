@@ -457,6 +457,7 @@ static XASL_NODE *pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * sele
 static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static XASL_NODE *pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_buildvalue_output_reads_scan (XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static bool pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC_KEY_METADOMAIN * func_meta,
 				       PT_NODE ** index, int *index_size);
@@ -3760,6 +3761,8 @@ pt_symbol_info_alloc (void)
       symbols->listfile_attr_offset = 0;
 
       symbols->query_node = NULL;
+      symbols->func_idx_cover_list = NULL;
+      symbols->func_idx_routed_list = NULL;
     }
 
   return symbols;
@@ -9820,6 +9823,544 @@ pt_make_prefix_index_data_filter (PARSER_CONTEXT * parser, PT_NODE * where_key_p
 }
 
 /*
+ * pt_func_index_scan_cons () - get the function index of an index scan plan
+ *   return: the function index constraint, or NULL
+ *   plan(in): plan
+ */
+static SM_CLASS_CONSTRAINT *
+pt_func_index_scan_cons (QO_PLAN * plan)
+{
+  QO_INDEX_ENTRY *index_entry;
+  SM_CLASS_CONSTRAINT *cons;
+
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->plan_un.scan.index == NULL)
+    {
+      return NULL;
+    }
+
+  index_entry = plan->plan_un.scan.index->head;
+  if (index_entry == NULL || index_entry->constraints == NULL)
+    {
+      return NULL;
+    }
+
+  cons = index_entry->constraints;
+  if (cons->func_index_info == NULL || cons->attributes == NULL)
+    {
+      return NULL;
+    }
+
+  return cons;
+}
+
+/*
+ * pt_is_func_index_arg_only_in_expr () - check whether a covered function index scan can leave out a column, because
+ *   it is an argument the query uses only inside the indexed expression
+ *   return: bool
+ *   plan(in): covered function index scan plan
+ *   attr(in): column (PT_NAME)
+ *   scan_terms(in): key range and key filter terms of the scan
+ */
+static bool
+pt_is_func_index_arg_only_in_expr (QO_PLAN * plan, PT_NODE * attr, BITSET * scan_terms)
+{
+  QO_ENV *env = plan->info->env;
+  QO_SEGMENT *seg;
+  PT_NODE *pt_seg;
+  int i;
+
+  for (i = 0; i < env->nsegs; i++)
+    {
+      seg = QO_ENV_SEG (env, i);
+      if (seg == NULL || QO_SEG_HEAD (seg) != plan->plan_un.scan.node || QO_SEG_FUNC_INDEX (seg))
+	{
+	  continue;
+	}
+
+      pt_seg = QO_SEG_PT_NODE (seg);
+      if (pt_seg != NULL && pt_seg->node_type == PT_NAME && pt_seg->info.name.original != NULL
+	  && !intl_identifier_casecmp (pt_seg->info.name.original, attr->info.name.original))
+	{
+	  return qo_seg_used_only_in_func_index (env, plan->plan_un.scan.index->head, seg, scan_terms);
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_add_func_index_result_attr () - append (once) a pseudo attribute for the function index result to the
+ *   table info of a spec, together with its value list slot
+ *   return: the pseudo attribute, or NULL
+ *   parser(in):
+ *   spec(in): scanned spec
+ *   cons(in): function index constraint
+ */
+static PT_NODE *
+pt_add_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * spec, SM_CLASS_CONSTRAINT * cons)
+{
+  TABLE_INFO *table_info;
+  PT_NODE *attr;
+  TP_DOMAIN *dom = cons->func_index_info->fi_domain;
+  const char *expr_str = cons->func_index_info->expr_str;
+  VAL_LIST *slot;
+  QPROC_DB_VALUE_LIST *tail;
+
+  if (parser->symbols == NULL || dom == NULL || expr_str == NULL)
+    {
+      return NULL;
+    }
+
+  table_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
+  if (table_info == NULL || table_info->value_list == NULL)
+    {
+      return NULL;
+    }
+
+  for (attr = table_info->attribute_list; attr != NULL; attr = attr->next)
+    {
+      if (attr->node_type == PT_NAME && PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FUNC_INDEX_RESULT)
+	  && !intl_identifier_casecmp (attr->info.name.original, expr_str))
+	{
+	  return attr;
+	}
+    }
+
+  attr = pt_name (parser, expr_str);
+  if (attr == NULL)
+    {
+      return NULL;
+    }
+  attr->info.name.spec_id = spec->info.spec.id;
+  attr->info.name.meta_class = PT_NORMAL;
+  if (spec->info.spec.flat_entity_list != NULL)
+    {
+      attr->info.name.resolved = spec->info.spec.flat_entity_list->info.name.original;
+    }
+  PT_NAME_INFO_SET_FLAG (attr, PT_NAME_INFO_FUNC_INDEX_RESULT);
+  attr->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (dom));
+  attr->data_type = pt_domain_to_data_type (parser, dom);
+
+  slot = pt_make_val_list (parser, attr);
+  if (slot == NULL || slot->valp == NULL)
+    {
+      return NULL;
+    }
+
+  /* table_info->attribute_list is shared with the spec's referenced_attrs; extend a copy */
+  table_info->attribute_list = parser_append_node (attr, parser_copy_tree_list (parser, table_info->attribute_list));
+
+  for (tail = &table_info->value_list->valp; *tail != NULL; tail = &(*tail)->next)
+    {
+      ;
+    }
+  *tail = slot->valp;
+  table_info->value_list->val_cnt++;
+
+  return attr;
+}
+
+/*
+ * pt_make_func_index_cover () - make the routing entry of a function index scan, adding the pseudo result
+ *   attribute to the spec
+ *   return: the entry, or NULL
+ *   parser(in):
+ *   plan(in): plan
+ */
+static PT_FUNC_INDEX_COVER *
+pt_make_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
+{
+  SM_CLASS_CONSTRAINT *cons;
+  QO_NODE *node;
+  PT_NODE *spec, *attr;
+  PT_FUNC_INDEX_COVER *entry;
+
+  cons = pt_func_index_scan_cons (plan);
+  if (cons == NULL)
+    {
+      return NULL;
+    }
+
+  node = plan->plan_un.scan.node;
+  spec = (node != NULL) ? QO_NODE_ENTITY_SPEC (node) : NULL;
+  if (spec == NULL || spec->node_type != PT_SPEC || !qo_is_func_index_routable (plan->info->env, node))
+    {
+      return NULL;
+    }
+
+  /* without the expression in the query the pseudo result would only cost an extra key column read per row */
+  if (qo_find_func_index_seg (plan->info->env, node, cons->func_index_info->expr_str) == NULL)
+    {
+      return NULL;
+    }
+
+  attr = pt_add_func_index_result_attr (parser, spec, cons);
+  if (attr == NULL)
+    {
+      return NULL;
+    }
+
+  entry = (PT_FUNC_INDEX_COVER *) pt_alloc_packing_buf (sizeof (PT_FUNC_INDEX_COVER));
+  if (entry == NULL)
+    {
+      return NULL;
+    }
+  entry->next = NULL;
+  entry->expr_str = cons->func_index_info->expr_str;
+  entry->spec_id = spec->info.spec.id;
+  entry->result_attr = attr;
+
+  return entry;
+}
+
+/*
+ * pt_uncover_func_index_scans () - turn off covering for the function index scans of a plan whose output reaches the
+ *   query through a list file, when they cover a function argument missing from the key
+ *   return: void
+ *   plan(in): plan
+ *
+ * Note: a list file carries the function from its raw arguments, so such a scan must read them from the heap.
+ */
+static void
+pt_uncover_func_index_scans (QO_PLAN * plan)
+{
+  if (plan == NULL)
+    {
+      return;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      if (qo_is_func_index_cover_routed (plan))
+	{
+	  /* a loose scan is made only of a covering scan */
+	  plan->plan_un.scan.index_cover = false;
+	  plan->plan_un.scan.index_loose = false;
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      pt_uncover_func_index_scans (plan->plan_un.sort.subplan);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      pt_uncover_func_index_scans (plan->plan_un.join.outer);
+      pt_uncover_func_index_scans (plan->plan_un.join.inner);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      pt_uncover_func_index_scans (plan->plan_un.follow.head);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * pt_collect_func_index_cover () - register the covered function index scans of a plan whose function results
+ *   are routed to their pseudo result attribute
+ *   return: void
+ *   parser(in):
+ *   plan(in): plan
+ *   nl_outer(in): true if the plan is the outer side of a nested loop join
+ *
+ * Note: only scans whose value list the query reads directly are routed; this follows gen_outer () and gen_inner (),
+ *   which put the other plans (merge and hash join inputs, sorts under a join, sort limit) into list files.
+ *   qo_plan_uncover_cost () charges the heap fetches at the same positions, so the two must change together.
+ */
+static void
+pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan, bool nl_outer)
+{
+  PT_FUNC_INDEX_COVER *entry;
+  QO_PLAN *inner;
+
+  if (plan == NULL || parser->symbols == NULL)
+    {
+      return;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      entry = plan->plan_un.scan.index_cover ? pt_make_func_index_cover (parser, plan) : NULL;
+      if (entry != NULL)
+	{
+	  entry->next = parser->symbols->func_idx_cover_list;
+	  parser->symbols->func_idx_cover_list = entry;
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      if (nl_outer || plan->plan_un.sort.sort_type == SORT_LIMIT)
+	{
+	  pt_uncover_func_index_scans (plan->plan_un.sort.subplan);
+	}
+      else
+	{
+	  pt_collect_func_index_cover (parser, plan->plan_un.sort.subplan, false);
+	}
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      inner = plan->plan_un.join.inner;
+      if ((plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN && plan->plan_un.join.join_type != JOIN_CSELECT)
+	  || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+	{
+	  pt_collect_func_index_cover (parser, plan->plan_un.join.outer, true);
+	  if (inner != NULL && (inner->plan_type == QO_PLANTYPE_SCAN || inner->plan_type == QO_PLANTYPE_FOLLOW))
+	    {
+	      pt_collect_func_index_cover (parser, inner, false);
+	    }
+	  else
+	    {
+	      pt_uncover_func_index_scans (inner);
+	    }
+	}
+      else
+	{
+	  pt_uncover_func_index_scans (plan->plan_un.join.outer);
+	  pt_uncover_func_index_scans (inner);
+	}
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      pt_collect_func_index_cover (parser, plan->plan_un.follow.head, nl_outer);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * pt_is_func_index_scan_routed () - check whether the output of a spec's covered function index scan is routed to
+ *   its pseudo result attribute
+ *   return: bool
+ *   parser(in):
+ *   spec_id(in): spec id
+ */
+static bool
+pt_is_func_index_scan_routed (PARSER_CONTEXT * parser, UINTPTR spec_id)
+{
+  PT_FUNC_INDEX_COVER *e;
+
+  for (e = parser->symbols->func_idx_routed_list; e != NULL; e = e->next)
+    {
+      if (e->spec_id == spec_id)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_get_func_index_result_attr () - get the pseudo result attribute a function index expression is routed to
+ *   return: the pseudo attribute, or NULL
+ *   parser(in):
+ *   node(in): expression
+ */
+static PT_NODE *
+pt_get_func_index_result_attr (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_FUNC_INDEX_COVER *e;
+  UINTPTR spec_id = 0;
+  char *expr_str;
+
+  if (parser->symbols == NULL || parser->symbols->func_idx_cover_list == NULL || node == NULL
+      || node->node_type != PT_EXPR)
+    {
+      return NULL;
+    }
+
+  if (!pt_is_function_index_expr (parser, node, false) || pt_is_join_expr (node, &spec_id))
+    {
+      return NULL;
+    }
+
+  expr_str = qo_print_func_index_expr (parser, node);
+  if (expr_str == NULL)
+    {
+      return NULL;
+    }
+
+  for (e = parser->symbols->func_idx_cover_list; e != NULL; e = e->next)
+    {
+      if (e->spec_id == spec_id && !intl_identifier_casecmp (expr_str, e->expr_str))
+	{
+	  return e->result_attr;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_is_attr_in_key_range () - check whether the key range terms of an index scan reference an attribute outside
+ *   of the function index expression
+ *   return: bool
+ *   parser(in):
+ *   index_pred(in): index scan terms
+ *   func_expr_str(in): printed function index expression
+ *   attr(in): attribute (PT_NAME)
+ */
+static bool
+pt_is_attr_in_key_range (PARSER_CONTEXT * parser, QO_XASL_INDEX_INFO * index_pred, const char *func_expr_str,
+			 PT_NODE * attr)
+{
+  PT_NODE **term_exprs = qo_xasl_get_terms (index_pred);
+  int nterms = qo_xasl_get_num_terms (index_pred);
+  PT_NODE *node, *save_next;
+  bool found = false;
+  int i;
+
+  for (i = 0; i < nterms && !found; i++)
+    {
+      node = term_exprs[i];
+      CAST_POINTER_TO_NODE (node);
+      if (node != NULL)
+	{
+	  save_next = node->next;
+	  node->next = NULL;
+	  found = qo_func_index_arg_used_raw (parser, node, func_expr_str, attr);
+	  node->next = save_next;
+	}
+    }
+
+  return found;
+}
+
+/*
+ * pt_is_attr_in_key_filter () - check whether the key filter terms of an index scan reference an attribute outside
+ *   of the function index expression
+ *   return: bool
+ *   parser(in):
+ *   key_pred(in): key filter terms
+ *   func_expr_str(in): printed function index expression
+ *   attr(in): attribute (PT_NAME)
+ *
+ * note: The terms point into the WHERE list, so each is walked without its next conjuncts.
+ */
+static bool
+pt_is_attr_in_key_filter (PARSER_CONTEXT * parser, PT_NODE * key_pred, const char *func_expr_str, PT_NODE * attr)
+{
+  PT_NODE *term, *node, *save_next;
+  bool found = false;
+
+  for (term = key_pred; term != NULL && !found; term = term->next)
+    {
+      node = term;
+      CAST_POINTER_TO_NODE (node);
+      if (node != NULL)
+	{
+	  save_next = node->next;
+	  node->next = NULL;
+	  found = qo_func_index_arg_used_raw (parser, node, func_expr_str, attr);
+	  node->next = save_next;
+	}
+    }
+
+  return found;
+}
+
+typedef enum
+{
+  PT_FI_REMOVE_RESULT,		/* the pseudo result attribute */
+  PT_FI_REMOVE_COVERED_ARGS,	/* argument columns a covered scan does not output */
+  PT_FI_REMOVE_KEY_ARGS		/* argument columns the key filter does not read */
+} PT_FI_REMOVE_MODE;
+
+/*
+ * pt_remove_func_index_attrs () - remove function index related attributes from an attribute list
+ *   return: void
+ *   parser(in):
+ *   plan(in): function index scan plan
+ *   mode(in): which attributes to remove
+ *   key_pred(in): key filter predicate, for PT_FI_REMOVE_KEY_ARGS
+ *   index_pred(in): index scan terms, for PT_FI_REMOVE_KEY_ARGS
+ *   attrs(in/out): attribute list
+ *   offsets(in/out): value list offsets of attrs
+ */
+static void
+pt_remove_func_index_attrs (PARSER_CONTEXT * parser, QO_PLAN * plan, PT_FI_REMOVE_MODE mode, PT_NODE * key_pred,
+			    QO_XASL_INDEX_INFO * index_pred, PT_NODE ** attrs, int *offsets)
+{
+  SM_CLASS_CONSTRAINT *cons = pt_func_index_scan_cons (plan);
+  PT_NODE *node, *real, *prev = NULL, *next;
+  BITSET scan_terms;
+  int i = 0, kept = 0;
+  bool remove;
+
+  if (mode == PT_FI_REMOVE_COVERED_ARGS)
+    {
+      bitset_init (&scan_terms, plan->info->env);
+      bitset_assign (&scan_terms, &(plan->plan_un.scan.terms));
+      bitset_union (&scan_terms, &(plan->plan_un.scan.kf_terms));
+    }
+
+  for (node = *attrs; node != NULL; node = next, i++)
+    {
+      next = node->next;
+      real = node;
+      CAST_POINTER_TO_NODE (real);
+
+      if (real == NULL || real->node_type != PT_NAME || real->info.name.original == NULL)
+	{
+	  remove = false;
+	}
+      else if (PT_NAME_INFO_IS_FLAGED (real, PT_NAME_INFO_FUNC_INDEX_RESULT))
+	{
+	  remove = (mode == PT_FI_REMOVE_RESULT);
+	}
+      else if (mode == PT_FI_REMOVE_KEY_ARGS)
+	{
+	  /* oracle_style_empty_string also adds the key range columns, which must stay */
+	  remove = (!pt_is_attr_in_key_filter (parser, key_pred, cons->func_index_info->expr_str, real)
+		    && !(prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
+			 && pt_is_attr_in_key_range (parser, index_pred, cons->func_index_info->expr_str, real)));
+	}
+      else if (mode == PT_FI_REMOVE_COVERED_ARGS)
+	{
+	  remove = pt_is_func_index_arg_only_in_expr (plan, real, &scan_terms);
+	}
+      else
+	{
+	  remove = false;
+	}
+
+      if (remove)
+	{
+	  if (prev == NULL)
+	    {
+	      *attrs = next;
+	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  node->next = NULL;
+	  parser_free_node (parser, node);
+	  continue;
+	}
+
+      if (offsets != NULL)
+	{
+	  offsets[kept] = offsets[i];
+	}
+      kept++;
+      prev = node;
+    }
+
+  if (mode == PT_FI_REMOVE_COVERED_ARGS)
+    {
+      bitset_delset (&scan_terms);
+    }
+}
+
+/*
  * pt_to_regu_variable () - converts a parse expression tree to regu_variables
  *   return:
  *   parser(in):
@@ -9966,6 +10507,16 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_EXPR:
+	      {
+		PT_NODE *fi_attr = pt_get_func_index_result_attr (parser, node);
+
+		if (fi_attr != NULL)
+		  {
+		    node->next = save_next;
+		    return pt_to_regu_variable (parser, fi_attr, unbox);
+		  }
+	      }
+
 	      if (parser->symbols != NULL && parser->symbols->current_listfile != NULL
 		  && parser->symbols->listfile_value_list != NULL && pt_is_function_index_expression (node))
 		{
@@ -12245,6 +12796,28 @@ pt_to_regu_attr_descr (PARSER_CONTEXT * parser, DB_OBJECT * class_object, HEAP_C
   REGU_VARIABLE *regu;
   ATTR_DESCR *attr_descr;
 
+  if (PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FUNC_INDEX_RESULT))
+    {
+      TP_DOMAIN *dom = pt_xasl_node_to_domain (parser, attr);
+
+      if (dom == NULL)
+	{
+	  return NULL;
+	}
+      regu_alloc (regu);
+      if (regu == NULL)
+	{
+	  return NULL;
+	}
+      attr_descr = &regu->value.attr_descr;
+      attr_descr->reset ();
+      regu->type = TYPE_ATTR_ID;
+      regu->domain = dom;
+      attr_descr->id = FUNC_INDEX_RESULT_ATTRID;
+      attr_descr->cache_attrinfo = cache_attrinfo;
+      attr_descr->type = TP_DOMAIN_TYPE (dom);
+      return regu;
+    }
 
   if (sm_att_info (class_object, attr_name, &attr_id, &smdomain, &sharedp, attr->info.name.meta_class == PT_META_ATTR)
       != NO_ERROR)
@@ -15673,6 +16246,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      /* for index with prefix length */
 	      PT_NODE *where_part_save = NULL, *where_key_part_save = NULL;
 	      PT_NODE *ipl_where_part = NULL;
+	      PT_FUNC_INDEX_COVER *fi_cover = pt_make_func_index_cover (parser, plan);
 
 	      if (index_pred->ni_entry && index_pred->ni_entry->head && qo_is_prefix_index (index_pred->ni_entry->head))
 		{
@@ -15718,6 +16292,35 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  return NULL;
 		}
 
+	      if (fi_cover != NULL)
+		{
+		  if (where_key_part != NULL && key_offsets != NULL)
+		    {
+		      /* the key filter reads the routed result attribute instead of recomputing the function */
+		      pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_KEY_ARGS, where_key_part, index_pred,
+						  &key_attrs, key_offsets);
+		      key_offsets[pt_length_of_list (key_attrs)] =
+			pt_find_attribute (parser, fi_cover->result_attr, table_info->attribute_list);
+		      key_attrs = parser_append_node (pt_point (parser, fi_cover->result_attr), key_attrs);
+		    }
+		  if (qo_is_index_covering_scan (plan))
+		    {
+		      if (pt_is_func_index_scan_routed (parser, fi_cover->spec_id))
+			{
+			  pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_COVERED_ARGS, NULL, NULL, &rest_attrs,
+						      rest_offsets);
+			}
+		    }
+		  else
+		    {
+		      /* a non-covered scan reads rest/pred attributes from the heap, which has no function result */
+		      pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_RESULT, NULL, NULL, &rest_attrs,
+						  rest_offsets);
+		      pt_remove_func_index_attrs (parser, plan, PT_FI_REMOVE_RESULT, NULL, NULL, &pred_attrs,
+						  pred_offsets);
+		    }
+		}
+
 	      symbols->current_class = class_;
 
 	      if (pt_get_mvcc_reev_range_data (parser, table_info, where_key_part, index_pred, &where_range,
@@ -15747,10 +16350,19 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      symbols->cache_attrinfo = cache_key;
 
-	      where_key = pt_to_pred_expr (parser, where_key_part);
+	      {
+		/* key range regus (pt_to_index_info) must keep the original expression, so route only here */
+		PT_FUNC_INDEX_COVER *saved_func_idx_cover = symbols->func_idx_cover_list;
 
-	      regu_attributes_key =
-		pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
+		symbols->func_idx_cover_list = fi_cover;
+
+		where_key = pt_to_pred_expr (parser, where_key_part);
+
+		regu_attributes_key =
+		  pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
+
+		symbols->func_idx_cover_list = saved_func_idx_cover;
+	      }
 
 	      symbols->cache_attrinfo = cache_pred;
 
@@ -19671,6 +20283,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   BUILDLIST_PROC_NODE *buildlist;
   int i;
   REGU_VARIABLE_LIST regu_var_p;
+  PT_FUNC_INDEX_COVER *saved_func_idx_cover = NULL;
 
   assert (parser != NULL);
 
@@ -19735,6 +20348,16 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     }
 
   unbox = UNBOX_AS_VALUE;
+
+  /* route function index expressions of covered scans while the output list is built */
+  saved_func_idx_cover = symbols->func_idx_cover_list;
+  symbols->func_idx_cover_list = NULL;
+  /* grouping and aggregation evaluate the function from the raw argument, as qo_is_coverage_index assumes */
+  if (select_node->info.query.q.select.group_by == NULL && !pt_has_aggregate (parser, select_node))
+    {
+      pt_collect_func_index_cover (parser, qo_plan, false);
+    }
+  symbols->func_idx_routed_list = symbols->func_idx_cover_list;
 
   if (pt_has_aggregate (parser, select_node))
     {
@@ -20501,6 +21124,8 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	}
     }
 
+  symbols->func_idx_cover_list = saved_func_idx_cover;
+
   /* the calls pt_to_out_list and pt_to_spec_list record information in the "symbol_info" structure used by subsequent
    * calls, and must be done first, before calculating subquery lists, etc. */
 
@@ -20814,6 +21439,57 @@ exit_on_error:
 }
 
 /*
+ * pt_buildvalue_output_reads_scan () - does the output list of a BUILDVALUE read a column of its own scans?
+ *   return: true when an output value reads a slot of the block's value list or of a scan_ptr's
+ *   xasl(in): the BUILDVALUE, its plan generated
+ *
+ * A BUILDVALUE evaluates its output list once, after its scans (qexec_end_buildvalueblock_iterations ()): its
+ * aggregates' results, constants and the outer blocks' values.  A column of its own scans there reads what the row
+ * loop last fetched into the slot, the last row that passed the filters.  A select list cannot name such a column
+ * beside an aggregate ("not single valued"), but two rewrites put one there: INSERT ... SELECT ... ON DUPLICATE KEY
+ * UPDATE appends the columns its assignments read to the SELECT's list (pt_append_assignment_references ()), and a
+ * select list of aggregates whose correlated subquery reads a column of the source becomes a derived table that
+ * carries the column (mq_rewrite_aggregate_as_derived ()).  A SELECT of aggregates without GROUP BY carries them so.
+ * The page batch (qexec_batch_eligible ()) accumulates the aggregates without fetching any row into the slots: such a
+ * block is marked XASL_OUTPUT_READS_SCAN and the page batch leaves it to the row loop, which copies the columns of each
+ * row it aggregates for the output list (qexec_keep_last_row ()).  A block that ends without the row loop, an
+ * aggregate answered from the index or the statistics or the buildvalue gather of a parallel scan, leaves the columns
+ * NULL (qexec_restore_last_row ()), as before the page batch.
+ */
+static bool
+pt_buildvalue_output_reads_scan (XASL_NODE * xasl)
+{
+  REGU_VARIABLE_LIST out;
+  bool reads = false;
+
+  for (out = xasl->outptr_list->valptrp; out != NULL && !reads; out = out->next)
+    {
+      // *INDENT-OFF*
+      out->value.map_regu ([&] (regu_variable_node & regu, bool & stop)
+	{
+	  if (regu.type != TYPE_CONSTANT)
+	    {
+	      return;
+	    }
+	  for (XASL_NODE * scan = xasl; scan != NULL && !reads; scan = scan->scan_ptr)
+	    {
+	      for (QPROC_DB_VALUE_LIST v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL;
+		   v = v->next)
+		{
+		  if (v->val == regu.value.dbvalptr)
+		    {
+		      reads = stop = true;
+		      break;
+		    }
+		}
+	    }
+	});
+      // *INDENT-ON*
+    }
+  return reads;
+}
+
+/*
  * pt_to_buildvalue_proc () - Make a buildvalue xasl proc
  *   return:
  *   parser(in):
@@ -21014,6 +21690,11 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   if (!xasl->outptr_list || !xasl->spec_list || !xasl->val_list || pt_has_error (parser))
     {
       goto exit_on_error;
+    }
+
+  if (pt_buildvalue_output_reads_scan (xasl))
+    {
+      XASL_SET_FLAG (xasl, XASL_OUTPUT_READS_SCAN);
     }
 
   /* set CONNECT BY xasl */
