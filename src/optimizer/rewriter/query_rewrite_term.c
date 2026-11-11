@@ -419,6 +419,86 @@ qo_check_condition_null (PARSER_CONTEXT * parser, PT_NODE * path_spec, PT_NODE *
 }
 
 /*
+ * qo_has_alternative_without_spec () - can a RANGE / IN / op SOME term reading the spec be true without it?
+ *   return: true if the left operand does not read the spec and the alternatives read it only in part
+ *   parser(in):
+ *   node(in): expression to check
+ *   info(in): spec to look for; info->appears is preserved
+ */
+static bool
+qo_has_alternative_without_spec (PARSER_CONTEXT * parser, PT_NODE * node, SPEC_ID_INFO * info)
+{
+  PT_NODE *alt, *list, *save_next, *save_or_next;
+  bool is_or_list, save_appears, with_spec = false, without_spec = false;
+
+  if (node->node_type != PT_EXPR || node->info.expr.arg2 == NULL)
+    {
+      return false;
+    }
+
+  list = node->info.expr.arg2;
+  switch (node->info.expr.op)
+    {
+    case PT_RANGE:
+      is_or_list = true;
+      break;
+
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_NE_SOME:
+    case PT_GE_SOME:
+    case PT_GT_SOME:
+    case PT_LT_SOME:
+    case PT_LE_SOME:
+      if (list->node_type == PT_EXPR && list->info.expr.op == PT_CAST)
+	{
+	  list = list->info.expr.arg1;
+	}
+      if (list == NULL || list->node_type != PT_FUNCTION
+	  || (list->info.function.function_type != F_SET && list->info.function.function_type != F_MULTISET
+	      && list->info.function.function_type != F_SEQUENCE))
+	{
+	  return false;
+	}
+      list = list->info.function.arg_list;
+      is_or_list = false;
+      break;
+
+    default:
+      return false;
+    }
+
+  save_appears = info->appears;
+
+  info->appears = false;
+  parser_walk_tree (parser, node->info.expr.arg1, qo_get_name_by_spec_id, info, NULL, NULL);
+  if (info->appears)
+    {
+      info->appears = save_appears;
+      return false;
+    }
+
+  for (alt = list; alt != NULL && !(with_spec && without_spec); alt = is_or_list ? alt->or_next : alt->next)
+    {
+      /* parser_walk_tree follows both next and or_next */
+      save_next = alt->next;
+      save_or_next = alt->or_next;
+      alt->next = alt->or_next = NULL;
+
+      info->appears = false;
+      parser_walk_tree (parser, alt, qo_get_name_by_spec_id, info, NULL, NULL);
+      with_spec = with_spec || info->appears;
+      without_spec = without_spec || !info->appears;
+
+      alt->next = save_next;
+      alt->or_next = save_or_next;
+    }
+
+  info->appears = save_appears;
+  return with_spec && without_spec;
+}
+
+/*
  * qo_check_nullable_expr_with_spec () -
  *   return:
  *   parser(in):
@@ -441,6 +521,11 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	  info->nullable = true;
 	  *continue_walk = PT_STOP_WALK;
 	}
+    }
+  else if (qo_has_alternative_without_spec (parser, node, info))
+    {
+      info->nullable = true;
+      *continue_walk = PT_STOP_WALK;
     }
 
   return node;
