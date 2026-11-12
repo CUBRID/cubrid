@@ -526,5 +526,7 @@ extern bool qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op
 /* fold the shape of a plan (types, join order and methods, scans and their indexes; no costs)
  * into a running signature: equal for two compiles that chose the same plan */
 extern UINT64 qo_plan_signature (QO_PLAN * plan, UINT64 sig);
+extern double qo_compare_pred_eval_order (int new_pred_order, double new_sel, int new_rank, int cur_pred_order,
+					  double cur_sel, int cur_rank);
 
 #endif /* _QUERY_PLANNER_H_ */
