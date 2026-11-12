@@ -26402,7 +26402,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      /* an expression DEFAULT is reported as its original text, like ;schema and the catalog views */
 	      size_t deflen = strlen (attrepr->default_value.default_expr.default_expr_text) + 1;
 
-	      default_value_string = (char *) malloc (deflen);
+	      default_value_string = (char *) db_private_alloc (thread_p, deflen);
 	      if (default_value_string == NULL)
 		{
 		  GOTO_EXIT_ON_ERROR;
