@@ -22870,6 +22870,11 @@ sensitivity_label_name
 				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
 					    MSGCAT_SYNTAX_INVALID_SENSITIVITY_LABEL_NAME_LEN, DB_MAX_IDENTIFIER_LENGTH - 1);
 			      }
+			    else
+			      {
+				(void) pt_check_identifier (this_parser, node,
+							    (const char *) node->info.value.data_value.str->bytes);
+			      }
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
