@@ -140,6 +140,7 @@ int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABL
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
 bool qdata_hash_scan_has_float_numeric_key (const regu_variable_list_node * build,
 					    const regu_variable_list_node * probe);
+void qdata_hash_scan_float_numeric_set_digits (DB_VALUE * value);
 unsigned int qdata_hash_scan_key_float_numeric (const void *key, const regu_variable_list_node * build,
 						const regu_variable_list_node * probe, unsigned int ht_size,
 						HASH_METHOD hash_method);

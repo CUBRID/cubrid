@@ -3055,6 +3055,13 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	    {
 	      goto skip_next;
 	    }
+	  if (TP_DOMAIN_TYPE (domains[key_index]) == DB_TYPE_NUMERIC
+	      && domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      /* CBRD-27798: a floating value of a negative scale may have come with a fixed NUMERIC's precision, as the
+	       * converted values above would without DB_HJOIN_NUMERIC_PRECISION_DEFERRED; its hash needs its digits */
+	      qdata_hash_scan_float_numeric_set_digits (key->values[key_index]);
+	    }
 	}
 
       /* Skip the tuple if any value does not match */

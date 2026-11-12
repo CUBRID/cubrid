@@ -458,6 +458,28 @@ qdata_hash_scan_has_float_numeric_key (const regu_variable_list_node * build, co
 }
 
 /*
+ * qdata_hash_scan_float_numeric_set_digits () - CBRD-27798: give a floating NUMERIC of a negative scale the number of
+ *						 digits it has as its precision
+ *   returns: none
+ *   value(in/out): a key value of any type
+ *
+ * The normalized hash of a floating NUMERIC (mht_get_hash_number (), float_numeric_normalize_for_hash ()) multiplies a
+ * negative scale away up to 40 digits from the value's precision, which must then be the digits the value has. A
+ * fixed NUMERIC of a negative scale has its column's precision instead, and a value converted from one to a floating
+ * NUMERIC keeps it, so 1500000 in NUMERIC (38, -5) hashed as 1500 (hjoin_fetch_key () counts the digits when it
+ * converts such a value itself). The precision changes nothing else: values compare by their digits and scale.
+ */
+void
+qdata_hash_scan_float_numeric_set_digits (DB_VALUE * value)
+{
+  if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NUMERIC
+      && value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION && value->data.num.header.scale < 0)
+    {
+      value->data.num.header.precision = numeric_get_precision_digits (db_locate_numeric (value));
+    }
+}
+
+/*
  * qdata_hash_scan_float_numeric_value () - CBRD-27798: hash one value of a key that hashes in a floating NUMERIC
  *   returns: hash value
  *   value(in): key value
@@ -466,7 +488,8 @@ qdata_hash_scan_has_float_numeric_key (const regu_variable_list_node * build, co
  * mht_get_hash_number () hashes a floating NUMERIC normalized (float_numeric_normalize_for_hash ()) but a fixed one by
  * its digits at its own scale, and a key of a floating domain can hold fixed values (a CONNECT BY PRIOR value keeps
  * the form of its operand). A fixed value hashes as the floating value of the same digits, precision and scale, so
- * equal values of either form hash alike, as mht_valhash () normalizes a fixed NUMERIC too. Any other value hashes as
+ * equal values of either form hash alike, as mht_valhash () normalizes a fixed NUMERIC too, and a negative scale
+ * normalizes from the digits the value has (qdata_hash_scan_float_numeric_set_digits ()). Any other value hashes as
  * qdata_hash_scan_value () hashes it.
  */
 static unsigned int
@@ -474,15 +497,18 @@ qdata_hash_scan_float_numeric_value (const DB_VALUE * value, unsigned int ht_siz
 {
   DB_VALUE floating;
 
-  if (value == NULL || DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC
-      || value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+  if (value == NULL || DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC)
     {
       return qdata_hash_scan_value (value, ht_size);
     }
 
   /* a NUMERIC holds its digits in the value itself */
   floating = *value;
-  FIXED_TO_FLOAT_NUMERIC (&floating);
+  if (floating.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      FIXED_TO_FLOAT_NUMERIC (&floating);
+    }
+  qdata_hash_scan_float_numeric_set_digits (&floating);
   return mht_get_hash_number (ht_size, &floating);
 }
 
