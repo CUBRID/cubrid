@@ -1310,7 +1310,7 @@ qo_set_nl_inner_memoize_key (QO_ENV * env, QO_PLAN * outer, QO_PLAN * inner, BIT
       XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
     }
 
-  free (key.names);
+  free_and_init (key.names);
   bitset_delset (&terms);
   bitset_delset (&key_segs);
 }
