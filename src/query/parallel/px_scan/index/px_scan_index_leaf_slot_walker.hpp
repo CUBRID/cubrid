@@ -114,7 +114,7 @@ namespace parallel_index_scan
       /* the OIDs that follow start a new sequence (an overflow page, a new leaf) */
       void restart_read_ahead ()
       {
-	m_ahead_next = 0;
+	m_scan_id->s.isid.ahead_next = 0;
       }
 
       /* drops the keys evaluated ahead: their values are cleared, their slots are read again if the walk goes on */
@@ -138,7 +138,7 @@ namespace parallel_index_scan
       /* a key evaluated ahead of the lookups: it qualified, nothing of it is reported yet */
       struct ahead_key
       {
-	size_t end;                                   /* its OIDs end here in the drain's buffer */
+	int end;                                      /* its OIDs end here in the scan's OID buffer */
 	int next_slot;                                /* the slot after this key */
 	int read_keys;                                /* keys read since the key before it, itself included */
       };
@@ -188,8 +188,6 @@ namespace parallel_index_scan
       size_t m_ahead_head;
       key_read m_ahead_last;                          /* the last key's value when it has an overflow chain. */
       int m_ahead_slot;                               /* the slot after the last key of m_ahead, or where it stopped. */
-      /* the first OID of the drain's buffer not yet in a window (scan_index_read_ahead); INT_MAX: none left */
-      int m_ahead_next;
       bool m_ahead_end;                               /* evaluate_ahead found no more key to queue on m_page. */
       int m_ahead_skipped_keys;                       /* read_keys of the slots skipped before that stop. */
   };

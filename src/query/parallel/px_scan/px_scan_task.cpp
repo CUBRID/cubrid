@@ -235,6 +235,12 @@ namespace parallel_scan
 		  {
 		    return err_code;
 		  }
+		/* the leaf walker drains every key's OIDs through the scan's OID buffer, covering or not */
+		err_code = scan_index_alloc_oid_buffer (&m_scan_id->s.isid);
+		if (err_code != NO_ERROR)
+		  {
+		    return err_code;
+		  }
 		/* scan_start_scan initializes scan caches and attr info required by slot_iterator_index for leaf page processing. */
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }

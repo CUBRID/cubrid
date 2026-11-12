@@ -829,8 +829,8 @@ extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
-extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int curr, int count, bool more,
-				   int *ahead_next);
+extern int scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp);
+extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more);
 #endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */

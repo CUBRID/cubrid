@@ -34,20 +34,19 @@ namespace parallel_index_scan
   class leaf_slot_walker;            /* fwd: owner = walker (holds m_page / m_slot_key / process_oid). */
 
   /* (E) Per-record drain state machine: LEAF_OIDS → OVERFLOW_SHARED → IDLE.
-   * Owns m_leaf_oids buffer + chain-take-up bookkeeping. */
+   * Drains its owner scan's OID buffer + chain-take-up bookkeeping. */
   class overflow_drain_fsm
   {
     public:
       enum class drain_state
       {
 	IDLE,             /* between leaf-records; normal slot iteration */
-	LEAF_OIDS,        /* m_leaf_oids holds leaf-resident OIDs */
+	LEAF_OIDS,        /* the OID buffer holds the key's leaf-resident OIDs */
 	OVERFLOW_SHARED   /* pulling overflow pages from input_handler shared cursor */
       };
 
       overflow_drain_fsm ()
 	: m_drain_state (drain_state::IDLE),
-	  m_leaf_oids (),
 	  m_leaf_oid_idx (0),
 	  m_leaf_oid_end (0),
 	  m_in_helper_mode (false),
@@ -68,8 +67,8 @@ namespace parallel_index_scan
 	return m_drain_state == drain_state::IDLE;
       }
 
-      /* Begin a leaf-OID drain of buffer ()[begin, end) (one key's leaf OIDs) + its pending overflow chain head. */
-      void begin_leaf_drain (size_t begin, size_t end, VPID pending_ovf_vpid)
+      /* Begin a leaf-OID drain of the OID buffer's [begin, end) (one key's leaf OIDs) + its pending overflow chain head. */
+      void begin_leaf_drain (int begin, int end, VPID pending_ovf_vpid)
       {
 	m_leaf_oid_idx = begin;
 	m_leaf_oid_end = end;
@@ -77,18 +76,15 @@ namespace parallel_index_scan
 	m_drain_state = drain_state::LEAF_OIDS;
       }
 
-      /* the OIDs of the leaf the walker reads: the key being drained, then the keys evaluated ahead (the walker appends
-       * them); an overflow page's OIDs replace them. The index of the OID the drain takes next (the one being processed
-       * is the one before), and the end of the key being drained */
-      std::vector<OID> &buffer ()
-      {
-	return m_leaf_oids;
-      }
-      size_t buffer_next () const
+      /* the OIDs of the leaf the walker reads are in its scan's OID buffer (INDX_SCAN_ID::oid_list): the key being
+       * drained, then the keys evaluated ahead (the walker appends them); an overflow page's OIDs replace them. The
+       * index of the OID the drain takes next (the one being processed is the one before), and the end of the key
+       * being drained */
+      int buffer_next () const
       {
 	return m_leaf_oid_idx;
       }
-      size_t buffer_end () const
+      int buffer_end () const
       {
 	return m_leaf_oid_end;
       }
@@ -115,9 +111,8 @@ namespace parallel_index_scan
 
       drain_state m_drain_state;
 
-      std::vector<OID> m_leaf_oids;
-      size_t m_leaf_oid_idx;
-      size_t m_leaf_oid_end;
+      int m_leaf_oid_idx;
+      int m_leaf_oid_end;
 
       /* Carried between leaf-OID drain and overflow chain take-up. */
       VPID m_pending_ovf_vpid;

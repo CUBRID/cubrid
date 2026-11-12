@@ -49,7 +49,7 @@ namespace parallel_index_scan
   {
     struct leaf_collect_helper
     {
-      std::vector<OID> *oid_vec;
+      BTREE_ISCAN_OID_LIST *oids;
       MVCC_SNAPSHOT *snapshot;
     };
   }
@@ -73,7 +73,6 @@ namespace parallel_index_scan
       m_ahead_head (0),
       m_ahead_last (),
       m_ahead_slot (0),
-      m_ahead_next (0),
       m_ahead_end (false),
       m_ahead_skipped_keys (0)
   {
@@ -404,7 +403,14 @@ namespace parallel_index_scan
 	  }
       }
 
-    helper->oid_vec->push_back (*oid);
+    /* the OIDs of one leaf page fit in the buffer's capacity (two pages at least) */
+    if (helper->oids->oid_cnt >= helper->oids->capacity)
+      {
+	assert_release (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_FAILED;
+      }
+    helper->oids->oidp[helper->oids->oid_cnt++] = *oid;
     return NO_ERROR;
   }
 
@@ -722,12 +728,12 @@ namespace parallel_index_scan
 
 	/* qualified_keys (btree.c:25414: only after the key filter passes) is added by the caller with the OIDs */
 
-	/* Gather leaf-resident OIDs only, after the leaf's OIDs in the drain's buffer; overflow pulled lazily after the
+	/* Gather leaf-resident OIDs only, after the leaf's OIDs in the scan's OID buffer; overflow pulled lazily after the
 	 * leaf OIDs drain. */
-	std::vector<OID> &leaf_oids = m_drain_fsm->buffer ();
-	const size_t at_oids = leaf_oids.size ();
+	BTREE_ISCAN_OID_LIST *leaf_oids = isidp->oid_list;
+	const int at_oids = leaf_oids->oid_cnt;
 	leaf_collect_helper oid_helper;
-	oid_helper.oid_vec = &leaf_oids;
+	oid_helper.oids = leaf_oids;
 	oid_helper.snapshot = isidp->scan_cache.mvcc_snapshot;
 
 	bool record_stop = false;
@@ -736,7 +742,7 @@ namespace parallel_index_scan
 		       collect_oid_callback, &oid_helper);
 	if (proc_err != NO_ERROR)
 	  {
-	    leaf_oids.resize (at_oids);
+	    leaf_oids->oid_cnt = at_oids;
 	    if (clear_key)
 	      {
 		pr_clear_value (&key);
@@ -764,7 +770,10 @@ namespace parallel_index_scan
     VPID_SET_NULL (&m_ahead_last.ovfl);
     m_ahead.clear ();
     m_ahead_head = 0;
-    m_ahead_next = 0;
+    if (m_scan_id != nullptr)
+      {
+	m_scan_id->s.isid.ahead_next = 0;
+      }
     m_ahead_end = false;
   }
 
@@ -785,7 +794,7 @@ namespace parallel_index_scan
 	m_ahead_end = true;
 	return false;
       }
-    m_ahead.push_back ({ m_drain_fsm->buffer ().size (), slot, read_keys });
+    m_ahead.push_back ({ m_scan_id->s.isid.oid_list->oid_cnt, slot, read_keys });
     if (!VPID_ISNULL (&k.ovfl))
       {
 	/* the walk goes no further than a key with an overflow chain: its value is kept to publish the chain */
@@ -802,19 +811,21 @@ namespace parallel_index_scan
   void
   leaf_slot_walker::read_ahead (THREAD_ENTRY *thread_p)
   {
-    std::vector<OID> &buf = m_drain_fsm->buffer ();
-    const size_t curr = m_drain_fsm->buffer_next () - 1;	/* the OID being looked up */
+    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
+    BTREE_ISCAN_OID_LIST *oids = isidp->oid_list;
     bool more = true;
 
-    if ((int) curr + SCAN_INDEX_READ_AHEAD_DISTANCE / 2 < m_ahead_next)
+    isidp->curr_oidno = m_drain_fsm->buffer_next () - 1;	/* the OID being looked up */
+    if (isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_DISTANCE / 2 < isidp->ahead_next)
       {
 	return;
       }
 
-    /* the keys evaluated ahead extend the buffer to a window from the OID being looked up (only after a key whose
+    /* the keys evaluated ahead extend the OID buffer to a window from the OID being looked up (only after a key whose
      * OIDs are all on the leaf: an overflow chain is drained before the next key), no more OIDs ahead of the lookups
-     * than a serial scan's OID buffer holds */
-    while (buf.size () < curr + SCAN_INDEX_READ_AHEAD_DISTANCE && buf.size () - curr < (size_t) ISCAN_OID_BUFFER_COUNT)
+     * than the buffer's max_oid_cnt (index_scan_oid_buffer_size), as a serial scan's buffer holds */
+    while (oids->oid_cnt < isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_DISTANCE
+	   && oids->oid_cnt - isidp->curr_oidno < oids->max_oid_cnt)
       {
 	if (m_page == nullptr
 	    || ! (ahead_empty () ? m_drain_fsm->next_is_next_key () : VPID_ISNULL (&m_ahead_last.ovfl))
@@ -824,7 +835,8 @@ namespace parallel_index_scan
 	    break;
 	  }
       }
-    scan_index_read_ahead (thread_p, buf.data (), (int) curr, (int) buf.size (), more, &m_ahead_next);
+    isidp->oids_count = oids->oid_cnt;
+    scan_index_read_ahead (thread_p, isidp, more);
   }
 
   /* Walk remaining slots on m_page until a row qualifies (delegates OID drain to FSM). */
@@ -843,8 +855,8 @@ namespace parallel_index_scan
       {
 	key_read k;
 	int read_keys = 0;
-	size_t begin = 0;
-	size_t end = 0;
+	int begin = 0;
+	int end = 0;
 
 	db_make_null (&k.key);
 	if (!ahead_empty ())
@@ -874,7 +886,7 @@ namespace parallel_index_scan
 		m_scan_id->scan_stats.read_keys += m_ahead_skipped_keys;
 		m_ahead_end = false;
 	      }
-	    m_drain_fsm->buffer ().clear ();
+	    m_scan_id->s.isid.oid_list->oid_cnt = 0;
 	    slot_result r = next_key (thread_p, &m_current_slot, false, &k, &read_keys);
 	    m_scan_id->scan_stats.read_keys += read_keys;
 	    if (r == slot_result::LEAF_END)
@@ -889,9 +901,9 @@ namespace parallel_index_scan
 	      {
 		return S_ERROR;
 	      }
-	    end = m_drain_fsm->buffer ().size ();
+	    end = m_scan_id->s.isid.oid_list->oid_cnt;
 	    read_keys = 0;
-	    m_ahead_next = 0;
+	    m_scan_id->s.isid.ahead_next = 0;
 	  }
 
 	/* a key's counters are added when its OIDs are looked up, also when it was evaluated ahead */

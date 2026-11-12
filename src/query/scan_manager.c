@@ -5163,23 +5163,53 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
 }
 
 /*
- * scan_index_read_ahead () - tell the OS which heap pages the OIDs from the one being looked up on are, a window ahead
+ * scan_index_alloc_oid_buffer () - give an index scan the OID buffer a covering scan goes without
+ *   return: error code
+ *   isidp(in/out): index scan
+ *
+ * Note: A parallel index scan worker drains every key's OIDs through its scan's OID buffer, covering or not.
+ */
+int
+scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
+{
+  int error_code;
+
+  if (isidp->oid_list != NULL)
+    {
+      return NO_ERROR;
+    }
+  error_code = scan_alloc_iscan_oid_buf_list (&isidp->oid_list);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
+  isidp->oid_list->oid_cnt = 0;
+  isidp->curr_oidp = isidp->oid_list->oidp;
+  return NO_ERROR;
+}
+
+/*
+ * scan_index_read_ahead () - tell the OS which heap pages the OIDs of the OID buffer from the one being looked up on
+ *                            are, a window ahead
  *   thread_p(in):
- *   oids(in): the OIDs in lookup order (a serial scan's OID buffer, a parallel index scan worker's leaf buffer)
- *   curr(in): the OID about to be looked up
- *   count(in): the OIDs of oids
- *   more(in): OIDs may follow oids[count - 1] (a worker's buffer grows with the keys it evaluates ahead)
- *   ahead_next(in/out): the first OID not yet in a window; INT_MAX when every OID left was
+ *   isidp(in/out): index scan; oid_list->oidp[0, oids_count) the OIDs, curr_oidno the OID about to be looked up,
+ *                  ahead_next the first OID not yet in a window (INT_MAX when every OID left was)
+ *   more(in): OIDs may follow the buffer's last one (a parallel index scan worker's buffer grows with the keys it
+ *             evaluates ahead)
  *
  * Note: The lookups stay in the order of the buffer and read one page at a time; the OS reads the pages of the
  *       window together, so a lookup finds its page read or on its way. The caller calls it when the lookup is half a
  *       window from ahead_next.
  */
 void
-scan_index_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int curr, int count, bool more, int *ahead_next)
+scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more)
 {
   VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
-  int start = MAX (*ahead_next, curr);
+  const OID *oids = isidp->oid_list->oidp;
+  const int curr = isidp->curr_oidno;
+  const int count = isidp->oids_count;
+  int start = MAX (isidp->ahead_next, curr);
   int end = MIN (count, curr + SCAN_INDEX_READ_AHEAD_DISTANCE);
   int n = 0;
   int i;
@@ -5193,7 +5223,7 @@ scan_index_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int curr, int 
 	  n++;
 	}
     }
-  *ahead_next = (end == count && !more) ? INT_MAX : end;
+  isidp->ahead_next = (end == count && !more) ? INT_MAX : end;
 
   if (n == 0 || (n == 1 && start == curr))
     {
@@ -6321,8 +6351,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_DISTANCE / 2 >= isidp->ahead_next)
 	    {
-	      scan_index_read_ahead (thread_p, isidp->oid_list->oidp, isidp->curr_oidno, isidp->oids_count, false,
-				     &isidp->ahead_next);
+	      scan_index_read_ahead (thread_p, isidp, false);
 	    }
 
 	  lookup_status = scan_next_index_lookup_heap (thread_p, scan_id, isidp, &data_filter, isolation);
