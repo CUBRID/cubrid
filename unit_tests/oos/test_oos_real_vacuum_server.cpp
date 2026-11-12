@@ -1057,6 +1057,7 @@ struct header_hold_observation
   VACUUM_LOG_BLOCKID delete_block = VACUUM_NULL_LOG_BLOCKID;
   bool log_advanced = false;
   bool vacuum_queued = false;
+  bool header_lookup_failed = false;
   bool vacuum_still_waits = false;
   int type_while_held = -1;
   bool oos_readable_while_held = false;
@@ -1342,12 +1343,6 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
       commit_current_tran ();
     }
 
-    /* MVCC-deletes the row and holds its heap header while the delete's log block reaches vacuum. Once vacuum
-     * queues on the header, keeps holding it for OOS_TEST_HEADER_HOLD_MSECS (default three latch timeouts, or a
-     * minute with an unrelated row), or with stop_vacuum until the vacuum workers stop as at server shutdown. Then
-     * releases the header and, unless the workers are stopped, waits for vacuum. With an unrelated row, the same
-     * transaction deletes that row in the next log block, or in the same one, and the hold records when vacuum
-     * removes it. */
     header_hold_observation observe_delete_with_header_held (const char *label, OID &heap_oid, const OID &oos_oid,
 	bool stop_vacuum = false, unrelated_row *other = nullptr)
     {
@@ -1438,10 +1433,15 @@ class OosRealVacuumHeaderHeld : public OosRealVacuum
 		{
 		  other->removed_during_hold_ms = held_for ();
 		}
+	      if (other != nullptr && other->removed_during_hold_ms >= 0 && deferrals () > deferrals_before)
+		{
+		  break;
+		}
 	      std::this_thread::sleep_for (std::chrono::milliseconds (std::min (100LL, hold_msecs - held_for ())));
 	    }
 	}
       const long long held_ms = held_for ();
+      obs.header_lookup_failed = deferrals () > deferrals_before;
       obs.vacuum_still_waits = pgbuf_has_any_waiters (header_watcher.pgptr);
       obs.type_while_held = slot_record_type (heap_oid);
       obs.oos_readable_while_held = !oos_unreadable (oos_oid);
@@ -1557,6 +1557,7 @@ TEST_F (OosRealVacuumHeaderHeld, UnrelatedHeapVacuumedWhileHeaderLookupKeepsFail
   drop_unrelated_row (other);
 
   expect_no_leak (obs);
+  EXPECT_TRUE (obs.header_lookup_failed) << "vacuum did not fail the OOS lookup while the header was held";
   EXPECT_GE (other.removed_during_hold_ms, 0)
       << "vacuum never reached the unrelated heap's later log block while the OOS lookup kept failing";
 }
@@ -1577,6 +1578,7 @@ TEST_F (OosRealVacuumHeaderHeld, UnrelatedRowInSameBlockVacuumedWhileHeaderLooku
 
   ASSERT_EQ (other.delete_block, obs.delete_block) << "both deletes must share one log block";
   expect_no_leak (obs);
+  EXPECT_TRUE (obs.header_lookup_failed) << "vacuum did not fail the OOS lookup while the header was held";
   EXPECT_GE (other.removed_during_hold_ms, 0)
       << "vacuum left the rest of the log block while the OOS lookup of another heap kept failing";
   EXPECT_TRUE (other.removed_after_release);
