@@ -1071,10 +1071,19 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       net_arg_get_int (&isol_level, argv[1]);
 
+      if (ux_is_resent_tran_setting (CCI_PARAM_ISOLATION_LEVEL, isol_level))
+	{
+	  cas_log_write (0, true, "set_db_parameter isolation_level %d ignored, resent by the driver", isol_level);
+	  net_buf_cp_int (net_buf, 0, NULL);	/* res code */
+	  return FN_KEEP_CONN;
+	}
+
       cas_log_write (0, true, "set_db_parameter isolation_level %d", isol_level);
 
       if (ux_set_isolation_level (isol_level, net_buf) < 0)
 	return FN_KEEP_CONN;
+
+      ux_keep_tran_setting (CCI_PARAM_ISOLATION_LEVEL, isol_level);
 
       net_buf_cp_int (net_buf, 0, NULL);	/* res code */
     }
@@ -1097,7 +1106,15 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  return FN_KEEP_CONN;
 	}
 
+      if (ux_is_resent_tran_setting (CCI_PARAM_LOCK_TIMEOUT, lock_timeout))
+	{
+	  cas_log_write (0, true, "set_db_parameter lock_timeout %d ignored, resent by the driver", lock_timeout);
+	  net_buf_cp_int (net_buf, 0, NULL);
+	  return FN_KEEP_CONN;
+	}
+
       ux_set_lock_timeout (lock_timeout);
+      ux_keep_tran_setting (CCI_PARAM_LOCK_TIMEOUT, lock_timeout);
 
       if (lock_timeout == 0)
 	{

@@ -76,6 +76,11 @@ extern int ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
 extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);
 extern void ux_get_default_setting (void);
 extern void ux_set_default_setting (void);
+extern int ux_restore_session_state (bool is_reused_session);
+extern void ux_end_resend_window (void);
+extern void ux_record_session_restore (void);
+extern bool ux_is_resent_tran_setting (int param_name, int value);
+extern void ux_keep_tran_setting (int param_name, int value);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
 extern int ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * net_buf,
 			   T_REQ_INFO * req_info, unsigned int query_seq_num);
