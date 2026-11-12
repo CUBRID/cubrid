@@ -47,8 +47,8 @@ elseif(CPACK_GENERATOR STREQUAL "RPM")
   # config files an upgrade leaves them where they are, instead of moving those an earlier package shipped to .rpmsave
   set(CPACK_RPM_USER_FILELIST
     "%config(noreplace) /opt/cubrid/conf"
-    "%ghost %config(noreplace) /opt/cubrid/conf/cas_ssl_cert.crt"
-    "%ghost %config(noreplace) /opt/cubrid/conf/cas_ssl_cert.key"
+    "%ghost %config(noreplace) %attr(644,-,-) /opt/cubrid/conf/cas_ssl_cert.crt"
+    "%ghost %config(noreplace) %attr(600,-,-) /opt/cubrid/conf/cas_ssl_cert.key"
     "%dir /opt/cubrid/databases"
     "%attr(750,root,root) /etc/init.d/cubrid"
     "%attr(750,root,root) /etc/init.d/cubrid-ha"
