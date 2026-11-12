@@ -7542,9 +7542,9 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  assert (rv_err == NO_ERROR);
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (RCV_IS_NOTHING_TO_UNDO (rcvindex))
 	{
-	  /* do nothing */
+	  /* no undo and no compensation */
 	}
       else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
 	{

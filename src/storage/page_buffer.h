@@ -175,7 +175,8 @@ typedef enum
 				 * disk. Must pass validation test and must be fixed from disk if it doesn't exist in
 				 * buffer. */
   NEW_PAGE,			/* Fetch newly allocated page. Must pass validation test but it can be created directly
-				 * in buffer without fixing from disk. */
+				 * in buffer without fixing from disk. The page comes back empty (body zeroed, no tde
+				 * bits); a permanent page then starts its life with pgbuf_init_new_page. */
   OLD_PAGE_IF_IN_BUFFER,	/* Fetch existing page only if is valid and if it exists in page buffer. Page may be
 				 * deallocated or flushed and invalidated from buffer, in which case fixing page is not
 				 * necessary. */
@@ -484,9 +485,15 @@ extern void pgbuf_log_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int 
 extern void pgbuf_log_redo_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, int data_size, PAGE_TYPE ptype_new);
 extern int pgbuf_rv_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void pgbuf_log_clear_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new);
-extern int pgbuf_rv_clear_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc);
+extern void pgbuf_init_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, TDE_ALGORITHM tde_algo, bool is_temp);
+extern int pgbuf_rv_init_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int pgbuf_rv_init_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+
+/* what pgbuf_dealloc_page does with the contents; also the offset of its RVPGBUF_DEALLOC record */
+#define PGBUF_DEALLOC_KEEP_CONTENTS	0	/* the page may come back to life with its contents */
+#define PGBUF_DEALLOC_CLEAR_CONTENTS	1	/* the deallocation is final: clear the body and the tde bits */
+
+extern void pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents);
 extern int pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_dealloc_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int pgbuf_rv_dealloc_undo_compensate (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

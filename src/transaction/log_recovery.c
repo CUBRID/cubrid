@@ -277,9 +277,9 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	{
 	  /* nothing to do during recovery */
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (RCV_IS_NOTHING_TO_UNDO (rcvindex))
 	{
-	  /* nothing to do */
+	  /* no undo and no compensation */
 	}
       else if (rcvindex == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT)
 	{
