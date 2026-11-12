@@ -120,17 +120,32 @@ namespace
   bool may_hold_reference (const RECDES *recdes)
   {
     static const char mark[5] = { (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
-    return memmem (recdes->data, recdes->length, mark, sizeof (mark)) != NULL;
+    const char *p = recdes->data;
+    const char *end = recdes->data + recdes->length;
+    while (end - p >= (ptrdiff_t) sizeof (mark))
+      {
+	p = (const char *) memchr (p, 0xFF, end - p - sizeof (mark) + 1);
+	if (p == NULL)
+	  {
+	    return false;
+	  }
+	if (memcmp (p, mark, sizeof (mark)) == 0)
+	  {
+	    return true;
+	  }
+	p++;
+      }
+    return false;
   }
 
   struct ref
   {
-    ATTR_ID attr_id;
-    INT64 value_id;
-    int decompressed_len;
-    int total_len;
-    int chunk_count;
-    bool kept;
+    ATTR_ID attr_id = -1;
+    INT64 value_id = 0;
+    int decompressed_len = 0;
+    int total_len = 0;
+    int chunk_count = 0;
+    bool kept = false;
   };
 
   /* A record's variable values, as offsets relative to the variable offset table. */
