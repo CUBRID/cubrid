@@ -40,6 +40,17 @@
 
 bool use_console_password = false; // If true, allows password input from the console
 
+static constexpr struct
+{
+  const char *name;
+  MOP authenticate_context::*mop;
+} au_system_users[] =
+{
+  { AU_DBA_USER_NAME, &authenticate_context::dba_user },
+  { AU_PUBLIC_USER_NAME, &authenticate_context::public_user },
+  { AU_INFORMATION_SCHEMA_USER_NAME, &authenticate_context::information_schema_user },
+};
+
 // static functions
 static int au_add_method_check_authorization (void);
 
@@ -52,9 +63,10 @@ authenticate_context::reset (void)
   user_class = nullptr;
   password_class = nullptr;
   current_user = nullptr;
-  public_user = nullptr;
-  dba_user = nullptr;
-  information_schema_user = nullptr;
+  for (const auto &sys_user : au_system_users)
+    {
+      this->*sys_user.mop = nullptr;
+    }
   disable_auth_check = true;
   ignore_passwords = false;
 }
@@ -173,10 +185,7 @@ authenticate_context::start (void)
       root = mops->op;
       db_objlist_free (mops);
 
-      public_user = au_find_user (AU_PUBLIC_USER_NAME);
-      dba_user = au_find_user (AU_DBA_USER_NAME);
-      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
+      if (!load_system_users ())
 	{
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -579,16 +588,15 @@ authenticate_context::perform_login (const char *name, const char *password, boo
     }
   else
     {
-      public_user = au_find_user (AU_PUBLIC_USER_NAME);
-      dba_user = au_find_user (AU_DBA_USER_NAME);
-      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
+      // start () fills these before any login
+      for (const auto &sys_user : au_system_users)
 	{
-	  error = er_errid ();
-	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	  assert (this->*sys_user.mop != NULL);
+	  if (this->*sys_user.mop == NULL)
 	    {
 	      error = ER_AU_INCOMPLETE_AUTH;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      return error;
 	    }
 	}
       user = au_find_user (dbuser);
@@ -1024,6 +1032,21 @@ authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls
   return NO_ERROR;
 }
 
+bool
+authenticate_context::load_system_users (void)
+{
+  for (const auto &sys_user : au_system_users)
+    {
+      this->*sys_user.mop = au_find_user (sys_user.name);
+      if (this->*sys_user.mop == NULL)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 int
 authenticate_context::set_system_users_as_created (void)
 {
@@ -1031,9 +1054,9 @@ authenticate_context::set_system_users_as_created (void)
   int error = NO_ERROR;
 
   db_make_int (&value, true);
-  for (MOP user : get_system_users ())
+  for (const auto &sys_user : au_system_users)
     {
-      error = obj_set (user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
+      error = obj_set (this->*sys_user.mop, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1051,9 +1074,9 @@ authenticate_context::is_system_user (MOP user)
       return false;
     }
 
-  for (MOP sys_user : get_system_users ())
+  for (const auto &sys_user : au_system_users)
     {
-      if (ws_is_same_object (user, sys_user))
+      if (ws_is_same_object (user, this->*sys_user.mop))
 	{
 	  return true;
 	}
