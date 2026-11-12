@@ -647,6 +647,7 @@ qmgr_delete_query_entry (THREAD_ENTRY * thread_p, QUERY_ID query_id, int tran_in
 
   if (query_p == NULL)
     {
+      pthread_mutex_unlock (&tran_entry_p->mutex);
       return;
     }
 
@@ -2086,14 +2087,6 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 #if defined (SERVER_MODE)
   tran_entry_p->trans_stat = QMGR_TRAN_RUNNING;
 
-  /* allocate a new query entry */
-  query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
-  if (query_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
-      goto exit_on_error;
-    }
-
   /* set a timeout if necessary */
   qmgr_set_query_exec_info_to_tdes (tran_index, query_timeout, NULL);
 
@@ -2119,6 +2112,14 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 	{
 	  goto exit_on_error;
 	}
+    }
+
+  /* allocate a new query entry after the checks: exit_on_error cannot delete one not added yet */
+  query_p = qmgr_allocate_query_entry (thread_p, tran_entry_p);
+  if (query_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QM_QENTRY_RUNOUT, 1, qmgr_max_query_entry_per_tran);
+      goto exit_on_error;
     }
 #else
   dbvals_p = (DB_VALUE *) dbval_p;
