@@ -110,6 +110,7 @@
 
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 #define UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER "cREATEbLOCKtRIGGER"
+#define UNIQUE_SAVEPOINT_COPY "cOPYfROMsTDIN"
 
 #define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
 /*
@@ -23630,10 +23631,22 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  /* Rows reach the transaction batch by batch while the stream is open. Giving the stream up (a refused chunk, a
+   * failed END, an ABORT) rolls back to this savepoint once the server has dropped it, as for a failed statement. */
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_COPY);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
 			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk, null_str,
 			  statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE, reject_limit);
+  if (error == NO_ERROR)
+    {
+      stream_from_set_savepoint (UNIQUE_SAVEPOINT_COPY);
+    }
 
 end:
   if (col_types != NULL)

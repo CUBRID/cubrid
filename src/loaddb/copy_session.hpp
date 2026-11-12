@@ -26,7 +26,6 @@
 #include "copy_binary_decoder.hpp"	/* COPY_COL_DOMAIN */
 #include "dbtype_def.h"
 #include "heap_file.h"
-#include "log_lsa.hpp"
 #include "oid.h"
 #include "record_descriptor.hpp"
 #include "thread_compat.hpp"
@@ -85,10 +84,6 @@ class copy_session : public stream_session
     bool m_footer_seen;			/* BINARY: the end-of-data marker has arrived */
     std::int64_t m_rows_loaded;	/* what finish () reports; a stream is not bounded by int */
     std::int64_t m_row_number;		/* rows seen, decoded or not: what an error reports */
-
-    /* savepoint taken at open, so that a failure part-way through the stream
-     * undoes every batch already flushed instead of leaving them committable */
-    LOG_LSA m_savepoint_lsa;
 
     /* rows packed and queued for batch insert (flushed every COPY_FLUSH_BATCH_ROWS) */
     std::vector<record_descriptor> m_recdes_collected;
