@@ -6795,12 +6795,14 @@ qo_join_input_factor (QO_PLAN * input, double divisor)
 /*
  * qo_node_partition_key () - the partition key column of a partitioned table, when the partition expression is the
  *	column itself
- *   return: the column name, or NULL
+ *   return: the column name, copied into key_buf, or NULL
  *   node(in):
  *   partitions(out): the partition count, or NULL
+ *   key_buf(out): DB_MAX_IDENTIFIER_LENGTH bytes; the name is copied, since attr_name is a local DB_VALUE whose
+ *		   string may be held in the value itself
  */
 static const char *
-qo_node_partition_key (QO_NODE * node, int *partitions)
+qo_node_partition_key (QO_NODE * node, int *partitions, char *key_buf)
 {
   SM_PARTITION *partition;
   DB_VALUE attr_name, part_count;
@@ -6828,12 +6830,13 @@ qo_node_partition_key (QO_NODE * node, int *partitions)
   key_len = (int) strlen (key_name);
   if (partition->expr == NULL || strncmp (partition->expr, "SELECT [", 8) != 0
       || intl_identifier_ncasecmp (partition->expr + 8, key_name, key_len) != 0
-      || strncmp (partition->expr + 8 + key_len, "] FROM", 6) != 0)
+      || strncmp (partition->expr + 8 + key_len, "] FROM", 6) != 0 || key_len >= DB_MAX_IDENTIFIER_LENGTH)
     {
       return NULL;
     }
 
-  return key_name;
+  memcpy (key_buf, key_name, key_len + 1);
+  return key_buf;
 }
 
 /*
@@ -6855,12 +6858,13 @@ qo_nl_inner_prunes_per_row (QO_NODE * node, BITSET * outer_nodes, BITSET * terms
   QO_ENV *env = QO_NODE_ENV (node);
   QO_TERM *term;
   PT_NODE *expr, *key, *other;
+  char key_buf[DB_MAX_IDENTIFIER_LENGTH];
   const char *key_name;
   UINTPTR spec_id;
   BITSET_ITERATOR bi;
   int t;
 
-  key_name = qo_node_partition_key (node, NULL);
+  key_name = qo_node_partition_key (node, NULL, key_buf);
   if (key_name == NULL)
     {
       return false;
@@ -6929,11 +6933,12 @@ qo_nl_inner_partitions (QO_PLAN * planp, QO_NODE * node)
   QO_SEGMENT *seg;
   BITSET scan_terms;
   BITSET_ITERATOR bi, si;
+  char key_buf[DB_MAX_IDENTIFIER_LENGTH];
   const char *key_name;
   int partitions = 1, t, s;
   bool prunes;
 
-  key_name = qo_node_partition_key (node, &partitions);
+  key_name = qo_node_partition_key (node, &partitions, key_buf);
   if (!QO_NODE_IS_CLASS_PARTITIONED (node) || partitions <= 1)
     {
       return 1;
