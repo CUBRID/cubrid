@@ -14997,6 +14997,18 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 					{
 					  return S_SUCCESS;
 					}
+
+				      /* Evaluate analytic functions for tuples that don't satisfy instnum_pred yet, as without a scan
+				       * procedure block */
+				      if (ev_res == V_FALSE && !(xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_CHECK)
+					  && XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+					{
+					  if (qexec_analytic_eval_in_processing (thread_p, xasl, xasl_state) !=
+					      NO_ERROR)
+					    {
+					      return S_ERROR;
+					    }
+					}
 				    }
 
 				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
