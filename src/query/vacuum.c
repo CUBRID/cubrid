@@ -2436,13 +2436,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       vacuum_log_redoundo_vacuum_record (thread_p, helper->forward_page, helper->forward_oid.slotid, &helper->record,
 					 true);
 
-      /* Keep the forward page fixed until the sysop ends. Until then, the restart undo of this sysop puts REC_NEWHOME
-       * back into the vacuumed slot, so no other transaction may take the slot or its space. */
-      pgbuf_set_dirty (thread_p, helper->forward_page, DONT_FREE);
+      pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
+      helper->forward_page = NULL;
 
       log_sysop_commit (thread_p);
-
-      pgbuf_unfix_and_init (thread_p, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
