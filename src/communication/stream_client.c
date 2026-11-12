@@ -39,35 +39,47 @@ stream_client_kind_table (void)
   return table;
 }
 
+/* which kinds have their client half registered: a record that allows nothing looks the same as no record */
+static bool *
+stream_client_kind_registered (void)
+{
+  static bool registered[STREAM_KIND_MAX] = { };
+
+  return registered;
+}
+
 static int
 stream_client_refuse (const char *what)
 {
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, what);
-  return ER_STREAM_SESSION_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_SUPPORTED, 1, what);
+  return ER_STREAM_NOT_SUPPORTED;
 }
 
 /*
  * stream_kind_client_register () - Register the client half of one kind
- *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together
+ *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together or a kind registered
+ *           already (stream_kind_register ())
  *   kind(in): the STREAM_KIND_* value the consumer owns
  *   desc(in): who may open it
  */
 int
 stream_kind_client_register (int kind, const stream_kind_client_desc & desc)
 {
-  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || (desc.driver_openable && desc.authorize == NULL))
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || stream_client_kind_registered ()[kind]
+      || (desc.driver_openable && desc.authorize == NULL))
     {
       return ER_STREAM_SESSION_ERROR;
     }
 
   stream_client_kind_table ()[kind] = desc;
+  stream_client_kind_registered ()[kind] = true;
 
   return NO_ERROR;
 }
 
 /*
  * stream_kind_client_check_driver_open () - May a driver open this kind directly?
- *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR (set) for a kind no statement checks for it
+ *   return: NO_ERROR, or ER_STREAM_NOT_SUPPORTED (set) for a kind no statement checks for it
  *   kind(in): STREAM_KIND_* taken off the driver wire, not yet trusted
  */
 int

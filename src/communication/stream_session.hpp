@@ -53,11 +53,13 @@ enum STREAM_KIND
    *   2  internal-LOB DML       (not landed; CBRD-26780)
    *   3  loaddb                 (not landed; CBRD-26780)
    *   4  internal-LOB read      (not landed; CBRD-26780)
+   *   5  debug echo upload      (debug builds only, stream_debug_echo.cpp)
+   *   6  debug echo download    (debug builds only, stream_debug_echo.cpp)
    */
-  STREAM_KIND_MAX = 5		/* registry slots; raise when a sixth consumer lands */
+  STREAM_KIND_MAX = 7		/* registry slots; raise when another consumer lands */
 };
 
-/* Flags of the bundled forms on the server requests (see the CAS_STREAM_FLAG_* masks for the driver wire). */
+/* Flags of the server requests and replies (see the CAS_STREAM_FLAG_* masks for the driver wire). */
 const int STREAM_FLAG_FINAL = 0x01;	/* upload request: the stream ends with this chunk */
 const int STREAM_FLAG_RELEASE_AT_EOF = 0x01;	/* download request: release the handle when eof comes back */
 const int STREAM_FLAG_EOF = 0x01;	/* download reply */
@@ -72,20 +74,14 @@ enum stream_direction
   STREAM_DOWNLOAD
 };
 
-/* How long the handles a kind issues live (stream_handle.hpp). */
-enum stream_handle_scope
-{
-  STREAM_SCOPE_TRAN,		/* released at the end of the transaction that opened it */
-  STREAM_SCOPE_OWNER		/* released by its owner, at the latest when the session ends */
-};
-
-/* Anything the client keeps between requests: a download's source, an upload's staged result. */
+/* What the client keeps between requests: a download's source. Its handle lives until it is released, at the
+ * latest until the transaction that opened it ends (stream_handle.hpp). */
 class stream_handle_object
 {
   public:
     virtual ~stream_handle_object () {}
 
-    /* Drop it. Called once: on release, at scope end, or at session teardown. */
+    /* Drop it. Called once: on release, at the transaction's end, or at session teardown. */
     virtual void close (THREAD_ENTRY *thread_p) = 0;
 };
 
@@ -93,10 +89,14 @@ class stream_handle_object
  * with more to report does not change every other one's signature to say it. */
 struct stream_result
 {
-  std::int64_t count;		/* rows for COPY and LOB DML; a result_is_handle kind's staged bytes */
-  stream_handle_object *staged;	/* result_is_handle kinds: what END issues the client a handle for */
+  std::int64_t count;		/* rows for COPY and LOB DML */
 };
 
+/* An upload is one statement still running, so its methods never end the
+ * transaction: the transaction's end frees the session (session_end_tran_streams).
+ * For the same reason no savepoint rollback runs while it is open: a consumer's
+ * statement that fails with its stream open calls stream_from_abort () before it
+ * rolls back to its own savepoint. */
 class stream_session
 {
   public:
@@ -107,11 +107,13 @@ class stream_session
     virtual int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) = 0;
 
     /* Flush pending work and report the binding's result: a row count for COPY
-     * and LOB DML, or, for a result_is_handle kind, the object it staged and its
-     * size, for which the core issues the handle END returns. */
+     * and LOB DML. */
     virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
-    /* Discard in-flight state so no partial result survives an error. */
+    /* Discard in-flight state so no partial result survives an error; what was
+     * flushed is the client's to roll back (stream_from_set_savepoint ()). With a
+     * client that does not wait for replies, this can run after the transaction
+     * the session wrote in has ended, so it must not undo by what it recorded. */
     virtual void abort (THREAD_ENTRY *thread_p) = 0;
 };
 
@@ -119,7 +121,10 @@ class stream_session
  * is not the transport's; a reader that starts at an offset carries it in its
  * config. The core opens it under its transaction's snapshot, so vacuum keeps
  * what was visible at the open until the transaction ends; a value already
- * deleted by then can still vanish mid-read, and the source reports that. */
+ * deleted by then can still vanish mid-read, and the source reports that.
+ * The end of the transaction waits for a read in progress, unless its worker
+ * is a deadlock victim; that read, and a source opened while the transaction
+ * was ending, can run or close after it. */
 class stream_source : public stream_handle_object
 {
   public:
@@ -130,9 +135,14 @@ class stream_source : public stream_handle_object
 
 /* Build a session or a source of one kind from that kind's config blob. The
  * blob comes straight off the wire, so the factory decodes it bounded by
- * config_len. It starts with the kind's own version int: a factory accepts
- * every version up to its own and refuses a newer one naming the highest it
- * accepts, which is the only way a consumer grows without a new function code. */
+ * config_len. It starts with the kind's version, a big-endian int as
+ * or_pack_int () writes it. Before the factory runs, the core refuses a blob
+ * with no version or a version below 1 (ER_STREAM_INVALID_USE), and a version
+ * above the kind's config_version_max (ER_STREAM_NOT_SUPPORTED, naming that
+ * highest): the version is the only way a consumer grows without a new
+ * function code. The factory reads the version again for the fields it has.
+ * Any other refusal of a consumer uses its own error code, or
+ * ER_STREAM_SESSION_ERROR. */
 using stream_session_factory = stream_session * (*) (THREAD_ENTRY *thread_p, const char *config, int config_len,
 			       int *error_code);
 using stream_source_factory = stream_source * (*) (THREAD_ENTRY *thread_p, const char *config, int config_len,
@@ -151,18 +161,19 @@ struct stream_kind_desc
    * does -- the transfer is the whole of it. A kind that only stages bytes for
    * a later statement does not, and committing at its END would commit that
    * statement's transaction early. Declared here rather than read off the wire,
-   * because a client cannot claim a commit its consumer never promised. */
+   * because a client cannot claim a commit its consumer never promised.
+   * Such a kind, its client authorize included, writes nothing and takes no lock in
+   * the transaction before that statement runs: the CAS takes a connection whose
+   * upload was given up back out of the transaction. */
   bool ends_unit_of_work;
 
-  /* Upload only: END issues a handle for stream_result::staged and returns it in the count. */
-  bool result_is_handle;
-
-  stream_handle_scope scope;	/* of the handles this kind issues */
+  /* The highest config version the kind accepts, 1 or more. */
+  int config_version_max;
 };
 
 /* A consumer registers its own kind once, at load time, before any connection
  * can open it. A record that does not hold together is refused and the kind
- * stays unregistered. */
+ * stays unregistered; a kind registered already is refused and keeps its record. */
 extern int stream_kind_register (int kind, const stream_kind_desc &desc);
 
 /* The record of a registered kind, or NULL for a tag the registry does not hold. */

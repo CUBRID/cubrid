@@ -24,6 +24,7 @@
 #include "error_code.h"
 #include "bit.h"
 #include "heap_file.h"
+#include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -59,6 +60,14 @@ namespace parallel_scan
     FILE_FTAB_COLLECTOR collector;
     int error_code;
     m_hfid = hfid;
+
+    /* The bitmap below misses every page allocated after it. With the statement's snapshot taken first, the rows on
+     * those pages all belong to transactions the snapshot does not see. */
+    if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+	return ER_MVCC_CANT_GET_SNAPSHOT;
+      }
 
     error_code = file_get_all_data_sectors (thread_p, &m_hfid.vfid, &collector);
     if (error_code != NO_ERROR)

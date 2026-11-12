@@ -253,7 +253,8 @@ extern int histogram_build_multi_by_reservoir_request (OID * class_oid, int attr
 						       INT64 * out_pages_seen = NULL, INT64 * out_pages_kept = NULL);
 extern int stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv = NULL);
 extern int stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_start_msec);
-extern int update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec);
+extern int update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip_mops, int n_skip,
+					     INT64 run_start_msec);
 extern INT64 stats_progress_clock_msec (void);
 extern void stats_log_update_progress (MOP classop, int phase, int state, int seq, int total, INT64 class_start_msec,
 				       INT64 run_start_msec, int error);
@@ -437,8 +438,10 @@ extern int stream_from_init (int stream_kind, const char *config, int config_len
 extern int stream_from_send_data (const char *data, int data_len);
 extern int stream_from_end (INT64 * count, const char *data = NULL, int data_len = 0);
 extern int stream_from_abort (void);
+extern void stream_from_set_savepoint (const char *savepoint_name);
 extern bool stream_from_is_open (void);
 extern void stream_from_reset (void);
+extern void stream_from_final (void);
 extern bool stream_from_holds_download (void);
 extern bool stream_from_holds_handle (INT64 handle);
 extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,

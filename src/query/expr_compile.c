@@ -370,31 +370,19 @@ expr_hostvar_domain (const REGU_VARIABLE * regu)
  ******************************************************************************/
 
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583) for a
- * value of the planned type, which the step compiler copied; a step without one coerces by the value's type */
+ * value of the planned type, which the step compiler copied (a node without one is not compiled into a kernel) */
 int
 expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
-  TP_DOMAIN_STATUS dom_status;
-
-  if (domain_p == NULL)
-    {
-      return NO_ERROR;
-    }
+  assert (domain_p != NULL && conv != NULL);
   if (DB_IS_NULL (result_p))
     {
       /* tp_value_coerce's: a NULL comes out bare */
       db_make_null (result_p);
       return NO_ERROR;
     }
-  if (conv != NULL && DB_VALUE_DOMAIN_TYPE (result_p) == planned)
-    {
-      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
-    }
-  else
-    {
-      /* no converter, or a value of another type than planned: coerce by the value's type */
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-    }
+  assert (DB_VALUE_DOMAIN_TYPE (result_p) == planned);
+  const TP_DOMAIN_STATUS dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
@@ -5962,12 +5950,14 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * the mirror kept for a plan that names a
 	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
 	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
-	 * (they skip the per-row clear), which a coercion into a string domain would break. */
+	 * (they skip the per-row clear), which a coercion into a string domain would break.  A node
+	 * without a converter (its value needs none) is declined too: the epilogue only converts. */
 	const DB_TYPE ktype = plan->type;
 	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
 	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
 
-	if (coerce_result && !TP_IS_NUMERIC_TYPE (rtype))
+	if (coerce_result && (!TP_IS_NUMERIC_TYPE (rtype)
+			      || tp_value_find_converter (ktype, exec_domain, DOMAIN_CONVERT_IMPLICIT) == NULL))
 	  {
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }

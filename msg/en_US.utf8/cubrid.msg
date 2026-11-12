@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Stream session error: %1$s.
+1218 The stream is not open: %1$s.
+1219 The stream is not supported: %1$s.
+1220 Invalid use of a stream: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1505,17 +1505,21 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
 
-1392 stream session error: %1$s.
+1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
-1393 COPY FROM is not supported for "%1$s".
+1393 Altering system generated stored procedure is not allowed.
 
-1394 COPY binary format error: %1$s.
+1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 COPY CSV format error: %1$s.
+1395 COPY FROM is not supported for "%1$s".
 
-1396 COPY FROM: %1$s.
+1396 COPY binary format error: %1$s.
 
-1397 Last Error
+1397 COPY CSV format error: %1$s.
+
+1398 COPY FROM: %1$s.
+
+1399 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -2032,6 +2036,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
+345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 
 
 

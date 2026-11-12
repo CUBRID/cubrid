@@ -120,21 +120,25 @@ extern "C"
  * is not finished and its auto-commit is owed to END. A driver that commits
  * from its own side reads this and holds that commit back; the CAS pays it.
  *
- * Only a PROTOCOL_V13 client may read it. init_msg_header () fills this byte
- * with CAS_INFO_RESERVED_DEFAULT, so every bit above the three older masks
- * reads as 1 from any earlier server. */
+ * Only a PROTOCOL_V13 client may read it: an earlier server leaves every bit
+ * above the three older masks at 1. */
 #define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
+/* Bits no server sets yet, 0 in every reply, so a bit a later release defines reads 0 from this one. */
+#define CAS_INFO_FLAG_MASK_RESERVED             0xF0
 
-/* The optional trailing flags byte of the bundled stream requests and replies. A
- * driver that does not send it gets the unbundled behavior. */
+/* The flags byte of the stream requests and replies, required on INIT, READ_OPEN and READ: only it carries the
+ * auto-commit mode the driver keeps on its own side. A bit not listed for a request is refused with CAS_ER_ARGS. */
 #define CAS_STREAM_FLAG_FINAL			0x01	/* INIT, SEND_DATA: end the stream with this chunk */
 #define CAS_STREAM_FLAG_RELEASE_AT_EOF		0x01	/* READ_OPEN, READ: release the handle at eof */
-#define CAS_STREAM_FLAG_AUTO_COMMIT		0x02	/* READ_OPEN, READ: what RELEASE's auto-commit byte says */
+#define CAS_STREAM_FLAG_AUTO_COMMIT		0x02	/* INIT, READ_OPEN, READ: the connection runs in auto-commit */
 #define CAS_STREAM_FLAG_EOF			0x01	/* READ_OPEN, READ reply */
 #define CAS_STREAM_FLAG_RELEASED		0x02	/* READ_OPEN, READ reply: the handle is gone */
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
+/* The flags byte every reply starts from: the three older masks at 1, as every earlier server left them, the rest 0 */
+#define CAS_INFO_ADDITIONAL_FLAG_DEFAULT \
+  ((char) (CAS_INFO_RESERVED_DEFAULT & ~(CAS_INFO_FLAG_MASK_STREAM_OPEN | CAS_INFO_FLAG_MASK_RESERVED)))
 
 #define MAX_HA_DBINFO_LENGTH    (SRV_CON_DBNAME_SIZE + MAX_CONN_INFO_LENGTH)
 
@@ -256,7 +260,8 @@ extern "C"
      * server cannot see; the CAS pays the deferred auto-commit as a rollback. */
     CAS_FC_STREAM_INIT = 47,
     CAS_FC_STREAM_ABORT = 48,
-    /* Server->client: a download is a handle the client reads until eof and then releases. */
+    /* Server->client: a download is a handle the client reads until eof and then releases. A commit ends it, but an
+     * auto-commit that only closes something (a fetch's end, GET_DB_VERSION) waits for the last release. */
     CAS_FC_STREAM_READ_OPEN = 49,
     CAS_FC_STREAM_READ = 50,
     CAS_FC_STREAM_RELEASE = 51,
@@ -264,6 +269,10 @@ extern "C"
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
     CAS_FC_MAX,
+
+    /* A code from CAS_FC_MAX below this one is answered with CAS_ER_NOT_IMPLEMENTED, and the connection stays, so a
+     * driver may try a code a later release adds. One at or above it closes the connection, as a corrupt request does. */
+    CAS_FC_PROBE_MAX = 64,
 
     /* function code list of protocol version V2 - 9.0.0.xxxx */
     CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2 = 41,

@@ -290,9 +290,9 @@ tran_commit (bool retain_lock)
   /* before any client state is touched: a stream is one statement still running, and nothing commits inside it */
   if (stream_from_is_open ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "a stream session is open on this connection; end or abort it first");
-      return ER_STREAM_SESSION_ERROR;
+      return ER_STREAM_INVALID_USE;
     }
 
   /* check deferred trigger activities, these may prevent the transaction from being committed. */
@@ -1254,9 +1254,9 @@ tran_internal_abort_upto_savepoint (const char *savepoint_name, SAVEPOINT_TYPE s
   /* for the reason tran_commit () gives: the savepoint may predate the stream */
   if (stream_from_is_open ())
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "a stream session is open on this connection; end or abort it first");
-      return ER_STREAM_SESSION_ERROR;
+      return ER_STREAM_INVALID_USE;
     }
 
   /* tell the schema manager to flush any transaction caches */

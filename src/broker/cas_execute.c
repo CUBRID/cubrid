@@ -281,6 +281,7 @@ static int set_priv_table (unsigned int class_priv, char *name, T_PRIV_TABLE * p
 static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_BUF * net_buf);
 static int sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle);
 static int sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle);
+static int sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle);
 static short constraint_dbtype_to_castype (int db_const_type);
 
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
@@ -311,6 +312,7 @@ static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
 static bool refuse_stream_opened_mid_request (void);
+static bool refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version);
 static void ux_stream_give_up_after_error (void);
 static void ux_stream_log_open (int stream_kind);
 static bool call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type);
@@ -341,6 +343,7 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_foreign_keys,		/* SCH_CROSS_REFERENCE */
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
   fetch_result,			/* SCH_SCHEMAS */
+  fetch_result,			/* SCH_CURRENT_SCHEMA */
 };
 
 static char database_name[MAX_HA_DBINFO_LENGTH] = "";
@@ -990,9 +993,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 	{
 	  return err_code;
 	}
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "a COMMIT inside an open stream session rolls the transaction back");
-      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+      return ERROR_INFO_SET (ER_STREAM_INVALID_USE, DBMS_ERROR_INDICATOR);
     }
 
   ux_end_tran_cleanup (tran_type);
@@ -1279,6 +1282,13 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 	  goto execute_error;
 	}
       err_code = ERROR_INFO_SET (n, DBMS_ERROR_INDICATOR);
+      goto execute_error;
+    }
+
+  if (refuse_stream_client_cannot_carry (client_version))
+    {
+      err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+      db_query_end (result);
       goto execute_error;
     }
 
@@ -1680,9 +1690,10 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	    }
 	}
 
-      if (db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
+      if ((db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
+	  || refuse_stream_client_cannot_carry (req_info->client_version))
 	{
-	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto execute_all_error;
 	}
     }
@@ -2052,7 +2063,7 @@ ux_next_result (T_SRV_HANDLE * srv_handle, char flag, T_NET_BUF * net_buf, T_REQ
     {
       if (check_auto_commit_after_getting_result (srv_handle) == true)
 	{
-	  req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+	  ux_stream_result_set_commit (req_info);
 	}
     }
 
@@ -3793,6 +3804,9 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_SCHEMAS:
       err_code = sch_schemas (net_buf, arg1, flag, srv_handle);
       break;
+    case CCI_SCH_CURRENT_SCHEMA:
+      err_code = sch_current_schema (net_buf, srv_handle);
+      break;
     default:
       err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
       goto schema_info_error;
@@ -3806,7 +3820,8 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
   if (schema_type == CCI_SCH_CLASS || schema_type == CCI_SCH_VCLASS || schema_type == CCI_SCH_ATTRIBUTE
       || schema_type == CCI_SCH_CLASS_ATTRIBUTE || schema_type == CCI_SCH_QUERY_SPEC
       || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY
-      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS)
+      || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS
+      || schema_type == CCI_SCH_CURRENT_SCHEMA)
     {
       srv_handle->cursor_pos = 0;
     }
@@ -9101,6 +9116,24 @@ sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HA
   return 0;
 }
 
+static int
+sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[] = "SELECT CURRENT_USER";
+  int num_result;
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_schemas_meta (net_buf);
+
+  return 0;
+}
+
 static void
 add_fk_info_before (T_FK_INFO_RESULT * pivot, T_FK_INFO_RESULT * pnew)
 {
@@ -9630,7 +9663,7 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
   if (srv_handle->auto_commit_mode == TRUE && srv_handle->is_from_current_transaction
       && !call_returns_cursor (call_info))
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   return 0;
@@ -10783,6 +10816,16 @@ encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned char cas_typ
  * END pays it once the transfer is done. */
 static bool stream_Deferred_auto_commit = false;
 
+/* the auto-commit a release owed while an upload was open, for the upload's close to settle */
+static bool stream_Release_commit_owed = false;
+
+/* An upload (a kind whose END finishes no statement) does no work in the transaction: its bytes go to the session.
+ * Given up -- refused, or aborted -- it would leave the connection marked in a transaction with nothing to end it,
+ * so the connection returns to the status it had before the upload opened. */
+static int stream_Status_before_request = CON_STATUS_OUT_TRAN;
+static int stream_Status_before_upload = -1;	/* while a driver-opened upload is open */
+static int stream_Status_to_restore = -1;
+
 static bool
 do_commit_after_execute (const t_srv_handle & server_handle)
 {
@@ -11064,7 +11107,10 @@ ux_stream_reset (void)
 {
   stream_from_reset ();
   stream_Deferred_auto_commit = false;
+  stream_Release_commit_owed = false;
   stream_Log.open = false;
+  stream_Status_before_upload = -1;
+  stream_Status_to_restore = -1;
 }
 
 /*
@@ -11136,6 +11182,70 @@ ux_stream_finds_no_upload (int func_code)
     }
 }
 
+/* the status the connection had before the request now being processed */
+void
+ux_stream_note_status_before (int con_status)
+{
+  stream_Status_before_request = con_status;
+}
+
+/* A request refused before it reached the server did nothing in the transaction: the connection keeps its status. */
+void
+ux_stream_refused_before_server (void)
+{
+  stream_Status_to_restore = stream_Status_before_request;
+}
+
+static void
+ux_stream_give_up_upload (void)
+{
+  if (stream_Status_before_upload != -1)
+    {
+      stream_Status_to_restore = stream_Status_before_upload;
+      stream_Status_before_upload = -1;
+    }
+}
+
+/*
+ * ux_stream_status_to_restore () - The status to set after a request that gave up an upload, or -1
+ *
+ * Only back out of a transaction, and only when nothing else the client holds keeps it: a download or a result set.
+ */
+int
+ux_stream_status_to_restore (void)
+{
+  int status = stream_Status_to_restore;
+
+  stream_Status_to_restore = -1;
+  if (status != CON_STATUS_OUT_TRAN || stream_from_holds_download () || hm_has_result_tied_to_tran ())
+    {
+      return -1;
+    }
+  return status;
+}
+
+/*
+ * refuse_stream_client_cannot_carry () - Give up a stream a statement opened for a client that cannot drive it
+ *
+ * The bytes travel in requests 45-51: a driver older than PROTOCOL_V13 has none, and a SHARD proxy passes none to its
+ * CAS. Left open, the stream would refuse every later statement of the connection (ux_stream_admits_request).
+ */
+static bool
+refuse_stream_client_cannot_carry (T_BROKER_VERSION client_version)
+{
+  if (!stream_from_is_open ()
+      || (cas_shard_flag != ON && DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13)))
+    {
+      return false;
+    }
+
+  (void) stream_from_abort ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_SUPPORTED, 1,
+	  cas_shard_flag == ON ? "a statement that opens a stream cannot run through a SHARD broker"
+	  : "a statement that opens a stream needs a PROTOCOL_V13 driver");
+  return true;
+}
+
 /*
  * refuse_stream_opened_mid_request () - Give up a stream a statement opened with more of its request to run
  *
@@ -11151,7 +11261,7 @@ refuse_stream_opened_mid_request (void)
     }
 
   (void) stream_from_abort ();
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	  "a statement that opens a stream must be executed on its own");
   return true;
 }
@@ -11185,16 +11295,17 @@ ux_stream_error (int err_code, T_NET_BUF * net_buf)
 /*
  * ux_stream_init () - Open a stream session the driver asked for directly
  *   final(in): CAS_STREAM_FLAG_FINAL -- data is the whole value, and the reply is END's
+ *   auto_commit(in): the connection runs in auto-commit (CAS_STREAM_FLAG_AUTO_COMMIT)
  *   data(in), data_len(in): the first chunk, or none
  *
  * The statement path does not come through here: a statement that opens a
  * stream defers its own auto-commit in do_commit_after_execute (), with the
  * mode that statement ran in. A driver-opened stream has no such statement, so
  * what END owes is settled here instead -- from the kind's own answer, which
- * the open reply carries, and this connection's mode.
+ * the open reply carries, and the mode the driver sent.
  */
 int
-ux_stream_init (int stream_kind, char *config, int config_len, bool final, char *data, int data_len,
+ux_stream_init (int stream_kind, char *config, int config_len, bool final, bool auto_commit, char *data, int data_len,
 		T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
@@ -11204,26 +11315,43 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, char 
 
   /* the server cannot tell a driver's open from a statement's, so the client half answers who may open the kind */
   err_code = stream_kind_client_check_driver_open (stream_kind);
-  if (err_code == NO_ERROR)
-    {
-      err_code = stream_kind_client_authorize (stream_kind, config, config_len);
-    }
-  if (err_code == NO_ERROR && stream_from_is_open ())
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
-	      "a stream session is already active on this connection");
-      err_code = ER_STREAM_SESSION_ERROR;
-    }
   if (err_code < 0)
     {
+      ux_stream_refused_before_server ();
       return ux_stream_error (err_code, net_buf);
+    }
+  err_code = stream_kind_client_authorize (stream_kind, config, config_len);
+  if (err_code < 0)
+    {
+      /* the check may have read and locked classes; in auto-commit nothing else ends that, unless something the
+       * client still holds keeps the transaction */
+      if (auto_commit && !stream_from_holds_download () && !hm_has_result_tied_to_tran ())
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	}
+      return ux_stream_error (err_code, net_buf);
+    }
+  if (stream_from_is_open ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
+	      "a stream session is already active on this connection");
+      return ux_stream_error (ER_STREAM_INVALID_USE, net_buf);
     }
 
   ux_stream_log_open (stream_kind);
   ux_stream_log_chunk (data_len);
   err_code = stream_from_init (stream_kind, config, config_len, final ? STREAM_FLAG_FINAL : 0, data, data_len,
 			       &count, &ends_unit_of_work);
-  auto_commit_owed = (ends_unit_of_work && as_info->auto_commit_mode == TRUE);
+  auto_commit_owed = (ends_unit_of_work && auto_commit);
+  if (!ends_unit_of_work && !(err_code == NO_ERROR && final))
+    {
+      /* an upload, or an open refused before it did anything */
+      stream_Status_before_upload = stream_Status_before_request;
+      if (err_code < 0)
+	{
+	  ux_stream_give_up_upload ();
+	}
+    }
   if (err_code < 0)
     {
       ux_stream_log_end (false, err_code, 0);
@@ -11253,6 +11381,22 @@ ux_stream_init (int stream_kind, char *config, int config_len, bool final, char 
   return 0;
 }
 
+/*
+ * ux_stream_settle_given_up () - Settle what an upload given up owes, as a rollback: what it flushed must not stay
+ *   auto_commit_owed(in): the auto-commit its statement, or the driver, deferred to END
+ */
+static void
+ux_stream_settle_given_up (bool auto_commit_owed, T_REQ_INFO * req_info)
+{
+  bool release_owed = stream_Release_commit_owed;
+
+  stream_Release_commit_owed = false;
+  if (auto_commit_owed || (release_owed && !stream_from_holds_download () && !hm_has_result_tied_to_tran ()))
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+}
+
 int
 ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -11262,17 +11406,12 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO *
   err_code = stream_from_send_data (data, data_len);
   if (err_code < 0)
     {
+      ux_stream_give_up_upload ();
       ux_stream_log_end (false, err_code, 0);
 
-      /* The server dropped the session on the failed chunk, so the statement
-       * that opened the stream ends here. Whatever it already flushed is still
-       * in the transaction, so the auto-commit it deferred is paid back as a
-       * rollback -- otherwise the next statement's auto-commit commits it. */
-      if (stream_Deferred_auto_commit)
-	{
-	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
-	  stream_Deferred_auto_commit = false;
-	}
+      /* the server dropped the session on the failed chunk, so the statement that opened the stream ends here */
+      ux_stream_settle_given_up (stream_Deferred_auto_commit, req_info);
+      stream_Deferred_auto_commit = false;
 
       return ux_stream_error (err_code, net_buf);
     }
@@ -11298,17 +11437,20 @@ ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
   ux_stream_log_chunk (data_len);
   err_code = stream_from_end (&count, data, data_len);
+  if (err_code < 0)
+    {
+      ux_stream_give_up_upload ();
+    }
+  stream_Status_before_upload = -1;
   ux_stream_log_end (false, err_code, count);
   if (err_code < 0)
     {
-      if (auto_commit_owed)
-	{
-	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
-	}
-
+      ux_stream_settle_given_up (auto_commit_owed, req_info);
       return ux_stream_error (err_code, net_buf);
     }
 
+  /* a release's commit goes with this one, or with that of the statement that uses the bytes in this transaction */
+  stream_Release_commit_owed = false;
   if (auto_commit_owed)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -11324,10 +11466,7 @@ ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 /*
  * ux_stream_abort () - Give up on the stream without ending it
  *
- * The bytes the session already flushed stay in the transaction, so the
- * auto-commit it deferred is paid back as a rollback -- the same reckoning as a
- * failed chunk, and for the same reason: left unpaid, the next statement's
- * auto-commit would commit them.
+ * Settled as a failed chunk is (ux_stream_settle_given_up ()).
  */
 int
 ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -11335,16 +11474,14 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int err_code;
   bool auto_commit_owed;
 
+  ux_stream_give_up_upload ();
   auto_commit_owed = stream_Deferred_auto_commit;
   stream_Deferred_auto_commit = false;
 
   err_code = stream_from_abort ();
   ux_stream_log_end (true, err_code, 0);
 
-  if (auto_commit_owed)
-    {
-      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
-    }
+  ux_stream_settle_given_up (auto_commit_owed, req_info);
 
   if (err_code < 0)
     {
@@ -11360,9 +11497,9 @@ ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
  *   err_code(in): the error the request ended with, or 0
  *
  * As a commit, a failed read included: a read writes nothing, and what the commit carries is the work of
- * statements the client was told had finished. Not while an upload is open: its debt stays for END, or for the
- * next commit the connection makes. A transaction the server already rolled back owes nothing, and the rollback
- * is what brings this connection in line with it.
+ * statements the client was told had finished. While an upload is open it is owed to the upload's close. A
+ * transaction the server already rolled back owes nothing, and the rollback is what brings this connection in line
+ * with it.
  */
 static void
 ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
@@ -11384,7 +11521,15 @@ ux_stream_settle_release (bool auto_commit, int err_code, T_REQ_INFO * req_info)
       return;
     }
 
-  if (!stream_from_holds_download () && !stream_from_is_open () && !hm_has_result_tied_to_tran ())
+  if (stream_from_holds_download () || hm_has_result_tied_to_tran ())
+    {
+      return;
+    }
+  if (stream_from_is_open ())
+    {
+      stream_Release_commit_owed = true;
+    }
+  else
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -11406,12 +11551,12 @@ ux_stream_driver_read_flags (int reply_flags)
 
 /*
  * ux_stream_read_open () - Open a download the driver asked for
- *   bundled(in): the driver sent first_max and flags; the first piece and its flags go back with the handle
- *   first_max(in), flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
+ *   first_max(in): the bytes of the first piece; 0 opens only
+ *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
  */
 int
-ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled, int first_max, char flags,
-		     T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+ux_stream_read_open (int stream_kind, char *config, int config_len, int first_max, char flags, T_NET_BUF * net_buf,
+		     T_REQ_INFO * req_info)
 {
   int err_code;
   INT64 handle = 0;
@@ -11419,18 +11564,20 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
   int nread = 0;
   int reply_flags = 0;
 
-  if (bundled && first_max < 0)
+  if (first_max < 0)
     {
+      ux_stream_refused_before_server ();
       err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
-  first_max = bundled ? MIN (first_max, STREAM_READ_MAX_CHUNK) : 0;
+  first_max = MIN (first_max, STREAM_READ_MAX_CHUNK);
 
   /* the client library runs the kind's authorize in stream_from_read_open () */
   err_code = stream_kind_client_check_driver_open (stream_kind);
   if (err_code < 0)
     {
+      ux_stream_refused_before_server ();
       return ux_stream_error (err_code, net_buf);
     }
 
@@ -11439,10 +11586,18 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
       buffer = (char *) MALLOC (first_max);
       if (buffer == NULL)
 	{
+	  ux_stream_refused_before_server ();
 	  err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
 	  NET_BUF_ERR_SET (net_buf);
 	  return err_code;
 	}
+    }
+
+  /* the download reads in the transaction, and its commit waits while the upload is open (ux_stream_settle_release):
+   * giving the upload up must not take the connection out of it */
+  if (stream_Status_before_upload != -1)
+    {
+      stream_Status_before_upload = CON_STATUS_IN_TRAN;
     }
 
   err_code = stream_from_read_open (stream_kind, config, config_len, first_max, ux_stream_server_read_flags (flags),
@@ -11457,14 +11612,11 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
 
   net_buf_cp_int (net_buf, 0, NULL);
   net_buf_cp_bigint (net_buf, handle, NULL);
-  if (bundled)
+  net_buf_cp_int (net_buf, nread, NULL);
+  net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
+  if (nread > 0)
     {
-      net_buf_cp_int (net_buf, nread, NULL);
-      net_buf_cp_int (net_buf, ux_stream_driver_read_flags (reply_flags), NULL);
-      if (nread > 0)
-	{
-	  net_buf_cp_str (net_buf, buffer, nread);
-	}
+      net_buf_cp_str (net_buf, buffer, nread);
     }
   FREE_MEM (buffer);
 
@@ -11479,7 +11631,9 @@ ux_stream_read_open (int stream_kind, char *config, int config_len, bool bundled
 
 /*
  * ux_stream_read () - Read the next piece of a download
- *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT; 0 for a driver that sent none
+ *   flags(in): CAS_STREAM_FLAG_RELEASE_AT_EOF, CAS_STREAM_FLAG_AUTO_COMMIT
+ *
+ * A handle the CAS does not hold is gone from the server too, as ux_stream_release () assumes.
  */
 int
 ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -11492,15 +11646,23 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
 
   if (max <= 0)
     {
+      ux_stream_refused_before_server ();
       err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
+    }
+  if (!stream_from_holds_handle (handle))
+    {
+      ux_stream_refused_before_server ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_OPEN, 1, "unknown stream handle");
+      return ux_stream_error (ER_STREAM_NOT_OPEN, net_buf);
     }
   max = MIN (max, STREAM_READ_MAX_CHUNK);
 
   buffer = (char *) MALLOC (max);
   if (buffer == NULL)
     {
+      ux_stream_refused_before_server ();
       err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return err_code;
@@ -11532,8 +11694,7 @@ ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_IN
 /*
  * ux_stream_release () - Release a download the driver holds
  *
- * Download handles only: a staged upload belongs to the statement handles that bound it, and the CAS releases
- * it itself. A handle the CAS does not hold is released already, which is not an error.
+ * A handle the CAS does not hold is released already, which is not an error.
  */
 int
 ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info)

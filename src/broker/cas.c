@@ -918,6 +918,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   int con_status_to_restore, old_con_status;
   T_SERVER_FUNC server_fn;
   FN_RETURN fn_ret = FN_KEEP_CONN;
+  bool func_code_unknown;
 
   error_info_clear ();
   init_msg_header (&client_msg_header);
@@ -1112,7 +1113,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       return FN_CLOSE_CONN;
     }
 
-  if (func_code <= 0 || func_code >= CAS_FC_MAX)
+  if (func_code <= 0 || func_code >= CAS_FC_PROBE_MAX)
     {
       FREE_MEM (argv);
       FREE_MEM (read_msg);
@@ -1120,6 +1121,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
+  /* a code a later release adds: answered as not implemented, and it does no work in the transaction */
+  func_code_unknown = (func_code >= CAS_FC_MAX);
 
   /* PROTOCOL_V2 is used only 9.0.0 */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
@@ -1137,9 +1140,12 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	}
     }
 
+  ux_stream_note_status_before (is_first_request ? CON_STATUS_OUT_TRAN
+				: (con_status_before_check_cas != -1 ? con_status_before_check_cas : old_con_status));
+
   con_status_to_restore = -1;
 
-  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code) || ux_stream_finds_no_upload (func_code))
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code) || ux_stream_finds_no_upload (func_code) || func_code_unknown)
     {
       if (is_first_request == true)
 	{
@@ -1167,10 +1173,17 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       con_status_before_check_cas = -1;
     }
 
-  strcpy (as_info->log_msg, server_func_name[func_code - 1]);
-
-  server_fn = server_fn_table[func_code - 1];
-  if (!ux_stream_admits_request (func_code))
+  if (func_code_unknown)
+    {
+      strcpy (as_info->log_msg, "fn_not_supported");
+      server_fn = fn_not_supported;
+    }
+  else
+    {
+      strcpy (as_info->log_msg, server_func_name[func_code - 1]);
+      server_fn = server_fn_table[func_code - 1];
+    }
+  if (!func_code_unknown && !ux_stream_admits_request (func_code))
     {
       server_fn = fn_stream_refused;
     }
@@ -1228,6 +1241,15 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
 
+  if (con_status_to_restore != -1)
+    {
+      CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+      as_info->con_status = con_status_to_restore;
+      CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
+    }
+
+  /* an upload given up leaves nothing in the transaction */
+  con_status_to_restore = ux_stream_status_to_restore ();
   if (con_status_to_restore != -1)
     {
       CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
@@ -1334,8 +1356,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
 	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
 
-      /* Cleared as well as set: init_msg_header () leaves this bit at 1. */
-      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_STREAM_OPEN;
+      /* init_msg_header () leaves it at 0 */
       if (ux_stream_is_open ())
 	{
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |= CAS_INFO_FLAG_MASK_STREAM_OPEN;

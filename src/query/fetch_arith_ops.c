@@ -122,11 +122,13 @@ fetch_arith_compare (THREAD_ENTRY * thread_p, const ARITH_TYPE * arithptr, int k
  */
 static int
 fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_descr * vd, DB_VALUE * peek_left,
-			 DB_VALUE * peek_right, bool least)
+			 DB_VALUE * peek_right, bool least, int *picked)
 {
   bool can_compare = true;
   const DB_VALUE_COMPARE_RESULT cmp_result =
     fetch_arith_compare (thread_p, arithptr, 0, vd, peek_left, peek_right, &can_compare);
+  /* the operand db_least_or_greatest_by copies: the left on a tie, the right for a NULL result */
+  *picked = cmp_result == DB_EQ ? 0 : cmp_result == DB_GT ? (least ? 1 : 0) : cmp_result == DB_LT ? (least ? 0 : 1) : 1;
   return db_least_or_greatest_by (peek_left, peek_right, cmp_result, can_compare, arithptr->value, least);
 }
 
@@ -4134,16 +4136,16 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   int error;
+  int picked;
 
-  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, true);
+  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, true, &picked);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  /* the operand picked: the left's converter for a value of the left's type */
-  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
-				   arithptr->value, arithptr->value, domain, false);
+  /* the picked operand's converter */
+  dom_status = fetch_cast_operand (arithptr, picked, arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
@@ -4166,16 +4168,16 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   int error;
+  int picked;
 
-  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, false);
+  error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, false, &picked);
   if (error != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  /* the operand picked: the left's converter for a value of the left's type */
-  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
-				   arithptr->value, arithptr->value, domain, false);
+  /* the picked operand's converter */
+  dom_status = fetch_cast_operand (arithptr, picked, arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);

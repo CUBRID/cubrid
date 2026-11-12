@@ -291,7 +291,9 @@ static bool qo_term_is_evaluated_before (QO_TERM * term1, QO_TERM * term2);
 static double qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
-static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
+static void qo_plan_uncover_cost (QO_PLAN * plan, bool nl_outer, double *io, double *cpu);
+static double qo_plan_list_input_cost (QO_PLAN * plan);
+static bool qo_index_forbids_key_filter (QO_ENV *, QO_NODE *, QO_INDEX_ENTRY *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static double qo_sort_io_cost (double objects, double pages);
@@ -396,6 +398,8 @@ static double qo_join_input_factor (QO_PLAN * input, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_parallel_drive (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
 static QO_PLAN *qo_find_best_parallel_driving_plan_on_info (QO_INFO *);
+static QO_PLAN_COMPARE_RESULT qo_plan_cmp_list_input (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
+static QO_PLAN *qo_find_best_list_input_on_info (QO_INFO * info, QO_EQCLASS * order);
 static bool qo_plan_drives_groupby_skip_only (QO_PLAN * plan);
 static QO_PLAN *qo_find_groupby_skip_outer_on_info (QO_INFO * info);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b);
@@ -686,6 +690,8 @@ qo_plan_malloc (QO_ENV * env)
   plan->iscan_range_rows = 0.0;
   plan->iscan_heap_io = 0.0;
   plan->iscan_descent_cpu = 0.0;
+  plan->iscan_uncover_io = 0.0;
+  plan->iscan_uncover_cpu = 0.0;
 
   return plan;
 }
@@ -2129,8 +2135,7 @@ qo_top_plan_new (QO_PLAN * plan)
       plan->iscan_sort_list = qo_plan_compute_iscan_sort_list (plan, NULL, &is_index_w_prefix, false);
 
       /* GROUP BY */
-      /* if we have rollup, we do not skip the group by */
-      if (group_by && !group_by->flag.with_rollup)
+      if (group_by)
 	{
 	  PT_NODE *group_sort_list = NULL;
 
@@ -2852,14 +2857,17 @@ qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
  *   terms, so a residual LIKE stays a data filter and its derived range must
  *   remain the row-count upper bound.
  *   return: true if key-filters are disabled for this index
+ *   env(in):
+ *   node(in):
  *   index_entryp(in):
  *
- * note: A non-covering function index is the only such case.
+ * note: The key has no function arguments, so a function index needs its result routed from the key.
  */
 static bool
-qo_index_forbids_key_filter (QO_INDEX_ENTRY * index_entryp)
+qo_index_forbids_key_filter (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp)
 {
-  return index_entryp->constraints->func_index_info != NULL && index_entryp->cover_segments == false;
+  return (index_entryp->constraints->func_index_info != NULL && index_entryp->cover_segments == false
+	  && !qo_is_func_index_key_filter_routable (env, node, index_entryp));
 }
 
 /*
@@ -2964,7 +2972,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       plan->plan_un.scan.index_equi = false;
     }
 
-  if (qo_index_forbids_key_filter (index_entryp))
+  if (qo_index_forbids_key_filter (env, node, index_entryp))
     {
       /* do not permit key-filter */
       assert (bitset_is_empty (&(plan->plan_un.scan.kf_terms)));
@@ -3376,6 +3384,131 @@ qo_iscan_terms_all_measured (QO_PLAN * planp, QO_NODE * nodep)
 }
 
 /*
+ * qo_is_func_index_cover_routed () - check whether a covered function index scan covers the query only because the
+ *   function result is read from the key, leaving out a column the query reads
+ *   return: bool
+ *   plan(in): plan
+ *
+ * Note: a list file carries the function from its raw arguments, so such a scan reads the heap wherever its output
+ *   goes through one (pt_uncover_func_index_scans ()).
+ */
+bool
+qo_is_func_index_cover_routed (QO_PLAN * plan)
+{
+  QO_ENV *env;
+  QO_INDEX_ENTRY *index_entry;
+  QO_SEGMENT *seg;
+  int i, j;
+
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || plan->plan_un.scan.index == NULL
+      || !plan->plan_un.scan.index_cover)
+    {
+      return false;
+    }
+
+  index_entry = plan->plan_un.scan.index->head;
+  if (index_entry == NULL || index_entry->constraints == NULL || index_entry->constraints->func_index_info == NULL
+      || index_entry->constraints->attributes == NULL)
+    {
+      return false;
+    }
+
+  env = plan->info->env;
+  for (i = 0; i < env->nsegs; i++)
+    {
+      seg = QO_ENV_SEG (env, i);
+      if (seg == NULL || QO_SEG_HEAD (seg) != plan->plan_un.scan.node || QO_SEG_FUNC_INDEX (seg)
+	  || QO_SEG_IS_OID_SEG (seg))
+	{
+	  continue;
+	}
+      for (j = 0; j < index_entry->col_num && index_entry->seg_idxs[j] != QO_SEG_IDX (seg); j++)
+	{
+	  ;
+	}
+      if (j == index_entry->col_num)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_plan_uncover_cost () - sum the heap fetch cost of the covered scans of a plan that
+ *   qo_is_func_index_cover_routed () holds and that no list file above them has charged yet
+ *   return: void
+ *   plan(in): plan
+ *   nl_outer(in): true if the plan is the outer side of a nested loop join
+ *   io(out): io cost
+ *   cpu(out): cpu cost
+ *
+ * Note: follows pt_collect_func_index_cover (): a scan under a merge or hash join input, a sort under a nested loop
+ *   outer, a sort limit or a nested loop inner other than a scan is charged by that plan.
+ */
+static void
+qo_plan_uncover_cost (QO_PLAN * plan, bool nl_outer, double *io, double *cpu)
+{
+  QO_PLAN *inner;
+
+  if (plan == NULL)
+    {
+      return;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      *io += plan->iscan_uncover_io;
+      *cpu += plan->iscan_uncover_cpu;
+      break;
+
+    case QO_PLANTYPE_SORT:
+      if (!nl_outer && plan->plan_un.sort.sort_type != SORT_LIMIT)
+	{
+	  qo_plan_uncover_cost (plan->plan_un.sort.subplan, false, io, cpu);
+	}
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      inner = plan->plan_un.join.inner;
+      if ((plan->plan_un.join.join_method == QO_JOINMETHOD_NL_JOIN && plan->plan_un.join.join_type != JOIN_CSELECT)
+	  || plan->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN)
+	{
+	  qo_plan_uncover_cost (plan->plan_un.join.outer, true, io, cpu);
+	  if (inner != NULL && (inner->plan_type == QO_PLANTYPE_SCAN || inner->plan_type == QO_PLANTYPE_FOLLOW))
+	    {
+	      qo_plan_uncover_cost (inner, false, io, cpu);
+	    }
+	}
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      qo_plan_uncover_cost (plan->plan_un.follow.head, nl_outer, io, cpu);
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * qo_plan_list_input_cost () - total cost of a plan read through a list file
+ *   return: cost
+ *   plan(in): plan
+ */
+static double
+qo_plan_list_input_cost (QO_PLAN * plan)
+{
+  double io = 0.0, cpu = 0.0;
+
+  qo_plan_uncover_cost (plan, false, &io, &cpu);
+
+  return plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost + io + cpu;
+}
+
+/*
  * qo_iscan_cost () -
  *   return:
  *   planp(in):
@@ -3584,10 +3717,21 @@ qo_iscan_cost (QO_PLAN * planp)
    * pages < index pages) the covering probe priced ABOVE the same probe fetching the heap
    * (r_outer_join: UNIQUE covering idx 60 vs non-covering idx_a 59) and covering drivers lost
    * exact ties to sequential scans (bug_bts_13884, bug_bts_9935_03). */
+  planp->iscan_uncover_io = 0.0;
+  planp->iscan_uncover_cpu = 0.0;
   if (qo_is_index_covering_scan (planp))
     {
       object_IO = 0.0;
       heap_access = 0;
+
+      if (qo_is_func_index_cover_routed (planp))
+	{
+	  heap_rows = (double) QO_NODE_NCARD (nodep) * heap_sel;
+	  planp->iscan_uncover_io =
+	    MAX (1.0, qo_mackert_lohman_pages ((double) opages, heap_rows)) * QO_COST_RANDOM_PAGE;
+	  planp->iscan_uncover_cpu = heap_rows * (double) ISCAN_OID_ACCESS_OVERHEAD;
+	  planp->iscan_uncover_cpu *= (double) QO_CPU_WEIGHT;
+	}
     }
   else
     {
@@ -4227,6 +4371,7 @@ qo_sort_cost (QO_PLAN * planp)
       planp->fixed_io_cost = subplanp->fixed_io_cost;
       planp->variable_cpu_cost = subplanp->variable_cpu_cost;
       planp->variable_io_cost = subplanp->variable_io_cost;
+      qo_plan_uncover_cost (subplanp, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
     }
   else
     {
@@ -6851,6 +6996,30 @@ qo_nljoin_cost (QO_PLAN * planp)
   }
 #endif
 
+  /* a sort outer and a non-scan inner are built into list files once per join */
+  {
+    double io = 0.0, cpu = 0.0, outer_io = 0.0, outer_cpu = 0.0;
+
+    if (planp->plan_un.join.join_type == JOIN_CSELECT)
+      {
+	qo_plan_uncover_cost (outer, false, &io, &cpu);
+	qo_plan_uncover_cost (inner, false, &io, &cpu);
+      }
+    else
+      {
+	qo_plan_uncover_cost (outer, false, &io, &cpu);
+	qo_plan_uncover_cost (outer, true, &outer_io, &outer_cpu);
+	io -= outer_io;
+	cpu -= outer_cpu;
+	if (inner->plan_type != QO_PLANTYPE_SCAN && inner->plan_type != QO_PLANTYPE_FOLLOW)
+	  {
+	    qo_plan_uncover_cost (inner, false, &io, &cpu);
+	  }
+      }
+    planp->fixed_io_cost += io;
+    planp->fixed_cpu_cost += cpu;
+  }
+
 #if TEST_DUMP_PLAN_JOIN_COST
   fprintf (stdout, "\nNested Loop Cost: \n");
   fprintf (stdout, "  -    Fixed CPU Cost: %lf\n", planp->fixed_cpu_cost);
@@ -6929,6 +7098,8 @@ qo_mjoin_cost (QO_PLAN * planp)
   planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
   planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
+  qo_plan_uncover_cost (outer, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
+  qo_plan_uncover_cost (inner, false, &planp->variable_io_cost, &planp->variable_cpu_cost);
 
   /* an input re-sorted although qo_sort_cost () charged nothing for it */
   if (planp->plan_un.join.outer_sort_uncharged)
@@ -7019,6 +7190,14 @@ qo_hjoin_cost (QO_PLAN * plan_p)
     outer_plan_p->variable_cpu_cost * outer_factor + inner_plan_p->variable_cpu_cost * inner_factor;
   plan_p->variable_io_cost =
     outer_plan_p->variable_io_cost * outer_factor + inner_plan_p->variable_io_cost * inner_factor;
+  {
+    double outer_io = 0.0, outer_cpu = 0.0, inner_io = 0.0, inner_cpu = 0.0;
+
+    qo_plan_uncover_cost (outer_plan_p, false, &outer_io, &outer_cpu);
+    qo_plan_uncover_cost (inner_plan_p, false, &inner_io, &inner_cpu);
+    plan_p->variable_cpu_cost += outer_cpu * outer_factor + inner_cpu * inner_factor;
+    plan_p->variable_io_cost += outer_io * outer_factor + inner_io * inner_factor;
+  }
 
   /**
    * STEP 2: Calculate the cost when inner is used as build input.
@@ -9167,6 +9346,7 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
   for (i = 0; i < planvec->nplans; i++)
     {
       cmp = qo_plan_cmp_parallel_drive (planvec->plan[i], plan, qo_plan_cmp (planvec->plan[i], plan));
+      cmp = qo_plan_cmp_list_input (planvec->plan[i], plan, cmp);
       if (cmp != PLAN_COMP_EQ
 	  && qo_plan_drives_groupby_skip_only (planvec->plan[i]) != qo_plan_drives_groupby_skip_only (plan))
 	{
@@ -9415,6 +9595,99 @@ qo_plan_cmp_parallel_drive (QO_PLAN * a, QO_PLAN * b, QO_PLAN_COMPARE_RESULT cmp
 
   /* LT: a is the cheaper */
   return ((cmp == PLAN_COMP_LT) ? a_drives : b_drives) ? cmp : PLAN_COMP_UNK;
+}
+
+/*
+ * qo_plan_cmp_list_input () - keep a plan that is cheaper as the input of a list file
+ *   return: cmp, or PLAN_COMP_UNK when the other plan is the cheaper one once both are read through a list file
+ *   a(in), b(in): two plans of the same info
+ *   cmp(in): qo_plan_cmp (a, b)
+ *
+ * Note: a covered function index scan pays its heap fetches only under a list file (qo_plan_uncover_cost ()), so
+ *	 both plans stay in the planvec and the joins reading their inputs through list files choose by
+ *	 qo_plan_list_input_cost () (qo_find_best_list_input_on_info ()).
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_plan_cmp_list_input (QO_PLAN * a, QO_PLAN * b, QO_PLAN_COMPARE_RESULT cmp)
+{
+  double a_cost, b_cost;
+
+  if (cmp != PLAN_COMP_LT && cmp != PLAN_COMP_GT)
+    {
+      return cmp;
+    }
+
+  /* only a decision taken on cost, as in qo_plan_cmp_parallel_drive () */
+  a_cost = a->fixed_cpu_cost + a->fixed_io_cost + a->variable_cpu_cost + a->variable_io_cost;
+  b_cost = b->fixed_cpu_cost + b->fixed_io_cost + b->variable_cpu_cost + b->variable_io_cost;
+  if ((cmp == PLAN_COMP_LT) ? (a_cost > b_cost) : (b_cost > a_cost))
+    {
+      return cmp;
+    }
+
+  a_cost = qo_plan_list_input_cost (a);
+  b_cost = qo_plan_list_input_cost (b);
+  if ((cmp == PLAN_COMP_LT) ? (a_cost <= b_cost) : (b_cost <= a_cost))
+    {
+      return cmp;
+    }
+
+  return PLAN_COMP_UNK;
+}
+
+/*
+ * qo_find_best_list_input_on_info () - the cheapest plan of an info read through a list file
+ *   return: plan
+ *   info(in): info
+ *   order(in): order of the plan
+ */
+static QO_PLAN *
+qo_find_best_list_input_on_info (QO_INFO * info, QO_EQCLASS * order)
+{
+  QO_PLANVEC *pv;
+  QO_PLAN *plan, *best_plan, *sort_plan;
+  double cost, best_cost;
+  int i;
+
+  best_plan = qo_find_best_plan_on_info (info, order, 1.0);
+  if (best_plan == NULL)
+    {
+      return NULL;
+    }
+
+  if (order != QO_UNORDERED && !info->is_distinct)
+    {
+      /* the cheapest unordered input sorted may beat the ordered plans, the way qo_find_best_plan_on_info () sorts
+       * the cheapest unordered plan when no ordered one is kept */
+      plan = qo_find_best_list_input_on_info (info, QO_UNORDERED);
+      if (plan != NULL && plan != qo_find_best_plan_on_planvec (&info->best_no_order, 1.0))
+	{
+	  sort_plan = qo_sort_new (plan, order, SORT_TEMP);
+	  if (sort_plan != NULL && qo_check_planvec (&info->planvec[QO_EQCLASS_IDX (order)], sort_plan) != PLAN_COMP_GT)
+	    {
+	      qo_plan_release (sort_plan);
+	    }
+	}
+    }
+
+  pv = (order == QO_UNORDERED) ? &info->best_no_order : &info->planvec[QO_EQCLASS_IDX (order)];
+  best_cost = qo_plan_list_input_cost (best_plan);
+  for (i = 0; i < pv->nplans; i++)
+    {
+      plan = pv->plan[i];
+      if (qo_plan_drives_groupby_skip_only (plan) != qo_plan_drives_groupby_skip_only (best_plan))
+	{
+	  continue;
+	}
+      cost = qo_plan_list_input_cost (plan);
+      if (cost < best_cost)
+	{
+	  best_plan = plan;
+	  best_cost = cost;
+	}
+    }
+
+  return best_plan;
 }
 
 /*
@@ -10661,13 +10934,13 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
       /* fall through */
     }
 
-  outer_plan = qo_find_best_plan_on_info (outer, order, 1.0);
+  outer_plan = qo_find_best_list_input_on_info (outer, order);
   if (outer_plan == NULL)
     {
       goto exit;
     }
 
-  inner_plan = qo_find_best_plan_on_info (inner, order, 1.0);
+  inner_plan = qo_find_best_list_input_on_info (inner, order);
   if (inner_plan == NULL)
     {
       goto exit;
@@ -10739,8 +11012,8 @@ qo_examine_merge_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_
 	      continue;
 	    }
 
-	  outer_plan = qo_find_best_plan_on_info (outer, other_order, 1.0);
-	  inner_plan = qo_find_best_plan_on_info (inner, other_order, 1.0);
+	  outer_plan = qo_find_best_list_input_on_info (outer, other_order);
+	  inner_plan = qo_find_best_list_input_on_info (inner, other_order);
 	  if (outer_plan == NULL || inner_plan == NULL)
 	    {
 	      continue;
@@ -10955,13 +11228,13 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
+  outer_plan = qo_find_best_list_input_on_info (outer, QO_UNORDERED);
   if (outer_plan == NULL)
     {
       goto exit;
     }
 
-  inner_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
+  inner_plan = qo_find_best_list_input_on_info (inner, QO_UNORDERED);
   if (inner_plan == NULL)
     {
       goto exit;
@@ -12115,7 +12388,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    {
 	      term = QO_ENV_TERM (planner->env, i);
 
-	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN)
+	      /* a path value is not fetched yet at this join; leave a term that needs one to the follow plan */
+	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN && bitset_subset (visited_nodes, &(QO_TERM_NODES (term))))
 		{
 		  bitset_add (&afj_terms, i);
 		  bitset_add (&info_terms, i);	/* add to info term */
@@ -14036,7 +14310,7 @@ qo_search_planner (QO_PLANNER * planner)
 	}
 
       /* check direction of the first order by column. */
-      if (tree->info.query.q.select.group_by != NULL && tree->info.query.q.select.group_by->flag.with_rollup == false)
+      if (tree->info.query.q.select.group_by != NULL)
 	{
 	  /* if we have group by and the hint, we allow the hint only if we have group by descending on first column.
 	   * Otherwise we clear it */
@@ -14538,7 +14812,12 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 
   for (i = planner->E; i < (signed) planner->T; ++i)
     {
-      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i]))))
+      /* a term that reads no node goes to the topmost plan, except the ON condition of an outer or anti join
+       * (QO_TC_DURING_JOIN): planner_visit_node () evaluates it at that join. On a plan above the join, the cross
+       * join of the partitions or a join over it, it would also filter the rows the join preserves, and a false
+       * condition would leave no row */
+      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i])))
+	  && QO_TERM_CLASS (&planner->term[i]) != QO_TC_DURING_JOIN)
 	{
 	  bitset_add (&sarged_terms, i);
 	}
@@ -18087,8 +18366,6 @@ qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_i
       /* is for group_by skip */
       if (group_by != NULL)
 	{
-	  assert (!group_by->flag.with_rollup);
-
 	  /* check for constant col's group node */
 	  pt_to_pos_descr_groupby (parser, &pos_descr, node, tree);
 	  if (pos_descr.pos_no > 0)

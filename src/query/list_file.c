@@ -6064,16 +6064,13 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
 /*
  * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
- *   equal: by the position's comparison, NULLs equal (total order), as mht_compare_dbvalues_are_equal compares them
- *   by their types without one
+ *   equal: by the position's comparison, NULLs equal (total order)
  */
 static bool
 qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1, const DB_VALUE * val2)
 {
-  if (compares == NULL)
-    {
-      return mht_compare_dbvalues_are_equal (val1, val2);
-    }
+  /* a key with values has its entry's comparisons (qfile_list_cache_key_of) */
+  assert (compares != NULL);
   return val1 == val2
     || eval_compare_values_resolved (thread_get_thread_entry_info (), &compares[i], NULL, val1, val2, 1, NULL) == DB_EQ;
 }
