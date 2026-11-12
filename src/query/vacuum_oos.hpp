@@ -19,9 +19,9 @@
 /*
  * vacuum_oos.hpp - Vacuum-side OOS (Out-of-row Overflow Storage) reclamation
  *
- *   Reclaims OOS records that became unreachable from the heap: the REMOVE path deletes the OOS
- *   referenced by a vacuumed record, and the forward-walk path deletes the OOS referenced only by
- *   UPDATE/DELETE_NEWHOME pre-images found in the undo log.
+ *   Vacuum reclaims OOS chains from two sources (ADR-0008): the REMOVE path records the chains of a
+ *   vacuumed record as a reclaim intent in its sysop, and the RVOOS_NOTIFY_VACUUM consumer reclaims the
+ *   chains a committed UPDATE dropped once no snapshot can read the old version.
  */
 
 #ifndef _VACUUM_OOS_HPP_
@@ -32,37 +32,16 @@
 
 #include <vector>
 
-/* Pages that one delete batch left with zero OOS records, each once. A plain typedef so
- * vacuum.c (GNU-indent formatted) can declare one without exposing template syntax. */
-typedef std::vector<VPID> VACUUM_OOS_EMPTIED_PAGES;
+/* Heaps whose OOS file lookup failed in one run of a log block; the rest of the run skips their notifications. */
+typedef std::vector<VFID> VACUUM_OOS_DEFERRED_HEAPS;
 
-/* Forward-walk OOS reclamation helpers. */
-
-/* Single-slot memo mapping the most-recently-resolved heap-VFID -> OOS-VFID, used only by the
- * forward-walk path. A bulk UPDATE emits a run of consecutive RVHF_UPDATE_NOTIFY_VACUUM records for
- * the same heap, so a one-entry memo elides the repeat file_descriptor_get + heap_oos_find_vfid page
- * fixes across that run. Declared on the stack in vacuum_process_log_block => per-worker-per-block,
- * so the lookup needs no synchronization. Do NOT replace with a static — vacuum runs across multiple
- * worker threads and a shared static would race. `valid` is false until the first successful lookup;
- * once set, oos_vfid may itself be VFID_NULL, meaning the heap legitimately has no OOS file.
- * Transient lookup failures are never memoized, so a later record retries cleanly. */
-typedef struct vacuum_oos_vfid_memo VACUUM_OOS_VFID_MEMO;
-struct vacuum_oos_vfid_memo
-{
-  bool valid = false;		/* false until the first successful lookup */
-  VFID heap_vfid;		/* key; meaningful only when valid */
-  VFID oos_vfid;		/* value; meaningful only when valid (VFID_NULL = "no OOS file") */
-};
-
-extern int vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
-    const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo);
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
     VFID *oos_vfid);
 extern void vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSLOTID slotid,
     INT16 record_type);
-extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
-    VACUUM_OOS_EMPTIED_PAGES *emptied_pages_out);
-extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-    VACUUM_OOS_EMPTIED_PAGES *emptied_pages);
+extern int vacuum_heap_oos_log_reclaim_intent (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
+    const OID *owner_oid);
+extern int vacuum_oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *undo_data, int undo_data_size,
+    VACUUM_OOS_DEFERRED_HEAPS *deferred_heaps = NULL);
 
 #endif /* _VACUUM_OOS_HPP_ */

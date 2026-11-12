@@ -309,7 +309,9 @@ TEST_F (OosWorkspaceTest, WorkspaceUpdateRollbackCommitAndDelete)
   sql ("CREATE TRIGGER refs_update BEFORE UPDATE ON t_refs EXECUTE PRINT 'workspace update'; COMMIT;\n");
   const auto output = sql ("UPDATE t_refs SET v=X'" + replacement + "';\nSELECT COUNT(*) FROM t_refs;\n"
 			   "SHOW HEAP OOS OF t_refs;\nROLLBACK;\nSHOW HEAP OOS OF t_refs;\n");
-  expect_chunks (output, {2, 2});
+  /* Inside the transaction the replaced chains wait for its commit (ADR-0008), so the old and new chains
+   * coexist; the rollback discards the reclaim intents and the new chains, leaving the original two. */
+  expect_chunks (output, {4, 2});
   check ("t_refs", "peer.id=3-id AND v=X'" + payload + "'", 2, 2);
   sql ("UPDATE t_refs SET v=X'" + replacement + "'; COMMIT;\n");
   check ("t_refs", "peer.id=3-id AND v=X'" + replacement + "'", 2, 2);

@@ -951,7 +951,7 @@ static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
 static int heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex);
+				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -24154,7 +24154,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -24625,7 +24625,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        */
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
+				&context->home_recdes, is_reusable, NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -24675,8 +24675,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL,
-				RVHF_DELETE);
+				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -25013,7 +25012,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable,
-				context->do_supplemental_log ? &context->supp_undo_lsa : NULL, RVHF_DELETE);
+				context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -25073,13 +25072,10 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
  *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
- *   rcvindex(in): recovery index for the delete log record. Normally RVHF_DELETE; pass
- *                 RVHF_DELETE_NEWHOME_NOTIFY_VACUUM for the MVCC remove_old_forward forward
- *                 REC_NEWHOME delete so vacuum's forward-walk reclaims the old OOS records.
  */
 static void
 heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex)
+			  bool mark_reusable, LOG_LSA * undo_lsa)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -25106,12 +25102,12 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
       bytes_reserved = (INT16) recdes_p->length;
       temp_recdes.data = (char *) &bytes_reserved;
 
-      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, &temp_recdes, NULL);
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, &temp_recdes, NULL);
     }
   else
     {
       /* log record descriptor */
-      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, recdes_p, NULL);
+      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
     }
 
   if (undo_lsa)
@@ -25425,16 +25421,17 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  /* For non-MVCC updates (!is_mvcc_op, as in SA_MODE, for an MVCC-disabled class, or for an in-place update),
-   * eagerly delete old OOS records referenced only by the old forward record (REC_NEWHOME). All 4 sub-paths
-   * below either overwrite or remove the forward slot, so OOS attached to the old forward becomes unreachable.
-   * In MVCC mode the old OOS is preserved for concurrent readers; vacuum's forward-walk
-   * reclaims it from the undo image of both MVCC sub-paths: update_old_forward is tagged
-   * RVHF_UPDATE_NOTIFY_VACUUM and remove_old_forward is tagged
-   * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (see the log calls below). */
-  if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+  /* All 4 sub-paths below either overwrite or remove the forward slot, so OOS chains referenced only by the old
+   * forward record (REC_NEWHOME) become unreachable from the new version. A non-MVCC update (!is_mvcc_op, as in
+   * SA_MODE, for an MVCC-disabled class, or for an in-place update) reclaims them when its unit commits. An MVCC
+   * update keeps them for concurrent readers of the old version and hands them to vacuum after its commit (A',
+   * ADR-0008). Either intent is a postpone, so a rollback of the update keeps them. */
+  if (forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
     {
-      rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p, "update relocation");
+      rc = (is_mvcc_op
+	    ? heap_oos_log_update_drop (thread_p, context, &forward_recdes, context->recdes_p)
+	    : heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p,
+					    "update relocation"));
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -25588,18 +25585,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 	}
 
-      /* log operation. In MVCC mode the old forward REC_NEWHOME survives only in this delete's undo
-       * record (its LSA becomes the new version's prev_version_lsa). Tag an OOS-bearing forward delete
-       * with RVHF_DELETE_NEWHOME_NOTIFY_VACUUM so vacuum's forward-walk reclaims the old OOS records
-       * from the undo image; otherwise (non-OOS, or !is_mvcc_op, handled by the eager-delete path above)
-       * use the plain RVHF_DELETE — no behavior change. */
-      LOG_RCVINDEX delete_rcvindex = RVHF_DELETE;
-      if (is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
-	{
-	  delete_rcvindex = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM;
-	}
+      /* log operation */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, &prev_version_lsa, delete_rcvindex);
+				&forward_recdes, true, &prev_version_lsa);
 
       /* undo lsa for SUPPLEMENT_UPDATE log
        * case : 1. relocation to home
@@ -25629,13 +25617,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
-      /* log operation. In MVCC mode use RVHF_UPDATE_NOTIFY_VACUUM so the vacuum forward-walk
-       * picks up the old forward recdes and reclaims any OOS records it referenced. The
-       * update_old_home log on the other sub-paths carries REC_RELOCATION (8-byte pointer, no
-       * OOS); this forward page log is the one that actually carries the old REC_NEWHOME with OOS. */
+      /* log operation */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, context->recdes_p,
-				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
+				&forward_recdes, context->recdes_p, RVHF_UPDATE);
 
       /* undo, redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation (forward recdes fits in existing page) */
       if (context->do_supplemental_log)
@@ -25914,13 +25898,16 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	}
     }
 
-  /* For non-MVCC updates (!is_mvcc_op, as in SA_MODE, for an MVCC-disabled class, or for an in-place update),
-   * eagerly delete old OOS records that were replaced. In MVCC mode, old OOS is preserved for concurrent readers
-   * and cleaned by vacuum via a forward walk of the log block (vacuum_process_log_block). */
-  if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+  /* OOS chains the old record referenced and the new one does not: a non-MVCC update (!is_mvcc_op, as in
+   * SA_MODE, for an MVCC-disabled class, or for an in-place update) reclaims them when its unit commits; an MVCC
+   * update keeps them for concurrent readers of the old version and hands them to vacuum after its commit (A',
+   * ADR-0008). Either intent is a postpone, so a rollback of the update keeps them. */
+  if (context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
     {
-      error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,
-						 "update home");
+      error_code = (is_mvcc_op
+		    ? heap_oos_log_update_drop (thread_p, context, &context->home_recdes, context->recdes_p)
+		    : heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,
+						    "update home"));
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

@@ -277,7 +277,7 @@ log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_p
 	{
 	  /* nothing to do during recovery */
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM || rcvindex == RVOOS_NOTIFY_VACUUM)
 	{
 	  /* nothing to do */
 	}

@@ -80,6 +80,12 @@ class ServerEnv : public ::testing::Environment
     void StopServer()
     {
       printf ("##### Stopping Server For OOS Unit Testing #####\n");
+      /* The tests insert chains and reclaim them in one transaction. A reclaim is final (ADR-0008): it
+       * presumes the chain's insert is final too, so end the transaction by committing it. The abort
+       * db_shutdown would otherwise run would undo inserts whose chunks were already reclaimed. Remove the
+       * test-owned OOS files first, so the commit leaves no orphan file for the next binary. */
+      oos_test_remove_created_files (thread_get_thread_entry_info ());
+      (void) db_commit_transaction ();
       auto err = db_shutdown();
       fflush (stdout);
       assert (err == NO_ERROR);

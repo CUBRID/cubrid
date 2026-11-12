@@ -19,8 +19,10 @@
 /*
  * test_oos_eager_diagnostics.cpp - eager OOS cleanup of non-MVCC heap DML (CBRD-26950)
  *
- * SA_MODE has no vacuum: heap_delete_logical and heap_update_logical reclaim the OOS value chains of the
- * record they replace synchronously, through heap_oos_delete_unreferenced. Every heap operation is a
+ * SA_MODE has no vacuum: heap_delete_logical and heap_update_logical record the OOS value chains of the
+ * record they replace as a reclaim intent, through heap_oos_delete_unreferenced, and the transaction's
+ * commit reclaims them (ADR-0008); the diagnostics and errors below therefore arrive at the commit. Every
+ * heap operation is a
  * non-MVCC operation in SA_MODE, so real DML on a real heap reaches the eager entry points inside
  * heap_file.c. These tests observe DML completion, the error stack, the skipped-cleanup diagnostic (its
  * count, the outcome it names and its arrival in the server error log) and the survival of whatever
@@ -411,18 +413,29 @@ class OosEagerDiagnostics : public ::testing::Test
       return true;
     }
 
-    /* Reclaims the chain ref names and its page, as vacuum's fast path would have done before a retry. The
-     * chain must have had its page to itself. */
+    int records_on_page (const VPID &vpid)
+    {
+      VPID probe = vpid;
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &probe, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == NULL)
+	{
+	  er_clear ();
+	  return -1;
+	}
+      const int n_records = spage_number_of_records (page_ptr);
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return n_records;
+    }
+
+    /* Reclaims the chain ref names and deallocates its page, so ref names a freed page. The chain must have had
+     * its page to itself. */
     void reclaim_chain_and_its_page (const oos_chain_ref &ref)
     {
       const VPID page = { ref.head_oid.pageid, ref.head_oid.volid };
-      std::vector<VPID> emptied;
-      ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref, &emptied), NO_ERROR);
-      ASSERT_EQ (emptied.size (), 1U) << "the scenario requires the chain to have had its page to itself";
-      ASSERT_TRUE (VPID_EQ (&emptied[0], &page));
+      ASSERT_EQ (oos_delete (thread_p, oos_vfid, ref), NO_ERROR);
+      ASSERT_EQ (records_on_page (page), 0) << "the scenario requires the chain to have had its page to itself";
       commit ();
-      ASSERT_EQ (oos_reclaim_empty_pages (thread_p, oos_vfid, emptied), NO_ERROR);
-      ASSERT_TRUE (page_is_deallocated (page));
+      deallocate_page (page);
     }
 
     /* Reallocates the reclaimed page inside the same OOS file as sentinel-filled file-table metadata. */
@@ -443,7 +456,7 @@ class OosEagerDiagnostics : public ::testing::Test
 	  << vpid.volid << "|" << vpid.pageid;
     }
 
-    void release_metadata_page (const VPID &vpid)
+    void deallocate_page (const VPID &vpid)
     {
       VPID page = vpid;
       log_sysop_start (thread_p);
@@ -498,6 +511,19 @@ class OosEagerDiagnostics : public ::testing::Test
     }
 };
 
+namespace
+{
+  int g_fail_stops = 0;
+  int g_fail_stop_error = NO_ERROR;
+
+  void
+  record_fail_stop (int error)
+  {
+    g_fail_stops++;
+    g_fail_stop_error = error;
+  }
+}
+
 // ===========================================================================
 // A stale reference: the DML completes, the skip is diagnosed, the occupant survives
 // ===========================================================================
@@ -520,6 +546,8 @@ TEST_F (OosEagerDiagnostics, DeleteCompletesAndDiagnosesAStampMismatch)
   ASSERT_EQ (delete_row (row), NO_ERROR) << "a skipped cleanup must not fail the DELETE";
   EXPECT_EQ (er_errid (), NO_ERROR) << "successful DML leaves no stray error";
   EXPECT_FALSE (row_exists (row)) << "the DELETE must have completed";
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
 
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "one notification per operation";
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
@@ -560,6 +588,8 @@ TEST_F (OosEagerDiagnostics, UpdateCompletesAndDiagnosesAStampMismatch)
   ASSERT_EQ (update_row (row, new_rec), NO_ERROR) << "a skipped cleanup must not fail the UPDATE";
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_TRUE (row_exists (row));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1);
@@ -594,6 +624,8 @@ TEST_F (OosEagerDiagnostics, DeleteDiagnosesAHeadSlotAlreadyEmpty)
   ASSERT_EQ (delete_row (row), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_SLOT_EMPTY);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
@@ -616,6 +648,8 @@ TEST_F (OosEagerDiagnostics, DeleteDiagnosesADeallocatedAndAReusedHeadPage)
   ASSERT_EQ (delete_row (row), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_PAGE_GONE);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
@@ -639,12 +673,14 @@ TEST_F (OosEagerDiagnostics, DeleteDiagnosesADeallocatedAndAReusedHeadPage)
   ASSERT_EQ (delete_row (row2), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row2));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_PAGE_GONE);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   EXPECT_TRUE (metadata_page_is_intact (page)) << "the skipped cleanup modified the metadata page";
   commit ();
-  release_metadata_page (page);
+  deallocate_page (page);
 }
 
 // ===========================================================================
@@ -665,6 +701,8 @@ TEST_F (OosEagerDiagnostics, LiveReferenceIsReclaimedWithoutADiagnostic)
   ASSERT_EQ (delete_row (row), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
+  EXPECT_TRUE (chunk_present (ref.head_oid)) << "the reclaim waits for the commit";
+  commit ();
   EXPECT_FALSE (chunk_present (ref.head_oid)) << "a live reference must reclaim its chain";
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0);
   EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
@@ -699,6 +737,8 @@ TEST_F (OosEagerDiagnostics, UpdateKeepsAChainTheNewImageStillReferencesAndDiagn
   er_clear ();
   ASSERT_EQ (update_row (row, new_rec), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
 
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "the dropped chain's skip is reported";
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 1) << "the kept chain is not counted as skipped";
@@ -751,6 +791,8 @@ TEST_F (OosEagerDiagnostics, RelocatedUpdateAndDeleteDiagnoseTheForwardRecordsSt
   er_clear ();
   ASSERT_EQ (update_row (row, new_rec), NO_ERROR) << "a skipped cleanup must not fail the relocated UPDATE";
   EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
@@ -769,6 +811,8 @@ TEST_F (OosEagerDiagnostics, RelocatedUpdateAndDeleteDiagnoseTheForwardRecordsSt
   ASSERT_EQ (delete_row (row), NO_ERROR) << "a skipped cleanup must not fail the relocated DELETE";
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1);
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_outcome (), (int) OOS_DELETE_SKIPPED_STAMP_MISMATCH);
   EXPECT_TRUE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
@@ -810,6 +854,8 @@ TEST_F (OosEagerDiagnostics, ThreeStaleChainsInOneRecordAreOneNotification)
   ASSERT_EQ (delete_row (row), NO_ERROR);
   EXPECT_EQ (er_errid (), NO_ERROR);
   EXPECT_FALSE (row_exists (row));
+  EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0) << "the reclaim waits for the commit";
+  commit ();
 
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 1) << "three skipped chains, one notification";
   EXPECT_EQ (heap_oos_test_last_skipped_cleanup_count (), 3) << "the notification must carry the count";
@@ -831,7 +877,7 @@ TEST_F (OosEagerDiagnostics, ThreeStaleChainsInOneRecordAreOneNotification)
 // Malformed heads and operational failures stay errors
 // ===========================================================================
 
-TEST_F (OosEagerDiagnostics, MatchingNonHeadReferenceFailsTheDelete)
+TEST_F (OosEagerDiagnostics, MatchingNonHeadReferenceFailStopsTheCommittedReclaim)
 {
   /* The row's stub names a continuation chunk with the stamp that chunk actually carries: identity matches,
    * but the target is not a chain head. This is a malformed reference, not a stale one. */
@@ -847,15 +893,23 @@ TEST_F (OosEagerDiagnostics, MatchingNonHeadReferenceFailsTheDelete)
 
   const long log_offset = error_log_size ();
   heap_oos_test_reset_skipped_cleanup_diagnostics ();
+  g_fail_stops = 0;
+  g_fail_stop_error = NO_ERROR;
+  oos_test_set_reclaim_fail_stop_hook (record_fail_stop);
   er_clear ();
-  EXPECT_EQ (delete_row (row), ER_HEAP_OOS_CORRUPTED_RECORD) << "a malformed reference is an error, not a skip";
-  EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD);
+  /* The DML only records the intent; the reclaim runs when the transaction commits (ADR-0008). A malformed
+   * reference makes that committed reclaim fail, and a committed reclaim that fails stops the server
+   * instead of reporting the reclaim as done (fail-stop). The hook stands in for the stop. */
+  EXPECT_EQ (delete_row (row), NO_ERROR);
+  commit ();
+  oos_test_set_reclaim_fail_stop_hook (NULL);
+  EXPECT_EQ (g_fail_stops, 1) << "a malformed reference must stop the committed reclaim, not be skipped";
+  EXPECT_EQ (g_fail_stop_error, ER_HEAP_OOS_CORRUPTED_RECORD);
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0);
   EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
-  ASSERT_EQ (xtran_server_abort (thread_p), TRAN_UNACTIVE_ABORTED);
   er_clear ();
 
-  /* Nothing of the live chain was touched. */
+  /* Nothing of the live chain was touched: the reference was rejected before any chunk was deleted. */
   EXPECT_TRUE (chunk_present (head.head_oid));
   EXPECT_TRUE (chunk_present (non_head.head_oid));
   std::string out;

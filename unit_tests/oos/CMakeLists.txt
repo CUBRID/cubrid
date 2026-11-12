@@ -30,6 +30,7 @@ FetchContent_MakeAvailable(googletest)
 set(SA_MODE_TESTS
   test_oos
   test_oos_delete
+  test_oos_reclaim
   test_oos_identity_stamp
   test_oos_eager_diagnostics
   test_oos_no_logging
@@ -68,6 +69,7 @@ set(SERVER_MODE_TESTS
   test_oos_mock_vacuum_server
   test_oos_vacuum_server
   test_oos_real_vacuum_server
+  test_oos_server_crash_recovery
 )
 
 foreach(test_name ${SERVER_MODE_TESTS})
@@ -163,6 +165,30 @@ set_tests_properties(oos_cleanup_recovery_db
   PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
+# test_oos_server_crash_recovery stops a SERVER_MODE process in the middle of a commit and restarts the
+# database, so it owns a database of its own.
+add_test(NAME oos_setup_server_crash_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosservercrashdb
+)
+set_tests_properties(oos_setup_server_crash_db
+  PROPERTIES FIXTURES_SETUP OOS_SERVER_CRASH_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+)
+
+add_test(NAME oos_cleanup_server_crash_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosservercrashdb
+)
+set_tests_properties(oos_cleanup_server_crash_db
+  PROPERTIES FIXTURES_CLEANUP OOS_SERVER_CRASH_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
 # The storage format guard test patches the volume header of its own database and leaves it refused, so that
 # this cleanup proves deletedb still removes a database that boot refuses.
 add_test(NAME oos_setup_format_guard_db
@@ -245,6 +271,8 @@ set_tests_properties(test_oos_concurrent_insert_driver PROPERTIES TIMEOUT 30)
 # =============================================================================
 add_test(NAME test_oos COMMAND test_oos)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
+# the OOS reclaimer and reclaim intents (ADR-0008, CBRD-27781): redo-only, tail first, link stamps, fail-stop.
+add_test(NAME test_oos_reclaim COMMAND test_oos_reclaim)
 # identity stamp contract: insert issues it, reads verify it, deletes require it (CBRD-26950).
 add_test(NAME test_oos_identity_stamp COMMAND test_oos_identity_stamp)
 # eager (non-MVCC) DML completes and diagnoses skipped OOS reclamation (CBRD-26950); the SQL-level
@@ -268,7 +296,7 @@ add_test(NAME test_oos_reference_errors COMMAND test_oos_reference_errors)
 set_tests_properties(test_oos_reference_errors PROPERTIES TIMEOUT 30)
 # pure-logic test for the bounded writer used by oos_read; no DB fixture.
 add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
-# pure-logic guard that the OOS forward-delete rcvindex is TDE-gated (CBRD-26668); no DB fixture.
+# pure-logic guard over the TDE user-data gate of the heap and OOS reclaim rcvindexes (CBRD-26668); no DB fixture.
 add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
 
 set_tests_properties(
@@ -278,7 +306,7 @@ set_tests_properties(
 # Error-path cases pay for an error-stack dump each in debug builds: test_oos_identity_stamp runs 22 to 39 s
 # alone and test_oos has exceeded 30 s under full-suite load. test_oos_eager_diagnostics runs real heap DML
 # with page reclaim and relocation and measured 11 to 13 s; it shares the headroom for the same reason.
-set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics
+set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics test_oos_reclaim
   PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 60
 )
 
@@ -324,6 +352,13 @@ set_tests_properties(
   test_oos_real_vacuum_latch_timeout test_oos_real_vacuum_latch_timeout_shutdown
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 600
     ENVIRONMENT "${OOS_HEADER_HELD_ENV}"
+)
+
+# Two children boot the database in turn; the second waits up to 180 seconds for vacuum.
+add_test(NAME test_oos_server_crash_recovery COMMAND test_oos_server_crash_recovery)
+set_tests_properties(
+  test_oos_server_crash_recovery
+  PROPERTIES FIXTURES_REQUIRED OOS_SERVER_CRASH_DB RUN_SERIAL TRUE TIMEOUT 300
 )
 
 # Note: add_test vs. gtest_discover_tests
