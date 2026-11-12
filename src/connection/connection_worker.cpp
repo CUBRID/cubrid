@@ -1416,10 +1416,10 @@ retry:
       {
 	eventfds[0] = false;
 
+	/* an eventfd or timerfd failure costs at most spurious wake-ups; stopping the worker would strand its connections */
 	if (!this->eventfd_clear (m_eventfd))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
-	    return false;
+	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the eventfd: %s\n", m_index, strerror (errno));
 	  }
 
 	/* RMW closes the StoreLoad window */
@@ -1457,13 +1457,16 @@ retry:
 
 	if (!this->eventfd_clear (m_timerfd))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
-	    return false;
+	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the timerfd: %s\n", m_index, strerror (errno));
 	  }
 
 	if (!m_has_retry)
 	  {
-	    return this->eventfd_removetimer (timer_type::QUEUE);
+	    if (!this->eventfd_removetimer (timer_type::QUEUE))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to stop the queue timer: %s\n", m_index,
+			       strerror (errno));
+	      }
 	  }
       }
 
@@ -1566,14 +1569,15 @@ retry:
 
     if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
+	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: refused new connection fd %d, epoll registration failed: %s\n",
+		       m_index, ctx->m_conn->fd, strerror (errno));
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
 	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
 	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
-	return false;
+	return true;
       }
     ctx->m_epoll_registered = true;
     if (!m_context.insert (ctx).second)
@@ -1586,9 +1590,8 @@ retry:
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
 	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
-	return false;
+	assert_release (false);
+	return true;
       }
 
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
@@ -1701,6 +1704,8 @@ respond:
 
   bool worker::handle_message_queue_takeover_client (message &item)
   {
+    std::shared_ptr<message_blocker> blocker;
+    std::shared_ptr<message_blocker> room;
     context *ctx;
     int flags;
 
@@ -1719,14 +1724,25 @@ respond:
 
     if (!m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
       {
-	ctx->m_conn->worker = nullptr;
-	ctx->m_conn->context = nullptr;
-	ctx->m_epoll_registered = false;
-	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: closing transferred connection fd %d, epoll registration "
+		       "failed: %s\n", m_index, ctx->m_conn->fd, strerror (errno));
 
-	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
-	return false;
+	/* unwatched, its queued sends never drain: shut the socket so no sender waits, and close it as a dead peer */
+	shutdown (ctx->m_conn->fd, SHUT_RDWR);
+	ctx->m_conn->status = CONN_CLOSING;
+	ctx->m_ignore = ignore_level::IGNORE_ALL;
+	ctx->m_send.m_transmitter.clear ();
+	blocker = std::move (ctx->m_send.m_blocker);
+	room = std::move (ctx->m_send.m_room);
+	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+	this->wakeup_blocked_worker (blocker);
+	this->wakeup_blocked_worker (room);
+
+	m_context.insert (ctx);
+	m_stats.add (statistics::worker::CLIENT_NUM, 1);
+	/* requested, not closed here: this handler can run inside another connection's close */
+	css_request_shutdown_conn (ctx->m_conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	return true;
       }
     ctx->m_epoll_registered = true;
     if (!m_context.insert (ctx).second)
@@ -1739,9 +1755,8 @@ respond:
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
 	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
-	return false;
+	assert_release (false);
+	return true;
       }
 
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
@@ -2782,7 +2797,11 @@ respond:
   void worker::attach ()
   {
     this->initialize ();
-    this->run ();
+    if (!this->run ())
+      {
+	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: stopped on an error, closing its %zu connections\n", m_index,
+		       m_context.size ());
+      }
     this->finalize ();
   }
 }
