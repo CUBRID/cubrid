@@ -1572,7 +1572,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
   new_recdesc.set_external_buffer (copyarea);
 
-  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, recdesc, &new_recdesc);
+  /* the row is logged redo-only, so it must not write anything a rollback undoes, such as a new OOS chain */
+  scan = heap_attrinfo_transform_to_disk_keep_form (thread_p, attr_info, recdesc, &new_recdesc);
   if (scan != S_SUCCESS)
     {
       assert (false);

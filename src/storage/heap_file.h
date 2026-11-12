@@ -542,6 +542,8 @@ extern int heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB
 					TP_VALUE_CONVERTER conv);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, record_descriptor * new_recdes);
+extern SCAN_CODE heap_attrinfo_transform_to_disk_keep_form (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							    RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, record_descriptor * new_recdes);
 
