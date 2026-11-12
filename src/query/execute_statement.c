@@ -23568,7 +23568,8 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       if (reject_limit <= 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "REJECT_LIMIT must be a positive BIGINT");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		  "REJECT_LIMIT must be a positive BIGINT");
 	  error = ER_COPY_INVALID_OPTION;
 	  goto end;
 	}
