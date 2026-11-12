@@ -193,9 +193,19 @@ enum
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
+/* The band of qo_plan_cmp_limit () (two plans of a LIMIT query or of a query that qo_plan_cmp_by_rules () leaves to
+ * the rules): inside it rules, not costs, pick the plan. */
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
 #define RBO_CHECK_LIMIT_RATIO 10
+
+/* The share of its cost that a plan of one scan gains in qo_plan_pref_cost () for a covering index scan, and loses for
+ * each sort it does not skip: the cost model is not exact enough to tell such a plan from one that costs less by less. */
+#define QO_PLAN_PREFER_SHARE 0.01
+/* qo_plan_cmp () ties two plans whose costs fall into one cell of this ratio: finer than any cost difference the model
+ * means, coarser than the rounding of its arithmetic. */
+#define QO_COST_CELL_RATIO (1.0 + 1e-6)
+#define QO_TIE_MAX_NODES 64	/* scans of a plan whose aliases and indexes qo_plan_tie_cmp () compares */
 
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
 #define MEMOIZE_UNIQUE_KEY_RATIO 0.95	/* without a unique index, NDV >= 95% of the rows counts as near-unique */
@@ -402,6 +412,8 @@ static QO_PARALLEL_MARK qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN *
 static double qo_parallel_cost_divisor (QO_PLAN * join);
 static double qo_join_input_factor (QO_PLAN * input, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
+static QO_PLAN_COMPARE_RESULT qo_plan_cmp_limit (QO_PLAN *, QO_PLAN *);
+static bool qo_plan_cmp_by_rules (QO_PLANNER *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_parallel_drive (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
 static QO_PLAN *qo_find_best_parallel_driving_plan_on_info (QO_INFO *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_list_input (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
@@ -8238,13 +8250,430 @@ qo_analytic_sort_cost (QO_PLAN * plan)
 }
 
 /*
- * qo_plan_cmp () -
- *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
+ * qo_plan_cmp_cost () - the cost qo_plan_cmp () compares a plan by
+ *   return: the total cost, less the analytic sort that a QO_SCANMETHOD_INDEX_ANALYTIC_SCAN plan saves
+ *   plan(in):
+ *
+ * Note: CBRD-27469: every other plan of the info leaves that sort to the analytic evaluation, and the sort costs them
+ *   all the same (qo_analytic_sort_cost () counts the rows of the info). Taking it off the analytic scan instead of
+ *   adding it to the others ranks the plans alike, and the cost of a plan does not depend on the plan it is compared
+ *   with.
+ */
+static double
+qo_plan_cmp_cost (QO_PLAN * plan)
+{
+  QO_PLAN *scan = qo_plan_top_scan (plan);
+  double cost;
+
+  cost = plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost;
+  if (scan != NULL && qo_is_iscan_from_analytic (scan))
+    {
+      cost -= qo_analytic_sort_cost (scan);
+    }
+
+  return cost;
+}
+
+/*
+ * qo_plan_pref_cost () - the cost qo_plan_cmp () ranks a plan by
+ *   return: qo_plan_cmp_cost (); for a plan of one scan, with the shares of QO_PLAN_PREFER_SHARE its covering index
+ *	     scan gains and its sorts lose
+ *   plan(in):
+ *
+ * Note: A plan of one scan that covers the query or skips the ORDER BY or GROUP BY sort thus wins over one that costs
+ *   less by less than about that share. A share of the cost, not an amount, keeps the choice when all the costs grow
+ *   alike (more rows, other cost parameters). It is taken of the magnitude, so that a cost below zero (an analytic
+ *   index scan less the sort it saves) gains as well, and QO_INFINITY (qo_worst_cost ()) stays infinite. A join is
+ *   ranked by its cost alone: shares for its scans turn many join orders whose costs differ by less than them (JOB).
+ */
+static double
+qo_plan_pref_cost (QO_PLAN * plan)
+{
+  double cost = qo_plan_cmp_cost (plan);
+  double weight = 1.0;
+
+  while (plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.subplan != NULL)
+    {
+      weight *= 1.0 + QO_PLAN_PREFER_SHARE;
+      plan = plan->plan_un.sort.subplan;
+    }
+
+  if (plan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return cost;
+    }
+
+  if (plan->plan_un.scan.index != NULL && qo_is_index_covering_scan (plan))
+    {
+      weight *= 1.0 - QO_PLAN_PREFER_SHARE;
+    }
+
+  /* weight is above 0 and below 2 */
+  return (cost < 0.0) ? cost * (2.0 - weight) : cost * weight;
+}
+
+/*
+ * qo_cost_cell () - the cell of QO_COST_CELL_RATIO that a cost falls into
+ *   return: the cell number, which grows with the cost
+ *   cost(in):
+ *
+ * Note: Two costs of one cell tie. A cell is a value of one cost, unlike a window around the other (QO_COST_EQ ()),
+ *   so the ties are transitive: three costs a chain of windows apart do not tie a with b and b with c but not a with c.
+ */
+static double
+qo_cost_cell (double cost)
+{
+  if (!(cost > 1.0))
+    {
+      /* up to 1 the cells keep the width they have at 1, as QO_COST_EQ () takes MAX (1.0, ...) */
+      return floor ((cost - 1.0) / (QO_COST_CELL_RATIO - 1.0));
+    }
+
+  /* QO_INFINITY falls into the infinite cell */
+  return floor (log (cost) / log (QO_COST_CELL_RATIO));
+}
+
+/* the values of a plan that qo_plan_tie_cmp () compares, gathered over all its scans */
+typedef struct qo_tie_keys QO_TIE_KEYS;
+struct qo_tie_keys
+{
+  int sorts;			/* sort plans: ORDER BY, GROUP BY or merge input sorts it does not skip */
+  int covering;			/* covering index scans */
+  int one_row;			/* index scans that read one row at most (qo_iscan_reads_one_row ()) */
+  int range_terms;		/* key range terms of the index scans */
+  int filter_terms;		/* key filter terms of the index scans */
+  double index_pages;		/* pages of the indexes scanned */
+  int n;			/* scans, outer first */
+  QO_NODE *nodes[QO_TIE_MAX_NODES];
+  const char *index_names[QO_TIE_MAX_NODES];	/* the empty name for a scan without an index */
+};
+
+/*
+ * qo_iscan_reads_one_row () - whether an index scan reads one row at most
+ *   return:
+ *   plan(in): a scan plan
+ *
+ * Note: True for a scan by a primary key or unique index whose columns all have equality terms
+ *   (qo_is_all_unique_index_columns_are_equi_terms ()), and for a scan by another index whose equality key range
+ *   terms cover the columns of such an index and at least one column more, as a = 1 and e = 1 on an index on (a, e)
+ *   do a primary key on (a). That scan reads one row at most too, and can reject it in the index: it counts alike
+ *   in qo_plan_tie_cmp () and its more key range terms decide, as the rules took the index whose range terms contain
+ *   the other's (CBRD-25060). A scan whose equality range terms are just the unique key's reads the same row through
+ *   a larger index, so it does not count and the scan by the unique index stays ahead of it.
+ */
+static bool
+qo_iscan_reads_one_row (QO_PLAN * plan)
+{
+  QO_NODE *node;
+  QO_NODE_INDEX *node_indexp;
+  QO_INDEX_ENTRY *scan_entryp, *index_entryp;
+  int i, j, n_equal;
+  bool covered;
+
+  if (qo_is_all_unique_index_columns_are_equi_terms (plan))
+    {
+      return true;
+    }
+
+  if (!qo_is_iscan (plan) || plan->plan_un.scan.index == NULL)
+    {
+      return false;
+    }
+
+  /* the columns of the index scanned that its key range terms equate */
+  scan_entryp = plan->plan_un.scan.index->head;
+  if (scan_entryp == NULL || scan_entryp->seg_equal_terms == NULL)
+    {
+      return false;
+    }
+  n_equal = 0;
+  for (j = 0; j < scan_entryp->nsegs; j++)
+    {
+      if (scan_entryp->seg_idxs[j] != -1
+	  && bitset_intersects (&plan->plan_un.scan.terms, &scan_entryp->seg_equal_terms[j]))
+	{
+	  n_equal++;
+	}
+    }
+
+  node = plan->plan_un.scan.node;
+  node_indexp = QO_NODE_INDEXES (node);
+  if (node_indexp == NULL || qo_node_is_multi_class (node))
+    {
+      /* the unique index of one class of a hierarchy says nothing about the other classes */
+      return false;
+    }
+
+  for (i = 0; i < QO_NI_N (node_indexp); i++)
+    {
+      index_entryp = QO_NI_ENTRY (node_indexp, i)->head;
+      if (index_entryp == NULL || index_entryp->constraints == NULL
+	  || !SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type) || index_entryp->nsegs <= 0
+	  || index_entryp->nsegs != index_entryp->col_num || index_entryp->seg_equal_terms == NULL
+	  || index_entryp->constraints->filter_predicate != NULL || index_entryp->constraints->func_index_info != NULL)
+	{
+	  /* a filtered or function unique index does not make the columns unique over the table */
+	  continue;
+	}
+
+      covered = true;
+      for (j = 0; j < index_entryp->nsegs && covered; j++)
+	{
+	  /* an equality term on the column among the key range terms of the scan */
+	  covered = (index_entryp->seg_idxs[j] != -1
+		     && bitset_intersects (&plan->plan_un.scan.terms, &index_entryp->seg_equal_terms[j]));
+	}
+
+      if (covered && n_equal > index_entryp->nsegs)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_plan_tie_keys () - gather over the scans of a plan, outer first, the values that qo_plan_tie_cmp () compares
+ *   return: nothing
+ *   plan(in):
+ *   keys(in/out): zeroed by the caller
+ */
+static void
+qo_plan_tie_keys (QO_PLAN * plan, QO_TIE_KEYS * keys)
+{
+  QO_NODE_INDEX_ENTRY *index;
+  const char *name;
+
+  if (plan == NULL)
+    {
+      return;
+    }
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      index = plan->plan_un.scan.index;
+      if (index != NULL)
+	{
+	  keys->covering += qo_is_index_covering_scan (plan) ? 1 : 0;
+	  keys->one_row += qo_iscan_reads_one_row (plan) ? 1 : 0;
+	  keys->range_terms += bitset_cardinality (&plan->plan_un.scan.terms);
+	  keys->filter_terms += bitset_cardinality (&plan->plan_un.scan.kf_terms);
+	  keys->index_pages += index->cum_stats.pages;
+	}
+      if (keys->n < QO_TIE_MAX_NODES)
+	{
+	  name = (index != NULL && index->head->constraints != NULL) ? index->head->constraints->name : NULL;
+	  keys->nodes[keys->n] = plan->plan_un.scan.node;
+	  keys->index_names[keys->n] = (name != NULL) ? name : "";
+	  keys->n++;
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      keys->sorts++;
+      qo_plan_tie_keys (plan->plan_un.sort.subplan, keys);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      qo_plan_tie_keys (plan->plan_un.join.outer, keys);
+      qo_plan_tie_keys (plan->plan_un.join.inner, keys);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      qo_plan_tie_keys (plan->plan_un.follow.head, keys);
+      if (keys->n < QO_TIE_MAX_NODES)
+	{
+	  keys->nodes[keys->n] = QO_TERM_TAIL (plan->plan_un.follow.path);
+	  keys->index_names[keys->n] = "";
+	  keys->n++;
+	}
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * qo_plan_tie_cmp () - compare two plans whose costs tie
+ *   return: PLAN_COMP_LT if a is preferred, PLAN_COMP_GT if b is, PLAN_COMP_EQ if neither
  *   a(in):
  *   b(in):
+ *
+ * Note: Each step compares a value of one plan with the same value of the other, never a relation between the two,
+ *   so the steps order all the plans of an info alike, whatever order they are generated in. The values are those
+ *   of all the scans of a plan (qo_plan_tie_keys ()):
+ *     1. fewer sorts: a plan that skips the ORDER BY or GROUP BY sort
+ *     2. more covering index scans
+ *     3. more index scans that read one row at most: by a unique index whose columns all have equality terms, or
+ *        by an index whose equality key range terms cover the columns of one and more (qo_iscan_reads_one_row ());
+ *        an empty table costs every index scan alike
+ *     4. more key range terms, then more key filter terms: the indexes read fewer keys
+ *     5. fewer index pages (a sequential scan has none): of two joins of one cost, the one whose inner index is smaller
+ *     6. the scans in join order by alias, then their indexes by name: the order of the FROM list or of the index
+ *        creation does not matter
+ *     7. the plan type, then the scan or join method of the plan under its sorts
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_plan_tie_cmp (QO_PLAN * a, QO_PLAN * b)
+{
+  QO_TIE_KEYS a_keys, b_keys;
+  QO_PLAN *a_top = a, *b_top = b;
+  int a_val, b_val, i, c;
+
+#define QO_TIE_PREFER_LESS(x, y) \
+  do { if ((x) != (y)) return ((x) < (y)) ? PLAN_COMP_LT : PLAN_COMP_GT; } while (0)
+
+  memset (&a_keys, 0, sizeof (QO_TIE_KEYS));
+  memset (&b_keys, 0, sizeof (QO_TIE_KEYS));
+  qo_plan_tie_keys (a, &a_keys);
+  qo_plan_tie_keys (b, &b_keys);
+
+  /* 1. sorts */
+  QO_TIE_PREFER_LESS (a_keys.sorts, b_keys.sorts);
+
+  /* 2-5. covering scans, scans of one row, index terms and index pages */
+  QO_TIE_PREFER_LESS (b_keys.covering, a_keys.covering);
+  QO_TIE_PREFER_LESS (b_keys.one_row, a_keys.one_row);
+  QO_TIE_PREFER_LESS (b_keys.range_terms, a_keys.range_terms);
+  QO_TIE_PREFER_LESS (b_keys.filter_terms, a_keys.filter_terms);
+  QO_TIE_PREFER_LESS (a_keys.index_pages, b_keys.index_pages);
+
+  /* 6. the aliases in join order, then the index names */
+  for (i = 0; i < a_keys.n && i < b_keys.n; i++)
+    {
+      c = strcmp (QO_NODE_NAME (a_keys.nodes[i]) != NULL ? QO_NODE_NAME (a_keys.nodes[i]) : "",
+		  QO_NODE_NAME (b_keys.nodes[i]) != NULL ? QO_NODE_NAME (b_keys.nodes[i]) : "");
+      QO_TIE_PREFER_LESS (c, 0);
+    }
+  QO_TIE_PREFER_LESS (a_keys.n, b_keys.n);
+  for (i = 0; i < a_keys.n; i++)
+    {
+      c = strcmp (a_keys.index_names[i], b_keys.index_names[i]);
+      QO_TIE_PREFER_LESS (c, 0);
+    }
+
+  /* 7. the plan type and method under the sorts (-1 for a plan that has none) */
+  while (a_top->plan_type == QO_PLANTYPE_SORT && a_top->plan_un.sort.subplan != NULL)
+    {
+      a_top = a_top->plan_un.sort.subplan;
+    }
+  while (b_top->plan_type == QO_PLANTYPE_SORT && b_top->plan_un.sort.subplan != NULL)
+    {
+      b_top = b_top->plan_un.sort.subplan;
+    }
+  QO_TIE_PREFER_LESS ((int) a_top->plan_type, (int) b_top->plan_type);
+  a_val = (a_top->plan_type == QO_PLANTYPE_SCAN) ? (int) a_top->plan_un.scan.scan_method : -1;
+  b_val = (b_top->plan_type == QO_PLANTYPE_SCAN) ? (int) b_top->plan_un.scan.scan_method : -1;
+  QO_TIE_PREFER_LESS (a_val, b_val);
+  a_val = (a_top->plan_type == QO_PLANTYPE_JOIN) ? (int) a_top->plan_un.join.join_method : -1;
+  b_val = (b_top->plan_type == QO_PLANTYPE_JOIN) ? (int) b_top->plan_un.join.join_method : -1;
+  QO_TIE_PREFER_LESS (a_val, b_val);
+
+#undef QO_TIE_PREFER_LESS
+
+  return PLAN_COMP_EQ;
+}
+
+/*
+ * qo_plan_cmp_by_rules () - whether qo_plan_cmp () leaves the plans of a query to the band and rules of
+ *			     qo_plan_cmp_limit (), as it does those of a LIMIT query
+ *   return: true for a query with an INST_NUM () (ROWNUM) predicate or a filter index it names
+ *   planner(in): with the terms and nodes of its env
+ *
+ * Note: An INST_NUM () predicate stops the scans early as a LIMIT does, which their costs do not show either. A filter
+ *   index is a candidate only when the query names it (USING INDEX, USE or FORCE INDEX), and then whether or not the
+ *   query implies its filter (qo_search_planner ()); forced, it costs nothing (qo_iscan_cost ()). The rules weigh it
+ *   against the other indexes as they did, so the query returns the rows it did (CBRD-27146).
+ */
+static bool
+qo_plan_cmp_by_rules (QO_PLANNER * planner)
+{
+  QO_NODE_INDEX *node_index;
+  QO_INDEX_ENTRY *index_entry;
+  int i, j;
+
+  for (i = 0; i < (signed) planner->T; i++)
+    {
+      if (QO_TERM_CLASS (&planner->term[i]) == QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  /* a term of no node with an INST_NUM () (qo_analyze_term ()) */
+	  return true;
+	}
+    }
+
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      node_index = QO_NODE_INDEXES (&planner->node[i]);
+      for (j = 0; node_index != NULL && j < QO_NI_N (node_index); j++)
+	{
+	  index_entry = QO_NI_ENTRY (node_index, j)->head;
+	  /* named or forced; an ignored one (force < 0) is no candidate */
+	  if (index_entry->constraints != NULL && index_entry->constraints->filter_predicate != NULL
+	      && index_entry->force >= 0)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_plan_cmp () - compare two plans of an info
+ *   return: one of {PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}: PLAN_COMP_LT if a is the better plan
+ *   a(in):
+ *   b(in):
+ *
+ * Note: Two plans of a LIMIT query go to qo_plan_cmp_limit (): a scan does not cost less for stopping at the LIMIT
+ *   (qo_sscan_cost (), qo_iscan_cost ()), and its rules keep the plans that do stop early (an ORDER BY or GROUP BY
+ *   skip, a SORT-LIMIT, a multi range optimization). So do two plans of a query that qo_plan_cmp_by_rules () leaves to
+ *   the rules. Any other two plans are ranked by qo_plan_pref_cost (), and two plans whose costs fall into one cell of
+ *   QO_COST_CELL_RATIO by qo_plan_tie_cmp (). Both steps compare values of one plan, never a relation between the
+ *   two, so the comparison is a total order: the plan kept does not depend on the order the plans are generated in.
  */
 static QO_PLAN_COMPARE_RESULT
 qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
+{
+  double a_cell, b_cell;
+
+  if (a == b)
+    {
+      return PLAN_COMP_EQ;
+    }
+
+  if ((QO_PLAN_HAS_LIMIT (a) && QO_PLAN_HAS_LIMIT (b))
+      || (a->info != NULL && a->info->planner != NULL && a->info->planner->plan_cmp_by_rules))
+    {
+      return qo_plan_cmp_limit (a, b);
+    }
+
+  a_cell = qo_cost_cell (qo_plan_pref_cost (a));
+  b_cell = qo_cost_cell (qo_plan_pref_cost (b));
+  if (a_cell != b_cell)
+    {
+      return (a_cell < b_cell) ? PLAN_COMP_LT : PLAN_COMP_GT;
+    }
+
+  return qo_plan_tie_cmp (a, b);
+}
+
+/*
+ * qo_plan_cmp_limit () - compare two plans of a LIMIT query, or of a query that qo_plan_cmp_by_rules () leaves to
+ *			  the rules
+ *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
+ *   a(in):
+ *   b(in):
+ *
+ * Note: Inside the band of RBO_CHECK_COST and RBO_CHECK_LIMIT_RATIO (RBO_CHECK_RATIO without a LIMIT) the rules pick
+ *   the plan, because the scan costs do not account for the LIMIT or the INST_NUM (), and a filter index the query
+ *   names is a candidate whether or not the query implies its filter (qo_plan_cmp_by_rules ()).
+ */
+static QO_PLAN_COMPARE_RESULT
+qo_plan_cmp_limit (QO_PLAN * a, QO_PLAN * b)
 {
 #if 1				/* TODO - do not delete me */
 #define QO_PLAN_CMP_CHECK_COST(a, b)
@@ -9991,8 +10420,9 @@ qo_plan_cmp_parallel_drive (QO_PLAN * a, QO_PLAN * b, QO_PLAN_COMPARE_RESULT cmp
     }
 
   /* only a decision taken on cost: qo_plan_cmp () also prefers a dearer plan on other grounds
-   * (an order-by skip under a LIMIT, a covering index), and keeping the cheaper one beside it
-   * would let qo_find_best_plan_on_planvec (), which compares cost alone, overturn that */
+   * (an order-by skip under a LIMIT by the rules of qo_plan_cmp_limit (), a covering index or a
+   * sort skip within a share of the cost by qo_plan_pref_cost ()), and keeping the cheaper one
+   * beside it would let qo_find_best_plan_on_planvec (), which compares cost alone, overturn that */
   a_cost = a->fixed_cpu_cost + a->fixed_io_cost + a->variable_cpu_cost + a->variable_io_cost;
   b_cost = b->fixed_cpu_cost + b->fixed_io_cost + b->variable_cpu_cost + b->variable_io_cost;
   if ((cmp == PLAN_COMP_LT) ? (a_cost >= b_cost) : (b_cost >= a_cost))
@@ -12144,6 +12574,7 @@ qo_alloc_planner (QO_ENV * env)
 
   planner->cleanup_needed = true;
   planner->can_apply_limit_card = qo_can_apply_limit_card (env);
+  planner->plan_cmp_by_rules = qo_plan_cmp_by_rules (planner);
   planner->groupby_limit_groups = qo_groupby_limit_groups (env);
 
   return planner;
@@ -14631,8 +15062,8 @@ qo_search_planner (QO_PLANNER * planner)
 		    }
 
 		  /* CBRD-27469: a full index scan that supplies the rows in the PARTITION BY + ORDER BY order of an
-		   * analytic function lets the analytic evaluation skip its sort; the sort it saves is charged to
-		   * the sequential scan in qo_plan_cmp (). */
+		   * analytic function lets the analytic evaluation skip its sort; qo_plan_cmp () weighs the sort it
+		   * saves (qo_plan_cmp_cost (), qo_plan_cmp_limit ()). */
 		  if (!n && qo_index_covers_analytic_sort (info->env, node, ni_entry))
 		    {
 		      n =
