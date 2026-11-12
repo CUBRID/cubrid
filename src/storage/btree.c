@@ -1439,6 +1439,10 @@ static int btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 				    int *pairs_skipped, bool * work_done, bool * more);
 static int btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				   PAGE_PTR * leaf_page, INT16 * slot, bool * found);
+static int btree_compact_leaf_has_stable_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
+						 char *object_ptr, OID * oid, OID * class_oid,
+						 BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args);
+static void btree_compact_end_key (INT64 * keys_compacted, INT64 * pages_freed, int *key_freed, OID * resume_oid);
 
 static int btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR leaf_pg,
 				       LEAF_REC * leafrec_pnt, BTREE_DELETE_HELPER * delete_helper,
@@ -15872,7 +15876,9 @@ btree_compact_end_key (INT64 * keys_compacted, INT64 * pages_freed, int *key_fre
  *	 check is repeated under every leaf latch acquisition, so it covers the appends done in that latch round. A
  *	 key whose leaf record holds only deleted or uncommitted objects is left for the next COMPACT (after vacuum, the
  *	 swapped-in object is normally stable). Classes without MVCC remove index objects physically, without this
- *	 guarantee, so their indexes are not compacted at all.
+ *	 guarantee, so their indexes are not compacted at all. This is defensive: those classes (root, db_serial,
+ *	 _db_collation, db_ha_apply_info) only have unique indexes, which have no directory chain, and no index can be
+ *	 added to them.
  */
 int
 xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
@@ -15931,7 +15937,8 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
     }
   if (mvcc_is_mvcc_disabled_class (&btid_int.topclass_oid))
     {
-      /* Objects of such a class are removed physically; no leaf object is ever stable (see the note above). */
+      /* Objects of such a class are removed physically; no leaf object is ever stable (see the note above). Their
+       * indexes are all unique today, so this only guards against a future non-unique one. */
       return NO_ERROR;
     }
 
