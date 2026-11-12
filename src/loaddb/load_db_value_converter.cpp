@@ -2156,6 +2156,18 @@ namespace cubload
 	return error_code != NO_ERROR ? error_code : check_not_null (attr, val);
       }
 
+    if (TP_IS_CHAR_TYPE (col.type) && dom_type == DB_TYPE_JSON)
+      {
+	/*
+	 * A string into a JSON attribute, which happens when the attribute was a string one at unload
+	 * time. The text form takes a quoted string into a JSON attribute with to_db_json (), so the
+	 * string goes through it here as well: a cast would refuse a string that is no JSON document
+	 * with another error code, which --error-control-file would not match.
+	 */
+	error_code = to_db_json (col.data, col.size, attr, val);
+	return error_code != NO_ERROR ? error_code : check_not_null (attr, val);
+      }
+
     error_code = binary_natural_value (col, attr, binary_value_hint (&domain, col.type), &natural);
     if (error_code != NO_ERROR)
       {
