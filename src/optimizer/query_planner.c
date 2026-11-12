@@ -1752,7 +1752,8 @@ qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
 
       /* dropped from the data filter by make_pred_from_plan (): not evaluated at the scan */
       if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_EXPENSIVE)
-	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5))
+	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_ORIGIN)
+	      && QO_TERM_SELECTIVITY (term) > 0.5))
 	{
 	  continue;
 	}
@@ -12388,7 +12389,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    {
 	      term = QO_ENV_TERM (planner->env, i);
 
-	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN)
+	      /* a path value is not fetched yet at this join; leave a term that needs one to the follow plan */
+	      if (QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN && bitset_subset (visited_nodes, &(QO_TERM_NODES (term))))
 		{
 		  bitset_add (&afj_terms, i);
 		  bitset_add (&info_terms, i);	/* add to info term */
@@ -14811,7 +14813,12 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 
   for (i = planner->E; i < (signed) planner->T; ++i)
     {
-      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i]))))
+      /* a term that reads no node goes to the topmost plan, except the ON condition of an outer or anti join
+       * (QO_TC_DURING_JOIN): planner_visit_node () evaluates it at that join. On a plan above the join, the cross
+       * join of the partitions or a join over it, it would also filter the rows the join preserves, and a false
+       * condition would leave no row */
+      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i])))
+	  && QO_TERM_CLASS (&planner->term[i]) != QO_TC_DURING_JOIN)
 	{
 	  bitset_add (&sarged_terms, i);
 	}
@@ -17066,7 +17073,9 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 		  continue;
 		}
 
-	      if (pt_expr->or_next)
+	      /* a disjunction does not reject NULL keys: an or_next chain, or a factor pt_cnf () kept whole
+	       * as a PT_OR tree */
+	      if (pt_expr->or_next || (pt_expr->node_type == PT_EXPR && pt_expr->info.expr.op == PT_OR))
 		{
 		  BITSET_CLEAR (expr_segments);
 

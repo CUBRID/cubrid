@@ -1852,7 +1852,7 @@ static int
 is_follow_if_term (QO_TERM * term)
 {
   if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN	/* ? */
-      || QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+      || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
     {
       return 0;
     }
@@ -2060,8 +2060,12 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
     {
       termp = QO_ENV_TERM (env, t);
       if (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_EXPENSIVE)
-	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (termp) > 0.5))
+	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_ORIGIN)
+	      && QO_TERM_SELECTIVITY (termp) > 0.5))
 	{
+	  /* a restriction a key range on one column was paired with holds, as its selectivity, only
+	   * what it rejects on top of that range -- which is dropped itself unless an index takes it,
+	   * so the restriction stays */
 	  bitset_add (&drop_terms, t);
 	}
     }
