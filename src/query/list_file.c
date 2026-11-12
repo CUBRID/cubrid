@@ -847,43 +847,6 @@ qfile_get_sort_list_size (SORT_LIST * sort_list_p)
 }
 
 /*
- * qfile_is_sort_list_covered () -
- *   return: true or false
- *   covering_list(in): covering sort item list pointer
- *   covered_list(in): covered sort item list pointer
- *
- * Note: if covering_list covers covered_list returns true.
- *       otherwise, returns false.
- */
-bool
-qfile_is_sort_list_covered (SORT_LIST * covering_list_p, SORT_LIST * covered_list_p)
-{
-  SORT_LIST *s1, *s2;
-
-  if (covered_list_p == NULL)
-    {
-      return false;
-    }
-
-  for (s1 = covering_list_p, s2 = covered_list_p; s1 && s2; s1 = s1->next, s2 = s2->next)
-    {
-      if (s1->s_order != s2->s_order || s1->s_nulls != s2->s_nulls || s1->pos_descr.pos_no != s2->pos_descr.pos_no)
-	{
-	  return false;
-	}
-    }
-
-  if (s1 == NULL && s2)
-    {
-      return false;
-    }
-  else
-    {
-      return true;
-    }
-}
-
-/*
  * qfile_compare_tuple_values () -
  *   return: NO_ERROR or error code
  *   tpl1(in): First tuple value
@@ -1899,6 +1862,7 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
   QFILE_TUPLE_COL_SRC *src;
   QFILE_TUPLE_RECORD *rec;
   const char *body;
+  DB_VALUE hash_key;		/* src[] points to it until the tuple is written below the loop */
   int n = merge_info_p->ls_pos_cnt;
   int i, len, size;
   bool is_null;
@@ -1909,8 +1873,18 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
       return ER_FAILED;
     }
 
-  for (i = 0; i < n; i++)
+  i = 0;
+  if (n > 0 && merge_info_p->ls_pos_list[0] == QFILE_RESERVED_HASH_KEY_POS)
     {
+      db_make_int (&hash_key, -1);
+      qfile_col_src_set_value (&src[0], &hash_key);
+      i = 1;
+    }
+
+  for (; i < n; i++)
+    {
+      assert (merge_info_p->ls_pos_list[i] != QFILE_RESERVED_HASH_KEY_POS);
+
       rec = (merge_info_p->ls_outer_inner_list[i] == QFILE_OUTER_LIST) ? outer_rec : inner_rec;
       if (rec != NULL)
 	{
@@ -3004,6 +2978,13 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
       qfile_close_list (thread_p, list_id);
     }
 
+  if (list_id->dependent_list_id != NULL)
+    {
+      /* the truncated list no longer links to the pages of its dependent lists */
+      qfile_destroy_list (thread_p, list_id->dependent_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id->dependent_list_id);
+    }
+
   list_id->tuple_cnt = 0;
   list_id->page_cnt = 0;
 #if !defined(NDEBUG)
@@ -3805,6 +3786,7 @@ sector_page_iterator::sector_page_iterator ()
   VSID_SET_NULL (&m_current_vsid);
   VPID_SET_NULL (&m_last_vpid);
   m_current_tfile = NULL;
+  m_failed = false;
 }
 
 PAGE_PTR
@@ -3830,6 +3812,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	      if (page == NULL)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
+		  m_failed = true;
 		  return NULL;
 		}
 
@@ -3884,6 +3867,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	  if (page == NULL)
 	    {
 	      assert_release_error (er_errid () != NO_ERROR);
+	      m_failed = true;
 	      return NULL;
 	    }
 
@@ -6080,16 +6064,13 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
 /*
  * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
- *   equal: by the position's comparison, NULLs equal (total order), as mht_compare_dbvalues_are_equal compares them
- *   by their types without one
+ *   equal: by the position's comparison, NULLs equal (total order)
  */
 static bool
 qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1, const DB_VALUE * val2)
 {
-  if (compares == NULL)
-    {
-      return mht_compare_dbvalues_are_equal (val1, val2);
-    }
+  /* a key with values has its entry's comparisons (qfile_list_cache_key_of) */
+  assert (compares != NULL);
   return val1 == val2
     || eval_compare_values_resolved (thread_get_thread_entry_info (), &compares[i], NULL, val1, val2, 1, NULL) == DB_EQ;
 }

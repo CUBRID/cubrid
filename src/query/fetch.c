@@ -644,8 +644,7 @@ fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a)
 }
 
 /*
- * fetch_arith_node_resolve () - the node's result slot cleared before its operator runs; a node whose compiled domain
- *   is variable computes without one
+ * fetch_arith_node_resolve () - the node's result slot cleared before its operator runs
  *   return: NO_ERROR
  *
  * The interpreter (fetch_peek_arith) and a program's generic step share this protocol around an operator: the operand
@@ -659,15 +658,6 @@ fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a)
   /* clear any previous result */
   pr_clear_value (arithptr->value);
   assert (a->domain == NULL || TP_DOMAIN_TYPE (a->domain) != DB_TYPE_VARIABLE);
-  if (a->domain != NULL && TP_DOMAIN_TYPE (a->domain) == DB_TYPE_VARIABLE)
-    {
-      /* exception to deciding before the rows: the operands leave their types to the data, so the operator computes
-       * without a domain and its values give the result's (a cast into a fixed target keeps the target) */
-      const bool cast = arithptr->opcode == T_CAST || arithptr->opcode == T_CAST_WRAP
-	|| arithptr->opcode == T_CAST_NOFAIL;
-      a->domain = cast && arithptr->domain != NULL && TP_DOMAIN_TYPE (arithptr->domain) != DB_TYPE_VARIABLE
-	? arithptr->domain : NULL;
-    }
   return NO_ERROR;
 }
 
@@ -1069,10 +1059,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
 	      && (arithptr->opcode == T_STRCAT || arithptr->opcode == T_ADD))
 	    {
-	      /* check for result type: a variable domain reads the values' domains */
-	      const TP_DOMAIN *result_domain = domain;
-	      if (TP_DOMAIN_TYPE (result_domain) == DB_TYPE_VARIABLE
-		  || QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (result_domain)))
+	      /* check for result type; CBRD-27583: XASL generation fixes the node's domain */
+	      assert (TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE);
+	      if (QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
 		{
 		  if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) !=
 		      NO_ERROR)
@@ -1768,11 +1757,6 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       {
 	TP_DOMAIN *column_domain = regu_var->value.pos_descr.dom;
 	assert (TP_DOMAIN_TYPE (column_domain) != DB_TYPE_VARIABLE);
-	if (TP_DOMAIN_TYPE (column_domain) == DB_TYPE_VARIABLE)
-	  {
-	    /* exception to deciding before the rows: a position its producer leaves untyped reads the list's column */
-	    column_domain = tplrec->type_list->domp[regu_var->value.pos_descr.pos_no];
-	  }
 	if (column_domain->type == NULL)
 	  {
 	    goto exit_on_error;
@@ -2283,11 +2267,9 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
       assert (pos_descr->pos_no >= prev_pos);
       prev_pos = pos_descr->pos_no;
 #endif
-      /* the position's domain; one its producer leaves untyped reads the list's column (an exception to deciding
-       * before the rows) */
+      /* the position's domain */
       assert (TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE);
-      const TP_DOMAIN *column_domain = TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE ? pos_descr->dom
-	: tplrec->type_list->domp[pos_descr->pos_no];
+      const TP_DOMAIN *column_domain = pos_descr->dom;
       if (column_domain->type == NULL)
 	{
 	  return ER_FAILED;
@@ -2330,33 +2312,6 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
       regu_var->value.attr_descr.cache_dbvalp = NULL;
       regu_var->value.attr_descr.cache_slot = NULL;	/* keep lazy slot in lock-step with cache_dbvalp */
     }
-}
-
-/*
- * is_argument_wrapped_with_cast_op () - check if regu_var is a cast
- *					 expression
- *   return: true/false
- *   regu_list(in/out): Regulator Variable list
- *   vd(in): Value Descriptor
- *   class_oid(in): Class Identifier
- *   obj_oid(in): Object Identifier
- *   tplrec(in): tuple slot (record + layout descriptor)
- *   peek(int):
- */
-bool
-is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
-{
-  if (regu_var == NULL)
-    {
-      return false;
-    }
-
-  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
-    {
-      return (regu_var->value.arithptr->opcode == T_CAST || regu_var->value.arithptr->opcode == T_CAST_WRAP);
-    }
-
-  return false;
 }
 
 /* TODO: next functions are duplicate from string op func that get as argument PT_OP_TYPE. Please try to merge

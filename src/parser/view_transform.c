@@ -1627,6 +1627,8 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
   PT_NODE *tmp_query = NULL;
 
   assert (PT_IS_SELECT (statement));
+  /* static SQL does not remove the select list when compiled (see mq_is_removable_select_list ()) */
+  assert (!parser->flag.is_parsing_static_sql);
   if (derived_spec == NULL || !PT_SPEC_IS_DERIVED (derived_spec))
     {
       PT_INTERNAL_ERROR (parser, "remove select list");
@@ -1760,19 +1762,6 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* copy select_list to as_attr_list before mq_lambda() */
   as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
-  if (parser->flag.is_parsing_static_sql)
-    {
-      /* as_attr_list entries are bare column-name declarations for the derived table's exposed
-       * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
-       * select.list items copied above may carry one over from how the outer query referenced
-       * this spec (e.g. "A.col1 AS out1") -- discard it so it can't leak into the printed spec.
-       * scoped to static SQL: rewritten_query is the only printer that turns on PT_PRINT_ALIAS
-       * for this kind of spec, so elsewhere this alias_print is already harmless. */
-      for (col = as_attr_list; col != NULL; col = col->next)
-	{
-	  col->alias_print = NULL;
-	}
-    }
 
   /* substitute attributes for query_spec_columns in statement */
   tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
@@ -2496,6 +2485,15 @@ mq_is_removable_select_list (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NOD
 {
   CHECK_PUSHABLE_INFO cpi;
 
+  /* PL/CSQL static SQL: the tree is not executed but printed as the rewritten query, which is compiled again at run
+   * time and has its select list removed there. Removing it here only breaks the printed text: an aggregate removed
+   * from the select list of an aggregate query without GROUP BY (e.g. "select 1 from t" for "select 1, count(*) from
+   * t" returns a row per row of t), and the constant select list printed as the attribute list "spec (1)". */
+  if (parser->flag.is_parsing_static_sql)
+    {
+      return NON_PUSHABLE;
+    }
+
   /* NO_MERGE and QUERY_CACHE hint check */
   if (subquery->info.query.q.select.hint & (PT_HINT_NO_MERGE | PT_HINT_QUERY_CACHE))
     {
@@ -3130,6 +3128,15 @@ mq_substitute_subquery_in_statement (PARSER_CONTEXT * parser, PT_NODE * statemen
 	      if (query_spec->info.query.all_distinct == PT_DISTINCT)
 		{
 		  derived_table->info.query.all_distinct = PT_DISTINCT;
+		}
+
+	      /* LIMIT of a DISTINCT query without ORDER BY is rewritten to FOR ORDERBY_NUM() (see pt_eval_type_pre ()),
+	       * which mq_update_order_by () does not move since there is no ORDER BY */
+	      if (query_spec->info.query.order_by == NULL && query_spec->info.query.orderby_for != NULL)
+		{
+		  derived_table->info.query.orderby_for =
+		    parser_append_node (parser_copy_tree_list (parser, query_spec->info.query.orderby_for),
+					derived_table->info.query.orderby_for);
 		}
 	    }
 
@@ -6072,6 +6079,24 @@ mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
 }
 
 /*
+ * mq_clear_or_derived_marks () - make a term pushed into a derived table an ordinary one
+ *   return:
+ *   term(in/out): the copy pushed into the derived table
+ *
+ * Note: a restriction qo_extract_or_restrictions () derived from an OR factor is marked as an
+ *	 implied duplicate of that factor, paired with it by qo_derived_term_compensate () and kept
+ *	 only when an index takes it.  Pushed into a derived table it is the filter there, with no
+ *	 factor to pair with in that query: left marked it would count for nothing and lose its key
+ *	 range.  The distributed factor's clauses used to be pushed as ordinary terms the same way.
+ */
+static void
+mq_clear_or_derived_marks (PT_NODE * term)
+{
+  PT_EXPR_INFO_CLEAR_FLAG (term, PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
+			   | PT_EXPR_INFO_OR_DERIVED_COLUMN);
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -6228,6 +6253,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
 		}
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
+	      mq_clear_or_derived_marks (new_term);
 	    }
 	  push_term_list = parser_append_node (new_term, push_term_list);
 
@@ -8018,7 +8044,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   assert (!PT_SELECT_INFO_IS_FLAGED (select_statement, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA));
 
   /* Convert to cnf and tag taggable terms */
-  select_statement->info.query.q.select.where = pt_cnf (parser, select_statement->info.query.q.select.where);
+  select_statement->info.query.q.select.where = pt_cnf_where (parser, select_statement->info.query.q.select.where);
   if (select_statement->info.query.q.select.having)
     {
       select_statement->info.query.q.select.having = pt_cnf (parser, select_statement->info.query.q.select.having);
@@ -9047,6 +9073,13 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 
       parser_walk_tree (parser, query_spec, pt_set_is_view_spec, NULL, NULL, NULL);
 
+      /* specs referring a CTE have an entity name; resolve them to the CTE before name resolution */
+      query_spec = parser_walk_tree (parser, query_spec, NULL, NULL, pt_resolve_cte_specs, NULL);
+      if (query_spec == NULL)
+	{
+	  return NULL;
+	}
+
       /* apply semantic checks */
       query_spec = pt_compile (parser, query_spec);
 
@@ -9069,6 +9102,25 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	{
 	  /* if authorizations requested, compute them */
 	  *authorization = (DB_AUTH) (*authorization & mq_compute_query_authorization (query_spec));
+	}
+
+      /* rewrite the CTEs of the query spec as derived tables, as mq_translate_helper () does for the main query */
+      query_spec = parser_walk_tree (parser, query_spec, mq_count_cte_references, NULL, pt_continue_walk, NULL);
+      query_spec = parser_walk_tree (parser, query_spec, NULL, NULL, mq_rewrite_cte_as_derived, NULL);
+      if (query_spec == NULL || pt_has_error (parser))
+	{
+	  return NULL;
+	}
+
+      /* the WITH clause remains for recursive or materialized CTEs, but it is lost when the query spec is substituted
+       * into a statement; keep it in a derived table of the query spec */
+      if (query_spec->info.query.with != NULL)
+	{
+	  query_spec = mq_rewrite_query_as_derived (parser, query_spec);
+	  if (query_spec == NULL)
+	    {
+	      return NULL;
+	    }
 	}
 
       /* this will recursively expand the query spec into local queries. The mq_push_paths will convert the expression
@@ -10192,8 +10244,17 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   parser->flag.is_skip_auto_parameterize = save_skip_auto_parameterize;
 
-  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
-  pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions. The
+   * compiled statement's are assigned by the walk its class prefetch makes next (pt_class_pre_fetch) */
+  if (parser->host_var_assigned_later == node && !compiled_every_time)
+    {
+      parser->host_var_assigned_later = (PT_NODE *) return_node;
+    }
+  else
+    {
+      parser->host_var_assigned_later = NULL;
+      pt_assign_host_var_positions (parser, (PT_NODE *) return_node, NULL, NULL);
+    }
   parser->session_variable_count = 0;
   if (return_node != NULL && compiled_every_time)
     {

@@ -205,11 +205,10 @@ struct DOMAIN_ACCUMULATOR_PLAN
 /* domain_resolve_operand_coercion's operand coercion as a plan */
 void domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_COERCION_PLAN * plan);
 
-/* The accumulator of an aggregate function (FUNC_CODE function, its domain, the operand's type and its argument's
- * domain) or of an analytic function (QUERY_OPTIONS option): from the domains XASL generation decided, as the server
+/* The accumulator of an aggregate function (FUNC_CODE function, its domain and its argument's domain) or of an analytic function (QUERY_OPTIONS option): from the domains XASL generation decided, as the server
  * reads them (an OBJECT as OID). */
-void domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
-					const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
+void domain_plan_aggregate_accumulator (int function, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
+					DOMAIN_ACCUMULATOR_PLAN * plan);
 void domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain,
 				       const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
 
@@ -482,6 +481,7 @@ DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, c
  *   type's cmpval as tp_value_compare's total order answers: no comparison is decided. A string compares byte by
  *   byte instead (mht_compare_dbvalues_are_identical): keys equal only under a case-insensitive collation can give
  *   different results.
+ *   A TIMESTAMPTZ and a DATETIMETZ also need the same zone (CBRD-27804): one instant in two zones casts differently.
  *   domain(in): the key position regu's compiled domain (an OBJECT's values are OIDs on the server)
  */
 bool domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2);
@@ -563,6 +563,11 @@ TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
 /* The converter tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL
  * where it refuses the column's type (only a number or a date and time is a strict target). */
 TP_VALUE_CONVERTER domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target);
+/* The cmpval of a decided comparison whose sources and targets are set: an integer against a NUMERIC that neither
+ * side converts compares by the exact values, any other by the first value's type once converted. */
+const struct pr_type *domain_compare_cmp (const DOMAIN_COMPARE * compare);
+/* An integer against a NUMERIC: the pair a comparison takes as it is, by the exact values. */
+bool domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2);
 
 /* The rule a column of a search key follows for values of an element's domain. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey);

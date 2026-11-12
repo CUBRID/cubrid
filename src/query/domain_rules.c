@@ -34,6 +34,7 @@
 #include "string_opfunc.h"
 #include "xasl.h"
 #include "query_sum_accumulator.h"
+#include "numeric_opfunc.h"
 #include <atomic>
 #include <cfloat>
 #include <cstddef>
@@ -726,8 +727,8 @@ domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAI
  *   argument into its domain.
  */
 void
-domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
-				   const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan)
+domain_plan_aggregate_accumulator (int function, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
+				   DOMAIN_ACCUMULATOR_PLAN * plan)
 {
   *plan = DOMAIN_ACCUMULATOR_PLAN ();
   const bool argument_typed = argument != NULL && !domain_is_variable (argument)
@@ -736,6 +737,9 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
     {
     case PT_CUME_DIST:
     case PT_PERCENT_RANK:
+      /* the finalization writes the DOUBLE result into the accumulator */
+      plan->value_dom = &tp_Double_domain;
+      plan->value2_dom = &tp_Null_domain;
       break;
 
     case PT_JSON_ARRAYAGG:
@@ -814,9 +818,8 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      /* a number or a date keeps the accumulator unset, as its first value left it before */
-      if (!TP_IS_NUMERIC_TYPE (opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (opr_dbtype) && !domain_is_variable (domain)
-	  && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+      /* the finalization writes the result, of the function's domain, into the accumulator */
+      if (!domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
 	{
 	  plan->value_dom = domain;
 	  plan->value2_dom = &tp_Null_domain;
@@ -907,10 +910,10 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
  * holds; none for the same type.
  * SUM / AVG: the sum has one domain for the partition, the function's - the first value is converted into it
  * (first_conv) and every addition's result is coerced to it - except a sum kept floating, which keeps the argument's
- * NUMERIC as it is (value_dom NULL): an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC. Every value is
- * added with the operand coercion of (sum, argument). An argument type the resident accumulator takes
- * (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT list's
- * values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
+ * NUMERIC as it is in the floating NUMERIC domain, uncoerced: an AVG over a NUMERIC argument, a SUM whose domain is
+ * NUMERIC. Every value is added with the operand coercion of (sum, argument). An argument type the resident accumulator
+ * takes (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT
+ * list's values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
  * (the sum's type, DOUBLE).
  * STDDEV / VARIANCE accumulate in DOUBLE: [1] the conversion of the argument's type into DOUBLE (tp_value_coerce's
  * implicit mode), which runs at every value that is not a DOUBLE already; NTILE takes its bucket count into DOUBLE
@@ -970,15 +973,18 @@ domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * do
   /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value or a
    * SUM's domain is NUMERIC; XASL generation casts an argument of no number type to DOUBLE */
   assert (!TP_IS_CHAR_TYPE (argument_type));
-  const DB_TYPE kept = function == PT_AVG ? argument_type : function_type;
-  const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : domain;
-  plan->value_dom = kept == DB_TYPE_NUMERIC ? NULL : domain;
+  const bool floating = (function == PT_AVG ? argument_type : function_type) == DB_TYPE_NUMERIC;
+  const TP_DOMAIN *sum = floating ? argument : domain;
+  plan->value_dom = floating ? &tp_Numeric_domain : domain;
   const DOMAIN_OPERAND operands[2] = {
     {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, argument_type, -1, false}
   };
   domain_plan_operand_coercion (T_ADD, operands, &plan->operand_coercion);
-  domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
-  if (plan->value_dom != NULL && argument_type != function_type)
+  if (!floating)
+    {
+      domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
+    }
+  if (!floating && argument_type != function_type)
     {
       /* the first value into the sum's domain: the operand coercion's conversion where the rule converts the
        * argument, the type pair's otherwise (a FLOAT into DOUBLE) */
@@ -1104,6 +1110,105 @@ domain_compare_target (const DOMAIN_OPERAND * coerced, DB_TYPE target_type)
   return tp_domain_resolve_default (target_type);
 }
 
+static bool
+domain_type_is_integer (DB_TYPE type)
+{
+  return type == DB_TYPE_SHORT || type == DB_TYPE_INTEGER || type == DB_TYPE_BIGINT;
+}
+
+/* a comparison whose sides keep their types and compare by the exact values: an integer against a NUMERIC (the
+ * integer is not made a NUMERIC first) */
+bool
+domain_compare_is_exact_number (DB_TYPE type1, DB_TYPE type2)
+{
+  return (type1 == DB_TYPE_NUMERIC && domain_type_is_integer (type2))
+    || (type2 == DB_TYPE_NUMERIC && domain_type_is_integer (type1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_compare_reverse (DB_VALUE_COMPARE_RESULT c)
+{
+  return c == DB_LT ? DB_GT : c == DB_GT ? DB_LT : c;
+}
+
+/* one cmpval per integer type and side, so the integer's type is the compiled one, not read from each value */
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_short_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			     int *start_colp, int collation)
+{
+  return numeric_compare_bigint_num_exact (db_get_short (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_int_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			   int *start_colp, int collation)
+{
+  return numeric_compare_bigint_num_exact (db_get_int (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_bigint_numeric (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			      int *start_colp, int collation)
+{
+  return numeric_compare_bigint_num_exact (db_get_bigint (value1), value2);
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_short (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			     int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_short (value2), value1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_int (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			   int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_int (value2), value1));
+}
+
+static DB_VALUE_COMPARE_RESULT
+domain_cmpval_numeric_bigint (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			      int *start_colp, int collation)
+{
+  return domain_compare_reverse (numeric_compare_bigint_num_exact (db_get_bigint (value2), value1));
+}
+
+/* the compared type's PR_TYPE with an exact comparison's cmpval, made at the first use (after tp_Numeric's
+ * initialization) */
+static PR_TYPE
+domain_exact_number_type (const PR_TYPE * compared, PR_TYPE::cmpval_function_type cmpval)
+{
+  PR_TYPE type = *compared;
+  type.set_cmpval_function (cmpval);
+  return type;
+}
+
+/* the cmpval of a decided comparison: an exact number comparison's when neither side converts (it reads the values
+ * as they are), else the first value's type once converted */
+const PR_TYPE *
+domain_compare_cmp (const DOMAIN_COMPARE * compare)
+{
+  const DB_TYPE source0 = (DB_TYPE) compare->source[0];
+  const DB_TYPE source1 = (DB_TYPE) compare->source[1];
+
+  if (compare->target[0] != NULL || compare->target[1] != NULL || !domain_compare_is_exact_number (source0, source1))
+    {
+      return pr_type_from_id (compare->target[0] != NULL ? TP_DOMAIN_TYPE (compare->target[0]) : source0);
+    }
+  static const PR_TYPE exact[2][3] = {
+    {domain_exact_number_type (&tp_Numeric, domain_cmpval_short_numeric),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_int_numeric),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_bigint_numeric)},
+    {domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_short),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_int),
+     domain_exact_number_type (&tp_Numeric, domain_cmpval_numeric_bigint)}
+  };
+  const DB_TYPE integer = source1 == DB_TYPE_NUMERIC ? source0 : source1;
+
+  return &exact[source1 != DB_TYPE_NUMERIC][integer == DB_TYPE_SHORT ? 0 : integer == DB_TYPE_INTEGER ? 1 : 2];
+}
+
 static int
 domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
 {
@@ -1112,7 +1217,8 @@ domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * resul
   const TP_DOMAIN *target1 = domain_operand_domain (&operands[0]);
   const TP_DOMAIN *target2 = domain_operand_domain (&operands[1]);
 
-  if (type1 != DB_TYPE_NULL && type2 != DB_TYPE_NULL && type1 != type2)
+  if (type1 != DB_TYPE_NULL && type2 != DB_TYPE_NULL && type1 != type2
+      && !domain_compare_is_exact_number (type1, type2))
     {
       switch (tp_value_compare_common_domain (type1, type2))
 	{
@@ -1320,8 +1426,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      /* keyed on the operand type (opr_dbtype), as the operator does; a number or date operand leaves value_dom unset,
-       * so the accumulator here is the function domain */
+      /* keyed on the operand type, as the operator does; the accumulator is the function domain */
       if (operand->val_type == DB_TYPE_NULL && operand->domain != NULL
 	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
 	{
@@ -1901,7 +2006,20 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, cons
 	  /* strings equal only under the collation ('A' and 'a') can give different results, e.g. ASCII (key) */
 	  return mht_compare_dbvalues_are_identical (value1, value2) != 0;
 	}
-      return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL, 0) == DB_EQ;
+      if (domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL, 0) != DB_EQ)
+	{
+	  return false;
+	}
+      /* one instant in two zones compares equal but can give different results, e.g. CAST (key AS VARCHAR) */
+      switch (type)
+	{
+	case DB_TYPE_TIMESTAMPTZ:
+	  return db_get_timestamptz (value1)->tz_id == db_get_timestamptz (value2)->tz_id;
+	case DB_TYPE_DATETIMETZ:
+	  return db_get_datetimetz (value1)->tz_id == db_get_datetimetz (value2)->tz_id;
+	default:
+	  return true;
+	}
     }
   /* only a collection key compares by its elements' values; any other key comparison is decided by the compiler */
   assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL
@@ -2240,9 +2358,7 @@ domain_compare_mirror (const DOMAIN_COMPARE * compare, DOMAIN_COMPARE * mirrored
   mirrored->codeset_side = compare->codeset_side >= 0 ? (signed char) (1 - compare->codeset_side) : -1;
   if (compare->cmp != NULL)
     {
-      /* cmpval is the first value's type once converted */
-      mirrored->cmp = pr_type_from_id (mirrored->conv[0] != NULL ? TP_DOMAIN_TYPE (mirrored->target[0])
-				       : (DB_TYPE) mirrored->source[0]);
+      mirrored->cmp = domain_compare_cmp (mirrored);
     }
 }
 
@@ -2309,7 +2425,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
       result->method = DOMAIN_COMPARE_OBJECT;
       return NO_ERROR;
     }
-  if (lhs->type != rhs->type)
+  if (lhs->type != rhs->type && !domain_compare_is_exact_number (lhs->type, rhs->type))
     {
       const TP_COMPARE_COERCION coercion = tp_value_compare_common_domain (lhs->type, rhs->type);
       const TP_DOMAIN *target = NULL;
@@ -2370,7 +2486,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   result->converted_first = (unsigned char) after[result->first];
 
   /* the tail on the converted values: the first side's cmpval under the comparison's collation */
-  result->cmp = pr_type_from_id (after[0]);
+  result->cmp = domain_compare_cmp (result);
   if (enum_side >= 0 && key[0]->collation != key[1]->collation)
     {
       /* both sides compare as strings of the ENUM's collation */
@@ -2774,10 +2890,10 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, b
       conv_kind[side] = DOMAIN_HASH_KEY_AS_IS;
       if (*coerce && resolved != domain[side])
 	{
-	  /* tp_value_coerce's: a JSON value converts by its scalar, a string domain whose collation is the values'
-	   * (LEAVE, ENFORCE) takes them as they are - coerced at the row */
-	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON
-	    || TP_DOMAIN_COLLATION_FLAG (resolved) != TP_DOMAIN_COLL_NORMAL ? DOMAIN_HASH_KEY_COERCED
+	  /* tp_value_coerce's: a JSON value converts by its scalar - coerced at the row; XASL generation gives every
+	   * other key a domain of its collation */
+	  assert (TP_DOMAIN_COLLATION_FLAG (resolved) == TP_DOMAIN_COLL_NORMAL);
+	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON ? DOMAIN_HASH_KEY_COERCED
 	    : DOMAIN_HASH_KEY_CONVERTED;
 	}
       domain_compare_key_of (*coerce ? resolved : domain[side], &key[side]);
@@ -3187,6 +3303,13 @@ domain_list_column_source (const XASL_NODE * xasl, int *pos, XASL_NODE * branch[
     case MERGELIST_PROC:
     case HASHJOIN_PROC:
       {
+	if (xasl->type == HASHJOIN_PROC && xasl->outptr_list != NULL && xasl->proc.hashjoin.merge_info.ls_pos_cnt == 0)
+	  {
+	    /* a hash join that evaluates its wrapper's out list writes each column from outptr_list; one that keeps its
+	     * own columns as well is read by a scan only when it writes them (hjoin_change_to_merge_type_list ()) */
+	    return domain_output_regu (xasl->outptr_list, *pos);
+	  }
+
 	/* a join's list holds each output column from its outer or its inner list, as the join writes its type list
 	 * (qexec_merge_list) */
 	const bool merge = xasl->type == MERGELIST_PROC;

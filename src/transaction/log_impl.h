@@ -686,7 +686,7 @@ struct log_global
   LOG_LSA flushed_lsa_lower_bound;	/* lsa */
   pthread_mutex_t chkpt_lsa_lock;
 #endif				/* SERVER_MODE */
-  LOG_LSA chkpt_redo_lsa;
+  LOG_LSA_ATOMIC chkpt_redo_lsa;
   DKNPAGES chkpt_every_npages;	/* How frequent a checkpoint should be taken ? */
   LOG_RECVPHASE rcv_phase;	/* Phase of the recovery */
   LOG_LSA rcv_phase_lsa;	/* LSA of phase (e.g. Restart) */
@@ -1199,6 +1199,9 @@ extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern bool logtb_has_active_savepoint (THREAD_ENTRY * thread_p);
+extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 extern void logtb_complete_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool committed);

@@ -266,6 +266,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/execute_statement.c
+  ${QUERY_DIR}/expr_compile.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/query_cl.c
   ${QUERY_DIR}/query_dump.c
@@ -453,10 +454,12 @@ set (HISTOGRAM_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.cpp
   )
 
 set (HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp

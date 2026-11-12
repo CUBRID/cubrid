@@ -121,6 +121,8 @@ typedef enum
 #define DEFAULT_IN_SELECTIVITY (double) 0.01
 #define DEFAULT_RANGE_SELECTIVITY (double) 0.1
 
+#define QO_MJOIN_MAX_SORT_TERMS	16	/* m-join terms considered for following an index key order */
+
 typedef enum PRED_CLASS
 {
   PC_ATTR,
@@ -223,6 +225,12 @@ struct qo_plan
       BITSET other_outer_join_terms;	/* for merge outer join only */
       BITSET after_join_terms;	/* after join terms */
       BITSET hash_terms;	/* hash_terms for hash list scan */
+      bool outer_sorted;	/* m-join: outer index scan already yields the merge order */
+      bool inner_sorted;
+      bool outer_sort_uncharged;	/* m-join: input re-sorted although qo_sort_cost () charged nothing for it */
+      bool inner_sort_uncharged;
+      int nordered_terms;	/* m-join: 0 compares join_terms in bitset order, else ordered_terms */
+      int ordered_terms[QO_MJOIN_MAX_SORT_TERMS];	/* join term indexes in the sorted input's key order */
     } join;
 
     struct
@@ -240,8 +248,13 @@ struct qo_plan
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
+  bool parallel_driven;		/* costed as run in parallel (CBRD-27474): a nested loop whose driving scan the
+				   executor splits among workers, inherited along the chain (qo_nljoin_cost ()),
+				   or a hash join whose build/probe runs in parallel (qo_hjoin_cost ()) */
   bool use_iscan_descending;
   bool need_final_sort;
+  bool groupby_skip_join;	/* a join that skips the GROUP BY in its driving scan's order (CBRD-27685); the scan's
+				   index is marked only when this plan is chosen (qo_planner_search ()) */
 
   /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
    * first. Used as the next join level's driving row count and for the plan dump. */
@@ -261,6 +274,9 @@ struct qo_plan
 				   scan descend once per execution, and charging them per row taxed index
 				   scans with no qo_sscan_cost counterpart (broke exact plan ties on tiny
 				   and statistics-less tables) */
+  double iscan_uncover_io;	/* heap fetch cost of a covered scan that qo_is_func_index_cover_routed () holds,
+				   paid only where its output goes through a list file */
+  double iscan_uncover_cpu;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -467,6 +483,9 @@ struct qo_planner
 
   /* Cached result of qo_can_apply_limit_card(env); set once in qo_alloc_planner */
   bool can_apply_limit_card;
+
+  /* Cached result of qo_groupby_limit_groups(env): the groups a GROUP BY stops at, or 0 */
+  double groupby_limit_groups;
 };
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
@@ -475,6 +494,7 @@ extern void qo_plans_stats (FILE *);
 extern void qo_info_stats (FILE *);
 
 extern bool qo_is_seq_scan (QO_PLAN *);
+extern bool qo_is_func_index_cover_routed (QO_PLAN * plan);
 extern bool qo_is_iscan (QO_PLAN *);
 extern bool qo_is_iscan_from_groupby (QO_PLAN *);
 extern bool qo_is_iscan_from_orderby (QO_PLAN *);
@@ -489,9 +509,13 @@ extern PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group
 extern PRED_CLASS qo_classify (PT_NODE * node);
 
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
+extern PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
+							   int *continue_walk);
 
 extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
 extern bool qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms);
+extern bool qo_nl_inner_partitions_walk_per_row (QO_NODE * node);
+extern bool qo_nl_inner_prunes_per_row (QO_NODE * node, BITSET * outer_nodes, BITSET * terms);
 
 /* selectivity of one between-range operator straight from the column histogram, with no
  * QO_ENV around it. Shared with the bind-value plan watch (histogram_cl.cpp), which prices the

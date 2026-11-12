@@ -71,6 +71,8 @@ extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_E
 									qfile_list_id * list_id);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
 extern void qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list);
+extern void *qdata_valptr_prog_settle (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
+				       val_descr * val_desc_p);
 extern void qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool is_final,
 					    bool free_it);
 extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list_p,
@@ -83,7 +85,7 @@ extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::ag
 extern int qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1, DB_VALUE * dbval2,
 			      DB_VALUE * res, tp_domain * domain_p, TP_VALUE_CONVERTER result_conv);
 /* CBRD-27583: conv casts a dbval2 of type planned into domain (NULL: none planned) */
-extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
+extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, int *capacity,
 				    tp_domain * domain, const int max_allowed_size, const char *warning_context,
 				    DB_TYPE planned, TP_VALUE_CONVERTER conv);
 extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res, int incval);
