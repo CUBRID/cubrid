@@ -816,7 +816,7 @@ namespace parallel_index_scan
     bool more = true;
 
     isidp->curr_oidno = m_drain_fsm->buffer_next () - 1;	/* the OID being looked up */
-    if (isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_DISTANCE / 2 < isidp->ahead_next)
+    if (isidp->curr_oidno + isidp->ahead_distance / 2 < isidp->ahead_next)
       {
 	return;
       }
@@ -824,7 +824,7 @@ namespace parallel_index_scan
     /* the keys evaluated ahead extend the OID buffer to a window from the OID being looked up (only after a key whose
      * OIDs are all on the leaf: an overflow chain is drained before the next key), no more OIDs ahead of the lookups
      * than the buffer's max_oid_cnt (index_scan_oid_buffer_size), as a serial scan's buffer holds */
-    while (oids->oid_cnt < isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_DISTANCE
+    while (oids->oid_cnt < isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_NEXT (isidp->ahead_distance)
 	   && oids->oid_cnt - isidp->curr_oidno < oids->max_oid_cnt)
       {
 	if (m_page == nullptr

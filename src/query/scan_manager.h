@@ -251,8 +251,14 @@ struct parallel_list_scan_id
 
 typedef struct parallel_index_scan_id PARALLEL_INDEX_SCAN_ID;
 
-/* OIDs ahead of an index scan's lookup whose heap pages the OS is told about, checked half of it ahead */
+/* OIDs ahead of an index scan's lookup whose heap pages the OS is told about: the first window holds
+ * SCAN_INDEX_READ_AHEAD_INITIAL OIDs and every next one twice the one before, up to SCAN_INDEX_READ_AHEAD_DISTANCE,
+ * so a scan that stops after a few rows told the OS about few pages; the next window is told when half of the
+ * current one was looked up */
 #define SCAN_INDEX_READ_AHEAD_DISTANCE 256
+#define SCAN_INDEX_READ_AHEAD_INITIAL 8
+#define SCAN_INDEX_READ_AHEAD_NEXT(distance) \
+  (((distance) == 0) ? SCAN_INDEX_READ_AHEAD_INITIAL : MIN ((distance) * 2, SCAN_INDEX_READ_AHEAD_DISTANCE))
 /* INDX_SCAN_ID superset (mirrors PARALLEL_HEAP_SCAN_ID pattern); paired static_asserts pin layout */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
@@ -391,6 +397,7 @@ struct indx_scan_id
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   int ahead_next;		/* first OID of the buffer whose heap page the OS was not told about; INT_MAX: none */
+  int ahead_distance;		/* OIDs of the last whole read-ahead window; 0: none yet */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -446,6 +453,7 @@ struct parallel_index_scan_id
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   int ahead_next;		/* mirror of INDX_SCAN_ID::ahead_next */
+  int ahead_distance;		/* mirror of INDX_SCAN_ID::ahead_distance */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   /* parallel-only fields (must follow all isid fields) */
