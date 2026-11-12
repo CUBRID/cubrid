@@ -7037,7 +7037,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      /* An Internal LOB chain must live in the LOB file of the row's own heap (reclaim resolves it from
 	       * there), so re-create the chains in the partition the row is moving into. */
 	      error_code =
-		locator_resolve_internal_lob_dml_slots (thread_p, &real_class_oid, oid, recdes, false, false,
+		locator_resolve_internal_lob_dml_slots (thread_p, &real_class_oid, oid, recdes, false, from_workspace,
 							&moved_recdes, &moved_area, pending);
 	      if (error_code != NO_ERROR)
 		{
