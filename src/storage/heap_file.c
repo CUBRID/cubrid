@@ -27538,6 +27538,18 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  scan_code = S_ERROR;
 	  goto end;
 	}
+#if !defined (NDEBUG)
+      if (FI_INSERTED (FI_TEST_SIDECAR_DELAY_VERSION_WALK) && LSA_EQ (&process_lsa, previous_version_lsa)
+	  && scan_cache->mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed)
+	{
+	  /* test only: the first older version is read and not yet checked; widen the window in which the
+	   * transaction of the too new version commits */
+	  er_log_debug (ARG_FILE_LINE, "Sidecar: committed walk read version %lld|%d, checking it in %d ms",
+			LSA_AS_ARGS (&process_lsa), FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+	  heap_prev_version_walk_release_pages (thread_p, &walk);
+	  thread_sleep (FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+	}
+#endif /* !NDEBUG */
       snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
       if (snapshot_res == SNAPSHOT_SATISFIED)
 	{

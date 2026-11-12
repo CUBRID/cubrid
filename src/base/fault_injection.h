@@ -116,6 +116,8 @@ typedef enum
   /* SIDECAR: the retry window of the A4 MVCC test */
   FI_TEST_SIDECAR_DELAY_LOG_RESOLVE = 700012,	/* a committed-snapshot fetch that read a version with refs from the
 						 * log releases its pages and waits FI_SIDECAR_LOG_RESOLVE_DELAY_MS before it resolves */
+  FI_TEST_SIDECAR_DELAY_VERSION_WALK = 700013,	/* a committed-snapshot walk of older versions that found one too new
+						 * waits FI_SIDECAR_LOG_RESOLVE_DELAY_MS before it reads the next one */
   /* SIDECAR: holds of a store read of a relocated store record, for the store read model's findings.  Each one
    * waits FI_SIDECAR_READ_HOLD seconds with no page fixed. */
   FI_TEST_SIDECAR_READ_HOLD_AT_FORWARD = 700020,	/* the read released the home page that forwards, and has not
