@@ -18309,8 +18309,8 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
 
   /* A Sidecar store page carries its hot heap's class OID, so the class finds the hot heap: the store's free space
-   * must not go to the hot heap's bestspace, or a row of the hot heap would be inserted into the store.  The store's
-   * own HFID is not reachable from here without fixing the hot header while the store page is held (I-7). */
+   * must not go to the hot heap's bestspace, or a row of the hot heap would be inserted into the store.  It goes to
+   * the store's bestspace (sidecar_undo_store ()). */
   const bool sidecar_store = heap_page_is_sidecar_store (thread_p, rcv->pgptr);
   const bool add_bestpage = LOG_ISRESTARTED () && !sidecar_store;
 
@@ -18325,6 +18325,18 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
     }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+
+  if (sidecar_store && LOG_ISRESTARTED ())
+    {
+      OID class_oid = OID_INITIALIZER;
+      HFID store_hfid = HFID_INITIALIZER;
+
+      if (heap_get_class_oid_from_page (thread_p, rcv->pgptr, &class_oid) == NO_ERROR
+	  && sidecar_undo_store (thread_p, &class_oid, &store_hfid))
+	{
+	  heap_add_bestpage (thread_p, &store_hfid, rcv->pgptr);
+	}
+    }
 
   if (add_bestpage)
     {

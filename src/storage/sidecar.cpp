@@ -2747,6 +2747,29 @@ sidecar_stored_form_end (void)
 #endif /* !NDEBUG */
 
 
+bool
+sidecar_undo_store (THREAD_ENTRY *thread_p, const OID *class_oid, HFID *store_hfid)
+{
+  HFID hfid;
+  bool found = false;
+
+#if defined (SERVER_MODE)
+  if (heap_get_hfid_if_cached (thread_p, class_oid, &hfid, NULL, &found) != NO_ERROR || !found)
+    {
+      return false;
+    }
+  return sidecar_cache_find (thread_p, &hfid.vfid, store_hfid);
+#else
+  /* SA_MODE caches no store (sidecar_store_for ()), and no other thread waits for the pages this fixes */
+  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, &found) != NO_ERROR || !found
+      || heap_sidecar_get_store (thread_p, &hfid, store_hfid, NULL) != NO_ERROR)
+    {
+      return false;
+    }
+  return !HFID_IS_NULL (store_hfid);
+#endif
+}
+
 void
 sidecar_store_forget (THREAD_ENTRY *thread_p, const VFID *hot_vfid)
 {

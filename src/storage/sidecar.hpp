@@ -189,6 +189,9 @@ sidecar_cursor_before_hot_fix (THREAD_ENTRY *thread_p)
 /* heap_drop_dependent_files () only: unlinks the store of a heap being dropped and postpones its destroy (I-10) */
 /* heap_create_internal (): a new heap may have the VFID of a destroyed one, whose cache entry must go */
 extern void sidecar_store_forget (THREAD_ENTRY *thread_p, const VFID *hot_vfid);
+/* heap_rv_undo_insert (): the store of a class's hot heap, found with a store page held, so from the caches only
+ * (I-7) except in SA_MODE; false when it is not found */
+extern bool sidecar_undo_store (THREAD_ENTRY *thread_p, const OID *class_oid, HFID *store_hfid);
 extern int sidecar_store_drop (THREAD_ENTRY *thread_p, const HFID *hfid);
 /* xfile_apply_tde_to_class_files (): the heap's store and the store's overflow file take the class TDE algorithm
  * (7.3); a store created later takes it at its creation (heap_create_internal ()) */
