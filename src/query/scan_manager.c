@@ -1280,6 +1280,10 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_K
 	  pr_clear_value (&nextp->key2);
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - n - 2));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 	}
       else
 	{
@@ -1321,6 +1325,10 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  pr_clear_value (&curp->key2);
 	  memmove (curp, curp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - cur_n - 1));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 	}
       else
 	{
@@ -1427,6 +1435,10 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  /* remove merged one(nextp) */
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - next_n - 1));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 
 	  /* the merged range may now overlap one skipped as disjoint before it (e.g. k > 7 sorted ahead of
 	   * k between 7 and 59 when k < 7 is the current one); check them again */
@@ -6109,6 +6121,24 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	      isidp->curr_oidno = 0;	/* first oid number */
 	      scan_id->position = S_ON;
+	      if (!SCAN_IS_INDEX_COVERED (isidp))
+		{
+		  /* the OIDs were read again from the other end: point at the first one, as S_BEFORE does.  The pointer
+		   * was left at the slot where the forward scan found its row, so when a data filter had rejected the
+		   * keys ahead of it, the backward scan took another row for its first one (CBRD-28007) */
+		  if (isidp->multi_range_opt.use)
+		    {
+		      assert (isidp->curr_oidno < isidp->multi_range_opt.cnt);
+		      assert (isidp->multi_range_opt.top_n_items[isidp->curr_oidno] != NULL);
+		      isidp->curr_oidp = &(isidp->multi_range_opt.top_n_items[isidp->curr_oidno]->inst_oid);
+		    }
+		  else
+		    {
+		      assert (isidp->oid_list != NULL);
+		      isidp->curr_oidp = GET_NTH_OID (isidp->oid_list->oidp, isidp->curr_oidno);
+		    }
+		  assert (HEAP_ISVALID_OID (thread_p, isidp->curr_oidp) != DISK_INVALID);
+		}
 	    }
 	  else if (scan_id->position == S_ON)
 	    {
@@ -8894,7 +8924,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = btree_attrinfo_read_dbvalues (thread_p, key, NULL, iscan_id->bt_attr_ids, iscan_id->bt_num_attrs,
-					iscan_id->rest_attrs.attr_cache, -1, NULL);
+					iscan_id->rest_attrs.attr_cache, iscan_id->indx_cov.func_index_col_id, NULL);
   if (error != NO_ERROR)
     {
       return error;

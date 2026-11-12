@@ -1506,7 +1506,11 @@ $ LOADDB
 
 1392 연결이 트랜잭션 인덱스 %1$d 를 사용했으나, 서버가 이 연결에 할당한 인덱스는 %2$d 입니다. 할당된 인덱스를 사용했습니다.
 
-1393 마지막 에러
+1393 시스템 생성 stored procedure를 변경(alter)할 수 없습니다.
+
+1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
+
+1395 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2022,6 +2026,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
+345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
 
 
 

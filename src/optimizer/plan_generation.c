@@ -1852,7 +1852,7 @@ static int
 is_follow_if_term (QO_TERM * term)
 {
   if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN	/* ? */
-      || QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+      || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
     {
       return 0;
     }
@@ -2060,8 +2060,12 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
     {
       termp = QO_ENV_TERM (env, t);
       if (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_EXPENSIVE)
-	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (termp) > 0.5))
+	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_ORIGIN)
+	      && QO_TERM_SELECTIVITY (termp) > 0.5))
 	{
+	  /* a restriction a key range on one column was paired with holds, as its selectivity, only
+	   * what it rejects on top of that range -- which is dropped itself unless an index takes it,
+	   * so the restriction stays */
 	  bitset_add (&drop_terms, t);
 	}
     }
@@ -2092,7 +2096,8 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 	{
 	  index_entryp = qo_index_infop->ni_entry->head;
 	  if (index_entryp && index_entryp->constraints && index_entryp->constraints->func_index_info
-	      && index_entryp->cover_segments == false)
+	      && index_entryp->cover_segments == false
+	      && !qo_is_func_index_key_filter_routable (env, plan->plan_un.scan.node, index_entryp))
 	    {
 	      /* if predicate has function index column then do not permit key-filter. so force-copy to sarg */
 	      bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
