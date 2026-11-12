@@ -1471,6 +1471,10 @@ static int btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 				    int *pairs_skipped, bool * work_done, bool * more);
 static int btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				   PAGE_PTR * leaf_page, INT16 * slot, bool * found);
+static int btree_compact_leaf_has_stable_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
+						 char *object_ptr, OID * oid, OID * class_oid,
+						 BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args);
+static void btree_compact_end_key (INT64 * keys_compacted, INT64 * pages_freed, int *key_freed, OID * resume_oid);
 
 static int btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR leaf_pg,
 				       LEAF_REC * leafrec_pnt, BTREE_DELETE_HELPER * delete_helper,
@@ -11513,6 +11517,9 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   assert (delete_helper->leaf_addr.offset != 0 && delete_helper->leaf_addr.pgptr == leaf_page);
 
   /* Since we cannot leave the leaf record without any objects, we will need to replace it with an overflow object.
+   * A range scan interrupted inside this key treats the swapped object as already processed; ALTER INDEX ... COMPACT
+   * keeps that true by not appending to the chain while the leaf record has no stable object (CBRD-27972, see
+   * xbtree_compact_overflow ()).
    * Logging physical delete, because it has logical undo, cannot work well under system operation. For this reason,
    * the operation will be split into two sub-operations: 1. Swap first object in leaf record with last object in first
    * overflow page. This is done under a system operation that is committed at the end. 2. Remove relocated object from
@@ -16043,6 +16050,71 @@ error:
 }
 
 /*
+ * btree_compact_leaf_has_stable_object () - BTREE_PROCESS_OBJECT_FUNCTION over a key's leaf record: stop at the first
+ *					     object that is stable -- its insert is committed and it carries no delete
+ *					     MVCCID -- and report it through args.
+ *
+ * return		: NO_ERROR.
+ * thread_p (in)	: Thread entry.
+ * btid_int (in)	: B-tree info.
+ * record (in)		: Leaf record.
+ * object_ptr (in)	: Pointer to current object.
+ * oid (in)		: Object OID.
+ * class_oid (in)	: Object class OID.
+ * mvcc_info (in)	: Object MVCC info.
+ * stop (out)		: Set to true once a stable object is found.
+ * args (out)		: bool *, set to true once a stable object is found.
+ */
+static int
+btree_compact_leaf_has_stable_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr,
+				      OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args)
+{
+  bool *has_stable = (bool *) args;
+
+  assert (mvcc_info != NULL && stop != NULL && has_stable != NULL);
+
+  if (BTREE_MVCC_INFO_IS_DELID_VALID (mvcc_info))
+    {
+      /* Deleted, or being deleted: vacuum may remove it as soon as the deleter commits and no older snapshot is
+       * left. */
+      return NO_ERROR;
+    }
+  if (BTREE_MVCC_INFO_HAS_INSID (mvcc_info)
+      && (logtb_is_current_mvccid (thread_p, mvcc_info->insert_mvccid)
+	  || logtb_is_active_other_mvccid (thread_p, mvcc_info->insert_mvccid)))
+    {
+      /* Uncommitted insert (ours or another transaction's): a rollback removes it physically at once. */
+      return NO_ERROR;
+    }
+
+  *has_stable = true;
+  *stop = true;
+  return NO_ERROR;
+}
+
+/*
+ * btree_compact_end_key () - Account for the key xbtree_compact_overflow () is leaving, possibly after several latch
+ *			      rounds, and clear the position kept for coming back to it. Called at every exit of the
+ *			      per-key loop, so a position left by one key is never taken up by the next one.
+ *
+ * keys_compacted (in/out) : Number of keys whose chain lost at least one page.
+ * pages_freed (in/out)	   : Number of overflow data pages deallocated.
+ * key_freed (in/out)	   : Pages freed for the key over its latch rounds; reset to 0.
+ * resume_oid (out)	   : Set to NULL OID.
+ */
+static void
+btree_compact_end_key (INT64 * keys_compacted, INT64 * pages_freed, int *key_freed, OID * resume_oid)
+{
+  *pages_freed += *key_freed;
+  if (*key_freed > 0)
+    {
+      (*keys_compacted)++;
+    }
+  *key_freed = 0;
+  OID_SET_NULL (resume_oid);
+}
+
+/*
  * xbtree_compact_overflow () - ALTER INDEX ... COMPACT: walk the leaf level of a non-unique index and compact every
  *				key's overflow OID chain to the requested fill factor. Online: no table lock, no
  *				sorting; only the leaf write latch of the key being compacted is held, and it is
@@ -16056,7 +16128,25 @@ error:
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow data pages deallocated.
  * pairs_skipped (out)	: Number of page pairs that could not be compacted because no OID boundary was found (see
- *			  btree_ovf_compact_chain ()). Non-zero means "run vacuum, then COMPACT again".
+ *			  btree_ovf_compact_chain ()), plus one for every key skipped because its leaf record holds no
+ *			  stable object (see below). Non-zero means "run vacuum, then COMPACT again".
+ *
+ * Note: CBRD-27972. A range scan interrupted in the middle of a key (OID buffer full) resumes in the overflow chain
+ *	 after the last OID it accepted and never re-reads the leaf record. That is safe only because the one object
+ *	 vacuum may move from the chain into the leaf -- the LAST object of the FIRST overflow page, swapped in when the
+ *	 leaf record's only object is removed (btree_replace_first_oid_with_ovfl_oid ()) -- is always one the scan has
+ *	 processed: a key is interrupted only after its first overflow page, and a chain never grows at the end of a
+ *	 page by itself. Compaction does append to a page, though, and the page it appends to can be or become the first
+ *	 one, so a swap during the interruption would move an unprocessed object out of the chain and the scan would
+ *	 lose that row. The chain of a key is therefore compacted only while its leaf record holds a stable object (a
+ *	 committed insert with no delete MVCCID): such an object cannot be vacuumed while any snapshot older than the
+ *	 check exists, so no swap can happen during the lifetime of a scan that was interrupted before the append. The
+ *	 check is repeated under every leaf latch acquisition, so it covers the appends done in that latch round. A
+ *	 key whose leaf record holds only deleted or uncommitted objects is left for the next COMPACT (after vacuum, the
+ *	 swapped-in object is normally stable). Classes without MVCC remove index objects physically, without this
+ *	 guarantee, so their indexes are not compacted at all. This is defensive: those classes (root, db_serial,
+ *	 _db_collation, db_ha_apply_info) only have unique indexes, which have no directory chain, and no index can be
+ *	 added to them.
  */
 int
 xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
@@ -16082,6 +16172,8 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   bool work_done;
   bool more = false;
   bool found = false;
+  bool has_stable = false;
+  bool stop = false;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
@@ -16109,6 +16201,12 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   if (BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       /* Unique indexes keep legacy (first-fit, always full) chains; nothing to compact. */
+      return NO_ERROR;
+    }
+  if (mvcc_is_mvcc_disabled_class (&btid_int.topclass_oid))
+    {
+      /* Objects of such a class are removed physically; no leaf object is ever stable (see the note above). Their
+       * indexes are all unique today, so this only guards against a future non-unique one. */
       return NO_ERROR;
     }
 
@@ -16173,6 +16271,9 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE)
 	  || !btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
 	{
+	  /* Coming back to an unfinished chain, the key can be found without one: vacuum removed all of its overflow
+	   * objects while the leaf latch was yielded. The key ends here (CBRD-27972). */
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	  slot++;
 	  continue;
 	}
@@ -16189,6 +16290,29 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	}
       VPID_COPY (&ovf_vpid, &leaf_rec_info.ovfl);
       assert (!VPID_ISNULL (&ovf_vpid));
+
+      /* Compact the chain only while the leaf record holds a stable object (see the note above). Checked under every
+       * leaf latch acquisition, also when coming back to an unfinished chain after a yield. */
+      has_stable = false;
+      stop = false;
+      error_code =
+	btree_record_process_objects (thread_p, &btid_int, BTREE_LEAF_NODE, &rec, offset, &stop,
+				      btree_compact_leaf_has_stable_object, &has_stable);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      if (!has_stable)
+	{
+	  /* Leave the key for the next COMPACT. If the chain was left unfinished in an earlier latch round, it ends
+	   * here: account for the key, then move on to the next one. */
+	  (*pairs_skipped)++;
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
+	  btree_clear_key_value (&clear_key, &key);
+	  slot++;
+	  continue;
+	}
 
       error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, BTREE_COMPACT_MERGES_PER_LATCH,
 					    &resume_oid, &freed, &skipped, &work_done, &more);
@@ -16208,12 +16332,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. A key whose
 	   * chain was finished in an earlier latch round also ends here, so account for the key at this point. */
 	  assert (!more && OID_ISNULL (&resume_oid));
-	  *pages_freed += key_freed;
-	  if (key_freed > 0)
-	    {
-	      (*keys_compacted)++;
-	    }
-	  key_freed = 0;
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	  btree_clear_key_value (&clear_key, &key);
 	  slot++;
 	  continue;
@@ -16247,13 +16366,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       else
 	{
 	  /* This key is done, possibly over several latch rounds: account for it once. */
-	  *pages_freed += key_freed;
-	  if (key_freed > 0)
-	    {
-	      (*keys_compacted)++;
-	    }
-	  key_freed = 0;
-	  OID_SET_NULL (&resume_oid);
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	}
     }
 
