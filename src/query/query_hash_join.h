@@ -97,6 +97,8 @@ typedef struct hashjoin_input_domain_info
   TP_VALUE_CONVERTER *converters;
   /* [key] the comparison of the two inputs' values once converted: tp_value_compare without coercion, decided */
   DOMAIN_COMPARE *compares;
+  /* a key of a floating NUMERIC domain is read without conversion: hjoin_fetch_key () counts its digits (CBRD-27798) */
+  bool float_numeric_as_is;
 } HASHJOIN_INPUT_DOMAIN_INFO;
 
 typedef struct hashjoin_domain_info
