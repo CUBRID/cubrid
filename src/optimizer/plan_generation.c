@@ -1142,9 +1142,10 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
  * The executor scans such a table one scan block (partition or class) at a time and, for every block,
  * runs the scans before it again from the outer (qexec_next_scan_block_iterations ()). An inner before
  * it then sees each outer row once per block, so its key repeats even when unique, and memoize must be
- * left to the run-time check. A SEMI / ANTI inner sweeps its partitions within one probe and is not
- * split into blocks. A partitioned outer or inner does not repeat the rows: the outer's blocks hold
- * different rows, and a partitioned inner renews its memo for every block of its own.
+ * left to the run-time check. A scan driven per outer row (a SEMI / ANTI inner, a partitioned inner and
+ * the scans after them) sweeps its partitions within one probe and is not split into blocks. A
+ * partitioned outer or inner does not repeat the rows: the outer's blocks hold different rows, and a
+ * partitioned inner renews its memo for every block of its own.
  */
 static bool
 scan_chain_has_scan_blocks (XASL_NODE * xasl)
@@ -1153,7 +1154,7 @@ scan_chain_has_scan_blocks (XASL_NODE * xasl)
 
   for (; xasl != NULL; xasl = xasl->scan_ptr)
     {
-      if (XASL_IS_NL_SEMI_OR_ANTI (xasl))
+      if (XASL_IS_PER_OUTER_ROW (xasl))
 	{
 	  continue;
 	}
@@ -2468,6 +2469,77 @@ mark_following_joins (XASL_NODE * sa_scan)
 }
 
 /*
+ * nl_inner_can_walk_partitions_per_row () - whether a NL inner join on a partitioned table can walk its
+ *	partitions per outer row
+ *   return: bool
+ *   scan(in): the inner scan proc; the scans of the joins above it hang off its scan_ptr
+ *
+ * Note: left to the scan block iterator, a partitioned inner is one scan block per partition, and the
+ *	 iterator runs every scan before it again from the outer for each partition. Driven per outer row
+ *	 like a following join, it walks its partitions within the row instead, and its memo spans the walk
+ *	 (CBRD-27866). The scans after it are driven per outer row too, so a class hierarchy (spec->next),
+ *	 which only the iterator moves to its next class, keeps the iterator (qo_nl_inner_partitions_walk_per_row ()).
+ */
+static bool
+nl_inner_can_walk_partitions_per_row (XASL_NODE * scan)
+{
+  ACCESS_SPEC_TYPE *spec = scan->spec_list;
+  XASL_NODE *xp;
+
+  if (spec == NULL || spec->next != NULL || spec->type != TARGET_CLASS || spec->pruning_type != DB_PARTITIONED_CLASS)
+    {
+      return false;
+    }
+
+  for (xp = scan->scan_ptr; xp != NULL; xp = xp->scan_ptr)
+    {
+      for (spec = xp->spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->next != NULL)
+	    {
+	      return false;
+	    }
+	}
+    }
+
+  return true;
+}
+
+/*
+ * nl_inner_prunes_per_row () - whether a join term prunes a partitioned NL inner to its partition for each outer row
+ *   return: bool
+ *   outer(in): the outer plan of the join
+ *   inner(in): the inner plan, a scan of a partitioned table
+ *   terms(in): the join terms the inner scan evaluates besides the terms of its own plan
+ *
+ * Note: as the optimizer costs the join (qo_nl_inner_prunes_per_row ()).
+ */
+static bool
+nl_inner_prunes_per_row (QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
+{
+  BITSET scan_terms;
+  bool prunes;
+
+  if (inner->plan_type != QO_PLANTYPE_SCAN || outer->info == NULL)
+    {
+      return false;
+    }
+
+  /* an index join term is a key range of the inner plan, not one of the terms gen_inner () gets */
+  bitset_init (&scan_terms, outer->info->env);
+  bitset_assign (&scan_terms, terms);
+  bitset_union (&scan_terms, &(inner->sarged_terms));
+  bitset_union (&scan_terms, &(inner->plan_un.scan.terms));
+  bitset_union (&scan_terms, &(inner->plan_un.scan.kf_terms));
+
+  prunes = qo_nl_inner_prunes_per_row (inner->plan_un.scan.node, &(outer->info->nodes), &scan_terms);
+
+  bitset_delset (&scan_terms);
+
+  return prunes;
+}
+
+/*
  * gen_outer () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -2750,6 +2822,22 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  /* tag single-fetch NL inner so executor applies first-match (semi) / zero-match (anti) */
 		  mark_access_as_semi_anti_join (parser, scan, qo_plan_semi_anti_join_type (inner));
 		  mark_following_joins (scan);
+		}
+
+	      if (nl_inner_can_walk_partitions_per_row (scan))
+		{
+		  /* a partitioned inner walks its partitions per outer row (CBRD-27866): a SEMI / ANTI inner and the
+		   * scans after it are driven per outer row already, and an outer join returns its NULL row once */
+		  if (!XASL_IS_NL_SEMI_OR_ANTI (scan))
+		    {
+		      XASL_SET_FLAG (scan, XASL_NL_FOLLOWING_JOIN);
+		      mark_following_joins (scan);
+		    }
+		  XASL_SET_FLAG (scan, XASL_NL_PER_ROW_PARTITIONS);
+		  if (nl_inner_prunes_per_row (outer, inner, &predset))
+		    {
+		      ACCESS_SPEC_SET_FLAG (scan->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW);
+		    }
 		}
 
 	      /* the outer columns of the terms the inner scan evaluates are its memoize key */
