@@ -15309,10 +15309,10 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	  && node->info.host_var.index < parser->host_var_count)
 	{
 	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
-	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found from the
+	   * expression (e.g. rec.field) is kept in parser->static_sql_host_vars, and the start is found from the
 	   * tokens ending there */
-	  int end = (parser->static_sql_host_var_end != NULL)
-	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
+	  int end = (parser->static_sql_host_vars != NULL)
+	    ? parser->static_sql_host_vars[node->info.host_var.index].end : -1;
 	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
 	  char *hv = NULL;
 
@@ -15738,14 +15738,23 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       qsort (list.edits, list.count, sizeof (PT_STATIC_SQL_EDIT), pt_static_sql_compare_edits);
 
-      /* the same insertion can be collected more than once */
+      /* the same edit can be collected more than once: an insertion, or a host variable copied by the parser
+       * (see pt_parameterize_for_static_sql ()) */
       for (i = 1, j = 0; i < list.count; i++)
 	{
 	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
-	      && list.edits[i].host_var_index < 0 && list.edits[j].host_var_index < 0
-	      && strcmp (list.edits[i].text, list.edits[j].text) == 0)
+	      && list.edits[i].host_var_index == list.edits[j].host_var_index)
 	    {
-	      continue;
+	      if (list.edits[i].host_var_index >= 0)
+		{
+		  /* a host variable edit has the text made from its index (see pt_collect_static_sql_edits_pre ()) */
+		  assert (strcmp (list.edits[i].text, list.edits[j].text) == 0);
+		  continue;
+		}
+	      if (strcmp (list.edits[i].text, list.edits[j].text) == 0)
+		{
+		  continue;
+		}
 	    }
 	  list.edits[++j] = list.edits[i];
 	}
