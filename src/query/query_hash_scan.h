@@ -127,6 +127,7 @@ struct hash_list_scan
   };
   HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
+  bool float_numeric_key;	/* a key pair hashes in a floating NUMERIC: qdata_hash_scan_key_float_numeric () */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
@@ -137,6 +138,11 @@ void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
+bool qdata_hash_scan_has_float_numeric_key (const regu_variable_list_node * build,
+					    const regu_variable_list_node * probe);
+unsigned int qdata_hash_scan_key_float_numeric (const void *key, const regu_variable_list_node * build,
+						const regu_variable_list_node * probe, unsigned int ht_size,
+						HASH_METHOD hash_method);
 unsigned int qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size);
 unsigned int qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size);
 unsigned int qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method);

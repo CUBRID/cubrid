@@ -280,132 +280,8 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
   db_private_free (thread_p, key);
 }
 
-/* CBRD-27798: a NUMERIC key hashes by its value modulo the prime 2^61 - 1, its digits (an integer) times 10^-scale.
- * 10 is invertible modulo the prime, so equal values of any scale and of either representation (fixed, floating)
- * give one residue without dropping trailing zeros, and every value costs the same. 10^k and 10^-k modulo the prime
- * for k = 0 .. 40 (10^-1 = 0x1ccccccccccccccc): */
-#define QDATA_HASH_PRIME ((UINT64_C (1) << 61) - 1)
-#define QDATA_HASH_POW10_MAX 40
-static const uint64_t qdata_hash_pow10[QDATA_HASH_POW10_MAX + 1] = {
-  UINT64_C (0x000000000000001), UINT64_C (0x00000000000000a), UINT64_C (0x000000000000064),
-  UINT64_C (0x0000000000003e8), UINT64_C (0x000000000002710), UINT64_C (0x0000000000186a0),
-  UINT64_C (0x0000000000f4240), UINT64_C (0x000000000989680), UINT64_C (0x000000005f5e100),
-  UINT64_C (0x00000003b9aca00), UINT64_C (0x0000002540be400), UINT64_C (0x00000174876e800),
-  UINT64_C (0x00000e8d4a51000), UINT64_C (0x00009184e72a000), UINT64_C (0x0005af3107a4000),
-  UINT64_C (0x0038d7ea4c68000), UINT64_C (0x02386f26fc10000), UINT64_C (0x16345785d8a0000),
-  UINT64_C (0xde0b6b3a7640000), UINT64_C (0xac7230489e80004), UINT64_C (0xbc75e2d6310002b),
-  UINT64_C (0x15c9adc5dea001b1), UINT64_C (0x19e0c9bab24010f0), UINT64_C (0x2c7e14af680a968),
-  UINT64_C (0x1bcecceda1069e10), UINT64_C (0x161401484a422ca8), UINT64_C (0x1cc80cd2e695be96),
-  UINT64_C (0x1fd0803d01d971e4), UINT64_C (0x1e250262127e72f1), UINT64_C (0xd7217d4b8f07d73),
-  UINT64_C (0x674ee4f3964e682), UINT64_C (0x0914f183df10116), UINT64_C (0x5ad16f26b6a0adc),
-  UINT64_C (0x18c2e57832246c99), UINT64_C (0x179cf6b1f56c3e01), UINT64_C (0xc21a2f3963a6c11),
-  UINT64_C (0x19505d83de4838ad), UINT64_C (0x1d23a726aed236c9), UINT64_C (0x3648782d43623e3),
-  UINT64_C (0x1ed4b1c4a1d66df), UINT64_C (0x1344ef1ae52604b6)
-};
-
-static const uint64_t qdata_hash_pow10_inverse[QDATA_HASH_POW10_MAX + 1] = {
-  UINT64_C (0x000000000000001), UINT64_C (0x1ccccccccccccccc), UINT64_C (0xfae147ae147ae14),
-  UINT64_C (0xe5e353f7ced9168), UINT64_C (0x14a305532617c1bd), UINT64_C (0x5438088509bf9c6),
-  UINT64_C (0x6ed2674080f98fa), UINT64_C (0x1a4aea3ecd9b28e5), UINT64_C (0x12a1176cae291db0),
-  UINT64_C (0x1dce8be116a82f8), UINT64_C (0x1362e41301bdd9e5), UINT64_C (0x11f04a01e692fc30),
-  UINT64_C (0x831a10030a84c6b), UINT64_C (0xa6b5ce66b4407a4), UINT64_C (0x10abc7d7120672a),
-  UINT64_C (0x134ddfa624e9a3ea), UINT64_C (0xebafcc3d07dc397), UINT64_C (0x1e45e61394d9605b),
-  UINT64_C (0x1306fd685baf566f), UINT64_C (0x11e719573c5e5571), UINT64_C (0xb63e8ef1fa3088b),
-  UINT64_C (0xabd30e4b65d1a74), UINT64_C (0x1aac84e3abd61c3e), UINT64_C (0x1c4473b05dfbcf9f),
-  UINT64_C (0xc6d3ec4d632c7f6), UINT64_C (0x7a48646e2384732), UINT64_C (0x72a0d6d7d05a0b8),
-  UINT64_C (0x0b767be261a29ac), UINT64_C (0x678bd9303cf6a91), UINT64_C (0x170c12f519fb2441),
-  UINT64_C (0x124e01e54f65ea06), UINT64_C (0xea16696ee56fdcd), UINT64_C (0x4a9bd757e3be62e),
-  UINT64_C (0x0775fbef305fd6b), UINT64_C (0x9a58993184d6624), UINT64_C (0x1a908dc1e8d48a36),
-  UINT64_C (0x2a80e2cfdaeda9f), UINT64_C (0x9dd9b047fc4af76), UINT64_C (0x0fc8f80732d44bf),
-  UINT64_C (0x9b2db2671eaed46), UINT64_C (0x75eaf83d83117ba)
-};
-
 /*
- * qdata_hash_mod_prime () - x modulo the prime 2^61 - 1
- *   returns: the residue
- *   x(in): a value below 2^122
- */
-static inline uint64_t
-qdata_hash_mod_prime (uint128_t x)
-{
-  uint64_t r = (uint64_t) (x & QDATA_HASH_PRIME) + (uint64_t) (x >> 61);
-
-  r = (r & QDATA_HASH_PRIME) + (r >> 61);
-  return r >= QDATA_HASH_PRIME ? r - QDATA_HASH_PRIME : r;
-}
-
-/*
- * qdata_hash_pow10_mod_prime () - 10^exponent modulo the prime 2^61 - 1, a negative exponent for 10^-|exponent|
- *   returns: the residue
- *   exponent(in): the power
- */
-static uint64_t
-qdata_hash_pow10_mod_prime (int exponent)
-{
-  int k = exponent < 0 ? -exponent : exponent;
-  const uint64_t *table = exponent < 0 ? qdata_hash_pow10_inverse : qdata_hash_pow10;
-  uint64_t result = 1;
-
-  /* past 40 only for a floating value spelled past its 40 digits */
-  while (k > QDATA_HASH_POW10_MAX)
-    {
-      result = qdata_hash_mod_prime ((uint128_t) result * table[QDATA_HASH_POW10_MAX]);
-      k -= QDATA_HASH_POW10_MAX;
-    }
-  return qdata_hash_mod_prime ((uint128_t) result * table[k]);
-}
-
-/*
- * qdata_hash_scan_numeric () - CBRD-27798: hash a NUMERIC by its value: its digits times 10^-scale modulo the prime
- *				 2^61 - 1, and its sign, so that equal values of any scale and of either representation
- *				 (fixed, floating) hash alike while 1.23, 12.3, 123 and -123 do not
- *   returns: hash value
- *   value(in): a NUMERIC key value, not NULL
- *   ht_size(in): hash table size (in buckets)
- */
-static unsigned int
-qdata_hash_scan_numeric (const DB_VALUE * value, unsigned int ht_size)
-{
-  const uint8_t *digits = (const uint8_t *) db_locate_numeric (value);
-  uint64_t high, low, residue;
-  unsigned int hash;
-  int precision, scale;
-
-  if (ht_size <= 1)
-    {
-      return 0;
-    }
-
-  db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
-  /* the digits are 17 bytes, the most significant first: 2^64 = 2^3 and 2^128 = 2^6 modulo 2^61 - 1 */
-  memcpy (&high, digits + 1, sizeof (high));
-  memcpy (&low, digits + 1 + sizeof (high), sizeof (low));
-  high = NUMERIC_BSWAP64 (high);
-  low = NUMERIC_BSWAP64 (low);
-  residue = qdata_hash_mod_prime (((uint128_t) digits[0] << 6) + ((uint128_t) qdata_hash_mod_prime (high) << 3) + low);
-  residue = qdata_hash_mod_prime ((uint128_t) residue * qdata_hash_pow10_mod_prime (-scale));
-  if (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value) && residue != 0)
-    {
-      residue = QDATA_HASH_PRIME - residue;
-    }
-
-  /* the 61 bits into 32, then mht_get_hash_number ()'s mixing (mht_get_shiftmult32 ()) and reduction (mht_reduce ()) */
-  hash = (unsigned int) (residue ^ (residue >> 32));
-  hash = (hash ^ 61) ^ (hash >> 16);
-  hash += (hash << 3);
-  hash ^= (hash >> 4);
-  hash *= 0x27d4eb2d;
-  hash ^= (hash >> 15);
-  if (ht_size == UINT_MAX)
-    {
-      return (hash == UINT_MAX) ? 0 : hash;
-    }
-  return hash % ht_size;
-}
-
-/*
- * qdata_hash_scan_value () - hash one key value; -0.0 and +0.0 compare equal, so a zero hashes as +0, and a NUMERIC
- *			      hashes by its value (qdata_hash_scan_numeric ())
+ * qdata_hash_scan_value () - hash one key value; -0.0 and +0.0 compare equal, so a zero hashes as +0
  *   returns: hash value
  *   value(in): key value
  *   ht_size(in): hash table size (in buckets)
@@ -447,9 +323,6 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 	      return mht_get_hash_number (ht_size, &zero);
 	    }
 	  break;
-
-	case DB_TYPE_NUMERIC:
-	  return qdata_hash_scan_numeric (value, ht_size);
 
 	default:
 	  break;
@@ -533,6 +406,122 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   for (i = 0; i < ckey->val_count; i++)
     {
       hash_val = qdata_hash_scan_key_fold (hash_val, ckey->values[i], ht_size);
+    }
+
+  return qdata_hash_scan_key_finish (hash_val, hash_method);
+}
+
+/*
+ * qdata_hash_scan_is_float_numeric_key () - CBRD-27798: whether a key pair of a hash list scan hashes in a floating
+ *					      NUMERIC, the common domain XASL generation converts the pair to
+ *					      (pt_hash_key_domain ()) or the domain a side already has
+ *   returns: true for such a pair
+ *   build(in): the build key of the pair
+ *   probe(in): the probe key of the pair
+ */
+static bool
+qdata_hash_scan_is_float_numeric_key (const regu_variable_list_node * build, const regu_variable_list_node * probe)
+{
+  const TP_DOMAIN *domain[2] = { build->value.domain, probe->value.domain };
+  int side;
+
+  for (side = 0; side < 2; side++)
+    {
+      if (domain[side] != NULL && TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_NUMERIC
+	  && domain[side]->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * qdata_hash_scan_has_float_numeric_key () - CBRD-27798: whether a hash list scan has a key pair that hashes in a
+ *					       floating NUMERIC (qdata_hash_scan_is_float_numeric_key ()), so that its
+ *					       build and probe hash by qdata_hash_scan_key_float_numeric ()
+ *   returns: true for such a scan
+ *   build(in): the scan's build keys
+ *   probe(in): the scan's probe keys, in the order of the build keys
+ */
+bool
+qdata_hash_scan_has_float_numeric_key (const regu_variable_list_node * build, const regu_variable_list_node * probe)
+{
+  for (; build != NULL && probe != NULL; build = build->next, probe = probe->next)
+    {
+      if (qdata_hash_scan_is_float_numeric_key (build, probe))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * qdata_hash_scan_float_numeric_value () - CBRD-27798: hash one value of a key that hashes in a floating NUMERIC
+ *   returns: hash value
+ *   value(in): key value
+ *   ht_size(in): hash table size (in buckets)
+ *
+ * mht_get_hash_number () hashes a floating NUMERIC normalized (float_numeric_normalize_for_hash ()) but a fixed one by
+ * its digits at its own scale, and a key of a floating domain can hold fixed values (a CONNECT BY PRIOR value keeps
+ * the form of its operand). A fixed value hashes as the floating value of the same digits, precision and scale, so
+ * equal values of either form hash alike, as mht_valhash () normalizes a fixed NUMERIC too. Any other value hashes as
+ * qdata_hash_scan_value () hashes it.
+ */
+static unsigned int
+qdata_hash_scan_float_numeric_value (const DB_VALUE * value, unsigned int ht_size)
+{
+  DB_VALUE floating;
+
+  if (value == NULL || DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC
+      || value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      return qdata_hash_scan_value (value, ht_size);
+    }
+
+  /* a NUMERIC holds its digits in the value itself */
+  floating = *value;
+  FIXED_TO_FLOAT_NUMERIC (&floating);
+  return mht_get_hash_number (ht_size, &floating);
+}
+
+/*
+ * qdata_hash_scan_key_float_numeric () - CBRD-27798: qdata_hash_scan_key () of a hash list scan that has a key pair
+ *					   hashing in a floating NUMERIC: that key's values hash by
+ *					   qdata_hash_scan_float_numeric_value (), every other key's as
+ *					   qdata_hash_scan_key () hashes them
+ *   returns: hash value
+ *   key(in): key
+ *   build(in): the scan's build keys
+ *   probe(in): the scan's probe keys, in the order of the build keys
+ *   ht_size(in): hash table size (in buckets)
+ *   hash_method(in): the hash table's method
+ */
+unsigned int
+qdata_hash_scan_key_float_numeric (const void *key, const regu_variable_list_node * build,
+				   const regu_variable_list_node * probe, unsigned int ht_size, HASH_METHOD hash_method)
+{
+  const HASH_SCAN_KEY *ckey = (const HASH_SCAN_KEY *) key;
+  unsigned int hash_val = 0, tmp_hash_val;
+  int i;
+
+  for (i = 0; i < ckey->val_count; i++, build = build->next, probe = probe->next)
+    {
+      assert (build != NULL && probe != NULL);
+      if (!qdata_hash_scan_is_float_numeric_key (build, probe))
+	{
+	  hash_val = qdata_hash_scan_key_fold (hash_val, ckey->values[i], ht_size);
+	  continue;
+	}
+      /* qdata_hash_scan_key_fold ()'s step over this value's hash */
+      hash_val = ROTL32 (hash_val, 13);
+      tmp_hash_val = qdata_hash_scan_float_numeric_value (ckey->values[i], ht_size);
+      hash_val ^= tmp_hash_val;
+      if (hash_val == 0)
+	{
+	  hash_val = tmp_hash_val;
+	}
     }
 
   return qdata_hash_scan_key_finish (hash_val, hash_method);

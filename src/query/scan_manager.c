@@ -3610,6 +3610,9 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* check if hash list scan is possible? */
   llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
+  /* CBRD-27798: a key pair hashing in a floating NUMERIC has the build and the probe hash its values normalized */
+  llsidp->hlsid.float_numeric_key = (llsidp->hlsid.hash_list_scan_type != HASH_METH_NOT_USE
+				     && qdata_hash_scan_has_float_numeric_key (regu_list_build, regu_list_probe));
   if (llsidp->hlsid.hash_list_scan_type != HASH_METH_NOT_USE)
     {
       bool on_trace;
@@ -9297,7 +9300,16 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 
       /* make hash key */
-      hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+      if (llsidp->hlsid.float_numeric_key)
+	{
+	  hash_key = qdata_hash_scan_key_float_numeric (key, llsidp->hlsid.build_regu_list,
+							llsidp->hlsid.probe_regu_list, UINT_MAX,
+							llsidp->hlsid.hash_list_scan_type);
+	}
+      else
+	{
+	  hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+	}
 
       switch (llsidp->hlsid.hash_list_scan_type)
 	{
@@ -9489,8 +9501,17 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	{
 	  return S_ERROR;
 	}
-      /* make hash key */
-      hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+      /* make hash key: the build's hash (scan_build_hash_list_scan ()) */
+      if (llsidp->hlsid.float_numeric_key)
+	{
+	  hash_key = qdata_hash_scan_key_float_numeric (key, llsidp->hlsid.build_regu_list,
+							llsidp->hlsid.probe_regu_list, UINT_MAX,
+							llsidp->hlsid.hash_list_scan_type);
+	}
+      else
+	{
+	  hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+	}
       llsidp->hlsid.curr_hash_key = hash_key;
 
       switch (llsidp->hlsid.hash_list_scan_type)

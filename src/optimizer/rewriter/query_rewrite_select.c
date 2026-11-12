@@ -4625,113 +4625,12 @@ qo_hq_cast_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
 }
 
 /*
- * qo_hq_fixed_numeric_key () - the precision and scale of a fixed NUMERIC key
- *   side
- *   return: false for a float NUMERIC or a side without a data type
- *   arg(in): a NUMERIC key side
- *   precision(out), scale(out): its precision and scale
- */
-static bool
-qo_hq_fixed_numeric_key (PT_NODE * arg, int *precision, int *scale)
-{
-  /* PRIOR is typed float NUMERIC, but its values keep the form of its operand */
-  if ((PT_IS_EXPR_NODE_WITH_OPERATOR (arg, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (arg, PT_QPRIOR))
-      && arg->info.expr.arg1 != NULL)
-    {
-      arg = arg->info.expr.arg1;
-    }
-  if (arg->data_type == NULL)
-    {
-      return false;
-    }
-  *precision = arg->data_type->info.data_type.precision;
-  *scale = arg->data_type->info.data_type.dec_precision;
-
-  return *precision > 0 && *precision <= DB_MAX_FIXED_NUMERIC_PRECISION;
-}
-
-/*
- * qo_hq_is_inexact_numeric_pair () - checks whether the hash list scan hashes
- *   a pair whose common type is NUMERIC through a DOUBLE that can round equal
- *   values of the two sides apart, or does not hash it at all
- *   return: true for such a pair
- *   prior(in): the side of a PT_EQ conjunct with PRIOR
- *   build(in): the other side
- * Note: the PRIOR key is typed float NUMERIC, so a pair with a NUMERIC PRIOR
- *       side hashes as DOUBLE; equal values of one fixed scale convert alike.
- *       A NUMERIC converts its coefficient with one rounding and then divides
- *       it by 10^scale, which rounds again unless the coefficient is below
- *       2^53 (15 digits); a negative scale or a float NUMERIC rounds as well.
- *       An integer PRIOR side and a fixed NUMERIC column hash in their common
- *       NUMERIC, or not at all beyond 38 digits.
- */
-static bool
-qo_hq_is_inexact_numeric_pair (PT_NODE * prior, PT_NODE * build)
-{
-  PT_NODE *arg[2] = { prior, build };
-  bool fixed[2] = { false, false };
-  int precision[2] = { 0, 0 };
-  int scale[2] = { 0, 0 };
-  int i;
-
-  if (prior->type_enum != PT_TYPE_NUMERIC && build->type_enum != PT_TYPE_NUMERIC)
-    {
-      return false;
-    }
-
-  for (i = 0; i < 2; i++)
-    {
-      switch (arg[i]->type_enum)
-	{
-	case PT_TYPE_NUMERIC:
-	  fixed[i] = qo_hq_fixed_numeric_key (arg[i], &precision[i], &scale[i]);
-	  break;
-	case PT_TYPE_SMALLINT:
-	  precision[i] = DB_SMALLINT_PRECISION;
-	  break;
-	case PT_TYPE_INTEGER:
-	  precision[i] = DB_INTEGER_PRECISION;
-	  break;
-	case PT_TYPE_BIGINT:
-	  precision[i] = DB_BIGINT_PRECISION;
-	  break;
-	case PT_TYPE_MAYBE:
-	  break;
-	default:
-	  /* the common type is not NUMERIC */
-	  return false;
-	}
-    }
-
-  if (precision[0] > 0 && prior->type_enum != PT_TYPE_NUMERIC && fixed[1] && PT_IS_NAME_NODE (build))
-    {
-      return MAX (precision[0], precision[1] - scale[1]) + MAX (scale[1], 0) > DB_MAX_FIXED_NUMERIC_PRECISION;
-    }
-
-  if (fixed[0] && fixed[1] && scale[0] == scale[1])
-    {
-      return false;
-    }
-
-  for (i = 0; i < 2; i++)
-    {
-      if (arg[i]->type_enum == PT_TYPE_NUMERIC && (!fixed[i] || scale[i] < 0 || (scale[i] > 0 && precision[i] > 15)))
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * qo_hq_is_unsafe_hash_key () - checks whether one PT_EQ conjunct, as a key of
  *   the hash list scan, can give a result other than the single-table plan
  * Note: a JSON key is hashed by its text, so JSON values that compare equal
  *       ('1.0' and '"1"' against '1') can hash apart. The build key is
  *       evaluated on every row, even one no parent reaches, so a cast there
- *       can fail where the single-table plan never evaluates it. A NUMERIC
- *       PRIOR key is hashed as DOUBLE (see qo_hq_is_inexact_numeric_pair).
+ *       can fail where the single-table plan never evaluates it.
  */
 static bool
 qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
@@ -4765,12 +4664,6 @@ qo_hq_is_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * term)
       (void) parser_walk_tree (parser, c1.has_name ? arg1 : arg2, qo_hq_cast_walker, &found, NULL, NULL);
 
       return found;
-    }
-
-  /* TODO: a NUMERIC PRIOR key hashes as DOUBLE; drop the DOUBLE cases once it hashes exactly */
-  if (c1.has_prior ? qo_hq_is_inexact_numeric_pair (arg1, arg2) : qo_hq_is_inexact_numeric_pair (arg2, arg1))
-    {
-      return true;
     }
 
   (void) parser_walk_tree (parser, c1.has_prior ? arg2 : arg1, qo_hq_cast_walker, &found, NULL, NULL);
