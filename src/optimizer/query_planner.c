@@ -446,6 +446,7 @@ static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tr
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static int qo_query_serial_level (QO_ENV * env);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -6542,6 +6543,30 @@ static PT_NODE *
 qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   if (tree != NULL && tree->node_type == PT_METHOD_CALL)
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+      return tree;
+    }
+
+  return qo_check_serial_block_expr (parser, tree, arg, continue_walk);
+}
+
+/*
+ * qo_check_hjoin_term_expr () - qo_check_serial_block_expr () for a hash join term
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: a serial is updated under a system operation and through the serial cache,
+ *	 so the parallel probe workers may evaluate NEXT_VALUE and CURRENT_VALUE.
+ */
+static PT_NODE *
+qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (tree != NULL && tree->node_type == PT_EXPR
+      && (tree->info.expr.op == PT_NEXT_VALUE || tree->info.expr.op == PT_CURRENT_VALUE))
     {
       *continue_walk = PT_CONTINUE_WALK;
       return tree;
@@ -19591,7 +19616,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 	      continue;
 	    }
 
-	  (void) parser_walk_tree (parser, expr, qo_skip_subquery, NULL, qo_check_serial_block_expr,
+	  (void) parser_walk_tree (parser, expr, qo_skip_subquery, NULL, qo_check_hjoin_term_expr,
 				   &has_ineligible_node);
 
 	  if (has_ineligible_node)
