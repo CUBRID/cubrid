@@ -3804,40 +3804,42 @@ qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 }
 
 /*
- * qexec_clear_all_lists () -
+ * qexec_clear_all_lists () - clear the list files that an iteration of one XASL block left in the blocks under it
  *   return:
- *   xasl_list(in)      :
+ *   xasl(in)      : the XASL procedure block; its next is not cleared
+ *
+ * Note: qexec_intprt_fnc () calls it once per row for the block it runs. The next of that block belongs to the list of
+ *   its parent, not to the block: an operand of a set operation is the next of the operand before it, and a parallel
+ *   query runs the operands at the same time in different threads, so clearing the lists of the next operand freed
+ *   the list files of its correlated subqueries while another thread was writing them.
  */
 static void
-qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
+qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  XASL_NODE *xasl;
+  XASL_NODE *xptr;
 
-  for (xasl = xasl_list; xasl != NULL; xasl = xasl->next)
+  /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
+   * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
+   * possible, these empty procedure calls amounted to several percent of the cpu time. */
+  for (xptr = xasl->bptr_list; xptr != NULL; xptr = xptr->next)
     {
-      /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
-       * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
-       * possible, these empty procedure calls amounted to several percent of the cpu time. */
-      if (xasl->bptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->bptr_list);
-	}
-      if (xasl->fptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->fptr_list);
-	}
+      qexec_clear_all_lists (thread_p, xptr);
+    }
+  for (xptr = xasl->fptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      qexec_clear_all_lists (thread_p, xptr);
+    }
 
-      /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
-       * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
-      if (xasl->dptr_list)
-	{
-	  qexec_clear_head_lists (thread_p, xasl->dptr_list);
-	}
+  /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
+   * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
+  if (xasl->dptr_list)
+    {
+      qexec_clear_head_lists (thread_p, xasl->dptr_list);
+    }
 
-      if (xasl->scan_ptr)
-	{
-	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
-	}
+  if (xasl->scan_ptr)
+    {
+      qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
     }
 }
 
@@ -6697,6 +6699,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
   while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
     {
       QEXEC_GBY_SLOT *s;
+      AGGREGATE_HASH_VALUE *value;
       AGGREGATE_TYPE *agg;
       unsigned int h;
       int i;
@@ -6716,10 +6719,9 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
       s = qexec_gby_mtable_find (t, rd->temp_part_key, h);
       if (s->key == NULL && rd->no_first_tuple)
 	{
-	  AGGREGATE_HASH_VALUE *added;
-
-	  /* the group's rows all went into partial entries: the entry's key makes the group */
-	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &added);
+	  /* the group's rows all went into partial entries: the entry's key makes the group.  The add can grow the
+	   * table, which frees the slots s points into: the group is read through the value it returns */
+	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &value);
 	  if (rc != NO_ERROR)
 	    {
 	      break;
@@ -6742,9 +6744,13 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	  rc = ER_FAILED;
 	  break;
 	}
+      else
+	{
+	  value = s->value;
+	}
       for (agg = rd->agg_template, i = 0; agg != NULL; agg = agg->next, i++)
 	{
-	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &s->value->accumulators[i],
+	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &value->accumulators[i],
 							   &agg->accumulator_domain, agg->function, agg->domain,
 							   &rd->temp_part_value->accumulators[i]);
 	  if (rc != NO_ERROR)
@@ -6756,7 +6762,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	{
 	  break;
 	}
-      s->value->tuple_count += rd->temp_part_value->tuple_count;
+      value->tuple_count += rd->temp_part_value->tuple_count;
     }
   if (sc == S_ERROR && rc == NO_ERROR)
     {

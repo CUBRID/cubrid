@@ -1673,6 +1673,9 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* pt_compile () or mq_translate () may return a new node, which does not know where the statement starts */
   int stmt_start_line = statement->stmt_start_line;
+  /* nor its text, which a driver session compiles again for the types of its bind values */
+  char *sql_user_text = statement->sql_user_text;
+  int sql_user_text_len = statement->sql_user_text_len;
 
   /* check if the statement is already processed */
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
@@ -1902,6 +1905,8 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* so now, the statement is compiled */
   statement->stmt_start_line = stmt_start_line;
+  statement->sql_user_text = sql_user_text;
+  statement->sql_user_text_len = sql_user_text_len;
   session->statements[stmt_ndx] = statement;
   session->stage[stmt_ndx] = StatementCompiledStage;
 
