@@ -3804,40 +3804,42 @@ qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 }
 
 /*
- * qexec_clear_all_lists () -
+ * qexec_clear_all_lists () - clear the list files that an iteration of one XASL block left in the blocks under it
  *   return:
- *   xasl_list(in)      :
+ *   xasl(in)      : the XASL procedure block; its next is not cleared
+ *
+ * Note: qexec_intprt_fnc () calls it once per row for the block it runs. The next of that block belongs to the list of
+ *   its parent, not to the block: an operand of a set operation is the next of the operand before it, and a parallel
+ *   query runs the operands at the same time in different threads, so clearing the lists of the next operand freed
+ *   the list files of its correlated subqueries while another thread was writing them.
  */
 static void
-qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
+qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  XASL_NODE *xasl;
+  XASL_NODE *xptr;
 
-  for (xasl = xasl_list; xasl != NULL; xasl = xasl->next)
+  /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
+   * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
+   * possible, these empty procedure calls amounted to several percent of the cpu time. */
+  for (xptr = xasl->bptr_list; xptr != NULL; xptr = xptr->next)
     {
-      /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
-       * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
-       * possible, these empty procedure calls amounted to several percent of the cpu time. */
-      if (xasl->bptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->bptr_list);
-	}
-      if (xasl->fptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->fptr_list);
-	}
+      qexec_clear_all_lists (thread_p, xptr);
+    }
+  for (xptr = xasl->fptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      qexec_clear_all_lists (thread_p, xptr);
+    }
 
-      /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
-       * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
-      if (xasl->dptr_list)
-	{
-	  qexec_clear_head_lists (thread_p, xasl->dptr_list);
-	}
+  /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
+   * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
+  if (xasl->dptr_list)
+    {
+      qexec_clear_head_lists (thread_p, xasl->dptr_list);
+    }
 
-      if (xasl->scan_ptr)
-	{
-	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
-	}
+  if (xasl->scan_ptr)
+    {
+      qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
     }
 }
 
