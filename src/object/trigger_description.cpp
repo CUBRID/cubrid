@@ -382,6 +382,13 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  switch (trigger->action->type)
 	    {
 	    case TR_ACT_EXPRESSION:
+	      if (trigger->block_source != NULL)
+		{
+		  /* CREATE TRIGGER makes the internal procedure again from the block */
+		  output_ctx ("%s", trigger->block_source);
+		  break;
+		}
+
 	      parser = parser_create_parser ();
 	      if (parser == NULL)
 		{
@@ -463,6 +470,11 @@ tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_
       if (trigger != NULL)
 	{
 	  int is_system_class = 0;
+
+	  if (!ctxt.is_dba_user && !ctxt.is_dba_group_member && !ws_is_same_object (trigger->owner, Au_user))
+	    {
+	      continue;
+	    }
 
 	  if (trigger->class_mop != NULL && !is_required_trigger (trigger, classes))
 	    {

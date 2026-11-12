@@ -102,7 +102,7 @@ struct sp_code_info
   std::string created_time;
   MOP owner;
   int is_static;
-  int is_system_generated;
+  int is_system_generated {0};
   int stype;
   std::string scode;
   int otype;

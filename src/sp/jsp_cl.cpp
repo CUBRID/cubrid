@@ -143,8 +143,10 @@ static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int n
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 
-static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
-static int jsp_drop_stored_procedure_code (const char *name);
+static int jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement,
+    bool is_system_generated);
+static int drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_system_generated);
+static int drop_stored_procedure_code (const char *name, bool allow_system_generated);
 
 static int jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p);
 static int jsp_check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
@@ -968,7 +970,7 @@ jsp_drop_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	  return er_errid ();
 	}
 
-      err = jsp_drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type));
+      err = drop_stored_procedure (name, jsp_map_pt_misc_to_sp_type (type), false);
       if (err != NO_ERROR)
 	{
 	  break;
@@ -3503,6 +3505,94 @@ error_exit:
 int
 jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
+  return jsp_create_stored_procedure_internal (parser, statement, false);
+}
+
+/*
+ * jsp_create_system_generated_procedure
+ *   return: if failed return error code else NO_ERROR
+ *   create_sql(in): a CREATE PROCEDURE statement
+ *
+ * Note: The procedure is marked as system generated, so users cannot see, alter or drop it.
+ */
+
+int
+jsp_create_system_generated_procedure (const char *create_sql)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE **statements;
+  PT_NODE *statement;
+  int err = NO_ERROR;
+
+  assert (create_sql != NULL);
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
+  statements = parser_parse_string_with_escapes (parser, create_sql, false);
+  if (statements == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SYNTAX);
+      err = er_errid ();
+      goto end;
+    }
+
+  statement = statements[0];
+  if (statement == NULL || statement->node_type != PT_CREATE_STORED_PROCEDURE
+      || PT_NODE_SP_TYPE (statement) != PT_SP_PROCEDURE || statements[1] != NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      err = ER_GENERIC_ERROR;
+      goto end;
+    }
+
+  /* store the user specified name in info.name.original, as statements from users get it */
+  parser_walk_tree (parser, statement, NULL, NULL, pt_set_user_specified_name, NULL);
+
+  statement = pt_compile (parser, statement);
+  if (statement == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      err = er_errid ();
+      goto end;
+    }
+
+  err = jsp_create_stored_procedure_internal (parser, statement, true);
+
+end:
+  parser_free_parser (parser);
+
+  return err;
+}
+
+/*
+ * jsp_drop_system_generated_procedure
+ *   return: if failed return error code else NO_ERROR
+ *   name(in): name of a procedure that jsp_create_system_generated_procedure created
+ */
+
+int
+jsp_drop_system_generated_procedure (const char *name)
+{
+  return drop_stored_procedure (name, SP_TYPE_PROCEDURE, true);
+}
+
+/*
+ * jsp_create_stored_procedure_internal
+ *   return: if failed return error code else NO_ERROR
+ *   parser(in/out): parser environment
+ *   statement(in): a statement node
+ *   is_system_generated(in): mark the procedure as one the engine created
+ */
+
+static int
+jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement, bool is_system_generated)
+{
   const char *decl = NULL, *comment = NULL;
   char owner_name[DB_MAX_USER_LENGTH];
   owner_name[0] = '\0';
@@ -3522,6 +3612,8 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   CHECK_MODIFICATION_ERROR ();
   assert (!prm_get_bool_value (PRM_ID_BLOCK_DDL_STATEMENT));    // unreachable here if it is true
+
+  sp_info.is_system_generated = is_system_generated;
 
   // check PL/CSQL's AUTHID with CURRENT_USER
   sp_info.directive = jsp_map_pt_to_sp_authid (PT_NODE_SP_AUTHID (statement));
@@ -3700,7 +3792,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 	    }
 	  has_savepoint = true;
 
-	  err = jsp_drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type);
+	  err = drop_stored_procedure (sp_info.unique_name.data (), sp_info.sp_type, false);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
@@ -3750,6 +3842,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       code_info.otype = SPOC_JAVA_JAR;
       code_info.ocode = pl_sp_compile_response.compiled_code;
       code_info.owner = sp_info.owner;
+      code_info.is_system_generated = sp_info.is_system_generated ? 1 : 0;
 
       err = sp_add_stored_procedure_code (code_info);
       if (err != NO_ERROR)
@@ -3789,7 +3882,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   PT_MISC_TYPE type;
   SP_TYPE_ENUM real_type;
   MOP sp_mop = NULL, new_owner_mop = NULL, owner_mop = NULL;
-  DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val;
+  DB_VALUE user_val, sp_type_val, sp_lang_val, target_cls_val, generated_val;
 
   assert (statement != NULL);
 
@@ -3834,6 +3927,19 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  err = db_get (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  if (1 == db_get_int (&generated_val))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED, 0);
+      err = er_errid ();
       goto error;
     }
 
@@ -4056,16 +4162,17 @@ jsp_check_package_name (const char *str)
 }
 
 /*
- * jsp_drop_stored_procedure -
+ * drop_stored_procedure -
  *   return: Error code
  *   name(in): jsp name
  *   expected_type(in):
+ *   allow_system_generated(in): drop it even if the engine created it
  *
  * Note:
  */
 
 static int
-jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
+drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type, bool allow_system_generated)
 {
   MOP sp_mop, arg_mop, owner, save_user;
   DB_VALUE sp_type_val, arg_cnt_val, args_val, owner_val, generated_val, target_cls_val, lang_val, temp;
@@ -4110,7 +4217,7 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
       goto error;
     }
 
-  if (1 == db_get_int (&generated_val))
+  if (!allow_system_generated && 1 == db_get_int (&generated_val))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();
@@ -4150,7 +4257,7 @@ jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
 	}
 
       target_cls = db_get_string (&target_cls_val);
-      err = jsp_drop_stored_procedure_code (target_cls);
+      err = drop_stored_procedure_code (target_cls, allow_system_generated);
       if (err != NO_ERROR)
 	{
 	  goto error;
@@ -4222,15 +4329,16 @@ error:
 }
 
 /*
- * jsp_drop_stored_procedure_code -
+ * drop_stored_procedure_code -
  *   return: Error code
  *   name(in): jsp name
+ *   allow_system_generated(in): drop it even if the engine created it
  *
  * Note:
  */
 
 static int
-jsp_drop_stored_procedure_code (const char *name)
+drop_stored_procedure_code (const char *name, bool allow_system_generated)
 {
   MOP code_mop, owner;
   DB_VALUE owner_val, generated_val;
@@ -4268,7 +4376,7 @@ jsp_drop_stored_procedure_code (const char *name)
       goto error;
     }
 
-  if (!DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
+  if (!allow_system_generated && !DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
       err = er_errid ();

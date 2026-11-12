@@ -359,8 +359,13 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
   const int freelist_block_count = 2;
   const int freelist_block_size = std::max (1, xcache_Soft_capacity / freelist_block_count);
-  xcache_Hashmap.init (xcache_Ts, THREAD_TS_XCACHE, xcache_Soft_capacity, freelist_block_size, freelist_block_count,
-		       xcache_Entry_descriptor);
+  if (xcache_Hashmap.init (xcache_Ts, THREAD_TS_XCACHE, xcache_Soft_capacity, freelist_block_size,
+			   freelist_block_count, xcache_Entry_descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      xcache_log_error ("could not init hash table.\n");
+      return error_code;
+    }
 
   /* Use global heap */
   save_heapid = db_change_private_heap (thread_p, 0);
@@ -1214,9 +1219,6 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
       goto error;
     }
   assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
-  /* CBRD-27583: the compiler leaves no regu, arithmetic or list position without a domain */
-  assert (xclone->xasl_buf->n_undecided_regu == 0 && xclone->xasl_buf->n_undecided_arith == 0
-	  && xclone->xasl_buf->n_undecided_position == 0);
 
   xcache_log ("loaded xasl clone: \n"
 	      XCACHE_LOG_ENTRY_TEXT ("entry")

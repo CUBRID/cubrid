@@ -442,8 +442,8 @@ struct btree_capacity
   int nleaf_pg_cnt;		/* NonLeaf page count */
   int tot_pg_cnt;		/* Total page count */
   int height;			/* Height of the tree */
-  float sum_rec_len;		/* Sum of all record lengths */
-  float sum_key_len;		/* Sum of all distinct key lengths */
+  int64_t sum_rec_len;		/* Sum of all record lengths; integral, so summed exactly */
+  int64_t sum_key_len;		/* Sum of all distinct key lengths; integral, so summed exactly */
   int avg_key_len;		/* Average key length */
   int avg_rec_len;		/* Average page record length */
   float tot_free_space;		/* Total free space in index */
@@ -947,6 +947,9 @@ extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, vo
 extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 			     const DOMAIN_KEY_BOUND * bound, DB_VALUE_COMPARE_RESULT equal_as, VPID * pg_vpid,
 			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+extern int btree_locate_key_from_saved_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					     const LOG_LSA * leaf_lsa, VPID * leaf_vpid, PAGE_PTR * leaf_page,
+					     INT16 * slot_id, bool * leaf_unchanged, bool * found);
 /* exposed for parallel index scan key-comparison descent */
 extern int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
 				      const DOMAIN_KEY_BOUND * bound, DB_VALUE_COMPARE_RESULT equal_as,

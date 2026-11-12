@@ -4376,7 +4376,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
   int error = NO_ERROR;
   DB_OBJLIST *cl;
   SM_CLASS *class_;
-  /* both phases report their progress against the same start */
+  /* every class reports its progress against the same start */
   INT64 run_start_msec = stats_progress_clock_msec ();
 
   /* make sure the workspace is flushed before calculating stats */
@@ -4386,10 +4386,18 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
       return er_errid ();
     }
 
-  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ , run_start_msec);
+  if (no_histogram)
+    {
+      error = stats_update_all_statistics (with_fullscan, true /* print_summary */ , run_start_msec);
+    }
+  else
+    {
+      /* one pass per class: the histogram scan updates the class statistics too, in the same mode */
+      error = update_histogram_for_all_classes (with_fullscan, random_seed, skip_histogram_mops, n_skip,
+						run_start_msec);
+    }
   if (error != NO_ERROR)
     {
-      /* do not build histograms over a failed server-side statistics update */
       return error;
     }
 
@@ -4419,15 +4427,6 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
 		  return error;
 		}
 	    }
-	}
-    }
-
-  if (!no_histogram)
-    {
-      error = update_histogram_for_all_classes (random_seed, skip_histogram_mops, n_skip, run_start_msec);
-      if (error != NO_ERROR)
-	{
-	  return error;
 	}
     }
 
@@ -11459,6 +11458,19 @@ allocate_disk_structures_index (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRA
 	}
     }
 
+#if !defined (NDEBUG)
+  /* The ids below are read through these pointers. An attribute freed by a reinstall of the class
+   * has no name until its block is reused, so stop here instead of writing whatever id it holds. */
+  {
+    int i;
+
+    for (i = 0; con->attributes[i] != NULL; i++)
+      {
+	assert (con->attributes[i]->header.name != NULL);
+      }
+  }
+#endif /* !NDEBUG */
+
   /* Whether we allocated a BTID or not, always write the constraint info back out to the property list.
    * This is where the promotion of attribute name references to ids references happens.
    */
@@ -11490,8 +11502,6 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
   int num_indexes = 0;
   int err;
   bool dont_decache_and_flush = false;
-  SM_ATTRIBUTE **att, **new_attributes;
-  int att_count;
 
   assert (classop != NULL);
 
@@ -11509,36 +11519,6 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
       if (classobj_cache_class_constraints (class_) != NO_ERROR)
 	{
 	  goto structure_error;
-	}
-      /* be sure that constraints attributes are not decached. This may happen for foreign key, when
-       * allocate_disk_structures function may be called second time. */
-      for (con = class_->constraints; con != NULL; con = con->next)
-	{
-	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY && con->attributes[0] != NULL)
-	    {
-	      /* we are sure that con->attributes points to class attributes */
-	      att_count = 0;
-	      for (att = con->attributes; *att; att++)
-		{
-		  att_count++;
-		}
-
-	      new_attributes = (SM_ATTRIBUTE **) db_ws_alloc (sizeof (SM_ATTRIBUTE *) * (att_count + 1));
-	      if (new_attributes == NULL)
-		{
-		  assert (er_errid () != NO_ERROR);
-		  goto structure_error;
-		}
-
-	      att_count = 0;
-	      for (att = con->attributes; *att; att++)
-		{
-		  new_attributes[att_count++] = classobj_copy_attribute (*att, NULL);
-		}
-
-	      new_attributes[att_count] = NULL;
-	      con->attributes = new_attributes;
-	    }
 	}
     }
   class_->dont_decache_constraints_or_flush = 1;
@@ -11593,17 +11573,10 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	{
 	  if (con->type == SM_CONSTRAINT_FOREIGN_KEY)
 	    {
-	      /* free attributes to avoid memory leak */
-	      for (att = con->attributes; *att; att++)
-		{
-		  db_ws_free_and_init (*att);
-		}
-
-	      if (class_->recache_constraints == 0)
-		{
-		  /* recache constraints since attributes are not set */
-		  class_->recache_constraints = 1;
-		}
+	      /* The attribute copies this rebuild used to replace are gone. It is kept so that a class
+	       * with a foreign key still ends with a rebuilt constraint cache. */
+	      class_->recache_constraints = 1;
+	      break;
 	    }
 	}
 

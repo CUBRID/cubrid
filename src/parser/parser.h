@@ -182,7 +182,8 @@ extern "C"
   extern int pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern bool pt_host_var_is_context_typed (const TP_DOMAIN * expected);
   extern bool pt_host_var_is_leave_typed (const TP_DOMAIN * expected);
-  extern bool pt_host_var_is_char_typed (const TP_DOMAIN * expected);
+  extern bool pt_host_var_is_assignment (const PARSER_CONTEXT * parser, int index);
+  extern bool pt_host_var_is_char_typed (const PARSER_CONTEXT * parser, int index);
   extern int pt_host_var_leave_collation (DB_TYPE type, int collation);
   extern DB_VALUE *pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv);
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -581,6 +582,11 @@ extern "C"
   extern bool pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list);
   extern bool pt_has_inst_in_where_and_select_list (PARSER_CONTEXT * parser, PT_NODE * node);
   extern bool pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern bool pt_is_orderby_for_upper_bound (PT_NODE * orderby_for);
+  extern bool pt_has_orderby_for_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern void pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern void pt_record_static_sql_star (PARSER_CONTEXT * parser, PT_STATIC_SQL_STAR_KIND kind, int pos,
+					 PT_NODE * columns, bool qualify);
   extern bool pt_has_inst_or_orderby_num_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
   extern void pt_set_correlation_level (PARSER_CONTEXT * parser, PT_NODE * subquery, int level);
   extern void pt_set_pred_order (PARSER_CONTEXT * parser, PT_NODE * pre_pred, int pre_order);
@@ -627,8 +633,10 @@ extern "C"
   extern PT_NODE *pt_limit_to_numbering_expr (PARSER_CONTEXT * parser, PT_NODE * limit, PT_OP_TYPE num_op,
 					      bool is_gby_num);
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
-  extern void pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
-  extern void pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern PT_NODE *pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement,
+						PT_NODE_WALK_FUNCTION post, void *post_arg);
+  extern PT_NODE *pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement,
+						  PT_NODE_WALK_FUNCTION pre, void *pre_arg);
   extern TP_DOMAIN *pt_host_var_value_domain (PARSER_CONTEXT * parser, int index);
   extern TP_DOMAIN *pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected);
   extern bool pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index);
@@ -702,6 +710,8 @@ extern "C"
 
   extern bool pt_is_function_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool report_error);
   extern bool pt_expr_keep_uniqueness (const PT_NODE * expr);
+  extern bool pt_expr_keeps_distinct_values (const PT_NODE * expr);
+  extern bool pt_keeps_distinct_values (const PT_NODE * from, const PT_NODE * to, bool check_precision);
   extern PT_NODE *pt_function_index_skip_expr (PT_NODE * node);
   extern PT_NODE *pt_expr_to_sort_spec (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern bool pt_is_join_expr (PT_NODE * expr, UINTPTR * spec_id);
@@ -773,6 +783,7 @@ extern "C"
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
   extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
+  extern bool pt_dblink_odku_value_is_bound (PT_NODE * value);
   extern bool pt_dblink_dml_is_remote_only_expr (PT_NODE * expr);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus

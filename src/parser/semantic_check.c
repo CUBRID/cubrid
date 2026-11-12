@@ -221,7 +221,9 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
-static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select);
+static PT_NODE *pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						     int *continue_walk);
+static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -7661,6 +7663,8 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (result != NULL)
 	    {
 	      query_spec = *result;
+	      /* specs referring a CTE are not views; resolve them so that they are not compared with self */
+	      query_spec = parser_walk_tree (query_cache, query_spec, NULL, NULL, pt_resolve_cte_specs, NULL);
 	      parser_walk_tree (query_cache, query_spec, pt_check_cyclic_reference_in_view_spec, arg, NULL, NULL);
 	    }
 
@@ -11115,19 +11119,62 @@ pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, 
  *      (2) inner columns may not be referenced outside the join's own ON predicate.
  *   return:  none
  *   parser(in): the parser context
- *   select(in): a PT_SELECT node
+ *   stmt(in): a select, update or delete statement
+ *
+ * Note: an UPDATE or DELETE is turned into a SELECT by pt_to_upd_del_query () only when its XASL is built,
+ *       after the semantic check, so the rules are checked on the statement itself.
  */
 static void
-pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
+pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  PT_NODE *spec;
+  PT_NODE *spec, *from, *connect_by = NULL;
+  PT_NODE *targets[9];
+  int target_cnt;
 
-  if (select == NULL || select->node_type != PT_SELECT)
+  if (stmt == NULL)
     {
       return;
     }
 
-  for (spec = select->info.query.q.select.from; spec != NULL; spec = spec->next)
+  /* the local from-list and the clauses in which the inner may not be referenced */
+  switch (stmt->node_type)
+    {
+    case PT_SELECT:
+      from = stmt->info.query.q.select.from;
+      connect_by = stmt->info.query.q.select.connect_by;
+      targets[0] = stmt->info.query.q.select.list;
+      targets[1] = stmt->info.query.q.select.where;
+      targets[2] = stmt->info.query.q.select.group_by;
+      targets[3] = stmt->info.query.q.select.having;
+      targets[4] = stmt->info.query.order_by;
+      targets[5] = stmt->info.query.q.select.connect_by;
+      targets[6] = stmt->info.query.q.select.start_with;
+      targets[7] = stmt->info.query.orderby_for;
+      targets[8] = stmt->info.query.q.select.with_increment;
+      target_cnt = 9;
+      break;
+
+    case PT_UPDATE:
+      /* the assignment list covers both sides: SET u.w = ... names the inner on its lhs */
+      from = stmt->info.update.spec;
+      targets[0] = stmt->info.update.assignment;
+      targets[1] = stmt->info.update.search_cond;
+      targets[2] = stmt->info.update.order_by;
+      targets[3] = stmt->info.update.orderby_for;
+      target_cnt = 4;
+      break;
+
+    case PT_DELETE:
+      from = stmt->info.delete_.spec;
+      targets[0] = stmt->info.delete_.search_cond;
+      target_cnt = 1;
+      break;
+
+    default:
+      return;
+    }
+
+  for (spec = from; spec != NULL; spec = spec->next)
     {
       if (spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
 	{
@@ -11137,7 +11184,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
       /* v1: SEMI/ANTI JOIN is NL-inner only and does not compose with CONNECT BY -- the hierarchical
          traversal bypasses the NL semi/anti inner handling and yields wrong results, so reject it here
          instead of silently producing them. */
-      if (select->info.query.q.select.connect_by != NULL)
+      if (connect_by != NULL)
 	{
 	  PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NOT_WITH_CONNECT_BY);
 	  continue;
@@ -11147,7 +11194,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
       {
 	PT_SEMI_ANTI_REF_INFO info;
 	info.inner_id = spec->info.spec.id;
-	info.from_list = select->info.query.q.select.from;
+	info.from_list = from;
 	info.found_inner = false;
 	info.found_outer = false;
 	info.skip_nested_for_outer_gate = true;	/* nested-subquery refs not modelled by the freeze */
@@ -11160,41 +11207,29 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	/* require a direct 2-node inner<->local-outer join conjunct (the only shape the optimizer freeze
 	 * models); reject nested-subquery-only and n>=3-table-only outer refs. */
 	if (spec->info.spec.on_cond == NULL || !info.found_outer
-	    || !pt_semi_anti_has_direct_join_conjunct (parser, spec->info.spec.on_cond, spec->info.spec.id,
-						       select->info.query.q.select.from))
+	    || !pt_semi_anti_has_direct_join_conjunct (parser, spec->info.spec.on_cond, spec->info.spec.id, from))
 	  {
 	    PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NEEDS_OUTER_PRED);
 	    continue;
 	  }
       }
 
-      /* (2) inner cols allowed only in this join's own ON; scan select clauses, sibling ON and derived tables.
+      /* (2) inner cols allowed only in this join's own ON; scan the statement's clauses, sibling ON and derived tables.
        * both forms stop scanning the inner early -- ANTI survives only when it fetched nothing at all, and
        * SEMI stops at the first match -- so which inner row (if any) is left behind is a plan artifact.
        * exposing its columns outside the ON would make the answer depend on the access path. */
       {
 	PT_SEMI_ANTI_REF_INFO info;
-	PT_NODE *targets[9];
-	PT_NODE *other;
+	PT_NODE *other, *t_node;
 	int i;
 
 	info.inner_id = spec->info.spec.id;
-	info.from_list = select->info.query.q.select.from;
+	info.from_list = from;
 	info.found_inner = false;
 	info.found_outer = false;
 	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into subqueries */
 
-	targets[0] = select->info.query.q.select.list;
-	targets[1] = select->info.query.q.select.where;
-	targets[2] = select->info.query.q.select.group_by;
-	targets[3] = select->info.query.q.select.having;
-	targets[4] = select->info.query.order_by;
-	targets[5] = select->info.query.q.select.connect_by;
-	targets[6] = select->info.query.q.select.start_with;
-	targets[7] = select->info.query.orderby_for;
-	targets[8] = select->info.query.q.select.with_increment;
-
-	for (i = 0; i < 9 && !info.found_inner; i++)
+	for (i = 0; i < target_cnt && !info.found_inner; i++)
 	  {
 	    if (targets[i] != NULL)
 	      {
@@ -11203,7 +11238,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  }
 
 	/* Check derived tables and other specs' ON conditions; only this spec's own ON is exempt. */
-	for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
+	for (other = from; other != NULL && !info.found_inner; other = other->next)
 	  {
 	    if (other != spec && other->info.spec.on_cond != NULL)
 	      {
@@ -11216,6 +11251,19 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	      }
 	  }
 
+	/* a DELETE target names the inner as a whole (DELETE u FROM t SEMI JOIN u ...): the rows it would delete
+	 * are the ones the scan happened to stop at */
+	if (stmt->node_type == PT_DELETE)
+	  {
+	    for (t_node = stmt->info.delete_.target_classes; t_node != NULL && !info.found_inner; t_node = t_node->next)
+	      {
+		if (pt_find_spec_in_statement (parser, stmt, t_node) == spec)
+		  {
+		    info.found_inner = true;
+		  }
+	      }
+	  }
+
 	if (info.found_inner)
 	  {
 	    PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_RHS_NOT_ALLOWED,
@@ -11223,6 +11271,41 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  }
       }
     }
+}
+
+/*
+ * pt_check_into_clause_in_set_operand () - parser_walk_tree function to reject INTO clause
+ *                                          in an operand of a set operation of a static SQL
+ *   return:  node
+ *   parser(in): the parser context
+ *   node(in): a node of the statement
+ *
+ * Note: INTO variables of PL/CSQL can receive only the final result of the query
+ */
+static PT_NODE *
+pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *operands[2];
+  int i;
+
+  if (!PT_IS_UNION (node) && !PT_IS_INTERSECTION (node) && !PT_IS_DIFFERENCE (node))
+    {
+      return node;
+    }
+
+  operands[0] = node->info.query.q.union_.arg1;
+  operands[1] = node->info.query.q.union_.arg2;
+  for (i = 0; i < 2; i++)
+    {
+      if (operands[i] != NULL && operands[i]->node_type == PT_SELECT && operands[i]->info.query.into_list != NULL)
+	{
+	  PT_ERRORm (parser, operands[i], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SELECT_INTO_IN_SET_OPERAND);
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
 }
 
 /*
@@ -11488,6 +11571,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    }
 	}
 
+      /* inner columns of a SEMI / ANTI JOIN may not be filtered on, nor the inner deleted */
+      pt_check_semi_anti_join (parser, node);
+
       node = pt_semantic_type (parser, node, info);
       break;
 
@@ -11521,8 +11607,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  node = pt_semantic_type (parser, node, info);
 	}
 
-      /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node && node->info.insert.spec && node->info.insert.spec->info.spec.remote_server_name == NULL)
+      /* try to coerce insert_values into types indicated by insert_attributes. A remote target with its columns,
+       * in the derived dblink table shape, gets the count check the function does. */
+      if (node && node->info.insert.spec && (node->info.insert.spec->info.spec.remote_server_name == NULL
+					     || PT_SPEC_IS_DERIVED (node->info.insert.spec)))
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
@@ -11826,6 +11914,9 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	{
 	  return NULL;
 	}
+
+      /* inner columns of a SEMI / ANTI JOIN may be neither assigned, assigned from nor filtered on */
+      pt_check_semi_anti_join (parser, node);
 
       pt_no_double_updates (parser, node);
 
@@ -12772,6 +12863,220 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
 }
 
 /*
+ * pt_dblink_insert_binds_odku_value () - Tell whether a remote INSERT ... SELECT binds an ON DUPLICATE KEY
+ *   UPDATE value from the source row. Such a value must be resolved with the source row in scope, which needs
+ *   the target's columns. Asked before name resolution, on the clause as written.
+ *   return: true iff a value is a qualified column (pt_dblink_odku_value_is_bound)
+ *   node(in): the INSERT
+ */
+static bool
+pt_dblink_insert_binds_odku_value (PT_NODE * node)
+{
+  PT_NODE *assign;
+
+  for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
+    {
+      if (assign->node_type == PT_EXPR && assign->info.expr.op == PT_ASSIGN
+	  && pt_dblink_odku_value_is_bound (assign->info.expr.arg2))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_dblink_odku_carry_values_and_translate () - Carry the bound ON DUPLICATE KEY UPDATE values of a remote
+ *   INSERT ... SELECT in its source SELECT, then translate the source SELECT.
+ *   return: none. On failure the parser error is set.
+ *   parser(in): parser context
+ *   node(in/out): the INSERT, its target resolved with its columns
+ *
+ * Note: A value bound from the source row has no place in the row unless the source SELECT selects it. Each
+ *   such value is copied to the end of the select list as a hidden column, after name resolution and the
+ *   semantic check, so no position, DISTINCT or single value check sees it. A local INSERT ... ON DUPLICATE KEY
+ *   UPDATE adds the columns its values refer to after these checks too, at XASL generation
+ *   (pt_append_assignment_references). The copies are hidden here because num_vals is counted from the visible
+ *   columns. The copy and the value in the clause are
+ *   marked (is_dblink_odku_value): XASL generation binds the value in the clause and finds the copies in the
+ *   row by the mark.
+ */
+static void
+pt_dblink_odku_carry_values_and_translate (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+  PT_NODE *assign, *value, *spec, *copy, *item;
+  int num_copies = 0, len_before = 0, len_after, pos, num_visible = 0;
+
+  if (subq == NULL)
+    {
+      return;
+    }
+
+  if (subq->node_type == PT_SELECT)
+    {
+      /* A statement checked again has its copies, and its source SELECT is translated already. */
+      for (item = subq->info.query.q.select.list; item != NULL; item = item->next)
+	{
+	  if (item->flag.is_dblink_odku_value)
+	    {
+	      return;
+	    }
+	}
+
+      for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
+	{
+	  if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
+	    {
+	      continue;
+	    }
+	  value = assign->info.expr.arg2;
+	  if (value == NULL || value->node_type != PT_NAME)
+	    {
+	      continue;
+	    }
+
+	  /* The gate let a column in only when its qualifier names a table of the source SELECT. Any other
+	   * column would be printed into the remote statement as the user wrote it. */
+	  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
+	    {
+	      if (spec->info.spec.id == value->info.name.spec_id)
+		{
+		  break;
+		}
+	    }
+	  if (spec == NULL || value->info.name.spec_id == 0)
+	    {
+	      PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: an ODKU value is not a column of the source SELECT");
+	      return;
+	    }
+
+	  copy = parser_copy_tree (parser, value);
+	  if (copy == NULL)
+	    {
+	      PT_ERRORm (parser, assign, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return;
+	    }
+	  copy->flag.is_hidden_column = 1;
+	  copy->flag.is_dblink_odku_value = 1;
+	  value->flag.is_dblink_odku_value = 1;
+	  subq->info.query.q.select.list = parser_append_node (copy, subq->info.query.q.select.list);
+	  num_copies++;
+	}
+      len_before = pt_length_of_select_list (subq->info.query.q.select.list, INCLUDE_HIDDEN_COLUMNS);
+      num_visible = pt_length_of_select_list (subq->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS);
+    }
+
+  subq = mq_translate (parser, subq);
+  if (subq == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: failed to translate the SELECT subquery");
+	}
+      return;
+    }
+
+  if (num_copies > 0)
+    {
+      /* Translation may put a new node in place of a copy, as when a derived table in FROM is merged into the
+       * query, and that node has no mark. It leaves the items before the copies where they were: the hidden sort
+       * keys a merged view adds, for its ORDER BY (mq_update_order_by) or its analytic functions
+       * (mq_update_analytic_sort_spec_expr), are appended to the end. So the copies are marked again at the
+       * positions they were appended to, the visible columns must be as many as before, and anything after the
+       * copies must be hidden. */
+      item = (subq->node_type == PT_SELECT) ? subq->info.query.q.select.list : NULL;
+      len_after = pt_length_of_select_list (item, INCLUDE_HIDDEN_COLUMNS);
+      for (pos = 0; item != NULL; item = item->next, pos++)
+	{
+	  if (pos >= len_before - num_copies && pos < len_before)
+	    {
+	      item->flag.is_hidden_column = 1;
+	      item->flag.is_dblink_odku_value = 1;
+	    }
+	  else if (pos >= len_before && !item->flag.is_hidden_column)
+	    {
+	      break;
+	    }
+	}
+      if (subq->node_type != PT_SELECT || len_after < len_before || item != NULL
+	  || pt_length_of_select_list (subq->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS) != num_visible)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: translation moved the bound ODKU values");
+	  return;
+	}
+    }
+
+  node->info.insert.value_clauses->info.node_list.list = subq;
+}
+
+/*
+ * pt_dblink_dml_target_as_derived () - Give a remote DML target the derived dblink table shape a remote SELECT
+ *   spec has, so that name resolution fetches its columns from the remote and binds names to them.
+ *   return: NO_ERROR, or ER_FAILED with no parser error set
+ *   parser(in): parser context
+ *   spec(in/out): the target spec, its connection info resolved
+ *
+ * Note: The PT_DBLINK_TABLE_DML node stays in remote_server_name. db_vdb.c skips mq_translate for a remote DML
+ *   and the sink dispatch finds the statement by it. All the visible columns are fetched, with
+ *   "SELECT * FROM <table>", so an invisible column is not found.
+ */
+static int
+pt_dblink_dml_target_as_derived (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  PT_NODE *dml = spec->info.spec.remote_server_name;
+  PT_NODE *entity = spec->info.spec.entity_name;
+  PT_NODE *tbl, *range_var, *star;
+  PT_DBLINK_INFO *info;
+
+  if (dml == NULL || dml->node_type != PT_DBLINK_TABLE_DML || entity == NULL || dml->info.dblink_table.url == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  tbl = parser_new_node (parser, PT_DBLINK_TABLE);
+  range_var = parser_new_node (parser, PT_NAME);
+  star = parser_new_node (parser, PT_NAME);
+  if (tbl == NULL || range_var == NULL || star == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  info = &tbl->info.dblink_table;
+  info->remote_table_name = NULL;
+  if (entity->info.name.resolved != NULL)
+    {
+      info->remote_table_name = pt_append_string (parser, info->remote_table_name, entity->info.name.resolved);
+      info->remote_table_name = pt_append_string (parser, info->remote_table_name, ".");
+    }
+  info->remote_table_name = pt_append_string (parser, info->remote_table_name, entity->info.name.original);
+
+  info->is_name = true;
+  info->conn = dml->info.dblink_table.conn;
+  info->owner_name = dml->info.dblink_table.owner_name;
+  info->url = dml->info.dblink_table.url;
+  info->user = dml->info.dblink_table.user;
+  info->pwd = dml->info.dblink_table.pwd;
+  info->cols = NULL;
+
+  star->type_enum = PT_TYPE_STAR;
+  info->sel_list = star;
+
+  range_var->info.name.original = (spec->info.spec.range_var != NULL)
+    ? spec->info.spec.range_var->info.name.original : entity->info.name.original;
+
+  /* pt_remake_dblink_select_list () reads the name and the alias from qstr */
+  info->qstr = entity;
+  entity->next = spec->info.spec.range_var;
+  spec->info.spec.entity_name = NULL;
+  spec->info.spec.range_var = range_var;
+  spec->info.spec.derived_table = tbl;
+  spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+
+  return NO_ERROR;
+}
+
+/*
  * pt_dblink_update_bind_subq () - Reject a subquery correlated to the outer remote UPDATE target, then
  *   bind it stand-alone. A remote UPDATE sink holds one subquery per SET assignment plus the WHERE
  *   driving predicate, and each needs both steps, so they live here instead of being repeated per site.
@@ -12966,6 +13271,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
+	      bool resolve_whole = false;
+
 	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
 	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
 	       * breaks out of the normal query semantic check below, so the subquery is never processed
@@ -12983,6 +13290,23 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  && node->info.insert.spec->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
 		{
 		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+
+		  /* An ON DUPLICATE KEY UPDATE value bound from the source row is resolved with the rest of the
+		   * statement, not here: the target takes its columns and the statement goes on to the steps below.
+		   * A target already in that shape is a statement checked again. */
+		  if (subq != NULL
+		      && (PT_SPEC_IS_DERIVED (node->info.insert.spec) || pt_dblink_insert_binds_odku_value (node)))
+		    {
+		      if (!PT_SPEC_IS_DERIVED (node->info.insert.spec)
+			  && pt_dblink_dml_target_as_derived (parser, node->info.insert.spec) != NO_ERROR)
+			{
+			  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: failed to take the target's columns");
+			  break;
+			}
+		      resolve_whole = true;
+		      subq = NULL;
+		    }
+
 		  if (subq != NULL)
 		    {
 		      subq = pt_bind_remote_dml_subq (parser, subq, sc_info_ptr,
@@ -13117,11 +13441,36 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			}
 		    }
 		}
+	      if (!resolve_whole)
+		{
+		  if (parser->host_var_classified == node)
+		    {
+		      /* CBRD-27583: a remote DML resolves no names here, so its positions are classified on their own */
+		      parser->host_var_classified = NULL;
+		      node = pt_classify_host_var_positions (parser, node, NULL, NULL);
+		    }
+		  break;
+		}
+	    }
+	}
+
+      if (parser->flag.is_parsing_static_sql == 1)
+	{
+	  /* must be done before pt_semantic_check_local () which takes INTO clauses out of the operands */
+	  (void) parser_walk_tree (parser, node, pt_check_into_clause_in_set_operand, NULL, NULL, NULL);
+	  if (pt_has_error (parser))
+	    {
 	      break;
 	    }
 	}
 
       node = pt_resolve_names (parser, node, sc_info_ptr);
+
+      if (parser->flag.is_parsing_static_sql && !pt_has_error (parser))
+	{
+	  /* the text of a static SQL is taken before type checking and view translation transform the tree */
+	  pt_collect_static_sql_edits (parser, node);
+	}
 
       if (!pt_has_error (parser))
 	{
@@ -13173,6 +13522,17 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  node = parser_walk_tree (parser, node, pt_expand_isnull_preds, node, NULL, NULL);
 		}
 	    }
+	}
+
+      /* db_vdb.c skips the statement-level mq_translate for a remote DML. A remote INSERT resolved with its
+       * target's columns has its source SELECT translated here, as pt_bind_remote_dml_subq () does on the other
+       * path. Without it a UNION source or a dblink derived table in the source sends no rows or some of them,
+       * with no error. The bound ON DUPLICATE KEY UPDATE values join the source SELECT first. */
+      if (!pt_has_error (parser) && node != NULL && node->node_type == PT_INSERT
+	  && node->info.insert.spec->info.spec.remote_server_name != NULL
+	  && PT_SPEC_IS_DERIVED (node->info.insert.spec))
+	{
+	  pt_dblink_odku_carry_values_and_translate (parser, node);
 	}
 
       break;
@@ -14248,6 +14608,7 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *attr = NULL, *spec = NULL;
   PT_NODE *entity_name;
+  const char *class_name;
 
   if (stmt == NULL || stmt->node_type != PT_INSERT)
     {
@@ -14256,18 +14617,29 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   spec = stmt->info.insert.spec;
   entity_name = spec->info.spec.entity_name;
-  if (entity_name == NULL)
+  if (entity_name == NULL && spec->info.spec.remote_server_name != NULL && spec->info.spec.derived_table != NULL
+      && spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
     {
-      assert (false);
-      PT_ERROR (parser, stmt,
-		"The parse tree of the insert statement is incorrect." " entity_name of spec must be set.");
-      return;
+      /* A remote target in the derived dblink table shape has no entity name. The name node it had is gone too:
+       * pt_remake_dblink_select_list () replaced it with the query text. */
+      class_name = spec->info.spec.derived_table->info.dblink_table.remote_table_name;
+    }
+  else
+    {
+      if (entity_name == NULL)
+	{
+	  assert (false);
+	  PT_ERROR (parser, stmt,
+		    "The parse tree of the insert statement is incorrect." " entity_name of spec must be set.");
+	  return;
+	}
+      class_name = entity_name->info.name.original;
     }
 
-  if (entity_name->info.name.original == NULL)
+  if (class_name == NULL)
     {
       assert (false);
-      PT_ERROR (parser, entity_name, er_msg ());
+      PT_ERROR (parser, stmt, er_msg ());
       return;
     }
 
@@ -14280,7 +14652,7 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  if (pt_name_equal (parser, attr, attr2))
 	    {
 	      PT_ERRORmf2 (parser, attr2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
-			   entity_name->info.name.original, attr2->info.name.original);
+			   class_name, attr2->info.name.original);
 	      return;
 	    }
 	}
@@ -15726,7 +16098,8 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   if (stmt->node_type == PT_INSERT)
     {
-      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
+      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name
+	  && !PT_SPEC_IS_DERIVED (stmt->info.insert.spec))
 	{
 	  assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 	  return stmt;
@@ -16047,6 +16420,15 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
   do_not_replace_orderby = true;
   s = parser_walk_tree (parser, s, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
   assert (s != NULL);
+
+  /* specs referring a CTE have an entity name; resolve them to the CTE before name resolution */
+  s = parser_walk_tree (parser, s, NULL, NULL, pt_resolve_cte_specs, NULL);
+  if (s == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error_code = er_errid ();
+      goto error_exit;
+    }
 
   attrs = pt_get_attributes (parser, c);
 
@@ -18708,8 +19090,9 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
  *       or a row cut. An orderby_for predicate and a LIMIT not yet rewritten cut rows after it.
  *       EXCEPT ALL would become EXCEPT, so DISTINCT is not set either.
  *       A false return sets no DISTINCT. The caller does not rely on the query being DISTINCT,
- *       or removes duplicates outside the query.
- *       Call it after pt_eval_type_pre () has rewritten the LIMIT of a SELECT.
+ *       or removes duplicates outside the query. A range predicate does not rely on it,
+ *       and its join rewrite in qo_rewrite_subqueries () removes the duplicates outside.
+ *       Called before pt_eval_type_pre () rewrites the LIMIT of a SELECT, it leaves that SELECT without DISTINCT.
  */
 bool
 pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
@@ -18845,6 +19228,9 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       parser_free_tree (parser, union_node);
       new_node = parser_new_node (parser, PT_VALUE);
       new_node->type_enum = PT_TYPE_NULL;
+      /* the set operation returns no row, as a subquery with a false WHERE folded by pt_to_false_subquery () does:
+       * EXISTS over it is false and NOT IN over it is true */
+      new_node->info.value.is_false_where = true;
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {

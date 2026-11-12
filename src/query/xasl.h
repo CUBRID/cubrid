@@ -180,6 +180,7 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 // *INDENT-ON*
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
+typedef struct gby_skip_state GBY_SKIP_STATE;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -344,13 +345,14 @@ struct buildlist_proc_node
   int g_grbynum_flag;		/* stop or continue grouping? */
   bool g_with_rollup;		/* WITH ROLLUP clause for GROUP BY */
   int g_hash_eligible;		/* eligible for hash aggregate evaluation */
-  int g_output_first_tuple;	/* output first tuple of each group */
+  int g_first_tuple;		/* XASL_G_FIRST_TUPLE_*: where a hash GROUP BY keeps each group's first row */
   int g_hkey_size;		/* group by key size */
   int g_func_count;		/* aggregate function count */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   EHID *upddel_oid_locator_ehids;	/* array of temporary extensible hash for UPDATE/DELETE generated SELECT
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
+  GBY_SKIP_STATE *gby_skip_state;	/* GROUP BY skip aggregated during the scan, one execution's; not serialized */
   const TP_DOMAIN **g_hk_compares;	/* per hash key column, the domain whose cmpval and collation compare its values
 					 * (domain_compare_in_domain), decided at unpack; NULL: each execution's key domains;
 					 * not serialized */
@@ -365,6 +367,11 @@ struct buildvalue_proc_node
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
   int is_always_false;		/* always-false agg-query? */
+  /* XASL_OUTPUT_READS_SCAN: the scan columns of the last row the filters kept, copied as the row is aggregated
+   * (qexec_keep_last_row ()) for the output list, which reads them after the scans are closed; not serialized */
+  DB_VALUE *last_row;
+  int last_row_cnt;
+  bool last_row_kept;
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
@@ -387,9 +394,20 @@ typedef struct hashjoin_proc_node
   HASHJOIN_INPUT outer;
   HASHJOIN_INPUT inner;
   QFILE_LIST_MERGE_INFO merge_info;
+  bool has_ineligible;		/* true if the out list calls a PL/CSQL or Java SP without PARALLEL_ENABLE */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
+  struct hjoin_runtime_filter *rtf;	/* the runtime filter this join built for its other input, or NULL */
+  XASL_NODE *rtf_target;	/* the input it is on, until hjoin_rtf_release () */
+  INT64 rtf_keys;		/* trace: the filter's distinct keys, the rows it saw and dropped (-1: not built) */
+  INT64 rtf_rows;
+  INT64 rtf_dropped;
+  INT64 rtf_off;		/* trace: the rows checked when the filter left the target (hjoin_rtf_sample ()), 0 while on */
+  bool rtf_applied;		/* trace: a scan of the target consulted the filter */
+  HJOIN_PREHASH prehash;	/* the build input's key hashes, taken as its tuples are written */
+  bool has_pass_through;	/* once the join opened its list file: true unless hjoin_change_to_merge_type_list ()
+				 * dropped the out list; read by the pass-through wrapper above the join */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
@@ -457,8 +475,11 @@ struct insert_proc_node
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
   char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
-  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL, or NULL for a value bound per row
+				 * from the source row (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
+  int remote_odku_val_start;	/* position in the source row of the first value bound for a NULL remote_odku_exprs */
+  int remote_num_odku_bound;	/* number of NULL remote_odku_exprs, as the plan counted them */
   TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
   int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
 				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
@@ -540,6 +561,11 @@ struct cte_proc_node
  * Macros for buildlist block
  */
 
+/* BUILDLIST_PROC_NODE.g_first_tuple; KEEP and OUTPUT keep the values of the former g_output_first_tuple */
+#define XASL_G_FIRST_TUPLE_KEEP     0	/* in its hash entry: the output reads more of the row than the keys */
+#define XASL_G_FIRST_TUPLE_OUTPUT   1	/* in the list as it is: WITH ROLLUP sorts every group's first row */
+#define XASL_G_FIRST_TUPLE_NONE     2	/* nowhere: the first row is aggregated like the others */
+
 #define XASL_G_GRBYNUM_FLAG_SCAN_CONTINUE   0x01
 #define XASL_G_GRBYNUM_FLAG_SCAN_CHECK      0x02
 #define XASL_G_GRBYNUM_FLAG_SCAN_STOP       0x04
@@ -575,6 +601,8 @@ struct cte_proc_node
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 #define XASL_NO_MEMOIZE		(0x1 << 27)	/* the optimizer found that memoizing this NL inner would not pay off */
 #define XASL_NL_FOLLOWING_JOIN		(0x1 << 28)	/* this scan proc comes after a NL semi/anti inner in the scan chain */
+#define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
+#define XASL_OUTPUT_READS_SCAN		(0x1 << 30)	/* a BUILDVALUE whose output reads a column of its scans (pt_buildvalue_output_reads_scan ()) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
@@ -1124,14 +1152,36 @@ struct groupby_stat
   int rows;
   INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
+  int groupby_hash_merge_parts;	/* partitions of the hash merge of the leftovers (qexec_gby_hash_merge ()), or 0 */
+  int groupby_hash_merge_levels;	/* 2 when a partition of the merge was split once more, else 1 */
+  int groupby_hash_merge_sorted;	/* the partitions of the merge left to the sort as they were */
+  INT64 groupby_hash_groups;	/* the groups the hash merge estimated (its distinct-key sketch), or 0 */
+  int groupby_hash_merge_workers;	/* the workers that merged the partitions (qexec_gby_px_merge ()), or 0: printed
+					 * with the partition count; parallel_num counts the same workers then */
+  const char *groupby_hash_merge_why;	/* why no worker merged them, when they were to */
+  struct timeval groupby_hash_merge_finish_time;	/* the leader's finish of the groups the workers merged (HAVING,
+							 * the output list: qexec_gby_px_finish ()), after their rounds */
+  INT64 groupby_hash_merge_finish_groups;	/* those groups */
+  /* the page batch's hash GROUP BY node of the serial scan (qexec_batch_gby_consume ()), shown with the plan
+   * details: the rows it took, of which it handed some to the row path's table call (the rest it accumulated from
+   * its cache of groups), the groups the cache took in, its flushes and clears, and its own time -- the row path's
+   * calls are in groupby_time */
+  INT64 batch_rows;
+  INT64 batch_rows_rowpath;
+  INT64 batch_groups_cached;
+  INT64 batch_flushes;
+  INT64 batch_clears;
+  struct timeval batch_time;
   bool run_groupby;
   bool groupby_sort;
-  int parallel_num;
-  UINT64 px_min_groupby_time;
+  int parallel_num;		/* the workers of the stage that ran in parallel: the sort of the leftovers
+				 * (sort_end_parallelism ()) or their hash merge (qexec_gby_px_merge ()); below, the range
+				 * over those workers */
+  UINT64 px_min_groupby_time;	/* ms: the sort's run, or the merge's two rounds */
   UINT64 px_max_groupby_time;
-  UINT64 px_min_groupby_pages;
+  UINT64 px_min_groupby_pages;	/* sort data pages, or the temporary list pages a merge worker wrote */
   UINT64 px_max_groupby_pages;
-  UINT64 px_min_groupby_ioreads;
+  UINT64 px_min_groupby_ioreads;	/* sort I/O pages, or the pages a merge worker read from disk */
   UINT64 px_max_groupby_ioreads;
 };
 
@@ -1195,6 +1245,7 @@ struct partition_spec_node
   BTID btid;			/* index id */
   PARTITION_SPEC_TYPE *next;	/* next partition */
   SCAN_STATS scan_stats;
+  const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -1216,6 +1267,7 @@ struct access_spec_node
   int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
+  SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
@@ -1366,6 +1418,18 @@ struct xasl_node
   int executed_parallelism;	/* parallelism of the query */
   memoize::storage *memoize_storage;
   // *INDENT-ON*
+  struct hjoin_runtime_filter *rtf;	/* a hash join's runtime filter on this input's outermost scan (not owned) */
+  DB_VALUE *rtf_val;		/* ... and the value list cell its key is fetched into */
+  INT64 rtf_rows;		/* ... and the rows this node checked against it and dropped (trace): the thread that
+				 * runs the node adds to them; a worker's clone merges them into the leader's node once
+				 * (hjoin_rtf_unbind_clone ()) */
+  INT64 rtf_dropped;
+  INT64 rtf_off;		/* ... and the rows checked when the filter left this node (hjoin_rtf_sample ()): 0 while
+				 * it is on; merged into the leader's node like the counters */
+  bool rtf_applied;		/* ... and whether a scan of this node consulted it at all: set where the scan opens with the
+				 * filter on the node (the row loop, the page batch, a worker's clone), merged like them */
+  HJOIN_PREHASH *hj_prehash;	/* a hash join's build input hashes this node's written tuples append to (not owned;
+				 * hjoin_prehash_arm ()), or NULL */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

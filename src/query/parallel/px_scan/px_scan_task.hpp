@@ -71,6 +71,9 @@ namespace parallel_scan
       m_vd (nullptr),
       m_xasl_state (nullptr),
       m_scan_func_ptr (nullptr),
+      m_batch_gby (nullptr),
+      m_batch_rows (false),
+      m_drain_stop (nullptr),
       m_pre_execution_info (pre_exec_info),
       m_is_fixed (is_fixed),
       m_is_grouped (is_grouped),
@@ -108,6 +111,11 @@ namespace parallel_scan
       val_descr *m_vd;
       xasl_state *m_xasl_state;
       UINTPTR *m_scan_func_ptr;
+      QEXEC_BATCH_GBY *m_batch_gby;	/* the page batch's hash GROUP BY node, kept across the worker's pages */
+      bool m_batch_rows;		/* the batch runs the filter only: the kept rows go through row_body () */
+      bool *m_drain_stop;		/* drain_slot_oids ()'s stop, for a row the rows node hands to row_body (): a reference into
+				 * that call's frame, valid only inside its page batch block -- emit_row_body () is reached from
+				 * the expr_chunk_push () of that block alone, never from a rows node consumed elsewhere */
       pre_execution_info *m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
@@ -135,6 +143,11 @@ namespace parallel_scan
       int clone_xasl (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
+      SCAN_CODE row_body (cubthread::entry &thread_ref, bool &stop);
+      static int emit_row (cubthread::entry *thread_p, void *arg);
+      static int emit_row_body (cubthread::entry *thread_p, void *arg);
+      static QFILE_LIST_ID *gby_list (void *arg);
+      static void gby_sync (void *arg);
       scan_fixes read_fixes (cubthread::entry &thread_ref);
       void add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */
