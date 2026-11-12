@@ -6441,7 +6441,7 @@ qo_parallel_cost_divisor (QO_PLAN * join)
 }
 
 /*
- * qo_check_session_state_expr () - parser_walk_tree callback looking for a serial or a session variable
+ * qo_check_session_state_expr () - parser_walk_tree callback looking for a session variable
  *   return:
  *   parser(in):
  *   tree(in):
@@ -6457,8 +6457,6 @@ qo_check_session_state_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
     {
       switch (tree->info.expr.op)
 	{
-	case PT_NEXT_VALUE:
-	case PT_CURRENT_VALUE:
 	case PT_DEFINE_VARIABLE:
 	case PT_EVALUATE_VARIABLE:
 	  *found = true;
@@ -6474,7 +6472,7 @@ qo_check_session_state_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 
 /*
  * qo_check_serial_subquery () - parser_walk_tree pre-function that does not descend into a subquery
- *   but looks for a serial or a session variable anywhere in it
+ *   but looks for a session variable anywhere in it
  *   return:
  *   parser(in):
  *   tree(in):
@@ -6533,7 +6531,17 @@ qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
       break;
 
     case PT_EXPR:
-      (void) qo_check_session_state_expr (parser, tree, found, continue_walk);
+      switch (tree->info.expr.op)
+	{
+	case PT_NEXT_VALUE:
+	case PT_CURRENT_VALUE:
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
       break;
 
     case PT_DOT_:
@@ -6606,13 +6614,12 @@ qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void 
  *	   qo_check_serial_block_expr () (T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE, T_NEXT_VALUE,
  *	   T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), a WHERE clause holding a method or a
  *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression;
- *	 - a subquery of the select list or WHERE clause holding a serial or a session variable
- *	   anywhere (SESSION_STATE_ACCESS).
+ *	 - a subquery of the select list or WHERE clause holding a session variable anywhere
+ *	   (SESSION_STATE_ACCESS).
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
- *	 select list, a serial or a session variable in a subquery of another clause (HAVING,
- *	 GROUP BY, ORDER BY, a join condition), a derived table inside the recursive part of a CTE
- *	 (planned with its own environment before the part), an ALL superclass scan, a system
- *	 catalog scan.
+ *	 select list, a session variable in a subquery of another clause (HAVING, GROUP BY,
+ *	 ORDER BY, a join condition), a derived table inside the recursive part of a CTE (planned
+ *	 with its own environment before the part), an ALL superclass scan, a system catalog scan.
  */
 static int
 qo_query_serial_level (QO_ENV * env)

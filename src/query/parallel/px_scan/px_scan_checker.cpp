@@ -49,7 +49,7 @@ namespace parallel_scan
   /* the checked part calls an SP not declared PARALLEL_ENABLE or a method: a px worker cannot
    * run it, since its callbacks to the client are never answered (CBRD-27596) */
   const possible_flags CANNOT_RUN_IN_WORKER = 0x1 << 3;
-  /* survives a subquery boundary: a subquery that reads or writes the session or serial state keeps the
+  /* survives a subquery boundary: a subquery that reads or writes the session state keeps the
    * scan serial as the same access in the block itself does */
   const possible_flags SESSION_STATE_ACCESS = 0x1 << 4;
   const possible_flags SUBQUERY_BLOCKERS = CANNOT_RUN_IN_WORKER | SESSION_STATE_ACCESS;
@@ -391,6 +391,9 @@ namespace parallel_scan
 	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
+    if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE)
+      {
 	set_flag (result, SESSION_STATE_ACCESS);
       }
     return result;
@@ -617,7 +620,7 @@ namespace parallel_scan
       }
 
     /* the key filter and key ranges are evaluated by the thread that runs this scan too, for an NL
-     * inner at every outer row. Only an SP, a method or a session or serial access there counts. */
+     * inner at every outer row. Only an SP, a method or a session state access there counts. */
     possible_flags temp = check<false> (arg->where_key) | check<false> (arg->where_range);
     if (arg->type == TARGET_CLASS && arg->indexptr != NULL)
       {
@@ -734,7 +737,7 @@ namespace parallel_scan
 
     /* the thread that runs this block evaluates the rest of it as well: its select list, aggregates,
      * GROUP BY / analytic lists, later join tables, merged method scans, hierarchical query and nested
-     * blocks. Of these only an SP, a method or a session or serial access counts. */
+     * blocks. Of these only an SP, a method or a session state access counts. */
     temp = sibling_check<false> (sibling->scan_ptr);
     for (ACCESS_SPEC_TYPE *specp = sibling->merge_spec; specp; specp = specp->next)
       {
