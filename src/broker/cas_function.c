@@ -1285,9 +1285,9 @@ FN_RETURN
 fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int schema_type;
-  char *arg1, *arg2;
+  char *arg1, *arg2, *arg3 = NULL;
   char flag;
-  int arg1_size, arg2_size;
+  int arg1_size, arg2_size, arg3_size;
   int shard_id;
   int srv_h_id;
 
@@ -1311,10 +1311,24 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
       shard_id = 0;
     }
 
-  cas_log_write (query_seq_num_next_value (), true, "schema_info %s %s %s %d", get_schema_type_str (schema_type),
-		 (arg1 ? arg1 : "NULL"), (arg2 ? arg2 : "NULL"), flag);
+  if (schema_type == CCI_SCH_PROCEDURE_COLUMNS || schema_type == CCI_SCH_FUNCTION_COLUMNS)
+    {
+      if (argc > 5)
+	{
+	  net_arg_get_str (&arg3, &arg3_size, argv[5]);
+	}
 
-  srv_h_id = ux_schema_info (schema_type, arg1, arg2, flag, net_buf, req_info, query_seq_num_current_value ());
+      cas_log_write (query_seq_num_next_value (), true, "schema_info %s %s %s %s %d",
+		     get_schema_type_str (schema_type), (arg1 ? arg1 : "NULL"), (arg2 ? arg2 : "NULL"),
+		     (arg3 ? arg3 : "NULL"), flag);
+    }
+  else
+    {
+      cas_log_write (query_seq_num_next_value (), true, "schema_info %s %s %s %d", get_schema_type_str (schema_type),
+		     (arg1 ? arg1 : "NULL"), (arg2 ? arg2 : "NULL"), flag);
+    }
+
+  srv_h_id = ux_schema_info (schema_type, arg1, arg2, arg3, flag, net_buf, req_info, query_seq_num_current_value ());
 
   cas_log_write (query_seq_num_current_value (), false, "schema_info srv_h_id %d", srv_h_id);
 

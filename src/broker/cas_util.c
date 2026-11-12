@@ -154,7 +154,11 @@ static const char *schema_type_str[] = {
   "CROSS_REFERENCE",
   "ATTR_WITH_SYNONYM",
   "SCHEMAS",
-  "CURRENT_SCHEMA"
+  "CURRENT_SCHEMA",
+  "PROCEDURES",
+  "PROCEDURE_COLUMNS",
+  "FUNCTIONS",
+  "FUNCTION_COLUMNS"
 };
 
 static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };

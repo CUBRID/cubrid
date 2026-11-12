@@ -184,3 +184,26 @@ schema_schemas_meta (T_NET_BUF * net_buf)
   net_buf_cp_int (net_buf, 1, NULL);
   net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "NAME");
 }
+
+void
+schema_procedures_meta (T_NET_BUF * net_buf)
+{
+  net_buf_cp_int (net_buf, 3, NULL);
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "SCHEMA_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_REMARKS_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "REMARKS");
+}
+
+void
+schema_procedure_columns_meta (T_NET_BUF * net_buf)
+{
+  net_buf_cp_int (net_buf, 8, NULL);
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "SCHEMA_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "SP_NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_INT, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "POSITION");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "NAME");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "MODE");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "DATA_TYPE");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, 0, CAS_SCHEMA_DEFAULT_CHARSET, "DEFAULT_VALUE");
+  net_buf_column_info_set (net_buf, CCI_U_TYPE_STRING, 0, SCH_REMARKS_STR_LEN, CAS_SCHEMA_DEFAULT_CHARSET, "REMARKS");
+}

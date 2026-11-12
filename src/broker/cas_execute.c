@@ -282,6 +282,12 @@ static int sch_query_execute (T_SRV_HANDLE * srv_handle, char *sql_stmt, T_NET_B
 static int sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handle);
 static int sch_schemas (T_NET_BUF * net_buf, char *schema_name, char pattern_flag, T_SRV_HANDLE * srv_handle);
 static int sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle);
+static int sch_procedures (T_NET_BUF * net_buf, char *schema_name, char *sp_name, char pattern_flag, bool is_function,
+			   T_SRV_HANDLE * srv_handle);
+static int sch_procedure_columns (T_NET_BUF * net_buf, char *schema_name, char *sp_name, char *param_name,
+				  char pattern_flag, bool is_function, T_SRV_HANDLE * srv_handle);
+static void sch_append_name_condition (char **sql_p, int *avail_size, const char *column, const char *name,
+				       bool is_pattern, bool to_upper);
 static short constraint_dbtype_to_castype (int db_const_type);
 
 static T_PREPARE_CALL_INFO *make_prepare_call_info (int num_args, int is_first_out);
@@ -344,6 +350,10 @@ static T_FETCH_FUNC fetch_func[] = {
   fetch_attribute,		/* SCH_ATTR_WITH_SYNONYM */
   fetch_result,			/* SCH_SCHEMAS */
   fetch_result,			/* SCH_CURRENT_SCHEMA */
+  fetch_result,			/* SCH_PROCEDURES */
+  fetch_result,			/* SCH_PROCEDURE_COLUMNS */
+  fetch_result,			/* SCH_FUNCTIONS */
+  fetch_result,			/* SCH_FUNCTION_COLUMNS */
 };
 
 static char database_name[MAX_HA_DBINFO_LENGTH] = "";
@@ -3709,8 +3719,8 @@ ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf)
 }
 
 int
-ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-		unsigned int query_seq_num)
+ux_schema_info (int schema_type, char *arg1, char *arg2, char *arg3, char flag, T_NET_BUF * net_buf,
+		T_REQ_INFO * req_info, unsigned int query_seq_num)
 {
   int srv_h_id;
   int err_code = 0;
@@ -3795,6 +3805,18 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
     case CCI_SCH_CURRENT_SCHEMA:
       err_code = sch_current_schema (net_buf, srv_handle);
       break;
+    case CCI_SCH_PROCEDURES:
+      err_code = sch_procedures (net_buf, arg1, arg2, flag, false, srv_handle);
+      break;
+    case CCI_SCH_PROCEDURE_COLUMNS:
+      err_code = sch_procedure_columns (net_buf, arg1, arg2, arg3, flag, false, srv_handle);
+      break;
+    case CCI_SCH_FUNCTIONS:
+      err_code = sch_procedures (net_buf, arg1, arg2, flag, true, srv_handle);
+      break;
+    case CCI_SCH_FUNCTION_COLUMNS:
+      err_code = sch_procedure_columns (net_buf, arg1, arg2, arg3, flag, true, srv_handle);
+      break;
     default:
       err_code = ERROR_INFO_SET (CAS_ER_SCHEMA_TYPE, CAS_ERROR_INDICATOR);
       goto schema_info_error;
@@ -3809,7 +3831,9 @@ ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * 
       || schema_type == CCI_SCH_CLASS_ATTRIBUTE || schema_type == CCI_SCH_QUERY_SPEC
       || schema_type == CCI_SCH_DIRECT_SUPER_CLASS || schema_type == CCI_SCH_PRIMARY_KEY
       || schema_type == CCI_SCH_ATTR_WITH_SYNONYM || schema_type == CCI_SCH_SCHEMAS
-      || schema_type == CCI_SCH_CURRENT_SCHEMA)
+      || schema_type == CCI_SCH_CURRENT_SCHEMA || schema_type == CCI_SCH_PROCEDURES
+      || schema_type == CCI_SCH_PROCEDURE_COLUMNS || schema_type == CCI_SCH_FUNCTIONS
+      || schema_type == CCI_SCH_FUNCTION_COLUMNS)
     {
       srv_handle->cursor_pos = 0;
     }
@@ -9118,6 +9142,113 @@ sch_current_schema (T_NET_BUF * net_buf, T_SRV_HANDLE * srv_handle)
 
   net_buf_cp_int (net_buf, num_result, NULL);
   schema_schemas_meta (net_buf);
+
+  return 0;
+}
+
+static void
+sch_append_name_condition (char **sql_p, int *avail_size, const char *column, const char *name, bool is_pattern,
+			   bool to_upper)
+{
+  if (name == NULL)
+    {
+      return;
+    }
+
+  if (is_pattern && to_upper)
+    {
+      STRING_APPEND (*sql_p, *avail_size, "AND %s LIKE UPPER ('%s') ESCAPE '%s' ", column, name,
+		     get_backslash_escape_string ());
+    }
+  else if (is_pattern)
+    {
+      STRING_APPEND (*sql_p, *avail_size, "AND %s LIKE '%s' ESCAPE '%s' ", column, name,
+		     get_backslash_escape_string ());
+    }
+  else if (to_upper)
+    {
+      STRING_APPEND (*sql_p, *avail_size, "AND %s = UPPER ('%s') ", column, name);
+    }
+  else
+    {
+      STRING_APPEND (*sql_p, *avail_size, "AND %s = '%s' ", column, name);
+    }
+}
+
+static int
+sch_procedures (T_NET_BUF * net_buf, char *schema_name, char *sp_name, char pattern_flag, bool is_function,
+		T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
+  int num_result;
+
+  ut_tolower (sp_name);
+
+  STRING_APPEND (sql_p, avail_size,
+		 "SELECT routine_schema, routine_name, routine_comment FROM information_schema.routines "
+		 "WHERE routine_type = '%s' ", is_function ? "FUNCTION" : "PROCEDURE");
+  sch_append_name_condition (&sql_p, &avail_size, "routine_schema", schema_name,
+			     pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH, true);
+  sch_append_name_condition (&sql_p, &avail_size, "routine_name", sp_name, pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH,
+			     false);
+  STRING_APPEND (sql_p, avail_size, "ORDER BY routine_schema, routine_name");
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_procedures_meta (net_buf);
+
+  return 0;
+}
+
+static int
+sch_procedure_columns (T_NET_BUF * net_buf, char *schema_name, char *sp_name, char *param_name, char pattern_flag,
+		       bool is_function, T_SRV_HANDLE * srv_handle)
+{
+  char sql_stmt[QUERY_BUFFER_MAX], *sql_p = sql_stmt;
+  int avail_size = sizeof (sql_stmt) - 1;
+  int num_result;
+
+  ut_tolower (sp_name);
+  ut_tolower (param_name);
+
+  STRING_APPEND (sql_p, avail_size,
+		 "SELECT specific_schema, specific_name, ordinal_position, parameter_name, parameter_mode, data_type, "
+		 "parameter_default, parameter_comment FROM information_schema.parameters WHERE routine_type = '%s' ",
+		 is_function ? "FUNCTION" : "PROCEDURE");
+  sch_append_name_condition (&sql_p, &avail_size, "specific_schema", schema_name,
+			     pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH, true);
+  sch_append_name_condition (&sql_p, &avail_size, "specific_name", sp_name, pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH,
+			     false);
+  sch_append_name_condition (&sql_p, &avail_size, "LOWER (parameter_name)", param_name,
+			     pattern_flag & CCI_PARAM_NAME_PATTERN_MATCH, false);
+
+  if (is_function)
+    {
+      STRING_APPEND (sql_p, avail_size,
+		     "UNION ALL SELECT routine_schema, routine_name, 0, NULL, 'RETURN', data_type, NULL, NULL "
+		     "FROM information_schema.routines WHERE routine_type = 'FUNCTION' ");
+      sch_append_name_condition (&sql_p, &avail_size, "routine_schema", schema_name,
+				 pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH, true);
+      sch_append_name_condition (&sql_p, &avail_size, "routine_name", sp_name,
+				 pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH, false);
+    }
+
+  STRING_APPEND (sql_p, avail_size, "ORDER BY 1, 2, 3");
+
+  num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
+  if (num_result < 0)
+    {
+      return num_result;
+    }
+
+  net_buf_cp_int (net_buf, num_result, NULL);
+  schema_procedure_columns_meta (net_buf);
 
   return 0;
 }
