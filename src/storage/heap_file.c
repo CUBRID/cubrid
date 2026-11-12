@@ -16639,6 +16639,14 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   int ret = NO_ERROR;
   PGBUF_WATCHER pg_watcher;
   PGBUF_WATCHER old_pg_watcher;
+  VFID owner_vfid;
+  HFID store_hfid;
+
+  if (heap_sidecar_get_owner (thread_p, hfid, &owner_vfid) == NO_ERROR && !VFID_ISNULL (&owner_vfid))
+    {
+      /* a Sidecar store holds values, not objects of its class; its owner's dump lists it */
+      return;
+    }
 
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
   PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
@@ -16676,6 +16684,14 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
     }
 
   VFID_COPY (&ovf_vfid, &heap_hdr->ovf_vfid);
+  if (HEAP_SIDECAR_HAS_STORE (heap_hdr))
+    {
+      store_hfid = heap_hdr->sidecar.store_hfid;
+    }
+  else
+    {
+      HFID_SET_NULL (&store_hfid);
+    }
   pgbuf_ordered_unfix (thread_p, &pg_watcher);
 
   /* now scan every page and dump it */
@@ -16717,6 +16733,16 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
       /* There is an overflow file for this heap file */
       fprintf (fp, "\nOVERFLOW FILE INFORMATION FOR HEAP FILE\n\n");
       if (file_dump (thread_p, &ovf_vfid, fp) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return;
+	}
+    }
+
+  if (!HFID_IS_NULL (&store_hfid))
+    {
+      fprintf (fp, "\nSIDECAR STORE FILE INFORMATION FOR HEAP FILE\n\n");
+      if (file_dump (thread_p, &store_hfid.vfid, fp) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return;
