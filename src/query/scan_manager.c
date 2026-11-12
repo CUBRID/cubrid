@@ -1280,6 +1280,10 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_K
 	  pr_clear_value (&nextp->key2);
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - n - 2));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 	}
       else
 	{
@@ -1321,6 +1325,10 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  pr_clear_value (&curp->key2);
 	  memmove (curp, curp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - cur_n - 1));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 	}
       else
 	{
@@ -1427,6 +1435,10 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_KEY_RANGES
 	  /* remove merged one(nextp) */
 	  memmove (nextp, nextp + 1, sizeof (KEY_VAL_RANGE) * (key_cnt - next_n - 1));
 	  key_cnt--;
+
+	  /* the stale tail entry keeps a bitwise duplicate of the key moved down; it must not own the buffer */
+	  db_make_null (&key_vals[key_cnt].key1);
+	  db_make_null (&key_vals[key_cnt].key2);
 
 	  /* the merged range may now overlap one skipped as disjoint before it (e.g. k > 7 sorted ahead of
 	   * k between 7 and 59 when k < 7 is the current one); check them again */
