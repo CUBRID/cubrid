@@ -1502,17 +1502,26 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
 1389 %1$s cannot be called by the main client thread.
 
-1390 A record of class %1$d|%2$d|%3$d holds a Sidecar ref that the Sidecar module did not write.
-1391 A Sidecar ref names the store record %1$d|%2$d|%3$d of attribute %4$d, which is missing or holds another value.
-1392 %1$s of a row whose values live in the Sidecar store is not supported.
-1393 The live Sidecar store record %1$d|%2$d|%3$d of attribute %4$d is named by %5$d current rows instead of one.
-1394 The Sidecar store %1$d|%2$d of heap %3$d|%4$d is not consistent: %5$s.
-1395 A fetch of a row whose values live in the Sidecar store found a store record missing %1$d times in a row.
-1396 Fault injection %1$d stopped a Sidecar write after its store writes.
-1397 The record of object %1$d|%2$d|%3$d reached a copy area with its Sidecar refs.
-1398 A row whose values live in the Sidecar store was fetched by transaction %1$d and decoded after it ended (now %2$d); its stored values are no longer protected.
+1390 The secret of session %1$u does not match.
+1391 Cannot end or keep session %1$u because it is not attached to this connection.
 
-1399 Last Error
+1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
+
+1393 Altering system generated stored procedure is not allowed.
+
+1394 Granting or revoking privileges on system generated stored procedure is not allowed.
+
+1395 A record of class %1$d|%2$d|%3$d holds a Sidecar ref that the Sidecar module did not write.
+1396 A Sidecar ref names the store record %1$d|%2$d|%3$d of attribute %4$d, which is missing or holds another value.
+1397 %1$s of a row whose values live in the Sidecar store is not supported.
+1398 The live Sidecar store record %1$d|%2$d|%3$d of attribute %4$d is named by %5$d current rows instead of one.
+1399 The Sidecar store %1$d|%2$d of heap %3$d|%4$d is not consistent: %5$s.
+1400 A fetch of a row whose values live in the Sidecar store found a store record missing %1$d times in a row.
+1401 Fault injection %1$d stopped a Sidecar write after its store writes.
+1402 The record of object %1$d|%2$d|%3$d reached a copy area with its Sidecar refs.
+1403 A row whose values live in the Sidecar store was fetched by transaction %1$d and decoded after it ended (now %2$d); its stored values are no longer protected.
+
+1404 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -2029,6 +2038,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
+345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 
 
 

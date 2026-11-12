@@ -1792,17 +1792,23 @@
 #define ER_MAIN_CLIENT_NOT_READY                    -1388
 #define ER_SUB_CLIENT_ON_MAIN_THREAD                -1389
 
-#define ER_SIDECAR_BAD_REF                          -1390
-#define ER_SIDECAR_DANGLING_REF                     -1391
-#define ER_SIDECAR_NOT_SUPPORTED                    -1392
-#define ER_SIDECAR_ORPHAN_RECORD                    -1393
-#define ER_SIDECAR_STORE_INVALID                    -1394
-#define ER_SIDECAR_RESOLVE_RETRY                    -1395
-#define ER_SIDECAR_FAULT_INJECTED                   -1396
-#define ER_SIDECAR_UNEXPANDED_RECORD                -1397
-#define ER_SIDECAR_LAZY_AFTER_TRAN_END              -1398
+#define ER_SES_SESSION_SECRET_MISMATCH              -1390
+#define ER_SES_SESSION_NOT_ATTACHED                 -1391
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
+#define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
+#define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1399
+#define ER_SIDECAR_BAD_REF                          -1395
+#define ER_SIDECAR_DANGLING_REF                     -1396
+#define ER_SIDECAR_NOT_SUPPORTED                    -1397
+#define ER_SIDECAR_ORPHAN_RECORD                    -1398
+#define ER_SIDECAR_STORE_INVALID                    -1399
+#define ER_SIDECAR_RESOLVE_RETRY                    -1400
+#define ER_SIDECAR_FAULT_INJECTED                   -1401
+#define ER_SIDECAR_UNEXPANDED_RECORD                -1402
+#define ER_SIDECAR_LAZY_AFTER_TRAN_END              -1403
+
+#define ER_LAST_ERROR                               -1404
 
 
 /*

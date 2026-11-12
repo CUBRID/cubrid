@@ -521,6 +521,7 @@ enum param_id
   PRM_ID_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
   PRM_ID_PARALLEL_MERGE_JOIN,
   PRM_ID_INDEX_SORT_METHOD,
+  PRM_ID_INDEX_BUILD_MERGE_FANIN,
 
   PRM_ID_TCP_KEEPALIVE_IDLE,
   PRM_ID_TCP_KEEPALIVE_INTERVAL,
@@ -578,6 +579,7 @@ enum param_id
 
   /* hash join: the runtime filter one input's keys make for the other input's outermost scan */
   PRM_ID_HASH_JOIN_RUNTIME_FILTER,
+  PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
 
   /* Sidecar: the write policy of large variable values (storage/sidecar.cpp) */
   PRM_ID_SIDECAR_INLINE_TARGET,

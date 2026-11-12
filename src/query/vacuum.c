@@ -5683,7 +5683,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	  LSA_COPY (&log_lsa, &vacuum_info.prev_mvcc_op_log_lsa);
 	}
 
-      if (data.blockid == vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.pageid))
+      if (data.blockid == vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.load ().pageid))
 	{
 	  log_Gl.hdr.oldest_visible_mvccid = data.oldest_visible_mvccid;
 	  log_Gl.hdr.newest_block_mvccid = data.newest_mvccid;
@@ -6470,6 +6470,29 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   /* Success */
   return NO_ERROR;
+}
+
+/*
+ * vacuum_notify_dropped_file () - notify vacuum of a file destroyed without the commit postpone of a DROP, the same way
+ *				   that postpone does (see vacuum_log_add_dropped_file). no vacuum worker accesses
+ *				   the file after this. with vacuum disabled, the handler only cleans the caches.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * vfid (in)	 : File about to be destroyed.
+ */
+int
+vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  LOG_RCV rcv;
+  VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
+
+  VFID_COPY (&rcv_data.vfid, vfid);
+  OID_SET_NULL (&rcv_data.class_oid);
+  rcv.data = (const char *) &rcv_data;
+  rcv.length = sizeof (rcv_data);
+
+  return vacuum_rv_notify_dropped_file (thread_p, &rcv);
 }
 
 /*

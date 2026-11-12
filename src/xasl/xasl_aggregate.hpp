@@ -55,6 +55,12 @@ namespace cubxasl
     int list_len;
     int nlargers;
   };
+
+  struct aggregate_group_concat_info
+  {
+    const char *buf;		/* the accumulator's buffer that capacity was recorded for */
+    int capacity;		/* bytes buf holds; 0 = unknown (CBRD-27926, qdata_concatenate_dbval) */
+  };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   union aggregate_specific_function_info
@@ -62,6 +68,7 @@ namespace cubxasl
     aggregate_percentile_info percentile;	/* PERCENTILE_CONT and PERCENTILE_DISC */
 #if defined (SERVER_MODE) || defined (SA_MODE)
     aggregate_dist_percent_info dist_percent;	/* CUME_DIST and PERCENT_RANK */
+    aggregate_group_concat_info group_concat;	/* GROUP_CONCAT */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   };
 

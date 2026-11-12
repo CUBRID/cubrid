@@ -108,6 +108,7 @@
 #include "object_representation.h"
 #include "flashback.h"
 #include "system_metadata_version.h"
+#include "fault_injection.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -162,6 +163,8 @@ static int rv;
 #define ARV_PAGE_INFO_TABLE_SIZE    256
 
 #define LOG_LAST_APPEND_PTR() ((char *) log_Gl.append.log_pgptr->area + LOGAREA_SIZE)
+/* Write position within a record; LOG_APPEND_PTR () reads log_Gl.hdr.append_lsa, which lags log_Pb.append_lsa there. */
+#define LOGPB_APPEND_PTR() ((char *) log_Gl.append.log_pgptr->area + log_Pb.append_lsa.offset)
 
 #define LOG_APPEND_ALIGN(thread_p, current_setdirty) \
   do { \
@@ -169,10 +172,8 @@ static int rv;
       { \
         logpb_set_dirty ((thread_p), log_Gl.append.log_pgptr); \
       } \
-    LOG_LSA append_lsa_ = log_Gl.hdr.append_lsa; \
-    append_lsa_.offset = DB_ALIGN (append_lsa_.offset, DOUBLE_ALIGNMENT); \
-    log_Gl.hdr.append_lsa.store (append_lsa_); \
-    if (append_lsa_.offset >= (int) LOGAREA_SIZE) \
+    log_Pb.append_lsa.offset = DB_ALIGN (log_Pb.append_lsa.offset, DOUBLE_ALIGNMENT); \
+    if (log_Pb.append_lsa.offset >= (int) LOGAREA_SIZE) \
       { \
         logpb_next_append_page((thread_p), LOG_DONT_SET_DIRTY); \
       } \
@@ -180,7 +181,7 @@ static int rv;
 
 #define LOG_APPEND_ADVANCE_WHEN_DOESNOT_FIT(thread_p, length) \
   do { \
-    if (log_Gl.hdr.append_lsa.load ().offset + (int) (length) >= (int) LOGAREA_SIZE) \
+    if (log_Pb.append_lsa.offset + (int) (length) >= (int) LOGAREA_SIZE) \
       { \
         logpb_next_append_page ((thread_p), LOG_DONT_SET_DIRTY); \
       } \
@@ -188,7 +189,7 @@ static int rv;
 
 #define LOG_APPEND_SETDIRTY_ADD_ALIGN(thread_p, add) \
   do { \
-    log_Gl.hdr.append_lsa.advance (add); \
+    log_Pb.append_lsa.offset += (int) (add); \
     LOG_APPEND_ALIGN ((thread_p), LOG_SET_DIRTY); \
   } while (0)
 
@@ -254,6 +255,11 @@ struct log_pb_global_data
   int num_buffers;		/* Number of log buffers */
 
   LOGPB_PARTIAL_APPEND partial_append;
+
+  /* Append position that the LOG_CS writer works on. log_Gl.hdr.append_lsa is its published copy: loaded when an
+   * append starts, stored back at every page switch, before the flush in logpb_end_append () and when the record
+   * ends. */
+  LOG_LSA append_lsa;
 };
 
 typedef struct arv_page_info
@@ -1196,13 +1202,15 @@ logpb_dump_information (FILE * out_fp)
   const LOG_LSA append_lsa = log_Gl.hdr.append_lsa;
   const LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
 
+  const LOG_LSA prior_lsa = log_Gl.prior_info.prior_lsa;
+  const LOG_LSA prior_prev_lsa = log_Gl.prior_info.prev_lsa;
+
   fprintf (out_fp, " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
 	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
 	   (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset,
 	   (long long int) append_lsa.pageid, (int) append_lsa.offset,
 	   (long long int) prev_lsa.pageid, (int) prev_lsa.offset,
-	   (long long int) log_Gl.prior_info.prior_lsa.pageid, (int) log_Gl.prior_info.prior_lsa.offset,
-	   (long long int) log_Gl.prior_info.prev_lsa.pageid, (int) log_Gl.prior_info.prev_lsa.offset);
+	   LSA_AS_ARGS (&prior_lsa), LSA_AS_ARGS (&prior_prev_lsa));
 
   if (log_Gl.append.log_pgptr == NULL)
     {
@@ -1414,7 +1422,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
 
   loghdr->ha_server_state = HA_SERVER_STATE_IDLE;
   loghdr->ha_file_status = -1;
-  LSA_SET_NULL (&loghdr->eof_lsa);
+  loghdr->eof_lsa.store (NULL_LSA);
   LSA_SET_NULL (&loghdr->smallest_lsa_at_last_chkpt);
 
   logpb_vacuum_reset_log_header_cache (thread_p, loghdr);
@@ -1485,7 +1493,7 @@ logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr)
   logpb_fetch_header_with_buffer (thread_p, hdr, log_Gl.loghdr_pgptr);
 
   /* sync append_lsa to prior_lsa */
-  log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+  log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
 }
 
 /*
@@ -1520,7 +1528,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
     }
 
   log_hdr = (LOG_HEADER *) (log_pgptr->area);
-  *hdr = *log_hdr;
+  memcpy ((void *) hdr, log_hdr, sizeof (*hdr));
 
   assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
   assert (log_pgptr->hdr.offset == NULL_OFFSET);
@@ -1582,7 +1590,7 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
     }
 
   log_hdr = (LOG_HEADER *) (log_pgptr->area);
-  *hdr = *log_hdr;
+  memcpy ((void *) hdr, log_hdr, sizeof (*hdr));
 
   /* keep active log mounted : this prevents other process to access/change DB parameters */
 
@@ -1643,7 +1651,7 @@ logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char
     }
 
   log_hdr = (LOG_HEADER *) (log_pgptr->area);
-  *hdr = *log_hdr;
+  memcpy ((void *) hdr, log_hdr, sizeof (*hdr));
 
   if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
     {
@@ -1726,7 +1734,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
     }
 
   log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
-  *log_hdr = log_Gl.hdr;
+  memcpy ((void *) log_hdr, &log_Gl.hdr, sizeof (*log_hdr));
 
   log_Gl.loghdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   log_Gl.loghdr_pgptr->hdr.offset = NULL_OFFSET;
@@ -2689,7 +2697,10 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   log_Gl.append.log_pgptr = NULL;
 
-  log_Gl.hdr.append_lsa.store (LOG_LSA (log_Gl.hdr.append_lsa.load ().pageid + 1, 0));
+  log_Pb.append_lsa.pageid++;
+  log_Pb.append_lsa.offset = 0;
+  assert (log_Gl.hdr.append_lsa.load () <= log_Pb.append_lsa);
+  log_Gl.hdr.append_lsa.store (log_Pb.append_lsa);
 
   /*
    * Is the next logical page to archive, currently located at the physical
@@ -3035,6 +3046,8 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
 	     log_Gl.append.appending_page_tde_encrypted);
 
 
+  log_Pb.append_lsa = log_Gl.hdr.append_lsa.load ();
+
   logpb_start_append (thread_p, &node->log_header);
 
   if (node->data_header != NULL)
@@ -3054,6 +3067,9 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
     }
 
   logpb_end_append (thread_p, &node->log_header);
+
+  assert (log_Gl.hdr.append_lsa.load () <= log_Pb.append_lsa);
+  log_Gl.hdr.append_lsa.store (log_Pb.append_lsa);
 
   log_Gl.append.appending_page_tde_encrypted = false;
 
@@ -3498,7 +3514,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      log_Gl.hdr.eof_lsa = log_Gl.append.prev_lsa;
+      log_Gl.hdr.eof_lsa.store (log_Gl.append.prev_lsa.load ());
 
       log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG;
     }
@@ -3522,6 +3538,9 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
       LSA_SET_NULL (&eof.forw_lsa);
       eof.type = LOG_END_OF_LOG;
 
+      /* A flush in the middle of a record comes only after the cursor is published (logpb_next_append_page (),
+       * logpb_end_append ()), so this load never moves the cursor back. */
+      log_Pb.append_lsa = append_lsa;
       logpb_start_append (thread_p, &eof);
     }
   else
@@ -3762,7 +3781,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  /* Dump latest portion of page, for debugging purpose. */
 	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.append.get_nxio_lsa ().offset),
 				    (int) sizeof (LOG_RECORD_HEADER));
-	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.offset),
+	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.load ().offset),
 				    (int) sizeof (LOG_RECORD_HEADER));
 	}
     }
@@ -4320,7 +4339,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 	     (long long int) log_Gl.append.log_pgptr->hdr.logical_pageid,
 	     tde_get_algorithm_name (logpb_get_tde_algorithm (log_Gl.append.log_pgptr)));
 
-  log_rec = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
+  log_rec = (LOG_RECORD_HEADER *) LOGPB_APPEND_PTR ();
   *log_rec = *header;
 
   /*
@@ -4330,7 +4349,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
 
   if (log_Gl.append.log_pgptr->hdr.offset == NULL_OFFSET)
     {
-      log_Gl.append.log_pgptr->hdr.offset = (PGLENGTH) log_Gl.hdr.append_lsa.load ().offset;
+      log_Gl.append.log_pgptr->hdr.offset = (PGLENGTH) log_Pb.append_lsa.offset;
     }
 
   if (log_rec->type == LOG_END_OF_LOG)
@@ -4339,7 +4358,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
       assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS
 	      || log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_ENDED);
 
-      log_Gl.hdr.eof_lsa = log_Gl.hdr.append_lsa;
+      log_Gl.hdr.eof_lsa.store (log_Pb.append_lsa);
 
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
@@ -4348,7 +4367,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
       /* no record should be in progress now */
       assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS);
 
-      log_Gl.append.prev_lsa.store (log_Gl.hdr.append_lsa);
+      log_Gl.append.prev_lsa.store (log_Pb.append_lsa);
 
       /*
        * Set the page dirty, increase and align the append offset
@@ -4389,7 +4408,7 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
    */
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
 
-  ptr = LOG_APPEND_PTR ();
+  ptr = LOGPB_APPEND_PTR ();
   last_ptr = LOG_LAST_APPEND_PTR ();
 
   /* Does data fit completely in current page ? */
@@ -4403,7 +4422,7 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
 	       * Get next page and set the current one dirty
 	       */
 	      logpb_next_append_page (thread_p, LOG_SET_DIRTY);
-	      ptr = LOG_APPEND_PTR ();
+	      ptr = LOGPB_APPEND_PTR ();
 	      last_ptr = LOG_LAST_APPEND_PTR ();
 	    }
 	  /* Find the amount of contiguous data that can be copied */
@@ -4419,13 +4438,13 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
 	  ptr += copy_length;
 	  data += copy_length;
 	  length -= copy_length;
-	  log_Gl.hdr.append_lsa.advance (copy_length);
+	  log_Pb.append_lsa.offset += copy_length;
 	}
     }
   else
     {
       memcpy (ptr, data, length);
-      log_Gl.hdr.append_lsa.advance (length);
+      log_Pb.append_lsa.offset += length;
     }
 
   /*
@@ -4468,7 +4487,7 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * 
    */
   LOG_APPEND_ALIGN (thread_p, LOG_DONT_SET_DIRTY);
 
-  ptr = LOG_APPEND_PTR ();
+  ptr = LOGPB_APPEND_PTR ();
   last_ptr = LOG_LAST_APPEND_PTR ();
 
   for (i = 0; i < num_crumbs; i++)
@@ -4486,7 +4505,7 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * 
 		 * Get next page and set the current one dirty
 		 */
 		logpb_next_append_page (thread_p, LOG_SET_DIRTY);
-		ptr = LOG_APPEND_PTR ();
+		ptr = LOGPB_APPEND_PTR ();
 		last_ptr = LOG_LAST_APPEND_PTR ();
 	      }
 	    /* Find the amount of contiguous data that can be copied */
@@ -4502,13 +4521,13 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * 
 	    ptr += copy_length;
 	    data += copy_length;
 	    length -= copy_length;
-	    log_Gl.hdr.append_lsa.advance (copy_length);
+	    log_Pb.append_lsa.offset += copy_length;
 	  }
       else
 	{
 	  memcpy (ptr, data, length);
 	  ptr += length;
-	  log_Gl.hdr.append_lsa.advance (length);
+	  log_Pb.append_lsa.offset += length;
 	}
     }
 
@@ -4550,9 +4569,9 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
    * that cannot have a forward lsa and must waste the remaining space
    * on the current page.
    */
-  assert (header->forw_lsa == log_Gl.hdr.append_lsa.load ());
+  assert (header->forw_lsa == log_Pb.append_lsa);
 
-  if (log_Gl.append.prev_lsa.load () != log_Gl.hdr.append_lsa.load ())
+  if (log_Gl.append.prev_lsa.load () != log_Pb.append_lsa)
     {
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
@@ -4565,6 +4584,8 @@ logpb_end_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
     {
       /* we need to flush the correct version now */
       log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_ENDED;
+      assert (log_Gl.hdr.append_lsa.load () <= log_Pb.append_lsa);
+      log_Gl.hdr.append_lsa.store (log_Pb.append_lsa);
       logpb_flush_all_append_pages (thread_p);
       assert (log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL);
     }
@@ -7386,7 +7407,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_START_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED, 2, log_Gl.hdr.chkpt_lsa.pageid,
-	  log_Gl.chkpt_redo_lsa.pageid);
+	  log_Gl.chkpt_redo_lsa.load ().pageid);
   er_log_debug (ARG_FILE_LINE, "start checkpoint\n");
 
   /*
@@ -7410,7 +7431,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-  LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
+  chkpt_redo_lsa = log_Gl.chkpt_redo_lsa;
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
   logpb_flush_pages_direct (thread_p);
@@ -7438,6 +7459,12 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
       goto error_cannot_chkpt;
     }
 
+  {
+    /* lets a test destroy files while the checkpoint start is fixed and the flush has not run */
+    int hold_seconds = 10;
+    (void) FI_TEST_ARG (thread_p, FI_TEST_LOG_MANAGER_CHECKPOINT_HOLD, &hold_seconds, FI_INIT_STATE);
+  }
+
   detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
   if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
       NO_ERROR)
@@ -7457,6 +7484,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       LSA_COPY (&tmp_chkpt.redo_lsa, &newchkpt_lsa);
     }
+  /* the flush cannot see the dirty pages destroyed files discarded */
+  pgbuf_discard_redo_bound_apply (&tmp_chkpt.redo_lsa, &chkpt_redo_lsa);
 
   assert (LSA_LE (&tmp_chkpt.redo_lsa, &newchkpt_lsa));
 
@@ -7668,7 +7697,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &smallest_lsa);
     }
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &tmp_chkpt.redo_lsa);
+  log_Gl.chkpt_redo_lsa.store (tmp_chkpt.redo_lsa);
 
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
@@ -7829,7 +7858,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_END_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
-	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);
+	  log_Gl.chkpt_redo_lsa.load ().pageid, flushed_page_cnt);
   er_log_debug (ARG_FILE_LINE, "end checkpoint\n");
 
   return tmp_chkpt.redo_lsa.pageid;
@@ -8095,7 +8124,7 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
 
       /* any checkpoint that completed after T -- ours or the daemon's -- satisfies the invariant */
       rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      redo_lsa = log_Gl.chkpt_redo_lsa;
       pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
       if (LSA_GE (&redo_lsa, &target_lsa))
 	{
@@ -8110,7 +8139,7 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
       (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
       rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      redo_lsa = log_Gl.chkpt_redo_lsa;
       pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
       if (LSA_GE (&redo_lsa, &target_lsa))
 	{
@@ -10231,9 +10260,6 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       fileio_dismount (thread_p, to_vdes);
       goto error;
     }
-
-  log_Gl.hdr.eof_lsa.pageid = to_malloc_log_pgptr->hdr.logical_pageid;
-  log_Gl.hdr.eof_lsa.offset = 0;
 
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
   if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
