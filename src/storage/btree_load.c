@@ -2897,8 +2897,8 @@ bt_load_mail_chain_flush (LOAD_ARGS * load_args)
 }
 
 /*
- * bt_load_provider_drain_mail () - The leader appends every mailed record, chains included, and stamps the page of
- *                                  a page record
+ * bt_load_provider_drain_mail () - The leader appends every mailed record, a chain under one hold of
+ *                                  prior_lsa_mutex, and stamps the page of a page record
  *   return: error code
  *
  * Note: Called without the provider mutex. On error the remaining records are dropped; the build fails.
@@ -2947,7 +2947,8 @@ bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provide
       for (i = 0; i < n; i++)
 	{
 	  LOG_PRIOR_NODE *node = batch[i].node;
-	  PAGE_PTR page = NULL;
+	  PAGE_PTR page;
+	  LOG_LSA start_lsa;
 
 	  if (error != NO_ERROR || failed || log_is_no_logging ())
 	    {
@@ -2956,40 +2957,30 @@ bt_load_provider_drain_mail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provide
 	      bt_load_free_prior_chain (node);
 	      continue;
 	    }
-	  if (!VPID_ISNULL (&batch[i].vpid))
+	  if (VPID_ISNULL (&batch[i].vpid))
 	    {
-	      page = pgbuf_fix (thread_p, &batch[i].vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-	      if (page == NULL)
+	      /* a chain of vacuum notifications */
+	      prior_lsa_next_record_list (thread_p, node, tdes);
+	      continue;
+	    }
+	  page = pgbuf_fix (thread_p, &batch[i].vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      if (error == NO_ERROR)
 		{
-		  ASSERT_ERROR_AND_SET (error);
-		  if (error == NO_ERROR)
-		    {
-		      error = ER_BTREE_LOAD_FAILED;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-		    }
-		  bt_load_free_prior_chain (node);
-		  continue;
+		  error = ER_BTREE_LOAD_FAILED;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		}
+	      bt_load_free_prior_chain (node);
+	      continue;
 	    }
-	  while (node != NULL)
-	    {
-	      LOG_PRIOR_NODE *next = node->next;
-	      LOG_LSA start_lsa;
-
-	      /* prior_lsa_next_record () links the record by next and does not clear it: detach it first */
-	      node->next = NULL;
-	      start_lsa = prior_lsa_next_record (thread_p, node, tdes);
-	      if (page != NULL)
-		{
-		  pgbuf_set_lsa (thread_p, page, &start_lsa);
-		}
-	      node = next;
-	    }
-	  if (page != NULL)
-	    {
-	      pgbuf_set_dirty (thread_p, page, DONT_FREE);
-	      pgbuf_unfix_and_init (thread_p, page);
-	    }
+	  /* the content redo of the page, one record */
+	  assert (node->next == NULL);
+	  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+	  pgbuf_set_lsa (thread_p, page, &start_lsa);
+	  pgbuf_set_dirty (thread_p, page, DONT_FREE);
+	  pgbuf_unfix_and_init (thread_p, page);
 	}
       if (error != NO_ERROR)
 	{
