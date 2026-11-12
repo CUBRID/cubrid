@@ -47,7 +47,7 @@ namespace cubbase
     protected:
       using type_t = std::conditional_t<ThreadSafe, std::atomic<std::uint64_t>, std::uint64_t>;
 
-      static inline std::uint64_t value_load (const type_t &value, std::memory_order order = std::memory_order_release)
+      static inline std::uint64_t value_load (const type_t &value, std::memory_order order = std::memory_order_acquire)
       {
 	if constexpr (ThreadSafe)
 	  {
