@@ -78,6 +78,8 @@ namespace parallel_index_scan
 	ASSERT_ERROR ();
 	return ER_FAILED;
       }
+    /* the walker evaluates no key ahead past a key with an overflow chain: nothing of the leaf is left in the buffer */
+    assert (m_owner->ahead_empty ());
     m_leaf_oids.clear ();
     m_leaf_oid_idx = 0;
     ovf_collect_helper helper;
@@ -91,6 +93,7 @@ namespace parallel_index_scan
       {
 	return rerr;
       }
+    m_leaf_oid_end = m_leaf_oids.size ();
     m_owner->restart_read_ahead ();
     m_owner->m_scan_id->scan_stats.key_qualified_rows += m_leaf_oids.size ();
     m_owner->m_scan_id->scan_stats.read_rows += m_leaf_oids.size ();
@@ -106,7 +109,7 @@ namespace parallel_index_scan
     for (;;)
       {
 	/* Inner: pull next OID from current buffer. */
-	while (m_leaf_oid_idx < m_leaf_oids.size ())
+	while (m_leaf_oid_idx < m_leaf_oid_end)
 	  {
 	    OID oid = m_leaf_oids[m_leaf_oid_idx++];
 	    SCAN_CODE sc = walker->process_oid (thread_p, &oid);
@@ -184,7 +187,7 @@ namespace parallel_index_scan
 	    if (cs == S_END)
 	      {
 		/* per-slot chain exhausted; producer keeps leaf S latch to advance to next slot — leaf unfix is page-scoped (slot-loop exit / past_upper / set_page top), not chain-scoped. */
-		assert (m_leaf_oid_idx == m_leaf_oids.size ());
+		assert (m_leaf_oid_idx == m_leaf_oid_end);
 		handler->exit_overflow_help (thread_p, m_chain_pool_idx);
 		if (walker->m_slot_key_valid && walker->m_slot_clear_key)
 		  {
@@ -324,5 +327,6 @@ namespace parallel_index_scan
     m_drain_state = drain_state::IDLE;
     m_leaf_oids.clear ();
     m_leaf_oid_idx = 0;
+    m_leaf_oid_end = 0;
   }
 }

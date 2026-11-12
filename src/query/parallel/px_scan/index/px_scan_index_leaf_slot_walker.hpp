@@ -29,7 +29,6 @@
 #include "scan_manager.h"
 #include "storage_common.h"
 
-#include <deque>
 #include <vector>
 
 namespace parallel_scan
@@ -115,20 +114,31 @@ namespace parallel_index_scan
       /* the OIDs that follow start a new sequence (an overflow page, a new leaf) */
       void restart_read_ahead ()
       {
-	m_ahead_hinted = 0;
+	m_ahead_next = 0;
       }
 
       /* drops the keys evaluated ahead: their values are cleared, their slots are read again if the walk goes on */
       void clear_ahead ();
 
+      /* no key evaluated ahead is waiting for its lookups */
+      bool ahead_empty () const
+      {
+	return m_ahead_head == m_ahead.size ();
+      }
+
     private:
-      /* a key evaluated ahead of the lookups: it qualified, its OIDs are collected, nothing of it is reported yet */
-      struct ahead_key
+      /* a key next_key returned: its value (COPY) and its overflow chain; its leaf OIDs are in the drain's buffer */
+      struct key_read
       {
 	DB_VALUE key;
 	bool clear_key = false;
-	std::vector<OID> oids;
 	VPID ovfl = VPID_INITIALIZER;
+      };
+
+      /* a key evaluated ahead of the lookups: it qualified, nothing of it is reported yet */
+      struct ahead_key
+      {
+	size_t end;                                   /* its OIDs end here in the drain's buffer */
 	int next_slot;                                /* the slot after this key */
 	int read_keys;                                /* keys read since the key before it, itself included */
       };
@@ -146,7 +156,7 @@ namespace parallel_index_scan
       /* reads the keys of m_page from *slot on (range, key filter) until one qualifies, with its visible OIDs; *slot
        * moves past it and *read_keys counts the keys read. Ahead: an error is cleared and the range's end is not
        * signaled; *slot, *read_keys and the range stay at that key, which the lookups read again when they reach it */
-      slot_result next_key (THREAD_ENTRY *thread_p, int *slot, bool ahead, ahead_key *out, int *read_keys);
+      slot_result next_key (THREAD_ENTRY *thread_p, int *slot, bool ahead, key_read *out, int *read_keys);
       slot_result stop_at_error (THREAD_ENTRY *thread_p, bool ahead);
       bool evaluate_ahead (THREAD_ENTRY *thread_p);
 
@@ -173,9 +183,13 @@ namespace parallel_index_scan
       bool m_slot_clear_key;                          /* needs pr_clear_value. */
       bool m_key_values_ready;                        /* the scan values hold this key record's covered key. */
 
-      std::deque<ahead_key> m_ahead;                  /* keys of m_page evaluated ahead, in lookup order. */
+      /* keys of m_page evaluated ahead, in lookup order: [m_ahead_head, size); emptied (capacity kept) once drained. */
+      std::vector<ahead_key> m_ahead;
+      size_t m_ahead_head;
+      key_read m_ahead_last;                          /* the last key's value when it has an overflow chain. */
       int m_ahead_slot;                               /* the slot after the last key of m_ahead, or where it stopped. */
-      int m_ahead_hinted;                             /* OIDs from the one being looked up on already told to the OS. */
+      /* the first OID of the drain's buffer not yet in a window (scan_index_read_ahead); INT_MAX: none left */
+      int m_ahead_next;
       bool m_ahead_end;                               /* evaluate_ahead found no more key to queue on m_page. */
       int m_ahead_skipped_keys;                       /* read_keys of the slots skipped before that stop. */
   };

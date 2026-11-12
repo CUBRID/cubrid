@@ -49,6 +49,7 @@ namespace parallel_index_scan
 	: m_drain_state (drain_state::IDLE),
 	  m_leaf_oids (),
 	  m_leaf_oid_idx (0),
+	  m_leaf_oid_end (0),
 	  m_in_helper_mode (false),
 	  m_was_producer (false),
 	  m_chain_pool_idx (-1),
@@ -67,23 +68,29 @@ namespace parallel_index_scan
 	return m_drain_state == drain_state::IDLE;
       }
 
-      /* Begin a leaf-OID drain by adopting the OID vector + pending overflow chain head from the producer-side leaf record. */
-      void begin_leaf_drain (std::vector<OID> &&oids, VPID pending_ovf_vpid)
+      /* Begin a leaf-OID drain of buffer ()[begin, end) (one key's leaf OIDs) + its pending overflow chain head. */
+      void begin_leaf_drain (size_t begin, size_t end, VPID pending_ovf_vpid)
       {
-	m_leaf_oids = std::move (oids);
-	m_leaf_oid_idx = 0;
+	m_leaf_oid_idx = begin;
+	m_leaf_oid_end = end;
 	m_pending_ovf_vpid = pending_ovf_vpid;
 	m_drain_state = drain_state::LEAF_OIDS;
       }
 
-      /* the drain's OID buffer and the index of the OID it takes next (the one being processed is the one before) */
-      const std::vector<OID> &buffer () const
+      /* the OIDs of the leaf the walker reads: the key being drained, then the keys evaluated ahead (the walker appends
+       * them); an overflow page's OIDs replace them. The index of the OID the drain takes next (the one being processed
+       * is the one before), and the end of the key being drained */
+      std::vector<OID> &buffer ()
       {
 	return m_leaf_oids;
       }
       size_t buffer_next () const
       {
 	return m_leaf_oid_idx;
+      }
+      size_t buffer_end () const
+      {
+	return m_leaf_oid_end;
       }
 
       /* after this buffer the drain moves to the next key of the leaf: leaf OIDs of a key with no overflow chain */
@@ -110,6 +117,7 @@ namespace parallel_index_scan
 
       std::vector<OID> m_leaf_oids;
       size_t m_leaf_oid_idx;
+      size_t m_leaf_oid_end;
 
       /* Carried between leaf-OID drain and overflow chain take-up. */
       VPID m_pending_ovf_vpid;

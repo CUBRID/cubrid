@@ -5163,40 +5163,44 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
 }
 
 /*
- * scan_index_read_ahead () - tell the OS which heap pages the next OIDs of the buffer are on
+ * scan_index_read_ahead () - tell the OS which heap pages the OIDs from the one being looked up on are, a window ahead
  *   thread_p(in):
- *   isidp(in/out): index scan; curr_oidno is the OID about to be looked up
+ *   oids(in): the OIDs in lookup order (a serial scan's OID buffer, a parallel index scan worker's leaf buffer)
+ *   curr(in): the OID about to be looked up
+ *   count(in): the OIDs of oids
+ *   more(in): OIDs may follow oids[count - 1] (a worker's buffer grows with the keys it evaluates ahead)
+ *   ahead_next(in/out): the first OID not yet in a window; INT_MAX when every OID left was
  *
  * Note: The lookups stay in the order of the buffer and read one page at a time; the OS reads the pages of the
- *       window together, so a lookup finds its page read or on its way.
+ *       window together, so a lookup finds its page read or on its way. The caller calls it when the lookup is half a
+ *       window from ahead_next.
  */
-static void
-scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp)
+void
+scan_index_read_ahead (THREAD_ENTRY * thread_p, const OID * oids, int curr, int count, bool more, int *ahead_next)
 {
   VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
-  const OID *oidp = isidp->oid_list->oidp;
-  int start = MAX (isidp->ahead_next, isidp->curr_oidno);
-  int end = MIN (isidp->oids_count, isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_DISTANCE);
-  int count = 0;
+  int start = MAX (*ahead_next, curr);
+  int end = MIN (count, curr + SCAN_INDEX_READ_AHEAD_DISTANCE);
+  int n = 0;
   int i;
 
   for (i = start; i < end; i++)
     {
-      if (count == 0 || vpids[count - 1].pageid != oidp[i].pageid || vpids[count - 1].volid != oidp[i].volid)
+      if (n == 0 || vpids[n - 1].pageid != oids[i].pageid || vpids[n - 1].volid != oids[i].volid)
 	{
-	  vpids[count].pageid = oidp[i].pageid;
-	  vpids[count].volid = oidp[i].volid;
-	  count++;
+	  vpids[n].pageid = oids[i].pageid;
+	  vpids[n].volid = oids[i].volid;
+	  n++;
 	}
     }
-  isidp->ahead_next = (end == isidp->oids_count) ? INT_MAX : end;
+  *ahead_next = (end == count && !more) ? INT_MAX : end;
 
-  if (count == 0 || (count == 1 && start == isidp->curr_oidno))
+  if (n == 0 || (n == 1 && start == curr))
     {
       /* the one page of a window that starts here is the page the lookup reads right now */
       return;
     }
-  pgbuf_read_ahead (thread_p, vpids, count);
+  pgbuf_read_ahead (thread_p, vpids, n);
 }
 
 /*
@@ -6317,7 +6321,8 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_DISTANCE / 2 >= isidp->ahead_next)
 	    {
-	      scan_index_read_ahead (thread_p, isidp);
+	      scan_index_read_ahead (thread_p, isidp->oid_list->oidp, isidp->curr_oidno, isidp->oids_count, false,
+				     &isidp->ahead_next);
 	    }
 
 	  lookup_status = scan_next_index_lookup_heap (thread_p, scan_id, isidp, &data_filter, isolation);
