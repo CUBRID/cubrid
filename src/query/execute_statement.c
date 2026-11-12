@@ -6263,6 +6263,7 @@ static char *append_block_text (PARSER_CONTEXT * parser, char *text, const char 
 static char *append_block_name (PARSER_CONTEXT * parser, char *text, const char *name);
 static const char *skip_block_comment (const char *text);
 static const char *skip_block_string (const char *text);
+static const char *skip_block_delimited_id (const char *text);
 static const char *skip_block_blanks_and_comments (const char *text);
 static bool block_reads_column (const char *block, const char *name, const char *column);
 static char *make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, const char *block,
@@ -7379,6 +7380,35 @@ skip_block_string (const char *text)
 }
 
 /*
+ * skip_block_delimited_id() - Finds the end of a delimited identifier of PL/CSQL.
+ *   return: the closing delimiter, or NULL when the identifier is not closed
+ *   text(in): PL/CSQL text that starts with the opening delimiter of [x], "x" or `x`
+ *
+ * Note:
+ *    Two closing delimiters in a row are a delimiter inside "x" and `x`.
+ *    The closing delimiter itself is returned, not the text after it, as the scan steps past it.
+ */
+static const char *
+skip_block_delimited_id (const char *text)
+{
+  char close = IS_BLOCK_ID_DELIMITER_CLOSE (*text);
+
+  for (text++; *text != '\0'; text++)
+    {
+      if (*text == close)
+	{
+	  if (close == ']' || text[1] != close)
+	    {
+	      return text;
+	    }
+	  text++;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * skip_block_blanks_and_comments() - Skips the blanks and the comments of PL/CSQL at the start
  *                                    of a text.
  *   return: the first token of the text, or its end
@@ -7417,16 +7447,16 @@ skip_block_blanks_and_comments (const char *text)
  *    The scan is lexical. PL/CSQL reads a field of a record only as name.field.
  *    Comments and string literals are skipped as the lexer of PL/CSQL takes them.
  *    The name and the field may be delimited, as [x], "x" or `x`.
+ *    A delimited identifier is one token, so a comment mark inside it starts no comment.
  *    A name after a dot is part of a longer name, such as a table with an owner.
  */
 static bool
 block_reads_column (const char *block, const char *name, const char *column)
 {
-  const char *p, *token, *next;
+  const char *p, *token, *next, *resume;
   size_t name_len = strlen (name);
   size_t column_len = column == NULL ? 0 : strlen (column);
   size_t token_len;
-  char delimiter;
 
   for (p = block; *p != '\0'; p++)
     {
@@ -7446,39 +7476,51 @@ block_reads_column (const char *block, const char *name, const char *column)
 	  continue;
 	}
 
-      if (strncasecmp (p, name, name_len) != 0)
-	{
-	  continue;
-	}
-      token = p + name_len;
-      if (p != block && IS_BLOCK_ID_DELIMITER (p[-1]))
+      /* the scan goes on from here when this is not the name. A delimited identifier is passed */
+      resume = p;
+      if (IS_BLOCK_ID_DELIMITER (*p))
 	{
 	  /* [name], "name" or `name` */
-	  if (*token != IS_BLOCK_ID_DELIMITER_CLOSE (p[-1])
-	      || (p - 1 != block && (IS_BLOCK_ID_CHAR (p[-2]) || p[-2] == '.')))
+	  resume = skip_block_delimited_id (p);
+	  if (resume == NULL)
+	    {
+	      break;
+	    }
+	  if ((size_t) (resume - p - 1) != name_len || strncasecmp (p + 1, name, name_len) != 0
+	      || (p != block && (IS_BLOCK_ID_CHAR (p[-1]) || p[-1] == '.')))
+	    {
+	      p = resume;
+	      continue;
+	    }
+	  token = resume + 1;
+	}
+      else
+	{
+	  token = p + name_len;
+	  if (strncasecmp (p, name, name_len) != 0 || IS_BLOCK_ID_CHAR (*token)
+	      || (p != block && (IS_BLOCK_ID_CHAR (p[-1]) || p[-1] == '.')))
 	    {
 	      continue;
 	    }
-	  token++;
-	}
-      else if ((p != block && (IS_BLOCK_ID_CHAR (p[-1]) || p[-1] == '.')) || IS_BLOCK_ID_CHAR (*token))
-	{
-	  continue;
 	}
 
       token = skip_block_blanks_and_comments (token);
       if (*token != '.')
 	{
+	  p = resume;
 	  continue;
 	}
       token = skip_block_blanks_and_comments (token + 1);
 
       if (IS_BLOCK_ID_DELIMITER (*token))
 	{
-	  delimiter = IS_BLOCK_ID_DELIMITER_CLOSE (*token);
+	  next = skip_block_delimited_id (token);
+	  if (next == NULL)
+	    {
+	      break;
+	    }
 	  token++;
-	  for (token_len = 0; token[token_len] != '\0' && token[token_len] != delimiter; token_len++)
-	    ;
+	  token_len = next - token;
 	}
       else
 	{
@@ -7493,6 +7535,7 @@ block_reads_column (const char *block, const char *name, const char *column)
 	{
 	  return true;
 	}
+      p = resume;
     }
 
   return false;
