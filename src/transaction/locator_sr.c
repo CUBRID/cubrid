@@ -6831,11 +6831,16 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   /* the DELETE reads its old record as stored: its index keys, partition key and reevaluation decode only the values
    * they need through the attribute layer, as the row's lock holder, so the large values it never decodes stay unread.
    * A statement that calls a routine reads expanded: a routine in the reevaluation may commit before a later term
-   * decodes a ref (E22). */
+   * decodes a ref (E22). SA_MODE reads expanded: its delete is not an MVCC delete, so heap_delete_logical () removes
+   * the store records before the index keys below are read. */
   /* *INDENT-OFF* */
+#if defined (SERVER_MODE)
   const bool stored_form = (scan_cache != NULL
 			    && !thread_get_main_thread (thread_p != NULL ? thread_p : thread_get_thread_entry_info ())
 			    ->sidecar_no_lazy.load (std::memory_order_relaxed));
+#else
+  const bool stored_form = false;
+#endif
   /* *INDENT-ON* */
   unsigned char saved_sidecar_lazy = HEAP_SIDECAR_EXPAND;
 
