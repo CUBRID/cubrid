@@ -62,6 +62,7 @@
 #include <limits.h>
 #include <string>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -306,6 +307,33 @@ namespace
     return info.num_recs;
   }
 
+  /* A fatal error always dumps the call stack, and the dump runs one addr2line per frame. Against a
+   * debug build each run takes about half a second, so one fail-stop spends about 20 s symbolizing a
+   * stack nobody reads. Put an addr2line that fails at once first in PATH; the dump then prints raw
+   * addresses and the process stops through the same path. */
+  void
+  skip_call_stack_symbolization ()
+  {
+    char cwd[PATH_MAX];
+    if (getcwd (cwd, sizeof (cwd)) == NULL)
+      {
+	return;
+      }
+    const std::string dir = std::string (cwd) + "/crash_recovery_no_addr2line";
+    const std::string shim = dir + "/addr2line";
+    (void) mkdir (dir.c_str (), 0755);
+    FILE *fp = std::fopen (shim.c_str (), "w");
+    if (fp == NULL)
+      {
+	return;
+      }
+    std::fputs ("#!/bin/sh\nexit 1\n", fp);
+    std::fclose (fp);
+    (void) chmod (shim.c_str (), 0755);
+    const char *path = getenv ("PATH");
+    (void) setenv ("PATH", (dir + ":" + (path != NULL ? path : "")).c_str (), 1);
+  }
+
   /* Runs body in a child process that boots the database with the reclaimer armed to fail after
    * n_chunk_deletes chunk deletes, and returns how the child ended: the exit code, or 128 + the signal.
    * A failed reclaim of a committed intent stops the process (fail-stop): abort () in a debug build,
@@ -320,6 +348,7 @@ namespace
       {
 	struct rlimit no_core = { 0, 0 };
 	(void) setrlimit (RLIMIT_CORE, &no_core);
+	skip_call_stack_symbolization ();
 	oos_test_fail_reclaim_after_chunk_deletes (n_chunk_deletes);
 	if (boot (program) != NO_ERROR)
 	  {
