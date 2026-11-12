@@ -788,6 +788,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD "parallel_index_build_page_threshold"
 #define PRM_NAME_PARALLEL_MERGE_JOIN "parallel_merge_join"
 #define PRM_NAME_INDEX_SORT_METHOD "index_sort_method"
+#define PRM_NAME_INDEX_BUILD_MERGE_FANIN "index_build_merge_fanin"
 
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
@@ -5283,6 +5284,27 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* CBRD-27236: the most temp files a merge pass of the index build sort reads from, which is otherwise half the
+   * sort buffer in pages. The default 256 bounds the temp space of a build whose runs are short: a key longer than a
+   * page makes runs of a page, and each temp file takes at least a sector, so with no cap a 64M sort buffer can
+   * reserve a sector for each of 2,048 files. The data sectors of the heap bound the files as well, so that they
+   * reserve no more space than the heap takes; the workers of a parallel build each take their share of the sectors.
+   * The cap changes nothing while the runs are no more than 256, and beyond it adds a pass, which writes and reads
+   * the sort data once more. 0 sets no cap. A lower cap also suits a device whose reads slow down to a third or less
+   * when thousands of runs are read by turns, such as a volume of about 1,000 read IOPS (see
+   * btsort_get_num_half_tmpfiles ()). Changeable on-line, for the CREATE INDEX statements that follow. */
+  {PRM_ID_INDEX_BUILD_MERGE_FANIN,
+   PRM_NAME_INDEX_BUILD_MERGE_FANIN,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 256}},
+   {false, {.i = 256}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_TCP_KEEPALIVE_IDLE,
    PRM_NAME_TCP_KEEPALIVE_IDLE,
    (PRM_FOR_SERVER),
@@ -5779,7 +5801,7 @@ static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
 static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
 static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
 static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 353, "update SysParam.java");
-static_assert (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL == 402, "update SysParam.java");
+static_assert (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL == 403, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 

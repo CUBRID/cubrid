@@ -167,6 +167,11 @@
 #define QEXEC_IS_MULTI_PARTITION_SPEC(specp) \
   ((specp) != NULL && (specp)->parts != NULL && (specp)->parts->next != NULL)
 
+/* a partitioned NL inner the optimizer drives per outer row (CBRD-27866): rewound without opening a partition, which
+ * waits for a memo miss (qexec_open_row_partition ()) */
+#define QEXEC_IS_DEFERRED_PARTITION_WALK(xasl) \
+  (XASL_IS_FLAGED ((xasl), XASL_NL_PER_ROW_PARTITIONS) && (xasl)->spec_list != NULL && (xasl)->spec_list->parts != NULL)
+
 #define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
     (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
@@ -357,6 +362,36 @@ struct analytic_function_state
   int sort_key_tuple_position;	/* position of value_scan_id in current sort key */
 
   int group_consumed_tuples;	/* number of consumed tuples from current group */
+
+  DB_VALUE stream_value;	/* streaming: the value of the sort key group that ended, for its waiting rows */
+};
+
+/* the functions whose value is final once their row is evaluated */
+#define QEXEC_ANALYTIC_IS_FINAL_AT_ROW(func_p) \
+  ((func_p)->function == PT_ROW_NUMBER || (func_p)->function == PT_RANK || (func_p)->function == PT_DENSE_RANK)
+
+/* the functions whose value needs the partition's row count: they wait for the partition to end */
+#define QEXEC_ANALYTIC_WAITS_FOR_PARTITION(func_p) \
+  ((func_p)->function == PT_NTILE || (func_p)->function == PT_PERCENT_RANK)
+
+/* the functions a waiting row keeps a value of its own for: their value, or where its sort key group starts */
+#define QEXEC_ANALYTIC_HAS_ROW_VALUE(func_p) \
+  (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p) || (func_p)->function == PT_PERCENT_RANK)
+
+/* streaming: the sorted rows that wait for their sort key group to end, in order */
+typedef struct analytic_stream_buffer ANALYTIC_STREAM_BUFFER;
+struct analytic_stream_buffer
+{
+  char *area;			/* rows: the row values of the functions, the input tuple */
+  int area_max;			/* the memory the waiting rows take before the next ones go to list files */
+  int area_size;
+  int area_used;
+  int area_rows;
+  QFILE_LIST_ID *spill;		/* the input tuples of the rows past the area */
+  QFILE_LIST_ID *spill_vals;	/* the row values of the functions, of the rows in spill */
+  DB_VALUE *spill_dbvals;	/* the row values as spill_vals takes them */
+  DB_VALUE **spill_dbval_ptrs;
+  int spill_rows;
 };
 
 typedef struct analytic_state ANALYTIC_STATE;
@@ -396,6 +431,11 @@ struct analytic_state
   bool is_last_run;
   bool is_skip_sort;
   bool is_output_rec;
+  bool is_streaming;		/* rows go to the output file as they are sorted (qexec_analytic_can_stream) */
+  bool stream_waits;		/* some function's value is final at the end of its sort key group only */
+  int row_val_cnt;		/* the functions with a row value (QEXEC_ANALYTIC_HAS_ROW_VALUE) */
+  int *row_vals;		/* streaming: the row values of the functions, in their order */
+  ANALYTIC_STREAM_BUFFER stream;
 };
 
 /*
@@ -582,8 +622,19 @@ static SORT_STATUS qexec_analytic_get_next (THREAD_ENTRY * thread_p, RECDES * re
 static int qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static int qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
 					     ANALYTIC_STAGE stage);
+static int qexec_analytic_save_key (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key);
 static int qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 				       ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key, bool reinit);
+static bool qexec_analytic_can_stream (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
+static int qexec_analytic_stream_finalize_group (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
+						 bool is_same_group);
+static int qexec_analytic_stream_add_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
+					  QFILE_TUPLE_RECORD * tplrec);
+static int qexec_analytic_stream_put_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
+					  const int *row_vals, int row, int rows);
+static int qexec_analytic_stream_flush (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
+static void qexec_analytic_stream_drop_spill (THREAD_ENTRY * thread_p, ANALYTIC_STREAM_BUFFER * stream);
+static void qexec_analytic_stream_clear (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
 static int qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 					  ANALYTIC_FUNCTION_STATE * func_state, bool is_same_group);
 static void qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
@@ -826,6 +877,9 @@ static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNIN
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
 				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static SCAN_CODE qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static bool qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static bool qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec);
 
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
@@ -2077,6 +2131,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      p->curent = NULL;
 	      p->pruned = false;
 	    }
+	  partition_clear_spec_row_pruning (p);
+	  p->row_rewind_pending = false;
 
 	  /* free table-wide sampling pick once (all paths); idempotent */
 	}
@@ -3758,40 +3814,42 @@ qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 }
 
 /*
- * qexec_clear_all_lists () -
+ * qexec_clear_all_lists () - clear the list files that an iteration of one XASL block left in the blocks under it
  *   return:
- *   xasl_list(in)      :
+ *   xasl(in)      : the XASL procedure block; its next is not cleared
+ *
+ * Note: qexec_intprt_fnc () calls it once per row for the block it runs. The next of that block belongs to the list of
+ *   its parent, not to the block: an operand of a set operation is the next of the operand before it, and a parallel
+ *   query runs the operands at the same time in different threads, so clearing the lists of the next operand freed
+ *   the list files of its correlated subqueries while another thread was writing them.
  */
 static void
-qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
+qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  XASL_NODE *xasl;
+  XASL_NODE *xptr;
 
-  for (xasl = xasl_list; xasl != NULL; xasl = xasl->next)
+  /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
+   * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
+   * possible, these empty procedure calls amounted to several percent of the cpu time. */
+  for (xptr = xasl->bptr_list; xptr != NULL; xptr = xptr->next)
     {
-      /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
-       * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
-       * possible, these empty procedure calls amounted to several percent of the cpu time. */
-      if (xasl->bptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->bptr_list);
-	}
-      if (xasl->fptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->fptr_list);
-	}
+      qexec_clear_all_lists (thread_p, xptr);
+    }
+  for (xptr = xasl->fptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      qexec_clear_all_lists (thread_p, xptr);
+    }
 
-      /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
-       * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
-      if (xasl->dptr_list)
-	{
-	  qexec_clear_head_lists (thread_p, xasl->dptr_list);
-	}
+  /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
+   * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
+  if (xasl->dptr_list)
+    {
+      qexec_clear_head_lists (thread_p, xasl->dptr_list);
+    }
 
-      if (xasl->scan_ptr)
-	{
-	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
-	}
+  if (xasl->scan_ptr)
+    {
+      qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
     }
 }
 
@@ -6651,6 +6709,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
   while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
     {
       QEXEC_GBY_SLOT *s;
+      AGGREGATE_HASH_VALUE *value;
       AGGREGATE_TYPE *agg;
       unsigned int h;
       int i;
@@ -6670,10 +6729,9 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
       s = qexec_gby_mtable_find (t, rd->temp_part_key, h);
       if (s->key == NULL && rd->no_first_tuple)
 	{
-	  AGGREGATE_HASH_VALUE *added;
-
-	  /* the group's rows all went into partial entries: the entry's key makes the group */
-	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &added);
+	  /* the group's rows all went into partial entries: the entry's key makes the group.  The add can grow the
+	   * table, which frees the slots s points into: the group is read through the value it returns */
+	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &value);
 	  if (rc != NO_ERROR)
 	    {
 	      break;
@@ -6696,9 +6754,13 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	  rc = ER_FAILED;
 	  break;
 	}
+      else
+	{
+	  value = s->value;
+	}
       for (agg = rd->agg_template, i = 0; agg != NULL; agg = agg->next, i++)
 	{
-	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &s->value->accumulators[i],
+	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &value->accumulators[i],
 							   &agg->accumulator_domain, agg->function, agg->domain,
 							   &rd->temp_part_value->accumulators[i]);
 	  if (rc != NO_ERROR)
@@ -6710,7 +6772,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	{
 	  break;
 	}
-      s->value->tuple_count += rd->temp_part_value->tuple_count;
+      value->tuple_count += rd->temp_part_value->tuple_count;
     }
   if (sc == S_ERROR && rc == NO_ERROR)
     {
@@ -11266,6 +11328,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned
       && curr_spec->parts != NULL)
     {
+      PARTITION_SPEC_TYPE *part;
+
+      /* a previous execution of the scan (a subquery run again) leaves the partitions its last pruned outer row
+       * left out marked: open from all of them, the next outer row prunes again (CBRD-27866) */
+      for (part = curr_spec->parts; part != NULL; part = part->next)
+	{
+	  part->row_pruned = false;
+	}
+
       error_code = qexec_init_next_partition (thread_p, curr_spec, xasl);
       if (error_code != S_SUCCESS)
 	{
@@ -11612,7 +11683,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  * blocks by the iterator: its partition sweep is one probe of one outer row (qexec_execute_scan,
  * CBRD-26872), so its match memo answers for all partitions and no restart invalidates it
  * (CBRD-27465). A following join after it is driven per outer row the same way, and its row
- * memo spans that partition walk (CBRD-27493).
+ * memo spans that partition walk (CBRD-27493), as does a partitioned inner join (CBRD-27866).
  */
 static SCAN_CODE
 qexec_next_scan_block_renew_memoize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
@@ -11648,8 +11719,9 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   XASL_NODE *prev_xptr;
   XASL_NODE *xptr2, *xptr3;
 
-  /* first find the last scan block to be moved */
-  for (last_xptr = xasl; last_xptr->scan_ptr && !XASL_IS_NL_SEMI_OR_ANTI (last_xptr->scan_ptr);
+  /* first find the last scan block to be moved; a scan driven per outer row walks its own partitions
+   * (qexec_execute_scan), and so do the scans after it (CBRD-27866) */
+  for (last_xptr = xasl; last_xptr->scan_ptr && !XASL_IS_PER_OUTER_ROW (last_xptr->scan_ptr);
        last_xptr = last_xptr->scan_ptr)
     {
       if (!last_xptr->next_scan_block_on
@@ -11701,7 +11773,9 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		{
 		  return S_ERROR;
 		}
-	      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
+	      /* a deferred partition walk opens its partition on the row that needs it (qexec_open_row_partition ()) */
+	      sb_next = (QEXEC_IS_DEFERRED_PARTITION_WALK (xptr2->scan_ptr) ? S_SUCCESS
+			 : qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr));
 	      if (sb_next == S_SUCCESS)
 		{
 		  xptr2->next_scan_block_on = true;
@@ -11764,7 +11838,8 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 			{
 			  return S_ERROR;
 			}
-		      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
+		      sb_next = (QEXEC_IS_DEFERRED_PARTITION_WALK (xptr2->scan_ptr) ? S_SUCCESS
+				 : qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr));
 		      if (sb_next == S_SUCCESS)
 			{
 			  xptr2->next_scan_block_on = true;
@@ -11814,6 +11889,116 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_can_switch_index_partition () - whether qexec_init_next_partition () may move an open index scan to the next
+ *					 partition without closing it
+ *   return: bool
+ *   spec(in): the partitioned spec
+ *   xasl(in): its scan proc
+ *
+ * Note: only a plain serial index scan walked per outer row (CBRD-27866). Index skip scan, loose index scan and
+ *	 multiple range optimization keep state for the index of one partition. A locking scan decides per class
+ *	 whether its row locks end with the statement, which the switch decides again (scan_set_upddel_target ()).
+ */
+static bool
+qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
+{
+  return (QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) && spec->type == TARGET_CLASS
+	  && spec->access == ACCESS_METHOD_INDEX && spec->indexptr != NULL && spec->s_id.type == S_INDX_SCAN
+	  && spec->s_id.status != S_CLOSED && spec->s_id.s.isid.bt_attr_ids != NULL
+	  && !spec->indexptr->use_iss && spec->indexptr->ils_prefix_len == 0 && !spec->s_id.s.isid.multi_range_opt.use);
+}
+
+/*
+ * qexec_row_partition_has_next () - whether the partition walk of an outer row has a partition after the current one
+ *   return: bool
+ *   spec(in): a partitioned spec walked per outer row
+ */
+static bool
+qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec)
+{
+  const PARTITION_SPEC_TYPE *part;
+
+  for (part = (spec->curent != NULL) ? spec->curent->next : NULL; part != NULL; part = part->next)
+    {
+      if (spec->row_pruning == NULL || !part->row_pruned)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qexec_open_row_partition () - open the first partition an outer row walks, for a memo miss
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   xasl(in)    : a partitioned NL inner driven per outer row, rewound by qexec_reset_sa_inner_scan_block ()
+ *
+ * Note: the rewind leaves the scan where the previous row left it, so a row the memo answers switches no partition.
+ *	 A row it does not answer is pruned by its join values first (ACCESS_SPEC_FLAG_PRUNE_PER_ROW). When its first
+ *	 partition is the one still open, the scan is only reset to read it again with the row's keys, as an
+ *	 unpartitioned inner is; otherwise the walk starts over from that partition (CBRD-27866).
+ */
+static SCAN_CODE
+qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+  PARTITION_SPEC_TYPE *first;
+  SCAN_CODE part_scan;
+  bool put_success;
+
+  spec->row_rewind_pending = false;
+
+  if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)
+      && partition_prune_spec_for_row (thread_p, spec->s_id.vd, xasl, spec) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  for (first = spec->parts; first != NULL && spec->row_pruning != NULL && first->row_pruned; first = first->next)
+    {
+      ;
+    }
+
+  if (first == NULL && spec->parts != NULL
+      && (spec->single_fetch == QPROC_NO_SINGLE_OUTER || XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN)))
+    {
+      /* no partition can hold the row's key, but an outer join returns its NULL row and an ANTI inner lets the
+       * row through only once a partition is scanned and comes up empty */
+      first = spec->parts;
+      first->row_pruned = false;
+    }
+
+  if (first != NULL && first == spec->curent && spec->s_id.status == S_STARTED)
+    {
+      xasl->curr_spec = spec;
+      return (scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR) ? S_ERROR : S_SUCCESS;
+    }
+
+  xasl->curr_spec = spec;
+  spec->curent = NULL;
+  part_scan = (first != NULL) ? qexec_init_next_partition (thread_p, spec, xasl) : S_END;
+  if (part_scan == S_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (part_scan == S_END)
+    {
+      /* the row's join values leave out every partition: nothing to join, and the memo keeps that for its key */
+      xasl->curr_spec = NULL;
+      if (xasl->memoize_storage != NULL && memoize_put_nullptr (thread_p, xasl, &put_success) == ER_FAILED)
+	{
+	  return S_ERROR;
+	}
+      return S_END;
+    }
+
+  spec->s_id.single_fetched = false;
+  return S_SUCCESS;
+}
+
+/*
  * qexec_reset_sa_inner_scan_block () -
  *   return: SCAN_CODE (S_SUCCESS, S_ERROR)
  *   inner(in) : candidate semi/anti inner scan
@@ -11830,6 +12015,17 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 SCAN_CODE
 qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
 {
+  if (QEXEC_IS_DEFERRED_PARTITION_WALK (inner))
+    {
+      /* the partition is opened only if the memo does not answer the row: a hit costs no partition switch, and a
+       * miss reuses the partition left open when it is the row's first one (CBRD-27866) */
+      inner->curr_spec = inner->spec_list;
+      inner->spec_list->row_rewind_pending = true;
+      inner->spec_list->s_id.single_fetched = false;
+      inner->next_scan_block_on = false;
+      return S_SUCCESS;
+    }
+
   if ((XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
       || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN)
 	  && (QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)
@@ -11900,13 +12096,16 @@ qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
  * re-entry for the same outer ends, then descend into the following join (the next
  * filter), or emit the surviving outer once when this anti join is the last in the
  * chain (CBRD-26872).  Reached from the real scan on S_END and from a memoized
- * "no match" (CBRD-27465).
+ * "no match" (CBRD-27465).  after_join_pred and if_pred do not decide the match:
+ * they filter the surviving outer here (CBRD-27889).
  */
 static SCAN_CODE
 qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 			       QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
 {
   SCAN_CODE xs_scan;
+  DB_LOGICAL ev_res;
+  PRED_EXPR *filter_pred[2] = { xasl->after_join_pred, xasl->if_pred };
 
   /* the surviving outer goes on without this scan reading a row, so clear the correlated subqueries here as the scan
    * does for each row it reads (CBRD-27567). A select-list subquery, which the plan attaches to the innermost scan, is
@@ -11923,6 +12122,24 @@ qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
     }
   /* a partitioned inner is re-entered through spec_list's latch (see the partition init block) */
   xasl->spec_list->s_id.single_fetched = true;
+
+  for (int i = 0; i < 2; i++)
+    {
+      if (filter_pred[i] == NULL)
+	{
+	  continue;
+	}
+      ev_res = eval_pred (thread_p, filter_pred[i], &xasl_state->vd, NULL);
+      if (ev_res == V_ERROR)
+	{
+	  return S_ERROR;
+	}
+      else if (ev_res != V_TRUE)
+	{
+	  return S_END;
+	}
+    }
+
   if (xasl->scan_ptr)
     {
       xasl->scan_ptr->next_scan_on = false;
@@ -12189,9 +12406,25 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       memoize_scan =
 	qexec_execute_nljoin_with_memoize (thread_p, &memoize_success, xasl, xasl_state, ignore, next_scan_fnc);
 
+      if (memoize_success && xasl->spec_list != NULL)
+	{
+	  /* the memo answered the row: a re-entry for it must find the latch the answer set, not open the
+	   * partition the rewind left for a miss (CBRD-27866) */
+	  xasl->spec_list->row_rewind_pending = false;
+	}
       if (memoize_scan != S_SUCCESS || memoize_success)
 	{
 	  return memoize_scan;
+	}
+    }
+
+  if (xasl->spec_list != NULL && xasl->spec_list->row_rewind_pending)
+    {
+      SCAN_CODE open_scan = qexec_open_row_partition (thread_p, xasl);
+
+      if (open_scan != S_SUCCESS)
+	{
+	  return open_scan;
 	}
     }
 
@@ -12219,7 +12452,19 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   /* execute scan */
   do
     {
+      if (QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) && xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+	{
+	  /* an outer join walks the partitions of the row: the last one returns the NULL row when no partition
+	   * had a row (CBRD-27866) */
+	  xasl->curr_spec->s_id.single_fetch =
+	    qexec_row_partition_has_next (xasl->curr_spec) ? QPROC_NO_SINGLE_INNER : QPROC_NO_SINGLE_OUTER;
+	}
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+      if (sc_scan == S_SUCCESS && QEXEC_IS_DEFERRED_PARTITION_WALK (xasl)
+	  && xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+	{
+	  xasl->curr_spec->s_id.single_fetched = true;
+	}
       if (sc_scan == S_END && xasl->memoize_storage
 	  && !(XASL_IS_NL_SEMI_OR_ANTI (xasl)
 	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL))
@@ -12243,14 +12488,26 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec))
 	{
 	  /* a following join is driven per outer row, and the block iterator never moves it to its next
-	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493) */
-	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493). A deferred walk
+	   * stops on its last partition and leaves it open for the next row to reuse (CBRD-27866). */
+	  SCAN_CODE sb_scan = S_END;
+	  bool row_fetched = xasl->curr_spec->s_id.single_fetched;
+
+	  if (!QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) || qexec_row_partition_has_next (xasl->curr_spec))
+	    {
+	      sb_scan = qexec_next_scan_block (thread_p, xasl);
+	    }
 	  if (sb_scan == S_ERROR)
 	    {
 	      return S_ERROR;
 	    }
 	  if (sb_scan == S_SUCCESS)
 	    {
+	      /* the switch starts the scan afresh: an outer join remembers a row of an earlier partition */
+	      if (xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+		{
+		  xasl->curr_spec->s_id.single_fetched = row_fetched;
+		}
 	      continue;
 	    }
 
@@ -12271,7 +12528,18 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  && xasl->curr_spec->parts != NULL && !xasl->curr_spec->s_id.single_fetched)
 	{
 	  ACCESS_SPEC_TYPE *sa_curr_spec = xasl->curr_spec;
-	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	  SCAN_CODE sb_scan = S_END;
+
+	  /* a deferred walk stops on its last partition and leaves it open for the next row to reuse (CBRD-27866);
+	   * the latch keeps a re-entry for this row from scanning it again */
+	  if (!QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) || qexec_row_partition_has_next (xasl->curr_spec))
+	    {
+	      sb_scan = qexec_next_scan_block (thread_p, xasl);
+	    }
+	  else
+	    {
+	      sa_curr_spec->s_id.single_fetched = true;
+	    }
 	  if (sb_scan == S_ERROR)
 	    {
 	      return S_ERROR;
@@ -12293,7 +12561,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
 	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	    {
-	      /* curr_spec is NULL now (the last partition's scan was closed); latch the spec we scanned */
+	      /* curr_spec is NULL now (the last partition's scan was closed) unless a deferred walk stopped on it;
+	       * latch the spec we scanned */
 	      sa_curr_spec->s_id.single_fetched = true;
 	      sa_curr_spec->s_id.qualified_block = true;
 	      return qexec_execute_sa_anti_survive (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
@@ -12347,7 +12616,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    }
 	}			/* if (qualified) */
 
-      if (qualified)
+      /* anti join: after_join_pred and if_pred do not decide the match (see qexec_execute_sa_anti_survive ()) */
+      if (qualified && !XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	{
 	  /* evaluate after join predicate */
 	  ev_res = V_UNKNOWN;
@@ -12362,7 +12632,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  qualified = (xasl->after_join_pred == NULL || ev_res == V_TRUE);
 	}			/* if (qualified) */
 
-      if (qualified)
+      if (qualified && !XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	{
 	  /* evaluate if predicate */
 	  ev_res = V_UNKNOWN;
@@ -12694,6 +12964,8 @@ static SCAN_CODE
 qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
 {
   int error = NO_ERROR;
+  bool fast_switch = false;
+  bool started = false;
   OID class_oid;
   HFID class_hfid;
   BTID btid;
@@ -12709,9 +12981,16 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_END;
     }
 
+  /* an index scan walked per outer row keeps what it set up for the index and switches only its partition
+   * (scan_switch_index_partition ()); any other scan is closed and opened again on the next partition */
+  fast_switch = qexec_can_switch_index_partition (spec, xasl);
+
   /* close current scan and open a new one on the next partition */
-  scan_end_scan (thread_p, &spec->s_id);
-  scan_close_scan (thread_p, &spec->s_id);
+  if (!fast_switch)
+    {
+      scan_end_scan (thread_p, &spec->s_id);
+      scan_close_scan (thread_p, &spec->s_id);
+    }
 
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
@@ -12719,11 +12998,18 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
   qexec_reset_pred_expr (spec->where_pred);
   qexec_reset_pred_expr (spec->where_key);
+  /* the range filter a locking scan evaluates again (MVCC reevaluation) reads the range attribute cache */
+  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_range);
+  qexec_reset_pred_expr (spec->where_range);
 
   if (spec->curent == NULL)
     {
       /* first partition */
       spec->curent = spec->parts;
+      while (spec->row_pruning != NULL && spec->curent != NULL && spec->curent->row_pruned)
+	{
+	  spec->curent = spec->curent->next;
+	}
     }
   else
     {
@@ -12757,16 +13043,12 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	  spec->curent->batch_why_not = spec->s_id.s.hsid.batch_why_not;
 	}
 
-      /* move to next partition */
-      if (spec->curent->next == NULL)
-	{
-	  /* no more partitions */
-	  spec->curent = NULL;
-	}
-      else
+      /* move to next partition, past the ones the outer row's join values left out (CBRD-27866) */
+      do
 	{
 	  spec->curent = spec->curent->next;
 	}
+      while (spec->row_pruning != NULL && spec->curent != NULL && spec->curent->row_pruned);
     }
 
   /* prepare to record stats for the next partition */
@@ -12962,6 +13244,26 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
 	      bool iscan_oid_order = spec->s_id.s.isid.iscan_oid_order;
 
+	      if (fast_switch && spec->curent != NULL)
+		{
+		  spec->indexptr->btid = btid;
+		  error = scan_switch_index_partition (thread_p, &spec->s_id, &class_oid, &class_hfid,
+						       &spec->curent->btid_int, &spec->curent->btid_int_cached,
+						       spec->curent->scan_locked, &started);
+		  if (error != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  break;
+		}
+	      if (fast_switch)
+		{
+		  /* back to the root class: open it as any scan */
+		  scan_end_scan (thread_p, &spec->s_id);
+		  scan_close_scan (thread_p, &spec->s_id);
+		  fast_switch = false;
+		}
+
 	      /* clear caches */
 	      if (isidp->caches_inited)
 		{
@@ -13083,10 +13385,22 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_END;
     }
 
-  error = scan_start_scan (thread_p, &spec->s_id);
-  if (error != NO_ERROR)
+  if (!started)
     {
-      return S_ERROR;
+      error = scan_start_scan (thread_p, &spec->s_id);
+      if (error != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+
+  if (fast_switch)
+    {
+      spec->curent->scan_locked = true;
+      if (scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR)
+	{
+	  return S_ERROR;
+	}
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -29493,6 +29807,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   analytic_state.key_info.use_original = 1;
   analytic_state.cmp_fn = &qfile_compare_partial_sort_record;
 
+  analytic_state.is_streaming = qexec_analytic_can_stream (thread_p, &analytic_state);
+
   SORT_LISTFILE_PX_ARG anl_px;
   anl_px.key_info = &analytic_state.key_info;
   anl_px.input_list = list_id;
@@ -29525,7 +29841,28 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * interface doesn't include a finalization function.  If so, finish
    * off that group.
    */
-  if (analytic_state.input_recs != 0)
+  if (analytic_state.input_recs != 0 && analytic_state.is_streaming)
+    {
+      /* end the last sort key group of the functions that wait for it, and put out its rows */
+      if (analytic_state.stream_waits)
+	{
+	  for (i = 0; i < analytic_state.func_count; i++)
+	    {
+	      if (!QEXEC_ANALYTIC_IS_FINAL_AT_ROW (analytic_state.func_state_list[i].func_p)
+		  && qexec_analytic_stream_finalize_group (thread_p, &analytic_state.func_state_list[i],
+							   false) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	  if (qexec_analytic_stream_flush (thread_p, &analytic_state) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	}
+      finalized = true;
+    }
+  else if (analytic_state.input_recs != 0)
     {
       for (i = 0; i < analytic_state.func_count; i++)
 	{
@@ -29794,6 +30131,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   /* initialize tuple record */
   func_state->group_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   func_state->value_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  db_make_null (&func_state->stream_value);
 
   /* initialize dbvals */
   db_make_null (&func_state->csktc_dbval);
@@ -29973,6 +30311,11 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
 
   analytic_state->is_last_run = is_last_run;
   analytic_state->is_skip_sort = is_skip_sort;
+  analytic_state->is_streaming = false;
+  analytic_state->stream_waits = false;
+  analytic_state->row_val_cnt = 0;
+  analytic_state->row_vals = NULL;
+  memset (&analytic_state->stream, 0, sizeof (ANALYTIC_STREAM_BUFFER));
 
   analytic_state->analytic_rec.area_size = 0;
   analytic_state->analytic_rec.length = 0;
@@ -30095,6 +30438,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
   QFILE_TUPLE_RECORD dummy;
   QFILE_TUPLE_RECORD data_slot = QFILE_TUPLE_RECORD_INITIALIZER;	/* slot over the sorted input tuple */
   int status;
+  bool group_ended = false;	/* streaming: the sort key group of the functions that wait for it ended */
 
   analytic_state = (ANALYTIC_STATE *) arg;
   list_idp = &(analytic_state->input_scan->list_id);
@@ -30263,25 +30607,73 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 
 	      if (!is_same_group)
 		{
-		  if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, false) !=
-		      NO_ERROR)
+		  if (!analytic_state->is_streaming)
 		    {
-		      goto exit_on_error;
+		      if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, false) !=
+			  NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		    }
+		  else if (!QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_state->func_p))
+		    {
+		      if (qexec_analytic_stream_finalize_group (thread_p, func_state, false) != NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		      group_ended = true;
 		    }
 		  pr_clear_value (func_state->func_p->value);
 		  qexec_analytic_start_group (thread_p, analytic_state->xasl_state, func_state, recdes, true);
 		}
+	      else if (analytic_state->is_streaming && QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_state->func_p))
+		{
+		  /* no sort key values to keep: the value goes on into the next sort key as it is */
+		  if (qexec_analytic_save_key (thread_p, func_state, recdes) != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
+		}
+	      else if (analytic_state->is_streaming && QEXEC_ANALYTIC_WAITS_FOR_PARTITION (func_state->func_p))
+		{
+		  /* the rows wait for the partition; only the sort key group's start is counted (NTILE has none) */
+		  if (func_state->func_p->function != PT_NTILE)
+		    {
+		      qexec_analytic_start_group (thread_p, analytic_state->xasl_state, func_state, recdes, false);
+		    }
+		}
 	      else if (func_state->func_p->function != PT_NTILE
 		       && (!QPROC_IS_INTERPOLATION_FUNC (func_state->func_p) || func_state->func_p->option == Q_ALL))
 		{
-		  if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, true) !=
-		      NO_ERROR)
+		  if (!analytic_state->is_streaming)
 		    {
-		      goto exit_on_error;
+		      if (qexec_analytic_finalize_group (thread_p, analytic_state->xasl_state, func_state, true) !=
+			  NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		    }
+		  else
+		    {
+		      if (qexec_analytic_stream_finalize_group (thread_p, func_state, true) != NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
+		      group_ended = true;
 		    }
 		  qexec_analytic_start_group (thread_p, analytic_state->xasl_state, func_state, recdes, false);
 		}
 	    }
+	}
+
+      if (group_ended)
+	{
+	  /* the rows before this one have their values now */
+	  if (qexec_analytic_stream_flush (thread_p, analytic_state) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  group_ended = false;
 	}
 
       /* aggregate tuple across all functions */
@@ -30387,6 +30779,559 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
 }
 
 /*
+ * qexec_analytic_save_key () - record the key of the function's current sort key
+ *   return: error code or NO_ERROR
+ *   func_state(in/out): function state
+ *   key(in): the sort record
+ */
+static int
+qexec_analytic_save_key (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, const RECDES * key)
+{
+  /*
+   * Record the new key; keep it in SORT_KEY format so we can continue
+   * to use the SORTKEY_INFO version of the comparison functions.
+   *
+   * WARNING: the sort module doesn't seem to set key->area_size
+   * reliably, so the only thing we can rely on is key->length.
+   */
+  if (func_state->current_key.area_size < key->length)
+    {
+      void *tmp;
+
+      tmp = db_private_realloc (thread_p, func_state->current_key.data, key->area_size);
+      if (tmp == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      func_state->current_key.data = (char *) tmp;
+      func_state->current_key.area_size = key->area_size;
+    }
+  memcpy (func_state->current_key.data, key->data, key->length);
+  func_state->current_key.length = key->length;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_can_stream () - whether the rows can go to the output file as they are sorted
+ *   return: true if the rows can go to the output file without the result files
+ *   analytic_state(in/out): analytic state; sets whether rows wait for their sort key group to end
+ *
+ * qexec_analytic_update_group_result () gives a row the value its function had at the end of the row's sort key group
+ * (its partition, without an ORDER BY). ROW_NUMBER, RANK and DENSE_RANK have it once the row is evaluated. The
+ * aggregates, FIRST_VALUE and LAST_VALUE have it when the group ends, so the group's rows wait for it. NTILE and
+ * PERCENT_RANK need the partition's row count, so its rows wait for the partition to end. The rows of the functions
+ * of an evaluation group wait together, which their groups ending together allows. The other functions read the values
+ * of other rows of the partition, from the result files.
+ */
+static bool
+qexec_analytic_can_stream (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state)
+{
+  int i, keys, group_keys = -1;
+
+  if (analytic_state->func_count == 0)
+    {
+      return false;
+    }
+
+  if (analytic_state->is_last_run && analytic_state->xasl->instnum_pred != NULL)
+    {
+      /* an inst_num () predicate keeps a row out of the intermediate file only, so qexec_analytic_update_group_result ()
+       * gives the kept rows the values of the result files in turn; that pairing stays on the existing path */
+      return false;
+    }
+
+  for (i = 0; i < analytic_state->func_count; i++)
+    {
+      ANALYTIC_TYPE *func_p = analytic_state->func_state_list[i].func_p;
+
+      if (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p))
+	{
+	  continue;
+	}
+
+      switch (func_p->function)
+	{
+	case PT_MIN:
+	case PT_MAX:
+	case PT_SUM:
+	case PT_AVG:
+	case PT_COUNT:
+	case PT_COUNT_STAR:
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
+	case PT_FIRST_VALUE:
+	case PT_LAST_VALUE:
+	  keys = func_p->sort_list_size;
+	  break;
+
+	case PT_NTILE:
+	case PT_PERCENT_RANK:
+	  keys = func_p->sort_prefix_size;
+	  break;
+
+	default:
+	  return false;
+	}
+
+      if (group_keys != -1 && group_keys != keys)
+	{
+	  /* the groups end at different rows */
+	  return false;
+	}
+      group_keys = keys;
+    }
+
+  analytic_state->stream_waits = (group_keys != -1);
+
+  /* the waiting rows are intermediate aggregation state, which hash GROUP BY bounds with max_agg_hash_size before it
+   * goes to list files as well */
+  analytic_state->stream.area_max = (int) MIN (prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE), (INT64) INT_MAX);
+
+  for (i = 0; i < analytic_state->func_count; i++)
+    {
+      if (QEXEC_ANALYTIC_HAS_ROW_VALUE (analytic_state->func_state_list[i].func_p))
+	{
+	  analytic_state->row_val_cnt++;
+	}
+    }
+  analytic_state->row_vals = (int *) db_private_alloc (thread_p, sizeof (int) * analytic_state->func_count);
+  if (analytic_state->row_vals == NULL)
+    {
+      /* the existing path does not need it */
+      analytic_state->stream_waits = false;
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qexec_analytic_stream_finalize_group () - end the sort key group of a function whose rows wait for it
+ *   return: error code or NO_ERROR
+ *   func_state(in/out): function state
+ *   is_same_group(in): true if a sort key ends, false if a partition
+ *
+ * As qexec_analytic_finalize_group (), but the value is kept for the waiting rows instead of written to the result
+ * files.
+ */
+static int
+qexec_analytic_stream_finalize_group (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, bool is_same_group)
+{
+  if (qdata_finalize_analytic_func (thread_p, func_state->func_p, is_same_group) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  pr_clear_value (&func_state->stream_value);
+  if (pr_clone_value (func_state->func_p->value, &func_state->stream_value) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_stream_add_row () - put out an evaluated row, or keep it until its sort key group ends
+ *   return: error code or NO_ERROR
+ *   analytic_state(in/out): analytic state
+ *   tplrec(in): the sorted input tuple, whose values are fetched
+ *
+ * A waiting row keeps its input tuple and its row values: in memory up to stream->area_max, then in list files, so a
+ * large group takes no memory by its rows.
+ */
+static int
+qexec_analytic_stream_add_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, QFILE_TUPLE_RECORD * tplrec)
+{
+  ANALYTIC_STREAM_BUFFER *stream = &analytic_state->stream;
+  int *row_vals = analytic_state->row_vals;
+  int vals_size = sizeof (int) * analytic_state->row_val_cnt;
+  int tpl_len, rec_len, i, j;
+
+  /* an inst_num () predicate keeps the rows off the streaming path (qexec_analytic_can_stream), so every row is output
+   * at the intermediate stage */
+  assert (analytic_state->is_output_rec);
+
+  for (i = 0, j = 0; i < analytic_state->func_count; i++)
+    {
+      ANALYTIC_FUNCTION_STATE *func_state = &analytic_state->func_state_list[i];
+      ANALYTIC_TYPE *func_p = func_state->func_p;
+
+      if (func_p->function == PT_ROW_NUMBER)
+	{
+	  row_vals[j++] = db_get_int (func_p->out_value);
+	}
+      else if (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p))
+	{
+	  row_vals[j++] = db_get_int (func_p->value);
+	}
+      else if (func_p->function == PT_PERCENT_RANK)
+	{
+	  /* where the row's sort key group starts in the partition */
+	  row_vals[j++] = func_state->curr_group_tuple_count - func_state->curr_sort_key_tuple_count;
+	}
+    }
+  assert (j == analytic_state->row_val_cnt);
+
+  if (!analytic_state->stream_waits)
+    {
+      return qexec_analytic_stream_put_row (thread_p, analytic_state, row_vals, 0, 0);
+    }
+
+  /* the row waits for its sort key group to end: keep the input tuple, it is fetched again then */
+  tpl_len = QFILE_GET_TUPLE_LENGTH (tplrec->tpl);
+  rec_len = DB_ALIGN (vals_size + tpl_len, MAX_ALIGNMENT);
+
+  if (stream->spill == NULL && stream->area_used + rec_len > stream->area_size)
+    {
+      int new_size = MAX (stream->area_size * 2, DB_PAGESIZE);
+
+      while (new_size < stream->area_used + rec_len)
+	{
+	  new_size *= 2;
+	}
+      if (new_size > stream->area_max && stream->area_used + rec_len <= stream->area_max)
+	{
+	  new_size = stream->area_max;
+	}
+
+      if (new_size <= stream->area_max)
+	{
+	  char *area = (char *) (stream->area == NULL ? db_private_alloc (thread_p, new_size)
+				 : db_private_realloc (thread_p, stream->area, new_size));
+	  if (area == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  stream->area = area;
+	  stream->area_size = new_size;
+	}
+      else
+	{
+	  /* the group is large: its next rows go to list files */
+	  stream->spill = qfile_open_list (thread_p, &analytic_state->input_scan->list_id.type_list, NULL,
+					   analytic_state->xasl_state->query_id, 0, NULL);
+	  if (stream->spill == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  if (analytic_state->row_val_cnt > 0)
+	    {
+	      QFILE_TUPLE_VALUE_TYPE_LIST vals_type_list;
+
+	      if (stream->spill_dbvals == NULL)
+		{
+		  stream->spill_dbvals =
+		    (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * analytic_state->row_val_cnt);
+		  stream->spill_dbval_ptrs =
+		    (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * analytic_state->row_val_cnt);
+		  if (stream->spill_dbvals == NULL || stream->spill_dbval_ptrs == NULL)
+		    {
+		      return ER_FAILED;
+		    }
+		  for (i = 0; i < analytic_state->row_val_cnt; i++)
+		    {
+		      stream->spill_dbval_ptrs[i] = &stream->spill_dbvals[i];
+		    }
+		}
+
+	      vals_type_list.type_cnt = analytic_state->row_val_cnt;
+	      vals_type_list.domp =
+		(TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * analytic_state->row_val_cnt);
+	      if (vals_type_list.domp == NULL)
+		{
+		  return ER_FAILED;
+		}
+	      for (i = 0; i < analytic_state->row_val_cnt; i++)
+		{
+		  vals_type_list.domp[i] = &tp_Integer_domain;
+		}
+	      stream->spill_vals = qfile_open_list (thread_p, &vals_type_list, NULL,
+						    analytic_state->xasl_state->query_id, 0, NULL);
+	      db_private_free_and_init (thread_p, vals_type_list.domp);
+	      if (stream->spill_vals == NULL)
+		{
+		  return ER_FAILED;
+		}
+	    }
+	}
+    }
+
+  if (stream->spill == NULL)
+    {
+      char *rec = stream->area + stream->area_used;
+
+      memcpy (rec, row_vals, vals_size);
+      memcpy (rec + vals_size, tplrec->tpl, tpl_len);
+      stream->area_used += rec_len;
+      stream->area_rows++;
+      return NO_ERROR;
+    }
+
+  if (analytic_state->row_val_cnt > 0)
+    {
+      for (i = 0; i < analytic_state->row_val_cnt; i++)
+	{
+	  db_make_int (&stream->spill_dbvals[i], row_vals[i]);
+	}
+      if (qfile_add_values_tuple_to_list (thread_p, stream->spill_vals, stream->spill_dbval_ptrs,
+					  analytic_state->row_val_cnt) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  if (qfile_add_tuple_to_list (thread_p, stream->spill, tplrec->tpl) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  stream->spill_rows++;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_stream_put_row () - write a row whose values are final to the output file
+ *   return: error code or NO_ERROR
+ *   analytic_state(in/out): analytic state; the row's values are fetched in its value list
+ *   row_vals(in): the row values of the functions (QEXEC_ANALYTIC_HAS_ROW_VALUE), in their order
+ *   row(in): the row's place among the waiting rows, its partition's when they wait for the partition
+ *   rows(in): the waiting rows
+ *
+ * The values go where qexec_analytic_update_group_result () reads them into, and the predicate deferred to the group
+ * stage is evaluated here, the point and order that stage evaluated it at.
+ */
+static int
+qexec_analytic_stream_put_row (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state, const int *row_vals,
+			       int row, int rows)
+{
+  XASL_STATE *xasl_state = analytic_state->xasl_state;
+  bool row_is_output_rec, group_is_output_rec;
+  int i, j, rc;
+
+  for (i = 0, j = 0; i < analytic_state->func_count; i++)
+    {
+      ANALYTIC_FUNCTION_STATE *func_state = &analytic_state->func_state_list[i];
+      ANALYTIC_TYPE *func_p = func_state->func_p;
+
+      pr_clear_value (func_p->out_value);
+      if (QEXEC_ANALYTIC_IS_FINAL_AT_ROW (func_p))
+	{
+	  db_make_int (func_p->out_value, row_vals[j++]);
+	}
+      else if (QEXEC_ANALYTIC_WAITS_FOR_PARTITION (func_p))
+	{
+	  /* the row's place in its partition, which the waiting rows are, as the result files would give it */
+	  int group_tuple_count = func_state->curr_group_tuple_count;
+
+	  func_state->curr_group_tuple_count = rows;
+	  func_state->group_tuple_position = row;
+	  if (func_p->function == PT_NTILE)
+	    {
+	      rc = qexec_analytic_evaluate_ntile_function (thread_p, func_state);
+	    }
+	  else
+	    {
+	      func_state->sort_key_tuple_position = row - row_vals[j++];
+	      rc = qexec_analytic_evaluate_cume_dist_percent_rank_function (thread_p, func_state);
+	    }
+	  func_state->curr_group_tuple_count = group_tuple_count;
+
+	  if (rc != NO_ERROR || pr_clone_value (func_p->value, func_p->out_value) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (pr_clone_value (&func_state->stream_value, func_p->out_value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  /* the state's flag is the evaluated row's, which a flush of the waiting rows comes between, so it is kept */
+  row_is_output_rec = analytic_state->is_output_rec;
+  rc = qexec_analytic_eval_instnum_pred (thread_p, analytic_state, ANALYTIC_GROUP_PROC);
+  group_is_output_rec = analytic_state->is_output_rec;
+  analytic_state->is_output_rec = row_is_output_rec;
+  if (rc != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (group_is_output_rec)
+    {
+      return qexec_insert_tuple_into_list (thread_p, analytic_state->output_file, analytic_state->a_outptr_list,
+					   &xasl_state->vd, analytic_state->output_tplrec);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_analytic_stream_flush () - write the waiting rows, whose sort key group ended
+ *   return: error code or NO_ERROR
+ *   analytic_state(in/out): analytic state
+ */
+static int
+qexec_analytic_stream_flush (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state)
+{
+  ANALYTIC_STREAM_BUFFER *stream = &analytic_state->stream;
+  XASL_STATE *xasl_state = analytic_state->xasl_state;
+  int vals_cnt = analytic_state->row_val_cnt;
+  int rows = stream->area_rows + stream->spill_rows;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_RECORD vals_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_LIST_SCAN_ID scan_id, vals_scan_id;
+  bool scan_open = false, vals_scan_open = false;
+  char *rec;
+  int i, r, error = NO_ERROR;
+
+  if (rows == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* the kept tuples are the input list's */
+  qfile_slot_set_layout (&tplrec, &analytic_state->input_scan->list_id.type_list);
+
+  for (r = 0, rec = stream->area; r < rows && error == NO_ERROR; r++)
+    {
+      const int *vals;
+
+      if (r < stream->area_rows)
+	{
+	  char *tpl = rec + sizeof (int) * vals_cnt;
+
+	  vals = (const int *) rec;
+	  qfile_slot_set_tuple_ptr (&tplrec, tpl, 0);
+	  rec += DB_ALIGN (sizeof (int) * vals_cnt + QFILE_GET_TUPLE_LENGTH (tpl), MAX_ALIGNMENT);
+	}
+      else
+	{
+	  if (!scan_open)
+	    {
+	      if (qfile_open_list_scan (stream->spill, &scan_id) != NO_ERROR)
+		{
+		  error = ER_FAILED;
+		  break;
+		}
+	      scan_open = true;
+	      if (vals_cnt > 0)
+		{
+		  if (qfile_open_list_scan (stream->spill_vals, &vals_scan_id) != NO_ERROR)
+		    {
+		      error = ER_FAILED;
+		      break;
+		    }
+		  vals_scan_open = true;
+		}
+	    }
+	  if (qfile_scan_list_next (thread_p, &scan_id, &tplrec, PEEK) != S_SUCCESS)
+	    {
+	      error = ER_FAILED;
+	      break;
+	    }
+	  if (vals_cnt > 0)
+	    {
+	      if (qfile_scan_list_next (thread_p, &vals_scan_id, &vals_tplrec, PEEK) != S_SUCCESS)
+		{
+		  error = ER_FAILED;
+		  break;
+		}
+	      for (i = 0; i < vals_cnt; i++)
+		{
+		  const char *body;
+		  int len;
+		  bool is_null;
+
+		  body = qfile_slot_get_column_data (&vals_tplrec, i, &len, &is_null);
+		  assert (!is_null);
+		  analytic_state->row_vals[i] = OR_GET_INT (body);
+		}
+	    }
+	  vals = analytic_state->row_vals;
+	}
+
+      if (fetch_val_list (thread_p, analytic_state->a_regu_list, &xasl_state->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR
+	  || qexec_analytic_stream_put_row (thread_p, analytic_state, vals, r, rows) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+  if (scan_open)
+    {
+      qfile_close_scan (thread_p, &scan_id);
+    }
+  if (vals_scan_open)
+    {
+      qfile_close_scan (thread_p, &vals_scan_id);
+    }
+
+  stream->area_used = 0;
+  stream->area_rows = 0;
+  qexec_analytic_stream_drop_spill (thread_p, stream);
+
+  return error;
+}
+
+/*
+ * qexec_analytic_stream_drop_spill () - destroy the list files of the waiting rows past the area
+ */
+static void
+qexec_analytic_stream_drop_spill (THREAD_ENTRY * thread_p, ANALYTIC_STREAM_BUFFER * stream)
+{
+  if (stream->spill != NULL)
+    {
+      qfile_close_list (thread_p, stream->spill);
+      qfile_destroy_list (thread_p, stream->spill);
+      qfile_free_list_id (stream->spill);
+      stream->spill = NULL;
+    }
+  if (stream->spill_vals != NULL)
+    {
+      qfile_close_list (thread_p, stream->spill_vals);
+      qfile_destroy_list (thread_p, stream->spill_vals);
+      qfile_free_list_id (stream->spill_vals);
+      stream->spill_vals = NULL;
+    }
+  stream->spill_rows = 0;
+}
+
+/*
+ * qexec_analytic_stream_clear () - free the waiting rows
+ */
+static void
+qexec_analytic_stream_clear (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state)
+{
+  ANALYTIC_STREAM_BUFFER *stream = &analytic_state->stream;
+
+  if (stream->area != NULL)
+    {
+      db_private_free_and_init (thread_p, stream->area);
+    }
+  qexec_analytic_stream_drop_spill (thread_p, stream);
+  if (stream->spill_dbvals != NULL)
+    {
+      db_private_free_and_init (thread_p, stream->spill_dbvals);
+    }
+  if (stream->spill_dbval_ptrs != NULL)
+    {
+      db_private_free_and_init (thread_p, stream->spill_dbval_ptrs);
+    }
+  if (analytic_state->row_vals != NULL)
+    {
+      db_private_free_and_init (thread_p, analytic_state->row_vals);
+    }
+}
+
+/*
  * qexec_analytic_start_group () -
  *   return:
  *   analytic_state(in):
@@ -30399,30 +31344,9 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, AN
 {
   int error;
 
-  /*
-   * Record the new key; keep it in SORT_KEY format so we can continue
-   * to use the SORTKEY_INFO version of the comparison functions.
-   *
-   * WARNING: the sort module doesn't seem to set key->area_size
-   * reliably, so the only thing we can rely on is key->length.
-   */
-
-  if (key)
+  if (key && qexec_analytic_save_key (thread_p, func_state, key) != NO_ERROR)
     {
-      if (func_state->current_key.area_size < key->length)
-	{
-	  void *tmp;
-
-	  tmp = db_private_realloc (thread_p, func_state->current_key.data, key->area_size);
-	  if (tmp == NULL)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-	  func_state->current_key.data = (char *) tmp;
-	  func_state->current_key.area_size = key->area_size;
-	}
-      memcpy (func_state->current_key.data, key->data, key->length);
-      func_state->current_key.length = key->length;
+      GOTO_EXIT_ON_ERROR;
     }
 
   /*
@@ -30573,11 +31497,17 @@ qexec_analytic_add_tuple (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_sta
       analytic_state->func_state_list[i].curr_sort_key_tuple_count++;
     }
 
-  /* check if output */
-  if (analytic_state->is_output_rec)
+  if (analytic_state->is_streaming)
     {
-      /* records that did not pass the instnum() predicate evaluation are used for computing the function value, but
-       * are not included in the intermediate file */
+      if (qexec_analytic_stream_add_row (thread_p, analytic_state, tplrec) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+  else if (analytic_state->is_output_rec)
+    {
+      /* check if output: records that did not pass the instnum() predicate evaluation are used for computing the
+       * function value, but are not included in the intermediate file */
       if (qexec_insert_tuple_into_list (thread_p, list_id, analytic_state->a_outptr_list_interm, &xasl_state->vd,
 					analytic_state->output_tplrec) != NO_ERROR)
 	{
@@ -30606,6 +31536,7 @@ qexec_clear_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_
 
   /* clear db_values */
   pr_clear_value (func_state->func_p->value);
+  pr_clear_value (&func_state->stream_value);
   pr_clear_value (&func_state->cgtc_dbval);
   pr_clear_value (&func_state->cgtc_nn_dbval);
   pr_clear_value (&func_state->csktc_dbval);
@@ -30655,6 +31586,8 @@ qexec_clear_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_s
   analytic_state->output_tplrec = NULL;
 
   qfile_clear_sort_key_info (&analytic_state->key_info);
+
+  qexec_analytic_stream_clear (thread_p, analytic_state);
 
   if (analytic_state->curr_sort_page.page_p != NULL)
     {
