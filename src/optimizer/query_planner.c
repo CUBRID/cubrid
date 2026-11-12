@@ -355,6 +355,7 @@ static QO_INFO *qo_get_distinct_info_ahead (QO_PLANNER *, QO_NODE *, BITSET *);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
+static PT_HINT_ENUM qo_join_hint_common_to_nodes (QO_INFO *);
 static int qo_examine_idx_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 			       BITSET *, int, BITSET *);
@@ -1752,7 +1753,8 @@ qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
 
       /* dropped from the data filter by make_pred_from_plan (): not evaluated at the scan */
       if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_EXPENSIVE)
-	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5))
+	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_ORIGIN)
+	      && QO_TERM_SELECTIVITY (term) > 0.5))
 	{
 	  continue;
 	}
@@ -10294,6 +10296,30 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 }
 
 /*
+ * qo_join_hint_common_to_nodes () - the join hints every node of the info carries
+ *   return: the hints common to all the nodes
+ *   info(in): the side that is to be the inner of the join
+ *
+ * Note: a join hint names the table that is the inner of the join.  When the inner is already a join of several
+ *       tables, a hint applies to it only when it names all of them; a hint without a table is on every node.
+ *       For a single node this is the hint of that node.
+ */
+static PT_HINT_ENUM
+qo_join_hint_common_to_nodes (QO_INFO * info)
+{
+  BITSET_ITERATOR iter;
+  int i;
+  PT_HINT_ENUM hint = ~((PT_HINT_ENUM) 0);
+
+  for (i = bitset_iterate (&(info->nodes), &iter); i != -1; i = bitset_next_member (&iter))
+    {
+      hint &= QO_NODE_HINT (QO_ENV_NODE (info->env, i));
+    }
+
+  return hint;
+}
+
+/*
  * qo_examine_idx_join () -
  *   return:
  *   info(in):
@@ -10705,6 +10731,21 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	      /* fall through */
 	    }
 	}
+      else
+	{
+	  /* the side to be the inner is already a join: a hint applies to it when it names all of its tables, as in
+	   * qo_examine_hash_join ().  Only a hash join is forced from here, and only when there is a hash term:
+	   * idx-join needs a single class inner, and merge-join may not be possible for this join, so nl-join is kept
+	   * for them. */
+	  PT_HINT_ENUM hint = qo_join_hint_common_to_nodes (outer);
+
+	  if (!(hint & (PT_HINT_NO_USE_HASH | PT_HINT_USE_NL)) && (hint & PT_HINT_USE_HASH)
+	      && !bitset_is_empty (hash_terms))
+	    {
+	      /* join hint: force hash-join; skip nl-join */
+	      goto exit;
+	    }
+	}
 
       outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
       if (outer_plan == NULL)
@@ -11058,7 +11099,8 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *outer_node, *inner_node, *hint_node;
+  QO_NODE *outer_node, *inner_node;
+  PT_HINT_ENUM hint;
   QO_NODE_INDEX *node_index;
   QO_TERM *term;
   BITSET_ITERATOR bitset_iter;
@@ -11147,48 +11189,36 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* Determine the node that carries the join-method hint.  For a right outer join the
-   * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
-   * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
-   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins.  A
-   * table-level hint applies only when that side is a single class; for a multi-node
-   * (temp) inner the table hint is not applicable and the cost decides. */
+  /* Read the join-method hint of the side that is the inner.  A right outer join is made as a
+   * left outer join with the sides swapped, so its hinted side is the 'outer' operand - as in
+   * qo_examine_idx_join / qo_examine_nl_join.  When that side is already a join, a hint applies
+   * when it names all of its tables (a hint without a table is on every node). */
   if (join_type == JOIN_RIGHT)
     {
-      if (bitset_cardinality (&(outer->nodes)) == 1)
-	{
-	  hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-	}
-      else
-	{
-	  hint_node = NULL;
-	}
+      hint = qo_join_hint_common_to_nodes (outer);
     }
   else
     {
-      hint_node = inner_node;
+      hint = QO_NODE_HINT (inner_node);
     }
 
-  if (hint_node != NULL)
+  if (hint & PT_HINT_NO_USE_HASH)
     {
-      if (QO_NODE_HINT (hint_node) & PT_HINT_NO_USE_HASH)
-	{
-	  /* join hint: disable hash-join */
-	  goto exit;
-	}
-      else if (QO_NODE_HINT (hint_node) & PT_HINT_USE_HASH)
-	{
-	  /* join hint: force hash-join */
-	}
-      else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-	{
-	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-	  goto exit;
-	}
-      else
-	{
-	  /* fall through */
-	}
+      /* join hint: disable hash-join */
+      goto exit;
+    }
+  else if (hint & PT_HINT_USE_HASH)
+    {
+      /* join hint: force hash-join */
+    }
+  else if (hint & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+    {
+      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+      goto exit;
+    }
+  else
+    {
+      /* fall through */
     }
 
   /* Check if a click counter is set. */
@@ -14812,7 +14842,12 @@ qo_combine_partitions (QO_PLANNER * planner, BITSET * reamining_subqueries)
 
   for (i = planner->E; i < (signed) planner->T; ++i)
     {
-      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i]))))
+      /* a term that reads no node goes to the topmost plan, except the ON condition of an outer or anti join
+       * (QO_TC_DURING_JOIN): planner_visit_node () evaluates it at that join. On a plan above the join, the cross
+       * join of the partitions or a join over it, it would also filter the rows the join preserves, and a false
+       * condition would leave no row */
+      if (bitset_is_empty (&(QO_TERM_NODES (&planner->term[i])))
+	  && QO_TERM_CLASS (&planner->term[i]) != QO_TC_DURING_JOIN)
 	{
 	  bitset_add (&sarged_terms, i);
 	}
@@ -17067,7 +17102,9 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 		  continue;
 		}
 
-	      if (pt_expr->or_next)
+	      /* a disjunction does not reject NULL keys: an or_next chain, or a factor pt_cnf () kept whole
+	       * as a PT_OR tree */
+	      if (pt_expr->or_next || (pt_expr->node_type == PT_EXPR && pt_expr->info.expr.op == PT_OR))
 		{
 		  BITSET_CLEAR (expr_segments);
 

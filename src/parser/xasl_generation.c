@@ -34544,7 +34544,6 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 
       if (key == 0 && db_list)
 	{
-	  assert (node->etc == NULL);
 	  new_node = pt_point_ref (parser, node);
 	  if (new_node == NULL)
 	    {
