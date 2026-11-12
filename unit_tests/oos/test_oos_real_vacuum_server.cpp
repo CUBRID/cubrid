@@ -274,9 +274,10 @@ close_log_block_containing (HFID &hfid, OID &class_oid, HEAP_SCANCACHE &scan_cac
       int err = heap_insert_mvcc (hfid, class_oid, scan_cache, filler, dummy);
       recdes_free_data_area (&filler);
       ASSERT_EQ (err, NO_ERROR);
-
-      commit_current_tran ();
     }
+  /* One commit for the whole filler: a commit per row forces a log flush per row, and under machine load those
+   * flushes, not vacuum, dominated the case time. */
+  commit_current_tran ();
 }
 
 /* Poll `pred`, nudging the vacuum master daemon each round (same entry point
