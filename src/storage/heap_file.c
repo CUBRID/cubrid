@@ -28797,13 +28797,5 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 int
 heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-  /* Removing the files cannot be undone, so the commit that postponed it must be on disk first. */
-  if (tdes != NULL && !LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
-    {
-      logpb_flush_log_for_wal (thread_p, &tdes->rcv.tran_start_postpone_lsa);
-    }
-
   return fileio_lob_remove_matching_dir (rcv->data);
 }

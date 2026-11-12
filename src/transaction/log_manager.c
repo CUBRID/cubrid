@@ -8667,6 +8667,17 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	}
     }
 
+  if (RCV_IS_POSTPONE_NOT_UNDOABLE (rcvindex))
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      /* The log does not cover this postpone's effect, so the commit that postponed it must be on disk first. */
+      if (tdes != NULL && !LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
+	{
+	  logpb_flush_log_for_wal (thread_p, &tdes->rcv.tran_start_postpone_lsa);
+	}
+    }
+
   /* Now call the REDO recovery function */
 
   if (RCV_IS_LOGICAL_RUN_POSTPONE_MANUAL (rcvindex))

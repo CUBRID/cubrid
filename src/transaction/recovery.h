@@ -274,6 +274,8 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_APPEND_PAGES_TO_HEAP \
    || (idx) == RVHF_MARK_PAGES_IN_HEAP \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
+#define RCV_IS_POSTPONE_NOT_UNDOABLE(idx) \
+  ((idx) == RVHF_LOB_REMOVE_DIR)
 
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   (((vpid)->volid == NULL_VOLID) \
