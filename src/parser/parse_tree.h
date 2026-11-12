@@ -3976,6 +3976,8 @@ struct parser_context
 						 * list released with the parser, NULL until used */
   struct pt_rand_state **rand_states;	/* while set, each seeded RAND/DRAND/RANDOM/DRANDOM call keeps its
 					 * generator in this list (pt_evaluate_seeded_rand); NULL otherwise */
+  struct pt_rand_state **default_rand_states;	/* while set, a DEFAULT grafted into an expression is evaluated
+						 * with this list as rand_states; NULL otherwise */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;

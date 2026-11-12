@@ -960,6 +960,17 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
     {
       return;
     }
+  if (tree->flag.is_restored_default && parser->default_rand_states != NULL
+      && parser->rand_states != parser->default_rand_states)
+    {
+      /* a DEFAULT inside an expression: only its seeded random calls keep their generators */
+      struct pt_rand_state **save_rand_states = parser->rand_states;
+
+      parser->rand_states = parser->default_rand_states;
+      pt_evaluate_tree_internal (parser, tree, db_values, values_count, having_serial);
+      parser->rand_states = save_rand_states;
+      return;
+    }
   if (values_count > 1 && tree->node_type != PT_SELECT && tree->node_type != PT_INTERSECTION
       && tree->node_type != PT_UNION && tree->node_type != PT_DIFFERENCE)
     {

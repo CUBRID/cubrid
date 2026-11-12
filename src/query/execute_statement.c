@@ -579,8 +579,8 @@ struct cdt_eval_set
   SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
   int count;			/* number of residual entries */
   CDT_EVAL_ENTRY *entries;
-  struct pt_rand_state *rand_states;	/* seeded random generators of this statement, of its DEFAULTs and its ON
-					 * DUPLICATE KEY UPDATE assignments (pt_free_rand_states) */
+  struct pt_rand_state *rand_states;	/* seeded random generators of the DEFAULTs of this statement, those in
+					 * its ON DUPLICATE KEY UPDATE assignments too (pt_free_rand_states) */
 };
 
 /*
@@ -12973,7 +12973,7 @@ cleanup:
  *   update_stmt(in)  : the update statement to run if there are unique
  *			constraint violations
  *   rand_states(in/out): seeded random generators of the statement, so a seeded
- *			random of update_stmt advances per updated row
+ *			random in a DEFAULT of update_stmt advances per updated row
  *
  * Notes: This function creates a SELECT statement based on the values
  *        supplied in the template object and runs update_stmt for one
@@ -13005,10 +13005,10 @@ do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * 
 
   update_stmt->info.update.object = ws_mop (oids, NULL);
 
-  save_rand_states = parser->rand_states;
-  parser->rand_states = rand_states;
+  save_rand_states = parser->default_rand_states;
+  parser->default_rand_states = rand_states;
   ret_code = update_object_by_oid (parser, update_stmt, ON_DUPLICATE_KEY_UPDATE);
-  parser->rand_states = save_rand_states;
+  parser->default_rand_states = save_rand_states;
   update_stmt->info.update.object = NULL;
   if (ret_code < NO_ERROR)
     {
