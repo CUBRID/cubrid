@@ -1175,6 +1175,19 @@ error_exit:
 error_exit:
     if (ldr_Current_context->err_count || (err != NO_ERROR))
       {
+	if (ldr_Current_context->validation_only)
+	  {
+	    /*
+	     * The syntax-checking walk does not stop at a refused row: ldr_abort () has no jump
+	     * buffer to leave the parse through until the loading walk registers one. Count the
+	     * row, so ldr_sa_load () does not go on to load a file it has just refused, and clear
+	     * the error the row has already reported. Left set, process_line () takes it for an
+	     * error raised outside the rows, prints it again for every row after this one and
+	     * checks none of them.
+	     */
+	    ldr_increment_err_total ();
+	    er_clear ();
+	  }
 	ldr_abort ();
       }
     ldr_Current_context->instance_started = 0;
@@ -2142,11 +2155,22 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
   RETURN_IF_NOT_VALID (context);
 
+  /*
+   * A value past the last attribute. Say it for the first such value of the row only - the
+   * ones after it, and the trailing brace of a collection that overflowed, are the same
+   * overflow - and leave the context valid. Marking the context invalid here ignored the
+   * rest of the class, not the rest of the row: start_line () does not reset an invalid
+   * context, so a validation walk reported nothing for the rows after this one, and a row
+   * skipped through --error-control-file took every row after it in the class along.
+   * finish_line () refuses the row; nothing below reads attrs[next_attr] for it.
+   */
   if (context->next_attr >= context->num_attrs)
     {
-      context->valid = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
-      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      if (context->next_attr == context->num_attrs && (type != LDR_COLLECTION || str != NULL))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+	  CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+	}
       goto error_exit;
     }
 
