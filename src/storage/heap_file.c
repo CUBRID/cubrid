@@ -14853,6 +14853,58 @@ heap_internal_lob_clone_locator (THREAD_ENTRY * thread_p, const OID * class_oid,
 }
 
 /*
+ * heap_internal_lob_move_to_partition () - Move a chain loaddb wrote into a partitioned class's LOB file to the LOB
+ *					    file of the partition its row was routed to.
+ *   return: NO_ERROR, or error code
+ *   thread_p(in): thread entry
+ *   class_oid(in): partition the row was routed to
+ *   source_class_oid(in): partitioned class whose LOB file holds the chain
+ *   lob_type(in): DB_TYPE_BLOB or DB_TYPE_CLOB
+ *   source_locator(in): the chain, with its identity stamp; deleted on success
+ *   locator(out): the copy in the partition's LOB file
+ */
+int
+heap_internal_lob_move_to_partition (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * source_class_oid,
+				     DB_TYPE lob_type, const INTERNAL_LOB_LOCATOR * source_locator,
+				     INTERNAL_LOB_LOCATOR * locator)
+{
+  OID *super_oids = NULL;
+  int super_count = 0;
+  bool is_partition;
+  VFID source_vfid;
+  int error;
+
+  error = heap_get_class_supers (thread_p, class_oid, &super_oids, &super_count);
+  is_partition = (error == NO_ERROR && super_count == 1 && OID_EQ (&super_oids[0], source_class_oid));
+  if (super_oids != NULL)
+    {
+      free_and_init (super_oids);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (!is_partition)
+    {
+      /* a chain written for any other class is not this row's to take */
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  error = heap_internal_lob_get_class_vfid (thread_p, source_class_oid, &source_vfid);
+  if (error == NO_ERROR)
+    {
+      error = heap_internal_lob_clone_locator (thread_p, class_oid, lob_type, source_locator, locator);
+    }
+  if (error == NO_ERROR)
+    {
+      error = internal_lob_delete (thread_p, source_vfid, *source_locator);
+    }
+  return error;
+}
+
+/*
  * heap_internal_lob_insert_value () - Insert a BLOB/CLOB DB_VALUE into a class internal LOB file.
  *   return: NO_ERROR, or error code
  *   thread_p(in): thread entry
@@ -14953,6 +15005,13 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
 		  return error;
 		}
 	      locator->identity_stamp = head_header.identity_stamp;
+	    }
+	  /* loaddb wrote the chain for the class its load file names; a row routed to a partition moves it */
+	  if (!OID_ISNULL (&source_locator.class_oid) && !OID_EQ (&source_locator.class_oid, class_oid))
+	    {
+	      source_locator.identity_stamp = locator->identity_stamp;
+	      return heap_internal_lob_move_to_partition (thread_p, class_oid, &source_locator.class_oid, type,
+							  &source_locator, locator);
 	    }
 	  return NO_ERROR;
 	}

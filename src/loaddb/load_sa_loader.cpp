@@ -3376,6 +3376,8 @@ ldr_internal_lob_ref_make_value (LDR_CONTEXT *context, const char *str, size_t l
 		 ldr_internal_lob_sidecar_stream_reader, &stream_ctx, found->second.data_length, bit_length,
 		 &locator));
   ldr_Lob_pending.push_back (locator);
+  /* name the class whose LOB file holds the chain: a row the server routes to a partition moves it there */
+  COPY_OID (&locator.class_oid, class_oid);
   CHECK_ERR (err, internal_lob_make_adopt_locator_db_value (val, expected_type, locator));
 
 error_exit:

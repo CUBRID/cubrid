@@ -680,6 +680,10 @@ extern int heap_internal_lob_insert_stream (THREAD_ENTRY * thread_p, const OID *
 extern int heap_internal_lob_clone_locator (THREAD_ENTRY * thread_p, const OID * class_oid, DB_TYPE lob_type,
 					    const INTERNAL_LOB_LOCATOR * source_locator,
 					    INTERNAL_LOB_LOCATOR * locator);
+extern int heap_internal_lob_move_to_partition (THREAD_ENTRY * thread_p, const OID * class_oid,
+						const OID * source_class_oid, DB_TYPE lob_type,
+						const INTERNAL_LOB_LOCATOR * source_locator,
+						INTERNAL_LOB_LOCATOR * locator);
 extern int heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * value,
 					   INTERNAL_LOB_LOCATOR * locator);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype);

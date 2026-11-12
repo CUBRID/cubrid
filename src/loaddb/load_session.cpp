@@ -898,7 +898,7 @@ namespace cubload
       {
 	return stream_session_set_error ("internal LOB payload does not belong to this batch");
       }
-    if (slot <= 0 || slot > (INT64) table->slots.size () || !OID_EQ (class_oid, &table->class_oid))
+    if (slot <= 0 || slot > (INT64) table->slots.size ())
       {
 	return stream_session_set_error ("internal LOB payload slot does not belong to this class");
       }
@@ -911,6 +911,19 @@ namespace cubload
     if (entry.adopted)
       {
 	return stream_session_set_error ("internal LOB payload slot is already used by another row");
+      }
+
+    if (!OID_EQ (class_oid, &table->class_oid))
+      {
+	/* the row was routed to a partition of the batch class: it takes a copy that publishes its own chunks */
+	error = heap_internal_lob_move_to_partition (&thread_ref, class_oid, &table->class_oid, expected_type,
+		&entry.locator, &locator);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	entry.adopted = true;
+	return NO_ERROR;
       }
 
     /* the chunks were published when the worker wrote them; publish them again for this row's replication */
