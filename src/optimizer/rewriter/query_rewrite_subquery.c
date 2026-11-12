@@ -621,7 +621,8 @@ qo_rewrite_inner_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, QO_UNNEST_
   subq->info.query.q.select.where = where;
   subq->info.query.correlation_level = 0;
 
-  /* an IN subquery keeps its DISTINCT (pt_coerce_range_expr_arguments ()), as in qo_rewrite_subqueries () */
+  /* an IN subquery keeps its DISTINCT (pt_coerce_range_expr_arguments ()), as in qo_rewrite_subqueries (); the plan of
+   * the query is also made without it (pt_plan_semi_anti_forms ()) */
   if (!info->is_in_form)
     {
       subq->info.query.all_distinct = PT_ALL;

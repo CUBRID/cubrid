@@ -94,6 +94,7 @@ extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 typedef enum
 {
   SEMI_ANTI_FORM_JOIN,		/* the SEMI / ANTI JOIN */
+  SEMI_ANTI_FORM_JOIN_ALL,	/* the SEMI / ANTI JOIN over every row of its derived table, without its DISTINCT */
   SEMI_ANTI_FORM_DISTINCT_INNER,	/* an INNER JOIN over its rows with the duplicates removed */
   SEMI_ANTI_FORM_EXISTS		/* its [NOT] EXISTS subquery in the WHERE */
 } SEMI_ANTI_FORM;
@@ -22038,6 +22039,16 @@ pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
 	  return false;
 	}
 
+      if (form == SEMI_ANTI_FORM_JOIN_ALL)
+	{
+	  spec->info.spec.derived_table->info.query.all_distinct = PT_ALL;
+	  if (!pt_plan_query_summary (parser, spec->info.spec.derived_table))
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
       if (form == SEMI_ANTI_FORM_EXISTS)
 	{
 	  if (is_copy)
@@ -22073,7 +22084,9 @@ pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
  * Note: a SEMI / ANTI JOIN inner is searched once per outer row, behind the specs its ON reads.  A SEMI JOIN may also
  *   be read once with the duplicates removed and joined as an INNER JOIN, which may come first (CBRD-27397,
  *   qo_is_distinct_semi_inner ()), and a spec unnested from a subquery over several tables may run as that
- *   subquery once per outer row instead of building its derived table (CBRD-27929, exists_cond).  Each combination of
+ *   subquery once per outer row instead of building its derived table (CBRD-27929, exists_cond).  A derived table
+ *   keeping the DISTINCT of an IN subquery (qo_rewrite_inner_as_derived ()) may also be read without it; the SEMI JOIN
+ *   with the duplicates removed is left out where the INNER JOIN over them may be planned.  Each combination of
  *   the forms is planned as a copy of the whole query and the cheapest is kept, up to SEMI_ANTI_FORMS_MAX_PLANS
  *   combinations.  USE_MERGE naming a SEMI JOIN spec leaves it the INNER JOIN, the one form a merge join applies to.
  *
@@ -22090,7 +22103,7 @@ pt_plan_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node)
   QO_PLAN *plan;
   double cost, best_cost = 0.0;
   int n_specs = 0, n_plans = 1, combination, best_combination = -1;
-  bool can_distinct_inner, is_merge_hinted;
+  bool can_distinct_inner, is_merge_hinted, is_distinct;
 
   for (prev_spec = NULL, spec = select_node->info.query.q.select.from;
        spec != NULL && n_specs < SEMI_ANTI_FORMS_MAX_PLANS; prev_spec = spec, spec = spec->next)
@@ -22104,9 +22117,18 @@ pt_plan_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node)
       cur->spec_id = spec->info.spec.id;
       cur->n_forms = 0;
       can_distinct_inner = qo_is_distinct_semi_inner (parser, select_node, spec, &is_merge_hinted);
+      is_distinct = (spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
+	&& spec->info.spec.derived_table->info.query.all_distinct == PT_DISTINCT;
       if (!is_merge_hinted)
 	{
-	  cur->forms[cur->n_forms++] = SEMI_ANTI_FORM_JOIN;
+	  if (!is_distinct || !can_distinct_inner)
+	    {
+	      cur->forms[cur->n_forms++] = SEMI_ANTI_FORM_JOIN;
+	    }
+	  if (is_distinct)
+	    {
+	      cur->forms[cur->n_forms++] = SEMI_ANTI_FORM_JOIN_ALL;
+	    }
 	}
       if (can_distinct_inner)
 	{
