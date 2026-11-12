@@ -112,59 +112,53 @@
  *                 received by the cci interface
  */
 
-static int type_map[] = {
-  0,
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_CHAR */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_STRING */
-
-  /* TODO:
-   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
-   */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NCHAR */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_VARNCHAR */
-
-  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_BIT */
-  CCI_A_TYPE_BIT,		/* CCI_U_TYPE_VARBIT */
-  CCI_A_TYPE_STR,		/* CCI_U_TYPE_NUMERIC */
-  CCI_A_TYPE_INT,		/* CCI_U_TYPE_INT */
-  CCI_A_TYPE_INT,		/* CCI_U_TYPE_SHORT */
-  CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_MONETARY */
-  CCI_A_TYPE_FLOAT,		/* CCI_U_TYPE_FLOAT */
-  CCI_A_TYPE_DOUBLE,		/* CCI_U_TYPE_DOUBLE */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATE */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIME */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_TIMESTAMP */
-
-  /* not support for collection type, processing as null */
-  0,				/* CCI_U_TYPE_SET */
-  0,				/* CCI_U_TYPE_MULTISET */
-  0,				/* CCI_U_TYPE_SEQUENCE */
-  0,				/* CCI_U_TYPE_OBJECT */
-
-  0,				/* CCI_U_TYPE_RESULTSET */
-  CCI_A_TYPE_BIGINT,		/* CCI_U_TYPE_BIGINT */
-  CCI_A_TYPE_DATE,		/* CCI_U_TYPE_DATETIME */
-
-  /* not support for BFILE, CFILE, BLOB, CLOB, and ENUM */
-  0,				/* CCI_U_TYPE_BFILE */
-  0,				/* CCI_U_TYPE_CFILE */
-  0,				/* CCI_U_TYPE_BLOB */
-  0,				/* CCI_U_TYPE_CLOB */
-  0,				/* CCI_U_TYPE_ENUM */
-
-  CCI_A_TYPE_UINT,		/* CCI_U_TYPE_USHORT */
-  CCI_A_TYPE_UINT,		/* CCI_U_TYPE_UINT */
-  CCI_A_TYPE_UBIGINT,		/* CCI_U_TYPE_UBIGINT */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPTZ */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMESTAMPLTZ */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMETZ */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_DATETIMELTZ */
-  /* Disabled type */
-  CCI_A_TYPE_DATE_TZ,		/* CCI_U_TYPE_TIMETZ - internal only, RESERVED */
-  /* end of disabled types */
-  CCI_A_TYPE_STR		/* CCI_U_TYPE_JSON */
-};
+/* the CCI_A_TYPE a column of this u_type is read as; by name, as the numbers are the bundled CCI's (cas_cci.h) */
+static int
+dblink_utype_to_a_type (int utype)
+{
+  switch (utype)
+    {
+    case CCI_U_TYPE_CHAR:
+    case CCI_U_TYPE_STRING:
+    case CCI_U_TYPE_NCHAR:
+    case CCI_U_TYPE_VARNCHAR:
+    case CCI_U_TYPE_NUMERIC:
+    case CCI_U_TYPE_JSON:
+      return CCI_A_TYPE_STR;
+    case CCI_U_TYPE_BIT:
+    case CCI_U_TYPE_VARBIT:
+      return CCI_A_TYPE_BIT;
+    case CCI_U_TYPE_INT:
+    case CCI_U_TYPE_SHORT:
+      return CCI_A_TYPE_INT;
+    case CCI_U_TYPE_MONETARY:
+    case CCI_U_TYPE_DOUBLE:
+      return CCI_A_TYPE_DOUBLE;
+    case CCI_U_TYPE_FLOAT:
+      return CCI_A_TYPE_FLOAT;
+    case CCI_U_TYPE_DATE:
+    case CCI_U_TYPE_TIME:
+    case CCI_U_TYPE_TIMESTAMP:
+    case CCI_U_TYPE_DATETIME:
+      return CCI_A_TYPE_DATE;
+    case CCI_U_TYPE_BIGINT:
+      return CCI_A_TYPE_BIGINT;
+    case CCI_U_TYPE_USHORT:
+    case CCI_U_TYPE_UINT:
+      return CCI_A_TYPE_UINT;
+    case CCI_U_TYPE_UBIGINT:
+      return CCI_A_TYPE_UBIGINT;
+    case CCI_U_TYPE_TIMESTAMPTZ:
+    case CCI_U_TYPE_TIMESTAMPLTZ:
+    case CCI_U_TYPE_DATETIMETZ:
+    case CCI_U_TYPE_DATETIMELTZ:
+    case CCI_U_TYPE_TIMETZ:
+      return CCI_A_TYPE_DATE_TZ;
+    default:
+      /* not supported: the collections, OBJECT, RESULTSET, the LOBs and ENUM */
+      return 0;
+    }
+}
 
 #define NULL_CHECK(ind) \
 	if ((ind) == -1) break
@@ -178,7 +172,8 @@ static int type_map[] = {
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
  * Its counterpart is the u_type dblink_bind_dbval_to_param() picks when sending the value (and
- * cas_u_type[] on the broker side); type_map[] just above is a different mapping -- CCI type to bind shape.
+ * cas_u_type[] on the broker side); dblink_utype_to_a_type() just above is a different mapping -- CCI type to
+ * bind shape.
  * One cell differs from the bind path on purpose: that one sends a CHAR value as CCI_U_TYPE_STRING, while
  * this reports CHAR, because the rule compares *declared* types and the marker names the declared type of
  * the target. Calling CHAR and CHAR equal keeps the bare "?" there, which is what the all-local form
@@ -1492,7 +1487,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_FLOAT:
 	case CCI_U_TYPE_DOUBLE:
 	case CCI_U_TYPE_MONETARY:
-	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], value, &ind)) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, dblink_utype_to_a_type (utype), value, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -1501,7 +1496,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  break;
 
 	case CCI_U_TYPE_NUMERIC:
-	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, dblink_utype_to_a_type (utype), &value, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -1512,7 +1507,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_STRING:
 	case CCI_U_TYPE_CHAR:
 	case CCI_U_TYPE_JSON:
-	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &value, &ind)) < 0)
+	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, dblink_utype_to_a_type (utype), &value, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -1537,7 +1532,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 
 	case CCI_U_TYPE_BIT:
 	case CCI_U_TYPE_VARBIT:
-	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &bit_val, &ind)) < 0)
+	  if ((error =
+	       cci_get_data (scan_info->stmt_handle, col_no, dblink_utype_to_a_type (utype), &bit_val, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -1558,7 +1554,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_TIME:
 	case CCI_U_TYPE_TIMESTAMP:
 	case CCI_U_TYPE_DATETIME:
-	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time, &ind)) < 0)
+	  if ((error =
+	       cci_get_data (scan_info->stmt_handle, col_no, dblink_utype_to_a_type (utype), &date_time, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
@@ -1570,7 +1567,8 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	case CCI_U_TYPE_DATETIMELTZ:
 	case CCI_U_TYPE_TIMESTAMPTZ:
 	case CCI_U_TYPE_TIMESTAMPLTZ:
-	  if ((error = cci_get_data (scan_info->stmt_handle, col_no, type_map[utype], &date_time_tz, &ind)) < 0)
+	  if ((error =
+	       cci_get_data (scan_info->stmt_handle, col_no, dblink_utype_to_a_type (utype), &date_time_tz, &ind)) < 0)
 	    {
 	      goto error_exit;
 	    }
