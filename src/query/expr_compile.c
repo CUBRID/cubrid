@@ -370,31 +370,19 @@ expr_hostvar_domain (const REGU_VARIABLE * regu)
  ******************************************************************************/
 
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583) for a
- * value of the planned type, which the step compiler copied; a step without one coerces by the value's type */
+ * value of the planned type, which the step compiler copied (a node without one is not compiled into a kernel) */
 int
 expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
-  TP_DOMAIN_STATUS dom_status;
-
-  if (domain_p == NULL)
-    {
-      return NO_ERROR;
-    }
+  assert (domain_p != NULL && conv != NULL);
   if (DB_IS_NULL (result_p))
     {
       /* tp_value_coerce's: a NULL comes out bare */
       db_make_null (result_p);
       return NO_ERROR;
     }
-  if (conv != NULL && DB_VALUE_DOMAIN_TYPE (result_p) == planned)
-    {
-      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
-    }
-  else
-    {
-      /* no converter, or a value of another type than planned: coerce by the value's type */
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-    }
+  assert (DB_VALUE_DOMAIN_TYPE (result_p) == planned);
+  const TP_DOMAIN_STATUS dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
@@ -656,13 +644,12 @@ name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
 
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_float, float_numeric_db_value_add, ER_QPROC_OVERFLOW_ADDITION)
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_float, float_numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
-/* the float call of qdata_number_numeric (); the fixed64 entry handles the single-word
- * common case bit-identically and declines everything else back to the reference */
+/* the float call of qdata_number_numeric () */
      static int expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
   EXPR_ARITH_REQUIRE_TYPE (a, b, DB_TYPE_NUMERIC);
-  if (!float_numeric_db_value_mul_fixed64 (a, b, step->out) && float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
+  if (float_numeric_db_value_mul (a, b, step->out) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
       return ER_QPROC_OVERFLOW_MULTIPLICATION;
@@ -2073,6 +2060,17 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
       bctx->step_prologue[j] = false;
       bctx->step_exec_prologue[j] = false;
     }
+  for (j = mark->n_cells; j < bctx->n_cells; j++)
+    {
+      /* a cell that read a filter slot was counted with it (expr_compile_node_arith ()): the count goes with the
+       * cell, or the image claims more shared cells than it carries and its reader refuses it (CBRD-27994), and the
+       * flag goes too, or the next cell built at this index passes for a computed one */
+      if (bctx->cell_shared[j])
+	{
+	  bctx->cell_shared[j] = false;
+	  bctx->n_shared--;
+	}
+    }
   bctx->n_steps = mark->n_steps;
   bctx->n_cells = mark->n_cells;
   bctx->n_cse = mark->n_cse;
@@ -2590,6 +2588,23 @@ expr_term_compare (const EXPR_COMPILE_ENV * env, const COMP_EVAL_TERM * et, DOMA
   return out;
 }
 
+/* an integer against a NUMERIC whose decided comparison takes both sides as they are (by the exact values): the
+ * generic leaf runs that comparison on the unconverted values */
+static bool
+expr_pred_exact_number (const EXPR_COMPILE_ENV * env, const COMP_EVAL_TERM * et, DB_TYPE t1, DB_TYPE t2)
+{
+  DOMAIN_COMPARE decided;
+  const DOMAIN_COMPARE *compare;
+
+  if (!domain_compare_is_exact_number (t1, t2))
+    {
+      return false;
+    }
+  compare = expr_term_compare (env, et, &decided);
+  return compare != NULL && compare->method == DOMAIN_COMPARE_DIRECT && compare->conv[0] == NULL
+    && compare->conv[1] == NULL && (DB_TYPE) compare->source[0] == t1 && (DB_TYPE) compare->source[1] == t2;
+}
+
 /* The domain the server's tree holds for a domain of the tree a compile runs over.  At generation the client's domain
  * objects are not yet what the stream makes of them -- the unpack normalizes a VARCHAR's floating precision and an
  * ENUMERATION's codeset and collation, and equal domains may be different objects -- so where a compile keys on a
@@ -2969,7 +2984,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	const COMP_EVAL_TERM *et;
 	DB_TYPE t1, t2, fast_type;
 	DB_VALUE pinned;
-	bool pin_rhs = false;
+	bool pin_rhs = false, exact;
 
 	if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
 	  {
@@ -3024,16 +3039,17 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 		pr_clear_value (&pinned);
 	      }
 	  }
-	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN
-	    || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
-		 || expr_pred_generic_cmp_type (t1)))
+	exact = !pin_rhs && expr_pred_exact_number (&bctx->env, et, t1, t2);
+	if (!exact && (t1 != t2 || t1 == DB_TYPE_UNKNOWN
+		       || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
+			    || expr_pred_generic_cmp_type (t1))))
 	  {
 	    /* differing sides: the plain term evaluator compares them */
 	    pr_clear_value (&pinned);
 	    return expr_scan_pred_interp_leaf (pr, true);
 	  }
-	fast_type = (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
-		     || t1 == DB_TYPE_DATE) ? t1 : DB_TYPE_UNKNOWN;
+	fast_type = (!exact && (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
+				|| t1 == DB_TYPE_DATE)) ? t1 : DB_TYPE_UNKNOWN;
 
 	pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
 	if (pred == NULL)
@@ -3766,7 +3782,7 @@ expr_pred_runs (const PRED_EXPR * pr, EXPR_RUNS_WHAT what)
 	default:
 	  break;
 	}
-      /* FALLTHRU */
+      [[fallthrough]];
     default:
       /* a term this file does not know: not one to evaluate twice, nor to run under the held page */
       return true;
@@ -4621,12 +4637,16 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 
 	t1 = expr_node_type (bctx, et->lhs);
 	t2 = expr_node_type (bctx, et->rhs);
-	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN)
+	if (expr_pred_exact_number (&bctx->env, et, t1, t2))
+	  {
+	    fast_type = DB_TYPE_UNKNOWN;	/* the term's decided comparison (expr_pred_compare) */
+	  }
+	else if (t1 != t2 || t1 == DB_TYPE_UNKNOWN)
 	  {
 	    /* differing sides compare by the values in eval_value_rel_cmp (); left interpreted */
 	    return NULL;
 	  }
-	if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE || t1 == DB_TYPE_DATE)
+	else if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE || t1 == DB_TYPE_DATE)
 	  {
 	    fast_type = t1;
 	  }
@@ -5940,12 +5960,14 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * the mirror kept for a plan that names a
 	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
 	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
-	 * (they skip the per-row clear), which a coercion into a string domain would break. */
+	 * (they skip the per-row clear), which a coercion into a string domain would break.  A node
+	 * without a converter (its value needs none) is declined too: the epilogue only converts. */
 	const DB_TYPE ktype = plan->type;
 	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
 	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
 
-	if (coerce_result && !TP_IS_NUMERIC_TYPE (rtype))
+	if (coerce_result && (!TP_IS_NUMERIC_TYPE (rtype)
+			      || tp_value_find_converter (ktype, exec_domain, DOMAIN_CONVERT_IMPLICIT) == NULL))
 	  {
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
@@ -6573,11 +6595,22 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, EXP
 
   expr_prog_materialize (prog, bctx->share_pred);
 #if !defined (NDEBUG)
-  for (i = 0; i < prog->n_cells; i++)
-    {
-      /* bound from the recorded source: the address the compiler wired */
-      assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
-    }
+  {
+    int n_share_cells = 0;
+
+    for (i = 0; i < prog->n_cells; i++)
+      {
+	/* bound from the recorded source: the address the compiler wired */
+	assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
+	if (prog->cell_src[i] == EXPR_CSRC_SHARE)
+	  {
+	    n_share_cells++;
+	  }
+      }
+    /* the image carries n_shared and its reader bounds it by the cells (expr_image_get_prog ()): one per cell that
+     * reads a filter slot, whatever the build rewound on the way (expr_build_rewind ()) */
+    assert (prog->n_shared == n_share_cells);
+  }
 #endif
 
   /* a predicate tree the caller owns (a compiled scan filter) resolves its cells against the same program */

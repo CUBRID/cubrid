@@ -82,6 +82,15 @@ typedef enum
   UNBOX_AS_TABLE
 } UNBOX;
 
+typedef struct pt_func_index_cover PT_FUNC_INDEX_COVER;
+struct pt_func_index_cover
+{
+  PT_FUNC_INDEX_COVER *next;
+  const char *expr_str;
+  UINTPTR spec_id;
+  PT_NODE *result_attr;		/* pseudo attribute holding the function result read from the index key */
+};
+
 typedef struct symbol_info SYMBOL_INFO;
 struct symbol_info
 {
@@ -95,6 +104,8 @@ struct symbol_info
   int listfile_attr_offset;
   PT_NODE *query_node;		/* the query node that is being translated */
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
+  PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* function index expressions to route to their result attribute */
+  PT_FUNC_INDEX_COVER *func_idx_routed_list;	/* covered scans of the query whose output is routed */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;
@@ -145,6 +156,10 @@ extern char *query_Plan_dump_filename;
 extern FILE *query_Plan_dump_fp;
 extern bool query_Plan_dump_fp_open;
 
+struct xasl_supp_info;
+extern struct xasl_supp_info *pt_detach_xasl_supp_info (void);
+extern void pt_attach_xasl_supp_info (struct xasl_supp_info *saved);
+
 extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 						     PRED_EXPR * where_pred,
 						     REGU_VARIABLE_LIST pred_list,
@@ -154,6 +169,8 @@ extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
 extern REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 							     VAL_LIST * value_list, int *attr_offsets);
+extern OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr,
+				   UNBOX unbox);
 extern void pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values,
 					  const XASL_NODE * producer, const OUTPTR_LIST * output);
 extern void pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OUTPTR_LIST * output);
@@ -191,6 +208,8 @@ extern XASL_NODE *ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XA
 				     PT_NODE * where_hash_part);
 extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE type,
 					  XASL_NODE * listfile, PT_NODE * namelist, PT_NODE * pred, int *poslist);
+extern XASL_NODE *ptqo_to_pass_through_wrapper (PARSER_CONTEXT * parser, XASL_NODE * xasl,
+						XASL_NODE * listfile, PT_NODE * namelist);
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
 					   JOIN_TYPE join_type);

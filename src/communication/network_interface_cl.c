@@ -4566,10 +4566,11 @@ boot_shutdown_server (ER_FINAL_CODE iserfinal)
  * session_id (in/out) : the id of the session to end
  * row_count (out)     : the value of row count for this session
  * server_session_key (in/out) :
+ * session_secret (in/out) :
  */
 int
-csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key, const char *db_user,
-				 const char *host, const char *program_name)
+csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
+				 char *session_secret, const char *db_user, const char *host, const char *program_name)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4589,6 +4590,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   request_size += length_const_string (db_user, &db_user_len);
   request_size += length_const_string (host, &host_len);
   request_size += length_const_string (program_name, &program_name_len);
+  request_size += or_packed_stream_length (SESSION_SECRET_SIZE);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4605,6 +4607,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   ptr = pack_const_string_with_length (ptr, db_user, db_user_len);
   ptr = pack_const_string_with_length (ptr, host, host_len);
   ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
+  ptr = or_pack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 
   req_error =
     net_client_request2 (NET_SERVER_SES_CHECK_SESSION, request, request_size, reply,
@@ -4629,6 +4632,10 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	  if (update_parameter_values)
 	    {
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
+	    }
+	  if (ptr != NULL)
+	    {
+	      ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 	    }
 
 	  free_and_init (area);
@@ -4694,15 +4701,15 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      result = xsession_create_new (thread_p, &id);
+      result = xsession_create_new (thread_p, &id, session_secret);
     }
   else
     {
       id = db_Session_id;
-      if (xsession_check_session (thread_p, id) != NO_ERROR)
+      if (xsession_check_session (thread_p, id, session_secret) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (thread_p, &id) != NO_ERROR)
+	  if (xsession_create_new (thread_p, &id, session_secret) != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }
@@ -4713,7 +4720,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   *session_id = db_Session_id;
 
   /* get row count */
-  if (result != ER_FAILED)
+  if (result == NO_ERROR)
     {
       xsession_get_row_count (thread_p, row_count);
     }
@@ -6305,19 +6312,23 @@ stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_sta
 }
 
 /*
- * update_histogram_for_all_classes () - build histograms for every top-level class after the class statistics
- *                                       were refreshed (UPDATE STATISTICS ON ALL CLASSES / optimizedb)
+ * update_histogram_for_all_classes () - update the statistics and build the histograms of every top-level class
+ *                                       (UPDATE STATISTICS ON ALL CLASSES / optimizedb)
  *   return: NO_ERROR or error code
+ *   with_fullscan(in): true iff WITH FULLSCAN
  *   random_seed(in): sampling seed
  *   skip_mops(in): classes to leave out of the histogram build (optimizedb --no-histogram-classes). Their
- *                  existing histograms are kept as they are. NULL if none
+ *                  statistics are still updated and their existing histograms are kept as they are. NULL if none
  *   n_skip(in): number of entries in skip_mops
  *   run_start_msec(in): stats_progress_clock_msec () when the run started
  *
- * NOTE: the progress of each class goes to the server event log.
+ * NOTE: each class is done once, the way UPDATE STATISTICS ON <class> does it: the histogram scan also updates
+ *       the class statistics, from the same scan and in the caller's mode. A statistics pass ahead of it would
+ *       only be overwritten. The progress of each class goes to the server event log as one statistics event
+ *       pair.
  */
 int
-update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec)
+update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip_mops, int n_skip, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6352,15 +6363,9 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, 
 	      break;
 	    }
 	}
-      if (excluded)
-	{
-	  n_excluded++;
-	  continue;
-	}
-
       INT64 class_start_msec = stats_progress_clock_msec ();
 
-      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
 				 class_start_msec, run_start_msec, NO_ERROR);
 
       obj = db_find_class (sm_get_ch_name (class_mop));
@@ -6368,29 +6373,51 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip, 
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
-				     class_start_msec, run_start_msec, error);
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1,
+				     lmops->num, class_start_msec, run_start_msec, error);
 	  AU_RESTORE (save);
 	  locator_free_list_mops (lmops);
 	  return error;
 	}
 
-      histogram_info.target_columns = NULL;
-      histogram_info.bucket_count = -1;
-      histogram_info.with_fullscan = false;
-      histogram_info.random_seed = random_seed;
-      int hist_skipped = 0;
+      if (excluded)
+	{
+	  /* no histogram scan updates the statistics of this class */
+	  error = sm_update_statistics (obj, with_fullscan);
+	}
+      else
+	{
+	  histogram_info.target_columns = NULL;
+	  histogram_info.bucket_count = -1;
+	  /* the histogram scan rewrites the class statistics as well, so it runs in the caller's mode: fixed to
+	   * sampling, it replaced the full-scan B-tree statistics of WITH FULLSCAN with sampled ones (CBRD-27836) */
+	  histogram_info.with_fullscan = with_fullscan;
+	  histogram_info.random_seed = random_seed;
+	  int hist_skipped = 0;
 
-      error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
-					       &hist_skipped);
-      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+	  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
+						   &hist_skipped);
+	  n_hist_skipped += hist_skipped;
+	  if (error == ER_OBJ_INVALID_ARGUMENTS)
+	    {
+	      /* kept for parity with UPDATE STATISTICS ON <class>; the all-columns build does not return this today
+	       * (a class with no histogrammable column is handled inside the helper, which updates its statistics) */
+	      error = sm_update_statistics (obj, with_fullscan);
+	    }
+	}
+      stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
 				 class_start_msec, run_start_msec, error);
-      n_hist_skipped += hist_skipped;
-      if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+      if (error != NO_ERROR)
 	{
 	  AU_RESTORE (save);
 	  locator_free_list_mops (lmops);
 	  return error;
+	}
+
+      if (excluded)
+	{
+	  n_excluded++;
+	  continue;
 	}
 
       n_tables++;
@@ -7214,7 +7241,8 @@ btree_class_test_unique (char *buf, int buf_size)
  * fill_factor (in)	: Target fill ratio in percent.
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow pages deallocated.
- * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ * pairs_skipped (out)	: Number of page pairs and keys that could not be compacted until vacuum catches up (no OID
+ *			  boundary in a page pair, or no stable object in a key's leaf record).
  */
 int
 btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
@@ -9932,8 +9960,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   /* Do it as async mode at the first request to the server. And, if several pages are left to get, keep it as async
    * mode */
 
-  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.pageid);
-  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.pageid)
+  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.load ().pageid);
+  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.load ().pageid)
     {
       /* In case of synchronous request */
       first_pageid_torecv = logwr_Gl.last_recv_pageid;
@@ -10030,7 +10058,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID
+      && logwr_Gl.hdr.eof_lsa.load ().pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;
