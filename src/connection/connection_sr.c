@@ -275,6 +275,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->in_transaction = false;
   conn->cdc_auth_done = false;
   conn->cdc_auth_busy = 0;
+  conn->running_sp = NULL;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -409,8 +410,108 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     }
 #endif
 
+  /* the nodes belong to the threads running the procedures; only drop the links */
+  conn->running_sp = NULL;
+
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
+}
+
+/*
+ * css_push_running_sp () - a stored procedure starts running for the client of
+ *   this connection, inside whatever it was called from.
+ *   conn (in):
+ *   sp (in): node owned by the caller until css_remove_running_sp ()
+ */
+void
+css_push_running_sp (CSS_CONN_ENTRY * conn, CSS_RUNNING_SP * sp)
+{
+  int r;
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  sp->next = conn->running_sp;
+  conn->running_sp = sp;
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+}
+
+/*
+ * css_remove_running_sp () - the stored procedure has finished. It is looked up
+ *   rather than popped, so a list already cleared by a shutdown stays consistent.
+ *   conn (in):
+ *   sp (in): node given to css_push_running_sp ()
+ */
+void
+css_remove_running_sp (CSS_CONN_ENTRY * conn, CSS_RUNNING_SP * sp)
+{
+  CSS_RUNNING_SP **link;
+  int r;
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  for (link = &conn->running_sp; *link != NULL; link = &(*link)->next)
+    {
+      if (*link == sp)
+	{
+	  *link = sp->next;
+	  break;
+	}
+    }
+  sp->next = NULL;
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+}
+
+/*
+ * css_get_running_sp () - copy out one stored procedure running for the client
+ *   of this connection.
+ *   return: 1 if copied, 0 if there is none at that depth, -1 if a field does not
+ *           fit its buffer
+ *   conn (in):
+ *   depth (in): 0 for the innermost, 1 for the one that called it, and so on
+ *   name, target_class, target_method (out): the procedure, as its signature names it
+ */
+int
+css_get_running_sp (CSS_CONN_ENTRY * conn, int depth, char *name, int name_size, char *target_class,
+		    int target_class_size, char *target_method, int target_method_size)
+{
+  CSS_RUNNING_SP *sp;
+  int r, result = 0;
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  for (sp = conn->running_sp; sp != NULL && depth > 0; sp = sp->next)
+    {
+      depth--;
+    }
+
+  if (sp != NULL)
+    {
+      if (sp->name == NULL || sp->target_class == NULL || sp->target_method == NULL
+	  || (int) strlen (sp->name) >= name_size || (int) strlen (sp->target_class) >= target_class_size
+	  || (int) strlen (sp->target_method) >= target_method_size)
+	{
+	  result = -1;
+	}
+      else
+	{
+	  strcpy (name, sp->name);
+	  strcpy (target_class, sp->target_class);
+	  strcpy (target_method, sp->target_method);
+	  result = 1;
+	}
+    }
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  return result;
 }
 
 /*

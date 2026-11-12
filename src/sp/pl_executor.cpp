@@ -35,6 +35,9 @@
 #include "pl_query_cursor.hpp"
 #include "sp_code.hpp"
 #include "xserver_interface.h"
+#if defined (SERVER_MODE)
+#include "connection_sr.h"
+#endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -300,11 +303,32 @@ namespace cubpl
 
     /* Declared functions cannot execute SQL through CAS, so they need no CAS user push/pop. */
     const bool change_rights = !m_stack->is_server_side_sql_forbidden ();
+#if defined (SERVER_MODE)
+    /* the procedure is recorded on the client connection while it runs, so a decision
+     * the server makes on a request the client sends meanwhile (KILL) can read from the
+     * catalog whose rights the client executes with */
+    CSS_RUNNING_SP running_sp = { m_sig.name, NULL, NULL, NULL };
+    CSS_CONN_ENTRY *running_conn = NULL;
+#endif
 
     // execution rights
     assert (m_sig.auth != NULL);
     if (change_rights)
       {
+#if defined (SERVER_MODE)
+	if (m_sig.type == PL_TYPE_JAVA_SP || m_sig.type == PL_TYPE_PLCSQL)
+	  {
+	    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+
+	    running_conn = (thread_p != NULL) ? thread_p->conn_entry : NULL;
+	    if (running_conn != NULL)
+	      {
+		running_sp.target_class = m_sig.ext.sp.target_class_name;
+		running_sp.target_method = m_sig.ext.sp.target_method_name;
+		css_push_running_sp (running_conn, &running_sp);
+	      }
+	  }
+#endif
 	error = change_exec_rights (m_sig.auth);
 	if (error != NO_ERROR)
 	  {
@@ -339,6 +363,12 @@ exit:
       {
 	error = er_errid ();
       }
+#if defined (SERVER_MODE)
+    if (running_conn != NULL)
+      {
+	css_remove_running_sp (running_conn, &running_sp);
+      }
+#endif
     return error;
   }
 
