@@ -123,8 +123,8 @@ sm_define_view_columns_spec (void)
         "WHEN [attr].[data_type] = %d THEN CONCAT ('CHAR(', [dom].[prec], ')') "
         /* DB_TYPE_BIT */
         "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT(', [dom].[prec], ')') "
-        /* DB_TYPE_VARBIT */
-        "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT VARYING(', [dom].[prec], ')') "
+        /* DB_TYPE_VARBIT; TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT VARYING(', IF ([dom].[prec] = %d, %d, [dom].[prec]), ')') "
         /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) is declared without precision */
         "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN 'NUMERIC' "
         /* DB_TYPE_NUMERIC */
@@ -202,7 +202,7 @@ sm_define_view_columns_spec (void)
     DB_TYPE_STRING, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
     DB_TYPE_CHAR,
     DB_TYPE_BIT,
-    DB_TYPE_VARBIT,
+    DB_TYPE_VARBIT, TP_FLOATING_PRECISION_VALUE, DB_MAX_STRING_LENGTH,
     DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_NUMERIC,
     DB_TYPE_SHORT,
