@@ -1378,7 +1378,8 @@ net_check_request_ptr_count (const char *request, int reqlen, const char *ptr, i
  *
  * NOTE: locator_allocate_and_unpack_lockset () allocates the lockset for max_reqobjs objects and classes, then unpacks
  *       num_classes_of_reqobjs classes and num_reqobjs objects into it. Check that they fit in the lockset and in the
- *       packed lockset, and that the size of the lockset does not overflow.
+ *       packed lockset, and that the size of the lockset does not overflow. xlocator_fetch_lockset () then starts from
+ *       the processed counts and looks up the class of each object by class_index, so check them too.
  */
 static bool
 net_check_packed_lockset (const char *packed, int packed_size)
@@ -1386,7 +1387,10 @@ net_check_packed_lockset (const char *packed, int packed_size)
   /* locator_allocate_lockset () computes the size of the lockset in int */
   const int max_reqobjs_limit =
 	  (int) ((INT_MAX - sizeof (LC_LOCKSET)) / (sizeof (LC_LOCKSET_CLASSOF) + sizeof (LC_LOCKSET_REQOBJ)));
-  int max_reqobjs, num_reqobjs, num_classes;
+  int max_reqobjs, num_reqobjs, num_reqobjs_processed, num_classes, num_classes_processed;
+  int class_index, num_unknown_classes;
+  const char *ptr;
+  int i;
 
   /* header of 9 ints, see locator_unpack_lockset_header (): first_fetch_lockset_call, max_reqobjs, num_reqobjs,
    * num_reqobjs_processed, reqobj_inst_lock, reqobj_class_lock, num_classes_of_reqobjs,
@@ -1398,7 +1402,9 @@ net_check_packed_lockset (const char *packed, int packed_size)
 
   max_reqobjs = OR_GET_INT (packed + OR_INT_SIZE);
   num_reqobjs = OR_GET_INT (packed + OR_INT_SIZE * 2);
+  num_reqobjs_processed = OR_GET_INT (packed + OR_INT_SIZE * 3);
   num_classes = OR_GET_INT (packed + OR_INT_SIZE * 6);
+  num_classes_processed = OR_GET_INT (packed + OR_INT_SIZE * 7);
 
   /* the classes and the objects are stored in arrays of max_reqobjs */
   if (max_reqobjs < 0 || max_reqobjs > max_reqobjs_limit)
@@ -1417,10 +1423,57 @@ net_check_packed_lockset (const char *packed, int packed_size)
       return false;
     }
 
+  /* -1 means the first call, and then xlocator_fetch_lockset () sets both processed counts to 0 */
+  if (num_reqobjs_processed != -1)
+    {
+      if (num_reqobjs_processed < 0 || num_reqobjs_processed > num_reqobjs)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, num_reqobjs, num_reqobjs_processed);
+	  return false;
+	}
+      if (num_classes_processed < 0 || num_classes_processed > num_classes)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, num_classes, num_classes_processed);
+	  return false;
+	}
+    }
+
   /* classes and objects, see locator_unpack_lockset_classes () and locator_unpack_lockset_objects () */
-  return net_check_request_remaining (packed, packed_size, packed + OR_INT_SIZE * 9,
-				      (INT64) num_classes * (OR_OID_SIZE + OR_INT_SIZE)
-				      + (INT64) num_reqobjs * (OR_OID_SIZE + OR_INT_SIZE * 2));
+  if (!net_check_request_remaining (packed, packed_size, packed + OR_INT_SIZE * 9,
+				    (INT64) num_classes * (OR_OID_SIZE + OR_INT_SIZE)
+				    + (INT64) num_reqobjs * (OR_OID_SIZE + OR_INT_SIZE * 2)))
+    {
+      return false;
+    }
+
+  /* each object is an OID, a chn and class_index. class_index is -1 when the class of the object is not known. */
+  num_unknown_classes = 0;
+  ptr = packed + OR_INT_SIZE * 9 + num_classes * (OR_OID_SIZE + OR_INT_SIZE);
+  for (i = 0; i < num_reqobjs; i++)
+    {
+      class_index = OR_GET_INT (ptr + OR_OID_SIZE + OR_INT_SIZE);
+      if (class_index < -1 || class_index >= num_classes)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, num_classes, class_index);
+	  return false;
+	}
+      if (class_index == -1)
+	{
+	  num_unknown_classes++;
+	}
+      ptr += OR_OID_SIZE + OR_INT_SIZE * 2;
+    }
+
+  /* on the first call, locator_find_lockset_missing_class_oids () adds the class of each object of an unknown class to
+   * the classes, which hold max_reqobjs. The client adds a class only for an object of a known class. */
+  if (num_reqobjs_processed == -1 && (INT64) num_classes + num_unknown_classes > max_reqobjs)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, max_reqobjs,
+	      num_classes + num_unknown_classes);
+      return false;
+    }
+
+  return true;
 }
 
 /*
@@ -1433,14 +1486,15 @@ net_check_packed_lockset (const char *packed, int packed_size)
  *
  * NOTE: locator_allocate_and_unpack_lockhint () allocates the lockhint for max_classes classes, then unpacks
  *       num_classes classes into it. Check that they fit in the lockhint and in the packed lockhint, and that the
- *       size of the lockhint does not overflow.
+ *       size of the lockhint does not overflow. xlocator_fetch_lockhint_classes () then starts from
+ *       num_classes_processed, so check it too.
  */
 static bool
 net_check_packed_lockhint (const char *packed, int packed_size)
 {
   /* locator_allocate_lockhint () computes the size of the lockhint in int */
   const int max_classes_limit = (int) ((INT_MAX - sizeof (LC_LOCKHINT)) / sizeof (LC_LOCKHINT_CLASS));
-  int max_classes, num_classes;
+  int max_classes, num_classes, num_classes_processed;
 
   /* header of 4 ints, see locator_unpack_lockhint_header (): max_classes, num_classes, num_classes_processed,
    * quit_on_errors */
@@ -1451,6 +1505,7 @@ net_check_packed_lockhint (const char *packed, int packed_size)
 
   max_classes = OR_GET_INT (packed);
   num_classes = OR_GET_INT (packed + OR_INT_SIZE);
+  num_classes_processed = OR_GET_INT (packed + OR_INT_SIZE * 2);
 
   if (max_classes < 0 || max_classes > max_classes_limit)
     {
@@ -1460,6 +1515,13 @@ net_check_packed_lockhint (const char *packed, int packed_size)
   if (num_classes < 0 || num_classes > max_classes)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, max_classes, num_classes);
+      return false;
+    }
+
+  /* -1 means the first call, and then xlocator_fetch_lockhint_classes () sets it to 0 */
+  if (num_classes_processed < -1 || num_classes_processed > num_classes)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, num_classes, num_classes_processed);
       return false;
     }
 
@@ -5202,7 +5264,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       || !net_check_request_count (request, reqlen, ptr, n_attrs, INT_MAX, OR_INT_SIZE)
       || !net_check_request_remaining (request, reqlen, ptr,
 				       (INT64) n_classes * (OR_OID_SIZE + OR_HFID_SIZE + (INT64) n_attrs * OR_INT_SIZE)
-				       + ((n_classes == 1) ? (INT64) n_attrs * OR_INT_SIZE : 0)
+				       + (INT64) ((n_classes == 1) ? n_attrs : 0) * OR_INT_SIZE
 				       + OR_INT_SIZE * 2 + OR_OID_SIZE + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -10979,6 +11041,14 @@ ssession_set_session_variables (THREAD_ENTRY *thread_p, unsigned int rid, char *
   if (count <= 0)
     {
       goto cleanup;
+    }
+
+  /* the values are pairs of a name and a value, see session_set_session_variables () */
+  if (count % 2 != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, count - 1, count);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
     }
 
   /* fetch the values */
