@@ -77,6 +77,8 @@ struct internal_lob_reader
 };
 using INTERNAL_LOB_READER = struct internal_lob_reader;
 
+struct file_find_nth_cursor;
+
 /* Bytes of LOB values waiting to be stored, kept in a temporary file of the database (temp_volume_path) rather than in
  * an OS temporary file: temp_file_max_size_in_pages bounds it and no descriptor is held.  Appends are sequential. */
 class internal_lob_temp_spool
@@ -84,10 +86,11 @@ class internal_lob_temp_spool
   public:
     internal_lob_temp_spool ();
     ~internal_lob_temp_spool ();
+    internal_lob_temp_spool (const internal_lob_temp_spool &) = delete;
+    internal_lob_temp_spool &operator= (const internal_lob_temp_spool &) = delete;
 
     int append (THREAD_ENTRY *thread_p, const char *data, int size);
-    int read (THREAD_ENTRY *thread_p, DB_BIGINT offset, char *buf, int size) const;
-    int truncate (THREAD_ENTRY *thread_p, DB_BIGINT size);
+    int read (THREAD_ENTRY *thread_p, DB_BIGINT offset, char *buf, int size, file_find_nth_cursor *cursor) const;
     void destroy (THREAD_ENTRY *thread_p);
     DB_BIGINT size () const
     {
@@ -97,7 +100,7 @@ class internal_lob_temp_spool
   private:
     VFID m_vfid;
     DB_BIGINT m_size;
-    char *m_tail;		/* the last page while it fills; it is written whole each time */
+    VPID m_tail_vpid;		/* page holding the end while it is partly filled */
     int m_tde_algo;		/* TDE_ALGORITHM of the file */
 };
 
@@ -107,6 +110,7 @@ struct internal_lob_spool_range
   internal_lob_temp_spool *spool;
   DB_BIGINT base;
   DB_BIGINT length;
+  file_find_nth_cursor *cursor = NULL;	/* this reader's page table position; NULL searches from the start */
 };
 extern int internal_lob_spool_range_reader (void *ctx, DB_BIGINT offset, char *buf, int size);
 

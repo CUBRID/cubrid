@@ -1000,41 +1000,27 @@ xinternal_lob_upload_release (THREAD_ENTRY *thread_p, INT64 token)
 
 internal_lob_temp_spool::internal_lob_temp_spool ()
   : m_size (0)
-  , m_tail (NULL)
   , m_tde_algo (TDE_ALGORITHM_NONE)
 {
   VFID_SET_NULL (&m_vfid);
+  VPID_SET_NULL (&m_tail_vpid);
 }
 
 internal_lob_temp_spool::~internal_lob_temp_spool ()
 {
   destroy (thread_get_thread_entry_info ());
-  if (m_tail != NULL)
-    {
-      free_and_init (m_tail);
-    }
 }
 
 int
 internal_lob_temp_spool::append (THREAD_ENTRY *thread_p, const char *data, int size)
 {
-  FILE_FIND_NTH_CURSOR cursor = FILE_FIND_NTH_CURSOR_INITIALIZER;
-  VPID vpid;
+  char page[IO_MAX_PAGE_SIZE];
   int error;
 
   assert (size >= 0 && (data != NULL || size == 0));
 
   if (VFID_ISNULL (&m_vfid))
     {
-      if (m_tail == NULL)
-	{
-	  m_tail = (char *) malloc (DB_PAGESIZE);
-	  if (m_tail == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	}
       error = file_create_temp_numerable (thread_p, 1, &m_vfid);
       if (error != NO_ERROR)
 	{
@@ -1064,15 +1050,26 @@ internal_lob_temp_spool::append (THREAD_ENTRY *thread_p, const char *data, int s
       int in_page = (int) (m_size % DB_PAGESIZE);
       int count = MIN (size, DB_PAGESIZE - in_page);
 
-      memcpy (m_tail + in_page, data, count);
-      error = file_numerable_find_nth_cursor (thread_p, &m_vfid, (int) (m_size / DB_PAGESIZE), true, NULL, NULL,
-					      &cursor, &vpid);
-      if (error != NO_ERROR)
+      if (in_page == 0)
 	{
-	  ASSERT_ERROR ();
+	  /* the file's next page: allocated without walking the page table */
+	  error = file_numerable_find_nth (thread_p, &m_vfid, (int) (m_size / DB_PAGESIZE), true, NULL, NULL,
+					   &m_tail_vpid);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+	}
+      else if (pgbuf_copy_to_area (thread_p, &m_tail_vpid, 0, in_page, page, true) == NULL)
+	{
+	  /* the page is written whole, so it starts with what is already in it */
+	  ASSERT_ERROR_AND_SET (error);
 	  return error;
 	}
-      if (pgbuf_copy_from_area (thread_p, &vpid, 0, in_page + count, m_tail, true, (TDE_ALGORITHM) m_tde_algo) == NULL)
+      memcpy (page + in_page, data, count);
+      if (pgbuf_copy_from_area (thread_p, &m_tail_vpid, 0, in_page + count, page, true, (TDE_ALGORITHM) m_tde_algo)
+	  == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error);
 	  return error;
@@ -1085,21 +1082,26 @@ internal_lob_temp_spool::append (THREAD_ENTRY *thread_p, const char *data, int s
 }
 
 int
-internal_lob_temp_spool::read (THREAD_ENTRY *thread_p, DB_BIGINT offset, char *buf, int size) const
+internal_lob_temp_spool::read (THREAD_ENTRY *thread_p, DB_BIGINT offset, char *buf, int size,
+			       FILE_FIND_NTH_CURSOR *cursor) const
 {
-  FILE_FIND_NTH_CURSOR cursor = FILE_FIND_NTH_CURSOR_INITIALIZER;
+  FILE_FIND_NTH_CURSOR local_cursor = FILE_FIND_NTH_CURSOR_INITIALIZER;
   VPID vpid;
   int error;
 
   assert (!VFID_ISNULL (&m_vfid) && offset >= 0 && size >= 0);
 
+  if (cursor == NULL)
+    {
+      cursor = &local_cursor;
+    }
   while (size > 0)
     {
       int in_page = (int) (offset % DB_PAGESIZE);
       int count = MIN (size, DB_PAGESIZE - in_page);
 
       error = file_numerable_find_nth_cursor (thread_p, &m_vfid, (int) (offset / DB_PAGESIZE), false, NULL, NULL,
-					      &cursor, &vpid);
+					      cursor, &vpid);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -1114,32 +1116,6 @@ internal_lob_temp_spool::read (THREAD_ENTRY *thread_p, DB_BIGINT offset, char *b
       buf += count;
       size -= count;
     }
-  return NO_ERROR;
-}
-
-/* Moves the end back to size; the next append writes over what was there.  Emptied, the file goes back. */
-int
-internal_lob_temp_spool::truncate (THREAD_ENTRY *thread_p, DB_BIGINT size)
-{
-  int error;
-
-  assert (size >= 0 && size <= m_size);
-
-  if (size == 0)
-    {
-      destroy (thread_p);
-      return NO_ERROR;
-    }
-  if (size < m_size && size % DB_PAGESIZE != 0)
-    {
-      /* the next append continues inside this page */
-      error = read (thread_p, size - size % DB_PAGESIZE, m_tail, (int) (size % DB_PAGESIZE));
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-  m_size = MIN (m_size, size);
   return NO_ERROR;
 }
 
@@ -1164,7 +1140,7 @@ internal_lob_spool_range_reader (void *ctx, DB_BIGINT offset, char *buf, int siz
     {
       return stream_session_set_error ("invalid internal LOB staged range read");
     }
-  return range->spool->read (thread_get_thread_entry_info (), range->base + offset, buf, size);
+  return range->spool->read (thread_get_thread_entry_info (), range->base + offset, buf, size, range->cursor);
 }
 
 int

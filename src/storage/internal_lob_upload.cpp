@@ -21,10 +21,10 @@
 #include "internal_lob_upload.hpp"
 
 #include "error_manager.h"
+#include "file_manager.h"
 #include "heap_file.h"
 #include "internal_lob_file.hpp"
 #include "internal_lob_stream_kind.h"
-#include <algorithm>
 #include <new>
 #include "thread_manager.hpp"
 
@@ -33,6 +33,7 @@
 
 internal_lob_upload_store::internal_lob_upload_store ()
   : m_next_token (1)
+  , m_staged_bytes (0)
 {
 }
 
@@ -43,28 +44,15 @@ internal_lob_upload_store::~internal_lob_upload_store ()
 internal_lob_upload_store::payload_map::iterator
 internal_lob_upload_store::erase (payload_map::iterator it)
 {
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
-  payload_map::iterator next;
-
-  if (it->second.base + it->second.received == m_spool.size ())
-    {
-      /* the most recent payload: its range can be written again by the next upload */
-      (void) m_spool.truncate (thread_p, it->second.base);
-    }
-  next = m_payloads.erase (it);
-
-  if (m_payloads.empty ())
-    {
-      /* nothing is staged any more, and nothing reads the spool (a reader pins its payload through
-       * use_count, so the map is not empty while one runs): give the space back */
-      m_spool.destroy (thread_p);
-    }
-  return next;
+  /* a reader pins its payload through use_count, so no consume () reads the spool given back here */
+  m_staged_bytes -= it->second.received;
+  it->second.spool.destroy (thread_get_thread_entry_info ());
+  return m_payloads.erase (it);
 }
 
 /* Uploads a session may keep staged without binding them to a statement; past these a client that uploads and never
- * executes is refused instead of growing the spool for the session's lifetime. */
-/* [리뷰] 미실행 업로드 1,024건·스풀 16GiB를 넘으면 새 업로드를 거부한다.
+ * executes is refused instead of growing temp space for the session's lifetime. */
+/* [리뷰] 미실행 업로드 1,024건·남은 업로드 합계 16GiB를 넘으면 새 업로드를 거부한다.
  * 실행되지 않은 채 남는 업로드는 이 상한으로만 막힌다. */
 static const size_t INTERNAL_LOB_UPLOAD_MAX_PENDING = 1024;
 static const DB_BIGINT INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES = 4 * DB_MAX_INTERNAL_LOB_LENGTH;
@@ -72,7 +60,7 @@ static const DB_BIGINT INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES = 4 * DB_MAX_INTERNA
 int
 internal_lob_upload_store::begin (DB_TYPE type, DB_BIGINT data_length, DB_BIGINT logical_length, INT64 &token)
 {
-  payload entry;
+  payload_map::iterator entry;
   char error_message[192];
 
   token = 0;
@@ -93,19 +81,15 @@ internal_lob_upload_store::begin (DB_TYPE type, DB_BIGINT data_length, DB_BIGINT
 
   std::lock_guard<std::mutex> guard (m_mutex);
   if (m_payloads.size () >= INTERNAL_LOB_UPLOAD_MAX_PENDING
-      || (data_length > 0 && m_spool.size () > INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES - data_length))
+      || (data_length > 0 && m_staged_bytes > INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES - data_length))
     {
       return stream_session_set_error ("too many internal LOB uploads pending in this session; execute or close them");
     }
-  entry.type = type;
-  entry.data_length = data_length;
-  entry.logical_length = logical_length;
-  entry.base = m_spool.size ();
 
   token = m_next_token++;
   try
     {
-      m_payloads.emplace (token, entry);
+      entry = m_payloads.try_emplace (token).first;
     }
   catch (std::bad_alloc &)
     {
@@ -114,6 +98,9 @@ internal_lob_upload_store::begin (DB_TYPE type, DB_BIGINT data_length, DB_BIGINT
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (payload));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  entry->second.type = type;
+  entry->second.data_length = data_length;
+  entry->second.logical_length = logical_length;
   return NO_ERROR;
 }
 
@@ -122,31 +109,29 @@ internal_lob_upload_store::append (INT64 token, const char *data, int data_size)
 {
   std::lock_guard<std::mutex> guard (m_mutex);
   auto found = m_payloads.find (token);
-  DB_BIGINT spool_end = m_spool.size ();
   int error;
 
   if (token <= 0 || data_size < 0 || (data == NULL && data_size > 0) || found == m_payloads.end ()
       || found->second.complete
       || found->second.received > DB_MAX_INTERNAL_LOB_LENGTH - data_size
-      || (found->second.data_length >= 0 && found->second.received > found->second.data_length - data_size)
-      || found->second.base + found->second.received != spool_end)
+      || (found->second.data_length >= 0 && found->second.received > found->second.data_length - data_size))
     {
       return stream_session_set_error ("invalid internal LOB upload chunk or token");
     }
-  if (spool_end > INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES - data_size)
+  if (m_staged_bytes > INTERNAL_LOB_UPLOAD_MAX_STAGED_BYTES - data_size)
     {
       return stream_session_set_error ("too many internal LOB uploads pending in this session; execute or close them");
     }
 
-  error = m_spool.append (thread_get_thread_entry_info (), data, data_size);
+  error = found->second.spool.append (thread_get_thread_entry_info (), data, data_size);
   if (error != NO_ERROR)
     {
-      /* drop what part of the chunk was written, then the payload */
-      (void) m_spool.truncate (thread_get_thread_entry_info (), spool_end);
+      /* the part of the chunk already written goes with the payload's spool */
       erase (found);
       return error;
     }
   found->second.received += data_size;
+  m_staged_bytes += data_size;
   return NO_ERROR;
 }
 
@@ -200,8 +185,9 @@ internal_lob_upload_store::consume (THREAD_ENTRY *thread_p, INT64 token, const O
   /* [리뷰] 락을 풀고 체인을 만든다. 같은 토큰을 여러 행이 동시에 읽는다(읽기는 오프셋 지정이라 서로 안 밀린다).
    * 읽는 중엔 use_count 핀 때문에 erase가 pending_erase가 된다.
    * 같은 문장이 한 토큰을 두 컬럼에 쓰면 체인이 둘 생긴다. */
-  payload entry;
-  internal_lob_spool_range range = { NULL, 0, 0 };
+  FILE_FIND_NTH_CURSOR cursor = FILE_FIND_NTH_CURSOR_INITIALIZER;
+  internal_lob_spool_range range = { NULL, 0, 0, &cursor };
+  DB_BIGINT data_length, logical_length;
   int error;
 
   {
@@ -223,17 +209,17 @@ internal_lob_upload_store::consume (THREAD_ENTRY *thread_p, INT64 token, const O
       {
 	return stream_session_set_error ("internal LOB upload type does not match the target value");
       }
-    /* The staged range stays: one token can be bound to several records of the same statement (UPDATE of
-     * many rows, one value in two columns), and the reader addresses it by absolute offset. */
-    entry = found->second;
-    range.spool = &m_spool;
-    range.base = found->second.base;
+    /* The staged payload stays: one token can be bound to several records of the same statement (UPDATE of
+     * many rows, one value in two columns). */
+    data_length = found->second.data_length;
+    logical_length = found->second.logical_length;
+    range.spool = &found->second.spool;
     range.length = found->second.received;
     found->second.use_count++;
   }
 
   error = heap_internal_lob_insert_stream (thread_p, class_oid, internal_lob_spool_range_reader, &range,
-	  entry.data_length, expected_type == DB_TYPE_BLOB ? entry.logical_length : -1,
+	  data_length, expected_type == DB_TYPE_BLOB ? logical_length : -1,
 	  &locator);
 
   {
@@ -248,29 +234,11 @@ internal_lob_upload_store::consume (THREAD_ENTRY *thread_p, INT64 token, const O
 	if (found->second.use_count == 0 && found->second.pending_erase)
 	  {
 	    erase (found);
-	    trim_spool ();
 	  }
       }
   }
 
   return error;
-}
-
-/* Give back the spool space behind the last payload still staged; the caller holds m_mutex.  erase () moves the end
- * back only for the most recent payload, and a payload kept for a later statement must not pin released space. */
-void
-internal_lob_upload_store::trim_spool ()
-{
-  DB_BIGINT staged_end = 0;
-
-  for (const auto &entry : m_payloads)
-    {
-      staged_end = std::max (staged_end, entry.second.base + entry.second.received);
-    }
-  if (staged_end < m_spool.size ())
-    {
-      (void) m_spool.truncate (thread_get_thread_entry_info (), staged_end);
-    }
 }
 
 /*
@@ -294,7 +262,6 @@ internal_lob_upload_store::release (INT64 token)
       return NO_ERROR;
     }
   erase (found);
-  trim_spool ();
   return NO_ERROR;
 }
 
