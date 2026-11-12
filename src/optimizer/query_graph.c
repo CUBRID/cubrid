@@ -1374,6 +1374,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
       if (PT_SPEC_IS_DERIVED (entity))
 	{
 	  XASL_NODE *xasl;
+	  QO_SUMMARY *summary;
 	  DB_BIGINT limit_val = 0;
 
 	  switch (entity->info.spec.derived_table->node_type)
@@ -1396,6 +1397,19 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
 
 		  QO_NODE_TCARD (node) =
 		    (unsigned long) ((QO_NODE_NCARD (node) * (double) xasl->projected_size) / (double) IO_PAGESIZE);
+		  if (QO_NODE_TCARD (node) == 0)
+		    {
+		      QO_NODE_TCARD (node) = 1;
+		    }
+		}
+	      else if ((entity->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
+		       && entity->info.spec.derived_table->info.query.q.select.qo_summary != NULL)
+		{
+		  /* planned before its XASL is made (pt_plan_semi_anti_exists_conds ()) */
+		  summary = (QO_SUMMARY *) entity->info.spec.derived_table->info.query.q.select.qo_summary;
+		  QO_NODE_NCARD (node) = (unsigned long) summary->cardinality;
+		  QO_NODE_TCARD (node) =
+		    (unsigned long) ((QO_NODE_NCARD (node) * (double) summary->projected_size) / (double) IO_PAGESIZE);
 		  if (QO_NODE_TCARD (node) == 0)
 		    {
 		      QO_NODE_TCARD (node) = 1;
@@ -2844,7 +2858,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		    }
 		  else
 		    {
-		      /* relaxed for a SEMI node read with the duplicates removed (qo_node_can_be_placed ()) */
 		      QO_ADD_SEMI_ANTI_DEP_SET (on_node, QO_ENV_NODE (env, t));
 		    }
 		}

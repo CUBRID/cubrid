@@ -1672,7 +1672,8 @@ typedef enum
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
-  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_UNNESTED_SUBQUERY = 0x40000	/* derived SEMI/ANTI spec unnested from a [NOT] EXISTS / [NOT] IN subquery over several tables, or a SEMI JOIN table read with its duplicates removed; its XASL is made once the query keeps it */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2343,6 +2344,7 @@ struct pt_spec_info
   PT_MISC_TYPE flavor;		/* enum 0 or PT_METHOD_ENTITY */
   PT_NODE *on_cond;
   PT_NODE *using_cond;		/* -- does not support named columns join */
+  PT_NODE *exists_cond;		/* [NOT] EXISTS an unnested SEMI/ANTI spec may run as; not walked */
   PT_JOIN_TYPE join_type;
   short location;		/* n-th position in FROM (start from 0); init val = -1 */
   bool natural;			/* -- does not support natural join */

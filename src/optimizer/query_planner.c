@@ -354,9 +354,6 @@ static void planner_permutate (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NO
 			       BITSET *, BITSET *, BITSET *, BITSET *, int, int *);
 
 static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *, JOIN_TYPE, int);
-static QO_PLAN *qo_distinct_new (QO_PLAN *, QO_INFO *, QO_EQCLASS *);
-static void qo_prepare_distinct_info (QO_PLANNER *);
-static QO_INFO *qo_get_distinct_info_ahead (QO_PLANNER *, QO_NODE *, BITSET *);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
@@ -2791,7 +2788,6 @@ qo_seq_scan_new (QO_INFO * info, QO_NODE * node)
   return plan;
 }
 
-
 /*
  * qo_sscan_cost () -
  *   return:
@@ -2801,10 +2797,20 @@ static void
 qo_sscan_cost (QO_PLAN * planp)
 {
   QO_NODE *nodep;
+  PT_NODE *spec;
+  double subq_cpu_cost, subq_io_cost;
 
   nodep = planp->plan_un.scan.node;
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = 0.0;
+  /* charge building the derived table unnested from a subquery */
+  spec = QO_NODE_ENTITY_SPEC (nodep);
+  if (spec != NULL && (spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY))
+    {
+      qo_plan_compute_subquery_cost (spec->info.spec.derived_table, &subq_cpu_cost, &subq_io_cost);
+      planp->fixed_cpu_cost = subq_cpu_cost;
+      planp->fixed_io_cost = subq_io_cost;
+    }
   if (QO_NODE_NCARD (nodep) == 0)
     {
       planp->variable_cpu_cost = 1.0 * (double) QO_CPU_WEIGHT;
@@ -4159,63 +4165,6 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
 }
 
 /*
- * qo_distinct_new () - build a plan that reads the subplan once into a temporary file, keeping one row per
- *      distinct value of the columns the rest of the query reads from that side
- *   return: the new plan, or NULL
- *   subplan(in): the plan whose rows are to be collected
- *   distinct_info(in): the info node that holds the plans of this side read that way; its cardinality is what
- *		    the removal leaves behind, which is why the plan cannot share the subplan's info
- *   order(in): the order a merge join asks of this side, or QO_UNORDERED
- *
- * Note: which columns those are follows from the plan itself -- only the ones the rest of the query needs
- *       are projected out of a node (qo_compute_projected_segs ()).  For the inner of a SEMI JOIN they are
- *       the join columns, since nothing else in the query may read that side.  Once the duplicates are gone
- *       an ordinary join over these rows returns each outer row at most once, which is what lets the planner
- *       read this side first instead of once per outer row.
- *
- *       Unlike qo_sort_new (), this does not go through qo_top_plan_new (): the plan belongs inside a join,
- *       not at the top of the query.
- */
-static QO_PLAN *
-qo_distinct_new (QO_PLAN * subplan, QO_INFO * distinct_info, QO_EQCLASS * order)
-{
-  QO_PLAN *plan;
-
-  if (subplan == NULL || subplan->info == NULL || distinct_info == NULL)
-    {
-      return NULL;
-    }
-
-  plan = qo_plan_malloc ((subplan->info)->env);
-  if (plan == NULL)
-    {
-      return NULL;
-    }
-
-  plan->info = distinct_info;
-  plan->refcount = 0;
-  plan->top_rooted = false;
-  plan->well_rooted = false;
-  plan->iscan_sort_list = NULL;
-  plan->analytic_eval_list = NULL;
-  plan->order = order;
-  plan->plan_type = QO_PLANTYPE_SORT;
-  plan->vtbl = &qo_sort_plan_vtbl;
-
-  plan->plan_un.sort.sort_type = SORT_DISTINCT;
-  plan->plan_un.sort.subplan = qo_plan_add_ref (subplan);
-  plan->plan_un.sort.xasl = NULL;
-
-  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
-  plan->has_sort_limit = subplan->has_sort_limit;
-  plan->need_final_sort = subplan->need_final_sort;
-
-  qo_plan_compute_cost (plan);
-
-  return plan;
-}
-
-/*
  * qo_sort_walk () -
  *   return:
  *   plan(in):
@@ -4400,15 +4349,12 @@ qo_sort_cost (QO_PLAN * planp)
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
-      planp->variable_cpu_cost = (planp->info)->cardinality * (double) QO_CPU_WEIGHT;
+      planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
       /* the list file is written and re-read in order: sequential unit price. TEMP_SETUP_COST
        * above is a CPU-side policy offset, not a page count, and is not priced. */
-      planp->variable_io_cost =
-	MAX (1.0, (planp->info)->cardinality * (double) (subplanp->info)->projected_size / (double) IO_PAGESIZE)
-	* QO_COST_SEQ_PAGE;
+      planp->variable_io_cost = pages * QO_COST_SEQ_PAGE;
 
-      /* a plan with an info of its own (qo_distinct_new ()) sorts to remove the duplicates whatever the order */
-      if ((order != QO_UNORDERED && order != subplanp->order) || planp->info != subplanp->info)
+      if (order != QO_UNORDERED && order != subplanp->order)
 	{
 	  planp->fixed_io_cost += qo_sort_io_cost (objects, pages);
 	}
@@ -5365,29 +5311,19 @@ qo_join_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 
 /*
  * qo_plan_semi_anti_join_type () - recover SEMI/ANTI execution from an inner input.
- *   A DISTINCT input implements an ordinary inner join; do not follow it to the
- *   original SEMI scan. A join input has already consumed its own SEMI/ANTI.
+ *   A join input has already consumed its own SEMI/ANTI.
  */
 PT_JOIN_TYPE
 qo_plan_semi_anti_join_type (QO_PLAN * plan)
 {
   while (plan != NULL)
     {
-      if (plan->info != NULL && plan->info->is_distinct)
-	{
-	  return PT_JOIN_NONE;
-	}
-
       switch (plan->plan_type)
 	{
 	case QO_PLANTYPE_SCAN:
 	  return QO_NODE_IS_SEMI_ANTI_JOIN (plan->plan_un.scan.node)
 	    ? QO_NODE_PT_JOIN_TYPE (plan->plan_un.scan.node) : PT_JOIN_NONE;
 	case QO_PLANTYPE_SORT:
-	  if (plan->plan_un.sort.sort_type == SORT_DISTINCT)
-	    {
-	      return PT_JOIN_NONE;
-	    }
 	  plan = plan->plan_un.sort.subplan;
 	  break;
 	case QO_PLANTYPE_FOLLOW:
@@ -10309,7 +10245,6 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
   info->hit_prob = 1.0;
-  info->is_distinct = false;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -10680,17 +10615,7 @@ qo_find_best_plan_on_info (QO_INFO * info, QO_EQCLASS * order, double n)
 	{
 	  QO_PLAN *planp;
 
-	  planp = qo_find_best_plan_on_planvec (&info->best_no_order, n);
-	  if (info->is_distinct && planp != NULL)
-	    {
-	      /* qo_sort_new () would skip the DISTINCT plan below it and the removal with it */
-	      assert (planp->plan_type == QO_PLANTYPE_SORT && planp->plan_un.sort.sort_type == SORT_DISTINCT);
-	      planp = qo_distinct_new (planp->plan_un.sort.subplan, info, order);
-	    }
-	  else
-	    {
-	      planp = qo_sort_new (planp, order, SORT_TEMP);
-	    }
+	  planp = qo_sort_new (qo_find_best_plan_on_planvec (&info->best_no_order, n), order, SORT_TEMP);
 
 	  qo_check_planvec (&info->planvec[order_idx], planp);
 	}
@@ -10805,259 +10730,21 @@ exit:
 }
 
 /*
- * qo_prepare_distinct_info () - for every SEMI JOIN inner that may be joined the other way round, build the info
- *      and the plan that read it once with the duplicates removed, and hang them on the planner
- *   return: nothing
- *   planner(in):
- *
- * Note: a SEMI JOIN returns an outer row once however many inner rows match it, which is why its inner is
- *       searched once per outer row and is kept behind the side it is joined to (QO_NODE_SEMI_ANTI_DEP_SET).  With
- *       one row left per distinct join value that reason is gone -- an ordinary join over those rows returns
- *       the same result -- and the inner may come first.  The join order search lets such an inner ahead of
- *       the side it depends on in that form only (qo_get_distinct_info_ahead ()); this is where the form is made
- *       ready, once, before the search starts.  It wins when reading the inner out once is cheaper than
- *       searching it for every outer row, a small or empty inner most plainly.  ANTI JOIN has no such form.
- *
- *       merge join a SEMI JOIN inner in that form only and never an ANTI JOIN inner, so USE_MERGE on a SEMI/ANTI JOIN
- *       inner left without it is dropped here: it would leave the node no plan.  USE_HASH stays: a hash join takes a
- *       SEMI/ANTI JOIN inner as it is.
- */
-static void
-qo_prepare_distinct_info (QO_PLANNER * planner)
-{
-  QO_ENV *env = planner->env;
-  QO_NODE *node;
-  QO_NODE_INDEX *node_index;
-  QO_INFO *node_info, *distinct_info;
-  QO_PLAN *node_plan, *distinct_plan;
-  QO_TERM *term;
-  QO_SEGMENT *seg;
-  BITSET_ITERATOR si;
-  double distinct_rows;
-  bool ndv_known, eligible;
-  int i, j, t, sg;
-
-  if (planner->distinct_info == NULL)
-    {
-      return;
-    }
-
-  /* A hint that fixes the join order rules the other way round out -- the same thing qo_examine_nl_join () and
-   * qo_examine_idx_join () do where they swap the two sides.  ORDERED and LEADING are read from the statement
-   * because they hold for the whole query; only the hints that can differ per table are stamped on the node
-   * (add_hint ()). */
-  if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
-    {
-      goto exit;
-    }
-
-  for (i = 0; i < (signed) planner->N; i++)
-    {
-      node_index = QO_NODE_INDEXES (&planner->node[i]);
-      for (j = 0; node_index != NULL && j < QO_NI_N (node_index); j++)
-	{
-	  if (QO_NI_ENTRY (node_index, j)->head->key_limit != NULL)
-	    {
-	      goto exit;
-	    }
-	}
-    }
-
-  for (i = 0; i < (signed) planner->N; i++)
-    {
-      node = &planner->node[i];
-      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI)
-	{
-	  continue;
-	}
-
-      /* Every condition joining this node to another must be an equality between plain columns, or there is no
-       * key to remove the duplicates on.  The distinct-value counts of this node's side of those equalities say
-       * how many rows are left; where they are missing, charge the file with every row the node holds, which is
-       * the most the removal can leave and keeps an inner that is small or empty worth reading out. */
-      distinct_rows = 1.0;
-      ndv_known = true;
-      eligible = true;
-      for (t = 0; t < (signed) planner->T && eligible; t++)
-	{
-	  bool has_own_seg = false;
-
-	  term = &planner->term[t];
-	  if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node))
-	      || bitset_cardinality (&(QO_TERM_NODES (term))) < 2)
-	    {
-	      continue;		/* a condition on this node alone stays on its scan */
-	    }
-	  /* qo_is_equi_join_term () wants a plain column on both sides.  QO_TERM_MERGEABLE_EDGE is not enough: it
-	   * is set for any '=' (expr_is_mergable ()), so UPPER (t2.name) = UPPER (t1.name) carries it too, while
-	   * the file removes duplicates by the column t2.name itself -- 'abc' and 'ABC' would both stay and an
-	   * outer row would match twice.  Only a column equated as it is pins the file to one row per outer row, and
-	   * only when both sides are of one type: compared in a wider type (INT as FLOAT) two of its values can be
-	   * equal. */
-	  if (QO_TERM_CLASS (term) != QO_TC_JOIN || !qo_is_equi_join_term (term)
-	      || !pt_check_same_datatype (QO_ENV_PARSER (env), QO_TERM_PT_EXPR (term)->info.expr.arg1,
-					  QO_TERM_PT_EXPR (term)->info.expr.arg2))
-	    {
-	      eligible = false;
-	      break;
-	    }
-
-	  for (sg = bitset_iterate (&(QO_TERM_SEGS (term)), &si); sg != -1; sg = bitset_next_member (&si))
-	    {
-	      seg = QO_ENV_SEG (env, sg);
-	      if (QO_NODE_IDX (QO_SEG_HEAD (seg)) != QO_NODE_IDX (node))
-		{
-		  continue;
-		}
-	      if (QO_SEG_INFO (seg) == NULL || QO_SEG_INFO (seg)->ndv <= 0)
-		{
-		  ndv_known = false;
-		}
-	      else
-		{
-		  distinct_rows *= (double) QO_SEG_INFO (seg)->ndv;
-		}
-	      has_own_seg = true;
-	    }
-	  if (!has_own_seg)
-	    {
-	      eligible = false;
-	    }
-	}
-      if (!eligible)
-	{
-	  continue;
-	}
-
-      node_info = planner->node_info[QO_NODE_IDX (node)];
-      node_plan = qo_find_best_plan_on_info (node_info, QO_UNORDERED, 1.0);
-      if (node_plan == NULL)
-	{
-	  continue;
-	}
-
-      /* the columns are taken as independent, which can put the product above the rows there are to draw from */
-      distinct_rows = MAX (1.0, ndv_known ? MIN (distinct_rows, node_info->cardinality) : node_info->cardinality);
-
-      /* This side read with the duplicates removed holds fewer rows than the side itself, so it needs an info of
-       * its own to say so and to own the plan that reads it that way.  node_info keeps the rows and the plans of
-       * the side joined as a SEMI JOIN inner in the usual way, which every other use of the node still needs. */
-      distinct_info =
-	qo_alloc_info (planner, &(node_info->nodes), &(node_info->terms), &(node_info->eqclasses), distinct_rows,
-		       node_info->total_rows);
-      if (distinct_info == NULL)
-	{
-	  continue;
-	}
-
-      distinct_plan = qo_distinct_new (node_plan, distinct_info, QO_UNORDERED);
-      if (distinct_plan == NULL)
-	{
-	  continue;
-	}
-      if (qo_check_planvec (&distinct_info->best_no_order, distinct_plan) != PLAN_COMP_GT)
-	{
-	  qo_plan_release (distinct_plan);
-	  continue;
-	}
-
-      distinct_info->is_distinct = true;
-      planner->distinct_info[QO_NODE_IDX (node)] = distinct_info;
-    }
-
-exit:
-  for (i = 0; i < (signed) planner->N; i++)
-    {
-      node = &planner->node[i];
-      if (QO_NODE_IS_SEMI_ANTI_JOIN (node) && planner->distinct_info[i] == NULL)
-	{
-	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) & ~PT_HINT_USE_MERGE);
-	}
-    }
-}
-
-/*
- * qo_get_distinct_info_ahead () - get a DISTINCT input for a SEMI node placed before its dependencies
- *   return: the node's DISTINCT info if needed and available, NULL otherwise
- *   planner(in):
- *   node(in): the node about to be placed
- *   visited_nodes(in): the nodes already placed before it
- *
- * Note: only a SEMI node with a DISTINCT alternative may precede its SEMI/ANTI dependencies, and only after all
- *       outer join nodes are placed and when no join method hint names the node. The other dependencies are checked by
- *       qo_node_can_be_placed (). When the SEMI/ANTI dependencies are already satisfied, qo_get_node_info ()
- *       returns node_info to retain ordinary SEMI execution.
- */
-static QO_INFO *
-qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
-{
-  QO_NODE *outer_node;
-  int i;
-
-  if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI || planner->distinct_info == NULL
-      || bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
-    {
-      return NULL;
-    }
-
-  /* a join method hint on the node says how to join it as the inner, which it is not when placed first */
-  if (QO_NODE_HINT (node)
-      & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_USE_HASH | PT_HINT_NO_USE_HASH))
-    {
-      return NULL;
-    }
-
-  /* an outer join node still to be placed has to come first: an ON term reading it, directly or through an INNER
-   * JOIN node this node depends on, would be evaluated as that outer join's ON and keep its NULL-filled rows */
-  for (i = 0; i < (signed) planner->N; i++)
-    {
-      outer_node = &planner->node[i];
-      if (!BITSET_MEMBER (*visited_nodes, i) && QO_NODE_IS_OUTER_JOIN (outer_node))
-	{
-	  return NULL;
-	}
-    }
-
-  return planner->distinct_info[QO_NODE_IDX (node)];
-}
-
-/*
  * qo_node_can_be_placed () - can the node be joined next to the nodes placed so far?
  *   return: bool
- *   planner(in):
  *   node(in): the node about to be placed
  *   visited_nodes(in): the nodes already placed; the node itself may be among them, as no node depends on itself
  *
  * Note: a node comes after the nodes it depends on (QO_NODE_DEP_SET), after the previous nodes of the outer joins
  *       it takes part in (QO_NODE_OUTER_DEP_SET) and after the nodes its SEMI/ANTI ON reads
- *       (QO_NODE_SEMI_ANTI_DEP_SET). Only the last is relaxed, for a SEMI node read with the duplicates removed.
+ *       (QO_NODE_SEMI_ANTI_DEP_SET).
  */
 static bool
-qo_node_can_be_placed (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+qo_node_can_be_placed (QO_NODE * node, BITSET * visited_nodes)
 {
-  if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (node)))
-      || !bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
-    {
-      return false;
-    }
-
-  return bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)))
-    || qo_get_distinct_info_ahead (planner, node, visited_nodes) != NULL;
-}
-
-/*
- * qo_get_node_info () - get the info a node is joined with at its place in the join order
- *   return: the node's DISTINCT info when placed before its SEMI/ANTI dependencies, its node_info otherwise
- *   planner(in):
- *   node(in): the node about to be placed, or placed first
- *   visited_nodes(in): the nodes already placed
- */
-static QO_INFO *
-qo_get_node_info (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
-{
-  QO_INFO *info = qo_get_distinct_info_ahead (planner, node, visited_nodes);
-
-  return (info != NULL) ? info : planner->node_info[QO_NODE_IDX (node)];
+  return bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (node)))
+    && bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node)))
+    && bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)));
 }
 
 /*
@@ -12135,7 +11822,6 @@ qo_alloc_planner (QO_ENV * env)
     bitset_add (&(planner->all_subqueries), i);
 
   planner->node_info = NULL;
-  planner->distinct_info = NULL;
   planner->join_info = NULL;
   planner->best_info = NULL;
   planner->cp_info = NULL;
@@ -12176,11 +11862,6 @@ qo_planner_free (QO_PLANNER * planner)
   if (planner->node_info)
     {
       free_and_init (planner->node_info);
-    }
-
-  if (planner->distinct_info)
-    {
-      free_and_init (planner->distinct_info);
     }
 
   if (planner->join_info)
@@ -12485,7 +12166,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (bitset_cardinality (visited_nodes) == 1)
     {
       /* current prefix has only one node */
-      head_info = qo_get_node_info (planner, head_node, visited_nodes);
+      head_info = planner->node_info[QO_NODE_IDX (head_node)];
     }
   else
     {
@@ -12499,7 +12180,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     }
 
   /* tail_info points to the node for the single class being added to the prefix */
-  tail_info = qo_get_node_info (planner, tail_node, visited_nodes);
+  tail_info = planner->node_info[QO_NODE_IDX (tail_node)];
 
   /* connect tail_node to the prefix */
   bitset_add (visited_nodes, QO_NODE_IDX (tail_node));
@@ -12908,7 +12589,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_init (&fk_col_terms, planner->env);
 
       selectivity = 1.0;	/* init */
-      is_semi_anti = join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct;
+      is_semi_anti = join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node);
       fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
       total_rows = head_info->total_rows * tail_info->total_rows;
@@ -13348,7 +13029,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   {
     int kept = 0;
     int idx_join_plan_n = 0;
-    QO_INFO *sm_tail_info;
 
     /* for path-term, if join order is correct, we can use follow. */
     if (follow_term && (QO_NODE_IDX (QO_TERM_TAIL (follow_term)) == QO_NODE_IDX (tail_node)))
@@ -13365,10 +13045,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     else
       {
 #if 1				/* CORRELATED_INDEX */
-	/* STEP 5-2: examine idx-join.  Not for a SEMI JOIN inner added ahead of the side it depends on:
-	 * qo_examine_correlated_index () builds index scans of the node itself, which read it with its
-	 * duplicates, and the only way to read the node in that position is the plan distinct_info holds. */
-	if (idx_join_cnt && !tail_info->is_distinct)
+	/* STEP 5-2: examine idx-join */
+	if (idx_join_cnt)
 	  {
 	    idx_join_plan_n =
 	      qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
@@ -13386,25 +13064,14 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  qo_examine_nl_join (new_info, join_type, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
 			      &sarged_terms, &pinned_subqueries, idx_join_plan_n, &sm_join_terms);
 
-	/* there is no semi/anti merge join: a SEMI JOIN inner is merge joined read with the duplicates removed
-	 * (distinct_info), before or after the side it depends on */
-	sm_tail_info = tail_info;
-	if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct)
-	  {
-	    sm_tail_info = NULL;
-	    if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI && planner->distinct_info != NULL)
-	      {
-		sm_tail_info = planner->distinct_info[QO_NODE_IDX (tail_node)];
-	      }
-	  }
-
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
-	if (!bitset_is_empty (&sm_join_terms) && sm_tail_info != NULL)
+	/* skip for a semi/anti inner (no semi/anti merge join) */
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	  {
 	    kept +=
-	      qo_examine_merge_join (new_info, join_type, head_info, sm_tail_info, &sm_join_terms, &duj_terms,
-				     &afj_terms, &sarged_terms, &pinned_subqueries);
+	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
+				     &sarged_terms, &pinned_subqueries);
 	  }
 #endif /* MERGE_JOINS */
 
@@ -13478,7 +13145,7 @@ go_ahead_subvisit:
 	  node = QO_ENV_NODE (planner->env, i);
 
 	  /* node dependency check; */
-	  if (!qo_node_can_be_placed (planner, node, visited_nodes))
+	  if (!qo_node_can_be_placed (node, visited_nodes))
 	    {
 	      /* node represents dependent tables, so there is no way this combination can work in isolation.  Give up
 	       * so we can try some other combinations.
@@ -13667,7 +13334,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       head_node = QO_ENV_NODE (planner->env, i);
 
       /* head node dependency check; */
-      if (!qo_node_can_be_placed (planner, head_node, visited_nodes))
+      if (!qo_node_can_be_placed (head_node, visited_nodes))
 	{
 	  /* head node represents dependent tables, so there is no way this combination can work in isolation.  Give up
 	   * so we can try some other combinations.
@@ -13678,7 +13345,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       if (bitset_is_empty (visited_nodes))
 	{			/* not found outermost nodes */
 
-	  head_info = qo_get_node_info (planner, head_node, visited_nodes);
+	  head_info = planner->node_info[QO_NODE_IDX (head_node)];
 
 	  /* init */
 	  bitset_add (visited_nodes, QO_NODE_IDX (head_node));
@@ -13694,7 +13361,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	      tail_node = QO_ENV_NODE (planner->env, j);
 
 	      /* tail node dependency check; */
-	      if (!qo_node_can_be_placed (planner, tail_node, visited_nodes))
+	      if (!qo_node_can_be_placed (tail_node, visited_nodes))
 		{
 		  continue;
 		}
@@ -14439,17 +14106,6 @@ qo_search_planner (QO_PLANNER * planner)
 	  plan = NULL;
 	  goto end;
 	}
-
-      /* filled in before the search for the SEMI JOIN inners that may be joined the other way round
-       * (qo_prepare_distinct_info ()) */
-      planner->distinct_info = (QO_INFO **) malloc (size);
-      if (planner->distinct_info == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  plan = NULL;
-	  goto end;
-	}
-      memset (planner->distinct_info, 0, size);
     }
 
   for (i = 0; i < (signed) planner->N; ++i)
@@ -14697,8 +14353,15 @@ qo_search_planner (QO_PLANNER * planner)
 	}
     }
 
-  /* a SEMI JOIN inner that may be joined the other way round needs its plan ready before the search starts */
-  qo_prepare_distinct_info (planner);
+  /* there is no semi/anti merge join: USE_MERGE on a SEMI/ANTI JOIN inner would leave the node no plan */
+  for (i = 0; i < (signed) planner->N; ++i)
+    {
+      node = &planner->node[i];
+      if (QO_NODE_IS_SEMI_ANTI_JOIN (node))
+	{
+	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) & ~PT_HINT_USE_MERGE);
+	}
+    }
 
   /*
    * Now remaining_subqueries should contain only entries that depend

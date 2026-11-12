@@ -2688,12 +2688,6 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      listfile = make_buildlist_proc (env, namelist, xasl->parallelism);
 	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile, NULL);
 	      listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
-	      if (listfile != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
-		{
-		  /* the file keeps one row per distinct value of the columns it carries, which are the ones
-		   * the rest of the query reads from this side (make_namelist_from_projected_segs () above) */
-		  listfile->option = Q_DISTINCT;
-		}
 	    }
 
 	  xasl = add_uncorrelated (env, xasl, listfile);
@@ -2710,11 +2704,6 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	{
 	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl, NULL);
 	  xasl = add_sort_spec (env, xasl, plan, NULL, true /* add instnum pred */ );
-	  if (xasl != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
-	    {
-	      /* xasl is the list file this plan fills: a hash/merge join input, or the one gen_inner () scans */
-	      xasl->option = Q_DISTINCT;
-	    }
 	}
       break;
 
@@ -3493,8 +3482,8 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
        * that file.
        */
     case QO_PLANTYPE_SORT:
-      /* check for sort type: SORT_DISTINCT is a SEMI JOIN inner read once with the duplicates removed */
-      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP || plan->plan_un.sort.sort_type == SORT_DISTINCT);
+      /* check for sort type */
+      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP);
 
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist, parallelism);
@@ -3525,6 +3514,40 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 }
 
 /*
+ * qo_plan_set_summary () - set the qo_summary of the select from the plan
+ *   return: false on allocation failure
+ *   env(in): The optimizer environment
+ *   plan(in): The plan
+ *   xasl(in): The xasl tree generated from the plan; NULL if not generated
+ */
+bool
+qo_plan_set_summary (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
+{
+  QO_SUMMARY *summary;
+  PARSER_CONTEXT *parser;
+  PT_NODE *select;
+
+  parser = QO_ENV_PARSER (env);
+  select = QO_ENV_PT_TREE (env);
+  summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
+  if (summary == NULL)
+    {
+      return false;
+    }
+
+  summary->fixed_cpu_cost = plan->fixed_cpu_cost;
+  summary->fixed_io_cost = plan->fixed_io_cost;
+  summary->variable_cpu_cost = plan->variable_cpu_cost;
+  summary->variable_io_cost = plan->variable_io_cost;
+  summary->cardinality = (plan->info)->group_rows;
+  summary->projected_size = (plan->info)->projected_size;
+  summary->xasl = xasl;
+  select->info.query.q.select.qo_summary = summary;
+
+  return true;
+}
+
+/*
  * preserve_info () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -3534,26 +3557,9 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
 static XASL_NODE *
 preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 {
-  QO_SUMMARY *summary;
-  PARSER_CONTEXT *parser;
-  PT_NODE *select;
-
   if (xasl != NULL)
     {
-      parser = QO_ENV_PARSER (env);
-      select = QO_ENV_PT_TREE (env);
-      summary = (QO_SUMMARY *) parser_alloc (parser, sizeof (QO_SUMMARY));
-      if (summary)
-	{
-	  summary->fixed_cpu_cost = plan->fixed_cpu_cost;
-	  summary->fixed_io_cost = plan->fixed_io_cost;
-	  summary->variable_cpu_cost = plan->variable_cpu_cost;
-	  summary->variable_io_cost = plan->variable_io_cost;
-	  summary->cardinality = (plan->info)->group_rows;
-	  summary->xasl = xasl;
-	  select->info.query.q.select.qo_summary = summary;
-	}
-      else
+      if (!qo_plan_set_summary (env, plan, xasl))
 	{
 	  xasl = NULL;
 	}
