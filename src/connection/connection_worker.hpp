@@ -273,6 +273,8 @@ namespace cubconn::connection
       void push_task_into_worker_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
+      bool register_connection (const message &item, int flags);
+      void close_failed_takeover (context *ctx);
 
       /* --------------------------------------------------------------------------- */
       /* close connection							     */

@@ -1568,6 +1568,40 @@ retry:
     assert (r == NO_ERROR);
   }
 
+  /* adds the connection of a NEW_CLIENT or TAKEOVER_CLIENT message to this worker's epoll set */
+  bool worker::register_connection (const message &item, int flags)
+  {
+    FI_TEST_CODE fi_code = (item.type == message_type::TAKEOVER_CLIENT
+			    ? FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL
+			    : FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL);
+
+    return !fi_test_once (m_entry, fi_code) && m_events.add_descriptor (item.ctx->m_conn->fd, flags, item.ctx);
+  }
+
+  /* closes a connection moved in whose registration failed; called with its cmutex held, which it releases */
+  void worker::close_failed_takeover (context *ctx)
+  {
+    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: closing transferred connection fd %d, "
+		   "epoll registration failed: %s\n", m_index, ctx->m_conn->fd, strerror (errno));
+
+    /* unwatched, its queued sends never drain: shut the socket so no sender waits, and close it as a dead peer */
+    (void) ::shutdown (ctx->m_conn->fd, SHUT_RDWR);
+    ctx->m_conn->status = CONN_CLOSING;
+    ctx->m_ignore = ignore_level::IGNORE_ALL;
+    ctx->m_send.m_transmitter.clear ();
+    std::shared_ptr<message_blocker> blocker = std::move (ctx->m_send.m_blocker);
+    std::shared_ptr<message_blocker> room = std::move (ctx->m_send.m_room);
+    rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+    this->wakeup_blocked_worker (blocker);
+    this->wakeup_blocked_worker (room);
+
+    /* adopted, so the requested close finds it */
+    m_context.insert (ctx);
+    m_stats.add (statistics::worker::CLIENT_NUM, 1);
+    /* requested, not closed here: the takeover can run inside another connection's close */
+    css_request_shutdown_conn (ctx->m_conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+  }
+
   void worker::handle_message_queue_new_client (message &item)
   {
     context *ctx;
@@ -1581,8 +1615,7 @@ retry:
     ctx->m_conn->worker = this;
     ctx->m_conn->context = ctx;
 
-    if (fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL)
-	|| !m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
+    if (!this->register_connection (item, EPOLLET | EPOLLIN | EPOLLRDHUP))
       {
 	_er_log_debug (ARG_FILE_LINE,
 		       "connection worker %zu: refused new connection fd %d, epoll registration failed: %s\n",
@@ -1719,8 +1752,6 @@ respond:
 
   void worker::handle_message_queue_takeover_client (message &item)
   {
-    std::shared_ptr<message_blocker> blocker;
-    std::shared_ptr<message_blocker> room;
     context *ctx;
     int flags;
 
@@ -1737,28 +1768,9 @@ respond:
 	flags |= EPOLLOUT;
       }
 
-    if (fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL)
-	|| !m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
+    if (!this->register_connection (item, flags))
       {
-	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: closing transferred connection fd %d, "
-		       "epoll registration failed: %s\n", m_index, ctx->m_conn->fd, strerror (errno));
-
-	/* unwatched, its queued sends never drain: shut the socket so no sender waits, and close it as a dead peer */
-	(void) ::shutdown (ctx->m_conn->fd, SHUT_RDWR);
-	ctx->m_conn->status = CONN_CLOSING;
-	ctx->m_ignore = ignore_level::IGNORE_ALL;
-	ctx->m_send.m_transmitter.clear ();
-	blocker = std::move (ctx->m_send.m_blocker);
-	room = std::move (ctx->m_send.m_room);
-	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
-	this->wakeup_blocked_worker (blocker);
-	this->wakeup_blocked_worker (room);
-
-	/* adopted, so the requested close finds it */
-	m_context.insert (ctx);
-	m_stats.add (statistics::worker::CLIENT_NUM, 1);
-	/* requested, not closed here: this handler can run inside another connection's close */
-	css_request_shutdown_conn (ctx->m_conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	this->close_failed_takeover (ctx);
 	return;
       }
     ctx->m_epoll_registered = true;
