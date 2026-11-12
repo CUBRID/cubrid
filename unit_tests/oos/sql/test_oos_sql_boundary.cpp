@@ -305,7 +305,7 @@ TEST_F (OosSqlBoundary, InsertSelect)
 // (OR_OOS_INLINE_SIZE = 24 B since CBRD-26950) it would be replaced with. This record is built
 // only from ~500 B columns: each is larger than the 24 B stub (so eligible) yet
 // smaller than the legacy 512 B floor (so previously ineligible). The record as a
-// whole exceeds the DB_PAGESIZE/4 trigger, so the largest columns are demoted to
+// whole exceeds the four-record target, so the largest columns are demoted to
 // OOS one by one. This guards round-trip correctness of that newly activated path.
 //
 // NOTE: SQL cannot observe *which* columns went to OOS, so this asserts that every
@@ -323,7 +323,7 @@ TEST_F (OosSqlBoundary, MidSizeColumnsEligibleForOos)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  // 10 columns x 500 B = ~5000 B payload > DB_PAGESIZE/4 (4096 at a 16 KB page).
+  // 10 columns x 500 B = ~5000 B payload > heap_oos_inline_target_size () (4060 at a 16 KB page).
   // Each column: 500 B > OR_OOS_INLINE_SIZE (24) but < legacy 512 B floor.
   rc = exec_sql ("INSERT INTO t_oos_bnd VALUES (1, "
 		 "REPEAT(X'AA', 500), REPEAT(X'BB', 500), REPEAT(X'CC', 500), REPEAT(X'DD', 500), REPEAT(X'EE', 500), "
@@ -348,6 +348,128 @@ TEST_F (OosSqlBoundary, MidSizeColumnsEligibleForOos)
   rc = fetch_single_int ("SELECT LENGTH(c10) FROM t_oos_bnd WHERE id = 1", &len);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (len, 1000);
+}
+
+// CBRD-27057: preserve logical values after largest-first demotion to the physical four-record target.
+TEST_F (OosSqlBoundary, FourRecordTargetBulkRoundTrip)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_bnd ("
+		 "  id BIGINT NOT NULL, lookup_key INT NOT NULL, hot_col INT NOT NULL,"
+		 "  inline_1 BIT VARYING, inline_2 BIT VARYING, inline_3 BIT VARYING,"
+		 "  cold_1 BIT VARYING, cold_2 BIT VARYING"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("INSERT INTO t_oos_bnd "
+		 "SELECT LEVEL, LEVEL, MOD(LEVEL, 1000),"
+		 "       REPEAT(X'11', 1300), REPEAT(X'22', 1300), REPEAT(X'33', 1300),"
+		 "       REPEAT(X'AA', 5300), REPEAT(X'BB', 5200) "
+		 "  FROM db_root CONNECT BY LEVEL <= 100");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_bnd", &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 100);
+
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_bnd "
+			 "WHERE inline_1 = CAST(REPEAT(X'11', 1300) AS BIT VARYING) "
+			 "AND inline_2 = CAST(REPEAT(X'22', 1300) AS BIT VARYING) "
+			 "AND inline_3 = CAST(REPEAT(X'33', 1300) AS BIT VARYING) "
+			 "AND cold_1 = CAST(REPEAT(X'AA', 5300) AS BIT VARYING) "
+			 "AND cold_2 = CAST(REPEAT(X'BB', 5200) AS BIT VARYING)",
+			 &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 100);
+}
+
+// The physical four-record target is independent of heap unfill policy.
+TEST_F (OosSqlBoundary, PhysicalFourRecordTargetIgnoresUnfill)
+{
+  const float original_unfill = prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR);
+
+  prm_set_float_value (PRM_ID_HF_UNFILL_FACTOR, 0.0f);
+  const int target_without_unfill = heap_oos_inline_target_size ();
+  prm_set_float_value (PRM_ID_HF_UNFILL_FACTOR, 0.10f);
+  const int target_with_default_unfill = heap_oos_inline_target_size ();
+  prm_set_float_value (PRM_ID_HF_UNFILL_FACTOR, original_unfill);
+
+  const int page_capacity = heap_nonheader_page_capacity ();
+  const int packed_size = 4 * ((int) DB_ALIGN (target_without_unfill, HEAP_MAX_ALIGN) + SPAGE_SLOT_SIZE);
+  const int next_packed_size = 4 * ((int) DB_ALIGN (target_without_unfill + 1, HEAP_MAX_ALIGN) + SPAGE_SLOT_SIZE);
+
+  EXPECT_EQ (target_without_unfill, 4060);
+  EXPECT_EQ (target_with_default_unfill, target_without_unfill);
+  EXPECT_LE (packed_size, page_capacity);
+  EXPECT_GT (next_packed_size, page_capacity);
+}
+
+// A record crossing the rejected 3,652-byte unfill-dependent target stays inline; a record above the physical
+// 4,060-byte target triggers OOS.
+TEST_F (OosSqlBoundary, PhysicalPackingTargetTriggersOos)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_bnd (id INT, c1 BIT VARYING, c2 BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("INSERT INTO t_oos_bnd VALUES (1, REPEAT(X'AA', 1850), REPEAT(X'BB', 1850))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  EXPECT_FALSE (table_has_oos_file ("t_oos_bnd"));
+
+  rc = exec_sql ("INSERT INTO t_oos_bnd VALUES (2, REPEAT(X'CC', 2100), REPEAT(X'DD', 2100))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  EXPECT_TRUE (table_has_oos_file ("t_oos_bnd"));
+
+  int count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_bnd "
+			 "WHERE (id = 1 AND c1 = CAST(REPEAT(X'AA', 1850) AS BIT VARYING) "
+			 "AND c2 = CAST(REPEAT(X'BB', 1850) AS BIT VARYING)) "
+			 "OR (id = 2 AND c1 = CAST(REPEAT(X'CC', 2100) AS BIT VARYING) "
+			 "AND c2 = CAST(REPEAT(X'DD', 2100) AS BIT VARYING))",
+			 &count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (count, 2);
+}
+
+// The gate is strict at the four-record target. In (id INT, p BIT VARYING), a VALUE_AT_TARGET-byte value makes
+// the record plus MVCC headroom exactly 4,060 bytes, so it stays inline; one more byte crosses the target. The
+// old DB_PAGESIZE / 4 gate (4,086 bytes) kept both inline.
+TEST_F (OosSqlBoundary, FourRecordTargetGateIsStrict)
+{
+  const int VALUE_AT_TARGET = 4011;
+  const int sizes[] = { VALUE_AT_TARGET, VALUE_AT_TARGET + 1 };
+  const bool expected_oos[] = { false, true };
+
+  for (int i = 0; i < 2; ++i)
+    {
+      SCOPED_TRACE (sizes[i]);
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_bnd (id INT, p BIT VARYING)"), 0);
+      db_commit_transaction ();
+
+      char sql[256];
+      snprintf (sql, sizeof (sql), "INSERT INTO t_oos_bnd VALUES (1, REPEAT(X'AB', %d))", sizes[i]);
+      ASSERT_GE (exec_sql (sql), 0);
+      db_commit_transaction ();
+
+      EXPECT_EQ (table_has_oos_file ("t_oos_bnd"), expected_oos[i]);
+
+      int count = 0;
+      snprintf (sql, sizeof (sql), "SELECT COUNT(*) FROM t_oos_bnd WHERE p = CAST(REPEAT(X'AB', %d) AS BIT VARYING)",
+		sizes[i]);
+      ASSERT_EQ (fetch_single_int (sql, &count), NO_ERROR);
+      EXPECT_EQ (count, 1);
+
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_bnd"), 0);
+      db_commit_transaction ();
+    }
 }
 
 int

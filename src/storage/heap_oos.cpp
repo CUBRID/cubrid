@@ -126,7 +126,7 @@ heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid,
     }
   /* Reserve the full MVCC header, even when part of it is already present. Existing stubs must be
    * rebuilt in the destination heap regardless of the compact record's size. */
-  if (record->length > DB_PAGESIZE / 4 - OR_MVCC_MAX_HEADER_SIZE || heap_recdes_contains_oos (record))
+  if (record->length > heap_oos_inline_target_size () - OR_MVCC_MAX_HEADER_SIZE || heap_recdes_contains_oos (record))
     {
       return NO_ERROR;
     }
@@ -706,17 +706,16 @@ static bool
 heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 {
   OR_ATTRIBUTE *attrepr = value->read_attrepr;
-  int vot_entry;
+  int vot_entry, next_entry;
 
   if (recdes == NULL || recdes->data == NULL || attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
-      || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0
-      || OR_VAR_IS_NULL (recdes->data, attrepr->location))
+      || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0)
     {
       return false;
     }
 
-  return (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) == NO_ERROR
-	  && OR_IS_OOS (vot_entry));
+  return (heap_recdes_get_var_offset_pair (recdes, attrepr->location, &vot_entry, &next_entry) == NO_ERROR
+	  && OR_GET_VAR_OFFSET (vot_entry) != OR_GET_VAR_OFFSET (next_entry) && OR_IS_OOS (vot_entry));
 }
 
 /*
@@ -744,6 +743,11 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
   assert (grouped_applied != NULL);
   assert (recdes != NULL && recdes->data != NULL && heap_recdes_contains_oos (recdes));
   *grouped_applied = false;
+
+  if (attr_info->num_values < 2)
+    {
+      return NO_ERROR;
+    }
 
   for (i = 0; i < attr_info->num_values; i++)
     {
