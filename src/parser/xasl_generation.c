@@ -6972,7 +6972,7 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig), NULL);
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig));
       if (default_next_node_list == NULL && pt_has_error (parser))
 	{
 	  return NULL;

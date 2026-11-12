@@ -791,15 +791,10 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   /* call sp */
   std::vector <std::reference_wrapper <DB_VALUE>> args;
   cubpl::pl_signature sig;
-  bool flag_si_datetime = false;
   error = jsp_make_pl_signature (parser, statement, NULL, sig);
   if (error == NO_ERROR)
     {
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, &flag_si_datetime);
-      if (default_next_node_list != NULL && flag_si_datetime)
-	{
-	  error = db_ensure_server_info (parser, SI_SYS_DATETIME);
-	}
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig);
       statement->info.method_call.arg_list = parser_append_node (default_next_node_list,
 					     statement->info.method_call.arg_list);
       error = jsp_evaluate_arguments (parser, statement, args);
@@ -2340,7 +2335,7 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
 }
 
 PT_NODE *
-jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig, bool *flag_si_datetime)
+jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig)
 {
   PT_NODE *default_next_node_list = NULL;
   PT_NODE *default_next_node = NULL;
