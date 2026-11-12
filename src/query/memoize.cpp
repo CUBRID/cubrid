@@ -931,8 +931,12 @@ extern "C"
 	  return true;
 	}, true);
       }
-    census.collect (inner->if_pred);
-    census.collect (inner->after_join_pred);
+    if (!XASL_IS_FLAGED (inner, XASL_NL_ANTIJOIN))
+      {
+	/* an ANTI inner evaluates these out of the memo (qexec_execute_sa_anti_survive ()) */
+	census.collect (inner->if_pred);
+	census.collect (inner->after_join_pred);
+      }
 
     for (regu_variable_node *regu : census.m_regus)
       {
