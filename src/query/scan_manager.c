@@ -5160,6 +5160,13 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
       && !SCAN_IS_INDEX_COVERED (isidp) && !scan_id->grouped)
     {
       isidp->ahead_next = 0;
+      if (scan_id->single_fetch == QPROC_SINGLE_INNER)
+	{
+	  /* the inner scan of a NL semi/anti join stops at its first match: the first OID's page is read at once and
+	   * the windows start after it, so a scan that matches at once tells the OS nothing */
+	  isidp->ahead_next = 1;
+	  isidp->ahead_distance = 1;
+	}
     }
 
   return S_SUCCESS;
