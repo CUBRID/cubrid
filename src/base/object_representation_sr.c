@@ -2350,7 +2350,8 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_INDEX) * n_btids);
 	  return;
 	}
-      memset (rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
+      /* all zero is also the "not computed" value of repl_key_digest, a lock-free atomic word */
+      memset ((void *) rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
     }
 
   /* Now extract the unique and index BTIDs from the property list and install them into the class and attribute
@@ -2515,6 +2516,24 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+      char *attribute_name = NULL;
+      int allocated_name = 0;
+      if (or_get_diskattr_string (diskatt, ORC_ATT_NAME_INDEX, &attribute_name, &allocated_name) != NO_ERROR
+	  || attribute_name == NULL)
+	{
+	  goto error_cleanup;
+	}
+      size_t name_length = strlen (attribute_name) + 1;
+      att->name = strdup (attribute_name);
+      if (allocated_name)
+	{
+	  db_private_free (NULL, attribute_name);
+	}
+      if (att->name == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_length);
+	  goto error_cleanup;
+	}
       att->def_order = OR_GET_INT (ptr + ORC_ATT_DEF_ORDER_OFFSET);
       att->position = i;
       att->default_value.val_length = 0;
@@ -2867,6 +2886,13 @@ error_cleanup:
 
   if (rep->attributes)
     {
+      for (i = 0; i < rep->n_attributes; i++)
+	{
+	  if (rep->attributes[i].name != NULL)
+	    {
+	      free_and_init (rep->attributes[i].name);
+	    }
+	}
       free_and_init (rep->attributes);
     }
 
@@ -3633,6 +3659,11 @@ or_free_classrep (OR_CLASSREP * rep)
     {
       for (i = 0, att = rep->attributes; i < rep->n_attributes; i++, att++)
 	{
+	  if (att->name != NULL)
+	    {
+	      free_and_init (att->name);
+	    }
+
 	  if (att->default_value.value != NULL)
 	    {
 	      free_and_init (att->default_value.value);
@@ -4803,7 +4834,7 @@ or_is_replication_candidate_key (const OR_INDEX * index)
       return true;
     }
 
-  if (!btree_is_unique_type (index->type) || index->n_atts <= 0 || index->atts == NULL)
+  if ((index->type != BTREE_UNIQUE && index->type != BTREE_REVERSE_UNIQUE) || index->n_atts <= 0 || index->atts == NULL)
     {
       return false;
     }
