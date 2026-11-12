@@ -213,6 +213,56 @@ query_is_internal_lob_file_source (const DB_VALUE * value)
   return marker == DB_VALUE_INTERNAL_LOB_MARKER_FILE_SOURCE || marker == DB_VALUE_INTERNAL_LOB_MARKER_PENDING;
 }
 
+/*
+ * query_copy_without_unused_file_sources () - Copy the values with each LOB file source or pending value the
+ *   statement does not use made NULL, since the server refuses one from a client even when it is unused
+ *   return: error code
+ *   used_vars(in): flags of the host variables the statement uses, or NULL for all
+ *   copy_out(out): NULL when there is none, else a copy that only lends the values: free it, never clear it
+ */
+int
+query_copy_without_unused_file_sources (int var_cnt, const DB_VALUE * varptr, const bool * used_vars,
+					DB_VALUE ** copy_out)
+{
+  DB_VALUE *copy;
+  int i;
+
+  *copy_out = NULL;
+  if (used_vars == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < var_cnt; i++)
+    {
+      if (!used_vars[i] && query_is_internal_lob_file_source (&varptr[i]))
+	{
+	  break;
+	}
+    }
+  if (i == var_cnt)
+    {
+      return NO_ERROR;
+    }
+
+  copy = (DB_VALUE *) malloc ((size_t) var_cnt * sizeof (DB_VALUE));
+  if (copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) var_cnt * sizeof (DB_VALUE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (i = 0; i < var_cnt; i++)
+    {
+      copy[i] = varptr[i];
+      if (!used_vars[i] && query_is_internal_lob_file_source (&copy[i]))
+	{
+	  db_make_null (&copy[i]);
+	}
+    }
+  *copy_out = copy;
+  return NO_ERROR;
+}
+
 static bool
 query_parse_internal_lob_file_source (const DB_VALUE * value, INTERNAL_LOB_DML_INPUT * input)
 {
@@ -727,7 +777,18 @@ execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_i
 	      return stream_session_set_error ("generated keys are not supported with Internal LOB file sources");
 	    }
 	}
-      return execute_query (xasl_id, query_idp, var_cnt, varptr, list_idp, flag, clt_cache_time, srv_cache_time);
+
+      DB_VALUE *vars = NULL;
+
+      error = query_copy_without_unused_file_sources (var_cnt, varptr, used_vars, &vars);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = execute_query (xasl_id, query_idp, var_cnt, vars != NULL ? vars : varptr, list_idp, flag,
+			     clt_cache_time, srv_cache_time);
+      free_and_init (vars);
+      return error;
     }
 
   if (!execute_query_begin ())

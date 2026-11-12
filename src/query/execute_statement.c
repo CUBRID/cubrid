@@ -215,6 +215,9 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, bool to_client);
+static int do_prepare_and_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement,
+							XASL_STREAM * stream, QFILE_LIST_ID ** list_id,
+							QUERY_FLAG query_flag);
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
@@ -9471,10 +9474,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      error =
-	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
-				   &list_id, query_flag);
+      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -10667,22 +10667,24 @@ do_get_internal_lob_used_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement
 }
 
 /*
- * do_execute_query_with_host_vars () - execute_query () with the parser's host variables, except that a LOB file
- *   source or pending value this statement does not use is sent as NULL
+ * do_get_statement_host_vars () - The parser's host variables, except that a LOB file source or pending value this
+ *   statement does not use is NULL
  *   return: error code
+ *   vars_out(out): parser->host_variables, or a copy to free with free_and_init ()
  *
  * The statements of one buffer share the host variable array, so it can still hold such a value of an earlier
  * statement, and the server refuses one from a client whether or not the statement uses it.
  */
 static int
-do_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID ** list_id,
-				 QUERY_FLAG query_flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
+do_get_statement_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE ** vars_out)
 {
-  const int var_count = parser->host_var_count + parser->auto_param_count;
-  DB_VALUE *vars = parser->host_variables;
-  int err;
+  int err = NO_ERROR;
+
+  *vars_out = parser->host_variables;
 
 #if defined(CS_MODE)
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+  DB_VALUE *copy = NULL;
   bool *used_vars = NULL;
   int i;
 
@@ -10696,33 +10698,65 @@ do_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, Q
   if (i < var_count)
     {
       err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
-      if (err != NO_ERROR)
+      if (err == NO_ERROR)
 	{
-	  return err;
-	}
-      vars = (DB_VALUE *) malloc ((size_t) var_count * sizeof (DB_VALUE));
-      if (vars == NULL)
-	{
-	  free_and_init (used_vars);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) var_count * sizeof (DB_VALUE));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      for (i = 0; i < var_count; i++)
-	{
-	  /* the copy only lends the values to this request: it is freed, never cleared */
-	  vars[i] = parser->host_variables[i];
-	  if (used_vars != NULL && !used_vars[i] && query_is_internal_lob_file_source (&vars[i]))
-	    {
-	      db_make_null (&vars[i]);
-	    }
+	  err = query_copy_without_unused_file_sources (var_count, parser->host_variables, used_vars, &copy);
 	}
       free_and_init (used_vars);
+      if (copy != NULL)
+	{
+	  *vars_out = copy;
+	}
     }
 #endif /* CS_MODE */
 
-  err = execute_query (statement->xasl_id, &parser->query_id, var_count, vars, list_id, query_flag, clt_cache_time,
-		       srv_cache_time);
+  return err;
+}
+
+/*
+ * do_execute_query_with_host_vars () - execute_query () with the host variables of do_get_statement_host_vars ()
+ *   return: error code
+ */
+static int
+do_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID ** list_id,
+				 QUERY_FLAG query_flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
+{
+  DB_VALUE *vars;
+  int err;
+
+  err = do_get_statement_host_vars (parser, statement, &vars);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count, vars,
+		       list_id, query_flag, clt_cache_time, srv_cache_time);
+  if (vars != parser->host_variables)
+    {
+      free_and_init (vars);
+    }
+  return err;
+}
+
+/*
+ * do_prepare_and_execute_query_with_host_vars () - prepare_and_execute_query () with the host variables of
+ *   do_get_statement_host_vars ()
+ *   return: error code
+ */
+static int
+do_prepare_and_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_STREAM * stream,
+					     QFILE_LIST_ID ** list_id, QUERY_FLAG query_flag)
+{
+  DB_VALUE *vars;
+  int err;
+
+  err = do_get_statement_host_vars (parser, statement, &vars);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  err = prepare_and_execute_query (stream->buffer, stream->buffer_size, &parser->query_id,
+				   parser->host_var_count + parser->auto_param_count, vars, list_id, query_flag);
   if (vars != parser->host_variables)
     {
       free_and_init (vars);
@@ -11497,10 +11531,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      error =
-	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
-				   &list_id, query_flag);
+      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -12834,10 +12865,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      error =
-	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   (parser->host_var_count + parser->auto_param_count), parser->host_variables,
-				   &list_id, query_flag);
+      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -15842,10 +15870,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 
 	  if (error >= NO_ERROR)
 	    {
-	      error =
-		prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-					   parser->host_var_count + parser->auto_param_count, parser->host_variables,
-					   &list_id, query_flag);
+	      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
 	    }
 	  statement->etc = list_id;
 
@@ -18323,10 +18348,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error =
-    prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-			       parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-			       query_flag);
+  error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
 
   if (error != NO_ERROR)
     {
