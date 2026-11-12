@@ -3757,12 +3757,18 @@ pgbuf_discard_interval_open (void)
 {
   PGBUF_DISCARD_REDO_BOUND *bound = &pgbuf_Pool.discard_redo_bound;
   PGBUF_DISCARD_INTERVAL *intervals = bound->intervals;
+  const LOG_LSA chkpt_redo_lsa = log_Gl.chkpt_redo_lsa.load ();
   int i, interval = -1;
 
   pthread_mutex_lock (&bound->mutex);
   for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
     {
-      if (!intervals[i].is_used)
+      /* a closed interval that ends before the redo point of the last recorded checkpoint is never replayed again
+       * (the next checkpoint releases it), so it is free as well. merged into, it would reach back across that redo
+       * point, to log that may be removed already. */
+      if (!intervals[i].is_used
+	  || (intervals[i].nopen == 0 && !LSA_ISNULL (&intervals[i].last_lsa) && !LSA_ISNULL (&chkpt_redo_lsa)
+	      && LSA_LT (&intervals[i].last_lsa, &chkpt_redo_lsa)))
 	{
 	  interval = i;
 	  break;
@@ -3777,7 +3783,8 @@ pgbuf_discard_interval_open (void)
     }
   else
     {
-      /* all in use: share the most recent one. merging only widens an interval, which is still correct. */
+      /* all in use: share the most recent one. each of them starts at or after the last recorded redo point (see
+       * above), so merging only widens it after that point, which is still correct. */
       interval = 0;
       for (i = 1; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
 	{
@@ -3910,6 +3917,18 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
 	    }
 	  if (LSA_LT (&iv->oldest_lsa, redo_lsa) && LSA_GE (&iv->last_lsa, redo_lsa))
 	    {
+	      if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa) && LSA_LT (&iv->oldest_lsa, prev_redo_lsa))
+		{
+		  /* an interval starts at or after the last recorded redo point, unless it reached back across it.
+		   * the log before that point may be removed already, so never go below it. */
+		  assert (false);
+		  if (LSA_LT (prev_redo_lsa, redo_lsa))
+		    {
+		      LSA_COPY (redo_lsa, prev_redo_lsa);
+		      is_lowered = true;
+		    }
+		  continue;
+		}
 	      LSA_COPY (redo_lsa, &iv->oldest_lsa);
 	      is_lowered = true;
 	    }
