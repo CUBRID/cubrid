@@ -119,6 +119,21 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_RECOVERY_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 
+# A _db_serial row reaches OOS only on small pages, so this binary owns oosserialdb, created with 4K pages
+# (fixture in the parent directory).
+add_test(NAME test_oos_sql_serial COMMAND test_oos_sql_serial)
+set_tests_properties(
+  test_oos_sql_serial
+  PROPERTIES FIXTURES_REQUIRED OOS_SERIAL_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+
+# A rolled-back NEXT VALUE on a serial with a long comment (CBRD-28073). Shares oosserialdb (4K pages).
+add_test(NAME test_oos_sql_serial_rollback COMMAND test_oos_sql_serial_rollback)
+set_tests_properties(
+  test_oos_sql_serial_rollback
+  PROPERTIES FIXTURES_REQUIRED OOS_SERIAL_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+
 get_property(oos_tests DIRECTORY PROPERTY TESTS)
 set_property(TEST ${oos_tests} APPEND PROPERTY ENVIRONMENT
   "CUBRID_CALL_STACK_DUMP_ON_ERROR=no" "CUBRID_CALL_STACK_DUMP_ACTIVATION_LIST=null")

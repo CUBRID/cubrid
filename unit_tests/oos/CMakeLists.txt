@@ -175,6 +175,28 @@ set_tests_properties(oos_cleanup_recovery_db
   PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
+add_test(NAME oos_setup_serial_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosserialdb --db-page-size=4K --log-page-size=4K
+)
+set_tests_properties(oos_setup_serial_db
+  PROPERTIES FIXTURES_SETUP OOS_SERIAL_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
+add_test(NAME oos_cleanup_serial_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosserialdb
+)
+set_tests_properties(oos_cleanup_serial_db
+  PROPERTIES FIXTURES_CLEANUP OOS_SERIAL_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
+)
+
 # The storage format guard test patches the volume header of its own database and leaves it refused, so that
 # this cleanup proves deletedb still removes a database that boot refuses.
 add_test(NAME oos_setup_format_guard_db
