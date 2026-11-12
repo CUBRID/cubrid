@@ -6137,7 +6137,7 @@ expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REP
   int idx_incache = -1;
   bool rejected = false;
   bool ok = true;
-  int err_before = er_errid ();
+  int err_before = er_errid_if_has_error ();
   int i;
 
   if (plan == NULL || plan->n_reprs == 0 || repid == NULL_REPRID)
@@ -6255,9 +6255,10 @@ done:
     {
       plan->rejected[plan->n_rejected++] = repid;
     }
-  if (!ok && err_before == NO_ERROR)
+  if (!ok && err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
     {
-      /* heap_classrepr_get () or an allocation set one: not learning is not a fault (the header's promise) */
+      /* heap_classrepr_get () or an allocation set one: not learning is not a fault (the header's promise).  An error
+       * set before the call stays, and a warning left before is not one (CBRD-28049, as expr_batch_run ()) */
       er_clear ();
     }
   return ok ? NO_ERROR : ER_FAILED;
