@@ -2461,7 +2461,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 #endif /* 0 */
 
       /* convert to CNF and tag taggable terms */
-      node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+      node->info.query.q.select.where = pt_cnf_where (parser, node->info.query.q.select.where);
 
       /* list search twice one-pass: set outer join type, edge two-pass: set outer join sarg outer join sarg matrix:
        * X.i=Y.i and Y.i=Z.i and Y.j=1 case 1: X right Y right Z -> put Y(+)-sarg to Z case 2: X right Y left Z ->
@@ -4780,12 +4780,12 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	  {
 	    db_enum = &DOM_GET_ENUM_ELEM (domain, idx);
 	    s = pt_make_string_value (parser, DB_GET_ENUM_ELEM_STRING (db_enum));
-	    DB_SET_ENUM_ELEM_CODESET (&(DB_GET_ENUMERATION (&(s->info.value.db_value))),
-				      DB_GET_ENUM_ELEM_CODESET (db_enum));
 	    if (s == NULL)
 	      {
 		return NULL;
 	      }
+	    DB_SET_ENUM_ELEM_CODESET (&(DB_GET_ENUMERATION (&(s->info.value.db_value))),
+				      DB_GET_ENUM_ELEM_CODESET (db_enum));
 	    result->info.data_type.enumeration = parser_append_node (s, result->info.data_type.enumeration);
 	  }
 
