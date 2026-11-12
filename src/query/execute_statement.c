@@ -540,8 +540,8 @@ is_stmt_based_repl_type (const PT_NODE * node)
  * evaluate on the client (Local Evaluation) path, with their volatility.
  *
  * A residual DEFAULT is exactly a DEFAULT that has a CDT: an Expression-Derived
- * Literal is frozen to a value and a legacy pseudo-column DEFAULT has no stream,
- * so neither appears here.  Tree and volatility come from the parser-wide CDT
+ * Literal is frozen to a value at DDL time and is stored without a CDT,
+ * so it never appears here.  Tree and volatility come from the parser-wide CDT
  * registry (pt_cdt_registry_tree): decoded once per parser, shared with the
  * statement's Default References and its statement-clock probe, read-only parser
  * memory this set never frees.  The set pins, for one statement, WHICH CDTs it
@@ -716,9 +716,8 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
  * do_evaluate_cdt () - evaluate one rehydrated residual DEFAULT tree
  *	and refresh the attribute's in-memory default value with the result, cast to
  *	the attribute domain.  att->default_value.value is what the object template
- *	consumes (populate_defaults) -- the same channel the legacy
- *	statement-determined expressions refresh in place.  Seeded random calls in
- *	the tree draw on rand_states (see CDT_EVAL_SET).
+ *	consumes (populate_defaults).  Seeded random calls in the tree draw on
+ *	rand_states (see CDT_EVAL_SET).
  *   return: NO_ERROR or ER_code
  */
 static int

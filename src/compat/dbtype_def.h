@@ -1273,9 +1273,9 @@ extern "C"
   } DB_DEFAULT_EXPR_TYPE;
 
   /* The stored forms of a column DEFAULT expression: its original text (an Expression-Derived Literal keeps only
-   * this, next to its folded value) and, for a residual expression, the REGU stream evaluated on the server and
-   * the Compact DEFAULT Tree evaluated on the client.  The legacy pseudo-column enum (DB_DEFAULT_EXPR_TYPE) is not
-   * part of a column DEFAULT; it survives for ON UPDATE.
+   * this, next to its folded value) and, for a residual expression, the Compact DEFAULT Tree.  An INSERT compiles
+   * the tree into the DEFAULT slots of its XASL for the server, or evaluates it on the client.  The legacy
+   * pseudo-column enum (DB_DEFAULT_EXPR_TYPE) is not part of a column DEFAULT; it survives for ON UPDATE.
    */
   typedef struct db_default_expr DB_DEFAULT_EXPR;
   struct db_default_expr

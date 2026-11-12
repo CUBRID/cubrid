@@ -20,8 +20,8 @@
  * volatility.h - volatility classification of functions/operators
  *
  * A cross-cutting concept, not parser-specific: the client/parser uses it to
- * decide DEFAULT-expression folding, and the server reads it (stamped on the
- * residual's serialized REGU form) at INSERT execution to decide how often a
+ * decide DEFAULT-expression folding, and the server reads it (carried in the
+ * DEFAULT slots of the INSERT XASL) at INSERT execution to decide how often a
  * DEFAULT is evaluated (STABLE -> once per statement, VOLATILE -> once per row).
  */
 

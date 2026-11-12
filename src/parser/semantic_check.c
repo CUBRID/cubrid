@@ -4191,7 +4191,7 @@ pt_is_argless_legacy_pseudo (const PT_NODE * node)
 /*
  * pt_is_bare_legacy_default_form () - whether node may appear as a non-parenthesized (bare)
  *	column DEFAULT: an argument-less legacy pseudo-column, UUID(<numeric literal>), or
- *	TO_CHAR(<literal | signed numeric literal | argument-less datetime pseudo-column> [, <literal>])
+ *	TO_CHAR(<literal | signed numeric literal | argument-less legacy pseudo-column> [, <literal>])
  *   return: true if so
  *   node(in): the top-level node of the DEFAULT expression
  */

@@ -27111,9 +27111,9 @@ pt_check_default_expr_compile (PARSER_CONTEXT * parser, const char *stream, int 
  *   value_clauses(in): the VALUES rows, already compiled into insert->valptr_lists; NULL for any other source
  *   err_node(in): node the errors are reported on
  *
- * Each slot compiles the Compact DEFAULT Tree as stored, without type checking it again, so the expression does
- * not depend on the session that compiles the INSERT. The REGU constants point into the parser's CDT registry
- * trees, which live until the XASL is serialized. The slots follow att_id, so the executor walks both together:
+ * Each slot compiles the Compact DEFAULT Tree as stored, without type checking it again, so the session settings
+ * that type checking reads (date language, NOFAIL) do not reach the expression; session values such as USER are
+ * those of the session that compiles the INSERT. The slots follow att_id, so the executor walks both together:
  * first the attributes left out, then the listed ones the VALUES fill with their own DEFAULT
  * (pt_to_insert_listed_default_slots).
  */
