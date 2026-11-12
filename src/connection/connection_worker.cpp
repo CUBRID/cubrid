@@ -47,6 +47,7 @@
 #include "thread_manager.hpp"
 #include "error_manager.h"
 #include "log_manager.h"
+#include "fault_injection.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -75,6 +76,14 @@ namespace cubconn::connection
 
   /* how long a waiting sender goes without re-checking its connection and the interrupt flag */
   static constexpr std::chrono::milliseconds SEND_QUEUE_ROOM_WAIT_TURN (100);
+
+  /* runs a fault injection at most once per worker; true if it failed the caller */
+  static bool fi_test_once (cubthread::entry *thread_p, FI_TEST_CODE code)
+  {
+    bool failed = FI_TEST (thread_p, code, FI_INIT_STATE) != NO_ERROR;
+    FI_SET (thread_p, code, FI_INIT_STATE + 1);
+    return failed;
+  }
 
   /* why a sender stopped waiting; anything but ROOM_AVAILABLE is logged as the reason its message was dropped */
   enum class room_wait_result
@@ -978,6 +987,8 @@ namespace cubconn::connection
 	return this->retry_connection_close (ctx, is_retry, handle);
       }
 
+    (void) fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_CLOSE_HOLD);
+
     /* change status */
 
     rmutex_lock (m_entry, &ctx->m_conn->rmutex);
@@ -1386,6 +1397,11 @@ retry:
 
     m_timer_handler[static_cast<std::size_t> (type)].valid = false;
 
+    if (type == timer_type::QUEUE && fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL))
+      {
+	return false;
+      }
+
     min = timer_latency::NA;
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
@@ -1567,7 +1583,8 @@ retry:
     ctx->m_conn->worker = this;
     ctx->m_conn->context = ctx;
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
+    if (fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL)
+	|| !m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
 	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: refused new connection fd %d, epoll registration failed: %s\n",
 		       m_index, ctx->m_conn->fd, strerror (errno));
@@ -1722,7 +1739,8 @@ respond:
 	flags |= EPOLLOUT;
       }
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
+    if (fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL)
+	|| !m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
       {
 	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: closing transferred connection fd %d, epoll registration "
 		       "failed: %s\n", m_index, ctx->m_conn->fd, strerror (errno));
