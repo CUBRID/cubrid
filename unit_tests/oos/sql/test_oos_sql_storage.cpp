@@ -761,7 +761,7 @@ TEST_F (OosSqlStorage, ForceOutlineRemainsNonReservedIdentifier)
 }
 
 // Functional non-regression: a PREFER_INLINE column round-trips a large value through
-// the demotion path. The record (two ~3000 B variable columns) exceeds DB_PAGESIZE/4, so
+// the demotion path. The record (two ~3000 B variable columns) exceeds the four-record target, so
 // demotion runs. Placement is not asserted (not observable via SQL); this guards data
 // integrity of the new demote sort, not which column was demoted.
 TEST_F (OosSqlStorage, PreferInlineColumnRoundTripsLargeValue)
