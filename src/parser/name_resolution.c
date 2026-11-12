@@ -3334,6 +3334,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			}
 		    }
 		  node->info.merge.insert.attr_list = pt_resolve_star (parser, node->info.merge.into, NULL);
+		  node->info.merge.flags |= PT_MERGE_INFO_INSERT_COLUMNS_FILLED;
 		  if (parser->flag.is_parsing_static_sql)
 		    {
 		      pt_record_static_sql_star (parser, PT_SS_MERGE_INSERT_COLUMNS, -1,

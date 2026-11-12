@@ -31564,7 +31564,10 @@ pt_dblink_merge_print_clauses (PARSER_CONTEXT * parser, PT_NODE * merge)
   if (info->insert.value_clauses != NULL)
     {
       q = pt_append_nulstring (parser, q, " when not matched then insert ");
-      if (info->insert.attr_list != NULL)
+      /* A list name resolution filled in is left out, as the statement omits it. The remote then
+       * takes the values by position, as a local target does. A plan kept over a column added to
+       * the remote fails there, instead of filling only the columns the list named. */
+      if (info->insert.attr_list != NULL && !(info->flags & PT_MERGE_INFO_INSERT_COLUMNS_FILLED))
 	{
 	  q = pt_append_nulstring (parser, q, "(");
 	  q =

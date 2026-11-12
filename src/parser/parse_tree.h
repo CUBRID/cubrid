@@ -3227,6 +3227,8 @@ struct pt_merge_info
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
 #define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */
+/* name resolution filled in the INSERT column list the statement omits */
+#define PT_MERGE_INFO_INSERT_COLUMNS_FILLED 8
   short flags;			/* statement specific flags */
 };
 
