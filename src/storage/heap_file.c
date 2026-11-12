@@ -966,8 +966,9 @@ static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCAN
 static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
 						   HEAP_PREV_VERSION_WALK * walk, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
-						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
-						    int has_chn, HEAP_GET_CONTEXT * release_context);
+						    LOG_LSA * previous_version_lsa, MVCCID too_new_insid,
+						    HEAP_SCANCACHE * scan_cache, int has_chn,
+						    HEAP_GET_CONTEXT * release_context);
 static void heap_prev_version_walk_release_pages (THREAD_ENTRY * thread_p, HEAP_PREV_VERSION_WALK * walk);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
@@ -27473,13 +27474,15 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
  *   thread_p (in): Thread entry.
  *   recdes (out): Record descriptor.
  *   previous_version_lsa (in): Log address of previous version.
+ *   too_new_insid (in): insert MVCCID of the version that was too new for the snapshot, or MVCCID_NULL
  *   scan_cache(in): Heap scan cache.
  *   release_context(in): Heap get context whose pages the walk releases on the way, as
  *			   HEAP_PREV_VERSION_HOLD_HOPS describes. On return its page watchers may be empty.
  */
 static SCAN_CODE
 heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
-				   HEAP_SCANCACHE * scan_cache, int has_chn, HEAP_GET_CONTEXT * release_context)
+				   MVCCID too_new_insid, HEAP_SCANCACHE * scan_cache, int has_chn,
+				   HEAP_GET_CONTEXT * release_context)
 {
   LOG_LSA process_lsa;
   SCAN_CODE scan_code = S_SUCCESS;
@@ -27550,7 +27553,19 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  thread_sleep (FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
 	}
 #endif /* !NDEBUG */
-      snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+      if (too_new_insid != MVCCID_NULL && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID)
+	  && MVCC_GET_INSID (&mvcc_header) == too_new_insid)
+	{
+	  /* An older version of the transaction whose newer version was too new: that transaction's versions are
+	   * all too new or all visible, and only its last one may be returned. A snapshot that is not registered
+	   * (mvcc_satisfies_committed) may see the transaction commit during this walk; checking this version again
+	   * would then return a version the transaction never committed. */
+	  snapshot_res = TOO_NEW_FOR_SNAPSHOT;
+	}
+      else
+	{
+	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+	}
       if (snapshot_res == SNAPSHOT_SATISFIED)
 	{
 	  /* Visible. Get record if CHN was changed. */
@@ -27568,6 +27583,8 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	{
 	  /* TOO_NEW_FOR_SNAPSHOT */
 	  assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
+	  too_new_insid = (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID)
+			   ? MVCC_GET_INSID (&mvcc_header) : MVCCID_NULL);
 	  /* continue with previous version */
 	  assert (LSA_LT (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header), &process_lsa));
 	  LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
@@ -27851,6 +27868,8 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 	   * and its next access fixes one as usual. */
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
+					       (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID)
+						? MVCC_GET_INSID (&mvcc_header) : MVCCID_NULL),
 					       context->scan_cache, context->old_chn, context);
 #if !defined (NDEBUG)
 	  if (FI_INSERTED (FI_TEST_SIDECAR_DELAY_LOG_RESOLVE) && scan == S_SUCCESS
