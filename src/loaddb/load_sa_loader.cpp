@@ -2287,9 +2287,13 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	 * to the element setter
 	 */
 	case LDR_COLLECTION:
-	  err = ER_LDR_NESTED_SET;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	  display_error (0);
+	  /*
+	   * Through the filter, as the loading walk refuses it. finish_line () counts a refused
+	   * row of this walk, and a count stops the load, so an error --error-control-file
+	   * ignores must not be counted here: the loading walk skips only this row for it.
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NESTED_SET, 0);
+	  CHECK_ERR (err, ER_LDR_NESTED_SET);
 	  break;
 	/* Check validity of date/time/timestamp string during validation */
 	case LDR_TIME:
