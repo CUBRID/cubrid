@@ -218,6 +218,8 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static PT_NODE *pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						     int *continue_walk);
 static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
@@ -11227,6 +11229,41 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt)
 }
 
 /*
+ * pt_check_into_clause_in_set_operand () - parser_walk_tree function to reject INTO clause
+ *                                          in an operand of a set operation of a static SQL
+ *   return:  node
+ *   parser(in): the parser context
+ *   node(in): a node of the statement
+ *
+ * Note: INTO variables of PL/CSQL can receive only the final result of the query
+ */
+static PT_NODE *
+pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *operands[2];
+  int i;
+
+  if (!PT_IS_UNION (node) && !PT_IS_INTERSECTION (node) && !PT_IS_DIFFERENCE (node))
+    {
+      return node;
+    }
+
+  operands[0] = node->info.query.q.union_.arg1;
+  operands[1] = node->info.query.q.union_.arg2;
+  for (i = 0; i < 2; i++)
+    {
+      if (operands[i] != NULL && operands[i]->node_type == PT_SELECT && operands[i]->info.query.into_list != NULL)
+	{
+	  PT_ERRORm (parser, operands[i], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SELECT_INTO_IN_SET_OPERAND);
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_check_into_clause () - check arity of any into_clause
  *                           equals arity of query
  *   return:  none
@@ -13369,6 +13406,16 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		    }
 		  break;
 		}
+	    }
+	}
+
+      if (parser->flag.is_parsing_static_sql == 1)
+	{
+	  /* must be done before pt_semantic_check_local () which takes INTO clauses out of the operands */
+	  (void) parser_walk_tree (parser, node, pt_check_into_clause_in_set_operand, NULL, NULL, NULL);
+	  if (pt_has_error (parser))
+	    {
+	      break;
 	    }
 	}
 
@@ -19124,6 +19171,9 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       parser_free_tree (parser, union_node);
       new_node = parser_new_node (parser, PT_VALUE);
       new_node->type_enum = PT_TYPE_NULL;
+      /* the set operation returns no row, as a subquery with a false WHERE folded by pt_to_false_subquery () does:
+       * EXISTS over it is false and NOT IN over it is true */
+      new_node->info.value.is_false_where = true;
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {
