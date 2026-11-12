@@ -1987,20 +1987,24 @@ FN_RETURN
 fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int srv_h_id;
+  int i;
   T_SRV_HANDLE *srv_handle;
 
-  net_arg_get_int (&srv_h_id, argv[0]);
-
-  srv_handle = hm_find_srv_handle (srv_h_id);
-  if (srv_handle == NULL || srv_handle->num_q_result < 1)
+  for (i = 0; i < argc; i++)
     {
-      /* has already been closed */
-      return FN_KEEP_CONN;
+      net_arg_get_int (&srv_h_id, argv[i]);
+
+      srv_handle = hm_find_srv_handle (srv_h_id);
+      if (srv_handle == NULL || srv_handle->num_q_result < 1)
+	{
+	  /* has already been closed */
+	  continue;
+	}
+
+      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_close srv_h_id %d", srv_h_id);
+
+      ux_cursor_close (srv_handle);
     }
-
-  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_close srv_h_id %d", srv_h_id);
-
-  ux_cursor_close (srv_handle);
 
   return FN_KEEP_CONN;
 }
