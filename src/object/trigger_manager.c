@@ -1730,35 +1730,24 @@ block_type_is_supported (DB_TYPE type)
  *    return: none
  *    domain(in): domain of the attribute
  *    type_name(in): type name of pr_type_name () for the type of the domain
- *    buf(out): the type, with the length of a string or the precision and scale of a numeric
+ *    buf(out): the type
  *    size(in): size of buf
  *
  * Note:
- *    The record keeps the length and the precision of the column.
- *    A floating-point NUMERIC has no precision, so its type is the name alone.
+ *    A field is declared with the type name alone, as a parameter of a procedure is.
+ *    The column can get longer or more precise later, and the procedure is not made again then.
+ *    CHAR is the exception. CHAR alone is CHAR(1), so it keeps the length of the column.
  */
 static void
 block_field_type (TP_DOMAIN * domain, const char *type_name, char *buf, int size)
 {
-  switch (TP_DOMAIN_TYPE (domain))
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_CHAR)
     {
-    case DB_TYPE_NUMERIC:
-      if (domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
-	{
-	  snprintf (buf, size, "%s", type_name);
-	}
-      else
-	{
-	  snprintf (buf, size, "%s(%d,%d)", type_name, domain->precision, domain->scale);
-	}
-      break;
-    case DB_TYPE_CHAR:
-    case DB_TYPE_VARCHAR:
       snprintf (buf, size, "%s(%d)", type_name, domain->precision);
-      break;
-    default:
+    }
+  else
+    {
       snprintf (buf, size, "%s", type_name);
-      break;
     }
 }
 
