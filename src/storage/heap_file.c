@@ -13906,6 +13906,11 @@ heap_attrinfo_keep_column_form (HEAP_CACHE_ATTRINFO * attr_info, int index, cons
   int entry, next_entry;
   oos_chain_ref ref;
 
+  /* every column of such a record is inline, whatever representation it has */
+  if (!heap_recdes_contains_oos (old_recdes))
+    {
+      return NO_ERROR;
+    }
   if (or_rep_id ((RECDES *) old_recdes) != attr_info->last_classrepr->id
       || heap_recdes_get_var_offset_pair (old_recdes, value->last_attrepr->location, &entry, &next_entry) != NO_ERROR)
     {
