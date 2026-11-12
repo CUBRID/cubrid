@@ -4714,9 +4714,8 @@ qo_hq_has_unsafe_hash_key (PARSER_CONTEXT * parser, PT_NODE * pred)
  *       grp = 7 or grp IN (7, 8). An expression over the column
  *       (PRIOR id = pid + 0) cannot use any index. It is also kept when an
  *       equality conjunct is unsafe as a hash key (see
- *       qo_hq_is_unsafe_hash_key): a JSON side, a build side with a cast
- *       that can fail, or a NUMERIC pair whose DOUBLE hash can round equal
- *       values apart.
+ *       qo_hq_is_unsafe_hash_key): a JSON side or a build side with a cast
+ *       that can fail.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
