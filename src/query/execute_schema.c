@@ -177,6 +177,7 @@ enum
   P_COMMENT,			/* has comment */
   P_OOS_PREFER_INLINE,		/* STORAGE PREFER_INLINE (lower OOS demotion priority) */
   P_OOS_FORCE_OUTLINE,		/* STORAGE FORCE_OUTLINE (bypass record gate for values larger than OOS stub) */
+  P_OOS_FORCE_INLINE,
   NUM_ATT_CHG_PROP
 };
 
@@ -196,6 +197,21 @@ struct sm_attr_properties_chg
   SM_NAME_SPACE new_name_space;	/* class, shared or normal attribute */
   bool class_has_subclass;	/* if class is part of a hierarchy and if it has subclasses */
 };
+
+typedef struct oos_policy_flag OOS_POLICY_FLAG;
+struct oos_policy_flag
+{
+  int prop;
+  int flag;
+};
+
+static const OOS_POLICY_FLAG oos_Policy_flags[] = {
+  {P_OOS_PREFER_INLINE, SM_ATTFLAG_OOS_PREFER_INLINE},
+  {P_OOS_FORCE_OUTLINE, SM_ATTFLAG_OOS_FORCE_OUTLINE},
+  {P_OOS_FORCE_INLINE, SM_ATTFLAG_OOS_FORCE_INLINE}
+};
+
+#define OOS_POLICY_FLAG_COUNT (sizeof (oos_Policy_flags) / sizeof (oos_Policy_flags[0]))
 
 /* sm_partition_alter_info :
  * helper object for altering partitioning
@@ -320,7 +336,7 @@ static bool is_attribute_primary_key (const char *class_name, const char *attr_n
 
 static const char *get_hard_default_for_type (PT_TYPE_ENUM type);
 
-static int do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id);
+static int do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id, bool check_only);
 
 static int do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list);
 
@@ -8255,28 +8271,66 @@ get_attr_name (PT_NODE * attribute)
 }
 
 static bool
-do_is_oos_storage_eligible_attribute (DB_CTMPL * ctemplate, SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+do_is_normal_attribute_of_class (DB_CTMPL * ctemplate, SM_NAME_SPACE name_space)
 {
   assert (ctemplate != NULL);
+
+  return name_space == ID_ATTRIBUTE && smt_get_class_type (ctemplate) == SM_CLASS_CT;
+}
+
+static bool
+do_is_oos_storage_eligible_attribute (DB_CTMPL * ctemplate, SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+{
   assert (domain != NULL);
 
-  return name_space == ID_ATTRIBUTE && smt_get_class_type (ctemplate) == SM_CLASS_CT
-    && pr_is_variable_type (TP_DOMAIN_TYPE (domain));
+  return do_is_normal_attribute_of_class (ctemplate, name_space) && pr_is_variable_type (TP_DOMAIN_TYPE (domain));
 }
 
 static int
-do_validate_oos_storage_setting (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
-				 SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+do_resolve_oos_storage_flag (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
+			     SM_NAME_SPACE name_space, const TP_DOMAIN * domain, int *oos_flag)
 {
-  if (attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
-      || do_is_oos_storage_eligible_attribute (ctemplate, name_space, domain))
+  const PT_ATTR_STORAGE_SETTING setting = attribute->info.attr_def.attr_storage;
+  bool is_variable;
+  bool is_allowed_on_fixed_type;
+
+  *oos_flag = 0;
+  if (setting == PT_ATTR_STORAGE_UNSET)
     {
       return NO_ERROR;
     }
 
-  PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
-	      MSGCAT_SEMANTIC_STORAGE_REQUIRES_VARIABLE_NORMAL_ATT, get_attr_name (attribute));
-  return ER_PT_SEMANTIC;
+  is_variable = do_is_oos_storage_eligible_attribute (ctemplate, name_space, domain);
+  is_allowed_on_fixed_type = (setting == PT_ATTR_STORAGE_DEFAULT || setting == PT_ATTR_STORAGE_FORCE_INLINE);
+  if (!do_is_normal_attribute_of_class (ctemplate, name_space) || (!is_variable && !is_allowed_on_fixed_type))
+    {
+      PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_STORAGE_REQUIRES_VARIABLE_NORMAL_ATT, get_attr_name (attribute));
+      return ER_PT_SEMANTIC;
+    }
+
+  if (is_variable)
+    {
+      switch (setting)
+	{
+	case PT_ATTR_STORAGE_PREFER_INLINE:
+	  *oos_flag = SM_ATTFLAG_OOS_PREFER_INLINE;
+	  break;
+
+	case PT_ATTR_STORAGE_FORCE_OUTLINE:
+	  *oos_flag = SM_ATTFLAG_OOS_FORCE_OUTLINE;
+	  break;
+
+	case PT_ATTR_STORAGE_FORCE_INLINE:
+	  *oos_flag = SM_ATTFLAG_OOS_FORCE_INLINE;
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -8304,6 +8358,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   MOP auto_increment_obj = NULL;
   SM_ATTRIBUTE *att = NULL;
   SM_NAME_SPACE name_space = ID_NULL;
+  int oos_flag = 0;
   bool add_first = false;
   const char *add_after_attr = NULL;
   PT_NODE *cnstr, *pk_attr, *comment;
@@ -8464,17 +8519,13 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
       if (error == NO_ERROR)
 	{
-	  error = do_validate_oos_storage_setting (parser, ctemplate, attribute, name_space, att->domain);
+	  error = do_resolve_oos_storage_flag (parser, ctemplate, attribute, name_space, att->domain, &oos_flag);
 	}
-    }
 
-  if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
-    {
-      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
-    }
-  else if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
-    {
-      att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
+      if (error == NO_ERROR)
+	{
+	  att->flags |= oos_flag;
+	}
     }
 
   comment = attribute->info.attr_def.comment;
@@ -11005,6 +11056,30 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
   /* set NULL, avoid 'abort_class' in case of error */
   ctemplate = NULL;
 
+  /* ALTER does not move stored values, so a value already in OOS stays there after its column gains FORCE_INLINE.
+   * Reject the ALTER if any existing row would no longer fit in a page under FORCE_INLINE; otherwise every later
+   * UPDATE of that row, and loading its unloaded data, would fail. A row update already rewrites rows under the
+   * new policy. */
+  if (!is_srv_update_needed && attr_chg_prop.name_space == ID_ATTRIBUTE
+      && is_att_prop_set (attr_chg_prop.p[P_OOS_FORCE_INLINE], ATT_CHG_PROPERTY_GAINED))
+    {
+      if (has_partitions)
+	{
+	  for (i = 0; i < user_count && error == NO_ERROR; i++)
+	    {
+	      error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), attr_chg_prop.att_id, true);
+	    }
+	}
+      else
+	{
+	  error = do_run_upgrade_instances_domain (parser, &(class_mop->oid_info.oid), attr_chg_prop.att_id, true);
+	}
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   if (attr_chg_prop.constr_info != NULL)
     {
       SM_CONSTRAINT_INFO *saved_constr = NULL;
@@ -11099,7 +11174,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 
 	      for (i = 0; i < user_count; i++)
 		{
-		  error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), att_id);
+		  error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), att_id, false);
 		  if (error != NO_ERROR)
 		    {
 		      goto exit;
@@ -11108,7 +11183,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 	    }
 	  else
 	    {
-	      error = do_run_upgrade_instances_domain (parser, &class_oid, att_id);
+	      error = do_run_upgrade_instances_domain (parser, &class_oid, att_id, false);
 	      if (error != NO_ERROR)
 		{
 		  goto exit;
@@ -11971,26 +12046,19 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       found_att->flags &= ~(SM_ATTFLAG_INVISIBLE_COLUMN);
     }
 
-  /* add or drop STORAGE PREFER_INLINE option */
-  if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_GAINED))
+  for (size_t policy = 0; policy < OOS_POLICY_FLAG_COUNT; policy++)
     {
-      found_att->flags &= ~(SM_ATTFLAG_OOS_FORCE_OUTLINE);
-      found_att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
-    }
-  else if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_LOST))
-    {
-      found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
-    }
+      const int prop = attr_chg_prop->p[oos_Policy_flags[policy].prop];
+      const int flag = oos_Policy_flags[policy].flag;
 
-  /* add or drop STORAGE FORCE_OUTLINE option */
-  if (is_att_prop_set (attr_chg_prop->p[P_OOS_FORCE_OUTLINE], ATT_CHG_PROPERTY_GAINED))
-    {
-      found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
-      found_att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
-    }
-  else if (is_att_prop_set (attr_chg_prop->p[P_OOS_FORCE_OUTLINE], ATT_CHG_PROPERTY_LOST))
-    {
-      found_att->flags &= ~(SM_ATTFLAG_OOS_FORCE_OUTLINE);
+      if (is_att_prop_set (prop, ATT_CHG_PROPERTY_GAINED))
+	{
+	  found_att->flags = (found_att->flags & ~SM_ATTFLAG_OOS_STORAGE_MASK) | flag;
+	}
+      else if (is_att_prop_set (prop, ATT_CHG_PROPERTY_LOST))
+	{
+	  found_att->flags &= ~flag;
+	}
     }
 
   /* delete or (re-)create auto_increment attribute's serial object */
@@ -12406,18 +12474,6 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET,
 				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE);
 
-  /* STORAGE PREFER_INLINE: lost when the new definition sets another STORAGE option */
-  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_PREFER_INLINE],
-				   (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE) != 0,
-				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
-				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE);
-
-  /* STORAGE FORCE_OUTLINE: lost when the new definition sets another STORAGE option */
-  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_FORCE_OUTLINE],
-				   (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) != 0,
-				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
-				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE);
-
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)
     {
@@ -12673,28 +12729,27 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       return (er_errid ());
     }
 
-  error = do_validate_oos_storage_setting (parser, ctemplate, attr_def, attr_chg_properties->new_name_space,
-					   attr_db_domain);
-  if (error != NO_ERROR)
-    {
-      tp_domain_free (attr_db_domain);
-      return error;
-    }
+  {
+    int oos_flag = 0;
+    const bool keeps_current_policy = attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      && do_is_oos_storage_eligible_attribute (ctemplate, attr_chg_properties->new_name_space, attr_db_domain);
 
-  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
-      && !do_is_oos_storage_eligible_attribute (ctemplate, attr_chg_properties->new_name_space, attr_db_domain))
-    {
-      if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
-	{
-	  attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
-	  attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
-	}
-      if (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
-	{
-	  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
-	  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
-	}
-    }
+    error = do_resolve_oos_storage_flag (parser, ctemplate, attr_def, attr_chg_properties->new_name_space,
+					 attr_db_domain, &oos_flag);
+    if (error != NO_ERROR)
+      {
+	tp_domain_free (attr_db_domain);
+	return error;
+      }
+
+    for (size_t policy = 0; policy < OOS_POLICY_FLAG_COUNT; policy++)
+      {
+	const int flag = oos_Policy_flags[policy].flag;
+
+	build_attr_flag_change_property (&attr_chg_properties->p[oos_Policy_flags[policy].prop],
+					 (att->flags & flag) != 0, keeps_current_policy, oos_flag == flag);
+      }
+  }
 
   attr_chg_properties->p[P_TYPE] = 0;
   attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
@@ -15020,9 +15075,10 @@ end:
  *  parser(in):
  *  p_class_oid(in): class OID
  *  att_id(in): constraint list
+ *  check_only(in): check that every instance fits the new schema, without rewriting it
  */
 static int
-do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id)
+do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id, bool check_only)
 {
   int error = NO_ERROR;
 
@@ -15030,7 +15086,7 @@ do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int
   assert (p_class_oid != NULL);
   assert (att_id >= 0);
 
-  error = locator_upgrade_instances_domain (p_class_oid, att_id);
+  error = locator_upgrade_instances_domain (p_class_oid, att_id, check_only);
 
   return error;
 

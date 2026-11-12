@@ -10734,15 +10734,16 @@ log_get_mvcc_snapshot (void)
  * return : NO_ERROR if all OK, error status otherwise
  * class_oid(in) : class whose instances must be upgraded
  * attribute_id(in) : id attribute which must be upgraded
+ * check_only(in) : only check that every instance fits the latest representation
  *
  * Note: Used on ALTER CHANGE (with type change syntax) context
  */
 int
-locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
+locator_upgrade_instances_domain (OID * class_oid, int attribute_id, bool check_only)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED, req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE * 2) a_request;
   char *request, *reply, *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
 
@@ -10757,6 +10758,7 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
   ptr = request;
   ptr = or_pack_oid (ptr, class_oid);
   ptr = or_pack_int (ptr, attribute_id);
+  ptr = or_pack_int (ptr, check_only ? 1 : 0);
 
   req_error =
     net_client_request (NET_SERVER_LC_UPGRADE_INSTANCES_DOMAIN, request,
@@ -10772,7 +10774,7 @@ locator_upgrade_instances_domain (OID * class_oid, int attribute_id)
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error = xlocator_upgrade_instances_domain (thread_p, class_oid, attribute_id);
+  error = xlocator_upgrade_instances_domain (thread_p, class_oid, attribute_id, check_only);
 
   exit_server (*thread_p);
   return error;

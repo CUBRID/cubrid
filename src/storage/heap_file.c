@@ -13850,6 +13850,7 @@ try
 	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
 	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
 	  if ((oos_plan->empty () || !(*oos_plan)[i].selected) && !attr_info->values[i].last_attrepr->is_fixed
+	      && attr_info->values[i].last_attrepr->oos_storage != OR_ATTRIBUTE_OOS_STORAGE_FORCE_INLINE
 	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      /* *INDENT-OFF* */
@@ -14931,12 +14932,12 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       inline_size_after_oos += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
     }
 
-  /* OOS + bigone coexistence is forbidden. heap_attrinfo_determine_disk_layout already demoted every
-   * OOS-eligible variable column. If the inline record still exceeds the maximum slotted record length,
-   * it would have to be stored as a multipage (REC_BIGONE) overflow record while also carrying OOS OIDs.
-   * That combination is unsupported, so reject it here with a user-visible error -- before writing any OOS
-   * record -- instead of silently building it and tripping debug-only asserts on the read path. */
-  if (unlikely (has_oos && heap_is_big_length ((int) inline_size_after_oos)))
+  /* Reject a non-system-class row that would need REC_BIGONE. heap_attrinfo_determine_disk_layout already demoted
+   * every OOS-eligible variable column, so the check runs before any OOS record is written. The size includes the
+   * full MVCC header, so a later header change cannot turn an accepted row into REC_BIGONE. Only writers that lay
+   * out rows here are covered; the heap layer does not check, and system classes keep REC_BIGONE for catalog rows. */
+  if (unlikely (heap_is_big_length ((int) inline_size_after_oos)
+		&& (has_oos || !oid_is_system_class (&attr_info->class_oid))))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2, (int) inline_size_after_oos,
 	      heap_Maxslotted_reclength);

@@ -263,7 +263,7 @@ extern int xboot_heap_compact (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int xboot_compact_start (THREAD_ENTRY * thread_p);
 extern int xboot_compact_stop (THREAD_ENTRY * thread_p);
 
-extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id);
+extern int xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id, bool check_only);
 
 extern int xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id, char *secret);
 extern int xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char *secret);

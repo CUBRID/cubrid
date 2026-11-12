@@ -261,18 +261,22 @@ TEST_F (OosWorkspaceTest, StandaloneLoaderStoresOos)
   check ("t_load", "v=X'" + payload + "'", 1, 1);
 }
 
-TEST_F (OosWorkspaceTest, LoaderRejectsOosBigoneButKeepsOrdinaryBigone)
+TEST_F (OosWorkspaceTest, LoaderRejectsEveryBigoneUserRecord)
 {
   sql ("CREATE TABLE t_guard(a BIT(140000), b BIT VARYING); "
        "CREATE TABLE t_plain(a BIT(140000)); COMMIT;\n");
   load ("%class t_guard (a b)\nB'1' X'" + payload + "'\n", {}, "maximum record size");
-  const auto output = sql ("SELECT CASE WHEN COUNT(*)=0 THEN 'VALUE_OK' ELSE 'VALUE_BAD' END AS verdict "
-			   "FROM t_guard;\nSHOW HEAP OOS OF t_guard;\n");
-  EXPECT_NE (output.find ("'VALUE_OK'"), std::string::npos) << output;
-  EXPECT_EQ (output.find ("'VALUE_BAD'"), std::string::npos) << output;
-  expect_chunks (output, {0});
-  load ("%class t_plain (a)\nB'1'\n");
-  check ("t_plain", "a=CAST(B'1' AS BIT(140000))", 1, 0);
+  load ("%class t_plain (a)\nB'1'\n", {}, "maximum record size");
+  for (const std::string table :
+       {"t_guard", "t_plain"
+       })
+    {
+      const auto output = sql ("SELECT CASE WHEN COUNT(*)=0 THEN 'VALUE_OK' ELSE 'VALUE_BAD' END AS verdict "
+			       "FROM " + table + ";\nSHOW HEAP OOS OF " + table + ";\n");
+      EXPECT_NE (output.find ("'VALUE_OK'"), std::string::npos) << output;
+      EXPECT_EQ (output.find ("'VALUE_BAD'"), std::string::npos) << output;
+      expect_chunks (output, {0});
+    }
 }
 
 TEST_F (OosWorkspaceTest, WorkspaceInsertUsesReservedOid)
