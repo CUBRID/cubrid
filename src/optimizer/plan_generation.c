@@ -6769,15 +6769,16 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
       bitset_union (&final_segs_set, &QO_TERM_SEGS (term));
     }
 
-  /* final_info */
+  /* final_info: the parent list scan builds its val_list from names only (pt_clone_val_list),
+   * so carry a function-index expression's argument columns, not the expression itself */
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &final_segs_set);
-  name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
+  name_list = make_namelist_from_bitset (env, &temp_segs_set, false);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &final_segs_set);
-  name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
+  name_list = make_namelist_from_bitset (env, &temp_segs_set, false);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
   final_info->name_count = pt_length_of_list (final_info->name_list);
