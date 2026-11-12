@@ -158,11 +158,15 @@ class ServerModeEnv : public ::testing::Environment
     {
       printf ("##### Stopping SERVER_MODE Server #####\n");
 
-      /* Release the worker transaction assigned in SetUp before shutdown. */
+      /* Release the worker transaction assigned in SetUp before shutdown. The tests insert chains and
+       * reclaim them in one transaction; a reclaim is final and presumes the insert is final too
+       * (ADR-0008), so the transaction ends with a commit, not with an abort that would undo the inserts. The
+       * test-owned OOS files are removed first, so the commit leaves no orphan file for the next binary. */
       int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
       if (tran_index > LOG_SYSTEM_TRAN_INDEX)
 	{
-	  (void) log_abort (thread_p, tran_index);
+	  oos_test_remove_created_files (thread_p);
+	  (void) log_commit (thread_p, tran_index, false);
 	  logtb_release_tran_index (thread_p, tran_index);
 	}
 

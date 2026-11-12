@@ -226,6 +226,8 @@ static int log_abort_by_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 #endif /* SERVER_MODE */
 static LOG_LSA *log_get_savepoint_lsa (THREAD_ENTRY * thread_p, const char *savept_name, LOG_TDES * tdes,
 				       LOG_LSA * savept_lsa);
+static int log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+					    int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid);
 static bool log_can_skip_undo_logging (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const LOG_TDES * tdes,
 				       LOG_DATA_ADDR * addr);
 static bool log_can_skip_redo_logging (LOG_RCVINDEX rcvindex, const LOG_TDES * ignore_tdes, LOG_DATA_ADDR * addr);
@@ -2313,6 +2315,49 @@ void
 log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int num_crumbs,
 			const LOG_CRUMB * crumbs)
 {
+  (void) log_append_undo_crumbs_internal (thread_p, rcvindex, addr, num_crumbs, crumbs, MVCCID_NULL);
+}
+
+/*
+ * log_append_mvcc_undo_data_with_mvccid - log an MVCC undo record under a given MVCCID
+ *
+ * return: NO_ERROR, or an error code when the record could not be appended
+ *
+ *   rcvindex(in): Index to recovery function; an MVCC operation
+ *   addr(in): Address of data; vfid names the file vacuum checks for a drop
+ *   length(in): Length of undo data
+ *   data(in): Undo data
+ *   mvccid(in): MVCCID the record carries
+ *
+ * NOTE: For a record appended after its transaction completed its MVCC info, e.g. by a commit postpone.
+ *       Vacuum reads the record once mvccid precedes every active snapshot (RVOOS_NOTIFY_VACUUM).
+ */
+int
+log_append_mvcc_undo_data_with_mvccid (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				       int length, const void *data, MVCCID mvccid)
+{
+  LOG_CRUMB undo_crumb;
+
+  assert (LOG_IS_MVCC_OPERATION (rcvindex));
+  assert (MVCCID_IS_VALID (mvccid));
+  assert (0 <= length);
+  assert (0 == length || data != NULL);
+
+  undo_crumb.data = data;
+  undo_crumb.length = length;
+
+  return log_append_undo_crumbs_internal (thread_p, rcvindex, addr, 1, &undo_crumb, mvccid);
+}
+
+/*
+ * log_append_undo_crumbs_internal - append an undo record; see log_append_undo_crumbs
+ *
+ * return: NO_ERROR, also when no record is needed, or an error code when the record could not be appended
+ */
+static int
+log_append_undo_crumbs_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr,
+				 int num_crumbs, const LOG_CRUMB * crumbs, MVCCID explicit_mvccid)
+{
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
   int error_code = NO_ERROR;
@@ -2324,7 +2369,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
   if (RV_fun[rcvindex].undofun == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2336,7 +2381,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	{
 	  log_skip_logging (thread_p, addr);
 	}
-      return;
+      return NO_ERROR;
     }
 
   /* Find transaction descriptor for current logging transaction */
@@ -2346,7 +2391,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
-      return;
+      return error_code;
     }
 
   /*
@@ -2359,7 +2404,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
        * We do not log anything when the transaction is unactive and it is not
        * in the process of aborting.
        */
-      return;
+      return NO_ERROR;
     }
 
   /*
@@ -2369,18 +2414,20 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
     {
       /* undo logging is ignored at this point */
       ;				/* NO-OP */
-      return;
+      return NO_ERROR;
     }
 
   /*
    * NOW do the UNDO ...
    */
 
-  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL);
+  node = prior_lsa_alloc_and_copy_crumbs (thread_p, rectype, rcvindex, addr, num_crumbs, crumbs, 0, NULL,
+					  explicit_mvccid);
   if (node == NULL)
     {
       assert (false);
-      return;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
   /* 
@@ -2394,7 +2441,8 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
 	      assert (false);
-	      return;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 	}
     }
@@ -2406,13 +2454,16 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
 	  assert (false);
-	  return;
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
 	}
     }
   if (addr->pgptr != NULL && LOG_IS_MVCC_OPERATION (rcvindex))
     {
       pgbuf_notify_vacuum_follows (thread_p, addr->pgptr);
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -2795,7 +2846,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
 /*
  * log_append_postpone - Log postpone after data, for redo
  *
- * return: nothing
+ * return: NO_ERROR, or an error code when the postpone record could not be appended
  *
  *   rcvindex(in): Index to recovery function
  *   addr(in): Index to recovery function
@@ -2807,7 +2858,7 @@ log_append_dboutside_redo (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, int l
  *              This distinction is needed due to log sequence number in the
  *              log and the data pages which are used to avoid redos.
  */
-void
+int
 log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_ADDR * addr, int length, const void *data)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
@@ -2827,12 +2878,12 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
        */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_POSTPONE_INTERFACE, 0);
       error_code = ER_LOG_POSTPONE_INTERFACE;
-      return;
+      return error_code;
     }
   if (RV_fun[rcvindex].redofun == NULL)
     {
       assert (false);
-      return;
+      return ER_FAILED;
     }
 #endif /* CUBRID_DEBUG */
 
@@ -2852,7 +2903,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 
       LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED (thread_p);
       log_skip_logging (thread_p, addr);
-      return;
+      return NO_ERROR;
     }
 
   /* Find transaction descriptor for current logging transaction */
@@ -2862,7 +2913,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
       error_code = ER_LOG_UNKNOWN_TRANINDEX;
-      return;
+      return error_code;
     }
 
   skipredo = log_can_skip_redo_logging (rcvindex, tdes, addr);
@@ -2884,7 +2935,7 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 	  log_append_redo_data (thread_p, rcvindex, addr, length, data);
 	}
 
-      return;
+      return NO_ERROR;
     }
 
   /*
@@ -2902,7 +2953,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_POSTPONE, rcvindex, addr, 0, NULL, length, (char *) data);
   if (node == NULL)
     {
-      return;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
     }
 
   if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
@@ -2912,7 +2964,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
 	      assert (false);
-	      return;
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
 	    }
 	}
     }
@@ -2941,6 +2994,8 @@ log_append_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA_AD
    * Note: The lsa of the page is not set for postpone log records since
    * the change has not been done (has been postpone) to the page.
    */
+
+  return NO_ERROR;
 }
 
 /*
@@ -7566,7 +7621,7 @@ log_rollback_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_
 	  rv_err = (*RV_fun[rcvindex].undofun) (thread_p, rcv);
 	  assert (rv_err == NO_ERROR);
 	}
-      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM)
+      else if (rcvindex == RVBT_MVCC_NOTIFY_VACUUM || rcvindex == RVES_NOTIFY_VACUUM || rcvindex == RVOOS_NOTIFY_VACUUM)
 	{
 	  /* do nothing */
 	}
@@ -8391,7 +8446,10 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  nxtop_count--;
 	  nxtop_range = &(nxtop_stack[nxtop_count]);
 
-	  if (LSA_LT (&start_seek_lsa, &(nxtop_range->start_lsa)))
+	  /* The range starts at the system operation's last parent, the record just before the operation, which
+	   * belongs to the outer level. A postpone at that LSA, such as one appended right before the system
+	   * operation started, must run here, so equality is not inside the range. */
+	  if (LSA_LE (&start_seek_lsa, &(nxtop_range->start_lsa)))
 	    {
 	      end_seek_lsa = &(nxtop_range->start_lsa);
 	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));

@@ -61,12 +61,15 @@
 #include <dirent.h>
 #include <limits.h>
 #include <string>
+#include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
 
 #include "environment_variable.h"
+#include "oos_file.hpp"
 #include "test_oos_error_log.hpp"
 #include "test_oos_sql_common.hpp"
 
@@ -287,6 +290,89 @@ namespace
     return WEXITSTATUS (status);
   }
 
+  /* Live OOS chunk records of the table's OOS file, or -1. */
+  int
+  oos_live_records (const char *table)
+  {
+    VFID oos_vfid;
+    if (!get_oos_vfid_for_table (table, &oos_vfid))
+      {
+	return -1;
+      }
+    OOS_STATS_INFO info;
+    if (oos_get_stats_by_vfid (thread_get_thread_entry_info (), oos_vfid, &info) != NO_ERROR)
+      {
+	return -1;
+      }
+    return info.num_recs;
+  }
+
+  /* A fatal error always dumps the call stack, and the dump runs one addr2line per frame. Against a
+   * debug build each run takes about half a second, so one fail-stop spends about 20 s symbolizing a
+   * stack nobody reads. Put an addr2line that fails at once first in PATH; the dump then prints raw
+   * addresses and the process stops through the same path. */
+  void
+  skip_call_stack_symbolization ()
+  {
+    char cwd[PATH_MAX];
+    if (getcwd (cwd, sizeof (cwd)) == NULL)
+      {
+	return;
+      }
+    const std::string dir = std::string (cwd) + "/crash_recovery_no_addr2line";
+    const std::string shim = dir + "/addr2line";
+    (void) mkdir (dir.c_str (), 0755);
+    FILE *fp = std::fopen (shim.c_str (), "w");
+    if (fp == NULL)
+      {
+	return;
+      }
+    std::fputs ("#!/bin/sh\nexit 1\n", fp);
+    std::fclose (fp);
+    (void) chmod (shim.c_str (), 0755);
+    const char *path = getenv ("PATH");
+    (void) setenv ("PATH", (dir + ":" + (path != NULL ? path : "")).c_str (), 1);
+  }
+
+  /* Runs body in a child process that boots the database with the reclaimer armed to fail after
+   * n_chunk_deletes chunk deletes, and returns how the child ended: the exit code, or 128 + the signal.
+   * A failed reclaim of a committed intent stops the process (fail-stop): abort () in a debug build,
+   * exit (EXIT_FAILURE) in a release build. */
+  template <typename Body>
+  int
+  run_child_with_failing_reclaim (const char *program, int n_chunk_deletes, Body body)
+  {
+    fflush (NULL);
+    const pid_t pid = fork ();
+    if (pid == 0)
+      {
+	struct rlimit no_core = { 0, 0 };
+	(void) setrlimit (RLIMIT_CORE, &no_core);
+	skip_call_stack_symbolization ();
+	oos_test_fail_reclaim_after_chunk_deletes (n_chunk_deletes);
+	if (boot (program) != NO_ERROR)
+	  {
+	    _exit (11);
+	  }
+	body ();
+	_exit (0);
+      }
+    if (pid < 0)
+      {
+	return -1;
+      }
+    int status = -1;
+    if (waitpid (pid, &status, 0) != pid)
+      {
+	return -1;
+      }
+    if (WIFSIGNALED (status))
+      {
+	return 128 + WTERMSIG (status);
+      }
+    return WIFEXITED (status) ? WEXITSTATUS (status) : -1;
+  }
+
   void
   expect_every_row_readable (const char *table)
   {
@@ -391,6 +477,61 @@ TEST_F (OosCrashRecoveryTest, CommittedValuesSurviveCrashRedoThroughTheirPersist
       << "the redo phase had less to replay than this load must have logged";
 
   expect_every_row_readable (table);
+}
+
+/* ADR-0008 fail-stop policy: a committed reclaim that fails stops the server before the postpone is marked
+ * done, and restart recovery reruns the durable postpone. SA_MODE DML is non-MVCC, so DELETE records each
+ * row's chains as a reclaim intent that its commit runs.
+ *
+ * 1. A child deletes every row and commits; the reclaim fails after some chunk deletes and stops it.
+ * 2. A second child boots; recovery reruns the postpones, and the reclaim fails again part way and stops
+ *    it, the re-failure during recovery.
+ * 3. This process boots; recovery reruns the postpones again and finishes them: no row, no chunk. */
+TEST_F (OosCrashRecoveryTest, FailedCommitReclaimStopsAndRestartRecoveryFinishesIt)
+{
+  const char *table = "oos_fail_stop_reclaim";
+
+  boot_and_record ("fail_stop_preparer");
+  exec_sql (("DROP TABLE IF EXISTS " + std::string (table)).c_str ());
+  db_commit_transaction ();
+  ASSERT_EQ (load_rows (table), NO_ERROR);
+  const int loaded_records = oos_live_records (table);
+  ASSERT_GT (loaded_records, NUM_ROWS) << "vc1 must span several chunks";
+  shutdown ();
+  forget_database_error_logs ();
+
+  const int committing = run_child_with_failing_reclaim ("fail_stop_committer", 3, [table] ()
+  {
+    if (exec_sql (("DELETE FROM " + std::string (table)).c_str ()) < 0)
+      {
+	_exit (12);
+      }
+    (void) db_commit_transaction ();
+    /* Reached only when the failed reclaim did not stop the process. */
+    _exit (13);
+  });
+  ASSERT_NE (committing, 0);
+  ASSERT_NE (committing, 11) << "the committer could not boot";
+  ASSERT_NE (committing, 12) << "the DELETE failed before its commit";
+  ASSERT_NE (committing, 13) << "the failed reclaim was reported done instead of stopping the process";
+
+  const int recovering = run_child_with_failing_reclaim ("fail_stop_recoverer", 2, [] ()
+  {
+    /* Recovery finished every postpone without reaching the armed failure. */
+    _exit (21);
+  });
+  ASSERT_NE (recovering, 21) << "restart recovery had no reclaim left to rerun";
+  ASSERT_NE (recovering, 0);
+  ASSERT_NE (recovering, 11) << "boot failed without reaching the reclaim rerun";
+
+  boot_and_record ("fail_stop_reader");
+  const std::string logged = database_error_log_text ();
+  EXPECT_TRUE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_STARTED));
+
+  int rows = -1;
+  ASSERT_EQ (fetch_single_int (("SELECT COUNT(*) FROM " + std::string (table)).c_str (), &rows), NO_ERROR);
+  EXPECT_EQ (rows, 0) << "the DELETE committed before its reclaim failed";
+  EXPECT_EQ (oos_live_records (table), 0) << "restart recovery left chunks of the committed reclaim";
 }
 
 int
