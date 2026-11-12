@@ -446,7 +446,8 @@ static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tr
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_session_state_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_serial_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static int qo_query_serial_level (QO_ENV * env);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
@@ -6441,15 +6442,56 @@ qo_parallel_cost_divisor (QO_PLAN * join)
 }
 
 /*
- * qo_skip_subquery () - parser_walk_tree pre-function that does not descend into a subquery
- *   (a subquery is planned with its own environment)
+ * qo_check_session_state_expr () - parser_walk_tree callback looking for a session variable
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
  */
 static PT_NODE *
-qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+qo_check_session_state_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
+  bool *found = (bool *) arg;
+
+  if (tree != NULL && tree->node_type == PT_EXPR)
+    {
+      switch (tree->info.expr.op)
+	{
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *found = true;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_check_serial_subquery () - parser_walk_tree pre-function that does not descend into a subquery
+ *   but looks for a session variable anywhere in it
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: the executor keeps the scan serial for these in a subquery (SESSION_STATE_ACCESS,
+ *	 px_scan_checker.cpp), not for the other expressions of qo_check_serial_block_expr ().
+ */
+static PT_NODE *
+qo_check_serial_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
   if (tree != NULL && PT_IS_QUERY (tree))
     {
-      *continue_walk = PT_LIST_WALK;
+      (void) parser_walk_leaves (parser, tree, NULL, NULL, qo_check_session_state_expr, found);
+      *continue_walk = *found ? PT_STOP_WALK : PT_LIST_WALK;
     }
 
   return tree;
@@ -6572,10 +6614,13 @@ qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void 
  *	 - a select list or WHERE clause holding one of the expressions of
  *	   qo_check_serial_block_expr () (T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE, T_NEXT_VALUE,
  *	   T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), a WHERE clause holding a method or a
- *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression.
+ *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression;
+ *	 - a subquery of the select list or WHERE clause holding a session variable anywhere
+ *	   (SESSION_STATE_ACCESS).
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
- *	 select list, a derived table inside the recursive part of a CTE (planned with its own
- *	 environment before the part), an ALL superclass scan, a system catalog scan.
+ *	 select list, a session variable in a subquery of another clause (HAVING, GROUP BY,
+ *	 ORDER BY, a join condition), a derived table inside the recursive part of a CTE (planned
+ *	 with its own environment before the part), an ALL superclass scan, a system catalog scan.
  */
 static int
 qo_query_serial_level (QO_ENV * env)
@@ -6628,12 +6673,12 @@ qo_query_serial_level (QO_ENV * env)
 
 	  if (!found)
 	    {
-	      (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_skip_subquery, NULL,
+	      (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_check_serial_subquery, &found,
 				       qo_check_serial_select_list_expr, &found);
 	    }
 	  if (!found)
 	    {
-	      (void) parser_walk_tree (parser, tree->info.query.q.select.where, qo_skip_subquery, NULL,
+	      (void) parser_walk_tree (parser, tree->info.query.q.select.where, qo_check_serial_subquery, &found,
 				       qo_check_serial_block_expr, &found);
 	    }
 
