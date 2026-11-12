@@ -296,6 +296,17 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
+
+  /* a stored procedure or method anywhere in the statement, whichever generator built it: its scans read no Sidecar
+   * record lazily (decision E23) */
+  if (unpack_info_p->has_routine_call)
+    {
+      XASL_SET_FLAG (xasl, XASL_HAS_ROUTINE_CALL);
+    }
+  else
+    {
+      XASL_CLEAR_FLAG (xasl, XASL_HAS_ROUTINE_CALL);
+    }
 end:
   /* the visited-pointer blocks live in the unpack info: release them before the block itself */
   stx_free_visited_ptrs (thread_p);
@@ -6052,6 +6063,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
     case TARGET_METHOD:
       ptr = stx_build_method_spec_type (thread_p, ptr, &ACCESS_SPEC_METHOD_SPEC (access_spec));
+      get_xasl_unpack_info_ptr (thread_p)->has_routine_call = true;
       break;
 
     case TARGET_JSON_TABLE:
@@ -7297,6 +7309,7 @@ stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABL
 	      goto error;
 	    }
 	}
+      xasl_unpack_info_p->has_routine_call = true;
       break;
 
     case TYPE_ATTR_ID:

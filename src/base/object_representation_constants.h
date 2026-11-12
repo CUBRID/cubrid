@@ -170,6 +170,14 @@
 /* The record have an LSA with the location of the previous version */
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
+/* The record keeps some variable values in its heap's Sidecar store: their slots hold refs and a trailer at the
+ * record end names those slots (base/sidecar_format.h). The header size does not depend on it. */
+#define OR_MVCC_FLAG_HAS_SIDECAR	  0x08
+
+/* The flags that say which version fields the header holds, the only ones a header rewrite may set or clear */
+#define OR_MVCC_FLAG_VERSION_MASK \
+  (OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_PREV_VERSION)
+
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
 /* MIDXKEY HEADER LAYOUT */

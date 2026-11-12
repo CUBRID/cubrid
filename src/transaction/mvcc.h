@@ -75,6 +75,8 @@ struct mvcc_rec_header
 #define MVCC_GET_FLAG(header) \
   ((header)->mvcc_flag)
 
+/* copies a whole flag byte; only for a flag read back from a logged header. A header rewrite uses
+ * MVCC_SET_VERSION_FLAG_BITS or MVCC_CLEAR_VERSION_FLAG_BITS, which keep OR_MVCC_FLAG_HAS_SIDECAR. */
 #define MVCC_SET_FLAG(header, flag) \
   ((header)->mvcc_flag = (flag))
 
@@ -99,8 +101,12 @@ struct mvcc_rec_header
 #define MVCC_SET_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag |= (flag))
 
-#define MVCC_CLEAR_ALL_FLAG_BITS(rec_header_p) \
-  (MVCC_CLEAR_FLAG_BITS (rec_header_p, OR_MVCC_FLAG_MASK))
+#define MVCC_SET_VERSION_FLAG_BITS(rec_header_p, flags) \
+  ((rec_header_p)->mvcc_flag = \
+   (char) (((rec_header_p)->mvcc_flag & ~OR_MVCC_FLAG_VERSION_MASK) | ((flags) & OR_MVCC_FLAG_VERSION_MASK)))
+
+#define MVCC_CLEAR_VERSION_FLAG_BITS(rec_header_p) \
+  (MVCC_CLEAR_FLAG_BITS (rec_header_p, OR_MVCC_FLAG_VERSION_MASK))
 
 #define MVCC_CLEAR_FLAG_BITS(rec_header_p, flag) \
   ((rec_header_p)->mvcc_flag &= ~(flag))

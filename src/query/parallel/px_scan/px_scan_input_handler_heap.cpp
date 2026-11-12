@@ -24,6 +24,7 @@
 #include "error_code.h"
 #include "bit.h"
 #include "heap_file.h"
+#include "sidecar.hpp"
 #include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -127,6 +128,8 @@ namespace parallel_scan
 		  {
 		    pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
 		  }
+		/* nobody fixes a hot page while holding a store page (I-7) */
+		sidecar_cursor_before_hot_fix (thread_p);
 
 		error_code = pgbuf_ordered_fix (thread_p, &m_tl_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 						&m_tl_scan_cache->page_watcher);

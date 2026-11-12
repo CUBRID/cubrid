@@ -4202,7 +4202,6 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
        * to serialize with. Shared by both entry points (the choke-point wrapper and the heap-site ensure). */
       return NO_ERROR;
     }
-
   if (lock_transaction_mvccid (thread_p, mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -4228,6 +4227,13 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
 static void
 logtb_self_lock_assigned_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
 {
+  if ((thread_p != NULL ? thread_p : thread_get_thread_entry_info ())->type == TT_LOADDB)
+    {
+      /* A load worker gets an MVCCID only to create a file, a Sidecar store heap (file_create).  It may not lock:
+       * a lock it took would belong to the session's transaction and outlive the batch transaction.  Its writes are
+       * bulk writes that stamp no INSID or DELID, so no waiter can key on this MVCCID. */
+      return;
+    }
   if (logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, mvccid) != NO_ERROR)
     {
       /* Unconditional (_er_log_debug): a silent failure here would make a later waiter-side breach undiagnosable. */
@@ -4294,6 +4300,9 @@ logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
        * assign an MVCCID -- neither may happen for boot/recovery or non-worker contexts. */
       return NO_ERROR;
     }
+
+  /* A load worker's writes are bulk writes and never need the self-lock (logtb_self_lock_assigned_mvccid). */
+  assert ((thread_p != NULL ? thread_p : thread_get_thread_entry_info ())->type != TT_LOADDB);
 
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
   MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);

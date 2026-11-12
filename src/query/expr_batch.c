@@ -77,6 +77,7 @@
 #include "language_support.h"
 #include "regu_var.hpp"
 #include "set_object.h"
+#include "sidecar_format.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "xasl.h"
@@ -4217,6 +4218,9 @@ eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	{
 	  return eb_fallback (plan, "a record of another representation");
 	}
+      /* the collector ends a chunk before a record with refs when the plan reads a variable column, whose slot may
+       * hold a ref (heap_page_collect_visible ()); its fixed columns are where they are without refs */
+      assert (!sidecar_record_has_refs (recdes) || !expr_batch_plan_reads_variable (plan));
       repid = OR_GET_MVCC_REPID (recdes->data);
       while (ix < plan->n_reprs && plan->repids[ix] != repid)
 	{
@@ -6044,6 +6048,37 @@ expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback, bool off_page)
 	  plan->fallback_why = "the batch gave up: the row path took more than half of the first pages";
 	}
     }
+}
+
+/*
+ * expr_batch_plan_reads_variable () - whether the batch's own decoders read a variable column or key
+ *   return: true when a column or a GROUP BY key of the plan is variable
+ *   plan(in): the plan
+ *
+ * Note: A slot of a variable column may hold a Sidecar ref, which the decoders would read as a value, so the page
+ *       collector keeps a record with refs out of the batch of such a plan (heap_page_collect_visible ()).  The
+ *       fixed area of a record with refs is the same as without them.
+ */
+bool
+expr_batch_plan_reads_variable (const EXPR_BATCH_PLAN * plan)
+{
+  int i;
+
+  for (i = 0; i < plan->n_cols; i++)
+    {
+      if (!plan->cols[i].is_fixed)
+	{
+	  return true;
+	}
+    }
+  for (i = 0; i < plan->n_keys; i++)
+    {
+      if (!plan->keys[i].is_fixed)
+	{
+	  return true;
+	}
+    }
+  return false;
 }
 
 bool

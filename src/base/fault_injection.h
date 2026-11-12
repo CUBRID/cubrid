@@ -93,6 +93,40 @@ typedef enum
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6 = 600003,	/* after (4),(3) before (5) enqueue to daemon */
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7 = 600004,	/* after (6) send decision, before (7) DELETE row */
 
+  /* SIDECAR (storage/sidecar.cpp): defects that only the checkdb verifier can see */
+  FI_TEST_SIDECAR_ORPHAN_STORE_RECORD = 700000,	/* each externalizing INSERT writes one store record no ref names */
+  FI_TEST_SIDECAR_DANGLING_REF = 700001,	/* each externalizing INSERT writes a ref to the wrong slot */
+  /* SIDECAR: the retry rule and the lock fallback of a committed-snapshot fetch (5.6 c) */
+  FI_TEST_SIDECAR_ABSENT_ONCE = 700002,	/* the first store read of each such fetch finds its record absent */
+  FI_TEST_SIDECAR_ABSENT_ALWAYS = 700003,	/* every store read of such a fetch finds its record absent */
+  FI_TEST_SIDECAR_FAIL_AFTER_STORE_WRITES = 700005,	/* an UPDATE or DELETE fails after its store writes and
+							 * before its hot write */
+  FI_TEST_SIDECAR_PAGE_HELD_AT_APPLY = 700006,	/* an UPDATE or DELETE that would write the store finds the
+						 * thread holding a data page, and fails as a release build does */
+  FI_TEST_SIDECAR_MISS_ROUTINE_MARK = 700007,	/* a statement that calls a routine still reads lazily, as if
+						 * the mark missed the routine (E22): the trid backstop's case */
+  /* SIDECAR: crash points of the A3 recovery test.  Each one kills the server with SIGKILL where it fires. */
+  FI_TEST_SIDECAR_KILL_AFTER_STORE_INSERT = 700008,	/* an operation wrote its new store records and no stamp
+							 * and no hot record yet */
+  FI_TEST_SIDECAR_KILL_AFTER_STAMP = 700009,	/* an UPDATE or DELETE stamped its dropped store records and
+						 * wrote no hot record yet */
+  FI_TEST_SIDECAR_KILL_AT_RELOCATE = 700010,	/* an UPDATE wrote the store with its hot pages released and
+						 * has not located its row again */
+  FI_TEST_SIDECAR_KILL_COMMIT_WINDOW = 700011,	/* a commit that saved heap space freed it and has not
+						 * flushed its commit record: it waits FI_KILL_COMMIT_WINDOW_HOLD seconds, so another
+						 * transaction can take the bytes, then kills */
+  /* SIDECAR: the retry window of the A4 MVCC test */
+  FI_TEST_SIDECAR_DELAY_LOG_RESOLVE = 700012,	/* a committed-snapshot fetch that read a version with refs from the
+						 * log releases its pages and waits FI_SIDECAR_LOG_RESOLVE_DELAY_MS before it resolves */
+  FI_TEST_SIDECAR_DELAY_VERSION_WALK = 700013,	/* a committed-snapshot walk of older versions that found one too new
+						 * waits FI_SIDECAR_LOG_RESOLVE_DELAY_MS before it reads the next one */
+  /* SIDECAR: holds of a store read of a relocated store record, for the store read model's findings.  Each one
+   * waits FI_SIDECAR_READ_HOLD seconds with no page fixed. */
+  FI_TEST_SIDECAR_READ_HOLD_AT_FORWARD = 700020,	/* the read released the home page that forwards, and has not
+							 * fixed the forward page */
+  FI_TEST_SIDECAR_READ_HOLD_AT_RECHECK = 700021,	/* the read released the forward page, and has not fixed the
+							 * home page again */
+
   /* etc .... */
 
 } FI_TEST_CODE;
@@ -105,6 +139,14 @@ typedef enum
 } FI_GROUP_CODE;
 
 #define FI_INIT_STATE 0
+
+/* seconds FI_TEST_SIDECAR_KILL_COMMIT_WINDOW waits before it kills */
+#define FI_KILL_COMMIT_WINDOW_HOLD 8
+
+/* milliseconds FI_TEST_SIDECAR_DELAY_LOG_RESOLVE waits */
+#define FI_SIDECAR_LOG_RESOLVE_DELAY_MS 200
+/* seconds each FI_TEST_SIDECAR_READ_HOLD_* waits */
+#define FI_SIDECAR_READ_HOLD 6
 
 
 typedef int (*FI_HANDLER_FUNC) (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);

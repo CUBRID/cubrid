@@ -439,6 +439,10 @@ extern void pgbuf_dump_if_any_fixed (void);
 #endif
 
 extern bool pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p);
+extern int pgbuf_count_perm_pages_fixed (THREAD_ENTRY * thread_p, PAGE_PTR except, PAGE_PTR * last_page);
+#if !defined (NDEBUG)
+extern void pgbuf_log_perm_pages_fixed (THREAD_ENTRY * thread_p, const char *who);
+#endif /* !NDEBUG */
 extern void pgbuf_ordered_set_dirty_and_free (THREAD_ENTRY * thread_p, PGBUF_WATCHER * pg_watcher);
 extern int pgbuf_get_condition_for_ordered_fix (const VPID * vpid_new_page, const VPID * vpid_fixed_page,
 						const HFID * hfid);

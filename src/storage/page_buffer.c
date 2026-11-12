@@ -77,6 +77,9 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
+/* storage/sidecar.cpp */
+extern void sidecar_cursor_release (THREAD_ENTRY * thread_p);
+
 #include "memory_wrapper.hpp"
 
 const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
@@ -2304,6 +2307,22 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   if (thread_p != NULL)
     {
       thread_p->pgbuf_fix_req_cnt++;
+    }
+
+  /* The Sidecar store cursor keeps a store page between the values a scan decodes.  Every site that can fix another
+   * permanent page while it is kept releases it first (sidecar_cursor_release ()); a missed site fails here in a debug
+   * build, and is released here in a release build (E26).  Temporary pages may be fixed with it kept. */
+  if (unlikely ((thread_p != NULL ? thread_p : thread_get_thread_entry_info ())->sidecar_cursor_page != NULL)
+      && !pgbuf_is_temporary_volume (vpid->volid))
+    {
+      /* a caller without its entry passes NULL: the cursor is kept on the real one (E28), which the rest of the fix
+       * leaves as the caller gave it */
+#if !defined (NDEBUG)
+      er_log_debug (ARG_FILE_LINE, "Sidecar: page %d|%d fixed at %s:%d (%s) while the store cursor keeps a page",
+		    vpid->volid, vpid->pageid, caller_file, caller_line, caller_func);
+      assert (false);
+#endif /* !NDEBUG */
+      sidecar_cursor_release (thread_p);
     }
 
   if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
@@ -12453,6 +12472,62 @@ pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
   return false;
 }
 
+/*
+ * pgbuf_count_perm_pages_fixed () - how many pages other than query result pages the thread holds
+ *   return: the count
+ *   except(in): a page not to count, or NULL
+ *   last_page(out): one of them, when the count is not zero; may be NULL
+ */
+int
+pgbuf_count_perm_pages_fixed (THREAD_ENTRY * thread_p, PAGE_PTR except, PAGE_PTR * last_page)
+{
+  int thrd_idx = thread_get_entry_index (thread_p);
+  PGBUF_HOLDER *holder = NULL;
+  PAGE_PTR page;
+  int count = 0;
+
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      CAST_BFPTR_TO_PGPTR (page, holder->bufptr);
+      if (holder->bufptr->iopage_buffer->iopage.prv.ptype != PAGE_QRESULT && page != except)
+	{
+	  count++;
+	  if (last_page != NULL)
+	    {
+	      *last_page = page;
+	    }
+	}
+    }
+  return count;
+}
+
+#if !defined (NDEBUG)
+/*
+ * pgbuf_log_perm_pages_fixed () - log every page other than a query result page that the thread holds, with where
+ *				    it was fixed
+ *   return: void
+ *   who(in): what the thread was about to do
+ */
+void
+pgbuf_log_perm_pages_fixed (THREAD_ENTRY * thread_p, const char *who)
+{
+  int thrd_idx = thread_get_entry_index (thread_p);
+  PGBUF_HOLDER *holder = NULL;
+
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      const FILEIO_PAGE *iopage = &holder->bufptr->iopage_buffer->iopage;
+
+      if (iopage->prv.ptype != PAGE_QRESULT)
+	{
+	  er_log_debug (ARG_FILE_LINE, "%s holds page %d|%d of type %d, fixed %d times, at %.*s", who,
+			holder->bufptr->vpid.volid, holder->bufptr->vpid.pageid, (int) iopage->prv.ptype,
+			holder->fix_count, MIN (holder->fixed_at_size, 400), holder->fixed_at);
+	}
+    }
+}
+#endif /* !NDEBUG */
+
 #if defined (SERVER_MODE)
 /*
  * pgbuf_is_thread_high_priority () -
@@ -14192,7 +14267,9 @@ pgbuf_get_groupid_and_unfix (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAG
 
   thrd_idx = thread_get_entry_index (thread_p);
 
-  /* get class oid and hfid */
+  /* get class oid and hfid; a Sidecar store page carries its hot heap's class, so every fix of a store page names
+   * the store's HFID in its watcher and never reaches here */
+  assert (!heap_page_is_sidecar_store (thread_p, *pgptr));
   er_status = heap_get_class_oid_from_page (thread_p, *pgptr, &cls_oid);
 
   if (do_unfix == true)

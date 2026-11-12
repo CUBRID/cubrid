@@ -606,6 +606,10 @@ struct cte_proc_node
 							 * NL semi/anti inner in the scan chain: driven per outer row */
 #define XASL_PASS_THROUGH_WRAPPER	(0x1 << 29)	/* this proc takes over the list file its list scan would read, built by its last aptr (a hash join), as its own result when the join wrote this proc's out list (has_pass_through) */
 #define XASL_OUTPUT_READS_SCAN		(0x1 << 30)	/* a BUILDVALUE whose output reads a column of its scans (pt_buildvalue_output_reads_scan ()) */
+#define XASL_HAS_ROUTINE_CALL		((int) (0x1u << 31))	/* the statement calls a stored procedure or a method somewhere,
+								 * which may run nested SQL or end the transaction: its scans read
+								 * no Sidecar record lazily (storage/sidecar.cpp, decision E22).
+								 * Set by the server at unpack time only (stream_to_xasl.c). */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)

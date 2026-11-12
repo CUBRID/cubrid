@@ -63,6 +63,7 @@
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
 #include "double_write_buffer.hpp"
+#include "sidecar.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -6511,6 +6512,11 @@ disk_check (THREAD_ENTRY * thread_p, bool repair)
   DKNSECTS perm_free;
   DKNSECTS temp_free;
   int error_code = NO_ERROR;
+
+  /* A query whose list file spills to a temp file gets here from disk_reserve_sectors () while its scan keeps a
+   * Sidecar store page.  The check waits for CSECT_DISK_CHECK and fixes pages of every permanent volume, so the store
+   * page goes first (I-7). */
+  sidecar_cursor_before_hot_fix (thread_p);
 
   error_code = csect_enter (thread_p, CSECT_DISK_CHECK, INF_WAIT);
   if (error_code != NO_ERROR)

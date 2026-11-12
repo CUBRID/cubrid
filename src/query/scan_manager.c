@@ -35,6 +35,7 @@
 #include "error_manager.h"
 #include "expr_batch.h"
 #include "heap_file.h"
+#include "sidecar.hpp"
 #include "ftab_set.hpp"
 #include "fetch.h"
 #include "list_file.h"
@@ -175,6 +176,7 @@ static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, b
 /* scan_regu_key_to_index_key is declared in scan_manager.h (used by parallel index scan) */
 static int scan_get_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * s_id, DB_BIGINT * key_limit_upper,
 				  DB_BIGINT * key_limit_lower);
+static void scan_release_sidecar_cursor (THREAD_ENTRY * thread_p, const SCAN_ID * scan_id);
 static void scan_init_scan_id (SCAN_ID * scan_id, bool force_select_lock, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 			       int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
 			       val_list_node * val_list, VAL_DESCR * vd);
@@ -2621,11 +2623,33 @@ exit_on_error:
  *
  * Note: If you feel the need
  */
+/*
+ * scan_release_sidecar_cursor () - release the store page the thread's Sidecar cursor keeps, unless it is kept for
+ *				    this heap scan's next rows
+ *
+ * Note: the page is kept only while the owning heap scan fixes its own hot pages; any other scan opens, starts,
+ *	 resets or steps with other pages to fix (I-7, decision E17).  Debug builds assert in pgbuf_fix () at a site
+ *	 that misses it.
+ */
+static void
+scan_release_sidecar_cursor (THREAD_ENTRY * thread_p, const SCAN_ID * scan_id)
+{
+  if (unlikely (thread_p != NULL && thread_p->sidecar_cursor_page != NULL)
+      && (scan_id == NULL || scan_id->type != S_HEAP_SCAN
+	  || thread_p->sidecar_cursor_owner != &scan_id->s.hsid.scan_cache))
+    {
+      sidecar_cursor_release (thread_p);
+    }
+}
+
 static void
 scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATION_TYPE scan_op_type, int fixed,
 		   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list,
 		   VAL_DESCR * vd)
 {
+  /* a scan being opened fixes pages of its own */
+  scan_release_sidecar_cursor (thread_get_thread_entry_info (), NULL);
+
   scan_id->status = S_OPENED;
   scan_id->position = S_BEFORE;
   scan_id->direction = S_FORWARD;
@@ -3359,6 +3383,10 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
   int i, error;
 
   assert (scan_id->type == S_INDX_SCAN);
+
+  /* the switch fixes the partition's B+tree root and moves the heap scan cache without opening or starting the
+   * scan, which would release the store page another scan's Sidecar cursor keeps (I-7) */
+  scan_release_sidecar_cursor (thread_p, scan_id);
 
   *started = (scan_id->status == S_STARTED && isidp->scancache_inited && isidp->caches_inited);
 
@@ -4219,6 +4247,8 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   INDX_SCAN_ID *isidp = NULL;
   INDEX_NODE_SCAN_ID *insidp = NULL;
   LLIST_SCAN_ID *llsidp = NULL;
+
+  scan_release_sidecar_cursor (thread_p, scan_id);
   SET_SCAN_ID *ssidp = NULL;
   REGU_VALUES_SCAN_ID *rvsidp = NULL;
   REGU_VALUE_LIST *regu_value_list = NULL;
@@ -4272,6 +4302,12 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  hsidp->scancache_inited = true;
+	  /* the scan decodes its records through the attribute layer only; a statement that calls a routine reads
+	   * them expanded (E22) */
+	  if (!thread_get_main_thread (thread_p)->sidecar_no_lazy.load (std::memory_order_relaxed))
+	    {
+	      heap_scancache_allow_lazy_sidecar (&hsidp->scan_cache, HEAP_SIDECAR_LAZY_SCAN);
+	    }
 	}
       if (hsidp->caches_inited != true)
 	{
@@ -4370,6 +4406,12 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  goto exit_on_error;
 	}
       isidp->scancache_inited = true;
+      /* the scan decodes its records through the attribute layer only; a statement that calls a routine reads
+       * them expanded (E22) */
+      if (!thread_get_main_thread (thread_p)->sidecar_no_lazy.load (std::memory_order_relaxed))
+	{
+	  heap_scancache_allow_lazy_sidecar (&isidp->scan_cache, HEAP_SIDECAR_LAZY_INDEX_SCAN);
+	}
       if (isidp->caches_inited != true)
 	{
 	  if (isidp->range_pred.regu_list != NULL)
@@ -4554,6 +4596,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 {
   SCAN_CODE status = S_SUCCESS;
 
+  scan_release_sidecar_cursor (thread_p, s_id);
   s_id->single_fetched = false;
   s_id->null_fetched = false;
 
@@ -5398,6 +5441,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  memcpy (&old_scan_stats, &scan_id->scan_stats, sizeof (SCAN_STATS));
 	}
     }
+
+  scan_release_sidecar_cursor (thread_p, scan_id);
 
   switch (scan_id->type)
     {
@@ -8055,11 +8100,16 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
       REPR_ID unknown_repid = NULL_REPRID;
       const REPR_ID *repids;
       int n_repids = 0;
+      bool stop_at_refs;
 
       repids = expr_batch_plan_repids (hsidp->batch_plan, &n_repids);
+      /* a record with refs stays in the batch only for a plan that reads no variable column, and only for a reader
+       * that may resolve its refs later, in the attribute layer (I-6) */
+      stop_at_refs = (expr_batch_plan_reads_variable (hsidp->batch_plan)
+		      || !sidecar_scan_is_protected (thread_p, &hsidp->scan_cache));
       code =
 	heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, slot, batch->rows, batch->cap,
-				   &batch->n_rows, repids, n_repids, &unknown_repid);
+				   &batch->n_rows, repids, n_repids, &unknown_repid, stop_at_refs);
       if (code == S_ERROR)
 	{
 	  batch->n_rows = 0;
@@ -8117,6 +8167,9 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
   VPID vpid;
   int rc;
+
+  /* nobody fixes a hot page while holding a store page (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
 
   if (!hsidp->batch_started)
     {
@@ -8446,6 +8499,8 @@ scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       rec->area_size = rec->length;
       off += DB_ALIGN (rec->length, MAX_ALIGNMENT);
     }
+  /* rows with Sidecar refs among them are read from the copies through the attribute layer */
+  sidecar_batch_copied (thread_p, &hsidp->scan_cache, hsidp->batch_copy, off);
   return NO_ERROR;
 }
 

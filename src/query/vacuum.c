@@ -2373,6 +2373,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 static int
 vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 {
+  bool forward_reusable;
+
   /* Assert expected arguments. */
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
@@ -2425,7 +2427,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
-      spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
+      /* No OID names a REC_NEWHOME slot, so it is made reusable, except in a Sidecar store: a store reader may still
+       * come to this slot from a home it read before (sidecar_read_store_record_at). */
+      forward_reusable = !heap_page_is_sidecar_store (thread_p, helper->forward_page);
+      spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, forward_reusable);
 
       /* add candidate page into bestspace candidates */
       heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page);
@@ -2434,12 +2439,15 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       /* Log changes in forward page immediately. */
       vacuum_log_redoundo_vacuum_record (thread_p, helper->forward_page, helper->forward_oid.slotid, &helper->record,
-					 true);
+					 forward_reusable);
 
-      pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
-      helper->forward_page = NULL;
+      /* Keep the forward page fixed until the sysop ends. Until then, the restart undo of this sysop puts REC_NEWHOME
+       * back into the vacuumed slot, so no other transaction may take the slot or its space. */
+      pgbuf_set_dirty (thread_p, helper->forward_page, DONT_FREE);
 
       log_sysop_commit (thread_p);
+
+      pgbuf_unfix_and_init (thread_p, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 

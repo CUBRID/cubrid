@@ -1798,7 +1798,17 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1395
+#define ER_SIDECAR_BAD_REF                          -1395
+#define ER_SIDECAR_DANGLING_REF                     -1396
+#define ER_SIDECAR_NOT_SUPPORTED                    -1397
+#define ER_SIDECAR_ORPHAN_RECORD                    -1398
+#define ER_SIDECAR_STORE_INVALID                    -1399
+#define ER_SIDECAR_RESOLVE_RETRY                    -1400
+#define ER_SIDECAR_FAULT_INJECTED                   -1401
+#define ER_SIDECAR_UNEXPANDED_RECORD                -1402
+#define ER_SIDECAR_LAZY_AFTER_TRAN_END              -1403
+
+#define ER_LAST_ERROR                               -1404
 
 
 /*

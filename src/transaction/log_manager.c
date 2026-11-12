@@ -1630,6 +1630,36 @@ log_get_db_compatibility (void)
 {
   return log_Gl.hdr.db_compatibility;
 }
+
+/*
+ * log_raise_sidecar_compatibility () - raise the database to the Sidecar disk level and write the log header
+ *
+ * Note: The level is one-way.  The first Sidecar store creation calls this inside its system operation, before the
+ *       operation commits, so that a database with a store never has a log header that an older release accepts.
+ *       The caller holds no page latch.
+ */
+void
+log_raise_sidecar_compatibility (THREAD_ENTRY * thread_p)
+{
+  const float level = rel_sidecar_disk_compatible ();
+
+  if (log_Gl.hdr.db_compatibility == level)
+    {
+      return;
+    }
+
+#if defined (SERVER_MODE)
+  LOG_CS_ENTER (thread_p);
+#endif /* SERVER_MODE */
+  if (log_Gl.hdr.db_compatibility != level)
+    {
+      log_Gl.hdr.db_compatibility = level;
+      logpb_flush_header (thread_p);
+    }
+#if defined (SERVER_MODE)
+  LOG_CS_EXIT (thread_p);
+#endif /* SERVER_MODE */
+}
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined(SERVER_MODE)
@@ -5277,12 +5307,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
        * too. */
-      if (tdes->first_save_entry != NULL)
-	{
-	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
-	  tdes->first_save_entry = NULL;
-	}
-
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
 
       if (is_local_tran)
@@ -5304,6 +5328,22 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
+	  /* Free the saved spaces only after the commit record is appended. Until then, a crash makes this transaction
+	   * a loser whose undo needs those bytes. Any change that uses them is logged after this commit record, so a
+	   * crash that keeps the change keeps the commit record too. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+#if !defined (NDEBUG)
+	      {
+		int hold = FI_KILL_COMMIT_WINDOW_HOLD;
+
+		(void) FI_TEST_ARG (thread_p, FI_TEST_SIDECAR_KILL_COMMIT_WINDOW, &hold, 0);
+	      }
+#endif /* !NDEBUG */
+	    }
+
 	  if (retain_lock != true)
 	    {
 	      lock_unlock_all (thread_p);
@@ -5315,6 +5355,12 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
       else
 	{
 	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc. */
+	  /* LOG_2PC_COMMIT_DECISION is already flushed, so restart recovery commits this transaction. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+	    }
 	}
     }
   else

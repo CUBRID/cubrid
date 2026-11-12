@@ -455,7 +455,10 @@ typedef enum
   S_SUCCESS_CHN_UPTODATE,	/* only for slotted page */
   S_DOESNT_FIT,			/* used for slotted page, heap attrinfo */
   S_DOESNT_EXIST,		/* only for slotted page */
-  S_SNAPSHOT_NOT_SATISFIED
+  S_SNAPSHOT_NOT_SATISFIED,
+  S_SIDECAR_RETRY,		/* the heap fetch reads the row's current version again; never leaves it (5.6 c) */
+  S_SIDECAR_LOCK_NEEDED		/* a committed-snapshot fetch ran out of retries; xlocator_fetch () and
+				 * xlocator_fetch_all () handle it */
 } SCAN_CODE;
 
 typedef enum
@@ -975,6 +978,8 @@ typedef enum
   SHOWSTMT_TRAN_TABLES,
   SHOWSTMT_THREADS,
   SHOWSTMT_PAGE_BUFFER_STATUS,
+  SHOWSTMT_HEAP_SIDECAR,
+  SHOWSTMT_ALL_HEAP_SIDECAR,
 
   /* append the new show statement types in here */
 

@@ -81,6 +81,8 @@
 #include "px_parallel.hpp"
 #include "ftab_set.hpp"
 #include "bit.h"		/* bit64_is_set */
+#include "fault_injection.h"
+#include "sidecar.hpp"
 
 #include <set>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -222,14 +224,36 @@ struct heap_hdr_stats
     VPID pages[cubstorage::bestspace::MAX_SHARD_PAGE_COUNT];
   } bestspace;
 
-  int reserve0;			/* Nothing reserved for future */
-  int reserve1;			/* Nothing reserved for future */
-  int reserve2;			/* Nothing reserved for future */
+  /* The Sidecar link, in the bytes that were reserve0..2.  Every existing heap has zeros here, because
+   * heap_create_internal () zeroes the header and nothing wrote them, so a zero hpgid means no store. */
+  union
+  {
+    HFID store_hfid;		/* in a hot heap: its store */
+    struct
+    {
+      VFID owner_vfid;		/* in a store: the hot heap that owns it */
+      INT32 magic;		/* in a store: HEAP_SIDECAR_STORE_MAGIC, never a page id */
+    } store;
+  } sidecar;
 };
+
+/* negative, so no store_hfid.hpgid of a hot heap equals it */
+#define HEAP_SIDECAR_STORE_MAGIC ((INT32) 0xA51DECA5)
+/* A store record grows only by the 8-byte DELID.  At the 256 B minimum value a page holds at most 57 of them, and
+ * 57 x 8 = 456 B. */
+#define HEAP_SIDECAR_STORE_UNFILL_SPACE 512
+#define HEAP_SIDECAR_IS_STORE(hdr) ((hdr)->sidecar.store.magic == HEAP_SIDECAR_STORE_MAGIC)
+#define HEAP_SIDECAR_HAS_STORE(hdr) (!HEAP_SIDECAR_IS_STORE (hdr) && (hdr)->sidecar.store_hfid.hpgid > 0)
+
+static_assert (sizeof (((HEAP_HDR_STATS *) NULL)->sidecar) == 3 * sizeof (int),
+	       "the Sidecar link takes the place of reserve0..2");
 
 /* Define heap page flags. */
 #define HEAP_PAGE_FLAG_BESTSPACE		  0x00000001
 #define HEAP_PAGE_FLAG_NOT_IN_HEAP		  0x00000002
+/* A page of a Sidecar store.  Store pages carry the class OID of their hot heap, so a page's class does not name
+ * the heap that owns it; the flag does (heap_page_is_sidecar_store ()). */
+#define HEAP_PAGE_FLAG_SIDECAR_STORE		  0x00000004
 #define HEAP_PAGE_FLAG_VACUUM_STATUS_MASK	  0xC0000000
 #define HEAP_PAGE_FLAG_VACUUM_ONCE		  0x80000000
 #define HEAP_PAGE_FLAG_VACUUM_UNKNOWN		  0x40000000
@@ -248,6 +272,9 @@ struct heap_hdr_stats
 
 #define HEAP_PAGE_CLEAR_NOT_IN_HEAP(chain) \
   ((chain)->flags &= ~HEAP_PAGE_FLAG_NOT_IN_HEAP)
+
+#define HEAP_PAGE_IS_SIDECAR_STORE(chain) \
+  (((chain)->flags & HEAP_PAGE_FLAG_SIDECAR_STORE) != 0)
 
 #define HEAP_BESTSPACE_ENTRIES_SLOTID (HEAP_HEADER_AND_CHAIN_SLOTID + 1)
 
@@ -683,7 +710,8 @@ static cubstorage::bestspace *heap_find_bestspace (THREAD_ENTRY * thread_p, OID 
 STATIC_INLINE int heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
 				      bool is_newrec, PGBUF_WATCHER * page_watcher);
 
-static int heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid);
+static int heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid,
+				 const bool may_reuse_file);
 static const HFID *heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool reuse_oid);
 static bool heap_delete_all_page_records (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_PTR pgptr);
 static int heap_reinitialize_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const bool is_header_page);
@@ -742,7 +770,7 @@ static int heap_attrinfo_check (const OID * inst_oid, HEAP_CACHE_ATTRINFO * attr
 static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 					    HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, int *kept_extra);
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
 static size_t heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
@@ -770,6 +798,17 @@ static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * 
 					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
+static int heap_drop_dependent_files (THREAD_ENTRY * thread_p, const HFID * hfid);
+static PAGE_PTR heap_sidecar_fix_header (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_LATCH_MODE latch_mode,
+					 HEAP_HDR_STATS ** heap_hdr);
+static void heap_sidecar_log_link (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, HEAP_HDR_STATS * heap_hdr,
+				   const HFID * link);
+static SCAN_CODE heap_sidecar_fetch_exit (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan);
+static SCAN_CODE heap_fix_home_page_unprotected (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+#if !defined (NDEBUG)
+static void heap_sidecar_delay_log_resolve (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
+#endif /* !NDEBUG */
+static int heap_sidecar_plan (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 
 static int heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_index_info, int n_atts,
 				     int *att_ids, HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, int btid_index,
@@ -935,8 +974,9 @@ static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCAN
 static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
 						   HEAP_PREV_VERSION_WALK * walk, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
-						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
-						    int has_chn, HEAP_GET_CONTEXT * release_context);
+						    LOG_LSA * previous_version_lsa, MVCCID too_new_insid,
+						    HEAP_SCANCACHE * scan_cache, int has_chn,
+						    HEAP_GET_CONTEXT * release_context);
 static void heap_prev_version_walk_release_pages (THREAD_ENTRY * thread_p, HEAP_PREV_VERSION_WALK * walk);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
@@ -1026,6 +1066,9 @@ heap_scan_pb_latch_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_p
     {
       page_latch_mode = PGBUF_LATCH_WRITE;
     }
+
+  /* nobody fixes a hot page while holding a store page (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
 
   if (pg_watcher != NULL)
     {
@@ -2871,6 +2914,35 @@ heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
+ * heap_page_is_sidecar_store () - Check whether a heap page belongs to a Sidecar store.
+ *
+ * return	  : true if the page is a store page
+ * page_heap (in) : Heap page
+ *
+ * Note: A store page carries the class OID of its hot heap, so code that finds a page's heap through its class must
+ *       ask this first.  heap_alloc_new_pages () and heap_vpid_alloc (), which allocate the data pages of a store,
+ *       flag them, and the header page says it through its magic.  Pages of stores created before the flag existed
+ *       carry none.
+ */
+bool
+heap_page_is_sidecar_store (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
+{
+  RECDES recdes;
+
+  if (spage_get_record (thread_p, page_heap, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return false;
+    }
+
+  if (recdes.length != sizeof (HEAP_CHAIN))
+    {
+      return HEAP_SIDECAR_IS_STORE ((HEAP_HDR_STATS *) recdes.data);
+    }
+  return HEAP_PAGE_IS_SIDECAR_STORE ((HEAP_CHAIN *) recdes.data);
+}
+
+/*
  * check_supplemental_log () - check if appending supplemental log is available
  *
  * return	  : available or not
@@ -2999,7 +3071,7 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
   new_page_chain.prev_vpid = last_vpid;
   VPID_SET_NULL (&new_page_chain.next_vpid);
   new_page_chain.max_mvccid = MVCCID_NULL;
-  new_page_chain.flags = 0;
+  new_page_chain.flags = HEAP_SIDECAR_IS_STORE (heap_hdr) ? HEAP_PAGE_FLAG_SIDECAR_STORE : 0;
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   /* allocate new page and initialize it */
@@ -3372,6 +3444,16 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       /* Cannot remove heap file header page. */
       return false;
     }
+
+#if !defined (NDEBUG)
+  if (prm_get_bool_value (PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH))
+    {
+      /* test only: under this parameter xlocator_fetch_all () scans with the committed snapshot (Sidecar acceptance
+       * tests). Each call resumes the scan at the page of the last OID it returned, and with no snapshot nothing keeps
+       * vacuum from emptying that page, so no heap page is removed while the parameter is on. */
+      return false;
+    }
+#endif /* !NDEBUG */
 
   /* Use page watchers to do the ordered fix. */
   PGBUF_INIT_WATCHER (&crt_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
@@ -3777,8 +3859,12 @@ heap_manager_initialize (void)
 
   /* Initialize class OID->HFID cache */
   ret = heap_initialize_hfid_table ();
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
-  return ret;
+  return sidecar_initialize ();
 }
 
 /*
@@ -3804,6 +3890,7 @@ heap_manager_finalize (void)
     }
 
   heap_finalize_hfid_table ();
+  sidecar_finalize ();
 
   return ret;
 }
@@ -4774,7 +4861,7 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   candidate.freespace = freespace;
   candidate.volid = vpid->volid;
   candidate.pageid = vpid->pageid;
-  bestspace->push_candidates (&candidate, 1);
+  bestspace->push_freed_page (candidate);
 }
 
 /*
@@ -4800,7 +4887,8 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
  * they are allocated as needs arrives.
  */
 static int
-heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid)
+heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid,
+		      const bool may_reuse_file)
 {
   HEAP_HDR_STATS heap_hdr;	/* Heap file header */
   VPID vpid;			/* Volume and page identifiers */
@@ -4833,7 +4921,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
   memset (&des, 0, sizeof (des));
 
-  if (prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false && file_type == FILE_HEAP)
+  if (may_reuse_file && prm_get_bool_value (PRM_ID_DONT_REUSE_HEAP_FILE) == false && file_type == FILE_HEAP)
     {
       /*
        * Try to reuse an already mark deleted heap file
@@ -5006,6 +5094,9 @@ end:
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   logpb_force_flush_pages (thread_p);
+
+  /* the VFID may be that of a heap that was destroyed, whose store the Sidecar cache still names */
+  sidecar_store_forget (thread_p, &hfid->vfid);
 
   return NO_ERROR;
 
@@ -5280,6 +5371,8 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
       if (is_header_page)
 	{
 	  heap_hdr = (HEAP_HDR_STATS *) recdes.data;
+	  /* heap_drop_dependent_files () cleared the Sidecar link of the dropped heap, and a store is never reused */
+	  assert (heap_hdr->sidecar.store_hfid.hpgid == 0);
 	  COPY_OID (&(heap_hdr->class_oid), class_oid);
 
 	  heap_bestspace_clear_candidates (heap_hdr->bestspace.candidates, &heap_hdr->bestspace.num_candidates,
@@ -5456,7 +5549,7 @@ heap_scanrange_isvalid (HEAP_SCANRANGE * scan_range)
 int
 xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool reuse_oid)
 {
-  return heap_create_internal (thread_p, hfid, class_oid, reuse_oid);
+  return heap_create_internal (thread_p, hfid, class_oid, reuse_oid, true);
 }
 
 /*
@@ -5470,22 +5563,41 @@ xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool 
 int
 xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid)
 {
-  VFID vfid;
-  LOG_DATA_ADDR addr;
+  int error_code;
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = -1;
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+  error_code = heap_drop_dependent_files (thread_p, hfid);
+  if (error_code != NO_ERROR)
     {
-      file_postpone_destroy (thread_p, &vfid);
+      return error_code;
     }
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
   return NO_ERROR;
+}
+
+/*
+ * heap_drop_dependent_files () - Postpone the destroy of the files that live and die with a heap: its overflow file
+ *				  and its Sidecar store
+ *   return: error code
+ *   hfid(in): the heap being dropped
+ *
+ * Note: Both drop paths call it, xheap_destroy () and the mark-deleted branch of xheap_destroy_newly_created (), so
+ *       heap_reuse () never sees a heap with a store link.
+ */
+static int
+heap_drop_dependent_files (THREAD_ENTRY * thread_p, const HFID * hfid)
+{
+  VFID ovf_vfid;
+
+  if (heap_ovf_find_vfid (thread_p, hfid, &ovf_vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+    {
+      file_postpone_destroy (thread_p, &ovf_vfid);
+    }
+
+  return sidecar_store_drop (thread_p, hfid);
 }
 
 /*
@@ -5501,7 +5613,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 int
 xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool force)
 {
-  VFID vfid;
   FILE_TYPE file_type;
   int ret;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -5520,9 +5631,10 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_POSTPONE);
 
-  if (heap_ovf_find_vfid (thread_p, hfid, &vfid, false, PGBUF_UNCONDITIONAL_LATCH) != NULL)
+  ret = heap_drop_dependent_files (thread_p, hfid);
+  if (ret != NO_ERROR)
     {
-      file_postpone_destroy (thread_p, &vfid);
+      return ret;
     }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
@@ -6162,6 +6274,294 @@ exit:
 }
 
 /*
+ * heap_sidecar_fix_header () - Fix a heap's header page and peek its header
+ *   return: the header page, or NULL with an error set
+ *   hfid(in): the heap
+ *   latch_mode(in): the latch to fix the page with
+ *   heap_hdr(out): the header, in the page
+ */
+static PAGE_PTR
+heap_sidecar_fix_header (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_LATCH_MODE latch_mode,
+			 HEAP_HDR_STATS ** heap_hdr)
+{
+  VPID vpid;
+  RECDES recdes;
+  PAGE_PTR page;
+
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+  page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, page, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+  if (spage_get_record (thread_p, page, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      pgbuf_unfix_and_init (thread_p, page);
+      return NULL;
+    }
+  *heap_hdr = (HEAP_HDR_STATS *) recdes.data;
+  return page;
+}
+
+/*
+ * heap_sidecar_log_link () - Set a hot heap's Sidecar link, logged with RVHF_SIDECAR_LINK
+ *   addr(in): the header page and slot
+ *   heap_hdr(in/out): the header, in the page
+ *   link(in): the store, or zeros for none
+ *
+ * Note: The undo writes back the link alone.  An RVHF_STATS undo would write back the whole header, and so erase a
+ *       change another thread commits meanwhile, such as vacuum removing a page, when a DROP that cleared the link
+ *       aborts.
+ */
+static void
+heap_sidecar_log_link (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr, HEAP_HDR_STATS * heap_hdr, const HFID * link)
+{
+  HFID old_link = heap_hdr->sidecar.store_hfid;
+
+  heap_hdr->sidecar.store_hfid = *link;
+  log_append_undoredo_data (thread_p, RVHF_SIDECAR_LINK, addr, sizeof (HFID), sizeof (HFID), &old_link, link);
+  pgbuf_set_dirty (thread_p, addr->pgptr, DONT_FREE);
+}
+
+/*
+ * heap_rv_sidecar_link () - Undo or redo the Sidecar link of a heap header
+ *   return: error code
+ *   rcv(in): the header page, and the link bytes to write
+ */
+int
+heap_rv_sidecar_link (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  RECDES recdes;
+
+  assert (rcv->length == sizeof (HFID));
+  if (spage_get_record (thread_p, rcv->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  memcpy (&((HEAP_HDR_STATS *) recdes.data)->sidecar.store_hfid, rcv->data, sizeof (HFID));
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * heap_sidecar_get_store () - Read a heap's Sidecar store link
+ *   return: error code
+ *   hfid(in): the heap
+ *   store_hfid(out): its store, or NULL_HFID when it has none or is a store itself
+ *   class_oid(out): the class of the heap; may be NULL
+ *
+ * Note: Fixes only the header page, so the caller holds no data page.
+ */
+int
+heap_sidecar_get_store (THREAD_ENTRY * thread_p, const HFID * hfid, HFID * store_hfid, OID * class_oid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  PAGE_PTR page = heap_sidecar_fix_header (thread_p, hfid, PGBUF_LATCH_READ, &heap_hdr);
+
+  if (page == NULL)
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (HEAP_SIDECAR_HAS_STORE (heap_hdr))
+    {
+      *store_hfid = heap_hdr->sidecar.store_hfid;
+    }
+  else
+    {
+      HFID_SET_NULL (store_hfid);
+    }
+  if (class_oid != NULL)
+    {
+      *class_oid = heap_hdr->class_oid;
+    }
+
+  pgbuf_unfix_and_init (thread_p, page);
+  return NO_ERROR;
+}
+
+/*
+ * heap_sidecar_get_owner () - Read the back-pointer of a Sidecar store
+ *   return: error code
+ *   store_hfid(in): the store
+ *   owner_vfid(out): the hot heap that owns it, or NULL_VFID when the header is not a store's
+ */
+int
+heap_sidecar_get_owner (THREAD_ENTRY * thread_p, const HFID * store_hfid, VFID * owner_vfid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  PAGE_PTR page = heap_sidecar_fix_header (thread_p, store_hfid, PGBUF_LATCH_READ, &heap_hdr);
+
+  if (page == NULL)
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (HEAP_SIDECAR_IS_STORE (heap_hdr))
+    {
+      *owner_vfid = heap_hdr->sidecar.store.owner_vfid;
+    }
+  else
+    {
+      VFID_SET_NULL (owner_vfid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, page);
+  return NO_ERROR;
+}
+
+/*
+ * heap_sidecar_create_store () - Create the Sidecar store of a heap, unless another transaction did
+ *   return: error code
+ *   hfid(in): the hot heap
+ *   class_oid(in): its class
+ *   with_transaction(in): the store lives and dies with the current transaction, because only it can use the class
+ *   store_hfid(out): the store
+ *
+ * Note: The store is a FILE_HEAP file of the same class, so a partition gets its own.  It is created in a system
+ *       operation under the hot header's write latch, which serializes the creators of one heap.  The caller holds no
+ *       data page (I-7).  The operation commits even if the transaction aborts, since other transactions may have
+ *       stored values in it by then, unless with_transaction says that none can.  Either way it raises the database
+ *       to the Sidecar compatibility level before it ends.
+ */
+int
+heap_sidecar_create_store (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, bool with_transaction,
+			   HFID * store_hfid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  HEAP_HDR_STATS *store_hdr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  LOG_DATA_ADDR store_addr = LOG_DATA_ADDR_INITIALIZER;
+  int error_code;
+
+  assert (!pgbuf_has_perm_pages_fixed (thread_p));
+
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  addr.pgptr = heap_sidecar_fix_header (thread_p, hfid, PGBUF_LATCH_WRITE, &heap_hdr);
+  if (addr.pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  assert (!HEAP_SIDECAR_IS_STORE (heap_hdr));
+
+  if (HEAP_SIDECAR_HAS_STORE (heap_hdr))
+    {
+      /* created while this thread waited for the latch */
+      *store_hfid = heap_hdr->sidecar.store_hfid;
+      pgbuf_unfix_and_init (thread_p, addr.pgptr);
+      return NO_ERROR;
+    }
+
+  log_sysop_start (thread_p);
+  log_raise_sidecar_compatibility (thread_p);
+
+  /* never a dropped heap file: heap_reuse () would give its pages no store flag before the magic below exists */
+  error_code = heap_create_internal (thread_p, store_hfid, class_oid, false, false);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  store_addr.vfid = &store_hfid->vfid;
+  store_addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  store_addr.pgptr = heap_sidecar_fix_header (thread_p, store_hfid, PGBUF_LATCH_WRITE, &store_hdr);
+  if (store_addr.pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
+  log_append_undo_data (thread_p, RVHF_STATS, &store_addr, sizeof (*store_hdr), store_hdr);
+  store_hdr->unfill_space = HEAP_SIDECAR_STORE_UNFILL_SPACE;
+  store_hdr->sidecar.store.owner_vfid = hfid->vfid;
+  store_hdr->sidecar.store.magic = HEAP_SIDECAR_STORE_MAGIC;
+  log_append_redo_data (thread_p, RVHF_STATS, &store_addr, sizeof (*store_hdr), store_hdr);
+  pgbuf_set_dirty (thread_p, store_addr.pgptr, FREE);
+  store_addr.pgptr = NULL;
+
+  heap_sidecar_log_link (thread_p, &addr, heap_hdr, store_hfid);
+
+  if (with_transaction)
+    {
+      log_sysop_attach_to_outer (thread_p);
+    }
+  else
+    {
+      log_sysop_commit (thread_p);
+    }
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+  return NO_ERROR;
+
+error:
+  assert (error_code != NO_ERROR);
+  log_sysop_abort (thread_p);
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+  HFID_SET_NULL (store_hfid);
+  return error_code;
+}
+
+/*
+ * heap_sidecar_unlink_store () - Clear a heap's Sidecar store link
+ *   return: error code
+ *   hfid(in): the heap being dropped
+ *   store_hfid(out): the store it linked, or NULL_HFID
+ *
+ * Note: An abort restores the link.
+ */
+int
+heap_sidecar_unlink_store (THREAD_ENTRY * thread_p, const HFID * hfid, HFID * store_hfid)
+{
+  HEAP_HDR_STATS *heap_hdr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  addr.pgptr = heap_sidecar_fix_header (thread_p, hfid, PGBUF_LATCH_WRITE, &heap_hdr);
+  if (addr.pgptr == NULL)
+    {
+      int error_code;
+
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  if (HEAP_SIDECAR_HAS_STORE (heap_hdr))
+    {
+      HFID none;
+
+      *store_hfid = heap_hdr->sidecar.store_hfid;
+      memset (&none, 0, sizeof (none));
+      heap_sidecar_log_link (thread_p, &addr, heap_hdr, &none);
+    }
+  else
+    {
+      HFID_SET_NULL (store_hfid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, addr.pgptr);
+  return NO_ERROR;
+}
+
+/*
  * heap_ovf_insert () - Insert the content of a multipage object in overflow
  *   return: OID *(ovf_oid on success or NULL on failure)
  *   hfid(in): Object heap file identifier
@@ -6541,6 +6941,8 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
+  scan_cache->sidecar_kept = false;
   if (copy_to_local_cache && is_queryscan)
     {
       scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
@@ -6576,6 +6978,8 @@ exit_on_error:
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
+  scan_cache->sidecar_kept = false;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -6868,6 +7272,8 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
+  scan_cache->sidecar_kept = false;
 
   return NO_ERROR;
 }
@@ -6925,6 +7331,13 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
       scan_cache->local_cache_handle = NULL;
       VPID_SET_NULL (&scan_cache->local_cache_vpid);
       scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+      if (unlikely (scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_SCAN
+		    || scan_cache->sidecar_lazy == HEAP_SIDECAR_LAZY_INDEX_SCAN))
+	{
+	  /* the store page its decodes kept, and its lazy keep, go with the scan */
+	  sidecar_scan_end (thread_p, scan_cache);
+	}
+      scan_cache->sidecar_lazy = HEAP_SIDECAR_EXPAND;
     }
 
   HFID_SET_NULL (&scan_cache->node.hfid);
@@ -7241,6 +7654,17 @@ heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, b
   assert (context->oid_p != NULL);
 
 try_again:
+
+  if (unlikely (context->scan_cache != NULL && context->scan_cache->mvcc_snapshot != NULL
+		&& context->scan_cache->mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed))
+    {
+      /* a committed-snapshot reader holds no vacuum horizon: a home page it does not hold may be gone */
+      scan = heap_fix_home_page_unprotected (thread_p, context);
+      if (scan != S_SUCCESS)
+	{
+	  return scan;
+	}
+    }
 
   /* First make sure object home_page is fixed. */
   ret = heap_prepare_object_page (thread_p, context->oid_p, &context->home_page_watcher, context->latch_mode);
@@ -8007,6 +8431,11 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  continue;
 	}
 
+      if (scan == S_SIDECAR_LOCK_NEEDED)
+	{
+	  /* the caller reads this row again under a lock (xlocator_fetch_all ()) */
+	  *next_oid = oid;
+	}
       /* scan was not successful, stop scanning */
       break;
     }
@@ -8362,7 +8791,7 @@ heap_page_row_mvcc_header (const char *data, MVCC_REC_HEADER * header)
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
 			   HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap, int *n_rows,
-			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid)
+			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid, bool stop_at_refs)
 {
   MVCC_SNAPSHOT *snapshot = NULL;
   PAGE_PTR pgptr;
@@ -8453,24 +8882,43 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 		    && LSA_EQ (&check.prev_version_lsa, &mvcc_header.prev_version_lsa));
 	  }
 #endif
-	  if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+	  /* MVCC_IS_HEADER_ALL_VISIBLE () with OR_MVCC_FLAG_HAS_SIDECAR in its mask: an all-visible row without refs
+	   * runs no test of its own for the flag */
+	  if (MVCC_IS_FLAG_SET (&mvcc_header,
+				OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_HAS_SIDECAR)
+	      || MVCC_GET_INSID (&mvcc_header) != MVCCID_ALL_VISIBLE)
 	    {
-	      MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
-
-	      if (res == TOO_OLD_FOR_SNAPSHOT)
+	      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)) && stop_at_refs)
 		{
-		  /* deleted for this snapshot: S_SNAPSHOT_NOT_SATISFIED, the walk goes on */
-		  continue;
+		  /* its slots may hold refs, which the batch decoders of a plan that reads a variable column would read
+		   * as values: the row path resolves them, and its visibility too */
+		  is_exception = true;
 		}
-	      if (res != SNAPSHOT_SATISFIED)
+	      else if (snapshot != NULL)
 		{
-		  if (LSA_ISNULL (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header)))
+		  MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
+
+		  if (res == TOO_OLD_FOR_SNAPSHOT)
 		    {
-		      /* inserted after the snapshot, nothing older to show: the row path's S_DOESNT_EXIST */
+		      /* deleted for this snapshot: S_SNAPSHOT_NOT_SATISFIED, the walk goes on */
 		      continue;
 		    }
-		  /* its visible version is a previous one, in the log */
-		  is_exception = true;
+		  if (res != SNAPSHOT_SATISFIED)
+		    {
+		      if (LSA_ISNULL (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header)))
+			{
+			  /* inserted after the snapshot, nothing older to show: the row path's S_DOESNT_EXIST */
+			  continue;
+			}
+		      /* its visible version is a previous one, in the log */
+		      is_exception = true;
+		    }
+		}
+	      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)) && !is_exception)
+		{
+		  /* a row with refs in the batch of a plan that reads no variable column, for a protected scan: the
+		   * attribute layer resolves the refs of the columns the scan reads after the batch */
+		  sidecar_batch_keeps (thread_p, scan_cache, pgptr);
 		}
 	    }
 	  if (!is_exception && n_repids > 0)
@@ -10633,6 +11081,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
   attr_info->lazy_deferred = 0;
   attr_info->lazy_decoded = 0;
   attr_info->lazy_disabled = false;
+  attr_info->sc = NULL;
   attr_info->num_values = -1;	/* initialize attr_info */
 
   /*
@@ -11113,6 +11562,10 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
     }
   OID_SET_NULL (&attr_info->class_oid);
   attr_info->lazy_recdes = NULL;	/* borrowed from a caller's frame - leave no dangling record armed */
+  if (unlikely (attr_info->sc != NULL))
+    {
+      sidecar_attr_state_free (attr_info);
+    }
 
   /*
    * Bash this so that we ensure that heap_attrinfo_end is idempotent.
@@ -11235,6 +11688,11 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
   OID_SET_NULL (&attr_info->inst_oid);
   attr_info->inst_chn = NULL_CHN;
   attr_info->lazy_recdes = NULL;	/* borrowed record the cleared values were read from - reset with them */
+  if (unlikely (attr_info->sc != NULL))
+    {
+      /* the values that pointed into the bytes read through Sidecar refs are cleared */
+      sidecar_attr_state_free (attr_info);
+    }
 
   return ret;
 }
@@ -11257,6 +11715,8 @@ heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEA
 
   layout->offset_size = OR_GET_OFFSET_SIZE (obj);
   layout->var_table = obj + OR_HEADER_SIZE (obj);
+  layout->trailer_end =
+    unlikely (sidecar_record_has_refs (recdes)) ? CAST_BUFLEN (obj + recdes->length - layout->var_table) : 0;
   layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (nvars, layout->offset_size);
   layout->bound_bits =
     OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + attr_info->read_classrepr->fixed_length : NULL;
@@ -11795,9 +12255,17 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	{
 	  heap_attrvalue_point_fixed (layout, attrepr, &raw, value->rd_disk_size);
 	}
-      else
+      else if (likely (layout->trailer_end == 0) || !sidecar_point_variable (layout, attr_info, attrepr, &raw))
 	{
+	  /* tested here, not in heap_attrvalue_point_variable (): a call there costs that leaf its frame, and a
+	   * test after it keeps layout and attr_info alive across it */
 	  heap_attrvalue_point_variable (layout, attr_info, attrepr, &raw);
+	}
+      else if (unlikely (raw.length < 0))
+	{
+	  /* the store read of a ref failed */
+	  ASSERT_ERROR ();
+	  return er_errid ();
 	}
     }
 
@@ -11870,6 +12338,15 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 		{
 		  /* The variable attribute is bound. Find its location through the variable offset attribute table. */
 		  disk_data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location));
+		  if (unlikely (sidecar_record_has_refs (recdes)))
+		    {
+		      disk_data = sidecar_midxkey_point (attr_info, recdes, att, disk_data);
+		      if (disk_data == NULL)
+			{
+			  ASSERT_ERROR ();
+			  return er_errid ();
+			}
+		    }
 		}
 	    }
 	}
@@ -13240,6 +13717,11 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
+	  if (unlikely (layoutp != NULL && layoutp->trailer_end != 0) && sidecar_keep_ref (value, recdes))
+	    {
+	      /* unassigned and held in the Sidecar store: the new image keeps the ref, no store page is read */
+	      continue;
+	    }
 	  ret = heap_attrvalue_read (recdes, value, attr_info, layoutp);
 	  if (ret != NO_ERROR)
 	    {
@@ -13304,9 +13786,10 @@ exit_on_error:
  *
  *   return: size of the payload size of record
  *   attr_info(in/out): the attribute information structure
+ *   kept_extra(out): the bytes the values with kept Sidecar refs would add inline, which the offset size must cover
  */
 static int
-heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, int *kept_extra)
 {
   HEAP_ATTRVALUE *value;
   int size;
@@ -13320,6 +13803,12 @@ heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info)
       if (value->last_attrepr->is_fixed != 0)
 	{
 	  size += tp_domain_disk_size (value->last_attrepr->domain);
+	}
+      else if (unlikely (value->state == HEAP_KEPT_REF_ATTRVALUE))
+	{
+	  /* the ref and at most 8 bytes of trailer per ref */
+	  size += SIDECAR_REF_SIZE + 8;
+	  *kept_extra += sidecar_kept_ref_length (value) - SIDECAR_REF_SIZE;
 	}
       else
 	{
@@ -13382,10 +13871,13 @@ static size_t
 heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr)
 {
   int payload_size, header_size;
+  int kept_extra = 0;
 
   /* calcuate the entire size of columns */
-  payload_size = heap_attrinfo_get_record_payload_size (attr_info);
-  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+  payload_size = heap_attrinfo_get_record_payload_size (attr_info, &kept_extra);
+  /* the offset size also fits the record with its kept values inline: expansion keeps it (sidecar_expand_frame ()) */
+  header_size =
+    heap_attrinfo_get_record_header_size (attr_info, payload_size + kept_extra, is_mvcc_class, offset_size_ptr);
 
   return header_size + payload_size;
 }
@@ -13783,6 +14275,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   char *bitmap_bound, *ptr_varvals;
   SCAN_CODE status;
   int i;
+  bool kept_refs = false;
 
   bitmap_bound = OR_GET_BOUND_BITS (buf->buffer, attr_info->last_classrepr->n_variable,
 				    attr_info->last_classrepr->fixed_length);
@@ -13796,6 +14289,11 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	{
 	  status =
 	    heap_attrinfo_transform_fixed_to_disk (thread_p, attr_info, buf, i, incremented_attrids, bitmap_bound);
+	}
+      else if (unlikely (attr_info->values[i].state == HEAP_KEPT_REF_ATTRVALUE))
+	{
+	  status = sidecar_write_kept_ref (attr_info, i, buf, &ptr_varvals, offset_size, header_size);
+	  kept_refs = true;
 	}
       else
 	{
@@ -13826,6 +14324,16 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 	  or_put_offset_internal (buf, CAST_BUFLEN (ptr_varvals - buf->buffer - header_size), offset_size);
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
+    }
+
+  if (unlikely (kept_refs))
+    {
+      /* the image keeps refs, so it ends with their trailer, the Sidecar form sidecar_plan_update () checks */
+      status = sidecar_write_trailer (attr_info, buf, &ptr_varvals);
+      if (status != S_SUCCESS)
+	{
+	  return status;
+	}
     }
 
   if (ptr_varvals + mvcc_extra > buf->endptr)
@@ -14154,6 +14662,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       attr_info->lazy_deferred = 0;
       attr_info->lazy_decoded = 0;
       attr_info->lazy_disabled = false;
+      attr_info->sc = NULL;
       attr_info->num_values = num_found_attrs;
 
       if (num_found_attrs <= 0)
@@ -15668,7 +16177,9 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
       if (direction == HEAP_DIRECTION_RIGHT || direction == HEAP_DIRECTION_BOTH)
 	{
 	  scan = spage_next_record (pgptr, &right_slotid, prefetch->recdes, COPY);
-	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME)
+	  /* a record with refs is left to its own fetch, which expands it */
+	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME
+	      && !sidecar_record_has_refs (prefetch->recdes))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);
@@ -15696,7 +16207,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
 	{
 	  scan = spage_previous_record (pgptr, &left_slotid, prefetch->recdes, COPY);
 	  if (scan == S_SUCCESS && left_slotid != HEAP_HEADER_AND_CHAIN_SLOTID
-	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME)
+	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME && !sidecar_record_has_refs (prefetch->recdes))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);
@@ -16007,6 +16518,11 @@ heap_check_heap_file (THREAD_ENTRY * thread_p, HFID * hfid)
       else if (rv == DISK_ERROR)
 	{
 	  ASSERT_ERROR ();
+	}
+      if (rv == DISK_VALID)
+	{
+	  /* reports what it finds with an error instead of an assertion, so the fault injection tests can see it */
+	  rv = sidecar_verify_heap (thread_p, hfid);
 	}
       return rv;
     }
@@ -17732,10 +18248,26 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   slotid = rcv->offset;
   /* Clear HEAP_RV_FLAG_VACUUM_STATUS_CHANGE */
   slotid = slotid & (~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE);
-  (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
+
+  /* A Sidecar store page carries its hot heap's class OID, so the class finds the hot heap: the store's free space
+   * must not go to the hot heap's bestspace, or a row of the hot heap would be inserted into the store.  The store's
+   * own HFID is not reachable from here without fixing the hot header while the store page is held (I-7). */
+  const bool sidecar_store = heap_page_is_sidecar_store (thread_p, rcv->pgptr);
+  const bool add_bestpage = LOG_ISRESTARTED () && !sidecar_store;
+
+  if (sidecar_store)
+    {
+      /* a store slot holds one store record in its life: a reader that found a home forwarding here may still come
+       * to read this slot, and must not find another record in it (sidecar_read_store_record_at) */
+      (void) spage_delete (thread_p, rcv->pgptr, slotid);
+    }
+  else
+    {
+      (void) spage_delete_for_recovery (thread_p, rcv->pgptr, slotid);
+    }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
-  if (LOG_ISRESTARTED ())
+  if (add_bestpage)
     {
       HFID hfid = HFID_INITIALIZER;
       OID class_oid = OID_INITIALIZER;
@@ -17888,6 +18420,7 @@ heap_rv_mvcc_undo_delete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       assert_release (false);
       return ER_FAILED;
     }
+  SIDECAR_ASSERT_RECORD_FORMAT (&rebuild_record);
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
@@ -17984,6 +18517,7 @@ heap_rv_mvcc_redo_delete_internal (THREAD_ENTRY * thread_p, PAGE_PTR page, PGSLO
       assert_release (false);
       return ER_FAILED;
     }
+  SIDECAR_ASSERT_RECORD_FORMAT (&rebuild_record);
 
   /* Success. */
   return NO_ERROR;
@@ -19862,7 +20396,8 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
       goto cleanup;
     }
 
-  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY
+	    || show_type == SHOWSTMT_ALL_HEAP_SIDECAR);
 
   if (is_all && partition_type == DB_PARTITIONED_CLASS)
     {
@@ -20241,6 +20776,85 @@ cleanup:
 }
 
 /*
+ *  heap_sidecar_next_scan() - next scan function of 'show (all) heap sidecar': the Sidecar store of a heap
+ *   return: S_ERROR, S_SUCCESS, or S_END
+ *   thread_p(in):
+ *   cursor(in): the heap, an index of ctx->hfids
+ *   out_values(out):
+ *   out_cnt(in):
+ *   ptr(in): 'show heap' context
+ *
+ * Note: A heap without a store shows -1 for the store's ids and zeros.
+ */
+SCAN_CODE
+heap_sidecar_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  int error = NO_ERROR;
+  HEAP_SHOW_SCAN_CTX *ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
+  HFID *hfid_p = NULL;
+  char *classname = NULL;
+  char class_oid_str[64] = { 0 };
+  SIDECAR_HEAP_STATS stats;
+  FILE_DESCRIPTORS fdes;
+  int idx = 0;
+
+  if (cursor >= ctx->hfids_count)
+    {
+      return S_END;
+    }
+  hfid_p = &ctx->hfids[cursor];
+
+  error = file_descriptor_get (thread_p, &hfid_p->vfid, &fdes);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+  error = sidecar_heap_stats (thread_p, hfid_p, &stats);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  error = db_make_string_copy (out_values[idx++], classname);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  oid_to_string (class_oid_str, sizeof (class_oid_str), &fdes.heap.class_oid);
+  error = db_make_string_copy (out_values[idx++], class_oid_str);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  db_make_int (out_values[idx++], hfid_p->vfid.volid);
+  db_make_int (out_values[idx++], hfid_p->vfid.fileid);
+  db_make_int (out_values[idx++], hfid_p->hpgid);
+  db_make_int (out_values[idx++], HFID_IS_NULL (&stats.store_hfid) ? -1 : stats.store_hfid.vfid.volid);
+  db_make_int (out_values[idx++], HFID_IS_NULL (&stats.store_hfid) ? -1 : stats.store_hfid.vfid.fileid);
+  db_make_int (out_values[idx++], HFID_IS_NULL (&stats.store_hfid) ? -1 : stats.store_hfid.hpgid);
+  db_make_bigint (out_values[idx++], stats.live);
+  db_make_bigint (out_values[idx++], stats.dead);
+  db_make_bigint (out_values[idx++], stats.relocated);
+  db_make_bigint (out_values[idx++], stats.bigone);
+  db_make_bigint (out_values[idx++], stats.markdeleted);
+  db_make_bigint (out_values[idx++], stats.pages);
+  assert (idx == out_cnt);
+
+cleanup:
+  if (classname != NULL)
+    {
+      free_and_init (classname);
+    }
+  return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
+}
+
+/*
  *  heap_header_capacity_end_scan() - end scan function of
  *                                    'show (all) heap ...'
  *   return: NO_ERROR, or ER_code
@@ -20573,7 +21187,11 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       else
 	{
 	  scan = spage_get_record (thread_p, page_watcher->pgptr, oid.slotid, recdes, COPY);
-	  pgbuf_ordered_unfix (thread_p, page_watcher);
+	  /* a record with refs is expanded below, which reads the store while the hot page is still fixed (I-7) */
+	  if (likely (scan != S_SUCCESS || !sidecar_record_has_refs (recdes)))
+	    {
+	      pgbuf_ordered_unfix (thread_p, page_watcher);
+	    }
 	}
       db_make_int (record_info[HEAP_RECORD_INFO_T_REPRID], or_rep_id (recdes));
       db_make_int (record_info[HEAP_RECORD_INFO_T_CHN], or_chn (recdes));
@@ -20595,6 +21213,14 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
       else
 	{
 	  db_make_int (record_info[HEAP_RECORD_INFO_T_MVCC_PREV_VERSION], 0);
+	}
+      if (unlikely (scan == S_SUCCESS && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
+	{
+	  scan = sidecar_on_fetch (thread_p, scan_cache, recdes, SIDECAR_FETCH_RECORD_INFO, 0);
+	}
+      if (unlikely (page_watcher->pgptr != NULL))
+	{
+	  pgbuf_ordered_unfix (thread_p, page_watcher);
 	}
       break;
 
@@ -20867,6 +21493,10 @@ heap_get_bigone_content (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, b
 			 RECDES * recdes)
 {
   SCAN_CODE scan = S_SUCCESS;
+
+  /* the overflow pages of a hot REC_BIGONE row are fixed under its home page, which a fixed scan may already hold:
+   * the store page the cursor keeps goes first (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
 
   /* Try to reuse the previously allocated area No need to check the snapshot since was already checked */
   if (scan_cache != NULL
@@ -21347,6 +21977,22 @@ heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
 }
 
 /*
+ * heap_scancache_allow_lazy_sidecar () - Let reads through a scan cache keep a record with Sidecar refs as stored
+ *   scan_cache(in/out): a scan cache whose caller decodes the records it reads through the attribute layer only
+ *   lazy(in): HEAP_SIDECAR_LAZY_SCAN once at the start of a query scan; HEAP_SIDECAR_LAZY_LOCKED around the one
+ *	       last-version read of an UPDATE that may keep the stored form, and HEAP_SIDECAR_EXPAND after it
+ *
+ * Note: Only a protected reader takes the lazy form (I-6): a scan by the transaction's registered snapshot, or a lock
+ *       holder's last-version read (heap_get_last_version ()).  The attribute layer then reads each value it decodes
+ *       through its ref (sidecar_point_variable ()).  Every other read still expands at the fetch exit.
+ */
+void
+heap_scancache_allow_lazy_sidecar (HEAP_SCANCACHE * scan_cache, HEAP_SIDECAR_LAZY lazy)
+{
+  scan_cache->sidecar_lazy = (unsigned char) lazy;
+}
+
+/*
  * heap_scancache_quick_start_with_class_oid () - Start caching information for
  *						   a heap scan on a class.
  *
@@ -21533,6 +22179,8 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->time_track = NULL;
 
   context->do_supplemental_log = false;
+  context->sidecar_store_op = false;
+  context->sc_plan = NULL;
 }
 
 /*
@@ -21600,6 +22248,12 @@ static FILE_TYPE
 heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   FILE_TYPE file_type;
+  if (unlikely (context->sidecar_store_op))
+    {
+      /* the class names the hot heap, not the store, and a store is always FILE_HEAP (heap_sidecar_create_store ()):
+       * its vacuumed slots are never reused (I-5) */
+      return FILE_HEAP;
+    }
   if (context->scan_cache_p != NULL)
     {
       assert (HFID_EQ (&context->hfid, &context->scan_cache_p->node.hfid));
@@ -21869,7 +22523,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  /* set MVCC INSID if necessary */
 	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 	    {
-	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
+	      MVCC_SET_VERSION_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
 	      record_size += OR_MVCCID_SIZE;
 	    }
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
@@ -21881,7 +22535,7 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
 	  /* strip MVCC information */
 	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
-	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
+	  MVCC_CLEAR_VERSION_FLAG_BITS (&mvcc_rec_header);
 	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 
 	  /* compute new record size */
@@ -22023,7 +22677,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 	  /* set MVCC INSID if necessary */
 	  if (!MVCC_IS_FLAG_SET (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID))
 	    {
-	      MVCC_SET_FLAG (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
+	      MVCC_SET_VERSION_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_INSID);
 	      record_size += OR_MVCCID_SIZE;
 	    }
 	  MVCC_SET_INSID (&mvcc_rec_header, mvcc_id);
@@ -22035,7 +22689,7 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
 	  /* strip MVCC information */
 	  curr_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
-	  MVCC_CLEAR_ALL_FLAG_BITS (&mvcc_rec_header);
+	  MVCC_CLEAR_VERSION_FLAG_BITS (&mvcc_rec_header);
 	  new_header_size = mvcc_header_size_lookup[mvcc_rec_header.mvcc_flag];
 
 	  /* compute new record size */
@@ -22479,6 +23133,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
 #if !defined (NDEBUG)
   (void) pgbuf_check_page_ptype (thread_p, context->home_page_watcher_p->pgptr, PAGE_HEAP);
 #endif /* !NDEBUG */
+  /* a store record that its DELID relocates moves to another store page */
+  assert (heap_page_is_sidecar_store (thread_p, context->home_page_watcher_p->pgptr) == context->sidecar_store_op);
 
   sp_success =
     spage_insert (thread_p, context->home_page_watcher_p->pgptr, context->recdes_p, &context->res_oid.slotid);
@@ -22531,6 +23187,7 @@ heap_insert_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * parent_co
 
   /* build insert context */
   heap_create_insert_context (&ins_context, &parent_context->hfid, &parent_context->class_oid, recdes_p, NULL);
+  ins_context.sidecar_store_op = parent_context->sidecar_store_op;
 
   /* physical insertion */
   error_code = heap_find_location_and_insert_rec_newhome (thread_p, &ins_context);
@@ -22616,6 +23273,8 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       assert (OID_EQ (&heap_class_oid, &context->class_oid));
     }
 #endif
+  /* the class OID cannot tell a store page from a hot page of the same class; the page flag can */
+  assert (heap_page_is_sidecar_store (thread_p, context->home_page_watcher_p->pgptr) == context->sidecar_store_op);
 
   /* physical insertion */
   if (spage_insert_at (thread_p, context->home_page_watcher_p->pgptr, context->res_oid.slotid, context->recdes_p) !=
@@ -22625,6 +23284,7 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       OID_SET_NULL (&context->res_oid);
       return ER_FAILED;
     }
+  SIDECAR_ASSERT_RECORD_FORMAT (context->recdes_p);
 
   /* all ok */
   return NO_ERROR;
@@ -24710,6 +25370,13 @@ heap_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, short slot_id, R
     {
       spage_update_record_type (thread_p, page_p, slot_id, recdes_p->type);
     }
+#if !defined (NDEBUG)
+  /* the redo of RVHF_UPDATE_BESTSPACE_ENTRIES writes the bestspace storage record of a page that holds no rows */
+  if (!heap_page_is_bestspace (thread_p, page_p))
+    {
+      SIDECAR_ASSERT_RECORD_FORMAT (recdes_p);
+    }
+#endif /* !NDEBUG */
 
   /* mark as dirty */
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
@@ -24759,6 +25426,57 @@ heap_log_update_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
     {
       log_append_undoredo_recdes (thread_p, rcvindex, &address, old_recdes_p, new_recdes_p);
     }
+}
+
+/*
+ * heap_sidecar_plan () - Make the Sidecar plan of an UPDATE or DELETE from the stored version it replaces
+ *   return: error code
+ *   context(in/out): operation context whose home page is fixed and home record copied
+ *
+ * Note: The version is the home record, or the forward record of a relocated row, whose page this fixes in the
+ *       context's forward watcher, as heap_update_relocation () and heap_delete_relocation () do next.  A REC_BIGONE
+ *       row holds no refs.  The plan reads under the hot latch and writes nothing (I-7).
+ */
+static int __attribute__ ((noinline)) heap_sidecar_plan (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  RECDES forward_recdes;
+  const RECDES *old_stored = NULL;
+
+  if (context->record_type == REC_HOME)
+    {
+      old_stored = &context->home_recdes;
+    }
+  else if (context->record_type == REC_RELOCATION)
+    {
+      OID forward_oid = *((OID *) context->home_recdes.data);
+
+      if (heap_fix_forward_page (thread_p, context, &forward_oid) != NO_ERROR)
+	{
+	  int rc;
+
+	  ASSERT_ERROR_AND_SET (rc);
+	  return rc;
+	}
+      if (spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes,
+			    PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, forward_oid.volid, forward_oid.pageid,
+		  forward_oid.slotid);
+	  return ER_HEAP_BAD_OBJECT_TYPE;
+	}
+      old_stored = &forward_recdes;
+    }
+
+  if (context->type == HEAP_OPERATION_DELETE)
+    {
+      if (old_stored == NULL || !sidecar_record_has_refs (old_stored))
+	{
+	  return NO_ERROR;
+	}
+      return sidecar_plan_delete (thread_p, context, old_stored);
+    }
+  return sidecar_plan_update (thread_p, context, old_stored);
 }
 
 /*
@@ -24920,13 +25638,28 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid)
       && context->recdes_p->type != REC_ASSIGN_ADDRESS)
     {
+      if (unlikely (sidecar_insert_needs_plan (context)))
+	{
+	  rc = sidecar_plan_insert (thread_p, context);
+	  if (rc == NO_ERROR)
+	    {
+	      rc = sidecar_apply_plan (thread_p, context);
+	    }
+	  if (rc != NO_ERROR)
+	    {
+	      sidecar_op_end (thread_p, context, rc);
+	      return rc;
+	    }
+	}
       if (heap_insert_adjust_recdes_header (thread_p, context, is_mvcc_class) != NO_ERROR)
 	{
+	  sidecar_op_end (thread_p, context, ER_FAILED);
 	  return ER_FAILED;
 	}
     }
 
-  if (check_supplemental_log (thread_p, &context->class_oid) == true)
+  /* a store record is no row of the class: CDC and flashback never see the module's own store writes */
+  if (!context->sidecar_store_op && check_supplemental_log (thread_p, &context->class_oid) == true)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
@@ -24971,6 +25704,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
       /* make sure we have IX_LOCK on class see [NOTE-1] */
       if (lock_object (thread_p, &context->class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
+	  sidecar_op_end (thread_p, context, ER_FAILED);
 	  return ER_FAILED;
 	}
     }
@@ -24978,6 +25712,7 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   /* get insert location (includes locking) */
   if (heap_get_insert_location_with_lock (thread_p, context, home_hint_p) != NO_ERROR)
     {
+      sidecar_op_end (thread_p, context, ER_FAILED);
       return ER_FAILED;
     }
 
@@ -25087,6 +25822,7 @@ error:
 
   /* all ok */
   heap_unfix_watchers (thread_p, context);
+  sidecar_op_end (thread_p, context, rc);
 
   return rc;
 }
@@ -25192,6 +25928,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /*
    * Fetch object's page and check record type
    */
+relocate:
   if (heap_get_record_location (thread_p, context) != NO_ERROR)
     {
       rc = ER_FAILED;
@@ -25217,9 +25954,30 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
+  if (unlikely (sidecar_delete_needs_plan (context)))
+    {
+      rc = heap_sidecar_plan (thread_p, context);
+      if (rc != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (sidecar_plan_writes_store (context))
+	{
+	  /* the stamps are written with no data page held (I-7); the row's X lock keeps it as the plan saw it */
+	  heap_unfix_watchers (thread_p, context);
+	  rc = sidecar_apply_plan (thread_p, context);
+	  if (rc != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  goto relocate;
+	}
+    }
+
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
-  if (check_supplemental_log (thread_p, &context->class_oid) == true)
+  /* a store record is no row of the class: CDC and flashback never see the module's own store writes */
+  if (!context->sidecar_store_op && check_supplemental_log (thread_p, &context->class_oid) == true)
     {
       LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (!tdes->has_supplemental_log)
@@ -25293,6 +26051,7 @@ error:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+  sidecar_op_end (thread_p, context, rc);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_DELETE_END (&context->class_oid, (rc != NO_ERROR));
@@ -25409,9 +26168,19 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
   serial_row_write_begin (thread_p, &context->class_oid, &serial_write);
 
+  if (unlikely (sidecar_update_needs_prepare (context)) && !OID_IS_ROOTOID (&context->class_oid))
+    {
+      rc = sidecar_prepare_update (thread_p, context);
+      if (rc != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   /*
    * Get location
    */
+relocate:
   rc = heap_get_record_location (thread_p, context);
   if (rc != NO_ERROR)
     {
@@ -25448,6 +26217,26 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    */
   if (!OID_ISNULL (&context->class_oid) && !OID_IS_ROOTOID (&context->class_oid))
     {
+      if (unlikely (sidecar_update_needs_plan (context)))
+	{
+	  rc = heap_sidecar_plan (thread_p, context);
+	  if (rc != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  if (sidecar_plan_writes_store (context))
+	    {
+	      /* the store is written with no data page held (I-7); the row's X lock keeps it as the plan saw it */
+	      heap_unfix_watchers (thread_p, context);
+	      rc = sidecar_apply_plan (thread_p, context);
+	      if (rc != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      (void) FI_TEST (thread_p, FI_TEST_SIDECAR_KILL_AT_RELOCATE, 0);
+	      goto relocate;
+	    }
+	}
       rc = heap_update_adjust_recdes_header (thread_p, context, is_mvcc_class);
       if (rc != NO_ERROR)
 	{
@@ -25567,6 +26356,7 @@ exit:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+  sidecar_op_end (thread_p, context, rc);
 
   context->recdes_p = client_recdes_p;
   serial_row_write_end (thread_p, &serial_write);
@@ -26908,13 +27698,15 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
  *   thread_p (in): Thread entry.
  *   recdes (out): Record descriptor.
  *   previous_version_lsa (in): Log address of previous version.
+ *   too_new_insid (in): insert MVCCID of the version that was too new for the snapshot, or MVCCID_NULL
  *   scan_cache(in): Heap scan cache.
  *   release_context(in): Heap get context whose pages the walk releases on the way, as
  *			   HEAP_PREV_VERSION_HOLD_HOPS describes. On return its page watchers may be empty.
  */
 static SCAN_CODE
 heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
-				   HEAP_SCANCACHE * scan_cache, int has_chn, HEAP_GET_CONTEXT * release_context)
+				   MVCCID too_new_insid, HEAP_SCANCACHE * scan_cache, int has_chn,
+				   HEAP_GET_CONTEXT * release_context)
 {
   LOG_LSA process_lsa;
   SCAN_CODE scan_code = S_SUCCESS;
@@ -26973,7 +27765,31 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  scan_code = S_ERROR;
 	  goto end;
 	}
-      snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+#if !defined (NDEBUG)
+      if (FI_INSERTED (FI_TEST_SIDECAR_DELAY_VERSION_WALK) && LSA_EQ (&process_lsa, previous_version_lsa)
+	  && scan_cache->mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed)
+	{
+	  /* test only: the first older version is read and not yet checked; widen the window in which the
+	   * transaction of the too new version commits */
+	  er_log_debug (ARG_FILE_LINE, "Sidecar: committed walk read version %lld|%d, checking it in %d ms",
+			LSA_AS_ARGS (&process_lsa), FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+	  heap_prev_version_walk_release_pages (thread_p, &walk);
+	  thread_sleep (FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+	}
+#endif /* !NDEBUG */
+      if (too_new_insid != MVCCID_NULL && MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID)
+	  && MVCC_GET_INSID (&mvcc_header) == too_new_insid)
+	{
+	  /* An older version of the transaction whose newer version was too new: that transaction's versions are
+	   * all too new or all visible, and only its last one may be returned. A snapshot that is not registered
+	   * (mvcc_satisfies_committed) may see the transaction commit during this walk; checking this version again
+	   * would then return a version the transaction never committed. */
+	  snapshot_res = TOO_NEW_FOR_SNAPSHOT;
+	}
+      else
+	{
+	  snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
+	}
       if (snapshot_res == SNAPSHOT_SATISFIED)
 	{
 	  /* Visible. Get record if CHN was changed. */
@@ -26991,6 +27807,8 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	{
 	  /* TOO_NEW_FOR_SNAPSHOT */
 	  assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
+	  too_new_insid = (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID)
+			   ? MVCC_GET_INSID (&mvcc_header) : MVCCID_NULL);
 	  /* continue with previous version */
 	  assert (LSA_LT (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header), &process_lsa));
 	  LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
@@ -27141,6 +27959,14 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    }
 	}
 
+      if (unlikely (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_HAS_SIDECAR)))
+	{
+	  /* a record with refs is peeked here as stored only for a protected scan; any other reader takes the full
+	   * path, whose exit expands it or keeps it as stored */
+	  shortcut_visible = (shortcut_visible && (ispeeking == PEEK || is_cached_scan)
+			      && sidecar_scan_keeps_lazy (thread_p, scan_cache, peeked_recdes));
+	}
+
       if (shortcut_visible)
 	{
 	  if (ispeeking == PEEK)
@@ -27266,7 +28092,17 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 	   * and its next access fixes one as usual. */
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
+					       (MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID)
+						? MVCC_GET_INSID (&mvcc_header) : MVCCID_NULL),
 					       context->scan_cache, context->old_chn, context);
+#if !defined (NDEBUG)
+	  if (FI_INSERTED (FI_TEST_SIDECAR_DELAY_LOG_RESOLVE) && scan == S_SUCCESS
+	      && mvcc_snapshot->snapshot_fnc == mvcc_satisfies_committed && context->recdes_p != NULL
+	      && sidecar_record_has_refs (context->recdes_p))
+	    {
+	      heap_sidecar_delay_log_resolve (thread_p, context);
+	    }
+#endif /* !NDEBUG */
 	  goto exit;
 	}
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
@@ -27293,8 +28129,143 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   /* Fall through to exit. */
 
 exit:
+  /* both the heap path and the log path end here */
+  if (unlikely (scan == S_SUCCESS && context->recdes_p != NULL && sidecar_record_has_refs (context->recdes_p)))
+    {
+      scan = heap_sidecar_fetch_exit (thread_p, context, is_heap_scan);
+    }
   return scan;
 }
+
+/*
+ * heap_fix_home_page_unprotected () - Fix the home page of a committed-snapshot reader's OID, which may be gone
+ *   return: S_SUCCESS with the home page fixed, S_DOESNT_EXIST if the page is no longer a page of the OID's heap, or
+ *	     S_ERROR
+ *   context(in/out): get context; its home page watcher is fixed on success
+ *
+ * Note: A committed-snapshot reader (mvcc_satisfies_committed) holds no vacuum horizon.  When it holds no latch on
+ *	 the home page, as after the Sidecar retry of 5.6 (c), the lock fallback or a scan that released its live page,
+ *	 vacuum may remove every record of the page and deallocate it, and the page may then be allocated again to
+ *	 any file.  A record vacuum removed had a committed delete, so the row is absent for this reader.  The page is
+ *	 its row's page again only if it is still a data page of a hot heap of the row's class; the slot then holds
+ *	 whatever lives at this OID now, as for any OID fetch.
+ */
+static SCAN_CODE
+heap_fix_home_page_unprotected (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  VPID vpid;
+  OID page_class_oid;
+  PAGE_PTR page;
+  int error_code;
+
+  VPID_GET_FROM_OID (&vpid, context->oid_p);
+  if (context->home_page_watcher.pgptr != NULL)
+    {
+      if (VPID_EQ (pgbuf_get_vpid_ptr (context->home_page_watcher.pgptr), &vpid))
+	{
+	  /* still held, nothing can have removed it */
+	  return S_SUCCESS;
+	}
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+    }
+
+  /* nobody fixes a hot page while holding a store page (I-7) */
+  sidecar_cursor_before_hot_fix (thread_p);
+
+  error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, context->latch_mode,
+				  &context->home_page_watcher);
+  if (error_code != NO_ERROR)
+    {
+      if (error_code == ER_PB_BAD_PAGEID)
+	{
+	  /* deallocated */
+	  er_clear ();
+	  return S_DOESNT_EXIST;
+	}
+      if (error_code == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, vpid.volid, vpid.pageid);
+	}
+      return S_ERROR;
+    }
+
+  page = context->home_page_watcher.pgptr;
+  if (pgbuf_get_page_ptype (thread_p, page) != PAGE_HEAP || heap_page_is_not_in_heap (thread_p, page)
+      || heap_page_is_sidecar_store (thread_p, page)
+      || heap_get_class_oid_from_page (thread_p, page, &page_class_oid) != NO_ERROR
+      || (context->class_oid_p != NULL && !OID_ISNULL (context->class_oid_p)
+	  && !OID_EQ (&page_class_oid, context->class_oid_p)))
+    {
+      /* deallocated and allocated again to another file */
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+      return S_DOESNT_EXIST;
+    }
+  return S_SUCCESS;
+}
+
+/*
+ * heap_sidecar_fetch_exit () - Expand a fetched record with Sidecar refs, reading the row again when a store record
+ *				is absent
+ *   return: SCAN_CODE of the read
+ *   context(in/out): get context whose record has refs; its pages are still fixed on the heap path
+ *   is_heap_scan(in): as heap_get_visible_version_internal ()
+ *
+ * Note: The retry rule of 5.6 (c): a committed-snapshot fetch that finds a store record absent while the version it
+ *       read has no committed DELID releases its pages and reads the row's current version again from its start.
+ *       The reread ends here again; past the bound sidecar_on_fetch () returns S_SIDECAR_LOCK_NEEDED.
+ */
+static SCAN_CODE __attribute__ ((noinline))
+heap_sidecar_fetch_exit (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan)
+{
+  SCAN_CODE scan = sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p, SIDECAR_FETCH_VISIBLE,
+				     context->sidecar_attempt);
+
+  if (scan != S_SIDECAR_RETRY)
+    {
+      return scan;
+    }
+
+  if (context->home_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+    }
+  if (context->fwd_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+    }
+  OID_SET_NULL (&context->forward_oid);
+  context->sidecar_attempt++;
+
+  scan = heap_get_visible_version_internal (thread_p, context, is_heap_scan);
+  assert (scan != S_SIDECAR_RETRY);
+  return scan;
+}
+
+#if !defined (NDEBUG)
+/*
+ * heap_sidecar_delay_log_resolve () - Fault 700012: widen the window between a committed-snapshot fetch's read of
+ *				       a version from the log and the resolve of its refs (Sidecar acceptance A4)
+ *   context(in/out): get context whose record came from the log; its pages are released
+ *
+ * Note: The log path may release the pages anyway, so the scan and the retry fix them again as they need.
+ */
+static void
+heap_sidecar_delay_log_resolve (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  if (context->home_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+    }
+  if (context->fwd_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+    }
+  er_log_debug (ARG_FILE_LINE, "Sidecar: committed fetch of %d|%d|%d read its version from the log, attempt %d; "
+		"resolving in %d ms", OID_AS_ARGS (context->oid_p), context->sidecar_attempt,
+		FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+  thread_sleep (FI_SIDECAR_LOG_RESOLVE_DELAY_MS);
+}
+#endif /* !NDEBUG */
 
 /*
  * heap_update_set_prev_version () - Set prev version lsa to record according to its type.
@@ -27466,6 +28437,10 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   /* Fall through to exit. */
 
 exit:
+  if (unlikely (scan == S_SUCCESS && sidecar_record_has_refs (context->recdes_p)))
+    {
+      return sidecar_on_fetch (thread_p, context->scan_cache, context->recdes_p, SIDECAR_FETCH_LAST_VERSION, 0);
+    }
 
   return scan;
 }
@@ -27498,6 +28473,9 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
 
   if (page_watcher_p->pgptr == NULL)
     {
+      /* nobody fixes a hot page while holding a store page (I-7) */
+      sidecar_cursor_before_hot_fix (thread_p);
+
       /* fix required page */
       ret = pgbuf_ordered_fix (thread_p, &object_vpid, OLD_PAGE, latch_mode, page_watcher_p);
       if (ret != NO_ERROR)
@@ -27595,6 +28573,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
 
   context->scan_cache = scan_cache;
   context->ispeeking = ispeeking;
+  context->sidecar_attempt = 0;
   context->old_chn = old_chn;
   if (scan_cache != NULL && scan_cache->page_latch == PGBUF_LATCH_WRITE)
     {
@@ -27951,7 +28930,7 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   VPID_SET_NULL (&new_page_chain.prev_vpid);
   VPID_SET_NULL (&new_page_chain.next_vpid);
   new_page_chain.max_mvccid = MVCCID_NULL;
-  new_page_chain.flags = 0;
+  new_page_chain.flags = HEAP_SIDECAR_IS_STORE (heap_hdr) ? HEAP_PAGE_FLAG_SIDECAR_STORE : 0;
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
 
   log_sysop_start (thread_p);

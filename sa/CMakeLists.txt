@@ -79,6 +79,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/encryption.c
   ${BASE_DIR}/sha1.c
+  ${BASE_DIR}/sidecar_format.c
   ${BASE_DIR}/base64.c
   ${BASE_DIR}/error_context.cpp
   ${BASE_DIR}/error_manager.c
@@ -543,6 +544,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp
+  ${STORAGE_DIR}/sidecar.cpp
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_cl.c
   ${STORAGE_DIR}/statistics_sr.c
@@ -557,6 +559,7 @@ set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
+  ${STORAGE_DIR}/sidecar.hpp
 )
 
 set(SESSION_SOURCES

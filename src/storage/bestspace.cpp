@@ -1146,13 +1146,21 @@ namespace cubstorage
     if (num_candidates < ALLOC_BATCH_SIZE && may_rediscover)
       {
 	std::size_t num_usable = 0;
+	std::size_t num_batches = 0;
+	bool in_lap = false;
 
-	if (m_parent.rediscover (hfid, needed_size, num_usable) != NO_ERROR)
+	// on a lap for a freed page the queue let go, pages without room are no reason to extend the file: scan on,
+	// up to the fruitless budget, before allocating
+	do
 	  {
-	    m_parent.push_candidates (candidates.data (), num_candidates);
-	    allocate_unmark ();
-	    return status::FAILURE;
+	    if (m_parent.rediscover (hfid, needed_size, num_usable, in_lap) != NO_ERROR)
+	      {
+		m_parent.push_candidates (candidates.data (), num_candidates);
+		allocate_unmark ();
+		return status::FAILURE;
+	      }
 	  }
+	while (num_usable == 0 && in_lap && ++num_batches < REDISCOVER_FRUITLESS_BUDGET / REDISCOVER_BATCH_SIZE);
 	if (num_usable > 0)
 	  {
 	    // the first pick above already popped these candidates off the queue; return them before the
@@ -1244,7 +1252,8 @@ namespace cubstorage
     return true;
   }
 
-  void
+  // returns false if the queue is full of pages with at least as much free space, and so does not keep the candidate
+  bool
   bestspace::candidate_queue::push (bestspace_entry candidate)
   {
     std::lock_guard<std::mutex> lock (m_mutex);
@@ -1254,11 +1263,12 @@ namespace cubstorage
     // not enough space to be candidate
     if (m_size == MAX_CANDIDATES_QUEUE_SIZE && candidate.freespace <= m_array[0].freespace)
       {
-	return;
+	return false;
       }
 
     insert (candidate);
     m_max_freespace.store (m_array[m_size - 1].freespace, std::memory_order_release);
+    return true;
   }
 
   bool
@@ -1411,6 +1421,8 @@ namespace cubstorage
     , m_scan_signal (0)
     , m_scan_signal_at_disable (0)
     , m_scan_disabled_at (0)
+    , m_scan_start (NO_SCAN_START)
+    , m_scan_lap (false)
   {
     assert (shard_count > 0);
 
@@ -1490,6 +1502,24 @@ namespace cubstorage
     if (num_candidates > 0)
       {
 	m_scan_signal.fetch_add (1);
+      }
+  }
+
+  // A page that gained free space (vacuum, a delete, an insert undo). If the queue cannot keep a page rediscovery would
+  // take, the next scan starts there, so a run of freed pages larger than the queue is found again.
+  void
+  bestspace::push_freed_page (bestspace_entry candidate)
+  {
+    std::uint64_t expected = NO_SCAN_START;
+    bool kept;
+
+    kept = m_candidates.push (candidate);
+    m_scan_signal.fetch_add (1);
+
+    if (!kept && size_to_tier (candidate.freespace) >= tier::FS3)
+      {
+	(void) m_scan_start.compare_exchange_strong (expected, ((std::uint64_t) (std::uint16_t) candidate.volid << 32)
+	    | (std::uint32_t) candidate.pageid);
       }
   }
 
@@ -1714,7 +1744,7 @@ namespace cubstorage
   // Scan up to REDISCOVER_BATCH_SIZE pages of the heap chain from a persistent cursor and return
   // free ones to the candidate queue. A hint only: consumers re-validate under latch.
   int
-  bestspace::rediscover (HFID *hfid, std::uint16_t needed_size, std::size_t &num_usable)
+  bestspace::rediscover (HFID *hfid, std::uint16_t needed_size, std::size_t &num_usable, bool &in_lap)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
     bestspace_entry found[REDISCOVER_BATCH_SIZE];
@@ -1731,6 +1761,7 @@ namespace cubstorage
     bool expected = false;
 
     num_usable = 0;
+    in_lap = false;
 
     if (!m_scan_enabled.load () && !rediscover_rearm_due ())
       {
@@ -1755,6 +1786,15 @@ namespace cubstorage
 
     // pushes made by other threads from here on re-arm the scan if this scan turns it off
     std::uint32_t signal_at_start = m_scan_signal.load ();
+
+    std::uint64_t scan_start = m_scan_start.exchange (NO_SCAN_START);
+    if (scan_start != NO_SCAN_START)
+      {
+	m_scan_cursor.volid = (short) (scan_start >> 32);
+	m_scan_cursor.pageid = (int32_t) (scan_start & 0xFFFFFFFF);
+	m_scan_fruitless.store (0);
+	m_scan_lap = true;
+      }
 
     vpid = m_scan_cursor;
 
@@ -1867,6 +1907,11 @@ namespace cubstorage
 	    get_estimates (live_pages, rn, rs);
 	    budget = (live_pages > 0 && (std::uint32_t) live_pages < REDISCOVER_FRUITLESS_BUDGET)
 		     ? (std::uint32_t) live_pages : REDISCOVER_FRUITLESS_BUDGET;
+	    if (m_scan_lap)
+	      {
+		// a freed page the queue let go is somewhere in the chain: one lap from its page finds it
+		budget = MAX (budget, (std::uint32_t) live_pages);
+	      }
 	    fruitless = m_scan_fruitless.fetch_add ((std::uint32_t) visited) + (std::uint32_t) visited;
 	    if (live_pages > 0 && fruitless >= budget)
 	      {
@@ -1874,10 +1919,12 @@ namespace cubstorage
 		m_scan_signal_at_disable.store (signal_at_start + (num_found > 0 ? 1 : 0));
 		m_scan_disabled_at.store (monotonic_seconds ());
 		m_scan_enabled.store (false);
+		m_scan_lap = false;
 	      }
 	  }
       }
 
+    in_lap = scan_error == NO_ERROR && m_scan_lap;
     m_scanning.store (false);
     return scan_error;
   }

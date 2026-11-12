@@ -194,7 +194,9 @@ typedef enum
 
   RVLOG_SYSMETA_VERSION_UPDATE = 135,
 
-  RV_LAST_LOGID = RVLOG_SYSMETA_VERSION_UPDATE,
+  RVHF_SIDECAR_LINK = 136,	/* the Sidecar link bytes of a heap header, and nothing else of it */
+
+  RV_LAST_LOGID = RVHF_SIDECAR_LINK,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

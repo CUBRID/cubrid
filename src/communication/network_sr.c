@@ -59,6 +59,7 @@
 #include "thread_manager.hpp"
 #include "session.h"
 #include "network_request_def.hpp"
+#include "sidecar.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -932,6 +933,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	}
 
       thread_p->push_resource_tracks ();
+      sidecar_assert_request_start (thread_p);
 
       if (conn->invalidate_snapshot != 0)
 	{
@@ -939,6 +941,8 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
 	}
       (*func) (thread_p, rid, buffer, size);
 
+      /* a request never ends with a store page its cursor kept; a scan's end releases it, this is the last guard */
+      sidecar_request_end (thread_p);
       thread_p->pop_resource_tracks ();
 
       /* defence code: let other threads continue. */

@@ -35,6 +35,7 @@
 #include "pl_query_cursor.hpp"
 #include "sp_code.hpp"
 #include "xserver_interface.h"
+#include "sidecar.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -281,6 +282,10 @@ namespace cubpl
   executor::execute (DB_VALUE &value)
   {
     int error = NO_ERROR;
+
+    /* the procedure may run SQL on another worker that waits for a page this thread holds, or end the transaction:
+     * no store page the cursor kept stays fixed across the call (E18) */
+    sidecar_cursor_release (thread_get_thread_entry_info ());
 
     if (m_stack == NULL)
       {

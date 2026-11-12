@@ -79,6 +79,7 @@ static SHOWSTMT_METADATA *metadata_of_slotted_page_header (void);
 static SHOWSTMT_METADATA *metadata_of_slotted_page_slots (void);
 static SHOWSTMT_METADATA *metadata_of_heap_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_heap_capacity (SHOW_ONLY_ALL flag);
+static SHOWSTMT_METADATA *metadata_of_heap_sidecar (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_capacity (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_global_critical_sections (void);
@@ -375,6 +376,49 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
 
   static SHOWSTMT_METADATA md_all = {
     SHOWSTMT_ALL_HEAP_CAPACITY, true /* only_for_dba */ , "show all heap capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
+  };
+
+  return (flag == SHOW_ALL) ? &md_all : &md_only;
+}
+
+/* for show heap sidecar: the Sidecar store of a heap, which holds the heap's values that live out of its records */
+static SHOWSTMT_METADATA *
+metadata_of_heap_sidecar (SHOW_ONLY_ALL flag)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Table_name", "varchar(256)"},
+    {"Class_oid", "varchar(64)"},
+    {"Volume_id", "int"},
+    {"File_id", "int"},
+    {"Header_page_id", "int"},
+    {"Store_volume_id", "int"},
+    {"Store_file_id", "int"},
+    {"Store_header_page_id", "int"},
+    {"Num_live_recs", "bigint"},
+    {"Num_dead_recs", "bigint"},
+    {"Num_relocated_recs", "bigint"},
+    {"Num_bigone_recs", "bigint"},
+    {"Num_markdeleted_slots", "bigint"},
+    {"Num_pages", "bigint"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_INTEGER, ARG_REQUIRED}	/* SHOWSTMT_SCAN_MODE */
+  };
+
+  static SHOWSTMT_METADATA md_only = {
+    SHOWSTMT_HEAP_SIDECAR, true /* only_for_dba */ , "show heap sidecar of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
+  };
+
+  static SHOWSTMT_METADATA md_all = {
+    SHOWSTMT_ALL_HEAP_SIDECAR, true /* only_for_dba */ , "show all heap sidecar of ",
     cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
   };
 
@@ -800,7 +844,8 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
 
   show_type = derived_table->info.showstmt.show_type;
   assert (show_type == SHOWSTMT_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_HEADER
-	  || show_type == SHOWSTMT_HEAP_CAPACITY || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+	  || show_type == SHOWSTMT_HEAP_CAPACITY || show_type == SHOWSTMT_ALL_HEAP_CAPACITY
+	  || show_type == SHOWSTMT_HEAP_SIDECAR || show_type == SHOWSTMT_ALL_HEAP_SIDECAR);
 
   show_args_node = derived_table->info.showstmt.show_args;
   assert (show_args_node != NULL);
@@ -968,6 +1013,8 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_ALL_HEAP_HEADER] = metadata_of_heap_header (SHOW_ALL);
   show_Metas[SHOWSTMT_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ALL);
+  show_Metas[SHOWSTMT_HEAP_SIDECAR] = metadata_of_heap_sidecar (SHOW_ONLY);
+  show_Metas[SHOWSTMT_ALL_HEAP_SIDECAR] = metadata_of_heap_sidecar (SHOW_ALL);
   show_Metas[SHOWSTMT_INDEX_HEADER] = metadata_of_index_header (SHOW_ONLY);
   show_Metas[SHOWSTMT_INDEX_CAPACITY] = metadata_of_index_capacity (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_INDEXES_HEADER] = metadata_of_index_header (SHOW_ALL);

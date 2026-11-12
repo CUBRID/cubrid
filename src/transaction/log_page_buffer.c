@@ -1466,6 +1466,9 @@ logpb_copy_log_header (THREAD_ENTRY * thread_p, LOG_HEADER * to_hdr, const LOG_H
 
   to_hdr->mvcc_next_id = from_hdr->mvcc_next_id;
 
+  /* a copy of a database with a Sidecar store keeps the level that makes older releases refuse it */
+  to_hdr->db_compatibility = from_hdr->db_compatibility;
+
   /* Add other attributes that need to be copied */
 
   return NO_ERROR;
@@ -4160,7 +4163,10 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  need_wakeup_LFT = true;
 	}
 
-      while (LSA_LT (&nxio_lsa, flush_lsa))
+      /* flush_lsa is where the caller's record starts, and nxio_lsa is the lowest LSA not on disk yet: the record is
+       * durable only when nxio_lsa is past it. A flush that ran just before the record was appended leaves nxio_lsa
+       * equal to flush_lsa with the record still in memory. */
+      while (LSA_LE (&nxio_lsa, flush_lsa))
 	{
 	  gettimeofday (&start_time, NULL);
 	  (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
@@ -4168,7 +4174,7 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 
 	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
 	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
-	  if (LSA_GE (&nxio_lsa, flush_lsa))
+	  if (LSA_GT (&nxio_lsa, flush_lsa))
 	    {
 	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
 	      break;
@@ -11033,7 +11039,7 @@ logpb_delete (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *db_fulln
 	   * Make sure that the log is a log file and that it is compatible
 	   * with the running database and system
 	   */
-	  if (loghdr->db_compatibility != rel_disk_compatible ())
+	  if (rel_get_disk_compatible (loghdr->db_compatibility, NULL) != REL_FULLY_COMPATIBLE)
 	    {
 	      loghdr = NULL;
 	    }

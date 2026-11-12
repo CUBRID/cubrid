@@ -503,6 +503,7 @@ static KEYWORD_RECORD keywords[] = {
   {SET_OF, "SET_OF", 0},
   {SHARED, "SHARED", 0},
   {SHOW, "SHOW", 1},
+  {SIDECAR, "SIDECAR", 1},
   {SmallInt, "SHORT", 0},
   {SIBLINGS, "SIBLINGS", 0},
   {SIMILAR, "SIMILAR", 0},

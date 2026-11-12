@@ -33,6 +33,9 @@
 #include "thread_entry.hpp"		/* cubthread::entry */
 #include "thread_entry_task.hpp"	/* cubthread::entry_task */
 
+/* storage/sidecar.cpp: a worker task ends with no store page, owner or lazy keep left on its thread (E24) */
+extern void sidecar_request_end (cubthread::entry *thread_p);
+
 namespace parallel_query
 {
   /*
@@ -105,6 +108,7 @@ namespace parallel_query
 	m_thread_ref.conn_entry = nullptr;
 	m_thread_ref.on_trace = false;
 
+	sidecar_request_end (&m_thread_ref);
 	m_thread_ref.pop_resource_tracks ();
       }
 

@@ -66,6 +66,7 @@ extern const char *rel_copyright_header (void);
 extern const char *rel_copyright_body (void);
 #endif
 extern float rel_disk_compatible (void);
+extern float rel_sidecar_disk_compatible (void);
 extern void rel_set_disk_compatible (float level);
 extern int rel_bit_platform (void);
 

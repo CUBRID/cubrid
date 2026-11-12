@@ -291,6 +291,15 @@ namespace cubthread
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 
+      /* The Sidecar store cursor (storage/sidecar.cpp): the one store page this thread keeps fixed between the values
+       * a scan decodes, and the scan cache whose decodes may keep it.  The heap releases the page before it fixes a
+       * hot page, since nobody fixes a hot page while holding a store page. */
+      char *sidecar_cursor_page;
+      const void *sidecar_cursor_owner;
+      /* the running statement calls a stored procedure or method: no lazy reads (E22).  Parallel workers read the
+       * leader's, so it is atomic, with relaxed loads and stores (E28) */
+      std::atomic<bool> sidecar_no_lazy;
+
       bool sort_stats_active;
 
       EVENT_STAT event_stats;

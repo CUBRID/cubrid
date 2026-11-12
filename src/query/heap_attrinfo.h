@@ -35,8 +35,10 @@ typedef enum
   HEAP_WRITTEN_ATTRVALUE,
   HEAP_UNINIT_ATTRVALUE,
   HEAP_WRITTEN_LOB_ATTRVALUE,
-  HEAP_LAZY_ATTRVALUE		/* deferred: no dbvalue yet; read on demand from attr_info->lazy_recdes
+  HEAP_LAZY_ATTRVALUE,		/* deferred: no dbvalue yet; read on demand from attr_info->lazy_recdes
 				 * by heap_attrvalue_peek_lazy () */
+  HEAP_KEPT_REF_ATTRVALUE	/* unchanged by an UPDATE and held in the Sidecar store: the column writer
+				 * copies the old record's ref instead of writing a value */
 } HEAP_ATTRVALUE_STATE;
 
 typedef enum
@@ -58,6 +60,10 @@ struct heap_rec_layout
   char *fixed_base;		/* first byte of the fixed-attribute area */
   char *bound_bits;		/* bound-bit vector, NULL when the record carries none */
   int offset_size;		/* width of one variable-offset table entry */
+  int trailer_end;		/* the record end, which its Sidecar trailer precedes, as an offset from var_table;
+				 * 0 unless the record has OR_MVCC_FLAG_HAS_SIDECAR.  An offset, not a pointer, so the
+				 * layout keeps its size.  Set by heap_rec_layout_init () only: the page batch never
+				 * reads it, and its collector keeps flagged records out of the batch */
 };
 
 typedef struct heap_attrvalue HEAP_ATTRVALUE;
@@ -113,6 +119,8 @@ struct heap_cache_attrinfo
   INT64 lazy_deferred;		/* slots marked HEAP_LAZY_ATTRVALUE (reads lazy could have skipped) */
   INT64 lazy_decoded;		/* those actually read on demand (reads it did not skip) */
   bool lazy_disabled;		/* true: read predicate columns eagerly - nothing to defer, or not worth it */
+  struct sidecar_attr_state *sc;	/* value bytes read through Sidecar refs; NULL until a record with refs is
+					 * decoded (storage/sidecar.cpp) */
 };
 
 extern DB_VALUE *heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info);

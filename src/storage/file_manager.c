@@ -55,6 +55,7 @@
 #include "xserver_interface.h"
 #include "oid.h"
 #include "heap_file.h"
+#include "sidecar.hpp"
 #include "bit.h"
 #include "util_func.h"
 #include "vacuum.h"
@@ -12468,6 +12469,13 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	{
 	  goto exit;
 	}
+    }
+
+  /* the heap's values that live out of its records: its Sidecar store and the store's overflow file */
+  error_code = sidecar_store_apply_tde (thread_p, &hfid, tde_algo);
+  if (error_code != NO_ERROR)
+    {
+      goto exit;
     }
 
   or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);

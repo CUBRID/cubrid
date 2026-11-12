@@ -68,6 +68,7 @@
 #include "xserver_interface.h"
 #include "catalog_class.h"
 #include "es_posix.h"
+#include "sidecar.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -169,7 +170,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
 				 LOCATOR_LOCK_POLICY lock_policy);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
-				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
+				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes, const RECDES * oldrecdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
 				PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data,
 				LOCATOR_LOCK_POLICY lock_policy);
@@ -2207,6 +2208,13 @@ locator_return_object_assign (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * as
   switch (scan)
     {
     case S_SUCCESS:
+      if (unlikely (sidecar_record_has_refs (&assign->recdes)))
+	{
+	  /* I-8: a copy area never opts in to the stored form, so the fetch exits expand every record with refs */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_UNEXPANDED_RECORD, 3, OID_AS_ARGS (oid));
+	  return S_ERROR;
+	}
       /*
        * The cached object was obsolete.
        */
@@ -2362,6 +2370,11 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
 
   scan = locator_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, lock_mode, COPY,
 			     chn);
+  if (unlikely (scan == S_SIDECAR_LOCK_NEEDED))
+    {
+      /* xlocator_fetch ()'s committed-snapshot read of a row whose Sidecar store records kept vanishing (5.6 c) */
+      scan = sidecar_fetch_locked (thread_p, oid, class_oid, assign->ptr_scancache, &assign->recdes);
+    }
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END || scan == S_DOESNT_EXIST)
     {
       return scan;
@@ -2871,6 +2884,15 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
   switch (fetch_version_type)
     {
     case LC_FETCH_MVCC_VERSION:
+#if !defined (NDEBUG)
+      if (prm_get_bool_value (PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH))
+	{
+	  /* test only: the unprotected committed-snapshot reader of Sidecar acceptance A4 (5.6 c) */
+	  mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_committed;
+	  mvcc_snapshot = &mvcc_snapshot_dirty;
+	  break;
+	}
+#endif /* !NDEBUG */
       mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
       if (mvcc_snapshot == NULL)
 	{
@@ -2941,8 +2963,42 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       mobjs->num_objs = 0;
       offset = 0;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while (true)
 	{
+	  const OID before = oid;
+
+	  scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
+	  if (unlikely (scan == S_SIDECAR_LOCK_NEEDED))
+	    {
+	      /* a committed-snapshot read of a row whose Sidecar store records kept vanishing (5.6 c); heap_next ()
+	       * left oid at the row, and the lock wait needs the scan's page released (I-7) */
+	      if (scan_cache.page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, &scan_cache.page_watcher);
+		}
+	      scan = sidecar_fetch_locked (thread_p, &oid, class_oid, &scan_cache, &recdes);
+	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
+		{
+		  continue;
+		}
+	      if (scan == S_DOESNT_FIT)
+		{
+		  /* read the row again into a larger area */
+		  oid = before;
+		}
+	    }
+	  if (scan != S_SUCCESS)
+	    {
+	      break;
+	    }
+	  if (unlikely (sidecar_record_has_refs (&recdes)))
+	    {
+	      /* I-8: the scan never opts in to the stored form, so heap_next () expands every record with refs */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_UNEXPANDED_RECORD, 3, OID_AS_ARGS (&oid));
+	      scan = S_ERROR;
+	      break;
+	    }
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
@@ -5732,6 +5788,7 @@ error2:
  * new_class_oid (in)	: destination class
  * new_class_hfid (in)	: destination hfid
  * recdes (in)		: record
+ * oldrecdes (in)	: the version the record replaces; when recdes keeps Sidecar refs, that version as stored
  * scan_cache (in)	: scan cache
  * op_type (in)		: operation type
  * has_index (in)	: true if the class has indexes
@@ -5747,15 +5804,26 @@ error2:
  */
 static int
 locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid, OID * new_class_oid,
-		     HFID * new_class_hfid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int op_type, int has_index,
-		     int *force_count, PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data,
-		     LOCATOR_LOCK_POLICY lock_policy)
+		     HFID * new_class_hfid, RECDES * recdes, const RECDES * oldrecdes, HEAP_SCANCACHE * scan_cache,
+		     int op_type, int has_index, int *force_count, PRUNING_CONTEXT * context,
+		     MVCC_REEV_DATA * mvcc_reev_data, LOCATOR_LOCK_POLICY lock_policy)
 {
   int error = NO_ERROR;
   OID new_obj_oid;
+  RECDES moved = *recdes;
 
   assert (!OID_IS_ROOTOID (old_class_oid));
   assert (!OID_IS_ROOTOID (new_class_oid));
+
+  if (unlikely (sidecar_record_has_refs (recdes)))
+    {
+      /* the kept Sidecar refs name the store of the heap the row leaves; the new heap gets the values inline */
+      error = sidecar_inline_kept (thread_p, old_class_oid, oldrecdes, recdes, &moved);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
 
   if (context != NULL)
     {
@@ -5767,15 +5835,20 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
-	  return (error != NO_ERROR) ? error : ER_FAILED;
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	    }
 	}
+      else
+	{
+	  insert_cache = &ins_cache->scan_cache;
 
-      insert_cache = &ins_cache->scan_cache;
-
-      error =
-	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
-			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL,
-			      false, false);
+	  error =
+	    locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, &moved, has_index, op_type,
+				  insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE,
+				  NULL, false, false);
+	}
     }
   else
     {
@@ -5783,19 +5856,21 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 
       error =
 	locator_start_force_scan_cache (thread_p, &insert_cache, new_class_hfid, new_class_oid, SINGLE_ROW_INSERT);
-      if (error != NO_ERROR)
+      if (error == NO_ERROR)
 	{
-	  return error;
+	  /* insert the new record */
+	  error =
+	    locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, &moved, has_index, op_type,
+				  &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL,
+				  UPDATE_INPLACE_NONE, NULL, false, false);
+	  heap_scancache_end (thread_p, &insert_cache);
 	}
-
-      /* insert the new record */
-      error =
-	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
-			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE,
-			      NULL, false, false);
-      heap_scancache_end (thread_p, &insert_cache);
     }
 
+  if (moved.data != recdes->data)
+    {
+      db_private_free (thread_p, moved.data);
+    }
   if (error != NO_ERROR)
     {
       return error;
@@ -6408,8 +6483,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 
 	      error_code =
-		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid, recdes, scan_cache,
-				     op_type, has_index, force_count, pcontext, mvcc_reev_data, lock_policy);
+		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid, recdes, oldrecdes,
+				     scan_cache, op_type, has_index, force_count, pcontext, mvcc_reev_data,
+				     lock_policy);
 	      if (error_code == NO_ERROR)
 		{
 		  COPY_OID (class_oid, &real_class_oid);
@@ -6752,6 +6828,16 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   int error_code = NO_ERROR;
   bool deleted = false;
   SCAN_CODE scan_code = S_SUCCESS;
+  /* the DELETE reads its old record as stored: its index keys, partition key and reevaluation decode only the values
+   * they need through the attribute layer, as the row's lock holder, so the large values it never decodes stay unread.
+   * A statement that calls a routine reads expanded: a routine in the reevaluation may commit before a later term
+   * decodes a ref (E22). */
+  /* *INDENT-OFF* */
+  const bool stored_form = (scan_cache != NULL
+			    && !thread_get_main_thread (thread_p != NULL ? thread_p : thread_get_thread_entry_info ())
+			    ->sidecar_no_lazy.load (std::memory_order_relaxed));
+  /* *INDENT-ON* */
+  unsigned char saved_sidecar_lazy = HEAP_SIDECAR_EXPAND;
 
   /* Update note : While scanning objects, the given scancache does not fix the last accessed page. So, the object must
    * be copied to the record descriptor. Changes : (1) variable name : peek_recdes => copy_recdes (2) function call :
@@ -6774,6 +6860,13 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       mvcc_reev_data = NULL;
     }
 
+  if (stored_form)
+    {
+      saved_sidecar_lazy = scan_cache->sidecar_lazy;
+      heap_scancache_allow_lazy_sidecar (scan_cache, HEAP_SIDECAR_LAZY_LOCKED);
+      sidecar_stored_form_begin ();
+    }
+
   /* IMPORTANT TODO: use a different get function when the select phase locked, but make sure it gets the last version,
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
   scan_code =
@@ -6781,9 +6874,15 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
 						 LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
 
+  if (stored_form)
+    {
+      heap_scancache_allow_lazy_sidecar (scan_cache, (HEAP_SIDECAR_LAZY) saved_sidecar_lazy);
+    }
+
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
-      return ER_MVCC_NOT_SATISFIED_REEVALUATION;
+      error_code = ER_MVCC_NOT_SATISFIED_REEVALUATION;
+      goto error;
     }
 
   if (scan_code != S_SUCCESS)
@@ -7010,6 +7109,10 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 #endif
 
 error:
+  if (stored_form)
+    {
+      sidecar_stored_form_end ();
+    }
 
   return error_code;
 }
@@ -8105,6 +8208,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   HFID class_hfid;
   OID class_oid;
   MVCC_SNAPSHOT *saved_mvcc_snapshot = NULL;
+  /* the UPDATE reads its old record as stored, so the transform keeps the Sidecar refs of unassigned values */
+  const bool stored_form = LC_IS_FLUSH_UPDATE (operation) && rec_descriptor == NULL && scan_cache != NULL;
 
   /*
    * While scanning objects, the given scancache does not fix the last
@@ -8125,6 +8230,14 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_UPDATE_PRUNE:
     case LC_FLUSH_UPDATE_PRUNE_VERIFY:
       /* MVCC snapshot no needed for now scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p); */
+      if (stored_form)
+	{
+	  /* only this last-version read under the row's X lock keeps refs; the attribute layer reads the values it
+	   * decodes through them until locator_update_force () returns, so an UPDATE of small columns reads no store
+	   * page in its write path */
+	  heap_scancache_allow_lazy_sidecar (scan_cache, HEAP_SIDECAR_LAZY_LOCKED);
+	  sidecar_stored_form_begin ();
+	}
       if (rec_descriptor != NULL)
 	{
 	  copy_recdes = *rec_descriptor;
@@ -8163,6 +8276,11 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 	}
 
+      if (stored_form)
+	{
+	  heap_scancache_allow_lazy_sidecar (scan_cache, HEAP_SIDECAR_EXPAND);
+	}
+
       if (scan == S_SUCCESS)
 	{
 	  /* do nothing for the moment */
@@ -8170,7 +8288,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       else if (scan == S_ERROR || scan == S_DOESNT_FIT)
 	{
 	  /* Whenever an error including an interrupt was broken out, quit the update. */
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  break;
 	}
       else if (scan == S_DOESNT_EXIST)
 	{
@@ -8182,17 +8301,20 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 	  else
 	    {
-	      return ((err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id);	/* other errors should return S_ERROR? */
+	      error_code = (err_id == NO_ERROR) ? ER_HEAP_UNKNOWN_OBJECT : err_id;	/* other errors should return S_ERROR? */
+	      break;
 	    }
 	}
       else if (scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  break;
 	}
       else
 	{
 	  assert (false);
-	  return ER_FAILED;
+	  error_code = ER_FAILED;
+	  break;
 	}
 
       old_recdes = &copy_recdes;
@@ -8269,6 +8391,10 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
       break;
     }
 
+  if (stored_form)
+    {
+      sidecar_stored_form_end ();
+    }
   return error_code;
 }
 
@@ -12621,6 +12747,14 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		}
 	    }
 
+	  if (unlikely (sidecar_record_has_refs (&recdes)))
+	    {
+	      /* I-8: the fetches never opt in to the stored form, so they expand every record with refs */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SIDECAR_UNEXPANDED_RECORD, 3, OID_AS_ARGS (&oid));
+	      scan = S_ERROR;
+	      break;
+	    }
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
@@ -14633,6 +14767,10 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   RECDES local_record;
   bool has_BU_lock = lock_has_lock_on_object (class_oid, oid_Root_class_oid, BU_LOCK);
   size_t record_overhead = SPAGE_SLOT_SIZE;
+  const bool sidecar_may_plan = sidecar_class_may_externalize (class_oid);
+#if !defined (NDEBUG)
+  int n_policy = 0, n_paged = 0;	/* the records the Sidecar policy took out of the batch, those in batch pages */
+#endif
 
   // Early-out
   if (recdes.size () == 0)
@@ -14651,8 +14789,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
       local_record = recdes[i].get_recdes ();
       // Loop until we insert all records.
 
-      if (heap_is_big_length (local_record.length))
+      // a record the Sidecar policy must see is planned in heap_insert_logical with no page held, not in the batch
+      if (heap_is_big_length (local_record.length)
+	  || (sidecar_may_plan && sidecar_record_needs_policy (&local_record)))
 	{
+#if !defined (NDEBUG)
+	  n_policy += heap_is_big_length (local_record.length) ? 0 : 1;
+#endif
 	  scan_cache->cache_last_fix_page = false;
 	  // We insert other records normally.
 	  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &local_record, has_index,
@@ -14715,6 +14858,9 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
 	      // Now log the whole page.
 	      pgbuf_log_redo_new_page (thread_p, home_hint_p.pgptr, DB_PAGESIZE, PAGE_HEAP);
+#if !defined (NDEBUG)
+	      n_paged += (int) recdes_array.size ();
+#endif
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));
@@ -14754,6 +14900,13 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
   // Log the postpone operation
   heap_log_postpone_heap_append_pages (thread_p, hfid, class_oid, heap_pages_array);
 
+#if !defined (NDEBUG)
+  if (n_policy > 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "Sidecar: multi-row insert of %d records: %d in batch pages, %d one by one for the "
+		    "policy", (int) recdes.size (), n_paged, n_policy);
+    }
+#endif
   return error_code;
 }
 

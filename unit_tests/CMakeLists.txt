@@ -42,6 +42,7 @@ option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
+option (UNIT_TEST_SIDECAR "Unit testing: Sidecar record codec and write policy")
 
 message("  unit_tests/...")
 
@@ -124,6 +125,11 @@ if (UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
   message("    radix_sort")
   add_subdirectory(radix_sort)
 endif(UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
+
+if (UNIT_TESTS OR UNIT_TEST_SIDECAR)
+  message("    sidecar")
+  add_subdirectory(sidecar)
+endif(UNIT_TESTS OR UNIT_TEST_SIDECAR)
 
 #[[
 TODO compilation fails

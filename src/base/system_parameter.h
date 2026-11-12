@@ -581,8 +581,14 @@ enum param_id
   PRM_ID_HASH_JOIN_RUNTIME_FILTER,
   PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
 
+  /* Sidecar: the write policy of large variable values (storage/sidecar.cpp) */
+  PRM_ID_SIDECAR_INLINE_TARGET,
+  PRM_ID_SIDECAR_MIN_VALUE_SIZE,
+  PRM_ID_SIDECAR_FORCE_EXTERNAL,
+  PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_ROW_SNAPSHOT_MAX_ROWS
+  PRM_LAST_ID = PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH
 };
 typedef enum param_id PARAM_ID;
 

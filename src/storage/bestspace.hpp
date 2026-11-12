@@ -348,7 +348,7 @@ namespace cubstorage
 	  void reset ();
 
 	  bool try_push (bestspace_entry candidate);
-	  void push (bestspace_entry candidate);
+	  bool push (bestspace_entry candidate);
 
 	  bool pop (bestspace_entry &candidate, std::uint16_t needed_size);
 	  std::size_t pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size);
@@ -381,6 +381,7 @@ namespace cubstorage
 
       void try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       void push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
+      void push_freed_page (bestspace_entry candidate);
       std::size_t pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size);
       bool has_candidate (std::uint16_t needed_size) const
       {
@@ -446,9 +447,10 @@ namespace cubstorage
       // thread since the last scan began turns it back on, at most once per REDISCOVER_REARM_INTERVAL.
       // Returns an error only for a real failure such as an interruption or an I/O error.
       // TODO: run the scan outside the user transaction; consumers re-validate, so a late result is fine.
-      // TODO: free pages beyond the budget from the cursor are missed (e.g. after a range DELETE); a re-armed scan
-      // could start at the first page the queue dropped.
-      int rediscover (HFID *hfid, std::uint16_t needed_size, std::size_t &num_usable);
+      // A run of freed pages larger than the queue (e.g. after a range DELETE) is not lost beyond the budget: the
+      // next scan starts at the first freed page the queue let go (push_freed_page), and may run one lap of the
+      // chain before it turns off. in_lap says such a lap goes on after this call.
+      int rediscover (HFID *hfid, std::uint16_t needed_size, std::size_t &num_usable, bool &in_lap);
 
       void to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates);
 
@@ -477,6 +479,11 @@ namespace cubstorage
       std::atomic<std::uint32_t> m_scan_signal_at_disable;
       std::atomic<std::uint64_t> m_scan_disabled_at;
       VPID m_scan_cursor;
+      // the first page push_freed_page could not keep in the queue since the last scan, packed; NO_SCAN_START if none
+      static constexpr std::uint64_t NO_SCAN_START = std::numeric_limits<std::uint64_t>::max ();
+      std::atomic<std::uint64_t> m_scan_start;
+      // the scan started at such a page and may run one lap of the chain without a usable page; under m_scanning
+      bool m_scan_lap;
 
       bool rediscover_rearm_due ();
 

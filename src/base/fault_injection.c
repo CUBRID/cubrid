@@ -35,6 +35,10 @@
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #include <assert.h>
+#if !defined (WINDOWS)
+#include <signal.h>
+#include <unistd.h>
+#endif /* !WINDOWS */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -45,6 +49,7 @@ static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const cha
 static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+static int fi_handler_kill (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 
 /* how long fi_handler_hold stays in place when the caller passes no argument */
 #define FI_HOLD_DEFAULT_SECONDS 3
@@ -78,7 +83,13 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, fi_handler_exit, FI_INIT_STATE},
-  {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE}
+  {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE},
+  {FI_TEST_SIDECAR_KILL_AFTER_STORE_INSERT, fi_handler_kill, FI_INIT_STATE},
+  {FI_TEST_SIDECAR_KILL_AFTER_STAMP, fi_handler_kill, FI_INIT_STATE},
+  {FI_TEST_SIDECAR_KILL_AT_RELOCATE, fi_handler_kill, FI_INIT_STATE},
+  {FI_TEST_SIDECAR_KILL_COMMIT_WINDOW, fi_handler_kill, FI_INIT_STATE},
+  {FI_TEST_SIDECAR_READ_HOLD_AT_FORWARD, fi_handler_hold, FI_INIT_STATE},
+  {FI_TEST_SIDECAR_READ_HOLD_AT_RECHECK, fi_handler_hold, FI_INIT_STATE}
 };
 
 const FI_TEST_CODE fi_Group_none[] = {
@@ -436,6 +447,37 @@ fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, co
     {
       sleep ((unsigned int) seconds);
     }
+
+  return NO_ERROR;
+}
+
+/*
+ * fi_handler_kill - kill the process with SIGKILL, as kill -9 from outside would, after an optional wait
+ *
+ * return: NO_ERROR
+ *
+ *   arg(in): seconds to wait first, or NULL for none
+ *
+ * Note: The log line that names the caller is flushed first, so a test can tell this crash from any other.  Nothing
+ *       else is flushed: the page buffer and the log buffer are lost as in a crash.
+ */
+static int
+fi_handler_kill (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
+{
+  int seconds = (arg == NULL) ? 0 : *((int *) arg);
+
+  /* no call stack: resolving one takes seconds in a debug build and holds the log file meanwhile */
+  _er_log_debug (caller_file, caller_line, "FAULT INJECTION: KILL, waiting %d seconds first\n", seconds);
+  fflush (NULL);
+  if (seconds > 0)
+    {
+      sleep ((unsigned int) seconds);
+    }
+#if defined (WINDOWS)
+  _exit (1);
+#else
+  kill (getpid (), SIGKILL);
+#endif
 
   return NO_ERROR;
 }

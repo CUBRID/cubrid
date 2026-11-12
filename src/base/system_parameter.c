@@ -69,6 +69,7 @@
 #include "log_manager.h"
 #include "xserver_interface.h"
 #include "double_write_buffer.hpp"
+#include "sidecar.hpp"
 #endif /* SERVER_MODE */
 #if defined (LINUX)
 #include "stack_dump.h"
@@ -833,6 +834,11 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_ROW_SNAPSHOT_MAX_ROWS "row_snapshot_max_rows"
 
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
+
+#define PRM_NAME_SIDECAR_INLINE_TARGET "sidecar_inline_target"
+#define PRM_NAME_SIDECAR_MIN_VALUE_SIZE "sidecar_min_value_size"
+#define PRM_NAME_SIDECAR_FORCE_EXTERNAL "sidecar_force_external"
+#define PRM_NAME_SIDECAR_DEBUG_COMMITTED_FETCH "sidecar_debug_committed_fetch"
 
 // #endregion
 
@@ -5770,6 +5776,59 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* a row longer than this moves its largest variable values to its heap's Sidecar store; four records per
+   * 16 KB page */
+  {PRM_ID_SIDECAR_INLINE_TARGET,
+   PRM_NAME_SIDECAR_INLINE_TARGET,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 4060}},
+   {false, {.i = 4060}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* no value shorter than this moves to the store */
+  {PRM_ID_SIDECAR_MIN_VALUE_SIZE,
+   PRM_NAME_SIDECAR_MIN_VALUE_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 256}},
+   {false, {.i = 256}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 64}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* debug: every eligible variable value of at least 64 bytes moves to the store, whatever the row's length */
+  {PRM_ID_SIDECAR_FORCE_EXTERNAL,
+   PRM_NAME_SIDECAR_FORCE_EXTERNAL,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* test only, debug builds: xlocator_fetch_all () reads with the committed snapshot (Sidecar acceptance A4) */
+  {PRM_ID_SIDECAR_DEBUG_COMMITTED_FETCH,
+   PRM_NAME_SIDECAR_DEBUG_COMMITTED_FETCH,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -7917,6 +7976,12 @@ sysprm_change_parameter_values (const SYSPRM_ASSIGN_VALUE * assignments, bool ch
       if (prm->id == PRM_ID_ACCESS_IP_CONTROL)
 	{
 	  css_set_accessible_ip_info ();
+	}
+#endif
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      if (prm->id == PRM_ID_SIDECAR_INLINE_TARGET || prm->id == PRM_ID_SIDECAR_FORCE_EXTERNAL)
+	{
+	  sidecar_refresh_parameters ();
 	}
 #endif
     }

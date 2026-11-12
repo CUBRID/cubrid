@@ -1724,6 +1724,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> SERVER
 %token <cptr> SESSION_TIMEZONE
 %token <cptr> SHOW
+%token <cptr> SIDECAR
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
 %token <cptr> STABILITY
@@ -7678,6 +7679,14 @@ show_heap_type_id
 	| ALL HEAP CAPACITY
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
+		}}
+	| HEAP SIDECAR
+		{{
+			$$ = SHOWSTMT_HEAP_SIDECAR;
+		}}
+	| ALL HEAP SIDECAR
+		{{
+			$$ = SHOWSTMT_ALL_HEAP_SIDECAR;
 		}}
 	;
 
@@ -20946,6 +20955,7 @@ identifier
 	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SESSION_TIMEZONE       {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SHOW                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SIDECAR                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SLOTS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SLOTTED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STABILITY              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
