@@ -7292,14 +7292,17 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
  *   so that the values the scan's predicate finds equal hash alike and none that it compares fails to hash
  *   return: false where no domain is (another type pair, a domain the execution fixes): the scan reads the list
  *   common(out): NULL to hash the values as they are - one type, strings of one collation (their hash is the
- *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
+ *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale, two NUMERICs whose common domain is
+ *		  floating; else the domain both convert to
  *
  * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
  * comparison's type), the one a hash join hashes the pair in (domain_decide_hash_join_key): two fixed NUMERICs in
  * the fixed NUMERIC of the larger scale up to 38 digits, else in a floating NUMERIC. CBRD-27798: the scan hashes a
  * key of a floating NUMERIC normalized, its values fixed or floating (qdata_hash_scan_key_float_numeric ()), since
  * such a key can hold fixed values (a CONNECT BY PRIOR column) and equal values of the two forms hash apart as
- * mht_get_hash_number () hashes them.
+ * mht_get_hash_number () hashes them. So two NUMERICs whose common domain is floating are not converted to it, as a
+ * hash join converts them: the normalized hash already takes either form, and the conversion of every key value cost
+ * a scan over such a pair a tenth more instructions. An integer against a NUMERIC still converts to the NUMERIC.
  */
 static bool
 pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
@@ -7335,6 +7338,11 @@ pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, co
     {
       er_clear ();
       return false;
+    }
+  if (type[0] == DB_TYPE_NUMERIC && type[1] == DB_TYPE_NUMERIC && (*common)->precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      /* hashed normalized as they are (qdata_hash_scan_is_float_numeric_key ()) */
+      *common = NULL;
     }
   return true;
 }

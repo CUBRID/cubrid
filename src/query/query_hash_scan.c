@@ -413,8 +413,10 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
 
 /*
  * qdata_hash_scan_is_float_numeric_key () - CBRD-27798: whether a key pair of a hash list scan hashes in a floating
- *					      NUMERIC, the common domain XASL generation converts the pair to
- *					      (pt_hash_key_domain ()) or the domain a side already has
+ *					      NUMERIC (pt_hash_key_domain ()): a side of a floating NUMERIC domain (one
+ *					      the pair converts to, or one it has), or two fixed NUMERICs of two scales,
+ *					      which XASL generation leaves unconverted only when their common domain is
+ *					      floating
  *   returns: true for such a pair
  *   build(in): the build key of the pair
  *   probe(in): the probe key of the pair
@@ -433,7 +435,8 @@ qdata_hash_scan_is_float_numeric_key (const regu_variable_list_node * build, con
 	  return true;
 	}
     }
-  return false;
+  return domain[0] != NULL && domain[1] != NULL && TP_DOMAIN_TYPE (domain[0]) == DB_TYPE_NUMERIC
+    && TP_DOMAIN_TYPE (domain[1]) == DB_TYPE_NUMERIC && domain[0]->scale != domain[1]->scale;
 }
 
 /*
