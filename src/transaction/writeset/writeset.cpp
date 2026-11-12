@@ -410,7 +410,7 @@ end:
  * Note: Normalize the child FK value to the referenced parent key's type, codeset, collation, and
  *       precision before hashing. This gives logically equal parent and child values the same key
  *       representation and hash.
- *       A REF waits for the previous WRITE and is published to ref_seq. It does not wait for
+ *       A REF waits for the previous WRITE and is published to ref_lsa. It does not wait for
  *       previous REFs, so sibling child transactions remain independent.
  *       NULL FKs have no parent reference and produce no REF. Composite FKs are rebuilt as one complete
  *       MIDXKEY in the parent PK domain before hashing.

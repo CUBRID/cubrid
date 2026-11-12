@@ -136,7 +136,7 @@ namespace wstest
     tdes->trid = trid;
     tdes->wset_hashes.clear ();
     tdes->wset_overflow = false;
-    LSA_SET_NULL (&tdes->wset_dependency_seq);
+    LSA_SET_NULL (&tdes->wset_dependency_lsa);
     return tdes;
   }
 

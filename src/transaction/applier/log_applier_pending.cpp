@@ -114,7 +114,7 @@ la_pending_mark_ready (UINT64 now_ns)
 
   for (node = la_Pending_head; node != NULL; node = node->next)
     {
-      if (node->task.ready_ns == 0 && la_gate_is_satisfied (&node->task.dependency_seq))
+      if (node->task.ready_ns == 0 && la_gate_is_satisfied (&node->task.dependency_lsa))
 	{
 	  node->task.ready_ns = now_ns;
 	}
@@ -140,7 +140,7 @@ la_pending_pop_ready (LA_TASK *task)
 
   for (cur = la_Pending_head; cur != NULL; prev = cur, cur = cur->next)
     {
-      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_seq) == false)
+      if (cur->task.ready_ns == 0 && la_gate_is_satisfied (&cur->task.dependency_lsa) == false)
 	{
 	  continue;
 	}
@@ -246,7 +246,7 @@ la_pending_foreach (void (*fn) (const LA_TASK *task, void *arg), void *arg)
 /*
  * la_pending_find_merge_target() - find the parked fragment task a later fragment of the same key can join
  *   return: the parked task, or NULL
- *   dependency_seq(in): the later fragment's dependency
+ *   dependency_lsa(in): the later fragment's dependency
  *   unit_key_hash(in): the later fragment's single key hash, not 0
  *
  * Note:
@@ -255,13 +255,13 @@ la_pending_foreach (void (*fn) (const LA_TASK *task, void *arg), void *arg)
  *   same task right after it.
  */
 LA_TASK *
-la_pending_find_merge_target (const LOG_LSA *dependency_seq, UINT64 unit_key_hash)
+la_pending_find_merge_target (const LOG_LSA *dependency_lsa, UINT64 unit_key_hash)
 {
   LA_PENDING_NODE *node;
 
-  assert (dependency_seq != NULL);
+  assert (dependency_lsa != NULL);
 
-  if (LSA_ISNULL (dependency_seq))
+  if (LSA_ISNULL (dependency_lsa))
     {
       return NULL;
     }
@@ -277,7 +277,7 @@ la_pending_find_merge_target (const LOG_LSA *dependency_seq, UINT64 unit_key_has
 
       last = (node->task.merged_count > 0) ? &node->task.merged_lsa[node->task.merged_count - 1]
 	: &node->task.commit_lsa;
-      if (LSA_EQ (last, dependency_seq))
+      if (LSA_EQ (last, dependency_lsa))
 	{
 	  return &node->task;
 	}

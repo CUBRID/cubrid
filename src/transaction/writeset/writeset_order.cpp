@@ -67,11 +67,11 @@ wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *depe
 	}
 
       WSET_TRACE (3,
-		  "PROBE trid=%d kind=%s hash=%016llx write_seq=%lld|%d ref_seq=%lld|%d candidate=%lld|%d source=%s\n",
+		  "PROBE trid=%d kind=%s hash=%016llx write_lsa=%lld|%d ref_lsa=%lld|%d candidate=%lld|%d source=%s\n",
 		  tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash,
-		  (long long) slots.write_seq.pageid, (int) slots.write_seq.offset,
-		  (long long) slots.ref_seq.pageid, (int) slots.ref_seq.offset,
-		  (long long) candidate.pageid, (int) candidate.offset,
+		  LSA_AS_ARGS (&slots.write_lsa),
+		  LSA_AS_ARGS (&slots.ref_lsa),
+		  LSA_AS_ARGS (&candidate),
 		  candidate_is_ref ? "REF_SLOT" : "WRITE_SLOT");
 
       if (LSA_ISNULL (&candidate) || !LSA_GT (&candidate, &dependency))
@@ -96,9 +96,9 @@ wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *depe
       LSA_COPY (dependency_out, &dependency);
       WSET_TRACE (1,
 		  "DEPENDENCY trid=%d source=REF_SLOT history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
-		  tdes->trid, (long long) history_start.pageid, (int) history_start.offset,
-		  (long long) prev_commit.pageid, (int) prev_commit.offset,
-		  (long long) dependency_out->pageid, (int) dependency_out->offset);
+		  tdes->trid, LSA_AS_ARGS (&history_start),
+		  LSA_AS_ARGS (&prev_commit),
+		  LSA_AS_ARGS (dependency_out));
       return;
     }
 
@@ -119,9 +119,9 @@ wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *depe
 
   WSET_TRACE (1,
 	      "DEPENDENCY trid=%d source=WRITE_BOUND history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
-	      tdes->trid, (long long) history_start.pageid, (int) history_start.offset,
-	      (long long) prev_commit.pageid, (int) prev_commit.offset,
-	      (long long) dependency_out->pageid, (int) dependency_out->offset);
+	      tdes->trid, LSA_AS_ARGS (&history_start),
+	      LSA_AS_ARGS (&prev_commit),
+	      LSA_AS_ARGS (dependency_out));
 }
 
 void
@@ -134,7 +134,7 @@ wset_order_find_dependency (LOG_TDES *tdes, LOG_LSA *dependency_out)
     {
       wset_history_get_commit_order_dependency (dependency_out);
       WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
-		  tdes->trid, (long long) dependency_out->pageid, (int) dependency_out->offset);
+		  tdes->trid, LSA_AS_ARGS (dependency_out));
       return;
     }
 
@@ -159,8 +159,8 @@ wset_order_publish_commit_keys (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 
   WSET_TRACE (1,
 	      "COMMIT trid=%d commit_lsa=%lld|%d dependency=%lld|%d entries=%zu fallback=%d\n",
-	      tdes->trid, (long long) commit_lsa->pageid, (int) commit_lsa->offset,
-	      (long long) tdes->wset_dependency_seq.pageid, (int) tdes->wset_dependency_seq.offset,
+	      tdes->trid, LSA_AS_ARGS (commit_lsa),
+	      LSA_AS_ARGS (&tdes->wset_dependency_lsa),
 	      tdes->wset_hashes.size (), tdes->wset_overflow ? 1 : 0);
 
   wset_stat_count_commit (tdes->wset_overflow, (WSET_FALLBACK_REASON) tdes->wset_fallback_reason);
@@ -176,7 +176,7 @@ wset_order_find_sysop_dependency (LOG_TDES *tdes, LOG_LSA *dependency_out)
 
   wset_history_get_commit_order_dependency (dependency_out);
   WSET_TRACE (1, "DEPENDENCY trid=%d mode=SYSOP_COMMIT_ORDER dependency=%lld|%d\n", tdes->trid,
-	      (long long) dependency_out->pageid, (int) dependency_out->offset);
+	      LSA_AS_ARGS (dependency_out));
 }
 
 /* Make every later apply unit wait at least for this log coordinate. */
@@ -188,7 +188,7 @@ wset_order_advance_barrier (const LOG_LSA *lsa, const char *reason)
 
   wset_history_advance_start (lsa);
   WSET_TRACE (1, "HISTORY_START raise reason=%s history_start=%lld|%d\n", reason,
-	      (long long) lsa->pageid, (int) lsa->offset);
+	      LSA_AS_ARGS (lsa));
 }
 
 /* An independent replication unit (serial update, INCR/DECR that commits on its own) is ordered by the keys it
@@ -224,8 +224,7 @@ wset_order_publish_sysop_keys (LOG_TDES *tdes, size_t begin, const LOG_LSA *syso
   assert (begin <= tdes->wset_hashes.size ());
 
   WSET_TRACE (1, "SYSOP_PUBLISH trid=%d sysop_lsa=%lld|%d dependency=%lld|%d entries=%zu\n",
-	      tdes->trid, (long long) sysop_lsa->pageid, (int) sysop_lsa->offset,
-	      (long long) tdes->wset_dependency_seq.pageid, (int) tdes->wset_dependency_seq.offset,
+	      tdes->trid, LSA_AS_ARGS (sysop_lsa), LSA_AS_ARGS (&tdes->wset_dependency_lsa),
 	      tdes->wset_hashes.size () - begin);
 
   wset_history_publish_keys (tdes, begin, tdes->wset_hashes.size (), sysop_lsa);

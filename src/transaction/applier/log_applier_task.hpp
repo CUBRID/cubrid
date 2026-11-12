@@ -53,7 +53,7 @@ struct la_task
   UINT64 unit_key_hash;		/* a fragment of an independent replication unit ordered by a single key: the
 				 * key's writeset hash from the master's label; 0 otherwise. A later fragment of the
 				 * same key may join this task */
-  LOG_LSA dependency_seq;	/* dependency ordering key in the master's commit_seq space, decoded from the
+  LOG_LSA dependency_lsa;	/* dependency commit LSA from the master, decoded from the
 				 * LOG_DUMMY_WSET_LABEL right before the commit; the gate waits for the transaction
 				 * at this LSA to finish. null = no dependency */
 

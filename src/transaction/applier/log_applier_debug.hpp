@@ -24,8 +24,27 @@
 #define _LOG_APPLIER_DEBUG_HPP_
 
 #include "porting.h"
+#include "error_manager.h"
+#include "system_parameter.h"
 
 #include <sys/time.h>
+
+/* Check the runtime writeset trace level independently of the build's debug mode. */
+inline bool
+la_wset_trace_is_enabled (int level)
+{
+  return prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= level;
+}
+
+#define LA_WSET_TRACE(level, ...) \
+  do \
+    { \
+      if (la_wset_trace_is_enabled (level)) \
+	{ \
+	  _er_log_debug (ARG_FILE_LINE, "[WSET] " __VA_ARGS__); \
+	} \
+    } \
+  while (0)
 
 #if !defined (NDEBUG)
 #define LA_DEBUG_LOG(...) er_log_debug (__VA_ARGS__)
