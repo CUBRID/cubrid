@@ -322,20 +322,20 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
-      bool handle_message_queue_release_packet (message &item);
+      void handle_message_queue_release_packet (message &item);
 
-      bool handle_message_queue_new_client (message &item);
-      bool handle_message_queue_handoff_client (message &item);
-      bool handle_message_queue_takeover_client (message &item);
-      bool handle_message_queue_shutdown_client (message &item);
+      void handle_message_queue_new_client (message &item);
+      void handle_message_queue_handoff_client (message &item);
+      void handle_message_queue_takeover_client (message &item);
+      void handle_message_queue_shutdown_client (message &item);
 
-      bool handle_message_queue_start (message &item);
-      bool handle_message_queue_hibernate (message &item);
-      bool handle_message_queue_awaken (message &item);
-      bool handle_message_queue_shutdown (message &item);
+      void handle_message_queue_start (message &item);
+      void handle_message_queue_hibernate (message &item);
+      void handle_message_queue_awaken (message &item);
+      void handle_message_queue_shutdown (message &item);
 
-      bool handle_message_queue_by_index (queue_type type);
-      bool handle_message_queue ();
+      void handle_message_queue_by_index (queue_type type);
+      void handle_message_queue ();
 
       /* --------------------------------------------------------------------------- */
       /* error									     */
