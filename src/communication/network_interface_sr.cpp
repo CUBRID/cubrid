@@ -1239,15 +1239,16 @@ slocator_notify_isolation_incons (THREAD_ENTRY *thread_p, unsigned int rid, char
  *   size(in): number of bytes to be read from 'ptr'
  *
  * NOTE: The request is sent by the client and must not be trusted. Check the request with this function before
- *       unpacking from it, so that the unpacking never reads past the end of the request.
+ *       unpacking from it, so that the unpacking never reads past the end of the request. 'ptr' may already be past
+ *       the end of the request, so the positions are compared as integers.
  */
 static bool
 net_check_request_remaining (const char *request, int reqlen, const char *ptr, INT64 size)
 {
   INT64 remain;
 
-  remain = (INT64) reqlen - (INT64) (ptr - request);
-  if (ptr < request || size < 0 || size > remain)
+  remain = (INT64) reqlen - (INT64) ((UINTPTR) ptr - (UINTPTR) request);
+  if ((UINTPTR) ptr < (UINTPTR) request || size < 0 || size > remain)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, (int) MIN (MAX (size, 0), INT_MAX),
 	      (int) MIN (MAX (remain, 0), INT_MAX));
@@ -1351,8 +1352,8 @@ net_check_copyarea_sizes (int num_objs, int packed_desc_size, int content_size, 
  *
  * NOTE: or_unpack_ptr () aligns the read position to PTR_ALIGNMENT before each pointer, so the pointers start at the
  *       aligned position. When there is no pointer, the request may end before the aligned position. The aligned
- *       position is computed without PTR_ALIGN (), which clears the padding bytes in a debug build and so would
- *       write to the request before it is checked.
+ *       position is computed as an integer without PTR_ALIGN (), which clears the padding bytes in a debug build and
+ *       so would write to the request before it is checked.
  */
 static bool
 net_check_request_ptr_count (const char *request, int reqlen, const char *ptr, int count)
@@ -8120,7 +8121,8 @@ slocator_assign_oid_batch (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   LC_OIDSET *oidset = NULL;
 
   /* the oid set is packed back into the request, so it must lie within the request */
-  if (!net_check_packed_oid_set (request, reqlen, request + OR_INT_SIZE))
+  if (!net_check_request_remaining (request, reqlen, request, OR_INT_SIZE)
+      || !net_check_packed_oid_set (request, reqlen, request + OR_INT_SIZE))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
