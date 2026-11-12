@@ -67,7 +67,7 @@ extern LOG_LSA log_get_append_lsa (void);
 extern void log_get_prior_lsa (LOG_LSA * lsa_out);
 extern bool logpb_no_logging_index_build_begin (void);
 extern void logpb_no_logging_index_build_end (void);
-extern LOG_LSA *log_get_eof_lsa (void);
+extern LOG_LSA log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
 extern int log_get_num_pages_for_creation (int db_npages);

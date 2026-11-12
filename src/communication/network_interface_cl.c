@@ -7241,7 +7241,8 @@ btree_class_test_unique (char *buf, int buf_size)
  * fill_factor (in)	: Target fill ratio in percent.
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow pages deallocated.
- * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ * pairs_skipped (out)	: Number of page pairs and keys that could not be compacted until vacuum catches up (no OID
+ *			  boundary in a page pair, or no stable object in a key's leaf record).
  */
 int
 btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
@@ -9959,8 +9960,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   /* Do it as async mode at the first request to the server. And, if several pages are left to get, keep it as async
    * mode */
 
-  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.pageid);
-  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.pageid)
+  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.load ().pageid);
+  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.load ().pageid)
     {
       /* In case of synchronous request */
       first_pageid_torecv = logwr_Gl.last_recv_pageid;
@@ -10057,7 +10058,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID
+      && logwr_Gl.hdr.eof_lsa.load ().pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;
