@@ -7949,9 +7949,9 @@ locator_resolve_internal_lob_dml_slots (THREAD_ENTRY * thread_p, const OID * cla
 	    }
 	}
 
-      /* A client record names a locator only by its marker (workspace memory keeps it): an unmarked client string
-       * is content, whatever it reads.  A server-built record's LOB columns hold nothing but locators. */
-      if (from_client && original_marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR)
+      /* Only a marked value is a locator: a client marks the ones it was issued, a stub read from disk comes marked.
+       * An unmarked string is content, whatever it reads. */
+      if (original_marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR)
 	{
 	  db_value_mark_internal_lob (value, original_marker);
 	  continue;

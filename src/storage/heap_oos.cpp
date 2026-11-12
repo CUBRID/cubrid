@@ -150,6 +150,12 @@ heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid,
 	{
 	  *needs_preparation = true;
 	}
+      /* a BLOB/CLOB value always lives as a chain in the class LOB file, never inline in the row */
+      if (!repr->attributes[i].is_fixed && TP_IS_LOB_TYPE (repr->attributes[i].type)
+	  && !OR_VAR_IS_NULL (record->data, repr->attributes[i].location))
+	{
+	  *needs_preparation = true;
+	}
     }
   heap_classrepr_free_and_init (repr, &cache_index);
   return NO_ERROR;
