@@ -246,7 +246,7 @@ heap_update_mvcc (HFID &hfid, OID &class_oid, HEAP_SCANCACHE &scan_cache, OID &o
 static VACUUM_LOG_BLOCKID
 current_log_blockid ()
 {
-  return vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.pageid);
+  return vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.load ().pageid);
 }
 
 /* Vacuum data entries are produced only when the log crosses a block boundary,
