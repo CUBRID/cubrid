@@ -146,8 +146,6 @@ static const struct
   {"DATETIME", bind_write_datetime},	/* CCI_U_TYPE_DATETIME */
   {"BFILE", bind_write_lob},		/* CCI_U_TYPE_BFILE */
   {"CFILE", bind_write_lob},		/* CCI_U_TYPE_CFILE */
-  {"BLOB", NULL},			/* CCI_U_TYPE_BLOB */
-  {"CLOB", NULL},			/* CCI_U_TYPE_CLOB */
   {"ENUM", bind_write_string},		/* CCI_U_TYPE_ENUM */
   {"USHORT", bind_write_short},		/* CCI_U_TYPE_USHORT */
   {"UINT", bind_write_int},		/* CCI_U_TYPE_UINT */
@@ -158,6 +156,8 @@ static const struct
   {"DATETIMELTZ", NULL},		/* CCI_U_TYPE_DATETIMELTZ */
   {"TIMETZ", NULL},			/* CCI_U_TYPE_TIMETZ */
   {"JSON", bind_write_string},		/* CCI_U_TYPE_JSON */
+  {"BLOB", NULL},			/* CCI_U_TYPE_BLOB */
+  {"CLOB", NULL},			/* CCI_U_TYPE_CLOB */
   {"INTERNAL_BLOB_UPLOAD", bind_write_internal_lob_upload},	/* CCI_U_TYPE_INTERNAL_BLOB_UPLOAD */
   {"INTERNAL_CLOB_UPLOAD", bind_write_internal_lob_upload},	/* CCI_U_TYPE_INTERNAL_CLOB_UPLOAD */
 };

@@ -147,22 +147,24 @@ typedef enum
   CCI_U_TYPE_RESULTSET = 20,
   CCI_U_TYPE_BIGINT = 21,
   CCI_U_TYPE_DATETIME = 22,
+  /* 0..34 are develop's numbers: BFILE/CFILE take the slots of its BLOB/CLOB (external files), so a develop
+   * driver's LOB API reaches them; BLOB/CLOB follow JSON, unknown to such a driver */
   CCI_U_TYPE_BFILE = 23,
   CCI_U_TYPE_CFILE = 24,
-  CCI_U_TYPE_BLOB = 25,
-  CCI_U_TYPE_CLOB = 26,
-  CCI_U_TYPE_ENUM = 27,
-  CCI_U_TYPE_USHORT = 28,
-  CCI_U_TYPE_UINT = 29,
-  CCI_U_TYPE_UBIGINT = 30,
-  CCI_U_TYPE_TIMESTAMPTZ = 31,
-  CCI_U_TYPE_TIMESTAMPLTZ = 32,
-  CCI_U_TYPE_DATETIMETZ = 33,
-  CCI_U_TYPE_DATETIMELTZ = 34,
+  CCI_U_TYPE_ENUM = 25,
+  CCI_U_TYPE_USHORT = 26,
+  CCI_U_TYPE_UINT = 27,
+  CCI_U_TYPE_UBIGINT = 28,
+  CCI_U_TYPE_TIMESTAMPTZ = 29,
+  CCI_U_TYPE_TIMESTAMPLTZ = 30,
+  CCI_U_TYPE_DATETIMETZ = 31,
+  CCI_U_TYPE_DATETIMELTZ = 32,
   /* Disabled type */
-  CCI_U_TYPE_TIMETZ = 35,	/* internal use only - RESERVED */
+  CCI_U_TYPE_TIMETZ = 33,	/* internal use only - RESERVED */
   /* end of disabled types */
-  CCI_U_TYPE_JSON = 36,
+  CCI_U_TYPE_JSON = 34,
+  CCI_U_TYPE_BLOB = 35,
+  CCI_U_TYPE_CLOB = 36,
   CCI_U_TYPE_INTERNAL_BLOB_UPLOAD = 37,
   CCI_U_TYPE_INTERNAL_CLOB_UPLOAD = 38,
   CCI_U_TYPE_LAST = CCI_U_TYPE_INTERNAL_CLOB_UPLOAD
