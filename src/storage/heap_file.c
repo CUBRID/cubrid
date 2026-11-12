@@ -6539,6 +6539,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->m_index_stats = NULL;
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
+  scan_cache->last_version_unseen = false;
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
@@ -6866,6 +6867,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
+  scan_cache->last_version_unseen = false;
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
@@ -26939,6 +26941,16 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 }
 
 /*
+ * heap_is_deleted_by_other () - Has another transaction deleted this version, active or committed after a snapshot
+ *				 that still sees it?
+ */
+static bool
+heap_is_deleted_by_other (THREAD_ENTRY * thread_p, const MVCC_REC_HEADER * mvcc_header)
+{
+  return MVCC_IS_HEADER_DELID_VALID (mvcc_header) && !MVCC_IS_REC_DELETED_BY_ME (thread_p, mvcc_header);
+}
+
+/*
 * heap_scan_get_visible_version () - get visible version, mvcc style when snapshot provided, otherwise directly from heap
 *
 *   return: SCAN_CODE. Posible values:
@@ -27025,6 +27037,7 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 
       if (shortcut_visible)
 	{
+	  scan_cache->last_version_unseen = heap_is_deleted_by_other (thread_p, &mvcc_header);
 	  if (ispeeking == PEEK)
 	    {
 	      /* recdes may point directly into the still-latched page */
@@ -27141,6 +27154,8 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
 
       snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
+      context->scan_cache->last_version_unseen = (snapshot_res == TOO_NEW_FOR_SNAPSHOT
+						  || heap_is_deleted_by_other (thread_p, &mvcc_header));
       if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
 	{
 	  /* current version is not visible, check previous versions from log and skip record get from heap.

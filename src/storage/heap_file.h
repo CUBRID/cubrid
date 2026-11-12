@@ -155,6 +155,8 @@ struct heap_scancache
     FILE_TYPE file_type;		/* The file type of the heap file being scanned. Can be FILE_HEAP or
 				         * FILE_HEAP_REUSE_SLOTS */
     MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
+    bool last_version_unseen;	/* set by a get that checks the snapshot: the version it returned is not the last
+				 * one, another transaction updated or deleted it after the snapshot */
     HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
     PGBUF_COPY_BUFFER_HANDLE local_cache_handle;	/* local page cache for a cached scan; NULL unless cached scan */

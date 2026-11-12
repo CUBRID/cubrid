@@ -181,6 +181,7 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 
 typedef struct partition_spec_node PARTITION_SPEC_TYPE;
 typedef struct gby_skip_state GBY_SKIP_STATE;
+typedef struct upd_deferred_rows UPD_DEFERRED_ROWS;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /************************************************************************/
@@ -353,6 +354,8 @@ struct buildlist_proc_node
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
   GBY_SKIP_STATE *gby_skip_state;	/* GROUP BY skip aggregated during the scan, one execution's; not serialized */
+  UPD_DEFERRED_ROWS *upd_deferred_rows;	/* rows of the UPDATE's select whose assignments failed on a version
+					 * older than the last; one execution's, not serialized */
   const TP_DOMAIN **g_hk_compares;	/* per hash key column, the domain whose cmpval and collation compare its values
 					 * (domain_compare_in_domain), decided at unpack; NULL: each execution's key domains;
 					 * not serialized */
@@ -941,7 +944,10 @@ typedef enum
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
+  ACCESS_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x1 << 6	/* a DML target left to the force-phase reevaluation.
+								 * Locked at select, as FOR UPDATE, where it does not
+								 * run: see qexec_spec_is_for_update (). */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
