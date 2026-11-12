@@ -417,9 +417,17 @@ add_test(NAME test_oos_workspace_lob COMMAND test_oos_workspace
 set_tests_properties(
   test_oos_workspace_loader test_oos_workspace_insert test_oos_workspace_update
   test_oos_workspace_storage_policy test_oos_workspace_load_failure test_oos_workspace_lob
-  PROPERTIES RUN_SERIAL TRUE TIMEOUT 60
+  PROPERTIES TIMEOUT 60
 )
 
 get_property(oos_tests DIRECTORY PROPERTY TESTS)
+foreach(oos_test IN LISTS oos_tests)
+  foreach(oos_fixture_property FIXTURES_REQUIRED FIXTURES_SETUP FIXTURES_CLEANUP)
+    get_test_property(${oos_test} ${oos_fixture_property} oos_fixture)
+    if(oos_fixture)
+      set_tests_properties(${oos_test} PROPERTIES RUN_SERIAL TRUE)
+    endif()
+  endforeach()
+endforeach()
 set_property(TEST ${oos_tests} APPEND PROPERTY ENVIRONMENT
   "CUBRID_CALL_STACK_DUMP_ON_ERROR=no" "CUBRID_CALL_STACK_DUMP_ACTIVATION_LIST=null")
