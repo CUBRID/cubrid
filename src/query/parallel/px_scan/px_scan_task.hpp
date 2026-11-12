@@ -130,6 +130,7 @@ namespace parallel_scan
 	UINT64 fetches;
 	UINT64 ioreads;
 	UINT64 fetch_time;
+	OOS_READ_STATS oos_reads;
       };
       /* trace only: the scan's own page fixes, counted around the page and slot reads the way
        * scan_next_scan_local () counts a serial scan; the NL inner scans, dptr subqueries and result

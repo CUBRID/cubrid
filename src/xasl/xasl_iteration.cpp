@@ -85,6 +85,17 @@ extern "C" {
     _er_log_debug (ARG_FILE_LINE, "%s", result.c_str());
   }
 
+  /* like the scan's own figures: the longest clone's time, the clones' page counts added */
+  static void merge_oos_reads (OOS_READ_STATS &dst, const OOS_READ_STATS &src)
+  {
+    if (timercmp (&src.elapsed, &dst.elapsed, >))
+      {
+	dst.elapsed = src.elapsed;
+      }
+    dst.fetches += src.fetches;
+    dst.ioreads += src.ioreads;
+  }
+
   void xasl_merge_stats (XASL_NODE *src, XASL_NODE *dst)
   {
     std::function<bool (XASL_NODE *)> merge_stats = [dst] (XASL_NODE* src_node) -> bool
@@ -128,6 +139,7 @@ extern "C" {
 	    }
 	  dst_node->spec_list->s_id.scan_stats.num_fetches += src_node->spec_list->s_id.scan_stats.num_fetches;
 	  dst_node->spec_list->s_id.scan_stats.num_ioreads += src_node->spec_list->s_id.scan_stats.num_ioreads;
+	  merge_oos_reads (dst_node->spec_list->s_id.scan_stats.oos_reads, src_node->spec_list->s_id.scan_stats.oos_reads);
 	  dst_node->spec_list->s_id.scan_stats.read_rows += src_node->spec_list->s_id.scan_stats.read_rows;
 	  dst_node->spec_list->s_id.scan_stats.qualified_rows += src_node->spec_list->s_id.scan_stats.qualified_rows;
 	  dst_node->spec_list->s_id.type = dst_node->spec_list->s_id.type == 0 ? src_node->spec_list->s_id.type :
@@ -165,6 +177,8 @@ extern "C" {
 		}
 	      dst_node->spec_list->s_id.partition_stats->num_fetches += src_node->spec_list->s_id.partition_stats->num_fetches;
 	      dst_node->spec_list->s_id.partition_stats->num_ioreads += src_node->spec_list->s_id.partition_stats->num_ioreads;
+	      merge_oos_reads (dst_node->spec_list->s_id.partition_stats->oos_reads,
+			       src_node->spec_list->s_id.partition_stats->oos_reads);
 	      dst_node->spec_list->s_id.partition_stats->read_rows += src_node->spec_list->s_id.partition_stats->read_rows;
 	      dst_node->spec_list->s_id.partition_stats->qualified_rows += src_node->spec_list->s_id.partition_stats->qualified_rows;
 	      dst_node->spec_list->s_id.partition_stats->read_keys += src_node->spec_list->s_id.partition_stats->read_keys;
