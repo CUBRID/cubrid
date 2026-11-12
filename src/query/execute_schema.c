@@ -14154,12 +14154,13 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
 	}
       /* Desired type either PT_TYPE_OBJECT or collection type. */
 
-      /* We allow default value if: 1. Not a default expression. 2. Value is NULL or value is empty set and collection
-       * type is expected. */
+      /* We allow default value if: 1. It is a value, not an expression. 2. Value is NULL or value is empty set and
+       * collection type is expected. */
       value = &def_val->info.value.db_value;
-      if (db_value_is_null (value)
-	  || (desired_type != PT_TYPE_OBJECT && TP_IS_SET_TYPE (value->domain.general_info.type)
-	      && value->data.set->set->size == 0))
+      if (def_val->node_type == PT_VALUE
+	  && (db_value_is_null (value)
+	      || (desired_type != PT_TYPE_OBJECT && TP_IS_SET_TYPE (value->domain.general_info.type)
+		  && value->data.set->set->size == 0)))
 	{
 	  /* We can accept the default value. */
 	  pt_evaluate_tree (parser, def_val, default_value, 1);
