@@ -195,6 +195,12 @@ struct or_index
   int n_atts;			/* Number of associated attributes */
   BTID btid;			/* btree ID */
   OR_INDEX_STATUS index_status;
+
+  /* Not read from disk: the RK digest, computed on first use by repl_get_key_digest (); 0 = not yet.
+   * It lives with this cached representation, so a DDL recomputes it. */
+  // *INDENT-OFF*
+  mutable std::atomic<UINT64> repl_key_digest;
+  // *INDENT-ON*
 };
 
 typedef struct or_partition OR_PARTITION;

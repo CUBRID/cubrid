@@ -294,13 +294,12 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
 /*
  * repl_pack_key_metadata() - serialize the cached RK used for the logged key value
  *   return: NO_ERROR or an error code
- *   thread_p(in): thread entry
  *   index(in): selected RK index
  *   data(out): allocated descriptor owned by the caller
  *   length(out): descriptor length in bytes
  */
-int
-repl_pack_key_metadata (THREAD_ENTRY * thread_p, const OR_INDEX * index, char **data, int *length)
+static int
+repl_pack_key_metadata (const OR_INDEX * index, char **data, int *length)
 {
   *data = NULL;
   *length = 0;
@@ -337,31 +336,55 @@ repl_pack_key_metadata (THREAD_ENTRY * thread_p, const OR_INDEX * index, char **
       columns[i].domain = a->domain;
       columns[i].descending = index->asc_desc ? index->asc_desc[i] : 0;
       columns[i].not_null = a->is_notnull;
-
-      if (TP_DOMAIN_TYPE (a->domain) == DB_TYPE_OBJECT && !OID_ISNULL (&a->domain->class_oid))
-	{
-	  char *class_name = NULL;
-	  error = heap_get_class_name (thread_p, &a->domain->class_oid, &class_name);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
-	  columns[i].domain_class_name = class_name;
-	}
     }
 
   error = repl_key_pack (index->btname, index->type, index->n_atts, columns, data, length);
 end:
-  for (int i = 0; i < index->n_atts; i++)
-    {
-      if (columns[i].domain_class_name != NULL)
-	{
-	  free_and_init (columns[i].domain_class_name);
-	}
-    }
-
   free_and_init (columns);
   return error;
+}
+
+/*
+ * repl_get_key_digest() - digest of an RK, computed once per class representation
+ *   return: NO_ERROR or an error code
+ *   index(in): RK index of a class representation
+ *   digest(out): REPL_KEY_DIGEST_SIZE bytes
+ *
+ * Note: the descriptor is made only of the class's own definition (index, key columns, their domains), so it is the
+ *	 same for every row of one representation. A DDL on the class builds a new representation, which starts
+ *	 without a digest, and a rolled back DDL drops the representation it built, so the cached digest never
+ *	 outlives the definition it describes.
+ */
+int
+repl_get_key_digest (const OR_INDEX * index, char *digest)
+{
+  // *INDENT-OFF*
+  static_assert (REPL_KEY_DIGEST_SIZE == sizeof (UINT64), "the RK digest must fit in the cached word");
+  // *INDENT-ON*
+
+  UINT64 cached = index->repl_key_digest.load ();
+  if (cached != 0)
+    {
+      memcpy (digest, &cached, REPL_KEY_DIGEST_SIZE);
+      return NO_ERROR;
+    }
+
+  char *data = NULL;
+  int length = 0;
+  int error = repl_pack_key_metadata (index, &data, &length);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  repl_key_digest (data, length, digest);
+  free_and_init (data);
+
+  /* threads that race here compute the same value, so the last store wins harmlessly */
+  memcpy (&cached, digest, REPL_KEY_DIGEST_SIZE);
+  index->repl_key_digest.store (cached);
+
+  return NO_ERROR;
 }
 
 /*
@@ -452,8 +475,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
     {
       char *ptr_to_packed_key_value_size = NULL;
       int packed_key_len = 0;
-      char *key_metadata = NULL;
-      int metadata_length = 0;
+      int metadata_length = REPL_KEY_DIGEST_SIZE;
       char key_digest[REPL_KEY_DIGEST_SIZE];
 
       if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR || class_name == NULL)
@@ -478,18 +500,14 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  return error;
 	}
 
-      error = repl_pack_key_metadata (thread_p, index, &key_metadata, &metadata_length);
+      /* the row log carries the digest of the descriptor, not the descriptor: the slave only needs to know
+       * whether its own descriptor is the same one */
+      error = repl_get_key_digest (index, key_digest);
       if (error != NO_ERROR)
 	{
 	  free_and_init (class_name);
 	  return error;
 	}
-
-      /* the row log carries the digest of the descriptor, not the descriptor: the slave only needs to know
-       * whether its own descriptor is the same one */
-      repl_key_digest (key_metadata, metadata_length, key_digest);
-      free_and_init (key_metadata);
-      metadata_length = REPL_KEY_DIGEST_SIZE;
 
       repl_rec->tde_encrypted = tde_algo != TDE_ALGORITHM_NONE;
 

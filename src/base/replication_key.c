@@ -199,9 +199,11 @@ repl_key_pack (const char *name, int type, int count, const REPL_KEY_COLUMN * co
 	  goto error;
 	}
 
-      /* The packed domain below carries the type, precision, scale, codeset, collation and enum values. */
+      /* The packed domain below carries the type, precision, scale, codeset, collation and enum values. An OBJECT
+       * column is described by its type alone: the class it refers to has no identity both nodes share (its OID
+       * differs per node, and its name changes under a RENAME that holds no lock on this class), and the slave
+       * finds the row by the logged key value whatever that class is. */
       if (!repl_key_put_int (&b, c->id) || !repl_key_put_name (&b, c->name)
-	  || !repl_key_put_name (&b, c->domain_class_name)
 	  || !repl_key_put_int (&b, c->descending != 0) || !repl_key_put_int (&b, c->not_null != 0))
 	{
 	  goto error;
@@ -568,20 +570,9 @@ repl_key_from_class (struct db_object *class_obj, char **data, int *length)
       columns[i].domain = a->domain;
       columns[i].descending = chosen->asc_desc ? chosen->asc_desc[i] : 0;
       columns[i].not_null = (a->flags & SM_ATTFLAG_NON_NULL) != 0;
-
-      if (TP_DOMAIN_TYPE (a->domain) == DB_TYPE_OBJECT && a->domain->class_mop != NULL)
-	{
-	  columns[i].domain_class_name = sm_get_ch_name (a->domain->class_mop);
-	  if (columns[i].domain_class_name == NULL)
-	    {
-	      error = er_errid ();
-	      goto end;
-	    }
-	}
     }
 
   error = repl_key_pack (chosen->name, kind, count, columns, data, length);
-end:
   free_and_init (columns);
   return error;
 }

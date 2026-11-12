@@ -2350,7 +2350,8 @@ or_install_btids (OR_CLASSREP * rep, DB_SEQ * props)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OR_INDEX) * n_btids);
 	  return;
 	}
-      memset (rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
+      /* all zero is also the "not computed" value of repl_key_digest, a lock-free atomic word */
+      memset ((void *) rep->indexes, 0, sizeof (OR_INDEX) * n_btids);
     }
 
   /* Now extract the unique and index BTIDs from the property list and install them into the class and attribute

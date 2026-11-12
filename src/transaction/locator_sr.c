@@ -6920,7 +6920,7 @@ invalid:
  *   return: NO_ERROR or an error code
  *   thread_p(in): thread entry
  *   class_oid(in): replicated class
- *   metadata, metadata_length(in): RK descriptor from the master
+ *   metadata, metadata_length(in): RK digest from the master
  *   btid(out): selected local RK index for row lookup
  * Note: The caller holds the force-scancache schema lock.
  */
@@ -6928,6 +6928,9 @@ static int
 locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * key_value,
 			const char *metadata, int metadata_length, BTID * btid)
 {
+  /* locator_repl_get_payload () accepts only a digest of REPL_KEY_DIGEST_SIZE bytes */
+  assert (metadata != NULL && metadata_length == REPL_KEY_DIGEST_SIZE);
+
   int cache_index = -1;
   OR_CLASSREP *representation = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &cache_index);
   if (representation == NULL)
@@ -6937,8 +6940,7 @@ locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const DB
       return error;
     }
 
-  char *local = NULL;
-  int local_length = 0;
+  char local_digest[REPL_KEY_DIGEST_SIZE];
   int error = NO_ERROR;
   BTID_SET_NULL (btid);
 
@@ -6947,32 +6949,32 @@ locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const DB
       OR_INDEX *index = &representation->indexes[i];
       if (or_is_replication_candidate_key (index))
 	{
-	  error = repl_pack_key_metadata (thread_p, index, &local, &local_length);
-	  if (error == NO_ERROR)
+	  error = repl_get_key_digest (index, local_digest);
+	  if (error != NO_ERROR)
 	    {
-	      BTID_COPY (btid, &index->btid);
+	      goto end;
 	    }
+	  BTID_COPY (btid, &index->btid);
 	  break;
 	}
     }
 
-  if (error == NO_ERROR && !repl_key_matches_digest (metadata, metadata_length, local, local_length))
+  /* an empty btid means the slave has no RK */
+  if (BTID_IS_NULL (btid) || memcmp (metadata, local_digest, REPL_KEY_DIGEST_SIZE) != 0)
     {
       /* the message names the key value and the two digests; the master's descriptor is not in the log, and
        * either side's detail is read from its own catalog */
       char master_digest_text[64], local_digest_text[64], message[1024];
-      char local_digest[REPL_KEY_DIGEST_SIZE];
       char *class_name = NULL;
       char *key_text = NULL;
 
       repl_key_describe_digest (metadata, metadata_length, master_digest_text, sizeof (master_digest_text));
-      if (local == NULL)
+      if (BTID_IS_NULL (btid))
 	{
 	  snprintf (local_digest_text, sizeof (local_digest_text), "no RK");
 	}
       else
 	{
-	  repl_key_digest (local, local_length, local_digest);
 	  repl_key_describe_digest (local_digest, REPL_KEY_DIGEST_SIZE, local_digest_text, sizeof (local_digest_text));
 	}
 
@@ -6998,11 +7000,7 @@ locator_repl_check_key (THREAD_ENTRY * thread_p, const OID * class_oid, const DB
 	}
     }
 
-  if (local != NULL)
-    {
-      free_and_init (local);
-    }
-
+end:
   heap_classrepr_free_and_init (representation, &cache_index);
   return error;
 }

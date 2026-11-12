@@ -29,7 +29,6 @@ struct repl_key_column
   int id;
   const char *name;
   struct tp_domain *domain;
-  const char *domain_class_name;
   int descending;
   int not_null;
 };
