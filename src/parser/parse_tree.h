@@ -785,6 +785,11 @@ struct trace_json_t;
 #define PT_SPEC_IS_CTE(spec_) \
   ((spec_)->info.spec.cte_pointer != NULL)
 
+/* the spec is scanned with locks, so its rows are read and re-evaluated from the heap */
+#define PT_SPEC_NEEDS_HEAP_REEVAL(spec) \
+  (((spec)->info.spec.flag & (PT_SPEC_FLAG_UPDATE | PT_SPEC_FLAG_DELETE | PT_SPEC_FLAG_FOR_UPDATE_CLAUSE \
+			      | PT_SPEC_FLAG_MVCC_COND_REEV | PT_SPEC_FLAG_MVCC_ASSIGN_REEV)) != 0)
+
 /* PT_SPEC node contains an entity spec */
 #define PT_SPEC_IS_ENTITY(spec_) \
   ((spec_)->info.spec.entity_name != NULL)
@@ -2444,7 +2449,15 @@ struct pt_expr_info
 							 * than a column-vs-constant compare; kept only when an index
 							 * adopts it */
 #define PT_EXPR_INFO_ANTI_JOIN_ON 67108864	/* 0x4000000, term in an ANTI JOIN ON condition */
+#define PT_EXPR_INFO_OR_EXTRACTED 134217728	/* 0x8000000, an OR factor qo_extract_or_restrictions () has
+						 * derived restrictions from; not a source again */
+#define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
+							 * paired with its origin on its own node */
   int flag;			/* flags */
+/* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
+#define PT_CNF_KEEP_MAX_DISJUNCTS 8
+#define PT_CNF_KEEP_MAX_CONJUNCTS 16
+
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
 #define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (int) ~(f)
@@ -2800,11 +2813,16 @@ struct pt_name_info
 #define PT_NAME_DEFAULTF_ACCEPTS   4096	/* name of table/column that default function accepts: real table's, cte's */
 #define PT_NAME_INFO_USER_SPECIFIED 8192	/* resolved_name is added to original_name to make user_specified_name. */
 #define PT_NAME_INFO_SERVER_SPECIFIED 16384	/* server name is specified for dblink */
+#define PT_NAME_INFO_FUNC_INDEX_RESULT 32768	/* pseudo attribute for a function index result read from the key */
+#define PT_NAME_INFO_IN_GROUP_HAVING 65536	/* name in group by/having/order by. it may be an alias of the select list */
+#define PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL 131072	/* name in group by/having/order by of a static SQL, not resolved
+							 * by name binding. it is resolved as an alias or converted to
+							 * a host variable after the alias resolution */
 
-  short flag;
-#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (short) (f))
-#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (short) (f)
-#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (short) ~(f)
+  int flag;
+#define PT_NAME_INFO_IS_FLAGED(e, f)    ((e)->info.name.flag & (int) (f))
+#define PT_NAME_INFO_SET_FLAG(e, f)     (e)->info.name.flag |= (int) (f)
+#define PT_NAME_INFO_CLEAR_FLAG(e, f)   (e)->info.name.flag &= (int) ~(f)
   short location;		/* 0: WHERE; n: join condition of n-th FROM */
   short tag_click_counter;	/* 0: normal name, 1: click counter name */
   PT_NODE *indx_key_limit;	/* key limits for index name */
@@ -3004,6 +3022,9 @@ struct pt_query_info
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
     unsigned subquery_cached:1;	/* subquery is cached */
+    unsigned group_having_alias_resolved:1;	/* aliases in group by/having/order by of the query and its subqueries
+						 * are resolved, and for a static SQL, the deferred names are converted
+						 * to host variables (see pt_resolve_group_having_alias_and_deferred_name ()) */
     unsigned uncorr_hoisted:1;	/* correlation_level was 0 (uncorrelated) until pt_uncorr_post ()
 				 * hoisted this subquery into an enclosing aptr list, overwriting
 				 * the level. Lets a plan regeneration from the same tree (see
@@ -3096,6 +3117,7 @@ struct pt_trigger_action_info
 {
   PT_NODE *expression;		/* parse tree for expression */
   PT_NODE *string;		/* PT_PRINT string */
+  PT_NODE *plcsql_block;	/* PT_PLCSQL_BLOCK text */
   PT_MISC_TYPE action_type;	/* REJECT, INVALIDATE_XACTION, etc. */
 };
 

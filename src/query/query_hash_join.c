@@ -673,8 +673,9 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
-  qfile_close_scan (thread_p, &build->list_scan_id);
-  qfile_close_scan (thread_p, &probe->list_scan_id);
+  /* build and probe are still NULL when hjoin_init_context () fails */
+  qfile_close_scan (thread_p, &outer->list_scan_id);
+  qfile_close_scan (thread_p, &inner->list_scan_id);
 
   hjoin_destroy_qlist (thread_p, context);
 
@@ -1238,12 +1239,15 @@ error_exit:
   if (thread_is_on_trace (thread_p))
     {
       assert (manager->stats_group != NULL);
-
       if (manager->stats_group->context_stats != NULL)
 	{
 	  free_and_init (manager->stats_group->context_stats);
 	}
       manager->stats_group->context_cnt = 0;
+
+      /* hjoin_init_context () asserts that the retry as HASHJOIN_STATUS_SINGLE starts with no parallel workers */
+      assert (single_context->stats != NULL);
+      single_context->stats->num_parallel_threads = 0;
     }
   else
     {
@@ -1459,8 +1463,6 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       current_context->val_descr = single_context->val_descr;
     }
 
-  manager->contexts = contexts;
-
   if (thread_is_on_trace (thread_p))
     {
       context_stats = (HASHJOIN_STATS *) malloc (part_cnt * sizeof (HASHJOIN_STATS));
@@ -1485,6 +1487,8 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
     {
       assert (manager->stats_group == NULL);
     }
+
+  manager->contexts = contexts;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -1513,8 +1517,6 @@ error_exit:
       assert (context_stats == NULL);
       assert (manager->stats_group == NULL);
     }
-
-  manager->contexts = NULL;
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
@@ -5248,8 +5250,9 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      return TP_DOMAIN_COLLATION_FLAG (dom) == TP_DOMAIN_COLL_NORMAL
-	&& db_get_string_collation (v) == TP_DOMAIN_COLLATION (dom);
+      /* a key's collation is never left to its values (domain_decide_hash_join_key) */
+      assert (TP_DOMAIN_COLLATION_FLAG (dom) == TP_DOMAIN_COLL_NORMAL);
+      return db_get_string_collation (v) == TP_DOMAIN_COLLATION (dom);
 
     default:
       return false;
