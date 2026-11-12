@@ -15041,6 +15041,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
+      else
+	{
+	  goto error;
+	}
 
       if (key_domain != NULL)
 	{
@@ -15219,6 +15223,10 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      assert (or_multi_is_null (nullmap_ptr, k));
 	    }
 	}
+      else
+	{
+	  return NULL;
+	}
     }
 
   if (value.need_clear == true)
@@ -15341,6 +15349,10 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
 				     fi_attr_index_start, midxkey_domain) == NULL)
 	{
+	  if (midxkey_size > DBVAL_BUFSIZE)
+	    {
+	      db_private_free_and_init (thread_p, midxkey.buf);
+	    }
 	  return NULL;
 	}
 
@@ -15504,6 +15516,10 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
 	{
+	  if (midxkey_size > DBVAL_BUFSIZE)
+	    {
+	      db_private_free_and_init (thread_p, midxkey.buf);
+	    }
 	  return NULL;
 	}
 
