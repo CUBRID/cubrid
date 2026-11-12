@@ -2914,10 +2914,9 @@ pt_split_join_preds (PARSER_CONTEXT * parser, PT_NODE * predicates, PT_NODE ** j
       bool has_filter_pred = false;
 
       assert (PT_IS_EXPR_NODE (current_conj) || PT_IS_VALUE_NODE (current_conj));
-      /* It is either fully CNF or not at all. */
-      assert (!(current_conj->next != NULL
-		&& (PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)
-		    || PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_OR))));
+      /* It is either fully CNF or not at all.  A disjunction of conjunctions pt_cnf () keeps whole is a
+       * PT_OR tree, and still one CNF term: pt_is_filtering_expression () looks inside it */
+      assert (!(current_conj->next != NULL && PT_IS_EXPR_NODE_WITH_OPERATOR (current_conj, PT_AND)));
       next_conj = current_conj->next;
       current_conj->next = NULL;
 
@@ -3133,7 +3132,7 @@ pt_statement_line_number (const PT_NODE * stmt)
 {
   if (stmt)
     {
-      return stmt->line_number;
+      return (stmt->stmt_start_line > 0) ? stmt->stmt_start_line : stmt->line_number;
     }
 
   return 1;

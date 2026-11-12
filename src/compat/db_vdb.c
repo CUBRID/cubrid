@@ -1671,6 +1671,9 @@ db_compile_statement_local (DB_SESSION * session)
 
   statement->flag.is_system_generated_stmt = parser->flag.is_system_generated_stmt;
 
+  /* pt_compile () or mq_translate () may return a new node, which does not know where the statement starts */
+  int stmt_start_line = statement->stmt_start_line;
+
   /* check if the statement is already processed */
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
     {
@@ -1898,6 +1901,7 @@ db_compile_statement_local (DB_SESSION * session)
     }
 
   /* so now, the statement is compiled */
+  statement->stmt_start_line = stmt_start_line;
   session->statements[stmt_ndx] = statement;
   session->stage[stmt_ndx] = StatementCompiledStage;
 

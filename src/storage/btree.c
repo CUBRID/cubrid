@@ -21475,9 +21475,15 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
   if (DB_VALUE_TYPE (curr_key) != DB_TYPE_MIDXKEY)
     {
-      if (attr_info->num_values != 1 || btree_num_att != 1 || attr_info->values->attrid != btree_att_ids[0])
+      /* a single column function index key is the result alone, while btree_att_ids lists its arguments,
+       * so only the function result can be read from it */
+      if (attr_info->num_values != 1
+	  || (func_index_col_id != -1
+	      ? !IS_FUNC_INDEX_RESULT_ATTR_ID (attr_info->values->attrid)
+	      : (btree_num_att != 1 || attr_info->values->attrid != btree_att_ids[0])))
 	{
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
 	}
 
       if (pr_clear_value (&(attr_info->values->dbvalue)) != NO_ERROR)
@@ -21519,23 +21525,26 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	    }
 	  else
 	    {
-	      found = false;
-	      for (j = 0; j < btree_num_att; j++)
+	      if (func_index_col_id != -1 && IS_FUNC_INDEX_RESULT_ATTR_ID (attr_value->attrid))
 		{
-		  if (attr_value->attrid == btree_att_ids[j])
+		  j = func_index_col_id;
+		  found = true;
+		}
+	      else
+		{
+		  found = false;
+		  for (j = 0; j < btree_num_att; j++)
 		    {
-		      found = true;
-		      if (func_index_col_id != -1)
+		      if (attr_value->attrid == btree_att_ids[j])
 			{
-			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
-			   * in attributes */
-			  if (j >= func_index_col_id)
+			  found = true;
+			  if (func_index_col_id != -1 && j >= func_index_col_id)
 			    {
+			      /* step over the function result slot which resides in the midxkey */
 			      j++;
 			    }
+			  break;
 			}
-
-		      break;
 		    }
 		}
 
@@ -29819,10 +29828,12 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
        * Creating an MVCC snapshot when executing an internal query on the system may not be the intended result
        * of the user. Therefore, in case of index scan of the _db_user and _db_synonym system tables,
        * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
+       * The same goes for _db_trigger, which trigger DDL looks up by name before it locks the target table.
        */
       if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
 	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid)
-	  || oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
+	  || oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid)
+	  || oid_check_cached_class_oid (OID_CACHE_TRIGGER_CLASS_ID, class_oid))
 	{
 	  need_skip_mvcc_snapshot = true;
 	}

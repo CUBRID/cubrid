@@ -779,6 +779,8 @@ struct qo_term
 #define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
 #define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
 #define QO_TERM_SEL_FROM_SNAPSHOT   32768	/* join selectivity from the small side's rows (CBRD-27478) */
+#define QO_TERM_OR_DERIVED_COLUMN   65536	/* OR-derived key range on one column */
+#define QO_TERM_OR_DERIVED_ORIGIN   131072	/* OR-derived restriction an OR-derived key range is paired with */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -1118,6 +1120,14 @@ extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 extern bool qo_is_filter_index (QO_INDEX_ENTRY *);
 extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt);
 extern bool qo_check_type_index_covering (QO_INDEX_ENTRY * ent);
+extern char *qo_print_func_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr);
+extern bool qo_func_index_arg_used_raw (PARSER_CONTEXT * parser, PT_NODE * tree, const char *func_expr_str,
+					PT_NODE * col);
+extern QO_SEGMENT *qo_find_func_index_seg (QO_ENV * env, QO_NODE * nodep, const char *expr_str);
+extern bool qo_seg_used_only_in_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * seg,
+					    BITSET * scan_terms);
+extern bool qo_is_func_index_routable (QO_ENV * env, QO_NODE * nodep);
+extern bool qo_is_func_index_key_filter_routable (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 
 extern double QO_INFINITY;
 
