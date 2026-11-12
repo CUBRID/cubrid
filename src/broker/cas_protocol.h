@@ -317,6 +317,11 @@ extern "C"
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
+/* A driver below PROTOCOL_V13 cannot read this server's BLOB/CLOB columns, so its connection is refused with
+ * CAS_ER_VERSION and this message (DBMS_ERROR_INDICATOR, so an old driver shows it). %s: the driver's version. */
+#define CAS_OLD_DRIVER_ERR_MSG_FMT \
+  "The driver (%s) is too old for this server. Use a driver that supports PROTOCOL_V13 or later."
+
   enum t_broker_info_pos
   {
     BROKER_INFO_DBMS_TYPE = 0,

@@ -1617,7 +1617,7 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
   char len;
   char *driver_info;
   T_BROKER_VERSION client_version;
-  char driver_version[SRV_CON_VER_STR_MAX_SIZE];
+  char driver_version[SRV_CON_VER_STR_MAX_SIZE] = "";
   char err_msg[256];
 
   ENTER_FUNC ();
@@ -1760,6 +1760,14 @@ proxy_process_client_register (T_SOCKET_IO * sock_io_p)
 
 	  goto connection_established;
 	}
+    }
+
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13))
+    {
+      snprintf (err_msg, sizeof (err_msg), CAS_OLD_DRIVER_ERR_MSG_FMT, driver_version);
+      proxy_context_set_error_with_msg (ctx_p, DBMS_ERROR_INDICATOR, CAS_ER_VERSION, err_msg);
+      PROXY_LOG (PROXY_LOG_MODE_ERROR, "%s (db_name:[%s], db_user:[%s]).", err_msg, db_name, db_user);
+      goto connection_established;
     }
 
   error = proxy_check_authorization (ctx_p, db_name, db_user, db_passwd);
