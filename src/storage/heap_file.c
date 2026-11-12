@@ -760,11 +760,12 @@ struct heap_oos_column_plan
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
   LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
+  bool reused = false;		/* oid, length and identity_stamp name the old record's chain; nothing is inserted */
 };
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
 						std::vector<heap_oos_column_plan> * oos_plan,
-						bool * has_oos, size_t * inline_size_after_oos_ptr);
+						bool * has_oos, size_t * inline_size_after_oos_ptr, const RECDES * keep_form = nullptr);
 /* *INDENT-ON* */
 
 static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRIBUTE * attrepr,
@@ -861,7 +862,7 @@ static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
 							   int lob_create_flag, heap_pending_record * pending =
-							   nullptr);
+							   nullptr, bool keep_form = false);
 /* *INDENT-ON* */
 
 static int heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
@@ -13886,6 +13887,64 @@ heap_oos_inline_target_size (void)
 }
 
 /*
+ * heap_attrinfo_keep_column_form () - Keep the storage form one variable column has in the record being replaced
+ *   return: NO_ERROR, or an error when the column is in OOS there and attr_info changed it
+ *   attr_info(in): read from old_recdes, with the representation old_recdes has
+ *   index(in): the column
+ *   old_recdes(in):
+ *   oos_plan(in/out): a column in OOS in old_recdes is selected and names the same chain
+ *
+ * Note: An inline column stays inline. An unchanged OOS column keeps its chain, so nothing is inserted.
+ */
+/* *INDENT-OFF* */
+static int
+heap_attrinfo_keep_column_form (HEAP_CACHE_ATTRINFO * attr_info, int index, const RECDES * old_recdes,
+				std::vector<heap_oos_column_plan> * oos_plan)
+/* *INDENT-ON* */
+{
+  HEAP_ATTRVALUE *value = &attr_info->values[index];
+  int entry, next_entry;
+  oos_chain_ref ref;
+
+  /* every column of such a record is inline, whatever representation it has */
+  if (!heap_recdes_contains_oos (old_recdes))
+    {
+      return NO_ERROR;
+    }
+  if (or_rep_id ((RECDES *) old_recdes) != attr_info->last_classrepr->id
+      || heap_recdes_get_var_offset_pair (old_recdes, value->last_attrepr->location, &entry, &next_entry) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  if (OR_GET_VAR_OFFSET (entry) == OR_GET_VAR_OFFSET (next_entry) || !OR_IS_OOS (entry))
+    {
+      return NO_ERROR;
+    }
+  if (value->state != HEAP_READ_ATTRVALUE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (oos_plan->empty ())
+    {
+      oos_plan->resize (attr_info->num_values);
+    }
+  heap_oos_column_plan & plan = (*oos_plan)[index];
+  int error = heap_oos_parse_inline_ref (old_recdes, value->last_attrepr->location, &ref, &plan.length);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  plan.selected = true;
+  plan.reused = true;
+  plan.oid = ref.head_oid;
+  plan.identity_stamp = ref.identity_stamp;
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_determine_disk_layout () - Determine the disk layout needed to transform the object
  *                        represented by attr_info
  *   return: NO_ERROR, or error code
@@ -13895,6 +13954,7 @@ heap_oos_inline_target_size (void)
  *   oos_plan(out): selected columns are demoted to OOS
  *   has_oos(out): true if any column is demoted to OOS
  *   inline_size_after_oos_ptr(out): inline heap record size after OOS demotion
+ *   keep_form(in): NULL, or the record being replaced, whose storage form every column keeps
  *
  * Note: Choose the OOS layout and compute the inline heap record size. This size is not the logical
  * record size before OOS demotion.
@@ -13903,7 +13963,7 @@ heap_oos_inline_target_size (void)
 static int
 heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
 					     std::vector<heap_oos_column_plan> * oos_plan, bool * has_oos,
-					     size_t * inline_size_after_oos_ptr)
+					     size_t * inline_size_after_oos_ptr, const RECDES * keep_form)
 try
 /* *INDENT-ON* */
 {
@@ -13938,8 +13998,25 @@ try
       else
 	{
 	  column_size[i] = pr_data_writeval_disk_size (&value->dbvalue);
-	  if (value->last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
-	      && !db_value_is_null (&value->dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
+	  if (keep_form != NULL)
+	    {
+	      int error = heap_attrinfo_keep_column_form (attr_info, i, keep_form, oos_plan);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      if (!oos_plan->empty () && (*oos_plan)[i].reused)
+		{
+		  payload_size += OR_OOS_INLINE_SIZE;
+		  *has_oos = true;
+		}
+	      else
+		{
+		  payload_size += column_size[i];
+		}
+	    }
+	  else if (value->last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
+		   && !db_value_is_null (&value->dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      if (oos_plan->empty ())
 		{
@@ -13963,7 +14040,7 @@ try
   /* Push the largest remaining variable column to OOS one by one until at least four resulting heap records can
    * fit on a page (PG TOAST style), instead of pushing every eligible column. */
   const int oos_inline_target_size = heap_oos_inline_target_size ();
-  if (header_size + payload_size + mvcc_extra > oos_inline_target_size)
+  if (keep_form == NULL && header_size + payload_size + mvcc_extra > oos_inline_target_size)
     {
       /* *INDENT-OFF* */
       std::vector<heap_oos_demote_candidate> oos_candidates;
@@ -14523,6 +14600,25 @@ heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_
 }
 
 /*
+ * heap_attrinfo_transform_to_disk_keep_form () - Transform to disk like heap_attrinfo_transform_to_disk, but every
+ *                           variable column keeps the storage form it has in old_recdes
+ *   return: SCAN_CODE
+ *   attr_info(in/out): read from old_recdes
+ *   old_recdes(in): the record the new one replaces
+ *   new_recdes(out):
+ *
+ * Note: Nothing is written to OOS. For a writer that logs the new record redo-only, which must not write anything a
+ *       rollback undoes.
+ */
+SCAN_CODE
+heap_attrinfo_transform_to_disk_keep_form (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+					   RECDES * old_recdes, record_descriptor * new_recdes)
+{
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_INCLUDE_LOB,
+						   nullptr, true);
+}
+
+/*
  * heap_attrinfo_transform_header_to_disk ()
  *   return: SCAN_CODE
  *           (Either of S_SUCCESS, S_DOESNT_FIT,
@@ -15000,7 +15096,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag,
-					  heap_pending_record * pending)
+					  heap_pending_record * pending, bool keep_form)
 {
   OR_BUF buf;
   size_t inline_size_after_oos, mvcc_extra;
@@ -15035,7 +15131,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   /* determine the layout and the size */
   if (heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_plan, &has_oos,
-					   &inline_size_after_oos) != NO_ERROR)
+					   &inline_size_after_oos, keep_form ? old_recdes : nullptr) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -15097,7 +15193,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
                 }
             }
         }
-      else
+      else if (!keep_form)
         {
           status = heap_attrinfo_insert_to_oos (thread_p, attr_info, lob_create_flag, &oos_plan);
         }
