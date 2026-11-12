@@ -15246,6 +15246,23 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 }
 
 /*
+ * heap_midxkey_record_size () - The bytes that bound a multi-column key built from a record
+ *   return: size
+ *   recdes(in): the record the key is read from
+ *
+ * Note: A record with Sidecar refs holds a ref in place of each large value, and the key holds the value.
+ */
+static int
+heap_midxkey_record_size (const RECDES * recdes)
+{
+  if (unlikely (sidecar_record_has_refs (recdes)))
+    {
+      return MAX (recdes->length, sidecar_expanded_length (recdes));
+    }
+  return recdes->length;
+}
+
+/*
  * heap_attrinfo_generate_key () - Generate a key from the attribute information.
  *   return: Pointer to DB_VALUE containing the key.
  *   n_atts(in): Size of attribute ID array.
@@ -15323,7 +15340,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
   if ((n_atts > 1 && func_index_info == NULL) || (func_index_info && (func_index_info->attr_index_start + 1) > 1))
     {
       DB_MIDXKEY midxkey;
-      int midxkey_size = recdes->length;
+      int midxkey_size = heap_midxkey_record_size (recdes);
 
       if (func_index_info != NULL)
 	{
@@ -15489,7 +15506,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       || (index->func_index_info && (index->func_index_info->attr_index_start + 1) > 1))
     {
       DB_MIDXKEY midxkey;
-      int midxkey_size = recdes->length;
+      int midxkey_size = heap_midxkey_record_size (recdes);
 
       if (index->func_index_info != NULL)
 	{
