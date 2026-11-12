@@ -77,7 +77,7 @@ namespace cubconn::connection
   /* how long a waiting sender goes without re-checking its connection and the interrupt flag */
   static constexpr std::chrono::milliseconds SEND_QUEUE_ROOM_WAIT_TURN (100);
 
-  /* runs a fault injection at most once per worker; true if it failed the caller */
+  /* runs a fault injection at most once per thread entry; true if it failed the caller */
   static bool fi_test_once (cubthread::entry *thread_p, FI_TEST_CODE code)
   {
     bool failed = FI_TEST (thread_p, code, FI_INIT_STATE) != NO_ERROR;
@@ -1432,10 +1432,11 @@ retry:
       {
 	eventfds[0] = false;
 
-	/* an eventfd or timerfd failure costs at most spurious wake-ups; stopping the worker would strand its connections */
+	/* an eventfd or timerfd failure costs at most spurious wake-ups; stopping would strand the connections */
 	if (!this->eventfd_clear (m_eventfd))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the eventfd: %s\n", m_index, strerror (errno));
+	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the eventfd: %s\n", m_index,
+			   strerror (errno));
 	  }
 
 	/* RMW closes the StoreLoad window */
@@ -1473,7 +1474,8 @@ retry:
 
 	if (!this->eventfd_clear (m_timerfd))
 	  {
-	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the timerfd: %s\n", m_index, strerror (errno));
+	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the timerfd: %s\n", m_index,
+			   strerror (errno));
 	  }
 
 	if (!m_has_retry)
@@ -1586,13 +1588,15 @@ retry:
     if (fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL)
 	|| !m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
       {
-	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: refused new connection fd %d, epoll registration failed: %s\n",
+	_er_log_debug (ARG_FILE_LINE,
+		       "connection worker %zu: refused new connection fd %d, epoll registration failed: %s\n",
 		       m_index, ctx->m_conn->fd, strerror (errno));
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
 	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
+	/* the coordinator frees the connection on RETURN_TO_POOL */
 	m_removed_context.push_back (ctx);
 	return true;
       }
@@ -1607,6 +1611,7 @@ retry:
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
 	m_removed_context.push_back (ctx);
+	/* a context is handed to a worker only once */
 	assert_release (false);
 	return true;
       }
@@ -1742,11 +1747,11 @@ respond:
     if (fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL)
 	|| !m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
       {
-	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: closing transferred connection fd %d, epoll registration "
-		       "failed: %s\n", m_index, ctx->m_conn->fd, strerror (errno));
+	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: closing transferred connection fd %d, "
+		       "epoll registration failed: %s\n", m_index, ctx->m_conn->fd, strerror (errno));
 
 	/* unwatched, its queued sends never drain: shut the socket so no sender waits, and close it as a dead peer */
-	shutdown (ctx->m_conn->fd, SHUT_RDWR);
+	(void) ::shutdown (ctx->m_conn->fd, SHUT_RDWR);
 	ctx->m_conn->status = CONN_CLOSING;
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 	ctx->m_send.m_transmitter.clear ();
@@ -1756,6 +1761,7 @@ respond:
 	this->wakeup_blocked_worker (blocker);
 	this->wakeup_blocked_worker (room);
 
+	/* adopted, so the requested close finds it */
 	m_context.insert (ctx);
 	m_stats.add (statistics::worker::CLIENT_NUM, 1);
 	/* requested, not closed here: this handler can run inside another connection's close */
@@ -1773,6 +1779,7 @@ respond:
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
 	m_removed_context.push_back (ctx);
+	/* a context is handed to a worker only once */
 	assert_release (false);
 	return true;
       }
@@ -1895,6 +1902,7 @@ respond:
 
   bool worker::handle_message_queue_by_index (queue_type type)
   {
+    /* a handler copes with a failure of its own connection and returns true; false stops the worker */
     static constexpr std::array<
     std::pair<bool (worker::*) (message &), statistics::worker>, static_cast<std::size_t> (message_type::TYPE_COUNT)
     > handler =
@@ -2817,8 +2825,8 @@ respond:
     this->initialize ();
     if (!this->run ())
       {
-	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: stopped on an error, closing its %zu connections\n", m_index,
-		       m_context.size ());
+	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: stopped on an error, closing its %zu connections\n",
+		       m_index, m_context.size ());
       }
     this->finalize ();
   }

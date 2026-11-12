@@ -97,7 +97,7 @@ typedef enum
   FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL = 700000,	/* epoll registration of a new connection */
   FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL = 700001,	/* epoll registration of a connection moved in */
   FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL = 700002,	/* disarming the queue timer */
-  FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a connection close before it drains the worker's queue */
+  FI_TEST_CONNECTION_WORKER_CLOSE_HOLD = 700003,	/* hold a close before it drains the worker's queue */
 
   /* etc .... */
 

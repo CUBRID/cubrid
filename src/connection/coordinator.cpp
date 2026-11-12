@@ -1319,10 +1319,11 @@ not_transferred:
 	      {
 		if (events[i].data.fd == m_eventfd)
 		  {
-		    /* a failed read costs at most a spurious wake-up; stopping would leave new connections unassigned */
+		    /* a failed read costs at most a spurious wake-up; stopping leaves new connections unassigned */
 		    if (!this->eventfd_clear (m_eventfd))
 		      {
-			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the eventfd: %s\n", strerror (errno));
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the eventfd: %s\n",
+				       strerror (errno));
 		      }
 		    this->handle_message_queue ();
 		  }
@@ -1348,7 +1349,8 @@ not_transferred:
 
 		    if (!this->eventfd_clear (m_timerfd))
 		      {
-			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the timerfd: %s\n", strerror (errno));
+			_er_log_debug (ARG_FILE_LINE, "connection coordinator: failed to read the timerfd: %s\n",
+				       strerror (errno));
 		      }
 		  }
 #if defined (ENABLE_CONTROLLER)
