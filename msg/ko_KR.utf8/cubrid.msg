@@ -1504,7 +1504,13 @@ $ LOADDB
 1390 세션 %1$u의 비밀값이 일치하지 않습니다.
 1391 세션 %1$u은(는) 이 연결의 세션이 아니므로 종료하거나 유지할 수 없습니다.
 
-1392 마지막 에러
+1392 Sensitivity label %1$s "%2$s"이(가) 이미 존재합니다.
+1393 Sensitivity label %1$s "%2$s"이(가) 존재하지 않습니다.
+1394 Sensitivity label %1$s "%2$s"을(를) 참조하는 라벨이 있습니다.
+1395 Sensitivity label grade level %1$d이(가) 이미 존재합니다.
+1396 다음 sensitivity label grade level을 정할 수 없습니다. 가장 높은 level이 이미 %1$d입니다.
+
+1397 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1672,6 +1678,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
 140 FILL_FACTOR 인자 값은 %1$d에서 %2$d까지 허용됩니다.
+141 Sensitivity label 이름의 길이는 1에서 %1$d 바이트까지 허용됩니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -2020,6 +2027,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
+345 LEVEL은 sensitivity label grade에만 지정할 수 있습니다.
+346 ALTER SENSITIVITY LABEL에 대해 지정된 옵션이 없습니다.
+347 sensitivity label grade의 level은 1 이상이어야 합니다.
 
 
 

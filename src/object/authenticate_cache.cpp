@@ -105,18 +105,15 @@ authenticate_cache::flush (void)
 }
 
 /*
- * update_cache -  This is the main function for parsing all of
- *                 the authorization information for a particular class and
- *                 caching it in the class structure.
- *                 This will be called once after each successful
- *                 read/write lock. It needs to be fast.
+ * au_compute_privilege - compute the privileges the current user holds on an object
  *   return: error code
- *   classop(in):  class MOP to authorize
- *   sm_class(in): direct pointer to class structure
- *   cache(in):
+ *   obj_type(in): object type
+ *   mop(in): object; NULL for a system object
+ *   owner(in): owner of the object
+ *   bits(out): privilege bits
  */
 int
-authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
+au_compute_privilege (DB_OBJECT_TYPE obj_type, MOP mop, MOP owner, unsigned int *bits)
 {
   int error = NO_ERROR;
   DB_SET *groups = NULL;
@@ -124,11 +121,9 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
   DB_VALUE value;
   MOP group, auth;
   bool is_member = false;
-  unsigned int *bits = NULL;
   bool need_pop_er_stack = false;
-  MOP owner;
 
-  const unsigned int FULL_AUTH = (obj_type == DB_OBJECT_CLASS) ? AU_FULL_AUTHORIZATION : AU_EXECUTE;
+  const unsigned int FULL_AUTH = (obj_type == DB_OBJECT_PROCEDURE) ? AU_EXECUTE : AU_FULL_AUTHORIZATION;
 
   /*
    * must disable here because we may be updating the cache of the system
@@ -139,25 +134,6 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
   er_stack_push ();
 
   need_pop_er_stack = true;
-
-  if (obj_type == DB_OBJECT_CLASS)
-    {
-      SM_CLASS *sm_class = (SM_CLASS *) ptr;
-      bits = get_cache_bits ((SM_CLASS *) ptr);
-      owner = sm_class->owner;
-    }
-  else if (obj_type == DB_OBJECT_PROCEDURE)
-    {
-      bits = get_procedure_cache_bits (mop);
-      owner = (MOP) ptr;
-    }
-
-  if (bits == NULL)
-    {
-      assert (false);
-      error = er_errid ();
-      goto end;
-    }
 
   /* initialize the cache bits */
   *bits = AU_NO_AUTHORIZATION;
@@ -224,7 +200,7 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
   else
     {
       /* apply local grants */
-      error = apply_grants (auth, mop, bits);
+      error = apply_grants (auth, obj_type, mop, bits);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -262,7 +238,7 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
 		  goto end;
 		}
 
-	      error = apply_grants (auth, mop, bits);
+	      error = apply_grants (auth, obj_type, mop, bits);
 	      if (error != NO_ERROR)
 		{
 		  goto end;
@@ -293,6 +269,44 @@ end:
   AU_RESTORE (save);
 
   return (error);
+}
+
+/*
+ * update_cache -  This is the main function for parsing all of
+ *                 the authorization information for a particular class and
+ *                 caching it in the class structure.
+ *                 This will be called once after each successful
+ *                 read/write lock. It needs to be fast.
+ *   return: error code
+ *   classop(in):  class MOP to authorize
+ *   sm_class(in): direct pointer to class structure
+ *   cache(in):
+ */
+int
+authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
+{
+  unsigned int *bits = NULL;
+  MOP owner;
+
+  if (obj_type == DB_OBJECT_CLASS)
+    {
+      SM_CLASS *sm_class = (SM_CLASS *) ptr;
+      bits = get_cache_bits ((SM_CLASS *) ptr);
+      owner = sm_class->owner;
+    }
+  else if (obj_type == DB_OBJECT_PROCEDURE)
+    {
+      bits = get_procedure_cache_bits (mop);
+      owner = (MOP) ptr;
+    }
+
+  if (bits == NULL)
+    {
+      assert (false);
+      return er_errid ();
+    }
+
+  return au_compute_privilege (obj_type, mop, owner, bits);
 }
 
 // setter/getter of cache_index

@@ -213,6 +213,7 @@ extern int au_check_class_authorization (MOP op, DB_AUTH auth);	// legacy name -
 extern int au_check_serial_authorization (MOP serial_object);
 extern int au_check_server_authorization (MOP server_object);
 extern int au_check_procedure_authorization (MOP procedure_object);
+extern int au_check_system_object_authorization (DB_OBJECT_TYPE obj_type, DB_AUTH type);
 extern bool au_is_server_authorized_user (DB_VALUE * owner_val);
 //
 
