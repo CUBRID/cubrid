@@ -427,7 +427,7 @@ TEST_CASE ("B5: worst corner (many threads x large commits x large map)", "[stre
 }
 
 /* B6: reverse-order defence firing under load. A parent write that hits a key
- * whose REF slot is populated must consult ref_seq (the defence path). Compare
+ * whose REF slot is populated must consult ref_lsa (the defence path). Compare
  * throughput against the same write hitting keys with an empty read slot
  * (single-slot equivalent). The delta is the pure cost of the read-slot check;
  * expected negligible (one extra LSA compare per key). */
@@ -464,7 +464,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
   }
 
   /* defence: the same keys, but each also carries a read-slot stamp from a
-   * child reference, so the WRITE probe takes the max(write_seq, ref_seq) path */
+   * child reference, so the WRITE probe takes the max(write_lsa, ref_lsa) path */
   {
     ws_history_guard history;
     OID parent_cls = oid_of (1, 200, 1);

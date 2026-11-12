@@ -31,6 +31,7 @@
 #include "writeset_key_hash.hpp"
 
 #include "error_manager.h"
+#include "intl_support.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -221,11 +222,34 @@ wset_pack_string_key (const LANG_COLLATION *lc, DB_TYPE type, const unsigned cha
       s = copy;
     }
 
-  /* cut the trailing spaces the index ignores: CHAR, or VARCHAR with ignore_trailing_space
-   * (mr_data_cmpdisk_char, mr_data_cmpdisk_string) */
-  while (strip_space && size > 0 && s[size - 1] == ' ')
+  /* UTF-8 comparisons ignore all trailing zero weights, not just spaces
+   * (lang_str_utf8_trail_zero_weights). Keep zero weights inside the string. */
+  if (strip_space && lc->codeset == INTL_CODESET_UTF8)
     {
-      size--;
+      const unsigned int *weight = lc->built_in ? lc->coll.weights_ti : lc->coll.weights;
+      const unsigned char *last;
+      unsigned char *next;
+      int char_size;
+
+      while (size > 0)
+        {
+          last = intl_prevchar_utf8 (s + size, s, &char_size);
+          unsigned int cp = intl_utf8_to_cp (last, char_size, &next);
+
+          if (cp >= (unsigned int) lc->coll.w_count || weight[cp] != 0)
+            {
+              break;
+            }
+          size -= char_size;
+        }
+    }
+  else
+    {
+      /* Other character sets retain their existing trailing-space rule. */
+      while (strip_space && size > 0 && s[size - 1] == ' ')
+        {
+          size--;
+        }
     }
 
   pseudo = lc->mht2str (lc, s, size);

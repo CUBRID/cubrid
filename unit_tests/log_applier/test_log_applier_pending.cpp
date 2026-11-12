@@ -94,7 +94,7 @@ TEST_CASE ("pending list releases ready tasks in parking order without waiting f
   la_gate_advance_frontier ();
   REQUIRE (la_pending_pop_ready (&out));
   REQUIRE (out.tranid == 1);
-  REQUIRE (LSA_EQ (&out.dependency_seq, &l20));
+  REQUIRE (LSA_EQ (&out.dependency_lsa, &l20));
   REQUIRE (la_pending_is_empty ());
 }
 

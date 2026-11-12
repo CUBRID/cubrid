@@ -178,7 +178,7 @@ wset_history_publish_entries (LOG_TDES *tdes, size_t begin, size_t end, const LO
 
       WSET_TRACE (3, "PUBLISH trid=%d kind=%s hash=%016llx commit_lsa=%lld|%d\n",
 		  tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash,
-		  (long long) commit_lsa->pageid, (int) commit_lsa->offset);
+		  LSA_AS_ARGS (commit_lsa));
       assert (entry.kind == LOG_WSET_KIND_WRITE || entry.kind == LOG_WSET_KIND_REF);
       wset_stat_count_publish (entry.kind == LOG_WSET_KIND_REF);
     }
@@ -244,8 +244,8 @@ wset_history_clear_for_commit_order (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 
   WSET_TRACE (1,
 	      "CLEAR trid=%d reason=COMMIT_ORDER_FALLBACK old_size=%zu new_size=0 commit_lsa=%lld|%d history_start=%lld|%d\n",
-	      tdes->trid, old_size, (long long) commit_lsa->pageid, (int) commit_lsa->offset,
-	      (long long) history_start.pageid, (int) history_start.offset);
+	      tdes->trid, old_size, LSA_AS_ARGS (commit_lsa),
+	      LSA_AS_ARGS (&history_start));
 }
 
 static void
@@ -314,8 +314,8 @@ wset_history_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end, co
       WSET_TRACE (1,
 		  "CLEAR trid=%d reason=%s old_size=%zu publish=%zu new_size=%zu commit_lsa=%lld|%d history_start=%lld|%d\n",
 		  tdes->trid, clear_reason, old_size, publish_count, new_size,
-		  (long long) commit_lsa->pageid, (int) commit_lsa->offset,
-		  (long long) history_start.pageid, (int) history_start.offset);
+		  LSA_AS_ARGS (commit_lsa),
+		  LSA_AS_ARGS (&history_start));
     }
 }
 

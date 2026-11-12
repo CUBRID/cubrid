@@ -28,8 +28,8 @@
 
 #include "log_lsa.hpp"
 
-extern void la_wset_label_store (int tranid, const LOG_LSA *dependency_seq, UINT64 unit_key_hash = 0);
+extern void la_wset_label_store (int tranid, const LOG_LSA *dependency_lsa, UINT64 unit_key_hash = 0);
 extern bool la_wset_label_matches (int tranid);
-extern bool la_wset_label_take (int tranid, LOG_LSA *dependency_seq, UINT64 *unit_key_hash = NULL);
+extern bool la_wset_label_take (int tranid, LOG_LSA *dependency_lsa, UINT64 *unit_key_hash = NULL);
 
 #endif /* _LOG_APPLIER_WSET_LABEL_HPP_ */

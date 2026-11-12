@@ -310,6 +310,8 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 						      LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_wset_label (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					   LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
@@ -4112,33 +4114,26 @@ log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_END * log_reco
     }
 
   /* a labeled (serial) fragment is traced at level 1; every other system operation at level 2 */
-  if (wset_trace_is_enabled (2) || ((sysop_commit_order || sysop_keyed) && wset_trace_is_enabled (1)))
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] SYSOP master trid=%d type=%s appended=%d sysop_lsa=%lld|%d repl_items=%d flushed_items=%d "
-		     "buffered_items=%d append_index=%d\n",
-		     tdes->trid, log_sysop_end_type_string (log_record->type), (int) sysop_end_appended,
-		     (long long) tdes->tail_lsa.pageid, (int) tdes->tail_lsa.offset, repl_item_count,
-		     flushed_item_count, tdes->cur_repl_record, tdes->append_repl_recidx);
+  WSET_TRACE ((sysop_commit_order || sysop_keyed) ? 1 : 2,
+	      "SYSOP master trid=%d type=%s appended=%d sysop_lsa=%lld|%d repl_items=%d flushed_items=%d "
+	      "buffered_items=%d append_index=%d\n",
+	      tdes->trid, log_sysop_end_type_string (log_record->type), (int) sysop_end_appended,
+	      LSA_AS_ARGS (&tdes->tail_lsa), repl_item_count, flushed_item_count,
+	      tdes->cur_repl_record, tdes->append_repl_recidx);
 
-      if (sysop_commit_order)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] SYSOP master commit_order trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
-			 "dropped_keys=%zu overflow=%d reason=%s\n",
-			 tdes->trid, (long long) tdes->wset_dependency_seq.pageid,
-			 (int) tdes->wset_dependency_seq.offset, (long long) sysop_lsa.pageid,
-			 (int) sysop_lsa.offset, sysop_key_count, tdes->wset_overflow ? 1 : 0, sysop_reason);
-	}
-      else if (sysop_keyed)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] SYSOP master keyed trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
-			 "published_keys=%zu reason=%s\n",
-			 tdes->trid, (long long) tdes->wset_dependency_seq.pageid,
-			 (int) tdes->wset_dependency_seq.offset, (long long) sysop_lsa.pageid,
-			 (int) sysop_lsa.offset, sysop_key_count, sysop_reason);
-	}
+  if (sysop_commit_order)
+    {
+      WSET_TRACE (1, "SYSOP master commit_order trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
+		  "dropped_keys=%zu overflow=%d reason=%s\n",
+		  tdes->trid, LSA_AS_ARGS (&tdes->wset_dependency_lsa), LSA_AS_ARGS (&sysop_lsa),
+		  sysop_key_count, tdes->wset_overflow ? 1 : 0, sysop_reason);
+    }
+  else if (sysop_keyed)
+    {
+      WSET_TRACE (1, "SYSOP master keyed trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
+		  "published_keys=%zu reason=%s\n",
+		  tdes->trid, LSA_AS_ARGS (&tdes->wset_dependency_lsa), LSA_AS_ARGS (&sysop_lsa),
+		  sysop_key_count, sysop_reason);
     }
 
   log_sysop_end_final (thread_p, tdes);
@@ -4813,7 +4808,7 @@ log_append_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC
 	  LSA_COPY (sysop_end_lsa_out, &start_lsa);
 	}
 
-      if (sysop_end->type == LOG_SYSOP_END_ABORT && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+      if (sysop_end->type == LOG_SYSOP_END_ABORT && wset_trace_is_enabled (1))
 	{
 	  int pending_item_count = 0;
 	  for (int item_index = 0; item_index < tdes->cur_repl_record; item_index++)
@@ -4827,11 +4822,10 @@ log_append_sysop_end_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC
 		}
 	    }
 
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] SYSOP master trid=%d type=%s appended=1 sysop_lsa=%lld|%d repl_items=%d "
-			 "flushed_items=0 buffered_items=%d append_index=%d\n",
-			 tdes->trid, log_sysop_end_type_string (sysop_end->type), (long long) start_lsa.pageid,
-			 (int) start_lsa.offset, pending_item_count, tdes->cur_repl_record, tdes->append_repl_recidx);
+	  WSET_TRACE (1, "SYSOP master trid=%d type=%s appended=1 sysop_lsa=%lld|%d repl_items=%d "
+		      "flushed_items=0 buffered_items=%d append_index=%d\n",
+		      tdes->trid, log_sysop_end_type_string (sysop_end->type), LSA_AS_ARGS (&start_lsa),
+		      pending_item_count, tdes->cur_repl_record, tdes->append_repl_recidx);
 	}
     }
 }
@@ -4943,7 +4937,7 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 
   if (by_keys)
     {
-      wset_order_find_sysop_key_dependency (tdes, key_begin, &tdes->wset_dependency_seq);
+      wset_order_find_sysop_key_dependency (tdes, key_begin, &tdes->wset_dependency_lsa);
       /* one key, possibly collected more than once (an INCR of two columns of one row) */
       unit_key_hash = tdes->wset_hashes[key_begin].hash;
       for (size_t i = key_begin; i < tdes->wset_hashes.size (); i++)
@@ -4957,7 +4951,7 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
     }
   else
     {
-      wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_seq);
+      wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_lsa);
     }
   log_append_wset_label_with_lock (thread_p, tdes, unit_key_hash);
   log_append_sysop_end_internal (thread_p, tdes, sysop_end, data_size, data, true, sysop_end_lsa_out);
@@ -5103,7 +5097,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
    * logged. Decided before the lock, a label could miss a commit logged in between, and a later commit could
    * decide its label before a commit-order transaction logged ahead of it raised the history floor: a statement
    * would then not be a barrier on the slave. */
-  wset_order_find_dependency (tdes, &tdes->wset_dependency_seq);
+  wset_order_find_dependency (tdes, &tdes->wset_dependency_lsa);
   log_append_wset_label_with_lock (thread_p, tdes, 0);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
   wset_order_record_commit (tdes, commit_lsa);
@@ -5119,7 +5113,7 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
  *
  * NOTE: Appended inside prior_lsa_mutex, immediately before the transaction's commit record.
  *       No-op for crash recovery; read by the replication applier to set the apply task's
- *       dependency_seq.
+ *       dependency_lsa.
  */
 static void
 log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT64 unit_key_hash)
@@ -5135,7 +5129,7 @@ log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, UINT6
     }
 
   wset_label = (LOG_REC_WSET_LABEL *) node->data_header;
-  LSA_COPY (&wset_label->dependency_seq, &tdes->wset_dependency_seq);
+  LSA_COPY (&wset_label->dependency_lsa, &tdes->wset_dependency_lsa);
   wset_label->unit_key_hash = unit_key_hash;
 
   (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
@@ -5695,8 +5689,8 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	    {
 	      /* for the replication agent guarantee the order of transaction */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
-	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
-			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_lsa)
+			      || LSA_LE (&tdes->wset_dependency_lsa, &commit_lsa));
 	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else
@@ -6468,8 +6462,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	       * right before the label is written, and the keys are published once the commit LSA is known, so a
 	       * two-phase commit orders on the slave like any other commit. */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
-	      assert_release (LSA_ISNULL (&tdes->wset_dependency_seq)
-			      || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
+	      assert_release (LSA_ISNULL (&tdes->wset_dependency_lsa)
+			      || LSA_LE (&tdes->wset_dependency_lsa, &commit_lsa));
 	      wset_order_publish_commit_keys (tdes, &commit_lsa);
 	    }
 	  else
@@ -7417,6 +7411,19 @@ log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 static LOG_PAGE *
+log_dump_record_wset_label (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_REC_WSET_LABEL *wset_label;
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*wset_label), log_lsa, log_page_p);
+  wset_label = ((LOG_REC_WSET_LABEL *) ((char *) log_page_p->area + log_lsa->offset));
+  fprintf (out_fp, "  dependency_lsa = %lld|%d\n", LSA_AS_ARGS (&wset_label->dependency_lsa));
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_SUPPLEMENT *supplement;
@@ -7523,6 +7530,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_DUMMY_HA_SERVER_STATE:
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_DUMMY_WSET_LABEL:
+      log_page_p = log_dump_record_wset_label (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_SUPPLEMENTAL_INFO:

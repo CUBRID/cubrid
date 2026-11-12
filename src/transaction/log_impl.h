@@ -546,7 +546,7 @@ struct log_tdes
 				 * commit-order replication instead. Technical key collection failures are
 				 * returned to the DML path and do not set this flag. */
   int wset_fallback_reason;	/* WSET_FALLBACK_REASON that set wset_overflow, counted at commit; statistics only */
-  LOG_LSA wset_dependency_seq;	/* dependency selected from writeset history, carried by the WSET_LABEL
+  LOG_LSA wset_dependency_lsa;	/* dependency selected from writeset history, carried by the WSET_LABEL
 				 * record just before this transaction's commit record */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */

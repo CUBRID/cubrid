@@ -51,7 +51,7 @@ test_task (int tranid, LOG_LSA commit_lsa, LOG_LSA dependency)
   task.tranid = tranid;
   task.rectype = TEST_RECTYPE_COMMIT;
   task.commit_lsa = commit_lsa;
-  task.dependency_seq = dependency;
+  task.dependency_lsa = dependency;
   task.has_items = true;
   return task;
 }
