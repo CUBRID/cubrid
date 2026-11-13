@@ -518,6 +518,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
   PT_NODE *result;
   const SM_DEFAULT_VALUE *default_value;
   PT_NODE *data_type;
+  DB_DOMAIN *expr_domain;
 
   if (sm_attr == NULL || &sm_attr->default_value == NULL)
     {
@@ -535,7 +536,30 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
    * statement runs; a literal or Expression-Derived Literal rebuilds from its stored value */
   if (DB_IS_RESIDUAL_DEFAULT_EXPR (&default_value->default_expr))
     {
-      return pt_cdt_registry_tree_copy (parser, sm_attr, NULL, NULL);
+      result = pt_cdt_registry_tree_copy (parser, sm_attr, NULL, NULL);
+      if (result == NULL)
+	{
+	  return NULL;
+	}
+
+      /* the expression keeps its own type, so a cast gives its value the type of the attribute */
+      expr_domain = pt_node_to_db_domain (parser, result, NULL);
+      if (expr_domain == NULL || tp_domain_cache (expr_domain) != sm_attr->domain)
+	{
+	  data_type = pt_domain_to_data_type (parser, sm_attr->domain);
+	  if (data_type != NULL)
+	    {
+	      result = pt_wrap_with_cast_op (parser, result, data_type->type_enum, 0, 0, data_type);
+	      parser_free_tree (parser, data_type);
+	    }
+	  if (data_type == NULL || result == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	}
+
+      return result;
     }
 
   result = pt_dbval_to_value (parser, &default_value->value);

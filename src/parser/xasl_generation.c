@@ -281,8 +281,10 @@ static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * st
 #if !defined (DEFAULT_EXPR_REGU_STREAM)
 static int pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, INSERT_PROC_NODE * insert,
 				       PT_NODE * value_clauses, PT_NODE * err_node);
-static int pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert,
+static int pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, SM_CLASS * smclass, INSERT_PROC_NODE * insert,
 					      PT_NODE * value_clauses);
+static PT_NODE *pt_own_default_slot_tree (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * tree,
+					  const TP_DOMAIN * domain);
 #endif
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
@@ -27182,7 +27184,41 @@ pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, INSE
     {
       return NO_ERROR;
     }
-  return pt_to_insert_listed_default_slots (parser, insert, value_clauses);
+  return pt_to_insert_listed_default_slots (parser, smclass, insert, value_clauses);
+}
+
+/*
+ * pt_own_default_slot_tree () - the tree the DEFAULT slot of a listed attribute compiles
+ *   return: the DEFAULT tree, under the casts that do not give it the type of the attribute
+ *   parser(in): parser context
+ *   value(in): an INSERT value that is the DEFAULT of its own column
+ *   tree(in): the DEFAULT tree of the value (pt_own_default_tree)
+ *   domain(in): the domain of the attribute
+ *
+ * The server coerces the value of a slot to the attribute, as it does for a column left out, so a cast to the type
+ * of the attribute is dropped. A cast to another type changes the value and stays: a view column of another type
+ * than the column it stands for casts its DEFAULT to its own type.
+ */
+static PT_NODE *
+pt_own_default_slot_tree (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * tree, const TP_DOMAIN * domain)
+{
+  PT_NODE *node;
+  TP_DOMAIN *cast_domain;
+
+  for (node = value; node != NULL && node != tree; node = node->info.expr.arg1)
+    {
+      assert (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST);
+
+      cast_domain = (node->info.expr.cast_type != NULL
+		     ? pt_xasl_data_type_to_domain (parser, node->info.expr.cast_type)
+		     : pt_xasl_node_to_domain (parser, node));
+      if (cast_domain != domain)
+	{
+	  return node;
+	}
+    }
+
+  return tree;
 }
 
 /*
@@ -27190,16 +27226,19 @@ pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, INSE
  *	DEFAULT, and make each such value read the slot
  *   return: NO_ERROR or error code
  *   parser(in): parser context
+ *   smclass(in): the class inserted into
  *   insert(in/out): the INSERT_PROC_NODE, its slots for the attributes left out already built
  *   value_clauses(in): the VALUES rows, already compiled into insert->valptr_lists
  *
  * The DEFAULT keyword, or DEFAULT (c) in the place of c, is the DEFAULT of its own column (is_own_default): every
  * row giving it shares one slot, as the column left out does, and the server evaluates the slot where a row uses
  * it, so a VOLATILE DEFAULT advances only on those rows. The slot compiles the tree the first such row grafted (a
- * view grafts its own DEFAULT). A DEFAULT (b) in another place stays the expression of that place.
+ * view grafts its own DEFAULT, pt_own_default_slot_tree). A DEFAULT (b) in another place stays the expression of
+ * that place.
  */
 static int
-pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert, PT_NODE * value_clauses)
+pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, SM_CLASS * smclass, INSERT_PROC_NODE * insert,
+				   PT_NODE * value_clauses)
 {
   int num_listed = insert->num_vals - insert->num_default_expr;
   PT_NODE **trees = NULL;	/* per listed attribute, the DEFAULT tree its slot compiles */
@@ -27207,6 +27246,7 @@ pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, INSERT_PROC_NODE * i
   PT_NODE *row, *value, *tree, *unclassified_node = NULL;
   REGU_VARIABLE_LIST regu_list;
   INSERT_DEFAULT_SLOT *slot;
+  SM_ATTRIBUTE *att;
   int i, p;
   int error = NO_ERROR;
 
@@ -27232,7 +27272,8 @@ pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, INSERT_PROC_NODE * i
 	  tree = pt_own_default_tree (value);
 	  if (tree != NULL && trees[p] == NULL)
 	    {
-	      trees[p] = tree;
+	      att = classobj_find_attribute_id (smclass, insert->att_id[insert->num_default_expr + p], 0);
+	      trees[p] = (att != NULL) ? pt_own_default_slot_tree (parser, value, tree, att->domain) : tree;
 	    }
 	}
     }
