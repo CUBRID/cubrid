@@ -1332,9 +1332,11 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
   error = smt_find_attribute (template_, name, class_attribute, &att);
   if (error == NO_ERROR)
     {
-      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB) && proposed_value
-	  && !DB_IS_NULL (proposed_value))
+      if ((att->type->id == DB_TYPE_BLOB || att->type->id == DB_TYPE_CLOB)
+	  && ((proposed_value && !DB_IS_NULL (proposed_value))
+	      || (default_expr != NULL && DB_HAS_DEFAULT_EXPR (default_expr))))
 	{
+	  /* an expression DEFAULT too: a VOLATILE one comes without a value */
 	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
 	  return error;
 	}
