@@ -299,7 +299,7 @@ extern int tr_make_block_procedure_call (const char *sp_name, const char *argume
 
 /* PL/CSQL block actions */
 
-#define TR_BLOCK_FIELD_TYPE_SIZE 32	/* holds character varying(1073741823) */
+#define TR_BLOCK_FIELD_TYPE_SIZE 32	/* holds a type name, as character varying or character(2048) */
 
 typedef struct tr_block_column TR_BLOCK_COLUMN;
 struct tr_block_column

@@ -7870,6 +7870,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   bool *reads = NULL;
   bool *row;
   int n_reads;
+  bool declares_record;
   char *create_sql;
   char *arguments;
   char *call_buf = NULL;
@@ -7955,6 +7956,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   /*
    * A name the block does not read is dropped. The call passes the columns the block reads.
    * A name the block reads with no such column is still declared, with the first column.
+   * It is not when the block declares a record with the name, as the field may be of that record.
    * When the class has no column, it is declared with a field of no column.
    * The compiler then reports the field, as it does for a column of a type it cannot take.
    * The row of a name that is dropped is written again for the next name.
@@ -7966,7 +7968,8 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 	  continue;
 	}
 
-      if (!block_declares_record (block, candidates[i]) && block_reads_column (block, candidates[i], NULL, true))
+      declares_record = block_declares_record (block, candidates[i]);
+      if (!declares_record && block_reads_column (block, candidates[i], NULL, true))
 	{
 	  /* the record is a copy of the row, so the value would be lost with no error */
 	  free_and_init (columns);
@@ -7984,7 +7987,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 	  row[j] = block_reads_column (block, candidates[i], columns[j].name, false);
 	  n_reads += row[j];
 	}
-      if (n_reads == 0 && block_reads_column (block, candidates[i], NULL, false))
+      if (n_reads == 0 && !declares_record && block_reads_column (block, candidates[i], NULL, false))
 	{
 	  if (n_columns > 0)
 	    {
