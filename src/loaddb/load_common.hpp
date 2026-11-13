@@ -502,9 +502,10 @@ namespace cubload
    *    object_file_name(in): loaddb object file name (absolute path is required)
    *    c_handler(in)       : a function for handling/process a %class or %id line from object file
    *    b_handler(in)       : a function for handling/process a batch of objects
+   *    check_only(in)      : --data-file-check-only: Internal LOB references are checked, their payload is not sent
    */
   int split (int batch_size, const std::string &object_file_name, class_handler &c_handler,
-	     batch_handler &b_handler);
+	     batch_handler &b_handler, bool check_only);
 
 } // namespace cubload
 

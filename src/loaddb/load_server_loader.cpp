@@ -1167,6 +1167,13 @@ namespace cubload
 	return ER_OBJ_DOMAIN_CONFLICT;
       }
 
+    if (m_session.get_args ().syntax_check)
+      {
+	/* the check-only client sends no payload (split ()): the reference carries its sidecar key, not a slot */
+	db_make_null (&db_val);
+	return NO_ERROR;
+      }
+
     return m_session.internal_lob_payload_make_value (*m_thread_ref, m_clsid, str->val + 2, str->size - 2,
 	   expected_type, max_length, &db_val);
   }

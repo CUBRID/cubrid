@@ -73,7 +73,7 @@ namespace cubload
   void rtrim (std::string &str);
 
   int expand_internal_lob_refs (std::string &row, const internal_lob_sidecar_map &sidecar, bool sidecar_available,
-				class_id clsid, batch_id id);
+				class_id clsid, batch_id id, bool check_only);
 }
 
 ///////////////////// Function definitions /////////////////////
@@ -1397,7 +1397,7 @@ cleanup:
 
   int
   expand_internal_lob_refs (std::string &row, const internal_lob_sidecar_map &sidecar, bool sidecar_available,
-			    class_id clsid, batch_id id)
+			    class_id clsid, batch_id id, bool check_only)
   {
     std::string expanded;
     bool in_quote = false;
@@ -1459,6 +1459,14 @@ cleanup:
 		return internal_lob_sidecar_set_error ();
 	      }
 
+	    /* check-only stores no row: the reference keeps its sidecar key and no payload is sent */
+	    if (check_only)
+	      {
+		expanded.append (row, pos, token_end + 1 - pos);
+		pos = token_end;
+		continue;
+	      }
+
 	    std::string replacement;
 	    int error = internal_lob_make_ref_from_sidecar_entry (clsid, id, found->second, replacement);
 	    if (error != NO_ERROR)
@@ -1487,7 +1495,8 @@ cleanup:
   append_incomplete_row (std::string &batch_buffer, std::string &one_row_buffer, batch_handler &b_handler,
 			 class_id &clsid, batch_id &batch_id, int lineno,
 			 int &one_row_lineno, int &batch_start_offset, int64_t &batch_rows,
-			 const internal_lob_sidecar_map &internal_lob_sidecar, bool internal_lob_sidecar_available)
+			 const internal_lob_sidecar_map &internal_lob_sidecar, bool internal_lob_sidecar_available,
+			 bool check_only)
   {
     int error_code = NO_ERROR;
 
@@ -1508,7 +1517,7 @@ cleanup:
 
     // the row joins the batch handle_batch will number next; its Internal LOB values are sent to that batch
     error_code = expand_internal_lob_refs (one_row_buffer, internal_lob_sidecar, internal_lob_sidecar_available, clsid,
-					   batch_id + 1);
+					   batch_id + 1, check_only);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -1523,7 +1532,7 @@ cleanup:
 
   int
   split (int batch_size, const std::string &object_file_name, class_handler &c_handler,
-	 batch_handler &b_handler)
+	 batch_handler &b_handler, bool check_only)
   {
     int error_code;
     int64_t batch_rows = 0;
@@ -1584,7 +1593,7 @@ cleanup:
 		  {
 		    error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
 							lineno, one_row_lineno, batch_start_offset, batch_rows,
-							internal_lob_sidecar, internal_lob_sidecar_available);
+							internal_lob_sidecar, internal_lob_sidecar_available, check_only);
 		    if (error_code != NO_ERROR)
 		      {
 			object_file.close ();
@@ -1698,7 +1707,7 @@ cleanup:
 
 	// the row joins the batch handle_batch will number next
 	error_code = expand_internal_lob_refs (one_row_buffer, internal_lob_sidecar, internal_lob_sidecar_available, clsid,
-					       batch_id + 1);
+					       batch_id + 1, check_only);
 	if (error_code != NO_ERROR)
 	  {
 	    object_file.close ();
@@ -1734,7 +1743,7 @@ cleanup:
       {
 	error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
 					    lineno, one_row_lineno, batch_start_offset, batch_rows, internal_lob_sidecar,
-					    internal_lob_sidecar_available);
+					    internal_lob_sidecar_available, check_only);
 	if (error_code != NO_ERROR)
 	  {
 	    object_file.close ();
