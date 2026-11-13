@@ -9906,7 +9906,52 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan,
       goto end;
     }
 
-  status = (offset_to_object != NOT_FOUND) ? DISK_VALID : DISK_INVALID;
+  if (offset_to_object == NOT_FOUND)
+    {
+      status = DISK_INVALID;
+      goto end;
+    }
+
+  if (BTREE_IS_UNIQUE (btid_int->unique_pk) && cls_oid != NULL && !OID_ISNULL (cls_oid))
+    {
+      /* a unique index of a class hierarchy keeps the class of each object, and it must be the class of the row, as
+       * the index scan required */
+      RECDES found_record;
+      BTREE_NODE_TYPE node_type;
+      int found_after_key_offset;
+      OID found_oid, found_class_oid;
+      BTREE_MVCC_INFO found_mvcc_info;
+
+      if (found_page == leaf_page)
+	{
+	  found_record = leaf_record;
+	  node_type = BTREE_LEAF_NODE;
+	  found_after_key_offset = offset_after_key;
+	}
+      else if (spage_get_record (thread_p, found_page, 1, &found_record, PEEK) == S_SUCCESS)
+	{
+	  node_type = BTREE_OVERFLOW_NODE;
+	  found_after_key_offset = 0;
+	}
+      else
+	{
+	  assert_release (false);
+	  goto end;
+	}
+
+      if (btree_unpack_object (found_record.data + offset_to_object, btid_int, node_type, &found_record,
+			       found_after_key_offset, &found_oid, &found_class_oid, &found_mvcc_info) == NULL)
+	{
+	  goto end;
+	}
+      if (!OID_EQ (&found_class_oid, cls_oid))
+	{
+	  status = DISK_INVALID;
+	  goto end;
+	}
+    }
+
+  status = DISK_VALID;
 
 end:
   if (found_page != NULL && found_page != leaf_page)
