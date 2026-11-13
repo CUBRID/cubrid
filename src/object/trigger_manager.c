@@ -201,13 +201,14 @@ static TR_STATE *make_state (void);
 static void free_state (TR_STATE * state);
 static DB_OBJECT *trigger_to_object (TR_TRIGGER * trigger);
 static int object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger);
-static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **curname,
-				 const char **tempname);
+static bool block_type_is_supported (DB_TYPE type);
+static void block_field_type (TP_DOMAIN * domain, const char *type_name, char *buf, int size);
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
 static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
 static int reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved);
 static bool trigger_activity_in_use (TR_TRIGGER * trigger);
+static bool block_call_has_arguments (TR_TRIGGER * trigger);
 static int follow_reloaded_block_trigger (TR_TRIGGER * trigger, TR_ACTIVITY ** act, bool * skip);
 
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
@@ -1535,26 +1536,52 @@ error:
 /* EXPRESSION COMPILATION */
 
 /*
- * get_reference_names() - This determines which of the various reference names are valid for a particular trigger expression
- *    return: none
- *    trigger(in): trigger of interest
- *    activity(in): action
- *    curname(out): current name (returned)
- *    tempname(out): temp name (returned)
+ * tr_decide_action_time() - Decides the time the action of a trigger runs at.
+ *    return: action time
+ *    cond_time(in): condition time of the statement, or TR_TIME_NULL
+ *    action_time(in): action time of the statement, or TR_TIME_NULL
  *
+ * Note:
+ *    An action without a time runs at the time of the condition.
+ *    It runs after the event when the condition has no time either.
  */
-static void
-get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **curname, const char **tempname)
+DB_TRIGGER_TIME
+tr_decide_action_time (DB_TRIGGER_TIME cond_time, DB_TRIGGER_TIME action_time)
+{
+  if (action_time != TR_TIME_NULL)
+    {
+      return action_time;
+    }
+
+  return (cond_time != TR_TIME_NULL) ? cond_time : TR_TIME_AFTER;
+}
+
+/*
+ * tr_get_reference_names() - Returns the correlation names an action of a trigger can refer to.
+ *    return: none
+ *    event(in): trigger event
+ *    time(in): action time
+ *    curname(out): name of the current instance, or NULL
+ *    tempname(out): name of the new or old instance, or NULL
+ *
+ * Note:
+ *    The names are "obj" and "new" or "old".
+ *    When mysql_trigger_correlation_names is set, they are "new" and "old" as MySQL names them.
+ *    They depend on the event, the action time and that parameter only.
+ *    So a trigger that is being created can ask for them before it exists.
+ */
+void
+tr_get_reference_names (DB_TRIGGER_EVENT event, DB_TRIGGER_TIME time, const char **curname, const char **tempname)
 {
   *curname = NULL;
   *tempname = NULL;
 
   if (!prm_get_bool_value (PRM_ID_MYSQL_TRIGGER_CORRELATION_NAMES))
     {
-      switch (trigger->event)
+      switch (event)
 	{
 	case TR_EVENT_INSERT:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *tempname = NEW_REFERENCE_NAME;
@@ -1569,7 +1596,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_UPDATE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OBJ_REFERENCE_NAME;
@@ -1588,7 +1615,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_DELETE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OBJ_REFERENCE_NAME;
@@ -1607,10 +1634,10 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
     }
   else
     {
-      switch (trigger->event)
+      switch (event)
 	{
 	case TR_EVENT_INSERT:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *tempname = NEW_REFERENCE_NAME;
@@ -1625,7 +1652,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_UPDATE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OLD_REFERENCE_NAME;
@@ -1644,7 +1671,7 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 
 	case TR_EVENT_DELETE:
-	  switch (activity->time)
+	  switch (time)
 	    {
 	    case TR_TIME_BEFORE:
 	      *curname = OLD_REFERENCE_NAME;
@@ -1661,6 +1688,142 @@ get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **
 	  break;
 	}
     }
+}
+
+/*
+ * block_type_is_supported() - Tells whether an attribute of the type can be read through a
+ *                             correlation name of a block action.
+ *    return: true when PL/CSQL can take the type
+ *    type(in): attribute type
+ *
+ * Note:
+ *    The list follows DBTypeAdapter.isSupported () in the PL server.
+ *    NULL and RESULTSET are left out, as no column has them.
+ *    A type that is not in it cannot be a column of the cursor that declares a correlation name.
+ */
+static bool
+block_type_is_supported (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * block_field_type() - Writes the PL/CSQL type that a record field of a block action is declared
+ *                      with for an attribute.
+ *    return: none
+ *    domain(in): domain of the attribute
+ *    type_name(in): type name of pr_type_name () for the type of the domain
+ *    buf(out): the type
+ *    size(in): size of buf
+ *
+ * Note:
+ *    A field is declared with the type name alone, as a parameter of a procedure is.
+ *    The column can get longer or more precise later, and the procedure is not made again then.
+ *    CHAR is the exception. CHAR alone is CHAR(1), so it keeps the length of the column.
+ */
+static void
+block_field_type (TP_DOMAIN * domain, const char *type_name, char *buf, int size)
+{
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_CHAR)
+    {
+      snprintf (buf, size, "%s(%d)", type_name, domain->precision);
+    }
+  else
+    {
+      snprintf (buf, size, "%s", type_name);
+    }
+}
+
+/*
+ * tr_get_block_action_columns() - Lists the columns of a class that a PL/CSQL block action can read
+ *                                 through a correlation name.
+ *    return: error code
+ *    class_mop(in): class the trigger is defined on
+ *    columns(out): array of the columns, in the definition order, or NULL when there is none
+ *    count(out): number of the columns
+ *
+ * Note:
+ *    The columns are the instance and shared attributes whose type PL/CSQL accepts.
+ *    The names point into the class, so they are to be used before the class can be decached.
+ *    The parameter type names are the ones of pr_type_name ().
+ *    The caller frees the array alone, with free_and_init ().
+ */
+int
+tr_get_block_action_columns (DB_OBJECT * class_mop, TR_BLOCK_COLUMN ** columns, int *count)
+{
+  SM_CLASS *class_;
+  SM_ATTRIBUTE *att;
+  TR_BLOCK_COLUMN *list;
+  const char *type_name;
+  int n;
+  int error;
+
+  assert (columns != NULL && count != NULL);
+
+  *columns = NULL;
+  *count = 0;
+
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  n = 0;
+  for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
+    {
+      if (block_type_is_supported (TP_DOMAIN_TYPE (att->domain)))
+	{
+	  n++;
+	}
+    }
+
+  if (n == 0)
+    {
+      return NO_ERROR;
+    }
+
+  list = (TR_BLOCK_COLUMN *) malloc (sizeof (TR_BLOCK_COLUMN) * n);
+  if (list == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TR_BLOCK_COLUMN) * n);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  n = 0;
+  for (att = class_->ordered_attributes; att != NULL; att = att->order_link)
+    {
+      if (block_type_is_supported (TP_DOMAIN_TYPE (att->domain)))
+	{
+	  type_name = pr_type_name (TP_DOMAIN_TYPE (att->domain));
+	  list[n].name = att->header.name;
+	  list[n].type_name = type_name;
+	  block_field_type (att->domain, type_name, list[n].field_type, sizeof (list[n].field_type));
+	  n++;
+	}
+    }
+
+  *columns = list;
+  *count = n;
+
+  return NO_ERROR;
 }
 
 /*
@@ -1721,7 +1884,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 	  return er_errid ();
 	}
 
-      get_reference_names (trigger, activity, &curname, &tempname);
+      tr_get_reference_names (trigger->event, activity->time, &curname, &tempname);
 
       /*
        * The pt_ interface doesn't like the first name to be NULL and the second name to be non-NULL.
@@ -1914,25 +2077,34 @@ trigger_activity_in_use (TR_TRIGGER * trigger)
 }
 
 /*
- * tr_make_block_procedure_call() - Makes the action that calls the internal procedure of a PL/CSQL block action.
+ * tr_make_block_procedure_call() - Makes the action that calls the internal procedure of
+ *                                  a PL/CSQL block action.
  *    return: error code
  *    sp_name(in): procedure name qualified with its owner
- *    buf(out): buffer for the action
- *    buf_size(in): size of the buffer
+ *    arguments(in): arguments of the call without the parentheses, or NULL when there is none
+ *    call(out): the action, to be freed with free_and_init
  *
  * Note:
  *    The trigger is made and its owner is changed with the same text.
- *    The text is in lowercase as the parser prints it, so changing the owner stores the same text as creating.
+ *    The text is in lowercase as the parser prints it.
+ *    So changing the owner stores the same text as creating.
  *    The owner name is quoted, as it may be a reserved word.
+ *    The arguments are written as they are given. The caller gives them as the parser prints them.
  */
 int
-tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
+tr_make_block_procedure_call (const char *sp_name, const char *arguments, char **call)
 {
   const char *name;
+  char *buf;
   int owner_len;
-  int len;
+  size_t size;
 
-  /* an empty name gives NULL, and a name without an owner gives the name itself or follows an empty owner */
+  *call = NULL;
+
+  /*
+   * An empty name gives NULL.
+   * A name without an owner gives the name itself, or follows an empty owner.
+   */
   name = sm_remove_qualifier_name (sp_name);
   if (name == NULL || name <= sp_name + 1)
     {
@@ -1941,14 +2113,49 @@ tr_make_block_procedure_call (const char *sp_name, char *buf, int buf_size)
     }
   owner_len = (int) (name - sp_name) - 1;
 
-  len = snprintf (buf, buf_size, "call [%.*s].[%s]()", owner_len, sp_name, name);
-  if (len < 0 || len >= buf_size)
+  if (arguments == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_INTERNAL_ERROR, 1, sp_name);
-      return ER_TR_INTERNAL_ERROR;
+      arguments = "";
     }
 
+  /* the dot between the owner and the name is not written */
+  size = strlen ("call [].[]()") + strlen (sp_name) - 1 + strlen (arguments) + 1;
+  buf = (char *) malloc (size);
+  if (buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  snprintf (buf, size, "call [%.*s].[%s](%s)", owner_len, sp_name, name, arguments);
+
+  *call = buf;
+
   return NO_ERROR;
+}
+
+/*
+ * block_call_has_arguments() - Checks whether the call of a PL/CSQL block action passes arguments.
+ *    return: true if the action of the trigger is such a call with arguments
+ *    trigger(in): trigger structure
+ */
+static bool
+block_call_has_arguments (TR_TRIGGER * trigger)
+{
+  const char *source;
+  size_t source_len;
+  size_t prefix_len;
+
+  if (trigger->block_sp_name == NULL || trigger->action == NULL || trigger->action->source == NULL)
+    {
+      return false;
+    }
+
+  /* the arguments follow the name of the procedure, as tr_make_block_procedure_call writes it */
+  source = trigger->action->source;
+  source_len = strlen (source);
+  prefix_len = strlen ("call [].[](") + strlen (trigger->block_sp_name) - 1;
+
+  return source_len > prefix_len && source[prefix_len] != ')';
 }
 
 /*
@@ -3848,18 +4055,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	    }
 	}
 
-      if (action_time != TR_TIME_NULL)
-	{
-	  trigger->action->time = action_time;
-	}
-      else if (cond_time != TR_TIME_NULL)
-	{
-	  trigger->action->time = cond_time;
-	}
-      else
-	{
-	  trigger->action->time = TR_TIME_AFTER;
-	}
+      trigger->action->time = tr_decide_action_time (cond_time, action_time);
     }
 
   /* make sure everything looks ok */
@@ -4726,11 +4922,38 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  error = free_stale_statement (act);
 	  if (error == NO_ERROR && act->parser == NULL)
 	    {
+	      /*
+	       * A call with arguments to a procedure that has moved does not fail.
+	       * It compiles as a method call on its first argument.
+	       * So the procedure of such a call is looked up before the call is compiled.
+	       */
+	      if (!reloaded && block_call_has_arguments (trigger))
+		{
+		  bool moved = false;
+
+		  error = reload_moved_block_trigger (trigger, &moved);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
+		  if (moved)
+		    {
+		      reloaded = true;
+
+		      error = follow_reloaded_block_trigger (trigger, &act, &skip_reloaded);
+		      if (error != NO_ERROR || skip_reloaded)
+			{
+			  break;
+			}
+		    }
+		}
+
 	      error = compile_trigger_activity (trigger, act, 0);
 	      used_cached_statement = false;
 
 	      /*
-	       * A call to a procedure that has moved compiles and fails when it runs, which is handled below.
+	       * A call without arguments to a procedure that has moved compiles.
+	       * It fails when it runs, which is handled below.
 	       * The trigger is read again here as well in case the compiling fails.
 	       */
 	      if (error != NO_ERROR && !reloaded)
@@ -6819,18 +7042,24 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   PARSER_CONTEXT *parser = NULL;
   MOP sp_mop;
   DB_VALUE old_sp_value;
+  DB_VALUE old_action_value;
   DB_VALUE value;
   const char *old_sp_name;
+  const char *old_action;
+  char *old_call = NULL;
+  char *arguments = NULL;
+  size_t prefix_len;
+  size_t old_action_len;
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   char new_sp_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *new_block_sp_name;
-  char new_call[DB_MAX_IDENTIFIER_LENGTH + 16] = { '\0' };
   char *new_source = NULL;
   int save;
   int error = NO_ERROR;
 
   db_make_null (&old_sp_value);
+  db_make_null (&old_action_value);
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -6863,15 +7092,40 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
   snprintf (new_sp_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name,
 	    sm_remove_qualifier_name (old_sp_name));
 
-  error = tr_make_block_procedure_call (new_sp_name, new_call, sizeof (new_call));
+  /*
+   * The arguments of the call stay as they are, as the procedure keeps its parameters.
+   * They are the text between the parentheses of the stored call.
+   */
+  error = db_get (trigger_object, TR_ATT_ACTION, &old_action_value);
   if (error != NO_ERROR)
     {
       goto end;
     }
-  new_source = strdup (new_call);
-  if (new_source == NULL)
+  error = tr_make_block_procedure_call (old_sp_name, NULL, &old_call);
+  if (error != NO_ERROR)
     {
-      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, strlen (new_call) + 1);
+      goto end;
+    }
+  old_action = DB_IS_NULL (&old_action_value) ? "" : db_get_string (&old_action_value);
+  old_action_len = strlen (old_action);
+  prefix_len = strlen (old_call) - 1;
+  if (old_action_len <= prefix_len || strncmp (old_action, old_call, prefix_len) != 0
+      || old_action[old_action_len - 1] != ')')
+    {
+      /* the stored action is not the call of the procedure */
+      ERROR_SET_ERROR_1ARG (error, ER_TR_INTERNAL_ERROR, old_sp_name);
+      goto end;
+    }
+  arguments = strndup (old_action + prefix_len, old_action_len - prefix_len - 1);
+  if (arguments == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_OUT_OF_VIRTUAL_MEMORY, old_action_len - prefix_len);
+      goto end;
+    }
+
+  error = tr_make_block_procedure_call (new_sp_name, arguments, &new_source);
+  if (error != NO_ERROR)
+    {
       goto end;
     }
 
@@ -6957,7 +7211,18 @@ end:
       free_and_init (new_source);
     }
 
+  if (arguments != NULL)
+    {
+      free_and_init (arguments);
+    }
+
+  if (old_call != NULL)
+    {
+      free_and_init (old_call);
+    }
+
   pr_clear_value (&old_sp_value);
+  pr_clear_value (&old_action_value);
 
   AU_RESTORE (save);
 
