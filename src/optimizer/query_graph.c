@@ -560,10 +560,6 @@ qo_optimize_helper (QO_ENV * env)
       conj->next = next;
     }
 
-  /* every WHERE term now has its selectivity: reconcile each derived duplicate with the
-   * predicate that implies it */
-  qo_derived_term_compensate (env);
-
   /* check join-edge for ansi(explicit) join */
   for (n = 1; n < env->nnodes; n++)
     {
@@ -599,6 +595,10 @@ qo_optimize_helper (QO_ENV * env)
 
   /* classify ON-clause terms for anti join */
   qo_classify_antijoin_terms (env);
+
+  /* every WHERE term now has its selectivity and its class: reconcile each derived duplicate with
+   * the predicate that implies it */
+  qo_derived_term_compensate (env);
 
   bitset_delset (&nodeset);
 
@@ -2134,6 +2134,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
     {
       /* make_pred_from_plan () drops it from the data filter unless an index adopted it */
       QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED_EXPENSIVE);
+    }
+
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_OR_DERIVED_COLUMN))
+    {
+      /* a key range on one column: qo_derived_term_origin () looks for its origin on its node */
+      QO_TERM_SET_FLAG (term, QO_TERM_OR_DERIVED_COLUMN);
     }
 
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
@@ -6511,17 +6517,15 @@ qo_discover_edges (QO_ENV * env)
  *   can null-pad a node in REFS: a LEFT OUTER on_node that is itself in REFS,
  *   or a RIGHT/FULL OUTER on_node whose own outer_dep_set holds a node in REFS.
  *   env(in):
- *   node(in):
+ *   node(in): on_node whose ON clause reads REFS; NULL for a WHERE term (no location bound)
  *   refs(in): nodes read by NODE's ON clause or by one of its terms
  *   suppliers(out): caller-initialized bitset; this adds the index of each
  *	  such outer join on_node to it.
  *
- * Note: Computed fresh from REFS and node join types, not
- *   from NODE's own (possibly hint-populated) QO_NODE_OUTER_DEP_SET -- the
- *   ORDERED/LEADING hint handling in add_hint() also fills that field, to
- *   force a visiting order, independent of any outer join. A caller that
- *   needs to tell a genuine null-supplier dependency apart from hint-forced
- *   ordering must call this instead of reading the node's stored field.
+ * Note: Built from REFS and node join types, not from NODE's own
+ *   QO_NODE_OUTER_DEP_SET, which add_hint() also fills for ORDERED/LEADING.
+ *   The RIGHT/FULL OUTER check still reads k_node's QO_NODE_OUTER_DEP_SET,
+ *   so a node an ORDERED/LEADING hint put there can also count as a supplier.
  */
 static void
 qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers)
@@ -6533,7 +6537,7 @@ qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BIT
   for (k = 1; k < env->nnodes; k++)
     {
       k_node = QO_ENV_NODE (env, k);
-      if (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node))
+      if (node != NULL && (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node)))
 	{
 	  continue;
 	}
@@ -6642,10 +6646,10 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
- * I1|ON   |TC_sarg/other(inner) |-         |null-padded ref|TC_dj
+ * I1|ON   |TC_sarg/other(inner) |-         |pad ref        |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
- * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
- * W3|WHERE|TC_other(n>0)        |!Outer    |!Right         |TC_other(ow TC_aj)
+ * W2|WHERE|TC_join              |!Outer    |!Right,!pad ref|TC_join(ow TC_aj)
+ * W3|WHERE|TC_other(n>0)        |!Outer    |!Right,!pad ref|TC_other(ow TC_aj)
  * W4|WHERE|TC_other(n==0)       |-         |-              |TC_aj
  * --+-----+---------------------+----------+---------------+------------------
  */
@@ -6782,7 +6786,10 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	  else
 	    {
-	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred)
+	      /* a join edge would evaluate it with the outer join that null-pads a node it reads, before the padding */
+	      BITSET_CLEAR (suppliers);
+	      qo_get_null_suppliers_of_nodes (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
+	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred || !bitset_is_empty (&suppliers))
 		{
 		  QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 
@@ -6798,7 +6805,12 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  if (nidx_self >= 0)
 	    {
 	      node = QO_ENV_NODE (env, nidx_self);
-	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred)
+	      BITSET_CLEAR (suppliers);
+	      if (!QO_ON_COND_TERM (term))
+		{
+		  qo_get_null_suppliers_of_nodes (env, NULL, &(QO_TERM_NODES (term)), &suppliers);
+		}
+	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred || !bitset_is_empty (&suppliers))
 		{
 		  if (QO_ON_COND_TERM (term))
 		    {
@@ -9885,10 +9897,20 @@ qo_node_free (QO_NODE * node)
  *	 rewrite passes that run between the extraction and this point rebuild predicates
  *	 without preserving annotations of their own.
  *
- *	 An OR-derived restriction comes from a multi-spec OR factor, so its origin is a
- *	 disjunction spanning several specs whose segments cover the derived term's own -- the
- *	 segments, not just the node, because a query can hold more than one such factor over
- *	 the same tables and only the columns tell them apart.  A LIKE-derived range comes from
+ *	 An OR-derived term comes from an OR factor kept whole, and its origin is a disjunction
+ *	 whose nodes and segments cover the derived term's own.  The candidates depend on its kind
+ *	 (qo_extract_or_restrictions ()):
+ *	 - a restriction on one spec (QO_TERM_OR_DERIVED) comes from a user factor over several
+ *	   specs, never from another derived term nor from a factor over its spec alone;
+ *	 - a key range on one column (QO_TERM_OR_DERIVED_COLUMN) pairs on its own node first: with
+ *	   the restriction derived for its whole spec, which implies it, then with a factor over its
+ *	   spec alone that pt_cnf_where () kept whole (a PT_OR tree); only without either, with the
+ *	   factor over several specs it was derived from.  A key range is no one's origin.
+ *	 Keeping the kinds apart keeps a restriction from pairing with a factor over one spec that
+ *	 merely covers its column, which moved its share from the join to the scan and made the
+ *	 scan estimate depend on the FROM order.  Segments, not just nodes, because a query can hold
+ *	 more than one such factor over the same tables and only the columns tell them apart.
+ *	 A LIKE-derived range comes from
  *	 the prefix of a LIKE on the same segment, which carries the paired
  *	 QO_TERM_LIKE_HAS_DERIVED_RANGE flag; segments rather than identity because
  *	 qo_apply_range_intersection () may fold several derived ranges into one term.
@@ -9907,6 +9929,8 @@ qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken
   int j;
   QO_TERM *candidate, *origin = NULL;
   PT_NODE *pt;
+  bool same_node;
+  int rank, origin_rank = -1;
 
   for (j = 0; j < env->nterms; j++)
     {
@@ -9926,17 +9950,65 @@ qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken
 	}
       else
 	{
-	  if (QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED)
-	      || bitset_cardinality (&(QO_TERM_NODES (candidate))) < 2
+	  pt = QO_TERM_PT_EXPR (candidate);
+	  if (pt == NULL || pt->node_type != PT_EXPR || (pt->info.expr.op != PT_OR && pt->or_next == NULL)
+	      || QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED_COLUMN)
 	      || !bitset_subset (&(QO_TERM_NODES (candidate)), &(QO_TERM_NODES (derived)))
 	      || !bitset_subset (&(QO_TERM_SEGS (candidate)), &(QO_TERM_SEGS (derived))))
 	    {
-	      continue;		/* the origin spans several specs and covers the derived one */
+	      /* the origin is a disjunction covering the derived term, and a key range on one column is
+	       * no one's origin */
+	      continue;
 	    }
-	  pt = QO_TERM_PT_EXPR (candidate);
-	  if (pt == NULL || pt->node_type != PT_EXPR || (pt->info.expr.op != PT_OR && pt->or_next == NULL))
+
+	  if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED_COLUMN))
 	    {
-	      continue;		/* the origin is a disjunction */
+	      /* a key range on one column: closest is the restriction derived for its whole spec, which
+	       * implies it; then a factor over its spec alone that pt_cnf () kept whole (a PT_OR tree);
+	       * last the factor over several specs it was derived from directly */
+	      same_node = bitset_is_equivalent (&(QO_TERM_NODES (candidate)), &(QO_TERM_NODES (derived)));
+	      if (QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED))
+		{
+		  if (!same_node || pt->info.expr.op != PT_OR)
+		    {
+		      continue;
+		    }
+		  rank = 2;
+		}
+	      else if (same_node)
+		{
+		  if (pt->info.expr.op != PT_OR)
+		    {
+		      continue;
+		    }
+		  rank = 1;
+		}
+	      else
+		{
+		  rank = 0;
+		}
+	    }
+	  else
+	    {
+	      /* a restriction on one spec comes from a user factor over several, as before the key
+	       * ranges: never from another derived term, nor from a factor on the spec alone */
+	      if (QO_TERM_IS_FLAGED (candidate, QO_TERM_OR_DERIVED)
+		  || bitset_cardinality (&(QO_TERM_NODES (candidate))) < 2)
+		{
+		  continue;
+		}
+	      rank = 0;
+	    }
+
+	  if (origin != NULL && rank < origin_rank)
+	    {
+	      continue;		/* a closer origin is already found */
+	    }
+	  if (origin == NULL || rank > origin_rank)
+	    {
+	      origin = candidate;
+	      origin_rank = rank;
+	      continue;
 	    }
 	}
 
@@ -9970,6 +10042,20 @@ qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken
  *	 as written.  Measured: for `a LIKE 'aaa%9'` over 100k rows the LIKE was sized at 10
  *	 rows (exact) while its prefix range collapsed to 1, so lowering the LIKE to the range
  *	 would have thrown away the better estimate.
+ *
+ *	 Where a derived term is counted, and so whether its origin pays it back:
+ *
+ *	   derived term                 class            counted at            paid back
+ *	   ---------------------------  ---------------  --------------------  ---------
+ *	   OR-derived, WHERE factor     sarg             its node              yes
+ *	   OR-derived, WHERE factor     after-join       nowhere (*)           no
+ *	   OR-derived, ON factor        sarg (inner)     its node              yes
+ *	   OR-derived, ON factor        during-join      nowhere (*)           no
+ *	   LIKE-derived range           sarg             its node              yes
+ *
+ *	 (*) only a sarg is counted at its node (qo_node_add_sarg ()), and the join product skips
+ *	 every OR-derived term (planner_visit_node () in query_planner.c), whatever its
+ *	 class.  A derived kind or class added later has to find its row here.
  */
 static void
 qo_derived_term_compensate (QO_ENV * env)
@@ -9980,6 +10066,7 @@ qo_derived_term_compensate (QO_ENV * env)
   double *before;		/* per origin: its selectivity before any division */
   QO_TERM *derived, *origin;
   BITSET taken;
+  double sel;
 
   if (n <= 0)
     {
@@ -10026,6 +10113,14 @@ qo_derived_term_compensate (QO_ENV * env)
 	{
 	  continue;		/* an empty derived range leaves nothing to divide by */
 	}
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED) && QO_TERM_CLASS (derived) != QO_TC_SARG)
+	{
+	  /* not counted anywhere, so the origin has no share of it to pay back: only a sarg is
+	   * counted at its node, and the join product skips every OR-derived term -- a during-join
+	   * one (an outer join's ON condition, preserved side) as well as an after-join one (a WHERE
+	   * factor's restriction on the null-supplying side) */
+	  continue;
+	}
 
       origin = qo_derived_term_origin (env, derived, i, &taken);
       if (origin == NULL || QO_TERM_SELECTIVITY (origin) < 0.0)
@@ -10045,6 +10140,13 @@ qo_derived_term_compensate (QO_ENV * env)
       j = QO_TERM_IDX (origin);
       pair[i] = j;
       bitset_add (&taken, j);
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED_COLUMN) && QO_TERM_IS_FLAGED (origin, QO_TERM_OR_DERIVED))
+	{
+	  /* the division below leaves the restriction only what it rejects on top of the key range,
+	   * and make_pred_from_plan () would judge it by that share alone; the range itself is dropped
+	   * unless an index takes it, so the restriction has to stay as the scan's filter */
+	  QO_TERM_SET_FLAG (origin, QO_TERM_OR_DERIVED_ORIGIN);
+	}
       implied[j] = (implied[j] < 0.0) ? QO_TERM_SELECTIVITY (derived) : implied[j] * QO_TERM_SELECTIVITY (derived);
     }
 
@@ -10072,8 +10174,15 @@ qo_derived_term_compensate (QO_ENV * env)
 	      if (pair[i] == j)
 		{
 		  derived = QO_ENV_TERM (env, i);
-		  QO_TERM_SELECTIVITY (derived) *= before[j] / implied[j];
-		  implied[j] = before[j];
+		  sel = QO_TERM_SELECTIVITY (derived) * before[j] / implied[j];
+		  if (sel > 1.0)
+		    {
+		      /* a selectivity is a fraction: the part of the deficit the clamp leaves stays with
+		       * the origin, whose division below is clamped the same way */
+		      sel = 1.0;
+		    }
+		  implied[j] = implied[j] / QO_TERM_SELECTIVITY (derived) * sel;
+		  QO_TERM_SELECTIVITY (derived) = sel;
 		  break;
 		}
 	    }

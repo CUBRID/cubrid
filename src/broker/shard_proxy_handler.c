@@ -43,6 +43,9 @@
 #include "shard_parser.h"
 #include "shard_proxy_function.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #define PROXY_MAX_IGNORE_TIMER_CHECK 	10
 #define PROXY_TIMER_CHECK_INTERVAL 	1	/* sec */
 
@@ -115,7 +118,15 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_client_not_supported,	/* fn_get_last_insert_id */
   fn_proxy_client_prepare_and_execute,	/* fn_prepare_and_execute */
   fn_proxy_client_cursor_close,	/* fn_cursor_close */
-  fn_proxy_get_shard_info	/* fn_get_shard_info */
+  fn_proxy_get_shard_info,	/* fn_get_shard_info */
+  fn_proxy_client_not_supported,	/* fn_set_cas_change_mode */
+  fn_proxy_client_not_supported,	/* fn_stream_send_data */
+  fn_proxy_client_not_supported,	/* fn_stream_end */
+  fn_proxy_client_not_supported,	/* fn_stream_init */
+  fn_proxy_client_not_supported,	/* fn_stream_abort */
+  fn_proxy_client_not_supported,	/* fn_stream_read_open */
+  fn_proxy_client_not_supported,	/* fn_stream_read */
+  fn_proxy_client_not_supported	/* fn_stream_release */
 };
 
 
@@ -162,7 +173,15 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_get_last_insert_id */
   fn_proxy_cas_prepare_and_execute,	/* fn_prepare_and_execute */
   fn_proxy_cas_relay_only,	/* fn_cursor_close */
-  fn_proxy_cas_relay_only	/* fn_get_shard_info */
+  fn_proxy_cas_relay_only,	/* fn_get_shard_info */
+  fn_proxy_cas_relay_only,	/* fn_set_cas_change_mode */
+  fn_proxy_cas_relay_only,	/* fn_stream_send_data */
+  fn_proxy_cas_relay_only,	/* fn_stream_end */
+  fn_proxy_cas_relay_only,	/* fn_stream_init */
+  fn_proxy_cas_relay_only,	/* fn_stream_abort */
+  fn_proxy_cas_relay_only,	/* fn_stream_read_open */
+  fn_proxy_cas_relay_only,	/* fn_stream_read */
+  fn_proxy_cas_relay_only	/* fn_stream_release */
 };
 
 
@@ -671,7 +690,7 @@ proxy_handler_process_client_request (T_PROXY_EVENT * event_p)
       goto end;
     }
 
-  if (func_code <= 0 || func_code >= CAS_FC_MAX)
+  if (func_code <= 0 || func_code >= CAS_FC_PROBE_MAX)
     {
       error = ER_FAILED;
 
@@ -707,7 +726,8 @@ proxy_handler_process_client_request (T_PROXY_EVENT * event_p)
   PROXY_LOG (PROXY_LOG_MODE_DEBUG, "process client request. (func_code:%d, context:%s)", func_code,
 	     proxy_str_context (ctx_p));
 
-  proxy_client_fn = proxy_client_fn_table[func_code - 1];
+  /* a code a later release adds is answered as not implemented, as a CAS answers it */
+  proxy_client_fn = (func_code >= CAS_FC_MAX) ? fn_proxy_client_not_supported : proxy_client_fn_table[func_code - 1];
   error = proxy_client_fn (ctx_p, event_p, argc, argv);
   if (error)
     {

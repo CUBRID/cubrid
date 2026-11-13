@@ -2900,6 +2900,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_PER_ROW_PARTITIONS))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_PER_ROW_PARTITIONS);
+	  fprintf (foutput, "%sXASL_NL_PER_ROW_PARTITIONS", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (XASL_IS_FLAGED (xasl_p, XASL_OUTPUT_READS_SCAN))
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_OUTPUT_READS_SCAN);

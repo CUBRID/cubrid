@@ -6101,6 +6101,8 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->batch_keep = NULL;	/* the struct is not allocated zeroed (stx_alloc_struct ()) */
   access_spec->parts = NULL;
   access_spec->curent = NULL;
+  access_spec->row_pruning = NULL;
+  access_spec->row_rewind_pending = false;
   access_spec->pruned = false;
 
   access_spec->clear_value_at_clone_decache = xasl_unpack_info->use_xasl_clone;

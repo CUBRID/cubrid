@@ -439,6 +439,8 @@ extern int heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache);
 #endif /* ENABLE_UNUSED_FUNCTION */
 extern int heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
+extern int heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
+					const OID * class_oid, bool lock_held);
 extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
@@ -521,6 +523,7 @@ extern char *heap_get_class_name_with_is_class (THREAD_ENTRY * thread_p, const O
 extern int heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int requested_num_attrs,
 				const ATTR_ID * attrid, HEAP_CACHE_ATTRINFO * attr_info);
 extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
+extern int heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
 /* *INDENT-OFF* */
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
@@ -569,6 +572,7 @@ extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRIN
 extern int heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out);
 extern int heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out,
 					  int *disk_size);
+
 /* *INDENT-OFF* */
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
@@ -777,6 +781,7 @@ extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npage
 				 PGBUF_WATCHER * new_pg_watcher);
 
 extern int heap_nonheader_page_capacity ();
+extern int heap_oos_inline_target_size (void);
 
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
@@ -787,9 +792,9 @@ extern bool heap_oos_find_vfid_nowait (THREAD_ENTRY * thread_p, const HFID * hfi
 extern bool heap_recdes_contains_oos (const RECDES * record);
 extern bool heap_recdes_has_valid_header (const RECDES * record);
 
-/* Shared with heap_oos.cpp: reads one raw variable-offset-table entry (with the OOS/NULL flag bits)
- * so the grouped OOS prefetch path locates OOS-marked attributes exactly as heap_file.c does. */
+/* Read raw variable-offset-table entries, including their flag bits. The pair accessor checks both entries. */
 extern int heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out);
+extern int heap_recdes_get_var_offset_pair (const RECDES * recdes, int location, int *entry_out, int *next_entry_out);
 
 /* Locates the OOS inline stub of variable attribute `location` after checking that its field is exactly one
  * stub inside the record. Every stub reader and the replica fixup locate the stub through it; the heap
