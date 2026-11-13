@@ -176,6 +176,7 @@ static MATCH_STATUS partition_prune_elements (PRUNING_CONTEXT * pinfo, const DB_
 static const PRUNING_TERM *partition_comparison_term (const COMP_EVAL_TERM * comp, int key_side, PRUNING_TERM * term);
 static int partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * attr_key,
 					 bool * is_present);
+static bool partition_is_unread_join_value (const PRUNING_CONTEXT * pinfo, const DB_VALUE * val);
 static int partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * src, DB_VALUE * value_p,
 					     bool * is_present);
 static int partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key, DB_VALUE * value_p,
@@ -951,6 +952,10 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
     {
       COPY_OID (&spec[i].oid, &pinfo->partitions[pos + 1].class_oid);
       HFID_COPY (&spec[i].hfid, &pinfo->partitions[pos + 1].class_hfid);
+      spec[i].pos = pos;
+      spec[i].row_pruned = false;
+      spec[i].btid_int_cached = false;
+      spec[i].scan_locked = false;
 
       if (i == cnt - 1)
 	{
@@ -1268,6 +1273,13 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 	default:
 	  return status = MATCH_NOT_FOUND;
 	}
+    }
+
+  if (pinfo->use_join_values && op == PO_EQ && status == MATCH_NOT_FOUND)
+    {
+      /* every partition was compared and none holds the value of the outer row: it joins with no row of any partition
+       * (CBRD-27866) */
+      status = MATCH_OK;
     }
 
   return status;
@@ -1616,8 +1628,11 @@ cleanup:
   pr_clear_value (&min);
   pr_clear_value (&max);
 
-  if (status == MATCH_OK && added == 0)
+  if (status == MATCH_OK && added == 0
+      && !(pinfo->use_join_values && op == PO_EQ && !db_value_type_is_collection (val)))
     {
+      /* no partition holds the value: the term does not prune, except for the value of an outer row, which then
+       * joins with no row of any partition (CBRD-27866) */
       status = MATCH_NOT_FOUND;
     }
 
@@ -2010,6 +2025,22 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	break;
       }
 
+    case TYPE_CONSTANT:
+      /* the outer row's value of a join term: set only while an inner prunes per outer row (CBRD-27866) */
+      if (!pinfo->use_join_values || regu->value.dbvalptr == NULL
+	  || partition_is_unread_join_value (pinfo, regu->value.dbvalptr))
+	{
+	  db_make_null (value_p);
+	  *is_value = false;
+	  return NO_ERROR;
+	}
+      if (pr_clone_value (regu->value.dbvalptr, value_p) != NO_ERROR)
+	{
+	  goto error;
+	}
+      *is_value = true;
+      break;
+
     case TYPE_INARITH:
       /* We can't evaluate the general form of TYPE_INARITH but we can handle "pseudo constants" (SYS_DATE, SYS_TIME,
        * etc) and the CAST operator applied to constants. Eventually, it would be great if we could evaluate all pseudo
@@ -2036,12 +2067,43 @@ error:
 }
 
 /*
+ * partition_is_unread_join_value () - whether a join value is one the outer row has not set yet
+ * return : true if the value belongs to the scan pruned per outer row or to a scan after it
+ * pinfo (in) : pruning context
+ * val (in)   : the value a TYPE_CONSTANT points to
+ *
+ * Note: the range terms of an index scan (where_range) carry the conjuncts after them, so a term may compare the
+ *	 partition key with a column of a scan that runs after the pruned one; its value is still NULL or that of the
+ *	 previous outer row, and it must not prune (CBRD-27866).
+ */
+static bool
+partition_is_unread_join_value (const PRUNING_CONTEXT * pinfo, const DB_VALUE * val)
+{
+  const XASL_NODE *scan;
+  QPROC_DB_VALUE_LIST valp;
+
+  for (scan = pinfo->row_xasl; scan != NULL; scan = scan->scan_ptr)
+    {
+      for (valp = (scan->val_list != NULL) ? scan->val_list->valp : NULL; valp != NULL; valp = valp->next)
+	{
+	  if (valp->val == val)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * partition_is_reguvar_const () - test if a regu_variable is a constant
  * return : true if constant, false otherwise
+ * pinfo (in) : pruning context
  * regu_var (in) :
  */
 static bool
-partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
+partition_is_reguvar_const (const PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * regu_var)
 {
   REGU_VARIABLE_LIST op;
 
@@ -2059,16 +2121,16 @@ partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
     case TYPE_OUTARITH:
       {
 	ARITH_TYPE *arithptr = regu_var->value.arithptr;
-	if (arithptr->leftptr != NULL && !partition_is_reguvar_const (arithptr->leftptr))
+	if (arithptr->leftptr != NULL && !partition_is_reguvar_const (pinfo, arithptr->leftptr))
 	  {
 	    return false;
 	  }
-	if (arithptr->rightptr != NULL && !partition_is_reguvar_const (arithptr->rightptr))
+	if (arithptr->rightptr != NULL && !partition_is_reguvar_const (pinfo, arithptr->rightptr))
 	  {
 	    return false;
 	  }
 
-	if (arithptr->thirdptr != NULL && !partition_is_reguvar_const (arithptr->thirdptr))
+	if (arithptr->thirdptr != NULL && !partition_is_reguvar_const (pinfo, arithptr->thirdptr))
 	  {
 	    return false;
 	  }
@@ -2080,7 +2142,7 @@ partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
 	op = regu_var->value.funcp->operand;
 	while (op != NULL)
 	  {
-	    if (!partition_is_reguvar_const (&op->value))
+	    if (!partition_is_reguvar_const (pinfo, &op->value))
 	      {
 		return false;
 	      }
@@ -2095,6 +2157,13 @@ partition_is_reguvar_const (const REGU_VARIABLE * regu_var)
 	 * can cache a db_value in cache_dbvalp for TYPE_ATTR_ID.
 	 * This cached value is used specifically for partition pruning purposes. */
 	if (regu_var->value.attr_descr.cache_dbvalp == NULL)
+	  {
+	    return false;
+	  }
+	/* pruned per outer row, a column of the inner on the value side of a term still caches the value the scan
+	 * read for the previous outer row: only the partition expression's own cached value is a constant
+	 * (CBRD-27866) */
+	if (pinfo->use_join_values && !pinfo->key_value_cached)
 	  {
 	    return false;
 	  }
@@ -2182,8 +2251,15 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
       break;
 
     case TYPE_CONSTANT:
-      /* TYPE_CONSTANT comes from an index join. Since we haven't actually scanned anything yet, this value is not set
-       * so we cannot use it here */
+      /* TYPE_CONSTANT comes from an index join. When the scan is opened nothing has been scanned yet and this value
+       * is not set, so it is used only while the inner prunes per outer row (CBRD-27866) */
+      if (pinfo->use_join_values && key->value.dbvalptr != NULL
+	  && !partition_is_unread_join_value (pinfo, key->value.dbvalptr))
+	{
+	  error = pr_clone_value (key->value.dbvalptr, attr_key);
+	  *is_present = (error == NO_ERROR);
+	  break;
+	}
       db_make_null (attr_key);
       error = NO_ERROR;
       *is_present = false;
@@ -2231,7 +2307,7 @@ partition_get_value_from_inarith (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE *
   *is_value = false;
   db_make_null (value_p);
 
-  if (!partition_is_reguvar_const (src))
+  if (!partition_is_reguvar_const (pinfo, src))
     {
       return NO_ERROR;
     }
@@ -2489,7 +2565,8 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
   db_make_null (&old_collection_val);
   db_make_null (&new_collection_val);
 
-  if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR)
+  /* no value: the term does not prune, as a join term whose outer value is not set yet (CBRD-27866) */
+  if (partition_get_value_from_regu_var (pinfo, right, &val, &is_value) == NO_ERROR && is_value)
     {
       if (pinfo->partition_type == DB_PARTITION_RANGE)
 	{
@@ -2556,6 +2633,7 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 		  goto cleanup;
 		}
 	      partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
+	      pinfo->key_value_cached = true;
 
 	      if (partition_get_value_from_regu_var (pinfo, part_expr, &part_key_val, &is_value) == NO_ERROR)
 		{
@@ -2594,6 +2672,7 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	      goto cleanup;
 	    }
 	  partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
+	  pinfo->key_value_cached = true;
 
 	  /* the partition expression's value: the partition key's domain */
 	  status = partition_prune (pinfo, part_expr, op, NULL, pruned);
@@ -2607,6 +2686,7 @@ cleanup:
     }
 
   partition_set_cache_dbvalp_for_attribute (part_expr, NULL);
+  pinfo->key_value_cached = false;
   pr_clear_value (&old_collection_val);
   pr_clear_value (&new_collection_val);
   pr_clear_value (&part_key_val);
@@ -2964,6 +3044,9 @@ partition_init_pruning_context (PRUNING_CONTEXT * pinfo)
   pinfo->pruning_type = DB_PARTITIONED_CLASS;
   pinfo->is_attr_info_inited = false;
   pinfo->is_from_cache = false;
+  pinfo->use_join_values = false;
+  pinfo->key_value_cached = false;
+  pinfo->row_xasl = NULL;
 }
 
 /*
@@ -3806,6 +3889,118 @@ error_exit:
   partition_clear_pruning_context (&pinfo);
 
   return error;
+}
+
+/*
+ * partition_prune_spec_for_row () - prune the partitions of a spec by the current outer row
+ * return : error code or NO_ERROR
+ * thread_p (in) :
+ * vd (in)	 : value descriptor
+ * xasl (in)	 : the scan of spec
+ * spec (in)	 : a partitioned nested-loop inner walked per outer row, pruned by partition_prune_spec ()
+ *
+ * Note: partition_prune_spec () prunes when the scan is opened, before any outer row is read, so a join term
+ *	 does not narrow the partitions. For each outer row this marks the partitions of spec->parts that the row's
+ *	 join values leave out (row_pruned), and the partition walk skips them (CBRD-27866). The pruning context is
+ *	 loaded on the first row and kept on the spec until partition_clear_spec_row_pruning (). Every partition is
+ *	 walked when no term prunes.
+ */
+int
+partition_prune_spec_for_row (THREAD_ENTRY * thread_p, val_descr * vd, xasl_node * xasl, access_spec_node * spec)
+{
+  PRUNING_CONTEXT *pinfo = spec->row_pruning;
+  PRUNING_BITSET pruned, pruned_term;
+  PARTITION_SPEC_TYPE *part;
+  PRED_EXPR *preds[3];
+  MATCH_STATUS status;
+  int error = NO_ERROR, i;
+
+  if (spec->parts == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  if (pinfo == NULL)
+    {
+      /* malloc as spec->parts: a parallel clone is cleared on another thread */
+      pinfo = (PRUNING_CONTEXT *) malloc (sizeof (PRUNING_CONTEXT));
+      if (pinfo == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PRUNING_CONTEXT));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      partition_init_pruning_context (pinfo);
+      error = partition_load_pruning_context (thread_p, &ACCESS_SPEC_CLS_OID (spec), spec->pruning_type, pinfo);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  partition_clear_pruning_context (pinfo);
+	  free_and_init (pinfo);
+	  return error;
+	}
+
+      pinfo->spec = spec;
+      pinfo->use_join_values = true;
+      spec->row_pruning = pinfo;
+    }
+
+  if (pinfo->partitions == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  pinfo->vd = vd;
+  pinfo->row_xasl = xasl;
+  pinfo->error_code = NO_ERROR;
+
+  pruningset_init (&pruned, PARTITIONS_COUNT (pinfo));
+  pruningset_set_all (&pruned);
+
+  preds[0] = spec->where_pred;
+  preds[1] = spec->where_key;
+  preds[2] = spec->where_range;
+  for (i = 0; i < 3; i++)
+    {
+      if (preds[i] == NULL)
+	{
+	  continue;
+	}
+
+      pruningset_init (&pruned_term, PARTITIONS_COUNT (pinfo));
+      status = partition_match_pred_expr (pinfo, preds[i], &pruned_term);
+      if (pinfo->error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return pinfo->error_code;
+	}
+      if (status != MATCH_NOT_FOUND)
+	{
+	  pruningset_intersect (&pruned, &pruned_term);
+	}
+    }
+
+  for (part = spec->parts; part != NULL; part = part->next)
+    {
+      part->row_pruned = !pruningset_is_set (&pruned, part->pos);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * partition_clear_spec_row_pruning () - free the pruning context partition_prune_spec_for_row () kept on a spec
+ * return : void
+ * spec (in) :
+ */
+void
+partition_clear_spec_row_pruning (access_spec_node * spec)
+{
+  if (spec->row_pruning != NULL)
+    {
+      partition_clear_pruning_context (spec->row_pruning);
+      free_and_init (spec->row_pruning);
+    }
 }
 
 /*
