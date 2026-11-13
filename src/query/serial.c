@@ -564,6 +564,8 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
     }
   else
     {
+      bool ascending, wrapped;
+
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
 			      num_alloc, &next_val);
@@ -572,17 +574,28 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 	  return error;
 	}
 
+      /* serial_get_nth_value () has checked inc_val */
+      ascending = numeric_db_value_is_positive (&entry->inc_val) > 0;
+
+      /* a cyclic serial wraps to min_val (max_val), which is not past cur_val */
+      error = numeric_db_value_compare (&next_val, &entry->cur_val, &cmp_result);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      wrapped = ascending ? (db_get_int (&cmp_result) <= 0) : (db_get_int (&cmp_result) >= 0);
+
       error = numeric_db_value_compare (&next_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
-      if (db_get_int (&cmp_result) >= 0)
+      /* a draw that ends at the block end still fits in the block */
+      if (wrapped || (ascending ? (db_get_int (&cmp_result) > 0) : (db_get_int (&cmp_result) < 0)))
 	{
 	  exhausted = true;
 	}
-
     }
 
   /* consumed all cached value */
