@@ -989,7 +989,7 @@ extern worker_pool_type<> *g_backup_read_worker_pool;
 #define LOG_THREAD_TRAN_ARGS(thread_p) "(SA_MODE)"
 #else	/* !SA_MODE */	       /* SERVER_MODE */
 #define LOG_THREAD_TRAN_MSG "(thr=%d, trid=%d)"
-#define LOG_THREAD_TRAN_ARGS(thread_p) thread_get_current_entry_index (), LOG_FIND_CURRENT_TDES (thread_p)
+#define LOG_THREAD_TRAN_ARGS(thread_p) thread_get_current_entry_index (), logtb_find_current_tranid (thread_p)
 #endif /* SERVER_MODE */
 
 extern int logpb_initialize_pool (THREAD_ENTRY * thread_p);

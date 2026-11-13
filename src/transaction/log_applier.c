@@ -7120,7 +7120,8 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	    }
 	  else
 	    {
-	      er_log_debug (ARG_FILE_LINE, "apply_repl_log : log_type %d item_type\n", item->log_type, item->item_type);
+	      er_log_debug (ARG_FILE_LINE, "apply_repl_log : log_type %d item_type %d\n", item->log_type,
+			    item->item_type);
 
 	      assert_release (false);
 	    }
@@ -9756,7 +9757,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 	      if (retry_count++ < LA_GET_PAGE_RETRY_COUNT)
 		{
-		  er_log_debug (ARG_FILE_LINE, "but retry again...", la_Info.final_lsa.pageid);
+		  er_log_debug (ARG_FILE_LINE, "but retry again... (pageid %lld)",
+				(long long int) la_Info.final_lsa.pageid);
 		  usleep (300 * 1000 + (retry_count * 100));
 		  continue;
 		}

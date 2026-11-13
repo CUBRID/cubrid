@@ -1423,8 +1423,8 @@ dwb_slots_hash_insert (THREAD_ENTRY *thread_p, VPID *vpid, DWB_SLOT *slot, bool 
 	      VPID_SET_NULL (&slots_hash_entry->slot->vpid);
 	      fileio_initialize_res (thread_p, slots_hash_entry->slot->io_page, IO_PAGESIZE);
 
-	      dwb_log ("Found same page with same LSA in same block - %d - at positions (%d, %d) \n",
-		       slots_hash_entry->slot->position_in_block, slot->position_in_block);
+	      dwb_log ("Found same page with same LSA in same block - %u - at positions (%d, %d) \n",
+		       slot->block_no, slots_hash_entry->slot->position_in_block, slot->position_in_block);
 	    }
 	  else
 	    {
@@ -3287,7 +3287,7 @@ dwb_load_and_recover_pages (THREAD_ENTRY *thread_p, const char *dwb_path_p, cons
 		  /* Next slot contains the same page. Search for the oldest version. */
 		  assert (LSA_LE (&s1->lsa, &s2->lsa));
 
-		  dwb_log ("dwb_load_and_recover_pages: Found duplicates in DWB at positions = (%d,%d) %d\n",
+		  dwb_log ("dwb_load_and_recover_pages: Found duplicates in DWB at positions = (%d,%d)\n",
 			   s1->position_in_block, s2->position_in_block);
 
 		  if (LSA_LT (&s1->lsa, &s2->lsa))
