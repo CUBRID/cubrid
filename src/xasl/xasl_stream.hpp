@@ -101,6 +101,9 @@ typedef struct xasl_stmt_info XASL_STMT_INFO;
 
 int xasl_stream_get_stmt_flags (char *xasl_stream);
 void xasl_stream_get_stmt_info (char *xasl_stream, xasl_stmt_info &stmt_info);
+int xasl_stmt_info_get_packed_size (const xasl_stmt_info &stmt_info);
+char *xasl_stmt_info_pack (char *ptr, const xasl_stmt_info &stmt_info);
+char *xasl_stmt_info_unpack (char *ptr, xasl_stmt_info &stmt_info);
 
 template <typename T>
 static void stx_alloc (THREAD_ENTRY *thread_p, T *&ptr);

@@ -28616,6 +28616,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   parser->dbval_cnt = 0;
   pt_Click_counter_class_oids = NULL;
   pt_Num_click_counter_class_oids = 0;
+  pt_reset_subinsert_class_oids ();
 
   is_system_generated_stmt = node->flag.is_system_generated_stmt;
 

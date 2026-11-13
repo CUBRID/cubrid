@@ -607,3 +607,59 @@ xasl_stream_get_stmt_info (char *xasl_stream, xasl_stmt_info &stmt_info)
       stmt_info.class_oids.push_back (oid);
     }
 }
+
+/*
+ * xasl_stmt_info_get_packed_size () - the size xasl_stmt_info_pack () writes
+ *   return: the size
+ *   stmt_info(in): the statement information
+ */
+int
+xasl_stmt_info_get_packed_size (const xasl_stmt_info &stmt_info)
+{
+  return OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE * (int) stmt_info.write_class_oids.size ();
+}
+
+/*
+ * xasl_stmt_info_pack () - pack the stmt_flags and the classes the statement writes, sent from the server to the client
+ *   return: the pointer after the packed data
+ *   ptr(in): where to pack
+ *   stmt_info(in): the statement information
+ */
+char *
+xasl_stmt_info_pack (char *ptr, const xasl_stmt_info &stmt_info)
+{
+  ptr = or_pack_int (ptr, stmt_info.stmt_flags);
+  ptr = or_pack_int (ptr, (int) stmt_info.write_class_oids.size ());
+  for (const OID &oid : stmt_info.write_class_oids)
+    {
+      ptr = or_pack_oid (ptr, &oid);
+    }
+
+  return ptr;
+}
+
+/*
+ * xasl_stmt_info_unpack () - unpack what xasl_stmt_info_pack () packed
+ *   return: the pointer after the packed data
+ *   ptr(in): where to unpack from
+ *   stmt_info(out): the statement information
+ */
+char *
+xasl_stmt_info_unpack (char *ptr, xasl_stmt_info &stmt_info)
+{
+  int n_write_class_oids, i;
+  OID oid;
+
+  stmt_info.class_oids.clear ();
+  stmt_info.write_class_oids.clear ();
+
+  ptr = or_unpack_int (ptr, &stmt_info.stmt_flags);
+  ptr = or_unpack_int (ptr, &n_write_class_oids);
+  for (i = 0; i < n_write_class_oids; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid);
+      stmt_info.write_class_oids.push_back (oid);
+    }
+
+  return ptr;
+}

@@ -216,7 +216,7 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd,
-			       const PT_NODE * write_spec, bool write_cascades);
+			       const PT_NODE * write_stmt);
 static const PT_NODE *do_get_select_write_spec (const PT_NODE * write_stmt, bool * write_cascades);
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
@@ -15342,10 +15342,7 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_select (PARSER_CONTEXT * parser, PT_NODE * statement, const PT_NODE * write_stmt)
 {
-  bool write_cascades = false;
-  const PT_NODE *write_spec = do_get_select_write_spec (write_stmt, &write_cascades);
-
-  return do_select_internal (parser, statement, false, write_spec, write_cascades);
+  return do_select_internal (parser, statement, false, write_stmt);
 }
 
 /*
@@ -15360,10 +15357,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement, const PT_NODE * write_s
 int
 do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement, const PT_NODE * write_stmt)
 {
-  bool write_cascades = false;
-  const PT_NODE *write_spec = do_get_select_write_spec (write_stmt, &write_cascades);
-
-  return do_select_internal (parser, statement, true, write_spec, write_cascades);
+  return do_select_internal (parser, statement, true, write_stmt);
 }
 
 /*
@@ -15401,15 +15395,15 @@ do_get_select_write_spec (const PT_NODE * write_stmt, bool * write_cascades)
  *   parser(in/out): Parser context
  *   statement(in/out): A statement to do
  *   for_inst_upd: check insert/update statement
- *   write_spec(in): the class the client writes with the results, which the XASL does not name as written, or NULL
- *   write_cascades(in): whether that write updates or deletes rows
+ *   write_stmt(in): the INSERT or MERGE that writes the results, or NULL
  *
  * Note: Side effects can exist at returned result through application extern
  */
 static int
-do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, const PT_NODE * write_spec,
-		    bool write_cascades)
+do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, const PT_NODE * write_stmt)
 {
+  bool write_cascades = false;
+  const PT_NODE *write_spec = do_get_select_write_spec (write_stmt, &write_cascades);
   int error;
   XASL_NODE *xasl = NULL;
   QFILE_LIST_ID *list_id = NULL;

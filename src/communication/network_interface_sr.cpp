@@ -5652,7 +5652,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	  reply_buffer_size = get_xasl_header ? XASL_NODE_HEADER_SIZE : 0;
 	  if (get_stmt_info)
 	    {
-	      reply_buffer_size += OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE * (int) stmt_info.write_class_oids.size ();
+	      reply_buffer_size += xasl_stmt_info_get_packed_size (stmt_info);
 	    }
 	  reply_buffer_size += force_recompile ? OR_INT_SIZE : 0;
 	  assert (reply_buffer_size > 0);
@@ -5673,12 +5673,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 		}
 	      if (get_stmt_info)
 		{
-		  ptr = or_pack_int (ptr, stmt_info.stmt_flags);
-		  ptr = or_pack_int (ptr, (int) stmt_info.write_class_oids.size ());
-		  for (const OID &oid : stmt_info.write_class_oids)
-		    {
-		      ptr = or_pack_oid (ptr, &oid);
-		    }
+		  ptr = xasl_stmt_info_pack (ptr, stmt_info);
 		}
 	      if (force_recompile)
 		{
@@ -6910,7 +6905,7 @@ sqmgr_get_xasl_stmt_info (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
     }
   else if (found)
     {
-      reply_buffer_size = OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE * (int) stmt_info.write_class_oids.size ();
+      reply_buffer_size = xasl_stmt_info_get_packed_size (stmt_info);
       reply_buffer = (char *) malloc (reply_buffer_size);
       if (reply_buffer == NULL)
 	{
@@ -6922,12 +6917,7 @@ sqmgr_get_xasl_stmt_info (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 	}
       else
 	{
-	  ptr = or_pack_int (reply_buffer, stmt_info.stmt_flags);
-	  ptr = or_pack_int (ptr, (int) stmt_info.write_class_oids.size ());
-	  for (const OID &oid : stmt_info.write_class_oids)
-	    {
-	      ptr = or_pack_oid (ptr, &oid);
-	    }
+	  (void) xasl_stmt_info_pack (reply_buffer, stmt_info);
 	}
     }
 

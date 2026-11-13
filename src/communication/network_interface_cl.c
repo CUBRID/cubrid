@@ -7451,16 +7451,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 		}
 	      if (get_stmt_info)
 		{
-		  int n_write_class_oids;
-		  OID oid;
-
-		  ptr = or_unpack_int (ptr, &stream->stmt_info->stmt_flags);
-		  ptr = or_unpack_int (ptr, &n_write_class_oids);
-		  for (int i = 0; i < n_write_class_oids; i++)
-		    {
-		      ptr = or_unpack_oid (ptr, &oid);
-		      stream->stmt_info->write_class_oids.push_back (oid);
-		    }
+		  ptr = xasl_stmt_info_unpack (ptr, *stream->stmt_info);
 		}
 	      if (ptr < reply_buffer + reply_buffer_size)
 		{
@@ -8267,11 +8258,10 @@ int
 qmgr_get_xasl_stmt_info (const XASL_ID * xasl_id, XASL_STMT_INFO * stmt_info, bool * found)
 {
 #if defined(CS_MODE)
-  int error = NO_ERROR, req_error, reply_buffer_size = 0, found_int = 0, n_write_class_oids = 0, i;
+  int error = NO_ERROR, req_error, reply_buffer_size = 0, found_int = 0;
   OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_request;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *request, *reply, *ptr, *reply_buffer = NULL;
-  OID oid;
 
   *found = false;
   request = OR_ALIGNED_BUF_START (a_request);
@@ -8293,15 +8283,7 @@ qmgr_get_xasl_stmt_info (const XASL_ID * xasl_id, XASL_STMT_INFO * stmt_info, bo
   ptr = or_unpack_int (ptr, &found_int);
   if (error == NO_ERROR && found_int && reply_buffer != NULL)
     {
-      ptr = or_unpack_int (reply_buffer, &stmt_info->stmt_flags);
-      ptr = or_unpack_int (ptr, &n_write_class_oids);
-      stmt_info->class_oids.clear ();
-      stmt_info->write_class_oids.clear ();
-      for (i = 0; i < n_write_class_oids; i++)
-	{
-	  ptr = or_unpack_oid (ptr, &oid);
-	  stmt_info->write_class_oids.push_back (oid);
-	}
+      (void) xasl_stmt_info_unpack (reply_buffer, *stmt_info);
       *found = true;
     }
 
