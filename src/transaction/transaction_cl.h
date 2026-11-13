@@ -111,4 +111,5 @@ extern bool tran_is_reset_required (void);
 extern void tran_reset_latest_query_status (void);
 extern int tran_stmt_fail_resolve (int result, int stmt_type);
 extern void tran_set_rollback_required (void);
+extern bool tran_is_rollback_required (void);
 #endif /* _TRANSACTION_CL_H_ */

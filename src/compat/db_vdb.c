@@ -6638,7 +6638,9 @@ db_set_statement_auto_commit (DB_SESSION * session, bool auto_commit)
   /* Init statement auto commit. */
   statement->flag.use_auto_commit = 0;
 
-  if (!auto_commit || !db_session_is_last_statement (session))
+  /* a transaction that must not commit (see tran_set_rollback_required) is left to the client commit, which
+   * rolls it back */
+  if (!auto_commit || tran_is_rollback_required () || !db_session_is_last_statement (session))
     {
       return NO_ERROR;
     }

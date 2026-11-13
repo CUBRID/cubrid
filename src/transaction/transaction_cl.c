@@ -633,6 +633,7 @@ tran_abort_only_client (bool is_server_down)
 
   /* the server already aborted the transaction, and any open stream with it */
   stream_from_reset ();
+  tm_Tran_rollback_required = false;
 
   tm_Tran_rep_read_lock = NULL_LOCK;
 
@@ -937,6 +938,13 @@ tran_2pc_prepare_global_tran (int gtrid)
 {
   TRAN_STATE state;
   int error_code = NO_ERROR;
+
+  if (tm_Tran_rollback_required)
+    {
+      /* see tran_2pc_prepare () */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_FAILED_STMT_NOT_UNDONE, 0);
+      return ER_TM_FAILED_STMT_NOT_UNDONE;
+    }
 
   /* Flush all dirty objects */
   error_code = locator_all_flush ();
@@ -1621,4 +1629,14 @@ tran_set_rollback_required (void)
     }
 
   tm_Tran_rollback_required = true;
+}
+
+/*
+ * tran_is_rollback_required - must the current transaction not commit ?
+ *   return: true after tran_set_rollback_required (), until the transaction ends
+ */
+bool
+tran_is_rollback_required (void)
+{
+  return tm_Tran_rollback_required;
 }

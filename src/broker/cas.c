@@ -337,7 +337,8 @@ cas_apply_stmt_fail (int func_code, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       return;
     }
 
-  if (net_buf->err_code == 0 && ux_executed_may_write ())
+  /* err_info is cleared for each request; net_buf->err_code is not the statement's result */
+  if (err_info.err_number == 0 && ux_executed_may_write ())
     {
       /* a statement that succeeded fails after its changes were made; see tran_stmt_fail_resolve () */
       tran_set_rollback_required ();
