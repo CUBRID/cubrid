@@ -1691,6 +1691,9 @@ jobs:
             done
             failed_n=$(wc -l < /tmp/failed.list)
             cp /tmp/failed.list "$d/collect/failed.list"
+            # Re-run failed jobs rewrites failed.list, and an earlier attempt's reproduce block reads its own.
+            cp /tmp/failed.list "$d/collect/failed.$GITHUB_RUN_ATTEMPT.list" \
+              || echo "::warning::$suite: could not keep this attempt's failure list for the reproduce block"
             cp /tmp/failed.list "/tmp/failed.$suite.list"
 
             agree() {
@@ -1871,14 +1874,14 @@ jobs:
                 }
                 echo "### Reproduce the failures"
                 echo
-                echo "The image, build, testcases and CTP of this run, in Docker on the internal network. A PR build stays at least 7 days, a develop build 30."
+                echo "The build, testcases and CTP of this run, in the current \`$TEST_IMAGE\`, with Docker on the internal network. A PR build stays at least 7 days after it was built, a develop build 30."
                 [ -z "$token" ] || echo "\`GHI_TOKEN\` has to read \`CUBRID/$repo\`, e.g. \`export GHI_TOKEN=\$(gh auth token)\`."
                 echo
                 echo '```bash'
                 echo "mkdir -p gha-ci-$GITHUB_RUN_ID-$suite && cd gha-ci-$GITHUB_RUN_ID-$suite"
                 echo "curl -fsS $ARTIFACT_URL_BASE/builds/$BUILD_NS/$SHA/$(attr "$suite" build_mode)/CUBRID.tar.gz | tar -xz"
-                echo "grep -qx run_id=$brid CUBRID/$BUILD_META || echo 'warning: not the build run $brid made; it was rebuilt since'"
-                echo "curl -fsS $ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/collect/failed.list | cut -f2 | sed 's#^#$repo/#' > case.list"
+                echo "grep -qx run_id=$brid CUBRID/$BUILD_META || echo 'warning: CUBRID/ is not the build run $brid made'"
+                echo "curl -fsS $ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/collect/failed.$GITHUB_RUN_ATTEMPT.list | cut -f2 | sed 's#^#$repo/#' > case.list"
                 [ "$(attr "$suite" unit)" = case ] || echo "cut -d/ -f1-3 case.list | sort -u > dir.list"
                 docker_run case
                 echo '```'
