@@ -472,6 +472,15 @@ struct ldr_context
 static bool skip_current_class = false;
 static bool skip_current_instance = false;
 
+/*
+ * What the syntax-checking walk counts. A row of a valid class answers for its own errors
+ * and counts once. A class that cannot take rows - unknown, or none given - refuses every
+ * row of it but says so once, so it counts once: the first row that finds the context
+ * invalid counts, and the rest of the class does not.
+ */
+static bool ldr_row_started_valid = false;
+static bool ldr_invalid_class_counted = false;
+
 extern bool locator_Dont_check_foreign_key;	/* from locator_sr.h */
 
 /*
@@ -969,6 +978,7 @@ error_exit:
     ldr_clear_ctor_values (ldr_Current_context);
 
     CHECK_SKIP ();
+    ldr_row_started_valid = ldr_Current_context->valid;
     if (ldr_Current_context->valid)
       {
 
@@ -1184,8 +1194,18 @@ error_exit:
 	     * the error the row has already reported. Left set, process_line () takes it for an
 	     * error raised outside the rows, prints it again for every row after this one and
 	     * checks none of them.
+	     *
+	     * The rows of a class that cannot take rows count once between them, as the error
+	     * is said once; see ldr_invalid_class_counted.
 	     */
-	    ldr_increment_err_total ();
+	    if (ldr_row_started_valid || !ldr_invalid_class_counted)
+	      {
+		ldr_increment_err_total ();
+	      }
+	    if (!ldr_Current_context->valid)
+	      {
+		ldr_invalid_class_counted = true;
+	      }
 	    er_clear ();
 	  }
 	ldr_abort ();
@@ -4780,6 +4800,9 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
   CHECK_SKIP ();
 
   er_clear ();
+
+  /* A new class: its rows have not been counted yet. */
+  ldr_invalid_class_counted = false;
 
   err = ldr_finish_context (context);
   if (err != NO_ERROR)
