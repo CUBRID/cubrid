@@ -1294,7 +1294,7 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.plan.outputs.matrix) }}
     container:
-      image: cubridci/cubridci:test_rl8.10
+      image: &test-image cubridci/cubridci:test_rl8.10
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
@@ -1600,6 +1600,7 @@ jobs:
           BRIDS: ${{ needs.plan.outputs.build_run_ids }}
           CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
           CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
+          TEST_IMAGE: *test-image
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           C_QUEUE: ${{ steps.clock.outputs.queue }}
           C_BUILD: ${{ steps.clock.outputs.build }}
@@ -1856,6 +1857,44 @@ jobs:
                   echo "Added or fixed cases in \`$tc_branch\`, and the engine is unchanged? Run only those: \`$rerun_cmd\`"
                 fi
                 echo
+              fi
+              if [ "$failed_n" -gt 0 ]; then
+                tc_root="$repo/$(attr "$suite" tc_subdir)"
+                token=''
+                [ "$(attr "$suite" tc_private)" = no ] || token=' -e GHI_TOKEN'
+                # A fresh clone takes only a branch, so the commits are fetched into a second checkout.
+                docker_run() {
+                  echo "docker run --rm$token -v \"\$PWD/CUBRID:/home/CUBRID\" -v \"\$PWD:/repro\" -v \"\$PWD/reports:/tmp/tests\" \\"
+                  echo "  $TEST_IMAGE bash -lc '/entrypoint.sh checkout $suite &&"
+                  echo "    BRANCH_TESTCASES=$tc_sha BRANCH_TESTTOOLS=$CTP_SHA /entrypoint.sh checkout $suite &&"
+                  echo "    /entrypoint.sh keep $1 $WORKDIR/$tc_root /repro/$1.list && /entrypoint.sh test $suite'"
+                }
+                echo "### Reproduce the failures"
+                echo
+                echo "The image, build, testcases and CTP of this run, in Docker on the internal network. A PR build stays at least 7 days, a develop build 30."
+                [ -z "$token" ] || echo "\`GHI_TOKEN\` has to read \`CUBRID/$repo\`, e.g. \`export GHI_TOKEN=\$(gh auth token)\`."
+                echo
+                echo '```bash'
+                echo "mkdir -p gha-ci-$GITHUB_RUN_ID-$suite && cd gha-ci-$GITHUB_RUN_ID-$suite"
+                echo "curl -fsS $ARTIFACT_URL_BASE/builds/$BUILD_NS/$SHA/$(attr "$suite" build_mode)/CUBRID.tar.gz | tar -xz"
+                echo "grep -qx run_id=$brid CUBRID/$BUILD_META || echo 'warning: not the build run $brid made; it was rebuilt since'"
+                echo "curl -fsS $ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/collect/failed.list | cut -f2 | sed 's#^#$repo/#' > case.list"
+                [ "$(attr "$suite" unit)" = case ] || echo "cut -d/ -f1-3 case.list | sort -u > dir.list"
+                docker_run case
+                echo '```'
+                echo
+                if [ "$(attr "$suite" unit)" = dir ]; then
+                  echo "Each failed case's \`cases/\` directory runs whole, so the other cases in it run too."
+                  echo
+                  echo "<details><summary>Not failing again? Run their top-level directories whole, as <code>/run rerun</code> does</summary>"
+                  echo
+                  echo '```bash'
+                  docker_run dir
+                  echo '```'
+                  echo
+                  echo "</details>"
+                  echo
+                fi
               fi
               echo "[Artifacts]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/)"
               echo
