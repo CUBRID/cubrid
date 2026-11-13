@@ -275,6 +275,13 @@ typedef enum update_inplace_style UPDATE_INPLACE_STYLE;
 #define HEAP_IS_UPDATE_INPLACE(update_inplace_style) \
   ((update_inplace_style) != UPDATE_INPLACE_NONE)
 
+#if defined (SERVER_MODE)
+#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) \
+    ((is_mvcc_class) && (!HEAP_IS_UPDATE_INPLACE (update_style)) ? (true) : (false))
+#else
+#define HEAP_UPDATE_IS_MVCC_OP(is_mvcc_class, update_style) (false)
+#endif
+
 /* heap operation information structure */
 typedef struct heap_operation_context HEAP_OPERATION_CONTEXT;
 struct heap_operation_context
@@ -551,7 +558,7 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thre
 
 /* *INDENT-OFF* */
 extern SCAN_CODE heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info,
-    RECDES *old_recdes, heap_pending_record *pending, bool copy_lobs = true);
+    RECDES *old_recdes, heap_pending_record *pending, bool copy_lobs = true, bool reuse_oos_stubs = false);
 /* *INDENT-ON* */
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,

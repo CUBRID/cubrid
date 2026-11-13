@@ -9176,6 +9176,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
   SCAN_CODE scan = S_SUCCESS;	/* Scan return value for next operation */
   RECDES copy_recdes;
   RECDES *old_recdes = NULL;
+  bool reuse_oos_stubs = false;
   int error_code = NO_ERROR;
   HFID class_hfid;
   OID class_oid;
@@ -9273,12 +9274,19 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       old_recdes = &copy_recdes;
 
+      /* old_recdes is the row's latest version, locked above, so a stub it holds names a chain no committed version
+       * dropped. Only an MVCC update of a row that stays in this heap copies the stubs of the OOS columns it does
+       * not assign: vacuum, not the update, reclaims a chain a later version drops, once no snapshot can read the
+       * versions sharing it (CBRD-27230). */
+      reuse_oos_stubs = (pruning_type == DB_NOT_PARTITIONED_CLASS
+			 && HEAP_UPDATE_IS_MVCC_OP (!mvcc_is_mvcc_disabled_class (&class_oid), force_update_inplace));
+
       [[fallthrough]];
 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
-      if (heap_attrinfo_prepare_record (thread_p, attr_info, old_recdes, &pending) != S_SUCCESS)
+      if (heap_attrinfo_prepare_record (thread_p, attr_info, old_recdes, &pending, true, reuse_oos_stubs) != S_SUCCESS)
 	{
 	  error_code = ER_FAILED;
 	  break;

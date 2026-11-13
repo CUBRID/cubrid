@@ -151,6 +151,40 @@ heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid,
   return NO_ERROR;
 }
 
+/*
+ * heap_oos_publish_reused_in_order () - Publish, among the chains the record's finalization inserted, a reused entry
+ *   for each column whose stub the record reuses, in attribute order: the order the replica's fixup consumes them in
+ *   (CBRD-27230)
+ *   reused(in): per OOS column of the record in attribute order, true when the column reuses its stub
+ *
+ * Note: The insert published each new chain in attribute order, a multi-chunk chain as a boundary entry and then the
+ *	 chain.
+ */
+static void
+heap_oos_publish_reused_in_order (THREAD_ENTRY *thread_p, const std::vector<bool> &reused)
+{
+  std::vector<cubthread::entry::oos_published_ref> inserted;
+  std::size_t next = 0;
+
+  inserted.swap (thread_p->oos_oids);
+  thread_p->oos_oids.reserve (inserted.size () + reused.size ());
+  for (bool is_reused : reused)
+    {
+      if (is_reused)
+	{
+	  thread_p->oos_oids.push_back ({ oid_Null_oid, NULL_LSA, true });
+	  continue;
+	}
+      if (next < inserted.size () && OID_ISNULL (&inserted[next].oid))
+	{
+	  thread_p->oos_oids.push_back (inserted[next++]);
+	}
+      assert (next < inserted.size ());
+      thread_p->oos_oids.push_back (inserted[next++]);
+    }
+  assert (next == inserted.size ());
+}
+
 int
 heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
 			  heap_pending_record *pending)
@@ -196,11 +230,13 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
   };
   std::vector<pending_value> values;
   std::vector<oos_insert_request> requests;
+  std::vector<bool> reused;
   int error = NO_ERROR;
   try
     {
       values.reserve (repr->n_variable);
       requests.reserve (repr->n_variable);
+      reused.reserve (repr->n_variable);
       for (int i = 0; i < repr->n_attributes; ++i)
 	{
 	  OR_ATTRIBUTE &attr = repr->attributes[i];
@@ -228,10 +264,17 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	    }
 	  if (ref.m_kind != heap_oos_value_ref::kind::memory)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      error = ER_GENERIC_ERROR;
-	      break;
+	      /* a stub the UPDATE reused names a chain of the OOS file of the class it was copied in */
+	      if (!pending->reuses_stubs_of (*destination))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  error = ER_GENERIC_ERROR;
+		  break;
+		}
+	      reused.push_back (true);
+	      continue;
 	    }
+	  reused.push_back (false);
 	  values.push_back ({ stub, oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()), {} });
 	}
       if (error == NO_ERROR)
@@ -242,7 +285,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      requests.push_back ({ value.payload, &value.result.head_oid, &value.result.identity_stamp });
 	    }
 	  cubbase::span<oos_insert_request> batch { requests.data (), requests.size () };
-	  if (heap_oos_insert_serialized_values (thread_p, destination, batch) != S_SUCCESS)
+	  if (!requests.empty () && heap_oos_insert_serialized_values (thread_p, destination, batch) != S_SUCCESS)
 	    {
 	      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
 	    }
@@ -256,6 +299,10 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      or_put_oid (&buf, &value.result.head_oid);
 	      or_put_bigint (&buf, (DB_BIGINT) value.payload.size ());
 	      or_put_bigint (&buf, oos_pack_identity_stamp (value.result.identity_stamp));
+	    }
+	  if (values.size () != reused.size ())
+	    {
+	      heap_oos_publish_reused_in_order (thread_p, reused);
 	    }
 	  pending->record ().set_record_length (record->length);
 	}
