@@ -35,16 +35,20 @@
 #include "log_impl.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "record_descriptor.hpp"
 #include "server_interface.h"
 #include "xserver_interface.h"
 #include "slotted_page.h"
 #include "dbtype.h"
+#include "fault_injection.h"
 #include "xasl_cache.h"
 #include "thread_lockfree_hash_map.hpp"
 #if defined (SERVER_MODE)
 #include "server_support.h"
 #endif /* SERVER_MODE */
+
+#include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -976,7 +980,7 @@ serial_bigint_to_value (DB_BIGINT v, DB_VALUE * result)
  *   log_supplemental(in) : append the supplemental (CDC) record. It is a
  *                          "SELECT SERIAL_NEXT_VALUE (name, num_alloc)" statement, so only a write
  *                          that hands values out may append it.
- *   prior_val(in)        : NULL, or the cur_val a write-back replaces (see serial_repl_image_is_stale)
+ *   prior_val(in)        : NULL, or the cur_val a write-back replaces (see serial_repl_prepare)
  *   row_moved(out)       : NULL, or set when the row no longer holds the entry's block end; nothing is
  *                          written then
  */
@@ -1169,13 +1173,6 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
       /* nothing was issued from this entry yet */
       return NO_ERROR;
     }
-
-#if defined (SERVER_MODE)	/* SA_MODE reports every object X locked, and has no peer */
-  if (log_does_allow_replication () && lock_get_object_lock (&entry->oid, oid_Serial_class_oid) == X_LOCK)
-    {
-      return NO_ERROR;
-    }
-#endif /* SERVER_MODE */
 
   error = numeric_db_value_compare (&entry->cur_val, &entry->last_cached_val, &cmp_result);
   if (error != NO_ERROR)
@@ -1536,22 +1533,30 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   int sp_success;
   int tran_index;
   LOCK lock_mode = NULL_LOCK;
+  bool own_sysop;
+  bool flush_mark;
 
   assert_release (serial_class_oidp != NULL && !OID_ISNULL (serial_class_oidp));
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   lock_mode = lock_get_object_lock (serial_oidp, serial_class_oidp);
 
-  /* need to start topop for replication Replication will recognize and realize a special type of update for serial by
-   * this top operation log record. If lock_mode is X_LOCK means we created or altered the serial obj in an
-   * uncommitted trans For this case, topop and flush mark are not used, since these may cause problem with replication
-   * log. */
-  if (lock_mode != X_LOCK)
+  /* A write is its own flush-marked sysop, so it outlives a rollback and replicates at once. Under this transaction's
+   * X lock (the serial created or altered and not committed yet) an issuing write belongs to the transaction, but a
+   * write-back still hands the tail back for good. A standalone process sees every lock as X_LOCK and replicates
+   * nothing, and its shutdown flush runs where no sysop may start. */
+#if defined (SERVER_MODE)
+  own_sysop = (lock_mode != X_LOCK || prior_val != NULL);
+#else
+  own_sysop = (lock_mode != X_LOCK);
+#endif
+  if (own_sysop)
     {
       log_sysop_start (thread_p);
     }
 
-  if (lock_mode != X_LOCK && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+  flush_mark = own_sysop && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
+  if (flush_mark)
     {
       repl_start_flush_mark (thread_p);
     }
@@ -1587,24 +1592,20 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
     {
       if (prior_val == NULL)
 	{
-	  repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,
-			   REPL_INFO_TYPE_RBR_NORMAL);
-	  repl_add_update_lsa (thread_p, serial_oidp);
+	  repl_log_insert_serial_issue (thread_p, serial_class_oidp, serial_oidp, key_val);
 	}
       else
 	{
-	  /* flush-marked, the write-back's record outlives a rollback of the DDL that caused it */
-	  assert (lock_mode != X_LOCK);
 	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, prior_val);
-	}
-
-      if (lock_mode != X_LOCK)
-	{
-	  repl_end_flush_mark (thread_p, false);
 	}
     }
 
-  if (lock_mode != X_LOCK)
+  if (flush_mark)
+    {
+      repl_end_flush_mark (thread_p, false);
+    }
+
+  if (own_sysop)
     {
       log_sysop_commit (thread_p);
     }
@@ -1613,7 +1614,12 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 
 exit_on_error:
 
-  if (lock_mode != X_LOCK)
+  if (flush_mark)
+    {
+      repl_end_flush_mark (thread_p, true);
+    }
+
+  if (own_sysop)
     {
       log_sysop_abort (thread_p);
     }
@@ -1981,189 +1987,334 @@ serial_repl_value_print (const DB_VALUE * value, char *buf)
 }
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
 /*
- * serial_repl_image_is_stale () - whether a row image the log applier brings is a _db_serial row that
- *                this node must not take.
- *   return: true when the image must not be applied here
- *   class_oidp(in)  : class of the row; rows of other classes are never stale
- *   serial_oidp(in) : OID of the row
- *   new_recdes(in)  : the image from the other node
- *   prior_val(in)   : NULL, or the cur_val the other node's write-back replaced
- *
- * A maintenance node takes every image.
- *
- * A write-back is taken only while this node's row still holds the block end it replaced and this node
- * holds no cache block of the serial, whose end can be that same value; otherwise this node, standby as
- * much as active, could re-issue values another node has issued. One that cannot be checked is not taken.
- *
- * Any other image is taken, but an active node rejects one that moves cur_val backwards: a leaving
- * master's tail can arrive after the promotion; a cyclic serial has no direction, so an active node leaves
- * its row alone. One that cannot be checked is taken.
- *
- * Every skipped image is logged as a notification with the reason.
- *
- * The row on this node is read here instead of being taken from the caller: the caller reads it with
- * a scan cache that does not keep the page fixed, so its record points into an unfixed page. The
- * applier holds the row's X lock, so what is read here is the row the update is about to replace.
+ * serial_repl_key_name () - the serial's name from the primary key of its replicated image, or "" when it has none
  */
-bool
-serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, const OID * serial_oidp,
-			    RECDES * new_recdes, DB_VALUE * prior_val)
+static void
+serial_repl_key_name (const DB_VALUE * key, char *buf, size_t size)
 {
-#if !defined (SERVER_MODE)
-  /* the log applier forces rows into a server only */
-  return false;
-#else /* SERVER_MODE */
-  HEAP_SCANCACHE scan_cache;
-  RECDES old_recdes = RECDES_INITIALIZER;
-  HEAP_CACHE_ATTRINFO old_info, new_info;
-  bool scan_started = false, old_started = false, new_started = false, failed = false, stale = false;
-  HA_SERVER_STATE state;
-  ATTR_ID attrid;
-  DB_VALUE *name = NULL, *old_cur = NULL, *new_cur = NULL;
-  DB_VALUE cmp_result;
-  bool has_cache_entry = false, cyclic = false;
-  bool skip_unchecked = (prior_val != NULL);
-  const char *reason = NULL;
-  char name_str[32], old_str[NUMERIC_MAX_STRING_SIZE], new_str[NUMERIC_MAX_STRING_SIZE];
-  char prior_str[NUMERIC_MAX_STRING_SIZE];
-
-  if (!oid_is_serial (class_oidp))
+  buf[0] = '\0';
+  if (key != NULL && !DB_IS_NULL (key) && DB_IS_STRING (key) && db_get_string (key) != NULL)
     {
-      return false;
+      snprintf (buf, size, "%.*s", db_get_string_size (key), db_get_string (key));
     }
-  state = css_ha_server_state ();
-  if (state == HA_SERVER_STATE_MAINTENANCE)
-    {
-      return false;
-    }
-  if (prior_val == NULL && state != HA_SERVER_STATE_ACTIVE && state != HA_SERVER_STATE_TO_BE_STANDBY)
-    {
-      return false;
-    }
-  if (!serial_Cache_initialized || serial_Num_attrs < 0)
-    {
-      failed = true;
-      goto exit;
-    }
-  if (prior_val != NULL)
-    {
-      /* before any page is fixed: the entry mutex comes before the page latch */
-      OID key = *serial_oidp;
-      SERIAL_CACHE_ENTRY *entry = serial_Cache_hashmap.find (thread_p, key);
-
-      if (entry != NULL)
-	{
-	  /* the mutex waits out an install or a drop in progress */
-	  pthread_mutex_lock (&entry->mutex);
-	  has_cache_entry = entry->state.load (std::memory_order_relaxed) != SERIAL_ENTRY_GONE;
-	  pthread_mutex_unlock (&entry->mutex);
-	  serial_Cache_hashmap.unlock (thread_p, entry);
-	}
-    }
-  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, oid_Serial_class_oid);
-  scan_started = true;
-  if (heap_get_visible_version (thread_p, serial_oidp, oid_Serial_class_oid, &old_recdes, &scan_cache, PEEK, NULL_CHN)
-      != S_SUCCESS)
-    {
-      failed = true;
-      goto exit;
-    }
-  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &old_info) != NO_ERROR)
-    {
-      failed = true;
-      goto exit;
-    }
-  old_started = true;
-  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &new_info) != NO_ERROR)
-    {
-      failed = true;
-      goto exit;
-    }
-  new_started = true;
-  if (heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &old_recdes, &old_info) != NO_ERROR
-      || heap_attrinfo_read_dbvalues (thread_p, serial_oidp, new_recdes, &new_info) != NO_ERROR)
-    {
-      failed = true;
-      goto exit;
-    }
-
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
-    {
-      failed = true;
-      goto exit;
-    }
-  name = heap_attrinfo_access (attrid, &old_info);
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
-    {
-      failed = true;
-      goto exit;
-    }
-  old_cur = heap_attrinfo_access (attrid, &old_info);
-  new_cur = heap_attrinfo_access (attrid, &new_info);
-  if (name == NULL || DB_IS_NULL (name) || old_cur == NULL || DB_IS_NULL (old_cur) || new_cur == NULL
-      || DB_IS_NULL (new_cur))
-    {
-      failed = true;
-      goto exit;
-    }
-
-  if (prior_val != NULL)
-    {
-      if (DB_IS_NULL (prior_val) || numeric_db_value_compare (old_cur, prior_val, &cmp_result) != NO_ERROR
-	  || DB_IS_NULL (&cmp_result))
-	{
-	  failed = true;
-	  goto exit;
-	}
-      stale = has_cache_entry || db_get_int (&cmp_result) != 0;
-      reason = has_cache_entry ? "this node holds a cache block of the serial" : "current_val is not the block end";
-      goto exit;
-    }
-
-  if (serial_repl_moves_backwards (thread_p, &old_info, old_cur, new_cur, &stale, &cyclic) != NO_ERROR)
-    {
-      failed = true;
-    }
-  reason = cyclic ? "the serial is cyclic" : "the image moves current_val backwards";
-
-exit:
-  if (failed)
-    {
-      er_clear ();
-      stale = skip_unchecked;
-      reason = "the image could not be checked";
-    }
-  if (stale)
-    {
-      /* Not the applier's error: report it as a notification and leave the error area as it was, and the
-       * object still counts as applied. */
-      snprintf (name_str, sizeof (name_str), "(%d|%d|%d)", OID_AS_ARGS (serial_oidp));
-      er_stack_push ();
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_SERIAL_IMAGE_SKIPPED, 5,
-	      (name == NULL || DB_IS_NULL (name)) ? name_str : db_get_string (name), reason,
-	      serial_repl_value_print (old_cur, old_str), serial_repl_value_print (new_cur, new_str),
-	      serial_repl_value_print (prior_val, prior_str));
-      er_stack_pop ();
-    }
-  if (new_started)
-    {
-      heap_attrinfo_end (thread_p, &new_info);
-    }
-  if (old_started)
-    {
-      heap_attrinfo_end (thread_p, &old_info);
-    }
-  if (scan_started)
-    {
-      heap_scancache_end (thread_p, &scan_cache);
-    }
-  return stale;
-#endif /* SERVER_MODE */
 }
 
 /*
- * serial_row_write_begin () - get ready for serial_row_write_keep_value () before a client write of a row
+ * serial_repl_notify () - report a _db_serial image this node did not take, or took without its current_val
+ *   name(in): the serial's name, or NULL to print its OID
+ */
+static void
+serial_repl_notify (const OID * serial_oidp, const char *name, const char *reason, DB_VALUE * page_cur,
+		    DB_VALUE * image_cur, DB_VALUE * prior_val)
+{
+  char name_str[32], page_str[NUMERIC_MAX_STRING_SIZE], image_str[NUMERIC_MAX_STRING_SIZE];
+  char prior_str[NUMERIC_MAX_STRING_SIZE];
+
+  if (name == NULL || name[0] == '\0')
+    {
+      snprintf (name_str, sizeof (name_str), "(%d|%d|%d)", OID_AS_ARGS (serial_oidp));
+      name = name_str;
+    }
+
+  /* not the applier's error: the error area stays as it was, and the object counts as applied */
+  er_stack_push ();
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_SERIAL_IMAGE_SKIPPED, 5, name, reason,
+	  serial_repl_value_print (page_cur, page_str), serial_repl_value_print (image_cur, image_str),
+	  serial_repl_value_print (prior_val, prior_str));
+  er_stack_pop ();
+}
+
+/*
+ * serial_repl_has_cache_entry () - whether this node holds a cache block of the serial
+ *
+ * Called before any page is fixed: the entry mutex comes before the page latch.
+ */
+static bool
+serial_repl_has_cache_entry (THREAD_ENTRY * thread_p, const OID * serial_oidp)
+{
+  OID key = *serial_oidp;
+  SERIAL_CACHE_ENTRY *entry;
+  bool has_entry = false;
+
+  if (!serial_Cache_initialized)
+    {
+      return false;
+    }
+  entry = serial_Cache_hashmap.find (thread_p, key);
+  if (entry != NULL)
+    {
+      /* the mutex waits out an install or a drop in progress */
+      pthread_mutex_lock (&entry->mutex);
+      has_entry = entry->state.load (std::memory_order_relaxed) != SERIAL_ENTRY_GONE;
+      pthread_mutex_unlock (&entry->mutex);
+      serial_Cache_hashmap.unlock (thread_p, entry);
+    }
+  return has_entry;
+}
+
+/*
+ * serial_repl_rebuild_image () - this node's row with current_val and started of the image
+ *   rebuilt(out): its header (representation, CHN) is the one locator_repl_prepare_force () gave the image
+ */
+static int
+serial_repl_rebuild_image (THREAD_ENTRY * thread_p, const OID * serial_oidp, RECDES * image,
+			   record_descriptor * rebuilt)
+{
+  ATTR_ID cur_id = serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX];
+  ATTR_ID started_id = serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX];
+  HEAP_SCANCACHE scan_cache;
+  RECDES row = RECDES_INITIALIZER;
+  HEAP_CACHE_ATTRINFO row_info, image_info;
+  bool row_info_started = false, image_info_started = false;
+  DB_VALUE *cur, *started;
+  int error = ER_FAILED;
+
+  if (serial_Num_attrs < 0)
+    {
+      return ER_FAILED;
+    }
+
+  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, oid_Serial_class_oid);
+  if (heap_get_visible_version (thread_p, serial_oidp, oid_Serial_class_oid, &row, &scan_cache, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      goto end;
+    }
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &row_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  row_info_started = true;
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &image_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  image_info_started = true;
+  if (heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &row, &row_info) != NO_ERROR
+      || heap_attrinfo_read_dbvalues (thread_p, serial_oidp, image, &image_info) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  cur = heap_attrinfo_access (cur_id, &image_info);
+  started = heap_attrinfo_access (started_id, &image_info);
+  if (cur == NULL || DB_IS_NULL (cur) || started == NULL || DB_IS_NULL (started)
+      || heap_attrinfo_set (serial_oidp, cur_id, cur, &row_info) != NO_ERROR
+      || heap_attrinfo_set (serial_oidp, started_id, started, &row_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  if (heap_attrinfo_transform_to_disk (thread_p, &row_info, &row, rebuilt) == S_SUCCESS)
+    {
+      error = NO_ERROR;
+    }
+
+end:
+  if (image_info_started)
+    {
+      heap_attrinfo_end (thread_p, &image_info);
+    }
+  if (row_info_started)
+    {
+      heap_attrinfo_end (thread_p, &row_info);
+    }
+  heap_scancache_end (thread_p, &scan_cache);
+  return error;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * serial_repl_prepare () - decide how the log applier writes its image of a _db_serial row on this node
+ *   return: false when the image is not written here (reported as a notification), true otherwise
+ *   serial_oidp(in): the row
+ *   key(in)        : its primary key, the serial's unique name
+ *   image(in)      : the image, its header prepared for this node
+ *   prior_val(in)  : NULL, or the block end a write-back replaced
+ *   issue(in)      : the image comes from a write that issued values
+ *   rebuilt(out)   : with apply->rebuilt, the image to write instead
+ *   apply(out)     : the rule serial_row_write_keep_value () follows under the page latch
+ *
+ * A write-back or an issuing write changes only current_val and started on the other node, so this node takes only
+ * those two: a definition the other node has not committed, or one this node changed, stays. Any other image (a
+ * method call that changed the row) is taken whole. The rows are judged under the page latch, because this node
+ * issues values in place without the row's lock; only the cache entry is checked here.
+ *
+ *   write-back : taken while the page holds the block end it replaced with started 1, on any node but one in
+ *                maintenance; not at all while this node holds a cache block of the serial, whose end can be that
+ *                same value
+ *   other image: an active node keeps its current_val against an image that moves it back, or of a cyclic serial
+ */
+bool
+serial_repl_prepare (THREAD_ENTRY * thread_p, const OID * serial_oidp, const DB_VALUE * key, RECDES * image,
+		     DB_VALUE * prior_val, bool issue, record_descriptor * rebuilt, SERIAL_REPL_APPLY * apply)
+{
+  apply->rule = SERIAL_REPL_TAKE;
+  apply->rebuilt = false;
+  apply->kept = NULL;
+  apply->name[0] = '\0';
+  db_make_null (&apply->prior_val);
+  db_make_null (&apply->page_cur);
+  db_make_null (&apply->image_cur);
+
+#if defined (SERVER_MODE)
+  HA_SERVER_STATE state = css_ha_server_state ();
+
+  serial_repl_key_name (key, apply->name, sizeof (apply->name));
+  if (state == HA_SERVER_STATE_MAINTENANCE)
+    {
+      return true;
+    }
+
+  if (prior_val != NULL)
+    {
+      if (serial_repl_has_cache_entry (thread_p, serial_oidp))
+	{
+	  serial_repl_notify (serial_oidp, apply->name, "this node holds a cache block of the serial", NULL, NULL,
+			      prior_val);
+	  return false;
+	}
+      apply->rule = SERIAL_REPL_WRITE_BACK;
+      pr_clone_value (prior_val, &apply->prior_val);
+    }
+  else if (state == HA_SERVER_STATE_ACTIVE || state == HA_SERVER_STATE_TO_BE_STANDBY)
+    {
+      apply->rule = SERIAL_REPL_FORWARD;
+    }
+
+  if (prior_val != NULL || issue)
+    {
+      if (serial_repl_rebuild_image (thread_p, serial_oidp, image, rebuilt) == NO_ERROR)
+	{
+	  apply->rebuilt = true;
+	}
+      else if (prior_val != NULL)
+	{
+	  er_clear ();
+	  serial_repl_notify (serial_oidp, apply->name, "the image could not be checked", NULL, NULL, prior_val);
+	  pr_clear_value (&apply->prior_val);
+	  return false;
+	}
+      else
+	{
+	  /* an issuing write's image is taken whole, as before */
+	  er_clear ();
+	}
+    }
+#endif /* SERVER_MODE */
+
+  return true;
+}
+
+/*
+ * serial_repl_finish () - after the log applier's write of a _db_serial row: report a kept current_val
+ */
+void
+serial_repl_finish (THREAD_ENTRY * thread_p, const OID * serial_oidp, SERIAL_REPL_APPLY * apply)
+{
+#if defined (SERVER_MODE)
+  if (apply->kept != NULL)
+    {
+      serial_repl_notify (serial_oidp, apply->name, apply->kept, &apply->page_cur, &apply->image_cur,
+			  &apply->prior_val);
+    }
+#endif /* SERVER_MODE */
+  pr_clear_value (&apply->prior_val);
+  pr_clear_value (&apply->page_cur);
+  pr_clear_value (&apply->image_cur);
+}
+
+/*
+ * serial_repl_skip_missing_row () - a write-back image of a row this node does not have is not taken
+ *   key(in): the row's primary key, the serial's unique name
+ *
+ * The write-back of a serial created in a transaction not committed yet reaches this node before the CREATE SERIAL
+ * statement, which replicates at the commit.
+ */
+void
+serial_repl_skip_missing_row (THREAD_ENTRY * thread_p, const DB_VALUE * key, DB_VALUE * prior_val)
+{
+#if defined (SERVER_MODE)
+  char name[DB_MAX_IDENTIFIER_LENGTH];
+  OID null_oid = OID_INITIALIZER;
+
+  serial_repl_key_name (key, name, sizeof (name));
+  serial_repl_notify (&null_oid, name, "the row does not exist on this node", NULL, NULL, prior_val);
+#endif /* SERVER_MODE */
+}
+
+#if defined (SERVER_MODE)
+/*
+ * serial_repl_keeps_page () - whether the log applier's write keeps the page's current_val and started; see
+ *			       serial_repl_prepare ()
+ *   write(in): both rows read, the page's row latched
+ */
+static bool
+serial_repl_keeps_page (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, SERIAL_REPL_APPLY * apply)
+{
+  ATTR_ID cur_id = serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX];
+  DB_VALUE *page_cur = heap_attrinfo_access (cur_id, &write->old_info);
+  DB_VALUE *page_started = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX], &write->old_info);
+  DB_VALUE *image_cur = heap_attrinfo_access (cur_id, &write->new_info);
+  DB_VALUE cmp_result;
+  bool backwards, cyclic;
+  const char *kept = NULL;
+
+  switch (apply->rule)
+    {
+    case SERIAL_REPL_TAKE:
+      return false;
+
+    case SERIAL_REPL_WRITE_BACK:
+      if (page_cur == NULL || DB_IS_NULL (page_cur) || page_started == NULL || DB_IS_NULL (page_started)
+	  || numeric_db_value_compare (page_cur, &apply->prior_val, &cmp_result) != NO_ERROR
+	  || DB_IS_NULL (&cmp_result))
+	{
+	  er_clear ();
+	  kept = "the image could not be checked";
+	}
+      else if (db_get_int (&cmp_result) != 0 || db_get_int (page_started) != 1)
+	{
+	  kept = "current_val is not the block end";
+	}
+      break;
+
+    case SERIAL_REPL_FORWARD:
+      if (page_cur == NULL || DB_IS_NULL (page_cur) || image_cur == NULL || DB_IS_NULL (image_cur)
+	  || serial_repl_moves_backwards (thread_p, &write->old_info, page_cur, image_cur, &backwards, &cyclic)
+	  != NO_ERROR)
+	{
+	  /* an image that cannot be checked is taken */
+	  er_clear ();
+	  return false;
+	}
+      if (backwards || cyclic)
+	{
+	  kept = cyclic ? "the serial is cyclic" : "the image moves current_val backwards";
+	}
+      break;
+    }
+
+  if (kept == NULL)
+    {
+      return false;
+    }
+  apply->kept = kept;
+  if (page_cur != NULL)
+    {
+      pr_clone_value (page_cur, &apply->page_cur);
+    }
+  if (image_cur != NULL)
+    {
+      pr_clone_value (image_cur, &apply->image_cur);
+    }
+  return true;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * serial_row_write_begin () - get ready for serial_row_write_keep_value () before a write of a row
  *   return: void
  *   class_oidp(in): class of the row about to be written
  *   write(out)    : active when the row is a _db_serial row whose issued value has to be kept
@@ -2175,9 +2326,9 @@ serial_row_write_begin (THREAD_ENTRY * thread_p, const OID * class_oidp, SERIAL_
 {
   write->active = false;
   write->merged = false;
+  write->undo = false;
 
-  /* the log applier writes the master's rows, which carry the master's values */
-  if (!oid_is_serial (class_oidp) || LOG_CHECK_LOG_APPLIER (thread_p) || serial_Num_attrs < 0)
+  if (!oid_is_serial (class_oidp) || serial_Num_attrs < 0)
     {
       return;
     }
@@ -2195,7 +2346,7 @@ serial_row_write_begin (THREAD_ENTRY * thread_p, const OID * class_oidp, SERIAL_
 }
 
 /*
- * serial_row_write_keep_value () - keep the value issued in place when a client write replaces a _db_serial row
+ * serial_row_write_keep_value () - keep the value issued in place when a write replaces a _db_serial row
  *   return: NO_ERROR, or ER_status
  *   write(in)     : from serial_row_write_begin ()
  *   serial_oidp(in): the row
@@ -2207,7 +2358,8 @@ serial_row_write_begin (THREAD_ENTRY * thread_p, const OID * class_oidp, SERIAL_
  * read, at commit. The current_val it read would replace the values issued since, and they would be issued
  * again, also by the DDL's own transaction. So the row keeps the value on the page, for a serial never issued
  * (started 0) too; only a restart (ALTER SERIAL ... START WITH, TRUNCATE, ALTER TABLE ... AUTO_INCREMENT), which
- * its client flags with LC_FLAG_SERIAL_RESTART, stands.
+ * its client flags with LC_FLAG_SERIAL_RESTART, stands. A DDL the log applier runs again follows the same rule; an
+ * image the log applier writes follows the rule serial_repl_prepare () chose.
  */
 int
 serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, const OID * serial_oidp,
@@ -2231,6 +2383,17 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
       return error;
     }
 
+#if defined (SERVER_MODE)
+  if (thread_p->serial_repl_apply != NULL)
+    {
+      /* the log applier's image of the row: serial_repl_prepare () chose the rule */
+      if (!serial_repl_keeps_page (thread_p, write, thread_p->serial_repl_apply))
+	{
+	  return NO_ERROR;
+	}
+    }
+  else
+#endif /* SERVER_MODE */
   if (thread_p->serial_restart)
     {
       return NO_ERROR;
@@ -2273,6 +2436,439 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
     }
   write->merged = (error == NO_ERROR);
   return error;
+}
+
+/* Payload of RVHF_SERIAL_DDL_UPDATE_UNDO: this header, then the row the write replaced. The layout fields describe
+ * that row's representation, so the undo reads no catalog. */
+#define SERIAL_DDL_UNDO_VALUE_SIZE 32
+
+typedef struct serial_ddl_undo SERIAL_DDL_UNDO;
+struct serial_ddl_undo
+{
+  char version;
+  char old_inc_sign;		/* +1 or -1 */
+  char new_inc_sign;
+  char old_cyclic;
+  char new_cyclic;
+  int repid;
+  int n_variable;
+  int fixed_length;
+  int cur_index;		/* current_val: its entry in the variable offset table */
+  int cur_precision;
+  int cur_scale;
+  int started_location;		/* started: its offset in the fixed area, and its bound bit */
+  int started_position;
+  /* in current_val's disk form: the current_val the write left, and its definition's range end on the side the
+   * replaced row's increment goes */
+  int written_length;
+  int bound_length;
+  char written[SERIAL_DDL_UNDO_VALUE_SIZE];
+  char bound[SERIAL_DDL_UNDO_VALUE_SIZE];
+};
+
+#define SERIAL_DDL_UNDO_VERSION 1
+
+typedef enum
+{
+  SERIAL_RV_END_REPLACED,
+  SERIAL_RV_END_PAGE,
+  SERIAL_RV_END_WRITTEN,
+  SERIAL_RV_END_BOUND
+} SERIAL_RV_END;
+
+/*
+ * serial_ddl_undo_put_value () - write a value into an undo payload field in current_val's disk form
+ *   return: false if the value does not fit the field
+ */
+static bool
+serial_ddl_undo_put_value (TP_DOMAIN * domain, DB_VALUE * value, char *field, int *length)
+{
+  DB_VALUE coerced;
+  OR_BUF buf;
+  bool done = false;
+
+  db_make_null (&coerced);
+  if (tp_value_coerce (value, &coerced, domain) == DOMAIN_COMPATIBLE)
+    {
+      *length = pr_data_writeval_disk_size (&coerced);
+      if (*length > 0 && *length <= SERIAL_DDL_UNDO_VALUE_SIZE)
+	{
+	  or_init (&buf, field, *length);
+	  done = (domain->type->data_writeval (&buf, &coerced) == NO_ERROR);
+	}
+    }
+  pr_clear_value (&coerced);
+  return done;
+}
+
+/*
+ * serial_row_write_undo () - build the undo of a client write that replaces a _db_serial row
+ *   return: NO_ERROR, or ER_status
+ *   write(in)     : after serial_row_write_keep_value (), which read both rows
+ *   old_recdes(in): the row on the page
+ *   undo(out)     : payload of RVHF_SERIAL_DDL_UPDATE_UNDO, filled only when write->undo is set: a row without the
+ *                   layout serial_rv_undo_ddl_update () expects logs its before-image as any row does
+ *
+ * Restart recovery runs before the serial class is known, so the payload carries what the undo needs, taken while
+ * the attribute caches are at hand.
+ */
+int
+serial_row_write_undo (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, RECDES * old_recdes, record_descriptor * undo)
+{
+  OR_CLASSREP *rep = write->old_info.read_classrepr;
+  HEAP_ATTRVALUE *cur = heap_attrvalue_locate (serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX], &write->old_info);
+  HEAP_ATTRVALUE *started = heap_attrvalue_locate (serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX], &write->old_info);
+  ATTR_ID inc_id = serial_Attrs_id[SERIAL_ATTR_INCREMENT_VAL_INDEX];
+  ATTR_ID cyclic_id = serial_Attrs_id[SERIAL_ATTR_CYCLIC_INDEX];
+  DB_VALUE *old_inc, *new_inc, *new_cur, *new_min, *new_max, *old_cyclic, *new_cyclic;
+  SERIAL_DDL_UNDO header;
+  char *ptr;
+
+  assert (write->active);
+
+  /* a log applier write logs the before-image: its rollback puts the row back as it was */
+  if (LOG_CHECK_LOG_APPLIER (thread_p))
+    {
+      return NO_ERROR;
+    }
+
+  if (rep == NULL || rep->id != or_rep_id (old_recdes) || cur == NULL || started == NULL
+      || cur->read_attrepr == NULL || cur->read_attrepr->is_fixed || started->read_attrepr == NULL
+      || !started->read_attrepr->is_fixed || TP_DOMAIN_TYPE (started->read_attrepr->domain) != DB_TYPE_INTEGER)
+    {
+      return NO_ERROR;
+    }
+
+  old_inc = heap_attrinfo_access (inc_id, &write->old_info);
+  new_inc = heap_attrinfo_access (inc_id, &write->new_info);
+  new_cur = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX], &write->new_info);
+  new_min = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_MIN_VAL_INDEX], &write->new_info);
+  new_max = heap_attrinfo_access (serial_Attrs_id[SERIAL_ATTR_MAX_VAL_INDEX], &write->new_info);
+  old_cyclic = heap_attrinfo_access (cyclic_id, &write->old_info);
+  new_cyclic = heap_attrinfo_access (cyclic_id, &write->new_info);
+  if (old_inc == NULL || DB_IS_NULL (old_inc) || new_inc == NULL || DB_IS_NULL (new_inc) || new_cur == NULL
+      || DB_IS_NULL (new_cur) || new_min == NULL || DB_IS_NULL (new_min) || new_max == NULL || DB_IS_NULL (new_max)
+      || old_cyclic == NULL || DB_IS_NULL (old_cyclic) || new_cyclic == NULL || DB_IS_NULL (new_cyclic))
+    {
+      return NO_ERROR;
+    }
+
+  memset (&header, 0, sizeof (header));
+  header.version = SERIAL_DDL_UNDO_VERSION;
+  header.old_inc_sign = numeric_db_value_is_positive (old_inc) > 0 ? 1 : -1;
+  header.new_inc_sign = numeric_db_value_is_positive (new_inc) > 0 ? 1 : -1;
+  header.old_cyclic = db_get_int (old_cyclic) != 0;
+  header.new_cyclic = db_get_int (new_cyclic) != 0;
+  if (!serial_ddl_undo_put_value (cur->read_attrepr->domain, new_cur, header.written, &header.written_length)
+      || !serial_ddl_undo_put_value (cur->read_attrepr->domain, header.old_inc_sign > 0 ? new_max : new_min,
+				     header.bound, &header.bound_length))
+    {
+      return NO_ERROR;
+    }
+
+  header.repid = rep->id;
+  header.n_variable = rep->n_variable;
+  header.fixed_length = rep->fixed_length;
+  header.cur_index = cur->read_attrepr->location;
+  header.cur_precision = cur->read_attrepr->domain->precision;
+  header.cur_scale = cur->read_attrepr->domain->scale;
+  header.started_location = started->read_attrepr->location;
+  header.started_position = started->read_attrepr->position;
+
+  undo->resize_buffer (sizeof (header) + old_recdes->length);
+  ptr = undo->get_data_for_modify ();
+  memcpy (ptr, &header, sizeof (header));
+  memcpy (ptr + sizeof (header), old_recdes->data, old_recdes->length);
+  undo->set_record_length (sizeof (header) + old_recdes->length);
+  write->undo = true;
+
+  return NO_ERROR;
+}
+
+/*
+ * serial_rv_locate () - find current_val and started in a _db_serial row by the layout an undo payload carries
+ *   return: false if the row is not of the payload's representation, or either column is NULL
+ */
+static bool
+serial_rv_locate (const SERIAL_DDL_UNDO * undo, RECDES * rec, char **cur, int *cur_length, int *started)
+{
+  char *obj = rec->data;
+  int header_size, offset_size, fixed, var_start, start, end;
+
+  if (rec->length < OR_NON_MVCC_HEADER_SIZE || or_rep_id (rec) != undo->repid || undo->cur_index < 0
+      || undo->cur_index >= undo->n_variable || undo->started_location < 0 || undo->started_position < 0
+      || undo->started_location + OR_INT_SIZE > undo->fixed_length)
+    {
+      return false;
+    }
+
+  header_size = OR_HEADER_SIZE (obj);
+  offset_size = OR_GET_OFFSET_SIZE (obj);
+  fixed = header_size + OR_VAR_TABLE_SIZE_INTERNAL (undo->n_variable, offset_size);
+  if (fixed > rec->length)
+    {
+      return false;
+    }
+  var_start = header_size + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, 0, offset_size);
+  start = header_size + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, undo->cur_index, offset_size);
+  end = header_size + OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, undo->cur_index + 1, offset_size);
+  if (fixed + undo->fixed_length + OR_BOUND_BIT_BYTES (undo->started_position + 1) > var_start || var_start > start
+      || start >= end || end > rec->length
+      || !OR_FIXED_ATT_IS_BOUND (obj, undo->n_variable, undo->fixed_length, undo->started_position))
+    {
+      return false;
+    }
+
+  *cur = obj + start;
+  *cur_length = end - start;
+  *started = OR_GET_INT (obj + fixed + undo->started_location);
+  return true;
+}
+
+/*
+ * serial_rv_get_cur () - read a current_val located by serial_rv_locate ()
+ */
+static int
+serial_rv_get_cur (const SERIAL_DDL_UNDO * undo, char *cur, int cur_length, DB_VALUE * value)
+{
+  TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, undo->cur_precision, undo->cur_scale, NULL, 0);
+  OR_BUF buf;
+
+  if (domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  or_init (&buf, cur, cur_length);
+  return domain->type->data_readval (&buf, value, domain, -1, false, NULL, 0);
+}
+
+/*
+ * serial_rv_replace_var () - replace one variable column of a row, and rewrite its offset table in the narrowest
+ *			      offset size the new length allows, as heap_attrinfo_transform_to_disk () does
+ */
+// *INDENT-OFF*
+static void
+serial_rv_replace_var (record_descriptor & rec, int n_variable, int index, const char *field, int field_length)
+{
+  char *obj = rec.get_data_for_modify ();
+  int header_size = OR_HEADER_SIZE (obj);
+  int old_offset_size = OR_GET_OFFSET_SIZE (obj);
+  int old_table_size = OR_VAR_TABLE_SIZE_INTERNAL (n_variable, old_offset_size);
+  int start = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, index, old_offset_size);
+  int end = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, index + 1, old_offset_size);
+  int delta = field_length - (end - start);
+  int rest = (int) rec.get_size () - header_size - old_table_size + delta;	/* what follows the offset table */
+  int offset_size = OR_BYTE_SIZE, table_size, offset, repid_bits, i;
+  std::vector<char> table;
+  OR_BUF buf;
+
+  if (header_size + OR_VAR_TABLE_SIZE_INTERNAL (n_variable, offset_size) + rest > OR_MAX_BYTE)
+    {
+      offset_size = OR_SHORT_SIZE;
+    }
+  if (offset_size == OR_SHORT_SIZE
+      && header_size + OR_VAR_TABLE_SIZE_INTERNAL (n_variable, offset_size) + rest > OR_MAX_SHORT)
+    {
+      offset_size = OR_INT_SIZE;
+    }
+  table_size = OR_VAR_TABLE_SIZE_INTERNAL (n_variable, offset_size);
+  table.assign (table_size, 0);
+  or_init (&buf, table.data (), table_size);
+  for (i = 0; i <= n_variable; i++)
+    {
+      offset = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (obj + header_size, i, old_offset_size) - old_table_size;
+      or_put_offset_internal (&buf, offset + table_size + (i > index ? delta : 0), offset_size);
+    }
+
+  rec.modify_data (header_size + start, end - start, field_length, field);
+  rec.modify_data (header_size, old_table_size, table_size, table.data ());
+
+  obj = rec.get_data_for_modify ();
+  repid_bits = OR_GET_INT (obj + OR_REP_OFFSET) & ~OR_OFFSET_SIZE_FLAG;
+  OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
+  OR_PUT_INT (obj + OR_REP_OFFSET, repid_bits);
+}
+// *INDENT-ON*
+
+/*
+ * serial_rv_issued_end () - the current_val that keeps every value issued since the write behind it
+ *   return: NO_ERROR, or ER_status
+ *   end(out): which of the values to write
+ *
+ * Under the write's definition the issued values run from the written current_val (itself issued only after a
+ * restart) to the page's, wrapping at its range end if it is cyclic; the page is behind the written value only after
+ * a wrap. In the replaced row's direction they reach the page value or the written one, or the range end after a
+ * wrap, and the replaced row's current_val stands if it is further. A serial cyclic before the write, wrapping the
+ * same way, goes on from the page as its next cycle.
+ */
+static int
+serial_rv_issued_end (const SERIAL_DDL_UNDO * undo, DB_VALUE * old_val, DB_VALUE * page_val, DB_VALUE * written_val,
+		      DB_VALUE * bound_val, SERIAL_RV_END * end)
+{
+  DB_VALUE cmp_result, *end_val;
+  bool wrapped;
+  int error;
+
+  error = numeric_db_value_compare (page_val, written_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  wrapped = undo->new_cyclic && db_get_int (&cmp_result) * undo->new_inc_sign < 0;
+
+  if (wrapped && undo->old_cyclic && undo->new_inc_sign == undo->old_inc_sign)
+    {
+      *end = SERIAL_RV_END_PAGE;
+      return NO_ERROR;
+    }
+  if (wrapped && !undo->old_cyclic)
+    {
+      *end = SERIAL_RV_END_BOUND;
+      end_val = bound_val;
+    }
+  else if (undo->new_inc_sign == undo->old_inc_sign)
+    {
+      *end = SERIAL_RV_END_PAGE;
+      end_val = page_val;
+    }
+  else
+    {
+      *end = SERIAL_RV_END_WRITTEN;
+      end_val = written_val;
+    }
+
+  error = numeric_db_value_compare (end_val, old_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (db_get_int (&cmp_result) * undo->old_inc_sign <= 0)
+    {
+      *end = SERIAL_RV_END_REPLACED;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * serial_rv_undo_ddl_update () - undo a client write of a _db_serial row, keeping the values issued since
+ *   return: NO_ERROR, or ER_status
+ *   rcv(in): payload from serial_row_write_undo (), on the latched page of the row
+ *
+ * The definition goes back to the replaced row. Issuing moves current_val in place without the row's lock, so
+ * current_val and started go back only when nothing was issued after the write:
+ *   1. started on the page is 0: nothing was issued since, or the write restarted the serial itself. The replaced
+ *      row's values stand.
+ *   2. otherwise the current_val serial_rv_issued_end () picks, with started 1.
+ * A row without the payload's layout gets the replaced row back, as before.
+ *
+ * The compensation is the merged row as RVHF_UPDATE, so redoing it writes that row whatever the page holds.
+ */
+int
+serial_rv_undo_ddl_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  SERIAL_DDL_UNDO undo;
+  RECDES old_recdes, page_recdes;
+  const RECDES *undone;
+  record_descriptor merged;
+  char *old_cur, *page_cur, *fixed;
+  int old_cur_length, page_cur_length, old_started, page_started = -1;
+  int rule = 0;			/* 0: the replaced row */
+  SERIAL_RV_END end = SERIAL_RV_END_REPLACED;
+  static const char *end_names[] = { "replaced row", "page row", "written value", "range end" };
+  bool in_redo = log_is_in_crash_recovery_and_not_yet_completes_redo ();
+  DB_VALUE old_val, page_val, written_val, bound_val;
+  INT16 type = REC_HOME;
+  LOG_RCV clr_rcv;
+  VPID vpid;
+  // *INDENT-OFF*
+  cubmem::stack_block<IO_MAX_PAGE_SIZE> clr;
+  // *INDENT-ON*
+
+  memcpy (&undo, rcv->data, sizeof (undo));
+  assert (undo.version == SERIAL_DDL_UNDO_VERSION && rcv->length > (int) sizeof (undo));
+  old_recdes.type = REC_HOME;
+  old_recdes.data = (char *) rcv->data + sizeof (undo);
+  old_recdes.length = old_recdes.area_size = rcv->length - (int) sizeof (undo);
+  undone = &old_recdes;
+
+  /* in redo it applies a compensation logged with this payload when the rollback could not fix the page; that
+   * compensation stands for the replaced row, as a physical one would */
+  if (!in_redo && !FI_INSERTED (FI_TEST_SERIAL_DDL_UNDO_FALLBACK)
+      && spage_get_record (thread_p, rcv->pgptr, rcv->offset, &page_recdes, PEEK) == S_SUCCESS
+      && serial_rv_locate (&undo, &old_recdes, &old_cur, &old_cur_length, &old_started)
+      && serial_rv_locate (&undo, &page_recdes, &page_cur, &page_cur_length, &page_started))
+    {
+      if (page_started == 0)
+	{
+	  rule = 1;
+	}
+      else if (serial_rv_get_cur (&undo, old_cur, old_cur_length, &old_val) == NO_ERROR
+	       && serial_rv_get_cur (&undo, page_cur, page_cur_length, &page_val) == NO_ERROR
+	       && serial_rv_get_cur (&undo, undo.written, undo.written_length, &written_val) == NO_ERROR
+	       && serial_rv_get_cur (&undo, undo.bound, undo.bound_length, &bound_val) == NO_ERROR
+	       && serial_rv_issued_end (&undo, &old_val, &page_val, &written_val, &bound_val, &end) == NO_ERROR)
+	{
+	  rule = 2;
+	}
+    }
+
+  if (rule > 1)
+    {
+      merged.set_recdes (old_recdes);
+      if (end == SERIAL_RV_END_PAGE)
+	{
+	  serial_rv_replace_var (merged, undo.n_variable, undo.cur_index, page_cur, page_cur_length);
+	}
+      else if (end == SERIAL_RV_END_WRITTEN)
+	{
+	  serial_rv_replace_var (merged, undo.n_variable, undo.cur_index, undo.written, undo.written_length);
+	}
+      else if (end == SERIAL_RV_END_BOUND)
+	{
+	  serial_rv_replace_var (merged, undo.n_variable, undo.cur_index, undo.bound, undo.bound_length);
+	}
+      fixed = merged.get_data_for_modify ();
+      fixed += OR_HEADER_SIZE (fixed) + OR_VAR_TABLE_SIZE_INTERNAL (undo.n_variable, OR_GET_OFFSET_SIZE (fixed));
+      OR_PUT_INT (fixed + undo.started_location, 1);
+      if (spage_is_updatable (thread_p, rcv->pgptr, rcv->offset, (int) merged.get_size ()))
+	{
+	  undone = &merged.get_recdes ();
+	}
+      else
+	{
+	  rule = 0;
+	}
+    }
+  er_log_debug (ARG_FILE_LINE, "serial_rv_undo_ddl_update: rule %d, current_val of the %s, page started %d, "
+		"length %d -> %d\n", rule, rule < 2 ? "replaced row" : end_names[end], page_started, old_recdes.length,
+		undone->length);
+
+  memcpy (clr.get_ptr (), &type, sizeof (type));
+  memcpy (clr.get_ptr () + sizeof (type), undone->data, undone->length);
+  if (!in_redo)
+    {
+      pgbuf_get_vpid (rcv->pgptr, &vpid);
+      log_append_compensate_with_undo_nxlsa (thread_p, RVHF_UPDATE, &vpid, rcv->offset, rcv->pgptr,
+					     (int) sizeof (type) + undone->length, clr.get_ptr (),
+					     LOG_FIND_CURRENT_TDES (thread_p), &rcv->reference_lsa);
+    }
+
+#if !defined (NDEBUG)
+  if (FI_INSERTED (FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR))
+    {
+      /* the compensation is on disk and the page is not changed yet */
+      int hold_seconds = 60;
+
+      logpb_force_flush_pages (thread_p);
+      (void) FI_TEST_ARG (thread_p, FI_TEST_SERIAL_DDL_UNDO_HOLD_AFTER_CLR, &hold_seconds, 0);
+    }
+#endif /* !NDEBUG */
+
+  clr_rcv.pgptr = rcv->pgptr;
+  clr_rcv.offset = rcv->offset;
+  clr_rcv.data = clr.get_ptr ();
+  clr_rcv.length = (int) sizeof (type) + undone->length;
+  return heap_rv_undo_update (thread_p, &clr_rcv);
 }
 
 /*

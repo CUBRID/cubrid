@@ -239,6 +239,14 @@ typedef enum
 #define LC_ONEOBJ_HAS_PRIOR_VALUE(obj) \
   (((obj)->flag & LC_FLAG_HAS_PRIOR_VALUE) != 0)
 
+#define LC_FLAG_SERIAL_ISSUE 0x40	/* Used for replication: a _db_serial write that issued values */
+
+#define LC_ONEOBJ_SET_SERIAL_ISSUE(obj) \
+  (obj)->flag |= LC_FLAG_SERIAL_ISSUE
+
+#define LC_ONEOBJ_IS_SERIAL_ISSUE(obj) \
+  (((obj)->flag & LC_FLAG_SERIAL_ISSUE) != 0)
+
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj
 {

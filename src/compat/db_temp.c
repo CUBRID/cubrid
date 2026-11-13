@@ -687,6 +687,8 @@ dbt_drop_attribute (DB_CTMPL * def, const char *name)
 
       AU_SAVE_AND_DISABLE (au_save);
 
+      /* before the delete takes the row's X lock, as in do_drop_serial () */
+      (void) serial_decache (&serial_obj_id);
       error = obj_delete (auto_increment_obj);
 
       AU_RESTORE (au_save);

@@ -249,6 +249,7 @@ struct la_item
   DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
   int packed_prior_value_length;
   char *packed_prior_value;	/* _db_serial write-back: disk image of the value it replaced, or NULL */
+  bool serial_issue;		/* a _db_serial write that issued values (LOG_REPL_SERIAL_ISSUE_MAGIC) */
   LOG_LSA lsa;			/* the LSA of the replication log record */
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
@@ -3038,6 +3039,7 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   item->packed_key_value = NULL;
   item->packed_prior_value_length = 0;
   item->packed_prior_value = NULL;
+  item->serial_issue = false;
 
   item->next = NULL;
   item->prev = NULL;
@@ -3098,7 +3100,8 @@ la_get_item_pk_value (LA_ITEM * item)
 /*
  * la_copy_serial_prior_value () - keep the packed value a _db_serial write-back replaced
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
- *   item(in/out): its packed_prior_value stays NULL for a record that carries no value
+ *   item(in/out): its packed_prior_value stays NULL for a record that carries no value; serial_issue is set for a
+ *                 record that carries the issue marker
  *   ptr(in): the end of the packed key
  *   end(in): the end of the record
  *
@@ -3116,6 +3119,11 @@ la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end)
       return NO_ERROR;
     }
   ptr = or_unpack_int (ptr, &magic);
+  if (magic == LOG_REPL_SERIAL_ISSUE_MAGIC)
+    {
+      item->serial_issue = true;
+      return NO_ERROR;
+    }
   if (magic != LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
     {
       return NO_ERROR;
@@ -5004,7 +5012,7 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
   error =
     __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
 					   operation, has_index, item->packed_prior_value,
-					   item->packed_prior_value_length);
+					   item->packed_prior_value_length, item->serial_issue);
   return error;
 }
 
