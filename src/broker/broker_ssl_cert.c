@@ -97,6 +97,7 @@ broker_create_ssl_cert (const char *cert_file, const char *key_file, char *err_m
       return -1;
     }
 
+  /* the RPM package lists both files with these modes too (cmake/CPackOptions.cmake.in) */
   if (!write_ssl_file (key_file, 0600, pkey, NULL))
     {
       error = errno;
