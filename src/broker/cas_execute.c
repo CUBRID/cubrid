@@ -2643,6 +2643,9 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	}
     }
 
+  /* the driver sends a batch once and then drops it: its uploads go now, not at the statement's next execute */
+  (void) hm_srv_handle_set_internal_lob_uploads (srv_handle, NULL, 0);
+
   /* query replace: decide whether this batch's failures should demote the rule.
    * demote = disable for future prepares + self-heal this handle to the original
    * (num_query>=2 && every row failed, or the per-rule N-strike streak; see
