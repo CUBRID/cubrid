@@ -229,12 +229,6 @@ static LC_FIND_CLASSNAME xlocator_reserve_class_name (THREAD_ENTRY * thread_p, c
 
 static int locator_filter_errid (THREAD_ENTRY * thread_p, int num_ignore_error_count, int *ignore_error_list);
 static int locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op);
-#if 0				// defined (ENABLE_UNUSED_FUNCTION_2)
-static int locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * classrec, RECDES * recdes,
-					int btid_index, HEAP_CACHE_ATTRINFO * attr_info);
-static int locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid,
-						 RECDES * classrec, RECDES * recdes);
-#endif
 
 static void locator_incr_num_transient_classnames (int tran_index);
 static void locator_decr_num_transient_classnames (int tran_index);
@@ -10123,7 +10117,16 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
 		  goto error;
 		}
 
-	      if (isvalid == DISK_INVALID)
+	      if (isvalid == DISK_ERROR)
+		{
+		  /* The pair could not be checked. Go on with the other objects, but do not report the index
+		   * consistent. */
+		  if (isallvalid != DISK_INVALID)
+		    {
+		      isallvalid = DISK_ERROR;
+		    }
+		}
+	      else if (isvalid == DISK_INVALID)
 		{
 		  if (repair)
 		    {
@@ -10573,7 +10576,16 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 		      goto error;
 		    }
 
-		  if (isvalid == DISK_INVALID)
+		  if (isvalid == DISK_ERROR)
+		    {
+		      /* The pair could not be checked. Go on with the other objects, but do not report the index
+		       * consistent. */
+		      if (isallvalid != DISK_INVALID)
+			{
+			  isallvalid = DISK_ERROR;
+			}
+		    }
+		  else if (isvalid == DISK_INVALID)
 		    {
 		      if (repair)
 			{
@@ -13034,109 +13046,6 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
     }
   return 0;
 }
-
-#if 0				// defined (ENABLE_UNUSED_FUNCTION_2)
-static int
-locator_prefetch_index_page (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * classrec, RECDES * recdes,
-			     int btid_index, HEAP_CACHE_ATTRINFO * attr_info)
-{
-  int error = NO_ERROR;
-  BTID *btid = NULL;
-
-  btid = heap_indexinfo_get_btid (btid_index, attr_info);
-  if (btid == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  error = locator_prefetch_index_page_internal (thread_p, btid, class_oid, classrec, recdes);
-  return error;
-}
-
-static int
-locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * class_oid, RECDES * classrec,
-				      RECDES * recdes)
-{
-  int error = NO_ERROR;
-  BTREE_CHECKSCAN bt_checkscan, *bt_checkscan_p = NULL;
-  HEAP_CACHE_ATTRINFO attr_info;
-  HEAP_CACHE_ATTRINFO *attr_info_p = NULL;
-  HFID hfid;
-  int index_id = -1;
-  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf;
-  DB_VALUE dbvalue;
-  DB_VALUE *key = NULL;
-  KEY_VAL_RANGE key_val_range;
-  INDX_SCAN_ID isid;
-  BTID tmp_btid = *btid;
-
-  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
-
-  or_class_hfid (classrec, &hfid);
-  if (HFID_IS_NULL (&hfid))
-    {
-      return NO_ERROR;
-    }
-
-  index_id = heap_attrinfo_start_with_btid (thread_p, class_oid, &tmp_btid, &attr_info);
-  if (index_id < 0)
-    {
-      goto free_and_return;
-    }
-  attr_info_p = &attr_info;
-
-  if (btree_keyoid_checkscan_start (thread_p, &tmp_btid, &bt_checkscan) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-  bt_checkscan_p = &bt_checkscan;
-
-  BTREE_INIT_SCAN (&bt_checkscan_p->btree_scan);
-  scan_init_index_scan (&isid, &bt_checkscan_p->oid_list, NULL);
-
-  if (heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes, attr_info_p) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  key = heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL);
-  if (key == NULL)
-    {
-      error = ER_FAILED;
-      goto free_and_return;
-    }
-
-  pr_share_value (key, &key_val_range.key1);
-  pr_share_value (key, &key_val_range.key2);
-  key_val_range.range = GE_LE;
-  key_val_range.num_index_term = 0;
-
-  btree_keyval_search (thread_p, &tmp_btid, S_SELECT, &bt_checkscan_p->btree_scan, &key_val_range, class_oid, NULL,
-		       &isid, false);
-
-  btree_scan_clear_key (&bt_checkscan.btree_scan);
-
-free_and_return:
-  if (key == &dbvalue)
-    {
-      pr_clear_value (key);
-    }
-
-  if (bt_checkscan_p)
-    {
-      btree_keyoid_checkscan_end (thread_p, bt_checkscan_p);
-    }
-
-  if (attr_info_p)
-    {
-      heap_attrinfo_end (thread_p, attr_info_p);
-    }
-
-  return error;
-}
-#endif
 
 /*
  * locator_incr_num_transient_classnames - increase number
