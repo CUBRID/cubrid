@@ -357,6 +357,11 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    if (as_info->cur_statement_pooling)
 	      {
+		if (fn_ret == FN_KEEP_SESS && !cas_shutdown_signo)
+		  {
+		    /* the client's server session stays without these statements: their uploads go with them */
+		    hm_srv_handle_release_uploads_for_free_all (true);
+		  }
 		hm_srv_handle_free_all (true);
 	      }
 
