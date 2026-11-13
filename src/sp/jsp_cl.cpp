@@ -2331,15 +2331,6 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 #if defined (CS_MODE)
 	sig.auth = db_private_strdup (NULL, auth_name);
-	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)
-	  {
-	    sig.is_deterministic = true;
-	  }
-	else
-	  {
-	    sig.is_deterministic = false;
-	  }
-
 	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
 	  {
 	    sig.is_parallel_enabled = true;
