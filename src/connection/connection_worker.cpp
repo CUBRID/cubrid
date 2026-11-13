@@ -556,8 +556,7 @@ namespace cubconn::connection
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
-    m_notified (false),
-    m_has_retry (false)
+    m_notified (false)
   {
     std::size_t i;
 
@@ -930,9 +929,6 @@ namespace cubconn::connection
 
     /* this request must be handled as lazily */
     this->enqueue (queue_type::LAZY, std::move (request));
-
-    /* lazily notified */
-    m_has_retry = true;
 
     return this->eventfd_addtimer (
 		   timer_type::QUEUE,
@@ -1409,8 +1405,6 @@ retry:
   {
     std::size_t i;
 
-    m_has_retry = false;
-
     /* event fd */
     if (eventfds[0])
       {
@@ -1461,7 +1455,8 @@ retry:
 	    return false;
 	  }
 
-	if (!m_has_retry)
+	/* a close retry waits in the LAZY queue with no wake-up but this timer */
+	if (m_queue_size[static_cast<std::size_t> (queue_type::LAZY)].load (std::memory_order_acquire) == 0)
 	  {
 	    return this->eventfd_removetimer (timer_type::QUEUE);
 	  }
@@ -1487,8 +1482,7 @@ retry:
     successor = item.conn->worker;
     if (successor != nullptr)
       {
-	successor->enqueue (type, std::move (item));
-	if (!successor->notify ())
+	if (!successor->enqueue_and_notify (type, std::move (item)))
 	  {
 	    assert_release (false);
 	  }
@@ -1673,8 +1667,7 @@ retry:
     /* hand off the context */
     request.type = message_type::TAKEOVER_CLIENT;
     request.ctx = ctx;
-    item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!item.worker_ptr->notify ())
+    if (!item.worker_ptr->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)))
       {
 	assert_release (false);
       }

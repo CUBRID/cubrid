@@ -452,6 +452,7 @@ static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tr
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static int qo_query_serial_level (QO_ENV * env);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -6587,6 +6588,30 @@ static PT_NODE *
 qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   if (tree != NULL && tree->node_type == PT_METHOD_CALL)
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+      return tree;
+    }
+
+  return qo_check_serial_block_expr (parser, tree, arg, continue_walk);
+}
+
+/*
+ * qo_check_hjoin_term_expr () - qo_check_serial_block_expr () for a hash join term
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: a serial is updated under a system operation and through the serial cache,
+ *	 so the parallel probe workers may evaluate NEXT_VALUE and CURRENT_VALUE.
+ */
+static PT_NODE *
+qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (tree != NULL && tree->node_type == PT_EXPR
+      && (tree->info.expr.op == PT_NEXT_VALUE || tree->info.expr.op == PT_CURRENT_VALUE))
     {
       *continue_walk = PT_CONTINUE_WALK;
       return tree;
@@ -19931,7 +19956,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
 
-  bool has_ineligible_method_call = false;
+  bool has_ineligible_node = false;
   BITSET *term_sets[3];
   int set_index;
 
@@ -19985,7 +20010,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
     }
 
   /* during/after join terms become the join predicates the parallel hash join workers evaluate per row, so the terms in
-   * both sets may call only parallel-eligible methods.
+   * both sets must hold only parallel-eligible nodes.
    *
    * The plan's sarged_terms must be checked as well: for an inner join the residual (non-equi) join terms are never
    * classified as during/after join terms but stay in sarged_terms, and qo_init_projection_info () moves any of them
@@ -20025,14 +20050,14 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 		  /* keep the historical during_join_terms behavior */
 		  return PLAN_PARALLEL_OPT_CANNOT_USE;
 		}
-	      /* a term without a parse-tree expression cannot contain a method call */
+	      /* a term without a parse-tree expression cannot contain an ineligible node */
 	      continue;
 	    }
 
-	  (void) parser_walk_tree (parser, expr, qo_check_method_call_parallel_eligibility,
-				   &has_ineligible_method_call, NULL, NULL);
+	  (void) parser_walk_tree (parser, expr, qo_skip_subquery, NULL, qo_check_hjoin_term_expr,
+				   &has_ineligible_node);
 
-	  if (has_ineligible_method_call)
+	  if (has_ineligible_node)
 	    {
 	      return PLAN_PARALLEL_OPT_CANNOT_USE;
 	    }
