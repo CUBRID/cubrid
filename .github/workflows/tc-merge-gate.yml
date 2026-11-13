@@ -19,17 +19,11 @@ on:
       - develop
   schedule:
     - cron: '*/15 * * * *'
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: 'Engine PR number to check (required for workflow_dispatch)'
-        required: true
-        type: string
 
 permissions: {}
 
 concurrency:
-  group: tc-merge-gate-${{ github.event.pull_request.number || inputs.pr_number || 'sweep' }}
+  group: tc-merge-gate-${{ github.event.pull_request.number || 'sweep' }}
   cancel-in-progress: true
 
 env:
@@ -177,6 +171,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
+      actions: read
       checks: write
       contents: read
       pull-requests: write
@@ -200,17 +195,14 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           ENGINE_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
-
-          if [ -z "${PR_NUMBER}" ] || ! [[ "${PR_NUMBER}" =~ ^[0-9]+$ ]]; then
-            echo "::error::PR_NUMBER is empty or not a valid number: '${PR_NUMBER}'"
-            exit 1
-          fi
 
           # A re-run uses the workflow as it was when the run began.
           if ! GH_TOKEN="${GITHUB_TOKEN}" gh api -H 'Accept: application/vnd.github.raw' \
@@ -219,6 +211,17 @@ jobs:
             echo "::error::Could not read the judge from develop — re-run this check"
             exit 1
           fi
+
+          # A verdict taken while TC Branch Sync runs sees no TC PR yet and passes.
+          REF=$(jq -rn --arg r "${HEAD_REF}" '$r | @uri')
+          for _ in $(seq 30); do
+            RUNNING=$(GH_TOKEN="${GITHUB_TOKEN}" gh api \
+                        "repos/${ENGINE_REPO}/actions/workflows/tc-branch-sync.yml/runs?branch=${REF}&event=pull_request_target" \
+                        --jq "[.workflow_runs[] | select(.head_repository.full_name == \"${HEAD_REPO}\" and .status != \"completed\")] | length") \
+              || RUNNING=unknown
+            [ "${RUNNING}" = 0 ] && break
+            sleep 10
+          done
           OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
           VERDICT=$(head -n 1 <<< "${OUT}")
           DETAIL=$(tail -n +2 <<< "${OUT}")
@@ -351,11 +354,11 @@ jobs:
 
           while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING JOB_ID COMPLETED SWEPT_N; do
             [ -z "${PR_NUMBER}" ] && continue
-            [ "${COMPLETED}" = '-' ] && continue
+            # Only blocks: while the newest run waits on GitHub the rollup hides it,
+            # and a re-run of an older run does not count.
+            [ "${STANDING}" = SUCCESS ] || continue
             YOUNG=''
             [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && YOUNG=1
-            # A job with no verdict yet is still running.
-            [ "${JOB_ID}" != '-' ] && [ "${STANDING}" = '-' ] && YOUNG=1
             # Young PRs are aligned too: re-running a run from before ALIGN leaves entries stale.
             [ -n "${YOUNG}" ] && [ "${SWEPT_N}" = 0 ] && continue
 
@@ -383,7 +386,7 @@ jobs:
             fi
 
             STALE_GATE=''
-            [ -z "${YOUNG}" ] && [ "${STANDING}" != '-' ] && [ "${STANDING}" != "${EXPECTED}" ] && STALE_GATE=1
+            [ -z "${YOUNG}" ] && [ "${EXPECTED}" = FAILURE ] && STALE_GATE=1
             [ -z "${STALE_GATE}" ] && continue
             if ERR=$(GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/actions/jobs/${JOB_ID}/rerun" --silent 2>&1); then
               echo "::notice::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED} — re-ran the gate"
