@@ -2136,7 +2136,11 @@ vacuum_heap_finish_deferred_oos (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * h
 		  pgbuf_unfix_and_init (thread_p, helper->forward_page);
 		}
 	    }
-	  vacuum_heap_page_log_and_reset (thread_p, helper, true, true);
+	  /* a failed prepare may have released the home page (reverse-order fix of a relocated record) */
+	  if (helper->home_page != NULL)
+	    {
+	      vacuum_heap_page_log_and_reset (thread_p, helper, true, true);
+	    }
 	}
     }
 
