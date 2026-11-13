@@ -20,8 +20,9 @@
 #define _BUILD_VERSION_H_
 
 /*
- * The version values that change at every commit. Include this file only where they are needed
+ * The per-commit version values (commit count and hash). Include this file only where they are needed
  * (src/base/release_string.c); use rel_build_number () or rel_copy_version_string () elsewhere.
+ * The bundled CCI library cannot call them, so CMakeLists.txt force-includes this file into it.
  */
 
 #define EXTRA_VERSION @CUBRID_EXTRA_VERSION@

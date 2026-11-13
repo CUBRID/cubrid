@@ -20,7 +20,7 @@
 #define _VERSION_H_
 
 /*
- * Only the values that stay the same across commits. The values that change at every commit (EXTRA_VERSION,
+ * Only the values that stay the same across commits. The per-commit version values (EXTRA_VERSION,
  * BUILD_NUMBER, VERSION_STRING) are in build_version.h, so that a commit does not recompile every file
  * that includes config.h.
  */
