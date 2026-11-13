@@ -1641,8 +1641,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
   tdes->wset_overflow = false;
-  tdes->wset_fallback_reason = 0;
-  std::vector<LOG_WSET_ENTRY> ().swap (tdes->wset_hashes);
+  tdes->wset_fallback_reason = WSET_FALLBACK_TRANSACTION_LIMIT;
+  std::vector < LOG_WSET_ENTRY > ().swap (tdes->wset_hashes);
   LSA_SET_NULL (&tdes->wset_dependency_lsa);
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
@@ -1726,8 +1726,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
   tdes->wset_overflow = false;
-  tdes->wset_fallback_reason = 0;
-  std::vector<LOG_WSET_ENTRY> ().swap (tdes->wset_hashes);
+  tdes->wset_fallback_reason = WSET_FALLBACK_TRANSACTION_LIMIT;
+  std::vector < LOG_WSET_ENTRY > ().swap (tdes->wset_hashes);
   LSA_SET_NULL (&tdes->wset_dependency_lsa);
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
