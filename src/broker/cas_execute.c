@@ -523,6 +523,8 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
+      /* the locators the previous client was given are not this client's */
+      internal_lob_locator_forget_issued ();
       (void) db_find_or_create_session (db_user, program_name);
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);

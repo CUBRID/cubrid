@@ -13028,7 +13028,7 @@ internal_lob_locator_note_issued (const char *locator, int size)
 }
 
 /*
- * internal_lob_locator_forget_issued () - Forget them when the client session ends; the next client is someone else.
+ * internal_lob_locator_forget_issued () - Forget them when the client session ends or a CAS takes the next client.
  */
 void
 internal_lob_locator_forget_issued (void)
