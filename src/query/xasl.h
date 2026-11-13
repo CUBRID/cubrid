@@ -413,7 +413,8 @@ typedef struct hashjoin_proc_node
 } HASHJOIN_PROC_NODE;
 
 /* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
- * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, UPDATE + local subquery) */
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, UPDATE + local subquery,
+ * MERGE + local source) */
 typedef struct remote_dml_sink REMOTE_DML_SINK;
 struct remote_dml_sink
 {
@@ -444,9 +445,9 @@ struct update_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
-  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)). A local
-   * subquery becomes a bind placeholder; what pt_dblink_dml_is_remote_only_expr accepts is deparsed into
-   * the SET text instead, its value not being computable on this side. */
+  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)).
+   * A local subquery becomes a bind placeholder. What pt_dblink_dml_classify_value calls remote
+   * text is deparsed into the SET text instead, since its value cannot be computed on this side. */
   REMOTE_DML_SINK sink;
   char *remote_set_text;	/* SET clause with a placeholder per bound value: "c1 = ?, c2 = c2 + 1" */
   int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */
@@ -532,6 +533,19 @@ struct merge_proc_node
   XASL_NODE *update_xasl;	/* XASL for UPDATE part */
   XASL_NODE *insert_xasl;	/* XASL for INSERT part */
   bool has_delete;		/* MERGE statement has DELETE */
+  /* remote MERGE + local source sink fields (MERGE INTO remote USING local). Each source row is
+   * sent as MERGE INTO <table> <target alias> USING (SELECT ? AS c1, ...) <source alias>
+   * <remote_clause_text>. Bound value n (0-based) is the USING column c<n + 1>. */
+  REMOTE_DML_SINK sink;
+  char *remote_target_alias;	/* the name the clauses qualify target columns with */
+  char *remote_source_alias;	/* the one-row USING's alias, which qualifies source columns */
+  char *remote_clause_text;	/* "ON (...) WHEN ...", source columns written as <alias>.c<n> */
+  int remote_num_binds;		/* columns of the one-row USING */
+  char **remote_bind_cast;	/* per column: CUBRID remote cast type, NULL for a bare "?" */
+  int *remote_bind_char_len;	/* per column: a CHAR source's length, 0 otherwise. Gateway only */
+  int remote_num_keys;		/* number of ON keys */
+  int *remote_key_pos;		/* per key: 0-based position of its source value in the row and
+				 * the bound values. The USING column is c<pos + 1>. */
 };
 
 typedef struct cte_proc_node CTE_PROC_NODE;

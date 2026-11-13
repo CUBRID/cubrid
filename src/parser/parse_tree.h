@@ -794,6 +794,15 @@ struct trace_json_t;
 #define PT_SPEC_IS_ENTITY(spec_) \
   ((spec_)->info.spec.entity_name != NULL)
 
+/* PT_SPEC node is a remote DML target with no columns here. The remote resolves its names.
+ * A target given the derived dblink table shape has its columns and is resolved here. */
+#define PT_SPEC_IS_REMOTE_WITHOUT_COLUMNS(spec_) \
+  ((spec_)->info.spec.remote_server_name != NULL && !PT_SPEC_IS_DERIVED (spec_))
+
+/* PT_DBLINK_TABLE_DML node of a remote DML that sends values to a sink, not its text */
+#define PT_DBLINK_DML_IS_SINK(dml_) \
+  ((dml_) != NULL && (dml_)->node_type == PT_DBLINK_TABLE_DML && (dml_)->info.dblink_table.qstr == NULL)
+
 #define PT_IS_FALSE_WHERE_VALUE(node) \
  (((node) != NULL && (node)->node_type == PT_VALUE \
   && ((node)->type_enum == PT_TYPE_NULL \
@@ -3230,9 +3239,18 @@ struct pt_merge_info
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *no_use_hash;		/* NO_USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *use_hash;		/* USE_HASH hint's arguments (PT_NAME list) */
+  /* remote target, local source. remote_source_select is the SELECT over the source. Its row
+   * holds the values bound per MERGE, in pt_dblink_merge_walk_binds () order.
+   * remote_stmt_as_written is the statement before type checking, its clauses as written. The
+   * remote text is printed from it. No walk visits it, so a copy of the statement shares it. It is
+   * only read after it is made. */
+  PT_NODE *remote_source_select;
+  PT_NODE *remote_stmt_as_written;
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
 #define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */
+/* name resolution filled in the INSERT column list the statement omits */
+#define PT_MERGE_INFO_INSERT_COLUMNS_FILLED 8
   short flags;			/* statement specific flags */
 };
 
@@ -4305,7 +4323,7 @@ enum cdc_ddl_object_type
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
 /* Which remote DML value-push sink (if any) a statement is routed to. A statement is exactly one of
- * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this
+ * INSERT/DELETE/UPDATE/MERGE, so these are mutually exclusive by construction -- unlike the bool pair this
  * replaces, the type itself rules out an (INSERT_SELECT, DELETE_LOCAL_SUBQ) state that could never
  * happen, and pt_convert_dblink_dml_query's "no sink" guard becomes a single ==NONE check instead of
  * accumulating a !flag per sink kind as more are added. */
@@ -4314,7 +4332,8 @@ typedef enum dblink_remote_sink_kind
   DBLINK_REMOTE_SINK_NONE = 0,
   DBLINK_REMOTE_SINK_INSERT_SELECT,	/* INSERT INTO remote SELECT ... FROM local */
   DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ,	/* DELETE FROM remote WHERE ... (local subquery) */
-  DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ	/* UPDATE remote SET ... WHERE ... (local subquery in SET or WHERE) */
+  DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ,	/* UPDATE remote SET ... WHERE ... (local subquery in SET or WHERE) */
+  DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC	/* MERGE INTO remote USING local ON (...) */
 } DBLINK_REMOTE_SINK_KIND;
 
 typedef struct
