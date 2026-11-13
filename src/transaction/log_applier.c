@@ -57,6 +57,7 @@
 #include "db.h"
 #include "boot_cl.h"
 #include "object_accessor.h"
+#include "load_object.h"
 #include "locator_cl.h"
 #include "network_cl.h"
 #include "network_interface_cl.h"
@@ -113,6 +114,7 @@
 #define LA_LOCK_SUFFIX                          "_lgla__lock"
 
 #define LA_QUERY_BUF_SIZE                       2048
+#define LA_MAX_MARKER_DELETE_ROWS               1000
 
 #define LA_MAX_REPL_ITEMS                       1000
 /* for adaptive commit interval */
@@ -363,6 +365,7 @@ struct la_info
   bool required_lsa_changed;
   int status;
   bool is_apply_info_updated;	/* whether catalog is partially updated or not */
+  bool marker_cleanup_pending;	/* another bounded delete is needed even when no new task retires */
 
   int num_unflushed;
 
@@ -510,8 +513,7 @@ static int la_delete_ha_apply_info (void);
 static int la_load_applied_tx_markers (void);
 static void la_free_applied_tx_markers (void);
 static bool la_applied_tx_marker_exists (const LOG_LSA * commit_lsa);
-static int la_insert_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa);
-static void la_end_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context);
+static int la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa, LA_STATS * stats);
 static void la_apply_worker_end_context (LA_APPLY_WORKER_CONTEXT * context);
 static int la_delete_applied_tx_markers (const LOG_LSA * upto_lsa);
 
@@ -621,7 +623,7 @@ static int la_delay_replica (time_t eot_time);
 static float la_get_avg (int *array, int size);
 static void la_get_adaptive_time_commit_interval (int *time_commit_interval, int *delay_hist);
 
-static int la_flush_repl_items (bool immediate, LA_STATS * stats);
+static int la_flush_repl_items (bool immediate, LA_STATS * stats, const OID * marker_class_oid);
 
 /* run by the coordinator */
 static int la_coordinator_initialize_resources (void);
@@ -983,21 +985,23 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
 		     result->error);
     }
 
+  /* Queue the markers after the data, before the final flush. They use the same row batch and slave
+   * transaction, so no SQL compilation or separate marker INSERT request is needed.
+   * TODO: Add retries for transient marker failures. If the transaction has been aborted, retry the entire
+   * replication task, not just the marker. */
+  if (result->error == NO_ERROR && total_rows > 0)
+    {
+      result->error = la_add_applied_tx_marker (context, &task->commit_lsa, &result->stats);
+      /* Every merged serial fragment must also be skipped after a restart. */
+      for (int i = 0; result->error == NO_ERROR && i < task->merged_count; i++)
+	{
+	  result->error = la_add_applied_tx_marker (context, &task->merged_lsa[i], &result->stats);
+	}
+    }
+
   if (result->error == NO_ERROR)
     {
       result->error = la_apply_worker_flush_task (context, task, trace_level, &result->stats);
-    }
-
-  /* a restart must not apply this transaction again: mark it in the same slave transaction (see
-   * LA_APPLIED_TX_MARKER_NAME) */
-  if (result->error == NO_ERROR && total_rows > 0)
-    {
-      result->error = la_insert_applied_tx_marker (context, &task->commit_lsa);
-      /* serial fragments merged into this task commit with it, so each is marked in the same slave transaction */
-      for (int i = 0; result->error == NO_ERROR && i < task->merged_count; i++)
-	{
-	  result->error = la_insert_applied_tx_marker (context, &task->merged_lsa[i]);
-	}
     }
 
   if (result->error != NO_ERROR)
@@ -1005,6 +1009,8 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
       /* the changes applied so far stay in the open slave transaction; roll them back, or the next task this
        * worker takes before the applier stops would commit them without their marker */
       (void) db_abort_transaction ();
+      __gv_loc_repl.ws_clear_all_repl_objs ();
+      result->stats.num_unflushed = 0;
       return;
     }
 
@@ -1032,7 +1038,7 @@ la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * t
 		     (size_t) context->worker_idx, (unsigned long long) task->seq, stats->num_unflushed);
     }
 
-  error = la_flush_repl_items (true, stats);
+  error = la_flush_repl_items (true, stats, &context->marker_class_oid);
   if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () == 0)
     {
       /* nothing refers to the pool's records any more */
@@ -1194,7 +1200,6 @@ la_start_apply_workers (void)
 static void
 la_apply_worker_end_context (LA_APPLY_WORKER_CONTEXT * context)
 {
-  la_end_applied_tx_marker (context);
   la_free_pinned_page_buffers ();
 }
 
@@ -1223,8 +1228,8 @@ la_stop_apply_workers (void)
  *   return: NO_ERROR, or the commit error, or ER_NET_CANT_CONNECT_SERVER when the server is down
  *
  * Note:
- *   The statistics rows are stored, and the applied-tx markers at or below committed_lsa deleted, in the same
- *   transaction. The workers commit the replicated transactions themselves.
+ *   The statistics rows and apply position are stored with one bounded delete of markers at or below
+ *   committed_lsa in the same transaction. The workers commit the replicated transactions themselves.
  *   A failed update is counted and reported but does not stop the applier unless the server is down, as
  *   in the serial applier. The positions stay at their last stored values until the next store succeeds; a
  *   restart reads that range again and skips the commits marked as applied.
@@ -1244,19 +1249,23 @@ la_coordinator_commit_apply_info (void)
       res = la_stat_store (&applier, la_update_query_execute_with_values);
       if (res == NO_ERROR)
 	{
-	  /* the commits at or below committed_lsa are skipped by their position, so their markers go in the same
-	   * transaction; a failure leaves them for the next store.
-	   * The delete is the last statement before the commit: deleting many markers can escalate to a table lock
-	   * held until the commit, and a worker inserting its marker waits for that lock holding
-	   * la_sql_compile_mutex. Taking the mutex again before the commit (to store the statistics, for example)
-	   * would wait for that worker forever. */
-	  if (la_delete_applied_tx_markers (&la_Info.committed_lsa) < 0)
+	  /* Delete at most one batch per transaction, then commit to release its locks. Remaining markers are
+	   * already covered by the stored position and are ignored on restart. Do not drain them in a loop here. */
+	  int deleted = la_delete_applied_tx_markers (&la_Info.committed_lsa);
+	  la_Info.marker_cleanup_pending = (deleted < 0 || deleted == LA_MAX_MARKER_DELETE_ROWS);
+	  if (deleted < 0)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "cannot delete applied-tx markers up to %lld|%d\n",
 			    (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
 	    }
 
-	  return db_commit_transaction ();
+	  res = db_commit_transaction ();
+	  if (res != NO_ERROR)
+	    {
+	      la_Info.marker_cleanup_pending = true;
+	    }
+
+	  return res;
 	}
 
       /* the transaction is gone with the apply info update, so the markers stay: a restart reads that range
@@ -3220,9 +3229,11 @@ la_delete_ha_apply_info (void)
  * worker applied, holding the copied log it came from and its commit LSA. A worker commits a transaction on its own
  * connection before the coordinator stores the apply info, so a restart can meet a commit that is already on
  * the slave. The worker inserts the marker in the same slave transaction as the data, so the marker exists
- * exactly when the data is committed, and a restart skips the commits that have one. The markers at or below
- * the stored committed_lsa are deleted when it is stored. The copied log path keeps apart the markers of the
- * appliers a node runs, one per remote node.
+ * exactly when the data is committed, and a restart skips the commits that have one. Markers at or below the
+ * stored committed_lsa are deleted in bounded batches. Any remaining ones are ignored when loading markers.
+ * The copied log path keeps apart the markers of the appliers a node runs, one per remote node.
+ * TODO: Replace the repeated copied-log path in marker keys with a compact persistent stream identifier.
+ * Preserve the identity of each stream across restarts and replication reinitialization.
  *
  * The markers only mean something next to the apply info of the same copied log: where the apply info is created
  * anew or deleted, the markers of that copied log are deleted in the same transaction (la_get_last_ha_applied_info,
@@ -3399,113 +3410,128 @@ la_applied_tx_marker_exists (const LOG_LSA * commit_lsa)
 }
 
 /*
- * la_insert_applied_tx_marker() - mark a commit as applied, in the worker's open slave transaction
+ * la_add_applied_tx_marker() - queue a marker with the worker's pending replication rows
  *   return: NO_ERROR or error code
- *   context(in/out): the worker's apply context, which keeps the compiled INSERT
- *   commit_lsa(in): commit LSA of the transaction being applied
+ *   context(in/out): worker whose record pool owns the marker image until flush
+ *   commit_lsa(in): commit or SYSOP_END to skip after a restart
+ *   stats(in/out): data-row statistics, excluding the internal marker
  *
- * Note:
- *   Does not commit; the worker calls it right before committing the transaction. The INSERT is compiled once
- *   per worker connection and then run with new values, so a commit does not parse and compile it again; both
- *   steps hold la_sql_compile_mutex. After an error the compiled statement is dropped and compiled again on the
- *   next call.
+ * Note: INSERT does not look up a row by key, so its unused lookup value is NULL. A marker flush error is fatal
+ *       to the task even when ordinary data-row errors may be skipped. Flush full batches before reusing a
+ *       record-pool slot; merged fragments can need more markers than fit in one batch.
  */
 static int
-la_insert_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa)
+la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa, LA_STATS * stats)
 {
-  char query_buf[LA_QUERY_BUF_SIZE];
-  DB_QUERY_RESULT *result = NULL;
-  DB_VALUE in_value[3];
+  MOP class_mop;
+  SM_CLASS *class_;
+  SM_ATTRIBUTE *attributes[3];
+  DB_VALUE values[3];
+  DB_VALUE key;
+  DESC_OBJ object = { };
+  RECDES *recdes;
+  char *packed_key = NULL;
+  int packed_key_length;
+  int error = NO_ERROR;
   int au_save;
-  int res;
+  bool has_index;
+
+  assert (context != NULL && commit_lsa != NULL && stats != NULL);
 
   AU_SAVE_AND_DISABLE (au_save);
-
-  if (context->marker_session == NULL)
+  class_mop = db_find_class (LA_APPLIED_TX_MARKER_NAME);
+  if (class_mop == NULL)
     {
-      snprintf (query_buf, sizeof (query_buf),
-		"INSERT INTO [%s] (copied_log_path, commit_pageid, commit_offset) VALUES (?, ?, ?);",
-		LA_APPLIED_TX_MARKER_NAME);
-
-      pthread_mutex_lock (&la_sql_compile_mutex);
-      context->marker_session = db_open_buffer (query_buf);
-      context->marker_stmt_id = (context->marker_session != NULL) ? db_compile_statement (context->marker_session) : -1;
-      pthread_mutex_unlock (&la_sql_compile_mutex);
-
-      if (context->marker_session == NULL || context->marker_stmt_id <= 0)
-	{
-	  res = er_errid ();
-	  la_end_applied_tx_marker (context);
-	  AU_RESTORE (au_save);
-	  return (res != NO_ERROR) ? res : ER_FAILED;
-	}
+      error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+      goto end;
+    }
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
-  db_make_varchar (&in_value[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
-  db_make_bigint (&in_value[1], commit_lsa->pageid);
-  db_make_int (&in_value[2], commit_lsa->offset);
-
-  /* the execution compiles the statement again when the server asks for it, for example after the table size
-   * changed a lot, so it runs under the compile mutex too */
-  pthread_mutex_lock (&la_sql_compile_mutex);
-  res = db_push_values (context->marker_session, 3, in_value);
-  if (res == NO_ERROR)
+  attributes[0] = classobj_find_attribute (class_, "copied_log_path", 0);
+  attributes[1] = classobj_find_attribute (class_, "commit_pageid", 0);
+  attributes[2] = classobj_find_attribute (class_, "commit_offset", 0);
+  if (attributes[0] == NULL || attributes[1] == NULL || attributes[2] == NULL)
     {
-      res = db_execute_and_keep_statement (context->marker_session, context->marker_stmt_id, &result);
-      if (res >= 0 && result != NULL)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+      error = ER_SM_CORRUPTED;
+      goto end;
+    }
+
+  COPY_OID (&context->marker_class_oid, ws_oid (class_mop));
+  db_make_varchar (&values[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  db_make_bigint (&values[1], commit_lsa->pageid);
+  db_make_int (&values[2], commit_lsa->offset);
+  object.classop = class_mop;
+  object.class_ = class_;
+  object.count = 3;
+  object.atts = attributes;
+  object.values = values;
+
+  recdes = la_assign_recdes_from_pool (context);
+  if (recdes == NULL)
+    {
+      error = ER_FAILED;
+      goto clear_values;
+    }
+  recdes->type = REC_HOME;
+  error = desc_obj_to_disk (&object, recdes, &has_index);
+  if (error != NO_ERROR && recdes->length < 0)
+    {
+      error = la_realloc_recdes_data (context, recdes, -recdes->length + OR_MVCC_MAX_HEADER_SIZE);
+      if (error == NO_ERROR)
 	{
-	  (void) db_query_end (result);
+	  error = desc_obj_to_disk (&object, recdes, &has_index);
 	}
     }
-  pthread_mutex_unlock (&la_sql_compile_mutex);
+  if (error != NO_ERROR)
+    {
+      error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+      goto clear_values;
+    }
 
+  db_make_null (&key);
+  packed_key_length = OR_VALUE_ALIGNED_SIZE (&key);
+  packed_key = (char *) malloc (packed_key_length);
+  if (packed_key == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, packed_key_length);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto clear_values;
+    }
+  packed_key_length = CAST_BUFLEN (or_pack_mem_value (packed_key, &key, NULL) - packed_key);
+  error = __gv_loc_repl.ws_add_to_repl_obj_list (&context->marker_class_oid, packed_key, packed_key_length,
+						 recdes, LC_FLUSH_INSERT, has_index, NULL, 0);
+  if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () >= LA_MAX_UNFLUSHED_REPL_ITEMS)
+    {
+      error = la_flush_repl_items (true, stats, &context->marker_class_oid);
+    }
+
+clear_values:
+  free_and_init (packed_key);
+  db_value_clear (&values[0]);
+end:
   AU_RESTORE (au_save);
 
-  db_value_clear (&in_value[0]);
-
-  if (res < 0)
-    {
-      la_end_applied_tx_marker (context);
-      return res;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * la_end_applied_tx_marker() - drop the worker's compiled marker INSERT
- *   context(in/out): the worker's apply context
- *
- * Note: also called when a worker ends (la_apply_worker_end_context), before its connection is closed.
- */
-static void
-la_end_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context)
-{
-  if (context->marker_session != NULL)
-    {
-      pthread_mutex_lock (&la_sql_compile_mutex);
-      db_close_session (context->marker_session);
-      pthread_mutex_unlock (&la_sql_compile_mutex);
-    }
-
-  context->marker_session = NULL;
-  context->marker_stmt_id = 0;
+  return error;
 }
 
 /*
  * la_delete_applied_tx_markers() - delete markers of this copied log, in the caller's open transaction
  *   return: error code, or the number of rows deleted
- *   upto_lsa(in): delete the markers at or below it; NULL deletes all markers of this copied log
+ *   upto_lsa(in): delete at most LA_MAX_MARKER_DELETE_ROWS at or below it; NULL deletes the entire copied log
  *
- * Note: does not commit. The coordinator calls it with committed_lsa in the transaction that stores it, and
- *       with NULL when the replication starts over (la_delete_ha_apply_info).
+ * Note: does not commit. The coordinator deletes one batch in the transaction that stores committed_lsa.
+ *       Reinitialization passes NULL and must remove all old markers before the new stream can be applied.
  */
 static int
 la_delete_applied_tx_markers (const LOG_LSA * upto_lsa)
 {
   char query_buf[LA_QUERY_BUF_SIZE];
-  DB_VALUE in_value[4];
+  DB_VALUE in_value[5];
   int in_value_count = 1;
   int res;
 
@@ -3521,11 +3547,13 @@ la_delete_applied_tx_markers (const LOG_LSA * upto_lsa)
     {
       snprintf (query_buf, sizeof (query_buf),
 		"DELETE FROM [%s] WHERE copied_log_path = ? "
-		"AND (commit_pageid < ? OR (commit_pageid = ? AND commit_offset <= ?));", LA_APPLIED_TX_MARKER_NAME);
+		"AND (commit_pageid < ? OR (commit_pageid = ? AND commit_offset <= ?)) LIMIT ?;",
+		LA_APPLIED_TX_MARKER_NAME);
       db_make_bigint (&in_value[1], upto_lsa->pageid);
       db_make_bigint (&in_value[2], upto_lsa->pageid);
       db_make_int (&in_value[3], upto_lsa->offset);
-      in_value_count = 4;
+      db_make_int (&in_value[4], LA_MAX_MARKER_DELETE_ROWS);
+      in_value_count = 5;
     }
 
   res = la_update_query_execute_with_values (query_buf, in_value_count, &in_value[0], true);
@@ -5956,10 +5984,10 @@ la_get_ha_server_state (LOG_PAGE * pgptr, LOG_LSA * lsa)
  *   return: NO_ERROR or error code
  *   immediate(in): whether to immediately flush or not
  *
- * Note:
+ * Note: marker_class_oid identifies internal rows whose failure must abort the worker transaction.
  */
 static int
-la_flush_repl_items (bool immediate, LA_STATS * stats)
+la_flush_repl_items (bool immediate, LA_STATS * stats, const OID * marker_class_oid)
 {
   int error = NO_ERROR;
   int la_err_code = ER_FAILED;
@@ -6014,6 +6042,16 @@ la_flush_repl_items (bool immediate, LA_STATS * stats)
 	       * a "%s" conversion so a '%' inside the key can never be interpreted as a
 	       * printf directive (e.g. "%n" would corrupt memory). */
 	      snprintf (pkey_str, sizeof (pkey_str) - 1, "%s", sb.get_buffer ());
+
+	      if (marker_class_oid != NULL && OID_EQ (&flush_err->class_oid, marker_class_oid))
+		{
+		  /* A marker must never be skipped: committing without it would permit duplicate replay. */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_FAILED_TO_APPLY_INSERT, 4,
+			  LA_APPLIED_TX_MARKER_NAME, pkey_str, flush_err->error_code, server_err_msg);
+		  __gv_loc_repl.ws_free_repl_flush_error (flush_err);
+		  __gv_loc_repl.ws_clear_all_repl_errors_of_error_link ();
+		  return ER_LC_PARTIALLY_FAILED_TO_FLUSH;
+		}
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{
@@ -6260,7 +6298,7 @@ end:
       la_stats_note_class (stats, item->class_name);
       stats->delete_counter++;
       stats->num_unflushed++;
-      error = la_flush_repl_items (false, stats);
+      error = la_flush_repl_items (false, stats, NULL);
     }
 
   return error;
@@ -6448,7 +6486,7 @@ end:
       la_stats_note_class (stats, item->class_name);
       stats->update_counter++;
       stats->num_unflushed++;
-      error = la_flush_repl_items (false, stats);
+      error = la_flush_repl_items (false, stats, NULL);
     }
 
   la_release_page_buffer (old_pageid);
@@ -6650,7 +6688,7 @@ end:
       la_stats_note_class (stats, item->class_name);
       stats->insert_counter++;
       stats->num_unflushed++;
-      error = la_flush_repl_items (false, stats);
+      error = la_flush_repl_items (false, stats, NULL);
     }
 
   la_release_page_buffer (old_pageid);
@@ -6768,7 +6806,7 @@ la_apply_statement_log (LA_ITEM * item, LA_STATS * stats)
   bool need_set_user = true;
   int res;
 
-  error = la_flush_repl_items (true, stats);
+  error = la_flush_repl_items (true, stats, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -8267,7 +8305,7 @@ la_check_time_commit (struct timeval *time_commit, unsigned int threshold)
 	  need_commit = true;
 	}
 
-      if (need_commit == true || la_Info.is_apply_info_updated == true)
+      if (need_commit == true || la_Info.is_apply_info_updated == true || la_Info.marker_cleanup_pending)
 	{
 	  error = la_log_commit (need_commit);
 	  if (error == NO_ERROR)
@@ -8445,6 +8483,7 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.last_deleted_archive_num = -1;
   la_Info.is_role_changed = false;
   la_Info.is_apply_info_updated = false;
+  la_Info.marker_cleanup_pending = false;
 
   /* The memory check (la_check_mem_size) compares the process virtual size, not resident memory, with
    * max(ha_apply_max_mem_size, twice its size once the workers have started). Each worker reserves its own

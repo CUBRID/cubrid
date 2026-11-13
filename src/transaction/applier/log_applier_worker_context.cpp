@@ -26,6 +26,7 @@
 #include "error_manager.h"
 #include "file_io.h"		/* IO_MIN_PAGE_SIZE, IO_MAX_PAGE_SIZE */
 #include "memory_alloc.h"
+#include "oid.h"
 
 #include <assert.h>
 #include <string.h>
@@ -54,6 +55,7 @@ la_worker_context_init (LA_APPLY_WORKER_CONTEXT *context, int db_page_size, int 
 
   memset (context, 0, sizeof (*context));
   context->worker_idx = -1;
+  OID_SET_NULL (&context->marker_class_oid);
 
   context->undo_unzip_ptr = log_zip_alloc (db_page_size);
   context->redo_unzip_ptr = log_zip_alloc (db_page_size);
