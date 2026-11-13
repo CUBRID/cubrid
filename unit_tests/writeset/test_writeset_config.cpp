@@ -57,8 +57,8 @@ TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "
   REQUIRE (LSA_ISNULL (&wset_History.history_start));
 
   /* second commit would push map.size() + publish_count (60 + 60) over the cap:
-   * the flush clears the whole map and raises the floor to this commit before
-   * publishing, so only this transaction's keys remain */
+   * the flush detaches the whole map and raises the floor to this commit.
+   * Its own keys are covered by the floor and must not be re-published */
   log_tdes *t2 = make_tdes (2);
   for (int i = 100; i < 160; i++)	/* disjoint from t1's keys */
     {
@@ -66,7 +66,7 @@ TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "
     }
   LOG_LSA l2 = lsa_of (20, 0);
   commit_tx (t2, &l2);
-  REQUIRE (wset_History.map.size () == (size_t) 60);
+  REQUIRE (wset_History.map.size () == 0);
   REQUIRE (LSA_EQ (&wset_History.history_start, &l2));
 
   /* a key evicted by the clear must not come back as independent: the floor
@@ -76,6 +76,12 @@ TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "
   LOG_LSA dep = probe (t3);
   REQUIRE (LSA_EQ (&dep, &l2));
 
+  log_tdes *t4 = make_tdes (4);
+  add_write_int (t4, &cls, 100); /* key of the transaction that triggered the clear */
+  LOG_LSA dep4 = probe (t4);
+  REQUIRE (LSA_EQ (&dep4, &l2));
+
+  delete t4;
   delete t1;
   delete t2;
   delete t3;

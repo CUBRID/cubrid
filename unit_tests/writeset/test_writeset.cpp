@@ -1583,84 +1583,85 @@ TEST_CASE ("delayed overflow clear preserves a newer published commit as the his
   delete successor;
 }
 
-TEST_CASE ("probe keeps the sequence lock until the history snapshot is acquired", "[writeset]")
+TEST_CASE ("a barrier after key probing raises the resolved dependency", "[writeset]")
 {
   ws_history_guard history;
   OID cls = oid_of (1, 100, 1);
-  log_tdes *tx = make_tdes (1);
+  LOG_LSA writer_lsa = lsa_of (10, 0);
+  LOG_LSA barrier_lsa = lsa_of (20, 0);
+  log_tdes *writer = make_tdes (1);
+  log_tdes *successor = make_tdes (2);
+  wset_dependency_candidate candidate;
   LOG_LSA dependency;
-  std::atomic<bool> probe_entered {false};
 
-  add_write_int (tx, &cls, 7);
+  add_write_int (writer, &cls, 7);
+  commit_tx (writer, &writer_lsa);
+  add_write_int (successor, &cls, 7);
+  wset_order_probe_keys (successor, 0, &candidate);
+  REQUIRE (LSA_EQ (&candidate.lsa, &writer_lsa));
 
-  /* Hold the history lock so the probe has to stop between acquiring seq_lock and taking its
-   * history snapshot. The fixed protocol retains seq_lock at that point; the former mixed-snapshot
-   * protocol released it before waiting for history_lock. */
-  pthread_rwlock_wrlock (&wset_History.history_lock);
-  std::thread worker ([&] ()
-  {
-    probe_entered.store (true, std::memory_order_release);
-    wset_order_find_dependency (tx, &dependency);
-  });
+  /* This is the interval between the O(N) probe and taking prior_lsa_mutex. */
+  wset_order_advance_barrier (&barrier_lsa, "TEST");
+  wset_order_resolve_dependency (successor, &candidate, &dependency);
+  REQUIRE (LSA_EQ (&dependency, &barrier_lsa));
 
-  while (!probe_entered.load (std::memory_order_acquire))
-    {
-      std::this_thread::yield ();
-    }
+  delete writer;
+  delete successor;
+}
 
-  bool observed_seq_lock = false;
-  bool retained_seq_lock = false;
-  int unexpected_lock_result = 0;
-  auto observe_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (1);
-  while (std::chrono::steady_clock::now () < observe_deadline)
-    {
-      int lock_result = pthread_mutex_trylock (&wset_History.seq_lock);
-      if (lock_result == EBUSY)
-	{
-	  observed_seq_lock = true;
-	  break;
-	}
-      if (lock_result != 0)
-	{
-	  unexpected_lock_result = lock_result;
-	  break;
-	}
-      pthread_mutex_unlock (&wset_History.seq_lock);
-      std::this_thread::yield ();
-    }
+TEST_CASE ("a clear after key probing covers a detached history entry", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA writer_lsa = lsa_of (10, 0);
+  LOG_LSA clear_lsa = lsa_of (20, 0);
+  log_tdes *writer = make_tdes (1);
+  log_tdes *successor = make_tdes (2);
+  log_tdes *fallback = make_tdes (3);
+  wset_dependency_candidate candidate;
+  LOG_LSA dependency;
 
-  if (observed_seq_lock)
-    {
-      retained_seq_lock = true;
-      auto retain_deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (10);
-      while (std::chrono::steady_clock::now () < retain_deadline)
-	{
-	  int lock_result = pthread_mutex_trylock (&wset_History.seq_lock);
-	  if (lock_result == 0)
-	    {
-	      pthread_mutex_unlock (&wset_History.seq_lock);
-	      retained_seq_lock = false;
-	      break;
-	    }
-	  if (lock_result != EBUSY)
-	    {
-	      unexpected_lock_result = lock_result;
-	      retained_seq_lock = false;
-	      break;
-	    }
-	  std::this_thread::yield ();
-	}
-    }
+  add_write_int (writer, &cls, 7);
+  commit_tx (writer, &writer_lsa);
+  add_write_int (successor, &cls, 7);
+  wset_order_probe_keys (successor, 0, &candidate);
+  fallback->wset_overflow = true;
+  commit_tx (fallback, &clear_lsa);
 
-  pthread_rwlock_unlock (&wset_History.history_lock);
-  worker.join ();
+  REQUIRE (wset_History.map.size () == 0);
+  wset_order_resolve_dependency (successor, &candidate, &dependency);
+  REQUIRE (LSA_EQ (&dependency, &clear_lsa));
 
-  REQUIRE (unexpected_lock_result == 0);
-  REQUIRE (observed_seq_lock);
-  REQUIRE (retained_seq_lock);
-  REQUIRE (LSA_ISNULL (&dependency));
+  delete writer;
+  delete successor;
+  delete fallback;
+}
 
-  delete tx;
+TEST_CASE ("a nonconflicting publish after probing does not force commit order", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA writer_lsa = lsa_of (10, 0);
+  LOG_LSA other_lsa = lsa_of (20, 0);
+  log_tdes *writer = make_tdes (1);
+  log_tdes *successor = make_tdes (2);
+  log_tdes *other = make_tdes (3);
+  wset_dependency_candidate candidate;
+  LOG_LSA dependency;
+
+  add_write_int (writer, &cls, 7);
+  commit_tx (writer, &writer_lsa);
+  add_write_int (successor, &cls, 7);
+  wset_order_probe_keys (successor, 0, &candidate);
+  add_write_int (other, &cls, 8);
+  commit_tx (other, &other_lsa);
+
+  wset_order_resolve_dependency (successor, &candidate, &dependency);
+  REQUIRE (LSA_EQ (&dependency, &writer_lsa));
+
+  delete writer;
+  delete successor;
+  delete other;
 }
 
 TEST_CASE ("probe never lowers a dependency below the observed history floor", "[writeset]")
@@ -1671,14 +1672,13 @@ TEST_CASE ("probe never lowers a dependency below the observed history floor", "
   LOG_LSA new_floor = lsa_of (200, 0);
   log_tdes *tx = make_tdes (1);
 
-  /* Inject the mixed values that exposed R02 to pin the final defensive floor independently of the
-   * locking protocol. A normal execution cannot create this pair once snapshot locking is correct. */
-  pthread_mutex_lock (&wset_History.seq_lock);
+  /* Even an inconsistent test-injected upper bound must not lower the final label below the floor. */
   pthread_rwlock_wrlock (&wset_History.history_lock);
+  pthread_mutex_lock (&wset_History.seq_lock);
   LSA_COPY (&wset_History.prev_commit_lsa, &old_baseline);
   LSA_COPY (&wset_History.history_start, &new_floor);
-  pthread_rwlock_unlock (&wset_History.history_lock);
   pthread_mutex_unlock (&wset_History.seq_lock);
+  pthread_rwlock_unlock (&wset_History.history_lock);
 
   add_write_int (tx, &cls, 7);
   LOG_LSA dependency = probe (tx);

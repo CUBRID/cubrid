@@ -39,20 +39,29 @@
 
 static void wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out);
 
-static void
-wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out)
+/* Probe only while keys are stable and before acquiring prior_lsa_mutex. The history read lock prevents a
+ * map swap, while TBB accessors protect individual slots from concurrent publishers. */
+void
+wset_order_probe_keys (LOG_TDES *tdes, size_t begin, wset_dependency_candidate *result)
 {
-  LOG_LSA dependency;
-  LOG_LSA prev_commit;
   LOG_LSA history_start;
-  bool dependency_from_ref = false;
+  LOG_LSA prev_commit;
   bool key_conflict = false;
-  const size_t end = tdes->wset_hashes.size ();
+
+  assert (tdes != NULL);
+  assert (result != NULL);
+  assert (begin <= tdes->wset_hashes.size ());
+
+  LSA_SET_NULL (&result->lsa);
+  result->from_ref = false;
+  if (tdes->wset_overflow)
+    {
+      return;
+    }
 
   wset_history_lock_for_probe (&history_start, &prev_commit);
-  LSA_COPY (&dependency, &history_start);
-
-  for (size_t index = begin; index < end; index++)
+  LSA_COPY (&result->lsa, &history_start);
+  for (size_t index = begin; index < tdes->wset_hashes.size (); index++)
     {
       const LOG_WSET_ENTRY &entry = tdes->wset_hashes[index];
       LOG_WSET_SLOTS slots;
@@ -60,55 +69,55 @@ wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *depe
       bool candidate_is_ref;
 
       if (!wset_history_probe_key (entry.hash, entry.kind, slots, candidate, candidate_is_ref))
-	{
-	  WSET_TRACE (3, "PROBE trid=%d kind=%s hash=%016llx result=MISS\n",
-		      tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash);
-	  continue;
-	}
+        {
+          WSET_TRACE (3, "PROBE trid=%d kind=%s hash=%016llx result=MISS\n",
+                      tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash);
+          continue;
+        }
 
       WSET_TRACE (3,
-		  "PROBE trid=%d kind=%s hash=%016llx write_lsa=%lld|%d ref_lsa=%lld|%d candidate=%lld|%d source=%s\n",
-		  tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash,
-		  LSA_AS_ARGS (&slots.write_lsa),
-		  LSA_AS_ARGS (&slots.ref_lsa),
-		  LSA_AS_ARGS (&candidate),
-		  candidate_is_ref ? "REF_SLOT" : "WRITE_SLOT");
-
-      if (LSA_ISNULL (&candidate) || !LSA_GT (&candidate, &dependency))
-	{
-	  continue;
-	}
-
-      LSA_COPY (&dependency, &candidate);
-      dependency_from_ref = candidate_is_ref;
-      key_conflict = true;
+                  "PROBE trid=%d kind=%s hash=%016llx write_lsa=%lld|%d ref_lsa=%lld|%d candidate=%lld|%d source=%s\n",
+                  tdes->trid, wset_trace_kind_name (entry.kind), (unsigned long long) entry.hash,
+                  LSA_AS_ARGS (&slots.write_lsa), LSA_AS_ARGS (&slots.ref_lsa), LSA_AS_ARGS (&candidate),
+                  candidate_is_ref ? "REF_SLOT" : "WRITE_SLOT");
+      if (!LSA_ISNULL (&candidate) && LSA_GT (&candidate, &result->lsa))
+        {
+          LSA_COPY (&result->lsa, &candidate);
+          result->from_ref = candidate_is_ref;
+          key_conflict = true;
+        }
     }
-
   wset_history_unlock_after_probe ();
-
   if (key_conflict)
     {
-      wset_stat_count_conflict (dependency_from_ref);
+      wset_stat_count_conflict (result->from_ref);
     }
+}
 
-  if (dependency_from_ref)
-    {
-      LSA_COPY (dependency_out, &dependency);
-      WSET_TRACE (1,
-		  "DEPENDENCY trid=%d source=REF_SLOT history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
-		  tdes->trid, LSA_AS_ARGS (&history_start),
-		  LSA_AS_ARGS (&prev_commit),
-		  LSA_AS_ARGS (dependency_out));
-      return;
-    }
+/* Resolve in log order. No history reader lock or per-key work is allowed here: a clear or barrier after the
+ * probe can only raise the dependency. Preserve the existing REF-slot rule and WRITE-slot upper bound. */
+void
+wset_order_resolve_dependency (LOG_TDES *tdes, const wset_dependency_candidate *candidate, LOG_LSA *dependency_out)
+{
+  LOG_LSA history_start;
+  LOG_LSA prev_commit;
 
-  if (LSA_ISNULL (&prev_commit) || LSA_LT (&dependency, &prev_commit))
+  assert (tdes != NULL);
+  assert (candidate != NULL);
+  assert (dependency_out != NULL);
+
+  wset_history_get_boundaries (&history_start, &prev_commit);
+  if (tdes->wset_overflow)
     {
-      LSA_COPY (dependency_out, &dependency);
+      LSA_COPY (dependency_out, &prev_commit);
     }
   else
     {
-      LSA_COPY (dependency_out, &prev_commit);
+      LSA_COPY (dependency_out, &candidate->lsa);
+      if (!candidate->from_ref && !LSA_ISNULL (&prev_commit) && LSA_GT (dependency_out, &prev_commit))
+        {
+          LSA_COPY (dependency_out, &prev_commit);
+        }
     }
 
   if (!LSA_ISNULL (&history_start)
@@ -117,11 +126,27 @@ wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *depe
       LSA_COPY (dependency_out, &history_start);
     }
 
-  WSET_TRACE (1,
-	      "DEPENDENCY trid=%d source=WRITE_BOUND history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
-	      tdes->trid, LSA_AS_ARGS (&history_start),
-	      LSA_AS_ARGS (&prev_commit),
-	      LSA_AS_ARGS (dependency_out));
+  if (tdes->wset_overflow)
+    {
+      WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
+                  tdes->trid, LSA_AS_ARGS (dependency_out));
+    }
+  else
+    {
+      WSET_TRACE (1,
+                  "DEPENDENCY trid=%d source=%s history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
+                  tdes->trid, candidate->from_ref ? "REF_SLOT" : "WRITE_BOUND",
+                  LSA_AS_ARGS (&history_start), LSA_AS_ARGS (&prev_commit), LSA_AS_ARGS (dependency_out));
+    }
+}
+
+static void
+wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out)
+{
+  wset_dependency_candidate candidate;
+
+  wset_order_probe_keys (tdes, begin, &candidate);
+  wset_order_resolve_dependency (tdes, &candidate, dependency_out);
 }
 
 void
@@ -129,14 +154,6 @@ wset_order_find_dependency (LOG_TDES *tdes, LOG_LSA *dependency_out)
 {
   assert (tdes != NULL);
   assert (dependency_out != NULL);
-
-  if (tdes->wset_overflow)
-    {
-      wset_history_get_commit_order_dependency (dependency_out);
-      WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
-		  tdes->trid, LSA_AS_ARGS (dependency_out));
-      return;
-    }
 
   wset_order_find_dependency_in_range (tdes, 0, dependency_out);
 }

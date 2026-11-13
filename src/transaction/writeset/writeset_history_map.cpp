@@ -108,3 +108,10 @@ wset_history_map::clear ()
 {
   m_map.clear ();
 }
+
+/* Exchange storage under the caller's exclusive history lock; release old entries after unlocking. */
+void
+wset_history_map::swap (wset_history_map &other)
+{
+  m_map.swap (other.m_map);
+}

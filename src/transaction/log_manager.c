@@ -311,7 +311,7 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_wset_label (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
-					   LOG_PAGE * log_page_p);
+					     LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
@@ -4920,11 +4920,11 @@ log_sysop_fallback_reason (const LOG_TDES * tdes, int repl_start_index)
  * NOTE: The label and the SYSOP_END are written inside one prior_lsa_mutex region so no other
  *       transaction's label or commit record can fall between them. The applier binds a label to the
  *       SYSOP_END of the same trid that immediately follows it, so this adjacency must be preserved.
- *       The label is decided and the commit-order state updated in the same region, for the reason given in
- *       log_append_repl_info_and_commit_log. In commit order the history floor is raised to the SYSOP_END, so
- *       the operation is a barrier on the slave. By keys the label comes from the keys like a commit's, and the
- *       commit-order baseline (prev_commit_lsa) moves to the SYSOP_END: without it a later label lowered to the
- *       baseline, or a later commit-order label, could fall below this operation.
+ *       Key candidates are probed before the mutex; the final label is resolved and the commit-order state
+ *       updated in the same region, as in log_append_repl_info_and_commit_log. In commit order the history floor
+ *       is raised to the SYSOP_END, so the operation is a barrier on the slave. By keys the label comes from the
+ *       keys like a commit's, and the commit-order baseline (prev_commit_lsa) moves to the SYSOP_END: without it
+ *       a later label lowered to the baseline, or a later commit-order label, could fall below this operation.
  */
 static void
 log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
@@ -4932,12 +4932,11 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 				     LOG_LSA * sysop_end_lsa_out)
 {
   UINT64 unit_key_hash = 0;
-
-  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  wset_dependency_candidate candidate;
 
   if (by_keys)
     {
-      wset_order_find_sysop_key_dependency (tdes, key_begin, &tdes->wset_dependency_lsa);
+      wset_order_probe_keys (tdes, key_begin, &candidate);
       /* one key, possibly collected more than once (an INCR of two columns of one row) */
       unit_key_hash = tdes->wset_hashes[key_begin].hash;
       for (size_t i = key_begin; i < tdes->wset_hashes.size (); i++)
@@ -4948,6 +4947,12 @@ log_append_wset_label_and_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
 	      break;
 	    }
 	}
+    }
+
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  if (by_keys)
+    {
+      wset_order_resolve_dependency (tdes, &candidate, &tdes->wset_dependency_lsa);
     }
   else
     {
@@ -5090,14 +5095,17 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
     }
 
 
+  /* Postpone actions are finished and the writeset is stable. Both local and 2PC commits probe here, before
+   * acquiring the log mutex and before releasing the row/MVCCID locks that serialize conflicting writers. */
+  wset_dependency_candidate candidate;
+  wset_order_probe_keys (tdes, 0, &candidate);
+
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
-  /* The label is decided and the commit-order state updated inside this lock, in the order the commits are
-   * logged. Decided before the lock, a label could miss a commit logged in between, and a later commit could
-   * decide its label before a commit-order transaction logged ahead of it raised the history floor: a statement
-   * would then not be a barrier on the slave. */
-  wset_order_find_dependency (tdes, &tdes->wset_dependency_lsa);
+  /* Re-read the boundaries in log order: clear or a barrier may have raised the history floor since probing.
+   * Only constant-time correction remains here; label, commit and baseline still change atomically. */
+  wset_order_resolve_dependency (tdes, &candidate, &tdes->wset_dependency_lsa);
   log_append_wset_label_with_lock (thread_p, tdes, 0);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
   wset_order_record_commit (tdes, commit_lsa);
@@ -6458,9 +6466,8 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	   * committed. */
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	    {
-	      /* Same steps as the local commit in log_commit_local: the dependency is chosen inside the log lock
-	       * right before the label is written, and the keys are published once the commit LSA is known, so a
-	       * two-phase commit orders on the slave like any other commit. */
+	      /* Like a local commit, probe stable keys before the log mutex, resolve the dependency in log order,
+	       * then publish before releasing row and MVCCID locks. */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
 	      assert_release (LSA_ISNULL (&tdes->wset_dependency_lsa)
 			      || LSA_LE (&tdes->wset_dependency_lsa, &commit_lsa));

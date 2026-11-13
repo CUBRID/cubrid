@@ -43,7 +43,7 @@ struct wset_slots
 /* Global history of the writeset: for each key hash, the commit LSA of the last transaction that wrote the key
  * (write_lsa) and of the last one that referenced it (ref_lsa). The TBB map locks one key at a time, so
  * probe and publish of different keys run in parallel; clear is not safe against them, so the caller holds
- * history_lock of LOG_WSET_HISTORY, shared for probe and publish and exclusive for clear. */
+ * history_lock of LOG_WSET_HISTORY, shared for probe and publish and exclusive for swapping out the map. */
 class wset_history_map
 {
   public:
@@ -52,6 +52,7 @@ class wset_history_map
     void publish (LOG_WSET_HASH hash, LOG_WSET_KIND kind, const LOG_LSA &commit_lsa);
     std::size_t size () const;
     void clear ();
+    void swap (wset_history_map &other);
 
   private:
     using map_type = tbb::concurrent_hash_map<LOG_WSET_HASH, LOG_WSET_SLOTS>;

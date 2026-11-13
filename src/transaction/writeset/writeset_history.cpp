@@ -45,7 +45,8 @@ LOG_WSET_HISTORY wset_History;
 static std::atomic<INT64> wset_Publish_reserved { 0 };
 static bool wset_History_initialized = false;
 
-static void wset_history_clear_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out);
+static void wset_history_clear_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out,
+                                       wset_history_map &retired_map);
 static bool wset_history_has_capacity (size_t publish_count);
 static bool wset_history_reserve_capacity (size_t publish_count);
 static void wset_history_release_capacity (size_t publish_count);
@@ -106,17 +107,28 @@ wset_history_lock_for_probe (LOG_LSA *history_start, LOG_LSA *prev_commit_lsa)
   assert (history_start != NULL);
   assert (prev_commit_lsa != NULL);
 
-  pthread_mutex_lock (&wset_History.seq_lock);
-  LSA_COPY (prev_commit_lsa, &wset_History.prev_commit_lsa);
+  /* A clear must wait for readers without holding seq_lock, which committers acquire under the log mutex. */
   pthread_rwlock_rdlock (&wset_History.history_lock);
-  LSA_COPY (history_start, &wset_History.history_start);
-  pthread_mutex_unlock (&wset_History.seq_lock);
+  wset_history_get_boundaries (history_start, prev_commit_lsa);
 }
 
 void
 wset_history_unlock_after_probe (void)
 {
   pthread_rwlock_unlock (&wset_History.history_lock);
+}
+
+/* Read only the ordering boundaries; safe inside prior_lsa_mutex without waiting for history readers. */
+void
+wset_history_get_boundaries (LOG_LSA *history_start, LOG_LSA *prev_commit_lsa)
+{
+  assert (history_start != NULL);
+  assert (prev_commit_lsa != NULL);
+
+  pthread_mutex_lock (&wset_History.seq_lock);
+  LSA_COPY (history_start, &wset_History.history_start);
+  LSA_COPY (prev_commit_lsa, &wset_History.prev_commit_lsa);
+  pthread_mutex_unlock (&wset_History.seq_lock);
 }
 
 bool
@@ -187,7 +199,7 @@ wset_history_publish_entries (LOG_TDES *tdes, size_t begin, size_t end, const LO
 }
 
 static void
-wset_history_clear_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out)
+wset_history_clear_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out, wset_history_map &retired_map)
 {
   assert (clear_floor != NULL);
   assert (!LSA_ISNULL (clear_floor));
@@ -197,7 +209,8 @@ wset_history_clear_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_ou
       LSA_COPY (&wset_History.history_start, clear_floor);
     }
 
-  wset_History.map.clear ();
+  assert (retired_map.size () == 0);
+  wset_History.map.swap (retired_map);
   wset_stat_count_history_clear ();
   LSA_COPY (history_start_out, &wset_History.history_start);
 }
@@ -234,18 +247,20 @@ wset_history_clear_for_commit_order (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 {
   LOG_LSA history_start;
   size_t old_size;
+  wset_history_map retired_map;
 
-  pthread_mutex_lock (&wset_History.seq_lock);
   pthread_rwlock_wrlock (&wset_History.history_lock);
+  pthread_mutex_lock (&wset_History.seq_lock);
   old_size = wset_History.map.size ();
-  wset_history_clear_locked (&wset_History.prev_commit_lsa, &history_start);
-  pthread_rwlock_unlock (&wset_History.history_lock);
+  wset_history_clear_locked (&wset_History.prev_commit_lsa, &history_start, retired_map);
   pthread_mutex_unlock (&wset_History.seq_lock);
+  pthread_rwlock_unlock (&wset_History.history_lock);
 
   WSET_TRACE (1,
-	      "CLEAR trid=%d reason=COMMIT_ORDER_FALLBACK old_size=%zu new_size=0 commit_lsa=%lld|%d history_start=%lld|%d\n",
-	      tdes->trid, old_size, LSA_AS_ARGS (commit_lsa),
-	      LSA_AS_ARGS (&history_start));
+              "CLEAR trid=%d reason=COMMIT_ORDER_FALLBACK old_size=%zu new_size=0 "
+              "commit_lsa=%lld|%d history_start=%lld|%d\n",
+              tdes->trid, old_size, LSA_AS_ARGS (commit_lsa), LSA_AS_ARGS (&history_start));
+  /* retired_map releases the detached entries after both locks have been dropped. */
 }
 
 static void
@@ -253,69 +268,56 @@ wset_history_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end, co
 {
   const size_t publish_count = end - begin;
   LOG_LSA history_start;
-  bool history_cleared = false;
-  bool published;
-  const char *clear_reason = "HISTORY_CAPACITY";
-  size_t old_size = 0;
-  size_t new_size = 0;
 
-  pthread_rwlock_rdlock (&wset_History.history_lock);
-  if (wset_history_reserve_capacity (publish_count))
+  for (;;)
     {
-      published = wset_history_publish_entries (tdes, begin, end, commit_lsa);
-      wset_history_release_capacity (publish_count);
+      bool published = true;
+
+      pthread_rwlock_rdlock (&wset_History.history_lock);
+      if (wset_history_reserve_capacity (publish_count))
+        {
+          published = wset_history_publish_entries (tdes, begin, end, commit_lsa);
+          wset_history_release_capacity (publish_count);
+          pthread_rwlock_unlock (&wset_History.history_lock);
+          if (published)
+            {
+              return;
+            }
+        }
+      else
+        {
+          pthread_rwlock_unlock (&wset_History.history_lock);
+        }
+
+      wset_history_map retired_map;
+      pthread_rwlock_wrlock (&wset_History.history_lock);
+      if (published && wset_history_has_capacity (publish_count))
+        {
+          /* Another publisher cleared the map while we waited. Retry with a shared reservation; never publish
+           * a large writeset with seq_lock or the exclusive history lock held. */
+          pthread_rwlock_unlock (&wset_History.history_lock);
+          continue;
+        }
+
+      size_t old_size = wset_History.map.size ();
+      const char *clear_reason = published ? "HISTORY_CAPACITY" : "OUT_OF_MEMORY";
+      pthread_mutex_lock (&wset_History.seq_lock);
+      wset_history_clear_locked (&wset_History.prev_commit_lsa, &history_start, retired_map);
+      pthread_mutex_unlock (&wset_History.seq_lock);
       pthread_rwlock_unlock (&wset_History.history_lock);
+
       if (published)
-	{
-	  return;
-	}
-    }
-  else
-    {
-      pthread_rwlock_unlock (&wset_History.history_lock);
-      published = true;
-    }
-
-  pthread_mutex_lock (&wset_History.seq_lock);
-  pthread_rwlock_wrlock (&wset_History.history_lock);
-
-  if (!published)
-    {
-      old_size = wset_History.map.size ();
-      wset_history_clear_locked (&wset_History.prev_commit_lsa, &history_start);
-      history_cleared = true;
-      clear_reason = "OUT_OF_MEMORY";
-    }
-  else
-    {
-      if (!wset_history_has_capacity (publish_count))
-	{
-	  old_size = wset_History.map.size ();
-	  wset_history_clear_locked (&wset_History.prev_commit_lsa, &history_start);
-	  history_cleared = true;
-	  wset_stat_count_clear_capacity ();
-	}
-
-      if (!wset_history_publish_entries (tdes, begin, end, commit_lsa))
-	{
-	  old_size = wset_History.map.size ();
-	  wset_history_clear_locked (&wset_History.prev_commit_lsa, &history_start);
-	  history_cleared = true;
-	  clear_reason = "OUT_OF_MEMORY";
-	}
-    }
-
-  new_size = wset_History.map.size ();
-  pthread_rwlock_unlock (&wset_History.history_lock);
-  pthread_mutex_unlock (&wset_History.seq_lock);
-
-  if (history_cleared)
-    {
+        {
+          wset_stat_count_clear_capacity ();
+        }
       WSET_TRACE (1,
-		  "CLEAR trid=%d reason=%s old_size=%zu publish=%zu new_size=%zu commit_lsa=%lld|%d history_start=%lld|%d\n",
-		  tdes->trid, clear_reason, old_size, publish_count, new_size,
-		  LSA_AS_ARGS (commit_lsa),
-		  LSA_AS_ARGS (&history_start));
+                  "CLEAR trid=%d reason=%s old_size=%zu publish=%zu new_size=0 "
+                  "commit_lsa=%lld|%d history_start=%lld|%d\n",
+                  tdes->trid, clear_reason, old_size, publish_count, LSA_AS_ARGS (commit_lsa),
+                  LSA_AS_ARGS (&history_start));
+      /* The floor covers this commit and every entry detached with the old map. Re-publishing this writeset
+       * would add no ordering information. retired_map is destroyed only after both locks are released. */
+      return;
     }
 }
 
