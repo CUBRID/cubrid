@@ -542,10 +542,10 @@ struct log_tdes
     std::vector < LOG_WSET_ENTRY > wset_hashes;	/* writeset keys collected this transaction */
   bool wset_overflow;		/* This transaction's writeset was dropped and is no longer used. Set when the
 				 * per-transaction key limit is exceeded or when the change is replicated as a
-				 * statement. Keeping only part of the keys is not safe, so probe/flush use
-				 * commit-order replication instead. Technical key collection failures are
-				 * returned to the DML path and do not set this flag. */
-  int wset_fallback_reason;	/* WSET_FALLBACK_REASON that set wset_overflow, counted at commit; statistics only */
+				 * statement or key index information is unavailable. A partial writeset is unsafe, so
+				 * probe/flush use commit-order replication instead. Technical key collection failures
+				 * are returned to the DML path and do not set this flag. */
+  WSET_FALLBACK_REASON wset_fallback_reason;	/* reason that set wset_overflow, counted at commit; statistics only */
   LOG_LSA wset_dependency_lsa;	/* dependency selected from writeset history, carried by the WSET_LABEL
 				 * record just before this transaction's commit record */
 

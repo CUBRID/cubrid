@@ -55,6 +55,7 @@ struct wset_statistics
   std::atomic<UINT64> fallback_key_limit_count { 0 };	/* ... because the transaction had too many keys */
   std::atomic<UINT64> fallback_statement_count { 0 };	/* ... because a change used statement replication */
   std::atomic<UINT64> fallback_nan_count { 0 };	/* ... because a constraint key was NaN */
+  std::atomic<UINT64> fallback_key_unavailable_count { 0 }; /* ... because key index information was unavailable */
   std::atomic<UINT64> conflict_ref_count { 0 };	/* commits whose dependency is a referencer of one of its keys */
   std::atomic<UINT64> conflict_write_count { 0 };	/* commits whose dependency is a writer of one of its keys */
   std::atomic<UINT64> clear_capacity_count { 0 };	/* times the history was cleared because it was full */
@@ -169,6 +170,9 @@ wset_stat_count_commit (bool fallback, WSET_FALLBACK_REASON reason)
 	case WSET_FALLBACK_NAN_KEY:
 	  WSET_STAT_ADD (fallback_nan_count);
 	  break;
+	case WSET_FALLBACK_KEY_UNAVAILABLE:
+	  WSET_STAT_ADD (fallback_key_unavailable_count);
+	  break;
 	default:
 	  assert (false);
 	  break;
@@ -195,7 +199,7 @@ int
 wset_status_start_scan (THREAD_ENTRY *thread_p, int type, DB_VALUE **arg_values, int arg_cnt, void **ptr)
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
-  const int num_cols = 16;
+  const int num_cols = 17;
   DB_VALUE *vals = NULL;
   DB_DATETIME start_time;
   INT64 history_size = 0;
@@ -234,6 +238,7 @@ wset_status_start_scan (THREAD_ENTRY *thread_p, int type, DB_VALUE **arg_values,
   WSET_STATUS_COUNTER (fallback_key_limit_count);
   WSET_STATUS_COUNTER (fallback_statement_count);
   WSET_STATUS_COUNTER (fallback_nan_count);
+  WSET_STATUS_COUNTER (fallback_key_unavailable_count);
   WSET_STATUS_COUNTER (conflict_ref_count);
   WSET_STATUS_COUNTER (conflict_write_count);
   WSET_STATUS_COUNTER (clear_capacity_count);

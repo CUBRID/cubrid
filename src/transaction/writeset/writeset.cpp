@@ -79,6 +79,8 @@ wset_fallback_reason_name (WSET_FALLBACK_REASON reason)
       return "STATEMENT_REPLICATION";
     case WSET_FALLBACK_NAN_KEY:
       return "NAN_KEY";
+    case WSET_FALLBACK_KEY_UNAVAILABLE:
+      return "KEY_UNAVAILABLE";
     default:
       return "UNKNOWN";
     }
@@ -186,7 +188,7 @@ wset_switch_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
 	      (long long) wset_config_get_key_limit ());
 
   tdes->wset_overflow = true;
-  tdes->wset_fallback_reason = (int) reason;
+  tdes->wset_fallback_reason = reason;
   std::vector<LOG_WSET_ENTRY> ().swap (tdes->wset_hashes);
   wset_stat_count_fallback ();
 }

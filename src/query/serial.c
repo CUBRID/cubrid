@@ -1619,7 +1619,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 	      {
 		if (BTID_IS_NULL (&serial_Cached_btid))
 		  {
-		    wset_switch_to_commit_order (serial_tdes, WSET_FALLBACK_STATEMENT_REPLICATION);
+		    wset_switch_to_commit_order (serial_tdes, WSET_FALLBACK_KEY_UNAVAILABLE);
 		  }
 		else if (wset_add_write_key (serial_tdes, serial_class_oidp, &serial_Cached_btid.vfid, key_val)
 			 != NO_ERROR)
