@@ -76,6 +76,7 @@ static int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
 
 /* error code specific to this file */
 static int xts_Xasl_errcode = NO_ERROR;
+static bool xts_Has_sp_call = false;
 
 /* CBRD-27583: a filter index predicate, a function index or a partition expression stream is being packed - it
  * carries no comparison decision (its unpack decides, stx_decide_stream_compare) */
@@ -334,7 +335,12 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     + sizeof (int)		/* xasl->n_oid_list */
     + sizeof (OID) * xasl_tree->n_oid_list	/* xasl->class_oid_list */
     + sizeof (int) * xasl_tree->n_oid_list	/* xasl->class_locks */
-    + sizeof (int) * xasl_tree->n_oid_list;	/* xasl->tcard_list */
+    + sizeof (int) * xasl_tree->n_oid_list	/* xasl->tcard_list */
+    + sizeof (int)		/* xasl->stmt_flags */
+    + sizeof (int)		/* xasl->n_write_oid_list */
+    + sizeof (OID) * xasl_tree->n_write_oid_list	/* xasl->write_class_oid_list */
+    + sizeof (int)		/* xasl->n_read_oid_list */
+    + sizeof (OID) * xasl_tree->n_read_oid_list;	/* xasl->read_class_oid_list */
 
   offset = sizeof (int)		/* [size of header data] */
     + header_size		/* [header data] */
@@ -346,6 +352,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   xts_reserve_location_in_stream (offset);
 
   xts_id_serial = 0;
+  xts_Has_sp_call = false;
 
 #if !defined(NDEBUG)
   /* suppress valgrind UMW error */
@@ -381,6 +388,17 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
   for (i = 0; i < xasl_tree->n_oid_list; i++)
     {
       p = or_pack_int (p, xasl_tree->tcard_list[i]);
+    }
+  p = or_pack_int (p, xasl_tree->stmt_flags | (xts_Has_sp_call ? XASL_STMT_HAS_SP_CALL : 0));
+  p = or_pack_int (p, xasl_tree->n_write_oid_list);
+  for (i = 0; i < xasl_tree->n_write_oid_list; i++)
+    {
+      p = or_pack_oid (p, &xasl_tree->write_class_oid_list[i]);
+    }
+  p = or_pack_int (p, xasl_tree->n_read_oid_list);
+  for (i = 0; i < xasl_tree->n_read_oid_list; i++)
+    {
+      p = or_pack_oid (p, &xasl_tree->read_class_oid_list[i]);
     }
 
   /* set body size of new XASL format */
@@ -5889,6 +5907,7 @@ xts_pack_regu_variable_value (char *ptr, const REGU_VARIABLE * regu_var)
       break;
 
     case TYPE_SP:
+      xts_Has_sp_call = true;
       offset = xts_save_sp_type (regu_var->value.sp_ptr);
       if (offset == ER_FAILED)
 	{

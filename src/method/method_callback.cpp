@@ -281,7 +281,15 @@ namespace cubmethod
 	     && h->get_user_name ().compare (au_get_current_user_name ()) == 0;
     });
 
-    if (handler == nullptr)
+    if (handler != nullptr && handler->is_execute_prepare () && handler->prepare_in_new_session (flag) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	logddl_set_callback_stmt (handler->get_statement_type (), (char *) sql.c_str (), sql.size (),
+				  m_error_ctx.get_error (), NULL);
+	free_query_handle (handler->get_id (), true);
+	handler = nullptr;
+      }
+    else if (handler == nullptr)
       {
 	/* not found in statement handler cache */
 	handler = new_query_handler ();
@@ -341,7 +349,24 @@ namespace cubmethod
       }
     else
       {
-	int error = handler->execute (request);
+	bool retried = !handler->is_prepared ();
+	int error = retried ? handler->prepare_retry () : NO_ERROR;
+	if (error == NO_ERROR)
+	  {
+	    error = handler->execute (request);
+	  }
+
+	/* XASL cache is not found */
+	if (error == ER_QPROC_INVALID_XASLNODE && !retried)
+	  {
+	    m_error_ctx.clear ();
+	    error = handler->prepare_retry ();
+	    if (error == NO_ERROR)
+	      {
+		error = handler->execute (request);
+	      }
+	  }
+
 	if (error == NO_ERROR)
 	  {
 	    /* register query_id for out resultset */
@@ -354,18 +379,7 @@ namespace cubmethod
 	  }
 	else
 	  {
-	    /* XASL cache is not found */
-	    if (error == ER_QPROC_INVALID_XASLNODE)
-	      {
-		m_error_ctx.clear ();
-		handler->prepare_retry ();
-		error = handler->execute (request);
-	      }
-
-	    if (error != NO_ERROR)
-	      {
-		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	      }
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	  }
 
 	/* DDL audit */
@@ -474,12 +488,6 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
-    if (sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_UPDATE) != NO_ERROR)
-      {
-	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
-      }
-
     int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
     if (m_error_ctx.has_error())
       {
@@ -502,12 +510,6 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
-    if (cmd == OID_DROP && sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_DELETE) != NO_ERROR)
-      {
-	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
-      }
-
     int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
     if (m_error_ctx.has_error())
       {
@@ -529,13 +531,6 @@ namespace cubmethod
     // args
     collection_cmd_request request;
     request.unpack (unpacker);
-
-    if (request.command != COL_GET && request.command != COL_SIZE
-	&& sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_UPDATE) != NO_ERROR)
-      {
-	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
-      }
 
     int result = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
 		 request.value);
@@ -1257,7 +1252,15 @@ exit:
 	if (is_free)
 	  {
 	    // clear <SQL string -> handler ID>
-	    m_sql_handler_map.erase (m_query_handlers[id]->get_sql_stmt());
+	    auto range = m_sql_handler_map.equal_range (m_query_handlers[id]->get_sql_stmt ());
+	    for (auto it = range.first; it != range.second; it++)
+	      {
+		if (it->second == id)
+		  {
+		    m_sql_handler_map.erase (it);
+		    break;
+		  }
+	      }
 
 	    m_deferred_query_free_handler.push_back (m_query_handlers[id]);
 	    m_query_handlers[id] = nullptr;

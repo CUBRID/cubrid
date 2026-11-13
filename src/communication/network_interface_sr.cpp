@@ -88,6 +88,7 @@
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
+#include "xasl_stream.hpp"
 #include "elo.h"
 #include "transaction_transient.hpp"
 #include "method_invoke_group.hpp"
@@ -5506,10 +5507,11 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   XASL_ID xasl_id;
   char *ptr = NULL;
   char *reply = NULL, *reply_buffer = NULL;
-  int csserror, reply_buffer_size = 0, get_xasl_header = 0;
+  int csserror, reply_buffer_size = 0, get_xasl_header = 0, get_stmt_info = 0;
   int xasl_cache_pinned = 0, recompile_xasl_cache_pinned = 0;
   int recompile_xasl = 0;
   XASL_NODE_HEADER xasl_header;
+  XASL_STMT_INFO stmt_info;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int error = NO_ERROR;
   COMPILE_CONTEXT context = { NULL, NULL, 0, NULL, NULL, 0, false, false, false, SHA1_HASH_INITIALIZER };
@@ -5533,6 +5535,7 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &stream.buffer_size);
   /* unpack get XASL node header boolean */
   ptr = or_unpack_int (ptr, &get_xasl_header);
+  ptr = or_unpack_int (ptr, &get_stmt_info);
   /* unpack pinned xasl cache flag boolean */
   ptr = or_unpack_int (ptr, &xasl_cache_pinned);
   context.is_xasl_pinned_reference = (bool) xasl_cache_pinned;
@@ -5550,6 +5553,11 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
       /* need to get XASL node header */
       stream.xasl_header = &xasl_header;
       INIT_XASL_NODE_HEADER (stream.xasl_header);
+    }
+
+  if (get_stmt_info)
+    {
+      stream.stmt_info = &stmt_info;
     }
 
   if (stream.buffer_size > 0)
@@ -5601,10 +5609,15 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     {
       /* Check if we need to force client to recompile. */
       force_recompile = !was_recompile_xasl && context.recompile_xasl;
-      if (stream.xasl_id != NULL && !XASL_ID_IS_NULL (stream.xasl_id) && (get_xasl_header || force_recompile))
+      if (stream.xasl_id != NULL && !XASL_ID_IS_NULL (stream.xasl_id)
+	  && (get_xasl_header || get_stmt_info || force_recompile))
 	{
 	  /* pack XASL node header */
 	  reply_buffer_size = get_xasl_header ? XASL_NODE_HEADER_SIZE : 0;
+	  if (get_stmt_info)
+	    {
+	      reply_buffer_size += OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE * (int) stmt_info.write_class_oids.size ();
+	    }
 	  reply_buffer_size += force_recompile ? OR_INT_SIZE : 0;
 	  assert (reply_buffer_size > 0);
 
@@ -5621,6 +5634,15 @@ sqmgr_prepare_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 	      if (get_xasl_header)
 		{
 		  OR_PACK_XASL_NODE_HEADER (ptr, stream.xasl_header);
+		}
+	      if (get_stmt_info)
+		{
+		  ptr = or_pack_int (ptr, stmt_info.stmt_flags);
+		  ptr = or_pack_int (ptr, (int) stmt_info.write_class_oids.size ());
+		  for (const OID &oid : stmt_info.write_class_oids)
+		    {
+		      ptr = or_pack_oid (ptr, &oid);
+		    }
 		}
 	      if (force_recompile)
 		{
@@ -6815,6 +6837,77 @@ sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY *thread_p, unsigned int rid, char *
 
   /* send reply and data to the client */
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sqmgr_get_xasl_stmt_info - Process a NET_SERVER_QM_QUERY_GET_STMT_INFO request
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in): the XASL_ID
+ *   reqlen(in):
+ *
+ * NOTE: This function is a counter part to qmgr_get_xasl_stmt_info().
+ */
+void
+sqmgr_get_xasl_stmt_info (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  XASL_ID xasl_id;
+  XASL_STMT_INFO stmt_info;
+  bool found = false;
+  char *ptr, *reply, *reply_buffer = NULL;
+  int reply_buffer_size = 0;
+  int error;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = request;
+  OR_UNPACK_XASL_ID (ptr, &xasl_id);
+
+  error = xqmgr_get_xasl_stmt_info (thread_p, &xasl_id, &stmt_info, &found);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      found = false;
+    }
+  else if (found)
+    {
+      reply_buffer_size = OR_INT_SIZE + OR_INT_SIZE + OR_OID_SIZE * (int) stmt_info.write_class_oids.size ();
+      reply_buffer = (char *) malloc (reply_buffer_size);
+      if (reply_buffer == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) reply_buffer_size);
+	  (void) return_error_to_client (thread_p, rid);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  reply_buffer_size = 0;
+	  found = false;
+	}
+      else
+	{
+	  ptr = or_pack_int (reply_buffer, stmt_info.stmt_flags);
+	  ptr = or_pack_int (ptr, (int) stmt_info.write_class_oids.size ());
+	  for (const OID &oid : stmt_info.write_class_oids)
+	    {
+	      ptr = or_pack_oid (ptr, &oid);
+	    }
+	}
+    }
+
+  ptr = or_pack_int (reply, reply_buffer_size);
+  ptr = or_pack_int (ptr, error);
+  ptr = or_pack_int (ptr, found ? 1 : 0);
+
+  auto deleter = [reply_buffer]() noexcept
+  {
+    if (reply_buffer != NULL)
+      {
+	free (reply_buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), reply_buffer,
+				     reply_buffer_size, std::move (deleter));
 }
 
 /*

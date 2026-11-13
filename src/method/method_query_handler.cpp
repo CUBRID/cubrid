@@ -36,6 +36,33 @@ extern void jsp_unset_prepare_call ();
 
 namespace cubmethod
 {
+  /*
+   * is_same_column_list () - whether two prepares of a statement give the same result columns
+   *   return: true when they are the same
+   *   a(in): the columns of one prepare
+   *   b(in): the columns of the other
+   */
+  static bool
+  is_same_column_list (const std::vector<column_info> &a, const std::vector<column_info> &b)
+  {
+    if (a.size () != b.size ())
+      {
+	return false;
+      }
+
+    for (size_t i = 0; i < a.size (); i++)
+      {
+	if (a[i].db_type != b[i].db_type || a[i].set_type != b[i].set_type || a[i].scale != b[i].scale
+	    || a[i].prec != b[i].prec || a[i].charset != b[i].charset || a[i].col_name != b[i].col_name
+	    || a[i].attr_name != b[i].attr_name || a[i].class_name != b[i].class_name)
+	  {
+	    return false;
+	  }
+      }
+
+    return true;
+  }
+
   query_handler::query_handler (error_context &ctx, int id)
     : m_id (id)
     , m_tid (NULL_TRANID)
@@ -109,6 +136,15 @@ namespace cubmethod
   query_handler::get_statement_type () const
   {
     return m_stmt_type;
+  }
+
+  bool
+  query_handler::is_execute_prepare () const
+  {
+    const PT_NODE *statement = (m_is_prepared && m_session != NULL) ? db_get_statement (m_session,
+			       m_query_result.stmt_id - 1) : NULL;
+
+    return statement != NULL && statement->node_type == PT_EXECUTE_PREPARE;
   }
 
   uint64_t
@@ -233,11 +269,37 @@ namespace cubmethod
   int
   query_handler::prepare_retry ()
   {
-    if (is_prepared ())
+    if (m_sql_stmt.empty ())
       {
-	return prepare (m_sql_stmt, m_prepare_flag);
+	return ER_FAILED;
       }
-    return ER_FAILED;
+
+    std::vector<column_info> column_infos = m_prepare_info.column_infos;
+    int error = prepare_in_new_session (m_prepare_flag);
+
+    if (error != NO_ERROR)
+      {
+	m_prepare_info.column_infos = column_infos;
+      }
+    else if (has_stmt_result_set (m_query_result.stmt_type)
+	     && !is_same_column_list (column_infos, m_prepare_info.column_infos))
+      {
+	close_and_free_session ();
+	m_is_prepared = false;
+	m_prepare_info.column_infos = column_infos;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	error = ER_QPROC_INVALID_XASLNODE;
+      }
+
+    return error;
+  }
+
+  int
+  query_handler::prepare_in_new_session (int flag)
+  {
+    close_and_free_session ();
+    m_prepare_info.column_infos.clear ();
+    return prepare (m_sql_stmt, flag);
   }
 
   int
@@ -747,7 +809,7 @@ namespace cubmethod
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
     if (n < 0)
       {
-	return ER_FAILED;
+	return n;
       }
     else if (result != NULL)
       {

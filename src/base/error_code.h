@@ -1798,8 +1798,9 @@
 #define ER_SP_TCL_DDL_IN_QUERY                      -1392
 #define ER_SP_TCL_DDL_IN_TRIGGER                    -1393
 #define ER_SP_DML_IN_QUERY                          -1394
+#define ER_SP_TABLE_REFERENCED                      -1395
 
-#define ER_LAST_ERROR                               -1395
+#define ER_LAST_ERROR                               -1396
 
 
 /*

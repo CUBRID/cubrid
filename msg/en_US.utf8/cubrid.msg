@@ -1506,9 +1506,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
 1392 Cannot perform %1$s inside a query or DML statement.
 1393 Cannot perform %1$s in a trigger.
-1394 Cannot perform a DML operation inside a query or DML statement.
+1394 Cannot perform a DML operation inside a query.
+1395 The stored procedure cannot modify table "%1$s" because the statement references it.
 
-1395 Last Error
+1396 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

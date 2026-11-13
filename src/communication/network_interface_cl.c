@@ -83,6 +83,7 @@
 #endif // SA_MODE
 
 #include "xasl.h"
+#include "xasl_stream.hpp"
 #include "lob_locator.hpp"
 #include "crypt_opfunc.h"
 #include "method_error.hpp"
@@ -7352,6 +7353,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
   char *request = NULL, *reply = NULL, *ptr = NULL, *reply_buffer = NULL;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_XASL_ID_SIZE) a_reply;
   int get_xasl_header = stream->xasl_header != NULL;
+  int get_stmt_info = stream->stmt_info != NULL;
 
   INIT_XASL_NODE_HEADER (stream->xasl_header);
 
@@ -7368,6 +7370,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 
   request_size += OR_INT_SIZE;	/* size */
   request_size += OR_INT_SIZE;	/* get_xasl_header */
+  request_size += OR_INT_SIZE;	/* get_stmt_info */
   request_size += OR_INT_SIZE;	/* whether to pin xasl cache entry */
   request_size += OR_INT_SIZE;	/* whether to recompile the pinned xasl cache entry */
   request_size += OR_INT_SIZE;	/* context->recompile_xasl */
@@ -7391,6 +7394,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
   ptr = or_pack_int (ptr, stream->buffer_size);
   /* Pack get_xasl_header. */
   ptr = or_pack_int (ptr, get_xasl_header);
+  ptr = or_pack_int (ptr, get_stmt_info);
   /* Pack context. */
   ptr = or_pack_int (ptr, (int) context->is_xasl_pinned_reference);
   ptr = or_pack_int (ptr, (int) context->recompile_xasl_pinned);
@@ -7418,6 +7422,19 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 	      if (get_xasl_header)
 		{
 		  OR_UNPACK_XASL_NODE_HEADER (ptr, stream->xasl_header);
+		}
+	      if (get_stmt_info)
+		{
+		  int n_write_class_oids;
+		  OID oid;
+
+		  ptr = or_unpack_int (ptr, &stream->stmt_info->stmt_flags);
+		  ptr = or_unpack_int (ptr, &n_write_class_oids);
+		  for (int i = 0; i < n_write_class_oids; i++)
+		    {
+		      ptr = or_unpack_oid (ptr, &oid);
+		      stream->stmt_info->write_class_oids.push_back (oid);
+		    }
 		}
 	      if (ptr < reply_buffer + reply_buffer_size)
 		{
@@ -7461,6 +7478,7 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
    */
   server_stream.xasl_id = stream->xasl_id;
   server_stream.xasl_header = stream->xasl_header;
+  server_stream.stmt_info = stream->stmt_info;
   server_stream.buffer_size = stream->buffer_size;
   if (stream->buffer_size > 0)
     {
@@ -8198,6 +8216,78 @@ qmgr_drop_query_plans_by_sha1 (const char *sha1)
   exit_server (*thread_p);
 
   return status;
+#endif /* !CS_MODE */
+}
+
+/*
+ * qmgr_get_xasl_stmt_info - Send a NET_SERVER_QM_QUERY_GET_STMT_INFO request to the server
+ *
+ * return: NO_ERROR or error code
+ *
+ *   xasl_id(in): the XASL
+ *   stmt_info(out): its stmt_flags and the classes it writes
+ *   found(out): whether the XASL cache still has the XASL
+ *
+ * NOTE: This function is a counter part to sqmgr_get_xasl_stmt_info().
+ */
+int
+qmgr_get_xasl_stmt_info (const XASL_ID * xasl_id, XASL_STMT_INFO * stmt_info, bool * found)
+{
+#if defined(CS_MODE)
+  int error = NO_ERROR, req_error, reply_buffer_size = 0, found_int = 0, n_write_class_oids = 0, i;
+  OR_ALIGNED_BUF (OR_XASL_ID_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *request, *reply, *ptr, *reply_buffer = NULL;
+  OID oid;
+
+  *found = false;
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = request;
+  OR_PACK_XASL_ID (ptr, xasl_id);
+
+  req_error =
+    net_client_request2 (NET_SERVER_QM_QUERY_GET_STMT_INFO, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &reply_buffer, &reply_buffer_size);
+  if (req_error)
+    {
+      return req_error;
+    }
+
+  ptr = or_unpack_int (reply, &reply_buffer_size);
+  ptr = or_unpack_int (ptr, &error);
+  ptr = or_unpack_int (ptr, &found_int);
+  if (error == NO_ERROR && found_int && reply_buffer != NULL)
+    {
+      ptr = or_unpack_int (reply_buffer, &stmt_info->stmt_flags);
+      ptr = or_unpack_int (ptr, &n_write_class_oids);
+      stmt_info->class_oids.clear ();
+      stmt_info->write_class_oids.clear ();
+      for (i = 0; i < n_write_class_oids; i++)
+	{
+	  ptr = or_unpack_oid (ptr, &oid);
+	  stmt_info->write_class_oids.push_back (oid);
+	}
+      *found = true;
+    }
+
+  if (reply_buffer != NULL)
+    {
+      free_and_init (reply_buffer);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int error;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  error = xqmgr_get_xasl_stmt_info (thread_p, xasl_id, stmt_info, found);
+
+  exit_server (*thread_p);
+
+  return error;
 #endif /* !CS_MODE */
 }
 
@@ -11639,6 +11729,7 @@ error:
   sp_Sa_query_request = false;
   {
     DB_VALUE ret_value;
+    db_make_null (&ret_value);
     cubpl::executor executor ((cubpl::pl_signature &) sig);
     req_error = executor.fetch_args_peek (args);
     if (req_error == NO_ERROR)

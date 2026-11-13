@@ -530,3 +530,81 @@ xasl_stream_compare (const cubxasl::json_table::spec_node &first, const cubxasl:
     }
   return true;
 }
+
+static char *
+xasl_stream_unpack_class_oid_count (char *xasl_stream, int &n_oid_list)
+{
+  char *ptr;
+  int value;
+  OID creator_oid;
+
+  ptr = or_unpack_int (xasl_stream, &value);	/* header size */
+  ptr = or_unpack_int (ptr, &value);	/* dbval_cnt */
+  ptr = or_unpack_oid (ptr, &creator_oid);
+  return or_unpack_int (ptr, &n_oid_list);
+}
+
+/*
+ * xasl_stream_get_stmt_flags () - the stmt_flags of an XASL stream header (xts_map_xasl_to_stream ())
+ *   return: XASL_STMT_* flags
+ *   xasl_stream(in): the XASL stream
+ */
+int
+xasl_stream_get_stmt_flags (char *xasl_stream)
+{
+  char *ptr;
+  int n_oid_list, stmt_flags;
+
+  ptr = xasl_stream_unpack_class_oid_count (xasl_stream, n_oid_list);
+  ptr += n_oid_list * (OR_OID_SIZE + OR_INT_SIZE + OR_INT_SIZE);
+  (void) or_unpack_int (ptr, &stmt_flags);
+
+  return stmt_flags;
+}
+
+/*
+ * xasl_stream_get_stmt_info () - the classes an XASL stream header (xts_map_xasl_to_stream ()) says the statement
+ *                                reads and writes, and its stmt_flags
+ *   xasl_stream(in): the XASL stream
+ *   stmt_info(out): the statement information
+ */
+void
+xasl_stream_get_stmt_info (char *xasl_stream, xasl_stmt_info &stmt_info)
+{
+  char *ptr;
+  int n_oid_list, n_write_oid_list, n_read_oid_list, lock, i;
+  OID oid;
+
+  stmt_info.class_oids.clear ();
+  stmt_info.write_class_oids.clear ();
+
+  ptr = xasl_stream_unpack_class_oid_count (xasl_stream, n_oid_list);
+  for (i = 0; i < n_oid_list; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid);
+      stmt_info.class_oids.push_back (oid);
+    }
+  for (i = 0; i < n_oid_list; i++)
+    {
+      ptr = or_unpack_int (ptr, &lock);
+      if (lock == IX_LOCK)
+	{
+	  stmt_info.write_class_oids.push_back (stmt_info.class_oids[i]);
+	}
+    }
+  ptr += n_oid_list * OR_INT_SIZE;	/* tcard_list */
+
+  ptr = or_unpack_int (ptr, &stmt_info.stmt_flags);
+  ptr = or_unpack_int (ptr, &n_write_oid_list);
+  for (i = 0; i < n_write_oid_list; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid);
+      stmt_info.write_class_oids.push_back (oid);
+    }
+  ptr = or_unpack_int (ptr, &n_read_oid_list);
+  for (i = 0; i < n_read_oid_list; i++)
+    {
+      ptr = or_unpack_oid (ptr, &oid);
+      stmt_info.class_oids.push_back (oid);
+    }
+}

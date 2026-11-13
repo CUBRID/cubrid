@@ -69,6 +69,7 @@ struct bo_restart_arg;
 struct compile_context;
 struct xasl_node_header;
 struct xasl_stream;
+struct xasl_stmt_info;
 
 /* killtran supporting structures and functions */
 typedef struct one_tran_info ONE_TRAN_INFO;
@@ -289,6 +290,7 @@ extern int qmgr_drop_all_query_plans (void);
 extern int qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply);
 extern int qmgr_drop_query_plans_by_sha1 (const char *sha1);
 extern int qmgr_drop_query_clones (const char *sha1);
+extern int qmgr_get_xasl_stmt_info (const XASL_ID * xasl_id, struct xasl_stmt_info *stmt_info, bool * found);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
 #if defined(ENABLE_UNUSED_FUNCTION)

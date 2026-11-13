@@ -53,6 +53,7 @@
 #include "execute_statement.h"
 #include "log_lsa.hpp"
 #include "object_primitive.h"
+#include "sp_context_rules.hpp"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
@@ -5584,6 +5585,11 @@ locator_add_instance (MOBJ instance, MOP class_mop)
 {
   MOP mop;			/* Mop of newly created instance */
   OID temp_oid;			/* A temporarily OID for the newly created instance */
+
+  if (sp_In_sql_depth > 0 && sp_check_object_write (class_mop) != NO_ERROR)
+    {
+      return NULL;
+    }
 
   /*
    * Make sure that there is a heap for the instance. We cannot postpone

@@ -61,6 +61,7 @@
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
+#include "sp_context_rules.hpp"
 
 #define BUF_SIZE 1024
 
@@ -108,6 +109,8 @@ static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_lis
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
 static void db_untype_null_host_variables (PARSER_CONTEXT * parser);
+static int db_do_statement_with_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement,
+					   int (*do_func) (PARSER_CONTEXT *, PT_NODE *));
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -1661,6 +1664,7 @@ db_compile_statement_local (DB_SESSION * session)
   statement = session->statements[stmt_ndx];
   statement->flag.use_plan_cache = 0;
   parser->flag.needs_bound_hostvar = 0;
+  parser->flag.regu_has_sp_call = 0;
   statement->flag.use_query_cache = 0;
 
   statement->flag.is_system_generated_stmt = parser->flag.is_system_generated_stmt;
@@ -3173,6 +3177,42 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 }
 
 /*
+ * db_do_statement_with_savepoint () - run a statement, inside the statement savepoint when
+ *				      sp_statement_needs_savepoint () says so
+ *   return: error code
+ *   parser(in): parser context
+ *   statement(in): the statement
+ *   do_func(in): do_statement () or do_execute_statement ()
+ */
+static int
+db_do_statement_with_savepoint (PARSER_CONTEXT * parser, PT_NODE * statement,
+				int (*do_func) (PARSER_CONTEXT *, PT_NODE *))
+{
+  int err;
+
+  if (!sp_statement_needs_savepoint (statement))
+    {
+      return do_func (parser, statement);
+    }
+
+  err = tran_system_savepoint (SP_STATEMENT_SAVEPOINT_NAME);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  sp_statement_savepoint_guard savepoint_guard;
+
+  err = do_func (parser, statement);
+  if (err < NO_ERROR && err != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (SP_STATEMENT_SAVEPOINT_NAME);
+    }
+
+  return err;
+}
+
+/*
  * db_execute_and_keep_statement_local() - This function executes the SQL
  *    statement identified by the stmt argument and returns the result.
  *    The statement ID must have already been returned by a successful call
@@ -3502,7 +3542,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	}
 
       /* now, execute the statement by calling do_execute_statement() */
-      err = do_execute_statement (parser, statement);
+      err = db_do_statement_with_savepoint (parser, statement, do_execute_statement);
       if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE
 	    || err == ER_QPROC_RESULT_CACHE_INVALID) && session->stage[stmt_ndx] == StatementPreparedStage)
 	  || (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && session->stage[stmt_ndx] == StatementExecutedStage))
@@ -3540,7 +3580,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		      /* the variant's remembered XASL_ID was stale; keep the fresh one */
 		      db_bind_variant_remember (statement);
 		    }
-		  err = do_execute_statement (parser, statement);
+		  err = db_do_statement_with_savepoint (parser, statement, do_execute_statement);
 		}
 	    }
 	  else if (cls_status == DB_CLASS_MODIFIED)
@@ -3619,7 +3659,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	    }
 	}
 
-      err = do_statement (parser, statement);
+      err = db_do_statement_with_savepoint (parser, statement, do_statement);
     }
 
   do_Trigger_involved = false;

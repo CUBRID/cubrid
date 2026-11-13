@@ -12778,6 +12778,10 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
 	}
     }
 
+  if (subq != NULL && subq->flag.has_sp_call && saved_top != NULL)
+    {
+      saved_top->flag.has_sp_call = 1;
+    }
   sc_info_ptr->top_node = saved_top;
 
   return pt_has_error (parser) ? NULL : subq;

@@ -117,6 +117,13 @@ struct xasl_node_header
     } \
   while (0)
 
+/* stmt_flags of an XASL, about the SQL statement it was generated for */
+#define XASL_STMT_HAS_SP_CALL		0x01	/* a stored procedure is called while it runs */
+#define XASL_STMT_WRITE_CASCADES	0x02	/* it updates or deletes rows, so a foreign key action can follow */
+#define XASL_STMT_FOR_UPDATE		0x04	/* a SELECT ... FOR UPDATE, which locks the rows for write */
+
+struct xasl_stmt_info;
+
 /************************************************************************/
 /* Enumerations                                                         */
 /************************************************************************/
@@ -829,6 +836,8 @@ struct xasl_stream
 
   char *buffer;
   int buffer_size;
+
+  struct xasl_stmt_info *stmt_info;	/* requested by prepare when not NULL (xasl_stream.hpp) */
 };
 
 #define XASL_STREAM_HEADER_PTR(stream) \
@@ -1379,6 +1388,11 @@ struct xasl_node
   OID *class_oid_list;		/* list of class/serial OIDs referenced in the XASL */
   int *class_locks;		/* list of locks for class_oid_list. */
   int *tcard_list;		/* list of #pages of the class OIDs */
+  int stmt_flags;		/* XASL_STMT_* */
+  int n_write_oid_list;		/* size of write_class_oid_list */
+  OID *write_class_oid_list;	/* classes the statement writes that class_locks does not mark IX */
+  int n_read_oid_list;		/* size of read_class_oid_list */
+  OID *read_class_oid_list;	/* classes the statement reads that class_oid_list misses */
   const char *query_alias;
   int dbval_cnt;		/* number of host variables in this XASL */
   bool iscan_oid_order;

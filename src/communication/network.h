@@ -301,7 +301,10 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE) \
   \
   /* progress of UPDATE STATISTICS ON ALL CLASSES, written to the event log */ \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_LOG_STATS_PROGRESS)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_LOG_STATS_PROGRESS) \
+  \
+  /* what the cached XASL of an XASL_ID writes, for a stored procedure inside a SQL statement */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QM_QUERY_GET_STMT_INFO)
 
 enum net_server_request
 {

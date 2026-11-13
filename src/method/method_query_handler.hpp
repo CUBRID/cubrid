@@ -81,6 +81,7 @@ namespace cubmethod
       /* request */
       int prepare (std::string sql, int flag);
       int prepare_retry ();
+      int prepare_in_new_session (int flag);
       int prepare_compile (const std::string &sql);
 
       int execute (const execute_request &request);
@@ -95,6 +96,7 @@ namespace cubmethod
       int get_id () const;
       std::string get_sql_stmt () const;
       int get_statement_type () const;
+      bool is_execute_prepare () const;
       std::string get_user_name () const;
 
       uint64_t get_query_id () const;

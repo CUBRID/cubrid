@@ -270,6 +270,11 @@ namespace cubmethod
     if (cmd == OID_DROP)
       {
 	error = db_drop (obj);
+	if (error < 0)
+	  {
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
       }
     else if (cmd == OID_IS_INSTANCE)
       {
@@ -302,6 +307,11 @@ namespace cubmethod
 	    return ER_FAILED;
 	  }
 	error = db_lock_read (obj);
+	if (error < 0)
+	  {
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
       }
     else if (cmd == OID_LOCK_WRITE)
       {
@@ -311,6 +321,11 @@ namespace cubmethod
 	    return ER_FAILED;
 	  }
 	error = db_lock_write (obj);
+	if (error < 0)
+	  {
+	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	    return ER_FAILED;
+	  }
       }
     else if (cmd == OID_CLASS_NAME)
       {
@@ -448,7 +463,11 @@ namespace cubmethod
       case COL_SEQ_PUT:
 	if (error >= 0)
 	  {
-	    db_put (obj, name, &val);
+	    error = db_put (obj, name, &val);
+	    if (error < 0)
+	      {
+		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	      }
 	  }
 	break;
       default:

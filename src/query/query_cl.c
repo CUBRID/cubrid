@@ -37,6 +37,49 @@
 #include "transaction_cl.h"
 #include "xasl.h"
 #include "execute_statement.h"
+#include "sp_context_rules.hpp"
+#include "xasl_stream.hpp"
+
+/*
+ * check_sp_xasl_writes () - rules 2 and 3 for what the XASL a stored procedure inside a SQL statement is about to run
+ *			     writes
+ *   return: NO_ERROR, or the error set
+ *   xasl_id(in): the XASL
+ *
+ * Note: An XASL the cache no longer has is not checked: running it fails with ER_QPROC_INVALID_XASLNODE, and the
+ *       XASL compiled again is checked when it runs. So an XASL remembered is looked up before it is rejected.
+ */
+static int
+check_sp_xasl_writes (const XASL_ID * xasl_id)
+{
+  XASL_STMT_INFO stmt_info;
+  bool found = false;
+  bool remembered;
+  int ret;
+
+  remembered = sp_find_xasl_writes (xasl_id, stmt_info);
+  if (remembered)
+    {
+      ret = sp_check_xasl_allowed (stmt_info);
+      if (ret == NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+      er_clear ();
+    }
+
+  ret = qmgr_get_xasl_stmt_info (xasl_id, &stmt_info, &found);
+  if (ret != NO_ERROR || !found)
+    {
+      return ret;
+    }
+  if (!remembered)
+    {
+      sp_remember_xasl_writes (xasl_id, stmt_info);
+    }
+
+  return sp_check_xasl_allowed (stmt_info);
+}
 
 /*
  * prepare_query () - Prepares a query for later (and repetitive)
@@ -70,13 +113,32 @@ prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
+  XASL_STMT_INFO stmt_info;
+  const bool in_sql = (sp_In_sql_depth > 0);
+
+  if (in_sql && stream->buffer == NULL)
+    {
+      stream->stmt_info = &stmt_info;
+    }
+
   /* send XASL stream to the server and get XASL_ID */
   ret = qmgr_prepare_query (context, stream);
+  stream->stmt_info = NULL;
   if (ret != NO_ERROR)
     {
       free_and_init (stream->xasl_id);
       ASSERT_ERROR ();
       return ret;
+    }
+
+  if (in_sql && (stream->buffer != NULL || !context->recompile_xasl) && stream->xasl_id != NULL
+      && !XASL_ID_IS_NULL (stream->xasl_id))
+    {
+      if (stream->buffer != NULL)
+	{
+	  xasl_stream_get_stmt_info (stream->buffer, stmt_info);
+	}
+      sp_remember_xasl_writes (stream->xasl_id, stmt_info);
     }
 
   /* if the query is not found in the cache */
@@ -120,6 +182,15 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
     {
       cdc_Trigger_involved = false;
+    }
+
+  if (sp_In_sql_depth > 0 && xasl_id != NULL)
+    {
+      ret = check_sp_xasl_writes (xasl_id);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
     }
 
   query_timeout = tran_get_query_timeout ();
@@ -178,6 +249,23 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, i
     {
       cdc_Trigger_involved = false;
     }
+
+  XASL_STMT_INFO stmt_info;
+
+  stmt_info.stmt_flags = xasl_stream_get_stmt_flags (stream);
+  const bool has_sp_call = (stmt_info.stmt_flags & XASL_STMT_HAS_SP_CALL) != 0;
+
+  if (has_sp_call || sp_In_sql_depth > 0)
+    {
+      xasl_stream_get_stmt_info (stream, stmt_info);
+      ret = sp_check_xasl_allowed (stmt_info);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+    }
+
+  sp_xasl_frame_guard frame_guard (has_sp_call, stmt_info);
 
   query_timeout = tran_get_query_timeout ();
   list_idptr = qmgr_prepare_and_execute_query (stream, stream_size, query_id, var_cnt, varptr, flag, query_timeout);

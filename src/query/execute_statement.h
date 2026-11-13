@@ -144,8 +144,8 @@ extern int do_rename (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int do_scope (PARSER_CONTEXT * parser, PT_NODE * statement);
 
-extern int do_select (PARSER_CONTEXT * parser, PT_NODE * statement);
-extern int do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement);
+extern int do_select (PARSER_CONTEXT * parser, PT_NODE * statement, const PT_NODE * write_stmt);
+extern int do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement, const PT_NODE * write_stmt);
 extern int do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 extern int do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement);
 
