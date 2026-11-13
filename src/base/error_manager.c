@@ -339,6 +339,44 @@ static context *er_Singleton_context_p;
 static thread_local context *er_Sub_client_context_p = NULL;
 #endif
 
+#if !defined (SERVER_MODE)
+/*
+ * Statement failure mark.
+ *
+ * A client caller (csql, CAS) opens a statement scope with er_stmt_fail_begin (). Inside the scope, an error saying
+ * that the transaction ended (server down, deadlock victim) or that the statement must fail while the transaction
+ * goes on (lock timeout, interrupt) is remembered here, apart from the error area, so that er_clear () or a later
+ * er_set () cannot hide it from the caller. Nothing is remembered outside a scope, so programs that never open one
+ * (C API applications, utilities) behave as before.
+ *
+ * Code that wraps a best-effort attempt in er_stack_push () / er_stack_pop () declares that its failure may be
+ * ignored: a lock timeout or an interrupt marked inside is undone by er_stack_pop (). A transaction end is never
+ * undone.
+ */
+enum
+{
+  ER_STMT_FAIL_NONE = 0,
+  ER_STMT_FAIL_STMT,		/* the statement must fail; the transaction is still alive */
+  ER_STMT_FAIL_TRAN,		/* the transaction has ended (deadlock victim) */
+  ER_STMT_FAIL_DOWN		/* the transaction has ended because the server is down; CAS and drivers reconnect on it */
+};
+
+#define ER_STMT_FAIL_MAX_SAVED 64
+
+static thread_local int er_Stmt_fail_scope_depth = 0;
+static thread_local ER_STMT_FAIL_MARK er_Stmt_fail_mark = { NO_ERROR, ER_WARNING_SEVERITY, NULL, -1, NULL };
+
+static thread_local int er_Stmt_fail_saved_count = 0;
+static thread_local int er_Stmt_fail_saved[ER_STMT_FAIL_MAX_SAVED];	/* marked error id when a level was pushed */
+
+static int er_stmt_fail_kind (int err_id);
+static bool er_stmt_fail_is_kept (void);
+static void er_stmt_fail_clear (void);
+static void er_stmt_fail_note (int err_id, int severity, const char *file_name, int line_no, const char *msg);
+static void er_stmt_fail_save_on_push (void);
+static void er_stmt_fail_restore_on_pop (bool keep_error);
+#endif /* !SERVER_MODE */
+
 static void er_event_sigpipe_handler (int sig);
 static void er_event (void);
 static int er_event_init (void);
@@ -1588,6 +1626,11 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
 
 end:
 
+#if !defined (SERVER_MODE)
+  /* mark even if the message could not be formatted; the message area may then hold a previous message */
+  er_stmt_fail_note (err_id, severity, file_name, line_no, (ret_val == NO_ERROR) ? crt_error.msg_area : NULL);
+#endif /* !SERVER_MODE */
+
   if (need_stack_pop)
     {
       tl_context.pop_error_stack_and_destroy ();
@@ -2248,6 +2291,10 @@ er_set_area_error (char *server_area)
 	}
     }
 
+#if !defined (SERVER_MODE)
+  er_stmt_fail_note (crt_error.err_id, severity, crt_error.file_name, crt_error.line_no, crt_error.msg_area);
+#endif /* !SERVER_MODE */
+
   return crt_error.err_id;
 }
 
@@ -2269,6 +2316,9 @@ void
 er_stack_push (void)
 {
   (void) context::get_thread_local_context ().push_error_stack ();
+#if !defined (SERVER_MODE)
+  er_stmt_fail_save_on_push ();
+#endif /* !SERVER_MODE */
 }
 
 /*
@@ -2297,6 +2347,9 @@ er_stack_push_if_exists (void)
 
   // push
   (void) tl_context.push_error_stack ();
+#if !defined (SERVER_MODE)
+  er_stmt_fail_save_on_push ();
+#endif /* !SERVER_MODE */
 }
 
 /*
@@ -2307,6 +2360,12 @@ er_stack_push_if_exists (void)
 void
 er_stack_pop (void)
 {
+#if !defined (SERVER_MODE)
+  if (context::get_thread_local_context ().has_error_stack ())
+    {
+      er_stmt_fail_restore_on_pop (false);
+    }
+#endif /* !SERVER_MODE */
   context::get_thread_local_context ().pop_error_stack_and_destroy ();
 }
 
@@ -2330,6 +2389,9 @@ er_stack_pop_and_keep_error (void)
       return;
     }
 
+#if !defined (SERVER_MODE)
+  er_stmt_fail_restore_on_pop (true);
+#endif /* !SERVER_MODE */
   tl_context.pop_error_stack (top);
   if (top.err_id != NO_ERROR)
     {
@@ -2386,6 +2448,413 @@ er_stack_clearall (void)
       er_stack_pop_and_keep_error ();
     }
 }
+
+#if !defined (SERVER_MODE)
+/*
+ * er_stmt_fail_kind - classify an error for the statement failure mark
+ *   return: ER_STMT_FAIL_NONE, ER_STMT_FAIL_STMT, ER_STMT_FAIL_TRAN or ER_STMT_FAIL_DOWN
+ *   err_id(in): error identifier
+ *
+ * Note: ER_IS_LOCK_TIMEOUT_ERROR () includes ER_LK_UNILATERALLY_ABORTED, so the transaction end is tested first.
+ */
+static int
+er_stmt_fail_kind (int err_id)
+{
+  if (ER_IS_SERVER_DOWN_ERROR (err_id))
+    {
+      return ER_STMT_FAIL_DOWN;
+    }
+
+  if (err_id == ER_LK_UNILATERALLY_ABORTED)
+    {
+      return ER_STMT_FAIL_TRAN;
+    }
+
+  if (ER_IS_LOCK_TIMEOUT_ERROR (err_id) || err_id == ER_LK_PAGE_TIMEOUT || err_id == ER_INTERRUPTED)
+    {
+      return ER_STMT_FAIL_STMT;
+    }
+
+  return ER_STMT_FAIL_NONE;
+}
+
+/*
+ * er_stmt_fail_is_kept - is the mark kept across statement and error level boundaries
+ *   return: true if the marked error ended the transaction
+ */
+static bool
+er_stmt_fail_is_kept (void)
+{
+  return er_stmt_fail_kind (er_Stmt_fail_mark.err_id) >= ER_STMT_FAIL_TRAN;
+}
+
+/*
+ * er_stmt_fail_clear - remove the mark
+ *   return: none
+ */
+static void
+er_stmt_fail_clear (void)
+{
+  free_and_init (er_Stmt_fail_mark.msg);
+  er_Stmt_fail_mark.err_id = NO_ERROR;
+  er_Stmt_fail_mark.severity = ER_WARNING_SEVERITY;
+  er_Stmt_fail_mark.file_name = NULL;
+  er_Stmt_fail_mark.line_no = -1;
+}
+
+/*
+ * er_stmt_fail_note - remember an error that must fail the current statement
+ *   return: none
+ *   err_id(in): error identifier
+ *   severity(in): error severity
+ *   file_name(in): file where the error was set (a static string)
+ *   line_no(in): line where the error was set
+ *   msg(in): formatted message
+ */
+static void
+er_stmt_fail_note (int err_id, int severity, const char *file_name, int line_no, const char *msg)
+{
+  int new_kind, old_kind;
+
+  if (er_Stmt_fail_scope_depth <= 0 || severity > ER_ERROR_SEVERITY)
+    {
+      return;
+    }
+
+  new_kind = er_stmt_fail_kind (err_id);
+  if (new_kind == ER_STMT_FAIL_NONE)
+    {
+      return;
+    }
+
+  /* keep the first cause, but an ended transaction outranks a failed statement and a server down outranks
+   * a deadlock victim, so that CAS and drivers still reconnect */
+  old_kind = er_stmt_fail_kind (er_Stmt_fail_mark.err_id);
+  if (old_kind >= new_kind)
+    {
+      return;
+    }
+
+  er_stmt_fail_clear ();
+  er_Stmt_fail_mark.err_id = err_id;
+  er_Stmt_fail_mark.severity = severity;
+  er_Stmt_fail_mark.file_name = file_name;
+  er_Stmt_fail_mark.line_no = line_no;
+  if (msg != NULL)
+    {
+      size_t length = strlen (msg) + 1;
+
+      /* without memory the error id is still marked; the message is then empty */
+      er_Stmt_fail_mark.msg = (char *) malloc (length);
+      if (er_Stmt_fail_mark.msg != NULL)
+	{
+	  memcpy (er_Stmt_fail_mark.msg, msg, length);
+	}
+    }
+}
+
+/*
+ * er_stmt_fail_save_on_push - save the mark when an error level is pushed
+ *   return: none
+ */
+static void
+er_stmt_fail_save_on_push (void)
+{
+  if (er_Stmt_fail_scope_depth <= 0)
+    {
+      /* nothing is marked outside a statement scope, and the outermost er_stmt_fail_begin () starts counting anew */
+      return;
+    }
+
+  if (er_Stmt_fail_saved_count < ER_STMT_FAIL_MAX_SAVED)
+    {
+      er_Stmt_fail_saved[er_Stmt_fail_saved_count] = er_Stmt_fail_mark.err_id;
+    }
+  else if (er_Stmt_fail_saved_count == ER_STMT_FAIL_MAX_SAVED)
+    {
+      /* a statement failure marked in a deeper level is then kept: the statement fails rather than goes on */
+      er_log_debug (ARG_FILE_LINE, "er_stmt_fail_save_on_push: more than %d error levels in a statement scope\n",
+		    ER_STMT_FAIL_MAX_SAVED);
+    }
+  er_Stmt_fail_saved_count++;
+}
+
+/*
+ * er_stmt_fail_restore_on_pop - undo a statement failure marked inside a popped error level
+ *   return: none
+ *   keep_error(in): true if the popped level's error is kept
+ *
+ * Note: a level popped without keeping its error was a best-effort attempt, so a lock timeout or an interrupt
+ *       marked inside it is forgotten. A transaction end stays marked.
+ */
+static void
+er_stmt_fail_restore_on_pop (bool keep_error)
+{
+  if (er_Stmt_fail_saved_count <= 0)
+    {
+      return;
+    }
+
+  er_Stmt_fail_saved_count--;
+  if (keep_error || er_Stmt_fail_saved_count >= ER_STMT_FAIL_MAX_SAVED)
+    {
+      return;
+    }
+
+  if (er_stmt_fail_is_kept ())
+    {
+      return;
+    }
+
+  if (er_Stmt_fail_saved[er_Stmt_fail_saved_count] == NO_ERROR)
+    {
+      er_stmt_fail_clear ();
+    }
+  else
+    {
+      /* the first statement failure is kept, so a level pushed over it cannot have replaced it; only the error id
+       * is saved for that reason (er_stmt_fail_next () is not called inside a pushed level) */
+      assert (er_Stmt_fail_mark.err_id == er_Stmt_fail_saved[er_Stmt_fail_saved_count]);
+    }
+}
+
+/*
+ * er_stmt_fail_begin - open a statement scope
+ *   return: none
+ *   saved(out): the mark of the enclosing scope, to be passed to er_stmt_fail_end ()
+ *
+ * Note: scopes nest, e.g. a SQL statement run by a stored procedure callback inside a CAS request. A nested scope
+ *       starts without the enclosing statement failure, but an ended transaction stays marked.
+ *       The message of the enclosing mark moves to saved, so it is never copied; er_stmt_fail_end () must be called
+ *       with the same saved, or the message leaks.
+ */
+void
+er_stmt_fail_begin (ER_STMT_FAIL_MARK * saved)
+{
+  assert (saved != NULL);
+
+  if (er_Stmt_fail_scope_depth <= 0)
+    {
+      /* nothing outside a scope is kept */
+      er_stmt_fail_clear ();
+      er_Stmt_fail_scope_depth = 0;
+      er_Stmt_fail_saved_count = 0;
+      *saved = er_Stmt_fail_mark;
+    }
+  else if (er_stmt_fail_is_kept ())
+    {
+      /* the ended transaction stays marked in the nested scope; the mark keeps its message */
+      *saved = er_Stmt_fail_mark;
+      saved->msg = NULL;
+    }
+  else
+    {
+      /* move the enclosing statement failure to saved */
+      *saved = er_Stmt_fail_mark;
+      er_Stmt_fail_mark.msg = NULL;
+      er_stmt_fail_clear ();
+    }
+
+  er_Stmt_fail_scope_depth++;
+}
+
+/*
+ * er_stmt_fail_end - close a statement scope
+ *   return: none
+ *   saved(in/out): the mark returned by er_stmt_fail_begin (); its message is taken back or freed
+ *
+ * Note: the caller must have taken the outcome of the scope with er_stmt_fail_resolve () before. Closing the
+ *       outermost scope removes the mark.
+ */
+void
+er_stmt_fail_end (ER_STMT_FAIL_MARK * saved)
+{
+  assert (saved != NULL);
+
+  if (er_Stmt_fail_scope_depth <= 0)
+    {
+      assert (false);
+      free_and_init (saved->msg);
+      return;
+    }
+
+  er_Stmt_fail_scope_depth--;
+  if (er_Stmt_fail_scope_depth == 0 || er_stmt_fail_is_kept ())
+    {
+      /* the outermost scope is closed, or an ended transaction outranks the enclosing statement failure */
+      if (er_Stmt_fail_scope_depth == 0)
+	{
+	  er_stmt_fail_clear ();
+	}
+      free_and_init (saved->msg);
+      return;
+    }
+
+  er_stmt_fail_clear ();
+  er_Stmt_fail_mark = *saved;
+  saved->msg = NULL;
+}
+
+/*
+ * er_stmt_fail_next - start the next statement of the same scope
+ *   return: none
+ *
+ * Note: for callers that run several statements in one request (CAS batch and array execution) and report each
+ *       outcome on its own. A deadlock victim is cleared too: the caller has already rolled the transaction back
+ *       (auto commit) or stopped running statements, so the next statement runs in a new transaction. A server
+ *       down stays marked, since CAS does not reconnect in the middle of a request.
+ */
+void
+er_stmt_fail_next (void)
+{
+  if (er_Stmt_fail_scope_depth > 0 && er_stmt_fail_kind (er_Stmt_fail_mark.err_id) < ER_STMT_FAIL_DOWN)
+    {
+      er_stmt_fail_clear ();
+    }
+}
+
+/*
+ * er_stmt_fail_get - get the error that must fail the current statement
+ *   return: error identifier, or NO_ERROR
+ */
+int
+er_stmt_fail_get (void)
+{
+  if (er_Stmt_fail_scope_depth <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  return er_Stmt_fail_mark.err_id;
+}
+
+/*
+ * er_stmt_fail_is_tran_ended - is the marked error the end of the transaction
+ *   return: true or false
+ */
+bool
+er_stmt_fail_is_tran_ended (void)
+{
+  return er_stmt_fail_get () != NO_ERROR && er_stmt_fail_is_kept ();
+}
+
+/*
+ * er_stmt_fail_blocks_request - must a new server request of the statement be refused
+ *   return: true or false
+ *
+ * Note: once the statement has to fail, nothing more of it may reach the server. While the transaction goes on, the
+ *       server undid only the request that failed, and the statement savepoint is rolled back by the caller. After a
+ *       deadlock victim the server has rolled the transaction back, so the rest of the statement would run in a new
+ *       transaction, with the dirty objects of the aborted one still in the workspace. After a server down there is
+ *       no server to reach.
+ */
+bool
+er_stmt_fail_blocks_request (void)
+{
+  return er_stmt_fail_get () != NO_ERROR;
+}
+
+/*
+ * er_stmt_fail_raise - make the marked error the current error
+ *   return: the marked error, or NO_ERROR
+ */
+int
+er_stmt_fail_raise (void)
+{
+  int err_id = er_stmt_fail_get ();
+
+  if (err_id == NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  // *INDENT-OFF*
+  er_message &crt_error = context::get_thread_local_error ();
+  // *INDENT-ON*
+  const char *msg = (er_Stmt_fail_mark.msg != NULL) ? er_Stmt_fail_mark.msg : "";
+  size_t length = strlen (msg) + 1;
+
+  /* keep where the error was first set, for the error log and call stack dumps */
+  crt_error.set_error (err_id, er_Stmt_fail_mark.severity, er_Stmt_fail_mark.file_name, er_Stmt_fail_mark.line_no);
+  crt_error.reserve_message_area (length);
+  memcpy (crt_error.msg_area, msg, length);
+
+  return err_id;
+}
+
+/*
+ * er_stmt_fail_is_reported_by - does an error already report the marked failure
+ *   return: true or false
+ *   err_id(in): error that is about to be reported
+ *
+ * Note: an error of the same kind as the mark, or of a higher kind (e.g. a server down after a lock timeout or a
+ *       deadlock victim), may stand. Server down errors are one kind, so CAS and drivers reconnect on any of them.
+ */
+bool
+er_stmt_fail_is_reported_by (int err_id)
+{
+  int err_kind;
+
+  if (er_stmt_fail_get () == NO_ERROR)
+    {
+      return true;
+    }
+
+  err_kind = er_stmt_fail_kind (err_id);
+  return err_kind != ER_STMT_FAIL_NONE && err_kind >= er_stmt_fail_kind (er_Stmt_fail_mark.err_id);
+}
+
+/*
+ * er_stmt_fail_resolve - decide the outcome of a statement against the mark
+ *   return: error to report, or the given result if the statement may stand
+ *   error(in): result of the statement (negative on error)
+ *
+ * Note: a statement that succeeded, or failed with an error that does not report the mark, reports the marked
+ *       error instead.
+ */
+int
+er_stmt_fail_resolve (int error)
+{
+  if (er_stmt_fail_get () == NO_ERROR)
+    {
+      return error;
+    }
+
+  if (error < NO_ERROR && er_stmt_fail_is_reported_by (er_errid ()))
+    {
+      return error;
+    }
+
+  return er_stmt_fail_raise ();
+}
+
+/*
+ * er_stmt_fail_forget_committed - forget the failure of a statement the server has already committed
+ *   return: the forgotten error, or NO_ERROR
+ *
+ * Note: a statement run with auto commit may be committed by the server at the end of its execution. A failure
+ *       marked during or after that request cannot undo the statement any more, and reporting it would make the
+ *       application retry a statement that is committed. The error is only logged. A server down stays marked, so
+ *       that CAS still reconnects and the next request of the scope is refused.
+ */
+int
+er_stmt_fail_forget_committed (void)
+{
+  int err_id = er_stmt_fail_get ();
+
+  if (err_id == NO_ERROR || er_stmt_fail_kind (err_id) >= ER_STMT_FAIL_DOWN)
+    {
+      return NO_ERROR;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "er_stmt_fail_forget_committed: error %d (%s:%d) after the server commit: %s\n", err_id,
+		er_Stmt_fail_mark.file_name != NULL ? er_Stmt_fail_mark.file_name : "", er_Stmt_fail_mark.line_no,
+		er_Stmt_fail_mark.msg != NULL ? er_Stmt_fail_mark.msg : "");
+  er_stmt_fail_clear ();
+
+  return err_id;
+}
+#endif /* !SERVER_MODE */
 
 
 /*

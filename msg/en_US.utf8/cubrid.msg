@@ -1511,7 +1511,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Last Error
+1395 The transaction was rolled back instead of committed, because a statement of it failed after its changes had been made, and they could not be undone.
+
+1396 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

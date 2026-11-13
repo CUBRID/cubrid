@@ -54,6 +54,7 @@
 #include "perf_monitor.h"
 #include "cas_sql_log2.h"
 #include "error_manager.h"
+#include "transaction_cl.h"
 #include "ddl_log.h"
 
 #include "cas.h"
@@ -194,6 +195,7 @@ static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
 static bool need_database_reconnect (void);
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
+static void cas_apply_stmt_fail (int func_code, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
@@ -284,6 +286,72 @@ cas_init_specific (void)
   qr_init (shm_appl);
 #endif
   return 0;
+}
+
+/*
+ * cas_apply_stmt_fail - fail the reply of a request whose statement has to fail
+ *   return: none
+ *   func_code(in): function code of the request
+ *   net_buf(in/out): reply
+ *   req_info(in/out): request information
+ *
+ * Note: the engine may clear an error (lock timeout, interrupt, server down, deadlock victim) and still report
+ *       success, or report another error. The reply is replaced before the auto commit is decided, so that a
+ *       failed statement is rolled back instead of committed, and a server down still makes CAS reconnect.
+ *       A statement the server has already committed keeps its reply: it can no longer be rolled back.
+ *       Otherwise a statement that succeeded keeps its changes, so the transaction must not commit.
+ */
+static void
+cas_apply_stmt_fail (int func_code, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int mark = er_stmt_fail_get ();
+
+  if (mark == NO_ERROR)
+    {
+      return;
+    }
+
+  if (ER_IS_SERVER_DOWN_ERROR (mark))
+    {
+      /* reconnect, also when the reply stands below */
+      as_info->reset_flag = TRUE;
+    }
+
+  /* batch and array execution report each query on its own */
+  if (func_code == CAS_FC_EXECUTE_BATCH || func_code == CAS_FC_EXECUTE_ARRAY)
+    {
+      return;
+    }
+
+  if (tran_was_latest_query_committed ())
+    {
+      /* the server committed the statement at the end of its execution (auto commit). A failure after that cannot
+       * undo it, so the reply stands; the error is only logged. See er_stmt_fail_forget_committed (). */
+      cas_log_write (0, false, "error %d after the server commit is not reported", mark);
+      (void) er_stmt_fail_forget_committed ();
+      return;
+    }
+
+  if (err_info.err_indicator == DBMS_ERROR_INDICATOR && er_stmt_fail_is_reported_by (err_info.err_number))
+    {
+      return;
+    }
+
+  /* err_info is cleared for each request; net_buf->err_code is not the statement's result */
+  if (err_info.err_number == 0 && ux_executed_may_write ())
+    {
+      /* a statement that succeeded fails after its changes were made; see tran_stmt_fail_resolve () */
+      tran_set_rollback_required ();
+    }
+
+  (void) er_stmt_fail_raise ();
+  (void) ERROR_INFO_SET_FORCE (mark, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+
+  if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
 }
 
 static int
@@ -919,6 +987,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   T_SERVER_FUNC server_fn;
   FN_RETURN fn_ret = FN_KEEP_CONN;
   bool func_code_unknown;
+  ER_STMT_FAIL_MARK stmt_fail_saved;
 
   error_info_clear ();
   init_msg_header (&client_msg_header);
@@ -1217,7 +1286,14 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   net_buf->client_version = req_info->client_version;
   set_hang_check_time ();
+  er_stmt_fail_begin (&stmt_fail_saved);
+  ux_reset_executed ();
   fn_ret = (*server_fn) (sock_fd, argc, argv, net_buf, req_info);
+  if (fn_ret == FN_KEEP_CONN)
+    {
+      cas_apply_stmt_fail (func_code, net_buf, req_info);
+    }
+  er_stmt_fail_end (&stmt_fail_saved);
   set_hang_check_time ();
 
   /* set back original utype for enum, date-time, JSON */

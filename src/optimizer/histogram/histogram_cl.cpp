@@ -744,7 +744,10 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
   DB_VALUE *histogram_value = lhs->info.name.histogram;
   if (histogram_value == NULL && bind_fp_active_statement != NULL)
     {
+      /* optional: a lock timeout or an interrupt while fetching it must not fail the statement */
+      er_stack_push ();
       histogram_value = histogram_blob_from_class_cache (bind_fp_active_parser, bind_fp_active_statement, lhs);
+      er_stack_pop ();
       if (histogram_value != NULL && bind_fp_active_parser != NULL)
 	{
 	  /* annotate the name the way the optimizer does, with a parser-arena copy (the class
@@ -4114,7 +4117,11 @@ histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement)
 	{
 	  continue;
 	}
-      if (bind_target_spec_is_unique_pinned (parser, statement, &ctx, ctx.term[i].spec_id))
+      /* a heuristic: a failed class lookup answers "not pinned", which only widens the watch */
+      er_stack_push ();
+      bool pinned = bind_target_spec_is_unique_pinned (parser, statement, &ctx, ctx.term[i].spec_id);
+      er_stack_pop ();
+      if (pinned)
 	{
 	  continue;
 	}
@@ -4175,7 +4182,15 @@ dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool deta
   class_ = sm_get_class_with_statistics (classop);
   if (class_ == NULL)
     {
-      return NO_ERROR;
+      /* nothing to print, but an ended transaction must reach the caller: the class may be decached */
+      int fetch_error = er_errid ();
+
+      if (er_stmt_fail_is_tran_ended ())
+	{
+	  return er_stmt_fail_raise ();
+	}
+      return (ER_IS_SERVER_DOWN_ERROR (fetch_error) || ER_IS_ABORTED_DUE_TO_DEADLOCK (fetch_error)) ? fetch_error :
+	     NO_ERROR;
     }
 
   error = db_get_histogram (classop, attr_name, &histogram_obj);

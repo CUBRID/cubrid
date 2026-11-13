@@ -4035,6 +4035,20 @@ sm_clean_class (MOP classmop, SM_CLASS * class_)
 
 /* CLASS STATISTICS FUNCTIONS */
 /*
+ * sm_tran_has_ended () - has the transaction ended while a request of this client was failing
+ *   return: true or false
+ *
+ * Note: the code that got the error may have replaced it (e.g. a missing catalog class reported after the server went
+ *       down), so the client state is checked rather than the current error.
+ */
+static bool
+sm_tran_has_ended (void)
+{
+  return (!BOOT_IS_CLIENT_RESTARTED () || er_stmt_fail_is_tran_ended () || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+	  || ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()));
+}
+
+/*
  * sm_get_class_with_statistics() - Fetches and returns the statistics information for a
  *    class from the system catalog on the server.
  *    Must make sure callers keep the class MOP visible to the garbage
@@ -4124,15 +4138,24 @@ sm_get_class_with_statistics (MOP classop)
 	    {
 	      return NULL;
 	    }
+	  /* histogram is optional; a transient fetch failure (e.g. concurrent ANALYZE rewriting _db_histogram,
+	   * lock timeout, interrupt) must not fail the query -- proceed without it. The error stack level makes
+	   * such a failure ignorable, but an ended transaction is still returned. */
+	  er_stack_push ();
 	  int err = stats_get_histogram (classop, &class_->histogram);
 	  if (err != NO_ERROR)
 	    {
-	      /* histogram is optional; a transient fetch failure (e.g. concurrent ANALYZE
-	       * rewriting _db_histogram) must not fail the query -- proceed without it */
+	      if (sm_tran_has_ended ())
+		{
+		  /* the class may already be decached: do not touch it */
+		  er_stack_pop_and_keep_error ();
+		  (void) er_stmt_fail_raise ();
+		  return NULL;
+		}
 	      stats_free_histogram_and_init (class_->histogram);
 	      class_->histogram = NULL;
-	      er_clear ();
 	    }
+	  er_stack_pop ();
 	}
     }
   else
@@ -4141,14 +4164,21 @@ sm_get_class_with_statistics (MOP classop)
 	{
 	  stats_free_histogram_and_init (class_->histogram);
 	  class_->histogram = NULL;
+	  /* optional; see above -- do not fail the query on a transient fetch error */
+	  er_stack_push ();
 	  int err = stats_get_histogram (classop, &class_->histogram);
 	  if (err != NO_ERROR)
 	    {
-	      /* optional; see above -- do not fail the query on a transient fetch error */
+	      if (sm_tran_has_ended ())
+		{
+		  er_stack_pop_and_keep_error ();
+		  (void) er_stmt_fail_raise ();
+		  return NULL;
+		}
 	      stats_free_histogram_and_init (class_->histogram);
 	      class_->histogram = NULL;
-	      er_clear ();
 	    }
+	  er_stack_pop ();
 	}
     }
 
