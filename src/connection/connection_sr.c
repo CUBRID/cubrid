@@ -3080,35 +3080,3 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
       assert_release (false);
     }
 }
-
-void
-css_wakeup_handler (css_conn_entry * conn)
-{
-  int r;
-
-  assert (conn);
-
-  /* lock to access worker and context */
-  r = rmutex_lock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
-
-  if (conn->worker == nullptr || conn->context == nullptr)
-    {
-      /* unlock */
-      r = rmutex_unlock (NULL, &conn->cmutex);
-      assert (r == NO_ERROR);
-
-      _er_log_debug (__FILE__, __LINE__, "css_wakeup_handler: worker already cleared for conn = %p, fd = %d\n",
-		     (void *) conn, conn->fd);
-      return;
-    }
-
-  if (!conn->worker->notify ())
-    {
-      assert_release (false);
-    }
-
-  /* unlock */
-  r = rmutex_unlock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
-}

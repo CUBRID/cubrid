@@ -2577,6 +2577,19 @@ lock_suspend (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_msecs)
 }
 #endif /* SERVER_MODE */
 
+/*
+ * lock_is_deadlock_victim () - Did the last lock wait of thread_p end with it chosen to abort its transaction?
+ */
+bool
+lock_is_deadlock_victim (const THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return thread_p->lockwait_state == LOCK_RESUMED_ABORTED_FIRST;
+#else /* SERVER_MODE */
+  return false;
+#endif /* !SERVER_MODE */
+}
+
 #if defined(SERVER_MODE)
 /*
  * lk_resume - Resume the thread (transaction)
