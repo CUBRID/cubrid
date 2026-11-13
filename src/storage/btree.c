@@ -1471,6 +1471,10 @@ static int btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 				    int *pairs_skipped, bool * work_done, bool * more);
 static int btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				   PAGE_PTR * leaf_page, INT16 * slot, bool * found);
+static int btree_compact_leaf_has_stable_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
+						 char *object_ptr, OID * oid, OID * class_oid,
+						 BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args);
+static void btree_compact_end_key (INT64 * keys_compacted, INT64 * pages_freed, int *key_freed, OID * resume_oid);
 
 static int btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR leaf_pg,
 				       LEAF_REC * leafrec_pnt, BTREE_DELETE_HELPER * delete_helper,
@@ -11513,10 +11517,21 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
   assert (delete_helper->leaf_addr.offset != 0 && delete_helper->leaf_addr.pgptr == leaf_page);
 
   /* Since we cannot leave the leaf record without any objects, we will need to replace it with an overflow object.
+   * A range scan interrupted inside this key treats the swapped object as already processed; ALTER INDEX ... COMPACT
+   * keeps that true by not appending to the chain while the leaf record has no stable object (CBRD-27972, see
+   * xbtree_compact_overflow ()).
    * Logging physical delete, because it has logical undo, cannot work well under system operation. For this reason,
    * the operation will be split into two sub-operations: 1. Swap first object in leaf record with last object in first
    * overflow page. This is done under a system operation that is committed at the end. 2. Remove relocated object from
-   * overflow record. */
+   * overflow record.
+   *
+   * The object moved to the leaf must stay the last object of the first overflow page: a range scan interrupted
+   * inside the key resumes from the chain after the last OID it processed without reading the leaf record again,
+   * and relies on that object being one it has already processed (btree_range_scan_select_visible_oids ()). The
+   * relocated object therefore lands in the first page whatever its OID, out of order when the OID is above the
+   * second page's separator, until the second step removes it. Should the server stop in between, the retried
+   * delete finds it there: btree_ovf_dir_find_oid () walks the pages before the routed one on a directory miss
+   * (CBRD-27973). Neither step allocates a page, which keeps the undo of an insert free of allocation failures. */
 
   /* Get overflow record. */
   ovfl_copy_rec.area_size = DB_PAGESIZE;
@@ -13729,7 +13744,11 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
 }
 
 /*
- * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory.
+ * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory. When the
+ *			       directory search misses, the pages before the routed one are walked as well: the leaf
+ *			       swap of a delete leaves the deleted object in the first page out of order until its
+ *			       second step, and a restart in between leaves it there for the retried delete to find
+ *			       (CBRD-27973).
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -13753,10 +13772,14 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 {
   BTREE_OVF_DIR_HEADER *dir_hdr;
   VPID dir_head_vpid, target_vpid, prev_vpid;
+  VPID routed_vpid = VPID_INITIALIZER;	/* The page the directory routes the OID to. */
+  VPID walk_vpid;
   PAGE_PTR first_ovf_page = NULL;
   PAGE_PTR dir_page = NULL;
   PAGE_PTR target_page = NULL;
   PAGE_PTR prev_data_page = NULL;
+  PAGE_PTR walk_page = NULL;
+  PAGE_PTR walk_prev_page = NULL;
   RECDES dir_record, data_record;
   BTREE_OVF_DIR_ENTRY *entries;
   int num_entries, idx;
@@ -13842,6 +13865,10 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
       assert (idx >= 0 && idx < num_entries);
 
       VPID_COPY (&target_vpid, &entries[idx].vpid);
+      if (VPID_ISNULL (&routed_vpid))
+	{
+	  VPID_COPY (&routed_vpid, &target_vpid);
+	}
 
       /* Fix the previous data page first (chain latch order) when the caller needs it. */
       if (prev_page != NULL)
@@ -13981,9 +14008,107 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	}
     }
 
-  /* Not found. */
+  /* Not found through the directory. */
   pgbuf_unfix_and_init (thread_p, dir_page);
+
+  switch (purpose)
+    {
+    case BTREE_OP_DELETE_VACUUM_OBJECT:
+    case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+      /* Removing an object that a leaf swap may have left behind: walk below. */
+      break;
+    default:
+      /* A miss is a regular outcome here (e.g. vacuuming the insert MVCCID of an object whose removal, later in the
+       * same log block, was vacuumed first; an insert looking for an existing version): do not walk. */
+      return NO_ERROR;
+    }
+
+  /* CBRD-27973: the leaf swap of a delete (btree_replace_first_oid_with_ovfl_oid ()) writes the deleted object into
+   * the first data page, in the place of the object it moves to the leaf, whatever the OID, and removes it again in
+   * a second step. In between the object sits before the page the directory routes it to, so a delete retried after
+   * a restart in between (vacuum, an undone insert) cannot find it through the directory and would leave it behind
+   * for good. Walk the chain from its first page up to the routed page (exclusive: that page and the ones stepped
+   * back to were searched above). Only the removals of an object reach here (see the switch above); for them a miss
+   * is exceptional (such a retry, or the replay of a vacuum interrupted by a restart), so the walk costs nothing on
+   * the regular paths. */
+  VPID_COPY (&walk_vpid, first_ovf_vpid);
+  while (!VPID_EQ (&walk_vpid, &routed_vpid))
+    {
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      walk_page = pgbuf_fix (thread_p, &walk_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (walk_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto walk_error;
+	}
+      thread_p->read_ovfl_pages_count++;
+
+      error_code =
+	btree_find_oid_from_ovfl (thread_p, btid_int, walk_page, oid, purpose, match_mvccinfo, offset_to_object,
+				  object_mvcc_info, deleted_mvcc_info);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto walk_error;
+	}
+      if (*offset_to_object != NOT_FOUND)
+	{
+	  *found_page = walk_page;
+	  if (prev_page != NULL)
+	    {
+	      /* walk_prev_page is kept only when the caller asks for the predecessor. */
+	      *prev_page = (walk_prev_page != NULL) ? walk_prev_page : leaf_page;
+	    }
+	  return NO_ERROR;
+	}
+
+      error_code = btree_get_next_overflow_vpid (thread_p, walk_page, &walk_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto walk_error;
+	}
+      if (walk_prev_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, walk_prev_page);
+	}
+      if (prev_page != NULL)
+	{
+	  /* Keep the page as the predecessor of the next one (chain latch order). */
+	  walk_prev_page = walk_page;
+	  walk_page = NULL;
+	}
+      else
+	{
+	  pgbuf_unfix_and_init (thread_p, walk_page);
+	}
+      if (VPID_ISNULL (&walk_vpid))
+	{
+	  /* Broken chain: the routed page was not reached. */
+	  assert_release (false);
+	  break;
+	}
+    }
+  if (walk_prev_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_prev_page);
+    }
   return NO_ERROR;
+
+walk_error:
+  assert_release (error_code != NO_ERROR);
+  if (walk_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_page);
+    }
+  if (walk_prev_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_prev_page);
+    }
+  return error_code;
 
 error:
   assert_release (error_code != NO_ERROR);
@@ -15497,7 +15622,8 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
   int target_size = (int) (((INT64) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int) * fill_factor) / 100);
   int cur_len, next_len, next_count, room, num_move;
   int merges = 0;
-  OID boundary_oid, prev_oid;
+  OID boundary_oid, prev_oid, cur_last_oid, next_first_oid;
+  RECDES cur_record;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
@@ -15651,11 +15777,31 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 	      num_move--;
 	    }
 	}
+      /* CBRD-27973: a leaf swap interrupted by a restart leaves the deleted object at the end of the first page, above
+       * the objects of the next page, until the retried delete removes it. Appending the next page's objects behind it
+       * would put smaller OIDs after a larger one, where neither the page's binary search nor the directory finds
+       * them: leave the pair as it is (the retried delete is found by btree_ovf_dir_find_oid ()'s walk). */
+      if (num_move > 0)
+	{
+	  if (spage_get_record (thread_p, cur_page, 1, &cur_record, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto exit;
+	    }
+	  BTREE_GET_OID (cur_record.data + cur_record.length - obj_size, &cur_last_oid);
+	  BTREE_GET_OID (next_record.data, &next_first_oid);
+	  if (OID_GT (&cur_last_oid, &next_first_oid))
+	    {
+	      num_move = 0;
+	    }
+	}
       if (num_move <= 0)
 	{
 	  /* The neighbor starts with one reusable OID's un-vacuumed run that fills the whole prefix we could take: no
-	   * separator boundary exists, so this pair stays as it is until vacuum removes the run. Counted so the caller
-	   * can tell "nothing to do" from "could not do". */
+	   * separator boundary exists, or the current page ends with a leftover of an interrupted leaf swap (above).
+	   * This pair stays as it is until vacuum removes the run or the leftover. Counted so the caller can tell
+	   * "nothing to do" from "could not do". */
 	  (*pairs_skipped)++;
 	  pgbuf_unfix_and_init (thread_p, cur_page);
 	  cur_page = next_page;
@@ -16043,6 +16189,71 @@ error:
 }
 
 /*
+ * btree_compact_leaf_has_stable_object () - BTREE_PROCESS_OBJECT_FUNCTION over a key's leaf record: stop at the first
+ *					     object that is stable -- its insert is committed and it carries no delete
+ *					     MVCCID -- and report it through args.
+ *
+ * return		: NO_ERROR.
+ * thread_p (in)	: Thread entry.
+ * btid_int (in)	: B-tree info.
+ * record (in)		: Leaf record.
+ * object_ptr (in)	: Pointer to current object.
+ * oid (in)		: Object OID.
+ * class_oid (in)	: Object class OID.
+ * mvcc_info (in)	: Object MVCC info.
+ * stop (out)		: Set to true once a stable object is found.
+ * args (out)		: bool *, set to true once a stable object is found.
+ */
+static int
+btree_compact_leaf_has_stable_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record, char *object_ptr,
+				      OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info, bool * stop, void *args)
+{
+  bool *has_stable = (bool *) args;
+
+  assert (mvcc_info != NULL && stop != NULL && has_stable != NULL);
+
+  if (BTREE_MVCC_INFO_IS_DELID_VALID (mvcc_info))
+    {
+      /* Deleted, or being deleted: vacuum may remove it as soon as the deleter commits and no older snapshot is
+       * left. */
+      return NO_ERROR;
+    }
+  if (BTREE_MVCC_INFO_HAS_INSID (mvcc_info)
+      && (logtb_is_current_mvccid (thread_p, mvcc_info->insert_mvccid)
+	  || logtb_is_active_other_mvccid (thread_p, mvcc_info->insert_mvccid)))
+    {
+      /* Uncommitted insert (ours or another transaction's): a rollback removes it physically at once. */
+      return NO_ERROR;
+    }
+
+  *has_stable = true;
+  *stop = true;
+  return NO_ERROR;
+}
+
+/*
+ * btree_compact_end_key () - Account for the key xbtree_compact_overflow () is leaving, possibly after several latch
+ *			      rounds, and clear the position kept for coming back to it. Called at every exit of the
+ *			      per-key loop, so a position left by one key is never taken up by the next one.
+ *
+ * keys_compacted (in/out) : Number of keys whose chain lost at least one page.
+ * pages_freed (in/out)	   : Number of overflow data pages deallocated.
+ * key_freed (in/out)	   : Pages freed for the key over its latch rounds; reset to 0.
+ * resume_oid (out)	   : Set to NULL OID.
+ */
+static void
+btree_compact_end_key (INT64 * keys_compacted, INT64 * pages_freed, int *key_freed, OID * resume_oid)
+{
+  *pages_freed += *key_freed;
+  if (*key_freed > 0)
+    {
+      (*keys_compacted)++;
+    }
+  *key_freed = 0;
+  OID_SET_NULL (resume_oid);
+}
+
+/*
  * xbtree_compact_overflow () - ALTER INDEX ... COMPACT: walk the leaf level of a non-unique index and compact every
  *				key's overflow OID chain to the requested fill factor. Online: no table lock, no
  *				sorting; only the leaf write latch of the key being compacted is held, and it is
@@ -16056,7 +16267,25 @@ error:
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow data pages deallocated.
  * pairs_skipped (out)	: Number of page pairs that could not be compacted because no OID boundary was found (see
- *			  btree_ovf_compact_chain ()). Non-zero means "run vacuum, then COMPACT again".
+ *			  btree_ovf_compact_chain ()), plus one for every key skipped because its leaf record holds no
+ *			  stable object (see below). Non-zero means "run vacuum, then COMPACT again".
+ *
+ * Note: CBRD-27972. A range scan interrupted in the middle of a key (OID buffer full) resumes in the overflow chain
+ *	 after the last OID it accepted and never re-reads the leaf record. That is safe only because the one object
+ *	 vacuum may move from the chain into the leaf -- the LAST object of the FIRST overflow page, swapped in when the
+ *	 leaf record's only object is removed (btree_replace_first_oid_with_ovfl_oid ()) -- is always one the scan has
+ *	 processed: a key is interrupted only after its first overflow page, and a chain never grows at the end of a
+ *	 page by itself. Compaction does append to a page, though, and the page it appends to can be or become the first
+ *	 one, so a swap during the interruption would move an unprocessed object out of the chain and the scan would
+ *	 lose that row. The chain of a key is therefore compacted only while its leaf record holds a stable object (a
+ *	 committed insert with no delete MVCCID): such an object cannot be vacuumed while any snapshot older than the
+ *	 check exists, so no swap can happen during the lifetime of a scan that was interrupted before the append. The
+ *	 check is repeated under every leaf latch acquisition, so it covers the appends done in that latch round. A
+ *	 key whose leaf record holds only deleted or uncommitted objects is left for the next COMPACT (after vacuum, the
+ *	 swapped-in object is normally stable). Classes without MVCC remove index objects physically, without this
+ *	 guarantee, so their indexes are not compacted at all. This is defensive: those classes (root, db_serial,
+ *	 _db_collation, db_ha_apply_info) only have unique indexes, which have no directory chain, and no index can be
+ *	 added to them.
  */
 int
 xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
@@ -16082,6 +16311,8 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   bool work_done;
   bool more = false;
   bool found = false;
+  bool has_stable = false;
+  bool stop = false;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
@@ -16109,6 +16340,12 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   if (BTREE_IS_UNIQUE (btid_int.unique_pk))
     {
       /* Unique indexes keep legacy (first-fit, always full) chains; nothing to compact. */
+      return NO_ERROR;
+    }
+  if (mvcc_is_mvcc_disabled_class (&btid_int.topclass_oid))
+    {
+      /* Objects of such a class are removed physically; no leaf object is ever stable (see the note above). Their
+       * indexes are all unique today, so this only guards against a future non-unique one. */
       return NO_ERROR;
     }
 
@@ -16173,6 +16410,9 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE)
 	  || !btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
 	{
+	  /* Coming back to an unfinished chain, the key can be found without one: vacuum removed all of its overflow
+	   * objects while the leaf latch was yielded. The key ends here (CBRD-27972). */
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	  slot++;
 	  continue;
 	}
@@ -16189,6 +16429,29 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	}
       VPID_COPY (&ovf_vpid, &leaf_rec_info.ovfl);
       assert (!VPID_ISNULL (&ovf_vpid));
+
+      /* Compact the chain only while the leaf record holds a stable object (see the note above). Checked under every
+       * leaf latch acquisition, also when coming back to an unfinished chain after a yield. */
+      has_stable = false;
+      stop = false;
+      error_code =
+	btree_record_process_objects (thread_p, &btid_int, BTREE_LEAF_NODE, &rec, offset, &stop,
+				      btree_compact_leaf_has_stable_object, &has_stable);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      if (!has_stable)
+	{
+	  /* Leave the key for the next COMPACT. If the chain was left unfinished in an earlier latch round, it ends
+	   * here: account for the key, then move on to the next one. */
+	  (*pairs_skipped)++;
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
+	  btree_clear_key_value (&clear_key, &key);
+	  slot++;
+	  continue;
+	}
 
       error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, BTREE_COMPACT_MERGES_PER_LATCH,
 					    &resume_oid, &freed, &skipped, &work_done, &more);
@@ -16208,12 +16471,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. A key whose
 	   * chain was finished in an earlier latch round also ends here, so account for the key at this point. */
 	  assert (!more && OID_ISNULL (&resume_oid));
-	  *pages_freed += key_freed;
-	  if (key_freed > 0)
-	    {
-	      (*keys_compacted)++;
-	    }
-	  key_freed = 0;
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	  btree_clear_key_value (&clear_key, &key);
 	  slot++;
 	  continue;
@@ -16247,13 +16505,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       else
 	{
 	  /* This key is done, possibly over several latch rounds: account for it once. */
-	  *pages_freed += key_freed;
-	  if (key_freed > 0)
-	    {
-	      (*keys_compacted)++;
-	    }
-	  key_freed = 0;
-	  OID_SET_NULL (&resume_oid);
+	  btree_compact_end_key (keys_compacted, pages_freed, &key_freed, &resume_oid);
 	}
     }
 
