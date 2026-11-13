@@ -9190,7 +9190,9 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
   for (attr = node->info.create_entity.attr_def_list; attr; attr = attr->next)
     {
-      attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default, false);
+      /* a class attribute may be written in the column list */
+      attr->info.attr_def.data_default =
+	pt_check_data_default (parser, attr->info.attr_def.data_default, attr->info.attr_def.attr_type == PT_META_ATTR);
     }
   for (attr = node->info.create_entity.class_attr_def_list; attr; attr = attr->next)
     {
