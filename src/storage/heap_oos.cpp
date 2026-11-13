@@ -912,8 +912,9 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
 
 /*
  * heap_oos_collect_dropped_refs () - List the OOS value chains old_recdes references and new_recdes does
- *   not. new_recdes == NULL means none are referenced anymore (DELETE). OOS OIDs are freshly allocated per
- *   heap record and never shared across rows, so a chain the new image does not name is dropped.
+ *   not. new_recdes == NULL means none are referenced anymore (DELETE). An UPDATE copies the inline stub
+ *   of each OOS attribute it does not assign, so the new image may name a chain of the old one; such a
+ *   chain is kept, and only a chain the new image does not name is dropped.
  *
  * For REC_RELOCATION rows the caller passes the forward (REC_NEWHOME) record as old_recdes, because the
  * actual data (and OOS attributes) live on the forward page; the home slot holds only an 8-byte
@@ -969,6 +970,18 @@ heap_oos_collect_dropped_refs (HEAP_OPERATION_CONTEXT *context, const RECDES *ol
 	    {
 	      dropped_out.push_back (old_ref);
 	    }
+#if !defined (NDEBUG)
+	  else
+	    {
+	      /* A kept chain is a byte copy of the old stub; another stamp at the same head OID would be a
+	       * stub that names a reused slot. */
+	      for (const oos_chain_ref &new_ref : new_oos_refs)
+		{
+		  assert (!OID_EQ (&new_ref.head_oid, &old_ref.head_oid)
+			  || LSA_EQ (&new_ref.identity_stamp, &old_ref.identity_stamp));
+		}
+	    }
+#endif
 	}
     }
   catch (std::bad_alloc &)
