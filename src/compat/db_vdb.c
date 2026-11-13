@@ -2203,8 +2203,10 @@ db_get_errors (DB_SESSION * session)
  * col(out): source column number of error
  *
  * note : Do not free this list of errors.
- *        A lock timeout, an interrupt or a server down stays the current error, as in pt_report_to_ersys (): the
- *        parser error then only follows from it (e.g. a lookup that timed out reads as "not in the database").
+ *        A lock timeout or an interrupt stays the current error, as in pt_report_to_ersys (): the parser error then
+ *        only follows from it (e.g. a lookup that timed out reads as "not in the database"). A server down is
+ *        replaced as before, because csql reports a current server down again and exits on it; the statement
+ *        still fails with it through the statement failure mark.
  */
 DB_SESSION_ERROR *
 db_get_next_error (DB_SESSION_ERROR * errors, int *line, int *col)
@@ -2221,8 +2223,7 @@ db_get_next_error (DB_SESSION_ERROR * errors, int *line, int *col)
 
   result = pt_get_next_error (errors, &stmt_no, line, col, &e_msg);
   err = er_errid ();
-  if (e_msg && !ER_IS_LOCK_TIMEOUT_ERROR (err) && !ER_IS_SERVER_DOWN_ERROR (err) && err != ER_LK_PAGE_TIMEOUT
-      && err != ER_INTERRUPTED)
+  if (e_msg && !ER_IS_LOCK_TIMEOUT_ERROR (err) && err != ER_LK_PAGE_TIMEOUT && err != ER_INTERRUPTED)
     {
       er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1, e_msg);
     }
