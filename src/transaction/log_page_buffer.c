@@ -9491,7 +9491,7 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 		  page_bitmap = fileio_page_bitmap_list_find (&page_bitmap_list, to_volid);
 		  if (page_bitmap == NULL)
 		    {
-		      page_bitmap = fileio_page_bitmap_create (to_volid, total_pages);
+		      page_bitmap = fileio_page_bitmap_create (to_volid, total_pages, volume_name_p);
 		      if (page_bitmap == NULL)
 			{
 			  goto error;
@@ -9603,6 +9603,18 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
 	}
 
       try_level = (FILEIO_BACKUP_LEVEL) (try_level - 1);
+    }
+
+  if (success == NO_ERROR && start_level > FILEIO_BACKUP_FULL_LEVEL)
+    {
+      /* pages of volumes added or extended after a lower level backup may be in no level at all */
+      success = fileio_restore_format_unrestored_pages (thread_p, &page_bitmap_list);
+      if (success != NO_ERROR)
+	{
+	  error_code = success;
+	  LOG_CS_EXIT (thread_p);
+	  goto error;
+	}
     }
 
   // Incremental backup volumes often do not include volume header pages.
