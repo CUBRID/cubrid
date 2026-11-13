@@ -62,6 +62,7 @@
 #include "parser_allocator.hpp"
 #include "execute_schema.h"
 #include "internal_lob_marker.h"
+#include "string_opfunc.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4943,15 +4944,38 @@ pt_fold_internal_lob_direct_source (PARSER_CONTEXT * parser, PT_NODE ** link)
   /* [리뷰] 직접 소스를 한 번 평가해 auto 파라미터로 바꾸고 마커 종류를 그 호스트 변수에 옮긴다.
    * FROM_FILE 류는 파일 소스·pending 마커가 되고, heap이 실행 중에 그 원본을 체인으로 쓴다. */
   PT_NODE *source = *link;
+  PT_NODE *file_arg = source->info.expr.arg1;
   PT_NODE *value_node;
   PT_NODE *host_var;
   PT_NODE *save_next;
   DB_VALUE value;
+  DB_VALUE path;
   int marker;
   int error = NO_ERROR;
 
   db_make_null (&value);
-  pt_evaluate_tree (parser, source, &value, 1);
+  if ((source->info.expr.op == PT_CFILE_TO_CLOB && PT_IS_EXPR_NODE_WITH_OPERATOR (file_arg, PT_CFILE_FROM_FILE))
+      || (source->info.expr.op == PT_BFILE_TO_BLOB && PT_IS_EXPR_NODE_WITH_OPERATOR (file_arg, PT_BFILE_FROM_FILE)))
+    {
+      /* name the file as CLOB/BLOB_FROM_FILE does: the ES copy *FILE_FROM_FILE makes belongs to this transaction
+       * and would be gone when a later execution reuses the folded value */
+      db_make_null (&path);
+      pt_evaluate_tree (parser, file_arg->info.expr.arg1, &path, 1);
+      if (!pt_has_error (parser))
+	{
+	  error = (source->info.expr.op == PT_CFILE_TO_CLOB
+		   ? db_clob_from_file_pending (&path, &value) : db_blob_from_file_pending (&path, &value));
+	  if (error != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, source, er_msg ());
+	    }
+	}
+      pr_clear_value (&path);
+    }
+  else
+    {
+      pt_evaluate_tree (parser, source, &value, 1);
+    }
   if (pt_has_error (parser))
     {
       ASSERT_ERROR_AND_SET (error);
