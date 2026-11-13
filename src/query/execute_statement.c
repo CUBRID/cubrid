@@ -13645,6 +13645,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	    }
 	}
 
+      sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+
       error = do_evaluate_insert_values (parser, statement);
       if (error != NO_ERROR)
 	{
@@ -13884,8 +13886,6 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 
 	      if (error >= NO_ERROR)
 		{
-		  sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
-
 		  error = mq_evaluate_check_option (parser, statement->info.insert.where, obj, class_);
 		}
 	    }
@@ -20697,8 +20697,6 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* nothing to evaluate */
       return NO_ERROR;
     }
-
-  sp_tree_frame_guard frame_guard (insert_statement->flag.has_sp_call, parser, insert_statement);
 
   /* initialize attr_list in EVAL_INSERT_VALUE object */
   eval.spec_id = insert_statement->info.insert.spec->info.spec.id;
