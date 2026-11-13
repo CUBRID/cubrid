@@ -28402,6 +28402,7 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
   int max_num_slots, i;
   OID temp_oid;
   bool reusable;
+  VACUUM_HEAP_OOS_FILES oos_files;
   int error_code = NO_ERROR;
 
   assert (upd_scancache != NULL);
@@ -28425,6 +28426,15 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
   for (i = 0; i < max_num_slots; i++)
     {
       VFID_COPY (&worker.heap_objects[i].vfid, &upd_scancache->node.hfid.vfid);
+    }
+
+  /* vacuum_heap_page () would read these from the header while the data page below stays held, the reverse of the
+   * header-then-data order of DML and vacuum workers; read them before any data page is fixed */
+  if (!heap_oos_find_both_vfids (thread_p, &upd_scancache->node.hfid, &oos_files.oos_vfid,
+				 &oos_files.internal_lob_vfid))
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
     }
 
   reusable = heap_is_reusable_oid (upd_scancache->file_type);
@@ -28473,7 +28483,7 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
 
 	  error_code =
 	    vacuum_heap_page (thread_p, worker.heap_objects, worker.n_heap_objects, threshold_mvccid,
-			      &upd_scancache->node.hfid, &reusable, false);
+			      &upd_scancache->node.hfid, &oos_files, &reusable, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto exit;

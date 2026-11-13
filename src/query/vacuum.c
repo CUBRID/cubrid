@@ -530,6 +530,7 @@ struct vacuum_heap_helper
   VFID oos_vfid;		/* OOS file identifier (if any). */
   VFID internal_lob_vfid;	/* Internal LOB file identifier (if any); resolved together with oos_vfid. */
   bool oos_files_resolved;	/* True once oos_vfid or internal_lob_vfid was found. */
+  bool oos_files_from_caller;	/* The ids came from a caller holding heap pages: never wait for the header. */
   bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
@@ -1611,7 +1612,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	}
       /* Vacuum page. */
       error_code =
-	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
+	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, NULL, &reusable, was_interrupted);
       if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
 	{
 	  /* The first deferral decides the block. Every page of this heap would wait for its header again, so a later
@@ -1686,12 +1687,15 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
  * n_heap_objects (in)	 : Number of objects.
  * threshold_mvccid (in) : Threshold MVCCID used to vacuum.
  * hfid (in/out)         : Heap file identifier
+ * oos_files (in)	 : The heap's OOS / Internal LOB file ids when the caller holds heap pages across this call, else
+ *			   NULL (looked up here).
  * reusable (in/out)	 : True if object slots are reusable.
  * was_interrutped (in)  : True if same job was executed and interrupted.
  */
 int
 vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
-		  MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted)
+		  MVCCID threshold_mvccid, HFID * hfid, const VACUUM_HEAP_OOS_FILES * oos_files, bool * reusable,
+		  bool was_interrupted)
 {
   VACUUM_HEAP_HELPER helper;	/* Vacuum heap helper. */
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
@@ -1739,6 +1743,12 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   VFID_SET_NULL (&helper.oos_vfid);
   VFID_SET_NULL (&helper.internal_lob_vfid);
   helper.oos_files_resolved = false;
+  helper.oos_files_from_caller = (oos_files != NULL);
+  if (oos_files != NULL)
+    {
+      helper.oos_vfid = oos_files->oos_vfid;
+      helper.internal_lob_vfid = oos_files->internal_lob_vfid;
+    }
 
   /* Fix heap page. */
   if (was_interrupted)
@@ -2489,7 +2499,8 @@ vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * help
       return NO_ERROR;
     }
 
-  if (!heap_oos_find_both_vfids_nowait (thread_p, &helper->hfid, &helper->oos_vfid, &helper->internal_lob_vfid))
+  if (!helper->oos_files_from_caller
+      && !heap_oos_find_both_vfids_nowait (thread_p, &helper->hfid, &helper->oos_vfid, &helper->internal_lob_vfid))
     {
       VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
