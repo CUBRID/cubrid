@@ -39,6 +39,7 @@
 #error Does not belong to server module
 #endif /* SERVER_MODE */
 
+#include "db_multi_threads_connections.h"
 #include "parse_tree.h"
 
 #include <vector>
@@ -51,14 +52,14 @@ enum sp_stmt_category
   SP_STMT_DML
 };
 
-extern int sp_In_sql_depth;
-extern int sp_In_trigger_depth;
-extern int sp_Trigger_call_depth;
-extern bool sp_In_statement_savepoint;
+extern CUB_THREAD_LOCAL int sp_In_sql_depth;
+extern CUB_THREAD_LOCAL int sp_In_trigger_depth;
+extern CUB_THREAD_LOCAL int sp_Trigger_call_depth;
+extern CUB_THREAD_LOCAL bool sp_In_statement_savepoint;
 
 #if defined (SA_MODE)
 /* true while the request being served in process is a query execution, false for a CALL */
-extern bool sp_Sa_query_request;
+extern CUB_THREAD_LOCAL bool sp_Sa_query_request;
 #endif /* SA_MODE */
 
 /* The category of a statement a stored procedure asked this client to run; stmt_type is its CUBRID_STMT_TYPE. */

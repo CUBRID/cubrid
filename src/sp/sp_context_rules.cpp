@@ -40,10 +40,10 @@
 #include <map>
 #include <utility>
 
-int sp_In_sql_depth = 0;
-int sp_In_trigger_depth = 0;
-int sp_Trigger_call_depth = 0;
-bool sp_In_statement_savepoint = false;
+CUB_THREAD_LOCAL int sp_In_sql_depth = 0;
+CUB_THREAD_LOCAL int sp_In_trigger_depth = 0;
+CUB_THREAD_LOCAL int sp_Trigger_call_depth = 0;
+CUB_THREAD_LOCAL bool sp_In_statement_savepoint = false;
 
 struct sp_frame
 {
@@ -57,21 +57,21 @@ struct sp_frame
   std::vector<OID> hierarchy_class_oids;
 };
 
-static std::vector<sp_frame> sp_Frames;
-static unsigned int sp_Frames_version = 0;
+static CUB_THREAD_LOCAL std::vector<sp_frame> sp_Frames;
+static CUB_THREAD_LOCAL unsigned int sp_Frames_version = 0;
 
 /* classes a client write was allowed for, while sp_Frames_version and sp_In_sql_depth stay */
-static std::vector<std::pair<OID, bool>> sp_Allowed_writes;
-static unsigned int sp_Allowed_writes_version = 0;
-static int sp_Allowed_writes_depth = 0;
+static CUB_THREAD_LOCAL std::vector<std::pair<OID, bool>> sp_Allowed_writes;
+static CUB_THREAD_LOCAL unsigned int sp_Allowed_writes_version = 0;
+static CUB_THREAD_LOCAL int sp_Allowed_writes_depth = 0;
 
 /* what an XASL writes, by its XASL_ID: the SHA-1 and the time it was stored */
 #define SP_XASL_WRITES_MAX 256
 using sp_xasl_writes_key = std::array<INT32, 7>;
-static std::map<sp_xasl_writes_key, xasl_stmt_info> sp_Xasl_writes;
+static CUB_THREAD_LOCAL std::map<sp_xasl_writes_key, xasl_stmt_info> sp_Xasl_writes;
 
 #if defined (SA_MODE)
-bool sp_Sa_query_request = false;
+CUB_THREAD_LOCAL bool sp_Sa_query_request = false;
 #endif /* SA_MODE */
 
 sp_stmt_category
