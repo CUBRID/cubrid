@@ -11018,7 +11018,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 	  error = db_is_deleted (mop);
 	  if (error < 0)
 	    {
-	      return error;
+	      goto cleanup;
 	    }
 	  if (error > 0)
 	    {
@@ -11945,6 +11945,29 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 	}
 
+      /* a client-side DELETE locks its target rows in the SELECT below, so the LOCK_TIMEOUT hint must cover it */
+      if (!statement->info.delete_.server_delete)
+	{
+	  hint_arg = statement->info.delete_.waitsecs_hint;
+	  if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
+	    {
+	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	      if (hint_waitsecs > 0)
+		{
+		  wait_msecs = (int) (hint_waitsecs * 1000);
+		}
+	      else
+		{
+		  wait_msecs = (int) hint_waitsecs;
+		}
+	      if (wait_msecs >= -1)
+		{
+		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+		  (void) tran_reset_wait_times (wait_msecs);
+		}
+	    }
+	}
+
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
       assert (parser->query_id == NULL_QUERY_ID);
@@ -11963,33 +11986,17 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  else
 	    {
-	      hint_arg = statement->info.delete_.waitsecs_hint;
-	      if (statement->info.delete_.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-		{
-		  hint_waitsecs = (float) atof (hint_arg->info.name.original);
-		  if (hint_waitsecs > 0)
-		    {
-		      wait_msecs = (int) (hint_waitsecs * 1000);
-		    }
-		  else
-		    {
-		      wait_msecs = (int) hint_waitsecs;
-		    }
-		  if (wait_msecs >= -1)
-		    {
-		      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-		      (void) tran_reset_wait_times (wait_msecs);
-		    }
-		}
 	      AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization checking during execution */
 	      /* delete each oid */
 	      err = delete_list_by_oids (parser, statement, list_id, savepoint_started);
 	      AU_RESTORE (au_save);
-	      if (old_wait_msecs >= -1)
-		{
-		  (void) tran_reset_wait_times (old_wait_msecs);
-		}
 	    }
+	}
+
+      if (old_wait_msecs >= -1)
+	{
+	  (void) tran_reset_wait_times (old_wait_msecs);
+	  old_wait_msecs = -2;
 	}
 
       /* free returned QFILE_LIST_ID */
