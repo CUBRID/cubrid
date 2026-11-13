@@ -10795,7 +10795,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 	  error = db_is_deleted (mop);
 	  if (error < 0)
 	    {
-	      return error;
+	      goto cleanup;
 	    }
 	  if (error > 0)
 	    {
