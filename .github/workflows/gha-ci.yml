@@ -1874,7 +1874,7 @@ jobs:
                 }
                 echo "### Reproduce the failures"
                 echo
-                echo "The build, testcases and CTP of this run, in the current \`$TEST_IMAGE\`, with Docker on the internal network. A PR build stays at least 7 days after it was built, a develop build 30."
+                echo "The build, testcases and CTP of this run, in the current \`$TEST_IMAGE\`, with Docker on the internal network."
                 [ -z "$token" ] || echo "\`GHI_TOKEN\` has to read \`CUBRID/$repo\`, e.g. \`export GHI_TOKEN=\$(gh auth token)\`."
                 echo
                 echo '```bash'
