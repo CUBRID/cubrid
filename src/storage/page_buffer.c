@@ -3757,18 +3757,12 @@ pgbuf_discard_interval_open (void)
 {
   PGBUF_DISCARD_REDO_BOUND *bound = &pgbuf_Pool.discard_redo_bound;
   PGBUF_DISCARD_INTERVAL *intervals = bound->intervals;
-  const LOG_LSA chkpt_redo_lsa = log_Gl.chkpt_redo_lsa.load ();
   int i, interval = -1;
 
   pthread_mutex_lock (&bound->mutex);
   for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
     {
-      /* a closed interval that ends before the redo point of the last recorded checkpoint is never replayed again
-       * (the next checkpoint releases it), so it is free as well. merged into, it would reach back across that redo
-       * point, to log that may be removed already. */
-      if (!intervals[i].is_used
-	  || (intervals[i].nopen == 0 && !LSA_ISNULL (&intervals[i].last_lsa) && !LSA_ISNULL (&chkpt_redo_lsa)
-	      && LSA_LT (&intervals[i].last_lsa, &chkpt_redo_lsa)))
+      if (!intervals[i].is_used)
 	{
 	  interval = i;
 	  break;
@@ -3783,8 +3777,9 @@ pgbuf_discard_interval_open (void)
     }
   else
     {
-      /* all in use: share the most recent one. each of them starts at or after the last recorded redo point (see
-       * above), so merging only widens it after that point, which is still correct. */
+      /* all in use: share the most recent one. each of them starts at or after the redo point of the last
+       * checkpoint (see pgbuf_discard_redo_bound_apply), so merging only widens it after that point, which is still
+       * correct. */
       interval = 0;
       for (i = 1; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
 	{
@@ -3868,8 +3863,13 @@ pgbuf_discard_interval_close (int interval)
  *
  * return             : void
  * redo_lsa (in/out)  : redo point of the checkpoint
- * prev_redo_lsa (in) : redo point of the last recorded checkpoint. intervals ending before it are never replayed
- *                      again, so they are released.
+ * prev_redo_lsa (in) : redo point of the last recorded checkpoint. the redo point never goes below it, as the log
+ *                      before it may be removed already.
+ *
+ * note: the intervals that end before the redo point are released right away, and an interval still open forgets
+ *       the pages added so far. no recovery from this redo point or a later one replays them, and the pages a
+ *       destroy adds later start at or after it, so every interval in use starts at or after the redo point of the
+ *       last checkpoint.
  */
 void
 pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_lsa)
@@ -3882,28 +3882,6 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
   assert (redo_lsa != NULL && !LSA_ISNULL (redo_lsa));
 
   pthread_mutex_lock (&bound->mutex);
-
-  if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa))
-    {
-      for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
-	{
-	  iv = &bound->intervals[i];
-	  if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa) || !LSA_LT (&iv->last_lsa, prev_redo_lsa))
-	    {
-	      continue;
-	    }
-	  if (iv->nopen == 0)
-	    {
-	      iv->is_used = false;
-	    }
-	  else
-	    {
-	      /* still open: forget the pages added so far */
-	      LSA_SET_NULL (&iv->oldest_lsa);
-	      LSA_SET_NULL (&iv->last_lsa);
-	    }
-	}
-    }
 
   do
     {
@@ -3919,8 +3897,7 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
 	    {
 	      if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa) && LSA_LT (&iv->oldest_lsa, prev_redo_lsa))
 		{
-		  /* an interval starts at or after the last recorded redo point, unless it reached back across it.
-		   * the log before that point may be removed already, so never go below it. */
+		  /* cannot happen: every interval starts at or after the last redo point (see the note above) */
 		  assert (false);
 		  if (LSA_LT (prev_redo_lsa, redo_lsa))
 		    {
@@ -3935,6 +3912,25 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
 	}
     }
   while (is_lowered);
+
+  for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
+    {
+      iv = &bound->intervals[i];
+      if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa) || !LSA_LT (&iv->last_lsa, redo_lsa))
+	{
+	  continue;
+	}
+      if (iv->nopen == 0)
+	{
+	  iv->is_used = false;
+	}
+      else
+	{
+	  /* still open: forget the pages added so far */
+	  LSA_SET_NULL (&iv->oldest_lsa);
+	  LSA_SET_NULL (&iv->last_lsa);
+	}
+    }
 
   pthread_mutex_unlock (&bound->mutex);
 }
