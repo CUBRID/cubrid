@@ -826,18 +826,9 @@ typedef enum fp_value_type
 }
 FP_VALUE_TYPE;
 
-typedef enum
-{
-  NUMERIC_MAG_ZERO,		/* all bytes are zero */
-  NUMERIC_MAG_INT,		/* magnitude fits in int range */
-  NUMERIC_MAG_BIGINT,		/* magnitude fits in DB_BIGINT range */
-  NUMERIC_MAG_NUMERIC		/* magnitude exceeds DB_BIGINT range */
-} numeric_magnitude_t;
-
 static inline bool numeric_is_negative (const DB_VALUE * value);
 static void numeric_copy (DB_C_NUMERIC dest, DB_C_NUMERIC source);
 static void numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num);
-static void numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num);
 static void numeric_zero (DB_C_NUMERIC answer, int size);
 static void numeric_init_pow_of_10_helper (void);
 static void numeric_get_pow_of_10 (int exp, uint8_t * result);
@@ -998,36 +989,6 @@ numeric_copy_long (DB_C_NUMERIC dest, DB_C_NUMERIC source, bool is_long_num)
 	  num_cnt = DB_LONG_NUMERIC_MULTIPLIER;
 	}
       memcpy (dest, source, DB_NUMERIC_BUF_SIZE * num_cnt);
-    }
-}
-
-/*
- * numeric_increase_long () -
- *   return:
- *   answer(in/out) : DB_C_NUMERIC value
- *   is_long_num(in): is long NUMERIC
- *
- * Note: This routine increments a numeric value.
- */
-static void
-numeric_increase_long (DB_C_NUMERIC answer, bool is_long_num)
-{
-  int carry = 1;
-  int digit;
-
-  if (is_long_num)
-    {
-      digit = DB_NUMERIC_BUF_SIZE * DB_LONG_NUMERIC_MULTIPLIER - 1;
-    }
-  else
-    {
-      digit = DB_NUMERIC_BUF_SIZE - 1;
-    }
-  /* Loop through answer as long as there is a carry */
-  for (; digit >= 0 && carry == 1; digit--)
-    {
-      answer[digit] += 1;
-      carry = (answer[digit] == 0) ? 1 : 0;
     }
 }
 
