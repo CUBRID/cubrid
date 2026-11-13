@@ -108,6 +108,19 @@ extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, cons
 extern int repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_oidp, DB_VALUE * key_dbvalue,
 					      DB_VALUE * prior_dbvalue);
 extern int repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info);
+/* Replication records observed before SYSOP postpone processing; policy is resolved at its end. */
+struct repl_sysop_info
+{
+  int item_count;
+  int flushed_item_count;
+  bool leftover;
+  const char *reason;
+};
+typedef struct repl_sysop_info REPL_SYSOP_INFO;
+
+extern void repl_prepare_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, REPL_SYSOP_INFO * info);
+extern void repl_finish_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
+			       int data_size, const char *data, bool append_end, const REPL_SYSOP_INFO * info);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);
 extern void repl_keep_flush_marked_with_outer (THREAD_ENTRY * thread_p, int begin_index);

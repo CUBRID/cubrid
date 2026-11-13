@@ -27,10 +27,13 @@
 #include "dbtype.h"
 #include "heap_file.h"
 #include "log_lsa.hpp"
+#include "log_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "schema_system_catalog_constants.h"
 #include "writeset.hpp"
+#include "writeset_order.hpp"
+#include "writeset_trace.hpp"
 
 #include <assert.h>
 #include <stdio.h>
@@ -672,6 +675,255 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
   tdes->cur_repl_record++;
 
   return error;
+}
+
+/*
+ * repl_get_sysop_reason - name what produced the replication items of a system operation
+ *
+ *   tdes(in): transaction ending the system operation
+ *   repl_start_index(in): first replication record that belongs to the operation
+ *
+ * return: "serial" (rows of _db_serial: AUTO_INCREMENT, serial NEXT_VALUE), "incr" (rows of a user class:
+ *         INCR/DECR click counters), "checksum" (statement replication: checksumdb runs its updates this way),
+ *         "mixed" when more than one of these, "none" when nothing is pending, or "overflow" when the
+ *         transaction's writeset was dropped and every operation of it is applied in commit order anyway
+ *
+ * Note: Trace only. The class name sits after the packed key size in a data record (see repl_log_insert); a
+ *       statement record carries no class name and is not read.
+ */
+static const char *
+repl_get_sysop_reason (const LOG_TDES * tdes, int repl_start_index)
+{
+  bool serial = false;
+  bool user_data = false;
+  bool statement = false;
+  int kinds;
+
+  if (tdes->wset_overflow)
+    {
+      return "overflow";
+    }
+
+  for (int item_index = repl_start_index; item_index < tdes->cur_repl_record; item_index++)
+    {
+      const LOG_REPL_RECORD *repl_record = &tdes->repl_records[item_index];
+
+      if (repl_record->must_flush != LOG_REPL_NEED_FLUSH)
+	{
+	  continue;
+	}
+
+      if (repl_record->repl_type == LOG_REPLICATION_STATEMENT)
+	{
+	  statement = true;
+	}
+      else if (repl_record->repl_type == LOG_REPLICATION_DATA && repl_record->repl_data != NULL)
+	{
+	  char *class_name = NULL;
+	  int packed_key_size;
+	  char *ptr = or_unpack_int (repl_record->repl_data, &packed_key_size);
+
+	  (void) or_unpack_string_nocopy (ptr, &class_name);
+	  if (class_name != NULL && strcmp (class_name, CT_SERIAL_NAME) == 0)
+	    {
+	      serial = true;
+	    }
+	  else
+	    {
+	      user_data = true;
+	    }
+	}
+    }
+
+  kinds = (serial ? 1 : 0) + (user_data ? 1 : 0) + (statement ? 1 : 0);
+  if (kinds == 0)
+    {
+      return "none";
+    }
+  if (kinds > 1)
+    {
+      return "mixed";
+    }
+  if (serial)
+    {
+      return "serial";
+    }
+  if (statement)
+    {
+      return "checksum";
+    }
+
+  return "incr";
+}
+
+/*
+ * repl_prepare_sysop () - flush replication records before an operation runs its postpone actions
+ *   thread_p(in): thread entry
+ *   tdes(in/out): transaction ending the operation
+ *   info(out): records used to decide and trace the operation's replication policy
+ *
+ * Note: A nested operation must not flush the records of an open serial/INCR/checksum flush mark. The marking
+ *       operation closes the mark before its own end, when its row images have valid log positions.
+ */
+void
+repl_prepare_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, REPL_SYSOP_INFO * info)
+{
+  int start_index;
+
+  assert (tdes != NULL && info != NULL);
+  assert (tdes->topops.last >= 0);
+  const LOG_TOPOPS_ADDRESSES *sysop = &tdes->topops.stack[tdes->topops.last];
+  info->item_count = 0;
+  info->flushed_item_count = 0;
+  info->leftover = false;
+  info->reason = "none";
+
+  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
+      && log_does_allow_replication () == true && tdes->fl_mark_repl_recidx == -1)
+    {
+      start_index = tdes->append_repl_recidx < 0 ? 0 : tdes->append_repl_recidx;
+      for (int item_index = start_index; item_index < tdes->cur_repl_record; item_index++)
+	{
+	  LOG_REPL_RECORD *repl_record = &tdes->repl_records[item_index];
+	  if ((repl_record->repl_type == LOG_REPLICATION_DATA
+	       || repl_record->repl_type == LOG_REPLICATION_STATEMENT)
+	      && repl_record->must_flush == LOG_REPL_NEED_FLUSH)
+	    {
+	      info->item_count++;
+	      if (item_index < sysop->repl_unit_begin)
+		{
+		  info->leftover = true;
+		}
+	    }
+	}
+
+      /* classified before the append below marks the items flushed */
+      info->reason = repl_get_sysop_reason (tdes, start_index);
+
+      /* Preserve the flush point before postpone processing. */
+      log_append_repl_info (thread_p, tdes, false);
+      info->flushed_item_count = info->item_count;
+      for (int item_index = start_index; item_index < tdes->cur_repl_record; item_index++)
+	{
+	  LOG_REPL_RECORD *repl_record = &tdes->repl_records[item_index];
+	  if ((repl_record->repl_type == LOG_REPLICATION_DATA
+	       || repl_record->repl_type == LOG_REPLICATION_STATEMENT)
+	      && repl_record->must_flush == LOG_REPL_NEED_FLUSH)
+	    {
+	      info->flushed_item_count--;
+	    }
+	}
+    }
+
+}
+
+/*
+ * repl_finish_sysop () - choose replication ordering, append the end, then publish and discard its keys
+ *   thread_p(in): thread entry
+ *   tdes(in/out): transaction ending the operation; its row locks/page latches are still held
+ *   sysop_end(in): end record after postpone processing
+ *   data_size(in): recovery data size
+ *   data(in): recovery data
+ *   append_end(in): false for an empty operation that does not write an end record
+ *   info(in): replication records observed before postpone processing
+ *
+ * Note: repl_flushed also covers checksumdb, which writes its statement before calling log_sysop_commit.
+ *       Finish before log_sysop_end_final removes the operation's stack entry. An attached INCR retains its
+ *       keys and records for the outer transaction, rather than passing through this commit path.
+ */
+void
+repl_finish_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end, int data_size,
+		   const char *data, bool append_end, const REPL_SYSOP_INFO * info)
+{
+  bool sysop_keyed = false;
+  bool sysop_commit_order = false;
+  size_t sysop_key_begin = 0;
+  size_t sysop_key_count = 0;
+  LOG_LSA sysop_lsa = LSA_INITIALIZER;
+
+  assert (tdes != NULL && sysop_end != NULL && info != NULL);
+  assert (tdes->topops.last >= 0);
+  const LOG_TOPOPS_ADDRESSES *sysop = &tdes->topops.stack[tdes->topops.last];
+
+  if (append_end)
+    {
+      /* log system operation end */
+      sysop_key_begin = sysop->wset_mark;
+      if (info->item_count > 0
+	  || (sysop->repl_flushed && !LOG_CHECK_LOG_APPLIER (thread_p)
+	      && tdes->is_active_worker_transaction () && log_does_allow_replication () == true))
+	{
+	  /* The writeset label (LOG_DUMMY_WSET_LABEL, written right before this SYSOP_END) makes the slave apply the
+	   * records written here as their own task at this SYSOP_END. Every system operation whose replication
+	   * records reached the log while it was the innermost one is labeled, whatever its end type: checksumdb
+	   * appends its statement before log_sysop_commit. An unlabeled SYSOP_END leaves the records to the outer
+	   * transaction on the slave, which applies them at the outer commit or drops them on its abort.
+	   *
+	   * Commit order: the label holds the log position of the latest commit (or SYSOP_END) written before this
+	   * operation, and the history floor is raised to this SYSOP_END, so every later transaction waits for it.
+	   * By keys: the label comes from the keys the operation collected, which are published at this SYSOP_END,
+	   * so only a later change of the same keys waits for it. */
+	  sysop_key_count =
+	    tdes->wset_hashes.size () > sysop_key_begin ? tdes->wset_hashes.size () - sysop_key_begin : 0;
+
+	  /* An operation that declared itself an independent replication unit (repl_start_flush_mark) and collected
+	   * the keys it changed is ordered by them, like a commit: only a later change of the same serial or row
+	   * waits for it. Commit order stays for a unit without keys (checksumdb, an overflowed writeset) and for a
+	   * SYSOP_END that also wrote records made before the operation started, whose keys it does not hold. */
+	  sysop_keyed = (sysop->repl_unit && !info->leftover && !tdes->wset_overflow && sysop_key_count > 0);
+	  sysop_commit_order = !sysop_keyed;
+	  log_append_repl_sysop_end (thread_p, tdes, sysop_end, data_size, data, sysop_keyed,
+				     sysop_key_begin, &sysop_lsa);
+	}
+      else
+	{
+	  log_append_sysop_end (thread_p, tdes, sysop_end, data_size, data);
+	}
+
+
+      /* Remember last partial result */
+      LSA_COPY (&tdes->tail_topresult_lsa, &tdes->tail_lsa);
+
+      if (sysop_keyed)
+	{
+	  /* Published at the SYSOP_END while the row lock (INCR/DECR) or the page latch (serial) is still held, then
+	   * dropped from the outer writeset so the outer commit does not publish them again. */
+	  wset_order_publish_sysop_keys (tdes, sysop_key_begin, &sysop_lsa);
+	  wset_discard_sysop_keys (tdes, sysop_key_begin);
+	}
+      else if (sysop_commit_order)
+	{
+	  /* Every later transaction waits for this operation: log_append_repl_sysop_end raised the
+	   * history floor to it. The keys collected inside it are dropped unpublished: the row lock on a serial
+	   * is released at SYSOP_END, so publishing them at the outer commit would describe an order that never
+	   * held. */
+	  wset_discard_sysop_keys (tdes, sysop_key_begin);
+	}
+    }
+
+  /* a labeled (serial) fragment is traced at level 1; every other system operation at level 2 */
+  WSET_TRACE ((sysop_commit_order || sysop_keyed) ? 1 : 2,
+	      "SYSOP master trid=%d type=%s appended=%d sysop_lsa=%lld|%d repl_items=%d flushed_items=%d "
+	      "buffered_items=%d append_index=%d\n",
+	      tdes->trid, log_sysop_end_type_string (sysop_end->type), (int) append_end,
+	      LSA_AS_ARGS (&tdes->tail_lsa), info->item_count, info->flushed_item_count,
+	      tdes->cur_repl_record, tdes->append_repl_recidx);
+
+  if (sysop_commit_order)
+    {
+      WSET_TRACE (1, "SYSOP master commit_order trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
+		  "dropped_keys=%zu overflow=%d reason=%s\n",
+		  tdes->trid, LSA_AS_ARGS (&tdes->wset_dependency_lsa), LSA_AS_ARGS (&sysop_lsa),
+		  sysop_key_count, tdes->wset_overflow ? 1 : 0, info->reason);
+    }
+  else if (sysop_keyed)
+    {
+      WSET_TRACE (1, "SYSOP master keyed trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
+		  "published_keys=%zu reason=%s\n",
+		  tdes->trid, LSA_AS_ARGS (&tdes->wset_dependency_lsa), LSA_AS_ARGS (&sysop_lsa),
+		  sysop_key_count, info->reason);
+    }
+
 }
 
 /*
