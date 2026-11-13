@@ -11523,7 +11523,15 @@ btree_replace_first_oid_with_ovfl_oid (THREAD_ENTRY * thread_p, BTID_INT * btid,
    * Logging physical delete, because it has logical undo, cannot work well under system operation. For this reason,
    * the operation will be split into two sub-operations: 1. Swap first object in leaf record with last object in first
    * overflow page. This is done under a system operation that is committed at the end. 2. Remove relocated object from
-   * overflow record. */
+   * overflow record.
+   *
+   * The object moved to the leaf must stay the last object of the first overflow page: a range scan interrupted
+   * inside the key resumes from the chain after the last OID it processed without reading the leaf record again,
+   * and relies on that object being one it has already processed (btree_range_scan_select_visible_oids ()). The
+   * relocated object therefore lands in the first page whatever its OID, out of order when the OID is above the
+   * second page's separator, until the second step removes it. Should the server stop in between, the retried
+   * delete finds it there: btree_ovf_dir_find_oid () walks the pages before the routed one on a directory miss
+   * (CBRD-27973). Neither step allocates a page, which keeps the undo of an insert free of allocation failures. */
 
   /* Get overflow record. */
   ovfl_copy_rec.area_size = DB_PAGESIZE;
@@ -13736,7 +13744,11 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
 }
 
 /*
- * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory.
+ * btree_ovf_dir_find_oid () - Find an object in a directory-format overflow chain using the directory. When the
+ *			       directory search misses, the pages before the routed one are walked as well: the leaf
+ *			       swap of a delete leaves the deleted object in the first page out of order until its
+ *			       second step, and a restart in between leaves it there for the retried delete to find
+ *			       (CBRD-27973).
  *
  * return		  : Error code.
  * thread_p (in)	  : Thread entry.
@@ -13760,10 +13772,14 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 {
   BTREE_OVF_DIR_HEADER *dir_hdr;
   VPID dir_head_vpid, target_vpid, prev_vpid;
+  VPID routed_vpid = VPID_INITIALIZER;	/* The page the directory routes the OID to. */
+  VPID walk_vpid;
   PAGE_PTR first_ovf_page = NULL;
   PAGE_PTR dir_page = NULL;
   PAGE_PTR target_page = NULL;
   PAGE_PTR prev_data_page = NULL;
+  PAGE_PTR walk_page = NULL;
+  PAGE_PTR walk_prev_page = NULL;
   RECDES dir_record, data_record;
   BTREE_OVF_DIR_ENTRY *entries;
   int num_entries, idx;
@@ -13849,6 +13865,10 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
       assert (idx >= 0 && idx < num_entries);
 
       VPID_COPY (&target_vpid, &entries[idx].vpid);
+      if (VPID_ISNULL (&routed_vpid))
+	{
+	  VPID_COPY (&routed_vpid, &target_vpid);
+	}
 
       /* Fix the previous data page first (chain latch order) when the caller needs it. */
       if (prev_page != NULL)
@@ -13988,9 +14008,107 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 	}
     }
 
-  /* Not found. */
+  /* Not found through the directory. */
   pgbuf_unfix_and_init (thread_p, dir_page);
+
+  switch (purpose)
+    {
+    case BTREE_OP_DELETE_VACUUM_OBJECT:
+    case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL:
+    case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
+      /* Removing an object that a leaf swap may have left behind: walk below. */
+      break;
+    default:
+      /* A miss is a regular outcome here (e.g. vacuuming the insert MVCCID of an object whose removal, later in the
+       * same log block, was vacuumed first; an insert looking for an existing version): do not walk. */
+      return NO_ERROR;
+    }
+
+  /* CBRD-27973: the leaf swap of a delete (btree_replace_first_oid_with_ovfl_oid ()) writes the deleted object into
+   * the first data page, in the place of the object it moves to the leaf, whatever the OID, and removes it again in
+   * a second step. In between the object sits before the page the directory routes it to, so a delete retried after
+   * a restart in between (vacuum, an undone insert) cannot find it through the directory and would leave it behind
+   * for good. Walk the chain from its first page up to the routed page (exclusive: that page and the ones stepped
+   * back to were searched above). Only the removals of an object reach here (see the switch above); for them a miss
+   * is exceptional (such a retry, or the replay of a vacuum interrupted by a restart), so the walk costs nothing on
+   * the regular paths. */
+  VPID_COPY (&walk_vpid, first_ovf_vpid);
+  while (!VPID_EQ (&walk_vpid, &routed_vpid))
+    {
+      PERF_UTIME_TRACKER_START (thread_p, &ovf_fix_time_track);
+      walk_page = pgbuf_fix (thread_p, &walk_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      btree_perf_ovf_oids_fix_time (thread_p, &ovf_fix_time_track);
+      if (walk_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto walk_error;
+	}
+      thread_p->read_ovfl_pages_count++;
+
+      error_code =
+	btree_find_oid_from_ovfl (thread_p, btid_int, walk_page, oid, purpose, match_mvccinfo, offset_to_object,
+				  object_mvcc_info, deleted_mvcc_info);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto walk_error;
+	}
+      if (*offset_to_object != NOT_FOUND)
+	{
+	  *found_page = walk_page;
+	  if (prev_page != NULL)
+	    {
+	      /* walk_prev_page is kept only when the caller asks for the predecessor. */
+	      *prev_page = (walk_prev_page != NULL) ? walk_prev_page : leaf_page;
+	    }
+	  return NO_ERROR;
+	}
+
+      error_code = btree_get_next_overflow_vpid (thread_p, walk_page, &walk_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto walk_error;
+	}
+      if (walk_prev_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, walk_prev_page);
+	}
+      if (prev_page != NULL)
+	{
+	  /* Keep the page as the predecessor of the next one (chain latch order). */
+	  walk_prev_page = walk_page;
+	  walk_page = NULL;
+	}
+      else
+	{
+	  pgbuf_unfix_and_init (thread_p, walk_page);
+	}
+      if (VPID_ISNULL (&walk_vpid))
+	{
+	  /* Broken chain: the routed page was not reached. */
+	  assert_release (false);
+	  break;
+	}
+    }
+  if (walk_prev_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_prev_page);
+    }
   return NO_ERROR;
+
+walk_error:
+  assert_release (error_code != NO_ERROR);
+  if (walk_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_page);
+    }
+  if (walk_prev_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, walk_prev_page);
+    }
+  return error_code;
 
 error:
   assert_release (error_code != NO_ERROR);
@@ -15504,7 +15622,8 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
   int target_size = (int) (((INT64) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int) * fill_factor) / 100);
   int cur_len, next_len, next_count, room, num_move;
   int merges = 0;
-  OID boundary_oid, prev_oid;
+  OID boundary_oid, prev_oid, cur_last_oid, next_first_oid;
+  RECDES cur_record;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
@@ -15658,11 +15777,31 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 	      num_move--;
 	    }
 	}
+      /* CBRD-27973: a leaf swap interrupted by a restart leaves the deleted object at the end of the first page, above
+       * the objects of the next page, until the retried delete removes it. Appending the next page's objects behind it
+       * would put smaller OIDs after a larger one, where neither the page's binary search nor the directory finds
+       * them: leave the pair as it is (the retried delete is found by btree_ovf_dir_find_oid ()'s walk). */
+      if (num_move > 0)
+	{
+	  if (spage_get_record (thread_p, cur_page, 1, &cur_record, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto exit;
+	    }
+	  BTREE_GET_OID (cur_record.data + cur_record.length - obj_size, &cur_last_oid);
+	  BTREE_GET_OID (next_record.data, &next_first_oid);
+	  if (OID_GT (&cur_last_oid, &next_first_oid))
+	    {
+	      num_move = 0;
+	    }
+	}
       if (num_move <= 0)
 	{
 	  /* The neighbor starts with one reusable OID's un-vacuumed run that fills the whole prefix we could take: no
-	   * separator boundary exists, so this pair stays as it is until vacuum removes the run. Counted so the caller
-	   * can tell "nothing to do" from "could not do". */
+	   * separator boundary exists, or the current page ends with a leftover of an interrupted leaf swap (above).
+	   * This pair stays as it is until vacuum removes the run or the leftover. Counted so the caller can tell
+	   * "nothing to do" from "could not do". */
 	  (*pairs_skipped)++;
 	  pgbuf_unfix_and_init (thread_p, cur_page);
 	  cur_page = next_page;
@@ -41746,6 +41885,7 @@ page_key_boundary::set_value (THREAD_ENTRY * thread_p, DB_VALUE &dest_value, BTI
     }
 
   pr_clone_value (&boundary_value, &dest_value);
+  btree_clear_key_value (&clear_boundary_value, &boundary_value);
 
   return NO_ERROR;
 }
