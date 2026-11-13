@@ -196,9 +196,8 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          ACTION: ${{ github.event.action }}
-          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_AT: ${{ github.event.pull_request.updated_at }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           ENGINE_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
@@ -213,29 +212,17 @@ jobs:
             exit 1
           fi
 
-          # TC Branch Sync opens the TC PRs on these events. A verdict taken before it
-          # ends sees no TC PR and passes; the sweep only caught that 30 minutes later.
-          # A run names no PR (fork PRs list none), so every run since the event counts.
-          # Cancelled runs are skipped: TC Branch Sync cancels a run when the PR's next one starts.
-          SYNC=success
-          if [ "${ACTION}" = opened ] || [ "${ACTION}" = reopened ]; then
-            SINCE=$(date -u -d "${EVENT_AT} 1 minute ago" +%Y-%m-%dT%H:%M:%SZ)
-            for _ in $(seq 30); do
-              SYNC=$(GH_TOKEN="${GITHUB_TOKEN}" gh api \
-                       "repos/${ENGINE_REPO}/actions/workflows/tc-branch-sync.yml/runs?head_sha=${EVENT_SHA}&event=pull_request_target" \
-                       --jq "[.workflow_runs[] | select(.created_at >= \"${SINCE}\" and .conclusion != \"cancelled\")]
-                             | if length == 0 or any(.[]; .status != \"completed\") then \"waiting\"
-                               elif all(.[]; .conclusion == \"success\") then \"success\" else \"failure\" end") \
-                || SYNC=unknown
-              [ "${SYNC}" = success ] || [ "${SYNC}" = failure ] && break
-              sleep 10
-            done
-          fi
-          if [ "${SYNC}" = success ]; then
-            OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
-          else
-            OUT="BLOCK"$'\n'"- ⚠️ TC Branch Sync did not open the TC PRs (${SYNC}) — re-run it if it failed, then re-run this check"$'\n'
-          fi
+          # A verdict taken while TC Branch Sync runs sees no TC PR yet and passes.
+          REF=$(jq -rn --arg r "${HEAD_REF}" '$r | @uri')
+          for _ in $(seq 30); do
+            RUNNING=$(GH_TOKEN="${GITHUB_TOKEN}" gh api \
+                        "repos/${ENGINE_REPO}/actions/workflows/tc-branch-sync.yml/runs?branch=${REF}&event=pull_request_target" \
+                        --jq "[.workflow_runs[] | select(.head_repository.full_name == \"${HEAD_REPO}\" and .status != \"completed\")] | length") \
+              || RUNNING=unknown
+            [ "${RUNNING}" = 0 ] && break
+            sleep 10
+          done
+          OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
           VERDICT=$(head -n 1 <<< "${OUT}")
           DETAIL=$(tail -n +2 <<< "${OUT}")
 
@@ -367,10 +354,9 @@ jobs:
 
           while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING JOB_ID COMPLETED SWEPT_N; do
             [ -z "${PR_NUMBER}" ] && continue
-            # The sweep only blocks; a person's re-run unblocks. While the newest run waits,
-            # the rollup hides it, and a re-run of an older run is ignored (#8398).
+            # Only blocks: while the newest run waits on GitHub the rollup hides it,
+            # and a re-run of an older run does not count.
             [ "${STANDING}" = SUCCESS ] || continue
-            [ "${COMPLETED}" = '-' ] && continue
             YOUNG=''
             [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && YOUNG=1
             # Young PRs are aligned too: re-running a run from before ALIGN leaves entries stale.
