@@ -520,10 +520,11 @@ namespace cubmethod
       {
 	if (sql[i] == '?')
 	  {
-	    if (i + 1 < sql_len && sql[++i] == ':')
+	    // look at the next character without consuming it: a comment or a string may start right after "?"
+	    if (i + 1 < sql_len && sql[i + 1] == ':')
 	      {
 		// read ?:<number> form
-		int begin_idx = i + 1;
+		int begin_idx = i + 2;
 		int idx = begin_idx;
 
 		while (idx < sql_len && sql[idx] >= '0' && sql[idx] <= '9')
@@ -537,7 +538,9 @@ namespace cubmethod
 		    numbered_markers.insert (stoi (number));
 		  }
 
-		i = idx;
+		// stop at the last character of the marker as consume_tokens () does: the loop moves to the next one, which
+		// can start a comment or a string (e.g. "?:0/* ? */" of a PL/CSQL static SQL text)
+		i = idx - 1;
 	      }
 	    else
 	      {

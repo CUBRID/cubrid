@@ -91,6 +91,11 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "stream_client.h"
+#include "stream_session.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -7241,7 +7246,8 @@ btree_class_test_unique (char *buf, int buf_size)
  * fill_factor (in)	: Target fill ratio in percent.
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow pages deallocated.
- * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ * pairs_skipped (out)	: Number of page pairs and keys that could not be compacted until vacuum catches up (no OID
+ *			  boundary in a page pair, or no stable object in a key's leaf record).
  */
 int
 btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
@@ -7662,6 +7668,13 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	{
 	  flag |= EXECUTE_QUERY_WITHOUT_DATA_BUFFERS;
 	}
+    }
+
+  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included: EXECUTE_QUERY_WITH_COMMIT
+   * is the bit the server commits on */
+  if (stream_from_is_open ())
+    {
+      flag &= ~(TRAN_AUTO_COMMIT | EXECUTE_QUERY_WITH_COMMIT);
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
@@ -12352,6 +12365,282 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 #endif /* !CS_MODE */
 }
 
+#if defined(CS_MODE)
+/* Whether this client holds an open stream session. The caller of a statement
+ * that opened one needs to know that bytes are still to come, without knowing
+ * which consumer opened it. */
+static CUB_THREAD_LOCAL bool stream_Is_open = false;
+
+/* where giving the upload up goes back to (stream_from_set_savepoint), or NULL */
+static CUB_THREAD_LOCAL const char *stream_Savepoint = NULL;
+
+/* The download handles this client holds, as the READ_OPEN replies named them. Each ties the transaction as an
+ * open result set does, and the server releases them all when the transaction ends (stream_from_reset). */
+static CUB_THREAD_LOCAL INT64 *stream_Downloads = NULL;
+static CUB_THREAD_LOCAL int stream_Download_count = 0;
+static CUB_THREAD_LOCAL int stream_Download_capacity = 0;
+
+static int
+stream_download_add (INT64 handle)
+{
+  if (stream_Download_count == stream_Download_capacity)
+    {
+      int capacity = stream_Download_capacity == 0 ? 16 : 2 * stream_Download_capacity;
+      INT64 *grown = (INT64 *) realloc (stream_Downloads, capacity * sizeof (INT64));
+
+      if (grown == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity * sizeof (INT64));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      stream_Downloads = grown;
+      stream_Download_capacity = capacity;
+    }
+
+  stream_Downloads[stream_Download_count++] = handle;
+  return NO_ERROR;
+}
+
+static int
+stream_download_find (INT64 handle)
+{
+  for (int i = 0; i < stream_Download_count; i++)
+    {
+      if (stream_Downloads[i] == handle)
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+/*
+ * stream_roll_back_given_up () - Undo what an upload given up without its END flushed, as for a failed statement
+ *   reaches_transaction(in): false when the request failed on the wire, or the server already rolled back
+ */
+static void
+stream_roll_back_given_up (bool reaches_transaction)
+{
+  const char *savepoint = stream_Savepoint;
+
+  stream_Savepoint = NULL;
+  if (savepoint == NULL || !reaches_transaction)
+    {
+      return;
+    }
+
+  /* the error that ended the upload is the one to report */
+  er_stack_push ();
+  (void) tran_abort_upto_system_savepoint (savepoint);
+  er_stack_pop ();
+}
+
+static void
+stream_download_remove (INT64 handle)
+{
+  int i = stream_download_find (handle);
+
+  if (i >= 0)
+    {
+      stream_Downloads[i] = stream_Downloads[--stream_Download_count];
+    }
+}
+#endif /* CS_MODE */
+
+/*
+ * stream_from_is_open () - Is a stream session open for this client?
+ *   return: true between a successful stream_from_init () and stream_from_end ()
+ */
+bool
+stream_from_is_open (void)
+{
+#if defined(CS_MODE)
+  return stream_Is_open;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_reset () - Forget the stream session this connection was holding
+ *
+ * Called where the server-side session or transaction is known to be gone: ending the
+ * client session, shutting the database connection down, committing or rolling back.
+ * A client that goes away mid-stream never sends END, and this flag would otherwise
+ * survive into the next client the CAS process serves -- where do_commit_after_execute ()
+ * would read it and defer every auto-commit forever. The server releases every download
+ * handle with the transaction, so they go too.
+ */
+void
+stream_from_reset (void)
+{
+#if defined(CS_MODE)
+  stream_Is_open = false;
+  stream_Savepoint = NULL;
+  stream_Download_count = 0;
+#endif /* CS_MODE */
+}
+
+/*
+ * stream_from_final () - Free this thread's download list, as a MULTI_CONN_TO_A_SERVER sub-client finishes
+ */
+void
+stream_from_final (void)
+{
+#if defined(CS_MODE)
+  free_and_init (stream_Downloads);
+  stream_Download_count = 0;
+  stream_Download_capacity = 0;
+  stream_Is_open = false;
+  stream_Savepoint = NULL;
+#endif /* CS_MODE */
+}
+
+/*
+ * stream_from_holds_download () - Does a download handle still tie this client's transaction?
+ */
+bool
+stream_from_holds_download (void)
+{
+#if defined(CS_MODE)
+  return stream_Download_count > 0;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_holds_handle () - Is handle one of the downloads this client holds?
+ */
+bool
+stream_from_holds_handle (INT64 handle)
+{
+#if defined(CS_MODE)
+  return stream_download_find (handle) >= 0;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+#if defined(CS_MODE)
+/*
+ * stream_request_error () - The error of a stream request that reached the server
+ *   return: the code its reply carried, or the one its error reply staged
+ *
+ * A request that became a deadlock victim was rolled back by the server inside it, with every stream and
+ * download of the transaction; the client side ends the transaction too, as after any other request.
+ */
+static int
+stream_request_error (int req_error, int reply_code)
+{
+  int error_code = reply_code;
+
+  if (req_error)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_FAILED;
+	}
+    }
+
+  if (error_code == ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_only_client (false);
+    }
+
+  return error_code;
+}
+#endif /* CS_MODE */
+
+/*
+ * stream_from_init () - Open a client->server byte-stream session on the server
+ *   return: error code
+ *   stream_kind(in): the consumer's own STREAM_KIND_* tag
+ *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
+ *   config_len(in): length of config in bytes
+ *   flags(in): STREAM_FLAG_FINAL to end the stream with data in the same request
+ *   data(in), data_len(in): the first chunk, or none
+ *   count(out): with STREAM_FLAG_FINAL, what END would have returned
+ *   ends_unit_of_work(out): does END of this kind finish the statement? Answered
+ *                           on a refusal too, since the open may already have put
+ *                           work into the transaction
+ *
+ * The server factory dispatches on stream_kind to build the matching session.
+ * This entry is consumer-agnostic; the config blob is opaque here.
+ */
+int
+stream_from_init (int stream_kind, const char *config, int config_len, int flags, const char *data, int data_len,
+		  INT64 * count, bool * ends_unit_of_work)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int request_size;
+  char *request = NULL;
+  char *ptr;
+  int ends = 0;
+  INT64 final_count = 0;
+
+  request_size = 3 * OR_INT_SIZE + config_len + data_len;
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, stream_kind);
+  ptr = or_pack_int (ptr, flags);
+  ptr = or_pack_int (ptr, config_len);
+  if (config_len > 0)
+    {
+      memcpy (ptr, config, config_len);
+    }
+  if (data_len > 0)
+    {
+      memcpy (ptr + config_len, data, data_len);
+    }
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_INIT, request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int (ptr, &ends);
+      ptr = or_unpack_int64 (ptr, &final_count);
+    }
+  rc = stream_request_error (req_error, rc);
+
+  /* a refused open leaves whatever was open before it, and a FINAL one leaves nothing open */
+  if (rc == NO_ERROR && !(flags & STREAM_FLAG_FINAL))
+    {
+      stream_Is_open = true;
+      stream_Savepoint = NULL;
+    }
+  if (count != NULL)
+    {
+      *count = (rc == NO_ERROR) ? final_count : 0;
+    }
+  if (ends_unit_of_work != NULL)
+    {
+      *ends_unit_of_work = (ends != 0);
+    }
+
+  free_and_init (request);
+
+  return rc;
+#else /* CS_MODE */
+  /* there is no client->server hop in standalone mode, and reporting success
+   * would let a consumer stream into nothing and call it a zero-row load */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
 /*
  * file_clean_invalid_file -
  *
@@ -12449,3 +12738,349 @@ file_delete_target_file (const char *target_vfid_str)
 #endif /* !CS_MODE */
 }
 #endif
+
+/*
+ * stream_from_send_data () - Send one chunk of the byte stream to the server
+ *   return: error code
+ *   data(in): binary data buffer
+ *   data_len(in): length of data in bytes
+ */
+int
+stream_from_send_data (const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_SEND_DATA, (char *) data, data_len, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+  rc = stream_request_error (req_error, rc);
+
+  if (rc != NO_ERROR)
+    {
+      /* the server drops the session on a failed chunk, so nothing is open here either */
+      stream_Is_open = false;
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_end () - End the stream and retrieve the session's result
+ *   return: error code
+ *   count(out): the binding's count -- rows for COPY and LOB DML
+ *   data(in), data_len(in): a last chunk to consume before ending, or none
+ */
+int
+stream_from_end (INT64 * count, const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  *count = 0;
+
+  int req_error = net_client_request (NET_SERVER_STREAM_END, data_len > 0 ? (char *) data : NULL, data_len, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  /* the server drops the session on END whether or not it reported an error */
+  stream_Is_open = false;
+
+  if (!req_error)
+    {
+      char *ptr;
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int64 (ptr, count);
+    }
+  rc = stream_request_error (req_error, rc);
+  if (rc != NO_ERROR)
+    {
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+  stream_Savepoint = NULL;
+
+  return rc;
+#else /* CS_MODE */
+  *count = 0;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_abort () - Drop the open stream session without ending it
+ *   return: error code
+ *
+ * For the failure the server cannot see: the consumer's client half gave up
+ * before it had a chunk to send -- its encoder failed, the statement it belongs
+ * to unwound, the user cancelled. Sending a chunk just to make the server refuse
+ * it would report the wrong error; this says so directly. What the session
+ * flushed is undone back to the savepoint the statement named
+ * (stream_from_set_savepoint ()), or else by the caller's rollback.
+ */
+int
+stream_from_abort (void)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_ABORT, NULL, 0, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  /* the session is gone either way: the server dropped it, or it was never there */
+  stream_Is_open = false;
+
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+  rc = stream_request_error (req_error, rc);
+  stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_set_savepoint () - Name where giving the open upload up goes back to, as for a failed statement
+ *   savepoint_name(in): a system savepoint the opening statement took before the open; it outlives the upload
+ */
+void
+stream_from_set_savepoint (const char *savepoint_name)
+{
+#if defined(CS_MODE)
+  stream_Savepoint = stream_Is_open ? savepoint_name : NULL;
+#endif /* CS_MODE */
+}
+
+#if defined(CS_MODE)
+/* the bytes a READ_OPEN or READ reply carried, into the caller's buffer of max bytes */
+static int
+stream_take_read_data (int rc, char *data_reply, int data_size, int nread, char *buf, int max, int *nread_out)
+{
+  *nread_out = 0;
+
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (nread < 0 || nread > max || data_size != nread || (nread > 0 && data_reply == NULL))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "malformed stream read reply");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  if (nread > 0)
+    {
+      memcpy (buf, data_reply, (size_t) nread);
+    }
+  *nread_out = nread;
+
+  return NO_ERROR;
+}
+#endif /* CS_MODE */
+
+/*
+ * stream_from_read_open () - Open a server->client byte stream
+ *   return: error code
+ *   stream_kind(in): the consumer's own STREAM_KIND_* tag
+ *   config(in), config_len(in): the kind's config blob, opaque here
+ *   first_max(in): 0 to open only, or the bytes buf can take from a first read in the same request
+ *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
+ *   handle(out): what READ and RELEASE name; 0 when the core released the source at eof
+ *   buf(out), nread(out), reply_flags(out): the first piece, STREAM_FLAG_EOF / STREAM_FLAG_RELEASED
+ *
+ * The kind's authorize runs first, here, so that every client of this library
+ * -- the CAS for a driver, csql, the utilities -- is checked the same way.
+ */
+int
+stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
+		       INT64 * handle, char *buf, int *nread, int *reply_flags)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int request_size;
+  char *request = NULL;
+  char *ptr;
+  char *data_reply = NULL;
+  int data_size = 0;
+  int reply_nread = 0;
+
+  *handle = 0;
+  *nread = 0;
+  *reply_flags = 0;
+
+  rc = stream_kind_client_authorize (stream_kind, config, config_len);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  request_size = 3 * OR_INT_SIZE + config_len;
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, stream_kind);
+  ptr = or_pack_int (ptr, first_max);
+  ptr = or_pack_int (ptr, flags);
+  if (config_len > 0)
+    {
+      memcpy (ptr, config, config_len);
+    }
+
+  OR_ALIGNED_BUF (4 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request2 (NET_SERVER_STREAM_READ_OPEN, request, request_size, reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
+  rc = ER_FAILED;
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &reply_nread);
+      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, reply_flags);
+      ptr = or_unpack_int64 (ptr, handle);
+    }
+  rc = stream_request_error (req_error, rc);
+  rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, first_max, nread);
+  if (*handle != 0)
+    {
+      if (rc == NO_ERROR)
+	{
+	  rc = stream_download_add (*handle);
+	}
+      /* a handle the caller is not told about would tie the transaction with nothing to release it */
+      if (rc != NO_ERROR)
+	{
+	  (void) stream_from_release (*handle);
+	  *handle = 0;
+	}
+    }
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+  free_and_init (request);
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_read () - Read the next piece of an open download
+ *   return: error code
+ *   handle(in): what stream_from_read_open () returned
+ *   buf(out), max(in): where the bytes go and how many it takes
+ *   flags(in): STREAM_FLAG_RELEASE_AT_EOF
+ *   nread(out), reply_flags(out): STREAM_FLAG_EOF / STREAM_FLAG_RELEASED -- on a failed read too, which
+ *                                 releases the handle unless it never resolved
+ */
+int
+stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  char *ptr;
+  char *data_reply = NULL;
+  int data_size = 0;
+  int reply_nread = 0;
+
+  OR_ALIGNED_BUF (OR_BIGINT_SIZE + 2 * OR_INT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  *nread = 0;
+  *reply_flags = 0;
+
+  ptr = or_pack_int64 (request, handle);
+  ptr = or_pack_int (ptr, max);
+  ptr = or_pack_int (ptr, flags);
+
+  int req_error = net_client_request2 (NET_SERVER_STREAM_READ, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				       OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &reply_nread);
+      ptr = or_unpack_int (ptr, &rc);
+      ptr = or_unpack_int (ptr, reply_flags);
+    }
+  rc = stream_request_error (req_error, rc);
+  if (*reply_flags & STREAM_FLAG_RELEASED)
+    {
+      stream_download_remove (handle);
+    }
+  rc = stream_take_read_data (rc, data_reply, data_size, reply_nread, buf, max, nread);
+
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return rc;
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_release () - Release a download handle this client holds
+ *   return: error code; a handle the server no longer has is not an error
+ *   handle(in): a download handle
+ */
+int
+stream_from_release (INT64 handle)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_BIGINT_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  stream_download_remove (handle);
+  (void) or_pack_int64 (request, handle);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_RELEASE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  return stream_request_error (req_error, rc);
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
+}
