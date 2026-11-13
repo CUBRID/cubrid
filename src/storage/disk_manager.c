@@ -3983,6 +3983,42 @@ disk_rv_reserve_sectors (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * disk_rv_note_unreserved_sectors () - tell the page buffer which sectors a sector unreserve record frees, while crash
+ *                                      recovery replays it (see pgbuf_rv_discard_unreserved_pages).
+ *
+ * return             : void
+ * stab_vpid (in)     : sector table page of the record
+ * unit_offset (in)   : offset of the unit in the sector table page (the record offset)
+ * data (in)          : record data (the unreserved bits of the unit)
+ * unreserve_lsa (in) : LSA of the record
+ */
+void
+disk_rv_note_unreserved_sectors (const VPID * stab_vpid, int unit_offset, const char *data,
+				 const LOG_LSA * unreserve_lsa)
+{
+  DISK_STAB_UNIT unit_bits;
+  VSID vsid;
+  int bit;
+
+  assert (stab_vpid != NULL && data != NULL && unreserve_lsa != NULL);
+  assert (unit_offset >= 0 && unit_offset < DISK_STAB_PAGE_UNITS_COUNT);
+  /* the sector table starts right after the volume header (see disk_stab_cursor_set_at_sectid) */
+  assert (stab_vpid->pageid > DISK_VOLHEADER_PAGE);
+
+  memcpy (&unit_bits, data, sizeof (unit_bits));
+  vsid.volid = stab_vpid->volid;
+  for (bit = 0; bit < DISK_STAB_UNIT_BIT_COUNT; bit++)
+    {
+      if (bit64_is_set (unit_bits, bit))
+	{
+	  vsid.sectid = ((stab_vpid->pageid - (DISK_VOLHEADER_PAGE + 1)) * DISK_STAB_PAGE_BIT_COUNT
+			 + unit_offset * DISK_STAB_UNIT_BIT_COUNT + bit);
+	  pgbuf_rv_add_unreserved_sector (&vsid, unreserve_lsa);
+	}
+    }
+}
+
+/*
  * disk_rv_unreserve_sectors () - Apply recovery for unreserving sectors.
  *
  * return	   : Error code.

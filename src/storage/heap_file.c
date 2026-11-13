@@ -103,7 +103,12 @@ static int rv;
 #define HEAP_GUESS_NUM_ATTRS_REFOIDS 100
 #define HEAP_GUESS_NUM_INDEXED_ATTRS 100
 
-#define HEAP_CLASSREPR_MAXCACHE	1024
+/* Number of class representations kept in the server-wide cache. One partition is one class, and a single table
+ * may have up to MAX_PARTITIONS (1024) partitions, so 1024 entries were exhausted by one partitioned table plus the
+ * system classes. Each entry costs 112 bytes plus a DEFAULT_REPR_INCREMENT (16) slot pointer array (128 bytes) and
+ * two 64-byte hash buckets up front, about 3 MB for 8192 entries; the representations themselves are allocated only
+ * for classes that are actually used. */
+#define HEAP_CLASSREPR_MAXCACHE	8192
 
 #define HEAP_DEBUG_SCANCACHE_INITPATTERN (12345)
 
@@ -421,6 +426,9 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
   while (0)
 
 #define HEAP_CHNGUESS_FUDGE_MININDICES (100)
+/* Number of entries of the client CHN guess table. Kept apart from HEAP_CLASSREPR_MAXCACHE: heap_chnguess_clear ()
+ * walks every entry on each client disconnect, so the table should not grow with the class representation cache. */
+#define HEAP_CHNGUESS_MAXENTRIES 1024
 #define HEAP_NBITS_IN_BYTE	     (8)
 #define HEAP_NSHIFTS                   (3)	/* For multiplication/division by 8 */
 #define HEAP_BITMASK                   (HEAP_NBITS_IN_BYTE - 1)
@@ -4493,7 +4501,6 @@ exit:
   return error_code;
 }
 
-
 /*
  * heap_build_bestspace () - Load and rebuild a bestspace from heap file
  *   return:
@@ -5478,7 +5485,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-
   return NO_ERROR;
 }
 
@@ -5520,7 +5526,6 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
     }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
-
 
   return ret;
 }
@@ -6977,6 +6982,70 @@ heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 }
 
 /*
+ * heap_scancache_switch_class () - point a query scan cache at the heap of another class
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   scan_cache(in/out): a scan cache started by heap_scancache_start () for a query scan
+ *   hfid(in): the heap of the class
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   lock_held(in): the scan already holds the IS_LOCK of the class (a partition it switched to before)
+ *
+ * Note: as heap_scancache_end () and heap_scancache_start () would, keeping what does not depend on the heap
+ *	 (the snapshot, the work area, the index statistics) (CBRD-27866).
+ */
+int
+heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
+			     const OID * class_oid, bool lock_held)
+{
+  if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN || scan_cache->local_cache_handle != NULL
+      || scan_cache->partition_list != NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (scan_cache->cache_last_fix_page == true && scan_cache->page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+
+  if (!lock_held)
+    {
+      int granted;
+#if defined(SERVER_MODE)
+      THREAD_ENTRY *main_thread_p = NULL;
+      if (thread_p->m_px_orig_thread_entry != NULL)
+	{
+	  main_thread_p = thread_get_main_thread (thread_p);
+	  pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
+#if defined(SERVER_MODE)
+      if (main_thread_p != NULL)
+	{
+	  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      if (granted != LK_GRANTED)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+    }
+
+  scan_cache->node.class_oid = *class_oid;
+  scan_cache->node.hfid = *hfid;
+  scan_cache->node.classname = NULL;
+  scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (class_oid);
+  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  heap_scancache_reset_insert_hint (scan_cache);
+
+  return NO_ERROR;
+}
+
+/*
  * heap_scancache_end_when_scan_will_resume () -
  *   return:
  *   scan_cache(in):
@@ -7528,7 +7597,6 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   /* Shouldn't be here. */
   return S_ERROR;
 }
-
 
 /*
  * heap_next_internal () - Retrieve of peek next object.
@@ -8146,7 +8214,6 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
-
       if (scan == S_SUCCESS)
 	{
 	  /*
@@ -8193,7 +8260,6 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
   return scan;
 }
-
 
 /* A page whose first chunk the batch collects, its lines asked for at once: heap_page_collect_visible () reads nearly
  * every record of it -- the slot, then the record's header first, then its columns -- and a header's first load waited
@@ -10596,13 +10662,26 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
+      int max_attrs = (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs
+		       + attr_info->last_classrepr->n_class_attrs);
+
+      /* the function index result is requested on top of the class attributes */
+      for (i = 0; i < requested_num_attrs; i++)
+	{
+	  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrids[i]))
+	    {
+	      max_attrs++;
+	    }
+	}
+
+      if (requested_num_attrs > max_attrs)
+	{
 #ifndef NDEBUG
-      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
+	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
 #endif
-      requested_num_attrs =
-	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	attr_info->last_classrepr->n_class_attrs;
+	  requested_num_attrs = max_attrs;
+	}
     }
 
   if (requested_num_attrs > 0)
@@ -10730,6 +10809,19 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	{
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
+	}
+      else if (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
+	{
+	  /* no heap representation; the value is filled from the index key */
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  value->last_attrepr = NULL;
+	  value->read_attrepr = NULL;
+	  if (value->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      db_make_null (&value->dbvalue);
+	    }
+	  num_found_attrs++;
+	  continue;
 	}
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
@@ -11030,6 +11122,72 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 /*
+ * heap_attrinfo_switch_class () - point an attribute cache at another class with the same attributes
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   attr_info(in/out): an attribute cache started by heap_attrinfo_start ()
+ *
+ * Note: the partitions of a table have the same attributes, so the cache keeps its attribute ids and its value
+ *	 array and takes the class representation of the other partition, as heap_attrinfo_end () and
+ *	 heap_attrinfo_start () would without freeing and allocating the values (CBRD-27866).
+ */
+int
+heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  HEAP_ATTRVALUE *value;
+  int i;
+
+  if (attr_info->num_values == -1)
+    {
+      /* an empty cache (no attributes): nothing is bound to the class */
+      return NO_ERROR;
+    }
+
+  (void) heap_attrinfo_clear_dbvalues (attr_info);
+  (void) heap_attrinfo_recache (thread_p, NULL_REPRID, attr_info);
+  if (attr_info->last_classrepr != NULL)
+    {
+      heap_classrepr_free_and_init (attr_info->last_classrepr, &attr_info->last_cacheindex);
+    }
+
+  attr_info->class_oid = *class_oid;
+  attr_info->last_cacheindex = -1;
+  attr_info->read_cacheindex = -1;
+  attr_info->read_classrepr = NULL;
+  OID_SET_NULL (&attr_info->inst_oid);
+  attr_info->inst_chn = NULL_CHN;
+  attr_info->lazy_recdes = NULL;
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+      value->state = HEAP_UNINIT_ATTRVALUE;
+      value->do_increment = 0;
+      value->last_attrepr = NULL;
+      value->read_attrepr = NULL;
+      value->rd_attrepr = NULL;
+    }
+
+  attr_info->last_classrepr =
+    heap_classrepr_get (thread_p, &attr_info->class_oid, NULL, NULL_REPRID, &attr_info->last_cacheindex);
+  if (attr_info->last_classrepr == NULL)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      ASSERT_ERROR ();
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  if (heap_attrinfo_recache_attrepr (attr_info, true) != NO_ERROR)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_clear_dbvalues () - Clear current dbvalues of attribute
  *                                 information
  *   return: NO_ERROR
@@ -11063,7 +11221,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 	       * of the object
 	       */
 	      attrepr = ((value->read_attrepr != NULL) ? value->read_attrepr : value->last_attrepr);
-	      if (attrepr != NULL)
+	      if (attrepr != NULL || IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
 		{
 		  if (pr_clear_value (&value->dbvalue) != NO_ERROR)
 		    {
@@ -11080,7 +11238,6 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 
   return ret;
 }
-
 
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
  * live, derived once per record instead of once per attribute.  The body is written out here
@@ -11592,6 +11749,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   HEAP_REC_LAYOUT own_layout;
   OR_ATTRIBUTE *attrepr;
+
+  if (unlikely (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid)))
+    {
+      /* the function result exists only in the index key; the planner must not let such a scan read the heap */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
@@ -12782,6 +12947,27 @@ exit_on_error:
 }
 
 /*
+ * heap_attrinfo_check_not_null_after_coercion () - check NOT NULL again on the value after coercion
+ *   return: NO_ERROR or ER_NULL_CONSTRAINT_VIOLATION
+ *   value(in): the attribute value after coercion
+ *
+ * Note: NOT NULL is checked against the value before coercion. However, coercion can still produce NULL:
+ *       '' converted to NUMERIC with numeric_empty_string_as_null, or a failed coercion with
+ *       return_null_on_function_errors.
+ */
+static int
+heap_attrinfo_check_not_null_after_coercion (const HEAP_ATTRVALUE * value)
+{
+  if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+      return ER_NULL_CONSTRAINT_VIOLATION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_set () - Set the value of given attribute
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
@@ -12834,6 +13020,10 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
 	  db_make_null (&value->dbvalue);
 	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
+	}
     }
 
   if (ret != NO_ERROR)
@@ -12873,11 +13063,72 @@ heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
 }
 
 /*
+ * heap_attrinfo_can_share_string () - CBRD-27847: whether an attribute takes a string or bit string value as it is,
+ *   sharing the value's buffer: the value is of the attribute's domain - precision and collation, as the match
+ *   heap_attrinfo_set tries first (TP_EXACT_MATCH), and the codeset -, fits its precision (a CHAR or BIT fills it),
+ *   and owns no buffer. The cast would only copy such a value: the same codeset is copied as it is, and a full CHAR
+ *   or BIT is padded by neither the cast nor writing it, which pad a shorter one differently (the cast with the
+ *   codeset's pad character, writing with a space). A value that owns its buffer is cast into a copy: its holder may
+ *   clear it before the record is written (locator_mvcc_reev_cond_assigns clears it right after the assignment).
+ *   return: true to share the value's buffer
+ *   value(in): a value, not NULL, of the attribute's type
+ *   domain(in): the attribute's domain
+ */
+static bool
+heap_attrinfo_can_share_string (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  int precision;
+
+  if (!TP_IS_CHAR_BIT_TYPE (type) || DB_NEED_CLEAR (value))
+    {
+      return false;
+    }
+
+  if (TP_IS_CHAR_TYPE (type)
+      && (db_get_string_codeset (value) != TP_DOMAIN_CODESET (domain)
+	  || db_get_string_collation (value) != TP_DOMAIN_COLLATION (domain)))
+    {
+      return false;
+    }
+
+  /* the value's precision as tp_domain_resolve_value makes it - an unset variable one is the maximum -, but for an
+   * oversized one, which the shared setval refuses (ER_INVALID_PRECISION) where the cast stores the value */
+  precision = db_value_precision (value);
+  if ((type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+      && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE))
+    {
+      precision = (type == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION;
+    }
+  if (precision != domain->precision)
+    {
+      return false;
+    }
+
+  /* and the value fits it, whatever its precision says. A CHAR or BIT fills it: one read from a list tuple, a record
+   * or a plan comes padded, with its precision as its length. A VARCHAR's size in bytes bounds its length in
+   * characters, which is counted only when the size does not decide; a bit string's length is in bits */
+  if (type == DB_TYPE_CHAR || type == DB_TYPE_BIT)
+    {
+      return db_get_string_length (value) == precision;
+    }
+  if (type == DB_TYPE_VARCHAR && db_get_string_size (value) <= precision)
+    {
+      return true;
+    }
+  return db_get_string_length (value) <= precision;
+}
+
+/*
  * heap_attrinfo_set_converted () - CBRD-27583: set the value an INSERT, UPDATE or MERGE assigns to an
  *   attribute with the converter its plan chose at unpack for the value's type into the attribute's type, as
  *   heap_attrinfo_set's coercion does it (tp_value_auto_cast_with_precision_check) into the catalog's domain, without
- *   the match it tries first
+ *   the match it tries first - but for a string the attribute can share (heap_attrinfo_can_share_string), which the
+ *   cast would only copy
  *   return: NO_ERROR, or the conversion's error
+ *   attr_val(in): the value; a string the attribute shares is borrowed, not copied: its buffer must stay as it is
+ *		   until the record is built (locator_attribute_info_force), so a value read through the scan cache that
+ *		   the force rereads the old record with is copied first
  *   domain(in): the attribute's domain the XASL streams, of the catalog's type (a client builds a collection's,
  *		 MONETARY's or an object's domain that tp_domain_match does not find the catalog's)
  *   value_type(in), conv(in): the plan's - the type the value comes in and its converter into domain's type, which a
@@ -12905,12 +13156,14 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
       /* NULL, and an object reference, which the server takes as it is (tp_domain_check) */
       ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
     }
-  else if (value_type == TP_DOMAIN_TYPE (catalog) && heap_attrinfo_is_fixed_copy_type (value_type)
+  else if (value_type == TP_DOMAIN_TYPE (catalog)
 	   /* guard: the plan's premise; a mismatch takes the converter path */
-	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type)
+	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type
+	   && (heap_attrinfo_is_fixed_copy_type (value_type) || heap_attrinfo_can_share_string (attr_val, catalog)))
     {
-      /* the plan's value of the attribute's own fixed-size type: the cast would only clone it (no precision, codeset
-       * or zone) */
+      /* the plan's value of the attribute's own type that the cast would only copy: a fixed-size type (no precision,
+       * codeset or zone) is cloned; a string's buffer is shared, so the value's holder keeps it until the record is
+       * written - a list tuple, a record or a plan constant does, for the row */
       ret = pr_type->setval (&value->dbvalue, attr_val, false);
     }
   else
@@ -12925,6 +13178,10 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, catalog);
 	  assert (er_errid () != NO_ERROR);
 	  db_make_null (&value->dbvalue);
+	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
 	}
     }
   if (ret != NO_ERROR)
@@ -14024,7 +14281,6 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
 
   return id;
 }
-
 
 /*
  * heap_attrinfo_start_with_btid () - Initialize an attribute information structure
@@ -16666,7 +16922,7 @@ heap_chnguess_initialize (void)
 
   heap_Guesschn_area.schema_change = false;
   heap_Guesschn_area.clock_hand = -1;
-  heap_Guesschn_area.num_entries = HEAP_CLASSREPR_MAXCACHE;
+  heap_Guesschn_area.num_entries = HEAP_CHNGUESS_MAXENTRIES;
 
   /*
    * Start with at least the fude factor of clients. Make sure that every
@@ -16684,7 +16940,7 @@ heap_chnguess_initialize (void)
 
   /* Build the hash table from OID to CHN */
   heap_Guesschn_area.ht =
-    mht_create ("Memory hash OID to chn at clients", HEAP_CLASSREPR_MAXCACHE, oid_hash, oid_compare_equals);
+    mht_create ("Memory hash OID to chn at clients", HEAP_CHNGUESS_MAXENTRIES, oid_hash, oid_compare_equals);
   if (heap_Guesschn_area.ht == NULL)
     {
       goto exit_on_error;
@@ -19175,9 +19431,33 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    }
 	}
 
-      if (!DB_IS_NULL (&orig_value))
+      if (!DB_IS_NULL (&orig_value) && DB_IS_NULL (&(value->dbvalue)))
 	{
-	  assert (!DB_IS_NULL (&(value->dbvalue)));
+	  /* '' and a whitespace-only string are NULL as NUMERIC with numeric_empty_string_as_null. */
+	  assert (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL) && dest_type == DB_TYPE_NUMERIC
+		  && QSTR_IS_ANY_CHAR (src_type));
+
+	  /* For attributes that are already NOT NULL, treat values that become NULL during coercion as
+	   * conversion failures, since existing NULL values are checked only when NOT NULL is newly added. */
+	  if (value->last_attrepr->is_notnull)
+	    {
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
+		{
+		  error = ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  goto exit;
+		}
+
+	      error =
+		db_value_domain_default (&(value->dbvalue), dest_type, dest_prec, dest_dom->scale, dest_dom->codeset,
+					 dest_dom->collation_id, &dest_dom->enumeration);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      log_warning = true;
+	      warning_code = ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT;
+	    }
 	}
 
       if (log_warning)
@@ -20480,7 +20760,6 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL);
 }
-
 
 /*
  * heap_next_record_info () - Retrieve or peek next object.
@@ -24840,7 +25119,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 					  LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
 
-
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -25049,7 +25327,6 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
 					  LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
     }
-
 
 error:
 
@@ -25325,7 +25602,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
 					  &context->supp_redo_lsa);
     }
-
 
 exit:
 

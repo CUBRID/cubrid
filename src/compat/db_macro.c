@@ -941,6 +941,11 @@ db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision,
       break;
     case DB_TYPE_NUMERIC:
       numeric_coerce_dec_str_to_num ("0", value->data.num.d.buf, NULL);
+      if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  value->data.num.header.precision = 1;
+	  value->data.num.header.scale = 0;
+	}
       value->domain.numeric_info.is_value_negative = false;
       value->domain.general_info.is_null = 0;
       break;
@@ -1840,6 +1845,13 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
 	    db_value_clear (&tmp_value);
+	    break;
+	  }
+
+	if (DB_IS_NULL (&tmp_value))
+	  {
+	    /* '' or a whitespace-only string with numeric_empty_string_as_null */
+	    db_value_put_null (value);
 	    break;
 	  }
 
