@@ -116,9 +116,29 @@ extern "C"
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
 #define CAS_INFO_FLAG_MASK_NEW_SESSION_ID       0x04
+/* A stream session is open on this connection, so the statement that opened it
+ * is not finished and its auto-commit is owed to END. A driver that commits
+ * from its own side reads this and holds that commit back; the CAS pays it.
+ *
+ * Only a PROTOCOL_V13 client may read it: an earlier server leaves every bit
+ * above the three older masks at 1. */
+#define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
+/* Bits no server sets yet, 0 in every reply, so a bit a later release defines reads 0 from this one. */
+#define CAS_INFO_FLAG_MASK_RESERVED             0xF0
+
+/* The flags byte of the stream requests and replies, required on INIT, READ_OPEN and READ: only it carries the
+ * auto-commit mode the driver keeps on its own side. A bit not listed for a request is refused with CAS_ER_ARGS. */
+#define CAS_STREAM_FLAG_FINAL			0x01	/* INIT, SEND_DATA: end the stream with this chunk */
+#define CAS_STREAM_FLAG_RELEASE_AT_EOF		0x01	/* READ_OPEN, READ: release the handle at eof */
+#define CAS_STREAM_FLAG_AUTO_COMMIT		0x02	/* INIT, READ_OPEN, READ: the connection runs in auto-commit */
+#define CAS_STREAM_FLAG_EOF			0x01	/* READ_OPEN, READ reply */
+#define CAS_STREAM_FLAG_RELEASED		0x02	/* READ_OPEN, READ reply: the handle is gone */
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
+/* The flags byte every reply starts from: the three older masks at 1, as every earlier server left them, the rest 0 */
+#define CAS_INFO_ADDITIONAL_FLAG_DEFAULT \
+  ((char) (CAS_INFO_RESERVED_DEFAULT & ~(CAS_INFO_FLAG_MASK_STREAM_OPEN | CAS_INFO_FLAG_MASK_RESERVED)))
 
 #define MAX_HA_DBINFO_LENGTH    (SRV_CON_DBNAME_SIZE + MAX_CONN_INFO_LENGTH)
 
@@ -231,10 +251,27 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
+    /* PROTOCOL_V13 names the whole family, 45-51; a driver checks it once before sending any of them */
+    CAS_FC_STREAM_SEND_DATA = 45,
+    CAS_FC_STREAM_END = 46,
+    /* Open and give up, for a consumer whose client half is the driver itself.
+     * A stream opened by a statement needs neither: the statement opens it, and
+     * the failure the server can see closes it. */
+    CAS_FC_STREAM_INIT = 47,
+    CAS_FC_STREAM_ABORT = 48,
+    /* Server->client: a download is a handle the client reads until eof and then releases. A commit ends it, but an
+     * auto-commit that only closes something (a fetch's end, GET_DB_VERSION) waits for the last release. */
+    CAS_FC_STREAM_READ_OPEN = 49,
+    CAS_FC_STREAM_READ = 50,
+    CAS_FC_STREAM_RELEASE = 51,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
     CAS_FC_MAX,
+
+    /* A code from CAS_FC_MAX below this one is answered with CAS_ER_NOT_IMPLEMENTED, and the connection stays, so a
+     * driver may try a code a later release adds. One at or above it closes the connection, as a corrupt request does. */
+    CAS_FC_PROBE_MAX = 64,
 
     /* function code list of protocol version V2 - 9.0.0.xxxx */
     CAS_FC_CURSOR_CLOSE_FOR_PROTO_V2 = 41,
@@ -258,8 +295,8 @@ extern "C"
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
     PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
-				 * QC/X1 query cancel; schema info: attribute IS_INVISIBLE, EXT_DOMAIN,
-				 * CODESET columns */
+				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*);
+				 * schema info: attribute IS_INVISIBLE, EXT_DOMAIN, CODESET columns */
     CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
