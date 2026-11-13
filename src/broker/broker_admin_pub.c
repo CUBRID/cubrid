@@ -79,6 +79,7 @@
 #include "dbtype_def.h"
 #include "host_lookup.h"
 #include "system_parameter.h"
+#include "release_string.h"
 
 #define ADMIN_ERR_MSG_SIZE	BROKER_PATH_MAX * 2
 
@@ -1587,7 +1588,7 @@ admin_getid_cmd (int master_shm_id, int argc, const char **argv)
 
   if (argc == 3 && strcmp (argv[2], "--version") == 0)
     {
-      fprintf (stderr, "VERSION %s\n", makestring (BUILD_NUMBER));
+      fprintf (stderr, "VERSION %s\n", rel_build_number ());
       return 0;
     }
 

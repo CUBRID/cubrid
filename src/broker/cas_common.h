@@ -34,9 +34,6 @@
 #include "porting.h"
 #include "chartype.h"
 
-#define makestring1(x) #x
-#define makestring(x) makestring1(x)
-
 #define MAX_SERVER_H_ID                 (256)
 #define MAX_BIND_VALUE                  (10240)
 #define MAX_QUERY_LEN                   (100000)

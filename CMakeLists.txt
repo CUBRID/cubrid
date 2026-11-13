@@ -100,23 +100,6 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
-# Define a function to read the actual Git directory and HEAD for Git Worktrees
-function(set_git_dir_from_worktree git_dir head_file)
-    file(READ ${CMAKE_SOURCE_DIR}/.git git_dir_content)
-    string(REGEX MATCH "gitdir: (.*)/worktrees/(.*)\n" _ ${git_dir_content})
-    set(${git_dir} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-    set(${head_file} "${CMAKE_MATCH_1}/worktrees/${CMAKE_MATCH_2}/HEAD" PARENT_SCOPE)
-endfunction()
-
-if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
-    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
-        set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
-        set(HEAD_FILE "${GIT_DIR}/HEAD")
-    else() # Git Worktree
-        set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
-    endif()
-endif()
-
 if(VERSION_MATCHES_LENGTH GREATER 3)
   list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
   if(VERSION_MATCHES_LENGTH GREATER 4)
@@ -125,6 +108,11 @@ if(VERSION_MATCHES_LENGTH GREATER 3)
 else(VERSION_MATCHES_LENGTH GREATER 3)
   find_package(Git)
   if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
+    # Use the repository of the source tree even when cmake is re-run with another repository in the environment
+    # (e.g. from a git hook): the version and the files watched below must both come from this repository.
+    unset(ENV{GIT_DIR})
+    unset(ENV{GIT_WORK_TREE})
+    unset(ENV{GIT_COMMON_DIR})
     set(CUBRID_MAJOR_START_DATE "2019-12-12")
     execute_process(COMMAND ${GIT_EXECUTABLE} --version
     COMMAND awk "{ printf \"%s\", $3 }"
@@ -166,8 +154,58 @@ else(VERSION_MATCHES_LENGTH GREATER 3)
       message(FATAL_ERROR "Could not get hash information from Git")
     endif(git_result)
     set(CUBRID_HASH_TAG -${commit_hash})
-    # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
-    configure_file("${HEAD_FILE}" "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache" COPYONLY)
+    # Re-run cmake when HEAD moves to another commit, so that the version above is computed again.
+    # With the files backend, HEAD itself changes on checkout and while detached (commit, reset), and a commit on a
+    # branch changes the HEAD reflog (logs/HEAD). With the reftable backend, the reftable stack (reftable/tables.list)
+    # changes. They are in the git directory of the worktree, which git reports for any layout (.git directory,
+    # linked worktree, submodule, ...).
+    # The ref of the current branch is watched as well (in the common git directory for a linked worktree), for a
+    # repository without a HEAD reflog and for a branch moved from another worktree. A packed ref has no file
+    # until the ref is updated, so its nearest directory under refs/ is watched instead.
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --git-dir
+      OUTPUT_VARIABLE git_dir RESULT_VARIABLE git_result
+      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    if(NOT git_result)
+      get_filename_component(git_dir "${git_dir}" ABSOLUTE BASE_DIR "${PROJECT_SOURCE_DIR}")
+      set(git_watch_files)
+      foreach(git_file HEAD logs/HEAD reftable/tables.list)
+        list(APPEND git_watch_files "${git_dir}/${git_file}")
+      endforeach(git_file)
+      execute_process(COMMAND ${GIT_EXECUTABLE} symbolic-ref -q HEAD
+        OUTPUT_VARIABLE git_head_ref RESULT_VARIABLE git_result
+        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+      # --git-common-dir and --git-path need git 2.5 or later
+      if(NOT git_result AND git_head_ref AND GIT_VERSION VERSION_GREATER_EQUAL 2.5)
+        execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --git-common-dir --git-path "${git_head_ref}"
+          OUTPUT_VARIABLE git_paths RESULT_VARIABLE git_result
+          ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
+          WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+        string(REPLACE "\n" ";" git_paths "${git_paths}")
+        list(LENGTH git_paths git_paths_count)
+        if(NOT git_result AND git_paths_count EQUAL 2)
+          list(GET git_paths 0 git_common_dir)
+          list(GET git_paths 1 git_ref_file)
+          get_filename_component(git_common_dir "${git_common_dir}" ABSOLUTE BASE_DIR "${PROJECT_SOURCE_DIR}")
+          get_filename_component(git_ref_file "${git_ref_file}" ABSOLUTE BASE_DIR "${PROJECT_SOURCE_DIR}")
+          string(FIND "${git_ref_file}" "${git_common_dir}/refs/" git_ref_pos)
+          if(git_ref_pos EQUAL 0)
+            # stay under refs/: watching the git directory itself would re-run cmake at most git commands
+            while(NOT EXISTS "${git_ref_file}" AND NOT git_ref_file STREQUAL "${git_common_dir}/refs")
+              get_filename_component(git_ref_file "${git_ref_file}" DIRECTORY)
+            endwhile(NOT EXISTS "${git_ref_file}" AND NOT git_ref_file STREQUAL "${git_common_dir}/refs")
+            list(APPEND git_watch_files "${git_ref_file}")
+          endif(git_ref_pos EQUAL 0)
+        endif(NOT git_result AND git_paths_count EQUAL 2)
+      endif(NOT git_result AND git_head_ref AND GIT_VERSION VERSION_GREATER_EQUAL 2.5)
+      foreach(git_file ${git_watch_files})
+        # watch only existing files: a missing one would re-run cmake at every build
+        if(EXISTS "${git_file}")
+          set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${git_file}")
+        endif(EXISTS "${git_file}")
+      endforeach(git_file)
+    endif(NOT git_result)
   else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
     set(CUBRID_EXTRA_VERSION 0)
   endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
@@ -178,7 +216,6 @@ set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRI
 set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
 set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
 # TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
-# TODO: remove #if defined (VERSION_STRING) in src/base/release_string.c
 set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
 # BUILD_NUMBER (digital only version string) for legacy codes
 set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
@@ -603,7 +640,9 @@ endif(UNIX)
 
 configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
+# build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
 configure_file(cmake/version.h.cmake version.h)
+configure_file(cmake/build_version.h.cmake build_version.h)
 
 if(MULTI_CONN_TO_A_SERVER)
   add_definitions(-DMULTI_CONN_TO_A_SERVER)
@@ -821,6 +860,23 @@ add_subdirectory(cubrid)
 add_subdirectory(util)
 if(WITH_CCI)
   add_subdirectory(cubrid-cci)
+  # CCI sources got the version macros from config.h (cci_network.c sends BUILD_NUMBER to the broker as the
+  # driver version). They are in build_version.h now, so force-include it into the CCI library without changing
+  # the cubrid-cci submodule. Otherwise MAKE_STR (BUILD_NUMBER) silently becomes "BUILD_NUMBER".
+  set(cci_target_found FALSE)
+  foreach(cci_target cascci cascci_static)
+    if(TARGET ${cci_target})
+      set(cci_target_found TRUE)
+      if(MSVC)
+        target_compile_options(${cci_target} PRIVATE "/FI${CMAKE_BINARY_DIR}/build_version.h")
+      else(MSVC)
+        target_compile_options(${cci_target} PRIVATE "SHELL:-include \"${CMAKE_BINARY_DIR}/build_version.h\"")
+      endif(MSVC)
+    endif(TARGET ${cci_target})
+  endforeach(cci_target)
+  if(NOT cci_target_found)
+    message(FATAL_ERROR "No CCI library target (cascci or cascci_static) to force-include build_version.h into")
+  endif(NOT cci_target_found)
 endif(WITH_CCI)
 add_subdirectory(broker)
 add_subdirectory(cm_common)

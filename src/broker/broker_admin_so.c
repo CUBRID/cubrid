@@ -44,6 +44,7 @@
 #include "broker_shm.h"
 #include "broker_process_size.h"
 #include "broker_process_info.h"
+#include "release_string.h"
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
@@ -314,7 +315,7 @@ uc_shm_detach (void *p)
 DLL_EXPORT const char *
 uc_version ()
 {
-  return makestring (BUILD_NUMBER);
+  return rel_build_number ();
 }
 
 DLL_EXPORT int
