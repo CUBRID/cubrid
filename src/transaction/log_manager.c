@@ -4723,13 +4723,23 @@ log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYS
 	}
     }
 
-  /* Prepare the end record before the mutex: allocation and TDE lookup may block. */
+  /* Both records must be ready before either is appended. Preparation can allocate and fix a TDE header page. */
   LOG_PRIOR_NODE *end_node = log_prepare_sysop_end_node (thread_p, sysop_end, data_size, data);
   if (end_node == NULL)
     {
-      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "cannot prepare replicated system operation end");
       return;
     }
+  LOG_PRIOR_NODE *label_node =
+    prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_WSET_LABEL, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (label_node == NULL)
+    {
+      logpb_free_prior_node (end_node);
+      /* This void SYSOP-end API cannot report a failed commit to its caller. Never complete it without a label. */
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "cannot prepare system operation replication label");
+      return;
+    }
+
   log_Gl.prior_info.prior_lsa_mutex.lock ();
   if (by_keys)
     {
@@ -4739,7 +4749,10 @@ log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYS
     {
       wset_order_find_sysop_dependency (tdes, &tdes->wset_dependency_lsa);
     }
-  log_append_wset_label_with_lock (thread_p, tdes, unit_key_hash);
+  LOG_REC_WSET_LABEL *label = (LOG_REC_WSET_LABEL *) label_node->data_header;
+  LSA_COPY (&label->dependency_lsa, &tdes->wset_dependency_lsa);
+  label->unit_key_hash = unit_key_hash;
+  (void) prior_lsa_next_record_with_lock (thread_p, label_node, tdes);
   *sysop_end_lsa_out = prior_lsa_next_record_with_lock (thread_p, end_node, tdes);
   assert (!LSA_ISNULL (sysop_end_lsa_out));
   if (by_keys)
