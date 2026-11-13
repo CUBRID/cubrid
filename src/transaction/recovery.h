@@ -194,7 +194,9 @@ typedef enum
 
   RVLOG_SYSMETA_VERSION_UPDATE = 135,
 
-  RV_LAST_LOGID = RVLOG_SYSMETA_VERSION_UPDATE,
+  RVPGBUF_INIT_NEW_PAGE = 136,
+
+  RV_LAST_LOGID = RVPGBUF_INIT_NEW_PAGE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
@@ -275,6 +277,14 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_MARK_PAGES_IN_HEAP \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
 
+/* records with nothing to undo: what they changed needs no restoring, or other records restore it. so rollback skips
+ * them altogether: it neither fixes their page (which may be deallocated by then) nor logs a compensation (an empty
+ * logical compensation would commit an empty system operation). */
+#define RCV_IS_NOTHING_TO_UNDO(idx) \
+  ((idx) == RVBT_MVCC_NOTIFY_VACUUM \
+   || (idx) == RVES_NOTIFY_VACUUM \
+   || (idx) == RVPGBUF_INIT_NEW_PAGE)
+
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   (((vpid)->volid == NULL_VOLID) \
    || ((vpid)->pageid == NULL_PAGEID) \
@@ -286,7 +296,7 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVFL_DEALLOC \
    || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
    || (idx) == RVPGBUF_DEALLOC \
-   || (idx) == RVES_NOTIFY_VACUUM \
+   || RCV_IS_NOTHING_TO_UNDO (idx) \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \
    || (idx) == RVFL_TRACKER_UNREGISTER)

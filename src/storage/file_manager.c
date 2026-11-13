@@ -3478,7 +3478,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
       goto exit;
     }
 
-  memset (page_fhead, 0, DB_PAGESIZE);
+  pgbuf_init_new_page (thread_p, page_fhead, TDE_ALGORITHM_NONE, is_temp);
   pgbuf_set_page_ptype (thread_p, page_fhead, PAGE_FTAB);
   fhead = (FILE_HEADER *) page_fhead;
 
@@ -3702,8 +3702,8 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
+	  pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, is_temp);
 	  pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
-	  memset (page_ftab, 0, DB_PAGESIZE);
 	  extdata_part_ftab = (FILE_EXTENSIBLE_DATA *) page_ftab;
 	  file_extdata_init (sizeof (FILE_PARTIAL_SECTOR), DB_PAGESIZE, extdata_part_ftab);
 
@@ -4839,7 +4839,7 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
        * note that maybe we can do without really deallocating. a page type update would be enough. this is however the
        * safest way to do it, even though not optimal. the case will not affect performance in any benchmark or
        * production scenario anyway. */
-      pgbuf_dealloc_page (thread_p, page_part_ftab_first);
+      pgbuf_dealloc_page (thread_p, page_part_ftab_first, PGBUF_DEALLOC_KEEP_CONTENTS);
       page_part_ftab_first = NULL;
 
       if (alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR)
@@ -4947,6 +4947,7 @@ file_table_append_full_sector_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
+  pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, FILE_IS_TEMPORARY (fhead));
   pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 
   /* init new table extensible data */
@@ -5441,16 +5442,6 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
-      error_code = f_init (thread_p, page_alloc, f_init_args);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  pgbuf_unfix (thread_p, page_alloc);
-	  goto exit;
-	}
-
-      assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
-
       tde_algo = file_get_tde_algorithm_internal (fhead);
 
 #if !defined (NDEBUG)
@@ -5466,7 +5457,17 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
       }
 #endif /* NDEBUG */
 
-      pgbuf_set_tde_algorithm (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
+      /* before f_init, so that recovery inits the page the same way and f_init already writes an encrypted page */
+      pgbuf_init_new_page (thread_p, page_alloc, tde_algo, FILE_IS_TEMPORARY (fhead));
+      error_code = f_init (thread_p, page_alloc, f_init_args);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  pgbuf_unfix (thread_p, page_alloc);
+	  goto exit;
+	}
+
+      assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
 
       if (page_out != NULL)
 	{
@@ -6415,7 +6416,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	      return error_code;
 	    }
 
-	  pgbuf_dealloc_page (thread_p, page_dealloc);
+	  pgbuf_dealloc_page (thread_p, page_dealloc, PGBUF_DEALLOC_KEEP_CONTENTS);
 	  perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_DEALLOCS);
 	}
 
@@ -6490,6 +6491,7 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
 	      ASSERT_ERROR_AND_SET (error_code);
 	      goto exit;
 	    }
+	  pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, FILE_IS_TEMPORARY (fhead));
 	  pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 
 	  /* init new extensible data and add new partial sector */
@@ -6533,7 +6535,10 @@ file_perm_dealloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPID * vp
       goto exit;
     }
 
-  pgbuf_dealloc_page (thread_p, page_dealloc);
+  /* the deallocation of a user page is final (see file_dealloc); a table page comes back to life if the system
+   * operation is rolled back */
+  pgbuf_dealloc_page (thread_p, page_dealloc,
+		      alloc_type == FILE_ALLOC_USER_PAGE ? PGBUF_DEALLOC_CLEAR_CONTENTS : PGBUF_DEALLOC_KEEP_CONTENTS);
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_PAGE_DEALLOCS);
 
   /* done */
@@ -7980,6 +7985,7 @@ file_numerable_add_page (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VPI
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
+      pgbuf_init_new_page (thread_p, page_ftab, TDE_ALGORITHM_NONE, FILE_IS_TEMPORARY (fhead));
       page_extdata = page_ftab;
       pgbuf_set_page_ptype (thread_p, page_ftab, PAGE_FTAB);
 
