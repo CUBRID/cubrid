@@ -104,7 +104,6 @@ class internal_lob_dml_staging_context : public internal_lob_dml_context
     int initialize_direct_slot (THREAD_ENTRY *thread_p, slot_state &slot);
     int finalize_direct_slot (THREAD_ENTRY *thread_p, slot_state &slot);
     int delete_unadopted_direct_slots (THREAD_ENTRY *thread_p);
-    void rollback_direct_writes (THREAD_ENTRY *thread_p);
     void unlock_direct_classes (THREAD_ENTRY *thread_p);
     void clear ();
 
@@ -113,9 +112,6 @@ class internal_lob_dml_staging_context : public internal_lob_dml_context
     bool m_initialized;
     bool m_finished;
     bool m_has_direct_slots;
-    bool m_savepoint_started;
-    LOG_LSA m_savepoint_lsa;
-    char m_savepoint_name[64];
 };
 
 /*

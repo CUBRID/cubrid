@@ -22,13 +22,10 @@
 
 #include "error_manager.h"
 #include "heap_file.h"
-#include "log_comm.h"
 #include "log_impl.h"
 #include "object_representation.h"
 #include "thread_manager.hpp"
-#include "xserver_interface.h"
 
-#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <new>
@@ -136,10 +133,7 @@ internal_lob_dml_staging_context::internal_lob_dml_staging_context (
   : m_initialized (false)
   , m_finished (false)
   , m_has_direct_slots (false)
-  , m_savepoint_started (false)
 {
-  LSA_SET_NULL (&m_savepoint_lsa);
-  m_savepoint_name[0] = '\0';
   m_slots.reserve (slot_configs.size ());
   for (const internal_lob_dml_slot_config &config : slot_configs)
     {
@@ -157,8 +151,8 @@ internal_lob_dml_staging_context::~internal_lob_dml_staging_context ()
 int
 internal_lob_dml_staging_context::init (THREAD_ENTRY *thread_p)
 {
-  /* [리뷰] 직접 슬롯이 있으면 세이브포인트를 만들고 대상 클래스 IX를 미리 잡는다.
-   * 직접 체인은 채택·END 삭제·세이브포인트 롤백 중 하나로만 끝난다.
+  /* [리뷰] 직접 슬롯이 있으면 대상 클래스 IX를 미리 잡는다.
+   * 직접 체인은 채택·END 삭제·트랜잭션의 되돌림(클라이언트 세이브포인트, stream_from_set_savepoint) 중 하나로 끝난다.
    * 성공 뒤 IX 락은 트랜잭션 끝까지 남는다(문장이 잡았을 락과 같다는 전제). */
   if (m_initialized || m_slots.empty ())
     {
@@ -187,20 +181,10 @@ internal_lob_dml_staging_context::init (THREAD_ENTRY *thread_p)
 
   if (m_has_direct_slots)
     {
-      int tran_index;
-
       if (thread_p == NULL)
 	{
 	  return stream_session_set_error ("direct internal LOB DML requires a server transaction");
 	}
-
-      tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      snprintf (m_savepoint_name, sizeof (m_savepoint_name), "ilob_stream_%d_%p", tran_index, (void *) this);
-      if (xtran_server_savepoint (thread_p, m_savepoint_name, &m_savepoint_lsa) != NO_ERROR)
-	{
-	  return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
-	}
-      m_savepoint_started = true;
 
       for (slot_state &slot : m_slots)
 	{
@@ -213,8 +197,8 @@ internal_lob_dml_staging_context::init (THREAD_ENTRY *thread_p)
 	  error = initialize_direct_slot (thread_p, slot);
 	  if (error != NO_ERROR)
 	    {
-	      rollback_direct_writes (thread_p);
-	      /* no statement will run for this stream, so its class locks have no statement end to release them */
+	      /* nothing is written yet; no statement will run for this stream, so its class locks have no statement
+	       * end to release them */
 	      unlock_direct_classes (thread_p);
 	      return error;
 	    }
@@ -305,23 +289,6 @@ internal_lob_dml_staging_context::delete_unadopted_direct_slots (THREAD_ENTRY *t
       slot.direct_tracking.lsas.clear ();
     }
   return NO_ERROR;
-}
-
-void
-internal_lob_dml_staging_context::rollback_direct_writes (THREAD_ENTRY *thread_p)
-{
-  if (!m_savepoint_started || thread_p == NULL)
-    {
-      return;
-    }
-
-  TRAN_STATE state = xtran_server_partial_abort (thread_p, m_savepoint_name, &m_savepoint_lsa);
-  if (state != TRAN_UNACTIVE_ABORTED)
-    {
-      er_log_debug (ARG_FILE_LINE, "failed to roll back direct internal LOB stream savepoint (state=%d)\n",
-		    (int) state);
-    }
-  m_savepoint_started = false;
 }
 
 int
@@ -529,17 +496,18 @@ internal_lob_dml_staging_context::finish_dml (THREAD_ENTRY *thread_p, std::int64
     }
   if (error == NO_ERROR)
     {
-      m_savepoint_started = false;
       m_finished = true;
       clear ();
     }
   return error;
 }
 
+/* Drops only the stream's own state (#8019 stream_session::abort () may run after the transaction ended): chunks
+ * already written are undone by the transaction, back to the savepoint the client named or by its rollback. */
 void
 internal_lob_dml_staging_context::abort_dml (THREAD_ENTRY *thread_p)
 {
-  rollback_direct_writes (thread_p);
+  (void) thread_p;
   m_finished = true;
   clear ();
 }
@@ -562,9 +530,6 @@ internal_lob_dml_staging_context::clear ()
     }
   m_initialized = false;
   m_has_direct_slots = false;
-  m_savepoint_started = false;
-  LSA_SET_NULL (&m_savepoint_lsa);
-  m_savepoint_name[0] = '\0';
 }
 
 internal_lob_dml_session::internal_lob_dml_session ()

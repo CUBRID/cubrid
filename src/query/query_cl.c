@@ -724,6 +724,9 @@ check_client_internal_lob_dml_params (int var_cnt, const DB_VALUE * varptr, cons
 #endif /* !CS_MODE */
 }
 
+/* What a failed or given-up internal LOB DML stream rolls back to: the stream's abort undoes nothing (#8019). */
+#define QUERY_INTERNAL_LOB_DML_SAVEPOINT "iNTERNALlOBdMLsTREAM"
+
 /*
  * execute_query_with_internal_lob_dml () - Execute INSERT/UPDATE with materialized Internal LOB parameters through
  *                                          the COPY-style, DML-owning stream session.
@@ -739,7 +742,7 @@ execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_i
 {
   /* [리뷰] 슬롯이 있으면 INIT·조각 전송·END로 실행, 없으면 execute_query.
    * 자동커밋 플래그를 빼고 보내며, 커밋은 END 뒤 여기서 한다.
-   * 실패 시 er_stack 안에서 abort해 원 오류를 보존한다. */
+   * INIT 전 세이브포인트로 실패·포기한 스트림이 쓴 체인을 되돌린다. 원 오류는 er_stack으로 보존한다. */
 #if defined(CS_MODE)
   DB_VALUE *stream_values = NULL;
   INTERNAL_LOB_DML_INPUT *inputs = NULL;
@@ -833,12 +836,27 @@ execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_i
     }
   query_timeout = tran_get_query_timeout ();
 
-  error = internal_lob_dml_from_init (xasl_id, var_cnt, stream_values, stream_flag, clt_cache_time, query_timeout,
-				      slot_configs, slot_count);
+  error = tran_system_savepoint (QUERY_INTERNAL_LOB_DML_SAVEPOINT);
   if (error != NO_ERROR)
     {
       goto exit;
     }
+
+  error = internal_lob_dml_from_init (xasl_id, var_cnt, stream_values, stream_flag, clt_cache_time, query_timeout,
+				      slot_configs, slot_count);
+  if (error != NO_ERROR)
+    {
+      /* a refused open may already have put work into the transaction */
+      if (error != ER_LK_UNILATERALLY_ABORTED)
+	{
+	  er_stack_push ();
+	  (void) tran_abort_upto_system_savepoint (QUERY_INTERNAL_LOB_DML_SAVEPOINT);
+	  er_stack_pop ();
+	}
+      goto exit;
+    }
+  /* a refused chunk, a failed END or the ABORT below rolls back to it (stream_roll_back_given_up ()) */
+  stream_from_set_savepoint (QUERY_INTERNAL_LOB_DML_SAVEPOINT);
 
   error = query_send_internal_lob_dml_inputs (inputs, slot_configs, slot_count);
   if (error == NO_ERROR)
@@ -849,9 +867,13 @@ execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_i
     {
       int stream_error = error;
 
-      er_stack_push ();
-      (void) stream_from_abort ();
-      er_stack_pop ();
+      if (stream_from_is_open ())
+	{
+	  /* the client gave up (its source failed); the server dropped the stream on any other failure */
+	  er_stack_push ();
+	  (void) stream_from_abort ();
+	  er_stack_pop ();
+	}
       if (execute_with_commit)
 	{
 	  (void) tran_abort ();

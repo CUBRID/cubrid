@@ -307,7 +307,7 @@ internal_lob_dml_create_session (THREAD_ENTRY *thread_p, const char *config, int
   if (*error_code != NO_ERROR)
     {
       /* init () assigns m_context only after it validates, so on failure the session owns nothing and
-       * ~internal_lob_dml_session () would not free the context (staging area, savepoint, temp files). */
+       * ~internal_lob_dml_session () would not free the context (staging area, temp files). */
       delete session;
       delete context;
       return NULL;
