@@ -300,7 +300,11 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	}
       else if (memcmp (p, "BLOB", 5) == 0)
 	{
-	  type = CCI_U_TYPE_BLOB;
+	  /* the bundled CCI (develop's) has no u_type for it: its CCI_U_TYPE_BLOB is the engine's BFILE */
+	  type = CCI_U_TYPE_NULL;
+	  fprintf (stderr, "%s\nBLOB type is not implemented. Replaced with NULL\n", value_p);
+	  value_p = (char *) "";
+	  bind_len = 0;
 	}
       break;
 
@@ -319,7 +323,11 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	}
       else if (memcmp (p, "CLOB", 5) == 0)
 	{
-	  type = CCI_U_TYPE_CLOB;
+	  /* as BLOB above */
+	  type = CCI_U_TYPE_NULL;
+	  fprintf (stderr, "%s\nCLOB type is not implemented. Replaced with NULL\n", value_p);
+	  value_p = (char *) "";
+	  bind_len = 0;
 	}
       break;
 

@@ -46,6 +46,7 @@
 #include "tz_support.h"
 #include <cas_cci.h>
 #include <broker_cas_protocol.h>
+#include "shard_key.h"		/* the engine's LOB u_types, which cas_cci.h names otherwise or lacks */
 
 #include <db_json.hpp>
 
@@ -253,6 +254,7 @@ dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
 static char *
 print_utype_to_string (int type)
 {
+  /* the LOBs by the engine's numbers: cas_cci.h (develop's) calls 23/24 BLOB/CLOB and lacks 35/36 */
   switch (type)
     {
     case CCI_U_TYPE_BIT:
@@ -269,13 +271,13 @@ print_utype_to_string (int type)
       return (char *) "sequence";
     case CCI_U_TYPE_OBJECT:
       return (char *) "object";
-    case CCI_U_TYPE_BFILE:
+    case SHARD_U_TYPE_BFILE:
       return (char *) "bfile";
-    case CCI_U_TYPE_CFILE:
+    case SHARD_U_TYPE_CFILE:
       return (char *) "cfile";
-    case CCI_U_TYPE_BLOB:
+    case SHARD_U_TYPE_BLOB:
       return (char *) "blob";
-    case CCI_U_TYPE_CLOB:
+    case SHARD_U_TYPE_CLOB:
       return (char *) "clob";
     case CCI_U_TYPE_JSON:
       return (char *) "json";

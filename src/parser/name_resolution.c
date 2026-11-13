@@ -60,6 +60,7 @@
 
 #include <cas_cci.h>
 #include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
+#include "shard_key.h"		/* the engine's LOB u_types, which cas_cci.h names otherwise or lacks */
 
 extern "C"
 {
@@ -5120,9 +5121,10 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 #define DBLINK_ATTR_PRECISION (4)
 #define DBLINK_ATTR_CLASS_NAME (11)
 
-/* the PT type of a remote column of this u_type; by name, as the numbers are the bundled CCI's (cas_cci.h) */
+/* the PT type of a remote column of this u_type; by name: CCI_U_TYPE_* are the bundled CCI's (cas_cci.h, develop's
+ * numbers 0..34), whose BLOB/CLOB are the engine's BFILE/CFILE, so the LOBs go by the engine's SHARD_U_TYPE_* */
 static PT_TYPE_ENUM
-pt_dblink_utype_to_pt_type (T_CCI_U_TYPE utype)
+pt_dblink_utype_to_pt_type (int utype)
 {
   switch (utype)
     {
@@ -5169,13 +5171,13 @@ pt_dblink_utype_to_pt_type (T_CCI_U_TYPE utype)
       return PT_TYPE_BIGINT;
     case CCI_U_TYPE_DATETIME:
       return PT_TYPE_DATETIME;
-    case CCI_U_TYPE_BFILE:
+    case SHARD_U_TYPE_BFILE:
       return PT_TYPE_BFILE;
-    case CCI_U_TYPE_CFILE:
+    case SHARD_U_TYPE_CFILE:
       return PT_TYPE_CFILE;
-    case CCI_U_TYPE_BLOB:
+    case SHARD_U_TYPE_BLOB:
       return PT_TYPE_BLOB;
-    case CCI_U_TYPE_CLOB:
+    case SHARD_U_TYPE_CLOB:
       return PT_TYPE_CLOB;
     case CCI_U_TYPE_ENUM:
       return PT_TYPE_ENUMERATION;
