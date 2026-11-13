@@ -6265,7 +6265,9 @@ static const char *skip_block_comment (const char *text);
 static const char *skip_block_string (const char *text);
 static const char *skip_block_delimited_id (const char *text);
 static const char *skip_block_blanks_and_comments (const char *text);
+static const char *find_block_name (const char *block, const char *from, const char *name, const char **after);
 static bool block_reads_column (const char *block, const char *name, const char *column, bool assigned);
+static bool block_declares_record (const char *block, const char *name);
 static char *make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, const char *block,
 				       const char **names, int n_names, TR_BLOCK_COLUMN * columns, int n_columns,
 				       const bool * reads);
@@ -7436,30 +7438,27 @@ skip_block_blanks_and_comments (const char *text)
 }
 
 /*
- * block_reads_column() - Tells whether a PL/CSQL block reads a column of a correlation name,
- *                        as name.column, or whether it assigns a value to one.
- *   return: true when the block has the dotted name, followed by := when assigned is true
+ * find_block_name() - Finds the next place a PL/CSQL block has a name as a token of its own.
+ *   return: the start of the name, or NULL when the rest of the block does not have it
  *   block(in): PL/CSQL block text
- *   name(in): correlation name
- *   column(in): column name, in lower case as the class keeps it, or NULL for any name.field
- *   assigned(in): true to find only a name.field that a value is assigned to, as name.field := ...
+ *   from(in): place in the block the scan starts from
+ *   name(in): name to find
+ *   after(out): the text after the name
  *
  * Note:
- *    The scan is lexical. PL/CSQL reads a field of a record only as name.field.
+ *    The scan is lexical.
  *    Comments and string literals are skipped as the lexer of PL/CSQL takes them.
- *    The name and the field may be delimited, as [x], "x" or `x`.
+ *    The name may be delimited, as [x], "x" or `x`.
  *    A delimited identifier is one token, so a comment mark inside it starts no comment.
  *    A name after a dot is part of a longer name, such as a table with an owner.
  */
-static bool
-block_reads_column (const char *block, const char *name, const char *column, bool assigned)
+static const char *
+find_block_name (const char *block, const char *from, const char *name, const char **after)
 {
-  const char *p, *token, *next, *resume, *end;
+  const char *p, *next;
   size_t name_len = strlen (name);
-  size_t column_len = column == NULL ? 0 : strlen (column);
-  size_t token_len;
 
-  for (p = block; *p != '\0'; p++)
+  for (p = from; *p != '\0'; p++)
     {
       next = skip_block_comment (p);
       if (next == p)
@@ -7477,41 +7476,62 @@ block_reads_column (const char *block, const char *name, const char *column, boo
 	  continue;
 	}
 
-      /* the scan goes on from here when this is not the name. A delimited identifier is passed */
-      resume = p;
       if (IS_BLOCK_ID_DELIMITER (*p))
 	{
-	  /* [name], "name" or `name` */
-	  resume = skip_block_delimited_id (p);
-	  if (resume == NULL)
+	  /* [name], "name" or `name`. A delimited identifier that is not the name is passed */
+	  next = skip_block_delimited_id (p);
+	  if (next == NULL)
 	    {
 	      break;
 	    }
-	  if ((size_t) (resume - p - 1) != name_len || strncasecmp (p + 1, name, name_len) != 0
-	      || (p != block && (IS_BLOCK_ID_CHAR (p[-1]) || p[-1] == '.')))
+	  if ((size_t) (next - p - 1) == name_len && strncasecmp (p + 1, name, name_len) == 0
+	      && (p == block || (!IS_BLOCK_ID_CHAR (p[-1]) && p[-1] != '.')))
 	    {
-	      p = resume;
-	      continue;
+	      *after = next + 1;
+	      return p;
 	    }
-	  token = resume + 1;
+	  p = next;
 	}
-      else
+      else if (strncasecmp (p, name, name_len) == 0 && !IS_BLOCK_ID_CHAR (p[name_len])
+	       && (p == block || (!IS_BLOCK_ID_CHAR (p[-1]) && p[-1] != '.')))
 	{
-	  token = p + name_len;
-	  if (strncasecmp (p, name, name_len) != 0 || IS_BLOCK_ID_CHAR (*token)
-	      || (p != block && (IS_BLOCK_ID_CHAR (p[-1]) || p[-1] == '.')))
-	    {
-	      continue;
-	    }
+	  *after = p + name_len;
+	  return p;
 	}
+    }
 
-      token = skip_block_blanks_and_comments (token);
-      if (*token != '.')
+  return NULL;
+}
+
+/*
+ * block_reads_column() - Tells whether a PL/CSQL block reads a column of a correlation name,
+ *                        as name.column, or whether it assigns a value to one.
+ *   return: true when the block has the dotted name, followed by := when assigned is true
+ *   block(in): PL/CSQL block text
+ *   name(in): correlation name
+ *   column(in): column name, in lower case as the class keeps it, or NULL for any name.field
+ *   assigned(in): true to find only a name.field that a value is assigned to, as name.field := ...
+ *
+ * Note:
+ *    The scan is lexical, as find_block_name does it.
+ *    PL/CSQL reads a field of a record only as name.field.
+ *    The field may be delimited as the name may.
+ */
+static bool
+block_reads_column (const char *block, const char *name, const char *column, bool assigned)
+{
+  const char *p, *after, *token, *next, *end;
+  size_t column_len = column == NULL ? 0 : strlen (column);
+  size_t token_len;
+
+  for (p = block; (p = find_block_name (block, p, name, &after)) != NULL; p = after)
+    {
+      next = skip_block_blanks_and_comments (after);
+      if (*next != '.')
 	{
-	  p = resume;
 	  continue;
 	}
-      token = skip_block_blanks_and_comments (token + 1);
+      token = skip_block_blanks_and_comments (next + 1);
 
       if (IS_BLOCK_ID_DELIMITER (*token))
 	{
@@ -7536,7 +7556,6 @@ block_reads_column (const char *block, const char *name, const char *column, boo
 	  end = skip_block_blanks_and_comments (end);
 	  if (end[0] != ':' || end[1] != '=')
 	    {
-	      p = resume;
 	      continue;
 	    }
 	}
@@ -7548,7 +7567,91 @@ block_reads_column (const char *block, const char *name, const char *column, boo
 	{
 	  return true;
 	}
-      p = resume;
+    }
+
+  return false;
+}
+
+/*
+ * block_declares_record() - Tells whether a PL/CSQL block declares a record of its own with
+ *                           the name of a correlation name, as name cursor%ROWTYPE or FOR name IN.
+ *   return: true when the block declares the record
+ *   block(in): PL/CSQL block text
+ *   name(in): correlation name
+ *
+ * Note:
+ *    The scan is lexical, as find_block_name does it.
+ *    The record hides the correlation name.
+ *    So name.field := ... in the block may change the record.
+ *    The scope of the record is not followed.
+ *    A record of an inner block lets an outer block assign as well.
+ *    Only blanks are passed between FOR and the name.
+ */
+static bool
+block_declares_record (const char *block, const char *name)
+{
+  const char *p, *token, *next;
+  int n_type_names;
+
+  for (p = block; (p = find_block_name (block, p, name, &token)) != NULL; p = token)
+    {
+      next = skip_block_blanks_and_comments (token);
+
+      /* FOR name IN ... LOOP */
+      if (strncasecmp (next, "IN", 2) == 0 && !IS_BLOCK_ID_CHAR (next[2]))
+	{
+	  const char *prev = p;
+
+	  while (prev > block && char_isspace (prev[-1]))
+	    {
+	      prev--;
+	    }
+	  if (prev - block >= 3 && strncasecmp (prev - 3, "FOR", 3) == 0
+	      && (prev - block == 3 || !IS_BLOCK_ID_CHAR (prev[-4])))
+	    {
+	      return true;
+	    }
+	}
+
+      /* the names of the type follow, as cursor or [owner].[table] */
+      for (n_type_names = 0;; n_type_names++)
+	{
+	  if (IS_BLOCK_ID_DELIMITER (*next))
+	    {
+	      next = skip_block_delimited_id (next);
+	      if (next == NULL)
+		{
+		  return false;
+		}
+	      next++;
+	    }
+	  else if (IS_BLOCK_ID_CHAR (*next))
+	    {
+	      while (IS_BLOCK_ID_CHAR (*next))
+		{
+		  next++;
+		}
+	    }
+	  else
+	    {
+	      break;
+	    }
+
+	  next = skip_block_blanks_and_comments (next);
+	  if (*next == '.')
+	    {
+	      next = skip_block_blanks_and_comments (next + 1);
+	    }
+	}
+
+      if (n_type_names > 0 && *next == '%')
+	{
+	  next = skip_block_blanks_and_comments (next + 1);
+	  if (strncasecmp (next, "ROWTYPE", 7) == 0 && !IS_BLOCK_ID_CHAR (next[7]))
+	    {
+	      return true;
+	    }
+	}
     }
 
   return false;
@@ -7863,7 +7966,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 	  continue;
 	}
 
-      if (block_reads_column (block, candidates[i], NULL, true))
+      if (!block_declares_record (block, candidates[i]) && block_reads_column (block, candidates[i], NULL, true))
 	{
 	  /* the record is a copy of the row, so the value would be lost with no error */
 	  free_and_init (columns);
