@@ -1284,10 +1284,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 Es sind keine Daten mehr aus dem Stream %1$s an Position %2$lld, Menge %3$zu zu lesen.
 1216 Ungültige Objekt-ID %1$d beim Entpacken.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Stream session error: %1$s.
+1218 The stream is not open: %1$s.
+1219 The stream is not supported: %1$s.
+1220 Invalid use of a stream: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
