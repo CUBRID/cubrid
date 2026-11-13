@@ -503,7 +503,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [cubridci/cubridci:build_cl6.10]
+        image: [cubridci/cubridci:develop]
         mode: [release, debug]
         include:
           - mode: release
@@ -524,6 +524,8 @@ jobs:
       # A build from another image or other args sits at the same $SHA/$MODE path.
       BUILD_RECIPE: ${{ matrix.image }}|${{ matrix.args }}
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
+      CC: "ccache gcc"
+      CXX: "ccache g++"
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
       # The default is mtime, which a fresh checkout always misses.
       CCACHE_COMPILERCHECK: content

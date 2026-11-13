@@ -2449,9 +2449,17 @@ struct pt_expr_info
 							 * than a column-vs-constant compare; kept only when an index
 							 * adopts it */
 #define PT_EXPR_INFO_ANTI_JOIN_ON 67108864	/* 0x4000000, term in an ANTI JOIN ON condition */
-#define PT_EXPR_INFO_LIMIT_SUM 134217728	/* 0x8000000, the offset + count a LIMIT rewrite builds: an overflow gives
+#define PT_EXPR_INFO_OR_EXTRACTED 134217728	/* 0x8000000, an OR factor qo_extract_or_restrictions () has
+						 * derived restrictions from; not a source again */
+#define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
+							 * paired with its origin on its own node */
+#define PT_EXPR_INFO_LIMIT_SUM 536870912	/* 0x20000000, the offset + count a LIMIT rewrite builds: an overflow gives
 						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
   int flag;			/* flags */
+/* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
+#define PT_CNF_KEEP_MAX_DISJUNCTS 8
+#define PT_CNF_KEEP_MAX_CONJUNCTS 16
+
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
 #define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (int) ~(f)
