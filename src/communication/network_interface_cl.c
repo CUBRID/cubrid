@@ -12991,7 +12991,8 @@ internal_lob_dml_from_end (INT64 * count)
 
 // *INDENT-OFF*
 static std::mutex internal_lob_Issued_mutex;
-static std::unordered_set<std::uint64_t> internal_lob_Issued;
+/* [0] the latest locators, [1] the ones before: a full [0] becomes [1], so the ones just received are never dropped */
+static std::unordered_set<std::uint64_t> internal_lob_Issued[2];
 // *INDENT-ON*
 
 static
@@ -13019,11 +13020,12 @@ internal_lob_locator_note_issued (const char *locator, int size)
     }
 
   std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
-  if (internal_lob_Issued.size () >= INTERNAL_LOB_ISSUED_MAX)
+  if (internal_lob_Issued[0].size () >= INTERNAL_LOB_ISSUED_MAX / 2)
     {
-      internal_lob_Issued.clear ();
+      internal_lob_Issued[1].swap (internal_lob_Issued[0]);
+      std::unordered_set < std::uint64_t > ().swap (internal_lob_Issued[0]);
     }
-  internal_lob_Issued.insert (internal_lob_issued_key (&fields));
+  internal_lob_Issued[0].insert (internal_lob_issued_key (&fields));
 #endif /* CS_MODE */
 }
 
@@ -13035,7 +13037,8 @@ internal_lob_locator_forget_issued (void)
 {
 #if defined (CS_MODE)
   std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
-  internal_lob_Issued.clear ();
+  internal_lob_Issued[0].clear ();
+  internal_lob_Issued[1].clear ();
 #endif /* CS_MODE */
 }
 
@@ -13064,7 +13067,9 @@ internal_lob_locator_check_access (const char *locator, int size)
 
   {
     std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
-    if (internal_lob_Issued.find (internal_lob_issued_key (&fields)) != internal_lob_Issued.end ())
+    std::uint64_t key = internal_lob_issued_key (&fields);
+
+    if (internal_lob_Issued[0].count (key) > 0 || internal_lob_Issued[1].count (key) > 0)
       {
 	return NO_ERROR;
       }
