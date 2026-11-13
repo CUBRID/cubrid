@@ -47,6 +47,7 @@
 #include "thread_manager.hpp"
 #include "error_manager.h"
 #include "log_manager.h"
+#include "fault_injection.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -75,6 +76,14 @@ namespace cubconn::connection
 
   /* how long a waiting sender goes without re-checking its connection and the interrupt flag */
   static constexpr std::chrono::milliseconds SEND_QUEUE_ROOM_WAIT_TURN (100);
+
+  /* runs a fault injection at most once per thread entry; true if it failed the caller */
+  static bool fi_test_once (cubthread::entry *thread_p, FI_TEST_CODE code)
+  {
+    bool failed = FI_TEST (thread_p, code, FI_INIT_STATE) != NO_ERROR;
+    FI_SET (thread_p, code, FI_INIT_STATE + 1);
+    return failed;
+  }
 
   /* why a sender stopped waiting; anything but ROOM_AVAILABLE is logged as the reason its message was dropped */
   enum class room_wait_result
@@ -934,11 +943,12 @@ namespace cubconn::connection
     /* lazily notified */
     m_has_retry = true;
 
-    return this->eventfd_addtimer (
-		   timer_type::QUEUE,
-		   timer_latency::LOW_LATENCY,
-		   std::bind (&worker::handle_message_queue, this)
-	   );
+    /* a timer handler stops the worker by returning false, which the queue drain never does */
+    return this->eventfd_addtimer (timer_type::QUEUE, timer_latency::LOW_LATENCY, [this] ()
+    {
+      this->handle_message_queue ();
+      return true;
+    });
   }
 
   bool worker::handle_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle)
@@ -977,6 +987,8 @@ namespace cubconn::connection
 
 	return this->retry_connection_close (ctx, is_retry, handle);
       }
+
+    (void) fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_CLOSE_HOLD);
 
     /* change status */
 
@@ -1386,6 +1398,11 @@ retry:
 
     m_timer_handler[static_cast<std::size_t> (type)].valid = false;
 
+    if (type == timer_type::QUEUE && fi_test_once (m_entry, FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL))
+      {
+	return false;
+      }
+
     min = timer_latency::NA;
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
       {
@@ -1416,18 +1433,16 @@ retry:
       {
 	eventfds[0] = false;
 
+	/* an eventfd or timerfd failure costs at most spurious wake-ups; stopping would strand the connections */
 	if (!this->eventfd_clear (m_eventfd))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
-	    return false;
+	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the eventfd: %s\n", m_index,
+			   strerror (errno));
 	  }
 
 	/* RMW closes the StoreLoad window */
 	m_notified.exchange (false, std::memory_order_acq_rel);
-	if (!this->handle_message_queue ())
-	  {
-	    return false;
-	  }
+	this->handle_message_queue ();
 
 	m_timer_handler[static_cast<std::size_t> (timer_type::QUEUE)].last_time = m_timens;
       }
@@ -1457,13 +1472,17 @@ retry:
 
 	if (!this->eventfd_clear (m_timerfd))
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->eventfd_handler: eventfd_clear failed\n");
-	    return false;
+	    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to read the timerfd: %s\n", m_index,
+			   strerror (errno));
 	  }
 
 	if (!m_has_retry)
 	  {
-	    return this->eventfd_removetimer (timer_type::QUEUE);
+	    if (!this->eventfd_removetimer (timer_type::QUEUE))
+	      {
+		_er_log_debug (ARG_FILE_LINE, "connection worker %zu: failed to stop the queue timer: %s\n", m_index,
+			       strerror (errno));
+	      }
 	  }
       }
 
@@ -1501,7 +1520,7 @@ retry:
     return true;
   }
 
-  bool worker::handle_message_queue_release_packet (message &item)
+  void worker::handle_message_queue_release_packet (message &item)
   {
     context *ctx;
     css_conn_entry *conn;
@@ -1522,7 +1541,7 @@ retry:
 	er_log_conn (__FILE__, __LINE__,
 		     "connection::worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
 		     static_cast<void *> (item.conn));
-	return true;
+	return;
       }
 
     conn = item.conn;
@@ -1531,14 +1550,14 @@ retry:
 	r = rmutex_unlock (m_entry, &conn->cmutex);
 	assert (r == NO_ERROR);
 
-	return true;
+	return;
       }
     if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
       {
 	r = rmutex_unlock (m_entry, &conn->cmutex);
 	assert (r == NO_ERROR);
 
-	return true;
+	return;
       }
 
     ctx->m_recv.m_receiver.release (item.packet);
@@ -1547,11 +1566,43 @@ retry:
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
-
-    return true;
   }
 
-  bool worker::handle_message_queue_new_client (message &item)
+  /* adds the connection of a NEW_CLIENT or TAKEOVER_CLIENT message to this worker's epoll set */
+  bool worker::register_connection (const message &item, int flags)
+  {
+    FI_TEST_CODE fi_code = (item.type == message_type::TAKEOVER_CLIENT
+			    ? FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL
+			    : FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL);
+
+    return !fi_test_once (m_entry, fi_code) && m_events.add_descriptor (item.ctx->m_conn->fd, flags, item.ctx);
+  }
+
+  /* closes a connection moved in whose registration failed; called with its cmutex held, which it releases */
+  void worker::close_failed_takeover (context *ctx)
+  {
+    _er_log_debug (ARG_FILE_LINE, "connection worker %zu: closing transferred connection fd %d, "
+		   "epoll registration failed: %s\n", m_index, ctx->m_conn->fd, strerror (errno));
+
+    /* unwatched, its queued sends never drain: shut the socket so no sender waits, and close it as a dead peer */
+    (void) ::shutdown (ctx->m_conn->fd, SHUT_RDWR);
+    ctx->m_conn->status = CONN_CLOSING;
+    ctx->m_ignore = ignore_level::IGNORE_ALL;
+    ctx->m_send.m_transmitter.clear ();
+    std::shared_ptr<message_blocker> blocker = std::move (ctx->m_send.m_blocker);
+    std::shared_ptr<message_blocker> room = std::move (ctx->m_send.m_room);
+    rmutex_unlock (NULL, &ctx->m_conn->cmutex);
+    this->wakeup_blocked_worker (blocker);
+    this->wakeup_blocked_worker (room);
+
+    /* adopted, so the requested close finds it */
+    m_context.insert (ctx);
+    m_stats.add (statistics::worker::CLIENT_NUM, 1);
+    /* requested, not closed here: the takeover can run inside another connection's close */
+    css_request_shutdown_conn (ctx->m_conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+  }
+
+  void worker::handle_message_queue_new_client (message &item)
   {
     context *ctx;
 
@@ -1564,16 +1615,19 @@ retry:
     ctx->m_conn->worker = this;
     ctx->m_conn->context = ctx;
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
+    if (!this->register_connection (item, EPOLLET | EPOLLIN | EPOLLRDHUP))
       {
+	_er_log_debug (ARG_FILE_LINE,
+		       "connection worker %zu: refused new connection fd %d, epoll registration failed: %s\n",
+		       m_index, ctx->m_conn->fd, strerror (errno));
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
 	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
+	/* the coordinator frees the connection on RETURN_TO_POOL */
 	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
-	return false;
+	return;
       }
     ctx->m_epoll_registered = true;
     if (!m_context.insert (ctx).second)
@@ -1586,9 +1640,9 @@ retry:
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
 	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
-	return false;
+	/* a context is handed to a worker only once */
+	assert_release (false);
+	return;
       }
 
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
@@ -1613,11 +1667,9 @@ retry:
 	    assert_release (false);
 	  }
       }
-
-    return true;
   }
 
-  bool worker::handle_message_queue_handoff_client (message &item)
+  void worker::handle_message_queue_handoff_client (message &item)
   {
     coordinator::message response;
     message request;
@@ -1696,10 +1748,9 @@ respond:
       {
 	assert_release (false);
       }
-    return true;
   }
 
-  bool worker::handle_message_queue_takeover_client (message &item)
+  void worker::handle_message_queue_takeover_client (message &item)
   {
     context *ctx;
     int flags;
@@ -1717,16 +1768,10 @@ respond:
 	flags |= EPOLLOUT;
       }
 
-    if (!m_events.add_descriptor (ctx->m_conn->fd, flags, ctx))
+    if (!this->register_connection (item, flags))
       {
-	ctx->m_conn->worker = nullptr;
-	ctx->m_conn->context = nullptr;
-	ctx->m_epoll_registered = false;
-	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
-
-	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
-	return false;
+	this->close_failed_takeover (ctx);
+	return;
       }
     ctx->m_epoll_registered = true;
     if (!m_context.insert (ctx).second)
@@ -1739,9 +1784,9 @@ respond:
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
 	m_removed_context.push_back (ctx);
-	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_message_queue_new_client: context can not be duplicated\n");
-	return false;
+	/* a context is handed to a worker only once */
+	assert_release (false);
+	return;
       }
 
     rmutex_unlock (NULL, &ctx->m_conn->cmutex);
@@ -1765,11 +1810,9 @@ respond:
 	    assert_release (false);
 	  }
       }
-
-    return true;
   }
 
-  bool worker::handle_message_queue_shutdown_client (message &item)
+  void worker::handle_message_queue_shutdown_client (message &item)
   {
     context *ctx;
     css_conn_entry *conn;
@@ -1791,7 +1834,7 @@ respond:
 		     static_cast<void *> (item.conn));
 
 	this->wakeup_blocked_worker (item.waiter_handle);
-	return true;
+	return;
       }
 
     conn = item.conn;
@@ -1802,14 +1845,14 @@ respond:
 
 	this->wakeup_blocked_worker (item.waiter_handle);
 
-	return true;
+	return;
       }
     if (this->forward_message_to_successor (queue_type::LAZY, item, ctx))
       {
 	r = rmutex_unlock (m_entry, &conn->cmutex);
 	assert (r == NO_ERROR);
 
-	return true;
+	return;
       }
 
     ctx->m_ignore = item.ignore;
@@ -1818,28 +1861,22 @@ respond:
     assert (r == NO_ERROR);
 
     this->handle_connection_close (ctx, item.retry, item.waiter_handle);
-
-    return true;
   }
 
-  bool worker::handle_message_queue_start (message &item)
+  void worker::handle_message_queue_start (message &item)
   {
     assert (m_status == status::READY || m_status == status::RUNNING);
 
     m_status = status::RUNNING;
     this->wakeup_blocked_worker (item.waiter_handle);
-
-    return true;
   }
 
-  bool worker::handle_message_queue_hibernate (message &item)
+  void worker::handle_message_queue_hibernate (message &item)
   {
     m_status = status::HIBERNATING;
-
-    return true;
   }
 
-  bool worker::handle_message_queue_awaken (message &item)
+  void worker::handle_message_queue_awaken (message &item)
   {
     if (!this->eventfd_starttimer ())
       {
@@ -1848,22 +1885,18 @@ respond:
       }
 
     m_status = status::RUNNING;
-
-    return true;
   }
 
-  bool worker::handle_message_queue_shutdown (message &item)
+  void worker::handle_message_queue_shutdown (message &item)
   {
     m_status = status::TERMINATING;
     m_stop = true;
-
-    return true;
   }
 
-  bool worker::handle_message_queue_by_index (queue_type type)
+  void worker::handle_message_queue_by_index (queue_type type)
   {
     static constexpr std::array<
-    std::pair<bool (worker::*) (message &), statistics::worker>, static_cast<std::size_t> (message_type::TYPE_COUNT)
+    std::pair<void (worker::*) (message &), statistics::worker>, static_cast<std::size_t> (message_type::TYPE_COUNT)
     > handler =
     {
       {
@@ -1904,37 +1937,26 @@ respond:
 	    continue;
 	  }
 
-	if (! (this->*handler[static_cast <std::size_t> (request.type)].first) (request))
-	  {
-	    return false;
-	  }
+	(this->*handler[static_cast <std::size_t> (request.type)].first) (request);
 	if (handler[static_cast <std::size_t> (request.type)].second != statistics::worker::NA)
 	  {
 	    m_stats.add (handler[static_cast <std::size_t> (request.type)].second, 1);
 	  }
 	m_stats.add (statistics::worker::MQ_COMPLETED, 1);
       }
-
-    return true;
   }
 
-  bool worker::handle_message_queue ()
+  void worker::handle_message_queue ()
   {
     std::size_t i;
 
     for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
       {
-	if (!this->handle_message_queue_by_index (static_cast<queue_type> (i)))
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue: handle_message_queue_by_index failed\n");
-	    return false;
-	  }
+	this->handle_message_queue_by_index (static_cast<queue_type> (i));
       }
 
     /* the actual release of the context is handled last */
     this->purge_stale_contexts ();
-
-    return true;
   }
 
   void worker::handle_hangup_or_error (context *ctx, bool err)
@@ -2782,7 +2804,11 @@ respond:
   void worker::attach ()
   {
     this->initialize ();
-    this->run ();
+    if (!this->run ())
+      {
+	_er_log_debug (ARG_FILE_LINE, "connection worker %zu: stopped on an error, closing its %zu connections\n",
+		       m_index, m_context.size ());
+      }
     this->finalize ();
   }
 }
