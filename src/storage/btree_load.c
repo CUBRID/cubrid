@@ -1349,8 +1349,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
 #if defined (SERVER_MODE)
-  /* A no-logging build and the page copy of an online backup never overlap: while a backup copies pages, build with
-   * logging instead, and a backup that is about to copy waits for the registered builds (see logpb_backup ()). */
+  /* A no-logging build and the page copy of an online backup never overlap: while a backup waits for the registered
+   * builds or copies pages, build with logging instead, and a backup that is about to copy waits only for the builds
+   * already registered (see logpb_backup ()). */
   if (eligible_no_redo)
     {
       if (logpb_no_logging_index_build_begin ())

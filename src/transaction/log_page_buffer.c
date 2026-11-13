@@ -8056,16 +8056,19 @@ logpb_destroy_backup_read_worker_pool ()
 /*
  * A no-logging index build writes its pages without logging their contents, so a page that a backup copied before
  * the build flushed it cannot be repaired by any log record.  The two never overlap: a backup about to copy pages
- * waits until no such build is registered, and a build that starts while a backup copies pages logs its pages
- * instead.  A build stays registered until its pages are on disk and its barrier record is logged.
+ * waits until no such build is registered, and a build that starts while a backup waits or copies pages logs its
+ * pages instead, so the backup waits only for the builds registered before it.  A build stays registered until its
+ * pages are on disk and its barrier record is logged.
  */
 static pthread_mutex_t logpb_No_logging_index_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int logpb_No_logging_index_builds = 0;	/* registered no-logging index builds */
+static bool logpb_Backup_waits_for_builds = false;	/* an online backup waits for the registered builds */
 static bool logpb_Backup_copies_pages = false;	/* an online backup is copying pages */
 #endif /* SERVER_MODE */
 
 /*
- * logpb_no_logging_index_build_begin - Register a no-logging index build unless an online backup is copying pages
+ * logpb_no_logging_index_build_begin - Register a no-logging index build unless an online backup waits for the
+ *					registered builds or copies pages
  *
  * return: true if the build may write its pages without logging them, false if it must log them
  *
@@ -8079,7 +8082,7 @@ logpb_no_logging_index_build_begin (void)
   bool is_registered;
 
   pthread_mutex_lock (&logpb_No_logging_index_mutex);
-  is_registered = !logpb_Backup_copies_pages;
+  is_registered = !logpb_Backup_waits_for_builds && !logpb_Backup_copies_pages;
   if (is_registered)
     {
       logpb_No_logging_index_builds++;
@@ -8114,6 +8117,8 @@ logpb_no_logging_index_build_end (void)
  *				      registered
  *
  * return: true if marked, false if a build is registered (the backup waits and tries again)
+ *
+ * NOTE: While the backup waits, a new build logs its pages, so the registered builds only drain.
  */
 static bool
 logpb_backup_try_begin_page_copy (void)
@@ -8126,20 +8131,24 @@ logpb_backup_try_begin_page_copy (void)
     {
       logpb_Backup_copies_pages = true;
     }
+  logpb_Backup_waits_for_builds = !is_marked;
   pthread_mutex_unlock (&logpb_No_logging_index_mutex);
 
   return is_marked;
 }
 
 /*
- * logpb_backup_end_page_copy - Clear the mark of logpb_backup_try_begin_page_copy ()
+ * logpb_backup_end_page_copy - Clear the marks of logpb_backup_try_begin_page_copy ()
  *
  * return: nothing
+ *
+ * NOTE: Also called when the backup ends while it waits for the registered builds.
  */
 static void
 logpb_backup_end_page_copy (void)
 {
   pthread_mutex_lock (&logpb_No_logging_index_mutex);
+  logpb_Backup_waits_for_builds = false;
   logpb_Backup_copies_pages = false;
   pthread_mutex_unlock (&logpb_No_logging_index_mutex);
 }
@@ -8345,6 +8354,8 @@ loop:
 	{
 	  fprintf (session.verbose_fp, "[ Database backup will start after checkpointing is complete. ]\n\n");
 	  print_backupdb_waiting_reason = true;
+	  /* a checkpoint can start again while the backup waits for a no-logging index build below */
+	  wait_checkpoint_begin_time = time (NULL);
 	}
       /* wait until checkpoint process is finished */
 
@@ -8367,6 +8378,8 @@ loop:
 
       fprintf (session.verbose_fp, "[ Database backup has been suspended for %lld seconds due to checkpoint. ]\n\n",
 	       (long long int) (time (NULL) - wait_checkpoint_begin_time));
+      /* print it once: a wait for a no-logging index build below comes back through this point */
+      print_backupdb_waiting_reason = false;
     }
 
   /* copy no page while a no-logging index build is registered; from here on new builds log their pages */

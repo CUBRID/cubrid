@@ -1511,7 +1511,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 An online backup is copying the database, so index %1$s is built with logging instead of without it.
+1395 Index %1$s is built with logging because an online backup is in progress; --no-logging-index is not applied to it.
 
 1396 Last Error
 
