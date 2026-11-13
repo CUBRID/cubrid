@@ -3363,7 +3363,7 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
   BTREE_SCAN *BTS = &isidp->bt_scan;
   struct bts_attid_idx_info attid_idxs;
   KEY_VAL_RANGE *key_vals;
-  bool upddel_target_scan;
+  bool upddel_target_scan, click_counter_scan;
   int i, error;
 
   assert (scan_id->type == S_INDX_SCAN);
@@ -3469,10 +3469,11 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
   BTS->is_btid_int_valid = true;
 
   upddel_target_scan = scan_id->upddel_target_scan;
+  click_counter_scan = scan_id->click_counter_scan;
   scan_init_scan_id (scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type, scan_id->fixed,
 		     scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval, scan_id->val_list, scan_id->vd);
   /* whether the row locks end with the statement is decided per class, as scan_open_index_scan () does */
-  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, click_counter_scan, cls_oid);
 
   COPY_OID (&isidp->cls_oid, cls_oid);
   isidp->hfid = *hfid;		/* bitwise copy */
