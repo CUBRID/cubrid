@@ -202,13 +202,15 @@ namespace cubconn::connection
 				       std::function<void ()> &&deleter, int wait_time,
 				       bool may_wait_for_room = false);
 
-      /* used for control from other threads; enqueue () needs notify (): nothing else wakes the worker for a message */
-      void enqueue (queue_type type, message &&item);
-      bool notify ();
+      /* used for control from other threads; nothing else wakes the worker for the message */
       bool enqueue_and_notify (queue_type type, message &&item, std::function<void ()> func = nullptr,
 			       int wait_time = 0 /* no wait */);
 
     private:
+      /* only a close retry enqueues without notify (): the QUEUE timer wakes the worker for it */
+      void enqueue (queue_type type, message &&item);
+      bool notify ();
+
       /* connection pool */
       pool *m_parent;
       std::shared_ptr<coordinator> m_coordinator;

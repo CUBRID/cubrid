@@ -1482,8 +1482,7 @@ retry:
     successor = item.conn->worker;
     if (successor != nullptr)
       {
-	successor->enqueue (type, std::move (item));
-	if (!successor->notify ())
+	if (!successor->enqueue_and_notify (type, std::move (item)))
 	  {
 	    assert_release (false);
 	  }
@@ -1668,8 +1667,7 @@ retry:
     /* hand off the context */
     request.type = message_type::TAKEOVER_CLIENT;
     request.ctx = ctx;
-    item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!item.worker_ptr->notify ())
+    if (!item.worker_ptr->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)))
       {
 	assert_release (false);
       }
