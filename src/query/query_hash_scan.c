@@ -120,9 +120,6 @@ typedef enum
 static unsigned int qdata_hash_bytes (const void *bytes, size_t size);
 static bool qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key);
 
-static inline unsigned int qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value,
-						     unsigned int ht_size);
-
 static void inline fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p);
 static void inline fhs_read_key_from_record (char *record_p, int *key);
 static void inline fhs_read_flag_from_record (char *record_p, short *flag);
@@ -206,7 +203,12 @@ static void fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p);
 /************************ file hash structure *******************************/
 /****************************************************************************/
 
-/* FNV-1a over bytes */
+/*
+ * qdata_hash_bytes () - the FNV-1a hash of bytes
+ *   returns: hash value
+ *   bytes(in):
+ *   size(in): size in bytes
+ */
 static unsigned int
 qdata_hash_bytes (const void *bytes, size_t size)
 {
@@ -223,7 +225,7 @@ qdata_hash_bytes (const void *bytes, size_t size)
 
 /*
  * qdata_hash_number () - the hash of a NUMERIC, FLOAT, DOUBLE or MONETARY value: values their comparison finds equal
- *			  hash alike, which mht_get_hash_number does not do for 1.0 and 1.00, or for 0.0 and -0.0
+ *			  hash alike, which mht_get_hash_number does not do for a fixed NUMERIC 1.0 and 1.00, or for 0.0 and -0.0
  *   returns: false if the value is of another type or has no such hash: a NaN compares equal to every value (MR_CMP)
  *   value(in): a value, not NULL
  *   hash_key(out): its hash
@@ -237,21 +239,26 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
     {
     case DB_TYPE_NUMERIC:
       {
-	/* the digits without trailing zeros, or with a negative scale's zeros appended up to the full precision
-	 * (mht_get_hash_number). A float NUMERIC keeps its scale in the value, not in its domain */
 	uint8_t digits[DB_NUMERIC_BUF_SIZE];
 	int precision, scale;
 
+	/* a float NUMERIC keeps its scale in the value, not in its domain */
 	db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
+
+	/* already normal: no scale, or a negative scale at the full precision */
 	if (scale == 0 || (scale < 0 && precision == DB_MAX_NUMERIC_PRECISION))
 	  {
 	    *hash_key = qdata_hash_bytes (db_locate_numeric (value), DB_NUMERIC_BUF_SIZE);
 	    return true;
 	  }
+
+	/* the digits without trailing zeros (1.00 as 1), or with a negative scale's zeros appended up to the full
+	 * precision, as mht_get_hash_number does for a float NUMERIC */
 	float_numeric_normalize_for_hash ((DB_C_NUMERIC) db_locate_numeric (value), digits, precision, scale);
 	*hash_key = qdata_hash_bytes (digits, DB_NUMERIC_BUF_SIZE);
 	return true;
       }
+
     case DB_TYPE_DOUBLE:
     case DB_TYPE_FLOAT:
     case DB_TYPE_MONETARY:
@@ -260,48 +267,26 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
 	double d = (type == DB_TYPE_DOUBLE) ? db_get_double (value)
 	  : (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_monetary (value)->amount;
 
+	/* a NaN */
 	if (d != d)
 	  {
 	    return false;
 	  }
+
 	/* -0.0 compares equal to 0.0 */
 	d = (d == 0) ? 0 : d;
 	*hash_key = qdata_hash_bytes (&d, sizeof (d));
 	return true;
       }
+
     default:
       return false;
     }
 }
 
 /*
- * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it
- *   returns: the hash of the values so far
- *   hash_val(in): the hash of the values before this one (0 before the first)
- *   value(in): the key value
- *   ht_size(in): hash table size (in buckets)
- *
- * The one step qdata_hash_scan_key () takes per value; qdata_hash_scan_key_step () is the same step for a caller
- * that hashes the values one by one, so both give the same hash for the same values.
- */
-static inline unsigned int
-qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
-{
-  unsigned int tmp_hash_val;
-
-  hash_val = ROTL32 (hash_val, 13);
-  tmp_hash_val = qdata_hash_scan_value (value, ht_size);
-  hash_val ^= tmp_hash_val;
-  if (hash_val == 0)
-    {
-      hash_val = tmp_hash_val;
-    }
-  return hash_val;
-}
-
-/*
  * qdata_hash_scan_method () - the method a hash table over a list's tuples takes within mem_limit
- *   return: HASH_METH_IN_MEM (the tuples in memory), HASH_METH_HYBRID (their positions in memory),
+ *   returns: HASH_METH_IN_MEM (the tuples in memory), HASH_METH_HYBRID (their positions in memory),
  *	     HASH_METH_HASH_FILE (a hash file) or HASH_METH_NOT_USE (no list or no tuples)
  *   list_id(in): the list the table is built over, or NULL
  *   mem_limit(in): the bytes the table may take in memory
@@ -447,30 +432,31 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 {
   unsigned int hash_key;
 
-  if (DB_IS_NULL (value))
-    {
-      return mht_get_hash_number (ht_size, value);
-    }
-  if (qdata_hash_number (value, &hash_key))
+  if (!DB_IS_NULL (value) && qdata_hash_number (value, &hash_key))
     {
       return hash_key % ht_size;
     }
+
+  /* NULL, a NaN, and the types other than NUMERIC, FLOAT, DOUBLE and MONETARY */
   return mht_get_hash_number (ht_size, value);
 }
 
 /*
- * qdata_hash_scan_key_step () - qdata_hash_scan_key ()'s step for one key value, for a caller that has the values
- *				 one at a time: folding them in key order from 0 and finishing with
- *				 qdata_hash_scan_key_finish () gives qdata_hash_scan_key ()'s hash
+ * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it: folding a key's values
+ *				 in key order from 0 and finishing with qdata_hash_scan_key_finish () gives
+ *				 qdata_hash_scan_key ()'s hash, for a caller that has the values one at a time
  *   returns: the hash of the values so far
  *   hash_val(in): the hash of the values before this one (0 before the first)
  *   value(in): the key value
  *   ht_size(in): hash table size (in buckets)
  */
 unsigned int
-qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
+qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
 {
-  return qdata_hash_scan_key_fold (hash_val, value, ht_size);
+  unsigned int value_hash = qdata_hash_scan_value (value, ht_size);
+
+  hash_val = ROTL32 (hash_val, 13) ^ value_hash;
+  return (hash_val != 0) ? hash_val : value_hash;
 }
 
 /*
@@ -482,12 +468,7 @@ qdata_hash_scan_key_step (unsigned int hash_val, const DB_VALUE * value, unsigne
 unsigned int
 qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method)
 {
-  if (hash_method == HASH_METH_HASH_FILE)
-    {
-      hash_val = fhs_hash (&hash_val);
-    }
-
-  return hash_val;
+  return (hash_method == HASH_METH_HASH_FILE) ? fhs_hash (&hash_val) : hash_val;
 }
 
 /*

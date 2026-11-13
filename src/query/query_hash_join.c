@@ -5183,11 +5183,11 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
  *     the hash is of those bits.
  *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes
  *     and read back zero-filled into the same 17 bytes, with the precision and scale the write recorded (the
- *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes and the scale
+ *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes, normalized by the scale
  *     (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric (), qdata_hash_number ()).
  *   - CHAR, VARCHAR with the column's collation: the bytes are written as the value holds them after the write (a
  *     CHAR is padded in the value itself first), compressed or not, and read back as those bytes with the column's
- *     collation; the hash is of the bytes up to their trailing spaces, by the collation.
+ *     collation; the hash is of those bytes, by the collation.
  */
 static bool
 hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
@@ -5230,9 +5230,9 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
  *   thread_p(in): the thread that wrote the tuple
  *   input(in): an armed input, its tuple descriptor still holding the values the tuple was written from
  *
- * The hash is qdata_hash_scan_key ()'s over the key values in key order (qdata_hash_scan_key_step (), the same
- * step, with the build's table size UINT_MAX), its file-method step left to the build; a tuple with a NULL key is
- * marked, as hjoin_fetch_key () has the build skip it.
+ * The hash is qdata_hash_scan_key ()'s over the key values in key order (qdata_hash_scan_key_fold () with the build's
+ * table size UINT_MAX), its file-method step (qdata_hash_scan_key_finish ()) left to the build; a tuple with a NULL
+ * key is marked, as hjoin_fetch_key () has the build skip it.
  */
 void
 hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
@@ -5318,7 +5318,7 @@ hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
 	  hjoin_prehash_invalidate (ph);
 	  return;
 	}
-      hash_val = qdata_hash_scan_key_step (hash_val, v, UINT_MAX);
+      hash_val = qdata_hash_scan_key_fold (hash_val, v, UINT_MAX);
     }
   ph->hashes[ph->cnt++] = hash_val;
 }

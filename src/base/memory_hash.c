@@ -2525,11 +2525,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  ptr = db_get_string (val);
-	  if (!ptr)
-	    {
-	      hashcode = 0;
-	    }
-	  else
+	  if (ptr)
 	    {
 	      len = db_get_string_size (val);
 	      if (len < 0)
