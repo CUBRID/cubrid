@@ -34,9 +34,18 @@
 
 #define ROTL32(x,r) \
   (((x) << (r)) | ((x) >> (32 - (r))))
+#define ROTL64(x,r) \
+  (((x) << (r)) | ((x) >> (64 - (r))))
+
+/*
+ * The standard 32-bit offset basis (0x811C9DC5) and prime (0x01000193 = 2^24 + 2^8 + 0x93) of the FNV-1a hash
+ * (Fowler-Noll-Vo, public domain): http://www.isthe.com/chongo/tech/comp/fnv/
+ */
+#define MHT_FNV_OFFSET 2166136261u
+#define MHT_FNV_PRIME 16777619u
 
 #define MHT2STR_COLL(id, str, size) \
-  (lang_get_collation (id))->mht2str ((lang_get_collation (id)), (str), (size))
+  (LANG_GET_COLLATION (id))->mht2str ((LANG_GET_COLLATION (id)), (str), (size))
 
 /* Hash Table Entry - linked list */
 typedef struct hentry HENTRY;

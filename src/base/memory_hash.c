@@ -2415,7 +2415,7 @@ unsigned int
 mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 {
   unsigned int hashcode = 0;
-  int i, len;
+  int len;
   const char *ptr;
 
   if (!val || DB_IS_NULL (val) || ht_size <= 1)
@@ -2525,7 +2525,11 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  ptr = db_get_string (val);
-	  if (ptr)
+	  if (!ptr)
+	    {
+	      hashcode = 0;
+	    }
+	  else
 	    {
 	      len = db_get_string_size (val);
 	      if (len < 0)
@@ -2533,24 +2537,8 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		  len = (int) strlen (ptr);
 		}
 
-	      i = len;
-	      for (i--; 0 <= i && ptr[i]; i--)
-		{
-		  /* only the trailing ASCII space is ignored; the hashing for other characters depend on collation */
-		  if (ptr[i] != 0x20)
-		    {
-		      break;
-		    }
-		}
-	      i++;
-	    }
-	  if (!ptr || ptr[0] == 0 || i <= 0)
-	    {
-	      hashcode = 0;
-	    }
-	  else
-	    {
-	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, i);
+	      /* the collation's hash leaves out what its comparison ignores, trailing spaces among them */
+	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, len);
 	      hashcode = mht_reduce (hashcode, ht_size);
 	    }
 	  break;

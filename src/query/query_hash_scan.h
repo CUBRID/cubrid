@@ -129,6 +129,9 @@ struct hash_list_scan
   unsigned int curr_hash_key;	/* current hash key */
 };
 
+/* the method of a hash table over a list's tuples: the tuples in memory, their positions in memory, or a hash file */
+HASH_METHOD qdata_hash_scan_method (const QFILE_LIST_ID * list_id, const UINT64 mem_limit);
+
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
 MHT_HLS_ENTRY *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl);
 MHT_HLS_ENTRY *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_LIST_SCAN_ID * scan_id_p);
