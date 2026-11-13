@@ -10998,45 +10998,15 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 			  goto error;
 			}
 		      nextcase->info.expr.arg1 = next_arg1;
-		    }
-
-		  /* give nextcase the common type and its data_type even if arg1 is NULL; constant folding casts to it */
-		  nextcase->type_enum = common_type;
-		  if (nextcase->data_type)
-		    {
-		      parser_free_tree (parser, nextcase->data_type);
-		      nextcase->data_type = NULL;
-		    }
-		  if (next_arg1->type_enum == common_type && next_arg1->data_type)
-		    {
+		      /* nextcase was already evaluated and may have a data_type set. We need to replace it with the
+		       * cast data_type */
+		      nextcase->type_enum = common_type;
+		      if (nextcase->data_type)
+			{
+			  parser_free_tree (parser, nextcase->data_type);
+			}
+		      /* set it even if nextcase had none; constant folding casts nextcase to it */
 		      nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
-		    }
-		  else if (PT_IS_PARAMETERIZED_TYPE (common_type) && common_type != PT_TYPE_ENUMERATION)
-		    {
-		      /* nothing to copy from (e.g. THEN NULL): use the default domain of an implicit cast */
-		      PT_NODE *dt = parser_new_node (parser, PT_DATA_TYPE);
-		      if (dt == NULL)
-			{
-			  node->type_enum = PT_TYPE_NONE;
-			  goto error;
-			}
-		      dt->type_enum = common_type;
-		      if (common_type == PT_TYPE_NUMERIC)
-			{
-			  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
-			  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
-			}
-		      else if (common_type == PT_TYPE_VARCHAR)
-			{
-			  dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
-			  dt->info.data_type.dec_precision = 0;
-			}
-		      else
-			{
-			  dt->info.data_type.precision = DB_DEFAULT_PRECISION;
-			  dt->info.data_type.dec_precision = DB_DEFAULT_SCALE;
-			}
-		      nextcase->data_type = dt;
 		    }
 		  /* set nextcase to nextcase->arg2 and continue */
 		  prev = nextcase;
@@ -11053,11 +11023,6 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      goto error;
 		    }
 		  prev->info.expr.arg2 = nextcase;
-		  if (prev == node)
-		    {
-		      /* the domain of node is computed from arg2 below; use the cast one */
-		      arg2 = nextcase;
-		    }
 		  nextcase = NULL;
 		}
 	    }
