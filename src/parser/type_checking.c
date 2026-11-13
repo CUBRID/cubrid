@@ -5334,7 +5334,9 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       PT_NODE *arg2_list = NULL;
 
       /* only the set of values matters to a range predicate.
-       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (). */
+       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (); a set operation folded
+       * with DISTINCT gives back its operand (pt_fold_union_unwrap ()). */
+      expr->info.expr.arg2 = arg2 = pt_fold_union_unwrap (parser, arg2);
       (void) pt_try_set_subquery_distinct (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
@@ -7527,25 +7529,6 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
   /* To ensure that after exit of recursive expression node the evaluation of type will continue in normal mode */
   *continue_walk = PT_CONTINUE_WALK;
-
-  /* An operand of a set operation stays a query, whatever its is_subquery (a parenthesized one is PT_IS_SUBQUERY):
-   * the set operation decides with the same pt_false_where () whether to fold an empty one away
-   * (pt_check_union_is_foldable ()), and executes an operand it keeps. Marked in a pass that skips folding as well,
-   * since pt_eval_type () folds set operations in every pass. */
-  if (PT_IS_UNION (node) || PT_IS_DIFFERENCE (node) || PT_IS_INTERSECTION (node))
-    {
-      arg1 = node->info.query.q.union_.arg1;
-      arg2 = node->info.query.q.union_.arg2;
-      if (arg1 != NULL && PT_IS_QUERY_NODE_TYPE (arg1->node_type))
-	{
-	  arg1->info.query.flag.stays_query = 1;
-	}
-      if (arg2 != NULL && PT_IS_QUERY_NODE_TYPE (arg2->node_type))
-	{
-	  arg2->info.query.flag.stays_query = 1;
-	}
-    }
-
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
@@ -8327,8 +8310,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       is_subquery = node->info.query.is_subquery;
 
-      /* an operand of a set operation stays a query (pt_eval_type_pre ()) */
-      if (sc_info->donot_fold == false && !node->info.query.flag.stays_query
+      if (sc_info->donot_fold == false
 	  && (is_subquery == PT_IS_SUBQUERY || is_subquery == PT_IS_UNION_SUBQUERY
 	      || is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || is_subquery == PT_IS_CTE_REC_SUBQUERY)
 	  && pt_false_where (parser, node))
@@ -10592,6 +10574,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  node->type_enum = PT_TYPE_LOGICAL;
 	  if (pt_is_query (arg1))
 	    {
+	      /* only whether a row exists counts, which the duplicates a folded set operation removes do not change */
+	      node->info.expr.arg1 = arg1 = pt_fold_union_unwrap (parser, arg1);
 	      pt_chop_to_one_select_item (parser, arg1);
 	    }
 	}
