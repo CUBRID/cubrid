@@ -40,7 +40,6 @@
 #include "xserver_interface.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "query_dump.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "dbtype.h"
