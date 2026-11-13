@@ -1420,6 +1420,19 @@ exit:
       {
 	match_cnt++;
       }
+
+    // the table may be there while the current user cannot select it: keep the message that says so
+    std::string auth_err_msg;
+    if (attr == NULL)
+      {
+	int attr_err = er_errid ();
+	if (attr_err == ER_AU_SELECT_FAILURE || attr_err == ER_AU_AUTHORIZATION_FAILURE
+	    || attr_err == ER_AU_NO_AUTHORIZATION)
+	  {
+	    auth_err_msg = "'" + question.name + "': " + er_msg ();
+	  }
+      }
+
     MOP pkg_var = sp_find_pkg_var (qualifier.c_str(), id.c_str ());
     if (pkg_var)
       {
@@ -1429,7 +1442,11 @@ exit:
     if (match_cnt == 0)
       {
 	err = res.err_id = ER_FAILED;
-	if (sp_find_pkg_cursor (qualifier.c_str(), id.c_str ()))
+	if (!auth_err_msg.empty ())
+	  {
+	    res.err_msg = auth_err_msg;
+	  }
+	else if (sp_find_pkg_cursor (qualifier.c_str(), id.c_str ()))
 	  {
 #define ERR_MSG_TEMPLATE        ("'%s' is a package cursor, which cannot be used with %%TYPE yet")
 	    char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
