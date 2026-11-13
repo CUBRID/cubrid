@@ -75,6 +75,8 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 
+#include <vector>
+
 #if defined(AIX)
 #include <procinfo.h>
 #include <sys/types.h>
@@ -458,6 +460,14 @@ static LA_OOS_CACHE_ENTRY *la_oos_cache_tail = NULL;
 static MHT_TABLE *la_oos_cache_hash = NULL;
 static TRANID la_oos_current_tranid = NULL_TRANID;
 
+/* The OOS items of the heap row being assembled, in attribute order: true for a column the master's UPDATE reused
+ * (CBRD-27230). The UPDATE did not assign such a column, so the row's sql.log line omits it. When an item could not
+ * be recorded no column counts as reused, and a reused column fails its cache lookup instead of hiding another. */
+/* *INDENT-OFF* */
+static std::vector<bool> la_oos_row_reused;
+/* *INDENT-ON* */
+static bool la_oos_row_reused_lost = false;
+
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -541,6 +551,9 @@ static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size
 static int la_cache_oos_value (const OID * head_oid, const char *payload, int payload_length);
 static LA_OOS_CACHE_ENTRY *la_lookup_oos_value (const OID * head_oid);
 static void la_clear_oos_cache (void);
+static void la_note_oos_item (bool reused);
+static bool la_oos_item_is_reused (int ordinal);
+static void la_forget_oos_row (void);
 static int la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att,
 					     DB_VALUE * value);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
@@ -572,6 +585,7 @@ static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
 static int la_apply_insert_log (LA_ITEM * item);
 static int la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item);
+static int la_apply_oos_reuse_log (LA_APPLY * apply, LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item);
@@ -3763,6 +3777,35 @@ la_clear_oos_cache (void)
 
   la_oos_cache_head = NULL;
   la_oos_cache_tail = NULL;
+  la_forget_oos_row ();
+}
+
+static void
+la_note_oos_item (bool reused)
+{
+  /* *INDENT-OFF* */
+  try
+    {
+      la_oos_row_reused.push_back (reused);
+    }
+  catch (const std::bad_alloc &)
+    {
+      la_oos_row_reused_lost = true;
+    }
+  /* *INDENT-ON* */
+}
+
+static bool
+la_oos_item_is_reused (int ordinal)
+{
+  return !la_oos_row_reused_lost && ordinal < (int) la_oos_row_reused.size () && la_oos_row_reused[ordinal];
+}
+
+static void
+la_forget_oos_row (void)
+{
+  la_oos_row_reused.clear ();
+  la_oos_row_reused_lost = false;
 }
 
 /*
@@ -4063,6 +4106,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   int rc = NO_ERROR;
   DB_VALUE value;
   int error = NO_ERROR;
+  int oos_ordinal = 0;
 
   if (sm_class->variable_count)
     {
@@ -4157,6 +4201,13 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count && j < sm_class->variable_count;
        i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
+      if (vars_oos[j] && la_oos_item_is_reused (oos_ordinal++))
+	{
+	  v_start += vars[j];
+	  buf->ptr = v_start;
+	  continue;
+	}
+
       if (vars_oos[j])
 	{
 	  OR_BUF inline_buf;
@@ -5825,6 +5876,9 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
     case RVREPL_OOS_INSERT:
       operation = LC_FLUSH_INSERT_OOS;
       break;
+    case RVREPL_OOS_REUSE:
+      operation = LC_FLUSH_REUSE_OOS;
+      break;
     default:
       assert (false);
     }
@@ -6361,6 +6415,10 @@ end:
     }
   else
     {
+      if (la_enable_sql_logging)
+	{
+	  la_note_oos_item (false);
+	}
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
       la_Info.pending_oos_flush = true;
@@ -6369,6 +6427,66 @@ end:
   if (old_pageid != NULL_PAGEID)
     {
       la_release_page_buffer (old_pageid);
+    }
+
+  return error;
+}
+
+/*
+ * la_apply_oos_reuse_log() - apply the marker of an OOS column the master's UPDATE reused (CBRD-27230)
+ *   return: NO_ERROR or error code
+ *   apply(in/out): apply list state
+ *   item(in): OOS reuse replication item
+ *
+ * Note:
+ *      The marker carries no record. It holds the column's place among the OOS items of the heap row that follows:
+ *      the slave's fixup gives that row the stub of the slave's own previous version, and the row's sql.log line
+ *      omits the column, which the UPDATE did not assign.
+ */
+static int
+la_apply_oos_reuse_log (LA_APPLY * apply, LA_ITEM * item)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *class_obj;
+
+  error = la_flush_repl_items (false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (apply->need_oos_rebuild)
+    {
+      /* a multi-chunk boundary announces an OOS insert, not a reused chain */
+      apply->need_oos_rebuild = false;
+      error = ER_FAILED;
+      goto end;
+    }
+
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+      goto end;
+    }
+
+  error = la_repl_add_object (class_obj, item, NULL);
+
+end:
+  if (error != NO_ERROR)
+    {
+      la_Info.pending_oos_flush = false;
+      la_log_apply_error ("apply_oos_reuse", ER_HA_LA_FAILED_TO_APPLY_UPDATE, item, error);
+    }
+  else
+    {
+      if (la_enable_sql_logging)
+	{
+	  la_note_oos_item (true);
+	}
+      la_Info.num_unflushed++;
+      la_Info.pending_oos_flush = true;
     }
 
   return error;
@@ -6919,6 +7037,10 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  error = la_apply_dummy_oos_log (apply, item);
 		  break;
 
+		case RVREPL_OOS_REUSE:
+		  error = la_apply_oos_reuse_log (apply, item);
+		  break;
+
 		case RVREPL_DATA_DELETE:
 		  error = la_apply_delete_log (item);
 		  break;
@@ -6986,14 +7108,16 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
       /* INSERT/UPDATE SQL decoding has finished and the item will not retry.
        * The current protocol publishes fresh OOS values before each heap row;
-       * no later row consumes these decoded entries. Shared-chain reuse would
-       * need an explicit remaining-consumer protocol before using this rule.
+       * no later row consumes these decoded entries. A column the master's
+       * UPDATE reused consumes no entry: its marker makes the row's sql.log line
+       * omit it (CBRD-27230).
        * Unresolved entries remain available to pending rows across SYSOP_END. */
       if (item->log_type == LOG_REPLICATION_DATA
 	  && (item->item_type == RVREPL_DATA_INSERT || item->item_type == RVREPL_DATA_UPDATE
 	      || item->item_type == RVREPL_DATA_UPDATE_START || item->item_type == RVREPL_DATA_UPDATE_END))
 	{
 	  la_release_consumed_oos_values ();
+	  la_forget_oos_row ();
 	}
       next_item = la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa);
       la_free_repl_item (apply, item);

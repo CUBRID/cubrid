@@ -485,6 +485,10 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	  assert (false);
 	}
       break;
+    case RVREPL_OOS_REUSE:
+      /* a reused chain has no OOS insert to point at */
+      LSA_SET_NULL (&repl_rec->lsa);
+      break;
     default:
       break;
     }

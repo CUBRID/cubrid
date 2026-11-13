@@ -47,6 +47,15 @@ TEST (TdeUserDataGate, OosReclaimRecordsCarryNoUserData)
   EXPECT_FALSE (LOG_MAY_CONTAIN_USER_DATA (RVOOS_UPDATE_DROP_POSTPONE));
 }
 
+TEST (TdeUserDataGate, OosReplicationItemsAreGated)
+{
+  /* Every OOS replication item carries the row's primary key. The marker of a reused chain (CBRD-27230) carries no
+   * OOS value, but its key is as much user data as the others'. */
+  EXPECT_TRUE (LOG_MAY_CONTAIN_USER_DATA (RVREPL_OOS_INSERT));
+  EXPECT_TRUE (LOG_MAY_CONTAIN_USER_DATA (RVREPL_DUMMY_OOS_RECORD));
+  EXPECT_TRUE (LOG_MAY_CONTAIN_USER_DATA (RVREPL_OOS_REUSE));
+}
+
 TEST (TdeUserDataGate, SiblingAndBaselineDeletePathsAreGated)
 {
   /* The relocated forward delete of an UPDATE, OOS-bearing or not, is a plain RVHF_DELETE. */

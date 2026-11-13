@@ -931,7 +931,13 @@ struct rvfun RV_fun[] = {
    NULL,
    oos_rv_update_drop_on_postpone,
    NULL,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+  {RVREPL_OOS_REUSE,
+   "RVREPL_OOS_REUSE",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump}
 };
 
 /*

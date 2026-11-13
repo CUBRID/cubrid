@@ -209,7 +209,8 @@ typedef enum
   RVREPL_DUMMY_OOS_RECORD = 142,	/* multi-chunk OOS replication marker */
   RVOOS_RECLAIM_POSTPONE = 143,	/* logical postpone: reclaim chains once the deciding unit commits */
   RVOOS_UPDATE_DROP_POSTPONE = 144,	/* logical postpone: append RVOOS_NOTIFY_VACUUM once an UPDATE commits */
-  RV_LAST_LOGID = RVOOS_UPDATE_DROP_POSTPONE,
+  RVREPL_OOS_REUSE = 145,	/* OOS replication marker: the UPDATE reused this column's chain */
+  RV_LAST_LOGID = RVREPL_OOS_REUSE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

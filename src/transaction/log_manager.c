@@ -6848,6 +6848,10 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
       type = "RVREPL_DUMMY_OOS_RECORD";
       dump_function = log_repl_data_dump;
       break;
+    case RVREPL_OOS_REUSE:
+      type = "RVREPL_OOS_REUSE";
+      dump_function = log_repl_data_dump;
+      break;
     default:
       type = "RVREPL_SCHEMA";
       dump_function = log_repl_schema_dump;
