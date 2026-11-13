@@ -10632,8 +10632,7 @@ pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * limit, DB_VALU
     }
 
   /* the rows the value admits: floor (2.5) is 2 rows, beyond BIGINT every row */
-  if (tp_value_to_row_bound (limit_val, false, tp_domain_row_bound_read (tp_domain_resolve_value (limit_val, NULL)),
-			     DB_VALUE_DOMAIN_TYPE (limit_val), NULL, &row_bound) != DOMAIN_COMPATIBLE)
+  if (tp_value_to_row_bound (limit_val, false, DB_VALUE_DOMAIN_TYPE (limit_val), NULL, &row_bound) != DOMAIN_COMPATIBLE)
     {
       error = ER_FAILED;
       goto cleanup;
@@ -11186,8 +11185,7 @@ pt_get_query_limit_from_orderby_for (PARSER_CONTEXT * parser, PT_NODE * orderby_
 
   /* the rows the comparison keeps: floor (n) for <= n, ceil (n) - 1 for < n */
   if (DB_IS_NULL (&limit)
-      || tp_value_to_row_bound (&limit, lt, tp_domain_row_bound_read (tp_domain_resolve_value (&limit, NULL)),
-				DB_VALUE_DOMAIN_TYPE (&limit), NULL, &row_bound) != DOMAIN_COMPATIBLE)
+      || tp_value_to_row_bound (&limit, lt, DB_VALUE_DOMAIN_TYPE (&limit), NULL, &row_bound) != DOMAIN_COMPATIBLE)
     {
       /* has unusable upper_limit */
       pr_clear_value (&limit);

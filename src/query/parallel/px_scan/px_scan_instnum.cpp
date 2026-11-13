@@ -294,7 +294,7 @@ namespace parallel_scan
 	      }
 	  }
 	else if (dom_status == DOMAIN_OVERFLOW
-		 && tp_value_to_row_bound (limit_val, draw.is_less_than, tp_domain_row_bound_read (draw.limit_rhs->domain),
+		 && tp_value_to_row_bound (limit_val, draw.is_less_than,
 					   conversion != NULL ? conversion->source : DB_TYPE_NULL,
 					   conversion != NULL ? conversion->conv : NULL,
 					   &saturated_limit) == DOMAIN_COMPATIBLE)

@@ -2337,9 +2337,8 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
  *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
  *
- *       A leaf is read by tp_value_to_row_bound () in the read of its compiled domain. An N - 1 flagged
- *       REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE is read from N as ceil (N) - 1, not rounded after the subtraction
- *       (rownum < 2.4 keeps 2 rows, not 1).
+ *       A leaf is read by tp_value_to_row_bound (). An N - 1 flagged REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE is read
+ *       from N as ceil (N) - 1, not rounded after the subtraction (rownum < 2.4 keeps 2 rows, not 1).
  *
  *       A negative bound only means "nothing to skip" or "nothing to read", so it becomes -1 whatever its
  *       magnitude. The sign is kept for the KEYLIMIT check and the upper += lower adjustment in
@@ -2429,8 +2428,7 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
     {
       conv = tp_value_find_converter (planned, bigint_domain, DOMAIN_CONVERT_IMPLICIT);
     }
-  dom_status = tp_value_to_row_bound (peek_val, exclusive, tp_domain_row_bound_read (regu_var->domain), planned, conv,
-				      result);
+  dom_status = tp_value_to_row_bound (peek_val, exclusive, planned, conv, result);
   if (dom_status == DOMAIN_COMPATIBLE)
     {
       if (*result < 0)

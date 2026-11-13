@@ -35945,18 +35945,14 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto cleanup;
 	}
 
-      /* < reads in the type the compiler decided for its subtraction (bound_coercion), <= in the bound's own type.
-       * Converted by the unpack's conversion. A value that is not a number gives no bound here */
+      /* converted by the unpack's conversion. A value that is not a number gives no bound here */
       const COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
       const DOMAIN_BOUND_CONVERSION *conversion = term->bound_conversion;
-      const TP_ROW_BOUND_READ read = (op == R_LT && term->bound_coercion != NULL)
-	? tp_type_row_bound_read (term->bound_coercion->arith.type) : tp_domain_row_bound_read (rhs->domain);
       /* VARIABLE: the plan leaves the type to the value, as it does for a string bound whose collation it does not
        * fix */
       assert (conversion != NULL
 	      && (conversion->source == DB_TYPE_VARIABLE || conversion->source == DB_VALUE_DOMAIN_TYPE (val)));
-      if (tp_value_to_row_bound (val, op == R_LT, read,
-				 conversion != NULL ? conversion->source : DB_TYPE_NULL,
+      if (tp_value_to_row_bound (val, op == R_LT, conversion != NULL ? conversion->source : DB_TYPE_NULL,
 				 conversion != NULL ? conversion->conv : NULL, &row_bound) != DOMAIN_COMPATIBLE)
 	{
 	  er_clear ();
