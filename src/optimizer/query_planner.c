@@ -361,7 +361,7 @@ static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
 static PT_HINT_ENUM qo_join_hint_common_to_nodes (QO_INFO *);
-static int qo_examine_idx_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
+static int qo_examine_idx_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *);
 static int qo_examine_nl_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 			       BITSET *, int, BITSET *);
 static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
@@ -10734,10 +10734,11 @@ qo_join_hint_common_to_nodes (QO_INFO * info)
  *   afj_terms(in):
  *   sarged_terms(in):
  *   pinned_subqueries(in):
+ *   hash_terms(in): the mergeable terms of this join; a merge join or a hash join is made only from them
  */
 static int
 qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * afj_terms,
-		     BITSET * sarged_terms, BITSET * pinned_subqueries)
+		     BITSET * sarged_terms, BITSET * pinned_subqueries, BITSET * hash_terms)
 {
   int n = 0;
   QO_NODE *inner_node;
@@ -10770,13 +10771,21 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
     }
   else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
     {
-      /* join hint: force merge-join; skip idx-join */
-      goto exit;
+      /* join hint: force merge-join; skip idx-join.  A merge join is examined only when the join has a mergeable
+       * term: without one the hint cannot be applied to this join and is ignored for it, instead of leaving the join
+       * without a plan, which fails the optimization and drops every hint of the query, LEADING included. */
+      if (!bitset_is_empty (hash_terms))
+	{
+	  goto exit;
+	}
     }
   else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
     {
-      /* join hint: force hash-join; skip idx-join */
-      goto exit;
+      /* join hint: force hash-join; skip idx-join.  Ignored when the join has no hash term, as for USE_MERGE. */
+      if (!bitset_is_empty (hash_terms))
+	{
+	  goto exit;
+	}
     }
   else
     {
@@ -11122,15 +11131,27 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	    {
 	      /* join hint: force nl-join */
 	    }
-	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_IDX)
 	    {
-	      /* join hint: force idx-join, merge-join; skip nl-join */
+	      /* join hint: force idx-join; skip nl-join */
 	      goto exit;
+	    }
+	  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
+	    {
+	      /* join hint: force merge-join; skip nl-join - unless the join has no mergeable term, see
+	       * qo_examine_idx_join () */
+	      if (!bitset_is_empty (hash_terms))
+		{
+		  goto exit;
+		}
 	    }
 	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
 	    {
-	      /* join hint: force hash-join; skip nl-join */
-	      goto exit;
+	      /* join hint: force hash-join; skip nl-join - unless the join has no hash term */
+	      if (!bitset_is_empty (hash_terms))
+		{
+		  goto exit;
+		}
 	    }
 	  else
 	    {
@@ -11173,15 +11194,27 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	{
 	  /* join hint: force nl-join */
 	}
-      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+      else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_IDX)
 	{
-	  /* join hint: force idx-join, merge-join; skip nl-join */
+	  /* join hint: force idx-join; skip nl-join */
 	  goto exit;
+	}
+      else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
+	{
+	  /* join hint: force merge-join; skip nl-join - unless the join has no mergeable term, see
+	   * qo_examine_idx_join () */
+	  if (!bitset_is_empty (hash_terms))
+	    {
+	      goto exit;
+	    }
 	}
       else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
 	{
-	  /* join hint: force hash-join; skip nl-join */
-	  goto exit;
+	  /* join hint: force hash-join; skip nl-join - unless the join has no hash term */
+	  if (!bitset_is_empty (hash_terms))
+	    {
+	      goto exit;
+	    }
 	}
       else
 	{
@@ -13372,7 +13405,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  {
 	    idx_join_plan_n =
 	      qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
-				   &pinned_subqueries);
+				   &pinned_subqueries, &sm_join_terms);
 	    kept += idx_join_plan_n;
 	  }
 #endif /* CORRELATED_INDEX */
