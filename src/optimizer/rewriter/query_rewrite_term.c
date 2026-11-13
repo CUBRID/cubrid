@@ -1325,6 +1325,7 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   PT_NODE *term, *next, *folded, *last, **prevp;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int marks;
+  bool derived, cnf_start;
 
   prevp = wherep;
   while ((term = *prevp) != NULL)
@@ -1338,13 +1339,22 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
       next = term->next;
       term->next = NULL;
 
+      /* pt_fold_const_expr () frees the factor it replaces, so read it before the fold */
+      marks = PT_EXPR_INFO_IS_FLAGED (term, (PT_EXPR_INFO_CNF_DONE | PT_EXPR_INFO_OR_EXTRACTED
+					     | PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
+					     | PT_EXPR_INFO_OR_DERIVED_COLUMN));
+      derived = PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_OR_DERIVED) != 0;
+      cnf_start = term->flag.is_cnf_start;
+
+      folded = term;
       sc_info.top_node = term;
       sc_info.donot_fold = false;
-      folded = pt_semantic_type (parser, term, &sc_info);
-      if (folded == NULL)
+      if (pt_semantic_type_in_place (parser, &folded, &sc_info) != NO_ERROR)
 	{
-	  /* the error is reported; the statement fails before it is planned */
-	  term->next = next;
+	  /* the error is reported, and the statement fails before it is planned; keep what the fold left
+	   * in the list, as the term may be freed */
+	  folded->next = next;
+	  *prevp = folded;
 	  return;
 	}
 
@@ -1357,16 +1367,13 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
       if (PT_IS_EXPR_NODE_WITH_OPERATOR (folded, PT_OR))
 	{
-	  marks = PT_EXPR_INFO_IS_FLAGED (term, (PT_EXPR_INFO_CNF_DONE | PT_EXPR_INFO_OR_EXTRACTED
-						 | PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
-						 | PT_EXPR_INFO_OR_DERIVED_COLUMN));
 	  PT_EXPR_INFO_SET_FLAG (folded, marks);
-	  folded->flag.is_cnf_start = term->flag.is_cnf_start;
+	  folded->flag.is_cnf_start = cnf_start;
 	  folded->next = next;
 	  *prevp = folded;
 	  prevp = &folded->next;
 	}
-      else if (PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_OR_DERIVED))
+      else if (derived)
 	{
 	  parser_free_tree (parser, folded);
 	  *prevp = next;
@@ -1378,7 +1385,7 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    {
 	      last->next->flag.is_cnf_start = false;
 	    }
-	  folded->flag.is_cnf_start = term->flag.is_cnf_start;
+	  folded->flag.is_cnf_start = cnf_start;
 	  last->next = next;
 	  *prevp = folded;
 	  prevp = &last->next;
