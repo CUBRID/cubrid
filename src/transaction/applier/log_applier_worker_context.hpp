@@ -52,8 +52,7 @@ struct la_apply_worker_context
   LOG_ZIP *undo_unzip_ptr;
   LOG_ZIP *redo_unzip_ptr;
   LA_RECDES_POOL recdes_pool;
-  struct db_session *marker_session;
-  int marker_stmt_id;
+  OID marker_class_oid;	/* identifies fatal marker errors in a mixed row batch */
 };
 
 extern int la_worker_context_init (LA_APPLY_WORKER_CONTEXT *context, int db_page_size, int recdes_pool_size);
