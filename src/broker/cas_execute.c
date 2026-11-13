@@ -186,6 +186,7 @@ static DB_DOMAIN *column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_r
 				 T_BROKER_VERSION client_version);
 static bool column_types_vary (const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version);
 static void note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count);
+static void keep_internal_lob_uploads_for_retry (T_SRV_HANDLE * srv_handle);
 static INT64 internal_lob_upload_token (DB_VALUE * value);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
 		      T_NET_BUF * net_buf);
@@ -1426,6 +1427,7 @@ execute_error:
   NET_BUF_ERR_SET (net_buf);
 
   ux_stream_give_up_after_error ();
+  keep_internal_lob_uploads_for_retry (srv_handle);
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -1787,6 +1789,7 @@ execute_all_error:
   NET_BUF_ERR_SET (net_buf);
 
   ux_stream_give_up_after_error ();
+  keep_internal_lob_uploads_for_retry (srv_handle);
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -1992,6 +1995,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
 execute_error:
   NET_BUF_ERR_SET (net_buf);
+  keep_internal_lob_uploads_for_retry (srv_handle);
   if (value_list)
     {
       for (i = 0; i < num_bind; i++)
@@ -3498,6 +3502,18 @@ note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, i
   /* a re-bind releases what this statement bound before; the uploads it still binds stay for re-execution */
   (void) hm_srv_handle_set_internal_lob_uploads (srv_handle, tokens, n_tokens);
   FREE_MEM (tokens);
+}
+
+/* On CAS_ER_STMT_POOLING the driver closes this statement and runs the same bindings on a re-prepared one: the
+ * uploads go with the bindings, so closing this statement must not release them. */
+static void
+keep_internal_lob_uploads_for_retry (T_SRV_HANDLE * srv_handle)
+{
+  if (err_info.err_number == CAS_ER_STMT_POOLING)
+    {
+      FREE_MEM (srv_handle->internal_lob_upload_tokens);
+      srv_handle->internal_lob_upload_token_count = 0;
+    }
 }
 
 int
