@@ -72,6 +72,7 @@
 #include "host_lookup.h"
 #include "network_interface_cl.h"
 #include "boot_cl.h"
+#include "transaction_cl.h"
 
 #if defined(WINDOWS)
 #include "file_io.h"		/* needed for _wyield() */
@@ -2175,6 +2176,8 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
   bool do_abort_transaction = false;	/* flag for transaction abort */
+  ER_STMT_FAIL_MARK stmt_fail_saved;	/* statement failure mark of the caller */
+  bool stmt_fail_scope = false;	/* a statement scope is open */
 
   csql_Num_failures = 0;
   er_clear ();
@@ -2291,6 +2294,14 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       /* Start the execution of stms */
       stmt_msg[0] = '\0';
 
+      /* each statement has its own scope: an error that is cleared while it runs must still fail it */
+      if (stmt_fail_scope)
+	{
+	  er_stmt_fail_end (&stmt_fail_saved);
+	}
+      er_stmt_fail_begin (&stmt_fail_saved);
+      stmt_fail_scope = true;
+
       if (csql_Is_time_on)
 	{
 	  tsc_getticks (&start_tick);
@@ -2298,6 +2309,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
       logddl_set_start_time (NULL);
 
       stmt_id = db_compile_statement (session);
+      if (stmt_id != 0)
+	{
+	  stmt_id = er_stmt_fail_resolve (stmt_id);
+	}
 
       assert ((stmt_id < 0) || stmt_id == (num_stmts + 1));
       if (session->statements && session->statements[num_stmts])
@@ -2372,6 +2387,17 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
 
       db_error = db_execute_statement (session, stmt_id, &result);
+      if (er_stmt_fail_get () != NO_ERROR)
+	{
+	  int resolved = tran_stmt_fail_resolve (db_error, stmt_type);
+
+	  if (db_error >= 0 && resolved < 0 && result != NULL)
+	    {
+	      db_query_end (result);
+	      result = NULL;
+	    }
+	  db_error = resolved;
+	}
       if (db_error < 0)
 	{
 	  logddl_set_err_code (db_error_code ());
@@ -2573,6 +2599,12 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	}
     }
 
+  if (stmt_fail_scope)
+    {
+      er_stmt_fail_end (&stmt_fail_saved);
+      stmt_fail_scope = false;
+    }
+
   snprintf (csql_Scratch_text, SCRATCH_TEXT_LEN, csql_get_message (CSQL_EXECUTE_END_MSG_FORMAT),
 	    num_stmts - csql_Num_failures);
   csql_display_msg (csql_Scratch_text);
@@ -2597,6 +2629,12 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   return csql_Num_failures;
 
 error:
+  if (stmt_fail_scope)
+    {
+      er_stmt_fail_end (&stmt_fail_saved);
+      stmt_fail_scope = false;
+    }
+
   display_error (session, stmt_start_line_no);
   if (csql_arg->pl_server_output)
     {

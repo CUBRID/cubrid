@@ -3394,6 +3394,7 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
   OID unique_oid;
   BTID btid;
   DB_TYPE value_type;
+  BTREE_SEARCH search;
   int r;
 
   /* make sure all dirtied objects have been flushed */
@@ -3467,9 +3468,17 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
     }
 
   /* now search the index */
-  if (btree_find_unique (&btid, value, ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
+  search = btree_find_unique (&btid, value, ws_oid (classop), &unique_oid);
+  if (search == BTREE_KEY_FOUND)
     {
       found = ws_mop (&unique_oid, NULL);
+    }
+  else if (search == BTREE_ERROR_OCCURRED)
+    {
+      /* a failed search (lock timeout, interrupt, server down) is not "not found": callers that skip a missing
+       * object (synonym, trigger lookups) would go on as if it did not exist */
+      ASSERT_ERROR ();
+      return NULL;
     }
 
   /*

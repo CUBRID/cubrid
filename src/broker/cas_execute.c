@@ -303,6 +303,7 @@ static char *get_backslash_escape_string (void);
 static bool need_reconnect_on_rctime (void);
 static void report_abnormal_host_status (int err_code);
 static void ux_database_shutdown_for_reconnect (void);
+static void ux_note_executed (int stmt_type);
 
 static int set_host_variables (DB_SESSION * session, int num_bind, DB_VALUE * in_values);
 static unsigned char set_extended_cas_type (T_CCI_U_TYPE u_set_type, DB_TYPE db_type);
@@ -537,6 +538,46 @@ connect_error:
     }
 
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);
+}
+
+/* a statement that may change the database (not a query) was executed in the current request; see
+ * ux_reset_executed () */
+static bool ux_Executed_may_write = false;
+
+/*
+ * ux_note_executed - remember that a statement was executed in the current request
+ *   return: none
+ *   stmt_type(in): CUBRID_STMT_TYPE of the statement, or a negative value if unknown
+ */
+static void
+ux_note_executed (int stmt_type)
+{
+  if (stmt_type != CUBRID_STMT_SELECT && stmt_type != CUBRID_STMT_SELECT_UPDATE)
+    {
+      ux_Executed_may_write = true;
+    }
+}
+
+/*
+ * ux_reset_executed - start a request without any statement executed
+ *   return: none
+ */
+void
+ux_reset_executed (void)
+{
+  ux_Executed_may_write = false;
+}
+
+/*
+ * ux_executed_may_write - did the current request execute a statement that may change the database
+ *   return: true or false
+ *
+ * Note: covers execute, execute_all and execute_call; batch and array execution decide per query.
+ */
+bool
+ux_executed_may_write (void)
+{
+  return ux_Executed_may_write;
 }
 
 int
@@ -1237,6 +1278,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
+  ux_note_executed (stmt_type);
 
   if (n < 0)
     {
@@ -1587,6 +1629,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
       hm_set_current_srv_handle (-1);
 
       update_query_execution_count (as_info, stmt_type);
+      ux_note_executed (stmt_type);
 
       if (n < 0)
 	{
@@ -1871,6 +1914,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   stmt_type = db_get_statement_type (session, stmt_id);
   update_query_execution_count (as_info, stmt_type);
+  ux_note_executed (stmt_type);
 
 
   if (n < 0)
@@ -2088,6 +2132,9 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       use_plan_cache = false;
       use_query_cache = false;
 
+      /* each query of the batch reports its own outcome */
+      er_stmt_fail_next ();
+
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
       cas_log_compile_begin_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
@@ -2109,6 +2156,8 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, sql_stmt);
 
       stmt_id = db_compile_statement (session);
+
+      stmt_id = er_stmt_fail_resolve (stmt_id);
 
       assert ((stmt_id < 0) || (stmt_id == 1));
       if (session->statements && session->statements[0])
@@ -2144,6 +2193,18 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
       update_query_execution_count (as_info, stmt_type);
+
+      if (er_stmt_fail_get () != NO_ERROR)
+	{
+	  int resolved = tran_stmt_fail_resolve (res_count, stmt_type);
+
+	  if (res_count >= 0 && resolved < 0 && result != NULL)
+	    {
+	      db_query_end (result);
+	      result = NULL;
+	    }
+	  res_count = resolved;
+	}
 
       if (res_count < 0)
 	{
@@ -2431,6 +2492,9 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
     {
       num_query++;
 
+      /* each row reports its own outcome */
+      er_stmt_fail_next ();
+
       if (is_prepared == FALSE)
 	{
 	  db_init_lexer_lineno ();
@@ -2459,6 +2523,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 
 	  stmt_id = db_compile_statement (session);
+	  stmt_id = er_stmt_fail_resolve (stmt_id);
 
 	  // TODO: It is not clear which route to take to reach here.
 	  if (session->statements && session->statements[0])
@@ -2488,6 +2553,18 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, res_count);
 
       hm_set_current_srv_handle (-1);
+
+      if (er_stmt_fail_get () != NO_ERROR)
+	{
+	  int resolved = tran_stmt_fail_resolve (res_count, db_get_statement_type (session, stmt_id));
+
+	  if (res_count >= 0 && resolved < 0 && result != NULL)
+	    {
+	      db_query_end (result);
+	      result = NULL;
+	    }
+	  res_count = resolved;
+	}
 
       if (stmt_type < 0)
 	{

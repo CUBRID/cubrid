@@ -77,6 +77,8 @@ CUB_THREAD_LOCAL LOCK tm_Tran_rep_read_lock = NULL_LOCK;	/* used in RR transacti
  */
 CUB_THREAD_LOCAL LC_FETCH_VERSION_TYPE tm_Tran_read_fetch_instance_version = LC_FETCH_MVCC_VERSION;
 static CUB_THREAD_LOCAL int tm_Tran_latest_query_status;
+/* a statement failed after its changes were made, and they were not undone: the transaction must not commit */
+static CUB_THREAD_LOCAL bool tm_Tran_rollback_required = false;
 
 /* Timeout(milli seconds) for queries.
  *
@@ -131,6 +133,8 @@ tran_cache_tran_settings (int tran_index, int lock_timeout, TRAN_ISOLATION tran_
   tm_Tran_index = tran_index;
   tm_Tran_wait_msecs = lock_timeout;
   tm_Tran_isolation = tran_isolation;
+  /* a new connection, or none: no transaction is left */
+  tm_Tran_rollback_required = false;
 
   /* This is a dirty, but quick, method by which we can flag that the database connection has been terminated. This
    * flag is used by the C API calls to determine if a database connection exists. */
@@ -293,6 +297,14 @@ tran_commit (bool retain_lock)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
 	      "a stream session is open on this connection; end or abort it first");
       return ER_STREAM_INVALID_USE;
+    }
+
+  if (tm_Tran_rollback_required)
+    {
+      /* see tran_stmt_fail_resolve () */
+      (void) tran_abort ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_FAILED_STMT_NOT_UNDONE, 0);
+      return ER_TM_FAILED_STMT_NOT_UNDONE;
     }
 
   /* check deferred trigger activities, these may prevent the transaction from being committed. */
@@ -466,6 +478,7 @@ tran_abort (void)
 
   /* free the local list of savepoint names */
   tran_free_savepoint_list ();
+  tm_Tran_rollback_required = false;
 
   /* Clear any query cursor */
   assert (!tran_was_latest_query_committed ());
@@ -763,6 +776,13 @@ tran_2pc_prepare (void)
 {
   TRAN_STATE state;
   int error_code = NO_ERROR;
+
+  if (tm_Tran_rollback_required)
+    {
+      /* see tran_stmt_fail_resolve (); the transaction manager is left to abort the transaction */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_FAILED_STMT_NOT_UNDONE, 0);
+      return ER_TM_FAILED_STMT_NOT_UNDONE;
+    }
 
   /* flush all dirty objects */
   error_code = locator_all_flush ();
@@ -1542,4 +1562,63 @@ bool
 tran_is_reset_required (void)
 {
   return tm_Tran_latest_query_status & LATEST_QUERY_STATUS::RESET_REQUIRED;
+}
+
+/*
+ * tran_stmt_fail_resolve - decide the outcome of a statement against the statement failure mark
+ *   return: error to report, or the given result if the statement may stand
+ *   result(in): result of the statement (negative on error)
+ *   stmt_type(in): CUBRID_STMT_TYPE of the statement, or a negative value if unknown
+ *
+ * Note: a statement the server has already committed (auto commit) stands, and its failure is only logged; see
+ *       er_stmt_fail_forget_committed (). It must not be rolled back either: the transaction has ended. Otherwise
+ *       see er_stmt_fail_resolve ().
+ *       A statement that succeeded is failed here after its changes were made. Nothing undoes them: the engine
+ *       rolls a statement back to its savepoint only on its own error path, and many statements take none. While
+ *       the transaction goes on (a lock timeout or an interrupt), it must therefore not commit; see
+ *       tran_set_rollback_required (). With auto commit the caller rolls back at once, which clears that.
+ */
+int
+tran_stmt_fail_resolve (int result, int stmt_type)
+{
+  int resolved;
+
+  if (er_stmt_fail_get () == NO_ERROR)
+    {
+      return result;
+    }
+
+  if (tran_was_latest_query_committed ())
+    {
+      (void) er_stmt_fail_forget_committed ();
+      return result;
+    }
+
+  resolved = er_stmt_fail_resolve (result);
+  if (result >= 0 && resolved < 0 && stmt_type != CUBRID_STMT_SELECT && stmt_type != CUBRID_STMT_SELECT_UPDATE)
+    {
+      /* a query changes nothing (a stored function it calls runs its statements in their own scope) */
+      tran_set_rollback_required ();
+    }
+
+  return resolved;
+}
+
+/*
+ * tran_set_rollback_required - refuse to commit the current transaction
+ *   return: none
+ *
+ * Note: for a statement failed after its changes were made, which were not undone. A deadlock victim or a server
+ *       down has already ended the transaction, so nothing is set for them. The next commit (or 2PC prepare) rolls
+ *       the transaction back and reports ER_TM_FAILED_STMT_NOT_UNDONE; a rollback clears it.
+ */
+void
+tran_set_rollback_required (void)
+{
+  if (er_stmt_fail_is_tran_ended ())
+    {
+      return;
+    }
+
+  tm_Tran_rollback_required = true;
 }

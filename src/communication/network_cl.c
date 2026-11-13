@@ -143,6 +143,66 @@ static int compare_size_and_buffer (int *replysize, int size, char **replybuf, c
 static int net_client_request_internal (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 					char *databuf, int datasize, char *replydata, int replydatasize);
 static int set_server_error (int error);
+static bool net_client_is_allowed_after_stmt_fail (int request);
+static int net_client_check_stmt_fail (int request);
+
+/*
+ * net_client_is_allowed_after_stmt_fail - may the request be sent by a statement that has to fail
+ *   return: true or false
+ *   request(in): server request
+ *
+ * Note: these requests only undo, clean up or restore what the failing statement set up, or end the connection.
+ *       Blocking them would leave a savepoint not rolled back, a query or a session setting behind on the server.
+ */
+static bool
+net_client_is_allowed_after_stmt_fail (int request)
+{
+  switch (request)
+    {
+    case NET_SERVER_TM_SERVER_ABORT:
+    case NET_SERVER_TM_SERVER_PARTIAL_ABORT:
+    case NET_SERVER_QM_QUERY_END:
+    case NET_SERVER_QM_QUERY_DROP_CLONES:
+    case NET_SERVER_LOG_RESET_WAIT_MSECS:
+    case NET_SERVER_LOG_RESET_ISOLATION:
+    case NET_SERVER_LOG_SET_INTERRUPT:
+    case NET_SERVER_TDES_RESET_QUERY_START_INFO:
+    case NET_SERVER_LC_DEMOTE_CLASS_LOCK:
+    case NET_SERVER_HEAP_DESTROY_WHEN_NEW:
+    case NET_SERVER_BO_UNREGISTER_CLIENT:
+    case NET_SERVER_SES_END_SESSION:
+    case NET_SERVER_PING:
+    case NET_SERVER_LD_INTERRUPT:
+    case NET_SERVER_LD_DESTROY:
+      /* an upload given up is dropped and undone to its savepoint; a download handle is let go */
+    case NET_SERVER_STREAM_ABORT:
+    case NET_SERVER_STREAM_RELEASE:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * net_client_check_stmt_fail - refuse a request of a statement that has to fail
+ *   return: NO_ERROR, or the error the statement fails with (set as the current error)
+ *   request(in): server request
+ *
+ * Note: a lock timeout, an interrupt, a deadlock victim or a server down may have been cleared by the code that got
+ *       it. Whatever the statement would send after it must not reach the server: the server undid only the request
+ *       that failed, or rolled the whole transaction back and would run the rest in a new one.
+ */
+static int
+net_client_check_stmt_fail (int request)
+{
+  if (!er_stmt_fail_blocks_request () || net_client_is_allowed_after_stmt_fail (request))
+    {
+      return NO_ERROR;
+    }
+
+  return er_stmt_fail_raise ();
+}
 
 /*
  * set_server_error -
@@ -456,6 +516,11 @@ net_client_request_no_reply (int request, char *argbuf, int argsize)
 
   assert (request == NET_SERVER_LOG_SET_INTERRUPT || request == NET_SERVER_LD_INTERRUPT);
 
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -509,6 +574,11 @@ net_client_request_internal (int request, char *argbuf, int argsize, char *reply
   char *reply = NULL;
 
   error = 0;
+
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
 
   if (net_Server_name[0] == '\0')
     {
@@ -630,6 +700,11 @@ net_client_request_send_large_data (int request, char *argbuf, int argsize, char
 
   error = 0;
 
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -726,6 +801,11 @@ net_client_request_recv_large_data (int request, char *argbuf, int argsize, char
 
   error = 0;
   *replydatasize_ptr = 0;
+
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
 
   if (net_Server_name[0] == '\0')
     {
@@ -842,6 +922,11 @@ net_client_request2 (int request, char *argbuf, int argsize, char *replybuf, int
   *replydata_ptr = NULL;
   *replydatasize_ptr = 0;
 
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -950,6 +1035,11 @@ net_client_request2_no_malloc (int request, char *argbuf, int argsize, char *rep
   error = 0;
   *replydatasize_ptr = 0;
 
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -1048,6 +1138,11 @@ net_client_request_3_data (int request, char *argbuf, int argsize, char *databuf
   char *reply = NULL, *ptr = NULL;
 
   error = rc = 0;
+
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
 
   if (net_Server_name[0] == '\0')
     {
@@ -1186,6 +1281,11 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
   if (replydatasize_plan != NULL)
     {
       *replydatasize_plan = 0;
+    }
+
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
     }
 
   if (net_Server_name[0] == '\0')
@@ -1401,8 +1501,13 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 
 			if (error == NO_ERROR)
 			  {
+			    ER_STMT_FAIL_MARK stmt_fail_saved;
+
 			    COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			    /* a stored procedure may catch the errors of the SQL it runs: give the callback a scope of its own */
+			    er_stmt_fail_begin (&stmt_fail_saved);
 			    error = method_dispatch (rc, methoddata, methoddata_size);
+			    er_stmt_fail_end (&stmt_fail_saved);
 			    free_and_init (methoddata);
 			  }
 
@@ -1755,6 +1860,11 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
   *replydata_ptr = NULL;
   *replydatasize_ptr = 0;
 
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       error = ER_NET_SERVER_CRASHED;
@@ -1818,8 +1928,13 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 
 		    if (error == NO_ERROR)
 		      {
+			ER_STMT_FAIL_MARK stmt_fail_saved;
+
 			COMPARE_AND_FREE_BUFFER (methoddata, reply);
+			/* a stored procedure may catch the errors of the SQL it runs: give the callback a scope of its own */
+			er_stmt_fail_begin (&stmt_fail_saved);
 			error = method_dispatch (rc, methoddata, methoddata_size);
+			er_stmt_fail_end (&stmt_fail_saved);
 			free_and_init (methoddata);
 		      }
 
@@ -2307,6 +2422,11 @@ net_client_request_recv_copyarea (int request, char *argbuf, int argsize, char *
   int decode_endian = 1;
 
   error = NO_ERROR;
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -2495,6 +2615,11 @@ net_client_request_2recv_copyarea (int request, char *argbuf, int argsize, char 
   int packed_desc_size;
 
   error = NO_ERROR;
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -2730,6 +2855,11 @@ net_client_request_3_data_recv_copyarea (int request, char *argbuf, int argsize,
   int success;
 
   error = NO_ERROR;
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -3111,6 +3241,11 @@ net_client_request_3recv_copyarea (int request, char *argbuf, int argsize, char 
   *recvbuffer = NULL;
   *recvbuffer_size = 0;
 
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
   if (net_Server_name[0] == '\0')
     {
       /* need to have a more appropriate "unexpected disconnect" message */
@@ -3303,6 +3438,11 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
   int file_size;
 
   error = NO_ERROR;
+
+  if (net_client_check_stmt_fail (request) != NO_ERROR)
+    {
+      return er_errid ();
+    }
 
   send_argsize = argsize + OR_INT_SIZE;
   recv_replybuf_size = replybuf_size + OR_INT_SIZE;

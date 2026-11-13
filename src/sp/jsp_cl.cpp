@@ -163,6 +163,17 @@ jsp_is_exist_stored_procedure (const char *name)
   MOP mop = NULL;
 
   mop = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  if (mop == NULL)
+    {
+      int error = er_errid ();
+
+      /* a lookup that failed does not tell the procedure is missing; leave the error to the caller */
+      if (ER_IS_SERVER_DOWN_ERROR (error) || ER_IS_LOCK_TIMEOUT_ERROR (error) || error == ER_LK_PAGE_TIMEOUT
+	  || error == ER_INTERRUPTED)
+	{
+	  return false;
+	}
+    }
   er_clear ();
 
   return mop != NULL;

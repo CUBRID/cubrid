@@ -4700,15 +4700,24 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 		{
 		  continue;
 		}
+	      /* the statistics and histograms are already stored; the dump is presentation only, so a failed
+	       * printout must not roll back the successful update. The error stack level makes its failure
+	       * ignorable, but an ended transaction stops the walk: the class may be decached. */
+	      er_stack_push ();
 	      error = dump_histogram (obj, (char *) att->header.name, attr_type, false, NO_ERROR, stdout);
-	      if (error != NO_ERROR)
+	      if (error != NO_ERROR && (er_stmt_fail_is_tran_ended () || ER_IS_SERVER_DOWN_ERROR (er_errid ())
+					|| ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ())))
 		{
-		  /* the statistics and histograms are already stored; the dump is presentation
-		   * only, so a failed printout must not roll back the successful update */
-		  assert (false);
-		  er_clear ();
-		  error = NO_ERROR;
+		  er_stack_pop_and_keep_error ();
+		  error = er_stmt_fail_is_tran_ended ()? er_stmt_fail_raise () : er_errid ();
+		  break;
 		}
+	      er_stack_pop ();
+	      error = NO_ERROR;
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      return error;
 	    }
 	}
     }
@@ -4796,7 +4805,8 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
 	  if (error != NO_ERROR)
 	    {
-	      assert (false);
+	      /* only an ended transaction comes back from the printout */
+	      assert (ER_IS_SERVER_DOWN_ERROR (error) || ER_IS_ABORTED_DUE_TO_DEADLOCK (error));
 	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return error;
 	    }
@@ -5439,7 +5449,15 @@ end_create:
       return error;
     }
 
-  assert (er_errid_if_has_error () == NO_ERROR);
+  /* a lookup on the way may have cleared or skipped the error of a server that went down or a transaction that was
+   * aborted (CBRD-27810): the partitions are not created, so report it */
+  error = er_errid_if_has_error ();
+  if (ER_IS_SERVER_DOWN_ERROR (error) || ER_IS_ABORTED_DUE_TO_DEADLOCK (error))
+    {
+      return error;
+    }
+
+  assert (error == NO_ERROR);
 
   return NO_ERROR;
 }
@@ -10158,6 +10176,10 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_LOCALCHECKOPTION, 1);
 	}
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
 
       comment_node = node->info.create_entity.vclass_comment;
       if (comment_node != NULL)
@@ -10211,12 +10233,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       if (reuse_oid)
 	{
 	  error = sm_set_class_flag (class_obj, SM_CLASSFLAG_REUSE_OID, 1);
-	  if (error == NO_ERROR)
+	  if (error != NO_ERROR)
 	    {
-	      /* Need to flush class mop in order to reflect reuse_oid flag into catalog table. Without flushing it,
-	       * catalog information is incorrect under non-autocommit mode. */
-	      do_flush_class_mop = true;
+	      break;
 	    }
+	  /* Need to flush class mop in order to reflect reuse_oid flag into catalog table. Without flushing it,
+	   * catalog information is incorrect under non-autocommit mode. */
+	  do_flush_class_mop = true;
 	}
       if (tbl_opt_encrypt)
 	{
@@ -10254,10 +10277,11 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert (comment_node != NULL && comment_node->node_type == PT_VALUE);
 	  comment = comment_node->info.value.data_value.str;
 	  error = sm_set_class_comment (class_obj, (char *) pt_get_varchar_bytes (comment));
-	  if (error == NO_ERROR)
+	  if (error != NO_ERROR)
 	    {
-	      do_flush_class_mop = true;
+	      break;
 	    }
+	  do_flush_class_mop = true;
 	}
       error = do_cache_empty_histogram (class_obj);
       if (error != NO_ERROR)
@@ -10273,9 +10297,9 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  if (do_flush_class_mop == true)
+  /* a break above may carry an error: flushing would overwrite it and go on with a class half made */
+  if (do_flush_class_mop == true && error == NO_ERROR)
     {
-      assert (error == NO_ERROR);
       assert (class_obj != NULL);
 
       error = locator_flush_class (class_obj);
@@ -11169,16 +11193,30 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 	? hist_att_def->info.attr_def.attr_name->info.name.original : NULL;
       const char *hist_old_name = (hist_old != NULL) ? hist_old->info.name.original : NULL;
 
+      int hist_error = NO_ERROR;
+
       if (hist_new_name != NULL)
 	{
-	  (void) sm_drop_histogram (class_obj, hist_new_name);
+	  hist_error = sm_drop_histogram (class_obj, hist_new_name);
 	}
-      if (hist_old_name != NULL
+      if (!ER_IS_SERVER_DOWN_ERROR (hist_error) && !ER_IS_LOCK_TIMEOUT_ERROR (hist_error)
+	  && hist_error != ER_LK_PAGE_TIMEOUT && hist_error != ER_INTERRUPTED && hist_old_name != NULL
 	  && (hist_new_name == NULL || intl_identifier_casecmp (hist_old_name, hist_new_name) != 0))
 	{
-	  (void) sm_drop_histogram (class_obj, hist_old_name);
+	  hist_error = sm_drop_histogram (class_obj, hist_old_name);
 	}
-      er_clear ();
+
+      /* only a failed drop fails the ALTER: the transaction ended, or the histogram, which would be decoded with
+       * stale semantics, could not be removed (lock timeout, interrupt) */
+      if (ER_IS_SERVER_DOWN_ERROR (hist_error) || ER_IS_LOCK_TIMEOUT_ERROR (hist_error)
+	  || hist_error == ER_LK_PAGE_TIMEOUT || hist_error == ER_INTERRUPTED)
+	{
+	  error = hist_error;
+	}
+      else
+	{
+	  er_clear ();
+	}
     }
 
 exit:

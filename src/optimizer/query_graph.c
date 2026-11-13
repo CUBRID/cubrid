@@ -5144,7 +5144,15 @@ grok_classes (QO_ENV * env, PT_NODE * p, QO_CLASS_INFO_ENTRY * info)
       if (smclass == NULL)
 	{
 	  PARSER_CONTEXT *parser = env->parser;
-	  PT_INTERNAL_ERROR (parser, "info");
+	  /* report why the class could not be fetched, e.g. the server went down */
+	  if (er_errid () != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, QO_ENV_PT_TREE (env), er_msg ());
+	    }
+	  else
+	    {
+	      PT_INTERNAL_ERROR (parser, "info");
+	    }
 	  return info;
 	}
 

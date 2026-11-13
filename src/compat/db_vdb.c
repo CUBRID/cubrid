@@ -644,7 +644,10 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       req.sha1 = ws->base_sha1;
       req.time_stored = ws->base_time;
+      /* the error stack level lets an interrupt here be ignored like any other failure of this request */
+      er_stack_push ();
       err = qmgr_bind_variant (&req, &reply);
+      er_stack_pop ();
       if (err != NO_ERROR)
 	{
 	  /* the plan in hand still answers the query; never fail it over the variants */
@@ -726,7 +729,9 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       req.variant = k;
       req.plan_sig = parser->bind_plan_sig;
       req.fp = fp;
+      er_stack_push ();
       err = qmgr_bind_variant (&req, &reply);
+      er_stack_pop ();
       if (err != NO_ERROR || reply.result == BIND_VARIANT_NOT_FOUND)
 	{
 	  /* the compiled plan suits these values; run it and let the next request sort it out */
@@ -2198,6 +2203,8 @@ db_get_errors (DB_SESSION * session)
  * col(out): source column number of error
  *
  * note : Do not free this list of errors.
+ *        A lock timeout, an interrupt or a server down stays the current error, as in pt_report_to_ersys (): the
+ *        parser error then only follows from it (e.g. a lookup that timed out reads as "not in the database").
  */
 DB_SESSION_ERROR *
 db_get_next_error (DB_SESSION_ERROR * errors, int *line, int *col)
@@ -2205,6 +2212,7 @@ db_get_next_error (DB_SESSION_ERROR * errors, int *line, int *col)
   DB_SESSION_ERROR *result;
   int stmt_no;
   const char *e_msg = NULL;
+  int err;
 
   if (!errors)
     {
@@ -2212,7 +2220,9 @@ db_get_next_error (DB_SESSION_ERROR * errors, int *line, int *col)
     }
 
   result = pt_get_next_error (errors, &stmt_no, line, col, &e_msg);
-  if (e_msg)
+  err = er_errid ();
+  if (e_msg && !ER_IS_LOCK_TIMEOUT_ERROR (err) && !ER_IS_SERVER_DOWN_ERROR (err) && err != ER_LK_PAGE_TIMEOUT
+      && err != ER_INTERRUPTED)
     {
       er_set (ER_SYNTAX_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1, e_msg);
     }

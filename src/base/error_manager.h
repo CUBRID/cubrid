@@ -323,6 +323,31 @@ extern "C"
   extern void er_stack_pop_and_keep_error (void);
   extern void er_restore_last_error (void);
   extern void er_stack_clearall (void);
+
+#if !defined (SERVER_MODE)
+  /* an error that must fail the current client statement although the code that got it may clear it */
+  typedef struct er_stmt_fail_mark ER_STMT_FAIL_MARK;
+  struct er_stmt_fail_mark
+  {
+    int err_id;			/* NO_ERROR if not marked */
+    int severity;
+    const char *file_name;	/* where the error was set; a static string, not owned */
+    int line_no;
+    char *msg;			/* formatted message or NULL; owned by the mark, moved between er_stmt_fail_begin and
+				 * er_stmt_fail_end */
+  };
+
+  extern void er_stmt_fail_begin (ER_STMT_FAIL_MARK * saved);
+  extern void er_stmt_fail_end (ER_STMT_FAIL_MARK * saved);
+  extern void er_stmt_fail_next (void);
+  extern int er_stmt_fail_get (void);
+  extern bool er_stmt_fail_is_tran_ended (void);
+  extern bool er_stmt_fail_blocks_request (void);
+  extern int er_stmt_fail_raise (void);
+  extern bool er_stmt_fail_is_reported_by (int err_id);
+  extern int er_stmt_fail_resolve (int error);
+  extern int er_stmt_fail_forget_committed (void);
+#endif				/* !SERVER_MODE */
   extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);
   extern int er_event_restart (void);
   extern void er_clearid (void);
