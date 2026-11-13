@@ -677,20 +677,6 @@ tp_ftoa_buffer (const DB_VALUE *src, DB_VALUE *result)
 }
 
 void
-tp_ftoa_char (const DB_VALUE *src, DB_VALUE *result)
-{
-  char *str_float = tp_ftoa_buffer (src, result);
-  if (str_float == nullptr)
-    {
-      return;
-    }
-
-  db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
-		db_get_string_collation (result));
-  result->need_clear = true;
-}
-
-void
 tp_ftoa_varchar (const DB_VALUE *src, DB_VALUE *result)
 {
   char *str_float = tp_ftoa_buffer (src, result);
@@ -726,20 +712,6 @@ tp_dtoa_buffer (const DB_VALUE *src, DB_VALUE *result)
   format_floating_point (str_double, str_double + strlen (str_double), ndigits, decpt, sign);
 
   return str_double;
-}
-
-void
-tp_dtoa_char (const DB_VALUE *src, DB_VALUE *result)
-{
-  char *str_double = tp_dtoa_buffer (src, result);
-  if (str_double == nullptr)
-    {
-      return;
-    }
-
-  db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
-		db_get_string_codeset (result), db_get_string_collation (result));
-  result->need_clear = true;
 }
 
 void
@@ -3870,13 +3842,12 @@ tp_value_convert_float_to_char (const DB_VALUE *src, DB_VALUE *target, const TP_
 				date_conversion_error *error)
 {
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
 
   {
-    {
-      tp_ftoa_char (src, target);
-    }
+    char *str_float = tp_ftoa_buffer (src, target);
 
-    if (DB_IS_NULL (target))
+    if (str_float == nullptr)
       {
 	if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 	  {
@@ -3889,10 +3860,14 @@ tp_value_convert_float_to_char (const DB_VALUE *src, DB_VALUE *target, const TP_
 	  }
       }
     else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
-	     && (db_get_string_length (target) > DB_VALUE_PRECISION (target)))
+	     && ((int) strlen (str_float) > DB_VALUE_PRECISION (target)))
       {
 	status = DOMAIN_OVERFLOW;
-	pr_clear_value (target);
+	db_private_free_and_init (NULL, str_float);
+      }
+    else
+      {
+	tp_make_char_conversion (desired_domain, str_float, target, &status, &data_stat);
       }
   }
 
@@ -3904,13 +3879,12 @@ tp_value_convert_double_to_char (const DB_VALUE *src, DB_VALUE *target, const TP
 				 date_conversion_error *error)
 {
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
 
   {
-    {
-      tp_dtoa_char (src, target);
-    }
+    char *str_double = tp_dtoa_buffer (src, target);
 
-    if (DB_IS_NULL (target))
+    if (str_double == nullptr)
       {
 	if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 	  {
@@ -3923,10 +3897,14 @@ tp_value_convert_double_to_char (const DB_VALUE *src, DB_VALUE *target, const TP
 	  }
       }
     else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
-	     && (db_get_string_length (target) > DB_VALUE_PRECISION (target)))
+	     && ((int) strlen (str_double) > DB_VALUE_PRECISION (target)))
       {
 	status = DOMAIN_OVERFLOW;
-	pr_clear_value (target);
+	db_private_free_and_init (NULL, str_double);
+      }
+    else
+      {
+	tp_make_char_conversion (desired_domain, str_double, target, &status, &data_stat);
       }
   }
 

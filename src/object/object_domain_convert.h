@@ -129,9 +129,7 @@ void format_floating_point (char *new_string, char *rve, int ndigits, int decpt,
 int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 char *tp_ftoa_buffer (const DB_VALUE * src, DB_VALUE * result);
 char *tp_dtoa_buffer (const DB_VALUE * src, DB_VALUE * result);
-void tp_ftoa_char (const DB_VALUE * src, DB_VALUE * result);
 void tp_ftoa_varchar (const DB_VALUE * src, DB_VALUE * result);
-void tp_dtoa_char (const DB_VALUE * src, DB_VALUE * result);
 void tp_dtoa_varchar (const DB_VALUE * src, DB_VALUE * result);
 
 #endif /* _OBJECT_DOMAIN_CONVERT_H_ */
