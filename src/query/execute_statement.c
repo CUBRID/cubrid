@@ -6265,7 +6265,7 @@ static const char *skip_block_comment (const char *text);
 static const char *skip_block_string (const char *text);
 static const char *skip_block_delimited_id (const char *text);
 static const char *skip_block_blanks_and_comments (const char *text);
-static bool block_reads_column (const char *block, const char *name, const char *column);
+static bool block_reads_column (const char *block, const char *name, const char *column, bool assigned);
 static char *make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, const char *block,
 				       const char **names, int n_names, TR_BLOCK_COLUMN * columns, int n_columns,
 				       const bool * reads);
@@ -7437,11 +7437,12 @@ skip_block_blanks_and_comments (const char *text)
 
 /*
  * block_reads_column() - Tells whether a PL/CSQL block reads a column of a correlation name,
- *                        as name.column.
- *   return: true when the block has the dotted name
+ *                        as name.column, or whether it assigns a value to one.
+ *   return: true when the block has the dotted name, followed by := when assigned is true
  *   block(in): PL/CSQL block text
  *   name(in): correlation name
  *   column(in): column name, in lower case as the class keeps it, or NULL for any name.field
+ *   assigned(in): true to find only a name.field that a value is assigned to, as name.field := ...
  *
  * Note:
  *    The scan is lexical. PL/CSQL reads a field of a record only as name.field.
@@ -7451,9 +7452,9 @@ skip_block_blanks_and_comments (const char *text)
  *    A name after a dot is part of a longer name, such as a table with an owner.
  */
 static bool
-block_reads_column (const char *block, const char *name, const char *column)
+block_reads_column (const char *block, const char *name, const char *column, bool assigned)
 {
-  const char *p, *token, *next, *resume;
+  const char *p, *token, *next, *resume, *end;
   size_t name_len = strlen (name);
   size_t column_len = column == NULL ? 0 : strlen (column);
   size_t token_len;
@@ -7521,11 +7522,23 @@ block_reads_column (const char *block, const char *name, const char *column)
 	    }
 	  token++;
 	  token_len = next - token;
+	  end = next + 1;
 	}
       else
 	{
 	  for (token_len = 0; IS_BLOCK_ID_CHAR (token[token_len]); token_len++)
 	    ;
+	  end = token + token_len;
+	}
+
+      if (assigned)
+	{
+	  end = skip_block_blanks_and_comments (end);
+	  if (end[0] != ':' || end[1] != '=')
+	    {
+	      p = resume;
+	      continue;
+	    }
 	}
 
       if (token_len > 0
@@ -7733,6 +7746,7 @@ make_block_call_arguments (PARSER_CONTEXT * parser, const char **names, int n_na
  *
  *    A correlation name the block reads, obj, new or old, is a record declared before the block.
  *    The call passes the columns the block reads as the parameters of the procedure.
+ *    The record is a copy, so a block that assigns a value to its field is refused.
  */
 static int
 create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_name, const char *block,
@@ -7849,14 +7863,25 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 	  continue;
 	}
 
+      if (block_reads_column (block, candidates[i], NULL, true))
+	{
+	  /* the record is a copy of the row, so the value would be lost with no error */
+	  free_and_init (columns);
+	  free_and_init (reads);
+	  error = ER_TR_ACTION_COMPILE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, trigger_name,
+		  "A value cannot be assigned to a correlation name. Correlation names are read only.");
+	  return error;
+	}
+
       row = (n_columns > 0) ? reads + n_names * n_columns : NULL;
       n_reads = 0;
       for (j = 0; j < n_columns; j++)
 	{
-	  row[j] = block_reads_column (block, candidates[i], columns[j].name);
+	  row[j] = block_reads_column (block, candidates[i], columns[j].name, false);
 	  n_reads += row[j];
 	}
-      if (n_reads == 0 && block_reads_column (block, candidates[i], NULL))
+      if (n_reads == 0 && block_reads_column (block, candidates[i], NULL, false))
 	{
 	  if (n_columns > 0)
 	    {
