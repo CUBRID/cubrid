@@ -7791,14 +7791,16 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
     }
 
   /* a decline here is the row path, not a fault: an allocation that failed on the way leaves no error behind (a parallel
-   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before */
-  err_before = er_errid ();
+   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before.  Errors
+   * only: NUMERIC arithmetic sets ER_IT_DATA_OVERFLOW as a warning, and a warning left before must not keep the
+   * decline's error (CBRD-28049, as expr_batch_run ()) */
+  err_before = er_errid_if_has_error ();
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
   if (hsidp->batch_plan == NULL)
     {
       /* a decline of the inputs, not an allocation that failed on the way (an error, or "out of memory"), is kept for
        * the next open of the spec from the same inputs */
-      if (spec != NULL && er_errid () == err_before && hsidp->batch_why_not != NULL
+      if (spec != NULL && er_errid_if_has_error () == err_before && hsidp->batch_why_not != NULL
 	  && strstr (hsidp->batch_why_not, "memory") == NULL)
 	{
 	  keep = scan_batch_keep_for (thread_p, spec, keep);
@@ -7808,7 +7810,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
 	      keep->declined_why = hsidp->batch_why_not;
 	    }
 	}
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
@@ -7820,7 +7822,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
@@ -7832,7 +7834,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
