@@ -11064,6 +11064,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		ASSERT_ERROR ();
 		goto exit_on_error;
 	      }
+	    /* shortcut: only the scans of the EXISTS subquery's own XASL start their read-ahead late, the scans of
+	     * its scan_ptr blocks keep the first window; pass the flag down when a join inside EXISTS shows the cost */
+	    s_id->s.isid.ahead_single = xasl != NULL && XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
 
 #if SERVER_MODE && !WINDOWS
 	    error_code = scan_open_parallel_index_scan (thread_p, s_id, vd, curr_spec,
@@ -13075,6 +13078,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		{
 		  return S_ERROR;
 		}
+	      spec->s_id.s.isid.ahead_single = xasl != NULL && XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN);
 
 #if SERVER_MODE && !WINDOWS
 	      error =

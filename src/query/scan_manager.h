@@ -252,13 +252,16 @@ struct parallel_list_scan_id
 typedef struct parallel_index_scan_id PARALLEL_INDEX_SCAN_ID;
 
 /* OIDs ahead of an index scan's lookup whose heap pages the OS is told about: the first window holds
- * SCAN_INDEX_READ_AHEAD_INITIAL OIDs and every next one twice the one before, up to SCAN_INDEX_READ_AHEAD_DISTANCE,
- * so a scan that stops after a few rows told the OS about few pages; the next window is told when half of the
- * current one was looked up */
-#define SCAN_INDEX_READ_AHEAD_DISTANCE 256
+ * SCAN_INDEX_READ_AHEAD_INITIAL OIDs and every next one twice the one before, up to the scan's ahead_limit, so a
+ * scan that stops after a few rows told the OS about few pages; the next window is told when half of the current
+ * one was looked up. The pages a query was told about and has not read yet queue on the device every session's
+ * reads and log writes use, so a query keeps at most SCAN_INDEX_READ_AHEAD_DISTANCE OIDs ahead: a serial scan's
+ * ahead_limit, which the workers of a parallel index scan share (each its first window at least) */
+#define SCAN_INDEX_READ_AHEAD_DISTANCE 64
 #define SCAN_INDEX_READ_AHEAD_INITIAL 8
-#define SCAN_INDEX_READ_AHEAD_NEXT(distance) \
-  (((distance) == 0) ? SCAN_INDEX_READ_AHEAD_INITIAL : MIN ((distance) * 2, SCAN_INDEX_READ_AHEAD_DISTANCE))
+#define SCAN_INDEX_READ_AHEAD_NEXT(isidp) \
+  (((isidp)->ahead_distance == 0) ? SCAN_INDEX_READ_AHEAD_INITIAL \
+   : MIN ((isidp)->ahead_distance * 2, (isidp)->ahead_limit))
 /* INDX_SCAN_ID superset (mirrors PARALLEL_HEAP_SCAN_ID pattern); paired static_asserts pin layout */
 
 typedef struct heap_page_scan_id HEAP_PAGE_SCAN_ID;
@@ -398,6 +401,8 @@ struct indx_scan_id
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   int ahead_next;		/* first OID of the buffer whose heap page the OS was not told about; INT_MAX: none */
   int ahead_distance;		/* OIDs of the last whole read-ahead window; 0: none yet */
+  int ahead_limit;		/* OIDs a read-ahead window holds at most */
+  bool ahead_single;		/* the scan's XASL stops at its first row: the windows start after the first lookup */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -454,6 +459,8 @@ struct parallel_index_scan_id
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   int ahead_next;		/* mirror of INDX_SCAN_ID::ahead_next */
   int ahead_distance;		/* mirror of INDX_SCAN_ID::ahead_distance */
+  int ahead_limit;		/* mirror of INDX_SCAN_ID::ahead_limit */
+  bool ahead_single;		/* mirror of INDX_SCAN_ID::ahead_single */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   INDX_GBY_SKIP *gby_skip;	/* mirror of INDX_SCAN_ID::gby_skip */
   /* parallel-only fields (must follow all isid fields) */
@@ -834,11 +841,11 @@ extern void showstmt_scan_init (void);
 extern SCAN_CODE showstmt_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern int showstmt_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more);
 #if defined(SERVER_MODE)
 extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
 extern int scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp);
-extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more);
 #endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */

@@ -9288,7 +9288,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
  *       buffer holds. The check does not lock the hash chain: an answer made wrong by a concurrent fix or
  *       victimization only costs one synchronous read or one needless hint. Runs of consecutive pages go to the
  *       OS as one range. The pages are not fixed and no state is kept: the caller fixes each page as usual, and
- *       that read finds the page in the OS cache or on its way.
+ *       that read finds the page in the OS cache or on its way. The pages handed to the OS are counted
+ *       (Num_data_page_read_ahead) while somebody watches the statistics.
  */
 void
 pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
@@ -9297,6 +9298,7 @@ pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
   PGBUF_BCB *bufptr;
   VPID run_vpid = VPID_INITIALIZER;
   int run_length = 0;
+  int hinted = 0;
   int steps;
   int i;
 
@@ -9335,6 +9337,7 @@ pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
 	{
 	  fileio_read_ahead_hint (fileio_get_volume_descriptor (run_vpid.volid), run_vpid.pageid, run_length,
 				  IO_PAGESIZE);
+	  hinted += run_length;
 	  run_length = 0;
 	}
       if (i < count && bufptr == NULL && !pgbuf_is_temporary_volume (vpids[i].volid))
@@ -9342,6 +9345,10 @@ pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
 	  run_vpid = vpids[i];
 	  run_length = 1;
 	}
+    }
+  if (hinted > 0)
+    {
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_READ_AHEAD, hinted);
     }
 }
 

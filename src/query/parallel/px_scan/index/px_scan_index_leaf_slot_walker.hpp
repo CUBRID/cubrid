@@ -190,6 +190,7 @@ namespace parallel_index_scan
       int m_ahead_slot;                               /* the slot after the last key of m_ahead, or where it stopped. */
       bool m_ahead_end;                               /* evaluate_ahead found no more key to queue on m_page. */
       int m_ahead_skipped_keys;                       /* read_keys of the slots skipped before that stop. */
+      bool m_ahead_interrupted;                       /* evaluate_ahead took the query's interrupt. */
   };
 }
 

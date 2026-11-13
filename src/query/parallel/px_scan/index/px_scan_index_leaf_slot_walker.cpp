@@ -74,7 +74,8 @@ namespace parallel_index_scan
       m_ahead_last (),
       m_ahead_slot (0),
       m_ahead_end (false),
-      m_ahead_skipped_keys (0)
+      m_ahead_skipped_keys (0),
+      m_ahead_interrupted (false)
   {
     db_make_null (&m_slot_key);
     db_make_null (&m_ahead_last.key);
@@ -481,6 +482,10 @@ namespace parallel_index_scan
 
     /* Non-covering index path: read values from heap record */
     read_ahead (thread_p);
+    if (m_ahead_interrupted)
+      {
+	return S_ERROR;
+      }
 
     RECDES heap_recdes = RECDES_INITIALIZER;
     if (m_scan_id->fixed == false)
@@ -550,13 +555,22 @@ namespace parallel_index_scan
   }
 
   /* the slot's key failed: as the lookups reach it, the error is raised and the range's end signaled; looked at
-   * ahead, the error is dropped (the slot is read again when the lookups reach it) */
+   * ahead, the error is dropped (the slot is read again when the lookups reach it), except the query's interrupt:
+   * raising it cleared the transaction's interrupt, so the slot read again would not raise it and the next lookup
+   * returns it instead */
   leaf_slot_walker::slot_result
   leaf_slot_walker::stop_at_error (THREAD_ENTRY *thread_p, bool ahead)
   {
     if (ahead)
       {
-	er_clear ();
+	if (er_errid () == ER_INTERRUPTED)
+	  {
+	    m_ahead_interrupted = true;
+	  }
+	else
+	  {
+	    er_clear ();
+	  }
       }
     else
       {
@@ -775,6 +789,7 @@ namespace parallel_index_scan
 	m_scan_id->s.isid.ahead_next = 0;
       }
     m_ahead_end = false;
+    m_ahead_interrupted = false;
   }
 
   /* evaluates the next key of m_page ahead of the lookups; false when there is none to queue (end of the leaf, the
@@ -824,7 +839,7 @@ namespace parallel_index_scan
     /* the keys evaluated ahead extend the OID buffer to a window from the OID being looked up (only after a key whose
      * OIDs are all on the leaf: an overflow chain is drained before the next key), no more OIDs ahead of the lookups
      * than the buffer's max_oid_cnt (index_scan_oid_buffer_size), as a serial scan's buffer holds */
-    while (oids->oid_cnt < isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_NEXT (isidp->ahead_distance)
+    while (oids->oid_cnt < isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_NEXT (isidp)
 	   && oids->oid_cnt - isidp->curr_oidno < oids->max_oid_cnt)
       {
 	if (m_page == nullptr

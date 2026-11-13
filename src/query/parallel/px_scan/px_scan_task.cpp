@@ -241,6 +241,9 @@ namespace parallel_scan
 		  {
 		    return err_code;
 		  }
+		/* the scan's workers share the query's read-ahead, each its first window at least */
+		m_scan_id->s.isid.ahead_limit = MAX (SCAN_INDEX_READ_AHEAD_INITIAL,
+						     SCAN_INDEX_READ_AHEAD_DISTANCE / m_input_handler->get_parallelism ());
 		/* scan_start_scan initializes scan caches and attr info required by slot_iterator_index for leaf page processing. */
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
