@@ -3136,7 +3136,7 @@ pt_statement_line_number (const PT_NODE * stmt)
 {
   if (stmt)
     {
-      return stmt->line_number;
+      return (stmt->stmt_start_line > 0) ? stmt->stmt_start_line : stmt->line_number;
     }
 
   return 1;
@@ -3670,7 +3670,8 @@ pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
       if (having != NULL)
 	{
 	  /* there is only 'groupby_num <= ' */
-	  if (having->next == NULL && pt_is_expr_node (having) && PT_IS_GROUPBYNUM (having->info.expr.arg1)
+	  if (having->next == NULL && having->or_next == NULL && pt_is_expr_node (having)
+	      && PT_IS_GROUPBYNUM (having->info.expr.arg1)
 	      && (having->info.expr.op == PT_LE || having->info.expr.op == PT_LT))
 	    {
 	      return false;
@@ -3691,6 +3692,62 @@ pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return has_having;
+}
+
+/*
+ * pt_is_orderby_for_upper_bound () - check if FOR ORDERBY_NUM() is only an upper bound
+ *   return: true if orderby_for is only 'orderby_num () <= expr' or 'orderby_num () < expr'
+ *   orderby_for(in):
+ *
+ * Note: pt_has_orderby_for_with_predicate () and pt_exists_limit_is_removable () (whose bound must be a positive
+ *	 constant as well) decide with this whether the first tuple of an EXISTS subquery is enough.
+ */
+bool
+pt_is_orderby_for_upper_bound (PT_NODE * orderby_for)
+{
+  return (orderby_for->next == NULL && orderby_for->or_next == NULL && pt_is_expr_node (orderby_for)
+	  && PT_IS_ORDERBYNUM (orderby_for->info.expr.arg1)
+	  && (orderby_for->info.expr.op == PT_LE || orderby_for->info.expr.op == PT_LT));
+}
+
+/*
+ * pt_has_orderby_for_with_predicate ()
+ *          - check if tree has a FOR ORDERBY_NUM() predicate other than an upper bound
+ *   return: true if tree has such a predicate (e.g. LIMIT with offset)
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_orderby_for_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_orderby_for = false;
+  PT_NODE *orderby_for;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      orderby_for = node->info.query.orderby_for;
+      if (orderby_for != NULL && !pt_is_orderby_for_upper_bound (orderby_for))
+	{
+	  return true;
+	}
+
+      if (node->node_type != PT_SELECT)
+	{
+	  has_orderby_for |= pt_has_orderby_for_with_predicate (parser, node->info.query.q.union_.arg1);
+	  has_orderby_for |= pt_has_orderby_for_with_predicate (parser, node->info.query.q.union_.arg2);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return has_orderby_for;
 }
 
 /*
@@ -5120,15 +5177,15 @@ pt_host_var_position_domain (PARSER_CONTEXT * parser, int index)
 	{
 	  return compiled;
 	}
-      return pt_host_var_is_char_typed (expected) && compiled != NULL && TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR
-	? compiled : expected;
+      return pt_host_var_is_char_typed (parser, index) && compiled != NULL
+	&& TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR ? compiled : expected;
     }
   if (pt_is_derived_host_var (parser, index))
     {
       /* shortcut: a context-typed user position of another type than CHAR casts its value before the compilation
        * sees it, not before the derived bind does - plan from the bound type if such a derived CHAR position appears */
       TP_DOMAIN *expected = parser->host_var_expected_domains[index];
-      return pt_host_var_is_char_typed (expected) ? pt_host_var_sent_domain (parser, index, expected) : expected;
+      return pt_host_var_is_char_typed (parser, index) ? pt_host_var_sent_domain (parser, index, expected) : expected;
     }
   return NULL;
 }
@@ -5176,7 +5233,8 @@ struct pt_host_var_position_walk
 #endif
   bool assign;			/* the first pass of the compilation: the first node of a position decides its domain */
   int *kinds;			/* the classification before type checking (pt_classify_host_var_positions): [host_var_count]
-				 * a bit per PT_HOST_VAR_CLASS of the position's occurrences; NULL in the other passes */
+				 * a bit per PT_HOST_VAR_CLASS of the position's occurrences, the bit 4 for a value stored
+				 * into a column (pt_host_var_is_stored_value); NULL in the other passes */
   int error;
 };
 
@@ -5438,7 +5496,7 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
 	    {
 	      parser->host_var_compiled_domains[i] = pt_host_var_value_domain (parser, i);
 	    }
-	  else if (pt_host_var_is_char_typed (domain))
+	  else if (pt_host_var_is_char_typed (parser, i))
 	    {
 	      parser->host_var_compiled_domains[i] = pt_host_var_sent_domain (parser, i, domain);
 	    }
@@ -5548,33 +5606,41 @@ pt_in_merge_delete_condition (const PT_HOST_VAR_POSITION_WALK * walk)
   return false;
 }
 
-/* pre walker of pt_assign_host_var_positions */
-static PT_NODE *
-pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+/* whether a host variable occurrence is a value stored into a column: an INSERT / MERGE VALUES element, the right
+ * side of an UPDATE / MERGE / ON DUPLICATE KEY UPDATE assignment (the kind 4 of pt_classify_host_var_positions) */
+static bool
+pt_host_var_is_stored_value (const PT_NODE * hv, const PT_NODE * parent, const PT_NODE * grandparent)
 {
-  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+  if (parent == NULL || grandparent == NULL)
+    {
+      return false;
+    }
+  if (parent->node_type == PT_NODE_LIST)
+    {
+      return parent->info.node_list.list_type == PT_IS_VALUE
+	&& (grandparent->node_type == PT_INSERT || grandparent->node_type == PT_MERGE);
+    }
+  return parent->node_type == PT_EXPR && parent->info.expr.op == PT_ASSIGN && parent->info.expr.arg2 == hv
+    && (grandparent->node_type == PT_UPDATE || grandparent->node_type == PT_INSERT
+	|| grandparent->node_type == PT_MERGE);
+}
 
-  if (walk->error != NO_ERROR)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return node;
-    }
-  if (walk->depth > 0 && (walk->open[walk->depth - 1]->next == node || walk->open[walk->depth - 1]->or_next == node))
-    {
-      /* the walk visits a node's list successor before it leaves the node: the node is done, not the parent */
-      walk->depth--;
-    }
-  PT_NODE *parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
+/* the visit of one host variable occurrence by pt_assign_host_var_positions_pre (out of line: the walker's frame stays
+ * small for the other nodes) */
+static void __attribute__ ((noinline))
+pt_visit_host_var_occurrence (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * parent,
+			      PT_HOST_VAR_POSITION_WALK * walk, int *continue_walk)
+{
   PT_NODE *grandparent = walk->depth > 1 ? walk->open[walk->depth - 2] : NULL;
-  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
-      && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count && walk->kinds != NULL)
+  const int index = node->info.host_var.index;
+
+  if (index >= 0 && index < parser->host_var_count && walk->kinds != NULL)
     {
-      walk->kinds[node->info.host_var.index] |= 1 << (pt_in_merge_delete_condition (walk) ? 0
-						      : pt_host_var_occurrence_class (parser, node, parent,
-										      grandparent) >> 10);
+      walk->kinds[index] |= 1 << (pt_in_merge_delete_condition (walk) ? 0
+				  : pt_host_var_is_stored_value (node, parent, grandparent) ? 4
+				  : pt_host_var_occurrence_class (parser, node, parent, grandparent) >> 10);
     }
-  else if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
-	   && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count)
+  else if (index >= 0 && index < parser->host_var_count)
     {
       pt_check_host_var_occurrence (parser, node, parent, grandparent);
       /* the arrays grow at the first host variable met: a statement without one (an EXECUTE, whose parser holds the
@@ -5584,21 +5650,64 @@ pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
 					 parser->host_var_count + parser->auto_param_count) != NO_ERROR)
 	{
 	  walk->error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  *continue_walk = PT_STOP_WALK;
-	  return node;
 	}
-      walk->error = pt_assign_host_var_position (parser, node, parent, grandparent, walk);
+      else
+	{
+	  walk->error = pt_assign_host_var_position (parser, node, parent, grandparent, walk);
+	}
     }
-  else if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
-	   && pt_is_derived_host_var (parser, node->info.host_var.index))
+  else if (pt_is_derived_host_var (parser, index))
     {
       pt_check_host_var_occurrence (parser, node, parent, grandparent);
     }
-  else if (node->node_type == PT_NAME && walk->assign && walk->depth > 0 && parser->host_var_compiled_domains != NULL
+  if (walk->error != NO_ERROR)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+}
+
+/* pre walker of pt_assign_host_var_positions */
+static PT_NODE *
+pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+
+  if (walk->error != NO_ERROR)
+    {
+      /* a stopped walk still visits the next argument of a node: keep the first error */
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  PT_NODE *parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
+
+  if (parent != NULL && (parent->next == node || parent->or_next == node))
+    {
+      /* the walk visits a node's list successor before it leaves the node: the node is done, not the parent */
+      walk->depth--;
+      parent = walk->depth > 0 ? walk->open[walk->depth - 1] : NULL;
+    }
+  if (node->node_type == PT_HOST_VAR)
+    {
+      if (node->info.host_var.var_type == PT_HOST_IN)
+	{
+	  pt_visit_host_var_occurrence (parser, node, parent, walk, continue_walk);
+	  if (walk->error != NO_ERROR)
+	    {
+	      return node;
+	    }
+	}
+    }
+  else if (node->node_type == PT_NAME && walk->assign && parent != NULL && parser->host_var_compiled_domains != NULL
 	   && (walk->open[0]->node_type == PT_MERGE || walk->open[0]->node_type == PT_UPDATE
 	       || walk->open[0]->node_type == PT_DELETE))
     {
       walk->error = pt_derive_column_host_var_position (parser, node, walk);
+      if (walk->error != NO_ERROR)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
     }
   if (walk->depth == walk->capacity)
     {
@@ -5626,13 +5735,50 @@ pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void
     {
       walk->depth--;
     }
-  if (walk->kinds == NULL && parser->host_var_format_classes != NULL && node->node_type == PT_EXPR
+  if (node->node_type == PT_EXPR && walk->kinds == NULL && parser->host_var_format_classes != NULL
       && (node->info.expr.op == PT_NVL || node->info.expr.op == PT_IFNULL || node->info.expr.op == PT_COALESCE
 	  || node->info.expr.op == PT_NVL2))
     {
       pt_check_null_takes_plan (parser, node, walk->assign);
     }
   return node;
+}
+
+/* a walk another pass makes over the whole statement (its pre and post walkers, either NULL), which also walks the
+ * positions: the host walker runs first before a node, last after it */
+typedef struct pt_position_host_walk PT_POSITION_HOST_WALK;
+struct pt_position_host_walk
+{
+  PT_HOST_VAR_POSITION_WALK *walk;
+  PT_NODE_WALK_FUNCTION pre;
+  void *pre_arg;
+  PT_NODE_WALK_FUNCTION post;
+  void *post_arg;
+};
+
+static PT_NODE *
+pt_position_host_walk_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_POSITION_HOST_WALK *both = (PT_POSITION_HOST_WALK *) arg;
+
+  if (both->pre != NULL)
+    {
+      node = both->pre (parser, node, both->pre_arg, continue_walk);
+      if (*continue_walk == PT_STOP_WALK)
+	{
+	  return node;
+	}
+    }
+  return pt_assign_host_var_positions_pre (parser, node, both->walk, continue_walk);
+}
+
+static PT_NODE *
+pt_position_host_walk_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_POSITION_HOST_WALK *both = (PT_POSITION_HOST_WALK *) arg;
+
+  node = pt_assign_host_var_positions_post (parser, node, both->walk, continue_walk);
+  return both->post != NULL ? both->post (parser, node, both->post_arg, continue_walk) : node;
 }
 
 /*
@@ -5645,10 +5791,11 @@ pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void
  *   same positions, cache hits included: the hash text is printed after the translation. Without typed values (a
  *   PREPARE) only context-typed nodes derive; a value-typed position stays untyped and no plan is made. A later
  *   translation in the same compilation (a SELECT built from the translated statement) reuses the positions and makes
- *   none, but for one every execution translates (host_var_derive_later).
+ *   none, but for one every execution translates (host_var_derive_later). The walk is post's (NULL for none), a pass
+ *   over the whole translated statement: the compiled statement's class prefetch.
  */
-void
-pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
+PT_NODE *
+pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE_WALK_FUNCTION post, void *post_arg)
 {
   PT_HOST_VAR_POSITION_WALK walk;
 
@@ -5656,7 +5803,7 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement == NULL || parser->host_var_count <= 0 || parser->host_variables == NULL
       || parser->host_var_expected_domains == NULL || pt_has_error (parser) || parser->flag.is_parsing_static_sql)
     {
-      return;
+      return post != NULL ? parser_walk_tree (parser, statement, NULL, NULL, post, post_arg) : statement;
     }
 
   walk.open = NULL;
@@ -5668,15 +5815,15 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (walk.seen == NULL)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-      return;
+      return statement;
     }
 #if !defined (NDEBUG)
   walk.checked = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
   assert (walk.checked != NULL);
 #endif
 
-  (void) parser_walk_tree (parser, statement, pt_assign_host_var_positions_pre, &walk,
-			   pt_assign_host_var_positions_post, &walk);
+  PT_POSITION_HOST_WALK both = { &walk, NULL, NULL, post, post_arg };
+  statement = parser_walk_tree (parser, statement, pt_position_host_walk_pre, &both, pt_position_host_walk_post, &both);
 
 #if !defined (NDEBUG)
   /* a typed position all of whose nodes need one domain has the domain type checking gave it (a value-typed first node
@@ -5709,6 +5856,7 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
     }
+  return statement;
 }
 
 /*
@@ -5718,17 +5866,18 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   host_var_format_classes, any other none. An AGNOSTIC position is the
  *   INTEGER of whether its value is NULL (type checking gives it that type; its bound value becomes NULL or 1 here
  *   and at every bind); an NVL_ARG one starts with PT_HOST_VAR_NULL_MATCHES, which its nodes clear
- *   (pt_check_null_takes_plan). A later translation reuses the classes.
+ *   (pt_check_null_takes_plan). A later translation reuses the classes. The walk is the one pt_resolve_names makes
+ *   over the whole statement before it binds names (pre, its pre walker).
  */
-void
-pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
+PT_NODE *
+pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE_WALK_FUNCTION pre, void *pre_arg)
 {
   PT_HOST_VAR_POSITION_WALK walk;
 
   if (statement == NULL || parser->host_var_count <= 0 || parser->host_var_derived_from != NULL
       || parser->flag.is_parsing_static_sql)
     {
-      return;
+      return parser_walk_tree (parser, statement, pre, pre_arg, NULL, NULL);
     }
   int *classes = pt_host_var_format_classes (parser);
   walk.open = NULL;
@@ -5741,20 +5890,21 @@ pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* no class: every NULL keeps a signature of its own */
       free (walk.kinds);
-      return;
+      return parser_walk_tree (parser, statement, pre, pre_arg, NULL, NULL);
     }
 
-  (void) parser_walk_tree (parser, statement, pt_assign_host_var_positions_pre, &walk,
-			   pt_assign_host_var_positions_post, &walk);
+  PT_POSITION_HOST_WALK both = { &walk, pre, pre_arg, NULL, NULL };
+  statement = parser_walk_tree (parser, statement, pt_position_host_walk_pre, &both, pt_position_host_walk_post, &both);
 
   for (int i = 0; walk.error == NO_ERROR && i < parser->host_var_count; i++)
     {
-      /* the kinds seen are one bit each: exactly one, and not the kind 0 */
+      /* the kinds seen are one bit each: exactly one, and not the kind 0; only stored values: an assignment position */
       const int kinds = walk.kinds[i];
       const int kind = kinds == 1 << 1 ? PT_HOST_VAR_CLASS_AGNOSTIC : kinds == 1 << 2 ? PT_HOST_VAR_CLASS_COMPARE
 	: kinds == 1 << 3 ? PT_HOST_VAR_CLASS_NVL_ARG : 0;
-      classes[i] = (classes[i] & ~(PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES)) | kind
-	| (kind == PT_HOST_VAR_CLASS_NVL_ARG ? PT_HOST_VAR_NULL_MATCHES : 0);
+      classes[i] = (classes[i] & ~(PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES | PT_HOST_VAR_ASSIGNMENT))
+	| kind | (kind == PT_HOST_VAR_CLASS_NVL_ARG ? PT_HOST_VAR_NULL_MATCHES : 0)
+	| (kinds == 1 << 4 ? PT_HOST_VAR_ASSIGNMENT : 0);
       if (kind == PT_HOST_VAR_CLASS_AGNOSTIC && parser->host_variables != NULL)
 	{
 	  pt_set_agnostic_host_variable (&parser->host_variables[i], &parser->host_variables[i]);
@@ -5762,6 +5912,12 @@ pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   free (walk.kinds);
   free (walk.open);
+  if (walk.error == ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      /* the stopped walk also stopped the walk of pt_resolve_names it shares */
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+    }
+  return statement;
 }
 
 /* walker of pt_has_session_variable: sets *(bool *) arg at a session variable read or assignment */
@@ -12787,18 +12943,95 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
-/* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
+/* true iff an ON DUPLICATE KEY UPDATE value is a qualified column, <qualifier>.<column>, by shape alone. It is
+ * the only kind of value bound per row rather than printed. Whether the qualifier names a table of the source
+ * SELECT is for the gate to check. The shape is the clause as written, so this answers only before name
+ * resolution, which turns a qualified column into a PT_NAME. */
+bool
+pt_dblink_odku_value_is_bound (PT_NODE * value)
+{
+  return (value != NULL && value->node_type == PT_DOT_ && value->info.dot.arg1 != NULL
+	  && value->info.dot.arg1->node_type == PT_NAME && value->info.dot.arg2 != NULL
+	  && value->info.dot.arg2->node_type == PT_NAME);
+}
+
+/* the name a FROM or INTO spec is qualified with: its alias when one is declared, otherwise the table name. The
+ * gate runs before name resolution, so this is read off the tree as written. */
+static const char *
+pt_dblink_odku_spec_name (PT_NODE * spec)
+{
+  if (spec == NULL || spec->node_type != PT_SPEC)
+    {
+      return NULL;
+    }
+  if (spec->info.spec.range_var != NULL && spec->info.spec.range_var->node_type == PT_NAME)
+    {
+      return spec->info.spec.range_var->info.name.original;
+    }
+  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME)
+    {
+      return spec->info.spec.entity_name->info.name.original;
+    }
+  return NULL;
+}
+
+/* true iff a bound ODKU value (pt_dblink_odku_value_is_bound) names a table of the source SELECT, and not the
+ * target. Such a column is the source row's value, as it is for a local ODKU. A qualifier that names the
+ * target would read the remote row, which only the remote has. When both carry the name, which one is meant
+ * is not clear, so that is refused too. */
+static bool
+pt_dblink_odku_value_names_source (PT_NODE * node, PT_NODE * value)
+{
+  PT_NODE *subq, *spec;
+  const char *qualifier, *name;
+
+  qualifier = value->info.dot.arg1->info.name.original;
+  if (qualifier == NULL)
+    {
+      return false;
+    }
+
+  name = pt_dblink_odku_spec_name (node->info.insert.spec);
+  if (name != NULL && intl_identifier_casecmp (qualifier, name) == 0)
+    {
+      return false;
+    }
+
+  /* semantic check appends the copies to one select list, which a set operation does not have */
+  subq = pt_get_subquery_of_insert_select (node);
+  if (subq == NULL || subq->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      name = pt_dblink_odku_spec_name (spec);
+      if (name != NULL && intl_identifier_casecmp (qualifier, name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/* true iff every ON DUPLICATE KEY UPDATE assignment can go to the remote. A value goes out as statement text
+ * or is bound per row:
+ *   - a literal the remote reads the same way is printed into the statement
+ *   - a column of the source SELECT, qualified with the name of a table in its FROM, is bound per row
  *
- * Each value is printed into the statement as written, so only a literal the remote reads the same way is
- * accepted.  Keeping a local table out of the clause is not this test's job: pt_convert_dblink_dml_query ()
- * refuses one whatever this test answers, so widening it cannot let a local table through.
+ * Anything else, an expression over source columns included, is refused. A computed value belongs in the
+ * source SELECT, as a derived table column. Keeping a local table out of the clause is not this test's job:
+ * pt_convert_dblink_dml_query () refuses one whatever this test answers, so widening it cannot let a local
+ * table through.
  */
 static bool
-pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
+pt_dblink_odku_assigns_are_sendable (PT_NODE * node)
 {
   PT_NODE *assign, *lhs, *rhs;
 
-  for (assign = assignments; assign != NULL; assign = assign->next)
+  for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
     {
       if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
 	{
@@ -12812,8 +13045,17 @@ pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
 	  return false;
 	}
 
-      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
       rhs = assign->info.expr.arg2;
+      if (pt_dblink_odku_value_is_bound (rhs))
+	{
+	  if (!pt_dblink_odku_value_names_source (node, rhs))
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
+      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
       if (rhs != NULL && rhs->node_type == PT_EXPR && rhs->info.expr.op == PT_UNARY_MINUS)
 	{
 	  rhs = rhs->info.expr.arg1;
@@ -12872,11 +13114,10 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
    * dblink_dml_open prepares; the values travel the same way.
    *
-   * ON DUPLICATE KEY UPDATE rides along when every assignment can be written out. One that cannot
+   * ON DUPLICATE KEY UPDATE rides along when every assignment can be printed or bound. One that cannot
    * keeps the whole statement out of the sink, and it falls through to the mixed local/remote
    * rejection. */
-  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
-      && pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL && pt_dblink_odku_assigns_are_sendable (node))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }
@@ -13561,10 +13802,10 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
        * statement refused for its SELECT source would otherwise be named as the cause. A source that also
        * reads another server is refused whatever the clause holds. */
       if (node->info.insert.odku_assignments != NULL && snl->distinct_cnt == 1
-	  && !pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
+	  && !pt_dblink_odku_assigns_are_sendable (node))
 	{
-	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only literal values in "
-		    "ON DUPLICATE KEY UPDATE");
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only constants and qualified "
+		    "source columns in ON DUPLICATE KEY UPDATE");
 	  return;
 	}
       break;
@@ -14663,4 +14904,892 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   return node;
+}
+
+/*
+ * Text edits of PL/CSQL static SQL
+ *
+ * The SQL text of a PL/CSQL static SQL statement is embedded in the compiled class and re-parsed at runtime. Instead of
+ * printing the compiled tree, which can be transformed into a shape that can not be re-parsed, the original text is
+ * kept and only the following edits are applied to it:
+ *   - a PL/CSQL variable (an unresolved name or path expression) is replaced with a host variable '?:N', where N is
+ *     its index, so that the values are bound in the order of the indexes as they are for the printed tree
+ *   - the INTO clause is removed
+ *   - a column list implied by "*" or by INSERT without a column list is written, so that the columns are fixed at
+ *     compile time as they are in the compiled statement
+ * The edits are collected right after name resolution, where the nodes still have their source positions.
+ */
+
+typedef struct pt_static_sql_token PT_STATIC_SQL_TOKEN;
+struct pt_static_sql_token
+{
+  int start;
+  int end;
+  int kind;			/* PT_SS_TOKEN_IDENT, PT_SS_TOKEN_QUOTED or PT_SS_TOKEN_PUNCT */
+};
+
+typedef struct pt_static_sql_edit_list PT_STATIC_SQL_EDIT_LIST;
+struct pt_static_sql_edit_list
+{
+  const char *text;		/* original text */
+  int text_len;
+  PT_STATIC_SQL_TOKEN *tokens;	/* tokens of the text, scanned once */
+  int token_count;
+  PT_STATIC_SQL_EDIT *edits;
+  int count;
+  int alloc;
+  bool backslash_escapes;	/* a backslash escapes the next character in a string literal */
+  bool ansi_quotes;		/* "..." is a delimited identifier, otherwise a string literal */
+  bool failed;
+};
+
+enum pt_static_sql_token_kind
+{
+  PT_SS_TOKEN_END = 0,
+  PT_SS_TOKEN_IDENT,
+  PT_SS_TOKEN_QUOTED,		/* quoted identifier or string literal */
+  PT_SS_TOKEN_PUNCT
+};
+
+/* the white spaces and the identifier characters of the lexer (csql_lexer.l) */
+#define PT_SS_IS_SPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
+#define PT_SS_IS_IDENT_CHAR(c) \
+  (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || ((c) >= '0' && (c) <= '9') || (c) == '_' \
+   || (c) == '#' || ((c) >= 0x80 && (c) <= 0xfe))
+
+/*
+ * pt_static_sql_next_token () - scan the next token of the SQL text skipping white spaces and comments
+ *   return: kind of the token
+ *   list(in): text and the lexical options of it
+ *   pos(in): position to scan from
+ *   start(out): start of the token
+ *   end(out): end of the token
+ */
+static int
+pt_static_sql_next_token (const PT_STATIC_SQL_EDIT_LIST * list, int pos, int *start, int *end)
+{
+  const char *s = list->text;
+  int len = list->text_len;
+
+  while (pos < len)
+    {
+      unsigned char c = (unsigned char) s[pos];
+
+      if (PT_SS_IS_SPACE (c))
+	{
+	  pos++;
+	}
+      else if ((c == '-' && pos + 1 < len && s[pos + 1] == '-') || (c == '/' && pos + 1 < len && s[pos + 1] == '/'))
+	{
+	  while (pos < len && s[pos] != '\n')
+	    {
+	      pos++;
+	    }
+	}
+      else if (c == '/' && pos + 1 < len && s[pos + 1] == '*')
+	{
+	  const char *e = strstr (s + pos + 2, "*/");
+
+	  pos = (e == NULL || e - s > len) ? len : (int) (e - s) + 2;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  *start = *end = pos;
+  if (pos >= len)
+    {
+      return PT_SS_TOKEN_END;
+    }
+
+  unsigned char c = (unsigned char) s[pos];
+
+  if (c == '\'' || c == '"' || c == '`' || c == '[')
+    {
+      char close = (c == '[') ? ']' : (char) c;
+      /* the same as the lexer: a backslash escape is only in a string literal */
+      bool escapes = list->backslash_escapes && (c == '\'' || (c == '"' && !list->ansi_quotes));
+
+      pos++;
+      while (pos < len)
+	{
+	  if (escapes && s[pos] == '\\')
+	    {
+	      pos += 2;
+	      continue;
+	    }
+	  if (s[pos] == close)
+	    {
+	      if (close != ']' && pos + 1 < len && s[pos + 1] == close)
+		{
+		  pos += 2;	/* doubled quote */
+		  continue;
+		}
+	      pos++;
+	      break;
+	    }
+	  pos++;
+	}
+      if (pos > len)
+	{
+	  pos = len;
+	}
+      *end = pos;
+      return PT_SS_TOKEN_QUOTED;
+    }
+
+  if (PT_SS_IS_IDENT_CHAR (c))
+    {
+      while (pos < len)
+	{
+	  c = (unsigned char) s[pos];
+	  if (!PT_SS_IS_IDENT_CHAR (c))
+	    {
+	      break;
+	    }
+	  pos++;
+	}
+      *end = pos;
+      return PT_SS_TOKEN_IDENT;
+    }
+
+  *end = pos + 1;
+  return PT_SS_TOKEN_PUNCT;
+}
+
+/*
+ * pt_static_sql_token_equals_n () - check if the token is the identifier of the given length ignoring case and
+ *				      delimiters
+ */
+static bool
+pt_static_sql_token_equals_n (const char *s, int start, int end, const char *ident, int len)
+{
+  if (end - start >= 2 && (s[start] == '[' || s[start] == '"' || s[start] == '`'))
+    {
+      start++;
+      end--;
+    }
+
+  if (end - start != len)
+    {
+      return false;
+    }
+
+  /* ASCII letters are compared ignoring case; the other bytes as they are */
+  for (int i = 0; i < len; i++)
+    {
+      unsigned char a = (unsigned char) s[start + i];
+      unsigned char b = (unsigned char) ident[i];
+
+      if (a != b && (a >= 0x80 || b >= 0x80 || tolower (a) != tolower (b)))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_static_sql_token_equals () - check if the token is the identifier ignoring case and delimiters
+ */
+static bool
+pt_static_sql_token_equals (const char *s, int start, int end, const char *ident)
+{
+  return pt_static_sql_token_equals_n (s, start, end, ident, (int) strlen (ident));
+}
+
+/*
+ * pt_static_sql_token_is () - check if the i-th token is the punctuation
+ */
+static bool
+pt_static_sql_token_is (const PT_STATIC_SQL_EDIT_LIST * list, int i, char punct)
+{
+  return (i >= 0 && i < list->token_count && list->tokens[i].kind == PT_SS_TOKEN_PUNCT
+	  && list->text[list->tokens[i].start] == punct);
+}
+
+/*
+ * pt_static_sql_token_ending_at () - index of the token that ends at the position, or -1
+ */
+static int
+pt_static_sql_token_ending_at (const PT_STATIC_SQL_EDIT_LIST * list, int position)
+{
+  int low = 0, high = list->token_count;
+
+  while (low < high)
+    {
+      int mid = (low + high) / 2;
+
+      if (list->tokens[mid].end < position)
+	{
+	  low = mid + 1;
+	}
+      else
+	{
+	  high = mid;
+	}
+    }
+
+  return (low < list->token_count && list->tokens[low].end == position) ? low : -1;
+}
+
+/*
+ * pt_static_sql_path_start () - start of the name or the path expression (e.g. rec.field) in the text
+ *   return: start of the first token, or -1 if the tokens ending at the given position are not the label
+ *   list(in): text and the tokens of it
+ *   end(in): end of the last name
+ *   label(in): name or path expression of the PL/CSQL variable
+ *
+ * Note: each name of the label is compared with an identifier token, so white spaces and comments around the dots
+ *	 are skipped as the lexer does.
+ */
+static int
+pt_static_sql_path_start (const PT_STATIC_SQL_EDIT_LIST * list, int end, const char *label)
+{
+  int i = pt_static_sql_token_ending_at (list, end);
+  int part_end = (int) strlen (label);
+
+  while (i >= 0)
+    {
+      const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
+      int part_start = part_end;
+
+      while (part_start > 0 && label[part_start - 1] != '.')
+	{
+	  part_start--;
+	}
+
+      if ((token->kind != PT_SS_TOKEN_IDENT && token->kind != PT_SS_TOKEN_QUOTED)
+	  || !pt_static_sql_token_equals_n (list->text, token->start, token->end, label + part_start,
+					    part_end - part_start))
+	{
+	  return -1;
+	}
+
+      if (part_start == 0)
+	{
+	  return token->start;
+	}
+
+      /* the previous name follows a dot */
+      if (!pt_static_sql_token_is (list, i - 1, '.'))
+	{
+	  return -1;
+	}
+      i -= 2;
+      part_end = part_start - 1;
+    }
+
+  return -1;
+}
+
+static void
+pt_static_sql_add_edit (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int start, int end, const char *text,
+			int host_var_index)
+{
+  if (list->count == list->alloc)
+    {
+      int new_alloc = (list->alloc == 0) ? 16 : list->alloc * 2;
+      PT_STATIC_SQL_EDIT *new_edits =
+	(PT_STATIC_SQL_EDIT *) parser_alloc (parser, new_alloc * sizeof (PT_STATIC_SQL_EDIT));
+
+      if (new_edits == NULL)
+	{
+	  list->failed = true;
+	  return;
+	}
+      if (list->count > 0)
+	{
+	  memcpy (new_edits, list->edits, list->count * sizeof (PT_STATIC_SQL_EDIT));
+	}
+      list->edits = new_edits;
+      list->alloc = new_alloc;
+    }
+
+  list->edits[list->count].start = start;
+  list->edits[list->count].end = end;
+  list->edits[list->count].text = text;
+  list->edits[list->count].host_var_index = host_var_index;
+  list->count++;
+}
+
+/*
+ * pt_static_sql_tokenize () - scan the tokens of the text once
+ *   return: false if out of memory
+ */
+static bool
+pt_static_sql_tokenize (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
+{
+  int kind, pos, start, end, n = 0;
+
+  for (pos = 0; pt_static_sql_next_token (list, pos, &start, &end) != PT_SS_TOKEN_END; pos = end)
+    {
+      n++;
+    }
+
+  list->tokens = (PT_STATIC_SQL_TOKEN *) parser_alloc (parser, (n + 1) * sizeof (PT_STATIC_SQL_TOKEN));
+  if (list->tokens == NULL)
+    {
+      return false;
+    }
+
+  for (pos = 0, n = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END; pos = end)
+    {
+      list->tokens[n].start = start;
+      list->tokens[n].end = end;
+      list->tokens[n].kind = kind;
+      n++;
+    }
+  list->token_count = n;
+
+  return true;
+}
+
+/*
+ * pt_static_sql_depends_on_parameters () - check if the text is lexed differently by the parameters of the session or
+ *					     the client that runs the rewritten query
+ *   return: true if so
+ *   list(in): text and its tokens
+ *
+ * Note: the rewritten query is lexed again at runtime with the parameters of the caller, while the compiled tree was
+ *	 lexed with those of the creator:
+ *	 - a backslash in a string literal is an escape or not by no_backslash_escapes (a session parameter)
+ *	 - "..." is a delimited identifier or a string literal by ansi_quotes (a client parameter)
+ */
+static bool
+pt_static_sql_depends_on_parameters (const PT_STATIC_SQL_EDIT_LIST * list)
+{
+  int i;
+
+  for (i = 0; i < list->token_count; i++)
+    {
+      const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
+
+      if (token->kind != PT_SS_TOKEN_QUOTED)
+	{
+	  continue;
+	}
+      if (list->text[token->start] == '"')
+	{
+	  return true;
+	}
+      if (list->text[token->start] == '\''
+	  && memchr (list->text + token->start, '\\', token->end - token->start) != NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+static PT_NODE *
+pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_STATIC_SQL_EDIT_LIST *list = (PT_STATIC_SQL_EDIT_LIST *) arg;
+
+  if (list->failed)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      if (node->info.expr.op == PT_WEEKF && node->info.expr.arg2 != NULL
+	  && node->info.expr.arg2->node_type == PT_VALUE && node->info.expr.arg2->buffer_pos < 0)
+	{
+	  /* the mode of WEEK () not written is taken from default_week_format (a session parameter) by the parser */
+	  list->failed = true;
+	}
+      break;
+
+    case PT_HOST_VAR:
+      if (node->info.host_var.label != NULL && node->info.host_var.index >= 0
+	  && node->info.host_var.index < parser->host_var_count)
+	{
+	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
+	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found from the
+	   * tokens ending there */
+	  int end = (parser->static_sql_host_var_end != NULL)
+	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
+	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
+	  char *hv = NULL;
+
+	  if (start < 0 || (hv = (char *) parser_alloc (parser, 16)) == NULL)
+	    {
+	      list->failed = true;
+	      break;
+	    }
+	  sprintf (hv, "?:%d", node->info.host_var.index);
+	  pt_static_sql_add_edit (parser, list, start, end, hv, node->info.host_var.index);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * pt_static_sql_remove_into () - remove the INTO (or TO) clause of the top query, found in the text at the top level
+ */
+static void
+pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int into_count)
+{
+  int i, depth = 0, into = -1, targets = 0;
+  const PT_STATIC_SQL_TOKEN *tokens = list->tokens;
+
+  for (i = 0; i < list->token_count; i++)
+    {
+      if (pt_static_sql_token_is (list, i, '('))
+	{
+	  depth++;
+	}
+      else if (pt_static_sql_token_is (list, i, ')'))
+	{
+	  depth--;
+	}
+      else if (tokens[i].kind == PT_SS_TOKEN_IDENT && depth == 0
+	       && ((tokens[i].end - tokens[i].start == 4 && strncasecmp (list->text + tokens[i].start, "into", 4) == 0)
+		   || (tokens[i].end - tokens[i].start == 2
+		       && strncasecmp (list->text + tokens[i].start, "to", 2) == 0)))
+	{
+	  into = i;
+	  break;
+	}
+    }
+
+  if (into < 0)
+    {
+      list->failed = true;
+      return;
+    }
+
+  /* targets: name [. name ...] [, name [. name ...] ...] */
+  for (i = into + 1; i < list->token_count; i++)
+    {
+      if (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED)
+	{
+	  list->failed = true;
+	  return;
+	}
+      targets++;
+
+      while (pt_static_sql_token_is (list, i + 1, '.'))
+	{
+	  i += 2;
+	  if (i >= list->token_count || (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED))
+	    {
+	      list->failed = true;
+	      return;
+	    }
+	}
+
+      if (!pt_static_sql_token_is (list, i + 1, ','))
+	{
+	  break;
+	}
+      i++;
+    }
+
+  if (i >= list->token_count || targets != into_count)
+    {
+      list->failed = true;
+      return;
+    }
+
+  /* from INTO to the end of the last target */
+  pt_static_sql_add_edit (parser, list, tokens[into].start, tokens[i].end, " ", -1);
+}
+
+/*
+ * pt_record_static_sql_star () - record a column list implied in the text, expanded by name resolution
+ *   return: none
+ *   parser(in):
+ *   kind(in): kind of the implied list
+ *   pos(in): position in the text (see PT_STATIC_SQL_STAR_KIND)
+ *   columns(in): expanded names
+ *   qualify(in): qualify the columns with their range variables
+ *
+ * Note: the list is written in the text by pt_collect_static_sql_edits (), so that the columns of the rewritten query
+ *	 are fixed at compile time as they are in the compiled statement.
+ */
+void
+pt_record_static_sql_star (PARSER_CONTEXT * parser, PT_STATIC_SQL_STAR_KIND kind, int pos, PT_NODE * columns,
+			   bool qualify)
+{
+  PT_STATIC_SQL_STAR *star;
+
+  if (parser->static_sql_edit_status != 0)
+    {
+      return;
+    }
+
+  star = (PT_STATIC_SQL_STAR *) parser_alloc (parser, sizeof (PT_STATIC_SQL_STAR));
+  if (star == NULL)
+    {
+      parser->static_sql_edit_status = -1;
+      return;
+    }
+
+  star->kind = kind;
+  star->pos = pos;
+  star->columns = parser_copy_tree_list (parser, columns);
+  star->qualify = qualify;
+  star->next = parser->static_sql_stars;
+  parser->static_sql_stars = star;
+
+  if (columns != NULL && star->columns == NULL)
+    {
+      parser->static_sql_edit_status = -1;
+    }
+}
+
+/*
+ * pt_static_sql_merge_insert () - index of the INSERT token of "WHEN NOT MATCHED THEN INSERT" in the text, or -1
+ */
+static int
+pt_static_sql_merge_insert (const PT_STATIC_SQL_EDIT_LIST * list)
+{
+  static const char *keywords[] = { "not", "matched", "then", "insert" };
+  int i, k, found = -1;
+
+  for (i = 3; i < list->token_count; i++)
+    {
+      for (k = 0; k < 4; k++)
+	{
+	  const PT_STATIC_SQL_TOKEN *token = &list->tokens[i - 3 + k];
+
+	  if (token->kind != PT_SS_TOKEN_IDENT
+	      || !pt_static_sql_token_equals (list->text, token->start, token->end, keywords[k]))
+	    {
+	      break;
+	    }
+	}
+      if (k == 4)
+	{
+	  if (found >= 0)
+	    {
+	      return -1;
+	    }
+	  found = i;
+	}
+    }
+
+  return found;
+}
+
+/*
+ * pt_static_sql_column_list () - text of a column list: "[c1], qualifier.[c2], ...", where the first column has no
+ *				    qualifier because it replaces "*" of "qualifier.*"
+ *   return: the text, or NULL if a name can not be written
+ *   parser(in):
+ *   columns(in): names
+ *   qualifier(in): qualifier text of the columns after the first one, or NULL
+ *   qualifier_len(in):
+ *   use_range_var(in): qualify each column with its range variable, "[range_var].[c]"
+ */
+static const char *
+pt_static_sql_column_list (PARSER_CONTEXT * parser, PT_NODE * columns, const char *qualifier, int qualifier_len,
+			   bool use_range_var)
+{
+  PT_NODE *col;
+  char *text, *p;
+  int len = 0;
+
+  for (col = columns; col != NULL; col = col->next)
+    {
+      if (col->node_type != PT_NAME || col->info.name.original == NULL || strchr (col->info.name.original, ']') != NULL)
+	{
+	  return NULL;
+	}
+      if (use_range_var
+	  && (col->info.name.resolved == NULL || col->info.name.resolved[0] == '\0'
+	      || strchr (col->info.name.resolved, ']') != NULL))
+	{
+	  return NULL;
+	}
+      len += (int) strlen (col->info.name.original) + 4 + qualifier_len + 1;
+      if (use_range_var)
+	{
+	  len += (int) strlen (col->info.name.resolved) + 3;
+	}
+    }
+  if (len == 0)
+    {
+      return NULL;
+    }
+
+  text = (char *) parser_alloc (parser, len + 1);
+  if (text == NULL)
+    {
+      return NULL;
+    }
+
+  for (col = columns, p = text; col != NULL; col = col->next)
+    {
+      if (col != columns)
+	{
+	  p += sprintf (p, ", ");
+	  if (qualifier != NULL)
+	    {
+	      p += sprintf (p, "%.*s.", qualifier_len, qualifier);
+	    }
+	}
+      if (use_range_var)
+	{
+	  p += sprintf (p, "[%s].", col->info.name.resolved);
+	}
+      p += sprintf (p, "[%s]", col->info.name.original);
+    }
+
+  return text;
+}
+
+/*
+ * pt_static_sql_expand_stars () - add the edits to write the column lists implied in the text (see
+ *				    pt_record_static_sql_star ())
+ */
+static void
+pt_static_sql_expand_stars (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
+{
+  PT_STATIC_SQL_STAR *star;
+
+  for (star = parser->static_sql_stars; star != NULL && !list->failed; star = star->next)
+    {
+      int i = (star->kind == PT_SS_MERGE_INSERT_COLUMNS) ? pt_static_sql_merge_insert (list)
+	: pt_static_sql_token_ending_at (list, star->pos);
+      const char *text = NULL;
+
+      if (i < 0)
+	{
+	  list->failed = true;
+	  return;
+	}
+
+      switch (star->kind)
+	{
+	case PT_SS_STAR_ALL:
+	  /* select * */
+	  if (!pt_static_sql_token_is (list, i, '*'))
+	    {
+	      list->failed = true;
+	      return;
+	    }
+	  text = pt_static_sql_column_list (parser, star->columns, NULL, 0, star->qualify);
+	  if (text != NULL)
+	    {
+	      pt_static_sql_add_edit (parser, list, list->tokens[i].start, list->tokens[i].end, text, -1);
+	    }
+	  break;
+
+	case PT_SS_STAR_QUALIFIED:
+	  /* select qualifier.*: the qualifier can be a path of names (e.g. owner.class) */
+	  {
+	    int first = i;
+
+	    if (list->tokens[i].kind == PT_SS_TOKEN_PUNCT || !pt_static_sql_token_is (list, i + 1, '.')
+		|| !pt_static_sql_token_is (list, i + 2, '*'))
+	      {
+		list->failed = true;
+		return;
+	      }
+	    while (pt_static_sql_token_is (list, first - 1, '.') && first - 2 >= 0
+		   && list->tokens[first - 2].kind != PT_SS_TOKEN_PUNCT)
+	      {
+		first -= 2;
+	      }
+	    text = pt_static_sql_column_list (parser, star->columns, list->text + list->tokens[first].start,
+					      list->tokens[i].end - list->tokens[first].start, false);
+	    if (text != NULL)
+	      {
+		pt_static_sql_add_edit (parser, list, list->tokens[i + 2].start, list->tokens[i + 2].end, text, -1);
+	      }
+	  }
+	  break;
+
+	case PT_SS_INSERT_COLUMNS:
+	case PT_SS_MERGE_INSERT_COLUMNS:
+	  /* insert into class values ...: the column list is added after the class name,
+	   * or after INSERT of "when not matched then insert values ..." */
+	  {
+	    const char *columns = pt_static_sql_column_list (parser, star->columns, NULL, 0, false);
+
+	    /* insert into class partition (name) values ...: the name of the partition replaced the class name
+	     * (see pt_resolve_partition_spec ()), and the column list is added after the partition clause */
+	    if (star->kind == PT_SS_INSERT_COLUMNS && pt_static_sql_token_is (list, i - 1, '(')
+		&& pt_static_sql_token_is (list, i + 1, ')') && i - 2 >= 0
+		&& list->tokens[i - 2].kind == PT_SS_TOKEN_IDENT
+		&& pt_static_sql_token_equals (list->text, list->tokens[i - 2].start, list->tokens[i - 2].end,
+					       "partition"))
+	      {
+		i++;
+	      }
+
+	    if (columns != NULL && (list->tokens[i].kind != PT_SS_TOKEN_PUNCT || pt_static_sql_token_is (list, i, ')')))
+	      {
+		char *buf = (char *) parser_alloc (parser, (int) strlen (columns) + 4);
+
+		if (buf != NULL)
+		  {
+		    sprintf (buf, " (%s)", columns);
+		    text = buf;
+		    pt_static_sql_add_edit (parser, list, list->tokens[i].end, list->tokens[i].end, text, -1);
+		  }
+	      }
+	  }
+	  break;
+	}
+
+      if (text == NULL)
+	{
+	  list->failed = true;
+	}
+    }
+}
+
+static int
+pt_static_sql_compare_edits (const void *a, const void *b)
+{
+  const PT_STATIC_SQL_EDIT *x = (const PT_STATIC_SQL_EDIT *) a;
+  const PT_STATIC_SQL_EDIT *y = (const PT_STATIC_SQL_EDIT *) b;
+
+  if (x->start != y->start)
+    {
+      return x->start - y->start;
+    }
+  /* an insertion comes before a replacement at the same position */
+  return (x->end - x->start) - (y->end - y->start);
+}
+
+/*
+ * pt_collect_static_sql_edits () - collect the edits of the original text of a PL/CSQL static SQL statement
+ *   return: none
+ *   parser(in):
+ *   statement(in): the statement right after name resolution
+ *
+ * Note: sets parser->static_sql_edit_status to 1 with the edits sorted by position,
+ *	 or to -1 if the statement can not be expressed with text edits.
+ */
+void
+pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_STATIC_SQL_EDIT_LIST list;
+  int i, j;
+  int *seen_host_vars = NULL;
+  PT_NODE *query = NULL;
+
+  if (parser->static_sql_edit_status != 0 || statement == NULL)
+    {
+      return;
+    }
+  parser->static_sql_edit_status = -1;
+
+  if (parser->original_buffer == NULL || pt_has_error (parser))
+    {
+      return;
+    }
+
+  memset (&list, 0, sizeof (list));
+  list.text = parser->original_buffer;
+  list.text_len = (int) strlen (parser->original_buffer);
+  list.backslash_escapes = !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && !parser->flag.strings_have_no_escapes;
+  list.ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+  if (!pt_static_sql_tokenize (parser, &list))
+    {
+      return;
+    }
+  if (pt_static_sql_depends_on_parameters (&list))
+    {
+      return;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_collect_static_sql_edits_pre, &list, NULL, NULL);
+
+  if (!list.failed && PT_IS_QUERY (statement))
+    {
+      for (query = statement; query != NULL && query->node_type != PT_SELECT; query = query->info.query.q.union_.arg1)
+	{
+	  if (query->info.query.into_list != NULL)
+	    {
+	      break;
+	    }
+	}
+      if (query != NULL && query->info.query.into_list != NULL)
+	{
+	  pt_static_sql_remove_into (parser, &list, pt_length_of_list (query->info.query.into_list));
+	}
+    }
+
+  if (!list.failed && parser->static_sql_stars != NULL)
+    {
+      pt_static_sql_expand_stars (parser, &list);
+    }
+
+  if (list.failed)
+    {
+      return;
+    }
+
+  if (list.count > 1)
+    {
+      qsort (list.edits, list.count, sizeof (PT_STATIC_SQL_EDIT), pt_static_sql_compare_edits);
+
+      /* the same insertion can be collected more than once */
+      for (i = 1, j = 0; i < list.count; i++)
+	{
+	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
+	      && list.edits[i].host_var_index < 0 && list.edits[j].host_var_index < 0
+	      && strcmp (list.edits[i].text, list.edits[j].text) == 0)
+	    {
+	      continue;
+	    }
+	  list.edits[++j] = list.edits[i];
+	}
+      list.count = j + 1;
+    }
+
+  /* edits must not overlap, and every host variable must be replaced exactly once */
+  if (parser->host_var_count > 0)
+    {
+      seen_host_vars = (int *) parser_alloc (parser, parser->host_var_count * sizeof (int));
+      if (seen_host_vars == NULL)
+	{
+	  return;
+	}
+      memset (seen_host_vars, 0, parser->host_var_count * sizeof (int));
+    }
+
+  for (i = 0; i < list.count; i++)
+    {
+      if (i > 0 && list.edits[i].start < list.edits[i - 1].end)
+	{
+	  return;
+	}
+      if (list.edits[i].host_var_index >= 0)
+	{
+	  if (seen_host_vars[list.edits[i].host_var_index]++ != 0)
+	    {
+	      return;
+	    }
+	}
+    }
+  for (i = 0; i < parser->host_var_count; i++)
+    {
+      if (seen_host_vars[i] != 1)
+	{
+	  return;
+	}
+    }
+
+  parser->static_sql_edits = list.edits;
+  parser->static_sql_edit_count = list.count;
+  parser->static_sql_edit_status = 1;
 }

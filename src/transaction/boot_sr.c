@@ -1875,7 +1875,10 @@ xboot_initialize_server (const BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_
     }
 
   // sessions state is required to continue
-  session_states_init (thread_p);
+  if (session_states_init (thread_p) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* print_version string */
 #if defined (NDEBUG)
@@ -2290,7 +2293,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -2382,7 +2389,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       ASSERT_ERROR ();
       goto error;
     }
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {
@@ -2679,7 +2690,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       goto error;
     }
 
-  session_states_init (thread_p);
+  error_code = session_states_init (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_ACCESS_IP_CONTROL) == true && from_backup == false)
@@ -3246,6 +3261,17 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
   /* Initialize scan function pointers of show statements */
   showstmt_scan_init ();
 
+#if defined (SERVER_MODE)
+  /* a connection runs under one transaction index; registering again
+   * would orphan the first one, which nothing would then release */
+  if (thread_p->conn_entry != NULL && thread_p->conn_entry->get_tran_index () != NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+      return NULL_TRAN_INDEX;
+    }
+#endif /* SERVER_MODE */
+
   db_user_save = client_credential->get_db_user ();
   if (!client_credential->db_user.empty ())
     {
@@ -3264,13 +3290,20 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       logtb_release_tran_index (thread_p, tran_index);
       tran_index = NULL_TRAN_INDEX;
     }
+  else if (tran_index != NULL_TRAN_INDEX && !thread_p->conn_entry->claim_tran_index (tran_index))
+    {
+      /* the only place an index is assigned to a connection. Another
+       * registration on this connection, run at the same time, passed the check
+       * above too and got its index in first: give this one back */
+      logtb_release_tran_index (thread_p, tran_index);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      *tran_state = TRAN_UNACTIVE_UNKNOWN;
+      tran_index = NULL_TRAN_INDEX;
+    }
 #endif /* SERVER_MODE */
 
   if (tran_index != NULL_TRAN_INDEX)
     {
-#if defined (SERVER_MODE)
-      thread_p->conn_entry->set_tran_index (tran_index);
-#endif /* SERVER_MODE */
       server_credential->db_full_name = boot_Db_full_name;
       server_credential->host_name = boot_Host_name;
       server_credential->lob_path = boot_Lob_path;
@@ -4913,7 +4946,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   assert (client_credential != NULL);
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5129,7 +5166,11 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
    */
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
   if (qmgr_initialize (thread_p) != NO_ERROR)
     {
@@ -5484,7 +5525,11 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
   /* Initialize the transaction table */
   logtb_define_trantable (thread_p, -1, -1);
 
-  spage_boot (thread_p);
+  error_code = spage_boot (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
   error_code = heap_manager_initialize ();
   if (error_code != NO_ERROR)
     {
@@ -5564,7 +5609,11 @@ xboot_emergency_patch (const char *db_name, bool recreate_log, DKNPAGES log_npag
       ASSERT_ERROR ();
       goto error_exit;
     }
-  catalog_initialize (&boot_Db_parm->ctid);
+  error_code = catalog_initialize (&boot_Db_parm->ctid);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM) == false)
     {

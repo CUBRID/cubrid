@@ -44,6 +44,7 @@
 #include "optimizer.h"
 #include "query_graph.h"
 #include "query_planner.h"
+#include "row_snapshot_cl.hpp"
 #include "schema_manager.h"
 #include "statistics.h"
 #include "system_parameter.h"
@@ -205,6 +206,9 @@ static void qo_estimate_statistics (MOP class_mop, CLASS_STATS *);
 static void qo_node_free (QO_NODE *);
 static void qo_node_dump (QO_NODE *, FILE *);
 static void qo_node_add_sarg (QO_NODE *, QO_TERM *);
+static int qo_row_snapshot_apply (QO_ENV * env, bool * repriced);
+static void qo_sort_edges_by_selectivity (QO_ENV * env);
+static bool qo_row_snapshot_join_term (QO_TERM * term);
 static QO_TERM *qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken);
 static void qo_derived_term_compensate (QO_ENV * env);
 
@@ -244,6 +248,9 @@ static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
 static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
+static void qo_add_null_supplier_dep_set (QO_ENV *);
+static void qo_get_on_cond_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers);
+static void qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -584,25 +591,8 @@ qo_optimize_helper (QO_ENV * env)
 	}
     }
 
-  /* a semi/anti join after a right outer join that fills a node its ON reads with NULL comes after that join */
-  for (n = 1; n < env->nnodes; n++)
-    {
-      node = QO_ENV_NODE (env, n);
-      if (!QO_NODE_IS_SEMI_ANTI_JOIN (node))
-	{
-	  continue;
-	}
-
-      for (k = 1; k < n; k++)
-	{
-	  p_node = QO_ENV_NODE (env, k);
-	  if (QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_RIGHT_OUTER
-	      && bitset_intersects (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node))))
-	    {
-	      QO_ADD_SEMI_ANTI_DEP_SET (node, p_node);
-	    }
-	}
-    }
+  /* order each on_node after the outer joins that null-supply what its ON clause reads */
+  qo_add_null_supplier_dep_set (env);
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
@@ -640,6 +630,26 @@ qo_optimize_helper (QO_ENV * env)
 
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
+
+  /* Small-table row snapshot (CBRD-27478). It runs after qo_discover_edges (): the node sargs it
+   * evaluates are attached there (qo_node_add_sarg ()) and the term array is final after that call.
+   * qo_discover_edges () sorted the join terms by the selectivities from before it, and the planner
+   * keeps the first of the terms one eqclass joins on: sort them again by the ones it rewrote, before
+   * qo_assign_eq_classes () points eqclasses at terms. A read that lost the transaction or the server,
+   * or was cancelled, fails the statement. */
+  {
+    bool repriced = false;
+
+    if (qo_row_snapshot_apply (env, &repriced) != NO_ERROR)
+      {
+	qo_env_free (env);
+	return NULL;
+      }
+    if (repriced)
+      {
+	qo_sort_edges_by_selectivity (env);
+      }
+  }
 
   /* Don't do these things until *after* qo_discover_edges(); that function may rearrange the QO_TERM structures that
    * were discovered during the earlier phases, and anyone who grabs the idx of one of the terms (or even a pointer to
@@ -1324,6 +1334,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   QO_NODE_NAME (node) = entity->info.spec.range_var->info.name.original;
   QO_NODE_IDX (node) = env->nnodes;
   QO_NODE_SORT_LIMIT_CANDIDATE (node) = false;
+  QO_NODE_SNAPSHOT_CARD (node) = -1;
 
   env->nnodes++;
 
@@ -6118,6 +6129,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
+  env->serial_level = -1;
   bitset_init (&(env->fake_terms), env);
   bitset_init (&QO_ENV_SORT_LIMIT_NODES (env), env);
   db_make_null (&QO_ENV_LIMIT_VALUE (env));
@@ -6327,6 +6339,31 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
 }
 
 /*
+ * qo_sort_edges_by_selectivity () - sort the join terms (the edge zone) on selectivity as descending order
+ *   return: void
+ *   env(in):
+ */
+static void
+qo_sort_edges_by_selectivity (QO_ENV * env)
+{
+  int t1, t2;
+  QO_TERM *term1, *term2;
+
+  for (t1 = 0; t1 < env->nedges - 1; t1++)
+    {
+      term1 = QO_ENV_TERM (env, t1);
+      for (t2 = t1 + 1; t2 < env->nedges; t2++)
+	{
+	  term2 = QO_ENV_TERM (env, t2);
+	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
+	    {
+	      qo_exchange (term1, term2);
+	    }
+	}
+    }
+}
+
+/*
  * qo_discover_edges () -
  *   return:
  *   env(in):
@@ -6374,19 +6411,7 @@ qo_discover_edges (QO_ENV * env)
 	}
     }
 
-  /* sort join-term on selectivity as descending order */
-  for (t1 = 0; t1 < i - 1; t1++)
-    {
-      term1 = QO_ENV_TERM (env, t1);
-      for (t2 = t1 + 1; t2 < i; t2++)
-	{
-	  term2 = QO_ENV_TERM (env, t2);
-	  if (QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2))
-	    {
-	      qo_exchange (term1, term2);
-	    }
-	}
-    }
+  qo_sort_edges_by_selectivity (env);
   /* sort sarg-term on pred_order desc, selectivity asc */
   for (t1 = i; t1 < env->nterms - 1; t1++)
     {
@@ -6482,6 +6507,128 @@ qo_discover_edges (QO_ENV * env)
 }
 
 /*
+ * qo_get_null_suppliers_of_nodes () - Collect every preceding outer join on_node that
+ *   can null-pad a node in REFS: a LEFT OUTER on_node that is itself in REFS,
+ *   or a RIGHT/FULL OUTER on_node whose own outer_dep_set holds a node in REFS.
+ *   env(in):
+ *   node(in):
+ *   refs(in): nodes read by NODE's ON clause or by one of its terms
+ *   suppliers(out): caller-initialized bitset; this adds the index of each
+ *	  such outer join on_node to it.
+ *
+ * Note: Computed fresh from REFS and node join types, not
+ *   from NODE's own (possibly hint-populated) QO_NODE_OUTER_DEP_SET -- the
+ *   ORDERED/LEADING hint handling in add_hint() also fills that field, to
+ *   force a visiting order, independent of any outer join. A caller that
+ *   needs to tell a genuine null-supplier dependency apart from hint-forced
+ *   ordering must call this instead of reading the node's stored field.
+ */
+static void
+qo_get_null_suppliers_of_nodes (QO_ENV * env, QO_NODE * node, BITSET * refs, BITSET * suppliers)
+{
+  int k;
+  QO_NODE *k_node;
+  bool null_supplies;
+
+  for (k = 1; k < env->nnodes; k++)
+    {
+      k_node = QO_ENV_NODE (env, k);
+      if (k_node == node || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node))
+	{
+	  continue;
+	}
+
+      null_supplies = false;
+      if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_LEFT_OUTER)
+	{
+	  null_supplies = BITSET_MEMBER (*refs, k);
+	}
+      else if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_RIGHT_OUTER
+	       || QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_FULL_OUTER)
+	{
+	  null_supplies = bitset_intersects (refs, &(QO_NODE_OUTER_DEP_SET (k_node)));
+	}
+
+      if (null_supplies)
+	{
+	  bitset_add (suppliers, k);
+	}
+    }
+}
+
+/*
+ * qo_get_on_cond_null_suppliers () - qo_get_null_suppliers_of_nodes () over every node
+ *   NODE's ON clause reads, except NODE itself.
+ *   env(in):
+ *   node(in):
+ *   suppliers(out): caller-initialized bitset
+ */
+static void
+qo_get_on_cond_null_suppliers (QO_ENV * env, QO_NODE * node, BITSET * suppliers)
+{
+  int i;
+  QO_TERM *term;
+  BITSET refs;
+
+  bitset_init (&refs, env);
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (QO_ON_COND_TERM (term) && QO_TERM_LOCATION (term) == QO_NODE_LOCATION (node))
+	{
+	  bitset_union (&refs, &(QO_TERM_NODES (term)));
+	}
+    }
+  bitset_remove (&refs, QO_NODE_IDX (node));
+
+  qo_get_null_suppliers_of_nodes (env, node, &refs, suppliers);
+
+  bitset_delset (&refs);
+}
+
+/*
+ * qo_add_null_supplier_dep_set () -
+ *   An on_node whose ON clause reads node M must be joined after every preceding
+ *   outer join on_node that can null-pad M: a LEFT OUTER on_node that is M itself,
+ *   or a RIGHT/FULL OUTER on_node whose outer_dep_set holds M.
+ */
+static void
+qo_add_null_supplier_dep_set (QO_ENV * env)
+{
+  int n, k;
+  QO_NODE *node, *k_node;
+  BITSET suppliers;
+  BITSET_ITERATOR bi;
+
+  bitset_init (&suppliers, env);
+
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_NONE)
+	{
+	  continue;
+	}
+
+      BITSET_CLEAR (suppliers);
+      qo_get_on_cond_null_suppliers (env, node, &suppliers);
+
+      for (k = bitset_iterate (&suppliers, &bi); k != -1; k = bitset_next_member (&bi))
+	{
+	  if (BITSET_MEMBER (QO_NODE_OUTER_DEP_SET (node), k))
+	    {
+	      continue;
+	    }
+	  k_node = QO_ENV_NODE (env, k);
+	  QO_ADD_OUTER_DEP_SET (node, k_node);
+	}
+    }
+
+  bitset_delset (&suppliers);
+}
+
+/*
  * qo_classify_outerjoin_terms () -
  *   return:
  *   env(in):
@@ -6495,6 +6642,7 @@ qo_discover_edges (QO_ENV * env)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
+ * I1|ON   |TC_sarg/other(inner) |-         |null-padded ref|TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
  * W3|WHERE|TC_other(n>0)        |!Outer    |!Right         |TC_other(ow TC_aj)
@@ -6510,7 +6658,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
   QO_NODE *node, *on_node;
   QO_TERM *term;
   int nidx_self;		/* node index of term */
-  BITSET dep_set, prev_dep_set;
+  BITSET dep_set, prev_dep_set, suppliers;
 
   for (i = 0; i < env->nterms; i++)
     {
@@ -6530,6 +6678,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
   bitset_init (&dep_set, env);
   bitset_init (&prev_dep_set, env);
+  bitset_init (&suppliers, env);
 
   for (i = 0; i < env->nterms; i++)
     {
@@ -6548,9 +6697,26 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
 	    {
-	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
+	      /* an inner join ON term that reads a node a preceding outer join fills with NULL is not a scan filter
+	       * of that node nor an edge of that outer join: evaluate it when on_node joins, after the padding */
+	      if (QO_TERM_CLASS (term) == QO_TC_SARG || QO_TERM_CLASS (term) == QO_TC_OTHER)
+		{
+		  BITSET_CLEAR (suppliers);
+		  qo_get_null_suppliers_of_nodes (env, on_node, &(QO_TERM_NODES (term)), &suppliers);
+		  if (!bitset_is_empty (&suppliers))
+		    {
+		      QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+		    }
+		}
+	      continue;
+	    }
+
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+	    {
+	      /* semi / anti: structurally inner, no outer-join classification */
+	      continue;
 	    }
 
 	  /* is explicit outer-joined ON cond */
@@ -6762,6 +6928,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
     }				/* for (i = 0; ...) */
 
+  bitset_delset (&suppliers);
   bitset_delset (&prev_dep_set);
   bitset_delset (&dep_set);
 }
@@ -7179,6 +7346,456 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 }
 
 /*
+ * qo_print_func_index_expr () - print an expression to match it against a function index expression
+ *   return: printed expression
+ *   parser(in):
+ *   expr(in):
+ *
+ * note: Merged views wrap terms in parentheses, which the stored index expression never has.
+ */
+char *
+qo_print_func_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  int save_paren = expr->info.expr.paren_type;
+  char *expr_str;
+
+  expr->info.expr.paren_type = 0;
+  expr_str = parser_print_function_index_expr (parser, expr);
+  expr->info.expr.paren_type = save_paren;
+
+  return expr_str;
+}
+
+typedef struct qo_seg_fi_walk_arg QO_SEG_FI_WALK_ARG;
+struct qo_seg_fi_walk_arg
+{
+  const char *func_expr_str;
+  UINTPTR spec_id;
+  const char *col_name;
+  bool in_subquery;
+  bool found_raw;
+};
+
+/*
+ * qo_seg_used_raw_walk () - parse tree pre walk function that detects a reference to the column outside of the
+ *   function index expression
+ *   return: PT_NODE *
+ *   parser(in):
+ *   tree(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+static PT_NODE *
+qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  QO_SEG_FI_WALK_ARG *info = (QO_SEG_FI_WALK_ARG *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (info->found_raw)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return tree;
+    }
+
+  if (!info->in_subquery && PT_IS_QUERY_NODE_TYPE (tree->node_type))
+    {
+      /* a subquery is evaluated from the raw column, not from the scan's routed function result */
+      PT_NODE *save_next = tree->next;
+
+      tree->next = NULL;
+      info->in_subquery = true;
+      (void) parser_walk_tree (parser, tree, qo_seg_used_raw_walk, info, NULL, NULL);
+      info->in_subquery = false;
+      tree->next = save_next;
+
+      *continue_walk = info->found_raw ? PT_STOP_WALK : PT_LIST_WALK;
+      return tree;
+    }
+
+  if (!info->in_subquery && pt_is_function_index_expr (parser, tree, false))
+    {
+      UINTPTR expr_spec_id = 0;
+
+      /* the printed expression omits aliases, so skip only what pt_get_func_index_result_attr () routes */
+      if (!pt_is_join_expr (tree, &expr_spec_id) && expr_spec_id == info->spec_id)
+	{
+	  char *expr_str = qo_print_func_index_expr (parser, tree);
+
+	  if (expr_str != NULL && info->func_expr_str != NULL
+	      && !intl_identifier_casecmp (expr_str, info->func_expr_str))
+	    {
+	      *continue_walk = PT_LIST_WALK;
+	      return tree;
+	    }
+	}
+    }
+
+  if (tree->node_type == PT_NAME && tree->info.name.spec_id == info->spec_id && tree->info.name.original != NULL
+      && info->col_name != NULL && !intl_identifier_casecmp (tree->info.name.original, info->col_name))
+    {
+      info->found_raw = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * qo_func_index_arg_used_raw () - check whether a column is referenced in a parse tree list outside of the function
+ *   index expression
+ *   return: bool
+ *   parser(in):
+ *   tree(in): parse tree list to search
+ *   func_expr_str(in): printed function index expression
+ *   col(in): the column (PT_NAME)
+ */
+bool
+qo_func_index_arg_used_raw (PARSER_CONTEXT * parser, PT_NODE * tree, const char *func_expr_str, PT_NODE * col)
+{
+  QO_SEG_FI_WALK_ARG info;
+
+  info.func_expr_str = func_expr_str;
+  info.spec_id = col->info.name.spec_id;
+  info.col_name = col->info.name.original;
+  info.in_subquery = false;
+  info.found_raw = false;
+
+  (void) parser_walk_tree (parser, tree, qo_seg_used_raw_walk, &info, NULL, NULL);
+
+  return info.found_raw;
+}
+
+/*
+ * qo_find_func_index_seg () - find the segment of a function index expression the query uses on a node
+ *   return: the segment, or NULL
+ *   env(in): the environment
+ *   nodep(in): the node
+ *   expr_str(in): printed function index expression
+ */
+QO_SEGMENT *
+qo_find_func_index_seg (QO_ENV * env, QO_NODE * nodep, const char *expr_str)
+{
+  QO_SEGMENT *seg;
+  int i;
+
+  if (expr_str == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < env->nsegs; i++)
+    {
+      seg = QO_ENV_SEG (env, i);
+      /* segment names are copies of expr_str, so strcmp skips the costly casecmp on the usual match */
+      if (seg != NULL && QO_SEG_FUNC_INDEX (seg) && QO_SEG_HEAD (seg) == nodep && QO_SEG_NAME (seg) != NULL
+	  && (strcmp (QO_SEG_NAME (seg), expr_str) == 0 || !intl_identifier_casecmp (QO_SEG_NAME (seg), expr_str)))
+	{
+	  return seg;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * qo_seg_used_only_in_func_index () - check whether a column is an argument of the function index expression that
+ *   the query uses only inside that expression, so that a covering scan reading the function result from the key
+ *   never needs the column itself
+ *   return: bool
+ *   env(in): the environment
+ *   index_entry(in): the function index entry
+ *   seg(in): the column segment
+ *   scan_terms(in): terms the index scan evaluates from the key without the column value, or NULL
+ */
+bool
+qo_seg_used_only_in_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * seg, BITSET * scan_terms)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  PT_NODE *pt_seg, *func_expr = NULL, *save_next;
+  QO_SEGMENT *fi_seg;
+  const char *expr_str;
+  bool is_arg;
+  int i;
+
+  if (index_entry == NULL || index_entry->constraints == NULL || index_entry->constraints->func_index_info == NULL)
+    {
+      return false;
+    }
+
+  if (tree == NULL || tree->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  pt_seg = QO_SEG_PT_NODE (seg);
+  if (pt_seg == NULL || pt_seg->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  /* grouping and aggregation evaluate the function from the raw argument */
+  if (tree->info.query.q.select.group_by != NULL || pt_has_aggregate (parser, tree))
+    {
+      return false;
+    }
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      if (BITSET_MEMBER (QO_TERM_SEGS (QO_ENV_TERM (env, i)), QO_SEG_IDX (seg))
+	  && (scan_terms == NULL || !BITSET_MEMBER (*scan_terms, i)))
+	{
+	  return false;
+	}
+    }
+
+  expr_str = index_entry->constraints->func_index_info->expr_str;
+  fi_seg = qo_find_func_index_seg (env, QO_SEG_HEAD (seg), expr_str);
+  func_expr = (fi_seg != NULL) ? QO_SEG_PT_NODE (fi_seg) : NULL;
+  if (func_expr == NULL)
+    {
+      return false;
+    }
+
+  save_next = func_expr->next;
+  func_expr->next = NULL;
+  is_arg = qo_func_index_arg_used_raw (parser, func_expr, NULL, pt_seg);
+  func_expr->next = save_next;
+  if (!is_arg)
+    {
+      return false;
+    }
+
+  return (!qo_func_index_arg_used_raw (parser, tree->info.query.q.select.list, expr_str, pt_seg)
+	  && !qo_func_index_arg_used_raw (parser, tree->info.query.order_by, expr_str, pt_seg));
+}
+
+/*
+ * qo_session_dependent_walk () - parse tree pre walk function that detects a value depending on the session time
+ *   zone or language
+ *   return: PT_NODE *
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool, set when found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_session_dependent_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (tree->type_enum == PT_TYPE_TIMESTAMP || PT_IS_LTZ_TYPE (tree->type_enum))
+    {
+      *found = true;
+    }
+  else if (tree->node_type == PT_EXPR)
+    {
+      switch (tree->info.expr.op)
+	{
+	  /* these take a hidden date or number language argument, or convert with the session time zone */
+	case PT_DATE_FORMAT:
+	case PT_TIME_FORMAT:
+	case PT_FORMAT:
+	case PT_STR_TO_DATE:
+	case PT_TO_CHAR:
+	case PT_TO_DATE:
+	case PT_TO_TIME:
+	case PT_TO_TIMESTAMP:
+	case PT_TO_DATETIME:
+	case PT_TO_DATETIME_TZ:
+	case PT_TO_TIMESTAMP_TZ:
+	case PT_TO_NUMBER:
+	case PT_UNIX_TIMESTAMP:
+	case PT_FROM_UNIXTIME:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  *continue_walk = *found ? PT_STOP_WALK : PT_CONTINUE_WALK;
+  return tree;
+}
+
+/*
+ * qo_is_session_dependent_expr () - check whether an expression may give another value in another session
+ *   return: bool
+ *   parser(in):
+ *   expr(in): function index expression
+ */
+static bool
+qo_is_session_dependent_expr (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  PT_NODE *save_next;
+  bool found = false;
+
+  if (expr == NULL)
+    {
+      return true;
+    }
+
+  save_next = expr->next;
+  expr->next = NULL;
+  (void) parser_walk_tree (parser, expr, qo_session_dependent_walk, &found, NULL, NULL);
+  expr->next = save_next;
+
+  return found;
+}
+
+/*
+ * qo_negative_zero_walk () - parse tree pre walk function that detects an operator giving -0 from a nonzero argument
+ *   return: PT_NODE *
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool, set when found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_negative_zero_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (tree->node_type == PT_EXPR)
+    {
+      switch (tree->info.expr.op)
+	{
+	case PT_CEIL:
+	case PT_ROUND:
+	case PT_TRUNC:
+	case PT_MOD:
+	case PT_MODULUS:
+	  *found = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  *continue_walk = *found ? PT_STOP_WALK : PT_CONTINUE_WALK;
+  return tree;
+}
+
+/*
+ * qo_may_give_negative_zero_expr () - check whether a floating point expression may give -0 for a row whose
+ *   arguments are not -0
+ *   return: bool
+ *   parser(in):
+ *   expr(in): function index expression
+ */
+static bool
+qo_may_give_negative_zero_expr (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  PT_NODE *save_next;
+  bool found = false;
+
+  if (expr == NULL)
+    {
+      return true;
+    }
+
+  save_next = expr->next;
+  expr->next = NULL;
+  (void) parser_walk_tree (parser, expr, qo_negative_zero_walk, &found, NULL, NULL);
+  expr->next = save_next;
+
+  return found;
+}
+
+/*
+ * qo_is_func_index_routable () - check whether the function result of a function index scan can be read from the
+ *   index key instead of being computed from its arguments
+ *   return: bool
+ *   env(in): the environment
+ *   nodep(in): the scanned node
+ */
+bool
+qo_is_func_index_routable (QO_ENV * env, QO_NODE * nodep)
+{
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+  PT_NODE *spec = QO_NODE_ENTITY_SPEC (nodep);
+
+  if (tree == NULL || tree->node_type != PT_SELECT || spec == NULL)
+    {
+      return false;
+    }
+
+  /* these scans read rows from the heap at run time (locks, hierarchical steps), where the result does not exist */
+  if (PT_SPEC_NEEDS_HEAP_REEVAL (spec) || tree->flag.is_click_counter || tree->info.query.q.select.connect_by != NULL)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qo_is_func_index_key_result_exact () - check whether the function result kept in the key is the value the query
+ *   would compute from the row
+ *   return: bool
+ *   env(in): the environment
+ *   index_entry(in): the function index entry
+ *   fi_seg(in): the segment of the function index expression
+ */
+static bool
+qo_is_func_index_key_result_exact (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * fi_seg)
+{
+  TP_DOMAIN *fi_domain = index_entry->constraints->func_index_info->fi_domain;
+
+  /* the key keeps the value computed in the session that stored the row */
+  if (qo_is_session_dependent_expr (QO_ENV_PARSER (env), QO_SEG_PT_NODE (fi_seg)))
+    {
+      return false;
+    }
+
+  /* equal keys keep the value of one row only, so the result must be identical whenever it compares equal */
+  if (fi_domain == NULL || TP_TYPE_NOT_SUPPORT_COVERING (TP_DOMAIN_TYPE (fi_domain))
+      || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (fi_domain))
+	  && !lang_get_collation (TP_DOMAIN_COLLATION (fi_domain))->options.allow_index_opt))
+    {
+      return false;
+    }
+
+  /* -0 compares equal to 0, so a row computing 0 may read the -0 another row stored, or the other way round */
+  if ((TP_DOMAIN_TYPE (fi_domain) == DB_TYPE_FLOAT || TP_DOMAIN_TYPE (fi_domain) == DB_TYPE_DOUBLE
+       || TP_DOMAIN_TYPE (fi_domain) == DB_TYPE_MONETARY)
+      && qo_may_give_negative_zero_expr (QO_ENV_PARSER (env), QO_SEG_PT_NODE (fi_seg)))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qo_is_func_index_key_filter_routable () - check whether a key filter of a function index scan can read the
+ *   function result from the key
+ *   return: bool
+ *   env(in): the environment
+ *   nodep(in): the scanned node
+ *   index_entry(in): the function index entry
+ */
+bool
+qo_is_func_index_key_filter_routable (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry)
+{
+  QO_SEGMENT *fi_seg;
+
+  if (!qo_is_func_index_routable (env, nodep))
+    {
+      return false;
+    }
+
+  fi_seg = qo_find_func_index_seg (env, nodep, index_entry->constraints->func_index_info->expr_str);
+  if (fi_seg == NULL)
+    {
+      return true;
+    }
+
+  return qo_is_func_index_key_result_exact (env, index_entry, fi_seg);
+}
+
+/*
  * qo_is_coverage_index () - check if the index cover all query segments
  *   return: bool
  *   env(in): The environment
@@ -7285,23 +7902,77 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	  continue;
 	}
 
+      /* the arguments of the expression are separate segments, so a plain index covers them by its key columns */
+      if (QO_SEG_FUNC_INDEX (seg))
+	{
+	  continue;
+	}
+
       found = false;
       for (j = 0; j < index_entry->col_num; j++)
 	{
 	  if (index_entry->seg_idxs[j] == QO_SEG_IDX (seg))
 	    {
-	      /* if the segment created in respect to the function index info is covered, we do not use index covering */
-	      if (QO_SEG_FUNC_INDEX (seg))
-		{
-		  return false;
-		}
 	      found = true;
 	      break;
 	    }
 	}
-      if (!found)
+
+      /* a function argument missing from the key is allowed only inside the indexed expression */
+      if (!found && !qo_seg_used_only_in_func_index (env, index_entry, seg, NULL))
 	{
 	  return false;
+	}
+    }
+
+  if (index_entry->constraints != NULL && index_entry->constraints->func_index_info != NULL)
+    {
+      COLL_OPT coll_opt;
+      SM_FUNCTION_INFO *fi_info = index_entry->constraints->func_index_info;
+      QO_SEGMENT *fi_seg = qo_find_func_index_seg (env, nodep, fi_info->expr_str);
+
+      /* the function result is not read from the key */
+      if (fi_seg == NULL)
+	{
+	  return true;
+	}
+
+      /* pt_to_index_info drops coverage on these gates after the function result has already been routed */
+      if (!qo_is_func_index_routable (env, nodep))
+	{
+	  return false;
+	}
+
+      if (!qo_check_type_index_covering (index_entry))
+	{
+	  return false;
+	}
+      qo_check_coll_optimization (index_entry, &coll_opt);
+      if (!coll_opt.allow_index_opt)
+	{
+	  return false;
+	}
+
+      if (!qo_is_func_index_key_result_exact (env, index_entry, fi_seg))
+	{
+	  return false;
+	}
+
+      /* only a sarg of this node is evaluated by its own scan where the result is routed; join, subquery and
+       * during/after-join terms of an outer join are built from the raw argument */
+      for (i = 0; i < env->nterms; i++)
+	{
+	  qo_termp = QO_ENV_TERM (env, i);
+	  if (bitset_is_empty (&(QO_TERM_SUBQUERIES (qo_termp)))
+	      && bitset_cardinality (&(QO_TERM_NODES (qo_termp))) <= 1 && QO_TERM_CLASS (qo_termp) == QO_TC_SARG)
+	    {
+	      continue;
+	    }
+
+	  if (BITSET_MEMBER (QO_TERM_SEGS (qo_termp), QO_SEG_IDX (fi_seg)))
+	    {
+	      return false;
+	    }
 	}
     }
 
@@ -8407,6 +9078,262 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
+ * qo_row_snapshot_apply () - re-derive join selectivities from the rows filtered nodes select
+ *   return: NO_ERROR, or the error of a read that aborted the transaction, lost the server or was cancelled
+ *   env(in): optimizer environment, after qo_discover_edges ()
+ *   repriced(out): true when a join term's selectivity was rewritten
+ *
+ * A code/dimension table filtered by a constant and joined to a large table on its key gets the
+ * join estimated at 1/NDV, because the planner does not know WHICH key the constant selects:
+ * histograms are kept per column, so the pair ('release dates', 16) is lost at collection time
+ * (JOB 19c: 124x underestimate, 37x slower than the reference). For a node joined by an equality
+ * this pass reads the rows its constant sargs select from the table, through an index
+ * (row_snapshot_cl.hpp), and, for every equi-join term the node takes part in, replaces the term's
+ * selectivity with the mean over those rows of the OTHER column's equality estimate for that row's
+ * key:
+ *
+ *     sel = (1 / k) * SUM_i P (other.col = v_i)
+ *
+ * The node's own selectivity becomes k over the table's rows. Nothing else changes: no derived
+ * term is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity
+ * the index scan cost already reads. Every failure along the way -- a node not joined by an
+ * equality, a system class, a predicate the pass cannot evaluate, no index on a filter column (a
+ * class of at most ROW_SNAPSHOT_HINT_SCAN_ROWS rows is scanned when the statement is hinted), no
+ * row or more than row_snapshot_max_rows rows selected, a key the histogram cannot price, a join
+ * between two snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
+ */
+static int
+qo_row_snapshot_apply (QO_ENV * env, bool * repriced)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  int n, t, f, n_filters, column, other, max_rows, error = NO_ERROR;
+  QO_NODE *node;
+  QO_TERM *term;
+  BITSET_ITERATOR iter;
+  ROW_SNAPSHOT *columns;
+  ROW_SNAPSHOT **snapshots;
+  ROW_SNAPSHOT_FILTER *filters;
+  PT_NODE *pt_expr, *lhs, *rhs, *my_name, *other_name;
+  UINTPTR spec_id;
+  PT_HINT_ENUM hint;
+  double sel;
+  bool ok;
+
+  /* the rows only price joins: a single-table statement reads nothing. NO_ROW_SNAPSHOT turns the
+   * reading off for the query block, ROW_SNAPSHOT turns it on even with the parameter at 0. */
+  hint = (QO_ENV_PT_TREE (env) != NULL && QO_ENV_PT_TREE (env)->node_type == PT_SELECT)
+    ? QO_ENV_PT_TREE (env)->info.query.q.select.hint : PT_HINT_NONE;
+  max_rows = row_snapshot_max_rows ();
+  if (max_rows <= 0 && (hint & PT_HINT_ROW_SNAPSHOT))
+    {
+      max_rows = ROW_SNAPSHOT_HINT_MAX_ROWS;
+    }
+  /* A statement compiled without the XASL cache -- a trigger action at every firing, a statement
+   * that cannot be prepared (a stored function call), any statement with the cache off -- would
+   * read again at every execution, with nothing to keep the plan for. */
+  if (max_rows <= 0 || (hint & PT_HINT_NO_ROW_SNAPSHOT) || env->nnodes < 2 || parser->flag.compile_uncached)
+    {
+      return NO_ERROR;
+    }
+
+  snapshots = (ROW_SNAPSHOT **) parser_alloc (parser, env->nnodes * sizeof (ROW_SNAPSHOT *));
+  if (snapshots == NULL)
+    {
+      return NO_ERROR;
+    }
+  for (n = 0; n < env->nnodes; n++)
+    {
+      snapshots[n] = NULL;
+    }
+
+  /* (a) every filtered node joined by an equality: the rows its constant sargs select, k of them */
+  for (n = 0; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+
+      /* one real class (no hierarchy or partition set), filtered */
+      if (QO_NODE_INFO (node) == NULL || QO_NODE_INFO_N (node) != 1 || QO_NODE_INFO (node)->info[0].mop == NULL
+	  || QO_NODE_INFO (node)->info[0].smclass == NULL || PT_SPEC_IS_DERIVED (QO_NODE_ENTITY_SPEC (node))
+	  || PT_SPEC_IS_CTE (QO_NODE_ENTITY_SPEC (node))
+	  || QO_NODE_ENTITY_SPEC (node)->info.spec.meta_class == PT_META_CLASS
+	  || bitset_is_empty (&(QO_NODE_SARGS (node))))
+	{
+	  continue;
+	}
+
+      /* joined to another node by an equality the pass can price, or reading buys nothing */
+      ok = false;
+      for (t = 0; t < env->nterms && !ok; t++)
+	{
+	  term = QO_ENV_TERM (env, t);
+	  ok = qo_row_snapshot_join_term (term) && BITSET_MEMBER (QO_TERM_NODES (term), n);
+	}
+      if (!ok)
+	{
+	  continue;
+	}
+
+      /* every predicate on this node alone has to be a sarg this pass can evaluate, or the node
+       * keeps its estimate: a filter left out would make k too large */
+      ok = true;
+      for (t = 0; t < env->nterms && ok; t++)
+	{
+	  term = QO_ENV_TERM (env, t);
+	  if (QO_TERM_CLASS (term) != QO_TC_SARG && bitset_cardinality (&(QO_TERM_NODES (term))) == 1
+	      && BITSET_MEMBER (QO_TERM_NODES (term), n))
+	    {
+	      ok = false;
+	    }
+	}
+      if (!ok)
+	{
+	  continue;
+	}
+
+      columns = row_snapshot_columns (QO_NODE_INFO (node)->info[0].smclass);
+      if (columns == NULL)
+	{
+	  continue;		/* a system class */
+	}
+      spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
+      n_filters = bitset_cardinality (&(QO_NODE_SARGS (node)));
+      filters = (ROW_SNAPSHOT_FILTER *) calloc (n_filters, sizeof (ROW_SNAPSHOT_FILTER));
+      if (filters == NULL)
+	{
+	  row_snapshot_free (columns);
+	  break;
+	}
+      f = 0;
+      for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &iter); t != -1 && ok; t = bitset_next_member (&iter))
+	{
+	  term = QO_ENV_TERM (env, t);
+	  /* the shapes it accepts, OR chains of one column's equalities included, are checked there */
+	  if (QO_TERM_CLASS (term) != QO_TC_SARG
+	      || !row_snapshot_filter_prepare (parser, columns, QO_NODE_INFO (node)->info[0].mop, spec_id,
+					       QO_TERM_PT_EXPR (term), &filters[f++]))
+	    {
+	      ok = false;
+	    }
+	  else
+	    {
+	      /* how many rows the read goes through, when it goes through this filter's index */
+	      filters[f - 1].selectivity = QO_TERM_SELECTIVITY (term);
+	    }
+	}
+      if (ok)
+	{
+	  /* NULL without an index on a filter column, with an index range expected too large, past
+	   * max_rows rows or with none: the histograms keep the estimate. Hinted ROW_SNAPSHOT, a class
+	   * the statistics count as small is read without the index too. */
+	  snapshots[n] = row_snapshot_read (QO_NODE_INFO (node)->info[0].mop, QO_NODE_INFO (node)->info[0].smclass,
+					    columns, filters, f, max_rows, (hint & PT_HINT_ROW_SNAPSHOT)
+					    && QO_NODE_NCARD (node) <= ROW_SNAPSHOT_HINT_SCAN_ROWS,
+					    (double) QO_NODE_NCARD (node), &error);
+	}
+      for (t = 0; t < f; t++)
+	{
+	  row_snapshot_filter_clear (&filters[t]);
+	}
+      free_and_init (filters);
+      row_snapshot_free (columns);
+      if (error != NO_ERROR)
+	{
+	  /* the read lost the transaction (rolled back by the server), the server or the user's
+	   * cancel: the statement fails with that error, as its own execution would have. Planning
+	   * stops here -- a rolled-back transaction has given back the classes it held. */
+	  PT_ERRORc (parser, QO_ENV_PT_TREE (env), er_msg ());
+	  break;
+	}
+      if (snapshots[n] == NULL)
+	{
+	  continue;
+	}
+
+      /* the node's own output is the k rows read, of the rows the statistics counted */
+      QO_NODE_SELECTIVITY (node) = MIN (1.0, (double) snapshots[n]->n_rows / (double) MAX (1, QO_NODE_NCARD (node)));
+      QO_NODE_SNAPSHOT_CARD (node) = snapshots[n]->n_rows;
+    }
+
+  /* (b) every equi-join term a snapshot node takes part in */
+  for (t = 0; t < env->nterms; t++)
+    {
+      term = QO_ENV_TERM (env, t);
+      if (!qo_row_snapshot_join_term (term))
+	{
+	  continue;
+	}
+      pt_expr = QO_TERM_PT_EXPR (term);
+      lhs = pt_expr->info.expr.arg1;
+      rhs = pt_expr->info.expr.arg2;
+
+      n = bitset_iterate (&(QO_TERM_NODES (term)), &iter);
+      other = bitset_next_member (&iter);
+      if (snapshots[n] == NULL)
+	{
+	  int swap = n;
+
+	  n = other;
+	  other = swap;
+	}
+      if (n < 0 || other < 0 || snapshots[n] == NULL)
+	{
+	  continue;
+	}
+      if (snapshots[other] != NULL)
+	{
+	  /* both sides were filtered on their rows: each side's estimate reads the other side's
+	   * unfiltered histogram, so neither is the join's selectivity -- keep the histogram one */
+	  continue;
+	}
+
+      spec_id = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, n))->info.spec.id;
+      if (lhs->info.name.spec_id == spec_id)
+	{
+	  my_name = lhs;
+	  other_name = rhs;
+	}
+      else if (rhs->info.name.spec_id == spec_id)
+	{
+	  my_name = rhs;
+	  other_name = lhs;
+	}
+      else
+	{
+	  continue;
+	}
+
+      node = QO_ENV_NODE (env, n);
+      column = row_snapshot_column (snapshots[n], QO_NODE_INFO (node)->info[0].mop, my_name->info.name.original);
+      if (!row_snapshot_join_selectivity (snapshots[n], column, other_name, other_name->info.name.null_frequency, &sel))
+	{
+	  continue;		/* this term keeps its histogram estimate; the next term is independent */
+	}
+      QO_TERM_SELECTIVITY (term) = sel;
+      QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_SNAPSHOT);
+      *repriced = true;
+    }
+
+  for (n = 0; n < env->nnodes; n++)
+    {
+      row_snapshot_free (snapshots[n]);
+    }
+  return error;
+}
+
+/* `a.col = b.col` between two nodes, the one join shape qo_row_snapshot_apply () prices */
+static bool
+qo_row_snapshot_join_term (QO_TERM * term)
+{
+  PT_NODE *pt_expr = QO_TERM_PT_EXPR (term);
+
+  return (QO_TERM_CLASS (term) == QO_TC_JOIN && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+	  && QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) && bitset_cardinality (&(QO_TERM_NODES (term))) == 2
+	  && pt_expr != NULL && pt_expr->node_type == PT_EXPR && pt_expr->info.expr.op == PT_EQ
+	  && pt_expr->info.expr.arg1 != NULL && pt_expr->info.expr.arg1->node_type == PT_NAME
+	  && pt_expr->info.expr.arg2 != NULL && pt_expr->info.expr.arg2->node_type == PT_NAME);
+}
+
+/*
  * qo_generate_implied_join_terms () - Generate implied join terms from
  *   segment equivalence groups using transitive closure.
  *   env(in):
@@ -8528,11 +9455,14 @@ static void
 qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 {
   int ti, t;
+  BITSET suppliers;
 
   for (ti = 0; ti < env->nsegs; ti++)
     {
       root_arr[ti] = ti;
     }
+
+  bitset_init (&suppliers, env);
 
   for (t = 0; t < env->nterms; t++)
     {
@@ -8544,6 +9474,19 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
       if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
 	{
 	  continue;
+	}
+      if (QO_ON_COND_TERM (jterm))
+	{
+	  QO_NODE *jon = QO_ENV_NODE (env, QO_TERM_LOCATION (jterm));
+	  if (QO_NODE_PT_JOIN_TYPE (jon) == PT_JOIN_INNER)
+	    {
+	      BITSET_CLEAR (suppliers);
+	      qo_get_on_cond_null_suppliers (env, jon, &suppliers);
+	      if (!bitset_is_empty (&suppliers))
+		{
+		  continue;	/* reads a null-supplied node; conditional, not an unconditional edge */
+		}
+	    }
 	}
       /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
        * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
@@ -8591,6 +9534,8 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 	}
       root_arr[ti] = r;
     }
+
+  bitset_delset (&suppliers);
 }
 
 /*
@@ -9242,6 +10187,11 @@ qo_node_dump (QO_NODE * node, FILE * f)
     }
 
   fprintf (f, "(%lu/%lu)", QO_NODE_NCARD (node), QO_NODE_TCARD (node));
+  if (QO_NODE_SNAPSHOT_CARD (node) >= 0)
+    {
+      /* the constant sargs read this many rows from the table (CBRD-27478) */
+      fprintf (f, " (snapshot %d)", QO_NODE_SNAPSHOT_CARD (node));
+    }
   if (!bitset_is_empty (&(QO_NODE_SARGS (node))))
     {
       fputs (" (sargs ", f);
@@ -9974,6 +10924,10 @@ qo_term_dump (QO_TERM * term, FILE * f)
       fprintf (f, " (ord %d)", QO_TERM_PRED_ORDER (term));
     }
   fprintf (f, " (sel %G)", QO_TERM_SELECTIVITY (term));
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_SEL_FROM_SNAPSHOT))
+    {
+      fputs (" (snapshot)", f);
+    }
 
   if (QO_TERM_RANK (term) > 1)
     {
@@ -10024,6 +10978,13 @@ qo_term_dump (QO_TERM * term, FILE * f)
       break;
     default:
       break;
+    }
+
+  /* The term was shipped into the DBLink remote SQL. It stays in the join graph for its selectivity, but is not
+   * evaluated locally. */
+  if (conj != NULL && conj->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (conj, PT_EXPR_INFO_DBLINK_PUSHED))
+    {
+      fputs (" (dblink pushed)", f);
     }
 
   if (QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))

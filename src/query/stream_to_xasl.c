@@ -107,6 +107,7 @@ static char *stx_build_union_proc (THREAD_ENTRY * thread_p, char *tmp, UNION_PRO
 static char *stx_build_fetch_proc (THREAD_ENTRY * thread_p, char *tmp, FETCH_PROC_NODE * ptr);
 static char *stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDLIST_PROC_NODE * ptr);
 static char *stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *tmp, BUILDVALUE_PROC_NODE * ptr);
+static int stx_attach_agg_prog_image (THREAD_ENTRY * thread_p, int offset, AGGREGATE_TYPE * agg_list);
 static char *stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *tmp, MERGELIST_PROC_NODE * ptr);
 static char *stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE * node_p);
 static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp, QFILE_LIST_MERGE_INFO * ptr);
@@ -153,6 +154,7 @@ static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp, REGU_V
 static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp, ATTR_DESCR * ptr);
 static char *stx_build_pos_descr (char *tmp, QFILE_TUPLE_VALUE_POSITION * ptr);
+static char *stx_unpack_domain (THREAD_ENTRY * thread_p, char *ptr, TP_DOMAIN ** domain);
 static char *stx_build_arith_type (THREAD_ENTRY * thread_p, char *tmp, ARITH_TYPE * ptr);
 static char *stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *tmp, AGGREGATE_TYPE * ptr);
 static char *stx_build_function_type (THREAD_ENTRY * thread_p, char *tmp, FUNCTION_TYPE * ptr);
@@ -257,6 +259,17 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
     {
       goto end;
     }
+  /* CBRD-27817: the compilation decides every domain; a plan that left one to the values is refused before any row
+   * runs, never decided by the values at the row */
+  if (unpack_info_p->n_undecided > 0)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load", "", unpack_info_p->n_undecided,
+	      pr_type_name ((DB_TYPE) unpack_info_p->undecided_type));
+      stx_set_xasl_errcode (thread_p, ER_QPROC_DOMAIN_UNRESOLVED);
+      xasl = NULL;
+      goto end;
+    }
 
   /* set result */
   *xasl_tree = xasl;
@@ -271,6 +284,13 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->tcard_list = NULL;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->rtf = NULL;
+  xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
+  xasl->rtf_off = 0;
+  xasl->rtf_applied = false;
+  xasl->hj_prehash = NULL;
   xasl->executed_parallelism = 0;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
@@ -1406,7 +1426,7 @@ stx_restore_domain_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
     }
   for (i = 0; i < nelements; ++i)
     {
-      ptr = or_unpack_domain (ptr, &domains[i], NULL);
+      ptr = stx_unpack_domain (thread_p, ptr, &domains[i]);
     }
 
   return domains;
@@ -1906,7 +1926,7 @@ stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
   TP_DOMAIN *target = NULL;
   if (converts != 0)
     {
-      ptr = or_unpack_domain (ptr, &target, NULL);
+      ptr = stx_unpack_domain (NULL, ptr, &target);
     }
   for (int side = 0; side < 2; side++)
     {
@@ -1919,7 +1939,7 @@ stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
   if (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT
       || compare->method == DOMAIN_COMPARE_COLLATIONS)
     {
-      compare->cmp = pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
+      compare->cmp = domain_compare_cmp (compare);
     }
   return ptr;
 }
@@ -1963,7 +1983,7 @@ stx_unpack_conversion (char *ptr, DOMAIN_CONVERSION * conversion)
   if (bits != 0)
     {
       TP_DOMAIN *target = NULL;
-      ptr = or_unpack_domain (ptr, &target, NULL);
+      ptr = stx_unpack_domain (NULL, ptr, &target);
       conversion->source = (DB_TYPE) ((bits >> 8) & 0xFF);
       conversion->mode = (DOMAIN_CONVERT_MODE) ((bits >> 4) & 0xF);
       conversion->target = target;
@@ -1986,7 +2006,7 @@ stx_unpack_coercion_plan (char *ptr, DOMAIN_COERCION_PLAN * plan)
       if (bits & 1)
 	{
 	  TP_DOMAIN *domain = NULL;
-	  ptr = or_unpack_domain (ptr, &domain, NULL);
+	  ptr = stx_unpack_domain (NULL, ptr, &domain);
 	  plan->operand_domain[i] = domain;
 	}
       if (bits & 2)
@@ -2011,7 +2031,7 @@ stx_unpack_accumulator_domain (char *ptr, cubxasl::aggregate_accumulator_domain 
     {
       if (bits & (1 << i))
 	{
-	  ptr = or_unpack_domain (ptr, &domain[i], NULL);
+	  ptr = stx_unpack_domain (NULL, ptr, &domain[i]);
 	}
     }
   ptr = stx_unpack_coercion_plan (ptr, &plan.operand_coercion);
@@ -2933,6 +2953,13 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
   xasl->memoize_storage = NULL;
+  xasl->rtf = NULL;
+  xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
+  xasl->rtf_off = 0;
+  xasl->rtf_applied = false;
+  xasl->hj_prehash = NULL;
   xasl->executed_parallelism = 0;
   return ptr;
 
@@ -3108,7 +3135,7 @@ stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
 	}
       for (int i = 0; i < n_elements; i++)
 	{
-	  ptr = or_unpack_domain (ptr, &new_sq_cache->sq_key_struct->domains[i], NULL);
+	  ptr = stx_unpack_domain (thread_p, ptr, &new_sq_cache->sq_key_struct->domains[i]);
 	}
       *sq_cache_p = new_sq_cache;
     }
@@ -3146,7 +3173,7 @@ stx_build_list_id (THREAD_ENTRY * thread_p, char *ptr, QFILE_LIST_ID * listid)
 
       for (i = 0; i < count; i++)
 	{
-	  ptr = or_unpack_domain (ptr, &listid->type_list.domp[i], NULL);
+	  ptr = stx_unpack_domain (thread_p, ptr, &listid->type_list.domp[i]);
 	}
     }
 #endif
@@ -3277,6 +3304,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 
   stx_build_list_proc->output_columns = (DB_VALUE **) 0;
   stx_build_list_proc->upddel_oid_locator_ehids = NULL;
+  stx_build_list_proc->gby_skip_state = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3426,7 +3454,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     (AGGREGATE_HASH_CONTEXT *) stx_alloc_struct (thread_p, sizeof (*stx_build_list_proc->agg_hash_context));
   std::memset (stx_build_list_proc->agg_hash_context, 0, sizeof (*stx_build_list_proc->agg_hash_context));
 
-  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_output_first_tuple);
+  ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_first_tuple);
   ptr = or_unpack_int (ptr, (int *) &stx_build_list_proc->g_hkey_size);
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3444,8 +3472,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	}
     }
 
-  /* each hash key column compares in its compiled domain; a domain that leaves its values' type to the data leaves
-   * the keys to compare by their values (qdata_agg_hkey_compare) */
+  /* each hash key column compares in its compiled domain (qdata_agg_hkey_compare) */
   stx_build_list_proc->g_hk_compares = NULL;
   if (stx_build_list_proc->g_hash_eligible && stx_build_list_proc->g_hkey_size > 0)
     {
@@ -3457,16 +3484,13 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	  goto error;
 	}
       int k = 0;
-      for (REGU_VARIABLE_LIST key = stx_build_list_proc->g_hk_scan_regu_list;
-	   k < n_keys && key != NULL && domain_fixes_values (key->value.domain); key = key->next)
+      for (REGU_VARIABLE_LIST key = stx_build_list_proc->g_hk_scan_regu_list; k < n_keys; key = key->next)
 	{
+	  assert (key != NULL);
+	  assert (domain_fixes_values (key->value.domain));
 	  compares[k++] = key->value.domain;
 	}
-      assert (k == n_keys);
-      if (k == n_keys)
-	{
-	  stx_build_list_proc->g_hk_compares = compares;
-	}
+      stx_build_list_proc->g_hk_compares = compares;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3515,6 +3539,12 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	{
 	  goto error;
 	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (stx_attach_agg_prog_image (thread_p, offset, stx_build_list_proc->g_agg_list) != NO_ERROR)
+    {
+      goto error;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3630,6 +3660,45 @@ error:
   return NULL;
 }
 
+/*
+ * stx_attach_agg_prog_image () - CBRD-27361: the aggregate list's operand program XASL generation compiled
+ *   (xts_save_agg_prog_image), set on the list head for its first evaluation
+ *   return: NO_ERROR, or ER_FAILED out of memory
+ *   offset(in): the image's offset in the stream, 0 for none
+ *   agg_list(in): the list
+ */
+static int
+stx_attach_agg_prog_image (THREAD_ENTRY * thread_p, int offset, AGGREGATE_TYPE * agg_list)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  int size;
+
+  if (offset == 0 || agg_list == NULL)
+    {
+      return NO_ERROR;
+    }
+  (void) or_unpack_int (&xasl_unpack_info->packed_xasl[offset], &size);
+  if (size > 0)
+    {
+      char *image = stx_alloc_struct (thread_p, size);
+
+      if (image == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return ER_FAILED;
+	}
+      memcpy (image, &xasl_unpack_info->packed_xasl[offset + OR_INT_SIZE], size);
+      agg_list->operand_prog_image = image;
+    }
+  else
+    {
+      /* the operands keep their interpreted fetch */
+      agg_list->operand_prog_image = "";
+    }
+  agg_list->operand_prog_image_size = size;
+  return NO_ERROR;
+}
+
 static char *
 stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_NODE * stx_build_value_proc)
 {
@@ -3683,6 +3752,12 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_N
     }
 
   ptr = or_unpack_int (ptr, &offset);
+  if (stx_attach_agg_prog_image (thread_p, offset, stx_build_value_proc->agg_list) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
       stx_build_value_proc->outarith_list = NULL;
@@ -3698,6 +3773,11 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_N
     }
 
   ptr = or_unpack_int (ptr, &stx_build_value_proc->is_always_false);
+
+  /* the copy of the last aggregated row lives with one execution (qexec_keep_last_row ()) */
+  stx_build_value_proc->last_row = NULL;
+  stx_build_value_proc->last_row_cnt = 0;
+  stx_build_value_proc->last_row_kept = false;
 
   return ptr;
 }
@@ -3820,11 +3900,16 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
   TP_DOMAIN **all_domains = NULL;
   int domain_cnt;
+  int has_ineligible;
   int offset;
 
   int error = NO_ERROR;
 
   memset (node_p, 0, sizeof (HASHJOIN_PROC_NODE));
+  /* no runtime filter yet: 0 is a filter built from keys that were all NULL (the trace prints it); every execution
+   * sets it back to this before its aptr loop (qexec_execute_mainblock_internal ()), a join under a px executor,
+   * which never looks for a filter, too */
+  node_p->rtf_keys = -1;
 
   /* outer */
   ptr = or_unpack_int (ptr, &offset);
@@ -3896,6 +3981,9 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
     }
   assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
 
+  ptr = or_unpack_int (ptr, &has_ineligible);
+  node_p->has_ineligible = (has_ineligible != 0);
+
   /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;
   if (domain_cnt == 0)
@@ -3943,12 +4031,12 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	{
 	  int kinds;
 	  TP_DOMAIN *common = NULL;
-	  ptr = or_unpack_domain (ptr, &all_domains[i], NULL);
-	  ptr = or_unpack_domain (ptr, &all_domains[domain_cnt + i], NULL);
+	  ptr = stx_unpack_domain (thread_p, ptr, &all_domains[i]);
+	  ptr = stx_unpack_domain (thread_p, ptr, &all_domains[domain_cnt + i]);
 	  ptr = or_unpack_int (ptr, &kinds);
 	  if ((kinds >> 16) & 1)
 	    {
-	      ptr = or_unpack_domain (ptr, &common, NULL);
+	      ptr = stx_unpack_domain (thread_p, ptr, &common);
 	    }
 	  all_domains[domain_cnt * 2 + i] = common;
 	  converters[i] = hjoin_key_converter (kinds & 0xFF, TP_DOMAIN_TYPE (all_domains[i]), common);
@@ -4311,7 +4399,7 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
     }
 
   /* domain; the converter is planned where the value's domain is known (stx_plan_assignment) */
-  ptr = or_unpack_domain (ptr, &assign->domain, NULL);
+  ptr = stx_unpack_domain (thread_p, ptr, &assign->domain);
   assign->value_type = DB_TYPE_VARIABLE;
   assign->conv = NULL;
 
@@ -4759,6 +4847,8 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
     }
 
   ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
+  ptr = or_unpack_int (ptr, &insert_info->remote_odku_val_start);
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku_bound);
   if (insert_info->remote_num_odku == 0)
     {
       insert_info->remote_odku_cols = NULL;
@@ -5075,7 +5165,10 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   outptr_list->eval_prog_idx = NULL;
   outptr_list->eval_prog_state = 0;
   outptr_list->eval_prog_row_ready = false;
+  outptr_list->eval_prog_row_external = false;
   outptr_list->eval_prog_share_spec = NULL;
+  outptr_list->eval_prog_image = NULL;
+  outptr_list->eval_prog_image_size = 0;
 
   ptr = or_unpack_int (ptr, &outptr_list->valptr_cnt);
 
@@ -5092,6 +5185,33 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+    }
+
+  /* CBRD-27361: the program compiled at XASL generation (xts_save_valptr_prog_image), bound on its first evaluation */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset != 0)
+    {
+      int size;
+
+      (void) or_unpack_int (&xasl_unpack_info->packed_xasl[offset], &size);
+      if (size > 0)
+	{
+	  char *image = stx_alloc_struct (thread_p, size);
+
+	  if (image == NULL)
+	    {
+	      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	      return NULL;
+	    }
+	  memcpy (image, &xasl_unpack_info->packed_xasl[offset + OR_INT_SIZE], size);
+	  outptr_list->eval_prog_image = image;
+	}
+      else
+	{
+	  /* the list keeps its interpreted fetch */
+	  outptr_list->eval_prog_image = "";
+	}
+      outptr_list->eval_prog_image_size = size;
     }
 
   return ptr;
@@ -5142,6 +5262,8 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
   pred_expr->scan_prog = NULL;
   pred_expr->scan_prog_state = 0;
   pred_expr->scan_prog_gen = 0;
+  pred_expr->scan_prog_image = NULL;	/* set by the access spec that filters with this tree */
+  pred_expr->scan_prog_image_size = 0;
 
   switch (pred_expr->type)
     {
@@ -5478,7 +5600,7 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
       return ptr;
     }
   TP_DOMAIN *prune_domain = NULL;
-  ptr = or_unpack_domain (ptr, &prune_domain, NULL);
+  ptr = stx_unpack_domain (thread_p, ptr, &prune_domain);
   const REGU_VARIABLE *value = tmp == 1 ? comp_eval_term->lhs : comp_eval_term->rhs;
   comp_eval_term->prune_side = (signed char) (tmp - 1);
   comp_eval_term->prune_domain = prune_domain;
@@ -5671,8 +5793,8 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
       return ptr;
     }
   TP_DOMAIN *prune_domain = NULL, *prune_element = NULL;
-  ptr = or_unpack_domain (ptr, &prune_domain, NULL);
-  ptr = or_unpack_domain (ptr, &prune_element, NULL);
+  ptr = stx_unpack_domain (thread_p, ptr, &prune_domain);
+  ptr = stx_unpack_domain (thread_p, ptr, &prune_element);
 #if !defined (NDEBUG)
   {
     /* generation decides one only for a list of one element domain, its NULLs aside */
@@ -5863,6 +5985,32 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 	}
     }
 
+  /* CBRD-27361: the data filter compiled at XASL generation (xts_save_scan_pred_image), bound on its first evaluation */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset != 0 && access_spec->where_pred != NULL)
+    {
+      int size;
+
+      (void) or_unpack_int (&xasl_unpack_info->packed_xasl[offset], &size);
+      if (size > 0)
+	{
+	  char *image = stx_alloc_struct (thread_p, size);
+
+	  if (image == NULL)
+	    {
+	      goto error;
+	    }
+	  memcpy (image, &xasl_unpack_info->packed_xasl[offset + OR_INT_SIZE], size);
+	  access_spec->where_pred->scan_prog_image = image;
+	}
+      else
+	{
+	  /* the client declined the filter: it stays interpreted */
+	  access_spec->where_pred->scan_prog_image = "";
+	}
+      access_spec->where_pred->scan_prog_image_size = size;
+    }
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
@@ -5949,6 +6097,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
   access_spec->single_fetch = (QPROC_SINGLE_FETCH) tmp;
 
   ptr = or_unpack_int (ptr, &access_spec->pruning_type);
+  access_spec->batch_keep = NULL;	/* the struct is not allocated zeroed (stx_alloc_struct ()) */
   access_spec->parts = NULL;
   access_spec->curent = NULL;
   access_spec->pruned = false;
@@ -6134,7 +6283,7 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
 
   /* the B-tree's key domain */
-  ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
+  ptr = stx_unpack_domain (thread_p, ptr, &indx_info->key_type);
 
   /* CBRD-27583: each key range's written key domains */
   for (int i = 0; i < indx_info->key_info.key_cnt; i++)
@@ -6146,11 +6295,11 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
       range->key2_domain = NULL;
       if (mask & 1)
 	{
-	  ptr = or_unpack_domain (ptr, &range->key1_domain, NULL);
+	  ptr = stx_unpack_domain (thread_p, ptr, &range->key1_domain);
 	}
       if (mask & 2)
 	{
-	  ptr = or_unpack_domain (ptr, &range->key2_domain, NULL);
+	  ptr = stx_unpack_domain (thread_p, ptr, &range->key2_domain);
 	}
     }
   indx_info->iss_range.key1_domain = NULL;
@@ -6890,7 +7039,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
 	  assert (value_list[i].val->need_clear == false);
 	}
 
-      ptr = or_unpack_domain (ptr, &value_list[i].dom, NULL);
+      ptr = stx_unpack_domain (thread_p, ptr, &value_list[i].dom);
       if (value_list[i].dom == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
@@ -6961,7 +7110,14 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
+  ptr = or_unpack_int (ptr, &tmp);
+  regu_var->type = (REGU_DATATYPE) tmp;
+  /* a regu value list is a container of values, not a value: it carries no domain */
+  regu_var->domain = NULL;
+  if (regu_var->type != TYPE_REGU_VAR_LIST)
+    {
+      ptr = stx_unpack_domain (thread_p, ptr, &regu_var->domain);
+    }
 
   /* CBRD-27583: the domain the value is read in, and the converter into the domain its consumer wants */
   ptr = or_unpack_int (ptr, &tmp);
@@ -6970,7 +7126,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   regu_var->conv_mode = 0;
   if (tmp)
     {
-      ptr = or_unpack_domain (ptr, &regu_var->original_domain, NULL);
+      ptr = stx_unpack_domain (thread_p, ptr, &regu_var->original_domain);
       ptr = or_unpack_int (ptr, &tmp);
       regu_var->conv_mode = (unsigned char) tmp;
       regu_var->conv = (tmp & REGU_CONV_SELECTION) == REGU_CONV_ENUM_NAME ? domain_enumeration_name_converter ()
@@ -6979,9 +7135,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 				   (DOMAIN_CONVERT_MODE) (tmp & REGU_CONV_SELECTION));
       assert (regu_var->conv != NULL);
     }
-
-  ptr = or_unpack_int (ptr, &tmp);
-  regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
@@ -7020,16 +7173,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   assert (regu_var->conv == NULL || regu_var->vfetch_to != NULL);
 
   ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
-  if (ptr != NULL)
-    {
-#if !defined (NDEBUG)
-      /* a regu value list is a container of values, not a value: no domain of its own (its elements count) */
-      xasl_unpack_info->n_undecided_regu += regu_var->type != TYPE_REGU_VAR_LIST && regu_var->domain != NULL
-	&& TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE;
-      xasl_unpack_info->n_undecided_position += regu_var->type == TYPE_POSITION
-	&& regu_var->value.pos_descr.dom != NULL && TP_DOMAIN_TYPE (regu_var->value.pos_descr.dom) == DB_TYPE_VARIABLE;
-#endif
-    }
 
   return ptr;
 
@@ -7233,11 +7376,47 @@ stx_build_attr_descr (THREAD_ENTRY * thread_p, char *ptr, ATTR_DESCR * attr_desc
   return ptr;
 }
 
+/*
+ * stx_unpack_domain () - CBRD-27817: or_unpack_domain, counting a domain the compilation left to the values (a
+ *   variable type, or a collation left to them: LEAVE, ENFORCE), in itself or in an element's, for the plan's load
+ *   check (stx_map_stream_to_xasl)
+ *   thread_p(in): the unpacking thread, NULL for the current one
+ */
+static bool
+stx_domain_is_decided (const TP_DOMAIN * domain)
+{
+  for (; domain != NULL; domain = domain->next)
+    {
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL
+	  || !stx_domain_is_decided (domain->setdomain))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+static char *
+stx_unpack_domain (THREAD_ENTRY * thread_p, char *ptr, TP_DOMAIN ** domain)
+{
+  ptr = or_unpack_domain (ptr, domain, NULL);
+  if (ptr == NULL || stx_domain_is_decided (*domain))
+    {
+      return ptr;
+    }
+  XASL_UNPACK_INFO *info = get_xasl_unpack_info_ptr (thread_p != NULL ? thread_p : thread_get_thread_entry_info ());
+  if (info->n_undecided++ == 0)
+    {
+      info->undecided_type = (int) TP_DOMAIN_TYPE (*domain);
+    }
+  return ptr;
+}
+
 static char *
 stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
-  ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
+  ptr = stx_unpack_domain (NULL, ptr, &position_descr->dom);
 
   return ptr;
 }
@@ -7326,7 +7505,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   int tmp, offset;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
-  ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
+  ptr = stx_unpack_domain (thread_p, ptr, &arith_type->domain);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -7416,11 +7595,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 
   /* This member is only used on server internally. */
   arith_type->rand_seed = NULL;
-
-#if !defined (NDEBUG)
-  xasl_unpack_info->n_undecided_arith +=
-    arith_type->domain != NULL && TP_DOMAIN_TYPE (arith_type->domain) == DB_TYPE_VARIABLE;
-#endif
 
   /* CBRD-27583: NVL, IFNULL, COALESCE, NVL2, NULLIF, LEAST and GREATEST cast the operand a row picks into
    * the node's domain, which XASL generation fixed; a node of no fixed domain is the generation's defect, refused here
@@ -7596,9 +7770,11 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   aggregate->operand_prog_base = -1;
   aggregate->operand_prog_share_spec = NULL;
   aggregate->operand_prog_link_stamp = 0;
+  aggregate->operand_prog_image = NULL;	/* the list head's: set by the proc that owns the list */
+  aggregate->operand_prog_image_size = 0;
 
   /* domain */
-  ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
+  ptr = stx_unpack_domain (thread_p, ptr, &aggregate->domain);
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
@@ -7734,6 +7910,11 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       aggregate->info.dist_percent.const_array = NULL;
       aggregate->info.dist_percent.list_len = 0;
       aggregate->info.dist_percent.nlargers = 0;
+    }
+  else if (aggregate->function == PT_GROUP_CONCAT)
+    {
+      aggregate->info.group_concat.buf = NULL;
+      aggregate->info.group_concat.capacity = 0;
     }
   else
     {
@@ -7907,7 +8088,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
   assert (ptr != NULL && analytic != NULL);
 
   /* domain */
-  ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
+  ptr = stx_unpack_domain (thread_p, ptr, &analytic->domain);
 
   /* value */
   ptr = or_unpack_int (ptr, &offset);

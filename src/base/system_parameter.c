@@ -787,6 +787,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_INDEX_BUILD_PARALLELISM "index_build_parallelism"
 #define PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD "parallel_index_build_page_threshold"
 #define PRM_NAME_PARALLEL_MERGE_JOIN "parallel_merge_join"
+#define PRM_NAME_INDEX_SORT_METHOD "index_sort_method"
+#define PRM_NAME_INDEX_BUILD_MERGE_FANIN "index_build_merge_fanin"
 
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
@@ -828,6 +830,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
+#define PRM_NAME_ROW_SNAPSHOT_MAX_ROWS "row_snapshot_max_rows"
+
+#define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
 // #endregion
 
@@ -1213,7 +1218,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PB_NBUFFERS,
    PRM_NAME_PB_NBUFFERS,
-   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_DEPRECATED | PRM_RELOADABLE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 32768}},
@@ -1224,7 +1229,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PAGE_BUFFER_SIZE,
    PRM_NAME_PAGE_BUFFER_SIZE,
-   (PRM_FOR_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 32768}},
@@ -4570,7 +4575,7 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
+   {false, {.b = true}},
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
@@ -5261,6 +5266,43 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_INDEX_SORT_METHOD,
+   PRM_NAME_INDEX_SORT_METHOD,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_KEYWORD,
+   PRM_CLEAR_DYNAMIC_FLAG,
+#if !defined(NDEBUG)
+   {false, {.i = INDEX_SORT_METHOD_AUTO}},
+   {false, {.i = INDEX_SORT_METHOD_AUTO}},
+#else
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}},
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}},
+#endif
+   {false, {.i = INDEX_SORT_METHOD_COMPARE}}, {false, {.i = INDEX_SORT_METHOD_AUTO}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* CBRD-27236: the most temp files a merge pass of the index build sort reads from, which is otherwise half the
+   * sort buffer in pages. The default 256 bounds the temp space of a build whose runs are short: a key longer than a
+   * page makes runs of a page, and each temp file takes at least a sector, so with no cap a 64M sort buffer can
+   * reserve a sector for each of 2,048 files. The data sectors of the heap bound the files as well, so that they
+   * reserve no more space than the heap takes; the workers of a parallel build each take their share of the sectors.
+   * The cap changes nothing while the runs are no more than 256, and beyond it adds a pass, which writes and reads
+   * the sort data once more. 0 sets no cap. A lower cap also suits a device whose reads slow down to a third or less
+   * when thousands of runs are read by turns, such as a volume of about 1,000 read IOPS (see
+   * btsort_get_num_half_tmpfiles ()). Changeable on-line, for the CREATE INDEX statements that follow. */
+  {PRM_ID_INDEX_BUILD_MERGE_FANIN,
+   PRM_NAME_INDEX_BUILD_MERGE_FANIN,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 256}},
+   {false, {.i = 256}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
   {PRM_ID_TCP_KEEPALIVE_IDLE,
    PRM_NAME_TCP_KEEPALIVE_IDLE,
    (PRM_FOR_SERVER),
@@ -5620,9 +5662,10 @@ SYSPRM_PARAM prm_Def[] = {
    * 1.0 / 400 reproduces that double bit for bit; a float parameter would have shifted every
    * cost by 2e-8 and flipped .5 roundings in plan dumps. Its lower bound is 1 (a divisor).
    * A lower bound of 0 is allowed on the page prices, as in PostgreSQL, to price a term as
-   * free; the Mackert-Lohman formula degrades safely to "no caching" when
-   * cost_effective_cache_pages is 0. That one is denominated in pages (not bytes) so the
-   * default equals the former 32768 on every page size. */
+   * free. cost_effective_cache_pages is a floor of the cache the optimizer assumes: the
+   * server's data_buffer_pages is used when larger (CBRD-27474), so 0 or a small value does not
+   * lower the cache below the buffer. It is denominated in pages (not bytes) so the default
+   * equals the former 32768 on every page size. */
   {PRM_ID_COST_SEQ_PAGE,
    PRM_NAME_COST_SEQ_PAGE,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
@@ -5693,6 +5736,36 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 5}},
    {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HASH_JOIN_RUNTIME_FILTER,
+   PRM_NAME_HASH_JOIN_RUNTIME_FILTER,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* row snapshot (CBRD-27478): the most rows the optimizer reads from a table for the constant
+   * filters of a node joined by an equality while it plans -- a filter that selects more keeps
+   * the histogram estimate; 0, the default, reads only for a statement hinted ROW_SNAPSHOT. In
+   * the query string of a SELECT because it changes plans; the cache key of a server-side UPDATE /
+   * DELETE carries the ROW_SNAPSHOT / NO_ROW_SNAPSHOT hints but not this parameter, as for every
+   * PRM_FOR_QRY_STRING parameter. */
+  {PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
+   PRM_NAME_ROW_SNAPSHOT_MAX_ROWS,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   {false, {.i = 10000}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5845,6 +5918,12 @@ static const KEYVAL pgbuf_debug_page_validation_level_words[] = {
 static const KEYVAL null_words[] = {
   {"null", 0},
   {"0", 0}
+};
+
+static const KEYVAL index_sort_method_words[] = {
+  {"auto", INDEX_SORT_METHOD_AUTO},
+  {"radix", INDEX_SORT_METHOD_RADIX},
+  {"compare", INDEX_SORT_METHOD_COMPARE}
 };
 
 static const KEYVAL ha_mode_words[] = {
@@ -7909,6 +7988,9 @@ prm_get_keyval (const SYSPRM_PARAM * prm, int value, const char *name)
 
     case PRM_ID_COMPAT_MODE:
       return prm_keyword (value, name, compat_words, DIM (compat_words));
+
+    case PRM_ID_INDEX_SORT_METHOD:
+      return prm_keyword (value, name, index_sort_method_words, DIM (index_sort_method_words));
 
     case PRM_ID_CHECK_PEER_ALIVE:
       return prm_keyword (value, name, check_peer_alive_words, DIM (check_peer_alive_words));

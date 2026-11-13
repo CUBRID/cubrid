@@ -24,6 +24,10 @@
 #ifndef _CAS_SSL_H_
 #define _CAS_SSL_H_
 
+/* under $CUBRID/conf */
+#define CAS_SSL_CERT_FILE	"cas_ssl_cert.crt"
+#define CAS_SSL_KEY_FILE	"cas_ssl_cert.key"
+
 extern bool ssl_client;
 
 extern int cas_init_ssl (int sd);

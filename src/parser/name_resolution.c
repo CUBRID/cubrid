@@ -109,11 +109,6 @@ enum
   DISCARD_NO_MATCH = true
 };
 
-static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
-/* a name in group by/having/order by of a static SQL, not resolved by name binding. it is resolved as an alias or
- * converted to a host variable after the alias resolution */
-static const char *CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL = "name_deferred_for_static_sql";
-
 typedef struct pt_bind_names_data_type PT_BIND_NAMES_DATA_TYPE;
 struct pt_bind_names_data_type
 {
@@ -233,9 +228,12 @@ static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, N
 static bool is_pt_name_in_group_having (PT_NODE * node);
 
 static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
+static bool is_group_having_alias_resolved (PT_NODE * node);
 
 static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							      int *continue_walk);
+static PT_NODE *pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_clear_group_having_marks (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -458,8 +456,9 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 
   /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
    * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
-   * on any unbound name in the value clause. */
-  if (spec->info.spec.remote_server_name)
+   * on any unbound name in the value clause. A target with its columns, in the derived
+   * dblink table shape, is bound, so it is checked like a local one. */
+  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -524,9 +523,10 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
     }
 
   /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
-   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
-   * post callback must not decrement it either, or *level_p underflows. */
-  if (spec->info.spec.remote_server_name)
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec that is
+   * not in the derived dblink table shape, so this post callback must not decrement it
+   * either, or *level_p underflows. */
+  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
     {
       return node;
     }
@@ -1350,6 +1350,13 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	  else
 	    {
 	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+	      /* aliases and the names deferred by name binding have no type. resolve them before the type checking
+	       * below */
+	      if (!pt_has_error (parser))
+		{
+		  table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
+		}
 	    }
 	  spec->info.spec.derived_table = table;
 
@@ -1914,6 +1921,12 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
       attrs_list = node->info.merge.insert.attr_list;
     }
 
+  if (cls_name == NULL)
+    {
+      /* a remote target in the derived dblink table shape has no local class */
+      return;
+    }
+
   au_fetch_class_force (cls_name->info.name.db_object, &smclass, AU_FETCH_READ);
   if (smclass)
     {
@@ -2197,12 +2210,30 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      && node->info.query.q.select.list->type_enum == PT_TYPE_STAR)
 	    {
 	      PT_NODE *next = node->info.query.q.select.list->next;
+	      int star_pos = node->info.query.q.select.list->buffer_pos;
 
 	      /* To consider 'select *, xxx ...', release "*" node only. */
 	      node->info.query.q.select.list->next = NULL;
 	      parser_free_node (parser, node->info.query.q.select.list);
 
 	      node->info.query.q.select.list = pt_resolve_star (parser, node->info.query.q.select.from, NULL);
+
+	      if (parser->flag.is_parsing_static_sql)
+		{
+		  PT_NODE *spec;
+
+		  /* the columns of a derived table or a CTE are written in the text, but those of a class can change */
+		  for (spec = node->info.query.q.select.from; spec != NULL && !PT_SPEC_IS_ENTITY (spec);
+		       spec = spec->next)
+		    {
+		      ;
+		    }
+		  if (spec != NULL)
+		    {
+		      pt_record_static_sql_star (parser, PT_SS_STAR_ALL, star_pos, node->info.query.q.select.list,
+						 true);
+		    }
+		}
 
 	      if (next != NULL)
 		{
@@ -2293,11 +2324,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		      else
 			{
 			  /* STEP 2-2-2) recreate select_list */
+			  PT_NODE *star_attrs;
+
 			  if (PT_SPEC_IS_ENTITY (spec))
 			    {
-			      resolved_attrs =
-				parser_append_node (attr->next,
-						    pt_resolve_star (parser, node->info.query.q.select.from, attr));
+			      star_attrs = pt_resolve_star (parser, node->info.query.q.select.from, attr);
+			      if (parser->flag.is_parsing_static_sql)
+				{
+				  pt_record_static_sql_star (parser, PT_SS_STAR_QUALIFIED, attr->buffer_pos, star_attrs,
+							     false);
+				}
 			    }
 			  else
 			    {
@@ -2305,10 +2341,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 				{
 				  as_attr->info.name.resolved = range_var->info.name.original;
 				}
-			      resolved_attrs =
-				parser_append_node (attr->next,
-						    parser_copy_tree_list (parser, spec->info.spec.as_attr_list));
+			      star_attrs = parser_copy_tree_list (parser, spec->info.spec.as_attr_list);
 			    }
+			  resolved_attrs = parser_append_node (attr->next, star_attrs);
 
 			  if (prev_attr == NULL)
 			    {
@@ -3151,6 +3186,13 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       if (!node->info.insert.attr_list)
 	{
 	  node->info.insert.attr_list = pt_resolve_star (parser, node->info.insert.spec, NULL);
+
+	  if (parser->flag.is_parsing_static_sql && node->info.insert.spec->info.spec.entity_name != NULL)
+	    {
+	      pt_record_static_sql_star (parser, PT_SS_INSERT_COLUMNS,
+					 node->info.insert.spec->info.spec.entity_name->buffer_pos,
+					 node->info.insert.attr_list, false);
+	    }
 	}
 
       fill_in_insert_default_function_arguments (parser, node);
@@ -3220,10 +3262,24 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    {
 	      if (attr->info.name.meta_class == PT_PARAMETER)
 		{
+		  PT_NODE *ins_spec = node->info.insert.spec;
+		  const char *class_name;
+
+		  /* a remote target with its columns has its name in the derived dblink table, not in entity_name */
+		  if (ins_spec->info.spec.entity_name != NULL)
+		    {
+		      class_name = ins_spec->info.spec.entity_name->info.name.original;
+		    }
+		  else
+		    {
+		      assert (PT_SPEC_IS_DERIVED (ins_spec)
+			      && ins_spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE);
+		      class_name = ins_spec->info.spec.derived_table->info.dblink_table.remote_table_name;
+		    }
+
 		  /* this is not an attribute of insert spec */
 		  PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ATTRIBUTE_OF,
-			       attr->info.name.original,
-			       node->info.insert.spec->info.spec.entity_name->info.name.original);
+			       attr->info.name.original, class_name);
 		}
 	    }
 	}
@@ -3253,6 +3309,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      if (!node->info.merge.insert.attr_list)
 		{
 		  node->info.merge.insert.attr_list = pt_resolve_star (parser, node->info.merge.into, NULL);
+		  if (parser->flag.is_parsing_static_sql)
+		    {
+		      pt_record_static_sql_star (parser, PT_SS_MERGE_INSERT_COLUMNS, -1,
+						 node->info.merge.insert.attr_list, false);
+		    }
 		}
 	      /* resolve DEFAULT clauses */
 	      if (node->info.merge.into->info.spec.entity_name)
@@ -3420,6 +3481,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  /* find the type of the method here */
 	  if (!pt_resolve_method_type (parser, node) && (node->info.method_call.call_or_expr != PT_IS_CALL_STMT))
 	    {
+	      if (PT_IS_HOSTVAR (node->info.method_call.on_call_target) && parser->flag.set_host_var == 0)
+		{
+		  /* m () ON ?: the class to look the method up in is that of the object bound at execute */
+		  parser->flag.needs_bound_hostvar = 1;
+		}
 	      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_DOESNT_EXIST,
 			  node->info.method_call.method_name->info.name.original);
 	      break;
@@ -3482,7 +3548,8 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		if (is_pt_name_in_group_having (node))
 		  {
 		    // it may be an alias of the select list. it will be converted after pt_resolve_group_having_alias ()
-		    node->etc = (void *) pt_append_string (parser, NULL, CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL);
+		    PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
+		    PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL);
 		  }
 		else
 		  {
@@ -4196,6 +4263,12 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
       assert (PT_SPEC_IS_CTE (spec) || PT_SPEC_IS_DERIVED (spec));
       col = pt_is_on_list (parser, name, spec->info.spec.as_attr_list);
       ok = (col != NULL);
+      if (!ok && spec->info.spec.remote_server_name != NULL && name->info.name.original != NULL)
+	{
+	  /* Report a column a remote DML target lacks as db_get_attribute_force () does for a local class.
+	   * pt_bind_name_or_path_in_scope () clears it once the name is found in any spec. */
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, name->info.name.original);
+	}
       if (col && !name->info.name.spec_id)
 	{
 	  name->type_enum = col->type_enum;
@@ -4715,12 +4788,12 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	  {
 	    db_enum = &DOM_GET_ENUM_ELEM (domain, idx);
 	    s = pt_make_string_value (parser, DB_GET_ENUM_ELEM_STRING (db_enum));
-	    DB_SET_ENUM_ELEM_CODESET (&(DB_GET_ENUMERATION (&(s->info.value.db_value))),
-				      DB_GET_ENUM_ELEM_CODESET (db_enum));
 	    if (s == NULL)
 	      {
 		return NULL;
 	      }
+	    DB_SET_ENUM_ELEM_CODESET (&(DB_GET_ENUMERATION (&(s->info.value.db_value))),
+				      DB_GET_ENUM_ELEM_CODESET (db_enum));
 	    result->info.data_type.enumeration = parser_append_node (s, result->info.data_type.enumeration);
 	  }
 
@@ -6012,7 +6085,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	{
 	  if (pt_find_name_in_spec (parser, spec, in_node))
 	    {
-	      if (spec->info.spec.remote_server_name)
+	      if (spec->info.spec.remote_server_name && PT_SPEC_IS_ENTITY (spec))
 		{
 		  /* only column name with remote server name is resolved
 		   * PT_DOT node such as new.col obj.old does not resolve */
@@ -9117,17 +9190,12 @@ pt_resolve_natural_join (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_pare
 static bool
 is_pt_name_in_group_having (PT_NODE * node)
 {
-  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+  if (node == NULL || node->node_type != PT_NAME)
     {
       return false;
     }
 
-  if (strcmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
-    {
-      return true;
-    }
-
-  return false;
+  return PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_IN_GROUP_HAVING);
 }
 
 /*
@@ -9139,12 +9207,24 @@ is_pt_name_in_group_having (PT_NODE * node)
 static bool
 is_pt_name_deferred_for_static_sql (PT_NODE * node)
 {
-  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+  if (node == NULL || node->node_type != PT_NAME)
     {
       return false;
     }
 
-  return strcmp ((char *) node->etc, CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL) == 0;
+  return PT_NAME_INFO_IS_FLAGED (node, PT_NAME_INFO_DEFERRED_FOR_STATIC_SQL);
+}
+
+/*
+ * is_group_having_alias_resolved () - check if the node is a query already done by
+ *                                     pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE
+ *   return:
+ *   node(in):
+ */
+static bool
+is_group_having_alias_resolved (PT_NODE * node)
+{
+  return PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved;
 }
 
 /*
@@ -9163,6 +9243,12 @@ pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE *
 {
   *continue_walk = PT_CONTINUE_WALK;
 
+  if (is_group_having_alias_resolved (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
   if (is_pt_name_deferred_for_static_sql (node))
     {
       node = pt_parameterize_for_static_sql (parser, node);
@@ -9170,6 +9256,72 @@ pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE *
 	{
 	  *continue_walk = PT_STOP_WALK;
 	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_resolve_group_having_alias_and_deferred_name () - resolve aliases in group by/having/order by and, for a static
+ *                                                      SQL, convert the names deferred by name binding which are not
+ *                                                      aliases to host variables
+ *   return:
+ *   parser(in):
+ *   node(in):
+ */
+static PT_NODE *
+pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  node = parser_walk_tree (parser, node, pt_resolve_group_having_alias, NULL, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return node;
+    }
+
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      node = parser_walk_tree (parser, node, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+      if (pt_has_error (parser))
+	{
+	  return node;
+	}
+    }
+
+  if (node != NULL && PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* the walks above skip it from now on (e.g. for the enclosing query of a derived table) */
+      node->info.query.flag.group_having_alias_resolved = 1;
+    }
+
+  return node;
+}
+
+/*
+ * pt_clear_group_having_marks () - clear the marks which are meaningful only in a pt_resolve_names () pass:
+ *                                  PT_NAME_INFO_IN_GROUP_HAVING of names and group_having_alias_resolved of queries
+ *   return:
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_clear_group_having_marks (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (node->node_type == PT_NAME)
+    {
+      PT_NAME_INFO_CLEAR_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
+    }
+  else if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      node->info.query.flag.group_having_alias_resolved = 0;
     }
 
   return node;
@@ -9192,7 +9344,7 @@ pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int 
     {
       return node;
     }
-  node->etc = (void *) pt_append_string (parser, NULL, CPTR_PT_NAME_IN_GROUP_HAVING);
+  PT_NAME_INFO_SET_FLAG (node, PT_NAME_INFO_IN_GROUP_HAVING);
 
   return node;
 }
@@ -9419,7 +9571,18 @@ pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *ch
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node == NULL || node->node_type != PT_SELECT)
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (is_group_having_alias_resolved (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type != PT_SELECT)
     {
       return node;
     }
@@ -9504,7 +9667,16 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	}
 
       /* Before pt_bind_name, we mark PT_NAME in group by/ having. */
-      statement = parser_walk_tree (parser, statement, pt_mark_group_having_pt_name, NULL, NULL, NULL);
+      if (parser->host_var_classified == statement)
+	{
+	  /* CBRD-27583: the same walk classifies the positions, before type checking */
+	  parser->host_var_classified = NULL;
+	  statement = pt_classify_host_var_positions (parser, statement, pt_mark_group_having_pt_name, NULL);
+	}
+      else
+	{
+	  statement = parser_walk_tree (parser, statement, pt_mark_group_having_pt_name, NULL, NULL, NULL);
+	}
       if (pt_has_error (parser))
 	{
 	  return NULL;
@@ -9524,22 +9696,14 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	}
 
       /* Resolve alias in group by/having. */
-      statement = parser_walk_tree (parser, statement, pt_resolve_group_having_alias, NULL, NULL, NULL);
+      statement = pt_resolve_group_having_alias_and_deferred_name (parser, statement);
       if (pt_has_error (parser))
 	{
 	  return NULL;
 	}
 
-      if (parser->flag.is_parsing_static_sql == 1)
-	{
-	  /* names in group by/having/order by which are not aliases are converted to host variables */
-	  statement =
-	    parser_walk_tree (parser, statement, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
-	  if (pt_has_error (parser))
-	    {
-	      return NULL;
-	    }
-	}
+      /* the marks must not be left for another pt_resolve_names () on this tree or its copy */
+      statement = parser_walk_tree (parser, statement, pt_clear_group_having_marks, NULL, NULL, NULL);
 
       /*
        * The process converts natural join to inner/outer join.
@@ -10279,6 +10443,11 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else if (obj_param->node_type == PT_HOST_VAR)
     {
+      if (parser->flag.set_host_var == 0)
+	{
+	  /* compiled before the values are bound: the object to update is known only at execute */
+	  parser->flag.needs_bound_hostvar = 1;
+	}
       val = pt_value_to_db (parser, obj_param);
     }
 
@@ -11402,6 +11571,12 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
   non_recursive_cte = parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg,
 					pt_bind_names_post, bind_arg);
 
+  /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
+  if (!pt_has_error (parser))
+    {
+      non_recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, non_recursive_cte);
+    }
+
   /* must bind any expr types in non recursive part; required for types binding */
   save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
   bind_arg->sc_info->donot_fold = true;	/* skip folding */
@@ -11434,6 +11609,12 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       if (recursive_cte == NULL)
 	{
 	  goto end;
+	}
+
+      /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
+      if (!pt_has_error (parser))
+	{
+	  recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, recursive_cte);
 	}
 
       cte_def->info.cte.recursive_part = recursive_cte;
@@ -11765,6 +11946,11 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
       /* if derived from a set expression, it better have a set type */
       if (!pt_is_set_type (derived_table))
 	{
+	  if (PT_IS_HOSTVAR (derived_table) && parser->flag.set_host_var == 0)
+	    {
+	      /* TABLE (?): the collection type is known only from the value bound at execute */
+	      parser->flag.needs_bound_hostvar = 1;
+	    }
 	  PT_ERRORmf (parser, parent_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MUST_BE_SET_MSET_SEQ,
 		      pt_short_print (parser, derived_table));
 	  return;
@@ -12160,6 +12346,32 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 
   parser->host_variables = larger_host_variables;
   parser->host_var_expected_domains = larger_host_var_expected_domains;
+
+  /* keep the end of the replaced name or path expression in the source text
+   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()) */
+  {
+    bool was_null = (parser->static_sql_host_var_end == NULL);
+    int *larger_host_var_end = (int *) realloc (parser->static_sql_host_var_end, count_to_realloc * sizeof (int));
+
+    if (larger_host_var_end != NULL)
+      {
+	if (was_null)
+	  {
+	    for (int i = 0; i < parser->host_var_count; i++)
+	      {
+		larger_host_var_end[i] = -1;
+	      }
+	  }
+	larger_host_var_end[parser->host_var_count] = name_node->buffer_pos;
+	parser->static_sql_host_var_end = larger_host_var_end;
+      }
+    else
+      {
+	/* the text edits can not be made; the rewritten query will be printed from the tree */
+	free_and_init (parser->static_sql_host_var_end);
+	parser->static_sql_edit_status = -1;
+      }
+  }
 
   db_make_null (&parser->host_variables[parser->host_var_count]);
   parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);
