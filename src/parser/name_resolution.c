@@ -3572,7 +3572,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  }
 	else
 	  {
-	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	    /* a name not found in a class sets ER_OBJ_INVALID_ATTRIBUTE, but a name in group by/having not found in
+	     * a derived table or a CTE sets no error (see pt_bind_name_or_path_in_scope ()) */
+	    if (parser->flag.is_parsing_static_sql == 1
+		&& (er_errid () == ER_OBJ_INVALID_ATTRIBUTE
+		    || (er_errid () == NO_ERROR && !pt_has_error (parser) && is_pt_name_in_group_having (node))))
 	      {
 		er_clear ();
 		pt_reset_error (parser);
