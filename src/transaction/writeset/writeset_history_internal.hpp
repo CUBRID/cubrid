@@ -39,6 +39,7 @@ struct wset_history
   wset_history_map map;
   LOG_LSA history_start;
   LOG_LSA prev_commit_lsa;
+  /* Take history_lock before seq_lock when both are needed. Never wait for a history reader with seq_lock held. */
   pthread_rwlock_t history_lock;
   pthread_mutex_t seq_lock;
 };
@@ -47,6 +48,7 @@ extern LOG_WSET_HISTORY wset_History;
 
 extern void wset_history_lock_for_probe (LOG_LSA *history_start, LOG_LSA *prev_commit_lsa);
 extern void wset_history_unlock_after_probe (void);
+extern void wset_history_get_boundaries (LOG_LSA *history_start, LOG_LSA *prev_commit_lsa);
 extern bool wset_history_probe_key (LOG_WSET_HASH hash, LOG_WSET_KIND kind, LOG_WSET_SLOTS &slots,
 				    LOG_LSA &candidate, bool &candidate_is_ref);
 extern void wset_history_get_commit_order_dependency (LOG_LSA *dependency_out);
