@@ -541,7 +541,7 @@ sm_define_view_routine_privileges_spec (void)
       /* CT_STORED_PROC_NAME */
       "INNER JOIN [%s] AS [sp] ON [sp].[pkg_of] = [auth].[object_of] "
     "WHERE "
-      AUTH_CHECK_PRIVILEGE("[sp].[owner].[name]", "[auth].[grantee].[name]", "[auth].[grantor].[name]") " "
+      AUTH_CHECK_USER ("[sp].[owner].[name], [auth].[grantee].[name], [auth].[grantor].[name]") " "
       /* DB_OBJECT_PACKAGE */
       "AND [auth].[object_type] = %d "
       "AND [sp].[is_system_generated] = 0",
