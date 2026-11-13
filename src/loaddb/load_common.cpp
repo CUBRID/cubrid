@@ -1059,14 +1059,25 @@ namespace cubload
 		      {
 			/*
 			 * The records of a data format this build does not know cannot be told apart, so the section
-			 * cannot be cut into batches for the server to report it. It is reported here instead, with
-			 * the message the scanner gives in SA mode.
+			 * cannot be cut into batches for the server to report it. It is reported here instead, as the
+			 * scanner reports it in SA mode: led by the line of the command, lineno counting from 0.
 			 */
+			const char *line_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						  LOADDB_MSG_LINE);
 			const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 						 LOADDB_MSG_UNSUPPORTED_DATA_FORMAT);
+			char msg[1024];
+			int len;
 
-			fprintf (stderr, msg_format, (int) data_format);
-			util_log_write_errstr (msg_format, (int) data_format);
+			len = snprintf (msg, sizeof (msg), line_format, lineno + 1);
+			if (len < 0 || (std::size_t) len >= sizeof (msg))
+			  {
+			    len = 0;
+			  }
+			snprintf (msg + len, sizeof (msg) - len, msg_format, (int) data_format);
+
+			fprintf (stderr, "%s", msg);
+			util_log_write_errstr ("%s", msg);
 			object_file.close ();
 			return ER_FAILED;
 		      }
