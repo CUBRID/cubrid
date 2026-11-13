@@ -65,13 +65,13 @@ static int wset_midxkey_hash (const VFID *index_vfid, DB_VALUE *key, UINT64 *has
  *
  * return: writeset key hash
  *
- * Note: Two transactions whose keys hash alike get a dependency and are applied in commit order on the
- *       slave, so the same key of the same B-tree must hash alike. The index VFID and the key are hashed,
+ * Note: Equal B-tree keys must hash alike for WRITE/WRITE and WRITE/REF ordering; REF/REF stays independent.
+ *       The index VFID and the key are hashed,
  *       not the row's class OID: a class hierarchy shares one B-tree for an inherited PRIMARY KEY or UNIQUE.
  *       For example, T1 deletes k = 1 from sup and T2 inserts k = 1 into sub (sub UNDER sup). With the class
  *       OID the hashes differ, T2 gets no dependency, and the slave can insert first and fail on the unique
  *       key. An FK REF to sup whose parent row is in sub is split the same way. Different keys hashing
- *       alike only add a dependency, which is safe.
+ *       alike may add a dependency, which is safe.
  */
 static UINT64
 wset_fnv1a (const VFID *index_vfid, const char *packed, int len)

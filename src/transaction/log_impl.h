@@ -358,8 +358,8 @@ struct log_topops_addresses
 				 * system action */
   LOG_LSA posp_lsa;		/* The first address of a postpone log record for top system operation. We add this
 				 * since it is reset during recovery to the last reference postpone address. */
-  size_t wset_mark;		/* number of writeset keys collected when this system operation started; the keys
-				 * added afterwards belong to the operation and are dropped at its SYSOP_END */
+  size_t wset_mark;		/* first writeset entry of this operation; independent replication units publish or
+				 * discard their range at SYSOP_END, while attached operations keep it for outer COMMIT */
   bool repl_flushed;		/* replication records were appended to the log while this was the innermost open
 				 * system operation, so its SYSOP_END is where the slave must apply them */
   bool repl_unit;		/* the operation flush-marked its replication records (serial update, INCR/DECR,

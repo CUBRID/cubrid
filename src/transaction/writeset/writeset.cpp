@@ -135,7 +135,7 @@ wset_trace_log_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *
  *   hash(in): the key hash
  *   kind(in): WRITE (this transaction owns the key) or REF (foreign-key reference only)
  *
- * return: NO_ERROR
+ * return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
  *
  * Note: The public collection functions skip calls when collection is disabled. When the
  *       per-transaction limit is exceeded here, every collected key is dropped and the transaction
