@@ -4408,7 +4408,9 @@ locator_peek_last_header (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, M
 {
   SCAN_CODE scan;
 
-  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+  /* read the slot as a heap scan does: a slot an undone insert freed may hold another row's REC_NEWHOME by now, and
+   * that, like an empty slot, is S_DOESNT_EXIST rather than an error */
+  scan = heap_prepare_get_context (thread_p, context, true, LOG_WARNING_IF_DELETED);
   if (scan == S_SUCCESS)
     {
       scan = heap_get_mvcc_header (thread_p, context, header);
@@ -4479,8 +4481,8 @@ locator_wait_out_child_writer (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	}
       if (writer == MVCCID_NULL)
 	{
-	  /* nothing to wait for, or nothing left to read (a slot freed, or taken by another row's address): the locked
-	   * read decides, and skips the child as it always has */
+	  /* nothing to wait for, or nothing left to read (a slot freed, or taken by another row's address or moved
+	   * record): the locked read decides, and skips the child as it always has */
 	  if (scan != S_SUCCESS)
 	    {
 	      er_clear ();
