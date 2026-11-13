@@ -954,6 +954,7 @@ namespace cubconn::connection
     if (!ctx)
       {
 	/* failed to allocate the resources */
+	css_prepare_shutdown_conn (item.conn);
 	css_free_conn (item.conn);
 
 	/* just ignore */

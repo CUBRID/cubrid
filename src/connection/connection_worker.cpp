@@ -1625,6 +1625,8 @@ retry:
 	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
+	/* handle_connection_close () gives back the client slot, and a refused connection never reaches it */
+	css_prepare_shutdown_conn (ctx->m_conn);
 	/* the coordinator frees the connection on RETURN_TO_POOL */
 	m_removed_context.push_back (ctx);
 	return;
@@ -1639,6 +1641,7 @@ retry:
 
 	m_events.remove_descriptor (ctx->m_conn->fd);
 
+	css_prepare_shutdown_conn (ctx->m_conn);
 	m_removed_context.push_back (ctx);
 	/* a context is handed to a worker only once */
 	assert_release (false);
