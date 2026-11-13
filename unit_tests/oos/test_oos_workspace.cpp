@@ -88,8 +88,11 @@ class OosWorkspaceTest : public ::testing::Test
       if (pid == 0)
 	{
 	  if (chdir (root.c_str ()) != 0
+	      || setenv ("CUBRID", root.c_str (), 1) != 0
 	      || setenv ("CUBRID_DATABASES", root.c_str (), 1) != 0
 	      || setenv ("CUBRID_CONF_FILE", (root / "cubrid.conf").c_str (), 1) != 0
+	      || setenv ("CUBRID_TMP", (root / "tmp").c_str (), 1) != 0
+	      || setenv ("TMPDIR", (root / "tmp").c_str (), 1) != 0
 	      || setenv ("LC_ALL", "C", 1) != 0
 	      || freopen (in.c_str (), "r", stdin) == nullptr
 	      || freopen (out.c_str (), "w", stdout) == nullptr
@@ -214,10 +217,28 @@ class OosWorkspaceTest : public ::testing::Test
 
     void SetUp () override
     {
+      const char *cubrid = getenv ("CUBRID");
+      ASSERT_NE (cubrid, nullptr);
+      ASSERT_NE (*cubrid, '\0');
+      const fs::path install = fs::absolute (cubrid);
       std::string name = (fs::temp_directory_path () / "cubrid-workspace-oos-XXXXXX").string ();
       ASSERT_NE (mkdtemp (name.data ()), nullptr);
       root = name;
-      fs::create_directory (root / "lob");
+      for (const auto *dir :
+	   {"conf", "log", "tmp", "var", "lob"
+	   })
+	{
+	  fs::create_directory (root / dir);
+	}
+      for (const auto *dir :
+	   {"bin", "lib", "locales", "msg", "timezones", "lib64", "share", "vm"
+	   })
+	{
+	  if (fs::exists (install / dir))
+	    {
+	      fs::create_directory_symlink (install / dir, root / dir);
+	    }
+	}
       ASSERT_NO_FATAL_FAILURE (write (root / "cubrid.conf", "[common]\ndata_buffer_size=64M\nlog_buffer_size=16M\n"));
       std::mt19937 rng (27424);
       const char *hex = "0123456789abcdef";

@@ -459,8 +459,10 @@ extern int stream_from_init (int stream_kind, const char *config, int config_len
 extern int stream_from_send_data (const char *data, int data_len);
 extern int stream_from_end (INT64 * count, const char *data = NULL, int data_len = 0);
 extern int stream_from_abort (void);
+extern void stream_from_set_savepoint (const char *savepoint_name);
 extern bool stream_from_is_open (void);
 extern void stream_from_reset (void);
+extern void stream_from_final (void);
 extern bool stream_from_holds_download (void);
 extern bool stream_from_holds_handle (INT64 handle);
 extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,

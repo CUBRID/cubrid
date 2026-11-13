@@ -56,23 +56,6 @@ OOS_FINDSPACE bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, c
     PAGE_PTR *out_pgptr);
 
 
-// ---------------------------------------------------------------------------
-// helper: get free space of a page identified by OID
-// ---------------------------------------------------------------------------
-static int
-get_free_space_of_oid_page (const OID &oid)
-{
-  VPID vpid = {oid.pageid, oid.volid};
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
-				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
-    {
-      return -1;
-    }
-  test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
-  return spage_get_free_space (thread_p, page_ptr);
-}
-
 
 // ===========================================================================
 // TEST: BestspaceReuseAfterDelete
@@ -165,7 +148,7 @@ TEST (OosBestspaceTest, BestspaceFullPageAllocsNew)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_debug ("large oid={vol=%d,page=%d,slot=%d}", oid_large.volid, oid_large.pageid, oid_large.slotid);
 
-  int free_after_large = get_free_space_of_oid_page (oid_large);
+  int free_after_large = test_oos_utils::get_free_space_of_oid_page (thread_p, oid_large);
   test_oos_debug ("free_after_large=%d", free_after_large);
 
   // Insert another record of similar size — should go to a different page
@@ -1280,7 +1263,7 @@ TEST (OosBestspaceTest, BestspaceExactMaxChunkBoundary)
   PAGEID exact_page = oid_exact.pageid;
 
   // The page should be nearly full after this insert
-  int free_after = get_free_space_of_oid_page (oid_exact);
+  int free_after = test_oos_utils::get_free_space_of_oid_page (thread_p, oid_exact);
   test_oos_debug ("free space after exact max_chunk insert: %d", free_after);
 
   // A second record of the same size should go to a different page
@@ -1354,7 +1337,7 @@ TEST (OosBestspaceTest, DeleteUpdatesBestspaceCacheDirectly)
   PAGEID target_page = oid_large.pageid;
 
   // After insert, freespace is tiny (~100 bytes usable).
-  int free_after_insert = get_free_space_of_oid_page (oid_large);
+  int free_after_insert = test_oos_utils::get_free_space_of_oid_page (thread_p, oid_large);
   test_oos_debug ("free_after_insert=%d", free_after_insert);
   ASSERT_LT (free_after_insert, 500);  // should be very small
 

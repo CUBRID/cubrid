@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 스트림 세션 오류: %1$s.
+1218 스트림이 열려 있지 않음: %1$s.
+1219 지원하지 않는 스트림: %1$s.
+1220 잘못된 스트림 사용: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -2048,8 +2048,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
-345 CLOB 리터럴은 1GiB를 넘을 수 없습니다. 1GiB를 넘는 값은 CLOB_FROM_FILE 또는 CFILE_TO_CLOB으로 넣을 수 있습니다(최대 4GiB).
-346 BLOB 리터럴은 128MiB를 넘을 수 없습니다. 128MiB를 넘는 값은 BLOB_FROM_FILE 또는 BFILE_TO_BLOB으로 넣을 수 있습니다(최대 4GiB).
+345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
+346 CLOB 리터럴은 1GiB를 넘을 수 없습니다. 1GiB를 넘는 값은 CLOB_FROM_FILE 또는 CFILE_TO_CLOB으로 넣을 수 있습니다(최대 4GiB).
+347 BLOB 리터럴은 128MiB를 넘을 수 없습니다. 128MiB를 넘는 값은 BLOB_FROM_FILE 또는 BFILE_TO_BLOB으로 넣을 수 있습니다(최대 4GiB).
 
 
 

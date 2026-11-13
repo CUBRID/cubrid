@@ -29,6 +29,8 @@
 #include "error_code.h"
 #include "error_manager.h"
 
+#include <cstdio>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -50,31 +52,75 @@ namespace
     return table;
   }
 
+  /* a config starts with its version, a big-endian int as or_pack_int () writes it */
+  const int CONFIG_VERSION_SIZE = 4;
+
+  int
+  config_version (const char *config)
+  {
+    const unsigned char *p = (const unsigned char *) config;
+
+    return (int) (((unsigned int) p[0] << 24) | ((unsigned int) p[1] << 16) | ((unsigned int) p[2] << 8) | p[3]);
+  }
+
   bool
   kind_desc_is_consistent (const stream_kind_desc &desc)
   {
+    if (desc.config_version_max < 1)
+      {
+	return false;
+      }
+
     if (desc.direction == STREAM_UPLOAD)
       {
 	return desc.sink != NULL && desc.source == NULL;
       }
 
-    /* nothing a download ends or stages, and its handle reads in one transaction: the client forgets its
-     * downloads at every transaction end, so a handle that outlived one could never be released */
-    return desc.direction == STREAM_DOWNLOAD && desc.source != NULL && desc.sink == NULL && !desc.ends_unit_of_work
-	   && !desc.result_is_handle && desc.scope == STREAM_SCOPE_TRAN;
+    /* a download ends no statement */
+    return desc.direction == STREAM_DOWNLOAD && desc.source != NULL && desc.sink == NULL && !desc.ends_unit_of_work;
   }
 
-  /* the registered record of kind in direction, or NULL with the transport-common error set */
+  void
+  refuse_open (int *error_code, int code, const char *what)
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, code, 1, what);
+    *error_code = code;
+  }
+
+  /* The registered record of kind in direction, whose config the factory may read, or NULL with the error set:
+   * ER_STREAM_NOT_SUPPORTED for a kind or a config version this server does not take, ER_STREAM_INVALID_USE for a
+   * config without a version. */
   const stream_kind_desc *
-  kind_open_desc (int kind, stream_direction direction, int *error_code)
+  kind_open_desc (int kind, stream_direction direction, const char *config, int config_len, int *error_code)
   {
     const stream_kind_desc *desc = stream_kind_find (kind);
+    char msg[96];
+    int version;
 
     if (desc == NULL || desc->direction != direction)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
-		desc == NULL ? "unknown stream kind" : "stream kind opened in the wrong direction");
-	*error_code = ER_STREAM_SESSION_ERROR;
+	refuse_open (error_code, ER_STREAM_NOT_SUPPORTED,
+		     desc == NULL ? "unknown stream kind" : "stream kind opened in the wrong direction");
+	return NULL;
+      }
+
+    if (config == NULL || config_len < CONFIG_VERSION_SIZE)
+      {
+	refuse_open (error_code, ER_STREAM_INVALID_USE, "stream config has no version");
+	return NULL;
+      }
+
+    version = config_version (config);
+    if (version < 1)
+      {
+	refuse_open (error_code, ER_STREAM_INVALID_USE, "stream config version must be positive");
+	return NULL;
+      }
+    if (version > desc->config_version_max)
+      {
+	snprintf (msg, sizeof (msg), "stream config version %d is above %d, the highest this server accepts", version,
+		  desc->config_version_max);
+	refuse_open (error_code, ER_STREAM_NOT_SUPPORTED, msg);
 	return NULL;
       }
 
@@ -84,14 +130,16 @@ namespace
 
 /*
  * stream_kind_register () - Register the server half of one kind
- *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together
+ *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR for a record that does not hold together or a kind registered
+ *           already: consumers pick their own numbers, so two can collide
  *   kind(in): the STREAM_KIND_* value the consumer owns
  *   desc(in): its direction, factory and answers
  */
 int
 stream_kind_register (int kind, const stream_kind_desc &desc)
 {
-  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || !kind_desc_is_consistent (desc))
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || kind_table ()[kind].registered
+      || !kind_desc_is_consistent (desc))
     {
       return ER_STREAM_SESSION_ERROR;
     }
@@ -129,7 +177,7 @@ stream_kind_find (int kind)
 stream_session *
 stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int config_len, int *error_code)
 {
-  const stream_kind_desc *desc = kind_open_desc (kind, STREAM_UPLOAD, error_code);
+  const stream_kind_desc *desc = kind_open_desc (kind, STREAM_UPLOAD, config, config_len, error_code);
 
   if (desc == NULL)
     {
@@ -150,7 +198,7 @@ stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int
 stream_source *
 stream_source_create (THREAD_ENTRY *thread_p, int kind, const char *config, int config_len, int *error_code)
 {
-  const stream_kind_desc *desc = kind_open_desc (kind, STREAM_DOWNLOAD, error_code);
+  const stream_kind_desc *desc = kind_open_desc (kind, STREAM_DOWNLOAD, config, config_len, error_code);
 
   if (desc == NULL)
     {

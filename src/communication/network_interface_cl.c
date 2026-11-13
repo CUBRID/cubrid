@@ -7304,7 +7304,8 @@ btree_class_test_unique (char *buf, int buf_size)
  * fill_factor (in)	: Target fill ratio in percent.
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow pages deallocated.
- * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ * pairs_skipped (out)	: Number of page pairs and keys that could not be compacted until vacuum catches up (no OID
+ *			  boundary in a page pair, or no stable object in a key's leaf record).
  */
 int
 btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
@@ -7736,10 +7737,11 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
-  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included */
+  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included: EXECUTE_QUERY_WITH_COMMIT
+   * is the bit the server commits on */
   if (stream_from_is_open ())
     {
-      flag &= ~TRAN_AUTO_COMMIT;
+      flag &= ~(TRAN_AUTO_COMMIT | EXECUTE_QUERY_WITH_COMMIT);
     }
 
   /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
@@ -10046,8 +10048,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   /* Do it as async mode at the first request to the server. And, if several pages are left to get, keep it as async
    * mode */
 
-  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.pageid);
-  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.pageid)
+  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.load ().pageid);
+  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.load ().pageid)
     {
       /* In case of synchronous request */
       first_pageid_torecv = logwr_Gl.last_recv_pageid;
@@ -10144,7 +10146,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID
+      && logwr_Gl.hdr.eof_lsa.load ().pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;
@@ -12442,13 +12445,16 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 /* Whether this client holds an open stream session. The caller of a statement
  * that opened one needs to know that bytes are still to come, without knowing
  * which consumer opened it. */
-static bool stream_Is_open = false;
+static CUB_THREAD_LOCAL bool stream_Is_open = false;
+
+/* where giving the upload up goes back to (stream_from_set_savepoint), or NULL */
+static CUB_THREAD_LOCAL const char *stream_Savepoint = NULL;
 
 /* The download handles this client holds, as the READ_OPEN replies named them. Each ties the transaction as an
  * open result set does, and the server releases them all when the transaction ends (stream_from_reset). */
-static INT64 *stream_Downloads = NULL;
-static int stream_Download_count = 0;
-static int stream_Download_capacity = 0;
+static CUB_THREAD_LOCAL INT64 *stream_Downloads = NULL;
+static CUB_THREAD_LOCAL int stream_Download_count = 0;
+static CUB_THREAD_LOCAL int stream_Download_capacity = 0;
 
 static int
 stream_download_add (INT64 handle)
@@ -12482,6 +12488,27 @@ stream_download_find (INT64 handle)
 	}
     }
   return -1;
+}
+
+/*
+ * stream_roll_back_given_up () - Undo what an upload given up without its END flushed, as for a failed statement
+ *   reaches_transaction(in): false when the request failed on the wire, or the server already rolled back
+ */
+static void
+stream_roll_back_given_up (bool reaches_transaction)
+{
+  const char *savepoint = stream_Savepoint;
+
+  stream_Savepoint = NULL;
+  if (savepoint == NULL || !reaches_transaction)
+    {
+      return;
+    }
+
+  /* the error that ended the upload is the one to report */
+  er_stack_push ();
+  (void) tran_abort_upto_system_savepoint (savepoint);
+  er_stack_pop ();
 }
 
 static void
@@ -12525,7 +12552,23 @@ stream_from_reset (void)
 {
 #if defined(CS_MODE)
   stream_Is_open = false;
+  stream_Savepoint = NULL;
   stream_Download_count = 0;
+#endif /* CS_MODE */
+}
+
+/*
+ * stream_from_final () - Free this thread's download list, as a MULTI_CONN_TO_A_SERVER sub-client finishes
+ */
+void
+stream_from_final (void)
+{
+#if defined(CS_MODE)
+  free_and_init (stream_Downloads);
+  stream_Download_count = 0;
+  stream_Download_capacity = 0;
+  stream_Is_open = false;
+  stream_Savepoint = NULL;
 #endif /* CS_MODE */
 }
 
@@ -12652,6 +12695,7 @@ stream_from_init (int stream_kind, const char *config, int config_len, int flags
   if (rc == NO_ERROR && !(flags & STREAM_FLAG_FINAL))
     {
       stream_Is_open = true;
+      stream_Savepoint = NULL;
     }
   if (count != NULL)
     {
@@ -13226,6 +13270,7 @@ stream_from_send_data (const char *data, int data_len)
     {
       /* the server drops the session on a failed chunk, so nothing is open here either */
       stream_Is_open = false;
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
     }
 
   return rc;
@@ -13238,8 +13283,7 @@ stream_from_send_data (const char *data, int data_len)
 /*
  * stream_from_end () - End the stream and retrieve the session's result
  *   return: error code
- *   count(out): the binding's count -- rows for COPY and LOB DML -- or the handle
- *               issued for what a result_is_handle kind staged
+ *   count(out): the binding's count -- rows for COPY and LOB DML
  *   data(in), data_len(in): a last chunk to consume before ending, or none
  */
 int
@@ -13266,6 +13310,11 @@ stream_from_end (INT64 * count, const char *data, int data_len)
       ptr = or_unpack_int64 (ptr, count);
     }
   rc = stream_request_error (req_error, rc);
+  if (rc != NO_ERROR)
+    {
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+  stream_Savepoint = NULL;
 
   return rc;
 #else /* CS_MODE */
@@ -13282,9 +13331,9 @@ stream_from_end (INT64 * count, const char *data, int data_len)
  * For the failure the server cannot see: the consumer's client half gave up
  * before it had a chunk to send -- its encoder failed, the statement it belongs
  * to unwound, the user cancelled. Sending a chunk just to make the server refuse
- * it would report the wrong error; this says so directly. Nothing in the
- * transaction is undone by it -- whatever the session already flushed stays
- * where it is, and the caller's own rollback is what removes it.
+ * it would report the wrong error; this says so directly. What the session
+ * flushed is undone back to the savepoint the statement named
+ * (stream_from_set_savepoint ()), or else by the caller's rollback.
  */
 int
 stream_from_abort (void)
@@ -13306,12 +13355,25 @@ stream_from_abort (void)
       or_unpack_int (reply, &rc);
     }
   rc = stream_request_error (req_error, rc);
+  stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
 
   return rc;
 #else /* CS_MODE */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
   return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_set_savepoint () - Name where giving the open upload up goes back to, as for a failed statement
+ *   savepoint_name(in): a system savepoint the opening statement took before the open; it outlives the upload
+ */
+void
+stream_from_set_savepoint (const char *savepoint_name)
+{
+#if defined(CS_MODE)
+  stream_Savepoint = stream_Is_open ? savepoint_name : NULL;
+#endif /* CS_MODE */
 }
 
 #if defined(CS_MODE)
@@ -13530,9 +13592,9 @@ stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *
 }
 
 /*
- * stream_from_release () - Release a handle this client holds, of either direction
+ * stream_from_release () - Release a download handle this client holds
  *   return: error code; a handle the server no longer has is not an error
- *   handle(in): a download handle, or an upload's staged result
+ *   handle(in): a download handle
  */
 int
 stream_from_release (INT64 handle)

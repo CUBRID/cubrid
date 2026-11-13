@@ -694,7 +694,7 @@ proxy_handler_process_client_request (T_PROXY_EVENT * event_p)
       goto end;
     }
 
-  if (func_code <= 0 || func_code >= CAS_FC_MAX)
+  if (func_code <= 0 || func_code >= CAS_FC_PROBE_MAX)
     {
       error = ER_FAILED;
 
@@ -730,7 +730,8 @@ proxy_handler_process_client_request (T_PROXY_EVENT * event_p)
   PROXY_LOG (PROXY_LOG_MODE_DEBUG, "process client request. (func_code:%d, context:%s)", func_code,
 	     proxy_str_context (ctx_p));
 
-  proxy_client_fn = proxy_client_fn_table[func_code - 1];
+  /* a code a later release adds is answered as not implemented, as a CAS answers it */
+  proxy_client_fn = (func_code >= CAS_FC_MAX) ? fn_proxy_client_not_supported : proxy_client_fn_table[func_code - 1];
   error = proxy_client_fn (ctx_p, event_p, argc, argv);
   if (error)
     {

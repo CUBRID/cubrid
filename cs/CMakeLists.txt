@@ -202,6 +202,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_cl.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/stream_client.c
+  ${COMMUNICATION_DIR}/stream_debug_echo.cpp
   ${COMMUNICATION_DIR}/network_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
   )

@@ -37,24 +37,6 @@
 int bridge_oos_get_max_chunk_size_within_page ();
 
 // ============================================================================
-// Helpers
-// ============================================================================
-
-static int
-get_free_space_of_oid_page (const OID &oid)
-{
-  VPID vpid = {oid.pageid, oid.volid};
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
-				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
-    {
-      return -1;
-    }
-  test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
-  return spage_get_free_space (thread_p, page_ptr);
-}
-
-// ============================================================================
 // Test fixture: creates and destroys an OOS file per test
 // ============================================================================
 
@@ -140,14 +122,14 @@ TEST_F (OosVacuumServer, MultiChunkDelete)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int free_before = get_free_space_of_oid_page (head_oid);
+  int free_before = test_oos_utils::get_free_space_of_oid_page (thread_p, head_oid);
   ASSERT_GE (free_before, 0);
 
   /* Vacuum deletes the head OID; oos_delete follows the chain internally */
   err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int free_after = get_free_space_of_oid_page (head_oid);
+  int free_after = test_oos_utils::get_free_space_of_oid_page (thread_p, head_oid);
   ASSERT_GT (free_after, free_before) << "Head page must gain free space after deletion";
 
   /* Reading must fail */

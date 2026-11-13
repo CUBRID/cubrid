@@ -34,23 +34,6 @@ using namespace test_oos_log;
 int bridge_oos_get_max_chunk_size_within_page ();
 
 // ---------------------------------------------------------------------------
-// helper: fix page from OID with READ latch, return free space, then unfix
-// ---------------------------------------------------------------------------
-static int
-get_free_space_of_oid_page (const OID &oid)
-{
-  VPID vpid = {oid.pageid, oid.volid};
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
-				 PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
-    {
-      return -1;
-    }
-  test_oos_utils::auto_unfixed_page_ptr auto_page { page_ptr, test_oos_utils::page_auto_unfix {thread_p} };
-  return spage_get_free_space (thread_p, page_ptr);
-}
-
-// ---------------------------------------------------------------------------
 // helper: peek OOS_RECORD_HEADER from a slot (before deleting)
 // ---------------------------------------------------------------------------
 static int
@@ -106,14 +89,14 @@ TEST (OosDeleteTest, OosDeleteBasic)
   ASSERT_NE (oid.pageid, NULL_PAGEID);
   test_oos_debug ("Inserted oid={vol=%d,page=%d,slot=%d}", oid.volid, oid.pageid, oid.slotid);
 
-  int free_before = get_free_space_of_oid_page (oid);
+  int free_before = test_oos_utils::get_free_space_of_oid_page (thread_p, oid);
   ASSERT_GE (free_before, 0);
   test_oos_debug ("free_before=%d", free_before);
 
   err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int free_after = get_free_space_of_oid_page (oid);
+  int free_after = test_oos_utils::get_free_space_of_oid_page (thread_p, oid);
   ASSERT_GE (free_after, 0);
   test_oos_debug ("free_after=%d", free_after);
 
@@ -202,8 +185,8 @@ TEST (OosDeleteTest, OosDeleteMultiChunk)
   // A two-chunk record must have a valid next chunk
   ASSERT_NE (next_oid.pageid, NULL_PAGEID);
 
-  int head_free_before = get_free_space_of_oid_page (head_oid);
-  int next_free_before = get_free_space_of_oid_page (next_oid);
+  int head_free_before = test_oos_utils::get_free_space_of_oid_page (thread_p, head_oid);
+  int next_free_before = test_oos_utils::get_free_space_of_oid_page (thread_p, next_oid);
   ASSERT_GE (head_free_before, 0);
   ASSERT_GE (next_free_before, 0);
   test_oos_debug ("head_free_before=%d, next_free_before=%d", head_free_before, next_free_before);
@@ -211,8 +194,8 @@ TEST (OosDeleteTest, OosDeleteMultiChunk)
   err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int head_free_after = get_free_space_of_oid_page (head_oid);
-  int next_free_after = get_free_space_of_oid_page (next_oid);
+  int head_free_after = test_oos_utils::get_free_space_of_oid_page (thread_p, head_oid);
+  int next_free_after = test_oos_utils::get_free_space_of_oid_page (thread_p, next_oid);
   test_oos_debug ("head_free_after=%d, next_free_after=%d", head_free_after, next_free_after);
 
   // Both pages must have gained free space
@@ -306,7 +289,7 @@ TEST (OosDeleteTest, OosDeleteRestoresFreeSpace)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, first_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int free_after_first_insert = get_free_space_of_oid_page (first_oid);
+  int free_after_first_insert = test_oos_utils::get_free_space_of_oid_page (thread_p, first_oid);
 
   // Insert the record we want to delete
   RECDES rec_target{};
@@ -321,14 +304,14 @@ TEST (OosDeleteTest, OosDeleteRestoresFreeSpace)
   // Both inserts should land on the same page (small data)
   ASSERT_EQ (first_oid.pageid, target_oid.pageid);
 
-  int free_after_second_insert = get_free_space_of_oid_page (target_oid);
+  int free_after_second_insert = test_oos_utils::get_free_space_of_oid_page (thread_p, target_oid);
   ASSERT_LT (free_after_second_insert, free_after_first_insert);
 
   // Delete the second record
   err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, target_oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int free_after_delete = get_free_space_of_oid_page (target_oid);
+  int free_after_delete = test_oos_utils::get_free_space_of_oid_page (thread_p, target_oid);
   test_oos_debug ("free_after_first_insert=%d, free_after_second_insert=%d, free_after_delete=%d",
 		  free_after_first_insert, free_after_second_insert, free_after_delete);
 
@@ -559,7 +542,7 @@ TEST (OosDeleteTest, EmptiedListReportsEachPageOfMultiPageChainOnce)
     }
   for (const VPID &vpid : chain_vpids)
     {
-      int free_space = get_free_space_of_oid_page (OID{vpid.pageid, 0, vpid.volid});
+      int free_space = test_oos_utils::get_free_space_of_oid_page (thread_p, OID{vpid.pageid, 0, vpid.volid});
       ASSERT_GE (free_space, 0);
       // a page whose only records were this chain's chunks must be reported
       VPID v = vpid;

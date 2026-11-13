@@ -245,6 +245,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_sr.c
   ${COMMUNICATION_DIR}/stream_session.cpp
   ${COMMUNICATION_DIR}/stream_handle.cpp
+  ${COMMUNICATION_DIR}/stream_debug_echo.cpp
   )
 
 set(DEBUGGING_HEADERS

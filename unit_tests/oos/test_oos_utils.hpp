@@ -37,6 +37,7 @@
 #include "oos_file.hpp"
 #include "page_buffer.h"
 #include "record_descriptor.hpp"
+#include "slotted_page.h"
 #include "storage_common.h"
 
 namespace test_oos_utils
@@ -157,6 +158,20 @@ namespace test_oos_utils
   };
   using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
   using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
+
+  inline int
+  get_free_space_of_oid_page (THREAD_ENTRY *thread_p, const OID &oid)
+  {
+    VPID vpid = {oid.pageid, oid.volid};
+    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE_IF_IN_BUFFER,
+				   PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    if (page_ptr == nullptr)
+      {
+	return -1;
+      }
+    auto_unfixed_page_ptr auto_page { page_ptr, page_auto_unfix {thread_p} };
+    return spage_get_free_space (thread_p, page_ptr);
+  }
 
 } /* namespace test_oos_utils */
 

@@ -304,7 +304,8 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
 	  || srv_handle->schema_type == CCI_SCH_VCLASS || srv_handle->schema_type == CCI_SCH_ATTRIBUTE
 	  || srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE || srv_handle->schema_type == CCI_SCH_QUERY_SPEC
 	  || srv_handle->schema_type == CCI_SCH_DIRECT_SUPER_CLASS || srv_handle->schema_type == CCI_SCH_PRIMARY_KEY
-	  || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM || srv_handle->schema_type == CCI_SCH_SCHEMAS)
+	  || srv_handle->schema_type == CCI_SCH_ATTR_WITH_SYNONYM || srv_handle->schema_type == CCI_SCH_SCHEMAS
+	  || srv_handle->schema_type == CCI_SCH_CURRENT_SCHEMA)
 	{
 	  hm_qresult_end (srv_handle, FALSE);
 	}
@@ -568,6 +569,7 @@ srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 	case CCI_SCH_PRIMARY_KEY:
 	case CCI_SCH_ATTR_WITH_SYNONYM:
 	case CCI_SCH_SCHEMAS:
+	case CCI_SCH_CURRENT_SCHEMA:
 	  hm_qresult_end (srv_handle, TRUE);
 	  hm_session_free (srv_handle);
 	  break;
@@ -767,7 +769,8 @@ hm_has_result_tied_to_tran (void)
   T_SRV_HANDLE *srv_handle;
   int i, j;
 
-  for (i = 0; i < max_handle_id; i++)
+  /* not max_handle_id, for the reason hm_srv_handle_end_transaction_all () gives */
+  for (i = 0; i < max_srv_handle; i++)
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle == NULL || srv_handle->q_result == NULL

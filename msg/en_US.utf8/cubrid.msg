@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Stream session error: %1$s.
+1218 The stream is not open: %1$s.
+1219 The stream is not supported: %1$s.
+1220 Invalid use of a stream: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -2049,8 +2049,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
-345 CLOB literal exceeds 1 GiB. Values over 1 GiB can be loaded with CLOB_FROM_FILE or CFILE_TO_CLOB (up to 4 GiB).
-346 BLOB literal exceeds 128 MiB. Values over 128 MiB can be loaded with BLOB_FROM_FILE or BFILE_TO_BLOB (up to 4 GiB).
+345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
+346 CLOB literal exceeds 1 GiB. Values over 1 GiB can be loaded with CLOB_FROM_FILE or CFILE_TO_CLOB (up to 4 GiB).
+347 BLOB literal exceeds 128 MiB. Values over 128 MiB can be loaded with BLOB_FROM_FILE or BFILE_TO_BLOB (up to 4 GiB).
 
 
 
