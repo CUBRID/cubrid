@@ -5304,6 +5304,11 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
        * interpreter raises it */
       return -1;
     }
+  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_LIMIT_SUM))
+    {
+      /* the offset + count of a LIMIT rewrite gives the maximum on an overflow, which only the interpreter does */
+      return -1;
+    }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))
     {
       bctx->side_effect = true;

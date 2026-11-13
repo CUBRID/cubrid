@@ -4823,32 +4823,31 @@ pt_limit_has_host_var (const PT_NODE * node)
 }
 
 /*
- * pt_cast_limit_rewritten_sum () - cast the operands of a sum the rewrite builds over LIMIT values to DOUBLE
- *   return: true when an operand is cast, false for a sum without a host variable
+ * pt_cast_limit_rewritten_sum () - cast the string operands of a sum the rewrite builds over LIMIT values to DOUBLE
+ *                                  and mark the sum so that an overflow gives the BIGINT maximum
+ *   return: true when an operand has a host variable, false for a sum of literals
  *   parser(in):
  *   sum(in/out): the offset + count of a numbering predicate, the l + u of a KEYLIMIT, or the sum a UNION pushes
  *                down to its arms
  *
- * Note: An operand with a host variable is cast as a whole, so that its own arithmetic stays as the user wrote it,
- *       and the sum adds in DOUBLE, which no two values overflow (LIMIT 5, 9223372036854775807 reads from row 6).
+ * Note: Every path reads the sum the same way: an overflow gives the BIGINT maximum (PT_EXPR_INFO_LIMIT_SUM), so
+ *       LIMIT 5, 9223372036854775807 reads from row 6 instead of failing at the scan open of one path only.
  */
 bool
 pt_cast_limit_rewritten_sum (PARSER_CONTEXT * parser, PT_NODE * sum)
 {
-  bool cast = false;
-
-  if (pt_limit_has_host_var (sum->info.expr.arg1))
+  if (pt_limit_is_string (parser, sum->info.expr.arg1))
     {
       pt_cast_limit_operand (parser, &sum->info.expr.arg1);
-      cast = true;
     }
 
-  if (pt_limit_has_host_var (sum->info.expr.arg2))
+  if (pt_limit_is_string (parser, sum->info.expr.arg2))
     {
       pt_cast_limit_operand (parser, &sum->info.expr.arg2);
-      cast = true;
     }
-  return cast;
+
+  PT_EXPR_INFO_SET_FLAG (sum, PT_EXPR_INFO_LIMIT_SUM);
+  return pt_limit_has_host_var (sum->info.expr.arg1) || pt_limit_has_host_var (sum->info.expr.arg2);
 }
 
 /*

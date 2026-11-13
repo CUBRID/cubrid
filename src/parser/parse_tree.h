@@ -2449,6 +2449,8 @@ struct pt_expr_info
 							 * than a column-vs-constant compare; kept only when an index
 							 * adopts it */
 #define PT_EXPR_INFO_ANTI_JOIN_ON 67108864	/* 0x4000000, term in an ANTI JOIN ON condition */
+#define PT_EXPR_INFO_LIMIT_SUM 134217728	/* 0x8000000, the offset + count a LIMIT rewrite builds: an overflow gives
+						 * the BIGINT maximum (REGU_VARIABLE_LIMIT_SUM) */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)

@@ -11043,6 +11043,11 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		case PT_PLUS:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_ADD, domain);
+		  /* only the offset + count a LIMIT rewrite builds gives the maximum on an overflow */
+		  if (regu != NULL && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_LIMIT_SUM))
+		    {
+		      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_LIMIT_SUM);
+		    }
 		  break;
 
 		case PT_MINUS:

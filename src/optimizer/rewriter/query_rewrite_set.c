@@ -65,7 +65,8 @@ qo_push_limit_to_union (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * limit
 	      add_limit->info.expr.arg1 = parser_copy_tree (parser, save_next);
 	      add_limit->info.expr.arg2 = parser_copy_tree (parser, limit);
 	      limit->next = save_next;
-	      /* as the offset + count of a numbering predicate: in DOUBLE with a host variable, else in NUMERIC */
+	      /* as the offset + count of a numbering predicate: an overflow gives the maximum with a host variable,
+	       * else in NUMERIC */
 	      if (!pt_cast_limit_rewritten_sum (parser, add_limit))
 		{
 		  add_limit->type_enum = PT_TYPE_NUMERIC;
