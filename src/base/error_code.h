@@ -1568,10 +1568,10 @@
 
 #define ER_STREAM_NO_MORE_DATA                      -1215
 #define ER_STREAM_UNPACKING_INV_OBJ_ID              -1216
-#define ER_STREAM_RESERVED_2                        -1217
-#define ER_STREAM_RESERVED_3                        -1218
-#define ER_STREAM_RESERVED_4                        -1219
-#define ER_STREAM_RESERVED_5                        -1220
+#define ER_STREAM_SESSION_ERROR                     -1217
+#define ER_STREAM_NOT_OPEN                          -1218
+#define ER_STREAM_NOT_SUPPORTED                     -1219
+#define ER_STREAM_INVALID_USE                       -1220
 #define ER_STREAM_RESERVED_6                        -1221
 #define ER_STREAM_RESERVED_7                        -1222
 #define ER_STREAM_RESERVED_8                        -1223
@@ -1794,13 +1794,16 @@
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1390
 #define ER_SES_SESSION_NOT_ATTACHED                 -1391
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1392
+#define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
+#define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_SP_TCL_DDL_IN_QUERY                      -1392
-#define ER_SP_TCL_DDL_IN_TRIGGER                    -1393
-#define ER_SP_DML_IN_QUERY                          -1394
-#define ER_SP_TABLE_REFERENCED                      -1395
+#define ER_SP_TCL_DDL_IN_QUERY                      -1395
+#define ER_SP_TCL_DDL_IN_TRIGGER                    -1396
+#define ER_SP_DML_IN_QUERY                          -1397
+#define ER_SP_TABLE_REFERENCED                      -1398
 
-#define ER_LAST_ERROR                               -1396
+#define ER_LAST_ERROR                               -1399
 
 
 /*

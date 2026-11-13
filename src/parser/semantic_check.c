@@ -218,6 +218,8 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static PT_NODE *pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						     int *continue_walk);
 static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
@@ -7658,6 +7660,8 @@ pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node,
 	  if (result != NULL)
 	    {
 	      query_spec = *result;
+	      /* specs referring a CTE are not views; resolve them so that they are not compared with self */
+	      query_spec = parser_walk_tree (query_cache, query_spec, NULL, NULL, pt_resolve_cte_specs, NULL);
 	      parser_walk_tree (query_cache, query_spec, pt_check_cyclic_reference_in_view_spec, arg, NULL, NULL);
 	    }
 
@@ -11225,6 +11229,41 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * stmt)
 }
 
 /*
+ * pt_check_into_clause_in_set_operand () - parser_walk_tree function to reject INTO clause
+ *                                          in an operand of a set operation of a static SQL
+ *   return:  node
+ *   parser(in): the parser context
+ *   node(in): a node of the statement
+ *
+ * Note: INTO variables of PL/CSQL can receive only the final result of the query
+ */
+static PT_NODE *
+pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *operands[2];
+  int i;
+
+  if (!PT_IS_UNION (node) && !PT_IS_INTERSECTION (node) && !PT_IS_DIFFERENCE (node))
+    {
+      return node;
+    }
+
+  operands[0] = node->info.query.q.union_.arg1;
+  operands[1] = node->info.query.q.union_.arg2;
+  for (i = 0; i < 2; i++)
+    {
+      if (operands[i] != NULL && operands[i]->node_type == PT_SELECT && operands[i]->info.query.into_list != NULL)
+	{
+	  PT_ERRORm (parser, operands[i], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SELECT_INTO_IN_SET_OPERAND);
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_check_into_clause () - check arity of any into_clause
  *                           equals arity of query
  *   return:  none
@@ -13368,8 +13407,24 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		}
 	      if (!resolve_whole)
 		{
+		  if (parser->host_var_classified == node)
+		    {
+		      /* CBRD-27583: a remote DML resolves no names here, so its positions are classified on their own */
+		      parser->host_var_classified = NULL;
+		      node = pt_classify_host_var_positions (parser, node, NULL, NULL);
+		    }
 		  break;
 		}
+	    }
+	}
+
+      if (parser->flag.is_parsing_static_sql == 1)
+	{
+	  /* must be done before pt_semantic_check_local () which takes INTO clauses out of the operands */
+	  (void) parser_walk_tree (parser, node, pt_check_into_clause_in_set_operand, NULL, NULL, NULL);
+	  if (pt_has_error (parser))
+	    {
+	      break;
 	    }
 	}
 
@@ -16318,6 +16373,15 @@ pt_validate_query_spec (PARSER_CONTEXT * parser, PT_NODE * s, DB_OBJECT * c)
   s = parser_walk_tree (parser, s, pt_set_is_view_spec, (void *) &do_not_replace_orderby, NULL, NULL);
   assert (s != NULL);
 
+  /* specs referring a CTE have an entity name; resolve them to the CTE before name resolution */
+  s = parser_walk_tree (parser, s, NULL, NULL, pt_resolve_cte_specs, NULL);
+  if (s == NULL || pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error_code = er_errid ();
+      goto error_exit;
+    }
+
   attrs = pt_get_attributes (parser, c);
 
   /* apply semantic checks to query_spec */
@@ -18978,8 +19042,9 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
  *       or a row cut. An orderby_for predicate and a LIMIT not yet rewritten cut rows after it.
  *       EXCEPT ALL would become EXCEPT, so DISTINCT is not set either.
  *       A false return sets no DISTINCT. The caller does not rely on the query being DISTINCT,
- *       or removes duplicates outside the query.
- *       Call it after pt_eval_type_pre () has rewritten the LIMIT of a SELECT.
+ *       or removes duplicates outside the query. A range predicate does not rely on it,
+ *       and its join rewrite in qo_rewrite_subqueries () removes the duplicates outside.
+ *       Called before pt_eval_type_pre () rewrites the LIMIT of a SELECT, it leaves that SELECT without DISTINCT.
  */
 bool
 pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
@@ -19099,6 +19164,8 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   PT_NODE *new_node, *next;
   int line, column;
   const char *alias_print;
+  char *sql_user_text;
+  int sql_user_text_len;
 
   assert (union_node->node_type == PT_UNION || union_node->node_type == PT_INTERSECTION
 	  || union_node->node_type == PT_DIFFERENCE);
@@ -19106,6 +19173,11 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   line = union_node->line_number;
   column = union_node->column_number;
   alias_print = union_node->alias_print;
+  /* the parser puts a statement's length only on the statement node; its other nodes keep the length of the statement
+   * before it in the text (0 for the first). The node that takes the place of the statement takes its text, which a
+   * driver session compiles again for the types of its bind values */
+  sql_user_text = union_node->sql_user_text;
+  sql_user_text_len = union_node->sql_user_text_len;
   next = union_node->next;
   union_node->next = NULL;
 
@@ -19115,6 +19187,9 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       parser_free_tree (parser, union_node);
       new_node = parser_new_node (parser, PT_VALUE);
       new_node->type_enum = PT_TYPE_NULL;
+      /* the set operation returns no row, as a subquery with a false WHERE folded by pt_to_false_subquery () does:
+       * EXISTS over it is false and NOT IN over it is true */
+      new_node->info.value.is_false_where = true;
     }
   else if (fold_as == STATEMENT_SET_FOLD_AS_ARG1 || fold_as == STATEMENT_SET_FOLD_AS_ARG2)
     {
@@ -19202,6 +19277,8 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
   new_node->line_number = line;
   new_node->column_number = column;
   new_node->alias_print = alias_print;
+  new_node->sql_user_text = sql_user_text;
+  new_node->sql_user_text_len = sql_user_text_len;
   new_node->next = next;
 
   return new_node;
