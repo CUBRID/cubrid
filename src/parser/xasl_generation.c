@@ -239,6 +239,10 @@ static REGU_VARIABLE *pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, con
 static REGU_VARIABLE *pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TYPE db_type,
 					     const PT_NODE * node);
 static REGU_VARIABLE *pt_make_regu_pred (const PRED_EXPR * pred);
+static DB_TYPE pt_default_expr_value_type (const DB_DEFAULT_EXPR * expr, const TP_DOMAIN * domain);
+static PT_NODE *pt_find_insert_given_default (const PT_NODE * statement, const char *name);
+static int pt_set_insert_given_default (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert, int a,
+					PT_NODE * data_default);
 static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABLE_LIST arg_list,
 					const DB_TYPE result_type, const PT_NODE * node);
 
@@ -23851,7 +23855,19 @@ pt_default_value_type (DB_OBJECT * class_obj, const char *name, const TP_DOMAIN 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, name);
       return DB_TYPE_NULL;
     }
-  const DB_DEFAULT_EXPR *expr = &att->default_value.default_expr;
+  return pt_default_expr_value_type (&att->default_value.default_expr, domain);
+}
+
+/*
+ * pt_default_expr_value_type () - the type the default of a default expression is made in before the INSERT casts it
+ *   into the attribute's domain: see pt_default_value_type ()
+ *   return: the type
+ *   expr(in): the default expression of the attribute, or the one an INSERT gives in its place
+ *   domain(in): the attribute's domain
+ */
+static DB_TYPE
+pt_default_expr_value_type (const DB_DEFAULT_EXPR * expr, const TP_DOMAIN * domain)
+{
   const DB_TYPE attr_type = TP_DOMAIN_TYPE (domain);
   DB_TYPE type;
   switch (expr->default_expr_type)
@@ -23894,6 +23910,86 @@ pt_default_value_type (DB_OBJECT * class_obj, const char *name, const TP_DOMAIN 
       return TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (attr_type) ? attr_type : DB_TYPE_VARCHAR;
     }
   return type;
+}
+
+/*
+ * pt_find_insert_given_default () - the DEFAULT an INSERT ... SELECT gives to an attribute it leaves out, in place of
+ *   the attribute's own: the DEFAULT of the view it was written on
+ *   return: PT_DATA_DEFAULT, or NULL if the attribute takes its own default
+ *   statement(in): translated insert
+ *   name(in): attribute name
+ */
+static PT_NODE *
+pt_find_insert_given_default (const PT_NODE * statement, const char *name)
+{
+  PT_NODE *attr = statement->info.insert.default_attrs;
+  PT_NODE *data_default = statement->info.insert.default_values;
+
+  for (; attr != NULL && data_default != NULL; attr = attr->next, data_default = data_default->next)
+    {
+      if (attr->node_type == PT_NAME && pt_str_compare (attr->info.name.original, name, CASE_INSENSITIVE) == 0)
+	{
+	  return data_default;
+	}
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_set_insert_given_default () - give a default slot of an INSERT the default to make in place of the attribute's
+ *   own
+ *   return: error code
+ *   parser(in):
+ *   insert(in/out): att_domains and the arrays of the given defaults are allocated
+ *   a(in): the slot
+ *   data_default(in): PT_DATA_DEFAULT
+ */
+static int
+pt_set_insert_given_default (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert, int a, PT_NODE * data_default)
+{
+  DB_DEFAULT_EXPR expr;
+  DB_VALUE value;
+  TP_DOMAIN_STATUS status;
+
+  pt_get_default_expression_from_data_default_node (parser, data_default, &expr);
+
+  if (expr.default_expr_type != DB_DEFAULT_NONE)
+    {
+      insert->given_default_types[a] = expr.default_expr_type;
+      insert->given_default_ops[a] = expr.default_expr_op;
+      if (expr.default_expr_format != NULL)
+	{
+	  db_make_string (insert->given_default_formats[a], expr.default_expr_format);
+	}
+      insert->default_types[a] = pt_default_expr_value_type (&expr, insert->att_domains[a]);
+      return NO_ERROR;
+    }
+
+  /* a value: it is kept in the attribute's domain, as the default value of the attribute is */
+  db_make_null (&value);
+  pt_evaluate_tree (parser, data_default->info.data_default.default_value, &value, 1);
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      pr_clear_value (&value);
+      return er_errid ();
+    }
+
+  status = tp_value_cast (&value, insert->given_default_vals[a], insert->att_domains[a], false);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, &value, insert->att_domains[a]);
+      pr_clear_value (&value);
+      return er_errid ();
+    }
+  pr_clear_value (&value);
+
+  insert->given_default_types[a] = DB_DEFAULT_NONE;
+  insert->given_default_ops[a] = NULL_DEFAULT_EXPRESSION_OPERATOR;
+  insert->default_types[a] = TP_DOMAIN_TYPE (insert->att_domains[a]);
+
+  return NO_ERROR;
 }
 
 /*
@@ -24608,6 +24704,34 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       return NULL;
     }
+
+  /* an attribute that takes the DEFAULT of a view takes a default slot, also where the class gives it none (an
+   * auto_increment attribute) */
+  for (attr = statement->info.insert.default_attrs; attr != NULL; attr = attr->next)
+    {
+      PT_NODE *slot;
+
+      assert (attr->node_type == PT_NAME);
+      for (slot = default_expr_attrs; slot != NULL; slot = slot->next)
+	{
+	  if (pt_str_compare (slot->info.name.original, attr->info.name.original, CASE_INSENSITIVE) == 0)
+	    {
+	      break;
+	    }
+	}
+      if (slot == NULL)
+	{
+	  slot = parser_new_node (parser, PT_NAME);
+	  if (slot == NULL)
+	    {
+	      PT_INTERNAL_ERROR (parser, "allocate new node");
+	      return NULL;
+	    }
+	  slot->info.name.original = attr->info.name.original;
+	  slot->next = default_expr_attrs;
+	  default_expr_attrs = slot;
+	}
+    }
   num_default_expr = pt_length_of_list (default_expr_attrs);
 
   if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY)
@@ -24813,14 +24937,49 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      AU_SAVE_AND_DISABLE (save_au);
 
+	      if (statement->info.insert.default_attrs != NULL && num_default_expr > 0)
+		{
+		  insert->given_default_types = regu_int_array_alloc (num_default_expr);
+		  insert->given_default_ops = regu_int_array_alloc (num_default_expr);
+		  regu_array_alloc (&insert->given_default_vals, num_default_expr);
+		  regu_array_alloc (&insert->given_default_formats, num_default_expr);
+		  if (insert->given_default_types == NULL || insert->given_default_ops == NULL
+		      || insert->given_default_vals == NULL || insert->given_default_formats == NULL)
+		    {
+		      ASSERT_ERROR_AND_SET (error);
+		    }
+		  for (a = 0; error >= NO_ERROR && a < num_default_expr; ++a)
+		    {
+		      insert->given_default_types[a] = -1;
+		      insert->given_default_ops[a] = NULL_DEFAULT_EXPRESSION_OPERATOR;
+		      regu_alloc (insert->given_default_vals[a]);
+		      regu_alloc (insert->given_default_formats[a]);
+		      if (insert->given_default_vals[a] == NULL || insert->given_default_formats[a] == NULL)
+			{
+			  ASSERT_ERROR_AND_SET (error);
+			  break;
+			}
+		      pt_register_orphan_db_value (parser, insert->given_default_vals[a]);
+		    }
+		}
+
 	      for (attr = default_expr_attrs, a = 0; error >= NO_ERROR && a < num_default_expr; attr = attr->next, ++a)
 		{
+		  PT_NODE *given = pt_find_insert_given_default (statement, attr->info.name.original);
+
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
 		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL
-		      || (insert->default_types[a] =
-			  pt_default_value_type (class_obj, attr->info.name.original,
-						 insert->att_domains[a])) == DB_TYPE_NULL)
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL)
+		    {
+		      ASSERT_ERROR_AND_SET (error);
+		    }
+		  else if (given != NULL)
+		    {
+		      error = pt_set_insert_given_default (parser, insert, a, given);
+		    }
+		  else if ((insert->default_types[a] =
+			    pt_default_value_type (class_obj, attr->info.name.original,
+						   insert->att_domains[a])) == DB_TYPE_NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }

@@ -84,6 +84,7 @@ static PRED_EXPR_WITH_CONTEXT *stx_restore_filter_pred_node (THREAD_ENTRY * thre
 static FUNC_PRED *stx_restore_func_pred (THREAD_ENTRY * thread_p, char *ptr);
 static HEAP_CACHE_ATTRINFO *stx_restore_cache_attrinfo (THREAD_ENTRY * thread_p, char *ptr);
 static DB_VALUE **stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int size, int total_size);
+static DB_VALUE **stx_restore_db_value_array (THREAD_ENTRY * thread_p, char *ptr, int nelements);
 static int *stx_restore_int_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 static OID *stx_restore_OID_array (THREAD_ENTRY * thread_p, char *ptr, int size);
 
@@ -1409,6 +1410,43 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int neleme
     {
       value_array[i] = NULL;
     }
+  return value_array;
+}
+
+/*
+ * stx_restore_db_value_array () - restore an array of values that may own memory (a string): its owner clears them
+ *				   (qexec_clear_xasl)
+ */
+static DB_VALUE **
+stx_restore_db_value_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
+{
+  DB_VALUE **value_array;
+  int *ints;
+  int i;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+
+  value_array = (DB_VALUE **) stx_alloc_struct (thread_p, sizeof (DB_VALUE *) * nelements);
+  if (value_array == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+  ints = stx_restore_int_array (thread_p, ptr, nelements);
+  if (ints == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < nelements; i++)
+    {
+      value_array[i] = stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[ints[i]]);
+      if (value_array[i] == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
   return value_array;
 }
 
@@ -4890,6 +4928,50 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
       insert_info->default_types =
 	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_default_expr);
       if (insert_info->default_types == NULL)
+	{
+	  return NULL;
+	}
+    }
+  ptr = or_unpack_int (ptr, &offset);
+  insert_info->given_default_types = NULL;
+  if (offset != 0 && insert_info->num_default_expr > 0)
+    {
+      insert_info->given_default_types =
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_default_expr);
+      if (insert_info->given_default_types == NULL)
+	{
+	  return NULL;
+	}
+    }
+  ptr = or_unpack_int (ptr, &offset);
+  insert_info->given_default_ops = NULL;
+  if (offset != 0 && insert_info->num_default_expr > 0)
+    {
+      insert_info->given_default_ops =
+	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_default_expr);
+      if (insert_info->given_default_ops == NULL)
+	{
+	  return NULL;
+	}
+    }
+  ptr = or_unpack_int (ptr, &offset);
+  insert_info->given_default_vals = NULL;
+  if (offset != 0 && insert_info->num_default_expr > 0)
+    {
+      insert_info->given_default_vals =
+	stx_restore_db_value_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_default_expr);
+      if (insert_info->given_default_vals == NULL)
+	{
+	  return NULL;
+	}
+    }
+  ptr = or_unpack_int (ptr, &offset);
+  insert_info->given_default_formats = NULL;
+  if (offset != 0 && insert_info->num_default_expr > 0)
+    {
+      insert_info->given_default_formats =
+	stx_restore_db_value_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_default_expr);
+      if (insert_info->given_default_formats == NULL)
 	{
 	  return NULL;
 	}

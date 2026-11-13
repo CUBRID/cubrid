@@ -12165,11 +12165,12 @@ static int check_for_cons (PARSER_CONTEXT * parser, int *has_unique, PT_NODE ** 
 			   const PT_NODE * attr_list, DB_OBJECT * class_obj);
 static int is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int insert_given_defaults (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE * statement);
 static int insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * values_list,
 				    PT_NODE * class_, const char **savepoint_name);
 static int is_attr_not_in_insert_list (const PARSER_CONTEXT * parser, PT_NODE * name_list, const char *name);
 static int check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spec, PT_NODE * attr_list,
-					 const bool has_default_values_list);
+					 PT_NODE * default_attrs, const bool has_default_values_list);
 static PT_NODE *make_vmops (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *test_check_option (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int insert_local (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -12226,6 +12227,45 @@ insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALU
   return error;
 }
 
+
+/*
+ * insert_given_defaults () - give a new object the DEFAULTs of the view for the attributes an INSERT ... SELECT on
+ *			      the view leaves out, each evaluated for this object
+ *
+ * return	  : Error code.
+ * parser (in)	  : Parser context.
+ * otemplate (in) : template of the object being inserted.
+ * statement (in) : translated insert statement.
+ */
+static int
+insert_given_defaults (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE * statement)
+{
+  PT_NODE *attr = statement->info.insert.default_attrs;
+  PT_NODE *data_default = statement->info.insert.default_values;
+  DB_VALUE value;
+  int error = NO_ERROR;
+
+  for (; error == NO_ERROR && attr != NULL && data_default != NULL;
+       attr = attr->next, data_default = data_default->next)
+    {
+      assert (attr->node_type == PT_NAME);
+
+      db_make_null (&value);
+      pt_evaluate_tree (parser, data_default->info.data_default.default_value, &value, 1);
+      if (pt_has_error (parser))
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  ASSERT_ERROR_AND_SET (error);
+	}
+      else
+	{
+	  error = dbt_put_internal (otemplate, attr->info.name.original, &value);
+	}
+      pr_clear_value (&value);
+    }
+
+  return error;
+}
 
 /*
  * do_prepare_insert_internal () - Prepares insert statement for server
@@ -14251,6 +14291,10 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		    }
 
 		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
+		  if (error == NO_ERROR && statement->node_type == PT_INSERT)
+		    {
+		      error = insert_given_defaults (parser, otemplate, statement);
+		    }
 		  if (error != NO_ERROR)
 		    {
 		      dbt_abort_object (otemplate);
@@ -14478,12 +14522,13 @@ is_attr_not_in_insert_list (const PARSER_CONTEXT * parser, PT_NODE * name_list, 
  *   parser(in):
  *   spec(in):
  *   attr_list(in):
+ *   default_attrs(in): attributes the insert gives the DEFAULT of a view, NULL if none
  *   has_default_values_list(in): whether this statement is used to insert
  *                                default values
  */
 static int
 check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spec, PT_NODE * attr_list,
-			      const bool has_default_values_list)
+			      PT_NODE * default_attrs, const bool has_default_values_list)
 {
   DB_ATTRIBUTE *attr;
   DB_OBJECT *class_;
@@ -14501,8 +14546,9 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
     {
       if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
 	  && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
-	  && (is_attr_not_in_insert_list (parser, attr_list, db_attribute_name (attr)) || has_default_values_list)
-	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
+	  && ((is_attr_not_in_insert_list (parser, attr_list, db_attribute_name (attr))
+	       && is_attr_not_in_insert_list (parser, default_attrs, db_attribute_name (attr)))
+	      || has_default_values_list) && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_MISSING_NON_NULL_ASSIGN, 1, db_attribute_name (attr));
 	  error = ER_OBJ_MISSING_NON_NULL_ASSIGN;
@@ -14656,7 +14702,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error =
     check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-				  has_default_values_list);
+				  statement->info.insert.default_attrs, has_default_values_list);
   if (error != NO_ERROR)
     {
       return error;
@@ -18405,7 +18451,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       /* check not nulls attrs are present in attr list */
-      err = check_missing_non_null_attrs (parser, spec, attrs, false);
+      err = check_missing_non_null_attrs (parser, spec, attrs, NULL, false);
       if (err != NO_ERROR)
 	{
 	  goto exit;
@@ -18849,7 +18895,7 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* check not nulls attrs are present in attr list */
-	  err = check_missing_non_null_attrs (parser, spec, attrs, false);
+	  err = check_missing_non_null_attrs (parser, spec, attrs, NULL, false);
 	  if (err != NO_ERROR)
 	    {
 	      goto cleanup;
@@ -21954,7 +22000,7 @@ do_insert_checks (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** class
     }
 
   error = check_missing_non_null_attrs (parser, statement->info.insert.spec, statement->info.insert.attr_list,
-					has_default_values_list);
+					statement->info.insert.default_attrs, has_default_values_list);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();

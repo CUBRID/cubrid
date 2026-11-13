@@ -484,6 +484,12 @@ struct insert_proc_node
   TP_DOMAIN **att_domains;	/* CBRD-27583: the domain of each attribute, in att_id order */
   int *default_types;		/* CBRD-27583: the DB_TYPE each of the first num_default_expr attributes' default
 				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
+  int *given_default_types;	/* for each of the first num_default_expr attributes, the DB_DEFAULT_EXPR_TYPE of the
+				 * default the statement gives in place of the attribute's own (the DEFAULT of a
+				 * view), or -1 to take the attribute's own; NULL if the statement gives none */
+  int *given_default_ops;	/* the default_expr_op of each given default */
+  DB_VALUE **given_default_vals;	/* the value of each given default of DB_DEFAULT_NONE, in the attribute's domain */
+  DB_VALUE **given_default_formats;	/* the format of each given default of T_TO_CHAR, a NULL value without one */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   DB_TYPE *value_types;		/* CBRD-27583: the type each value comes in - per row of values and
 				 * attribute, a single row for a SELECT - chosen at unpack */
