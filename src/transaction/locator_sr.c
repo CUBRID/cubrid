@@ -8577,6 +8577,93 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
 }
 
 /*
+ * locator_should_collect_wset () - whether this DML needs writeset collection
+ *
+ * return: true for replicated DML originating outside the log applier
+ */
+static bool
+locator_should_collect_wset (THREAD_ENTRY * thread_p, bool need_replication)
+{
+  return need_replication && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication ();
+}
+
+/*
+ * locator_collect_wset_key () - collect one row image's WRITE or foreign-key REF key
+ *
+ * return: NO_ERROR, or an error code on failure
+ *
+ *   need_replication(in): whether this DML needs replication (false for schema objects)
+ *   attrinfo(in): attribute info identifying the class and its indexes
+ *   btid_index(in): index position in attrinfo's class representation
+ *   recdes(in): row image used to extract a foreign-key reference
+ *   inst_oid(in): row identifier
+ *   key(in/out): already extracted WRITE key; a borrowed domain is restored before returning
+ *   key_domain(in): domain to borrow when a composite WRITE key has none
+ *   operation(in): INSERT, DELETE or UPDATE, for tracing
+ *   image(in): OLD or NEW, for tracing
+ *
+ * Note: Foreign keys retain their parent-domain conversion and partition resolution in
+ *       locator_wset_collect_fk_ref. WRITE keys are hashed with their existing domain, or borrow key_domain
+ *       only for this call. Errors are returned to the caller's DML cleanup path.
+ */
+static int
+locator_collect_wset_key (THREAD_ENTRY * thread_p, bool need_replication, HEAP_CACHE_ATTRINFO * attrinfo,
+			  int btid_index, RECDES * recdes, OID * inst_oid, DB_VALUE * key, TP_DOMAIN * key_domain,
+			  const char *operation, const char *image)
+{
+  OR_INDEX *index;
+  LOG_TDES *tdes;
+  bool lend_domain;
+  int error_code;
+
+  if (!locator_should_collect_wset (thread_p, need_replication))
+    {
+      return NO_ERROR;
+    }
+
+  assert (attrinfo != NULL);
+  assert (attrinfo->last_classrepr != NULL);
+  assert (btid_index >= 0 && btid_index < attrinfo->last_classrepr->n_indexes);
+
+  index = &attrinfo->last_classrepr->indexes[btid_index];
+  if (index->type != BTREE_PRIMARY_KEY && index->type != BTREE_UNIQUE
+      && index->type != BTREE_REVERSE_UNIQUE && index->type != BTREE_FOREIGN_KEY)
+    {
+      return NO_ERROR;
+    }
+
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  assert (tdes != NULL);
+
+  if (index->type == BTREE_FOREIGN_KEY)
+    {
+      return locator_wset_collect_fk_ref (thread_p, tdes, index, btid_index, attrinfo, recdes, inst_oid,
+					  &attrinfo->class_oid, operation, image);
+    }
+
+  assert (key != NULL);
+  lend_domain = DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY && key->data.midxkey.domain == NULL;
+  if (lend_domain)
+    {
+      if (key_domain == NULL)
+	{
+	  return locator_wset_ensure_key_error ("failed to read composite unique key domain");
+	}
+      key->data.midxkey.domain = key_domain;
+    }
+
+  locator_wset_trace_key_source (thread_p, tdes, operation, image, LOG_WSET_KIND_WRITE, &attrinfo->class_oid,
+				 inst_oid, index->btname, &attrinfo->class_oid, &index->btid.vfid);
+  error_code = wset_add_write_key (tdes, &attrinfo->class_oid, &index->btid.vfid, key);
+  if (lend_domain)
+    {
+      key->data.midxkey.domain = NULL;
+    }
+
+  return error_code;
+}
+
+/*
  * locator_add_or_remove_index_internal () - helper function for
  *                                     locator_add_or_remove_index () and
  *                                     locator_add_or_remove_index_for_moving ()
@@ -8724,8 +8811,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        *  Generate a B-tree key contained in a DB_VALUE and return a
        *  pointer to it.
        */
-      collect_wset = (datayn && need_replication && !LOG_CHECK_LOG_APPLIER (thread_p)
-		      && log_does_allow_replication () == true);
+      collect_wset = locator_should_collect_wset (thread_p, datayn && need_replication);
       key_domain = NULL;
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf,
@@ -8772,53 +8858,12 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 
 	  /* recdes is the new row image for INSERT and the pre-delete row image for DELETE, so
 	   * key_dbvalue is already the corresponding new or old index key. */
-	  if (collect_wset)
+	  error_code = locator_collect_wset_key (thread_p, datayn && need_replication, &index_attrinfo, i,
+						 recdes, inst_oid, key_dbvalue, key_domain,
+						 is_insert ? "INSERT" : "DELETE", is_insert ? "NEW" : "OLD");
+	  if (error_code != NO_ERROR)
 	    {
-	      LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-	      assert (ws_tdes != NULL);
-	      if (unique_pk != 0)
-		{
-		  /* a composite key comes back without a domain, and its hash must match the one locator_update_index
-		   * collects for the same row (with the domain set), so lend the domain for the collection */
-		  bool lend_domain = (DB_VALUE_DOMAIN_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY
-				      && key_dbvalue->data.midxkey.domain == NULL);
-
-		  if (lend_domain)
-		    {
-		      if (key_domain == NULL)
-			{
-			  error_code = locator_wset_ensure_key_error ("failed to read composite unique key domain");
-			  goto error;
-			}
-		      key_dbvalue->data.midxkey.domain = key_domain;
-		    }
-		  locator_wset_trace_key_source (thread_p, ws_tdes, is_insert ? "INSERT" : "DELETE",
-						 is_insert ? "NEW" : "OLD",
-						 LOG_WSET_KIND_WRITE, class_oid, inst_oid, index->btname, class_oid,
-						 &index->btid.vfid);
-		  error_code = wset_add_write_key (ws_tdes, class_oid, &index->btid.vfid, key_dbvalue);
-		  if (lend_domain)
-		    {
-		      key_dbvalue->data.midxkey.domain = NULL;
-		    }
-		  if (error_code != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
-	      else if (index->type == BTREE_FOREIGN_KEY)
-		{
-		  /* A foreign-key column value points at a parent row's primary key, so this
-		   * transaction must be ordered against writes of that parent row. */
-		  error_code =
-		    locator_wset_collect_fk_ref (thread_p, ws_tdes, index, i, &index_attrinfo, recdes, inst_oid,
-						 class_oid, is_insert ? "INSERT" : "DELETE", is_insert ? "NEW" : "OLD");
-		  if (error_code != NO_ERROR)
-		    {
-		      goto error;
-		    }
-		}
+	      goto error;
 	    }
 
 	  if (is_insert)
@@ -9321,9 +9366,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   for (i = 0; i < num_btids; i++)
     {
       index = &(new_attrinfo->last_classrepr->indexes[i]);
-      if (pk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
-	  && !LOG_CHECK_LOG_APPLIER (thread_p) && index->type == BTREE_PRIMARY_KEY
-	  && log_does_allow_replication () == true)
+      if (pk_btid_index == -1 && repl_info != NULL && index->type == BTREE_PRIMARY_KEY
+	  && locator_should_collect_wset (thread_p, repl_info->need_replication))
 	{
 	  pk_btid_index = i;
 	}
@@ -9494,46 +9538,17 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	}
 
       /* Collect both old and new keys without relying on UPDATE key-comparison equivalence. */
-      if (repl_info != NULL && repl_info->need_replication && !LOG_CHECK_LOG_APPLIER (thread_p)
-	  && log_does_allow_replication () == true)
+      error_code = locator_collect_wset_key (thread_p, repl_info != NULL && repl_info->need_replication,
+					     old_attrinfo, i, old_recdes, oid, old_key, key_domain, "UPDATE", "OLD");
+      if (error_code != NO_ERROR)
 	{
-	  LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-	  assert (ws_tdes != NULL);
-	  if (unique_pk != 0)
-	    {
-	      locator_wset_trace_key_source (thread_p, ws_tdes, "UPDATE", "OLD", LOG_WSET_KIND_WRITE, class_oid, oid,
-					     index->btname, class_oid, &index->btid.vfid);
-	      error_code = wset_add_write_key (ws_tdes, class_oid, &index->btid.vfid, old_key);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	      locator_wset_trace_key_source (thread_p, ws_tdes, "UPDATE", "NEW", LOG_WSET_KIND_WRITE, class_oid, oid,
-					     index->btname, class_oid, &index->btid.vfid);
-	      error_code = wset_add_write_key (ws_tdes, class_oid, &index->btid.vfid, new_key);
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
-	  else if (index->type == BTREE_FOREIGN_KEY)
-	    {
-	      /* A foreign-key column value points at a parent row's primary key, so this
-	       * transaction must be ordered against writes of that parent row. */
-	      error_code = locator_wset_collect_fk_ref (thread_p, ws_tdes, index, i, old_attrinfo, old_recdes, oid,
-							class_oid, "UPDATE", "OLD");
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	      error_code = locator_wset_collect_fk_ref (thread_p, ws_tdes, index, i, new_attrinfo, new_recdes, oid,
-							class_oid, "UPDATE", "NEW");
-	      if (error_code != NO_ERROR)
-		{
-		  goto error;
-		}
-	    }
+	  goto error;
+	}
+      error_code = locator_collect_wset_key (thread_p, repl_info != NULL && repl_info->need_replication,
+					     new_attrinfo, i, new_recdes, oid, new_key, key_domain, "UPDATE", "NEW");
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
 	}
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -9784,11 +9799,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	   * MVCC-disabled class (e.g. db_serial) with the primary-key columns untouched - the key is
 	   * unchanged, so the old key alone identifies the row. Mutually exclusive with the in-loop
 	   * block (no double counting). old_btid, filled by the fetch above, has the primary-key VFID. */
-	  LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-	  locator_wset_trace_key_source (thread_p, ws_tdes, "UPDATE", "OLD", LOG_WSET_KIND_WRITE, class_oid, oid,
-					 "PRIMARY_KEY", class_oid, &old_btid.vfid);
-	  error_code = wset_add_write_key (ws_tdes, class_oid, &old_btid.vfid, repl_old_key);
+	  error_code = locator_collect_wset_key (thread_p, repl_info->need_replication, old_attrinfo,
+						 pk_btid_index, old_recdes, oid, repl_old_key, key_domain,
+						 "UPDATE", "OLD");
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
