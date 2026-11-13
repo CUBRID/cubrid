@@ -12932,6 +12932,56 @@ internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, i
 }
 
 /*
+ * internal_lob_dml_from_end () - stream_from_end () for STREAM_KIND_INTERNAL_LOB_DML, whose END runs the statement
+ *   return: error code
+ *   count(out): the statement's row count
+ *
+ * A stored procedure of the statement may call back here before the reply, so END is served as an execute is.
+ */
+int
+internal_lob_dml_from_end (INT64 * count)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  char *replydata_listid = NULL, *replydata_page = NULL;
+  int replydata_listid_size = 0, replydata_page_size = 0;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  *count = 0;
+
+  int req_error = net_client_request_with_callback (NET_SERVER_INTERNAL_LOB_DML_END, NULL, 0, reply,
+						    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &replydata_listid,
+						    &replydata_listid_size, &replydata_page, &replydata_page_size,
+						    NULL, NULL);
+
+  /* as in stream_from_end (): the server drops the session on END whether or not it reported an error */
+  stream_Is_open = false;
+
+  if (!req_error)
+    {
+      char *ptr;
+      ptr = or_unpack_int (reply + OR_INT_SIZE, &rc);	/* past END_CALLBACK */
+      ptr = or_unpack_int64 (ptr, count);
+    }
+  rc = stream_request_error (req_error, rc);
+  if (rc != NO_ERROR)
+    {
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+  stream_Savepoint = NULL;
+
+  return rc;
+#else /* SA_MODE */
+  *count = 0;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+	  "internal LOB DML stream is only used in client/server mode");
+  return ER_DB_UNIMPLEMENTED;
+#endif /* CS_MODE */
+}
+
+/*
  * Locators the server sent this client, in query results or fetched objects. A locator names only the base table,
  * so one this client was given (perhaps through a view) is usable as it is; any other must pass the SELECT
  * privilege of its table, the check an OID read gets.

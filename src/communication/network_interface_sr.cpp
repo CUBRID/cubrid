@@ -68,6 +68,7 @@
 #include "chartype.h"
 #include "heap_file.h"
 #include "internal_lob_file.hpp"
+#include "internal_lob_stream_kind.h"	/* STREAM_KIND_INTERNAL_LOB_DML */
 #include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
@@ -14145,4 +14146,59 @@ sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   or_pack_int (reply, error_code);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sinternal_lob_dml_end () - sstream_end () for STREAM_KIND_INTERNAL_LOB_DML, whose END runs the statement
+ *   request format: the last chunk (raw, may be empty)
+ *   reply format: END_CALLBACK (int), error_code (int), count (int64) -- the statement's row count
+ *
+ * The statement may call a stored procedure that calls back to the client (METHOD_CALL) before this reply, so the
+ * reply leads with END_CALLBACK as an execute's does. The slot is held as sstream_end () holds it.
+ */
+void
+sinternal_lob_dml_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  int kind = -1;
+  INT64 count = 0;
+  session_state *held = NULL;
+  stream_session *session = stream_use_session (thread_p, &kind, &held, &error_code);
+
+  if (session != NULL && kind != STREAM_KIND_INTERNAL_LOB_DML)
+    {
+      /* any other kind ends with sstream_end (); its session stays open */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "not an internal LOB DML stream session");
+      error_code = ER_STREAM_INVALID_USE;
+    }
+  else if (session != NULL)
+    {
+      if (reqlen > 0)
+	{
+	  error_code = stream_receive (thread_p, held, session, request, reqlen);
+	}
+      if (error_code == NO_ERROR)
+	{
+	  error_code = stream_finish (thread_p, held, session, &count);
+	}
+    }
+
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr;
+
+    ptr = or_pack_int (reply, (int) END_CALLBACK);
+    ptr = or_pack_int (ptr, error_code);
+    ptr = or_pack_int64 (ptr, count);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
 }

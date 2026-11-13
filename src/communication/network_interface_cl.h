@@ -434,6 +434,7 @@ extern int internal_lob_dml_from_init (const XASL_ID * xasl_id, int dbval_count,
 				       QUERY_FLAG query_flag, const CACHE_TIME * client_cache_time, int query_timeout,
 				       const internal_lob_dml_slot_config * slot_configs, int slot_count);
 extern int internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, int data_len);
+extern int internal_lob_dml_from_end (INT64 * count);
 
 /* internal LOB read over the stream transport (STREAM_KIND_INTERNAL_LOB_READ) */
 extern int internal_lob_read_from_open (const char *locator, int locator_len, INT64 start_offset, int first_max,

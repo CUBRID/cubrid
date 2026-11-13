@@ -305,6 +305,8 @@
   \
   /* the transitional internal LOB upload-token protocol */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE) \
+  /* END of an internal LOB DML stream, whose statement may call back to the client */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_DML_END) \
   \
   /* shared byte-stream transport, both directions */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_INIT) \

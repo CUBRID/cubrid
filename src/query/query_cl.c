@@ -843,7 +843,7 @@ execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_ID * query_i
   error = query_send_internal_lob_dml_inputs (inputs, slot_configs, slot_count);
   if (error == NO_ERROR)
     {
-      error = stream_from_end (&affected_rows);
+      error = internal_lob_dml_from_end (&affected_rows);
     }
   if (error != NO_ERROR)
     {
