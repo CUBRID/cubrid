@@ -90,6 +90,13 @@
 #define SM_ADD_UNIQUE_CONSTRAINT_SAVEPOINT_NAME "aDDuNIQUEcONSTRAINT"
 #define SM_DROP_CLASS_MOP_SAVEPOINT_NAME "dELETEcLASSmOP"
 #define SM_TRUNCATE_SAVEPOINT_NAME "SmtRUnCATE"
+#define SM_INNER_TABLE_SAVEPOINT_NAME "iNNERtABLE"
+#define SM_INNER_TABLE_SUFFIX "__inner"
+
+static int sm_delete_class_mop_internal (MOP op, bool is_cascade_constraints);
+static int sm_rename_class_internal (MOP class_mop, const char *new_name);
+static int sm_truncate_class_internal (MOP class_mop, const bool is_cascade);
+static MOP sm_inner_companion (MOP class_mop);
 
 /*
  * SCHEMA_DEFINITION
@@ -2919,8 +2926,8 @@ sm_get_all_objects (DB_OBJECT * op)
  *   new_name(in):
  */
 
-int
-sm_rename_class (MOP class_mop, const char *new_name)
+static int
+sm_rename_class_internal (MOP class_mop, const char *new_name)
 {
   SM_CLASS *class_ = NULL;
   SM_ATTRIBUTE *att = NULL;
@@ -13598,8 +13605,8 @@ end:
  *   is_cascade_constraints(in): whether drop relative FK constrants
  */
 
-int
-sm_delete_class_mop (MOP op, bool is_cascade_constraints)
+static int
+sm_delete_class_mop_internal (MOP op, bool is_cascade_constraints)
 {
   int error = NO_ERROR, is_class = 0;
   DB_OBJLIST *oldsupers, *oldsubs;
@@ -15993,8 +16000,8 @@ end:
  *   class_mop(in):
  *   is_cascade(in): whether to cascade TRUNCATE to FK-referring classes
  */
-int
-sm_truncate_class (MOP class_mop, const bool is_cascade)
+static int
+sm_truncate_class_internal (MOP class_mop, const bool is_cascade)
 {
   int error = NO_ERROR;
   cubschema::class_truncator truncator (class_mop);
@@ -16875,4 +16882,202 @@ sm_is_catcls_disabled (void)
 #else
   return false;
 #endif
+}
+
+/*
+ * Inner Table companion classes.
+ *
+ * A class named <T>__inner holds the chunk rows of the large values of class T. It belongs to T: DROP, TRUNCATE and
+ * RENAME of T apply to it in the same savepoint, and these statements are refused on the companion itself.
+ */
+
+/*
+ * sm_inner_companion () - The companion class of CLASS_MOP, or NULL.
+ */
+static MOP
+sm_inner_companion (MOP class_mop)
+{
+  char name[SM_MAX_IDENTIFIER_LENGTH];
+  const char *parent = sm_get_ch_name (class_mop);
+  MOP companion;
+  size_t len;
+
+  if (parent == NULL)
+    {
+      er_clear ();
+      return NULL;
+    }
+  len = strlen (parent);
+  if (len >= strlen (SM_INNER_TABLE_SUFFIX) && strcmp (parent + len - strlen (SM_INNER_TABLE_SUFFIX),
+						       SM_INNER_TABLE_SUFFIX) == 0)
+    {
+      return NULL;
+    }
+  if (snprintf (name, sizeof (name), "%s%s", parent, SM_INNER_TABLE_SUFFIX) >= (int) sizeof (name))
+    {
+      return NULL;
+    }
+  companion = locator_find_class (name);
+  if (companion == NULL)
+    {
+      er_clear ();
+    }
+  return companion;
+}
+
+/*
+ * sm_is_inner_companion () - Whether CLASS_MOP is the companion class of another class.
+ */
+bool
+sm_is_inner_companion (MOP class_mop)
+{
+  char name[SM_MAX_IDENTIFIER_LENGTH];
+  const char *own = sm_get_ch_name (class_mop);
+  size_t len, suffix = strlen (SM_INNER_TABLE_SUFFIX);
+  MOP parent;
+
+  if (own == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+  len = strlen (own);
+  if (len <= suffix || len - suffix >= sizeof (name) || strcmp (own + len - suffix, SM_INNER_TABLE_SUFFIX) != 0)
+    {
+      return false;
+    }
+  memcpy (name, own, len - suffix);
+  name[len - suffix] = '\0';
+  parent = locator_find_class (name);
+  if (parent == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+  return true;
+}
+
+static int
+sm_refuse_on_companion (MOP class_mop)
+{
+  if (sm_is_inner_companion (class_mop))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1,
+	      "Inner Table: a companion class changes only with its parent class");
+      return ER_UNEXPECTED;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * sm_finish_with_companion () - Undo both changes of a parent and its companion when one failed.
+ */
+static int
+sm_finish_with_companion (int error)
+{
+  if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+    {
+      tran_abort_upto_system_savepoint (SM_INNER_TABLE_SAVEPOINT_NAME);
+    }
+  return error;
+}
+
+int
+sm_delete_class_mop (MOP op, bool is_cascade_constraints)
+{
+  int error = sm_refuse_on_companion (op);
+  MOP companion;
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  companion = sm_inner_companion (op);
+  if (companion == NULL)
+    {
+      return sm_delete_class_mop_internal (op, is_cascade_constraints);
+    }
+  error = tran_system_savepoint (SM_INNER_TABLE_SAVEPOINT_NAME);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  error = sm_delete_class_mop_internal (op, is_cascade_constraints);
+  if (error == NO_ERROR)
+    {
+      error = sm_delete_class_mop_internal (companion, false);
+    }
+  return sm_finish_with_companion (error);
+}
+
+int
+sm_truncate_class (MOP class_mop, const bool is_cascade)
+{
+  int error = sm_refuse_on_companion (class_mop);
+  MOP companion;
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  companion = sm_inner_companion (class_mop);
+  if (companion == NULL)
+    {
+      return sm_truncate_class_internal (class_mop, is_cascade);
+    }
+  error = tran_system_savepoint (SM_INNER_TABLE_SAVEPOINT_NAME);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  error = sm_truncate_class_internal (class_mop, is_cascade);
+  if (error == NO_ERROR)
+    {
+      error = sm_truncate_class_internal (companion, false);
+    }
+  return sm_finish_with_companion (error);
+}
+
+int
+sm_rename_class (MOP class_mop, const char *new_name)
+{
+  char companion_name[SM_MAX_IDENTIFIER_LENGTH];
+  const char *renamed;
+  int error = sm_refuse_on_companion (class_mop);
+  MOP companion;
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  companion = sm_inner_companion (class_mop);
+  if (companion == NULL)
+    {
+      return sm_rename_class_internal (class_mop, new_name);
+    }
+  error = tran_system_savepoint (SM_INNER_TABLE_SAVEPOINT_NAME);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  error = sm_rename_class_internal (class_mop, new_name);
+  if (error == NO_ERROR)
+    {
+      renamed = sm_get_ch_name (class_mop);
+      if (renamed == NULL)
+	{
+	  error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+      else if (snprintf (companion_name, sizeof (companion_name), "%s%s", renamed, SM_INNER_TABLE_SUFFIX)
+	       >= (int) sizeof (companion_name))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Inner Table: companion name too long");
+	  error = ER_UNEXPECTED;
+	}
+      else
+	{
+	  error = sm_rename_class_internal (companion, companion_name);
+	}
+    }
+  return sm_finish_with_companion (error);
 }

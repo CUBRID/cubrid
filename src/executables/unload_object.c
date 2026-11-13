@@ -890,7 +890,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
 	      break;
 	    }
 	}
-      if (*cptr == NULL)
+      /* Chunk rows are rebuilt when the parent rows are loaded; the schema keeps the companion class. */
+      if (*cptr == NULL && !sm_is_inner_companion (class_table->mops[i]))
 	{
 #if defined(CUBRID_DEBUG) || defined(CUBRID_DEBUG_TEST)
 	  fprintf (stderr, "%s%s%s\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)));

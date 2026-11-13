@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "transaction_sr.h"
+#include "inner_table.hpp"
 
 #include "locator_sr.h"
 #include "log_2pc.h"
@@ -80,6 +81,10 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+#if !defined(NDEBUG)
+  inner_table_trace_commit (thread_p);
+#endif
 
   /* while the transaction is still there for a stream to roll back and a source to close in */
   session_end_tran_streams (thread_p, tran_index);

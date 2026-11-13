@@ -30154,6 +30154,61 @@ btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION
 }
 
 /*
+ * btree_find_unique_visible () - Find the object of a unique key that a snapshot sees, without locks.
+ *
+ * return	   : BTREE_SEARCH result.
+ * thread_p (in)   : Thread entry.
+ * btid (in)	   : B-tree identifier.
+ * key (in)	   : Key value.
+ * class_oid (in)  : Class OID. The found object must belong to it.
+ * oid (out)	   : Found object OID.
+ * snapshot (in)   : Snapshot that selects the key version. NULL selects the dirty version.
+ *
+ * Note: Inner Table chunk reads use it. A chunk is immutable, and its parent row version decides which chunk version
+ *	 a reader needs, so the reader takes no lock and does not wait for a writer that retires the chunk.
+ */
+BTREE_SEARCH
+btree_find_unique_visible (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid, OID * oid,
+			   MVCC_SNAPSHOT * snapshot)
+{
+  BTREE_FIND_UNIQUE_HELPER find_unique_helper = BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
+  MVCC_SNAPSHOT dirty_snapshot;
+  int error_code;
+
+  assert (btid != NULL && class_oid != NULL && !OID_ISNULL (class_oid) && oid != NULL);
+
+  OID_SET_NULL (oid);
+  if (key == NULL || db_value_is_null (key) || btree_multicol_key_is_null (key))
+    {
+      return BTREE_KEY_NOTFOUND;
+    }
+
+  COPY_OID (&find_unique_helper.match_class_oid, class_oid);
+  if (snapshot == NULL)
+    {
+      dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
+      snapshot = &dirty_snapshot;
+    }
+  find_unique_helper.snapshot = snapshot;
+  find_unique_helper.lock_mode = NULL_LOCK;
+
+  error_code =
+    btree_search_key_and_apply_functions (thread_p, btid, NULL, key, NULL, NULL, btree_advance_and_find_key, NULL,
+					  btree_key_find_unique_version_oid, &find_unique_helper, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return BTREE_ERROR_OCCURRED;
+    }
+  if (find_unique_helper.found_object)
+    {
+      COPY_OID (oid, &find_unique_helper.oid);
+      return BTREE_KEY_FOUND;
+    }
+  return BTREE_KEY_NOTFOUND;
+}
+
+/*
  * xbtree_find_unique () - Find (and sometimes lock) object in key of unique index.
  *
  * return		  : BTREE_SEARCH result.

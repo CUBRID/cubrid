@@ -34,6 +34,7 @@
 
 #include "error_manager.h"
 #include "expr_batch.h"
+#include "inner_table.hpp"
 #include "heap_file.h"
 #include "ftab_set.hpp"
 #include "fetch.h"
@@ -4272,6 +4273,15 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  hsidp->scancache_inited = true;
+	  /* a scan that reads no VARCHAR or VARBIT attribute leaves Inner Table references unread */
+	  if (inner_table_enabled () && inner_table_is_opted_in (thread_p, &hsidp->cls_oid)
+	      && !inner_table_reads_movable (thread_p, &hsidp->cls_oid, hsidp->pred_attrs.num_attrs,
+					     hsidp->pred_attrs.attr_ids)
+	      && !inner_table_reads_movable (thread_p, &hsidp->cls_oid, hsidp->rest_attrs.num_attrs,
+					     hsidp->rest_attrs.attr_ids))
+	    {
+	      hsidp->scan_cache.inner_table_skip_expand = true;
+	    }
 	}
       if (hsidp->caches_inited != true)
 	{
@@ -7701,6 +7711,13 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
   if (scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || hsidp->scan_cache.mvcc_disabled_class)
     {
       hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
+      return hsidp->batch_state;
+    }
+  /* the batch peeks records on the page, so it would see Inner Table references of attributes it reads */
+  if (inner_table_enabled () && !hsidp->scan_cache.inner_table_skip_expand
+      && inner_table_is_opted_in (thread_p, &hsidp->cls_oid))
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (Inner Table class)";
       return hsidp->batch_state;
     }
   if (scan_id->single_fetch != QPROC_NO_SINGLE_INNER)

@@ -35,6 +35,7 @@
 
 #include "bestspace.hpp"
 #include "heap_file.h"
+#include "inner_table.hpp"
 
 #include "porting.h"
 #include "porting_inline.hpp"
@@ -1599,6 +1600,9 @@ int
 heap_classrepr_decache (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   int ret;
+
+  /* a schema change can create or drop a companion class */
+  inner_table_forget_classes ();
 
   ret = heap_classrepr_decache_guessed_last (class_oid);
   if (ret != NO_ERROR)
@@ -6530,6 +6534,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (&scan_cache->node.class_oid);
   scan_cache->node.classname = NULL;
   scan_cache->cache_last_fix_page = cache_last_fix_page;
+  scan_cache->inner_table_skip_expand = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
   scan_cache->start_area ();
   scan_cache->num_btids = 0;
@@ -6856,6 +6861,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->mvcc_disabled_class = true;
   scan_cache->node.classname = NULL;
   scan_cache->page_latch = PGBUF_LATCH_READ;
+  scan_cache->inner_table_skip_expand = false;
   scan_cache->cache_last_fix_page = true;
   scan_cache->start_area ();
   scan_cache->num_btids = 0;
@@ -6933,6 +6939,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->mvcc_disabled_class = true;
   scan_cache->page_latch = PGBUF_LATCH_INVALID;
+  scan_cache->inner_table_skip_expand = false;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
   scan_cache->end_area ();
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
@@ -25860,6 +25867,8 @@ heap_delete_hfid_from_cache (THREAD_ENTRY * thread_p, OID * class_oid)
    * the class record before this invalidation may not have published yet (nothing to delete), and the clock is
    * what makes it withdraw its stale publish afterwards (see heap_hfid_cache_get). */
   heap_Hfid_table->generation.fetch_add (1);
+  /* A class whose heap changes may be a companion class; its cached opt-in decision names the old heap. */
+  inner_table_forget_classes ();
 
   error = lf_hash_delete (t_entry, &heap_Hfid_table->hfid_hash, class_oid, &success);
   heap_hfid_table_log (thread_p, class_oid, "heap_delete_hfid_from_cache success=%d", success);
@@ -27147,7 +27156,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	    {
 	      /* recdes may point directly into the still-latched page */
 	      *recdes = *peeked_recdes;
-	      return scan;
+	      return inner_table_expand (thread_p, oid, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+					 scan_cache->mvcc_snapshot);
 	    }
 
 	  if (is_cached_scan)
@@ -27156,7 +27166,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	       * local_pgptr was set from pgbuf_copy_buffer_get_page_ptr () whenever is_cached_scan
 	       * is true, so peeked_recdes->data is stable local-cache memory, not a live latched page. */
 	      *recdes = *peeked_recdes;
-	      return scan;
+	      return inner_table_expand (thread_p, oid, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+					 scan_cache->mvcc_snapshot);
 	    }
 
 	  /* COPY: the scan still holds the page (the caller sets cache_last_fix_page before this call), so copy the
@@ -27174,7 +27185,8 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	      memcpy (recdes->data, peeked_recdes->data, peeked_recdes->length);
 	      recdes->length = peeked_recdes->length;
 	      recdes->type = peeked_recdes->type;
-	      return scan;
+	      return inner_table_expand (thread_p, oid, &scan_cache->node.class_oid, recdes, scan_cache, ispeeking,
+					 scan_cache->mvcc_snapshot);
 	    }
 	  /* recdes buffer too small (not expected for a single-page REC_HOME): fall through to the full path. */
 	}
@@ -27293,6 +27305,12 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   /* Fall through to exit. */
 
 exit:
+  if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
+    {
+      /* the version may come from the heap or from a log undo image; both carry references */
+      scan = inner_table_expand (thread_p, context->oid_p, context->class_oid_p, context->recdes_p, context->scan_cache,
+				 context->ispeeking, context->scan_cache ? context->scan_cache->mvcc_snapshot : NULL);
+    }
   return scan;
 }
 
@@ -27466,6 +27484,11 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   /* Fall through to exit. */
 
 exit:
+  if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
+    {
+      scan = inner_table_expand (thread_p, context->oid_p, context->class_oid_p, context->recdes_p, context->scan_cache,
+				 context->ispeeking, NULL);
+    }
 
   return scan;
 }
