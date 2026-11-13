@@ -8637,8 +8637,7 @@ pt_make_regu_arith_over_copies (const REGU_VARIABLE * arg1, const REGU_VARIABLE 
 
 /*
  * pt_make_key_limit_arith () - build a key limit node (rownum < N is N - 1, a range is upper - lower,
- *                              a KEYLIMIT l, u is (l + u) - l, a merge with a user KEYLIMIT is LEAST/GREATEST)
- *                              and mark it as such,
+ *                              a merge with a user KEYLIMIT is LEAST/GREATEST) and mark it as such,
  *                              so key_limit_eval () can tell it from arithmetic written by the user
  *   return: a regu variable or NULL on error
  *   arg1(in), arg2(in): operands
@@ -14380,55 +14379,6 @@ error:
 
 
 /*
- * pt_to_key_limit_hint_count () - the regu of the keys a KEYLIMIT l, u reads: floor (l + u) - floor (l)
- *   return: the regu, or NULL on error
- *   parser(in):
- *   limit_l(in): l, the keys skipped
- *   limit_u(in): u, the keys read
- */
-static REGU_VARIABLE *
-pt_to_key_limit_hint_count (PARSER_CONTEXT * parser, PT_NODE * limit_l, PT_NODE * limit_u)
-{
-  PT_NODE *sum;
-  REGU_VARIABLE *regu_sum, *regu_var_l;
-
-  sum = parser_new_node (parser, PT_EXPR);
-  if (sum == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      return NULL;
-    }
-
-  sum->info.expr.op = PT_PLUS;
-  sum->info.expr.arg1 = parser_copy_tree (parser, limit_l);
-  sum->info.expr.arg2 = parser_copy_tree (parser, limit_u);
-  if (sum->info.expr.arg1 == NULL || sum->info.expr.arg2 == NULL)
-    {
-      parser_free_tree (parser, sum);
-      return NULL;
-    }
-
-  /* typed here, not in the hint, which keeps the user's text */
-  pt_cast_limit_rewritten_sum (parser, sum);
-  sum = pt_semantic_type (parser, sum, NULL);
-  if (sum == NULL || pt_has_error (parser))
-    {
-      return NULL;
-    }
-
-  regu_sum = pt_to_regu_variable (parser, sum, UNBOX_AS_VALUE);
-  /* l as the sum adds it, so that a DOUBLE rounding of l + u is taken off l too (keylimit 9007199254740993, 1) */
-  regu_var_l = pt_to_regu_variable (parser, (sum->node_type == PT_EXPR) ? sum->info.expr.arg1 : limit_l,
-				    UNBOX_AS_VALUE);
-  if (regu_sum == NULL || regu_var_l == NULL)
-    {
-      return NULL;
-    }
-
-  return pt_make_key_limit_arith (regu_sum, regu_var_l, T_SUB, tp_domain_resolve_default (DB_TYPE_BIGINT));
-}
-
-/*
  * pt_to_key_limit () - Create index key limit regu variables
  *   return:
  *   parser(in):
@@ -14453,25 +14403,28 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
       /* user explicitly specifies keylimit */
       key_infop->is_user_given_keylimit = true;
 
-      limit_l = limit_u->next;
-      if (limit_l == NULL)
+      if (limit_u->type_enum == PT_TYPE_MAYBE)
 	{
-	  /* the value keeps its type: key_limit_eval () reads it as a row bound (keylimit ? bound to 2.5 reads 2 keys) */
-	  regu_var_u = pt_to_regu_variable (parser, limit_u, UNBOX_AS_VALUE);
+	  limit_u->expected_domain = dom_bigint;
 	}
-      else
+      regu_var_u = pt_to_regu_variable (parser, limit_u, UNBOX_AS_VALUE);
+      if (regu_var_u == NULL)
 	{
+	  goto error;
+	}
+
+      limit_l = limit_u->next;
+      if (limit_l != NULL)
+	{
+	  if (limit_l->type_enum == PT_TYPE_MAYBE)
+	    {
+	      limit_l->expected_domain = dom_bigint;
+	    }
 	  regu_var_l = pt_to_regu_variable (parser, limit_l, UNBOX_AS_VALUE);
 	  if (regu_var_l == NULL)
 	    {
 	      goto error;
 	    }
-	  /* keylimit 1.5, 1.5 reads keys 2 and 3, as LIMIT 1.5, 1.5 reads rows */
-	  regu_var_u = pt_to_key_limit_hint_count (parser, limit_l, limit_u);
-	}
-      if (regu_var_u == NULL)
-	{
-	  goto error;
 	}
     }
 
@@ -14538,7 +14491,6 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
   XASL_NODE *xptr;
   ACCESS_SPEC_TYPE *spec_list;
   QO_LIMIT_INFO *limit_infop;
-  KEY_INFO *hint_key_info = NULL;
   int ret = NO_ERROR;
 
   /* If ANY of the spec lists has a data filter, we cannot convert instnum to keylimit, because in the worst case
@@ -14553,14 +14505,6 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 	      /* this is not an error, just halt the optimization tentative */
 	      return NO_ERROR;
 	    }
-	}
-    }
-
-  for (spec_list = xasl->spec_list; spec_list; spec_list = spec_list->next)
-    {
-      if (spec_list->indexptr && spec_list->indexptr->key_info.is_user_given_keylimit)
-	{
-	  hint_key_info = &spec_list->indexptr->key_info;
 	}
     }
 
@@ -14589,14 +14533,6 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
       return NO_ERROR;
     }
   if (!limit_infop->upper)
-    {
-      db_private_free (NULL, limit_infop);
-      return NO_ERROR;
-    }
-
-  /* with a KEYLIMIT hint the rownum predicate stays. pt_to_key_limit () would merge the two by the larger skip and
-   * the smaller count, which reads other rows (keylimit 1, 3 limit 1 would read key 2, numbered rownum 2) */
-  if (hint_key_info != NULL)
     {
       db_private_free (NULL, limit_infop);
       return NO_ERROR;
@@ -21322,10 +21258,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 		  xasl->save_instnum_val = xasl->instnum_val;
 		  xasl->instnum_val = xasl->ordbynum_val;
 		  xasl->instnum_flag = xasl->ordbynum_flag;
-		  if (pt_has_key_limit_hint (select_node))
-		    {
-		      xasl->instnum_flag |= XASL_INSTNUM_FLAG_ORDBYNUM_HINT;
-		    }
 
 		  xasl->ordbynum_pred = NULL;
 		  xasl->ordbynum_val = NULL;

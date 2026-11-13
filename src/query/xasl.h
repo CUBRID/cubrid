@@ -556,8 +556,6 @@ struct cte_proc_node
 #define XASL_INSTNUM_FLAG_SCAN_LAST_STOP    0x08
 #define XASL_INSTNUM_FLAG_EVAL_DEFER	    0x10
 #define XASL_INSTNUM_FLAG_SCAN_STOP_AT_ANALYTIC	    0x20
-#define XASL_INSTNUM_FLAG_ORDBYNUM_HINT	    0x40	/* instnum_val counts from 1 the orderby_num () a skipped ORDER BY
-							 * moved into a block with a KEYLIMIT hint */
 
 /*
  * Macros for buildlist block

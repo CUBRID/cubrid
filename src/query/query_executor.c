@@ -20655,13 +20655,6 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
 	{
 	  db_make_bigint (xasl->save_instnum_val, lower);
 	}
-
-      /* the orderby_num () a skipped ORDER BY moved here counts the sorted rows from 1, not the keys a KEYLIMIT
-       * skips (keylimit 1, 3 order by a limit 1 reads key 2) */
-      if (xasl->instnum_flag & XASL_INSTNUM_FLAG_ORDBYNUM_HINT)
-	{
-	  db_make_bigint (xasl->instnum_val, 0);
-	}
     }
 
   xasl->instnum_flag &= ~(XASL_INSTNUM_FLAG_SCAN_CHECK | XASL_INSTNUM_FLAG_SCAN_STOP

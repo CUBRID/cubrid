@@ -1454,8 +1454,7 @@ qo_add_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
       (void) parser_walk_tree (parser, node->info.query.q.select.having, pt_check_groupbynum_pre, NULL,
 			       pt_check_groupbynum_post, &has_groupbynum);
     }
-  /* LIMIT 1 counts from 1, which a KEYLIMIT hint's numbering does not (exists (... keylimit 2, 5) would be false) */
-  if (node->info.query.limit != NULL || has_instnum || has_orderbynum || has_groupbynum || pt_has_key_limit_hint (node))
+  if (node->info.query.limit != NULL || has_instnum || has_orderbynum || has_groupbynum)
     {
       return;			/* give up */
     }

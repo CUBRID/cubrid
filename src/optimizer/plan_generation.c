@@ -1636,13 +1636,11 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
       limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, false);
       if (limit_infop)
 	{
-	  /* a user KEYLIMIT keeps its own key limit, and the sort takes the limit instead. A data filter drops rows
-	   * after the keys are counted, so it keeps the limit in the sort too (where a < 2999 order by id limit 3
-	   * would read 3 keys and drop some of them) */
+	  /* a data filter drops rows after the keys are counted, so it keeps the limit in the sort
+	   * (where a < 2999 order by id limit 3 would read 3 keys and drop some of them) */
 	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
 	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
-		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE)
-	      && !xasl->spec_list->indexptr->key_info.is_user_given_keylimit && xasl->spec_list->where_pred == NULL)
+		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE) && xasl->spec_list->where_pred == NULL)
 	    {
 	      assert (xasl->instnum_pred == NULL);
 	      assert (xasl->ordbynum_pred != NULL);
@@ -4903,12 +4901,6 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
   if ((query->info.query.q.select.hint & PT_HINT_NO_MULTI_RANGE_OPT) != 0)
     {
       /* NO_MULTI_RANGE_OPT was hinted */
-      return false;
-    }
-  if (plan->plan_un.scan.index->head->key_limit != NULL)
-    {
-      /* a user KEYLIMIT counts keys over the whole scan, but MRO restarts the key limit at each range
-       * (a in (1, 2) ... keylimit 3 order by b limit 5 would read keys of a = 2 too) */
       return false;
     }
 

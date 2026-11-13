@@ -3593,33 +3593,6 @@ pt_has_expr_of_inst_in_sel_list (PARSER_CONTEXT * parser, PT_NODE * select_list)
 }
 
 /*
- * pt_has_key_limit_hint () - check if a SELECT has a KEYLIMIT in its USING INDEX
- *   return: true for a KEYLIMIT hint
- *   node(in):
- *
- * Note: The rows of such a SELECT are numbered from the keys the KEYLIMIT skips (keylimit 1, 3 reads key 2 as
- *       rownum 2), so a numbering that counts from 1 must not be put on its counter.
- */
-bool
-pt_has_key_limit_hint (const PT_NODE * node)
-{
-  if (!PT_IS_SELECT (node))
-    {
-      return false;
-    }
-
-  for (const PT_NODE * hint = node->info.query.q.select.using_index; hint != NULL; hint = hint->next)
-    {
-      if (hint->info.name.indx_key_limit != NULL)
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * pt_has_inst_in_where_and_select_list ()
  *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where and select_list
  *   return: true if tree has INST_NUM/ORDERBY_NUM
@@ -4770,7 +4743,7 @@ pt_limit_is_string (const PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
- * pt_cast_limit_string_operands () - cast the string operands of a + in the user's LIMIT or KEYLIMIT values to DOUBLE
+ * pt_cast_limit_string_operands () - cast the string operands of a + in the user's LIMIT values to DOUBLE
  *   return: none
  *   parser(in):
  *   limit(in/out): the values
@@ -4827,8 +4800,7 @@ pt_limit_has_host_var (const PT_NODE * node)
  *                                  and mark the sum so that an overflow gives the BIGINT maximum
  *   return: true when an operand has a host variable, false for a sum of literals
  *   parser(in):
- *   sum(in/out): the offset + count of a numbering predicate, the l + u of a KEYLIMIT, or the sum a UNION pushes
- *                down to its arms
+ *   sum(in/out): the offset + count of a numbering predicate, or the sum a UNION pushes down to its arms
  *
  * Note: Every path reads the sum the same way: an overflow gives the BIGINT maximum (PT_EXPR_INFO_LIMIT_SUM), so
  *       LIMIT 5, 9223372036854775807 reads from row 6 instead of failing at the scan open of one path only.

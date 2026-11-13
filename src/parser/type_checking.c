@@ -7550,9 +7550,6 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	case PT_DELETE:
 	  pt_cast_limit_string_operands (parser, node->info.delete_.limit);
 	  break;
-	case PT_NAME:
-	  pt_cast_limit_string_operands (parser, node->info.name.indx_key_limit);
-	  break;
 	default:
 	  break;
 	}
@@ -8473,6 +8470,18 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	  if (dt)
 	    {
 	      node->data_type = parser_copy_tree_list (parser, dt);
+	    }
+	}
+      break;
+
+    case PT_NAME:
+      /* a key limit bind is always a BIGINT position, so the token, the plan and the bound value agree */
+      for (PT_NODE * limit = node->info.name.indx_key_limit; limit != NULL; limit = limit->next)
+	{
+	  if (limit->node_type == PT_HOST_VAR && limit->type_enum == PT_TYPE_MAYBE && limit->expected_domain == NULL)
+	    {
+	      SET_EXPECTED_DOMAIN (limit, tp_domain_resolve_default (DB_TYPE_BIGINT));
+	      pt_preset_hostvar_domain (parser, limit, false);
 	    }
 	}
       break;
