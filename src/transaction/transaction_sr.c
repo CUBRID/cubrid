@@ -49,18 +49,13 @@
 #include "memory_wrapper.hpp"
 
 /*
- * tran_server_end_streams - Drop the stream session of the ending transaction, and SA's download handles.
+ * tran_server_end_streams - Drop SA's download handles of the ending transaction.
  *
- *   An open stream session belongs to a statement that never reached END, and is dropped while its savepoint is
- *   still valid.  SA keeps its download handles out of the session (session_sa_stream_handles), so they go here.
+ *   SA keeps them out of the session (session_sa_stream_handles); a server's go in session_end_tran_streams ().
  */
 static void
 tran_server_end_streams (THREAD_ENTRY * thread_p)
 {
-  /* [리뷰] 커밋·롤백 모든 종료 경로의 백스톱. 스트림 세션을 버리고, SA는 다운로드 핸들도 버린다.
-   * 세션 abort가 세이브포인트로 되돌릴 수 있게 트랜잭션 종료 전에 부른다.
-   * TT_LOADDB 워커의 배치 커밋은 연결의 스트림을 건드리지 않는다. */
-  session_abort_stream_session (thread_p);
 #if !defined (SERVER_MODE)
   session_sa_stream_handles ()->end_tran (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 #endif /* !SERVER_MODE */

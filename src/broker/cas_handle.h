@@ -187,7 +187,6 @@ extern int hm_srv_handle_hold_internal_lob_uploads (T_SRV_HANDLE * srv_handle, c
 extern void hm_srv_handle_qresult_end_all (bool end_holdable);
 extern bool hm_has_result_tied_to_tran (void);
 extern void hm_srv_handle_end_transaction_all (void);
-extern bool hm_has_result_tied_to_tran (void);
 extern T_SRV_HANDLE *hm_find_srv_handle (int h_id);
 extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);

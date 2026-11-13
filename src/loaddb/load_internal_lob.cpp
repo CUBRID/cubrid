@@ -288,6 +288,8 @@ internal_lob_load_stream_session_create (THREAD_ENTRY *thread_p, const char *con
       *error_code = stream_session_set_error ("invalid internal LOB load stream configuration");
       return NULL;
     }
+  /* the transport checked the version (1, the only layout) before calling here */
+  ptr += OR_INT_SIZE;
   ptr = or_unpack_int (ptr, &type);
   OR_GET_INT64 (ptr, &data_length);
   ptr += OR_INT64_SIZE;
@@ -323,8 +325,8 @@ namespace
     internal_lob_load_stream_session_registrar ()
     {
       /* END hands back a slot for the batch text; the batch commits the rows, so END ends no unit of work */
-      stream_kind_desc desc = { STREAM_UPLOAD, internal_lob_load_stream_session_create, NULL, false, false,
-				STREAM_SCOPE_TRAN
+      stream_kind_desc desc = { STREAM_UPLOAD, internal_lob_load_stream_session_create, NULL, false,
+				INTERNAL_LOB_LOAD_STREAM_CONFIG_VERSION
 			      };
 
       if (stream_kind_register (STREAM_KIND_INTERNAL_LOB_LOAD, desc) != NO_ERROR)

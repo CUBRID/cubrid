@@ -359,6 +359,20 @@ session_state_init (void *st)
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
+  session_p->pl_session_p = NULL;
+  session_p->stream_session_p = NULL;
+  session_p->stream_session_kind = -1;
+  session_p->stream_session_client_id = 0;
+  session_p->stream_session_tran_index = NULL_TRAN_INDEX;
+  session_p->stream_session_trid = NULL_TRANID;
+  session_p->stream_user = NULL;
+  /* the entry's table, if an earlier session made one, was closed when that session ended */
+  if (session_p->stream_handles_p != NULL)
+    {
+      session_p->stream_handles_p->reopen ();
+    }
+  memset (session_p->secret, 0, SESSION_SECRET_SIZE);
+
   /* In SERVER_MODE this `new` is memory_wrapper.hpp's noexcept overload and yields NULL on failure, but
    * this file is also compiled into cubridsa, where it is the throwing operator new.  Catch here so the
    * engine's C error model holds in both builds. */
@@ -374,19 +388,6 @@ session_state_init (void *st)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (internal_lob_upload_store));
       return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  session_p->pl_session_p = NULL;
-  memset (session_p->secret, 0, SESSION_SECRET_SIZE);
-  session_p->stream_session_p = NULL;
-  session_p->stream_session_kind = -1;
-  session_p->stream_session_client_id = 0;
-  session_p->stream_session_tran_index = NULL_TRAN_INDEX;
-  session_p->stream_session_trid = NULL_TRANID;
-  session_p->stream_user = NULL;
-  /* the entry's table, if an earlier session made one, was closed when that session ended */
-  if (session_p->stream_handles_p != NULL)
-    {
-      session_p->stream_handles_p->reopen ();
     }
 
   return NO_ERROR;
@@ -3924,49 +3925,6 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
   return error;
 }
 
-/*
- * session_abort_stream_session () - Abort and drop the caller's stream session, if one is open.
- *
- *   A stream session holds transaction state of the statement that opened it (the savepoint of its direct LOB
- *   writes, its OOS replication tracking), so it must not outlive that transaction.  Called by the commit/abort
- *   entry points before the log manager ends the transaction, while the savepoint is still valid.  A rollback the
- *   client asks for, or a deadlock victim's, has already ended the stream through session_end_stream_session ();
- *   this is the backstop for every other way a transaction ends.
- */
-void
-session_abort_stream_session (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  stream_session *stream_session_p;
-
-  /* A loaddb worker commits or aborts a batch transaction of its own.  The connection's open stream, if any, is
-   * the Internal LOB payload of a later batch (load_internal_lob.hpp) and belongs to the connection, not to the
-   * batch that is ending here: leave it alone. */
-  if (thread_p != NULL && thread_p->type == TT_LOADDB)
-    {
-      return;
-    }
-
-  /* for the reason session_has_stream_session () gives */
-  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
-    {
-      return;
-    }
-
-  stream_session_p = session_take_stream_session (thread_p->conn_entry->session_p, session_stream_client_id (thread_p));
-  if (stream_session_p == NULL)
-    {
-      return;
-    }
-
-  er_log_debug (ARG_FILE_LINE, "session_abort_stream_session: transaction ended with an open stream session\n");
-  stream_session_p->abort (thread_p);
-  delete stream_session_p;
-#else /* SERVER_MODE */
-  (void) thread_p;
-#endif /* not SERVER_MODE */
-}
-
 #if !defined (SERVER_MODE)
 /*
  * session_sa_stream_handles () - The download handles of SA, which has one client and no connection
@@ -3983,29 +3941,55 @@ session_sa_stream_handles (void)
 }
 #endif /* !SERVER_MODE */
 
+/* the stream session the caller's request holds: a DML stream's statement runs inside its finish () */
+static stream_session *
+session_held_stream_session (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = NULL;
+  stream_session *held = NULL;
+
+#if defined (SERVER_MODE)
+  /* for the reason session_has_stream_session () gives */
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return NULL;
+    }
+#endif /* SERVER_MODE */
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return NULL;
+    }
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  if (state_p->stream_user == thread_p)
+    {
+      held = state_p->stream_session_p;
+    }
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return held;
+}
+
 bool
 session_has_internal_lob_dml_stream (THREAD_ENTRY * thread_p)
 {
-  stream_session *stream_session_p = NULL;
-
-  (void) session_get_stream_session (thread_p, stream_session_p, NULL);
-
-  return dynamic_cast < internal_lob_dml_session * >(stream_session_p) != NULL;
+  return dynamic_cast < internal_lob_dml_session * >(session_held_stream_session (thread_p)) != NULL;
 }
 
 int
 session_internal_lob_dml_consume (THREAD_ENTRY * thread_p, int slot, const OID * class_oid, DB_TYPE expected_type,
 				  INTERNAL_LOB_LOCATOR * locator)
 {
-  stream_session *stream_session_p = NULL;
   internal_lob_dml_session *dml_session_p;
 
-  if (session_get_stream_session (thread_p, stream_session_p, NULL) != NO_ERROR || locator == NULL)
+  if (locator == NULL)
     {
       return stream_session_set_error ("internal LOB DML stream is unavailable");
     }
 
-  dml_session_p = dynamic_cast < internal_lob_dml_session * >(stream_session_p);
+  dml_session_p = dynamic_cast < internal_lob_dml_session * >(session_held_stream_session (thread_p));
   if (dml_session_p == NULL)
     {
       return stream_session_set_error ("active stream does not own internal LOB DML");

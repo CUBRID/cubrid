@@ -93,7 +93,7 @@ internal_lob_stream_session::abort (THREAD_ENTRY *thread_p)
 
 /*
  * internal_lob_stream_session_create () - Decode the upload config blob and build an internal_lob_stream_session.
- *   config(in): INTERNAL_LOB_STREAM_TYPE (int), data length (int64), logical length (int64)
+ *   config(in): version (int), INTERNAL_LOB_STREAM_TYPE (int), data length (int64), logical length (int64)
  *   config_len(in): length of the config blob
  *   error_code(out): NO_ERROR or the failure code
  *   return: opened session on success, NULL on error
@@ -106,15 +106,15 @@ internal_lob_stream_session_create (THREAD_ENTRY *thread_p, const char *config, 
   INT64 logical_length;
   internal_lob_stream_session *session;
 
-  if (config == NULL || config_len != OR_INT_SIZE + OR_INT64_SIZE * 2)
+  /* the transport checked the version (1, the only layout) before calling here */
+  if (config == NULL || config_len != INTERNAL_LOB_STREAM_CONFIG_SIZE)
     {
       *error_code = stream_session_set_error ("invalid internal LOB stream configuration");
       return NULL;
     }
-  /* or_unpack_int takes a mutable pointer although it only reads through it */
-  (void) or_unpack_int (const_cast<char *> (config), &type);
-  OR_GET_INT64 (config + OR_INT_SIZE, &data_length);
-  OR_GET_INT64 (config + OR_INT_SIZE + OR_INT64_SIZE, &logical_length);
+  type = OR_GET_INT (config + OR_INT_SIZE);
+  OR_GET_INT64 (config + OR_INT_SIZE * 2, &data_length);
+  OR_GET_INT64 (config + OR_INT_SIZE * 2 + OR_INT64_SIZE, &logical_length);
   if (type != INTERNAL_LOB_STREAM_TYPE_BLOB && type != INTERNAL_LOB_STREAM_TYPE_CLOB)
     {
       *error_code = stream_session_set_error ("invalid internal LOB stream type");
@@ -148,8 +148,8 @@ namespace
       /* an upload only stages bytes for a later statement: its END is not the end of a unit of work */
       /* [리뷰] 업로드 END는 작업 단위를 끝내지 않는다. END의 count가 토큰이다.
        * 토큰은 세션 안에서만 유효하고, 소비는 나중 문장의 heap 삽입이 한다. */
-      stream_kind_desc desc = { STREAM_UPLOAD, internal_lob_stream_session_create, NULL, false, false,
-				STREAM_SCOPE_TRAN
+      stream_kind_desc desc = { STREAM_UPLOAD, internal_lob_stream_session_create, NULL, false,
+				INTERNAL_LOB_STREAM_CONFIG_VERSION
 			      };
 
       if (stream_kind_register (STREAM_KIND_INTERNAL_LOB, desc) != NO_ERROR)
@@ -286,8 +286,8 @@ namespace
   {
     internal_lob_read_source_registrar ()
     {
-      stream_kind_desc desc = { STREAM_DOWNLOAD, NULL, internal_lob_read_source_create, false, false,
-				STREAM_SCOPE_TRAN
+      stream_kind_desc desc = { STREAM_DOWNLOAD, NULL, internal_lob_read_source_create, false,
+				INTERNAL_LOB_READ_CONFIG_VERSION
 			      };
 
       if (stream_kind_register (STREAM_KIND_INTERNAL_LOB_READ, desc) != NO_ERROR)

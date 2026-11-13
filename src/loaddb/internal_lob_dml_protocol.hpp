@@ -22,7 +22,8 @@
 #include "dbtype_def.h"
 #include "object_representation.h"
 
-#define INTERNAL_LOB_DML_CONFIG_VERSION 2
+/* the transport reads it as the STREAM_KIND_INTERNAL_LOB_DML config version */
+#define INTERNAL_LOB_DML_CONFIG_VERSION 1
 
 #define INTERNAL_LOB_DML_SLOT_FLAG_DIRECT_REVERSE 0x01
 #define INTERNAL_LOB_DML_SLOT_CONFIG_SIZE (OR_INT_SIZE * 2 + OR_INT64_SIZE * 2 + OR_OID_SIZE)

@@ -34,12 +34,17 @@
 #include "error_manager.h"
 #include "object_representation.h"
 
+/* Every open config starts with its kind's version, a big-endian int (stream_session.hpp); each kind accepts up to
+ * its own *_CONFIG_VERSION. */
+
 /* Upload: one value is staged in the session's upload store for a later statement of the same transaction, which
  * binds the token END returns.  END does not end a unit of work -- committing there would commit that later
  * statement's transaction early.
- *   open config: INTERNAL_LOB_STREAM_TYPE (int), data length (int64), logical length (int64)
+ *   open config: version (int), INTERNAL_LOB_STREAM_TYPE (int), data length (int64), logical length (int64)
  *   data frame:  the next bytes of the value, in order */
 #define STREAM_KIND_INTERNAL_LOB 1
+#define INTERNAL_LOB_STREAM_CONFIG_VERSION 1
+#define INTERNAL_LOB_STREAM_CONFIG_SIZE (OR_INT_SIZE * 2 + OR_INT64_SIZE * 2)
 
 /* COPY-style Internal LOB DML: the session owns the target DML and reports affected rows at finish(); unlike
  * STREAM_KIND_INTERNAL_LOB it never returns an upload token.  END runs the statement, so it ends a unit of work.
@@ -52,9 +57,10 @@
  * does not end a unit of work.  Frames arrive tail-first. */
 #define STREAM_KIND_INTERNAL_LOB_LOAD 3
 
-/* STREAM_KIND_INTERNAL_LOB_LOAD open config:
+/* STREAM_KIND_INTERNAL_LOB_LOAD open config: version (int),
  *   INTERNAL_LOB_STREAM_TYPE (int), data length (int64), logical length (int64), class id (int), batch id (int64) */
-#define INTERNAL_LOB_LOAD_STREAM_CONFIG_SIZE (OR_INT_SIZE + OR_INT64_SIZE * 2 + OR_INT_SIZE + OR_INT64_SIZE)
+#define INTERNAL_LOB_LOAD_STREAM_CONFIG_VERSION 1
+#define INTERNAL_LOB_LOAD_STREAM_CONFIG_SIZE (OR_INT_SIZE * 2 + OR_INT64_SIZE * 2 + OR_INT_SIZE + OR_INT64_SIZE)
 /* STREAM_KIND_INTERNAL_LOB_LOAD data frame: absolute byte offset (int64) of the payload that follows.  The
  * payload of a value is sent from its end toward offset 0, the order the reverse chunk writer consumes. */
 #define INTERNAL_LOB_LOAD_STREAM_FRAME_HEADER_SIZE (OR_INT64_SIZE)

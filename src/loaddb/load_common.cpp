@@ -1319,6 +1319,7 @@ namespace cubload
     int error;
     bool abort_stream = false;
 
+    ptr = or_pack_int (ptr, INTERNAL_LOB_LOAD_STREAM_CONFIG_VERSION);
     ptr = or_pack_int (ptr, entry.type == 'B' ? INTERNAL_LOB_STREAM_TYPE_BLOB : INTERNAL_LOB_STREAM_TYPE_CLOB);
     OR_PUT_INT64 (ptr, &entry.data_length);
     ptr += OR_INT64_SIZE;

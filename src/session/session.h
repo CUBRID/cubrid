@@ -110,7 +110,6 @@ extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, 
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
 extern void session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p);
 
-extern void session_abort_stream_session (THREAD_ENTRY * thread_p);
 #if !defined (SERVER_MODE)
 extern stream_handle_table *session_sa_stream_handles (void);
 #endif /* !SERVER_MODE */

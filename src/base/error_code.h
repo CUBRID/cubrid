@@ -1812,8 +1812,8 @@
 
 #define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1401
 
-/* [리뷰] er_set 인자 수는 서식과 맞춘다(1402는 1개, 1403은 2개). */
-#define ER_STREAM_SESSION_ERROR                     -1402
+/* [리뷰] er_set 인자 수는 서식과 맞춘다(1403은 2개). */
+#define ER_INTERNAL_LOB_RESERVED_1                  -1402
 #define ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH         -1403
 #define ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED       -1404
 #define ER_LDR_INTERNAL_LOB_SIDECAR                  -1405

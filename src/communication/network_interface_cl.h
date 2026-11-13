@@ -438,6 +438,8 @@ extern int internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const ch
 /* internal LOB read over the stream transport (STREAM_KIND_INTERNAL_LOB_READ) */
 extern int internal_lob_read_from_open (const char *locator, int locator_len, INT64 start_offset, int first_max,
 					int flags, INT64 * handle, char *buf, int *nread, int *reply_flags);
+extern int internal_lob_read_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
+extern int internal_lob_read_from_release (INT64 handle);
 
 /* who may use an internal LOB locator: one the server sent this client, or one whose table the user may read */
 extern void internal_lob_locator_note_issued (const char *locator, int size);

@@ -908,8 +908,8 @@ internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int ke
 	  DB_BIGINT remaining = data_len - offset;
 
 	  request_size = (remaining > (DB_BIGINT) buffer_size) ? buffer_size : (int) remaining;
-	  error = stream_from_read (stream_handle, buffer, request_size, STREAM_FLAG_RELEASE_AT_EOF, &nread,
-				    &reply_flags);
+	  error = internal_lob_read_from_read (stream_handle, buffer, request_size, STREAM_FLAG_RELEASE_AT_EOF, &nread,
+					       &reply_flags);
 	  if (reply_flags & STREAM_FLAG_RELEASED)
 	    {
 	      stream_handle = 0;
@@ -971,7 +971,7 @@ exit:
 exit_before_lock:
   if (stream_handle != 0)
     {
-      (void) stream_from_release (stream_handle);
+      (void) internal_lob_read_from_release (stream_handle);
     }
   if (buffer != NULL)
     {

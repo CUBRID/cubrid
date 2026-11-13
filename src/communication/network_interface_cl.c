@@ -274,7 +274,6 @@ length_string_with_null_padding (int len)
 {
   return or_packed_stream_length (len + 1);	/* 1 for NULL padding */
 }
-
 #endif /* CS_MODE */
 
 /*
@@ -13186,10 +13185,79 @@ internal_lob_read_from_open (const char *locator, int locator_len, INT64 start_o
   OR_PUT_INT64 (config + OR_INT_SIZE * 2, &start_offset);
   memcpy (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator, (size_t) locator_len);
 
+#if defined (CS_MODE)
   error = stream_from_read_open (STREAM_KIND_INTERNAL_LOB_READ, config, config_len, first_max, flags, handle, buf,
 				 nread, reply_flags);
+#else /* CS_MODE */
+  error = stream_kind_client_authorize (STREAM_KIND_INTERNAL_LOB_READ, config, config_len);
+  if (error == NO_ERROR)
+    {
+      /* SA runs the core in this process, on a table its transaction end purges (tran_server_end_streams) */
+      THREAD_ENTRY *thread_p = enter_server ();
+      stream_handle_table *handles = session_sa_stream_handles ();
+
+      error = (handles == NULL) ? ER_FAILED : stream_download_open (thread_p, *handles, STREAM_KIND_INTERNAL_LOB_READ,
+								    config, config_len,
+								    LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+								    logtb_find_current_tranid (thread_p),
+								    session_stream_client_id (thread_p), first_max,
+								    flags, buf, nread, reply_flags, handle);
+      exit_server (*thread_p);
+    }
+#endif /* !CS_MODE */
   free_and_init (config);
   return error;
+}
+
+/*
+ * internal_lob_read_from_read () - stream_from_read () for a handle internal_lob_read_from_open () opened
+ *   SA has no stream transport (stream_from_read () refuses it), so it reads from its own table here.
+ */
+int
+internal_lob_read_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags)
+{
+#if defined (CS_MODE)
+  return stream_from_read (handle, buf, max, flags, nread, reply_flags);
+#else /* CS_MODE */
+  THREAD_ENTRY *thread_p;
+  stream_handle_table *handles;
+  int rc;
+
+  *nread = 0;
+  *reply_flags = 0;
+
+  thread_p = enter_server ();
+  handles = session_sa_stream_handles ();
+  rc = (handles == NULL) ? ER_FAILED : stream_download_read (thread_p, *handles, handle,
+							     LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+							     logtb_find_current_tranid (thread_p), max, flags, buf,
+							     nread, reply_flags);
+  exit_server (*thread_p);
+
+  return rc;
+#endif /* !CS_MODE */
+}
+
+/*
+ * internal_lob_read_from_release () - stream_from_release () for a handle internal_lob_read_from_open () opened
+ */
+int
+internal_lob_read_from_release (INT64 handle)
+{
+#if defined (CS_MODE)
+  return stream_from_release (handle);
+#else /* CS_MODE */
+  THREAD_ENTRY *thread_p = enter_server ();
+  stream_handle_table *handles = session_sa_stream_handles ();
+
+  if (handles != NULL)
+    {
+      handles->release (thread_p, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+    }
+  exit_server (*thread_p);
+
+  return NO_ERROR;
+#endif /* !CS_MODE */
 }
 
 #if !defined(NDEBUG)
@@ -13493,30 +13561,8 @@ stream_from_read_open (int stream_kind, const char *config, int config_len, int 
 
   return rc;
 #else /* CS_MODE */
-  THREAD_ENTRY *thread_p;
-  stream_handle_table *handles;
-  int rc;
-
-  *handle = 0;
-  *nread = 0;
-  *reply_flags = 0;
-
-  rc = stream_kind_client_authorize (stream_kind, config, config_len);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
-
-  /* SA runs the core in this process, on a table its transaction end purges */
-  thread_p = enter_server ();
-  handles = session_sa_stream_handles ();
-  rc = (handles == NULL) ? ER_FAILED : stream_download_open (thread_p, *handles, stream_kind, config, config_len,
-							     LOG_FIND_THREAD_TRAN_INDEX (thread_p),
-							     session_stream_client_id (thread_p), first_max, flags,
-							     buf, nread, reply_flags, handle);
-  exit_server (*thread_p);
-
-  return rc;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -13573,21 +13619,8 @@ stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *
 
   return rc;
 #else /* CS_MODE */
-  THREAD_ENTRY *thread_p;
-  stream_handle_table *handles;
-  int rc;
-
-  *nread = 0;
-  *reply_flags = 0;
-
-  thread_p = enter_server ();
-  handles = session_sa_stream_handles ();
-  rc = (handles == NULL) ? ER_FAILED : stream_download_read (thread_p, *handles, handle,
-							     LOG_FIND_THREAD_TRAN_INDEX (thread_p), max, flags, buf,
-							     nread, reply_flags);
-  exit_server (*thread_p);
-
-  return rc;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -13619,17 +13652,7 @@ stream_from_release (INT64 handle)
 
   return stream_request_error (req_error, rc);
 #else /* CS_MODE */
-  THREAD_ENTRY *thread_p;
-  stream_handle_table *handles;
-
-  thread_p = enter_server ();
-  handles = session_sa_stream_handles ();
-  if (handles != NULL)
-    {
-      handles->release (thread_p, handle);
-    }
-  exit_server (*thread_p);
-
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }

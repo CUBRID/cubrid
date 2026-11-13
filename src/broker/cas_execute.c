@@ -79,11 +79,8 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
-#include "network_interface_cl.h"
 #include "internal_lob_marker.h"
 #include "internal_lob_stream_kind.h"
-#include "stream_client.h"
-#include "stream_session.hpp"
 #include "query_replace.h"
 #include "network_interface_cl.h"
 #include "stream_client.h"
@@ -326,9 +323,6 @@ static void ux_stream_log_open (int stream_kind);
 static bool call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type);
 static bool call_returns_cursor (const T_PREPARE_CALL_INFO * call_info);
 static bool call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info);
-static bool refuse_stream_opened_mid_request (void);
-static void ux_stream_give_up_after_error (void);
-static void ux_stream_log_open (int stream_kind);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -882,11 +876,6 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       srv_handle->is_prepared = TRUE;
     }
 
-  /* A shard CAS serves one shard, and a COPY stream carries no shard key --
-   * the rows have nowhere to be routed. The proxy refuses only the chunks
-   * (fn_stream_send_data), by which time the statement has opened a session
-   * and a transaction on one backend and the client has begun sending.
-   * Refuse it here, where the statement type is already known. */
 prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;

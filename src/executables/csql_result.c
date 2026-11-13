@@ -715,7 +715,8 @@ fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * c
 	}
       else
 	{
-	  rc = stream_from_read (stream_handle, buffer, request_size, STREAM_FLAG_RELEASE_AT_EOF, &nread, &reply_flags);
+	  rc = internal_lob_read_from_read (stream_handle, buffer, request_size, STREAM_FLAG_RELEASE_AT_EOF, &nread,
+					    &reply_flags);
 	}
       if (reply_flags & STREAM_FLAG_RELEASED)
 	{
@@ -774,7 +775,7 @@ exit:
   /* still open when the output was cut or failed */
   if (stream_handle != 0)
     {
-      if (stream_from_release (stream_handle) != NO_ERROR && error == CSQL_SUCCESS)
+      if (internal_lob_read_from_release (stream_handle) != NO_ERROR && error == CSQL_SUCCESS)
 	{
 	  error = CSQL_FAILURE;
 	}

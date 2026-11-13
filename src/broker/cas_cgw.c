@@ -204,7 +204,6 @@ static const char *server_func_name[] = {
   "stream_upload_hold"
 };
 
-/* process_request () indexes both tables by func_code - 1 after checking func_code < CAS_FC_MAX */
 static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
 	       "server_fn_table must have one entry per CAS function code");
 static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
