@@ -229,6 +229,10 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
 	}
     }
 
+  /*
+   * OBJECT_FORMAT_BINARY_COMPRESSED is written with LZ4, which releases before 11.0 do not have. A backport to those
+   * releases refuses it here and writes OBJECT_FORMAT_BINARY only.
+   */
   data_format = utility_get_option_int_value (arg_map, UNLOAD_DATA_FORMAT_S);
   if (data_format < OBJECT_FORMAT_TEXT || data_format >= OBJECT_FORMAT_LAST)
     {

@@ -32,7 +32,19 @@
 #include "util_func.h"
 #include "utility.h"
 
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+
+#if !defined (WINDOWS)
+/*
+ * XXH32 for the checksum of a block of a compressed binary section. The header comes with the LZ4 sources the build
+ * links, and is compiled in whole, its functions static, so that nothing depends on the names liblz4 exports. The LZ4
+ * library of the Windows build has neither, see binary_block_checksum ().
+ */
+#define XXH_INLINE_ALL
+#include "xxhash.h"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -770,19 +782,31 @@ namespace cubload
    *   object_file(in/out): object file positioned on a record size field
    *   lineno(in): line the record is counted as, from 1, for the message of a record too large
    *   class_is_ignored(in): true when the rows of the current class are not loaded
+   *   compressed(in): true for a section of OBJECT_FORMAT_BINARY_COMPRESSED, whose records are blocks of rows
    *   binary_mode(out): set to false once the end of the section has been reached
+   *   rows(out): number of rows, and of lines, the record counts as: the row count of a block, one otherwise
    *   one_row_buffer(out): size field and row bytes, left untouched for an ignored class
    *
    * Note: a section holds one length prefixed record per row and is closed by a zero length,
    *       see the BINARY_BLOCK rules in load_lexer.l for the layout. The size field is copied
    *       into one_row_buffer as well, since the scanner of the server needs it to frame the row.
+   *
+   *       A record of a compressed section is a block of rows, see BIN_BLOCK_HEADER_SIZE, and goes into a batch as
+   *       it is, header included: the server decompresses it. The row count of the header is taken as it is, the
+   *       scanner checks it against the rows it finds in the block.
    */
   static int
-  gathering_binary_record (std::ifstream &object_file, int lineno, bool class_is_ignored, bool &binary_mode,
-			   std::string &one_row_buffer)
+  gathering_binary_record (std::ifstream &object_file, int lineno, bool class_is_ignored, bool compressed,
+			   bool &binary_mode, int64_t &rows, std::string &one_row_buffer)
   {
     BIN_REC_SIZE_TYPE binary_length = 0;
+    BIN_BLOCK_SIZE_TYPE block_header[3] = { 0, 0, 0 };	/* raw size, row count and checksum of a block */
+    std::size_t header_size = sizeof (binary_length);
     std::streampos record_offset = object_file.tellg ();
+
+    static_assert (BIN_BLOCK_HEADER_SIZE == sizeof (binary_length) + sizeof (block_header), "the header of a block");
+
+    rows = 1;
 
     object_file.read ((char *)&binary_length, sizeof (binary_length));
     if (object_file.gcount() != sizeof (binary_length))
@@ -803,6 +827,18 @@ namespace cubload
 	    return ER_LDR_CORRUPTED_BINARY_RECORD;
 	  }
       }
+    else if (compressed)
+      {
+	object_file.read ((char *) block_header, sizeof (block_header));
+	if (object_file.gcount() != sizeof (block_header) || block_header[1] == 0)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
+	    return ER_LDR_CORRUPTED_BINARY_RECORD;
+	  }
+
+	rows = block_header[1];
+	header_size = BIN_BLOCK_HEADER_SIZE;
+      }
 
     if (class_is_ignored)
       {
@@ -821,7 +857,7 @@ namespace cubload
      * corrupted, it is only too large for CS mode: SA mode reads the object file itself and has no such
      * limit, so the message points there.
      */
-    const std::size_t max_record_size = LOADDB_BUFFER_SIZE_LIMIT - 1 - LOADDB_FORMAT_LINE_SIZE - sizeof (binary_length);
+    const std::size_t max_record_size = LOADDB_BUFFER_SIZE_LIMIT - 1 - LOADDB_FORMAT_LINE_SIZE - header_size;
     if ((std::size_t) binary_length > max_record_size)
       {
 	const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
@@ -832,7 +868,7 @@ namespace cubload
 	return ER_FAILED;
       }
 
-    one_row_buffer.resize (sizeof (binary_length) + binary_length);
+    one_row_buffer.resize (header_size + binary_length);
     memcpy (&one_row_buffer[0], &binary_length, sizeof (binary_length));
     if (binary_length == BIN_END_OF_RECORDS)
       {
@@ -848,7 +884,12 @@ namespace cubload
       }
     else
       {
-	object_file.read (&one_row_buffer[sizeof (binary_length)], binary_length);
+	if (compressed)
+	  {
+	    memcpy (&one_row_buffer[sizeof (binary_length)], block_header, sizeof (block_header));
+	  }
+
+	object_file.read (&one_row_buffer[header_size], binary_length);
 	if (object_file.gcount() != binary_length)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
@@ -912,7 +953,9 @@ namespace cubload
     bool  size_over = false;
     char format_string[LOADDB_FORMAT_LINE_SIZE] = {0 };
     bool binary_mode = false;
+    bool compressed_mode = false;
     bool first_binary_batch = true;
+    int64_t unit_rows = 1;
 #define DEFAULT_STRING_SZ (4096)
 #define DEFAULT_ONEROW_BUF_SZ (1024*1024*1) // 1MB
     size_t size_bk = DEFAULT_STRING_SZ;
@@ -939,6 +982,9 @@ namespace cubload
 
     for (std::string line; true; ++lineno, ++one_row_lineno)
       {
+	/* a line of text, or a record of a binary section, is one row; a block of a compressed section is more */
+	unit_rows = 1;
+
 	if (binary_mode == false)
 	  {
 	    if (!std::getline (object_file, line))
@@ -1004,6 +1050,28 @@ namespace cubload
 		  {
 		    rtrim (line);
 		    snprintf (format_string, sizeof (format_string), "%s\n", line.c_str());
+		    /* "%format <data format> ...", the scanner checks the whole command line */
+		    const char *arg = line.c_str () + strlen ("%format");
+		    char *arg_end = NULL;
+		    long data_format = std::strtol (arg, &arg_end, 10);
+
+		    if (arg_end != arg && (data_format < OBJECT_FORMAT_TEXT || data_format >= OBJECT_FORMAT_LAST))
+		      {
+			/*
+			 * The records of a data format this build does not know cannot be told apart, so the section
+			 * cannot be cut into batches for the server to report it. It is reported here instead, with
+			 * the message the scanner gives in SA mode.
+			 */
+			const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						 LOADDB_MSG_UNSUPPORTED_DATA_FORMAT);
+
+			fprintf (stderr, msg_format, (int) data_format);
+			util_log_write_errstr (msg_format, (int) data_format);
+			object_file.close ();
+			return ER_FAILED;
+		      }
+
+		    compressed_mode = (data_format == OBJECT_FORMAT_BINARY_COMPRESSED);
 		    binary_mode = true;
 		    first_binary_batch = true;
 		    continue;
@@ -1058,7 +1126,8 @@ namespace cubload
 	  }
 	else
 	  {
-	    error_code = gathering_binary_record (object_file, lineno + 1, class_is_ignored, binary_mode, one_row_buffer);
+	    error_code = gathering_binary_record (object_file, lineno + 1, class_is_ignored, compressed_mode, binary_mode,
+						  unit_rows, one_row_buffer);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
@@ -1068,7 +1137,11 @@ namespace cubload
 	    /*
 	     * A record counts as one line, whatever bytes it holds, and the end of records marker as
 	     * one more; the scanner counts the same way, see the BINARY_BLOCK rules in load_lexer.l.
+	     * A block of a compressed section counts as the lines of its rows, so the record takes
+	     * them all, and the lines of the row being gathered are those as well.
 	     */
+	    lineno += (int) (unit_rows - 1);
+	    one_row_lineno += (int) (unit_rows - 1);
 
 	    if (class_is_ignored)
 	      {
@@ -1091,12 +1164,12 @@ namespace cubload
 	    one_row_buffer.clear();
 	    one_row_lineno = 0;
 
-	    ++batch_rows;
+	    batch_rows += unit_rows;
 	    size_over = false;
 	  }
 
-	// check if we have a full batch
-	if (batch_rows == batch_size || size_over)
+	// check if we have a full batch, which a block of rows can take past batch_size
+	if (batch_rows >= batch_size || size_over)
 	  {
 	    if (size_bk < batch_buffer.size())
 	      {
@@ -1127,7 +1200,7 @@ namespace cubload
 		one_row_buffer.clear();
 	      }
 	    one_row_lineno = 0;
-	    ++batch_rows;
+	    batch_rows += unit_rows;
 	  }
       }
 
@@ -1204,6 +1277,51 @@ binary_format_endian (void)
   const uint32_t probe = 1;
 
   return (* (const unsigned char *) &probe == 1) ? BIN_FORMAT_ENDIAN_LITTLE : BIN_FORMAT_ENDIAN_BIG;
+}
+
+/*
+ * binary_block_checksum () - checksum of the raw bytes of a block of a compressed binary section
+ *   return: XXH32 of the bytes with seed 0, or BIN_BLOCK_NO_CHECKSUM in a build for Windows
+ *   raw(in): raw bytes of the block, the rows as they are before compression
+ *   size(in): number of raw bytes
+ *
+ * Note: Windows is not supported from now on, but a patch of an older release may still be built for it, and its
+ *       LZ4 library has no XXH32. The block then goes without a checksum, which a reader takes as nothing to check.
+ *       A real checksum of 0 is written as is and is not checked either, which is one block in 2^32.
+ */
+BIN_BLOCK_SIZE_TYPE
+binary_block_checksum (const char *raw, size_t size)
+{
+#if defined (WINDOWS)
+  (void) raw;
+  (void) size;
+  return BIN_BLOCK_NO_CHECKSUM;
+#else
+  return (BIN_BLOCK_SIZE_TYPE) XXH32 (raw, size, 0);
+#endif
+}
+
+/*
+ * binary_block_checksum_matches () - check the raw bytes of a block against the checksum of its header
+ *   return: false when the block has a checksum and the bytes do not come to it
+ *   raw(in): raw bytes of the block, after decompression
+ *   size(in): number of raw bytes
+ *   checksum(in): checksum field of the block header
+ *
+ * Note: a block without a checksum, BIN_BLOCK_NO_CHECKSUM, passes. So does every block in a build for Windows, which
+ *       has no XXH32 to compute one with.
+ */
+bool
+binary_block_checksum_matches (const char *raw, size_t size, BIN_BLOCK_SIZE_TYPE checksum)
+{
+#if defined (WINDOWS)
+  (void) raw;
+  (void) size;
+  (void) checksum;
+  return true;
+#else
+  return checksum == BIN_BLOCK_NO_CHECKSUM || binary_block_checksum (raw, size) == checksum;
+#endif
 }
 
 /*

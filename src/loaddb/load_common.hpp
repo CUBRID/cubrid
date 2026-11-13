@@ -501,6 +501,40 @@ typedef uint32_t BIN_REC_SIZE_TYPE;
 #define BIN_MAX_RECORD_SIZE ((int64_t) UINT32_MAX)
 
 /*
+ * A binary section of OBJECT_FORMAT_BINARY_COMPRESSED holds its rows in blocks compressed with LZ4:
+ *
+ *   [uint32 stored size][uint32 raw size][uint32 row count][uint32 checksum][stored size bytes]
+ *   ... more blocks ...
+ *   [uint32 0]'\n'                <- BIN_END_OF_RECORDS in place of the stored size, as in OBJECT_FORMAT_BINARY
+ *
+ * The raw bytes of a block are whole rows laid out as OBJECT_FORMAT_BINARY lays them out, [uint32 row size][row],
+ * row count of them; a row never spans two blocks. A block is cut once its raw bytes reach BIN_BLOCK_RAW_SIZE, so a
+ * row larger than that has a block of its own. The stored bytes are the LZ4 block format (LZ4_compress_* and
+ * LZ4_decompress_safe ()), or the raw bytes as they are when the stored size equals the raw size, which is the case
+ * for a block LZ4 cannot make smaller.
+ *
+ * The checksum is XXH32 (seed 0) of the raw bytes, so it covers the stored bytes, the header and the decompression
+ * alike; a reader compares it once the block is decompressed. BIN_BLOCK_NO_CHECKSUM (0) means the writer had no XXH32
+ * and the reader does not check: a build for Windows writes it, since the LZ4 library it links has no XXH32 to offer,
+ * and does not check either. See binary_block_checksum ().
+ *
+ * The rows of a block count as row count lines, one per row as in OBJECT_FORMAT_BINARY, so line numbers are the same
+ * in both formats. split () in load_common.cpp cuts batches on block boundaries and reads the row count from the
+ * header to count them without decompressing.
+ *
+ * A block is the unit of compression rather than a row: a row is too short for LZ4 to find repeated bytes in it,
+ * those repeat between the rows. 64KB is the window of LZ4, a larger block hardly compresses better.
+ */
+typedef uint32_t BIN_BLOCK_SIZE_TYPE;
+#define BIN_BLOCK_HEADER_SIZE (4 * sizeof (BIN_BLOCK_SIZE_TYPE))
+#define BIN_BLOCK_NO_CHECKSUM (0)
+#define BIN_BLOCK_RAW_SIZE    (64 * 1024)
+/* the largest raw block, LZ4_MAX_INPUT_SIZE of lz4.h: a block larger than that cannot be compressed or decompressed */
+#define BIN_MAX_BLOCK_RAW_SIZE ((int64_t) 0x7E000000)
+/* the largest row a compressed section holds, which is the largest raw block with its row size field in it */
+#define BIN_MAX_COMPRESSED_RECORD_SIZE (BIN_MAX_BLOCK_RAW_SIZE - (int64_t) sizeof (BIN_REC_SIZE_TYPE))
+
+/*
  * A NUMERIC value is written field by field, so that the size and the layout of the in-memory buffer
  * (DB_NUMERIC_BUF_SIZE, the sign held apart from the digits) stay out of the file:
  *
@@ -550,7 +584,7 @@ typedef enum
 {
   OBJECT_FORMAT_TEXT = 0,
   OBJECT_FORMAT_BINARY,
-  //OBJECT_FORMAT_BINARY_COMPRESSED,
+  OBJECT_FORMAT_BINARY_COMPRESSED,	/* the rows of OBJECT_FORMAT_BINARY in LZ4 blocks, see BIN_BLOCK_HEADER_SIZE */
   OBJECT_FORMAT_LAST
 } OBJECT_DATA_FORMAT;
 
@@ -591,6 +625,8 @@ typedef enum
 
 extern int binary_format_bit_platform (void);
 extern int binary_format_endian (void);
+extern BIN_BLOCK_SIZE_TYPE binary_block_checksum (const char *raw, size_t size);
+extern bool binary_block_checksum_matches (const char *raw, size_t size, BIN_BLOCK_SIZE_TYPE checksum);
 
 
 extern int encode_varint (int v, u_char *buf);

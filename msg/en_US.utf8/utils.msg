@@ -538,7 +538,8 @@ valid options:\n\
 129 The binary section of the object file is truncated.\n
 130 The %%format command line of the object file is malformed.\n
 131 The object file uses the data format %1$d, which this build does not support.\n
-132 Line %1$d: a row of the binary section is %2$lld bytes, which is over the %3$lld bytes loaddb can send to the server at once in CS mode. Load the object file in SA mode (-S).\n
+132 Line %1$d: a row, or a compressed block of rows, of the binary section is %2$lld bytes, which is over the %3$lld bytes loaddb can send to the server at once in CS mode. Load the object file in SA mode (-S).\n
+133 A compressed block of the binary section of the object file is corrupted.\n
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
 41 cached-pages value is invalid.\n
 42 cached-page-size value is invalid.\n
@@ -572,7 +573,7 @@ valid options:\n\
       --hash-file=FILE        FILE for hash; default: generate by tmpnam()\n\
       --latest-image          when dumping objects, it dumps the latest image of objects in data volumes, not referring to log volumes (ignoring MVCC)\n\
                               It could include uncommitted data and deleted data which is not vacuummed; default: disabled\n\
-      --data-format=NUMBER    Save objects as binary files; default: 0\n\
+      --data-format=NUMBER    0: text, 1: binary, 2: binary compressed with LZ4; default: 0\n\
   -t, --thread-count=COUNT    Number of threads; default: 1 maximum: 127\n\
       --enhanced-estimates    Obtaining the exact number of records in the table to unload; default: disabled\n\
   -v, --verbose               enable verbose status messages; default: disabled\n\

@@ -31,6 +31,9 @@
 #include <cerrno>
 #include <climits>
 #include <cstdlib>
+#include <cstring>
+
+#include "lz4.h"
 
 #undef YY_DECL
 #define YY_DECL \
@@ -97,6 +100,17 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %x BRACKET_ID DELIMITED_ID DQS SQS COMMENT FORMAT_ARG BINARY_MODE BINARY_BLOCK ABORTED
 
 %%
+    /*
+     * A block of a compressed section holds many rows and is read in one go, see the BINARY_BLOCK rules below. Its
+     * rows are handed over one per call from here, before anything else is scanned, as the rows of an uncompressed
+     * section are one per match. Code in front of the first rule runs on every entry into yylex ().
+     */
+    if (m_block_rows_left > 0)
+      {
+	next_block_row (yylval);
+	return token::BINARY_ROW;
+      }
+
 [ \t]+	;
 
 \r?\n {
@@ -727,6 +741,10 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
    *
    * See process_object () in src/executables/unload_object.c and binary_print () and
    * binary_reserve_row_size () in src/executables/unload_object_file.c
+   *
+   * A section of OBJECT_FORMAT_BINARY_COMPRESSED has blocks of such rows in place of the rows, and the
+   * four bytes matched here are the stored size of a block, see BIN_BLOCK_HEADER_SIZE. The end of
+   * records marker is the same.
    */
 <BINARY_BLOCK>(.|\n){4} {
     BIN_REC_SIZE_TYPE rec_size;
@@ -761,6 +779,16 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 	PRINT ("BINARY_BLOCK end %s\n", "");
 	yylineno++;
 	BEGIN INITIAL;
+      }
+    else if (m_data_format == OBJECT_FORMAT_BINARY_COMPRESSED)
+      {
+	if (read_binary_block (rec_size))
+	  {
+	    /* the first row of the block, the others follow from the top of the rules */
+	    next_block_row (yylval);
+	    return token::BINARY_ROW;
+	  }
+	/* reported by read_binary_block (), scanning goes on in ABORTED */
       }
     else
       {
@@ -815,6 +843,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 <ABORTED>(.|\n) {
     char scrap[4096];
 
+    clear_binary_block ();
+
     while (read_binary (scrap, sizeof (scrap)) == sizeof (scrap))
       {
 	;
@@ -840,6 +870,9 @@ END_SUPPRESS_WARNING_BISON_FLEX
  * flex resolves at scanner generation time and cannot derive from a sizeof expression.
  */
 static_assert (sizeof (BIN_REC_SIZE_TYPE) == 4, "the BINARY_BLOCK rule expects a four byte record size field");
+static_assert (sizeof (BIN_BLOCK_SIZE_TYPE) == sizeof (BIN_REC_SIZE_TYPE),
+	       "the BINARY_BLOCK rule matches the stored size of a block as it matches a record size field");
+static_assert (BIN_MAX_BLOCK_RAW_SIZE == LZ4_MAX_INPUT_SIZE, "a raw block is at most what LZ4 takes in");
 
 /*
  * read_binary () - copy raw bytes of a binary section out of the scanner input
@@ -909,6 +942,153 @@ cubload::scanner::read_binary (char *buf, size_t len)
 }
 
 /*
+ * read_binary_block () - read a block of a compressed binary section, see BIN_BLOCK_HEADER_SIZE
+ *   return: true when the block is in m_block and its rows are ready to be handed over, false when the
+ *           section has been reported unreadable and scanning goes on in ABORTED
+ *   stored_size (in): stored size of the block, the field the BINARY_BLOCK rule has matched
+ *
+ * Note: the raw bytes have to come to the checksum of the header, when it has one, see binary_block_checksum ().
+ *       The rows of the block are all checked before the first one is handed over: each row size field
+ *       has to frame a row inside the block, and they have to come to the row count of the header and to
+ *       the end of the block exactly. A block that fails is not a row loaddb could skip and go on with
+ *       the next, its rows cannot be told apart, so the section is failed as a truncated one is.
+ */
+bool
+cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
+{
+  BIN_BLOCK_SIZE_TYPE header[3];	/* raw size, row count, checksum */
+  BIN_BLOCK_SIZE_TYPE raw_size, rows, checksum, found_rows = 0;
+  std::size_t pos = 0;
+  /* the rows of the block are counted as they are handed over, the first one is on the line after yylineno */
+  int lineno = yylineno + 1;
+
+  static_assert (BIN_BLOCK_HEADER_SIZE == sizeof (stored_size) + sizeof (header), "the header of a block");
+
+  if (read_binary ((char *) header, sizeof (header)) != sizeof (header))
+    {
+      fail_binary_section_at (lineno, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
+      BEGIN ABORTED;
+      return false;
+    }
+
+  raw_size = header[0];
+  rows = header[1];
+  checksum = header[2];
+
+  /* a block is never empty and is never stored larger than its raw bytes, see binary_compress_output () */
+  if (raw_size == 0 || (int64_t) raw_size > BIN_MAX_BLOCK_RAW_SIZE || stored_size > raw_size || rows == 0)
+    {
+      fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
+      BEGIN ABORTED;
+      return false;
+    }
+
+  m_block.resize (raw_size);
+  if (stored_size == raw_size)
+    {
+      /* LZ4 could not make the block smaller, the raw bytes are stored as they are */
+      if (read_binary (m_block.data (), raw_size) != raw_size)
+	{
+	  fail_binary_section_at (lineno, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
+	  BEGIN ABORTED;
+	  return false;
+	}
+    }
+  else
+    {
+      m_block_stored.resize (stored_size);
+      if (read_binary (m_block_stored.data (), stored_size) != stored_size)
+	{
+	  fail_binary_section_at (lineno, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
+	  BEGIN ABORTED;
+	  return false;
+	}
+
+      /*
+       * LZ4_decompress_safe () itself and not cubcompress::decompress (), which sets an error of its own on a
+       * corrupted block on top of the one reported here. It never writes past raw_size, whatever the input.
+       */
+      if (LZ4_decompress_safe (m_block_stored.data (), m_block.data (), (int) stored_size, (int) raw_size)
+	  != (int) raw_size)
+	{
+	  fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
+	  BEGIN ABORTED;
+	  return false;
+	}
+    }
+
+  /*
+   * The checksum catches what the checks below cannot: a byte of the stored data that decompresses into other values
+   * of the same layout. A block without one, written by a build for Windows, is not checked.
+   */
+  if (!binary_block_checksum_matches (m_block.data (), raw_size, checksum))
+    {
+      fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
+      BEGIN ABORTED;
+      return false;
+    }
+
+  while (pos < raw_size)
+    {
+      BIN_REC_SIZE_TYPE rec_size;
+
+      if (raw_size - pos < sizeof (rec_size))
+	{
+	  break;
+	}
+      memcpy (&rec_size, m_block.data () + pos, sizeof (rec_size));
+      pos += sizeof (rec_size);
+
+      /* a row has a column at least, so its size is never BIN_END_OF_RECORDS */
+      if (rec_size == BIN_END_OF_RECORDS || rec_size > raw_size - pos)
+	{
+	  break;
+	}
+      pos += rec_size;
+      found_rows++;
+    }
+
+  if (pos != raw_size || found_rows != rows)
+    {
+      fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
+      BEGIN ABORTED;
+      return false;
+    }
+
+  m_block_pos = 0;
+  m_block_rows_left = rows;
+  return true;
+}
+
+/*
+ * next_block_row () - hand over the next row of the block read by read_binary_block ()
+ *   return: void
+ *   yylval (out): the row, as a BINARY_ROW token of an uncompressed section carries it
+ *
+ * Note: the row is counted as one line, as the BINARY_BLOCK rule counts a row of an uncompressed section.
+ */
+void
+cubload::scanner::next_block_row (cubload::parser::semantic_type *yylval)
+{
+  BIN_REC_SIZE_TYPE rec_size;
+  string_type *row;
+
+  assert (m_block_rows_left > 0 && m_block_pos + sizeof (rec_size) <= m_block.size ());
+
+  memcpy (&rec_size, m_block.data () + m_block_pos, sizeof (rec_size));
+  m_block_pos += sizeof (rec_size);
+
+  /* make_string_by_reserve_size () either hands out a pooled entry or throws, it never fails */
+  row = m_semantic_helper.make_string_by_reserve_size (rec_size);
+  memcpy (row->val, m_block.data () + m_block_pos, rec_size);
+  m_block_pos += rec_size;
+  m_block_rows_left--;
+
+  yylineno++;
+  yylval->string = row;
+}
+
+/*
  * set_ldr_data_format () - select the data format of the class being scanned
  *   return : void
  *   data_format (in): data format argument of the "%format" command line
@@ -946,9 +1126,10 @@ cubload::scanner::set_ldr_data_format (int data_format, int format_version, int 
   switch (data_format)
     {
     case OBJECT_FORMAT_BINARY:
-      //case OBJECT_FORMAT_BINARY_COMPRESSED:
+    case OBJECT_FORMAT_BINARY_COMPRESSED:
       m_data_format = (OBJECT_DATA_FORMAT) data_format;
       m_format_version = format_version;
+      clear_binary_block ();
       BEGIN BINARY_MODE;
       break;
 

@@ -33,6 +33,7 @@
 #endif
 #include <istream>
 #include <utility>
+#include <vector>
 
 #include "load_common.hpp"
 
@@ -49,6 +50,10 @@ namespace cubload
 	, m_data_format (OBJECT_FORMAT_TEXT)
 	, m_format_version (BIN_FORMAT_VERSION)
 	, m_format_arg_count (0)
+	, m_block ()
+	, m_block_stored ()
+	, m_block_pos (0)
+	, m_block_rows_left (0)
       {
 	//
       };
@@ -58,6 +63,23 @@ namespace cubload
       void set_lineno (int line_offset)
       {
 	yylineno = line_offset;
+      }
+
+      /*
+       * Drop the rows of a compressed block not handed over yet, see read_binary_block (). A batch ends on a block
+       * boundary, so there are none left when its parse completes; they would be left over from a parse that stopped
+       * early, and must not leak into the next batch.
+       */
+      void clear_binary_block ()
+      {
+	m_block_rows_left = 0;
+	m_block_pos = 0;
+	if (m_block.capacity () > BLOCK_BUFFER_KEEP_SIZE)
+	  {
+	    /* a block of a very large row, do not keep its memory for the blocks of ordinary size */
+	    std::vector<char> ().swap (m_block);
+	    std::vector<char> ().swap (m_block_stored);
+	  }
       }
 
       /* Keep the base class yylex () overload visible; the one below only adds a new overload. */
@@ -143,6 +165,13 @@ namespace cubload
        */
       std::size_t read_binary (char *buf, std::size_t len);
 
+      /*
+       * Read a block of a compressed section into m_block and check the rows in it, and hand over the next of those
+       * rows. See BIN_BLOCK_HEADER_SIZE, and load_lexer.l for the method definitions.
+       */
+      bool read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size);
+      void next_block_row (parser::semantic_type *yylval);
+
       semantic_helper &m_semantic_helper;
       error_handler &m_error_handler;
       OBJECT_DATA_FORMAT m_data_format;
@@ -154,6 +183,17 @@ namespace cubload
        */
       static const int FORMAT_ARG_COUNT = 4;
       int m_format_arg_count;
+
+      /*
+       * The block of a compressed section being handed over row by row: its raw bytes, and its stored bytes while
+       * they are decompressed. Every yylex () call hands over the next row as long as some are left, see the top of
+       * the rules in load_lexer.l.
+       */
+      static const std::size_t BLOCK_BUFFER_KEEP_SIZE = 16 * 1024 * 1024;
+      std::vector<char> m_block;
+      std::vector<char> m_block_stored;
+      std::size_t m_block_pos;
+      BIN_BLOCK_SIZE_TYPE m_block_rows_left;
   };
 
 } // namespace cubload

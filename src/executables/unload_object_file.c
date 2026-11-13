@@ -63,6 +63,8 @@
 #include "string_opfunc.h"
 #include "tz_support.h"
 #include "porting.h"
+#include "unloaddb.h"
+#include "compressor.hpp"
 
 volatile bool error_occurred = false;
 int g_io_buffer_size = 4096;
@@ -81,6 +83,7 @@ static int binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_le
 static int binary_print_tz (TEXT_OUTPUT * tout, DB_VALUE * value, DB_TYPE type);
 
 static int write_object_file (TEXT_BUFFER_BLK * head);
+static int binary_compress_output (TEXT_BUFFER_BLK * head, TEXT_BUFFER_BLK ** compressed);
 
 #if !defined(WINDOWS)
 extern S_WAITING_INFO wi_write_file;
@@ -1258,6 +1261,17 @@ binary_discard_row (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_siz
 }
 
 /*
+ * binary_max_record_size - the largest row the binary section being written can hold
+ *    return: BIN_MAX_RECORD_SIZE, or BIN_MAX_COMPRESSED_RECORD_SIZE for a compressed section, whose row has to fit in
+ *            a block LZ4 can compress
+ */
+int64_t
+binary_max_record_size (void)
+{
+  return (g_data_format == OBJECT_FORMAT_BINARY_COMPRESSED) ? BIN_MAX_COMPRESSED_RECORD_SIZE : BIN_MAX_RECORD_SIZE;
+}
+
+/*
  * binary_fill_row_size - write the size of a complete row of a binary section into its size field
  *    return: NO_ERROR, or ER_FAILED when the row is larger than the size field can describe
  *    tout(in/out): TEXT_OUTPUT the row was written to
@@ -1287,7 +1301,7 @@ binary_fill_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_s
 
   *row_size = length;
 
-  if (length > BIN_MAX_RECORD_SIZE)
+  if (length > binary_max_record_size ())
     {
       binary_discard_row (tout, rec_blk, rec_size_ptr);
       return ER_FAILED;
@@ -1475,6 +1489,161 @@ exit_on_error:
   return error;
 }
 
+/*
+ * binary_compress_output - turn the rows a TEXT_OUTPUT has gathered into the blocks of OBJECT_FORMAT_BINARY_COMPRESSED
+ *    return: NO_ERROR, or an error code when no memory is left
+ *    head(in): the blocks of the TEXT_OUTPUT, whole rows of OBJECT_FORMAT_BINARY ([uint32 row size][row]) only.
+ *              They are released whatever the outcome.
+ *    compressed(out): one block holding the compressed blocks, see BIN_BLOCK_HEADER_SIZE
+ *
+ * Note: a row can go on over several blocks of the TEXT_OUTPUT, so the rows are first gathered in one buffer when
+ *       there is more than one block, LZ4 takes its input in one piece. Then the rows are cut into blocks of about
+ *       BIN_BLOCK_RAW_SIZE on row boundaries and each one is compressed on its own.
+ *
+ *       It runs in the thread which made the rows, an extractor thread when there are several of them, so the
+ *       compression is shared out between those threads as the conversion of the values is.
+ */
+static int
+binary_compress_output (TEXT_BUFFER_BLK * head, TEXT_BUFFER_BLK ** compressed)
+{
+  int error = NO_ERROR;
+  TEXT_BUFFER_BLK *tp, *out = NULL;
+  char *raw = NULL, *gathered = NULL;
+  int64_t raw_size = 0, out_size = 0, pos, block_start, block_rows;
+  BIN_BLOCK_SIZE_TYPE header[4];
+
+  *compressed = NULL;
+
+  for (tp = head; tp != NULL; tp = tp->next)
+    {
+      raw_size += tp->count;
+    }
+
+  if (head->next == NULL)
+    {
+      raw = head->buffer;
+    }
+  else
+    {
+      gathered = (char *) malloc ((size_t) raw_size);
+      if (gathered == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) raw_size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      pos = 0;
+      for (tp = head; tp != NULL; tp = tp->next)
+	{
+	  memcpy (gathered + pos, tp->buffer, tp->count);
+	  pos += tp->count;
+	}
+      raw = gathered;
+    }
+
+  /*
+   * The largest the blocks can come to, LZ4_compressBound () (n + n / 255 + 16) of each block with its header. A block
+   * is cut before BIN_BLOCK_RAW_SIZE only in front of a row that would take it past BIN_MAX_BLOCK_RAW_SIZE, which can
+   * happen once in what a TEXT_OUTPUT gathers, so there are at most raw_size / BIN_BLOCK_RAW_SIZE + 2 blocks. Should
+   * LZ4 still not fit what is left, it returns 0 and the block is stored as it is, which always fits.
+   */
+  out_size = raw_size + raw_size / 255 + (raw_size / BIN_BLOCK_RAW_SIZE + 2) * (BIN_BLOCK_HEADER_SIZE + 16);
+  if (out_size > INT_MAX)
+    {
+      /* a row is at most BIN_MAX_COMPRESSED_RECORD_SIZE, the rows a TEXT_OUTPUT gathers do not get near this */
+      assert (false);
+      error = ER_FAILED;
+      goto end;
+    }
+
+  out = c_text_buf_mgr.get_text_buffer ((int) out_size);
+  if (out == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  pos = 0;
+  while (pos < raw_size)
+    {
+      int stored_size;
+      char *dest;
+
+      /*
+       * Gather whole rows until BIN_BLOCK_RAW_SIZE is reached, and one row at least. A row which would take the block
+       * past what LZ4 takes in starts a block of its own.
+       */
+      block_start = pos;
+      block_rows = 0;
+      while (pos < raw_size && (block_rows == 0 || pos - block_start < BIN_BLOCK_RAW_SIZE))
+	{
+	  BIN_REC_SIZE_TYPE rec_size;
+	  int64_t rec_end;
+
+	  assert (pos + (int64_t) sizeof (rec_size) <= raw_size);
+	  memcpy (&rec_size, raw + pos, sizeof (rec_size));
+	  rec_end = pos + (int64_t) sizeof (rec_size) + rec_size;
+	  assert (rec_end <= raw_size);
+
+	  if (block_rows > 0 && rec_end - block_start > BIN_MAX_BLOCK_RAW_SIZE)
+	    {
+	      break;
+	    }
+
+	  pos = rec_end;
+	  block_rows++;
+	}
+
+      assert (pos - block_start <= BIN_MAX_BLOCK_RAW_SIZE);
+
+      dest = out->ptr + BIN_BLOCK_HEADER_SIZE;
+      stored_size =
+	cubcompress::compress < cubcompress::LZ4 > (raw + block_start, (int) (pos - block_start), dest,
+						    out->iosize - out->count - (int) BIN_BLOCK_HEADER_SIZE);
+      if (stored_size <= 0 || stored_size >= pos - block_start)
+	{
+	  /* LZ4 could not make the block smaller, it is stored as it is */
+	  stored_size = (int) (pos - block_start);
+	  memcpy (dest, raw + block_start, stored_size);
+	}
+
+      header[0] = (BIN_BLOCK_SIZE_TYPE) stored_size;
+      header[1] = (BIN_BLOCK_SIZE_TYPE) (pos - block_start);
+      header[2] = (BIN_BLOCK_SIZE_TYPE) block_rows;
+      /* of the raw bytes, which the reader has once it decompressed the block; 0 in a build for Windows */
+      header[3] = binary_block_checksum (raw + block_start, (size_t) (pos - block_start));
+      memcpy (out->ptr, header, BIN_BLOCK_HEADER_SIZE);
+
+      out->ptr += BIN_BLOCK_HEADER_SIZE + stored_size;
+      out->count += (int) BIN_BLOCK_HEADER_SIZE + stored_size;
+      assert (out->count <= out->iosize);
+    }
+
+  *compressed = out;
+  out = NULL;
+
+end:
+  while (head != NULL)
+    {
+      tp = head;
+      head = head->next;
+      c_text_buf_mgr.release_text_buffer (tp);
+    }
+
+  if (out != NULL)
+    {
+      c_text_buf_mgr.release_text_buffer (out);
+    }
+
+  if (gathered != NULL)
+    {
+      free_and_init (gathered);
+    }
+
+  return error;
+}
+
 int
 text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 {
@@ -1502,7 +1671,13 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
       return NO_ERROR;
     }
 
-  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO)
+  /*
+   * The rows of a compressed section are gathered until they are worth a write, as with several threads, and not
+   * written one by one: they are compressed in blocks of BIN_BLOCK_RAW_SIZE, see binary_compress_output ().
+   */
+  bool compress = (g_data_format == OBJECT_FORMAT_BINARY_COMPRESSED);
+
+  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO && !compress)
     {
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
@@ -1515,6 +1690,27 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
   tout->record_cnt++;
   if (force || head->next || ((head->iosize - head->count) < (((double) head->count / tout->record_cnt) * 1.5)))
     {
+      if (compress)
+	{
+	  int error;
+
+	  /* the blocks of tout are released either way */
+	  tout->head_ptr = NULL;
+	  tout->tail_ptr = NULL;
+	  tout->record_cnt = 0;
+
+	  error = binary_compress_output (head, &head);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO)
+	    {
+	      return write_object_file (head);
+	    }
+	}
+
       do
 	{
 	  if (c_write_blk_queue.enqueue (head))
@@ -1531,6 +1727,11 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 	  YIELD_THREAD ();
 	  if (error_occurred)
 	    {
+	      if (compress)
+		{
+		  /* no longer held by tout */
+		  c_text_buf_mgr.release_text_buffer (head);
+		}
 	      return ER_FAILED;
 	    }
 	}

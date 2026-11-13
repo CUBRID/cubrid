@@ -2289,7 +2289,7 @@ process_object (DESC_OBJ * desc_obj, OID * obj_oid, int referenced_class, TEXT_O
 	{
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
 					   UNLOADDB_MSG_BINARY_ROW_TOO_LARGE), sm_ch_name ((MOBJ) class_ptr),
-		   (long long) row_size, (long long) BIN_MAX_RECORD_SIZE);
+		   (long long) row_size, (long long) binary_max_record_size ());
 	  fflush (stderr);
 	  error = ER_FAILED;
 	  goto exit_on_error;
