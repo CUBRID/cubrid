@@ -6266,7 +6266,8 @@ static const char *skip_block_string (const char *text);
 static const char *skip_block_delimited_id (const char *text);
 static const char *skip_block_blanks_and_comments (const char *text);
 static const char *find_block_name (const char *block, const char *from, const char *name, const char **after);
-static bool block_reads_column (const char *block, const char *name, const char *column, bool assigned);
+static int scan_block_fields (const char *block, const char *name, const TR_BLOCK_COLUMN * columns, int n_columns,
+			      bool * reads, bool * reads_field, bool * assigned);
 static bool block_declares_record (const char *block, const char *name);
 static char *make_block_procedure_sql (PARSER_CONTEXT * parser, const char *quoted_name, const char *block,
 				       const char **names, int n_names, TR_BLOCK_COLUMN * columns, int n_columns,
@@ -7504,25 +7505,37 @@ find_block_name (const char *block, const char *from, const char *name, const ch
 }
 
 /*
- * block_reads_column() - Tells whether a PL/CSQL block reads a column of a correlation name,
- *                        as name.column, or whether it assigns a value to one.
- *   return: true when the block has the dotted name, followed by := when assigned is true
+ * scan_block_fields() - Finds the columns a PL/CSQL block reads through a correlation name,
+ *                       as name.column, in one pass over the block.
+ *   return: number of the columns the block reads
  *   block(in): PL/CSQL block text
  *   name(in): correlation name
- *   column(in): column name, in lower case as the class keeps it, or NULL for any name.field
- *   assigned(in): true to find only a name.field that a value is assigned to, as name.field := ...
+ *   columns(in): columns of the class, with their names in lower case as the class keeps them
+ *   n_columns(in): number of the columns
+ *   reads(out): for each column, whether the block reads it
+ *   reads_field(out): whether the block has a name.field at all, a column or not
+ *   assigned(out): whether the block assigns a value to a name.field, as name.field := ...
  *
  * Note:
  *    The scan is lexical, as find_block_name does it.
  *    PL/CSQL reads a field of a record only as name.field.
  *    The field may be delimited as the name may.
  */
-static bool
-block_reads_column (const char *block, const char *name, const char *column, bool assigned)
+static int
+scan_block_fields (const char *block, const char *name, const TR_BLOCK_COLUMN * columns, int n_columns, bool * reads,
+		   bool * reads_field, bool * assigned)
 {
   const char *p, *after, *token, *next, *end;
-  size_t column_len = column == NULL ? 0 : strlen (column);
   size_t token_len;
+  int n_reads = 0;
+  int i;
+
+  *reads_field = false;
+  *assigned = false;
+  for (i = 0; i < n_columns; i++)
+    {
+      reads[i] = false;
+    }
 
   for (p = block; (p = find_block_name (block, p, name, &after)) != NULL; p = after)
     {
@@ -7550,26 +7563,35 @@ block_reads_column (const char *block, const char *name, const char *column, boo
 	    ;
 	  end = token + token_len;
 	}
-
-      if (assigned)
+      if (token_len == 0)
 	{
-	  end = skip_block_blanks_and_comments (end);
-	  if (end[0] != ':' || end[1] != '=')
-	    {
-	      continue;
-	    }
+	  continue;
 	}
 
-      if (token_len > 0
-	  && (column == NULL
-	      || intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) token, (unsigned char *) column,
-						 (int) token_len, (int) column_len) == 0))
+      *reads_field = true;
+
+      end = skip_block_blanks_and_comments (end);
+      if (end[0] == ':' && end[1] == '=')
 	{
-	  return true;
+	  *assigned = true;
+	}
+
+      for (i = 0; i < n_columns; i++)
+	{
+	  if (intl_identifier_casecmp_w_size (lang_id (), (unsigned char *) token, (unsigned char *) columns[i].name,
+					      (int) token_len, (int) strlen (columns[i].name)) == 0)
+	    {
+	      if (!reads[i])
+		{
+		  reads[i] = true;
+		  n_reads++;
+		}
+	      break;
+	    }
 	}
     }
 
-  return false;
+  return n_reads;
 }
 
 /*
@@ -7870,13 +7892,13 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
   bool *reads = NULL;
   bool *row;
   int n_reads;
-  bool declares_record;
+  bool reads_field, assigned, declares_record;
   char *create_sql;
   char *arguments;
   char *call_buf = NULL;
   char *call;
   char *compile_msg;
-  int i, j;
+  int i;
   int error = NO_ERROR;
 
   *call_source = NULL;
@@ -7968,8 +7990,11 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 	  continue;
 	}
 
+      row = (n_columns > 0) ? reads + n_names * n_columns : NULL;
+      n_reads = scan_block_fields (block, candidates[i], columns, n_columns, row, &reads_field, &assigned);
+
       declares_record = block_declares_record (block, candidates[i]);
-      if (!declares_record && block_reads_column (block, candidates[i], NULL, true))
+      if (assigned && !declares_record)
 	{
 	  /* the record is a copy of the row, so the value would be lost with no error */
 	  free_and_init (columns);
@@ -7980,14 +8005,7 @@ create_trigger_block_procedure (PARSER_CONTEXT * parser, const char *trigger_nam
 	  return error;
 	}
 
-      row = (n_columns > 0) ? reads + n_names * n_columns : NULL;
-      n_reads = 0;
-      for (j = 0; j < n_columns; j++)
-	{
-	  row[j] = block_reads_column (block, candidates[i], columns[j].name, false);
-	  n_reads += row[j];
-	}
-      if (n_reads == 0 && !declares_record && block_reads_column (block, candidates[i], NULL, false))
+      if (n_reads == 0 && reads_field && !declares_record)
 	{
 	  if (n_columns > 0)
 	    {
