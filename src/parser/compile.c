@@ -1262,6 +1262,9 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
       else
 	{
 	  statement->info.scope.stmt->info.trigger_action.expression = mq_translate (parser, expression);
+
+	  /* a view INSERT reaches the DEFAULTs of its base class only now */
+	  pt_mark_translated_default_clock (parser, statement->info.scope.stmt->info.trigger_action.expression);
 	}
       /*
        * Trigger statement node must use the datetime information of the
