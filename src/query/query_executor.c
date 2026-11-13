@@ -2129,8 +2129,9 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      free (p->parts);
 	      p->parts = NULL;
 	      p->curent = NULL;
-	      p->pruned = false;
 	    }
+	  /* pruning to no partition leaves parts NULL: a cached clone must still prune again for its next values */
+	  p->pruned = false;
 	  partition_clear_spec_row_pruning (p);
 	  p->row_rewind_pending = false;
 
