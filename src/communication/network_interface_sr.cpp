@@ -148,8 +148,7 @@ static void event_log_extend_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
 static bool net_check_request_remaining (const char *request, int reqlen, const char *ptr, INT64 size);
 static bool net_check_request_count (const char *request, int reqlen, const char *ptr, int count, int max_count,
-				     int min_item_size);
-static bool net_check_request_ptr_count (const char *request, int reqlen, const char *ptr, int count);
+				     int min_item_size, int item_align);
 static bool net_check_packed_lockset (const char *packed, int packed_size);
 static bool net_check_packed_lockhint (const char *packed, int packed_size);
 static bool net_check_packed_oid_set (const char *request, int reqlen, const char *ptr);
@@ -1269,16 +1268,23 @@ net_check_request_remaining (const char *request, int reqlen, const char *ptr, I
  *   count(in): number of items sent by the client
  *   max_count(in): maximum number of items the server can hold. INT_MAX if only the request size limits the count.
  *   min_item_size(in): minimum number of bytes one item takes in the request
+ *   item_align(in): alignment of the first item, 1 if the items are not aligned. or_unpack_ptr () aligns to
+ *                   PTR_ALIGNMENT before each pointer (e.g. query ids), so pass PTR_ALIGNMENT for pointers.
  *
  * NOTE: The count must not be negative, must not exceed what the server can hold, and the items must fit in the rest
  *       of the request. For an item of variable size, min_item_size gives only a lower bound of the bytes to be
  *       read, so the unpacking of each item must still be bounded by itself.
+ *       When there is no item, nothing is read and the request may end before the aligned position. The aligned
+ *       position is computed as an integer without PTR_ALIGN (), which clears the padding bytes in a debug build and
+ *       so would write to the request before it is checked.
  */
 static bool
 net_check_request_count (const char *request, int reqlen, const char *ptr, int count, int max_count,
-			 int min_item_size)
+			 int min_item_size, int item_align)
 {
-  assert (max_count >= 0 && min_item_size > 0);
+  const char *items;
+
+  assert (max_count >= 0 && min_item_size > 0 && item_align > 0);
 
   if (count < 0 || count > max_count)
     {
@@ -1286,7 +1292,8 @@ net_check_request_count (const char *request, int reqlen, const char *ptr, int c
       return false;
     }
 
-  return net_check_request_remaining (request, reqlen, ptr, (INT64) count * min_item_size);
+  items = (count > 0) ? (const char *) DB_ALIGN ((UINTPTR) ptr, item_align) : ptr;
+  return net_check_request_remaining (request, reqlen, items, (INT64) count * min_item_size);
 }
 
 /*
@@ -1337,36 +1344,6 @@ net_check_copyarea_sizes (int num_objs, int packed_desc_size, int content_size, 
     }
 
   return true;
-}
-
-/*
- * net_check_request_ptr_count - check a number of pointers (e.g. query ids) that the client says follow in the
- *                               request
- *
- * return: true if the count is valid, false otherwise (the error is set)
- *
- *   request(in): start of the request buffer
- *   reqlen(in): length of the request buffer
- *   ptr(in): current read position in the request buffer, where the pointers start
- *   count(in): number of pointers sent by the client
- *
- * NOTE: or_unpack_ptr () aligns the read position to PTR_ALIGNMENT before each pointer, so the pointers start at the
- *       aligned position. When there is no pointer, the request may end before the aligned position. The aligned
- *       position is computed as an integer without PTR_ALIGN (), which clears the padding bytes in a debug build and
- *       so would write to the request before it is checked.
- */
-static bool
-net_check_request_ptr_count (const char *request, int reqlen, const char *ptr, int count)
-{
-  const char *aligned_ptr;
-
-  if (count == 0)
-    {
-      return true;
-    }
-
-  aligned_ptr = (const char *) DB_ALIGN ((UINTPTR) ptr, PTR_ALIGNMENT);
-  return net_check_request_count (request, reqlen, aligned_ptr, count, INT_MAX, OR_PTR_SIZE);
 }
 
 /*
@@ -1571,7 +1548,7 @@ net_check_packed_oid_set (const char *request, int reqlen, const char *ptr)
 	}
       num_oids = OR_GET_INT (ptr + OR_OID_SIZE + OR_HFID_SIZE);
       ptr += OR_OID_SIZE + OR_HFID_SIZE + OR_INT_SIZE;
-      if (!net_check_request_count (request, reqlen, ptr, num_oids, INT_MAX, OR_OID_SIZE + OR_INT_SIZE))
+      if (!net_check_request_count (request, reqlen, ptr, num_oids, INT_MAX, OR_OID_SIZE + OR_INT_SIZE, 1))
 	{
 	  return false;
 	}
@@ -1830,7 +1807,7 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   ptr = or_unpack_int (ptr, &content_size);
 
   ptr = or_unpack_int (ptr, &num_ignore_error_list);
-  if (!net_check_request_count (request, reqlen, ptr, num_ignore_error_list, DIM (ignore_error_list), OR_INT_SIZE)
+  if (!net_check_request_count (request, reqlen, ptr, num_ignore_error_list, DIM (ignore_error_list), OR_INT_SIZE, 1)
       || !net_check_copyarea_sizes (num_objs, packed_desc_size, content_size, 0))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -2331,7 +2308,7 @@ slocator_reserve_classnames (THREAD_ENTRY *thread_p, unsigned int rid, char *req
 
   /* each class is a string and an OID. The string takes at least its length word. */
   if (!net_check_request_count (request, reqlen, ptr, num_classes, (int) (INT_MAX / (sizeof (char *) + sizeof (OID))),
-				OR_INT_SIZE + OR_OID_SIZE))
+				OR_INT_SIZE + OR_OID_SIZE, 1))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
@@ -3859,7 +3836,7 @@ stran_server_commit (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
 
   /* First end deferred queries */
   ptr = or_unpack_int (ptr, &n_query_ids);
-  if (!net_check_request_ptr_count (request, reqlen, ptr, n_query_ids))
+  if (!net_check_request_count (request, reqlen, ptr, n_query_ids, INT_MAX, OR_PTR_SIZE, PTR_ALIGNMENT))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
@@ -4779,7 +4756,7 @@ sboot_check_db_consistency (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
       ptr = or_unpack_int (ptr, &num);
 
       /* num OIDs and a BTID follow */
-      if (!net_check_request_count (request, reqlen, ptr, num, INT_MAX, OR_OID_SIZE)
+      if (!net_check_request_count (request, reqlen, ptr, num, INT_MAX, OR_OID_SIZE, 1)
 	  || !net_check_request_remaining (request, reqlen, ptr + num * OR_OID_SIZE, OR_BTID_ALIGNED_SIZE))
 	{
 	  css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -5261,8 +5238,8 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
     }
-  if (!net_check_request_count (request, reqlen, ptr, n_classes, INT_MAX, OR_OID_SIZE + OR_HFID_SIZE)
-      || !net_check_request_count (request, reqlen, ptr, n_attrs, INT_MAX, OR_INT_SIZE)
+  if (!net_check_request_count (request, reqlen, ptr, n_classes, INT_MAX, OR_OID_SIZE + OR_HFID_SIZE, 1)
+      || !net_check_request_count (request, reqlen, ptr, n_attrs, INT_MAX, OR_INT_SIZE, 1)
       || !net_check_request_remaining (request, reqlen, ptr,
 				       (INT64) n_classes * (OR_OID_SIZE + OR_HFID_SIZE + (INT64) n_attrs * OR_INT_SIZE)
 				       + (INT64) ((n_classes == 1) ? n_attrs : 0) * OR_INT_SIZE
@@ -5644,7 +5621,7 @@ sbtree_find_multi_uniques (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
 
   /* count BTIDs and count values follow. A packed value takes at least one int, and or_unpack_db_value () must still
    * bound each value by itself. */
-  if (!net_check_request_count (request, reqlen, ptr, count, INT_MAX, OR_BTID_ALIGNED_SIZE + OR_INT_SIZE))
+  if (!net_check_request_count (request, reqlen, ptr, count, INT_MAX, OR_BTID_ALIGNED_SIZE + OR_INT_SIZE, 1))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
@@ -6481,7 +6458,8 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
       if (is_valid_request)
 	{
 	  ptr = or_unpack_int (ptr, &n_query_ids);
-	  is_valid_request = net_check_request_ptr_count (request, reqlen, ptr, n_query_ids);
+	  is_valid_request =
+		  net_check_request_count (request, reqlen, ptr, n_query_ids, INT_MAX, OR_PTR_SIZE, PTR_ALIGNMENT);
 	}
       if (!is_valid_request)
 	{
@@ -6509,7 +6487,7 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     {
       /* the data follows in the request and is copied to data_buf. The client sends it this way only when it is
        * smaller than EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE. */
-      if (!net_check_request_count (request, reqlen, ptr, data_size, EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE - 1, 1))
+      if (!net_check_request_count (request, reqlen, ptr, data_size, EXECUTE_QUERY_MAX_ARGUMENT_DATA_SIZE - 1, 1, 1))
 	{
 	  goto abort_request;
 	}
@@ -6534,7 +6512,7 @@ sqmgr_execute_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     }
 
   /* xqmgr_execute_query () unpacks dbval_cnt values from the data. A packed value takes at least one int. */
-  if (dbval_cnt != 0 && !net_check_request_count (data, data_size, data, dbval_cnt, INT_MAX, OR_INT_SIZE))
+  if (dbval_cnt != 0 && !net_check_request_count (data, data_size, data, dbval_cnt, INT_MAX, OR_INT_SIZE, 1))
     {
       goto abort_request;
     }
@@ -7285,7 +7263,7 @@ sqmgr_end_query (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
     }
 
   ptr = or_unpack_int (request, &n_query_ids);
-  if (!net_check_request_ptr_count (request, reqlen, ptr, n_query_ids))
+  if (!net_check_request_count (request, reqlen, ptr, n_query_ids, INT_MAX, OR_PTR_SIZE, PTR_ALIGNMENT))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
@@ -8220,7 +8198,7 @@ slocator_find_lockhint_class_oids (THREAD_ENTRY *thread_p, unsigned int rid, cha
   /* each class is a string, a lock, three ints and an OID in the request. The string takes at least its length word.
    * malloc_size is an int, so it must not overflow. */
   if (!net_check_request_count (request, reqlen, ptr, num_classes, (int) (INT_MAX / malloc_size_per_class),
-				OR_INT_SIZE * 5 + OR_OID_SIZE))
+				OR_INT_SIZE * 5 + OR_OID_SIZE, 1))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
@@ -8567,7 +8545,7 @@ sthread_kill_or_interrupt_tran (THREAD_ENTRY *thread_p, unsigned int rid, char *
     }
 
   /* the transaction indexes are followed by interrupt_only */
-  if (!net_check_request_count (request, reqlen, ptr, num_tran_index, INT_MAX, OR_INT_SIZE)
+  if (!net_check_request_count (request, reqlen, ptr, num_tran_index, INT_MAX, OR_INT_SIZE, 1)
       || !net_check_request_remaining (request, reqlen, ptr + num_tran_index * OR_INT_SIZE, OR_INT_SIZE))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
@@ -9692,7 +9670,7 @@ slocator_check_fk_validity (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
     }
 
   /* n_attrs attribute ids follow, and then the OID and BTID of the primary key class and the length of fk_name */
-  if (!net_check_request_count (request, reqlen, ptr, n_attrs, INT_MAX, OR_INT_SIZE)
+  if (!net_check_request_count (request, reqlen, ptr, n_attrs, INT_MAX, OR_INT_SIZE, 1)
       || !net_check_request_remaining (request, reqlen, ptr + n_attrs * OR_INT_SIZE,
 				       OR_OID_SIZE + OR_BTID_ALIGNED_SIZE + OR_INT_SIZE))
     {
@@ -9821,7 +9799,7 @@ sboot_compact_db (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
     }
 
   /* n_classes OIDs, 4 ints, 2 OIDs and 5 int arrays of n_classes follow */
-  if (!net_check_request_count (request, reqlen, ptr, n_classes, INT_MAX, OR_OID_SIZE + OR_INT_SIZE * 5)
+  if (!net_check_request_count (request, reqlen, ptr, n_classes, INT_MAX, OR_OID_SIZE + OR_INT_SIZE * 5, 1)
       || !net_check_request_remaining (request, reqlen, ptr + n_classes * (OR_OID_SIZE + OR_INT_SIZE * 5),
 				       OR_INT_SIZE * 4 + OR_OID_SIZE * 2))
     {
@@ -11063,7 +11041,7 @@ ssession_set_session_variables (THREAD_ENTRY *thread_p, unsigned int rid, char *
     }
 
   /* a packed value takes at least one int, and or_unpack_db_value () must still bound each value by itself */
-  if (!net_check_request_count (data_request, data_size, data_request, count, INT_MAX, OR_INT_SIZE))
+  if (!net_check_request_count (data_request, data_size, data_request, count, INT_MAX, OR_INT_SIZE, 1))
     {
       if (data_request != NULL)
 	{
@@ -11361,7 +11339,7 @@ ssession_drop_session_variables (THREAD_ENTRY *thread_p, unsigned int rid, char 
     }
 
   /* a packed value takes at least one int, and or_unpack_db_value () must still bound each value by itself */
-  if (!net_check_request_count (data_request, data_size, data_request, count, INT_MAX, OR_INT_SIZE))
+  if (!net_check_request_count (data_request, data_size, data_request, count, INT_MAX, OR_INT_SIZE, 1))
     {
       if (data_request != NULL)
 	{
@@ -11721,7 +11699,7 @@ slocator_redistribute_partition_data (THREAD_ENTRY *thread_p, unsigned int rid, 
       goto end;
     }
 
-  if (!net_check_request_count (request, reqlen, ptr, nr_oids, INT_MAX, OR_OID_SIZE))
+  if (!net_check_request_count (request, reqlen, ptr, nr_oids, INT_MAX, OR_OID_SIZE, 1))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
@@ -14082,7 +14060,7 @@ slob_create_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   ptr = or_unpack_hfid (request, &hfid);
   ptr = or_unpack_int (ptr, &attrid_arr_length);
 
-  if (!net_check_request_count (request, reqlen, ptr, attrid_arr_length, INT_MAX, OR_INT_SIZE))
+  if (!net_check_request_count (request, reqlen, ptr, attrid_arr_length, INT_MAX, OR_INT_SIZE, 1))
     {
       css_send_abort_to_client (thread_p->conn_entry, rid);
       return;
