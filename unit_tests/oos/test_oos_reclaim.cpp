@@ -46,6 +46,7 @@
 #include "oos_file.hpp"
 #include "xserver_interface.h"
 #include "test_oos_common.hpp"
+#include "test_oos_error_log.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -114,6 +115,22 @@ namespace
 	chunk = {header.next_chunk_oid, header.next_chunk_stamp};
       }
     ASSERT_EQ ((int) chunks_out.size (), n_chunks);
+  }
+
+  /* Rewrites a chunk's chunk_index in place, unlogged, as on-disk corruption would. */
+  void
+  corrupt_chunk_index (const OID &oid, int chunk_index)
+  {
+    VPID vpid = {oid.pageid, oid.volid};
+    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+    ASSERT_NE (page_ptr, nullptr);
+    RECDES rec;
+    ASSERT_EQ (spage_get_record (thread_p, page_ptr, oid.slotid, &rec, PEEK), S_SUCCESS);
+    OOS_RECORD_HEADER header;
+    std::memcpy (&header, rec.data, OOS_RECORD_HEADER_SIZE);
+    header.chunk_index = chunk_index;
+    std::memcpy (rec.data, &header, OOS_RECORD_HEADER_SIZE);
+    pgbuf_set_dirty (thread_p, page_ptr, FREE);
   }
 
   int g_fail_stops = 0;
@@ -351,6 +368,43 @@ TEST_F (OosReclaimTest, PostponeRightBeforeASystemOperationRunsWhenTheCacheOverf
 
   EXPECT_FALSE (chunk_is_present (chunks[0])) << "the postpone right before the system operation did not run";
   EXPECT_TRUE (chunk_is_present (other[0])) << "a stale reference reclaimed a live chain";
+}
+
+/* A reclaim that a malformed chain rejects before modifying anything fails the same way on every rerun, so
+ * stopping the server would make restart recovery stop again and the database would never open. The
+ * reclaim leaves that chain, reports it, and reclaims the others; a rerun does the same. */
+TEST_F (OosReclaimTest, MalformedChainIsLeftAndReportedWhileTheOtherChainsAreReclaimed)
+{
+  std::vector<oos_chain_ref> bad, good;
+  insert_chain (oos_vfid, 3, bad);
+  insert_chain (oos_vfid, 3, good);
+  corrupt_chunk_index (bad[1].head_oid, 6);
+  const OID owner = OID_INITIALIZER;
+  oos_test_set_reclaim_fail_stop_hook (record_fail_stop);
+
+  for (int run = 0; run < 2; run++)
+    {
+      /* The second run is the rerun restart recovery performs: it reads the same intent from the log. */
+      const long log_offset = test_oos_error_log::error_log_size ();
+      ASSERT_GE (log_offset, 0) << "the test requires the error log to be a readable file";
+      log_sysop_start (thread_p);
+      ASSERT_EQ (oos_log_reclaim_intent (thread_p, oos_vfid, owner, 0, "unit test", {bad[0], good[0]}), NO_ERROR);
+      log_sysop_commit (thread_p);
+
+      EXPECT_EQ (g_fail_stops, 0) << "run " << run << ": a malformed chain must not stop the server";
+      EXPECT_EQ (er_errid (), NO_ERROR) << "run " << run;
+      EXPECT_TRUE (test_oos_error_log::error_log_contains_since (log_offset, "skipped a malformed chain"))
+	  << "run " << run << ": the skipped chain must be reported";
+      for (std::size_t i = 0; i < bad.size (); i++)
+	{
+	  EXPECT_TRUE (chunk_is_present (bad[i])) << "run " << run << ": malformed chunk " << i << " was touched";
+	  EXPECT_FALSE (chunk_is_present (good[i])) << "run " << run << ": chunk " << i << " of the other chain";
+	}
+    }
+
+  /* Let TearDown remove the file without the corrupted chunk in it. */
+  corrupt_chunk_index (bad[1].head_oid, 1);
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, bad[0], NULL, NULL), NO_ERROR);
 }
 
 int

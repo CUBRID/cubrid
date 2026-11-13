@@ -866,7 +866,7 @@ TEST_F (OosEagerDiagnostics, ThreeStaleChainsInOneRecordAreOneNotification)
 // Malformed heads and operational failures stay errors
 // ===========================================================================
 
-TEST_F (OosEagerDiagnostics, MatchingNonHeadReferenceFailStopsTheCommittedReclaim)
+TEST_F (OosEagerDiagnostics, MatchingNonHeadReferenceIsLeftAndReportedByTheCommittedReclaim)
 {
   /* The row's stub names a continuation chunk with the stamp that chunk actually carries: identity matches,
    * but the target is not a chain head. This is a malformed reference, not a stale one. */
@@ -887,13 +887,13 @@ TEST_F (OosEagerDiagnostics, MatchingNonHeadReferenceFailStopsTheCommittedReclai
   oos_test_set_reclaim_fail_stop_hook (record_fail_stop);
   er_clear ();
   /* The DML only records the intent; the reclaim runs when the transaction commits (ADR-0008). A malformed
-   * reference makes that committed reclaim fail, and a committed reclaim that fails stops the server
-   * instead of reporting the reclaim as done (fail-stop). The hook stands in for the stop. */
+   * reference fails the same way on every rerun, so stopping the server would stop restart recovery too:
+   * the committed reclaim reports the reference and leaves it. */
   EXPECT_EQ (delete_row (row), NO_ERROR);
   commit ();
   oos_test_set_reclaim_fail_stop_hook (NULL);
-  EXPECT_EQ (g_fail_stops, 1) << "a malformed reference must stop the committed reclaim, not be skipped";
-  EXPECT_EQ (g_fail_stop_error, ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (g_fail_stops, 0) << "a malformed reference must not stop the server";
+  EXPECT_TRUE (error_log_contains_since (log_offset, "skipped a malformed chain"));
   EXPECT_EQ (heap_oos_test_skipped_cleanup_notifications (), 0);
   EXPECT_FALSE (error_log_mentions_since (log_offset, ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED));
   er_clear ();

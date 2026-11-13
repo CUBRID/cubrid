@@ -219,8 +219,8 @@ vacuum_oos_sysop_commit_collecting_emptied_pages (THREAD_ENTRY *thread_p, VACUUM
  *
  * return	       : NO_ERROR; ER_INTERRUPTED on shutdown (the block is processed again after restart); or, on a
  *			 vacuum worker, ER_VACUUM_OOS_LOOKUP_DEFERRED when the heap header lookup for the OOS file failed
- *			 (the block runs again later). Any other reclaim failure stops the server
- *			 (oos_reclaim_notified_chains).
+ *			 (the block runs again later). A malformed chain is reported and skipped; any other reclaim
+ *			 failure stops the server (oos_reclaim_notified_chains).
  * thread_p (in)       : Thread entry.
  * undo_data (in)      : Undo data of the record. It may point into the worker's current log page:
  *			 oos_reclaim_notified_chains copies it before its first page fix.

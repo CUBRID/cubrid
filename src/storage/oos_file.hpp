@@ -70,7 +70,8 @@ struct oos_chain_ref
  *                                 UPDATE's MVCCID; vacuum runs oos_delete once no snapshot can still
  *                                 read the old version.
  * An abort of the deciding unit, including a statement or savepoint rollback, discards the postpone.
- * A failed reclaim stops the server (fail-stop) so restart recovery reruns the durable postpone. */
+ * A failed reclaim stops the server (fail-stop) so restart recovery reruns the durable postpone, except
+ * for a malformed chain, which a rerun rejects again: it is reported and left in place. */
 enum oos_reclaim_intent_flag
 {
   OOS_RECLAIM_DIAGNOSE_SKIPS = 0x1	/* the owner held the only reference; report a skipped chain */

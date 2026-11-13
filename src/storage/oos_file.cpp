@@ -3748,7 +3748,9 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       committed the decision that the chain is dead (ADR-0008): a reclaim postpone, or vacuum's
  *       RVOOS_NOTIFY_VACUUM consumer. An error leaves the linked prefix that a rerun finishes; the
  *       postpone callers stop the server rather than report the reclaim as done (fail-stop), so
- *       restart recovery reruns their durable postpone.
+ *       restart recovery reruns their durable postpone. A malformed chain is the exception: it is
+ *       rejected before anything is modified, so a rerun fails the same way, and the callers leave
+ *       it (oos_reclaim_skip_if_permanent).
  *
  *       Page deallocation is NOT done here. Every page the delete empties enters the file's
  *       emptied-page set, which the next growth checks; vacuum also reclaims them at once via
@@ -3867,7 +3869,8 @@ oos_pack_reclaim_intent (const VFID &oos_vfid, const HFID &heap_hfid, const OID 
   return NO_ERROR;
 }
 
-/* Parses a reclaim intent payload. A malformed payload is corruption of the log record. */
+/* Parses a reclaim intent payload. A malformed payload is corruption of the log record; it fails with
+ * ER_HEAP_OOS_CORRUPTED_RECORD, which a rerun hits again (oos_reclaim_skip_if_permanent). */
 static int
 oos_unpack_reclaim_intent (const char *data, int length, oos_reclaim_intent_header &header_out,
 			   std::vector<oos_chain_ref> &refs_out)
@@ -3875,8 +3878,8 @@ oos_unpack_reclaim_intent (const char *data, int length, oos_reclaim_intent_head
   if (data == NULL || length < (int) sizeof (header_out))
     {
       assert_release (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
   std::memcpy (&header_out, data, sizeof (header_out));
   header_out.op_ctx[sizeof (header_out.op_ctx) - 1] = '\0';
@@ -3884,8 +3887,8 @@ oos_unpack_reclaim_intent (const char *data, int length, oos_reclaim_intent_head
       || (std::size_t) length != sizeof (header_out) + (std::size_t) header_out.n_refs * sizeof (oos_chain_ref))
     {
       assert_release (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
   try
     {
@@ -4013,6 +4016,24 @@ oos_reclaim_fail_stop (THREAD_ENTRY *thread_p, int error, const VFID &oos_vfid, 
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "oos_reclaim: committed reclaim failed with error %d", error);
 }
 
+/* Returns true, after reporting the chain, for an error that a rerun of the same reclaim hits again: a malformed
+ * chain or intent, rejected before anything is modified. Stopping the server cannot finish such a reclaim, because
+ * restart recovery reruns the same postpone and stops again, so the database never opens. The chain is left in
+ * place as a space leak. Any other error may clear on a rerun and stays a fail-stop. */
+static bool
+oos_reclaim_skip_if_permanent (int error, const VFID &oos_vfid, const oos_chain_ref &ref)
+{
+  if (error != ER_HEAP_OOS_CORRUPTED_RECORD && error != ER_HEAP_OOS_INVALID_ARGUMENT)
+    {
+      return false;
+    }
+  oos_error ("OOS reclaim of committed intent skipped a malformed chain or intent (error %d) in file %d|%d chain"
+	     " oid={vol=%d,page=%d,slot=%d} stamp %lld|%d; the chain is left in place", error, VFID_AS_ARGS (&oos_vfid),
+	     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp));
+  er_clear ();
+  return true;
+}
+
 /*
  * oos_rv_reclaim_on_postpone () - run a committed reclaim intent (RVOOS_RECLAIM_POSTPONE)
  *
@@ -4021,7 +4042,8 @@ oos_reclaim_fail_stop (THREAD_ENTRY *thread_p, int error, const VFID &oos_vfid, 
  *   rcv(in): the intent payload
  *
  * Runs after the deciding unit committed, at runtime or as a rerun by restart recovery. The reclaimer
- * converges on rerun, so a rerun of a finished or partly finished reclaim is safe. An error does not
+ * converges on rerun, so a rerun of a finished or partly finished reclaim is safe. A malformed chain is left
+ * and reported, and the others are reclaimed (oos_reclaim_skip_if_permanent). Any other error does not
  * return: it stops the server before the postpone is marked done (oos_reclaim_fail_stop).
  */
 int
@@ -4032,7 +4054,15 @@ oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   int error = oos_unpack_reclaim_intent (rcv->data, rcv->length, header, refs);
   if (error != NO_ERROR)
     {
-      oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA});
+      if (oos_reclaim_skip_if_permanent (error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA}))
+	{
+	  /* The run-postpone system operation around this call must not be empty (log_sysop_commit_internal). */
+	  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, NULL);
+	}
+      else
+	{
+	  oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA});
+	}
       return NO_ERROR;
     }
 
@@ -4043,12 +4073,18 @@ oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   int save_wait_msecs = pgbuf_force_latch_wait (thread_p);
 
   int skipped_count = 0;
+  int malformed_count = 0;
   oos_chain_ref first_skipped_ref = {oid_Null_oid, NULL_LSA};
   oos_delete_outcome first_skipped_outcome = OOS_DELETE_OUTCOME_UNKNOWN;
   for (const oos_chain_ref &ref : refs)
     {
       oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
       error = oos_delete (thread_p, header.oos_vfid, ref, NULL, &outcome);
+      if (error != NO_ERROR && oos_reclaim_skip_if_permanent (error, header.oos_vfid, ref))
+	{
+	  malformed_count++;
+	  continue;
+	}
       if (error != NO_ERROR)
 	{
 	  (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
@@ -4069,7 +4105,7 @@ oos_rv_reclaim_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
   (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
-  if (skipped_count == (int) refs.size ())
+  if (skipped_count + malformed_count == (int) refs.size ())
     {
       /* Nothing was deleted, as on the rerun of a finished reclaim. The run-postpone system operation around
        * this call must not be empty (log_sysop_commit_internal). */
@@ -4105,17 +4141,30 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   oos_reclaim_intent_header header {};
   std::vector<oos_chain_ref> refs;
 
-  int error = ER_GENERIC_ERROR;
+  int error = ER_HEAP_OOS_CORRUPTED_RECORD;
   if (rcv->length > (int) sizeof (prefix))
     {
       std::memcpy (&prefix, rcv->data, sizeof (prefix));
       error = oos_unpack_reclaim_intent (rcv->data + sizeof (prefix), rcv->length - (int) sizeof (prefix), header,
 					 refs);
     }
-  if (error != NO_ERROR || !MVCCID_IS_VALID (prefix.mvccid) || HFID_IS_NULL (&header.heap_hfid))
+  if (error == NO_ERROR && (!MVCCID_IS_VALID (prefix.mvccid) || HFID_IS_NULL (&header.heap_hfid)))
     {
-      oos_reclaim_fail_stop (thread_p, error != NO_ERROR ? error : ER_GENERIC_ERROR, VFID {NULL_FILEID, NULL_VOLID},
-			     oos_chain_ref {oid_Null_oid, NULL_LSA});
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      error = ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+  if (error != NO_ERROR)
+    {
+      if (oos_reclaim_skip_if_permanent (error, VFID {NULL_FILEID, NULL_VOLID}, oos_chain_ref {oid_Null_oid, NULL_LSA}))
+	{
+	  /* The run-postpone system operation around this call must not be empty (log_sysop_commit_internal). */
+	  log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, NULL);
+	}
+      else
+	{
+	  oos_reclaim_fail_stop (thread_p, error, VFID {NULL_FILEID, NULL_VOLID},
+				 oos_chain_ref {oid_Null_oid, NULL_LSA});
+	}
       return NO_ERROR;
     }
 
@@ -4148,8 +4197,10 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
  *
  *   return: NO_ERROR; ER_INTERRUPTED (shutdown), which leaves the block to be processed again; or the error of
  *	     a failed heap header lookup for the OOS file (a latch timeout or a read error), which the caller
- *	     turns into a later run of the block, as vacuum does for a heap record (CBRD-27933). Any other
- *	     reclaim failure stops the server (fail-stop), so the block is processed again after restart
+ *	     turns into a later run of the block, as vacuum does for a heap record (CBRD-27933). A malformed
+ *	     notification or chain, and a heap without an OOS file, are reported and skipped, because a rerun
+ *	     fails the same way (oos_reclaim_skip_if_permanent). Any other reclaim failure stops the server
+ *	     (fail-stop), so the block is processed again after restart
  *   thread_p(in): vacuum worker
  *   notify_data(in): undo data of the record
  *   notify_length(in): its length
@@ -4177,6 +4228,10 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
   int error = oos_unpack_reclaim_intent (notify_data, notify_length, header, refs);
   if (error != NO_ERROR)
     {
+      if (oos_reclaim_skip_if_permanent (error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA}))
+	{
+	  return NO_ERROR;
+	}
       oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, oos_chain_ref {oid_Null_oid, NULL_LSA});
       return error;
     }
@@ -4221,16 +4276,13 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
 	}
       else if (VFID_ISNULL (&header.oos_vfid))
 	{
-	  /* Chains exist, so the heap must have an OOS file; a dropped table never reaches here. The lookup
-	   * succeeded and set no error, so er_errid () may name an older one. */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-	  error = ER_HEAP_OOS_CORRUPTED_RECORD;
-	}
-      if (error != NO_ERROR)
-	{
-	  oos_reclaim_fail_stop (thread_p, error, header.oos_vfid, refs.empty () ? oos_chain_ref {oid_Null_oid, NULL_LSA}
-				 : refs[0]);
-	  return error;
+	  /* Chains exist, so the heap must have an OOS file; a dropped table never reaches here. A rerun finds the
+	   * same heap header, so report the notification and leave its chains. The lookup set no error; an older
+	   * one may still be set, and the caller must not take it for this call's. */
+	  oos_error ("vacuum skipped an OOS notification of heap %d|%d: the heap has no OOS file; %d chains are left",
+		     VFID_AS_ARGS (&header.heap_hfid.vfid), (int) refs.size ());
+	  er_clear ();
+	  return NO_ERROR;
 	}
     }
   *oos_vfid_out = header.oos_vfid;
@@ -4242,6 +4294,10 @@ oos_reclaim_notified_chains (THREAD_ENTRY *thread_p, const char *notify_data, in
 	{
 	  /* Vacuum is shutting down; the block is not marked done and is processed again after restart. */
 	  return error;
+	}
+      if (error != NO_ERROR && oos_reclaim_skip_if_permanent (error, header.oos_vfid, ref))
+	{
+	  continue;
 	}
       if (error != NO_ERROR)
 	{

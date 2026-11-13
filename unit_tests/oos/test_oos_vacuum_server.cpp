@@ -37,6 +37,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+using test_oos_error_log::error_log_contains_since;
 using test_oos_error_log::error_log_mentions_since;
 using test_oos_error_log::error_log_size;
 using test_oos_error_log::notification_log_scope;
@@ -934,8 +935,9 @@ TEST_F (OosVacuumHeapSeamServer, NotifyConsumerReclaimsLiveReferenceAndSkipsStal
 }
 
 // ============================================================================
-// TC-V11b: UPDATE notification consumer — a heap without an OOS file is corruption and stops the server,
-// even when an earlier error is still set: the lookup succeeded, so the error id is not its (CBRD-27781)
+// TC-V11b: UPDATE notification consumer — a heap without an OOS file is corruption that a rerun finds again,
+// so the notification is reported and skipped, not a stop, even when an earlier error is still set: the lookup
+// succeeded, so the error id is not its (CBRD-27781)
 // ============================================================================
 static int g_notify_fail_stops = 0;
 static int g_notify_fail_stop_error = NO_ERROR;
@@ -947,7 +949,7 @@ record_notify_fail_stop (int error)
   g_notify_fail_stop_error = error;
 }
 
-TEST_F (OosVacuumHeapSeamServer, NotifyConsumerFailStopsOnAHeapWithoutAnOosFileDespiteAStaleError)
+TEST_F (OosVacuumHeapSeamServer, NotifyConsumerSkipsAHeapWithoutAnOosFileDespiteAStaleError)
 {
   HFID bare_hfid;
   HFID_SET_NULL (&bare_hfid);
@@ -956,7 +958,7 @@ TEST_F (OosVacuumHeapSeamServer, NotifyConsumerFailStopsOnAHeapWithoutAnOosFileD
   ASSERT_TRUE (heap_oos_find_vfid (thread_p, &bare_hfid, &no_oos_vfid, false));
   ASSERT_TRUE (VFID_ISNULL (&no_oos_vfid)) << "the heap must have no OOS file";
 
-  /* The consumer stops before it reaches the chain, so the reference names nothing. */
+  /* The consumer skips before it reaches the chain, so the reference names nothing. */
   const oos_chain_ref unreached = {oid_Null_oid, NULL_LSA};
   std::vector<char> notify = oos_test_make_update_drop_notify_payload (bare_hfid, {unreached});
   ASSERT_FALSE (notify.empty ());
@@ -964,17 +966,73 @@ TEST_F (OosVacuumHeapSeamServer, NotifyConsumerFailStopsOnAHeapWithoutAnOosFileD
   g_notify_fail_stops = 0;
   g_notify_fail_stop_error = NO_ERROR;
   oos_test_set_reclaim_fail_stop_hook (record_notify_fail_stop);
+  const long log_offset = error_log_size ();
+  ASSERT_GE (log_offset, 0) << "the test requires the error log to be a readable file";
   /* Left by an earlier step. The shutdown interrupt is the one error that leaves the block unfinished. */
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
   const int error_code = vacuum_oos_reclaim_notified_chains (thread_p, notify.data (), (int) notify.size ());
   oos_test_set_reclaim_fail_stop_hook (NULL);
+  const int error_left = er_errid ();
   er_clear ();
 
-  EXPECT_EQ (error_code, ER_HEAP_OOS_CORRUPTED_RECORD) << "a stale interrupt must not leave the block unfinished";
-  EXPECT_EQ (g_notify_fail_stops, 1) << "a heap without an OOS file must stop the server";
-  EXPECT_EQ (g_notify_fail_stop_error, ER_HEAP_OOS_CORRUPTED_RECORD);
+  EXPECT_EQ (error_code, NO_ERROR) << "a stale interrupt must not leave the block unfinished";
+  EXPECT_EQ (error_left, NO_ERROR);
+  EXPECT_EQ (g_notify_fail_stops, 0) << "a heap without an OOS file must not stop the server";
+  EXPECT_TRUE (error_log_contains_since (log_offset, "the heap has no OOS file"));
 
   (void) xheap_destroy (thread_p, &bare_hfid, &class_oid);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+}
+
+// ============================================================================
+// TC-V11c: UPDATE notification consumer — a malformed chain fails the same way on every run of the block, so
+// it is reported and left while the other chains of the notification are reclaimed; no stop (CBRD-27781)
+// ============================================================================
+TEST_F (OosVacuumHeapSeamServer, NotifyConsumerLeavesAMalformedChainAndReclaimsTheOthers)
+{
+  OID bad_oid, good_oid;
+  RECDES bad_rec {}, good_rec {};
+  insert_chunk_and_record ("chain whose header is corrupted", bad_oid, bad_rec);
+  insert_chunk_and_record ("chain of the same notification", good_oid, good_rec);
+  test_oos_utils::auto_freed_recdes_ptr d1 (&bad_rec, recdes_free_data_area);
+  test_oos_utils::auto_freed_recdes_ptr d2 (&good_rec, recdes_free_data_area);
+  oos_chain_ref bad = {bad_oid, NULL_LSA}, good = {good_oid, NULL_LSA};
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, bad_oid, &bad.identity_stamp), NO_ERROR);
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, good_oid, &good.identity_stamp), NO_ERROR);
+  {
+    /* A head whose chunk_index is not 0, written unlogged as on-disk corruption would be. */
+    VPID vpid = {bad_oid.pageid, bad_oid.volid};
+    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+    ASSERT_NE (page_ptr, nullptr);
+    RECDES chunk;
+    ASSERT_EQ (spage_get_record (thread_p, page_ptr, bad_oid.slotid, &chunk, PEEK), S_SUCCESS);
+    OOS_RECORD_HEADER header;
+    std::memcpy (&header, chunk.data, OOS_RECORD_HEADER_SIZE);
+    header.chunk_index = 2;
+    std::memcpy (chunk.data, &header, OOS_RECORD_HEADER_SIZE);
+    pgbuf_set_dirty (thread_p, page_ptr, FREE);
+  }
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  std::vector<char> notify = oos_test_make_update_drop_notify_payload (hfid, {bad, good});
+  ASSERT_FALSE (notify.empty ());
+  g_notify_fail_stops = 0;
+  oos_test_set_reclaim_fail_stop_hook (record_notify_fail_stop);
+  for (int run = 0; run < 2; run++)
+    {
+      /* The second run is a retry of the block, or its run after a restart. */
+      const long log_offset = error_log_size ();
+      ASSERT_GE (log_offset, 0) << "the test requires the error log to be a readable file";
+      er_clear ();
+      EXPECT_EQ (vacuum_oos_reclaim_notified_chains (thread_p, notify.data (), (int) notify.size ()), NO_ERROR)
+	  << "run " << run;
+      EXPECT_EQ (er_errid (), NO_ERROR) << "run " << run;
+      EXPECT_EQ (g_notify_fail_stops, 0) << "run " << run << ": a malformed chain must not stop the server";
+      EXPECT_TRUE (error_log_contains_since (log_offset, "skipped a malformed chain")) << "run " << run;
+      EXPECT_TRUE (chunk_is_present (bad_oid)) << "run " << run << ": the malformed chain was touched";
+      EXPECT_FALSE (chunk_is_present (good_oid)) << "run " << run << ": the other chain was not reclaimed";
+    }
+  oos_test_set_reclaim_fail_stop_hook (NULL);
   ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
 }
 
