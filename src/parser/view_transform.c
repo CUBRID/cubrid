@@ -10302,7 +10302,6 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   if (return_node != NULL && parser->flag.view_has_sp_call)
     {
-      /* a view expanded somewhere in the statement calls a stored procedure (see mq_mark_sp_call ()) */
       return_node->flag.has_sp_call = 1;
       return_node->flag.cannot_prepare = 1;
     }
