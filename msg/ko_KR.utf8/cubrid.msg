@@ -2045,7 +2045,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
 
 339 패키지 "%1$s"이(가) 존재하지 않습니다.
-345 잘못된 %1$s 이름 "%2$s".\n  시스템 클래스/뷰 이름은 %1$s 이름이 될 수 없습니다.
+346 잘못된 %1$s 이름 "%2$s".\n  시스템 클래스/뷰 이름은 %1$s 이름이 될 수 없습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

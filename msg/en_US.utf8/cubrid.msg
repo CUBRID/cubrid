@@ -2047,7 +2047,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 
 339 Package "%1$s" does not exist.
-345 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.
+346 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
