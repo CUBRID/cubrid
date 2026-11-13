@@ -30,15 +30,15 @@
     MAP_LIST_ITEM(FLAGS) \
     MAP_LIST_ITEM(OWNER) \
     MAP_LIST_ITEM(CODE) \
-    MAP_LIST_ITEM(PROCEDURES_CNT) \
+    MAP_LIST_ITEM(PROCEDURE_COUNT) \
     MAP_LIST_ITEM(PROCEDURES) \
-    MAP_LIST_ITEM(VARIABLES_CNT) \
+    MAP_LIST_ITEM(VARIABLE_COUNT) \
     MAP_LIST_ITEM(VARIABLES) \
-    MAP_LIST_ITEM(EXCEPTIONS_CNT) \
+    MAP_LIST_ITEM(EXCEPTION_COUNT) \
     MAP_LIST_ITEM(EXCEPTIONS) \
-    MAP_LIST_ITEM(CURSORS_CNT) \
+    MAP_LIST_ITEM(CURSOR_COUNT) \
     MAP_LIST_ITEM(CURSORS) \
-    MAP_LIST_ITEM(RECORD_TYPES_CNT) \
+    MAP_LIST_ITEM(RECORD_TYPE_COUNT) \
     MAP_LIST_ITEM(RECORD_TYPES) \
     MAP_LIST_ITEM(COMMENT) \
     MAP_LIST_ITEM(CREATED_TIME) \
@@ -49,15 +49,15 @@
 #define PKG_ATTR_FLAGS               "flags"
 #define PKG_ATTR_OWNER               "owner"
 #define PKG_ATTR_CODE                "code"
-#define PKG_ATTR_PROCEDURES_CNT      "procedures_cnt"
+#define PKG_ATTR_PROCEDURE_COUNT     "procedure_count"
 #define PKG_ATTR_PROCEDURES          "procedures"
-#define PKG_ATTR_VARIABLES_CNT       "variables_cnt"
+#define PKG_ATTR_VARIABLE_COUNT      "variable_count"
 #define PKG_ATTR_VARIABLES           "variables"
-#define PKG_ATTR_EXCEPTIONS_CNT      "exceptions_cnt"
+#define PKG_ATTR_EXCEPTION_COUNT     "exception_count"
 #define PKG_ATTR_EXCEPTIONS          "exceptions"
-#define PKG_ATTR_CURSORS_CNT         "cursors_cnt"
+#define PKG_ATTR_CURSOR_COUNT        "cursor_count"
 #define PKG_ATTR_CURSORS             "cursors"
-#define PKG_ATTR_RECORD_TYPES_CNT    "record_types_cnt"
+#define PKG_ATTR_RECORD_TYPE_COUNT   "record_type_count"
 #define PKG_ATTR_RECORD_TYPES        "record_types"
 #define PKG_ATTR_COMMENT             "comment"
 #define PKG_ATTR_CREATED_TIME        "created_time"

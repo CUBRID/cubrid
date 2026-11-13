@@ -1463,7 +1463,7 @@ jsp_set_pkg_sp_sql_data_access (const char *unique_name, const std::vector<cubpl
       goto exit;
     }
 
-  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES_CNT, &proc_cnt_val);
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURE_COUNT, &proc_cnt_val);
   if (err != NO_ERROR)
     {
       goto exit;
@@ -1716,7 +1716,7 @@ jsp_drop_pkg_member_sp (MOP pkg_mop)
   DB_SET *procs, *args_seq;
   MOP sp_mop, sp_code_mop, sp_arg_mop;
 
-  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES_CNT, &proc_cnt_val);
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURE_COUNT, &proc_cnt_val);
   if (err != NO_ERROR)
     {
       goto return_;
@@ -1920,28 +1920,28 @@ jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
     }
 
   // drop the records in _db_package_var
-  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_VARIABLES_CNT, PKG_ATTR_VARIABLES);
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_VARIABLE_COUNT, PKG_ATTR_VARIABLES);
   if (err != NO_ERROR)
     {
       goto cleanup0;
     }
 
   // drop the records in _db_package_exception
-  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_EXCEPTIONS_CNT, PKG_ATTR_EXCEPTIONS);
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_EXCEPTION_COUNT, PKG_ATTR_EXCEPTIONS);
   if (err != NO_ERROR)
     {
       goto cleanup0;
     }
 
   // drop the records in _db_package_cursor
-  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_CURSORS_CNT, PKG_ATTR_CURSORS);
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_CURSOR_COUNT, PKG_ATTR_CURSORS);
   if (err != NO_ERROR)
     {
       goto cleanup0;
     }
 
   // drop the records in _db_package_record_type
-  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_RECORD_TYPES_CNT, PKG_ATTR_RECORD_TYPES);
+  err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_RECORD_TYPE_COUNT, PKG_ATTR_RECORD_TYPES);
   if (err != NO_ERROR)
     {
       goto cleanup0;
@@ -3262,7 +3262,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       }
 
     db_make_int (&value, i);
-    err = dbt_put_internal (obt, PKG_ATTR_PROCEDURES_CNT, &value);
+    err = dbt_put_internal (obt, PKG_ATTR_PROCEDURE_COUNT, &value);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
@@ -3309,7 +3309,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       }
 
     db_make_int (&value, i);
-    err = dbt_put_internal (obt, PKG_ATTR_VARIABLES_CNT, &value);
+    err = dbt_put_internal (obt, PKG_ATTR_VARIABLE_COUNT, &value);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
@@ -3356,7 +3356,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       }
 
     db_make_int (&value, i);
-    err = dbt_put_internal (obt, PKG_ATTR_EXCEPTIONS_CNT, &value);
+    err = dbt_put_internal (obt, PKG_ATTR_EXCEPTION_COUNT, &value);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
@@ -3403,7 +3403,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       }
 
     db_make_int (&value, i);
-    err = dbt_put_internal (obt, PKG_ATTR_CURSORS_CNT, &value);
+    err = dbt_put_internal (obt, PKG_ATTR_CURSOR_COUNT, &value);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
@@ -3450,7 +3450,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       }
 
     db_make_int (&value, i);
-    err = dbt_put_internal (obt, PKG_ATTR_RECORD_TYPES_CNT, &value);
+    err = dbt_put_internal (obt, PKG_ATTR_RECORD_TYPE_COUNT, &value);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
