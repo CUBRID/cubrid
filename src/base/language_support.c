@@ -3296,6 +3296,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
  *
  * Step 1: the weight of the next code point.
  * Step 2: hash the weight, holding a weight 0 back.
+ * Step 3: mix the bits (mht_mix_hash).
  */
 static unsigned int
 lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -3323,7 +3324,8 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
       lang_hash_weight (&hash_key, &zeros, weight, true);
     }
 
-  return hash_key;
+  /* Step 3: mix the bits */
+  return mht_mix_hash (hash_key);
 }
 
 /*
@@ -3340,6 +3342,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
  *
  * Step 1: the weight of the next contraction or code point.
  * Step 2: hash the weight, holding a weight 0 back.
+ * Step 3: mix the bits (mht_mix_hash).
  */
 static unsigned int
 lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -3361,7 +3364,8 @@ lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char
       lang_hash_weight (&hash_key, &zeros, weight, true);
     }
 
-  return hash_key;
+  /* Step 3: mix the bits */
+  return mht_mix_hash (hash_key);
 }
 
 /*
@@ -4535,6 +4539,7 @@ lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, 
  * Step 1: hash levels 1, 3 and 4, and a forward level 2, from the start.
  * Step 2: hash a backwards level 2 from the end.
  * Step 3: combine the levels' hashes.
+ * Step 4: mix the bits (mht_mix_hash).
  */
 static unsigned int
 lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -4543,6 +4548,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
   const unsigned char *str_end = str + size;
   unsigned char *str_next;
   unsigned int hash_key[4] = { MHT_FNV_OFFSET, MHT_FNV_OFFSET, MHT_FNV_OFFSET, MHT_FNV_OFFSET };	/* per level */
+  unsigned int tmp_hash_key;	/* the levels' hashes combined */
   int zeros[4] = { 0, 0, 0, 0 };	/* weights 0 of spaces not hashed yet */
   bool is_space;		/* the character is a space: its weights 0 are held, not skipped */
 
@@ -4643,7 +4649,11 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
     }
 
   /* Step 3: combine the levels' hashes */
-  return ((((hash_key[0] ^ hash_key[1]) * MHT_FNV_PRIME ^ hash_key[2]) * MHT_FNV_PRIME) ^ hash_key[3]) * MHT_FNV_PRIME;
+  tmp_hash_key = ((((hash_key[0] ^ hash_key[1]) * MHT_FNV_PRIME ^ hash_key[2]) * MHT_FNV_PRIME) ^ hash_key[3])
+    * MHT_FNV_PRIME;
+
+  /* Step 4: mix the bits */
+  return mht_mix_hash (tmp_hash_key);
 }
 
 /*
@@ -5864,8 +5874,8 @@ lang_mht2str_byte_en_cs (const LANG_COLLATION * lang_coll, const unsigned char *
  * Step 2: hash each 8 bytes (lang_hash_u64_add).
  * Step 3: hash the bytes left the same way, padded with NULs to 8 bytes. Equal strings have the same size left, so
  *         their padding is the same too.
- * Step 4: mix the bits by MurmurHash3's fmix64. The multiplies of Step 2 carry only into the high bits, and the hash
- *         returned is the low 32 bits.
+ * Step 4: mix the bits (mht_mix_hash64). The multiplies of Step 2 carry only into the high bits, and the hash returned
+ *         is the low 32 bits.
  */
 static unsigned int
 lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_upper)
@@ -5896,18 +5906,12 @@ lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_
       hash_key = lang_hash_u64_add (hash_key, chunk, nul_as_space, to_upper);
     }
 
-  /* Step 4: mix the bits (fmix64) */
-  hash_key ^= hash_key >> 33;
-  hash_key *= 0xff51afd7ed558ccdULL;
-  hash_key ^= hash_key >> 33;
-  hash_key *= 0xc4ceb9fe1a85ec53ULL;
-  hash_key ^= hash_key >> 33;
-
-  return (unsigned int) hash_key;
+  /* Step 4: mix the bits */
+  return (unsigned int) mht_mix_hash64 (hash_key);
 }
 
 /*
- * lang_hash_u64_add () - add 8 bytes of a string to the hash by an FxHash step
+ * lang_hash_u64_add () - add 8 bytes of a string to the hash by an FxHasher step
  *   return: hash value
  *   hash_key(in): hash value of the bytes before
  *   chunk(in): 8 bytes of a string
@@ -5916,8 +5920,6 @@ lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_
 STATIC_INLINE UINT64
 lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upper)
 {
-  const UINT64 fx_seed = 0x517cc1b727220a95ULL;	/* FxHash's multiplier, an odd number */
-
   if (nul_as_space)
     {
       chunk = lang_hash_u64_nul_as_space (chunk);
@@ -5927,7 +5929,7 @@ lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upp
       chunk = lang_hash_u64_upper (chunk);
     }
 
-  return (ROTL64 (hash_key, 5) ^ chunk) * fx_seed;
+  return (ROTL64 (hash_key, 5) ^ chunk) * MHT_FX_MULTIPLIER;
 }
 
 /*
@@ -5937,6 +5939,8 @@ lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upp
  *
  * In each byte, (b & 0x7f) + 0x7f sets bit 7 unless the low 7 bits are 0, and or-ing the byte itself sets it from 0x80:
  * nul keeps 0x80 only in a NUL byte, and (nul >> 7) * ' ' puts 0x20 there. No sum passes 0xff (0x7f + 0x7f = 0xfe).
+ *
+ * Note: nul is the test of "Determine if a word has a zero byte" in Bit Twiddling Hacks (Sean Eron Anderson).
  */
 STATIC_INLINE UINT64
 lang_hash_u64_nul_as_space (UINT64 chunk)
@@ -5954,22 +5958,25 @@ lang_hash_u64_nul_as_space (UINT64 chunk)
  *   chunk(in): 8 bytes of a string
  *
  * In each byte, with b its low 7 bits:
- *   (1) bit 7 of b + from_a (0x80 - 'a' = 0x1f) is set from 'a' on
- *   (2) bit 7 of b + past_z (0x80 - 'z' - 1 = 0x05) is set past 'z'
+ *   (1) bit 7 of b + add_from_a (0x80 - 'a' = 0x1f) is set from 'a' on
+ *   (2) bit 7 of b + add_past_z (0x80 - 'z' - 1 = 0x05) is set past 'z'
  *   (3) lower keeps 0x80 where (1) is set and (2) is not, if bit 7 of the byte itself is clear
  *   (4) chunk ^ (lower >> 2) clears 0x20 there: 'a' (0x61) to 'A' (0x41)
  * No sum passes 0xff (0x7f + 0x1f = 0x9e), so no byte carries into the next one. Bytes from 0x80 stay as they are.
+ *
+ * Note: lower is hasbetween () of "Determine if a word has a byte between m and n" in Bit Twiddling Hacks (Sean Eron
+ * Anderson), its upper bound tested by an addition instead of a subtraction.
  */
 STATIC_INLINE UINT64
 lang_hash_u64_upper (UINT64 chunk)
 {
   const UINT64 low7 = 0x7f7f7f7f7f7f7f7fULL;
   const UINT64 bit7 = 0x8080808080808080ULL;
-  const UINT64 from_a = 0x1f1f1f1f1f1f1f1fULL;
-  const UINT64 past_z = 0x0505050505050505ULL;
+  const UINT64 add_from_a = 0x1f1f1f1f1f1f1f1fULL;
+  const UINT64 add_past_z = 0x0505050505050505ULL;
   const UINT64 chunk_low7 = chunk & low7;
   /* 0x80 in exactly the bytes from 'a' to 'z' */
-  const UINT64 lower = (chunk_low7 + from_a) & ~(chunk_low7 + past_z) & ~chunk & bit7;
+  const UINT64 lower = (chunk_low7 + add_from_a) & ~(chunk_low7 + add_past_z) & ~chunk & bit7;
 
   return chunk ^ (lower >> 2);
 }
@@ -6630,6 +6637,7 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigne
  *
  * Step 1: the weight of the next byte.
  * Step 2: hash the weight, holding a weight 0 back.
+ * Step 3: mix the bits (mht_mix_hash).
  */
 static unsigned int
 lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -6649,7 +6657,8 @@ lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, con
       lang_hash_weight (&hash_key, &zeros, weight, true);
     }
 
-  return hash_key;
+  /* Step 3: mix the bits */
+  return mht_mix_hash (hash_key);
 }
 
 /*

@@ -205,7 +205,7 @@ extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * d
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
-extern void float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale);
+extern int float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale);
 extern int float_numeric_normalize_for_sort (DB_C_NUMERIC num, int scale, uint8_t * mantissa);
 
 /* Testing Routines */

@@ -212,13 +212,13 @@ static void fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p);
 static unsigned int
 qdata_hash_bytes (const void *bytes, size_t size)
 {
-  const unsigned char *p = (const unsigned char *) bytes;
+  const unsigned char *byte_p = (const unsigned char *) bytes;
   unsigned int hash_key = MHT_FNV_OFFSET;
   size_t i;
 
   for (i = 0; i < size; i++)
     {
-      hash_key = (hash_key ^ p[i]) * MHT_FNV_PRIME;
+      hash_key = (hash_key ^ byte_p[i]) * MHT_FNV_PRIME;
     }
   return hash_key;
 }
@@ -228,18 +228,20 @@ qdata_hash_bytes (const void *bytes, size_t size)
  *			  hash alike, which mht_get_hash_number does not do for a fixed NUMERIC 1.0 and 1.00, or for 0.0 and -0.0
  *   returns: false if the value is of another type or has no such hash: a NaN compares equal to every value (MR_CMP)
  *   value(in): a value, not NULL
- *   hash_key(out): its hash
+ *   hash_key(out): its hash, its bits mixed by mht_mix_hash () as a string's are
  */
 static bool
 qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
 {
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  unsigned int tmp_hash_key;
 
   switch (type)
     {
     case DB_TYPE_NUMERIC:
       {
 	uint8_t digits[DB_NUMERIC_BUF_SIZE];
+	const void *bytes;
 	int precision, scale;
 
 	/* a float NUMERIC keeps its scale in the value, not in its domain */
@@ -248,15 +250,22 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
 	/* already normal: no scale, or a negative scale at the full precision */
 	if (scale == 0 || (scale < 0 && precision == DB_MAX_NUMERIC_PRECISION))
 	  {
-	    *hash_key = qdata_hash_bytes (db_locate_numeric (value), DB_NUMERIC_BUF_SIZE);
-	    return true;
+	    bytes = db_locate_numeric (value);
+	  }
+	else
+	  {
+	    /* the digits without trailing zeros and the scale they leave (1.00 as 1 and 0, 0.10 as 1 and 1), or with a
+	     * negative scale's zeros appended up to the full precision, as mht_get_hash_number does for a float NUMERIC */
+	    scale =
+	      float_numeric_normalize_for_hash ((DB_C_NUMERIC) db_locate_numeric (value), digits, precision, scale);
+	    bytes = digits;
 	  }
 
-	/* the digits without trailing zeros (1.00 as 1), or with a negative scale's zeros appended up to the full
-	 * precision, as mht_get_hash_number does for a float NUMERIC */
-	float_numeric_normalize_for_hash ((DB_C_NUMERIC) db_locate_numeric (value), digits, precision, scale);
-	*hash_key = qdata_hash_bytes (digits, DB_NUMERIC_BUF_SIZE);
-	return true;
+	tmp_hash_key = qdata_hash_bytes (bytes, DB_NUMERIC_BUF_SIZE);
+
+	/* the scale left tells 0.1 from 0.01, whose digits are the same 1 */
+	tmp_hash_key ^= ((unsigned int) scale * MHT_KNUTH_MULTIPLIER);
+	break;
       }
 
     case DB_TYPE_DOUBLE:
@@ -275,13 +284,16 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
 
 	/* -0.0 compares equal to 0.0 */
 	d = (d == 0) ? 0 : d;
-	*hash_key = qdata_hash_bytes (&d, sizeof (d));
-	return true;
+	tmp_hash_key = qdata_hash_bytes (&d, sizeof (d));
+	break;
       }
 
     default:
       return false;
     }
+
+  *hash_key = mht_mix_hash (tmp_hash_key);
+  return true;
 }
 
 /*

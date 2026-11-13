@@ -4738,6 +4738,8 @@ numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec_str)
  *   calc_buf(out) : normalized buffer (size: DB_NUMERIC_BUF_SIZE)
  *   precision(in) : precision of the input
  *   scale(in)     : scale of the input
+ *   return        : the scale left: 0.10 as 1 with 1 left, a negative scale less the zeros the precision lets
+ *                   append, 0 for a zero. Two values are equal only when both the buffer and this are
  *
  * Note: 
  *   - This function ensures that equivalent numeric values (e.g., 1.0 and 1.00) 
@@ -4747,7 +4749,7 @@ numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec_str)
  *   - Case scale < 0: The value is multiplied by 10 to increase its precision 
  *     up to the maximum 40 digits.
  */
-void
+int
 float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale)
 {
   int tmp_scale = 0;
@@ -4758,7 +4760,7 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
   if (numeric_is_zero (num))
     {
       memset (calc_buf, 0, DB_NUMERIC_BUF_SIZE);
-      return;
+      return 0;
     }
 
   numeric_bytes_to_words (num, DB_NUMERIC_BUF_SIZE, word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES);
@@ -4824,6 +4826,9 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
     }
 
   numeric_words_to_bytes (word_buf, NUMERIC_AS_WORDS, calc_buf);
+
+  /* a negative scale is multiplied away only as far as the precision allows */
+  return (scale > 0) ? tmp_scale : scale + tmp_scale;
 }
 
 /*

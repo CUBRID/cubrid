@@ -28,6 +28,7 @@
 
 #include "dbtype_def.h"
 #include "memory_alloc.h"
+#include "porting_inline.hpp"
 #include "thread_compat.hpp"
 
 #include <stdio.h>
@@ -43,6 +44,15 @@
  */
 #define MHT_FNV_OFFSET 2166136261u
 #define MHT_FNV_PRIME 16777619u
+
+/*
+ * 2^32 / the golden ratio (2654435769): the multiplier of Knuth's multiplicative hashing (TAOCP Vol. 3, 6.4), also the
+ * delta of the TEA cipher and the constant of boost's hash_combine. A small integer times it spreads over all the bits.
+ */
+#define MHT_KNUTH_MULTIPLIER 0x9e3779b9u
+
+/* round (2^64 / pi), an odd number: the multiplier K of FxHasher in rustc-hash 1.x, a hash taken from Firefox */
+#define MHT_FX_MULTIPLIER 0x517cc1b727220a95ULL
 
 #define MHT2STR_COLL(id, str, size) \
   (LANG_GET_COLLATION (id))->mht2str ((LANG_GET_COLLATION (id)), (str), (size))
@@ -84,6 +94,9 @@ struct mht_table
   HL_HEAPID heap_id;		/* Id of heap allocator */
   bool build_lru_list;		/* true if LRU list must be built */
 };
+
+STATIC_INLINE unsigned int mht_mix_hash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE UINT64 mht_mix_hash64 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
 
 extern unsigned int mht_2str_pseudo_key (const void *key, int key_size);
 extern unsigned int mht_1strlowerhash (const void *key, const unsigned int ht_size);
@@ -194,5 +207,46 @@ extern unsigned int mht_calculate_htsize (unsigned int ht_size);
 extern unsigned int mht_calculate_htsize_for_pow2 (unsigned int ht_size);
 extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
+
+/*
+ * mht_mix_hash () - mix the bits of an FNV-1a hash by MurmurHash3's fmix32
+ *   return: hash value
+ *   hash(in): the hash
+ *
+ * The multiplies of FNV-1a carry only into the high bits, so the low bits of the hash depend only on the low bits of
+ * the input: a string of a part repeated an even number of times has its low bit fixed. The hash tables take the low
+ * bits (hash % n, hash & mask): a hash join puts all such rows in one partition.
+ */
+STATIC_INLINE unsigned int
+mht_mix_hash (unsigned int hash)
+{
+  hash ^= hash >> 16;
+  hash *= 0x85ebca6bu;
+  hash ^= hash >> 13;
+  hash *= 0xc2b2ae35u;
+  hash ^= hash >> 16;
+
+  return hash;
+}
+
+/*
+ * mht_mix_hash64 () - mix the bits of a 64-bit hash by MurmurHash3's fmix64
+ *   return: hash value
+ *   hash(in): the hash
+ *
+ * As mht_mix_hash () does for a 32-bit hash: multiplies carry only into the high bits, and the callers take the low
+ * bits.
+ */
+STATIC_INLINE UINT64
+mht_mix_hash64 (UINT64 hash)
+{
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdULL;
+  hash ^= hash >> 33;
+  hash *= 0xc4ceb9fe1a85ec53ULL;
+  hash ^= hash >> 33;
+
+  return hash;
+}
 
 #endif /* _MEMORY_HASH_H_ */
