@@ -60,6 +60,7 @@
 
 #include <cas_cci.h>
 #include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
+#include "shard_key.h"		/* the engine's LOB u_types, which cas_cci.h names otherwise or lacks */
 
 extern "C"
 {
@@ -5120,48 +5121,83 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 #define DBLINK_ATTR_PRECISION (4)
 #define DBLINK_ATTR_CLASS_NAME (11)
 
-static PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
-  PT_TYPE_NULL,
-  PT_TYPE_CHAR,
-  PT_TYPE_VARCHAR,
-  /* TODO:
-   * PT_TYPE_NCHAR and PT_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-   * CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-   * However, to maintain compatibility with previous versions, the enum list will be preserved.
-   */
-  PT_TYPE_NULL,			// PT_TYPE_NCHAR  for CCI_U_TYPE_NCHAR
-  PT_TYPE_NULL,			// PT_TYPE_VARNCHAR for CCI_U_TYPE_VARNCHAR
-
-  PT_TYPE_BIT,
-  PT_TYPE_VARBIT,
-  PT_TYPE_NUMERIC,
-  PT_TYPE_INTEGER,
-  PT_TYPE_SMALLINT,
-  PT_TYPE_MONETARY,
-  PT_TYPE_FLOAT,
-  PT_TYPE_DOUBLE,
-  PT_TYPE_DATE,
-  PT_TYPE_TIME,
-  PT_TYPE_TIMESTAMP,
-  PT_TYPE_SET,
-  PT_TYPE_MULTISET,
-  PT_TYPE_SEQUENCE,
-  PT_TYPE_OBJECT,
-  PT_TYPE_RESULTSET,
-  PT_TYPE_BIGINT,
-  PT_TYPE_DATETIME,
-  PT_TYPE_BFILE,
-  PT_TYPE_CFILE,
-  PT_TYPE_BLOB,
-  PT_TYPE_CLOB,
-  PT_TYPE_ENUMERATION,
-  PT_TYPE_SMALLINT,
-  PT_TYPE_INTEGER, PT_TYPE_BIGINT, PT_TYPE_TIMESTAMPTZ, PT_TYPE_TIMESTAMPLTZ, PT_TYPE_DATETIMETZ, PT_TYPE_DATETIMELTZ,
-  /* Disabled type */
-  PT_TYPE_NA,			/* CCI_U_TYPE_TIMETZ, internal only */
-  /* end of disabled types */
-  PT_TYPE_JSON
-};
+/* the PT type of a remote column of this u_type; by name: CCI_U_TYPE_* are the bundled CCI's (cas_cci.h, develop's
+ * numbers 0..34), whose BLOB/CLOB are the engine's BFILE/CFILE, so the LOBs go by the engine's SHARD_U_TYPE_* */
+static PT_TYPE_ENUM
+pt_dblink_utype_to_pt_type (int utype)
+{
+  switch (utype)
+    {
+    case CCI_U_TYPE_CHAR:
+      return PT_TYPE_CHAR;
+    case CCI_U_TYPE_STRING:
+      return PT_TYPE_VARCHAR;
+    case CCI_U_TYPE_BIT:
+      return PT_TYPE_BIT;
+    case CCI_U_TYPE_VARBIT:
+      return PT_TYPE_VARBIT;
+    case CCI_U_TYPE_NUMERIC:
+      return PT_TYPE_NUMERIC;
+    case CCI_U_TYPE_INT:
+    case CCI_U_TYPE_UINT:
+      return PT_TYPE_INTEGER;
+    case CCI_U_TYPE_SHORT:
+    case CCI_U_TYPE_USHORT:
+      return PT_TYPE_SMALLINT;
+    case CCI_U_TYPE_MONETARY:
+      return PT_TYPE_MONETARY;
+    case CCI_U_TYPE_FLOAT:
+      return PT_TYPE_FLOAT;
+    case CCI_U_TYPE_DOUBLE:
+      return PT_TYPE_DOUBLE;
+    case CCI_U_TYPE_DATE:
+      return PT_TYPE_DATE;
+    case CCI_U_TYPE_TIME:
+      return PT_TYPE_TIME;
+    case CCI_U_TYPE_TIMESTAMP:
+      return PT_TYPE_TIMESTAMP;
+    case CCI_U_TYPE_SET:
+      return PT_TYPE_SET;
+    case CCI_U_TYPE_MULTISET:
+      return PT_TYPE_MULTISET;
+    case CCI_U_TYPE_SEQUENCE:
+      return PT_TYPE_SEQUENCE;
+    case CCI_U_TYPE_OBJECT:
+      return PT_TYPE_OBJECT;
+    case CCI_U_TYPE_RESULTSET:
+      return PT_TYPE_RESULTSET;
+    case CCI_U_TYPE_BIGINT:
+    case CCI_U_TYPE_UBIGINT:
+      return PT_TYPE_BIGINT;
+    case CCI_U_TYPE_DATETIME:
+      return PT_TYPE_DATETIME;
+    case SHARD_U_TYPE_BFILE:
+      return PT_TYPE_BFILE;
+    case SHARD_U_TYPE_CFILE:
+      return PT_TYPE_CFILE;
+    case SHARD_U_TYPE_BLOB:
+      return PT_TYPE_BLOB;
+    case SHARD_U_TYPE_CLOB:
+      return PT_TYPE_CLOB;
+    case CCI_U_TYPE_ENUM:
+      return PT_TYPE_ENUMERATION;
+    case CCI_U_TYPE_TIMESTAMPTZ:
+      return PT_TYPE_TIMESTAMPTZ;
+    case CCI_U_TYPE_TIMESTAMPLTZ:
+      return PT_TYPE_TIMESTAMPLTZ;
+    case CCI_U_TYPE_DATETIMETZ:
+      return PT_TYPE_DATETIMETZ;
+    case CCI_U_TYPE_DATETIMELTZ:
+      return PT_TYPE_DATETIMELTZ;
+    case CCI_U_TYPE_TIMETZ:
+      return PT_TYPE_NA;	/* internal only */
+    case CCI_U_TYPE_JSON:
+      return PT_TYPE_JSON;
+    default:
+      /* NULL, the deprecated NCHAR/VARNCHAR and an unknown type */
+      return PT_TYPE_NULL;
+    }
+}
 
 static T_CCI_U_TYPE
 pt_dblink_get_basic_utype (T_CCI_U_EXT_TYPE u_ext_type)
@@ -5200,7 +5236,7 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
   else
     {
       /* it needs to convert ext type to CCI_U_TYPE */
-      attr_def_node->type_enum = pt_type[pt_dblink_get_basic_utype (attr->type_idx)];
+      attr_def_node->type_enum = pt_dblink_utype_to_pt_type (pt_dblink_get_basic_utype (attr->type_idx));
     }
 
   switch (attr_def_node->type_enum)

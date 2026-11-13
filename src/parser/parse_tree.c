@@ -685,6 +685,13 @@ pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const
       return old_string;
     }
 
+  if (new_tail_length < 0 || old_string->length > DB_MAX_STRING_LENGTH - new_tail_length)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, DB_MAX_STRING_LENGTH,
+	      DB_MAX_STRING_LENGTH);
+      return NULL;
+    }
+
   /* here, you know you have two non-NULL pointers */
   string = pt_find_block_by_last_string (parser, (char *) old_string);
 

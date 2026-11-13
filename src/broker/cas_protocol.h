@@ -134,6 +134,9 @@ extern "C"
 #define CAS_STREAM_FLAG_EOF			0x01	/* READ_OPEN, READ reply */
 #define CAS_STREAM_FLAG_RELEASED		0x02	/* READ_OPEN, READ reply: the handle is gone */
 
+/* tokens one UPLOAD_RELEASE or UPLOAD_HOLD may carry; a session never has more uploads pending */
+#define CAS_STREAM_UPLOAD_RELEASE_MAX		1024
+
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
 /* The flags byte every reply starts from: the three older masks at 1, as every earlier server left them, the rest 0 */
@@ -251,7 +254,7 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
-    /* PROTOCOL_V13 names the whole family, 45-51; a driver checks it once before sending any of them */
+    /* PROTOCOL_V13 names the whole family, 45-53; a driver checks it once before sending any of them */
     CAS_FC_STREAM_SEND_DATA = 45,
     CAS_FC_STREAM_END = 46,
     /* Open and give up, for a consumer whose client half is the driver itself.
@@ -264,6 +267,10 @@ extern "C"
     CAS_FC_STREAM_READ_OPEN = 49,
     CAS_FC_STREAM_READ = 50,
     CAS_FC_STREAM_RELEASE = 51,
+    /* Drop uploads the driver discarded before an execute bound them; one an open statement binds stays. */
+    CAS_FC_STREAM_UPLOAD_RELEASE = 52,
+    /* The statement handle holds these uploads before it executes, so closing another statement keeps them. */
+    CAS_FC_STREAM_UPLOAD_HOLD = 53,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
@@ -278,6 +285,15 @@ extern "C"
     CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2 = 42
   };
   typedef enum t_cas_func_code T_CAS_FUNC_CODE;
+
+/* Leading byte of every BLOB/CLOB column sent to a PROTOCOL_V13 driver.  It says whether the payload is a
+ * reference to stored content (read with CAS_FC_STREAM_READ_*) or the content itself; the column type alone
+ * cannot distinguish them, because a scalar function result (CHAR_TO_CLOB('x')) is a LOB value with no storage
+ * behind it. */
+/* [리뷰] 참조는 [REF][INT64 바이트 길이][로케이터], 내용은 [INLINE][바이트]로 보낸다.
+ * 드라이버는 연결 버전이 아니라 이 바이트로 판단한다. 드라이버와 서버는 함께 올린다. */
+#define INTERNAL_LOB_WIRE_INLINE ((char) 0)
+#define INTERNAL_LOB_WIRE_REF    ((char) 1)
 
   enum t_cas_protocol
   {
@@ -295,10 +311,16 @@ extern "C"
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
     PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
-				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*) */
+				 * QC/X1 query cancel; byte-stream transport (CAS_FC_STREAM_*, 45-53) and a
+				 * BLOB/CLOB column led by INTERNAL_LOB_WIRE_REF / _INLINE */
     CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
+
+/* A driver below PROTOCOL_V13 cannot read this server's BLOB/CLOB columns, so its connection is refused with
+ * CAS_ER_VERSION and this message (DBMS_ERROR_INDICATOR, so an old driver shows it). %s: the driver's version. */
+#define CAS_OLD_DRIVER_ERR_MSG_FMT \
+  "The driver (%s) is too old for this server. Use a driver that supports PROTOCOL_V13 or later."
 
   enum t_broker_info_pos
   {

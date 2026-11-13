@@ -102,10 +102,12 @@ namespace cubload
       int sink_heap (const attribute &attr, db_value &val);
       bool report_value_error ();
       int process_generic_constant (constant_type *cons, const attribute &attr, bool is_element);
+      int process_internal_lob_constant (constant_type *cons, const attribute &attr);
       int process_collection_constant (constant_type *cons, const attribute &attr);
 
       void clear_db_values ();
       db_value &get_attribute_db_value (size_t attr_index);
+      int prepare_record (heap_pending_record &record);
 
       void start_scancache (const OID &class_oid);
       void stop_scancache ();

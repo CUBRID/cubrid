@@ -143,7 +143,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_STREAM_ABORT */
   fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
   fn_not_supported,		/* CAS_FC_STREAM_READ */
-  fn_not_supported		/* CAS_FC_STREAM_RELEASE */
+  fn_not_supported,		/* CAS_FC_STREAM_RELEASE */
+  fn_not_supported,		/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_not_supported		/* CAS_FC_STREAM_UPLOAD_HOLD */
 };
 
 static const char *server_func_name[] = {
@@ -197,7 +199,9 @@ static const char *server_func_name[] = {
   "stream_abort",
   "stream_read_open",
   "stream_read",
-  "stream_release"
+  "stream_release",
+  "stream_upload_release",
+  "stream_upload_hold"
 };
 
 static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,

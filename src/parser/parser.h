@@ -657,6 +657,10 @@ extern "C"
 					 bool bind_is_lhs, TP_DOMAIN ** target);
   extern TP_DOMAIN *pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * hv,
 					    PT_NODE * parent, PT_NODE * grandparent);
+  extern bool pt_is_internal_lob_direct_source_expr (const PT_NODE * node);
+  extern bool pt_is_internal_lob_file_source_expr (const PT_NODE * node);
+  extern int pt_fold_internal_lob_direct_source_values (PARSER_CONTEXT * parser, PT_NODE ** values);
+  extern int pt_fold_internal_lob_direct_source_assignments (PARSER_CONTEXT * parser, PT_NODE * assignments);
   extern void pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination);
   extern void pt_set_fill_default_in_path_expression (PT_NODE * node);
   extern PT_NODE *pt_dup_key_update_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * assignment);

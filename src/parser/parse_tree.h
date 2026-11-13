@@ -2478,6 +2478,7 @@ struct pt_expr_info
 						 * derived restrictions from; not a source again */
 #define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
 							 * paired with its origin on its own node */
+#define PT_EXPR_INFO_LOB_DIRECT_INSERT 536870912	/* 0x20000000, streaming LOB source is direct INSERT/UPDATE target */
   int flag;			/* flags */
 /* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
 #define PT_CNF_KEEP_MAX_DISJUNCTS 8
@@ -3921,6 +3922,7 @@ struct parser_node
   {
     unsigned recompile:1;	/* the statement should be recompiled - used for plan cache */
     unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
+    unsigned cannot_prepare_only_internal_lob_file:1;	/* file source is the only prepare blocker */
     unsigned partition_pruned:1;	/* partition pruning takes place */
     unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
     unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */

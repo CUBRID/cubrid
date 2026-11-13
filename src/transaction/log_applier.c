@@ -64,6 +64,7 @@
 #include "memory_hash.h"
 #include "schema_manager.h"
 #include "log_applier_sql_log.h"
+#include "replication.h"
 #include "util_func.h"
 #include "dbtype.h"
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
@@ -249,6 +250,7 @@ struct la_item
   char *ha_sys_prm;
   int packed_key_value_length;
   char *packed_key_value;	/* disk image of pkey value */
+  int oos_attrid;		/* target attribute for OOS/Internal LOB replication items */
   DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
   int packed_prior_value_length;
   char *packed_prior_value;	/* _db_serial write-back: disk image of the value it replaced, or NULL */
@@ -263,6 +265,7 @@ struct la_oos_cache_entry
   LA_OOS_CACHE_ENTRY *next;
   TRANID tranid;		/* tx scope guard against cross-tx OID reuse across SYSOP_END */
   OID head_oid;			/* hash key: master's chunk_index=0 OID */
+  OID next_chunk_oid;		/* next chunk of a chain applied chunk by chunk (internal LOB), or NULL OID */
   int length;			/* payload bytes (no OOS header prefix) */
   char data[1];			/* flexible array — entry + payload share one alloc */
 };
@@ -274,6 +277,7 @@ struct la_apply
   int num_items;
   bool is_long_trans;
   bool need_oos_rebuild;	/* rebuild next OOS insert from chunk logs after dummy OOS repl log */
+  int oos_rebuild_attrid;	/* attribute id carried by the pending dummy boundary */
   LOG_LSA start_lsa;
   LOG_LSA last_lsa;
   LA_ITEM *head;
@@ -397,6 +401,14 @@ struct la_ovf_page_list
   LA_OVF_PAGE_LIST *next;	/* next page */
 };
 
+/* a recdes lent past the pool while an OOS group is held; its db_page_size area follows the struct */
+typedef struct la_recdes_overflow LA_RECDES_OVERFLOW;
+struct la_recdes_overflow
+{
+  LA_RECDES_OVERFLOW *next;
+  RECDES recdes;
+};
+
 typedef struct la_recdes_pool LA_RECDES_POOL;
 struct la_recdes_pool
 {
@@ -405,6 +417,8 @@ struct la_recdes_pool
   int next_idx;
   int db_page_size;
   int num_recdes;
+  int num_lent;			/* entries lent since the last flush */
+  LA_RECDES_OVERFLOW *overflow;
   bool is_initialized;
 };
 
@@ -505,6 +519,7 @@ static bool la_retry_on_error (int errid);
 
 static int la_init_recdes_pool (int page_size, int num_recdes);
 static RECDES *la_assign_recdes_from_pool (void);
+static void la_release_recdes_overflow (void);
 static int la_realloc_recdes_data (RECDES * recdes, int data_size);
 static void la_clear_recdes_pool (void);
 
@@ -538,7 +553,8 @@ static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
 static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size);
-static int la_cache_oos_value (const OID * head_oid, const char *payload, int payload_length);
+static int la_cache_oos_value (const OID * head_oid, const OID * next_chunk_oid, const char *payload,
+			       int payload_length);
 static LA_OOS_CACHE_ENTRY *la_lookup_oos_value (const OID * head_oid);
 static void la_clear_oos_cache (void);
 static int la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att,
@@ -2359,6 +2375,8 @@ la_clear_recdes_pool (void)
       return;
     }
 
+  la_release_recdes_overflow ();
+
   if (la_recdes_pool.recdes_arr != NULL)
     {
       for (i = 0; i < la_recdes_pool.num_recdes; i++)
@@ -2437,6 +2455,29 @@ la_assign_recdes_from_pool (void)
       return NULL;
     }
 
+  /* Every entry still backs an unflushed item, which happens only while an OOS group is held past the flush
+   * limit (la_flush_repl_items): lend an area of its own rather than overwrite one. */
+  if (la_recdes_pool.num_lent >= la_recdes_pool.num_recdes)
+    {
+      LA_RECDES_OVERFLOW *entry;
+      size_t size = sizeof (LA_RECDES_OVERFLOW) + la_recdes_pool.db_page_size;
+
+      entry = (LA_RECDES_OVERFLOW *) malloc (size);
+      if (entry == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return NULL;
+	}
+
+      entry->recdes.data = (char *) (entry + 1);
+      entry->recdes.area_size = la_recdes_pool.db_page_size;
+      entry->recdes.length = 0;
+      entry->next = la_recdes_pool.overflow;
+      la_recdes_pool.overflow = entry;
+
+      return &entry->recdes;
+    }
+
   recdes = &la_recdes_pool.recdes_arr[la_recdes_pool.next_idx];
   assert (recdes != NULL && recdes->data != NULL);
 
@@ -2452,8 +2493,35 @@ la_assign_recdes_from_pool (void)
   recdes->length = 0;
   la_recdes_pool.next_idx++;
   la_recdes_pool.next_idx %= la_recdes_pool.num_recdes;
+  la_recdes_pool.num_lent++;
 
   return recdes;
+}
+
+/*
+ * la_release_recdes_overflow() - free the recdes lent past the pool and give the whole pool back
+ *
+ * Note: call it only once the repl objects borrowing from the pool are gone (flushed or cleared).
+ */
+static void
+la_release_recdes_overflow (void)
+{
+  LA_RECDES_OVERFLOW *entry;
+
+  while (la_recdes_pool.overflow != NULL)
+    {
+      entry = la_recdes_pool.overflow;
+      la_recdes_pool.overflow = entry->next;
+
+      if (entry->recdes.area_size > la_recdes_pool.db_page_size)
+	{
+	  /* recdes->data was realloced by la_realloc_recdes_data */
+	  free_and_init (entry->recdes.data);
+	}
+      free_and_init (entry);
+    }
+
+  la_recdes_pool.num_lent = 0;
 }
 
 /*
@@ -2501,6 +2569,8 @@ la_init_recdes_pool (int page_size, int num_recdes)
 
       la_recdes_pool.db_page_size = page_size;
       la_recdes_pool.num_recdes = num_recdes;
+      la_recdes_pool.num_lent = 0;
+      la_recdes_pool.overflow = NULL;
       la_recdes_pool.is_initialized = true;
     }
   else if (la_recdes_pool.db_page_size != page_size || la_recdes_pool.num_recdes != num_recdes)
@@ -2860,6 +2930,7 @@ la_init_repl_lists (bool need_realloc)
       la_Info.repl_lists[i]->num_items = 0;
       la_Info.repl_lists[i]->is_long_trans = false;
       la_Info.repl_lists[i]->need_oos_rebuild = false;
+      la_Info.repl_lists[i]->oos_rebuild_attrid = NULL_ATTRID;
       LSA_SET_NULL (&la_Info.repl_lists[i]->start_lsa);
       LSA_SET_NULL (&la_Info.repl_lists[i]->last_lsa);
       la_Info.repl_lists[i]->head = NULL;
@@ -3084,6 +3155,7 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   item->packed_key_value = NULL;
   item->packed_prior_value_length = 0;
   item->packed_prior_value = NULL;
+  item->oos_attrid = NULL_ATTRID;
 
   item->next = NULL;
   item->prev = NULL;
@@ -3199,6 +3271,10 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
 
   char *str_value;
   char *area;
+  char *area_end;
+  char *metadata_ptr;
+  int metadata_magic;
+  bool has_oos_metadata = false;
 
   repl_log_pgptr = log_pgptr;
   pageid = lsa->pageid;
@@ -3234,6 +3310,7 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
     }
 
   (void) la_log_copy_fromlog (NULL, area, &length, pageid, offset, repl_log_pgptr);
+  area_end = area + length;
 
   item = la_new_repl_item (lsa, &repl_log->lsa);
   if (item == NULL)
@@ -3244,8 +3321,16 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
   switch (log_type)
     {
     case LOG_REPLICATION_DATA:
+      item->item_type = repl_log->rcvindex;
       ptr = or_unpack_int (area, &item->packed_key_value_length);
       ptr = or_unpack_string (ptr, &item->class_name);
+
+      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
+      if (item->packed_key_value_length < 0 || ptr > area_end || item->packed_key_value_length > area_end - ptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
+	  goto error_return;
+	}
 
       item->packed_key_value = (char *) malloc (item->packed_key_value_length);
       if (item->packed_key_value == NULL)
@@ -3253,18 +3338,46 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
 	  goto error_return;
 	}
 
-      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
       memcpy (item->packed_key_value, ptr, item->packed_key_value_length);
+      ptr += item->packed_key_value_length;
 
       if (strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
 	{
-	  if (la_copy_serial_prior_value (item, ptr + item->packed_key_value_length, area + length) != NO_ERROR)
+	  if (la_copy_serial_prior_value (item, ptr, area_end) != NO_ERROR)
 	    {
 	      goto error_return;
 	    }
 	}
 
-      item->item_type = repl_log->rcvindex;
+      if (REPL_IS_OOS_RCVINDEX (item->item_type))
+	{
+	  /* RVREPL_OOS_INSERT/RVREPL_DUMMY_OOS_RECORD existed before typed OOS metadata. The old payload
+	   * reserved alignment slack after the key, so a bare trailing attrid is ambiguous. New records end
+	   * with a magic+attrid trailer and trim that slack; accept legacy records only for the old tags. */
+	  if (area_end - ptr >= 2 * OR_INT_SIZE)
+	    {
+	      metadata_ptr = area_end - 2 * OR_INT_SIZE;
+	      /* [리뷰] 새 레코드는 정렬 여유를 잘라 키 뒤에 트레일러 8바이트만 남는다.
+	       * 옛 정렬 여유가 우연히 magic과 같을 여지는 남는 바이트 4 미만일 때뿐이다.
+	       * 이 경계 조건을 검토할 것. */
+	      if (metadata_ptr - ptr < OR_INT_SIZE)
+		{
+		  (void) or_unpack_int (metadata_ptr, &metadata_magic);
+		  if (metadata_magic == REPL_OOS_METADATA_MAGIC)
+		    {
+		      (void) or_unpack_int (metadata_ptr + OR_INT_SIZE, &item->oos_attrid);
+		      has_oos_metadata = true;
+		    }
+		}
+	    }
+
+	  if ((has_oos_metadata && item->oos_attrid == NULL_ATTRID)
+	      || (!has_oos_metadata && item->item_type == RVREPL_INTERNAL_LOB_INSERT))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, pageid);
+	      goto error_return;
+	    }
+	}
 
       break;
 
@@ -3484,6 +3597,7 @@ la_free_all_repl_items (LA_APPLY * apply)
   apply->num_items = 0;
   apply->is_long_trans = false;
   apply->need_oos_rebuild = false;
+  apply->oos_rebuild_attrid = NULL_ATTRID;
   apply->head = NULL;
   apply->tail = NULL;
 
@@ -3875,7 +3989,7 @@ la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
  *   for entry + payload via flexible array member.
  */
 static int
-la_cache_oos_value (const OID * head_oid, const char *payload, int payload_length)
+la_cache_oos_value (const OID * head_oid, const OID * next_chunk_oid, const char *payload, int payload_length)
 {
   LA_OOS_CACHE_ENTRY *entry;
   size_t alloc_size;
@@ -3908,6 +4022,7 @@ la_cache_oos_value (const OID * head_oid, const char *payload, int payload_lengt
   entry->next = NULL;
   entry->tranid = la_oos_current_tranid;
   entry->head_oid = *head_oid;
+  entry->next_chunk_oid = *next_chunk_oid;
   entry->length = payload_length;
   entry->consumed = false;
   memcpy (entry->data, payload, payload_length);
@@ -3948,9 +4063,14 @@ la_cache_oos_value (const OID * head_oid, const char *payload, int payload_lengt
 static int
 la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att, DB_VALUE * value)
 {
-  LA_OOS_CACHE_ENTRY *entry;
+  LA_OOS_CACHE_ENTRY *entry, *chunk;
   OR_BUF buf;
   int error;
+  /* an internal LOB stub keeps its kind in the top bits of the length, and a BLOB's length in bits */
+  int kind = OR_OOS_KIND_OF (oos_length);
+  DB_BIGINT length = oos_length & OR_OOS_LENGTH_MASK;
+  DB_BIGINT size, offset;
+  char *copy;
 
   entry = la_lookup_oos_value (head_oid);
   if (entry == NULL)
@@ -3959,22 +4079,75 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
       return ER_FAILED;
     }
 
-  if ((DB_BIGINT) entry->length != oos_length)
+  if (!OR_OOS_IS_LOB_KIND (kind))
     {
+      if ((DB_BIGINT) entry->length != oos_length)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "OOS cached value length mismatches inline length");
+	  return ER_FAILED;
+	}
+      or_init (&buf, entry->data, entry->length);
+      error = att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+      if (error == NO_ERROR)
+	{
+	  /* copy=true makes the decoded value independent of the cache. The same
+	   * entry remains available to later attributes and retries of this item. */
+	  entry->consumed = true;
+	}
+      return error;
+    }
+
+  /* an internal LOB chain holds the plain value, not a disk image, and a streamed chain is applied (and cached)
+   * chunk by chunk: gather it from the head */
+  if (length >= INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "LOB value too large for the SQL log");
+      return ER_FAILED;
+    }
+  size = (kind == OR_OOS_KIND_BLOB) ? (length + 7) / 8 : length;
+  copy = (char *) db_private_alloc (NULL, (size_t) size + 1);
+  if (copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size + 1);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  offset = 0;
+  chunk = entry;
+  while (chunk != NULL && (DB_BIGINT) chunk->length <= size - offset)
+    {
+      memcpy (copy + offset, chunk->data, chunk->length);
+      offset += chunk->length;
+      chunk = OID_ISNULL (&chunk->next_chunk_oid) ? NULL : la_lookup_oos_value (&chunk->next_chunk_oid);
+    }
+  if (chunk != NULL || offset != size)
+    {
+      db_private_free_and_init (NULL, copy);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
 	      "OOS cached value length mismatches inline length");
       return ER_FAILED;
     }
+  copy[size] = '\0';
 
-  or_init (&buf, entry->data, entry->length);
-  error = att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
-  if (error == NO_ERROR)
+  /* the value is a copy, so every chunk of the chain is consumed like a single entry */
+  for (chunk = entry; chunk != NULL;
+       chunk = OID_ISNULL (&chunk->next_chunk_oid) ? NULL : la_lookup_oos_value (&chunk->next_chunk_oid))
     {
-      /* copy=true makes the decoded value independent of the cache. The same
-       * entry remains available to later attributes and retries of this item. */
-      entry->consumed = true;
+      chunk->consumed = true;
     }
-  return error;
+
+  if (kind == OR_OOS_KIND_CLOB)
+    {
+      db_make_clob (value, att->domain->precision, copy, (int) size);
+      db_string_put_cs_and_collation (value, TP_DOMAIN_CODESET (att->domain), TP_DOMAIN_COLLATION (att->domain));
+    }
+  else
+    {
+      db_make_blob (value, att->domain->precision, (DB_CONST_C_BIT) copy, (int) length);
+    }
+  value->need_clear = true;
+  return NO_ERROR;
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
@@ -3982,7 +4155,7 @@ int
 bridge_la_oos_cache_store (TRANID tranid, const OID * oid, const char *data, int length)
 {
   la_oos_current_tranid = tranid;
-  return la_cache_oos_value (oid, data, length);
+  return la_cache_oos_value (oid, &oid_Null_oid, data, length);
 }
 
 int
@@ -5061,7 +5234,7 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes, OID * head_oid_out)
 {
   LOG_LSA current_lsa;
   TRANID trid = NULL_TRANID;
-  int total_data_length = -1;
+  INT64 total_data_length = -1;
   int total_body_length = 0;
   int error = NO_ERROR;
   bool found_head_chunk = false;
@@ -5217,10 +5390,19 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes, OID * head_oid_out)
       if (found_head_chunk)
 	{
 	  int offset = OOS_RECORD_HEADER_SIZE;
+	  /* Zero the trailing struct padding before setting the fields: this header is memcpy'd whole
+	   * into recdes->data, and an aggregate initializer leaves the pad bytes indeterminate (see the
+	   * matching note in oos_prepend_header). */
+	  OOS_RECORD_HEADER merged_header;
+	  int chunk_index;
+
+	  memset (&merged_header, 0, sizeof (merged_header));
+	  merged_header.total_data_length = total_data_length;
+	  merged_header.chunk_index = 0;
+	  OID_SET_NULL (&merged_header.next_chunk_oid);
 	  /* The merged image is transient applier memory: locator_oos_insert_force strips this header
 	   * and the slave's own oos_insert issues the identity stamp, so NULL is right here. */
-	  OOS_RECORD_HEADER merged_header = { total_data_length, 0, OID_INITIALIZER, NULL_LSA };
-	  int chunk_index;
+	  LSA_SET_NULL (&merged_header.identity_stamp);
 
 	  if (total_body_length != total_data_length)
 	    {
@@ -5228,14 +5410,23 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes, OID * head_oid_out)
 	      break;
 	    }
 
-	  error = la_realloc_recdes_data (recdes, total_data_length + OOS_RECORD_HEADER_SIZE);
+	  /* The reassembled value lands in one RECDES, whose length is an int.  A chain longer than that
+	   * is only produced by the streamed internal LOB writer, whose chunks are applied one by one and
+	   * therefore never reach this reassembly path; reject it instead of truncating. */
+	  if (total_data_length > (INT64) INT_MAX - OOS_RECORD_HEADER_SIZE)
+	    {
+	      error = la_set_oos_rebuild_error ("multi-chunk OOS record too long to reassemble");
+	      break;
+	    }
+
+	  error = la_realloc_recdes_data (recdes, (int) total_data_length + OOS_RECORD_HEADER_SIZE);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
 
 	  recdes->type = REC_HOME;
-	  recdes->length = total_data_length + OOS_RECORD_HEADER_SIZE;
+	  recdes->length = (int) total_data_length + OOS_RECORD_HEADER_SIZE;
 	  memcpy (recdes->data, &merged_header, OOS_RECORD_HEADER_SIZE);
 
 	  for (chunk_index = chunk_count - 1; chunk_index >= 0; chunk_index--)
@@ -5650,9 +5841,13 @@ la_flush_repl_items (bool immediate)
 
   if (la_Info.num_unflushed == 0)
     {
+      /* nothing borrows from the pool: take back what failed items were lent */
+      la_release_recdes_overflow ();
       return NO_ERROR;
     }
 
+  /* An OOS group has to reach the server in one call with its heap record, so hold it even past the limit; the
+   * pool lends the items beyond it areas of their own. A group is one row's OOS values: LOB chunks never hold one. */
   if (immediate == false && la_Info.pending_oos_flush)
     {
       return NO_ERROR;
@@ -5762,6 +5957,7 @@ la_flush_repl_items (bool immediate)
       la_Info.num_unflushed = 0;
       la_Info.pending_oos_flush = false;
       __gv_loc_repl.ws_clear_all_repl_objs ();
+      la_release_recdes_overflow ();
     }
 
   return error;
@@ -5825,6 +6021,9 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
     case RVREPL_OOS_INSERT:
       operation = LC_FLUSH_INSERT_OOS;
       break;
+    case RVREPL_INTERNAL_LOB_INSERT:
+      operation = LC_FLUSH_INSERT_INTERNAL_LOB;
+      break;
     default:
       assert (false);
     }
@@ -5834,7 +6033,7 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
   error =
     __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
 					   operation, has_index, item->packed_prior_value,
-					   item->packed_prior_value_length);
+					   item->packed_prior_value_length, item->oos_attrid);
   return error;
 }
 
@@ -6033,6 +6232,11 @@ la_apply_update_log (LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
   /* retrieve the target record description */
   error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, false);
@@ -6216,6 +6420,7 @@ la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item)
     }
 
   apply->need_oos_rebuild = true;
+  apply->oos_rebuild_attrid = item->oos_attrid;
   return NO_ERROR;
 }
 
@@ -6243,6 +6448,12 @@ la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
   bool rebuild_oos = apply->need_oos_rebuild;
   OID oos_head_oid = OID_INITIALIZER;	/* master's chunk_index=0 OID — sql.log cache key */
 
+  if (rebuild_oos && item->oos_attrid != apply->oos_rebuild_attrid)
+    {
+      error = la_set_oos_rebuild_error ("mismatched OOS replication object boundary");
+      goto end;
+    }
+
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
     {
@@ -6262,6 +6473,11 @@ la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
 
   if (rebuild_oos)
     {
@@ -6335,7 +6551,10 @@ la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
        * No sql.log line is emitted for the chunk record itself. */
       if (!OID_ISNULL (&oos_head_oid) && recdes->length > OOS_RECORD_HEADER_SIZE)
 	{
-	  ret = la_cache_oos_value (&oos_head_oid, recdes->data + OOS_RECORD_HEADER_SIZE,
+	  OOS_RECORD_HEADER oos_header;
+
+	  memcpy (&oos_header, recdes->data, OOS_RECORD_HEADER_SIZE);
+	  ret = la_cache_oos_value (&oos_head_oid, &oos_header.next_chunk_oid, recdes->data + OOS_RECORD_HEADER_SIZE,
 				    recdes->length - OOS_RECORD_HEADER_SIZE);
 	}
 
@@ -6352,18 +6571,25 @@ end:
   if (rebuild_oos)
     {
       apply->need_oos_rebuild = false;
+      apply->oos_rebuild_attrid = NULL_ATTRID;
     }
 
   if (error != NO_ERROR)
     {
-      la_Info.pending_oos_flush = false;
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
   else
     {
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
-      la_Info.pending_oos_flush = true;
+
+      /* An ordinary OOS record must be forced with the heap record that refers to it (the server fills the
+       * placeholder with the OID the same call produced). An internal LOB chunk must not hold the flush back:
+       * the chain has any length, the slave rebuilds it across calls, and holding it would keep it in memory. */
+      /* [리뷰] 200청크를 넘는 체인은 중간에 flush되어 다음 호출로 이어진다.
+       * 트랜잭션별 LA_APPLY 목록이라 다른 트랜잭션 항목이 끼지 않는다.
+       * 호출 사이의 체인 연결은 tdes의 oos_repl_lob_chains가 맡는다. */
+      la_Info.pending_oos_flush = (item->item_type != RVREPL_INTERNAL_LOB_INSERT);
     }
 
   if (old_pageid != NULL_PAGEID)
@@ -6417,6 +6643,11 @@ la_apply_insert_log (LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
+  if (recdes == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
   is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   /* get the target log page */
@@ -6475,7 +6706,6 @@ la_apply_insert_log (LA_ITEM * item)
 end:
   if (error != NO_ERROR)
     {
-      la_Info.pending_oos_flush = false;
       la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
     }
   else
@@ -6912,6 +7142,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  break;
 
 		case RVREPL_OOS_INSERT:
+		case RVREPL_INTERNAL_LOB_INSERT:
 		  error = la_apply_oos_insert_log (apply, item);
 		  break;
 
@@ -6981,6 +7212,9 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  LA_SLEEP (10, 0);
 		  continue;
 		}
+
+	      /* the item is dropped (a retry keeps it): an OOS group it belonged to cannot complete, stop holding */
+	      la_Info.pending_oos_flush = false;
 	    }
 	}
 

@@ -27,9 +27,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <mutex>
+#include <unordered_set>
 
 #include "porting.h"
 #include "network.h"
@@ -49,6 +53,7 @@
 #include "transaction_sr.h"
 #include "pl_sr.h"
 #include "vacuum.h"
+#include "internal_lob_file.hpp"
 #include "serial.h"
 #endif /* defined (SA_MODE) */
 #include "oid.h"
@@ -79,6 +84,8 @@
 #include "thread_manager.hpp"
 #include "pl_compile_handler.hpp"
 #include "pl_executor.hpp"
+#include "session.h"
+#include "stream_handle.hpp"
 #endif // SA_MODE
 
 #include "xasl.h"
@@ -90,6 +97,8 @@
 #include "sp_constants.hpp"
 #include "locator_cl.h"
 #include "execute_schema.h"
+#include "internal_lob_marker.h"
+#include "internal_lob_stream_kind.h"	/* STREAM_KIND_INTERNAL_LOB_DML */
 #include "authenticate.h"
 #include "stream_client.h"
 #include "stream_session.hpp"
@@ -421,14 +430,14 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
 		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
-		   int request_pages, int nparallel_process, int nparallel_process_idx)
+		   int request_pages, int nparallel_process, int nparallel_process_idx, bool keep_oos_locators)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
   int client_endian = (int) get_endian_type ();
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 8) + (OR_OID_SIZE * 2)) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 9) + (OR_OID_SIZE * 2)) a_request;
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
   char *reply;
@@ -446,6 +455,9 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, request_pages);
   ptr = or_pack_int (ptr, nparallel_process);
   ptr = or_pack_int (ptr, nparallel_process_idx);
+  /* [리뷰] 요청에 int 하나 추가(버퍼 x9). nparallel_process_idx 다음 자리라
+   * 서버 unpack 순서와 같아야 한다. 클라이언트·서버 동시 업그레이드 전제. */
+  ptr = or_pack_int (ptr, keep_oos_locators ? 1 : 0);
   ptr = or_pack_int (ptr, client_endian);
   *fetch_copyarea = NULL;
 
@@ -488,7 +500,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea, request_pages);
+			fetch_copyarea, request_pages, keep_oos_locators);
 
   if (nparallel_process > 1)
     {
@@ -4977,6 +4989,51 @@ csession_reset_cur_insert_id (void)
 #endif
 }
 
+/* the statement that bound the upload is closed: the server drops its staged payload now */
+int
+internal_lob_upload_release_from_server (INT64 token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  (void) or_pack_int64 (request, token);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+  return err;
+#else
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xinternal_lob_upload_release (thread_p, token);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif
+}
+
 /*
  * csession_create_prepared_statement () - create a prepared session statement
  * return	  : error code or NO_ERROR
@@ -7638,6 +7695,15 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   CACHE_TIME local_srv_cache_time;
   int should_conn_reset, end_query_result, tran_state;
 
+  /* a locator among the host variables must be one this client was given, or name a table the user may read */
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      if (internal_lob_locator_check_value (&dbvals[i]) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -7863,6 +7929,15 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
   char *reply;
   char *page_ptr;
   int page_size, dummy_plan_size;
+
+  /* a locator among the host variables must be one this client was given, or name a table the user may read */
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      if (internal_lob_locator_check_value (&dbval_ptr[i]) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
 
   request = OR_ALIGNED_BUF_START (a_request);
   reply = OR_ALIGNED_BUF_START (a_reply);
@@ -12685,6 +12760,553 @@ file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf)
   exit_server (*thread_p);
 
   return success;
+#endif /* !CS_MODE */
+}
+
+int
+internal_lob_dml_make_slot_value (DB_VALUE * value, DB_TYPE type, int slot)
+{
+  char marker_text[64];
+  int marker_len;
+
+  if (value == NULL || (type != DB_TYPE_BLOB && type != DB_TYPE_CLOB) || slot < 0)
+    {
+      return stream_session_set_error ("invalid internal LOB DML slot value");
+    }
+
+  marker_len = snprintf (marker_text, sizeof (marker_text), INTERNAL_LOB_DML_SLOT_PREFIX "%d", slot);
+  if (marker_len <= 0 || marker_len >= (int) sizeof (marker_text))
+    {
+      return stream_session_set_error ("internal LOB DML slot value is too large");
+    }
+
+  return db_make_internal_lob_marker_value (value, type, marker_text, marker_len,
+					    DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT);
+}
+
+int
+internal_lob_dml_from_init (const XASL_ID * xasl_id, int dbval_count, const DB_VALUE * dbvals,
+			    QUERY_FLAG query_flag, const CACHE_TIME * client_cache_time, int query_timeout,
+			    const internal_lob_dml_slot_config * slot_configs, int slot_count)
+{
+#if defined(CS_MODE)
+  size_t packed_dbvals_size = 0;
+  size_t config_size;
+  char *config = NULL;
+  char *packed_dbvals = NULL;
+  char *ptr;
+  char *packed_dbvals_size_ptr;
+  char *packed_dbvals_ptr;
+  int packed_dbvals_length;
+  int error;
+
+  if (xasl_id == NULL || XASL_ID_IS_NULL (xasl_id) || dbval_count < 0 || (dbval_count > 0 && dbvals == NULL)
+      || client_cache_time == NULL || query_timeout < 0 || slot_configs == NULL || slot_count <= 0
+      || slot_count > 1024 || IS_QUERY_EXECUTE_WITH_COMMIT (query_flag) || IS_TRAN_AUTO_COMMIT (query_flag))
+    {
+      return stream_session_set_error ("invalid internal LOB DML client configuration");
+    }
+
+  for (int i = 0; i < dbval_count; i++)
+    {
+      error = internal_lob_locator_check_value (&dbvals[i]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  for (int i = 0; i < dbval_count; i++)
+    {
+      packed_dbvals_size += OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) & dbvals[i]);
+      if (packed_dbvals_size > INT_MAX)
+	{
+	  return stream_session_set_error ("internal LOB DML parameter data is too large");
+	}
+    }
+
+  config_size = OR_INT_SIZE + OR_XASL_ID_SIZE + OR_INT_SIZE * 5 + OR_CACHE_TIME_SIZE
+    + (size_t) slot_count *INTERNAL_LOB_DML_SLOT_CONFIG_SIZE + packed_dbvals_size;
+  if (config_size > INT_MAX)
+    {
+      return stream_session_set_error ("internal LOB DML configuration is too large");
+    }
+
+  config = (char *) malloc (config_size);
+  if (packed_dbvals_size > 0)
+    {
+      packed_dbvals = (char *) malloc (packed_dbvals_size);
+    }
+  if (config == NULL || (packed_dbvals_size > 0 && packed_dbvals == NULL))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, config_size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
+  ptr = or_pack_int (config, INTERNAL_LOB_DML_CONFIG_VERSION);
+  OR_PACK_XASL_ID (ptr, xasl_id);
+  ptr = or_pack_int (ptr, dbval_count);
+  packed_dbvals_size_ptr = ptr;
+  ptr = or_pack_int (ptr, 0);
+  ptr = or_pack_int (ptr, query_flag);
+  OR_PACK_CACHE_TIME (ptr, client_cache_time);
+  ptr = or_pack_int (ptr, query_timeout);
+  ptr = or_pack_int (ptr, slot_count);
+
+  for (int i = 0; i < slot_count; i++)
+    {
+      INT64 data_length = (INT64) slot_configs[i].data_length;
+      INT64 logical_length = (INT64) slot_configs[i].logical_length;
+
+      ptr = or_pack_int (ptr, (int) slot_configs[i].type);
+      OR_PUT_INT64 (ptr, &data_length);
+      ptr += OR_INT64_SIZE;
+      OR_PUT_INT64 (ptr, &logical_length);
+      ptr += OR_INT64_SIZE;
+      ptr = or_pack_int (ptr, slot_configs[i].flags);
+      ptr = or_pack_oid (ptr, &slot_configs[i].class_oid);
+    }
+
+  packed_dbvals_ptr = packed_dbvals;
+  for (int i = 0; i < dbval_count; i++)
+    {
+      packed_dbvals_ptr = or_pack_db_value (packed_dbvals_ptr, (DB_VALUE *) & dbvals[i]);
+    }
+  packed_dbvals_length = packed_dbvals_size > 0 ? CAST_BUFLEN (packed_dbvals_ptr - packed_dbvals) : 0;
+  OR_PUT_INT (packed_dbvals_size_ptr, packed_dbvals_length);
+  if (packed_dbvals_length > 0)
+    {
+      memcpy (ptr, packed_dbvals, (size_t) packed_dbvals_length);
+      ptr += packed_dbvals_length;
+    }
+
+  error = stream_from_init (STREAM_KIND_INTERNAL_LOB_DML, config, CAST_BUFLEN (ptr - config));
+
+exit:
+  free_and_init (packed_dbvals);
+  free_and_init (config);
+  return error;
+#else /* SA_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+	  "internal LOB DML stream is only used in client/server mode");
+  return ER_DB_UNIMPLEMENTED;
+#endif /* CS_MODE */
+}
+
+int
+internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  const int frame_header_size = OR_INT_SIZE + OR_INT64_SIZE;
+  char *frame;
+  int error;
+  INT64 packed_offset = (INT64) offset;
+
+  if (slot < 0 || offset < 0 || data_len < 0 || (data_len > 0 && data == NULL)
+      || data_len > INT_MAX - frame_header_size)
+    {
+      return stream_session_set_error ("invalid internal LOB DML payload frame");
+    }
+
+  frame = (char *) malloc ((size_t) frame_header_size + data_len);
+  if (frame == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) frame_header_size + data_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  OR_PUT_INT (frame, slot);
+  OR_PUT_INT64 (frame + OR_INT_SIZE, &packed_offset);
+  if (data_len > 0)
+    {
+      memcpy (frame + frame_header_size, data, (size_t) data_len);
+    }
+  error = stream_from_send_data (frame, frame_header_size + data_len);
+  free_and_init (frame);
+  return error;
+#else /* SA_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+	  "internal LOB DML stream is only used in client/server mode");
+  return ER_DB_UNIMPLEMENTED;
+#endif /* CS_MODE */
+}
+
+/*
+ * internal_lob_dml_from_end () - stream_from_end () for STREAM_KIND_INTERNAL_LOB_DML, whose END runs the statement
+ *   return: error code
+ *   count(out): the statement's row count
+ *
+ * A stored procedure of the statement may call back here before the reply, so END is served as an execute is.
+ */
+int
+internal_lob_dml_from_end (INT64 * count)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  char *replydata_listid = NULL, *replydata_page = NULL;
+  int replydata_listid_size = 0, replydata_page_size = 0;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  *count = 0;
+
+  int req_error = net_client_request_with_callback (NET_SERVER_INTERNAL_LOB_DML_END, NULL, 0, reply,
+						    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0, &replydata_listid,
+						    &replydata_listid_size, &replydata_page, &replydata_page_size,
+						    NULL, NULL);
+
+  /* as in stream_from_end (): the server drops the session on END whether or not it reported an error */
+  stream_Is_open = false;
+
+  if (!req_error)
+    {
+      char *ptr;
+      ptr = or_unpack_int (reply + OR_INT_SIZE, &rc);	/* past END_CALLBACK */
+      ptr = or_unpack_int64 (ptr, count);
+    }
+  rc = stream_request_error (req_error, rc);
+  if (rc != NO_ERROR)
+    {
+      stream_roll_back_given_up (!req_error && rc != ER_LK_UNILATERALLY_ABORTED);
+    }
+  stream_Savepoint = NULL;
+
+  return rc;
+#else /* SA_MODE */
+  *count = 0;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+	  "internal LOB DML stream is only used in client/server mode");
+  return ER_DB_UNIMPLEMENTED;
+#endif /* CS_MODE */
+}
+
+/*
+ * Locators the server sent this client, in query results or fetched objects. A locator names only the base table,
+ * so one this client was given (perhaps through a view) is usable as it is; any other must pass the SELECT
+ * privilege of its table, the check an OID read gets.
+ */
+#if defined (CS_MODE)
+#define INTERNAL_LOB_ISSUED_MAX (1024 * 1024)	/* a bound, not a cache: a dropped locator only gets checked */
+
+// *INDENT-OFF*
+static std::mutex internal_lob_Issued_mutex;
+static std::unordered_set<std::uint64_t> internal_lob_Issued;
+// *INDENT-ON*
+
+static
+  std::uint64_t
+internal_lob_issued_key (const INTERNAL_LOB_MARKER_LOCATOR_FIELDS * fields)
+{
+  return ((std::uint64_t) (std::uint16_t) fields->volid << 48) | ((std::uint64_t) (std::uint32_t) fields->pageid << 16)
+    | (std::uint64_t) (std::uint16_t) fields->slotid;
+}
+#endif /* CS_MODE */
+
+/*
+ * internal_lob_locator_note_issued () - Remember a locator the server sent this client.
+ */
+void
+internal_lob_locator_note_issued (const char *locator, int size)
+{
+#if defined (CS_MODE)
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  int consumed = 0;
+
+  if (locator == NULL || !internal_lob_marker_parse_locator_fields (locator, size, &fields, &consumed))
+    {
+      return;
+    }
+
+  std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
+  if (internal_lob_Issued.size () >= INTERNAL_LOB_ISSUED_MAX)
+    {
+      internal_lob_Issued.clear ();
+    }
+  internal_lob_Issued.insert (internal_lob_issued_key (&fields));
+#endif /* CS_MODE */
+}
+
+/*
+ * internal_lob_locator_forget_issued () - Forget them when the client session ends; the next client is someone else.
+ */
+void
+internal_lob_locator_forget_issued (void)
+{
+#if defined (CS_MODE)
+  std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
+  internal_lob_Issued.clear ();
+#endif /* CS_MODE */
+}
+
+/*
+ * internal_lob_locator_check_access () - May the current user read the value this locator names?
+ *   return: NO_ERROR, or ER_AU_SELECT_FAILURE (or the error that stopped the check)
+ */
+int
+internal_lob_locator_check_access (const char *locator, int size)
+{
+#if defined (CS_MODE)
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  int consumed = 0;
+  OID class_oid;
+  MOP class_mop;
+  SM_CLASS *class_ = NULL;
+  int is_class;
+  int au_save;
+  int error;
+
+  if (locator == NULL || !internal_lob_marker_parse_locator_fields (locator, size, &fields, &consumed))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_SELECT_FAILURE, 0);
+      return ER_AU_SELECT_FAILURE;
+    }
+
+  {
+    std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
+    if (internal_lob_Issued.find (internal_lob_issued_key (&fields)) != internal_lob_Issued.end ())
+      {
+	return NO_ERROR;
+      }
+  }
+
+  /* not given to this client: its table must be readable, and must be a table (the locator text is the client's) */
+  if (fields.class_pageid < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_SELECT_FAILURE, 0);
+      return ER_AU_SELECT_FAILURE;
+    }
+  class_oid.volid = (short) fields.class_volid;
+  class_oid.pageid = fields.class_pageid;
+  class_oid.slotid = (short) fields.class_slotid;
+  class_mop = ws_mop (&class_oid, NULL);
+  is_class = (class_mop != NULL) ? locator_is_class (class_mop, DB_FETCH_READ) : 0;
+  if (is_class <= 0)
+    {
+      if (is_class < 0)
+	{
+	  return is_class;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_SELECT_FAILURE, 0);
+      return ER_AU_SELECT_FAILURE;
+    }
+
+  /* the user's own privilege even where authorization is off (a template applies values with it off) */
+  AU_SAVE_AND_ENABLE (au_save);
+  error = au_fetch_class (class_mop, &class_, AU_FETCH_READ, AU_SELECT);
+  AU_RESTORE (au_save);
+  return error;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* CS_MODE */
+}
+
+/* The locator a value names: a column value (LOCATOR marker) or a top-level conversion result (STREAM marker). */
+static bool
+internal_lob_value_locator (const DB_VALUE * value, const char **locator, int *size)
+{
+  int marker = db_value_get_internal_lob_marker (value);
+
+  if ((marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR && marker != DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+      || !db_get_internal_lob_marker_text (value, marker, NULL, locator, size))
+    {
+      return false;
+    }
+  if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      return internal_lob_marker_parse_scalar_stream (*locator, *size, NULL, NULL, locator, size);
+    }
+  return true;
+}
+
+/*
+ * internal_lob_locator_note_issued_value () - internal_lob_locator_note_issued () for a value read from the server.
+ */
+void
+internal_lob_locator_note_issued_value (const DB_VALUE * value)
+{
+  const char *locator;
+  int size;
+
+  if (internal_lob_value_locator (value, &locator, &size))
+    {
+      internal_lob_locator_note_issued (locator, size);
+    }
+}
+
+/*
+ * internal_lob_locator_check_value () - internal_lob_locator_check_access () for a value the client sends.
+ */
+int
+internal_lob_locator_check_value (const DB_VALUE * value)
+{
+  const char *locator;
+  int size;
+
+  if (!internal_lob_value_locator (value, &locator, &size))
+    {
+      return NO_ERROR;
+    }
+  return internal_lob_locator_check_access (locator, size);
+}
+
+/* The client half of STREAM_KIND_INTERNAL_LOB_READ. A driver may open it; the server takes the class lock, and the
+ * reader must have been given the locator or be allowed to read its table. */
+static int
+internal_lob_read_authorize (const char *config, int config_len)
+{
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  int locator_len = config_len - INTERNAL_LOB_READ_CONFIG_HEADER_SIZE;
+  int consumed = 0;
+
+  if (config == NULL || locator_len <= 0
+      || !internal_lob_marker_parse_locator_fields (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator_len,
+						    &fields, &consumed) || consumed != locator_len)
+    {
+      return stream_session_set_error ("invalid internal LOB read configuration");
+    }
+
+  return internal_lob_locator_check_access (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator_len);
+}
+
+/* The client half of STREAM_KIND_INTERNAL_LOB (upload). A driver may open it: the upload names no table, and the
+ * statement that later binds its token is checked like any other. */
+static int
+internal_lob_upload_authorize (const char *config, int config_len)
+{
+  return NO_ERROR;
+}
+
+// *INDENT-OFF*
+namespace
+{
+  struct internal_lob_read_client_registrar
+  {
+    internal_lob_read_client_registrar ()
+    {
+      stream_kind_client_desc desc = { true, internal_lob_read_authorize };
+      stream_kind_client_desc upload_desc = { true, internal_lob_upload_authorize };
+
+      if (stream_kind_client_register (STREAM_KIND_INTERNAL_LOB_READ, desc) != NO_ERROR
+	  || stream_kind_client_register (STREAM_KIND_INTERNAL_LOB, upload_desc) != NO_ERROR)
+	{
+	  assert (false);
+	}
+    }
+  };
+
+  internal_lob_read_client_registrar internal_lob_read_client_registrar_instance;
+}
+// *INDENT-ON*
+
+/*
+ * internal_lob_read_from_open () - Open a download of one stored internal LOB value
+ *   return: error code
+ *   locator(in), locator_len(in): the locator text, without a NUL
+ *   start_offset(in): bytes the server skips first
+ *   first_max, flags, handle, buf, nread, reply_flags: as stream_from_read_open ()
+ */
+int
+internal_lob_read_from_open (const char *locator, int locator_len, INT64 start_offset, int first_max, int flags,
+			     INT64 * handle, char *buf, int *nread, int *reply_flags)
+{
+  char *config;
+  int config_len;
+  int error;
+
+  *handle = 0;
+  *nread = 0;
+  *reply_flags = 0;
+
+  if (locator == NULL || locator_len <= 0 || locator_len > INT_MAX - INTERNAL_LOB_READ_CONFIG_HEADER_SIZE)
+    {
+      return stream_session_set_error ("invalid internal LOB read configuration");
+    }
+
+  config_len = INTERNAL_LOB_READ_CONFIG_HEADER_SIZE + locator_len;
+  config = (char *) malloc ((size_t) config_len);
+  if (config == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) config_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  OR_PUT_INT (config, INTERNAL_LOB_READ_CONFIG_VERSION);
+  OR_PUT_INT (config + OR_INT_SIZE, 0);
+  OR_PUT_INT64 (config + OR_INT_SIZE * 2, &start_offset);
+  memcpy (config + INTERNAL_LOB_READ_CONFIG_HEADER_SIZE, locator, (size_t) locator_len);
+
+#if defined (CS_MODE)
+  error = stream_from_read_open (STREAM_KIND_INTERNAL_LOB_READ, config, config_len, first_max, flags, handle, buf,
+				 nread, reply_flags);
+#else /* CS_MODE */
+  error = stream_kind_client_authorize (STREAM_KIND_INTERNAL_LOB_READ, config, config_len);
+  if (error == NO_ERROR)
+    {
+      /* SA runs the core in this process, on a table its transaction end purges (tran_server_end_streams) */
+      THREAD_ENTRY *thread_p = enter_server ();
+      stream_handle_table *handles = session_sa_stream_handles ();
+
+      error = (handles == NULL) ? ER_FAILED : stream_download_open (thread_p, *handles, STREAM_KIND_INTERNAL_LOB_READ,
+								    config, config_len,
+								    LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+								    logtb_find_current_tranid (thread_p),
+								    session_stream_client_id (thread_p), first_max,
+								    flags, buf, nread, reply_flags, handle);
+      exit_server (*thread_p);
+    }
+#endif /* !CS_MODE */
+  free_and_init (config);
+  return error;
+}
+
+/*
+ * internal_lob_read_from_read () - stream_from_read () for a handle internal_lob_read_from_open () opened
+ *   SA has no stream transport (stream_from_read () refuses it), so it reads from its own table here.
+ */
+int
+internal_lob_read_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags)
+{
+#if defined (CS_MODE)
+  return stream_from_read (handle, buf, max, flags, nread, reply_flags);
+#else /* CS_MODE */
+  THREAD_ENTRY *thread_p;
+  stream_handle_table *handles;
+  int rc;
+
+  *nread = 0;
+  *reply_flags = 0;
+
+  thread_p = enter_server ();
+  handles = session_sa_stream_handles ();
+  rc = (handles == NULL) ? ER_FAILED : stream_download_read (thread_p, *handles, handle,
+							     LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+							     logtb_find_current_tranid (thread_p), max, flags, buf,
+							     nread, reply_flags);
+  exit_server (*thread_p);
+
+  return rc;
+#endif /* !CS_MODE */
+}
+
+/*
+ * internal_lob_read_from_release () - stream_from_release () for a handle internal_lob_read_from_open () opened
+ */
+int
+internal_lob_read_from_release (INT64 handle)
+{
+#if defined (CS_MODE)
+  return stream_from_release (handle);
+#else /* CS_MODE */
+  THREAD_ENTRY *thread_p = enter_server ();
+  stream_handle_table *handles = session_sa_stream_handles ();
+
+  if (handles != NULL)
+    {
+      handles->release (thread_p, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+    }
+  exit_server (*thread_p);
+
+  return NO_ERROR;
 #endif /* !CS_MODE */
 }
 

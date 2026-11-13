@@ -346,6 +346,8 @@ ux_end_tran_cleanup (int tran_type)
 {
   if (!as_info->cur_statement_pooling)
     {
+      /* the driver will not run these statements again: their uploads go with them */
+      hm_srv_handle_release_uploads_for_free_all (tran_type != CCI_TRAN_COMMIT);
       if (tran_type == CCI_TRAN_COMMIT)
 	{
 	  hm_srv_handle_free_all (false);

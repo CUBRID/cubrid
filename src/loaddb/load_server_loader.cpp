@@ -737,7 +737,7 @@ namespace cubload
 	else
 	  {
 	    heap_pending_record record;
-	    if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false) != S_SUCCESS)
+	    if (prepare_record (record) != NO_ERROR)
 	      {
 		m_error_handler.on_failure ();
 		m_error_handler.set_error_on_current_line (false);
@@ -758,6 +758,12 @@ namespace cubload
 		return;
 	      }
 	    m_retained_bytes += record_bytes;
+	    /* Under HA the row's Internal LOB chains were published when it was prepared, and the next row's
+	     * preparation resets that state: insert the row now so its chunks replicate with it. */
+	    if (!HA_DISABLED () && !m_thread_ref->oos_oids.empty ())
+	      {
+		flush_records ();
+	      }
 	    // Bound the queue by both compact records and out-of-row payloads.
 	    // A single large input may exceed the limit and is flushed immediately.
 	    constexpr std::size_t retained_limit = 8 * 1024 * 1024;
@@ -770,6 +776,43 @@ namespace cubload
     int64_t lineno = m_thread_ref->m_loaddb_driver->get_scanner ().lineno () + 1;
     m_session.stats_update_current_line (lineno);
     clear_db_values ();
+  }
+
+  /*
+   * prepare_record - build the line's record; Internal LOB values are written while it is built
+   *    return: NO_ERROR or the error
+   * Note: the LOB values go to the LOB file of m_attrinfo's class, so a partitioned class picks the row's
+   *       partition first, as locator_attribute_info_force () does for INSERT.
+   */
+  int
+  server_object_loader::prepare_record (heap_pending_record &record)
+  {
+    OID class_oid = m_attrinfo.class_oid;
+
+    if (m_pruning_type != DB_NOT_PARTITIONED_CLASS)
+      {
+	OID part_class_oid = class_oid;
+	HFID part_hfid = m_scancache.node.hfid;
+
+	/* columns the line leaves out take their defaults now (preparation does the same), so the key can be read */
+	int error_code = heap_attrinfo_set_uninitialized_global (m_thread_ref, &m_attrinfo.inst_oid, NULL, &m_attrinfo);
+	if (error_code == NO_ERROR)
+	  {
+	    error_code = partition_prune_insert_attr_info (m_thread_ref, &class_oid, &m_attrinfo, NULL, m_pruning_type,
+			 &part_class_oid, &part_hfid);
+	  }
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+	COPY_OID (&m_attrinfo.class_oid, &part_class_oid);
+      }
+
+    SCAN_CODE scan = heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false);
+    /* flush_records () inserts into the class the line named and routes the record itself */
+    COPY_OID (&m_attrinfo.class_oid, &class_oid);
+
+    return scan == S_SUCCESS ? NO_ERROR : ER_FAILED;
   }
 
   void
@@ -850,6 +893,11 @@ namespace cubload
 
 		// Error was filtered so we can continue.
 		m_error_handler.set_error_on_current_line (false);
+		if (m_session.internal_lob_release_record_slots (*m_thread_ref, &local_record) != NO_ERROR)
+		  {
+		    m_error_handler.on_failure ();
+		    return;
+		  }
 		continue;
 	      }
 
@@ -973,6 +1021,10 @@ namespace cubload
 	error_code = process_generic_constant (cons, attr, false);
 	break;
 
+      case LDR_INTERNAL_LOB_REF:
+	error_code = process_internal_lob_constant (cons, attr);
+	break;
+
       case LDR_COLLECTION:
 	error_code = process_collection_constant (reinterpret_cast<constant_type *> (cons->val), attr);
 	break;
@@ -1086,6 +1138,37 @@ namespace cubload
       }
 
     return error_code;
+  }
+
+  int
+  server_object_loader::process_internal_lob_constant (constant_type *cons, const attribute &attr)
+  {
+    string_type *str = reinterpret_cast<string_type *> (cons->val);
+    const tp_domain &domain = attr.get_domain ();
+    DB_TYPE expected_type = domain.type->get_id ();
+    char token_type;
+    char expected_token_type;
+    DB_BIGINT max_length = domain.precision;
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+
+    if (str == NULL || str->val == NULL || str->size < 3 || str->val[1] != '|'
+	|| (expected_type != DB_TYPE_BLOB && expected_type != DB_TYPE_CLOB))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_DOMAIN_MISMATCH, 4, attr.get_name (),
+		m_class_entry->get_class_name (), "BLOB/CLOB", domain.type->get_name ());
+	return ER_LDR_DOMAIN_MISMATCH;
+      }
+
+    token_type = str->val[0];
+    expected_token_type = (expected_type == DB_TYPE_BLOB) ? 'B' : 'C';
+    if (token_type != expected_token_type)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, attr.get_name ());
+	return ER_OBJ_DOMAIN_CONFLICT;
+      }
+
+    return m_session.internal_lob_payload_make_value (*m_thread_ref, m_clsid, str->val + 2, str->size - 2,
+	   expected_type, max_length, &db_val);
   }
 
   int

@@ -547,6 +547,10 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/heap_oos.cpp
   ${STORAGE_DIR}/heap_oos_value_ref.cpp
   ${STORAGE_DIR}/heap_pending_record.cpp
+  ${STORAGE_DIR}/internal_lob_file.cpp
+  ${STORAGE_DIR}/internal_lob_upload.cpp
+  ${STORAGE_DIR}/internal_lob_stream_session.cpp
+  ${STORAGE_DIR}/internal_lob_dml_session.cpp
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
   ${STORAGE_DIR}/oos_util.cpp
@@ -638,6 +642,7 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_object_table.h
   ${LOADDB_DIR}/load_sa_loader.hpp
   ${LOADDB_DIR}/load_semantic_helper.hpp
+  ${LOADDB_DIR}/internal_lob_stream_kind.h
   )
 
 if(UNIX)

@@ -24,6 +24,7 @@
 
 
 #include <assert.h>
+#include <new>
 
 #if !defined(WINDOWS)
 #include <sys/time.h>
@@ -62,6 +63,9 @@
 #include "thread_manager.hpp"
 #include "xasl_cache.h"
 #include "pl_session.hpp"
+#include "internal_lob_stream_kind.h"
+#include "internal_lob_dml_session.hpp"
+#include "internal_lob_upload.hpp"
 
 #include <openssl/crypto.h>
 
@@ -159,6 +163,7 @@ struct session_state
   pthread_cond_t stream_cond;	/* signalled when that request lets the slot go */
   stream_handle_table *stream_handles_p;	/* made at the first download, kept while the entry lives */
   PL_SESSION *pl_session_p;
+  internal_lob_upload_store *internal_lob_upload_store_p;
 
   // *INDENT-OFF*
   session_state ();
@@ -368,6 +373,23 @@ session_state_init (void *st)
     }
   memset (session_p->secret, 0, SESSION_SECRET_SIZE);
 
+  /* In SERVER_MODE this `new` is memory_wrapper.hpp's noexcept overload and yields NULL on failure, but
+   * this file is also compiled into cubridsa, where it is the throwing operator new.  Catch here so the
+   * engine's C error model holds in both builds. */
+  try
+  {
+    session_p->internal_lob_upload_store_p = new internal_lob_upload_store ();
+  }
+  catch (const std::bad_alloc &)
+  {
+    session_p->internal_lob_upload_store_p = NULL;
+  }
+  if (session_p->internal_lob_upload_store_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (internal_lob_upload_store));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
   return NO_ERROR;
 }
 
@@ -396,6 +418,12 @@ session_state_uninit (void *st)
 #endif /* SESSION_DEBUG */
 
   session_stop_attached_threads (thread_p, session);
+
+  if (session->internal_lob_upload_store_p != NULL)
+    {
+      delete session->internal_lob_upload_store_p;
+      session->internal_lob_upload_store_p = NULL;
+    }
 
   if (session->pl_session_p)
     {
@@ -3895,6 +3923,176 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
     }
 
   return error;
+}
+
+#if !defined (SERVER_MODE)
+/*
+ * session_sa_stream_handles () - The download handles of SA, which has one client and no connection
+ *
+ *   One table for the process, so a transaction end purges it without a session lookup that could set an error
+ *   inside the commit. Never freed, as it may hold handles at exit.
+ */
+stream_handle_table *
+session_sa_stream_handles (void)
+{
+  static stream_handle_table *table = new stream_handle_table ();
+
+  return table;
+}
+#endif /* !SERVER_MODE */
+
+/* the stream session the caller's request holds: a DML stream's statement runs inside its finish () */
+static stream_session *
+session_held_stream_session (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = NULL;
+  stream_session *held = NULL;
+
+#if defined (SERVER_MODE)
+  /* for the reason session_has_stream_session () gives */
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return NULL;
+    }
+#endif /* SERVER_MODE */
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return NULL;
+    }
+
+  pthread_mutex_lock (&state_p->stream_mutex);
+  if (state_p->stream_user == thread_p)
+    {
+      held = state_p->stream_session_p;
+    }
+  pthread_mutex_unlock (&state_p->stream_mutex);
+
+  return held;
+}
+
+bool
+session_has_internal_lob_dml_stream (THREAD_ENTRY * thread_p)
+{
+  return dynamic_cast < internal_lob_dml_session * >(session_held_stream_session (thread_p)) != NULL;
+}
+
+int
+session_internal_lob_dml_consume (THREAD_ENTRY * thread_p, int slot, const OID * class_oid, DB_TYPE expected_type,
+				  INTERNAL_LOB_LOCATOR * locator)
+{
+  internal_lob_dml_session *dml_session_p;
+
+  if (locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB DML stream is unavailable");
+    }
+
+  dml_session_p = dynamic_cast < internal_lob_dml_session * >(session_held_stream_session (thread_p));
+  if (dml_session_p == NULL)
+    {
+      return stream_session_set_error ("active stream does not own internal LOB DML");
+    }
+
+  return dml_session_p->consume_lob_slot (thread_p, slot, class_oid, expected_type, *locator);
+}
+
+int
+session_internal_lob_upload_begin (THREAD_ENTRY * thread_p, DB_TYPE type, DB_BIGINT data_length,
+				   DB_BIGINT logical_length, INT64 * token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL || token == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->begin (type, data_length, logical_length, *token);
+}
+
+int
+session_internal_lob_upload_append (THREAD_ENTRY * thread_p, INT64 token, const char *data, int data_size)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->append (token, data, data_size);
+}
+
+int
+session_internal_lob_upload_end (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->end (token);
+}
+
+int
+session_internal_lob_upload_abort (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->abort (token);
+}
+
+/* the statement that bound the upload is closed; nothing staged in this session is not an error */
+int
+session_internal_lob_upload_release (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return NO_ERROR;
+    }
+  return state_p->internal_lob_upload_store_p->release (token);
+}
+
+int
+session_internal_lob_upload_consume (THREAD_ENTRY * thread_p, INT64 token, const OID * class_oid,
+				     DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->consume (thread_p, token, class_oid, expected_type, *locator);
+}
+
+/*
+ * session_internal_lob_load_consume () - Resolve a loaddb load-slot envelope while the row is inserted.
+ *   The batch's load worker wrote the chunk chain ahead of the row; the load session hands back its locator and
+ *   replication bookkeeping (see cubload::session::internal_lob_consume_slot).
+ */
+int
+session_internal_lob_load_consume (THREAD_ENTRY * thread_p, INT64 slot, const OID * class_oid, DB_TYPE expected_type,
+				   INTERNAL_LOB_LOCATOR * locator)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->load_session_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB load slot is unavailable");
+    }
+  return state_p->load_session_p->internal_lob_consume_slot (*thread_p, slot, class_oid, expected_type, *locator);
+#else /* SERVER_MODE */
+  return stream_session_set_error ("internal LOB load slot is unavailable");
+#endif /* not SERVER_MODE */
 }
 
 /*

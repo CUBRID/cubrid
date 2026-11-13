@@ -105,6 +105,8 @@ static void bind_write_object (BIND_LINE * line, const BIND_HEADER * header, cha
 			       INTL_CODESET charset);
 static void bind_write_lob (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
 			    INTL_CODESET charset);
+static void bind_write_internal_lob_upload (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+					    INTL_CODESET charset);
 
 /* one entry per CCI_U_TYPE, in enum order. A type without a writer is logged as NULL. */
 /* *INDENT-OFF* */
@@ -144,8 +146,6 @@ static const struct
   {"DATETIME", bind_write_datetime},	/* CCI_U_TYPE_DATETIME */
   {"BFILE", bind_write_lob},		/* CCI_U_TYPE_BFILE */
   {"CFILE", bind_write_lob},		/* CCI_U_TYPE_CFILE */
-  {"BLOB", NULL},			/* CCI_U_TYPE_BLOB */
-  {"CLOB", NULL},			/* CCI_U_TYPE_CLOB */
   {"ENUM", bind_write_string},		/* CCI_U_TYPE_ENUM */
   {"USHORT", bind_write_short},		/* CCI_U_TYPE_USHORT */
   {"UINT", bind_write_int},		/* CCI_U_TYPE_UINT */
@@ -156,6 +156,10 @@ static const struct
   {"DATETIMELTZ", NULL},		/* CCI_U_TYPE_DATETIMELTZ */
   {"TIMETZ", NULL},			/* CCI_U_TYPE_TIMETZ */
   {"JSON", bind_write_string},		/* CCI_U_TYPE_JSON */
+  {"BLOB", NULL},			/* CCI_U_TYPE_BLOB */
+  {"CLOB", NULL},			/* CCI_U_TYPE_CLOB */
+  {"INTERNAL_BLOB_UPLOAD", bind_write_internal_lob_upload},	/* CCI_U_TYPE_INTERNAL_BLOB_UPLOAD */
+  {"INTERNAL_CLOB_UPLOAD", bind_write_internal_lob_upload},	/* CCI_U_TYPE_INTERNAL_CLOB_UPLOAD */
 };
 /* *INDENT-ON* */
 
@@ -486,6 +490,13 @@ bind_write_lob (BIND_LINE * line, const BIND_HEADER * header, char type, void *n
       bind_line_printf (line, "%s", "invalid LOB");
     }
   db_value_clear (&db_val);
+}
+
+static void
+bind_write_internal_lob_upload (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+				INTL_CODESET charset)
+{
+  BIND_PRINT (line, header, "%s", "<streamed internal LOB>");
 }
 
 void

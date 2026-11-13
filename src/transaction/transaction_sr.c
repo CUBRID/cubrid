@@ -41,9 +41,25 @@
 #include "server_support.h"
 #include "session.h"
 #include "dbtype.h"
+#if !defined (SERVER_MODE)
+#include "stream_handle.hpp"
+#endif /* !SERVER_MODE */
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+/*
+ * tran_server_end_streams - Drop SA's download handles of the ending transaction.
+ *
+ *   SA keeps them out of the session (session_sa_stream_handles); a server's go in session_end_tran_streams ().
+ */
+static void
+tran_server_end_streams (THREAD_ENTRY * thread_p)
+{
+#if !defined (SERVER_MODE)
+  session_sa_stream_handles ()->end_tran (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+#endif /* !SERVER_MODE */
+}
 
 /*
  * xtran_server_commit - Commit the current transaction
@@ -73,6 +89,8 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 {
   TRAN_STATE state;
   int tran_index;
+
+  tran_server_end_streams (thread_p);
 
   /*
    * Execute some few remaining actions before the log manager is notified of
@@ -132,6 +150,8 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 {
   TRAN_STATE state;
   int tran_index;
+
+  tran_server_end_streams (thread_p);
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);

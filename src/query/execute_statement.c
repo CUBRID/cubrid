@@ -214,7 +214,10 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 			       const char **savepoint_name, int *row_count_ptr);
 static void init_compile_context (PARSER_CONTEXT * parser);
 
-static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
+static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, bool to_client);
+static int do_prepare_and_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement,
+							XASL_STREAM * stream, QFILE_LIST_ID ** list_id,
+							QUERY_FLAG query_flag);
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
@@ -3724,7 +3727,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DIFFERENCE:
 	case PT_INTERSECTION:
 	case PT_SELECT:
-	  error = do_select (parser, statement);
+	  error = do_select_internal (parser, statement, false, true);
 	  break;
 
 	case PT_TRUNCATE:
@@ -9471,10 +9474,7 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      error =
-	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
-				   &list_id, query_flag);
+      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -10190,6 +10190,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  statement->info.update.execute_with_commit_allowed = 1;
 	}
 
+      err = pt_fold_internal_lob_direct_source_assignments (parser, statement->info.update.assignment);
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+      qo_auto_parameterize (parser, statement->info.update.assignment);
+
       /* if we are updating class attributes, not need to prepare */
       if (lhs->info.name.meta_class == PT_META_ATTR)
 	{
@@ -10474,6 +10481,290 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * do_get_internal_lob_direct_class_oid () - The class whose LOB file an Internal LOB DML value can be written to
+ *                                           while it streams in, before its row exists
+ *   return: that class's OID, or NULL to let the server hold the value until the row's class is known
+ *   class_obj(in): the class the statement names
+ *
+ * NULL for a partitioned class: its rows and their LOB values go to the partition chosen at insert time, so writing
+ * to the partitioned class's LOB file first would leave an unused second copy there.
+ */
+static const OID *
+do_get_internal_lob_direct_class_oid (DB_OBJECT * class_obj)
+{
+  /* [리뷰] 파티션 테이블이면 직접 슬롯을 끈다(루트 LOB 파일에 쓸모없는 사본이 남음).
+   * 반환값은 ws_oid 포인터라 실행 동안 클래스 객체가 살아 있어야 한다. */
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+
+  if (class_obj == NULL || sm_partitioned_class_type (class_obj, &partition_type, NULL, NULL) != NO_ERROR
+      || partition_type == DB_PARTITIONED_CLASS)
+    {
+      return NULL;
+    }
+  return ws_oid (class_obj);
+}
+
+static PT_NODE *
+do_mark_used_host_var (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *used_vars = (bool *) arg;
+  const PT_NODE *host_var = node;
+
+  /* a host variable bound to a name is not walked into; see pt_sub_host_vars_index () */
+  if (node->node_type == PT_NAME && node->info.name.constant_value != NULL)
+    {
+      host_var = node->info.name.constant_value;
+    }
+  if (host_var->node_type == PT_HOST_VAR && host_var->info.host_var.index >= 0
+      && host_var->info.host_var.index < parser->host_var_count + parser->auto_param_count)
+    {
+      used_vars[host_var->info.host_var.index] = true;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+  return node;
+}
+
+/* a value a LOB column takes as it is: a host variable, possibly under a CAST */
+static void
+do_mark_internal_lob_direct_value (PARSER_CONTEXT * parser, PT_NODE * value, bool * direct_vars)
+{
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+
+  while (value != NULL && value->node_type == PT_EXPR && value->info.expr.op == PT_CAST)
+    {
+      value = value->info.expr.arg1;
+    }
+  if (value != NULL && value->node_type == PT_NAME && value->info.name.constant_value != NULL)
+    {
+      value = value->info.name.constant_value;
+    }
+  if (value != NULL && value->node_type == PT_HOST_VAR && value->info.host_var.index >= 0
+      && value->info.host_var.index < var_count)
+    {
+      direct_vars[value->info.host_var.index] = true;
+    }
+}
+
+static void
+do_mark_internal_lob_direct_assignments (PARSER_CONTEXT * parser, PT_NODE * assignments, bool * direct_vars)
+{
+  PT_ASSIGNMENTS_HELPER ea;
+
+  if (assignments == NULL)
+    {
+      return;
+    }
+  pt_init_assignments_helper (parser, &ea, assignments);
+  while (pt_get_next_assignment (&ea))
+    {
+      do_mark_internal_lob_direct_value (parser, ea.rhs, direct_vars);
+    }
+}
+
+/*
+ * do_get_internal_lob_direct_host_vars () - Flag the host variables that are LOB column values as they are
+ *   return: error code
+ *   direct_vars_out (out): one flag per host variable, or NULL to treat all as such; free with free_and_init ()
+ *
+ * Only such a value is streamed as a DML slot, resolved when the row is written. A LOB parameter inside an
+ * expression, CLOB_TO_CHAR (?) for one, is sent with its content like any other parameter.
+ */
+static int
+do_get_internal_lob_direct_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, bool ** direct_vars_out)
+{
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+  PT_NODE *value_clauses = NULL, *assignments = NULL, *odku = NULL, *list, *value;
+  bool *direct_vars;
+
+  *direct_vars_out = NULL;
+  if (var_count <= 0)
+    {
+      return NO_ERROR;
+    }
+  direct_vars = (bool *) calloc ((size_t) var_count, sizeof (bool));
+  if (direct_vars == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) var_count * sizeof (bool));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      value_clauses = statement->info.insert.value_clauses;
+      odku = statement->info.insert.odku_assignments;
+      break;
+    case PT_UPDATE:
+      assignments = statement->info.update.assignment;
+      break;
+    case PT_MERGE:
+      value_clauses = statement->info.merge.insert.value_clauses;
+      assignments = statement->info.merge.update.assignment;
+      break;
+    default:
+      break;
+    }
+  for (list = value_clauses; list != NULL; list = list->next)
+    {
+      for (value = list->info.node_list.list; value != NULL; value = value->next)
+	{
+	  if (PT_IS_QUERY (value))
+	    {
+	      /* INSERT ... SELECT: the select list feeds the columns */
+	      PT_NODE *select_item;
+
+	      for (select_item = pt_get_select_list (parser, value); select_item != NULL;
+		   select_item = select_item->next)
+		{
+		  do_mark_internal_lob_direct_value (parser, select_item, direct_vars);
+		}
+	    }
+	  else
+	    {
+	      do_mark_internal_lob_direct_value (parser, value, direct_vars);
+	    }
+	}
+    }
+  do_mark_internal_lob_direct_assignments (parser, assignments, direct_vars);
+  do_mark_internal_lob_direct_assignments (parser, odku, direct_vars);
+  *direct_vars_out = direct_vars;
+  return NO_ERROR;
+}
+
+/*
+ * do_get_internal_lob_used_host_vars () - Flag the host variables a statement uses
+ *   return: error code
+ *   used_vars_out (out): one flag per host variable of the parser, or NULL to treat all as used;
+ *                        free with free_and_init ()
+ *
+ * The statements of one buffer share a host variable array, so it still holds the LOB values of earlier statements;
+ * only flagged ones are streamed for this statement.
+ */
+static int
+do_get_internal_lob_used_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, bool ** used_vars_out)
+{
+  /* [리뷰] 한 버퍼의 여러 문장이 호스트 변수 배열을 공유한다.
+   * 이 문장이 안 쓰는 LOB은 INT_MAX 슬롯 마커로 바꿔 내용을 보내지 않는다. */
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+  bool *used_vars;
+
+  *used_vars_out = NULL;
+  if (var_count <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  used_vars = (bool *) calloc ((size_t) var_count, sizeof (bool));
+  if (used_vars == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) var_count * sizeof (bool));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  (void) parser_walk_tree (parser, statement, do_mark_used_host_var, used_vars, NULL, NULL);
+  *used_vars_out = used_vars;
+  return NO_ERROR;
+}
+
+/*
+ * do_get_statement_host_vars () - The parser's host variables, except that a LOB file source or pending value this
+ *   statement does not use is NULL
+ *   return: error code
+ *   vars_out(out): parser->host_variables, or a copy to free with free_and_init ()
+ *
+ * The statements of one buffer share the host variable array, so it can still hold such a value of an earlier
+ * statement, and the server refuses one from a client whether or not the statement uses it.
+ */
+static int
+do_get_statement_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE ** vars_out)
+{
+  int err = NO_ERROR;
+
+  *vars_out = parser->host_variables;
+
+#if defined(CS_MODE)
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+  DB_VALUE *copy = NULL;
+  bool *used_vars = NULL;
+  int i;
+
+  for (i = 0; i < var_count; i++)
+    {
+      if (query_is_internal_lob_file_source (&parser->host_variables[i]))
+	{
+	  break;
+	}
+    }
+  if (i < var_count)
+    {
+      err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+      if (err == NO_ERROR)
+	{
+	  err = query_copy_without_unused_file_sources (var_count, parser->host_variables, used_vars, &copy);
+	}
+      free_and_init (used_vars);
+      if (copy != NULL)
+	{
+	  *vars_out = copy;
+	}
+    }
+#endif /* CS_MODE */
+
+  return err;
+}
+
+/*
+ * do_execute_query_with_host_vars () - execute_query () with the host variables of do_get_statement_host_vars ()
+ *   return: error code
+ */
+static int
+do_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID ** list_id,
+				 QUERY_FLAG query_flag, CACHE_TIME * clt_cache_time, CACHE_TIME * srv_cache_time)
+{
+  DB_VALUE *vars;
+  int err;
+
+  err = do_get_statement_host_vars (parser, statement, &vars);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count, vars,
+		       list_id, query_flag, clt_cache_time, srv_cache_time);
+  if (vars != parser->host_variables)
+    {
+      free_and_init (vars);
+    }
+  return err;
+}
+
+/*
+ * do_prepare_and_execute_query_with_host_vars () - prepare_and_execute_query () with the host variables of
+ *   do_get_statement_host_vars ()
+ *   return: error code
+ */
+static int
+do_prepare_and_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_STREAM * stream,
+					     QFILE_LIST_ID ** list_id, QUERY_FLAG query_flag)
+{
+  DB_VALUE *vars;
+  int err;
+
+  err = do_get_statement_host_vars (parser, statement, &vars);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  err = prepare_and_execute_query (stream->buffer, stream->buffer_size, &parser->query_id,
+				   parser->host_var_count + parser->auto_param_count, vars, list_id, query_flag);
+  if (vars != parser->host_variables)
+    {
+      free_and_init (vars);
+    }
+  return err;
+}
+
+/*
  * do_execute_update() - Execute the prepared UPDATE statement
  *   return: Error code
  *   parser(in): Parser context
@@ -10481,6 +10772,39 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  * Note:
  */
+static const OID *
+do_get_internal_lob_update_class_oid (PT_NODE * statement)
+{
+  const OID *class_oid = NULL;
+
+  for (PT_NODE * spec = statement != NULL ? statement->info.update.spec : NULL; spec != NULL; spec = spec->next)
+    {
+      PT_NODE *flat;
+      DB_OBJECT *class_obj;
+      const OID *candidate;
+
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
+	{
+	  continue;
+	}
+
+      flat = spec->info.spec.flat_entity_list;
+      class_obj = flat != NULL ? flat->info.name.db_object : NULL;
+      candidate = do_get_internal_lob_direct_class_oid (class_obj);
+      if (candidate == NULL || OID_ISNULL (candidate))
+	{
+	  return NULL;
+	}
+      if (class_oid != NULL && !OID_EQ (class_oid, candidate))
+	{
+	  return NULL;
+	}
+      class_oid = candidate;
+    }
+
+  return class_oid;
+}
+
 int
 do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
@@ -10614,9 +10938,36 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
-	  err =
-	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+	  bool *used_vars = NULL, *direct_vars = NULL;
+
+	  err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+	  if (err == NO_ERROR)
+	    {
+	      err = do_get_internal_lob_direct_host_vars (parser, statement, &direct_vars);
+	    }
+	  if (err != NO_ERROR)
+	    {
+	      ;			/* fall through to the cleanup below */
+	    }
+	  else if (statement->info.update.server_update)
+	    {
+	      err = execute_query_with_internal_lob_dml (statement->xasl_id, &parser->query_id,
+							 parser->host_var_count + parser->auto_param_count,
+							 parser->host_variables, &list_id, query_flag, NULL, NULL,
+							 do_get_internal_lob_update_class_oid (statement), used_vars,
+							 direct_vars);
+	    }
+	  else
+	    {
+	      err = check_client_internal_lob_dml_params (parser->host_var_count + parser->auto_param_count,
+							  parser->host_variables, used_vars);
+	      if (err == NO_ERROR)
+		{
+		  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, NULL, NULL);
+		}
+	    }
+	  free_and_init (used_vars);
+	  free_and_init (direct_vars);
 
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
@@ -11180,10 +11531,7 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      error =
-	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
-				   &list_id, query_flag);
+      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -11949,8 +12297,7 @@ do_execute_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
-      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+      err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, NULL, NULL);
 
       AU_RESTORE (au_save);
 
@@ -12227,6 +12574,75 @@ insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALU
 }
 
 
+static int
+do_prepare_internal_lob_value_list (PARSER_CONTEXT * parser, PT_NODE ** values)
+{
+  int error = NO_ERROR;
+  PT_NODE *val = NULL, *head = NULL, *prev = NULL;
+
+  error = pt_fold_internal_lob_direct_source_values (parser, values);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (val = *values; val != NULL; val = val->next)
+    {
+      if (pt_is_const_not_hostvar (val) && !PT_IS_NULL_NODE (val))
+	{
+	  val = pt_rewrite_to_auto_param (parser, val);
+	  if (prev != NULL)
+	    {
+	      prev->next = val;
+	    }
+
+	  if (val == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	}
+
+      if (head == NULL)
+	{
+	  head = val;
+	}
+
+      prev = val;
+    }
+  *values = head;
+  return error;
+}
+
+static int
+do_prepare_internal_lob_insert_values (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  PT_NODE *value_list = NULL;
+
+  if (statement->info.insert.odku_assignments != NULL)
+    {
+      error = pt_fold_internal_lob_direct_source_assignments (parser, statement->info.insert.odku_assignments);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      qo_auto_parameterize (parser, statement->info.insert.odku_assignments);
+    }
+
+  /* insert value auto parameterize */
+  for (value_list = statement->info.insert.value_clauses; value_list != NULL; value_list = value_list->next)
+    {
+      error = do_prepare_internal_lob_value_list (parser, &value_list->info.node_list.list);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * do_prepare_insert_internal () - Prepares insert statement for server
  *				   execution.
@@ -12239,8 +12655,6 @@ static int
 do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  PT_NODE *val = NULL, *head = NULL, *prev = NULL;
-  PT_NODE *value_list = NULL;
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
@@ -12258,35 +12672,10 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   contextp->sql_user_text = statement->sql_user_text;
   contextp->sql_user_text_len = statement->sql_user_text_len;
 
-  /* insert value auto parameterize */
-  for (value_list = statement->info.insert.value_clauses; value_list != NULL; value_list = value_list->next)
+  error = do_prepare_internal_lob_insert_values (parser, statement);
+  if (error != NO_ERROR)
     {
-      head = NULL;
-      prev = NULL;
-      for (val = value_list->info.node_list.list; val != NULL; val = val->next)
-	{
-	  if (pt_is_const_not_hostvar (val) && !PT_IS_NULL_NODE (val))
-	    {
-	      val = pt_rewrite_to_auto_param (parser, val);
-	      if (prev != NULL)
-		{
-		  prev->next = val;
-		}
-
-	      if (val == NULL)
-		{
-		  break;
-		}
-	    }
-
-	  if (head == NULL)
-	    {
-	      head = val;
-	    }
-
-	  prev = val;
-	}
-      value_list->info.node_list.list = head;
+      return error;
     }
 
   /* make query string */
@@ -12476,10 +12865,7 @@ do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       AU_SAVE_AND_ENABLE (au_save);	/* this insures authorization checking for method */
 
-      error =
-	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   (parser->host_var_count + parser->auto_param_count), parser->host_variables,
-				   &list_id, query_flag);
+      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -14941,6 +15327,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
 	{
+	  error = do_prepare_internal_lob_insert_values (parser, statement);
 	  goto cleanup;
 	}
     }
@@ -14999,6 +15386,20 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  statement->etc = NULL;
 	  return NO_ERROR;
 	}
+
+      bool *used_vars = NULL;
+
+      err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+      if (err == NO_ERROR)
+	{
+	  err = check_client_internal_lob_dml_params (parser->host_var_count + parser->auto_param_count,
+						      parser->host_variables, used_vars);
+	}
+      free_and_init (used_vars);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
       return do_insert (parser, statement);
     }
 
@@ -15053,8 +15454,30 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (parser->query_id == NULL_QUERY_ID);
   list_id = NULL;
 
-  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+  const OID *direct_class_oid = NULL;
+  if (statement->info.insert.spec != NULL)
+    {
+      PT_NODE *direct_flat = statement->info.insert.spec->info.spec.flat_entity_list;
+      DB_OBJECT *direct_class_obj = direct_flat != NULL ? direct_flat->info.name.db_object : NULL;
+      direct_class_oid = do_get_internal_lob_direct_class_oid (direct_class_obj);
+    }
+
+  bool *used_vars = NULL, *direct_vars = NULL;
+
+  err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+  if (err == NO_ERROR)
+    {
+      err = do_get_internal_lob_direct_host_vars (parser, statement, &direct_vars);
+    }
+  if (err == NO_ERROR)
+    {
+      err = execute_query_with_internal_lob_dml (statement->xasl_id, &parser->query_id,
+						 parser->host_var_count + parser->auto_param_count,
+						 parser->host_variables, &list_id, query_flag, NULL, NULL,
+						 direct_class_oid, used_vars, direct_vars);
+    }
+  free_and_init (used_vars);
+  free_and_init (direct_vars);
 
   /* free returned QFILE_LIST_ID */
   if (list_id)
@@ -15300,6 +15723,15 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  */
 
+/* a top-level query (mq_translate marks it -1), not one whose values the caller keeps (INTO): its rows go to the
+ * client as they are */
+static bool
+do_select_rows_go_to_client (const PT_NODE * statement)
+{
+  return (statement->info.query.is_subquery == PT_MISC_NONE
+	  || statement->info.query.is_subquery == (PT_MISC_TYPE) (-1)) && statement->info.query.into_list == NULL;
+}
+
 /*
  * do_select() -
  *   return: Error code
@@ -15312,7 +15744,7 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  return do_select_internal (parser, statement, false);
+  return do_select_internal (parser, statement, false, false);
 }
 
 /*
@@ -15326,7 +15758,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  return do_select_internal (parser, statement, true);
+  return do_select_internal (parser, statement, true, false);
 }
 
 /*
@@ -15335,11 +15767,12 @@ do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   parser(in/out): Parser context
  *   statement(in/out): A statement to do
  *   for_inst_upd: check insert/update statement
+ *   to_client: the statement's own rows go to the caller
  *
  * Note: Side effects can exist at returned result through application extern
  */
 static int
-do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd)
+do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, bool to_client)
 {
   int error;
   XASL_NODE *xasl = NULL;
@@ -15387,6 +15820,11 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
       query_flag |= TRAN_AUTO_COMMIT;
     }
 
+  if (to_client && do_select_rows_go_to_client (statement))
+    {
+      query_flag |= INTERNAL_LOB_STREAM_TO_CLIENT;
+    }
+
 #if defined(CUBRID_DEBUG)
   PT_NODE_PRINT_TO_ALIAS (parser, statement, PT_CONVERT_RANGE);
 #endif
@@ -15432,10 +15870,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 
 	  if (error >= NO_ERROR)
 	    {
-	      error =
-		prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-					   parser->host_var_count + parser->auto_param_count, parser->host_variables,
-					   &list_id, query_flag);
+	      error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
 	    }
 	  statement->etc = list_id;
 
@@ -16332,6 +16767,11 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= RESULT_CACHE_REQUIRED;
     }
 
+  if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.into_list == NULL)
+    {
+      query_flag |= INTERNAL_LOB_STREAM_TO_CLIENT;
+    }
+
   if (query_trace == true)
     {
       do_set_trace_to_query_flag (&query_flag);
@@ -16367,9 +16807,8 @@ do_execute_session_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   CACHE_TIME_RESET (&statement->cache_time);
   statement->flag.clt_cache_reusable = 0;
 
-  err =
-    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
+  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, &clt_cache_time,
+					 &statement->cache_time);
 
   AU_RESTORE (au_save);
 
@@ -16527,6 +16966,11 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       query_flag |= TRAN_AUTO_COMMIT;
     }
 
+  if (do_select_rows_go_to_client (statement))
+    {
+      query_flag |= INTERNAL_LOB_STREAM_TO_CLIENT;
+    }
+
   if (query_trace == true)
     {
       do_set_trace_to_query_flag (&query_flag);
@@ -16564,9 +17008,8 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   CACHE_TIME_RESET (&statement->cache_time);
   statement->flag.clt_cache_reusable = 0;
 
-  err =
-    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		   parser->host_variables, &list_id, query_flag, &clt_cache_time, &statement->cache_time);
+  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, &clt_cache_time,
+					 &statement->cache_time);
 
   AU_RESTORE (au_save);
 
@@ -17905,10 +18348,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error =
-    prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-			       parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-			       query_flag);
+  error = do_prepare_and_execute_query_with_host_vars (parser, statement, &stream, &list_id, query_flag);
 
   if (error != NO_ERROR)
     {
@@ -18873,6 +19313,27 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       server_op = (server_insert && server_update);
     }
 
+  if (statement->info.merge.update.assignment != NULL && !insert_only)
+    {
+      err = pt_fold_internal_lob_direct_source_assignments (parser, statement->info.merge.update.assignment);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      qo_auto_parameterize (parser, statement->info.merge.update.assignment);
+    }
+
+  if (statement->info.merge.insert.value_clauses != NULL
+      && statement->info.merge.insert.value_clauses->info.node_list.list_type == PT_IS_VALUE)
+    {
+      err =
+	do_prepare_internal_lob_value_list (parser, &statement->info.merge.insert.value_clauses->info.node_list.list);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
   if (server_op)
     {
       statement->info.merge.flags |= PT_MERGE_INFO_SERVER_OP;
@@ -19114,7 +19575,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   INT64 result = 0;
   int error = NO_ERROR;
   PT_NODE *flat = NULL, *spec = NULL, *values_list = NULL;
-  const char *savepoint_name;
+  const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
   QFILE_LIST_ID *list_id = NULL;
   int au_save;
@@ -19164,6 +19625,22 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       class_obj = flat->info.name.db_object;
     }
 
+  if (!(statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP))
+    {
+      bool *used_vars = NULL;
+
+      err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+      if (err == NO_ERROR)
+	{
+	  err = check_client_internal_lob_dml_params (parser->host_var_count + parser->auto_param_count,
+						      parser->host_variables, used_vars);
+	}
+      free_and_init (used_vars);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
 
   if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
     {
@@ -19226,8 +19703,23 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
 
-      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+      bool *used_vars = NULL, *direct_vars = NULL;
+
+      err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+      if (err == NO_ERROR)
+	{
+	  err = do_get_internal_lob_direct_host_vars (parser, statement, &direct_vars);
+	}
+      if (err == NO_ERROR)
+	{
+	  err = execute_query_with_internal_lob_dml (statement->xasl_id, &parser->query_id,
+						     parser->host_var_count + parser->auto_param_count,
+						     parser->host_variables, &list_id, query_flag, NULL, NULL,
+						     do_get_internal_lob_direct_class_oid (class_obj), used_vars,
+						     direct_vars);
+	}
+      free_and_init (used_vars);
+      free_and_init (direct_vars);
 
       AU_RESTORE (au_save);
       if (err != NO_ERROR)
@@ -19289,9 +19781,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  list_id = NULL;
-	  err =
-	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+	  err = do_execute_query_with_host_vars (parser, statement, &list_id, query_flag, NULL, NULL);
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
 	    {

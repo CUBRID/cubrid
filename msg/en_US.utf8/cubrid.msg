@@ -1525,7 +1525,12 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1401 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
 
-1402 Last Error
+1402 Reserved error for internal LOB.
+1403 The unload file's internal LOB charset (%1$s) differs from this database (%2$s); load aborted.
+1404 Internal LOB locator is not authorized for the current user or session.
+1405 The internal LOB sidecar file is missing, or a reference in the load file is not in it.
+1406 The internal LOB value this locator refers to no longer exists; fetch the row again.
+1407 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1693,6 +1698,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
+141 invalid use of clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -2044,6 +2050,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
+346 CLOB literal exceeds 1 GiB. Values over 1 GiB can be loaded with CLOB_FROM_FILE or CFILE_TO_CLOB (up to 4 GiB).
+347 BLOB literal exceeds 128 MiB. Values over 128 MiB can be loaded with BLOB_FROM_FILE or BFILE_TO_BLOB (up to 4 GiB).
 
 
 

@@ -79,6 +79,8 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
+#include "internal_lob_marker.h"
+#include "internal_lob_stream_kind.h"
 #include "query_replace.h"
 #include "network_interface_cl.h"
 #include "stream_client.h"
@@ -183,6 +185,8 @@ static DB_TYPE netval_null_type (char u_type);
 static DB_DOMAIN *column_domain (DB_QUERY_TYPE * col, const T_QUERY_RESULT * q_result, int col_idx,
 				 T_BROKER_VERSION client_version);
 static bool column_types_vary (const T_QUERY_RESULT * q_result, T_BROKER_VERSION client_version);
+static void note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count);
+static INT64 internal_lob_upload_token (DB_VALUE * value);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
 		      T_NET_BUF * net_buf);
 static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size,
@@ -1158,6 +1162,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 	{
 	  goto execute_error;
 	}
+      note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
       err_code = set_host_variables (session, num_bind, value_list);
       if (err_code != NO_ERROR)
@@ -1500,6 +1505,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	{
 	  goto execute_all_error;
 	}
+      note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
       err_code = set_host_variables (session, num_bind, value_list);
       if (err_code != NO_ERROR)
@@ -1845,6 +1851,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 	{
 	  goto execute_error;
 	}
+      note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
       if (call_info->is_first_out)
 	{
@@ -2425,6 +2432,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
     {
       goto execute_array_error;
     }
+  note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
   first_value = 0;
 
@@ -2971,6 +2979,7 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
 {
   int col_idx;
   int err_code;
+  INT64 upload_token;
   DB_VALUE *attr_val = NULL;
   DB_VALUE oid_val;
   T_QUERY_RESULT *q_result = NULL;
@@ -3034,6 +3043,17 @@ ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc, void **ar
 	    {
 	      cas_log_write (0, false, "cursor_update %s%d", "error:", err_info.err_number);
 	    }
+	  goto cursor_update_error;
+	}
+
+      upload_token = internal_lob_upload_token (attr_val);
+      if (upload_token > 0)
+	{
+	  /* as on develop: db_put writes through the object, which takes no internal LOB; drop the upload */
+	  hm_internal_lob_upload_release (upload_token);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		  "an internal LOB cannot be written through an updatable result set; use UPDATE");
+	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
 	  goto cursor_update_error;
 	}
 
@@ -3421,6 +3441,63 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale, char *db_t
     }
 
   return (ux_db_type_to_cas_type (set_type));
+}
+
+/* The token an internal LOB upload marker names; 0 for any other value. */
+static INT64
+internal_lob_upload_token (DB_VALUE * value)
+{
+  int prefix_len = (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX);
+  char text[160];
+  char type_char;
+  long long token;
+  int size;
+
+  if (db_value_get_internal_lob_marker (value) != DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD)
+    {
+      return 0;
+    }
+  size = db_get_string_size (value);
+  if (size <= prefix_len || size >= (int) sizeof (text))
+    {
+      return 0;
+    }
+  memcpy (text, db_get_string (value), size);
+  text[size] = '\0';
+  if (sscanf (text + prefix_len, "%c:%lld", &type_char, &token) != 2 || token <= 0)
+    {
+      return 0;
+    }
+  return (INT64) token;
+}
+
+/* Remember the uploads a statement binds, so closing the statement releases their staged payloads. */
+static void
+note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count)
+{
+  INT64 *tokens = NULL;
+  INT64 token;
+  int i, n_tokens = 0;
+
+  if (count > 0)
+    {
+      tokens = (INT64 *) MALLOC (sizeof (INT64) * count);
+      if (tokens == NULL)
+	{
+	  return;
+	}
+    }
+  for (i = 0; i < count; i++)
+    {
+      token = internal_lob_upload_token (&values[i]);
+      if (token > 0)
+	{
+	  tokens[n_tokens++] = token;
+	}
+    }
+  /* a re-bind releases what this statement bound before; the uploads it still binds stay for re-execution */
+  (void) hm_srv_handle_set_internal_lob_uploads (srv_handle, tokens, n_tokens);
+  FREE_MEM (tokens);
 }
 
 int
@@ -4170,6 +4247,34 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
       }
       break;
+    case CCI_U_TYPE_INTERNAL_BLOB_UPLOAD:
+    case CCI_U_TYPE_INTERNAL_CLOB_UPLOAD:
+      {
+	char *value;
+	int val_size;
+	DB_TYPE lob_type = (type == CCI_U_TYPE_INTERNAL_BLOB_UPLOAD) ? DB_TYPE_BLOB : DB_TYPE_CLOB;
+
+	net_arg_get_str (&value, &val_size, net_value);
+	if (value == NULL || val_size <= (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX)
+	    || memcmp (value, INTERNAL_LOB_UPLOAD_PREFIX, strlen (INTERNAL_LOB_UPLOAD_PREFIX)) != 0)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
+	if (lob_type == DB_TYPE_BLOB)
+	  {
+	    err_code = db_make_blob (&db_val, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) value, val_size * 8);
+	  }
+	else
+	  {
+	    err_code = db_make_clob (&db_val, DB_MAX_LOB_PRECISION, value, val_size);
+	  }
+	if (err_code == NO_ERROR)
+	  {
+	    db_value_mark_internal_lob (&db_val, DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD);
+	    coercion_flag = FALSE;
+	  }
+      }
+      break;
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
       {
@@ -4629,12 +4734,212 @@ cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_
 	  return err_code;
 	}
 
-      data_size += dbval_to_net_buf (&val, net_buf, 1, max_col_size, null_type_column ? null_type_column[i] : 0);
+      err_code = dbval_to_net_buf (&val, net_buf, 1, max_col_size, null_type_column ? null_type_column[i] : 0);
       db_value_clear (&val);
+      if (err_code < 0)
+	{
+	  /* the value was not sent and the buffer holds the error reply: no further column or tuple may follow */
+	  return err_code;
+	}
+      data_size += err_code;
     }
 
   tuple_obj = NULL;
   return data_size;
+}
+
+/*
+ * dbval_is_internal_lob_locator () - Does this result value carry an internal LOB reference instead of content?
+ *
+ * Both the locator marker (column SELECT) and the stream marker (LOB-producing scalar functions) are references.
+ */
+static bool
+dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locator_len, DB_BIGINT * byte_length)
+{
+  /* [리뷰] LOCATOR·STREAM 마커만 참조로 본다. 저장소 없는 LOB 값(CHAR_TO_CLOB 결과)은 내용으로 간다.
+   * BLOB 계열 로케이터 길이는 비트라 바이트로 바꿔 REF 머리에 싣는다. */
+  DB_TYPE type;
+  const char *data = NULL;
+  int size = 0;
+  DB_BIGINT parsed_length = 0;
+  int marker;
+
+  marker = db_value_get_internal_lob_marker (val);
+  if ((marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR && marker != DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+      || !db_get_internal_lob_marker_text (val, marker, &type, &data, &size))
+    {
+      return false;
+    }
+
+  if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      /* "@internal_lob_stream:<B|C>:<locator>" - step over the wrapper to reach the locator itself */
+      if (!internal_lob_marker_parse_scalar_stream (data, size, NULL, &parsed_length, &data, &size))
+	{
+	  return false;
+	}
+    }
+  else if (!internal_lob_marker_parse_locator (data, size, &parsed_length))
+    {
+      return false;
+    }
+
+  /* a BLOB locator states the payload in bits */
+  if ((type == DB_TYPE_BLOB || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT)
+      && !internal_lob_marker_split_length ('B', parsed_length, &parsed_length, NULL))
+    {
+      return false;
+    }
+
+  if (locator != NULL)
+    {
+      *locator = data;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = size;
+    }
+  if (byte_length != NULL)
+    {
+      *byte_length = parsed_length;
+    }
+  return true;
+}
+
+/*
+ * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V13.
+ *
+ * A leading discriminator byte tells, per value, whether it is a reference to stored content (pulled later with
+ * CAS_FC_STREAM_READ_*) or inline content with no storage behind it, such as a CHAR_TO_CLOB('x') result.
+ *
+ *   [INTERNAL_LOB_WIRE_REF]    INT64 byte length, then the locator
+ *   [INTERNAL_LOB_WIRE_INLINE] the content itself
+ */
+static void
+add_res_data_internal_lob (T_NET_BUF * net_buf, char wire_kind, const char *data, int data_len,
+			   DB_BIGINT byte_length, unsigned char ext_type, int *net_size)
+{
+  int payload_size = 1 + (wire_kind == INTERNAL_LOB_WIRE_REF ? NET_SIZE_BIGINT : 0) + data_len;
+
+  if (ext_type)
+    {
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + payload_size, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, payload_size, NULL);
+    }
+
+  net_buf_cp_byte (net_buf, wire_kind);
+  if (wire_kind == INTERNAL_LOB_WIRE_REF)
+    {
+      net_buf_cp_bigint (net_buf, byte_length, NULL);
+    }
+  if (data_len > 0)
+    {
+      net_buf_cp_str (net_buf, data, data_len);
+    }
+
+  if (net_size)
+    {
+      *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + payload_size;
+    }
+}
+
+/*
+ * dbval_read_lob_stream () - Read the content a CLOB_TO_CHAR ()/BLOB_TO_BIT () stream marker stands for
+ *
+ * The server hands its top-level output over unread; the driver gets it as the plain VARCHAR/VARBIT value it asked
+ * for, at most max_col_size bytes of it.  content points into *buf, which the caller frees.
+ */
+static int
+dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, DB_BIGINT byte_length,
+		       int max_col_size, DB_VALUE * content, char **buf)
+{
+  /* [리뷰] CAS가 마커로 서버 다운로드를 열어 드라이버용 VARCHAR/VARBIT 값으로 바꾼다.
+   * 1MiB씩 읽어도 버퍼는 읽을 길이 전체 크기다. max_col_size(setMaxFieldSize)로 먼저 자르고,
+   * 자른 길이가 상한(1GiB/128MiB)을 넘을 때만 거부한다.
+   * 끝까지 읽으면 서버가 핸들을 놓고, 잘라서 멈추면 여기서 놓는다. */
+  DB_BIGINT size = byte_length;
+  DB_BIGINT max_bytes = (db_value_type (marker) == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION
+    : DB_MAX_VARBIT_PRECISION / 8;
+  DB_BIGINT done = 0;
+  INT64 handle = 0;
+  int nread = 0;
+  int reply_flags = 0;
+  int err_code = NO_ERROR;
+
+  *buf = NULL;
+  /* JDBC setMaxFieldSize asks for at most max_col_size bytes: cut first, so only what is sent is read */
+  if (max_col_size > 0 && size > max_col_size)
+    {
+      size = max_col_size;
+    }
+  /* what is read must still fit one value; with no cut this is the whole value, as on the value path */
+  if (size > max_bytes)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2,
+	      (int) MIN (byte_length, (DB_BIGINT) INT_MAX), (int) max_bytes);
+      return ERROR_INFO_SET (ER_QPROC_STRING_SIZE_TOO_BIG, DBMS_ERROR_INDICATOR);
+    }
+
+  *buf = (char *) MALLOC (size > 0 ? size : 1);
+  if (*buf == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+    }
+
+  while (err_code == NO_ERROR && done < size)
+    {
+      int want = (int) MIN (size - done, STREAM_READ_MAX_CHUNK);
+
+      /* the open brings the first piece; the server releases the handle at eof */
+      if (done == 0)
+	{
+	  err_code = internal_lob_read_from_open (locator, locator_len, 0, want, STREAM_FLAG_RELEASE_AT_EOF, &handle,
+						  *buf, &nread, &reply_flags);
+	}
+      else
+	{
+	  err_code = stream_from_read (handle, *buf + done, want, STREAM_FLAG_RELEASE_AT_EOF, &nread, &reply_flags);
+	}
+      if (reply_flags & STREAM_FLAG_RELEASED)
+	{
+	  handle = 0;
+	}
+      if (err_code == NO_ERROR && (nread <= 0 || ((reply_flags & STREAM_FLAG_EOF) && done + nread < size)))
+	{
+	  /* shorter than its marker says */
+	  err_code = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_code, 0);
+	}
+      if (err_code == NO_ERROR)
+	{
+	  done += nread;
+	}
+    }
+  /* still open when max_col_size cut the value */
+  if (handle != 0)
+    {
+      (void) stream_from_release (handle);
+    }
+  if (err_code != NO_ERROR)
+    {
+      FREE_MEM (*buf);
+      return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+    }
+
+  if (db_value_type (marker) == DB_TYPE_VARCHAR)
+    {
+      db_make_varchar (content, DB_MAX_VARCHAR_PRECISION, *buf, (int) size, db_get_string_codeset (marker),
+		       db_get_string_collation (marker));
+    }
+  else
+    {
+      db_make_varbit (content, DB_MAX_VARBIT_PRECISION, *buf, (int) size * 8);
+    }
+  return 0;
 }
 
 static int
@@ -4664,6 +4969,82 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     {
       ext_col_type = 0;
     }
+
+  {
+    DB_TYPE lob_value_type = db_value_type (val);
+    const char *lob_locator = NULL;
+    int lob_locator_len = 0;
+    DB_BIGINT lob_byte_length = 0;
+    /* [리뷰] V13 드라이버의 BLOB/CLOB 값은 참조든 내용이든 모두 선행 바이트로 시작한다.
+     * 참조를 V13 미만이나 다른 타입 칸에 내용처럼 내보내면 안 된다. 그런 자리는 실패시킨다.
+     * ext_col_type 계산 뒤에 있어 타입 바이트가 column_type_flag와 어긋나지 않는다. */
+    bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
+
+    if (is_reference && (lob_value_type == DB_TYPE_VARCHAR || lob_value_type == DB_TYPE_VARBIT))
+      {
+	DB_VALUE content;
+	char *content_buf = NULL;
+	int read_error;
+
+	read_error = dbval_read_lob_stream (val, lob_locator, lob_locator_len, lob_byte_length, max_col_size, &content,
+					    &content_buf);
+	if (read_error < 0)
+	  {
+	    /* the buffer now holds the error reply; a negative return tells cur_tuple () to stop the batch */
+	    NET_BUF_ERR_SET (net_buf);
+	    return read_error;
+	  }
+	data_size = dbval_to_net_buf (&content, net_buf, fetch_flag, max_col_size, column_type_flag);
+	FREE_MEM (content_buf);
+	return data_size;
+      }
+
+    /* Only the BLOB/CLOB framing to a V13 driver can carry a reference. Anywhere else (older driver) the
+     * locator text is not the value, so fail rather than return it as content. */
+    if (is_reference
+	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13)
+	     && (lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)))
+      {
+	int not_implemented = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+
+	NET_BUF_ERR_SET (net_buf);
+	return not_implemented;
+      }
+
+    /* Every BLOB/CLOB going to a V13 driver is framed with the discriminator, reference or not - the driver
+     * reads the same shape for both and decides from the byte, not from the connection version. */
+    if ((lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)
+	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
+      {
+	if (is_reference)
+	  {
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_REF, lob_locator, lob_locator_len,
+				       lob_byte_length, ext_col_type, &data_size);
+	  }
+	else
+	  {
+	    const char *inline_data;
+	    int inline_len = 0;
+
+	    if (lob_value_type == DB_TYPE_BLOB)
+	      {
+		int bit_length = 0;
+
+		inline_data = (const char *) db_get_bit (val, &bit_length);
+		inline_len = (bit_length + 7) / 8;
+	      }
+	    else
+	      {
+		inline_data = db_get_char (val);
+		inline_len = db_get_string_size (val);
+	      }
+	    /* whole, like a stored LOB sent as a reference: max_col_size (JDBC setMaxFieldSize) is not for LOBs */
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_INLINE, inline_data, inline_len, 0,
+				       ext_col_type, &data_size);
+	  }
+	return data_size;
+      }
+  }
 
   switch (db_value_type (val))
     {
@@ -11139,6 +11520,9 @@ ux_stream_admits_request (int func_code)
     case CAS_FC_STREAM_READ_OPEN:
     case CAS_FC_STREAM_READ:
     case CAS_FC_STREAM_RELEASE:
+      /* uploads only dropped or marked; nothing runs */
+    case CAS_FC_STREAM_UPLOAD_RELEASE:
+    case CAS_FC_STREAM_UPLOAD_HOLD:
     case CAS_FC_END_TRAN:
     case CAS_FC_CHECK_CAS:
     case CAS_FC_END_SESSION:

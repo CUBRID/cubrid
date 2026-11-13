@@ -1230,6 +1230,19 @@ cas_handle_db_connection (SOCKET client_sock_fd, T_REQ_INFO * req_info,
 	}
     }
 
+  if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (req_info->client_version, PROTOCOL_V13))
+    {
+      char err_msg[1024];
+
+      snprintf (err_msg, sizeof (err_msg), CAS_OLD_DRIVER_ERR_MSG_FMT, as_info->driver_version);
+      cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
+      net_write_error (client_sock_fd, req_info->client_version, req_info->driver_info, cas_info, cas_info_size,
+		       DBMS_ERROR_INDICATOR, CAS_ER_VERSION, err_msg);
+      cas_log_write_and_end (0, false, "connect db %s user %s url %s - rejected: %s", conn_info->db_name,
+			     conn_info->db_user, conn_info->url, err_msg);
+      return -1;
+    }
+
   /* DB connection */
   err_code =
     ops->db_connect (client_sock_fd, conn_info->db_name, conn_info->db_user, conn_info->db_passwd, conn_info->url,

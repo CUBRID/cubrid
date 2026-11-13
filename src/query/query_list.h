@@ -779,10 +779,12 @@ enum
 					 * first execution replans under the actual bind values */
   XASL_TRACE_PLAN_DETAIL = 0x1 << 19,	/* the session shows its plans in detail (csql ;plan detail): the trace
 					 * carries the compiled expression programs' section too */
-  BIND_WATCH_CANDIDATE = 0x1 << 20	/* the statement passed target selection for bind-value plan
+  BIND_WATCH_CANDIDATE = 0x1 << 20,	/* the statement passed target selection for bind-value plan
 					 * variants (joined nodes, a skewed host-var predicate not
 					 * pinned by a unique key): its executions choose among the
 					 * query's plans by fingerprint (bind_variant.h) */
+  INTERNAL_LOB_STREAM_TO_CLIENT = 0x1 << 21	/* the rows go straight to the client: a LOB conversion in the
+						 * output list may come as a stream marker the client reads */
 };
 
 /* the plan choices a LIMIT value decides (pt_recompile_for_limit_optimizations) */

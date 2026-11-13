@@ -1812,7 +1812,16 @@
 
 #define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1401
 
-#define ER_LAST_ERROR                               -1402
+/* [리뷰] er_set 인자 수는 서식과 맞춘다(1403은 2개). */
+#define ER_INTERNAL_LOB_RESERVED_1                  -1402
+#define ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH         -1403
+#define ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED       -1404
+#define ER_LDR_INTERNAL_LOB_SIDECAR                  -1405
+/* [리뷰] 로케이터가 가리키는 값이 삭제·vacuum으로 사라졌거나 바뀐 경우다.
+ * 읽기 커서 open이 generic 오류 대신 이 코드를 내 재조회를 안내한다. */
+#define ER_INTERNAL_LOB_VALUE_GONE                   -1406
+
+#define ER_LAST_ERROR                               -1407
 
 
 /*
