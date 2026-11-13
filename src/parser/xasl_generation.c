@@ -386,6 +386,11 @@ bool query_Plan_dump_fp_open = false;
 
 static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
 
+static OID *pt_Subinsert_class_oids = NULL;
+static int pt_Num_subinsert_class_oids = 0;
+static OID *pt_Click_counter_class_oids = NULL;
+static int pt_Num_click_counter_class_oids = 0;
+
 static const int OID_LIST_GROWTH = 10;
 
 
@@ -476,6 +481,15 @@ static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
 static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
+static int pt_append_class_oids (OID ** oid_list, int *n_oid_list, const OID * class_oids, int count);
+static bool pt_oid_array_contains (const OID * oid_list, int n_oid_list, const OID * oid);
+static void pt_reset_subinsert_class_oids (void);
+static int pt_add_subinsert_class_oids (const OID * class_oids, int count);
+static PT_NODE *pt_add_spec_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static int pt_add_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_NODE * xasl);
+static int pt_move_subinsert_class_oids (XASL_NODE * xasl);
+static int pt_add_click_counter_class_oids (XASL_NODE * top_xasl, XASL_NODE * xasl);
+static int pt_add_for_update_class_oids (XASL_NODE * xasl, PT_NODE * select);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
 					   int **lock_listp, int **tcard_listp, int *nump, int *sizep,
@@ -8974,6 +8988,7 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   regu->type = TYPE_SP;
+  parser->flag.regu_has_sp_call = 1;
 
   if (node->type_enum != PT_TYPE_NUMERIC)
     {
@@ -9404,6 +9419,242 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 }
 
 /*
+ * pt_append_class_oids () - append classes to an OID array
+ *   return: NO_ERROR or ER_FAILED
+ *   oid_list(in/out): the array
+ *   n_oid_list(in/out): the size of the array
+ *   class_oids(in): the classes
+ *   count(in): the number of class_oids
+ */
+static int
+pt_append_class_oids (OID ** oid_list, int *n_oid_list, const OID * class_oids, int count)
+{
+  OID *oid_list_new;
+
+  if (count <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  oid_list_new = regu_oid_array_alloc (*n_oid_list + count);
+  if (oid_list_new == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (*n_oid_list > 0)
+    {
+      memcpy (oid_list_new, *oid_list, sizeof (OID) * *n_oid_list);
+    }
+  memcpy (oid_list_new + *n_oid_list, class_oids, sizeof (OID) * count);
+
+  *oid_list = oid_list_new;
+  *n_oid_list += count;
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_add_for_update_class_oids () - add the classes a SELECT ... FOR UPDATE locks for write to the classes its XASL
+ *				     writes
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in/out): the XASL of the query
+ *   select(in): the query
+ */
+static int
+pt_add_for_update_class_oids (XASL_NODE * xasl, PT_NODE * select)
+{
+  for (PT_NODE * spec = select->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE) == 0)
+	{
+	  continue;
+	}
+
+      for (PT_NODE * name = spec->info.spec.flat_entity_list; name != NULL; name = name->next)
+	{
+	  if (name->info.name.db_object != NULL
+	      && pt_add_write_class_oids (xasl, WS_OID (name->info.name.db_object), 1) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  xasl->stmt_flags |= XASL_STMT_FOR_UPDATE;
+  return NO_ERROR;
+}
+
+/*
+ * pt_add_write_class_oids () - add classes the statement of an XASL writes without an IX lock on them
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in/out): the XASL of the statement
+ *   class_oids(in): the classes
+ *   count(in): the number of class_oids
+ */
+int
+pt_add_write_class_oids (XASL_NODE * xasl, const OID * class_oids, int count)
+{
+  return pt_append_class_oids (&xasl->write_class_oid_list, &xasl->n_write_oid_list, class_oids, count);
+}
+
+/*
+ * pt_reset_subinsert_class_oids () - forget the classes the nested inserts of the insert being generated write
+ *   return: none
+ */
+static void
+pt_reset_subinsert_class_oids (void)
+{
+  pt_Subinsert_class_oids = NULL;
+  pt_Num_subinsert_class_oids = 0;
+}
+
+/*
+ * pt_add_subinsert_class_oids () - note classes a nested insert writes, for the insert that contains it
+ *   return: NO_ERROR or ER_FAILED
+ *   class_oids(in): the classes
+ *   count(in): the number of classes
+ */
+static int
+pt_add_subinsert_class_oids (const OID * class_oids, int count)
+{
+  return pt_append_class_oids (&pt_Subinsert_class_oids, &pt_Num_subinsert_class_oids, class_oids, count);
+}
+
+/*
+ * pt_move_subinsert_class_oids () - add the classes the nested inserts write to the classes an XASL writes
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in/out): the XASL of the insert that contains them
+ */
+static int
+pt_move_subinsert_class_oids (XASL_NODE * xasl)
+{
+  int error;
+
+  error = pt_add_write_class_oids (xasl, pt_Subinsert_class_oids, pt_Num_subinsert_class_oids);
+  pt_reset_subinsert_class_oids ();
+
+  return error;
+}
+
+/*
+ * pt_add_click_counter_class_oids () - add the classes the click counters of a query write to the classes its top XASL
+ *					writes, except a partitioned class, which pt_Click_counter_class_oids holds
+ *   return: NO_ERROR or ER_FAILED
+ *   top_xasl(in/out): the top XASL of the query
+ *   xasl(in): the XASL whose click counters are added, the operands of a set operation included
+ */
+static int
+pt_add_click_counter_class_oids (XASL_NODE * top_xasl, XASL_NODE * xasl)
+{
+  int error;
+
+  if (xasl == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (SELUPD_LIST * selupd = xasl->selected_upd_list; selupd != NULL; selupd = selupd->next)
+    {
+      if (!OID_ISNULL (&selupd->class_oid))
+	{
+	  error = pt_add_write_class_oids (top_xasl, &selupd->class_oid, 1);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      top_xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+    }
+
+  if (xasl->type == UNION_PROC || xasl->type == DIFFERENCE_PROC || xasl->type == INTERSECTION_PROC)
+    {
+      error = pt_add_click_counter_class_oids (top_xasl, xasl->proc.union_.left);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      return pt_add_click_counter_class_oids (top_xasl, xasl->proc.union_.right);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_oid_array_contains () - whether an OID array holds an OID
+ *   return: true when it does
+ *   oid_list(in): the array
+ *   n_oid_list(in): the number of OIDs in it
+ *   oid(in): the OID
+ */
+static bool
+pt_oid_array_contains (const OID * oid_list, int n_oid_list, const OID * oid)
+{
+  for (int i = 0; i < n_oid_list; i++)
+    {
+      if (OID_EQ (&oid_list[i], oid))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+static PT_NODE *
+pt_add_spec_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  XASL_NODE *xasl = (XASL_NODE *) arg;
+
+  if (*continue_walk == PT_STOP_WALK || node->node_type != PT_SPEC)
+    {
+      return node;
+    }
+
+  for (PT_NODE * flat = node->info.spec.flat_entity_list; flat != NULL; flat = flat->next)
+    {
+      OID *oid = ((flat->node_type == PT_NAME && flat->info.name.db_object != NULL)
+		  ? ws_identifier (flat->info.name.db_object) : NULL);
+
+      if (oid == NULL || pt_oid_array_contains (xasl->class_oid_list, xasl->n_oid_list, oid)
+	  || pt_oid_array_contains (xasl->read_class_oid_list, xasl->n_read_oid_list, oid))
+	{
+	  continue;
+	}
+
+      if (pt_append_class_oids (&xasl->read_class_oid_list, &xasl->n_read_oid_list, oid, 1) != NO_ERROR)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_add_read_class_oids () - add classes the statement reads that the class_oid_list of its XASL misses, such as
+ *			       the classes of a path expression or of an ON DUPLICATE KEY UPDATE subquery
+ *   return: NO_ERROR or ER_FAILED
+ *   parser(in): parser context
+ *   statement(in): the statement
+ *   xasl(in/out): the XASL of the statement
+ */
+static int
+pt_add_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_NODE * xasl)
+{
+  if (!parser->flag.regu_has_sp_call)
+    {
+      return NO_ERROR;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_add_spec_read_class_oids, xasl, NULL, NULL);
+
+  return pt_has_error (parser) ? ER_FAILED : NO_ERROR;
+}
+
+/*
  * pt_make_regu_insert () - Creates a regu variable that executes an insert
  *			    statement and stored the OID of inserted object.
  *
@@ -9416,6 +9667,8 @@ pt_make_regu_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   XASL_NODE *xasl = NULL;
   REGU_VARIABLE *regu = NULL;
+  OID *outer_subinsert_class_oids;
+  int outer_num_subinsert_class_oids;
 
   if (statement == NULL || statement->node_type != PT_INSERT)
     {
@@ -9424,8 +9677,18 @@ pt_make_regu_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* Generate xasl for insert statement */
+  outer_subinsert_class_oids = pt_Subinsert_class_oids;
+  outer_num_subinsert_class_oids = pt_Num_subinsert_class_oids;
   xasl = pt_to_insert_xasl (parser, statement);
+  pt_Subinsert_class_oids = outer_subinsert_class_oids;
+  pt_Num_subinsert_class_oids = outer_num_subinsert_class_oids;
   if (xasl == NULL)
+    {
+      return NULL;
+    }
+
+  if (pt_add_subinsert_class_oids (&xasl->proc.insert.class_oid, 1) != NO_ERROR
+      || pt_add_subinsert_class_oids (xasl->write_class_oid_list, xasl->n_write_oid_list) != NO_ERROR)
     {
       return NULL;
     }
@@ -17803,6 +18066,11 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulis
 	   * not set class oid and hfid */
 	  OID_SET_NULL (&node->class_oid);
 	  HFID_SET_NULL (&node->class_hfid);
+	  if (pt_append_class_oids (&pt_Click_counter_class_oids, &pt_Num_click_counter_class_oids, oid_ptr, 1) !=
+	      NO_ERROR)
+	    {
+	      return NULL;
+	    }
 	}
       else
 	{
@@ -24090,7 +24358,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   HFID_SET_NULL (&insert->class_hfid);
   insert->vals = NULL;
 
-  if (!pt_finish_remote_dml_xasl (xasl))
+  if (!pt_finish_remote_dml_xasl (xasl) || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
     {
       return NULL;
     }
@@ -24285,7 +24553,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  if (!pt_finish_remote_dml_xasl (xasl))
+  if (!pt_finish_remote_dml_xasl (xasl) || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
     {
       return NULL;
     }
@@ -24501,7 +24769,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  if (!pt_finish_remote_dml_xasl (xasl))
+  if (!pt_finish_remote_dml_xasl (xasl) || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
     {
       return NULL;
     }
@@ -24536,6 +24804,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   float hint_wait_secs;
 
   assert (parser != NULL && statement != NULL);
+
+  pt_reset_subinsert_class_oids ();
 
   if (statement->info.insert.odku_assignments != NULL || statement->info.insert.do_replace)
     {
@@ -24972,6 +25242,15 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (xasl)
     {
       xasl->query_alias = statement->alias_print;
+      if (statement->info.insert.odku_assignments != NULL || statement->info.insert.do_replace)
+	{
+	  xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+	}
+      if (pt_move_subinsert_class_oids (xasl) != NO_ERROR
+	  || pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
 #if !defined(NDEBUG)
@@ -26908,6 +27187,12 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (xasl)
     {
       xasl->query_alias = statement->alias_print;
+      xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+      error = pt_add_read_class_oids (parser, statement, xasl);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
     }
 
   if (statement->info.delete_.limit)
@@ -27864,6 +28149,12 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
     }
 
   xasl->query_alias = statement->alias_print;
+  xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+  error = pt_add_read_class_oids (parser, statement, xasl);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
   if (statement->info.update.limit)
     {
@@ -28323,6 +28614,9 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   next = node->next;
   node->next = NULL;
   parser->dbval_cnt = 0;
+  pt_Click_counter_class_oids = NULL;
+  pt_Num_click_counter_class_oids = 0;
+  pt_reset_subinsert_class_oids ();
 
   is_system_generated_stmt = node->flag.is_system_generated_stmt;
 
@@ -28458,6 +28752,22 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       xasl->query_alias = node->alias_print;
       XASL_SET_FLAG (xasl, XASL_TOP_MOST_XASL);
       pt_mark_union_children_backward (xasl);
+
+      if (node->node_type == PT_SELECT
+	  && (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IS_UPD_DEL_QUERY)
+	      || (PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_IS_MERGE_QUERY)
+		  && node->info.query.upd_del_class_cnt > 0)))
+	{
+	  xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+	}
+      if (pt_add_click_counter_class_oids (xasl, xasl) != NO_ERROR
+	  || pt_add_write_class_oids (xasl, pt_Click_counter_class_oids, pt_Num_click_counter_class_oids) != NO_ERROR
+	  || (node->node_type == PT_SELECT && PT_SELECT_INFO_IS_FLAGED (node, PT_SELECT_INFO_FOR_UPDATE)
+	      && pt_add_for_update_class_oids (xasl, node) != NO_ERROR)
+	  || pt_add_read_class_oids (parser, node, xasl) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
@@ -32125,6 +32435,8 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
       return pt_to_xasl_for_dblink (parser, statement->info.merge.into);
     }
 
+  pt_reset_subinsert_class_oids ();
+
   xasl = regu_xasl_node_alloc (MERGE_PROC);
   if (xasl == NULL)
     {
@@ -32163,6 +32475,14 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
   xasl->proc.merge.insert_xasl = insert_xasl;
   xasl->proc.merge.has_delete = statement->info.merge.update.has_delete;
   xasl->query_alias = statement->alias_print;
+  if (update_xasl != NULL)
+    {
+      xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+    }
+  if (pt_move_subinsert_class_oids (xasl) != NO_ERROR)
+    {
+      return NULL;
+    }
 
   if ((oid = ws_identifier (db_get_user ())) != NULL)
     {
@@ -32203,6 +32523,11 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
 
   /* set TDE flag */
   XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
+
+  if (pt_add_read_class_oids (parser, statement, xasl) != NO_ERROR)
+    {
+      return NULL;
+    }
 
   scan_check_parallel_scan_possible (xasl);
 

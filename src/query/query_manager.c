@@ -46,6 +46,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
+#include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
 #include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -1059,6 +1060,10 @@ xqmgr_prepare_query (THREAD_ENTRY * thread_p, COMPILE_CONTEXT * context, xasl_st
 		{
 		  /* also header was requested. */
 		  qfile_load_xasl_node_header (thread_p, cache_entry_p->stream.buffer, stream->xasl_header);
+		}
+	      if (stream->buffer == NULL && stream->stmt_info != NULL && cache_entry_p->stream.buffer != NULL)
+		{
+		  xasl_stream_get_stmt_info (cache_entry_p->stream.buffer, *stream->stmt_info);
 		}
 	      xcache_unfix (thread_p, cache_entry_p);
 	      goto exit_on_end;
@@ -2199,6 +2204,39 @@ int
 xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1)
 {
   return xcache_drop_clones (thread_p, sha1);
+}
+
+/*
+ * xqmgr_get_xasl_stmt_info () - what the cached XASL of an XASL_ID writes
+ *   return: NO_ERROR or the error set
+ *   xasl_id(in): the XASL
+ *   stmt_info(out): its stmt_flags and the classes it writes
+ *   found(out): whether the XASL cache still has the XASL
+ *
+ * Note: It looks the cache up without the recompile check of a prepare.
+ */
+int
+xqmgr_get_xasl_stmt_info (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id, XASL_STMT_INFO * stmt_info, bool * found)
+{
+  XASL_CACHE_ENTRY *cache_entry_p = NULL;
+  int error_code;
+
+  *found = false;
+
+  error_code = xcache_find_sha1 (thread_p, &xasl_id->sha1, XASL_CACHE_SEARCH_GENERIC, &cache_entry_p, NULL);
+  if (error_code != NO_ERROR || cache_entry_p == NULL)
+    {
+      return error_code;
+    }
+
+  if (XASL_ID_EQ (&cache_entry_p->xasl_id, (XASL_ID *) xasl_id) && cache_entry_p->stream.buffer != NULL)
+    {
+      xasl_stream_get_stmt_info (cache_entry_p->stream.buffer, *stmt_info);
+      *found = true;
+    }
+
+  xcache_unfix (thread_p, cache_entry_p);
+  return NO_ERROR;
 }
 
 /*

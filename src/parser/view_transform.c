@@ -250,6 +250,7 @@ static int mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_);
 static int mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec);
 static int mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_spec, int what_for);
 static int mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery);
+static void mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery);
 static PT_NODE *mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list, PT_NODE * order_by,
 				   int what_for);
 static PT_NODE *mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -3544,6 +3545,30 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_s
 }
 
 /*
+ * mq_mark_sp_call () - note that a view being expanded calls a stored procedure
+ *   return: none
+ *   parser(in):
+ *   subquery(in): the view's query, one node per query spec
+ *
+ * Note: the semantic check set has_sp_call on the view's own tree when the view cache was compiled, before the
+ *       view was expanded into this statement. The view may sit in a subquery of the statement, so the note is
+ *       kept on the parser until mq_translate () returns the statement and marks it not to be plan-cached; a
+ *       view cache being built does the same for the view's own root, so a view over it sees it.
+ */
+static void
+mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery)
+{
+  for (; subquery != NULL; subquery = subquery->next)
+    {
+      if (subquery->flag.has_sp_call)
+	{
+	  parser->flag.view_has_sp_call = 1;
+	  return;
+	}
+    }
+}
+
+/*
  * mq_check_subqueries_for_prepare () -
  *   return:
  *   parser(in):
@@ -3729,6 +3754,7 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 			}
 
 		      tree->flag.cannot_prepare = mq_check_subqueries_for_prepare (parser, tree, subquery);
+		      mq_mark_sp_call (parser, subquery);
 #if defined(CUBRID_DEBUG)
 		      fprintf (stdout, "\n<subqueries of %s are>\n  %s\n", entity->info.name.original,
 			       parser_print_tree_list (parser, subquery));
@@ -7892,7 +7918,7 @@ mq_check_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
-  PT_NODE *from, *flat;
+  PT_NODE *from, *flat, *using_spec, *entity;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_AUTH auth = DB_AUTH_NONE;
 
@@ -7909,6 +7935,18 @@ mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
   if (merge_statement->info.merge.insert.value_clauses)
     {
       auth = (DB_AUTH) (auth | DB_AUTH_INSERT);
+    }
+
+  using_spec = merge_statement->info.merge.using_clause;
+  if (using_spec != NULL && !PT_SPEC_IS_DERIVED (using_spec))
+    {
+      for (entity = using_spec->info.spec.flat_entity_list; entity != NULL; entity = entity->next)
+	{
+	  if (mq_translatable_class (parser, entity))
+	    {
+	      mq_mark_sp_call (parser, mq_fetch_subqueries (parser, entity));
+	    }
+	}
     }
 
   merge_statement = mq_translate_tree (parser, merge_statement, from, NULL, auth);
@@ -9027,6 +9065,7 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
   const char *query_spec_string;
   int cascaded_check;
   int local_check;
+  bool spec_has_sp_call;
 
   if (db_is_class (class_object))
     {
@@ -9127,7 +9166,14 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
        * as CNF. if subquery is in the expression, it may be copied several times. To avoid repeatedly convert the
        * expressions in subqueries and improve performance, we put mq_push_paths as post function. */
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_push_paths, NULL);
+      parser->flag.view_has_sp_call = 0;
+      spec_has_sp_call = query_spec->flag.has_sp_call;
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_translate_local, NULL);
+      if (local_query != NULL && (spec_has_sp_call || parser->flag.view_has_sp_call))
+	{
+	  /* this view, or a view it reads, calls a stored procedure: the root tells the statements that expand it */
+	  local_query->flag.has_sp_call = 1;
+	}
 
       local_query = pt_add_row_oid_name (parser, local_query);
 
@@ -9147,7 +9193,13 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	}
       else if (local_query)
 	{
+	  PT_NODE *left = statements;
+
 	  statements = pt_union (parser, statements, local_query);
+	  if (statements != NULL)
+	    {
+	      statements->flag.has_sp_call = (left->flag.has_sp_call || local_query->flag.has_sp_call);
+	    }
 	}
 
       db_query_spec = db_query_spec_next (db_query_spec);
@@ -10218,6 +10270,7 @@ PT_NODE *
 mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 {
   volatile PT_NODE *return_node = NULL;
+  volatile unsigned save_view_has_sp_call;
 
   if (!node)
     {
@@ -10227,6 +10280,9 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
   /* set up an environment for longjump to return to if there is an out of memory error in pt_memory.c. DO NOT RETURN
    * unless PT_CLEAR_JMP_ENV is called to clear the environment. */
   PT_SET_JMP_ENV (parser);
+
+  save_view_has_sp_call = parser->flag.view_has_sp_call;
+  parser->flag.view_has_sp_call = 0;
 
   /* CBRD-27583: the session variables' types are the session's at each execution: a plan statement over them is
    * compiled every time, not cached (SET and DROP VARIABLE keep their own execution). It shares no plan, so it takes
@@ -10243,6 +10299,13 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
   return_node = mq_translate_helper (parser, node);
 
   parser->flag.is_skip_auto_parameterize = save_skip_auto_parameterize;
+
+  if (return_node != NULL && parser->flag.view_has_sp_call)
+    {
+      return_node->flag.has_sp_call = 1;
+      return_node->flag.cannot_prepare = 1;
+    }
+  parser->flag.view_has_sp_call |= save_view_has_sp_call;
 
   /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions. The
    * compiled statement's are assigned by the walk its class prefetch makes next (pt_class_pre_fetch) */

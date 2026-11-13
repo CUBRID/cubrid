@@ -35,6 +35,7 @@
 #include "method_error.hpp"
 #include "method_query_result.hpp"
 #include "method_struct_query.hpp"
+#include "sp_context_rules.hpp"
 
 namespace cubmethod
 {
@@ -80,6 +81,7 @@ namespace cubmethod
       /* request */
       int prepare (std::string sql, int flag);
       int prepare_retry ();
+      int prepare_in_new_session (int flag);
       int prepare_compile (const std::string &sql);
 
       int execute (const execute_request &request);
@@ -94,6 +96,7 @@ namespace cubmethod
       int get_id () const;
       std::string get_sql_stmt () const;
       int get_statement_type () const;
+      bool is_execute_prepare () const;
       std::string get_user_name () const;
 
       uint64_t get_query_id () const;
@@ -172,6 +175,7 @@ namespace cubmethod
       int m_stmt_type; /* statement type, CUBRID_STMT_TYPE or err_id */
       int m_prepare_flag;
       DB_SESSION *m_session;
+      sp_stmt_category m_sp_stmt_category; /* TCL, DDL, DML or other, for sp_check_statement_allowed () */
       bool m_is_prepared;
       bool m_use_plan_cache;
       int m_num_markers; /* # of input markers */

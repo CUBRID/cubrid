@@ -51,6 +51,7 @@
 #include "boot_cl.h"
 #include "query_method.hpp"
 #include "method_callback.hpp"
+#include "sp_context_rules.hpp"
 
 #include "release_string.h"
 #include "log_comm.h"
@@ -1401,6 +1402,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 
 			if (error == NO_ERROR)
 			  {
+			    sp_depth_guard sql_guard (sp_In_sql_depth);
+
 			    COMPARE_AND_FREE_BUFFER (methoddata, reply);
 			    error = method_dispatch (rc, methoddata, methoddata_size);
 			    free_and_init (methoddata);

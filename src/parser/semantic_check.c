@@ -11602,6 +11602,11 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node->info.method_call.call_or_expr == PT_IS_MTHD_EXPR)
 	{
 	  pt_check_method (parser, node);
+	  if (top_node != NULL)
+	    {
+	      /* a view whose query calls a procedure carries this up to the statements that read it */
+	      top_node->flag.has_sp_call = 1;
+	    }
 	}
       else if (node->info.method_call.call_or_expr == PT_IS_CALL_STMT)
 	{
@@ -12812,6 +12817,10 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
 	}
     }
 
+  if (subq != NULL && subq->flag.has_sp_call && saved_top != NULL)
+    {
+      saved_top->flag.has_sp_call = 1;
+    }
   sc_info_ptr->top_node = saved_top;
 
   return pt_has_error (parser) ? NULL : subq;

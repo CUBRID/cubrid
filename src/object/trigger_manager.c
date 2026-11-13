@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+#include "sp_context_rules.hpp"
 #include "jsp_cl.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -4907,6 +4908,12 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
    */
   if (trigger->status == TR_STATUS_ACTIVE)
     {
+      sp_depth_guard trigger_guard (sp_In_trigger_depth);
+      const bool row_event = (trigger->event == TR_EVENT_INSERT || trigger->event == TR_EVENT_UPDATE
+			      || trigger->event == TR_EVENT_DELETE);
+      sp_class_frame_guard class_frame (row_event ? trigger->class_mop : NULL,
+					row_event && trigger->event != TR_EVENT_INSERT);
+
       if (trigger->condition != NULL)
 	{
 	  execute_action = false;

@@ -23,11 +23,13 @@
 #ifndef _XASL_STREAM_HPP_
 #define _XASL_STREAM_HPP_
 
+#include "dbtype_def.h"
 #include "json_table_def.h"
 #include "thread_compat.hpp"
 #include "xasl_unpack_info.hpp"
 
 #include <cstddef>
+#include <vector>
 
 // forward def
 struct db_value;
@@ -87,6 +89,21 @@ char *stx_unpack (THREAD_ENTRY *thread_p, char *tmp, json_table_column_behavior 
 bool xasl_stream_compare (const cubxasl::json_table::column &first, const cubxasl::json_table::column &second);
 bool xasl_stream_compare (const cubxasl::json_table::node &first, const cubxasl::json_table::node &second);
 bool xasl_stream_compare (const cubxasl::json_table::spec_node &first, const cubxasl::json_table::spec_node &second);
+
+// what the stream header written by xts_map_xasl_to_stream says about the classes the statement reads and writes
+struct xasl_stmt_info
+{
+  int stmt_flags = 0;			// XASL_STMT_*
+  std::vector<OID> class_oids;		// class_oid_list, and read_class_oid_list
+  std::vector<OID> write_class_oids;	// the IX ones of class_oid_list, and write_class_oid_list
+};
+typedef struct xasl_stmt_info XASL_STMT_INFO;
+
+int xasl_stream_get_stmt_flags (char *xasl_stream);
+void xasl_stream_get_stmt_info (char *xasl_stream, xasl_stmt_info &stmt_info);
+int xasl_stmt_info_get_packed_size (const xasl_stmt_info &stmt_info);
+char *xasl_stmt_info_pack (char *ptr, const xasl_stmt_info &stmt_info);
+char *xasl_stmt_info_unpack (char *ptr, xasl_stmt_info &stmt_info);
 
 template <typename T>
 static void stx_alloc (THREAD_ENTRY *thread_p, T *&ptr);

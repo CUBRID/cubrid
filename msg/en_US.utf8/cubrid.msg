@@ -1504,14 +1504,18 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
-
 1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
 1393 Altering system generated stored procedure is not allowed.
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Last Error
+1395 Cannot perform %1$s inside a query or DML statement.
+1396 Cannot perform %1$s in a trigger.
+1397 Cannot perform a DML operation inside a query.
+1398 The stored procedure cannot modify table "%1$s" because the statement references it.
+
+1399 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

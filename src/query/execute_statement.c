@@ -95,6 +95,7 @@
 #include "dbtype.h"
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
+#include "sp_context_rules.hpp"
 #include "network.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -214,7 +215,9 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 			       const char **savepoint_name, int *row_count_ptr);
 static void init_compile_context (PARSER_CONTEXT * parser);
 
-static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
+static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd,
+			       const PT_NODE * write_stmt);
+static const PT_NODE *do_get_select_write_spec (const PT_NODE * write_stmt, bool * write_cascades);
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
@@ -3463,6 +3466,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
   unsigned save_compile_uncached = parser->flag.compile_uncached;
+  sp_tree_frame_guard dblink_dml_frame (statement != NULL && statement->flag.has_sp_call
+					&& PT_IS_DBLINK_DML_QUERY (statement), parser, statement);
 
   /* what compiles here is not cached: a trigger action at every firing, a statement that cannot be prepared */
   parser->flag.compile_uncached = 1;
@@ -3724,7 +3729,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DIFFERENCE:
 	case PT_INTERSECTION:
 	case PT_SELECT:
-	  error = do_select (parser, statement);
+	  error = do_select (parser, statement, NULL);
 	  break;
 
 	case PT_TRUNCATE:
@@ -4210,6 +4215,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
+  sp_tree_frame_guard dblink_dml_frame (statement->flag.has_sp_call && PT_IS_DBLINK_DML_QUERY (statement), parser,
+					statement);
 
   assert (parser->query_id == NULL_QUERY_ID);
   /* save old read fetch instance version */
@@ -8211,7 +8218,7 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
 	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
-	  if (do_select_for_ins_upd (parser, statement) < NO_ERROR)
+	  if (do_select_for_ins_upd (parser, statement, NULL) < NO_ERROR)
 	    {
 	      /* query failed, an error has already been set */
 	      statement = NULL;
@@ -8503,6 +8510,8 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
       PT_INTERNAL_ERROR (parser, "update");
       return ER_GENERIC_ERROR;
     }
+
+  sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
   /* fetch classes that will be updated */
   node = statement->info.update.spec;
@@ -9102,60 +9111,64 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
   /* set prefetching lock mode to WRITE access since we'll be updating all the objects in the list file. */
   (void) cursor_set_prefetch_lock_mode (&cursor_id, DB_FETCH_WRITE);
 
-  cursor_status = cursor_next_tuple (&cursor_id);
+  {
+    sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
-  while (cursor_status == DB_CURSOR_SUCCESS)
-    {
-      /* read OIDs and runtime computed values */
-      if (cursor_get_tuple_value_list (&cursor_id, vals_cnt, dbvals) != NO_ERROR)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  cursor_close (&cursor_id);
-	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
-	    {
-	      (void) tran_abort_upto_system_savepoint (savepoint_name);
-	    }
-	  goto done;
-	}
+    cursor_status = cursor_next_tuple (&cursor_id);
 
-      if (has_delete)
-	{
-	  /* We may get NULL as an expr value. See pt_to_merge_update_query(...). */
-	  if (DB_IS_NULL (&dbvals[upd_cls_cnt]))
-	    {
-	      should_delete = false;
-	    }
-	  else
-	    {
-	      should_delete = db_get_int (&dbvals[upd_cls_cnt]);
-	    }
-	}
+    while (cursor_status == DB_CURSOR_SUCCESS)
+      {
+	/* read OIDs and runtime computed values */
+	if (cursor_get_tuple_value_list (&cursor_id, vals_cnt, dbvals) != NO_ERROR)
+	  {
+	    assert (er_errid () != NO_ERROR);
+	    error = er_errid ();
+	    cursor_close (&cursor_id);
+	    if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
+	      {
+		(void) tran_abort_upto_system_savepoint (savepoint_name);
+	      }
+	    goto done;
+	  }
 
-      /* perform update for current tuples */
-      error =
-	update_object_tuple (parser, assigns, assign_count, cls_info, upd_cls_cnt, turn_off_unique_check,
-			     turn_off_server_serializable_conflict_check, NORMAL_UPDATE, should_delete);
+	if (has_delete)
+	  {
+	    /* We may get NULL as an expr value. See pt_to_merge_update_query(...). */
+	    if (DB_IS_NULL (&dbvals[upd_cls_cnt]))
+	      {
+		should_delete = false;
+	      }
+	    else
+	      {
+		should_delete = db_get_int (&dbvals[upd_cls_cnt]);
+	      }
+	  }
 
-      /* close cursor and restore to savepoint in case of error */
-      if (error < NO_ERROR)
-	{
+	/* perform update for current tuples */
+	error =
+	  update_object_tuple (parser, assigns, assign_count, cls_info, upd_cls_cnt, turn_off_unique_check,
+			       turn_off_server_serializable_conflict_check, NORMAL_UPDATE, should_delete);
+
+	/* close cursor and restore to savepoint in case of error */
+	if (error < NO_ERROR)
+	  {
 #if 0				/* TODO */
-	  /* mq_evaluate_check_option () do not er_set () */
-	  assert (er_errid () != NO_ERROR);
+	    /* mq_evaluate_check_option () do not er_set () */
+	    assert (er_errid () != NO_ERROR);
 #endif
-	  error = er_errid ();
-	  cursor_close (&cursor_id);
-	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
-	    {
-	      (void) tran_abort_upto_system_savepoint (savepoint_name);
-	    }
-	  goto done;
-	}
+	    error = er_errid ();
+	    cursor_close (&cursor_id);
+	    if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
+	      {
+		(void) tran_abort_upto_system_savepoint (savepoint_name);
+	      }
+	    goto done;
+	  }
 
-      count += error;		/* number of objects affected. Incorrect for multi-table update !!! */
-      cursor_status = cursor_next_tuple (&cursor_id);
-    }
+	count += error;		/* number of objects affected. Incorrect for multi-table update !!! */
+	cursor_status = cursor_next_tuple (&cursor_id);
+      }
+  }
 
   /* close cursor and restore to savepoint in case of error */
   if (cursor_status != DB_CURSOR_END)
@@ -9256,6 +9269,7 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
   DB_VALUE *dbvals = NULL;
+  sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
   assignments =
     statement->node_type == PT_MERGE ? statement->info.merge.update.assignment : statement->info.update.assignment;
@@ -9299,6 +9313,11 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  cls = &cls_info[idx];
 
 	  otemplate = dbt_edit_object (cls->spec->info.spec.flat_entity_list->info.name.db_object);
+	  if (otemplate == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      break;
+	    }
 	  for (assign = cls->first_assign; assign != NULL && error == NO_ERROR; assign = assign->next)
 	    {
 	      error = dbt_put_internal (otemplate, assign->upd_col_name->info.name.original, assign->db_val);
@@ -10808,7 +10827,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
 	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
-	  if (do_select (parser, statement) < NO_ERROR)
+	  if (do_select (parser, statement, NULL) < NO_ERROR)
 	    {
 	      /* query failed, an error has already been set */
 	      statement = NULL;
@@ -11000,77 +11019,82 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
     }
 
   cursor_id.query_id = parser->query_id;
-  cursor_status = cursor_next_tuple (&cursor_id);
 
-  while ((error >= NO_ERROR) && cursor_status == DB_CURSOR_SUCCESS)
-    {
-      error = cursor_get_tuple_value_list (&cursor_id, attrs_cnt, oids);
-      /* The select list contains instance OID - class OID pairs */
-      for (idx = 0; idx < attrs_cnt && error >= NO_ERROR; idx++)
-	{
-	  if (DB_IS_NULL (&oids[idx]))
-	    {
-	      continue;
-	    }
+  {
+    sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
-	  mop = db_get_object (&oids[idx]);
+    cursor_status = cursor_next_tuple (&cursor_id);
 
-	  error = db_is_deleted (mop);
-	  if (error < 0)
-	    {
-	      return error;
-	    }
-	  if (error > 0)
-	    {
-	      /* if the object is an invalid object (was already deleted) then skip the delete, instance flush and
-	       * count steps */
-	      error = NO_ERROR;
-	      continue;
-	    }
+    while ((error >= NO_ERROR) && cursor_status == DB_CURSOR_SUCCESS)
+      {
+	error = cursor_get_tuple_value_list (&cursor_id, attrs_cnt, oids);
+	/* The select list contains instance OID - class OID pairs */
+	for (idx = 0; idx < attrs_cnt && error >= NO_ERROR; idx++)
+	  {
+	    if (DB_IS_NULL (&oids[idx]))
+	      {
+		continue;
+	      }
 
-	  if (flush_to_server[idx] == -1)
-	    {
-	      /* the following code may be improved to not flush every time */
-	      if (has_unique_constraint (mop) || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
-		{
-		  flush_to_server[idx] = 1;
-		}
-	      else
-		{
-		  flush_to_server[idx] = 0;
-		}
-	    }
+	    mop = db_get_object (&oids[idx]);
 
-	  // In has_unique_constraint (mop) is just for checking whether flushing to server is required, an error should be ignored.
-	  if (er_errid () == ER_OBJ_NO_COMPONENTS)
-	    {
-	      er_clear ();
-	    }
+	    error = db_is_deleted (mop);
+	    if (error < 0)
+	      {
+		return error;
+	      }
+	    if (error > 0)
+	      {
+		/* if the object is an invalid object (was already deleted) then skip the delete, instance flush and
+		 * count steps */
+		error = NO_ERROR;
+		continue;
+	      }
 
-	  error = delete_object_tuple (mop);
-	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
-	    {
-	      er_clear ();
-	      error = NO_ERROR;
-	      continue;
-	    }
+	    if (flush_to_server[idx] == -1)
+	      {
+		/* the following code may be improved to not flush every time */
+		if (has_unique_constraint (mop) || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+		  {
+		    flush_to_server[idx] = 1;
+		  }
+		else
+		  {
+		    flush_to_server[idx] = 0;
+		  }
+	      }
 
-	  if ((error >= NO_ERROR) && flush_to_server[idx])
-	    {
-	      error = (locator_flush_instance (mop) == NO_ERROR) ? 0 : (er_errid () != NO_ERROR ? er_errid () : -1);
-	    }
+	    // In has_unique_constraint (mop) is just for checking whether flushing to server is required, an error should be ignored.
+	    if (er_errid () == ER_OBJ_NO_COMPONENTS)
+	      {
+		er_clear ();
+	      }
 
-	  if (error >= NO_ERROR)
-	    {
-	      count++;		/* another object has been deleted */
-	    }
-	}
+	    error = delete_object_tuple (mop);
+	    if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
+	      {
+		er_clear ();
+		error = NO_ERROR;
+		continue;
+	      }
 
-      if (error >= NO_ERROR)
-	{
-	  cursor_status = cursor_next_tuple (&cursor_id);
-	}
-    }
+	    if ((error >= NO_ERROR) && flush_to_server[idx])
+	      {
+		error = (locator_flush_instance (mop) == NO_ERROR) ? 0 : (er_errid () != NO_ERROR ? er_errid () : -1);
+	      }
+
+	    if (error >= NO_ERROR)
+	      {
+		count++;	/* another object has been deleted */
+	      }
+	  }
+
+	if (error >= NO_ERROR)
+	  {
+	    cursor_status = cursor_next_tuple (&cursor_id);
+	  }
+      }
+  }
 
   if ((error >= NO_ERROR) && cursor_status != DB_CURSOR_END)
     {
@@ -13092,6 +13116,7 @@ do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert)
     }
   update->info.update.assignment = insert->info.insert.odku_assignments;
   update->info.update.spec = insert->info.insert.spec;
+  update->flag.has_sp_call = insert->flag.has_sp_call;
 
   if (insert->info.insert.where != NULL)
     {
@@ -13620,6 +13645,8 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	    }
 	}
 
+      sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+
       error = do_evaluate_insert_values (parser, statement);
       if (error != NO_ERROR)
 	{
@@ -14088,6 +14115,8 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	}
     }
 
+  sp_tree_frame_guard frame_guard (statement->node_type == PT_INSERT && statement->flag.has_sp_call, parser, statement);
+
   switch (qry->node_type)
     {
     default:			/* preconditions not met */
@@ -14131,7 +14160,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  /* execute the subquery */
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
-	  error = do_select (parser, qry);
+	  error = do_select (parser, qry, statement);
 	  if (error < NO_ERROR || qry->etc == NULL)
 	    {
 	      parser->query_id = query_id_self;
@@ -15305,14 +15334,15 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   return: Error code
  *   parser(in/out): Parser context
  *   statement(in/out): A statement to do
+ *   write_stmt(in): the INSERT or MERGE that writes the results, or NULL
  *
  * Note: Side effects can exist at returned result through application extern
  */
 
 int
-do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_select (PARSER_CONTEXT * parser, PT_NODE * statement, const PT_NODE * write_stmt)
 {
-  return do_select_internal (parser, statement, false);
+  return do_select_internal (parser, statement, false, write_stmt);
 }
 
 /*
@@ -15320,13 +15350,43 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   return: Error code
  *   parser(in/out): Parser context
  *   statement(in/out): A statement to do
+ *   write_stmt(in): the INSERT or MERGE that writes the results, or NULL
  *
  * Note: Side effects can exist at returned result through application extern
  */
 int
-do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
+do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement, const PT_NODE * write_stmt)
 {
-  return do_select_internal (parser, statement, true);
+  return do_select_internal (parser, statement, true, write_stmt);
+}
+
+/*
+ * do_get_select_write_spec () - the class an INSERT or MERGE writes with the results of its SELECT
+ *   return: the spec of the class, or NULL
+ *   write_stmt(in): the INSERT or MERGE, or NULL
+ *   write_cascades(out): whether the write updates or deletes rows
+ */
+static const PT_NODE *
+do_get_select_write_spec (const PT_NODE * write_stmt, bool * write_cascades)
+{
+  *write_cascades = false;
+
+  if (write_stmt == NULL)
+    {
+      return NULL;
+    }
+
+  *write_cascades = sp_stmt_may_cascade (write_stmt);
+  switch (write_stmt->node_type)
+    {
+    case PT_INSERT:
+      return write_stmt->info.insert.spec;
+    case PT_MERGE:
+      return write_stmt->info.merge.into;
+    default:
+      assert (false);
+      return NULL;
+    }
 }
 
 /*
@@ -15335,12 +15395,15 @@ do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   parser(in/out): Parser context
  *   statement(in/out): A statement to do
  *   for_inst_upd: check insert/update statement
+ *   write_stmt(in): the INSERT or MERGE that writes the results, or NULL
  *
  * Note: Side effects can exist at returned result through application extern
  */
 static int
-do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd)
+do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, const PT_NODE * write_stmt)
 {
+  bool write_cascades = false;
+  const PT_NODE *write_spec = do_get_select_write_spec (write_stmt, &write_cascades);
   int error;
   XASL_NODE *xasl = NULL;
   QFILE_LIST_ID *list_id = NULL;
@@ -15397,6 +15460,24 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 
   if (xasl && !pt_has_error (parser))
     {
+      if (write_spec != NULL)
+	{
+	  for (PT_NODE * name = write_spec->info.spec.flat_entity_list; name != NULL; name = name->next)
+	    {
+	      OID *class_oid = (name->info.name.db_object != NULL) ? ws_identifier (name->info.name.db_object) : NULL;
+
+	      if (class_oid != NULL && pt_add_write_class_oids (xasl, class_oid, 1) != NO_ERROR)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  break;
+		}
+	    }
+	  if (write_cascades)
+	    {
+	      xasl->stmt_flags |= XASL_STMT_WRITE_CASCADES;
+	    }
+	}
+
       if (for_ins_upd)
 	{
 	  if (xasl->outptr_list)
@@ -17810,7 +17891,15 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      error = do_statement (parser, stmt->info.trigger_action.expression);
 	    }
 #else
-	  error = do_statement (parser, stmt->info.trigger_action.expression);
+	  {
+	    const bool in_trigger = (sp_In_trigger_depth > 0);
+	    sp_tree_frame_guard frame_guard (statement->flag.has_sp_call
+					     || stmt->info.trigger_action.expression->flag.has_sp_call, parser,
+					     statement, in_trigger);
+	    sp_trigger_call_guard call_guard (in_trigger && PT_IS_SP (stmt->info.trigger_action.expression));
+
+	    error = do_statement (parser, stmt->info.trigger_action.expression);
+	  }
 #endif
 	  /* Do not reset do_Trigger_involved here. This is intention. */
 	  break;
@@ -18266,6 +18355,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int outer_au_save = 0;
   bool insert_only = false;
   PT_NODE *copy_assigns, *save_assigns;
+  sp_tree_frame_guard merge_frame (statement->flag.has_sp_call, parser, statement);
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -18437,7 +18527,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
-	  err = do_select_for_ins_upd (parser, ins_select_stmt);
+	  err = do_select_for_ins_upd (parser, ins_select_stmt, statement);
 	  ins_query_id = parser->query_id;
 	  parser->query_id = query_id_self;
 
@@ -18493,7 +18583,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
-	  err = do_select_for_ins_upd (parser, upd_select_stmt);
+	  err = do_select_for_ins_upd (parser, upd_select_stmt, NULL);
 	  upd_query_id = parser->query_id;
 	  parser->query_id = query_id_self;
 
@@ -19331,7 +19421,7 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
-	  err = do_select (parser, ins_select_stmt);
+	  err = do_select (parser, ins_select_stmt, statement);
 	  ins_query_id = parser->query_id;
 	  parser->query_id = query_id_self;
 
