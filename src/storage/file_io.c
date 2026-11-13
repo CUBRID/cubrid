@@ -10659,10 +10659,8 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
 	      return NULL;
 	    }
 
-	  if (level > FILEIO_BACKUP_FULL_LEVEL)
-	    {
-	      fileio_page_bitmap_set (page_bitmap, page_id);
-	    }
+	  /* the full level is restored last; its pages are recorded too, for fileio_restore_format_unrestored_pages */
+	  fileio_page_bitmap_set (page_bitmap, page_id);
 	}
     }
 
@@ -11731,6 +11729,85 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH 
  */
 
 /*
+ * fileio_restore_format_unrestored_pages - format the pages of the restored volumes that no backup level restored
+ *   return: error code
+ *   page_bitmap_list(in): the pages each level restored, by volume
+ *
+ * Note: an incremental backup holds only the pages changed since the backup of the level below it, and the full
+ *       level fills the holes only of the volume as it was then. so a page of a volume added or extended after a
+ *       lower level backup, and not written before the next one, is in no backup level, and the restore left it as
+ *       the volume was created: zeros, not a formatted page. recovery could not fix such a page to redo its first
+ *       changes. format these pages as the full level formats its holes.
+ */
+int
+fileio_restore_format_unrestored_pages (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list)
+{
+  FILEIO_RESTORE_PAGE_BITMAP *page_bitmap;
+  FILEIO_PAGE *malloc_io_pgptr = NULL;
+  int vdes;
+  int page_id;
+  int error_code = NO_ERROR;
+
+  for (page_bitmap = page_bitmap_list->head; page_bitmap != NULL; page_bitmap = page_bitmap->next)
+    {
+      for (page_id = 0; page_id < page_bitmap->npages; page_id++)
+	{
+	  if (!fileio_page_bitmap_is_set (page_bitmap, page_id))
+	    {
+	      break;
+	    }
+	}
+      if (page_id >= page_bitmap->npages)
+	{
+	  /* every page was restored */
+	  continue;
+	}
+
+      if (malloc_io_pgptr == NULL)
+	{
+	  malloc_io_pgptr = (FILEIO_PAGE *) malloc (IO_PAGESIZE);
+	  if (malloc_io_pgptr == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) IO_PAGESIZE);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  memset ((char *) malloc_io_pgptr, 0, IO_PAGESIZE);
+	  (void) fileio_initialize_res (thread_p, malloc_io_pgptr, IO_PAGESIZE);
+	}
+
+      vdes = fileio_mount (thread_p, NULL, page_bitmap->vol_label, page_bitmap->vol_id, false, false);
+      if (vdes == NULL_VOLDES)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  break;
+	}
+
+      for (; page_id < page_bitmap->npages; page_id++)
+	{
+	  if (fileio_write_restore (thread_p, page_bitmap, vdes, malloc_io_pgptr, page_bitmap->vol_id, page_id,
+				    FILEIO_BACKUP_FULL_LEVEL) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      break;
+	    }
+	}
+
+      fileio_dismount (thread_p, vdes);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  if (malloc_io_pgptr != NULL)
+    {
+      free_and_init (malloc_io_pgptr);
+    }
+
+  return error_code;
+}
+
+/*
  * fileio_page_bitmap_list_init - initialize a page bitmap list
  *   return: void
  *   page_bitmap_list(in/out): head of the page bitmap list
@@ -11748,9 +11825,10 @@ fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list
  *   return: page bitmap
  *   vol_id(in): the number of the page bitmap identification
  *   total_pages(in): the number of total pages
+ *   vol_label(in): the restored volume
  */
 FILEIO_RESTORE_PAGE_BITMAP *
-fileio_page_bitmap_create (int vol_id, int total_pages)
+fileio_page_bitmap_create (int vol_id, int total_pages, const char *vol_label)
 {
   FILEIO_RESTORE_PAGE_BITMAP *page_bitmap;
   int page_bitmap_size;
@@ -11767,6 +11845,9 @@ fileio_page_bitmap_create (int vol_id, int total_pages)
   page_bitmap->next = NULL;
   page_bitmap->vol_id = vol_id;
   page_bitmap->size = page_bitmap_size;
+  page_bitmap->npages = total_pages;
+  strncpy (page_bitmap->vol_label, vol_label, PATH_MAX - 1);
+  page_bitmap->vol_label[PATH_MAX - 1] = '\0';
   page_bitmap->bitmap = (unsigned char *) malloc (page_bitmap_size);
   if (page_bitmap->bitmap == NULL)
     {

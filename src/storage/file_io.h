@@ -257,6 +257,8 @@ struct page_bitmap
   FILEIO_RESTORE_PAGE_BITMAP *next;
   int vol_id;
   int size;
+  int npages;			/* pages of the volume, from the most recent backup level that holds it */
+  char vol_label[PATH_MAX];	/* restored volume */
   unsigned char *bitmap;
 };
 
@@ -631,7 +633,9 @@ extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 extern void fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
-extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_create (int vol_id, int total_pages);
+extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_create (int vol_id, int total_pages, const char *vol_label);
+extern int fileio_restore_format_unrestored_pages (THREAD_ENTRY * thread_p,
+						   FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
 extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 								 int vol_id);
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
