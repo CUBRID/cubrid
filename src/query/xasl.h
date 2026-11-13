@@ -1312,7 +1312,7 @@ struct xasl_node
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed from [ordby_num < X] clauses */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into INTEGER, found at
+  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583: orderby_limit's converter into BIGINT, found at
 						 * unpack from its domain; not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int ordbynum_flag;		/* stop or continue ordering? */

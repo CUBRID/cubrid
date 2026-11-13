@@ -2321,18 +2321,15 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       return NULL;
     }
   {
-    /* CBRD-27583: each upper bound's conversion into INTEGER, which a top-N takes (qexec_setup_topn_proc): of
-     * the bound's type, or for a < of the type bound - 1 comes out in (qdata_coerce_result_to_domain: the bound's
-     * domain when the plan converts the difference, else the difference's) */
+    /* CBRD-27583: each upper bound's conversion from its own type into BIGINT, which a top-N takes
+     * (qexec_setup_topn_proc) */
     bool planned = true;
     /* *INDENT-OFF* */
     xasl_for_each_orderbynum_upper_bound (xasl->ordbynum_pred, [&] (COMP_EVAL_TERM * term, const REGU_VARIABLE * bound,
 								      REL_OP op)
       {
-	const DOMAIN_OPERAND_COERCION *minus_one = op == R_LT ? term->bound_coercion : NULL;
-	const DB_TYPE source = minus_one != NULL && minus_one->result == NULL ? minus_one->arith.type
-	  : stx_value_type_of (bound->domain);
-	planned = planned && stx_plan_bound_conversion (thread_p, term, source, &tp_Integer_domain);
+	planned = planned && stx_plan_bound_conversion (thread_p, term, stx_value_type_of (bound->domain),
+							&tp_Bigint_domain);
       });
     /* *INDENT-ON* */
     if (!planned)
@@ -2370,7 +2367,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	}
     }
   xasl->orderby_limit_conv = xasl->orderby_limit == NULL ? NULL
-    : stx_plan_limit_converter (stx_value_type_of (xasl->orderby_limit->domain), &tp_Integer_domain);
+    : stx_plan_limit_converter (stx_value_type_of (xasl->orderby_limit->domain), &tp_Bigint_domain);
 
   ptr = or_unpack_int (ptr, (int *) &xasl->ordbynum_flag);
 
@@ -4939,7 +4936,7 @@ stx_plan_limit_converter (DB_TYPE type, const TP_DOMAIN * target)
 
 /*
  * stx_plan_bound_conversion () - CBRD-27583: an upper bound term's conversion of its bound, of type source,
- *   into target (an ORDERBY_NUM bound into INTEGER, an INST_NUM limit into BIGINT), set on the term
+ *   into target (an ORDERBY_NUM bound or an INST_NUM limit into BIGINT), set on the term
  *   return: false with the unpack error set
  */
 static bool

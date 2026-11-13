@@ -42,6 +42,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "numeric_opfunc.h"
+#include "arithmetic.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "mprec.h"
@@ -5577,6 +5578,97 @@ TP_DOMAIN_STATUS
 tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   return tp_value_cast (src, dest, desired_domain, true);
+}
+
+/*
+ * tp_row_bound_of_bigint () - a value coerced into BIGINT, saturated by its sign
+ *    return: DOMAIN_COMPATIBLE, or the coercion's failure (DOMAIN_OVERFLOW when the value is neither above nor
+ *            below 0, as NaN is)
+ *    value(in): the value
+ *    source_type(in), converter(in): as tp_value_to_row_bound ()
+ *    row_bound(out): the coerced value, or DB_BIGINT_MAX or -1 beyond BIGINT
+ *    saturated(out): true when the value was beyond BIGINT
+ */
+static TP_DOMAIN_STATUS
+tp_row_bound_of_bigint (const DB_VALUE * value, DB_TYPE source_type, TP_VALUE_CONVERTER converter,
+			DB_BIGINT * row_bound, bool * saturated)
+{
+  DB_VALUE bigint_value, zero_value;
+  TP_DOMAIN_STATUS coerce_status;
+  DB_VALUE_COMPARE_RESULT compare_result;
+
+  *saturated = false;
+  db_make_null (&bigint_value);
+  coerce_status = tp_value_coerce_with_converter (value, &bigint_value, &tp_Bigint_domain, source_type, converter);
+  if (coerce_status == DOMAIN_COMPATIBLE && !DB_IS_NULL (&bigint_value))
+    {
+      *row_bound = db_get_bigint (&bigint_value);
+      pr_clear_value (&bigint_value);
+      return DOMAIN_COMPATIBLE;
+    }
+
+  pr_clear_value (&bigint_value);
+  if (coerce_status != DOMAIN_OVERFLOW)
+    {
+      return (coerce_status != DOMAIN_COMPATIBLE) ? coerce_status : DOMAIN_INCOMPATIBLE;
+    }
+
+  db_make_int (&zero_value, 0);
+  compare_result = tp_value_compare (value, &zero_value, 1, 0);
+  if (compare_result != DB_GT && compare_result != DB_LT)
+    {
+      return DOMAIN_OVERFLOW;
+    }
+
+  *row_bound = (compare_result == DB_GT) ? DB_BIGINT_MAX : -1;
+  *saturated = true;
+  return DOMAIN_COMPATIBLE;
+}
+
+/*
+ * tp_value_to_row_bound () - the last row number that a comparison of a row number with value keeps
+ *    return: DOMAIN_COMPATIBLE, DOMAIN_OVERFLOW when value is a number neither above nor below 0 (NaN), or a
+ *            failure status (the coercion's, or DOMAIN_INCOMPATIBLE) when value is not a number
+ *    value(in): value compared with a row number (ROWNUM, INST_NUM, ORDERBY_NUM, GROUPBY_NUM), not NULL
+ *    exclusive(in): the comparison has no equal (rownum < value, rownum >= value)
+ *    source_type(in): the type of value the plan compiled, DB_TYPE_NULL when the caller has none
+ *    converter(in): the converter of source_type into BIGINT the unpack found, or NULL
+ *    row_bound(out): the integer bound
+ *
+ * Note: The coercion into BIGINT rounds, so the rounded value is compared with value and stepped down once when
+ *       the comparison does not keep it. The bound keeps the rows the comparison keeps:
+ *         exclusive false (rownum <= value, rownum > value) : floor (value)      2.4 -> 2, 2.5 -> 2, 2 -> 2
+ *         exclusive true  (rownum < value, rownum >= value) : ceil (value) - 1   2.4 -> 2, 2.5 -> 2, 2 -> 1
+ *       Beyond BIGINT the bound is DB_BIGINT_MAX or -1 by the sign.
+ */
+TP_DOMAIN_STATUS
+tp_value_to_row_bound (const DB_VALUE * value, bool exclusive, DB_TYPE source_type, TP_VALUE_CONVERTER converter,
+		       DB_BIGINT * row_bound)
+{
+  DB_VALUE rounded_value;
+  TP_DOMAIN_STATUS status;
+  DB_VALUE_COMPARE_RESULT compare_result;
+  bool saturated;
+
+  assert (value != NULL && !DB_IS_NULL (value) && row_bound != NULL);
+
+  status = tp_row_bound_of_bigint (value, source_type, converter, row_bound, &saturated);
+  if (status != DOMAIN_COMPATIBLE || saturated)
+    {
+      return status;
+    }
+
+  db_make_bigint (&rounded_value, *row_bound);
+  compare_result = tp_value_compare (&rounded_value, (DB_VALUE *) value, 1, 0);
+  if (compare_result == DB_UNK)
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  if ((compare_result == DB_GT || (exclusive && compare_result == DB_EQ)) && *row_bound > DB_BIGINT_MIN)
+    {
+      (*row_bound)--;
+    }
+  return DOMAIN_COMPATIBLE;
 }
 
 /*

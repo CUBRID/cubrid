@@ -1637,9 +1637,11 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
       limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, false);
       if (limit_infop)
 	{
+	  /* a data filter drops rows after the keys are counted, so it keeps the limit in the sort
+	   * (where a < 2999 order by id limit 3 would read 3 keys and drop some of them) */
 	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
 	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
-		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE))
+		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE) && xasl->spec_list->where_pred == NULL)
 	    {
 	      assert (xasl->instnum_pred == NULL);
 	      assert (xasl->ordbynum_pred != NULL);
@@ -4635,6 +4637,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* key_limit_eval () reads this N - 1 from its N, as ceil (N) - 1 (2.4 gives 2), instead of subtracting 1 */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       *upper = regu_ptr_list_add_regu (rhs, *upper);
@@ -4658,6 +4662,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* read as ceil (N) - 1 (see R_EQ) */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
       break;
@@ -4676,6 +4682,8 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
+      /* read as ceil (N) - 1 (see R_EQ) */
+      REGU_VARIABLE_SET_FLAG (regu_low, REGU_VARIABLE_KEY_LIMIT_EXCLUSIVE);
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       break;

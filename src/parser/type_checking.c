@@ -7532,6 +7532,29 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
       return node;
     }
 
+  /* cast before the switch below types the LIMIT values and copies them into the numbering predicates. A PL/CSQL
+   * static SQL keeps the clause as written and casts the copies (pt_limit_to_numbering_expr) */
+  if (!parser->flag.is_parsing_static_sql)
+    {
+      switch (node->node_type)
+	{
+	case PT_SELECT:
+	case PT_UNION:
+	case PT_DIFFERENCE:
+	case PT_INTERSECTION:
+	  pt_cast_limit_string_operands (parser, node->info.query.limit);
+	  break;
+	case PT_UPDATE:
+	  pt_cast_limit_string_operands (parser, node->info.update.limit);
+	  break;
+	case PT_DELETE:
+	  pt_cast_limit_string_operands (parser, node->info.delete_.limit);
+	  break;
+	default:
+	  break;
+	}
+    }
+
   switch (node->node_type)
     {
     case PT_SPEC:
