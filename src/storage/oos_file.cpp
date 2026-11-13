@@ -4168,6 +4168,18 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return NO_ERROR;
     }
 
+#if !defined (NDEBUG)
+  {
+    /* A system operation commit that runs this postpone would publish the drop while the transaction can still roll
+     * the UPDATE back, and vacuum would reclaim chains the restored record references. The exception is an UPDATE
+     * under the system operation's own subtransaction MVCCID (SELECT INCR in instant lock mode): that commit is
+     * final. */
+    const LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+    assert (tdes == NULL || tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
+	    || prefix.mvccid != tdes->mvccinfo.id);
+  }
+#endif
+
   /* vacuum_info.vfid is the heap file: vacuum skips the notification when the table was dropped. */
   LOG_DATA_ADDR addr (&header.heap_hfid.vfid, NULL, -1);
   error = log_append_mvcc_undo_data_with_mvccid (thread_p, RVOOS_NOTIFY_VACUUM, &addr,

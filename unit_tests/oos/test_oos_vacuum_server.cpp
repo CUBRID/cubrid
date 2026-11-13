@@ -1037,6 +1037,34 @@ TEST_F (OosVacuumHeapSeamServer, NotifyConsumerLeavesAMalformedChainAndReclaimsT
 }
 
 // ============================================================================
+// TC-V11d: an UPDATE's drop runs at a system operation commit only under that operation's own subtransaction
+// MVCCID, as SELECT INCR does in instant lock mode; the commit publishes it (CBRD-27781)
+// ============================================================================
+TEST_F (OosVacuumHeapSeamServer, UpdateDropUnderASubtransactionIsPublishedByItsSystemOperationCommit)
+{
+  OID chain_oid;
+  RECDES rec {};
+  insert_chunk_and_record ("old version's chain of an INCR", chain_oid, rec);
+  test_oos_utils::auto_freed_recdes_ptr d (&rec, recdes_free_data_area);
+  oos_chain_ref ref = {chain_oid, NULL_LSA};
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, chain_oid, &ref.identity_stamp), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  ASSERT_NE (tdes, nullptr);
+  (void) logtb_get_current_mvccid (thread_p);
+
+  log_sysop_start (thread_p);
+  logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
+  ASSERT_EQ (oos_log_update_drop_intent (thread_p, hfid, {ref}), NO_ERROR);
+  log_sysop_commit (thread_p);
+  logtb_complete_sub_mvcc (thread_p, tdes);
+
+  EXPECT_TRUE (chunk_is_present (chain_oid)) << "the drop only notifies vacuum; the chain stays until vacuum";
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+}
+
+// ============================================================================
 // TC-V12: eager path — same no-op contract as vacuum (CBRD-26950)
 // ============================================================================
 TEST_F (OosVacuumHeapSeamServer, EagerDeleteReclaimsLiveReferenceAndSkipsStaleOne)
