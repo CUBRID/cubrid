@@ -3031,6 +3031,9 @@ struct pt_query_info
 				 * do_replan_statement_with_bind_peek ()) restore the level to 0
 				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
 				 * (uncorrelated, parallel-executable) marking. */
+    unsigned stays_query:1;	/* typing never folds it into a value: an operand of a set operation
+				 * (pt_mark_union_leaf_nodes (), pt_eval_type_pre ()), or a statement typed again
+				 * with its bound values (db_execute_and_keep_statement_local ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */

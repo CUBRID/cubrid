@@ -3603,6 +3603,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  statement = parser_copy_tree_list (parser, statement);
 	  statement = mq_reset_ids_in_statement (parser, statement);
 
+	  /* The bound values may fold the WHERE of every operand of the statement's set operation to false. Typing
+	   * would then fold the set operation into a value, which is not the query the client prepared and which
+	   * do_statement () cannot execute: marked, it folds into one of the empty operands instead, which returns no
+	   * row (pt_check_union_is_foldable ()). */
+	  if (PT_IS_QUERY_NODE_TYPE (statement->node_type))
+	    {
+	      statement->info.query.flag.stays_query = 1;
+	    }
+
 	  sc_info.top_node = statement;
 	  sc_info.donot_fold = false;
 

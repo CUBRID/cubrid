@@ -7527,6 +7527,25 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
   /* To ensure that after exit of recursive expression node the evaluation of type will continue in normal mode */
   *continue_walk = PT_CONTINUE_WALK;
+
+  /* An operand of a set operation stays a query, whatever its is_subquery (a parenthesized one is PT_IS_SUBQUERY):
+   * the set operation decides with the same pt_false_where () whether to fold an empty one away
+   * (pt_check_union_is_foldable ()), and executes an operand it keeps. Marked in a pass that skips folding as well,
+   * since pt_eval_type () folds set operations in every pass. */
+  if (PT_IS_UNION (node) || PT_IS_DIFFERENCE (node) || PT_IS_INTERSECTION (node))
+    {
+      arg1 = node->info.query.q.union_.arg1;
+      arg2 = node->info.query.q.union_.arg2;
+      if (arg1 != NULL && PT_IS_QUERY_NODE_TYPE (arg1->node_type))
+	{
+	  arg1->info.query.flag.stays_query = 1;
+	}
+      if (arg2 != NULL && PT_IS_QUERY_NODE_TYPE (arg2->node_type))
+	{
+	  arg2->info.query.flag.stays_query = 1;
+	}
+    }
+
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
@@ -8308,7 +8327,8 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 
       is_subquery = node->info.query.is_subquery;
 
-      if (sc_info->donot_fold == false
+      /* an operand of a set operation stays a query (pt_eval_type_pre ()) */
+      if (sc_info->donot_fold == false && !node->info.query.flag.stays_query
 	  && (is_subquery == PT_IS_SUBQUERY || is_subquery == PT_IS_UNION_SUBQUERY
 	      || is_subquery == PT_IS_CTE_NON_REC_SUBQUERY || is_subquery == PT_IS_CTE_REC_SUBQUERY)
 	  && pt_false_where (parser, node))
