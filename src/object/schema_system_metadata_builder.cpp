@@ -180,43 +180,11 @@ namespace cubschema
     return class_mop;
   }
 
-  /* defines the columns, methods and constraints of a class and creates its heap, without authorization */
   static int
-  define_class (const MOP class_mop, const system_metadata_definition &def)
+  add_constraints (const MOP class_mop, const std::vector <constraint> &constraints)
   {
     int error_code = NO_ERROR;
 
-    if (class_mop == nullptr)
-      {
-	// should not happen
-	assert (false);
-	return ER_FAILED;
-      }
-
-    // define
-    SM_TEMPLATE *tmpl = smt_edit_class_mop (class_mop, AU_ALTER);
-    if (tmpl == nullptr)
-      {
-	ASSERT_ERROR_AND_SET (error_code);
-	return error_code;
-      }
-
-    error_code = add_attributes (tmpl, def.attributes);
-    if (error_code != NO_ERROR)
-      {
-	smt_quit (tmpl);
-	return error_code;
-      }
-
-    error_code = sm_update_class (tmpl, NULL);
-    if (error_code != NO_ERROR)
-      {
-	assert (false);
-	smt_quit (tmpl);
-	return error_code;
-      }
-
-    const std::vector <constraint> &constraints = def.constraints;
     for (const auto &c: constraints)
       {
 	DB_CONSTRAINT_TYPE type = c.type;
@@ -251,6 +219,12 @@ namespace cubschema
 	  }
       }
 
+    return NO_ERROR;
+  }
+
+  static int
+  create_heap (const MOP class_mop)
+  {
     if (locator_has_heap (class_mop) == NULL)
       {
 	assert (er_errid () != NO_ERROR);
@@ -260,10 +234,80 @@ namespace cubschema
     return NO_ERROR;
   }
 
+  /*
+   * defines the columns, methods and constraints of a class and creates its heap, without authorization.
+   * heap_first decides whether the heap is created before or after the constraints: it decides where the heap and
+   * the index files are allocated, and so the OIDs of the rows inserted later.
+   */
+  static int
+  define_class (const MOP class_mop, const system_metadata_definition &def, const bool heap_first)
+  {
+    int error_code = NO_ERROR;
+
+    if (class_mop == nullptr)
+      {
+	// should not happen
+	assert (false);
+	return ER_FAILED;
+      }
+
+    // define
+    SM_TEMPLATE *tmpl = smt_edit_class_mop (class_mop, AU_ALTER);
+    if (tmpl == nullptr)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	return error_code;
+      }
+
+    error_code = add_attributes (tmpl, def.attributes);
+    if (error_code != NO_ERROR)
+      {
+	smt_quit (tmpl);
+	return error_code;
+      }
+
+    error_code = sm_update_class (tmpl, NULL);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	smt_quit (tmpl);
+	return error_code;
+      }
+
+    if (heap_first)
+      {
+	error_code = create_heap (class_mop);
+	if (error_code == NO_ERROR)
+	  {
+	    error_code = add_constraints (class_mop, def.constraints);
+	  }
+      }
+    else
+      {
+	error_code = add_constraints (class_mop, def.constraints);
+	if (error_code == NO_ERROR)
+	  {
+	    error_code = create_heap (class_mop);
+	  }
+      }
+
+    return error_code;
+  }
+
+  /*
+   * the authorization classes have always had their heap created before their constraints (_db_user and its unique
+   * index on name), so that a new database keeps the same OIDs for the users (DBA, PUBLIC, ...)
+   */
+  static int
+  define_class_heap_first (const MOP class_mop, const system_metadata_definition &def)
+  {
+    return define_class (class_mop, def, true);
+  }
+
   static int
   build_class (const MOP class_mop, const system_metadata_definition &def)
   {
-    int error_code = define_class (class_mop, def);
+    int error_code = define_class (class_mop, def, false);
     if (error_code != NO_ERROR)
       {
 	return error_code;
@@ -372,7 +416,7 @@ namespace cubschema
   system_metadata_builder::define_classes (const std::vector<system_metadata_definition> &defs,
       std::vector<MOP> &class_mops)
   {
-    return install_definitions (defs, define_class, class_mops);
+    return install_definitions (defs, define_class_heap_first, class_mops);
   }
 
   int

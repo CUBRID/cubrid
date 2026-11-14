@@ -422,7 +422,7 @@ namespace cubschema
       /* If the attribute configuration is changed, the CATCLS_USER_ATTR_IDX_NAME also be changed.
        *   - CATCLS_USER_ATTR_IDX_NAME is defined in the cubload::server_class_installer::locate_class () function.
        */
-      {"name", "varchar(32)"}, /* DB_MAX_USER_LENGTH */
+      {"name", format_varchar (DB_MAX_USER_LENGTH)},
       {"id", "integer"},
       {"password", AU_PASSWORD_CLASS_NAME},
       {"direct_groups", "set of (_db_user)"},
@@ -430,7 +430,7 @@ namespace cubschema
       {"authorization", AU_AUTH_CLASS_NAME},
       {AU_USER_ATTR_IS_LOGINABLE, "integer"},
       {AU_USER_ATTR_IS_SYSTEM_CREATED, "integer"},
-      {"comment", "varchar(1024)"},
+      {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
       // methods (need signatures for these)
@@ -498,7 +498,7 @@ namespace cubschema
       // class methods
       {
 	attribute_kind::CLASS_METHOD, "check_authorization", "au_check_authorization_method",
-	{"integer", "varchar(255)", "integer"}
+	{"integer", format_varchar (255), "integer"}
       }
     },
 // constraints

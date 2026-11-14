@@ -36,6 +36,7 @@ namespace cubschema
      * creates and defines the classes like install_classes (), but neither changes their owner nor grants on them
      * nor runs their row initializers: the caller does it once the users exist (see au_install ()).
      * class_mops gets the class created for each definition (nullptr for the ones not created yet), also on error.
+     * unlike install_classes (), the heap of each class is created before its constraints.
      */
     int define_classes (const std::vector<system_metadata_definition> &defs, std::vector<MOP> &class_mops);
     int install_vclasses (const std::vector<system_metadata_definition> &defs);
