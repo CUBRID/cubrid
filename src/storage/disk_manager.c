@@ -6361,7 +6361,7 @@ end:
 /*
  * disk_is_permanent_volume_file () - does the file start with the header of a permanent volume?
  *
- * return : NO_ERROR, or ER_IO_MOUNT_FAIL if the file cannot be opened (whether it is a permanent volume is unknown)
+ * return : NO_ERROR, or ER_IO_MOUNT_FAIL (notified) if the file cannot be opened, so its type is unknown
  * thread_p(in) : thread entry
  * vol_label_p(in) : volume label
  * is_permanent(out) : true if the file is a CUBRID volume of permanent type, false otherwise (not a CUBRID volume,
@@ -6390,7 +6390,7 @@ disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p,
    * mount. Compare the file itself, not the label, since the same file can be reached by another path. */
   if (stat (vol_label_p, &stat_buffer) != 0)
     {
-      er_set_with_oserror (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
       return ER_IO_MOUNT_FAIL;
     }
   for (volid = 0; volid < disk_Cache->nvols_perm; volid++)
@@ -6411,7 +6411,7 @@ disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p,
   vol_fd = fileio_open (vol_label_p, O_RDONLY, 0);
   if (vol_fd == NULL_VOLDES)
     {
-      er_set_with_oserror (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
+      er_set_with_oserror (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_IO_MOUNT_FAIL, 1, vol_label_p);
       return ER_IO_MOUNT_FAIL;
     }
 
