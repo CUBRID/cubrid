@@ -225,7 +225,6 @@ static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALU
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -19951,7 +19950,7 @@ end:
  * Note: pt_semantic_type () returns NULL on error, so a caller cannot get the node that replaced (and freed) the input
  *       tree during type checking or constant folding.
  */
-static int
+int
 pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
   PT_NODE *spec = NULL;

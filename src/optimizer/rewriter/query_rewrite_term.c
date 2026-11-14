@@ -29,9 +29,11 @@
 static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where);
 static void qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
+static void qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
+static void qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -983,6 +985,13 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	      continue;
 	    }
 
+	  if (temp->info.expr.op == PT_AND || temp->info.expr.op == PT_OR)
+	    {
+	      /* a factor pt_cnf_where () kept whole is no join term: its operands are predicates, not the
+	       * expressions the cases below compare, and the copy would evaluate the whole factor twice */
+	      continue;
+	    }
+
 	  next = temp->next;	/* save and cut-off link */
 	  temp->next = NULL;
 
@@ -1282,7 +1291,106 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
     }
 
+  qo_fold_or_factors (parser, orgp);
+}
 
+/*
+ * qo_fold_or_factors () - fold the factors pt_cnf_where () kept whole and keep the CNF list shape
+ *   return:
+ *   parser(in):
+ *   wherep(in/out): CNF list
+ *
+ * Note: The substitution above turns the attribute of an equality term into a constant in every
+ *	 other term, so a disjunct of a factor kept whole can become constant: (o.c <> i.c and
+ *	 o.c < i.c) or (i.c <> i.c) with i.c = 12.  The constant folding that mq_translate () repeats
+ *	 after the rewrite drops such a disjunct, and what remains of the factor may be a conjunction
+ *	 (op PT_AND, or_next NULL), which a CNF list cannot hold as one term: qo_analyze_term () has no
+ *	 term class for it and aborts the plan, which for a join's ON condition fails the query with
+ *	 MSGCAT_RUNTIME_OUTER_JOIN_OPT_FAILED.  A distributed factor never raised this, as each of
+ *	 its clauses folds to one literal.  Fold the kept factors here instead, so the rewrites that
+ *	 follow start from the shape that is evaluated, and put what a factor folds to back in the
+ *	 list in CNF shape:
+ *	 - a smaller disjunction stays the factor it was, marks included, so qo_extract_or_restrictions ()
+ *	   neither derives from it twice nor loses the restriction it derived;
+ *	 - a conjunction or a single predicate becomes one term per conjunct, through pt_cnf_where ()
+ *	   so that a disjunction of single predicates among them takes the or_next shape the range
+ *	   conversion reads; each term is at the factor's location (pt_fold_const_expr () carries it);
+ *	 - a derived factor (PT_EXPR_INFO_OR_DERIVED) that folds to less than a disjunction is dropped:
+ *	   its origin folds the same way and then holds those conjuncts itself, and a copy without the
+ *	   mark would be counted and evaluated twice.
+ */
+static void
+qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
+{
+  PT_NODE *term, *next, *folded, *last, **prevp;
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
+  int marks;
+  bool derived, cnf_start;
+
+  prevp = wherep;
+  while ((term = *prevp) != NULL)
+    {
+      if (!PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_OR) || term->or_next != NULL)
+	{
+	  prevp = &term->next;	/* not a factor kept whole */
+	  continue;
+	}
+
+      next = term->next;
+      term->next = NULL;
+
+      /* pt_fold_const_expr () frees the factor it replaces, so read it before the fold */
+      marks = PT_EXPR_INFO_IS_FLAGED (term, (PT_EXPR_INFO_CNF_DONE | PT_EXPR_INFO_OR_EXTRACTED
+					     | PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
+					     | PT_EXPR_INFO_OR_DERIVED_COLUMN));
+      derived = PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_OR_DERIVED) != 0;
+      cnf_start = term->flag.is_cnf_start;
+
+      folded = term;
+      sc_info.top_node = term;
+      sc_info.donot_fold = false;
+      if (pt_semantic_type_in_place (parser, &folded, &sc_info) != NO_ERROR)
+	{
+	  /* the error is reported, and the statement fails before it is planned; keep what the fold left
+	   * in the list, as the term may be freed */
+	  folded->next = next;
+	  *prevp = folded;
+	  return;
+	}
+
+      if (folded == term)
+	{
+	  term->next = next;
+	  prevp = &term->next;
+	  continue;
+	}
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (folded, PT_OR))
+	{
+	  PT_EXPR_INFO_SET_FLAG (folded, marks);
+	  folded->flag.is_cnf_start = cnf_start;
+	  folded->next = next;
+	  *prevp = folded;
+	  prevp = &folded->next;
+	}
+      else if (derived)
+	{
+	  parser_free_tree (parser, folded);
+	  *prevp = next;
+	}
+      else
+	{
+	  folded = pt_cnf_where (parser, folded);
+	  for (last = folded; last->next != NULL; last = last->next)
+	    {
+	      last->next->flag.is_cnf_start = false;
+	    }
+	  folded->flag.is_cnf_start = cnf_start;
+	  last->next = next;
+	  *prevp = folded;
+	  prevp = &last->next;
+	}
+    }
 }
 
 /*
@@ -2788,6 +2896,72 @@ qo_check_like_expression_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 }
 
 /*
+ * qo_rewrite_like_in_factor () - the in-place LIKE rewrites on the leaves of a factor kept whole
+ *   return:
+ *   parser(in):
+ *   node(in/out): a disjunct or conjunct of the factor
+ *
+ * Note: qo_rewrite_like_terms () reads the CNF list and the or_next chains, where the distribution
+ *	 put every LIKE; the leaves of a factor pt_cnf_where () kept whole hang off arg1/arg2 of its
+ *	 OR and AND nodes.  Only the rewrites that replace the LIKE node in place apply to a leaf
+ *	 (qo_rewrite_one_like_term ()): col LIKE 'abc' to col = 'abc', col LIKE 'abc%' to a BETWEEN,
+ *	 and col LIKE '%' to col IS NOT NULL, whose selectivity is read from the column where the
+ *	 LIKE is a guess that made a wider OR estimate fewer rows than its own branch.  The generic
+ *	 rewrite adds a term next to the LIKE, which a leaf has no place for.
+ */
+static void
+qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *compared_expr, *arg2, *pattern, *escape;
+  bool perform_generic_rewrite;
+
+  for (; node != NULL; node = node->or_next)
+    {
+      if (node->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      if (node->info.expr.op == PT_AND || node->info.expr.op == PT_OR)
+	{
+	  qo_rewrite_like_in_factor (parser, node->info.expr.arg1);
+	  qo_rewrite_like_in_factor (parser, node->info.expr.arg2);
+	  continue;
+	}
+
+      if (node->info.expr.op != PT_LIKE)
+	{
+	  continue;
+	}
+
+      compared_expr = pt_get_first_arg_ignore_prior (node);
+      if (!pt_is_attr (compared_expr) && !qo_is_cast_attr (compared_expr)
+	  && !pt_is_function_index_expr (parser, compared_expr, false))
+	{
+	  continue;
+	}
+
+      arg2 = node->info.expr.arg2;
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (arg2, PT_LIKE_ESCAPE))
+	{
+	  pattern = arg2->info.expr.arg1;
+	  escape = arg2->info.expr.arg2;
+	}
+      else
+	{
+	  pattern = arg2;
+	  escape = NULL;
+	}
+
+      if (pt_is_ascii_string_value_node (pattern)
+	  && (escape == NULL || PT_IS_NULL_NODE (escape) || pt_is_ascii_string_value_node (escape)))
+	{
+	  qo_rewrite_one_like_term (parser, node, pattern, escape, &perform_generic_rewrite);
+	}
+    }
+}
+
+/*
  * qo_rewrite_like_terms ()
  *   return:
  *   parser(in):
@@ -2812,6 +2986,14 @@ qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** cnf_list)
   for (cnf_node = *cnf_list; cnf_node != NULL; cnf_node = cnf_node->next)
     {
       PT_NODE *crt_expr = NULL;
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (cnf_node, PT_OR) && cnf_node->or_next == NULL)
+	{
+	  /* a factor kept whole: its LIKEs are leaves of the tree */
+	  qo_rewrite_like_in_factor (parser, cnf_node);
+	  prev = cnf_node;
+	  continue;
+	}
 
       or_prev = NULL;
       for (crt_expr = cnf_node; crt_expr != NULL; crt_expr = crt_expr->or_next)
