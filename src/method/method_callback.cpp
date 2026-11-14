@@ -1426,8 +1426,7 @@ exit:
     if (attr == NULL)
       {
 	int attr_err = er_errid ();
-	if (attr_err == ER_AU_SELECT_FAILURE || attr_err == ER_AU_AUTHORIZATION_FAILURE
-	    || attr_err == ER_AU_NO_AUTHORIZATION)
+	if (attr_err == ER_AU_SELECT_FAILURE || attr_err == ER_AU_AUTHORIZATION_FAILURE)
 	  {
 	    auth_err_msg = "'" + question.name + "': " + er_msg ();
 	  }
