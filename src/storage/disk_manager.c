@@ -567,8 +567,11 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
   fault_inject_random_crash ();
 
-  /* this log must be flushed. */
-  logpb_force_flush_pages (thread_p);
+  if (ext_info->voltype == DB_PERMANENT_VOLTYPE)
+    {
+      /* this log must be flushed. a temporary volume has nothing to flush: it is not logged and removed on restart */
+      logpb_force_flush_pages (thread_p);
+    }
   fault_inject_random_crash ();
 
   /* create and initialize the volume. recovery information is initialized in every page. */
@@ -1738,7 +1741,11 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
 			       extend_info->voltype, "volume extension started");
 #endif
 
-      log_sysop_start (thread_p);
+      /* a temporary volume is not logged and is removed on restart; a system operation protects nothing there */
+      if (voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_start (thread_p);
+	}
 
       (void) logtb_set_check_interrupt (thread_p, false);
       error_code = disk_volume_expand (thread_p, extend_info->volid_extend, voltype, to_expand, &nsect_free_new);
@@ -1746,11 +1753,17 @@ disk_extend (THREAD_ENTRY * thread_p, DISK_EXTEND_INFO * extend_info, DISK_RESER
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  log_sysop_abort (thread_p);
+	  if (voltype == DB_PERMANENT_VOLTYPE)
+	    {
+	      log_sysop_abort (thread_p);
+	    }
 	  return error_code;
 	}
 
-      log_sysop_commit (thread_p);
+      if (voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_commit (thread_p);
+	}
       assert (nsect_free_new >= to_expand);
 
       if (extend_info->nsect_total == extend_info->nsect_max)
@@ -1924,6 +1937,7 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
    * 5. flush log! without this last step, it is still possible to expand the volume without recovery
    * 6. now it is safe to expand volume.
    *
+   * steps 1 to 5 are only for a permanent volume. a temporary volume is not logged and is removed on restart.
    */
 
   /* round up */
@@ -1941,8 +1955,11 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
   assert (volheader->type == voltype);
   do_logging = (volheader->type == DB_PERMANENT_VOLTYPE);
 
-  /* we need system op here */
-  log_sysop_start (thread_p);
+  if (do_logging)
+    {
+      /* we need system op here */
+      log_sysop_start (thread_p);
+    }
 
   /* update sector total number */
   volheader->nsect_total += nsect_extend;
@@ -1982,13 +1999,16 @@ disk_volume_expand (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLTYPE voltype, DK
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
-  /* we can now end system op. */
-  log_sysop_commit (thread_p);
+  if (do_logging)
+    {
+      /* we can now end system op. */
+      log_sysop_commit (thread_p);
 
-  FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
+      FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
-  /* to be sure expansion really happens on recovery too, we must flush log! */
-  logpb_force_flush_pages (thread_p);
+      /* to be sure expansion really happens on recovery too, we must flush log! */
+      logpb_force_flush_pages (thread_p);
+    }
 
   FI_TEST (thread_p, FI_TEST_DISK_MANAGER_VOLUME_EXPAND, 0);
 
@@ -2232,7 +2252,11 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 	}
     }
 
-  log_sysop_start (thread_p);
+  /* a temporary volume is not logged and is removed on restart; a system operation protects nothing there */
+  if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+    {
+      log_sysop_start (thread_p);
+    }
 
   /* with disk_format, we start fixing pages. page fixing may depend on */
   if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
@@ -2283,11 +2307,17 @@ disk_add_volume (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * extinfo, VOLID * 
 exit:
   if (error_code == NO_ERROR)
     {
-      log_sysop_commit (thread_p);
+      if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_commit (thread_p);
+	}
     }
   else
     {
-      log_sysop_abort (thread_p);
+      if (extinfo->voltype == DB_PERMANENT_VOLTYPE)
+	{
+	  log_sysop_abort (thread_p);
+	}
 
       /* undo incrementing volume count. rollback won't do it. */
       if (extinfo->voltype == DB_TEMPORARY_VOLTYPE)
@@ -4348,6 +4378,7 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
   int nreserved;
   bool retried = false;
   bool did_extend = false;
+  bool is_sysop_started = false;
   int error_code = NO_ERROR;
 
   assert (purpose == DB_PERMANENT_DATA_PURPOSE || purpose == DB_TEMPORARY_DATA_PURPOSE);
@@ -4369,14 +4400,25 @@ disk_reserve_sectors (THREAD_ENTRY * thread_p, DB_VOLPURPOSE purpose, VOLID voli
 retry:
   disk_log ("disk_reserve_sectors", "reserve %d sectors for %s.", n_sectors, disk_purpose_to_string (purpose));
 
-  log_sysop_start (thread_p);
+  /* Temporary purpose reservations are not logged (disk_stab_unit_reserve), and the error path below reverts them
+   * by itself. A system operation would protect nothing, but it would hold the transaction's rmutex_topop until
+   * the reservation ends. Parallel query workers share the transaction, so they would wait for each other here, or
+   * forever for a main thread that waits for them inside its own system operation. */
+  if (purpose != DB_TEMPORARY_DATA_PURPOSE)
+    {
+      log_sysop_start (thread_p);
+      is_sysop_started = true;
+    }
 
   /* we don't want to conflict with disk check */
   error_code = csect_enter_as_reader (thread_p, CSECT_DISK_CHECK, INF_WAIT);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
+      if (is_sysop_started)
+	{
+	  log_sysop_abort (thread_p);
+	}
       return error_code;
     }
 
@@ -4408,8 +4450,11 @@ retry:
   assert ((context.vsidp - reserved_sectors) == n_sectors);
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
-  /* attach sys op to outer */
-  log_sysop_attach_to_outer (thread_p);
+  if (is_sysop_started)
+    {
+      /* attach sys op to outer */
+      log_sysop_attach_to_outer (thread_p);
+    }
 
 #if !defined (NDEBUG)
   if (did_extend)
@@ -4463,8 +4508,11 @@ error:
 
   csect_exit (thread_p, CSECT_DISK_CHECK);
 
-  /* abort any changes */
-  log_sysop_abort (thread_p);
+  if (is_sysop_started)
+    {
+      /* abort any changes */
+      log_sysop_abort (thread_p);
+    }
 
   /* The IO entries cover the volume extension half of this function; the latch entry covers the page fix half
    * (disk_get_volheader (), disk_stab_cursor_fix ()). What is left is a logic failure - see
