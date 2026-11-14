@@ -43,6 +43,7 @@ option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer registry")
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
+option (UNIT_TEST_SCOPE_EXIT "Unit testing: scope_exit guard")
 
 message("  unit_tests/...")
 
@@ -129,6 +130,11 @@ if (UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
   message("    radix_sort")
   add_subdirectory(radix_sort)
 endif(UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
+
+if (UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
+  message("    scope_exit")
+  add_subdirectory(scope_exit)
+endif(UNIT_TESTS OR UNIT_TEST_SCOPE_EXIT)
 
 #[[
 TODO compilation fails
