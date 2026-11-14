@@ -12,8 +12,8 @@ page fix/unfix behavior, dirty-page flushing, page LSA handling, volume read/wri
 | `double_write_buffer.cpp/hpp` | Torn-write protection for data page flushes |
 | `tde.c/h` | Transparent data encryption helpers for pages/logs and TDE algorithm metadata |
 
-`page_buffer.c` and `double_write_buffer.cpp` are server/SA code. `file_io.c` and `tde.c` also build in the client
-target because client code needs volume metadata and encryption helpers.
+`page_buffer.c` and `double_write_buffer.cpp` are server/SA code. `file_io.c` and `tde.c` also appear in the client
+source list in [cs/CMakeLists.txt](../../../cs/CMakeLists.txt).
 
 ## Page Fix Protocol
 
@@ -21,7 +21,10 @@ Normal read:
 
 ```c
 PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-/* read page */
+if (page == NULL)
+  {
+    return er_errid ();
+  }
 pgbuf_unfix (thread_p, page);
 ```
 
@@ -29,14 +32,21 @@ Normal update:
 
 ```c
 PAGE_PTR page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-/* update page */
+if (page == NULL)
+  {
+    return er_errid ();
+  }
 pgbuf_set_dirty (thread_p, page, DONT_FREE);
 pgbuf_unfix (thread_p, page);
 ```
 
+These examples show latch and release balance in a function returning an error code. Insert page access after the
+NULL check. Recoverable permanent mutations also need the subsystem's recovery records and system-operation protocol.
+`pgbuf_set_dirty()` does not log the change.
+
 Rules:
 
-- Every successful `pgbuf_fix*()` must be matched by an unfix/free path.
+- Match ordinary fixes with an unfix/free path and watcher-based fixes with ordered unfix helpers.
 - Modified pages must be marked dirty before release.
 - Prefer `pgbuf_unfix_and_init()` and `pgbuf_set_dirty_and_free()` when the pointer should not be reused.
 - Debug builds route many calls through `*_debug` macros that record call-site information. Preserve those macros.
@@ -60,10 +70,16 @@ Rules:
 - Ordered heap/overflow page access uses `PGBUF_WATCHER` to carry group/rank/latch state and avoid latch-order
   deadlocks. Do not replace watcher code with plain `pgbuf_fix()` unless the caller no longer participates in ordered
   fixing.
+- `pgbuf_ordered_fix*()` can unfix and refix pages already held. Check `page_was_unfixed`, re-read contents, and
+  revalidate decisions and peeked records. On failure, check each watcher's page pointer before using it.
+- `pgbuf_simple_fix()` is a special latchless read path for temporary-volume pages. It cannot run with writers or
+  mix with ordinary latch-based fixing. See its restrictions in [page_buffer.c](../page_buffer.c).
 
 ## Dirty Pages, WAL, And Page LSA
 
-- The WAL rule is enforced at flush time: log records must be durable before the corresponding data page is written.
+- For logged changes, flush forces WAL through the page LSA before writing the data page. The lower flush path checks
+  `oldest_unflush_lsa`; dirty marking alone does not make a change recoverable.
+- Pages marked by `pgbuf_set_lsa_as_temporary()` are nonrecoverable and must not be logged.
 - `FILEIO_PAGE_RESERVED` in `file_io.h` stores page `lsa`, `pageid`, `volid`, page type, flags, and TDE nonce.
 - `fileio_set_page_lsa()` writes both the reserved LSA and the page-end watermark. `fileio_is_page_sane()` checks the
   duplicate LSA.
@@ -76,15 +92,23 @@ buffer pool. Heap/B-tree/catalog code should not bypass `pgbuf_*` to edit perman
 
 ## Double-Write Buffer
 
-The double-write buffer protects against torn data-page writes. `double_write_buffer.cpp` sits on the flush path, not on
-normal page mutation paths. If a change alters page flush ordering or page image contents, check DWB assumptions too.
+When DWB is created, permanent-volume page flushes use it for torn-write protection. Temporary-volume flushes and flushes
+without an active DWB write directly. DWB synchronizes its buffered images before writing destination pages. Page reads
+can retrieve an in-flight DWB image before reading the volume.
+
+Check `pgbuf_bcb_flush_with_wal()` in [page_buffer.c](../page_buffer.c) and `dwb_flush_block()` in
+[double_write_buffer.cpp](../double_write_buffer.cpp) when changing write ordering or page images.
 
 ## TDE Touchpoints
 
 - `FILEIO_PAGE_FLAG_ENCRYPTED_AES` and `FILEIO_PAGE_FLAG_ENCRYPTED_ARIA` mark encrypted pages in `file_io.h`.
 - `pgbuf_set_tde_algorithm()` stores page-level TDE metadata through the buffer pool.
-- `file_get_tde_algorithm()` / `file_apply_tde_algorithm()` in `file_manager.c` handle logical file TDE metadata.
+- `file_get_tde_algorithm()` reads file TDE metadata. `file_apply_tde_algorithm()` updates the file and its user pages.
+  Call it before other threads access the file; its unconditional page latches can otherwise deadlock. See
+  [file_manager.c](../file_manager.c).
 - Heap and B-tree creation query class TDE state before applying file/page algorithms.
+- Flush encrypts a separate page image before DWB or disk writes; reads decrypt the retrieved image. The buffer-pool
+  page remains plaintext. Temporary and permanent volumes use different keys and nonce sources in [tde.c](../tde.c).
 
 ## Gotchas
 

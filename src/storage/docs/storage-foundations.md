@@ -30,14 +30,19 @@ change touches object/page/file identity, record descriptors, OID helpers, or lo
 
 `RECDES` is the common record transport for heap, B-tree, catalog, overflow, and slotted-page code.
 
-- `area_size` is the capacity of `data`; it can be negative when the descriptor points into another buffer, for example
-  a peeked slotted-page record.
-- `length` is the payload length, not including record header/type metadata.
+- `area_size` describes buffer capacity; it can be negative for borrowed data, such as a peeked slotted-page record.
+  A nonnegative value does not prove ownership.
+- `length` is the length of `data`, excluding the descriptor's separate length and type fields. The data can include
+  an MVCC record header. A slotted-page copy returning `S_DOESNT_FIT` reports the required length as a negative value.
 - `type` carries record kind (`REC_HOME`, relocation records, overflow records, etc.).
 - `recdes_allocate_data_area()`, `recdes_free_data_area()`, and `recdes_set_data_area()` in `storage_common.c` manage
-  basic buffers.
-- `record_descriptor` adds safer C++ buffer ownership and mutation helpers. Use it where surrounding code already does;
-  do not convert broad C paths just to get RAII.
+  basic buffers. Setting an external buffer does not transfer ownership; free only storage compatible with
+  `db_private_free_and_init()`. The free helper does not inspect `area_size`.
+- `record_descriptor` supports owned and borrowed buffers, with C++ ownership and mutation helpers. Use it where
+  surrounding code already does; do not convert broad C paths just to get RAII.
+
+See `RECDES` in [storage_common.h](../storage_common.h), its helpers in [storage_common.c](../storage_common.c), and
+`spage_get_record_data()` in [slotted_page.c](../slotted_page.c).
 
 ## OID Helpers
 
@@ -51,7 +56,8 @@ Use `oid.h` helpers rather than open-coding comparisons or system OID checks.
 ## Page And File Identity
 
 - `VPID` locates a physical page, but page access still goes through `pgbuf_*`.
-- `VFID` locates a logical file table entry. File allocation/deallocation belongs to `file_manager.c`.
+- `VFID` identifies a logical file; its `volid` and `fileid` locate the file header page. File allocation/deallocation
+  belongs to `file_manager.c`.
 - `HFID` and `BTID` add subsystem-specific root/header pages on top of `VFID`.
 - `PAGE_TYPE` in `storage_common.h` is used for validation/debugging and must match subsystem page initialization.
 
@@ -66,5 +72,7 @@ Use `oid.h` helpers rather than open-coding comparisons or system OID checks.
 
 - Do not treat `OID` as just a heap address in generic code; system classes, catalog objects, and cache helpers attach
   meaning to specific OIDs.
-- Do not mutate `RECDES::data` unless ownership and capacity are clear. Peeked descriptors may point into a page frame.
+- Do not mutate `RECDES::data` unless ownership and capacity are clear. A peek points into a page frame and becomes
+  invalid after unfix or page changes. Ordered fixes can release and reacquire a page; follow the
+  [watcher revalidation rules](buffer-io-durability.md#latches-and-watchers) before reusing a peek.
 - Changing identifier layout or serialized sizes is a disk/network compatibility issue, not a local refactor.

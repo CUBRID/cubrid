@@ -5,9 +5,9 @@ Mostly server/standalone storage code. A small client subset is also compiled in
 (plus `es_owfs.c` on UNIX builds). Core managers such as B-tree, heap, page buffer, disk/file manager, slotted
 pages, overflow files, catalog, and server statistics are `SERVER_MODE` / `SA_MODE` only.
 
-For project-wide style, error handling, memory rules, build commands, and CI policy, inherit the root
-[AGENTS.md](../../AGENTS.md) and [src/AGENTS.md](../AGENTS.md). This file only adds storage-specific navigation and
-safety rules.
+For project-wide style, error handling, memory rules, build commands, and CI policy, follow the effective checkout
+instructions and [src/AGENTS.md](../AGENTS.md), including any local overrides. This file adds storage-specific
+navigation and safety rules.
 
 ## Reference Docs
 
@@ -26,14 +26,15 @@ safety rules.
 | File | Role |
 |------|------|
 | `storage_common.h`, `oid.c/h`, `record_descriptor.cpp/hpp` | Core storage identifiers and record descriptors |
-| `page_buffer.c/h` | Buffer pool: fix/unfix, latches, dirty pages, flushing (~17K lines) |
+| `page_buffer.c/h` | Buffer pool: fix/unfix, latches, dirty pages, flushing |
 | `file_io.c/h`, `double_write_buffer.cpp/hpp`, `tde.c/h` | Raw volume I/O, torn-write protection, page/log encryption |
 | `disk_manager.c/h`, `file_manager.c/h` | Volumes/sectors and logical file allocation |
-| `heap_file.c/h` | Heap file object lifecycle, scans, MVCC versions, class representation cache (~27K lines) |
+| `heap_file.c/h`, `bestspace.cpp/hpp` | Heap lifecycle, scans, MVCC versions, class representation cache, free-space search |
 | `slotted_page.c/h`, `overflow_file.c/h` | Page slot layout and multipage record storage |
-| `btree.c/h` | B+tree search, range scan, insert/delete, MVCC index records (~37K lines) |
-| `btree_load.c/h`, `btree_unique.cpp/hpp`, `external_sort.c/h` | Bulk index build, unique stats, sort support |
-| `system_catalog.c/h`, `catalog_class.c/h`, `statistics*.c/h` | Catalog persistence and optimizer statistics |
+| `btree.c/h`, `btree_lock.cpp/hpp` | B+tree search, range scan, mutation, MVCC index records, writer waits |
+| `btree_load.c/h`, `btree_sort*`, `btree_unique.cpp/hpp` | Bulk index build, dedicated index sorting, unique stats |
+| `external_sort.c/h` | General external sorting for query and other callers |
+| `system_catalog.c/h`, `catalog_class.c/h`, `statistics*.c/h`, `compactdb_sr.c` | Catalog persistence, optimizer statistics, compaction |
 | `es*.c/h`, `es_list.h` | External storage URI API and POSIX/OWFS backends |
 
 ## Where To Look
@@ -45,12 +46,12 @@ safety rules.
 | Volume/sector space issue | `disk_manager.c`: `disk_reserve_sectors()`, `disk_check()` |
 | Logical file allocation issue | `file_manager.c`: `file_create*()`, `file_alloc*()`, `file_dealloc()` |
 | Heap scan visibility issue | `heap_file.c`: `heap_next()`, `heap_get_visible_version*()`, `heap_scancache_*()` |
-| Heap insert/update/delete issue | `heap_file.c`: `heap_insert_logical()`, `heap_update_logical()`, `heap_delete_logical()` |
+| Heap insert/update/delete or free-space search | `heap_file.c`: `heap_insert_logical()`, `heap_update_logical()`, `heap_delete_logical()`; `bestspace.cpp` |
 | Slotted page corruption | `slotted_page.c`: `spage_insert()`, `spage_update()`, `spage_delete()`, `spage_check()` |
 | Overflow record issue | `overflow_file.c`, plus `heap_ovf_*()` in `heap_file.c` |
 | Index lookup/range scan issue | `btree.c`: `btree_find_key()`, `btree_keyval_search()`, `btree_range_scan()` |
 | Index insert/delete/MVCC issue | `btree.c`: `btree_insert()`, `btree_mvcc_delete()`, `btree_physical_delete()` |
-| Bulk index build | `btree_load.c`, `external_sort.c` |
+| Bulk index build | `btree_load.c`, `btree_sort.c`, `btree_sort_merge.cpp`, `btree_sort_radix.cpp` |
 | Catalog/statistics inconsistency | `system_catalog.c`, `catalog_class.c`, `statistics_sr.c`, `statistics_cl.c` |
 | External storage / LOB path issue | `es.c`, `es_posix.c`, `es_owfs.c`, `src/object/lob_locator.cpp` |
 
@@ -69,26 +70,18 @@ safety rules.
 
 ## Buffer Pool Protocol
 
-```c
-page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-/* read or modify page */
-pgbuf_unfix (thread_p, page);
+See [page fix examples and durability rules](docs/buffer-io-durability.md#page-fix-protocol).
 
-page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-/* modify page */
-pgbuf_set_dirty (thread_p, page, DONT_FREE);
-pgbuf_unfix (thread_p, page);
-```
-
-- Every successful `pgbuf_fix*()` must be matched by `pgbuf_unfix*()` or `pgbuf_set_dirty(..., FREE)`.
-- Mark modified pages dirty before unfixing.
+- Check fix results before accessing a page. Use a read latch for reads and a write latch for mutation.
+- Match ordinary fixes with `pgbuf_unfix*()` or `pgbuf_set_dirty(..., FREE)`.
+- Mark modified pages dirty before unfixing. Dirty marking does not generate recovery records.
 - Use `pgbuf_unfix_and_init()` when the pointer should be nulled after release.
-- Ordered heap/overflow page fixes use `PGBUF_WATCHER`; do not bypass watcher state for code that already uses it.
+- Match ordered fixes through `PGBUF_WATCHER` with ordered unfix helpers. Ordered fixing can release and refix held
+  pages; check `page_was_unfixed`, re-read page contents, and revalidate decisions based on them.
 
 ## Storage Rules
 
-- All permanent page access goes through the buffer pool. `file_io.c` is the low-level volume I/O layer, not a shortcut
-  for heap/B-tree/catalog page edits.
+- Permanent heap/B-tree/catalog page edits go through the buffer pool. `file_io.c` is the low-level volume I/O layer.
 - Page latches protect physical consistency. Transaction locks protect logical consistency. Do not substitute one for
   the other.
 - Respect latch ordering. Parent/ancestor pages are generally fixed before child pages; heap/overflow ordered fixes carry
@@ -97,7 +90,8 @@ pgbuf_unfix (thread_p, page);
   check/dump code in the same subsystem.
 - There is no `src/storage/CMakeLists.txt`; source ownership is in `cubrid/CMakeLists.txt`, `sa/CMakeLists.txt`, and
   `cs/CMakeLists.txt`.
-- `.c` files are compiled as C++17. Do not introduce C++ exceptions in engine code.
+- Storage sources, including `.c` files, compile as C++17 through the target CMake source properties. For throwing STL
+  operations, catch exceptions at the call site and immediately translate them into CUBRID's C-style error handling.
 
 ## Gotchas
 
