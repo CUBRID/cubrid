@@ -3207,6 +3207,10 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   isidp->iscan_oid_order = iscan_oid_order;
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
+  isidp->ahead_single = false;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
 			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -3630,6 +3634,10 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&isidp->scan_pred, NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
   isidp->iscan_oid_order = iscan_oid_order;
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
+  isidp->ahead_single = false;
 
   if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
 			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -5365,7 +5373,105 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
       break;
     }
 
+  /* heap pages of the new buffer: the lookups tell the OS about them a window ahead, from the first window's size */
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  if (oids_cnt > 1 && isidp->oid_list != NULL && !isidp->multi_range_opt.use && !isidp->need_count_only
+      && !SCAN_IS_INDEX_COVERED (isidp) && !scan_id->grouped)
+    {
+      isidp->ahead_next = 0;
+      if (scan_id->single_fetch == QPROC_SINGLE_INNER || isidp->ahead_single)
+	{
+	  /* the inner scan of a NL semi/anti join and the scan of an EXISTS subquery stop at their first match: the
+	   * first OID's page is read at once and the windows start after it, so a scan that matches at once tells
+	   * the OS nothing */
+	  isidp->ahead_next = 1;
+	  isidp->ahead_distance = 1;
+	}
+    }
+
   return S_SUCCESS;
+}
+
+/*
+ * scan_index_alloc_oid_buffer () - give an index scan the OID buffer a covering scan goes without
+ *   return: error code
+ *   isidp(in/out): index scan
+ *
+ * Note: A parallel index scan worker drains every key's OIDs through its scan's OID buffer, covering or not.
+ */
+#if defined(SERVER_MODE)
+int
+scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
+{
+  int error_code;
+
+  if (isidp->oid_list != NULL)
+    {
+      return NO_ERROR;
+    }
+  error_code = scan_alloc_iscan_oid_buf_list (&isidp->oid_list);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
+  isidp->oid_list->oid_cnt = 0;
+  isidp->curr_oidp = isidp->oid_list->oidp;
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * scan_index_read_ahead () - tell the OS which heap pages the OIDs of the OID buffer from the one being looked up on
+ *                            are, a window ahead
+ *   thread_p(in):
+ *   isidp(in/out): index scan; oid_list->oidp[0, oids_count) the OIDs, curr_oidno the OID about to be looked up,
+ *                  ahead_next the first OID not yet in a window (INT_MAX when every OID left was), ahead_distance
+ *                  the size of the last whole window, ahead_limit the size a window grows to
+ *   more(in): OIDs may follow the buffer's last one (a parallel index scan worker's buffer grows with the keys it
+ *             evaluates ahead)
+ *
+ * Note: The lookups stay in the order of the buffer and read one page at a time; the OS reads the pages of the
+ *       window together, so a lookup finds its page read or on its way. The caller calls it when the lookup is half a
+ *       window (ahead_distance / 2) from ahead_next. A window holds twice the OIDs of the one before it and ends
+ *       ahead_limit OIDs from the lookup at most, so no more than that many OIDs are told and not yet looked up.
+ */
+void
+scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more)
+{
+  VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
+  const OID *oids = isidp->oid_list->oidp;
+  const int curr = isidp->curr_oidno;
+  const int count = isidp->oids_count;
+  const int distance = SCAN_INDEX_READ_AHEAD_NEXT (isidp);
+  int start = MAX (isidp->ahead_next, curr);
+  int end = MIN (count, curr + distance);
+  int n = 0;
+  int i;
+
+  for (i = start; i < end; i++)
+    {
+      if (n == 0 || vpids[n - 1].pageid != oids[i].pageid || vpids[n - 1].volid != oids[i].volid)
+	{
+	  vpids[n].pageid = oids[i].pageid;
+	  vpids[n].volid = oids[i].volid;
+	  n++;
+	}
+    }
+  isidp->ahead_next = (end == count && !more) ? INT_MAX : end;
+  if (end == curr + distance)
+    {
+      /* a window cut short by the buffer's end does not make the next one larger */
+      isidp->ahead_distance = distance;
+    }
+
+  if (n == 0 || (n == 1 && start == curr))
+    {
+      /* the one page of a window that starts here is the page the lookup reads right now */
+      return;
+    }
+  pgbuf_read_ahead (thread_p, vpids, n);
 }
 
 /*
@@ -6500,6 +6606,11 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (thread_is_on_trace (thread_p))
 	    {
 	      tsc_getticks (&start_tick);
+	    }
+
+	  if (isidp->curr_oidno + isidp->ahead_distance / 2 >= isidp->ahead_next)
+	    {
+	      scan_index_read_ahead (thread_p, isidp, false);
 	    }
 
 	  lookup_status = scan_next_index_lookup_heap (thread_p, scan_id, isidp, &data_filter, isolation);

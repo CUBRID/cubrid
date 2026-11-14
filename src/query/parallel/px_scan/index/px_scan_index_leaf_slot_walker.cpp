@@ -49,7 +49,7 @@ namespace parallel_index_scan
   {
     struct leaf_collect_helper
     {
-      std::vector<OID> *oid_vec;
+      BTREE_ISCAN_OID_LIST *oids;
       MVCC_SNAPSHOT *snapshot;
     };
   }
@@ -68,9 +68,17 @@ namespace parallel_index_scan
       m_use_desc_index (false),
       m_slot_key_valid (false),
       m_slot_clear_key (false),
-      m_key_values_ready (false)
+      m_key_values_ready (false),
+      m_ahead (),
+      m_ahead_head (0),
+      m_ahead_last (),
+      m_ahead_slot (0),
+      m_ahead_end (false),
+      m_ahead_skipped_keys (0),
+      m_ahead_interrupted (false)
   {
     db_make_null (&m_slot_key);
+    db_make_null (&m_ahead_last.key);
   }
 
   void
@@ -120,6 +128,7 @@ namespace parallel_index_scan
   void
   leaf_slot_walker::cleanup_on_reset (THREAD_ENTRY *thread_p)
   {
+    clear_ahead ();
     release_leaf (thread_p);
     if (m_slot_key_valid && m_slot_clear_key)
       {
@@ -144,6 +153,9 @@ namespace parallel_index_scan
 	pgbuf_unfix (thread_p, m_page);
 	m_page = nullptr;
       }
+    /* the keys evaluated ahead were the old leaf's: the walk of a leaf ends only when they are drained */
+    assert (ahead_empty ());
+    clear_ahead ();
 
     if (m_slot_key_valid && m_slot_clear_key)
       {
@@ -392,7 +404,14 @@ namespace parallel_index_scan
 	  }
       }
 
-    helper->oid_vec->push_back (*oid);
+    /* the OIDs of one leaf page fit in the buffer's capacity (two pages at least) */
+    if (helper->oids->oid_cnt >= helper->oids->capacity)
+      {
+	assert_release (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_FAILED;
+      }
+    helper->oids->oidp[helper->oids->oid_cnt++] = *oid;
     return NO_ERROR;
   }
 
@@ -462,6 +481,12 @@ namespace parallel_index_scan
       }
 
     /* Non-covering index path: read values from heap record */
+    read_ahead (thread_p);
+    if (m_ahead_interrupted)
+      {
+	return S_ERROR;
+      }
+
     RECDES heap_recdes = RECDES_INITIALIZER;
     if (m_scan_id->fixed == false)
       {
@@ -529,36 +554,68 @@ namespace parallel_index_scan
     return S_SUCCESS;
   }
 
-  /* Walk remaining slots on m_page until a row qualifies (delegates OID drain to FSM). */
-  SCAN_CODE
-  leaf_slot_walker::scan_next_slot (THREAD_ENTRY *thread_p)
+  /* the slot's key failed: as the lookups reach it, the error is raised and the range's end signaled; looked at
+   * ahead, the error is dropped (the slot is read again when the lookups reach it), except the query's interrupt:
+   * raising it cleared the transaction's interrupt, so the slot read again would not raise it and the next lookup
+   * returns it instead */
+  leaf_slot_walker::slot_result
+  leaf_slot_walker::stop_at_error (THREAD_ENTRY *thread_p, bool ahead)
+  {
+    if (ahead)
+      {
+	if (er_errid () == ER_INTERRUPTED)
+	  {
+	    m_ahead_interrupted = true;
+	  }
+	else
+	  {
+	    er_clear ();
+	  }
+      }
+    else
+      {
+	m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
+      }
+    return slot_result::ERROR;
+  }
+
+  /* inlined into both callers: the key loop runs once per key, as it did inside scan_next_slot */
+  inline __attribute__ ((ALWAYS_INLINE)) leaf_slot_walker::slot_result
+  leaf_slot_walker::next_key (THREAD_ENTRY *thread_p, int *slot, bool ahead, key_read *out, int *read_keys)
   {
     INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
 
-    /* Clear previous slot's key if any. */
-    if (m_slot_key_valid && m_slot_clear_key)
+    while (m_use_desc_index ? (*slot >= 1) : (*slot <= m_num_keys))
       {
-	pr_clear_value (&m_slot_key);
-      }
-    m_slot_key_valid = false;
-    m_slot_clear_key = false;
-
-    while (m_use_desc_index ? (m_current_slot >= 1) : (m_current_slot <= m_num_keys))
-      {
+	const int at = *slot;
+	const int at_range_idx = m_current_range_idx;
+	const int at_read_keys = *read_keys;
+	/* ahead, the key it stops at is left unread: check_key_in_range may have moved m_current_range_idx, and the
+	 * lookups read this slot again when they reach it, so it raises the error or signals the end then */
+	auto stop = [&] (slot_result r)
+	{
+	  if (ahead)
+	    {
+	      *slot = at;
+	      *read_keys = at_read_keys;
+	      m_current_range_idx = at_range_idx;
+	    }
+	  return r;
+	};
 	RECDES rec;
 	rec.data = nullptr;
 	rec.area_size = -1;
 
-	if (spage_get_record (thread_p, m_page, m_current_slot, &rec, PEEK) != S_SUCCESS)
+	if (spage_get_record (thread_p, m_page, *slot, &rec, PEEK) != S_SUCCESS)
 	  {
-	    m_use_desc_index ? m_current_slot-- : m_current_slot++;
+	    m_use_desc_index ? (*slot)-- : (*slot)++;
 	    continue;
 	  }
 
 	/* fence keys duplicate adjacent-leaf keys; counting them double-inflates aggregate / group-by. */
 	if (btree_leaf_record_is_fence (&rec))
 	  {
-	    m_use_desc_index ? m_current_slot-- : m_current_slot++;
+	    m_use_desc_index ? (*slot)-- : (*slot)++;
 	    continue;
 	  }
 
@@ -571,7 +628,7 @@ namespace parallel_index_scan
 	int rerr = btree_read_record (thread_p, m_btid_int, m_page, &rec, &key,
 				      &leaf_rec_info, BTREE_LEAF_NODE,
 				      &clear_key, &offset, COPY, nullptr);
-	m_use_desc_index ? m_current_slot-- : m_current_slot++;
+	m_use_desc_index ? (*slot)-- : (*slot)++;
 
 	if (rerr != NO_ERROR)
 	  {
@@ -579,11 +636,10 @@ namespace parallel_index_scan
 	      {
 		pr_clear_value (&key);
 	      }
-	    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
-	    return S_ERROR;
+	    return stop (stop_at_error (thread_p, ahead));
 	  }
 
-	m_scan_id->scan_stats.read_keys++;
+	(*read_keys)++;
 
 	bool in_range = false;
 	bool past_upper = false;
@@ -595,8 +651,7 @@ namespace parallel_index_scan
 	      {
 		pr_clear_value (&key);
 	      }
-	    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
-	    return S_ERROR;
+	    return stop (stop_at_error (thread_p, ahead));
 	  }
 
 	if (!in_range)
@@ -607,8 +662,11 @@ namespace parallel_index_scan
 	      }
 	    if (past_upper)
 	      {
-		m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
-		return S_END;
+		if (!ahead)
+		  {
+		    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
+		  }
+		return stop (slot_result::END);
 	      }
 	    continue;
 	  }
@@ -676,20 +734,20 @@ namespace parallel_index_scan
 		  }
 		if (ev_res == V_ERROR)
 		  {
-		    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
-		    return S_ERROR;
+		    return stop (stop_at_error (thread_p, ahead));
 		  }
 		continue;
 	      }
 	  }
 
-	/* mirrors btree.c:25414 — increment only after key filter passes. */
-	m_scan_id->scan_stats.qualified_keys++;
+	/* qualified_keys (btree.c:25414: only after the key filter passes) is added by the caller with the OIDs */
 
-	/* Gather leaf-resident OIDs only; overflow pulled lazily after leaf-OID buffer drains. */
-	std::vector<OID> leaf_oids;
+	/* Gather leaf-resident OIDs only, after the leaf's OIDs in the scan's OID buffer; overflow pulled lazily after the
+	 * leaf OIDs drain. */
+	BTREE_ISCAN_OID_LIST *leaf_oids = isidp->oid_list;
+	const int at_oids = leaf_oids->oid_cnt;
 	leaf_collect_helper oid_helper;
-	oid_helper.oid_vec = &leaf_oids;
+	oid_helper.oids = leaf_oids;
 	oid_helper.snapshot = isidp->scan_cache.mvcc_snapshot;
 
 	bool record_stop = false;
@@ -698,25 +756,185 @@ namespace parallel_index_scan
 		       collect_oid_callback, &oid_helper);
 	if (proc_err != NO_ERROR)
 	  {
+	    leaf_oids->oid_cnt = at_oids;
 	    if (clear_key)
 	      {
 		pr_clear_value (&key);
 	      }
-	    m_input_handler->signal_chain_ended (thread_p, m_current_range_idx, m_page);
-	    return S_ERROR;
+	    return stop (stop_at_error (thread_p, ahead));
 	  }
 
-	m_scan_id->scan_stats.key_qualified_rows += leaf_oids.size ();
-	m_scan_id->scan_stats.read_rows += leaf_oids.size ();
+	out->key = key;
+	out->clear_key = clear_key;
+	out->ovfl = leaf_rec_info.ovfl;
+	return slot_result::QUALIFIED;
+      }
+    return slot_result::LEAF_END;
+  }
+
+  void
+  leaf_slot_walker::clear_ahead ()
+  {
+    if (m_ahead_last.clear_key)
+      {
+	pr_clear_value (&m_ahead_last.key);
+      }
+    db_make_null (&m_ahead_last.key);
+    m_ahead_last.clear_key = false;
+    VPID_SET_NULL (&m_ahead_last.ovfl);
+    m_ahead.clear ();
+    m_ahead_head = 0;
+    if (m_scan_id != nullptr)
+      {
+	m_scan_id->s.isid.ahead_next = 0;
+      }
+    m_ahead_end = false;
+    m_ahead_interrupted = false;
+  }
+
+  /* evaluates the next key of m_page ahead of the lookups; false when there is none to queue (end of the leaf, the
+   * range's end, an error): the look-ahead ends there (m_ahead_end) and the lookups go on from m_ahead_slot, past the
+   * keys it skipped */
+  bool
+  leaf_slot_walker::evaluate_ahead (THREAD_ENTRY *thread_p)
+  {
+    int slot = ahead_empty () ? m_current_slot : m_ahead_slot;
+    int read_keys = 0;
+    key_read k;
+
+    if (next_key (thread_p, &slot, true, &k, &read_keys) != slot_result::QUALIFIED)
+      {
+	m_ahead_slot = slot;
+	m_ahead_skipped_keys = read_keys;
+	m_ahead_end = true;
+	return false;
+      }
+    m_ahead.push_back ({ m_scan_id->s.isid.oid_list->oid_cnt, slot, read_keys });
+    if (!VPID_ISNULL (&k.ovfl))
+      {
+	/* the walk goes no further than a key with an overflow chain: its value is kept to publish the chain */
+	m_ahead_last = k;
+      }
+    else if (k.clear_key)
+      {
+	pr_clear_value (&k.key);
+      }
+    m_ahead_slot = slot;
+    return true;
+  }
+
+  void
+  leaf_slot_walker::read_ahead (THREAD_ENTRY *thread_p)
+  {
+    INDX_SCAN_ID *isidp = &m_scan_id->s.isid;
+    BTREE_ISCAN_OID_LIST *oids = isidp->oid_list;
+    bool more = true;
+
+    isidp->curr_oidno = m_drain_fsm->buffer_next () - 1;	/* the OID being looked up */
+    if (isidp->curr_oidno + isidp->ahead_distance / 2 < isidp->ahead_next)
+      {
+	return;
+      }
+
+    /* the keys evaluated ahead extend the OID buffer to a window from the OID being looked up (only after a key whose
+     * OIDs are all on the leaf: an overflow chain is drained before the next key), no more OIDs ahead of the lookups
+     * than the buffer's max_oid_cnt (index_scan_oid_buffer_size), as a serial scan's buffer holds */
+    while (oids->oid_cnt < isidp->curr_oidno + SCAN_INDEX_READ_AHEAD_NEXT (isidp)
+	   && oids->oid_cnt - isidp->curr_oidno < oids->max_oid_cnt)
+      {
+	if (m_page == nullptr
+	    || ! (ahead_empty () ? m_drain_fsm->next_is_next_key () : VPID_ISNULL (&m_ahead_last.ovfl))
+	    || !evaluate_ahead (thread_p))
+	  {
+	    more = false;
+	    break;
+	  }
+      }
+    isidp->oids_count = oids->oid_cnt;
+    scan_index_read_ahead (thread_p, isidp, more);
+  }
+
+  /* Walk remaining slots on m_page until a row qualifies (delegates OID drain to FSM). */
+  SCAN_CODE
+  leaf_slot_walker::scan_next_slot (THREAD_ENTRY *thread_p)
+  {
+    /* Clear previous slot's key if any. */
+    if (m_slot_key_valid && m_slot_clear_key)
+      {
+	pr_clear_value (&m_slot_key);
+      }
+    m_slot_key_valid = false;
+    m_slot_clear_key = false;
+
+    for (;;)
+      {
+	key_read k;
+	int read_keys = 0;
+	int begin = 0;
+	int end = 0;
+
+	db_make_null (&k.key);
+	if (!ahead_empty ())
+	  {
+	    const ahead_key &a = m_ahead[m_ahead_head++];
+
+	    begin = m_drain_fsm->buffer_end ();
+	    end = a.end;
+	    m_current_slot = a.next_slot;
+	    read_keys = a.read_keys;
+	    if (ahead_empty ())
+	      {
+		m_ahead.clear ();
+		m_ahead_head = 0;
+		k = m_ahead_last;
+		db_make_null (&m_ahead_last.key);
+		m_ahead_last.clear_key = false;
+		VPID_SET_NULL (&m_ahead_last.ovfl);
+	      }
+	  }
+	else
+	  {
+	    if (m_ahead_end)
+	      {
+		/* the look-ahead stopped at m_ahead_slot: the slots it skipped are not read again */
+		m_current_slot = m_ahead_slot;
+		m_scan_id->scan_stats.read_keys += m_ahead_skipped_keys;
+		m_ahead_end = false;
+	      }
+	    m_scan_id->s.isid.oid_list->oid_cnt = 0;
+	    slot_result r = next_key (thread_p, &m_current_slot, false, &k, &read_keys);
+	    m_scan_id->scan_stats.read_keys += read_keys;
+	    if (r == slot_result::LEAF_END)
+	      {
+		break;
+	      }
+	    if (r == slot_result::END)
+	      {
+		return S_END;
+	      }
+	    if (r == slot_result::ERROR)
+	      {
+		return S_ERROR;
+	      }
+	    end = m_scan_id->s.isid.oid_list->oid_cnt;
+	    read_keys = 0;
+	    m_scan_id->s.isid.ahead_next = 0;
+	  }
+
+	/* a key's counters are added when its OIDs are looked up, also when it was evaluated ahead */
+	m_scan_id->scan_stats.read_keys += read_keys;
+	m_scan_id->scan_stats.qualified_keys++;
+	m_scan_id->scan_stats.key_qualified_rows += end - begin;
+	m_scan_id->scan_stats.read_rows += end - begin;
 
 	/* Save the key for process_oid (covering-index PEEK reads via btree_attrinfo_read_dbvalues). */
-	m_slot_key = key;
+	m_slot_key = k.key;
 	m_slot_key_valid = true;
-	m_slot_clear_key = clear_key;
+	m_slot_clear_key = k.clear_key;
 	begin_key_record ();
 
 	/* Hand the OID buffer + pending overflow chain head to the FSM; try_publish happens after leaf-OID drain. */
-	m_drain_fsm->begin_leaf_drain (std::move (leaf_oids), leaf_rec_info.ovfl);
+	m_drain_fsm->begin_leaf_drain (begin, end, k.ovfl);
 
 	SCAN_CODE drain_sc = m_drain_fsm->drain_next_oid (thread_p);
 	if (drain_sc != S_END)
