@@ -8678,57 +8678,6 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_append_query_select_list () - append to the query's lists attrs
- *
- *  result: query with all lists updated
- *  parser(in):
- *  query(in):
- *  attrs(in): list of attributes to append to the query; a set operation
- *	       appends a separate copy to each of its arms
- */
-PT_NODE *
-pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * attrs)
-{
-  if (!attrs)
-    {
-      return query;
-    }
-
-  switch (query->node_type)
-    {
-    case PT_SELECT:
-      {
-	PT_NODE *select_list = query->info.query.q.select.list;
-
-	query->info.query.q.select.list = parser_append_node (attrs, select_list);
-	break;
-      }
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-    case PT_UNION:
-      {
-	/* a node can be linked into only one select list, so the second arm gets its own copy */
-	PT_NODE *attrs_copy = parser_copy_tree_list (parser, attrs);
-
-	if (attrs_copy == NULL)
-	  {
-	    PT_INTERNAL_ERROR (parser, "allocate new node");
-	    break;
-	  }
-
-	query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
-	query->info.query.q.union_.arg2 =
-	  pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs_copy);
-	break;
-      }
-    default:
-      break;
-    }
-
-  return query;
-}
-
-/*
  * pt_wrap_select_list_with_cast_op () - cast the nodes of a select list
  *				to the type new_type, using the specified
  *				precision and scale

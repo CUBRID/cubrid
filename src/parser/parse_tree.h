@@ -2577,6 +2577,9 @@ struct pt_insert_info
   PT_NODE *insert_mode;		/* insert execution mode */
   PT_NODE *non_null_attrs;	/* attributes with not null constraint */
   PT_NODE *odku_non_null_attrs;	/* attributes with not null constraint in odku assignments */
+  PT_NODE *default_attrs;	/* PT_NAME list: attributes of a view that INSERT ... SELECT leaves out and that take
+				 * the DEFAULT of the view, not of the class behind it */
+  PT_NODE *default_values;	/* PT_DATA_DEFAULT list: the DEFAULT of each of default_attrs */
   int has_uniques;		/* class has unique constraints */
   SERVER_INSERT_ALLOWED server_allowed;	/* is insert allowed on server */
   unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */

@@ -13827,6 +13827,8 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
   PT_APPLY_WALK (parser, p->info.insert.odku_assignments, arg);
   PT_APPLY_WALK (parser, p->info.insert.odku_non_null_attrs, arg);
   PT_APPLY_WALK (parser, p->info.insert.non_null_attrs, arg);
+  PT_APPLY_WALK (parser, p->info.insert.default_attrs, arg);
+  PT_APPLY_WALK (parser, p->info.insert.default_values, arg);
   return p;
 }
 
@@ -14016,6 +14018,18 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
       /* an append failed; going on would start a new PARSER_VARCHAR
        * and print the statement without what came before */
       return NULL;
+    }
+
+  if (p->info.insert.default_attrs != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+    {
+      /* the cache key text: the plan holds the DEFAULTs of the view the statement was written on, which no other
+       * part of the translated statement shows */
+      r1 = pt_print_bytes_l (parser, p->info.insert.default_attrs);
+      r2 = pt_print_bytes_l (parser, p->info.insert.default_values);
+      b = pt_append_nulstring (parser, b, " (");
+      b = pt_append_varchar (parser, b, r1);
+      b = pt_append_nulstring (parser, b, ")");
+      b = pt_append_varchar (parser, b, r2);
     }
 
   if (p->info.insert.into_var)

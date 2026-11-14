@@ -7721,7 +7721,7 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *spec = NULL;
   PT_NODE *entity_name = NULL;
   PT_NODE *attr_list = NULL, *attr = NULL;
-  PT_NODE *value_clauses = NULL, *value_list = NULL;
+  PT_NODE *value_clauses = NULL;
   PT_NODE *crt_node = NULL;
   PT_NODE *rest_attrs = NULL, *rest_values = NULL;
   DB_OBJECT *db_obj = NULL;
@@ -7760,7 +7760,6 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   value_clauses = statement->info.insert.value_clauses;
-  value_list = value_clauses->info.node_list.list;
   attr_list = statement->info.insert.attr_list;
   if (!attr_list)
     {
@@ -7769,6 +7768,15 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   is_values = (value_clauses->info.node_list.list_type == PT_IS_VALUE);
   is_subqery = (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY);
+
+  if (statement->info.insert.default_attrs != NULL)
+    {
+      /* resolved before: make them again */
+      parser_free_tree (parser, statement->info.insert.default_attrs);
+      parser_free_tree (parser, statement->info.insert.default_values);
+      statement->info.insert.default_attrs = NULL;
+      statement->info.insert.default_values = NULL;
+    }
 
   db_attributes = db_get_attributes_force (db_obj);
   if (db_attributes == NULL)
@@ -7839,10 +7847,20 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	  if (is_subqery)
 	    {
-	      PT_NODE *val = pt_sm_attribute_default_value_to_node (parser, db_attr);
+	      /* the insert gives this DEFAULT itself, to the rows the source query has made */
+	      PT_NODE *val = parser_new_node (parser, PT_DATA_DEFAULT);
 	      if (!val)
 		{
+		  PT_ERROR (parser, statement, "allocation error");
+		  goto error;
+		}
+	      val->info.data_default.shared = PT_DEFAULT;
+	      val->info.data_default.default_expr_type = db_attr->default_value.default_expr.default_expr_type;
+	      val->info.data_default.default_value = pt_sm_attribute_default_value_to_node (parser, db_attr);
+	      if (val->info.data_default.default_value == NULL)
+		{
 		  /* error was already handled */
+		  parser_free_tree (parser, val);
 		  goto error;
 		}
 
@@ -7864,6 +7882,15 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
       return statement;
     }
 
+  if (is_subqery)
+    {
+      /* A value appended to the select list of the source would become a part of what DISTINCT or a set operation
+       * compares, so the DEFAULTs of the view stay out of the source. */
+      statement->info.insert.default_attrs = rest_attrs;
+      statement->info.insert.default_values = rest_values;
+      return statement;
+    }
+
   statement->info.insert.attr_list = parser_append_node (rest_attrs, attr_list);
   if (is_values)
     {
@@ -7879,11 +7906,6 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       /* only copied of rest_values are used, has to be freed */
       parser_free_tree (parser, rest_values);
-    }
-  if (is_subqery)
-    {
-      statement->info.insert.value_clauses->info.node_list.list =
-	pt_append_query_select_list (parser, value_list, rest_values);
     }
 
   return statement;

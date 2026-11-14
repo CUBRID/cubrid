@@ -14600,6 +14600,40 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	    }
 	}
     }
+
+  /* an attribute that takes the DEFAULT of a view is assigned too */
+  for (attr = stmt->info.insert.default_attrs; attr != NULL; attr = attr->next)
+    {
+      PT_NODE *attr2;
+
+      if (attr->node_type != PT_NAME)
+	{
+	  continue;
+	}
+      for (attr2 = stmt->info.insert.attr_list; attr2 != NULL; attr2 = attr2->next)
+	{
+	  if (attr2->node_type == PT_NAME && pt_name_equal (parser, attr, attr2))
+	    {
+	      break;
+	    }
+	}
+      if (attr2 == NULL)
+	{
+	  for (attr2 = attr->next; attr2 != NULL; attr2 = attr2->next)
+	    {
+	      if (attr2->node_type == PT_NAME && pt_name_equal (parser, attr, attr2))
+		{
+		  break;
+		}
+	    }
+	}
+      if (attr2 != NULL)
+	{
+	  PT_ERRORmf2 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
+		       class_name, attr->info.name.original);
+	  return;
+	}
+    }
 }
 
 /*

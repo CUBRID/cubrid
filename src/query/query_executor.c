@@ -2929,6 +2929,15 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       break;
 
     case INSERT_PROC:
+      if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.insert.given_default_vals != NULL)
+	{
+	  /* the defaults the statement gives may own memory: they live as long as the XASL does */
+	  for (int k = 0; k < xasl->proc.insert.num_default_expr; k++)
+	    {
+	      (void) pr_clear_value (xasl->proc.insert.given_default_vals[k]);
+	      (void) pr_clear_value (xasl->proc.insert.given_default_formats[k]);
+	    }
+	}
       if (xasl->proc.insert.odku != NULL)
 	{
 	  int i;
@@ -3541,6 +3550,15 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       break;
 
     case INSERT_PROC:
+      if (XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE) && xasl->proc.insert.given_default_vals != NULL)
+	{
+	  /* the defaults the statement gives may own memory: they live as long as the XASL does */
+	  for (int k = 0; k < xasl->proc.insert.num_default_expr; k++)
+	    {
+	      (void) pr_clear_value (xasl->proc.insert.given_default_vals[k]);
+	      (void) pr_clear_value (xasl->proc.insert.given_default_formats[k]);
+	    }
+	}
       if (xasl->proc.insert.odku != NULL)
 	{
 	  int i;
@@ -18547,9 +18565,36 @@ qexec_default_format_domain (void)
 }
 
 /*
+ * qexec_insert_default_expr () - the default expression of a default slot of an INSERT: the one the statement gives
+ *				  in place of the attribute's own (the DEFAULT of a view), or the attribute's own
+ *   return: true if the statement gives it
+ *   insert(in): INSERT_PROC_NODE
+ *   k(in): the slot
+ *   attr(in): the attribute of the slot
+ *   default_expr(out):
+ */
+static bool
+qexec_insert_default_expr (const INSERT_PROC_NODE * insert, int k, const OR_ATTRIBUTE * attr,
+			   DB_DEFAULT_EXPR * default_expr)
+{
+  if (insert->given_default_types == NULL || insert->given_default_types[k] < 0)
+    {
+      *default_expr = attr->current_default_value.default_expr;
+      return false;
+    }
+
+  default_expr->default_expr_type = (DB_DEFAULT_EXPR_TYPE) insert->given_default_types[k];
+  default_expr->default_expr_op = insert->given_default_ops[k];
+  default_expr->default_expr_format =
+    DB_IS_NULL (insert->given_default_formats[k]) ? NULL : db_get_string (insert->given_default_formats[k]);
+  return true;
+}
+
+/*
  * qexec_generate_row_default_expr () - Generate a row-level default expression value
  *   return: NO_ERROR or ER_code
  *   attr(in): attribute metadata
+ *   default_expr(in): the default expression to generate (qexec_insert_default_expr)
  *   xasl_state(in): XASL state containing value descriptor
  *   uuid_state(in): UUID generation state
  *   out_val(out): generated value
@@ -18557,8 +18602,9 @@ qexec_default_format_domain (void)
  *   conv(in): a value of that type into the attribute's domain, found at unpack
  */
 static int
-qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
-				 DB_VALUE * out_val, DB_TYPE value_type, TP_VALUE_CONVERTER conv)
+qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, const DB_DEFAULT_EXPR * default_expr, XASL_STATE * xasl_state,
+				 UUID_STATE * uuid_state, DB_VALUE * out_val, DB_TYPE value_type,
+				 TP_VALUE_CONVERTER conv)
 {
   DB_VALUE new_val;
   DB_DEFAULT_EXPR_TYPE expr_type;
@@ -18568,7 +18614,7 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
   assert (attr != NULL);
   assert (out_val != NULL);
 
-  expr_type = attr->current_default_value.default_expr.default_expr_type;
+  expr_type = default_expr->default_expr_type;
   assert (DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type));
 
   pr_clear_value (out_val);
@@ -18607,7 +18653,7 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
       return error;
     }
 
-  if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
+  if (default_expr->default_expr_op == T_TO_CHAR)
     {
       DB_VALUE format_val, lang_val;
       int has_user_format = 0;
@@ -18615,9 +18661,9 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
       const char *lang_str;
       TP_DOMAIN *result_domain;
 
-      if (attr->current_default_value.default_expr.default_expr_format != NULL)
+      if (default_expr->default_expr_format != NULL)
 	{
-	  db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	  db_make_string (&format_val, default_expr->default_expr_format);
 	  has_user_format = 1;
 	}
       else
@@ -18714,6 +18760,7 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
   for (k = 0; k < num_default_expr; k++)
     {
       OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
+      DB_DEFAULT_EXPR default_expr;
       DB_DEFAULT_EXPR_TYPE expr_type;
       int error;
 
@@ -18723,13 +18770,14 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
 	  return ER_FAILED;
 	}
 
-      expr_type = attr->current_default_value.default_expr.default_expr_type;
+      (void) qexec_insert_default_expr (insert, k, attr, &default_expr);
+      expr_type = default_expr.default_expr_type;
       if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type))
 	{
 	  continue;
 	}
 
-      error = qexec_generate_row_default_expr (attr, xasl_state, &uuid_state, insert->vals[k],
+      error = qexec_generate_row_default_expr (attr, &default_expr, xasl_state, &uuid_state, insert->vals[k],
 					       (DB_TYPE) insert->default_types[k], insert->default_convs[k]);
       if (error != NO_ERROR)
 	{
@@ -19041,6 +19089,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       OR_ATTRIBUTE *attr;
       DB_VALUE *new_val;
+      DB_DEFAULT_EXPR default_expr;
+      bool is_given_default;
       int error = NO_ERROR;
       TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
@@ -19057,7 +19107,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       db_make_null (new_val);
       insert->vals[k] = new_val;
 
-      switch (attr->current_default_value.default_expr.default_expr_type)
+      is_given_default = qexec_insert_default_expr (insert, k, attr, &default_expr);
+      switch (default_expr.default_expr_type)
 	{
 	case DB_DEFAULT_SYSTIME:
 	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
@@ -19195,7 +19246,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 
 	case DB_DEFAULT_NONE:
-	  if (attr->current_default_value.val_length <= 0)
+	  if (is_given_default)
+	    {
+	      /* already in the attribute's domain */
+	      error = pr_clone_value (insert->given_default_vals[k], &insert_val);
+	      if (error != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	  else if (attr->current_default_value.val_length <= 0)
 	    {
 	      /* leave default value as NULL */
 	      break;
@@ -19217,12 +19277,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 	}
 
-      if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
+      if (default_expr.default_expr_op == T_TO_CHAR)
 	{
-	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
-	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
+	  assert (default_expr.default_expr_type != DB_DEFAULT_NONE);
+	  if (default_expr.default_expr_format != NULL)
 	    {
-	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	      db_make_string (&format_val, default_expr.default_expr_format);
 	      has_user_format = 1;
 	    }
 	  else
@@ -19275,7 +19335,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (attr->current_default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+      if (default_expr.default_expr_type == DB_DEFAULT_NONE)
 	{
 	  /* skip the value cast */
 	  continue;

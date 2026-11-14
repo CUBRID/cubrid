@@ -271,8 +271,6 @@ extern "C"
   extern int pt_wrap_select_list_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * query, PT_TYPE_ENUM new_type, int p,
 					       int s, PT_NODE * data_type, bool force_wrap);
 
-  extern PT_NODE *pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * attrs);
-
   extern PT_NODE *pt_bind_type_from_dbval (PARSER_CONTEXT *, PT_NODE *, DB_VALUE *);
 
   extern PT_NODE *pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node);
