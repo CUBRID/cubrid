@@ -6135,10 +6135,10 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
 
   int error_code = NO_ERROR;
 
-  assert (log_check_system_op_is_started (thread_p));
-
   if (voltype == DB_PERMANENT_VOLTYPE)
     {
+      /* the volume addition is logged; a temporary volume is not, so it is added outside a system operation */
+      assert (log_check_system_op_is_started (thread_p));
       assert (boot_Db_parm->nvols >= 0);
       if (volid != boot_Db_parm->last_volid + 1)
 	{
