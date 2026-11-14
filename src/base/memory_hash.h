@@ -35,8 +35,6 @@
 
 #define ROTL32(x,r) \
   (((x) << (r)) | ((x) >> (32 - (r))))
-#define ROTL64(x,r) \
-  (((x) << (r)) | ((x) >> (64 - (r))))
 
 /*
  * The standard 32-bit offset basis (0x811C9DC5) and prime (0x01000193 = 2^24 + 2^8 + 0x93) of the FNV-1a hash
@@ -51,8 +49,11 @@
  */
 #define MHT_KNUTH_MULTIPLIER 0x9e3779b9u
 
-/* round (2^64 / pi), an odd number: the multiplier K of FxHasher in rustc-hash 1.x, a hash taken from Firefox */
-#define MHT_FX_MULTIPLIER 0x517cc1b727220a95ULL
+/*
+ * round (2^64 / pi), an odd number: the multiplier of a folded multiply, which XORs the high half of the 128-bit product
+ * into its low half. FxHasher in rustc-hash 1.x, a hash taken from Firefox, multiplies by it too.
+ */
+#define MHT_FOLD_MULTIPLIER 0x517cc1b727220a95ULL
 
 #define MHT2STR_COLL(id, str, size) \
   (LANG_GET_COLLATION (id))->mht2str ((LANG_GET_COLLATION (id)), (str), (size))
@@ -234,8 +235,8 @@ mht_mix_hash (unsigned int hash)
  *   return: hash value
  *   hash(in): the hash
  *
- * As mht_mix_hash () does for a 32-bit hash: multiplies carry only into the high bits, and the callers take the low
- * bits.
+ * As mht_mix_hash () does for a 32-bit hash: the callers take the low bits, which the steps of the hash leave following
+ * a pattern of the input.
  */
 STATIC_INLINE UINT64
 mht_mix_hash64 (UINT64 hash)

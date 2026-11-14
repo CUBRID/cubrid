@@ -5874,8 +5874,8 @@ lang_mht2str_byte_en_cs (const LANG_COLLATION * lang_coll, const unsigned char *
  * Step 2: hash each 8 bytes (lang_hash_u64_add).
  * Step 3: hash the bytes left the same way, padded with NULs to 8 bytes. Equal strings have the same size left, so
  *         their padding is the same too.
- * Step 4: mix the bits (mht_mix_hash64). The multiplies of Step 2 carry only into the high bits, and the hash returned
- *         is the low 32 bits.
+ * Step 4: mix the bits (mht_mix_hash64). The low bits of Step 2 still follow a pattern of the input, and the hash
+ *         returned is the low 32 bits.
  */
 static unsigned int
 lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_upper)
@@ -5911,15 +5911,21 @@ lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_
 }
 
 /*
- * lang_hash_u64_add () - add 8 bytes of a string to the hash by an FxHasher step
+ * lang_hash_u64_add () - add 8 bytes of a string to the hash by a folded multiply
  *   return: hash value
  *   hash_key(in): hash value of the bytes before
  *   chunk(in): 8 bytes of a string
  *   nul_as_space(in), to_upper(in): as lang_hash_bytes takes them
+ *
+ * The high half of the product, XORed into the low half, brings the high bits of a step down to where the next chunk
+ * lands. A plain multiply carries only into the high bits: an FxHasher step, (rotl (hash, 5) ^ chunk) * K, gave the
+ * same hash to many strings of digits padded with zeros to 9, 17 or 20 bytes.
  */
 STATIC_INLINE UINT64
 lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upper)
 {
+  unsigned __int128 product;
+
   if (nul_as_space)
     {
       chunk = lang_hash_u64_nul_as_space (chunk);
@@ -5929,7 +5935,8 @@ lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upp
       chunk = lang_hash_u64_upper (chunk);
     }
 
-  return (ROTL64 (hash_key, 5) ^ chunk) * MHT_FX_MULTIPLIER;
+  product = (unsigned __int128) (hash_key ^ chunk) * MHT_FOLD_MULTIPLIER;
+  return (UINT64) product ^ (UINT64) (product >> 64);
 }
 
 /*
