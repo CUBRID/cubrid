@@ -9278,6 +9278,8 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
 /* BCBs a read-ahead check walks in one hash chain before it gives up */
 #define PGBUF_READ_AHEAD_MAX_CHAIN_STEPS 16
+/* pages of one call remembered so that none is told twice; a call with more pages may tell the later ones again */
+#define PGBUF_READ_AHEAD_TOLD_MAX 64
 
 /*
  * pgbuf_read_ahead () - tell the OS which pages the caller is going to fix soon
@@ -9298,15 +9300,30 @@ pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
   PGBUF_BCB *bufptr;
   VPID run_vpid = VPID_INITIALIZER;
   int run_length = 0;
+  VPID told[PGBUF_READ_AHEAD_TOLD_MAX];
+  int told_count = 0;
   int hinted = 0;
   int steps;
-  int i;
+  int i, k;
 
   for (i = 0; i <= count; i++)
     {
       bufptr = NULL;
       if (i < count && !pgbuf_is_temporary_volume (vpids[i].volid))
 	{
+	  /* a page told earlier in this call is not told again and does not end the run: OIDs that alternate between
+	   * a few pages name each page many times */
+	  for (k = 0; k < told_count; k++)
+	    {
+	      if (told[k].pageid == vpids[i].pageid && told[k].volid == vpids[i].volid)
+		{
+		  break;
+		}
+	    }
+	  if (k < told_count)
+	    {
+	      continue;
+	    }
 	  /* No hash mutex: a chain changed meanwhile may give a wrong answer either way, which costs one synchronous
 	   * read or one needless hint. BCBs are never freed while the server runs, and the walk is bounded because a
 	   * BCB moved to another chain meanwhile leads the walk there; a walk cut short counts as found. */
@@ -9324,6 +9341,10 @@ pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
 		{
 		  break;
 		}
+	    }
+	  if (bufptr == NULL && told_count < PGBUF_READ_AHEAD_TOLD_MAX)
+	    {
+	      told[told_count++] = vpids[i];
 	    }
 	  if (bufptr == NULL && run_length > 0 && vpids[i].volid == run_vpid.volid
 	      && vpids[i].pageid == run_vpid.pageid + run_length)
