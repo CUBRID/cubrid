@@ -5275,14 +5275,6 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 
       log_tran_do_postpone (thread_p, tdes);
 
-      /* The files created by this transaction are not new files any longer. Close any query cursors at this moment
-       * too. */
-      if (tdes->first_save_entry != NULL)
-	{
-	  spage_free_saved_spaces (thread_p, tdes->first_save_entry);
-	  tdes->first_save_entry = NULL;
-	}
-
       log_cleanup_modified_class_list (thread_p, tdes, NULL, true, false);
 
       if (is_local_tran)
@@ -5304,6 +5296,15 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	      log_append_commit_log (thread_p, tdes, &commit_lsa);
 	    }
 
+	  /* Release the space saved for undo only after the commit log is appended. A log that reuses the space after
+	   * this point has a larger LSA than the commit log, so it cannot reach the disk without the commit log, and
+	   * restart recovery does not undo this transaction after the space is reused. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+	    }
+
 	  if (retain_lock != true)
 	    {
 	      lock_unlock_all (thread_p);
@@ -5314,7 +5315,13 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	}
       else
 	{
-	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc. */
+	  /* Postpone appending replication and commit log and releasing locks to log_complete_for_2pc.
+	   * The commit decision is already flushed (log_2pc_append_decision), so the saved space can be released. */
+	  if (tdes->first_save_entry != NULL)
+	    {
+	      spage_free_saved_spaces (thread_p, tdes->first_save_entry);
+	      tdes->first_save_entry = NULL;
+	    }
 	}
     }
   else
