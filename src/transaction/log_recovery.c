@@ -1301,23 +1301,24 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 	  log_lsa->pageid = NULL_PAGEID;
 	  log_recovery_resetlog (thread_p, &record_header_lsa, prev_lsa);
 	  *did_incom_recovery = true;
+
+	  return NO_ERROR;
 	}
     }
-  else
-    {
-      /*
-       * Need to read the start postpone record to set the postpone address
-       * of the transaction
-       */
-      tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-      /* Nothing to undo */
-      LSA_SET_NULL (&tdes->undo_nxlsa);
-      LSA_COPY (&tdes->tail_lsa, log_lsa);
-      tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+  /*
+   * The record is not a stop point, so the transaction committed. Set the postpone address of the transaction
+   * from the start postpone record, both in restart recovery and in media recovery.
+   */
+  tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
 
-      LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
-    }
+  /* Nothing to undo */
+  LSA_SET_NULL (&tdes->undo_nxlsa);
+  /* log_lsa now points past the record header; the runtime records the start of the record */
+  LSA_COPY (&tdes->tail_lsa, &record_header_lsa);
+  tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
+
+  LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
 
   return NO_ERROR;
 }
