@@ -1853,42 +1853,19 @@ jsp_drop_pkg_members (MOP pkg_mop, const char *cnt_attr, const char *members_att
   return NO_ERROR;
 }
 
+// jsp_drop_pkg_contents - delete the rows of a package other than its _db_package row: the code row, the member
+//   routines with their arguments, and the variables, exceptions, cursors and record types.
+//   CREATE OR REPLACE PACKAGE uses it to overwrite the _db_package row in place: the grants on the package refer
+//   to the OID of that row, so they are kept as those of a routine are (CBRD-27720).
 static int
-jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
+jsp_drop_pkg_contents (const char *unique_name, MOP pkg_mop)
 {
   MOP mop;
   int err, save;
 
   err = NO_ERROR;
 
-  AU_SAVE_AND_DISABLE (save);    // side effect 0
-
-  // clear authorization settings of the dropped package
-  {
-    MOP save_user;
-
-    save_user = Au_user;
-    err = AU_SET_USER (owner);
-    if (err == NO_ERROR)
-      {
-	err = au_object_revoke_all_privileges (DB_OBJECT_PACKAGE, owner, unique_name);
-      }
-
-    // restore the user even when switching to the owner failed: au_set_user () can fail after
-    // having changed the current user
-    AU_SET_USER (save_user);
-
-    if (err != NO_ERROR)
-      {
-	goto cleanup0;
-      }
-
-    err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PACKAGE, unique_name);
-    if (err != NO_ERROR)
-      {
-	goto cleanup0;
-      }
-  }
+  AU_SAVE_AND_DISABLE (save);
 
   // drop the record in _db_package_code
   mop = jsp_find_pkg_code (unique_name);
@@ -1946,6 +1923,57 @@ jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
 
   // drop the records in _db_package_record_type
   err = jsp_drop_pkg_members (pkg_mop, PKG_ATTR_RECORD_TYPE_COUNT, PKG_ATTR_RECORD_TYPES);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  AU_RESTORE (save);
+  return NO_ERROR;
+
+cleanup0:
+  AU_RESTORE (save);
+
+  return err;
+}
+
+static int
+jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
+{
+  int err, save;
+
+  err = NO_ERROR;
+
+  AU_SAVE_AND_DISABLE (save);    // side effect 0
+
+  // clear authorization settings of the dropped package
+  {
+    MOP save_user;
+
+    save_user = Au_user;
+    err = AU_SET_USER (owner);
+    if (err == NO_ERROR)
+      {
+	err = au_object_revoke_all_privileges (DB_OBJECT_PACKAGE, owner, unique_name);
+      }
+
+    // restore the user even when switching to the owner failed: au_set_user () can fail after
+    // having changed the current user
+    AU_SET_USER (save_user);
+
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+
+    err = au_delete_auth_of_dropping_database_object (DB_OBJECT_PACKAGE, unique_name);
+    if (err != NO_ERROR)
+      {
+	goto cleanup0;
+      }
+  }
+
+  err = jsp_drop_pkg_contents (unique_name, pkg_mop);
   if (err != NO_ERROR)
     {
       goto cleanup0;
@@ -3078,7 +3106,7 @@ error:
 static int
 sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP owner,
 			const char *scode_spec, const char *scode_body, const char *comment,
-			const PLCSQL_COMPILE_RESPONSE &pkg_compile_response)
+			const PLCSQL_COMPILE_RESPONSE &pkg_compile_response, MOP pkg_mop)
 {
   DB_OBJECT *classobj, *object;
   DB_OTMPL *obt;
@@ -3110,7 +3138,16 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       goto cleanup1;
     }
 
-  obt = dbt_create_object_internal (classobj, false);
+  // pkg_mop is the package that CREATE OR REPLACE PACKAGE overwrites: the caller deleted the other rows of it
+  // with jsp_drop_pkg_contents ()
+  if (pkg_mop == NULL)
+    {
+      obt = dbt_create_object_internal (classobj, false);
+    }
+  else
+    {
+      obt = dbt_edit_object (pkg_mop);
+    }
   if (!obt)
     {
       ASSERT_ERROR_AND_SET (err);
@@ -3169,11 +3206,14 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       goto cleanup2;
     }
 
-  // attribute created_time
-  err = dbt_put_internal (obt, PKG_ATTR_CREATED_TIME, &current_datetime);
-  if (err != NO_ERROR)
+  // attribute created_time: a replaced package keeps it
+  if (pkg_mop == NULL)
     {
-      goto cleanup2;
+      err = dbt_put_internal (obt, PKG_ATTR_CREATED_TIME, &current_datetime);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup2;
+	}
     }
 
   // attribute updated_time
@@ -3196,7 +3236,10 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
   err = locator_flush_instance (object);
   if (err != NO_ERROR)
     {
-      obj_delete (object);
+      if (pkg_mop == NULL)
+	{
+	  obj_delete (object);
+	}
       goto cleanup1;
     }
 
@@ -3624,8 +3667,9 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
     {
       if (statement->info.pkg.or_replace)
 	{
-	  // drop existing package (spec and body)
-	  err = jsp_drop_pkg (unique_name, pkg_mop, owner_mop);
+	  // Delete everything of the existing package but its _db_package row, which sp_add_pkg_and_related ()
+	  // overwrites below. The grants on the package refer to the OID of that row, so they are kept (CBRD-27720).
+	  err = jsp_drop_pkg_contents (unique_name, pkg_mop);
 	  if (err != NO_ERROR)
 	    {
 	      pr_clear_value (&scode_body_value);
@@ -3660,7 +3704,8 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
   if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
     {
       err = sp_add_pkg_and_related (unique_name, owner_name, owner_mop,
-				    pkg_compile_request.code.data(), pkg_compile_request.body_code.data(), comment, pkg_compile_response);
+				    pkg_compile_request.code.data(), pkg_compile_request.body_code.data(), comment, pkg_compile_response,
+				    pkg_mop);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
