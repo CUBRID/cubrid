@@ -365,6 +365,7 @@ static int disk_vhdr_set_vol_remarks (DISK_VOLUME_HEADER * vhdr, const char *vol
 
 static bool disk_cache_load_all_volumes (THREAD_ENTRY * thread_p);
 static bool disk_cache_load_volume (THREAD_ENTRY * thread_p, INT16 volid, void *ignore);
+static void disk_rv_finish_pending_delete_volume (THREAD_ENTRY * thread_p, VOLID volid);
 
 static const char *disk_purpose_to_string (DISK_VOLPURPOSE purpose);
 static const char *disk_type_to_string (DB_VOLTYPE voltype);
@@ -1215,6 +1216,12 @@ disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
   vhdr = (DISK_VOLUME_HEADER *) rcv->data;
   vol_label = disk_vhdr_get_vol_fullname (vhdr);
+
+  if (vhdr->type == DB_PERMANENT_VOLTYPE)
+    {
+      /* an earlier deletion of this volume id may still be pending (restore replays delete and re-add) */
+      disk_rv_finish_pending_delete_volume (thread_p, vhdr->volid);
+    }
 
   if (fileio_find_volume_descriptor_with_label (vol_label) == NULL_VOLDES)
     {
@@ -2561,13 +2568,15 @@ disk_volume_is_empty (THREAD_ENTRY * thread_p, VOLID volid)
  * 1. checkpoint. after it, no log record in the redo range touches a page of the volume, so crash recovery never
  *    needs the volume file again.
  * 2. in one system operation: log RVDK_DELETE_VOLUME (external redo; during recovery it only notes the volume),
- *    unlink the volume from the previous volume header and remove it from boot_Db_parm.
+ *    remove the volume from boot_Db_parm and unlink it from the previous volume header.
  * 3. commit the system operation and flush the log. from here on the deletion is decided.
  * 4. remove the volume from disk cache, dismount it, remove the file and recreate the volume information file.
  *
  * if the process stops anywhere in between, recovery redoes RVDK_DELETE_VOLUME and notes the volume. after undo,
  * disk_rv_complete_delete_volume looks at the final boot_Db_parm: if the volume is no longer there, step 4 is
- * finished; otherwise the deletion was rolled back and the volume is mounted and cached again.
+ * finished; otherwise the deletion was rolled back and the volume is mounted and cached again. when redo meets the
+ * creation of a new volume with the same id first, that proves the deletion was decided, so it is finished right there
+ * (disk_rv_redo_dboutside_newvol).
  */
 
 typedef struct disk_delvol_pending DISK_DELVOL_PENDING;
@@ -2580,9 +2589,12 @@ struct disk_delvol_pending
 /* volumes noted by redo of RVDK_DELETE_VOLUME, resolved at the end of recovery */
 static DISK_DELVOL_PENDING *disk_Delvol_pending = NULL;
 static int disk_Delvol_pending_count = 0;
+/* a pending deletion was finished during redo; the volume information file is recreated at the end of recovery */
+static bool disk_Delvol_volinfo_stale = false;
 
 static void disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid);
-static void disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname);
+static void disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname,
+				       bool recreate_volinfo);
 static int disk_delete_volume_rollback (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname);
 
 /*
@@ -2715,7 +2727,17 @@ disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
 	    prev_volid);
 
   /* 1. no log record in the redo range may touch a page of the volume once its file is gone */
-  (void) logpb_checkpoint (thread_p);
+  if (logpb_checkpoint (thread_p) == NULL_PAGEID)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  /* the checkpoint does not always set an error */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_CANNOT_DELETE_VOLUME, 1, volid);
+	  error_code = ER_DISK_CANNOT_DELETE_VOLUME;
+	}
+      return error_code;
+    }
 
   /* 2. */
   log_sysop_start (thread_p);
@@ -2727,14 +2749,18 @@ disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
 			     (int) (offsetof (DISK_DELVOL_PENDING, vol_fullname) + strlen (redo_data.vol_fullname) + 1),
 			     &redo_data);
 
-  error_code = disk_set_link (thread_p, prev_volid, NULL_VOLID, "", true, DISK_FLUSH);
+  /* boot_Db_parm first: restart walks the volume links before recovery and fails when it finds fewer volumes than
+   * boot_Db_parm counts (boot_find_rest_permanent_volumes), but accepts finding more */
+  error_code = boot_dbparm_delete_last_volume (thread_p, volid, prev_volid);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       goto error;
     }
 
-  error_code = boot_dbparm_delete_last_volume (thread_p, volid, prev_volid);
+  (void) FI_TEST_ARG (thread_p, FI_TEST_DISK_MANAGER_VOLUME_DELETE_BEFORE_UNLINK, &fi_exit_now, 0);
+
+  error_code = disk_set_link (thread_p, prev_volid, NULL_VOLID, "", true, DISK_FLUSH);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2750,7 +2776,7 @@ disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
   (void) FI_TEST_ARG (thread_p, FI_TEST_DISK_MANAGER_VOLUME_DELETE_AFTER_COMMIT, &fi_exit_now, 0);
 
   /* 4. */
-  disk_delete_volume_finish (thread_p, volid, info.vol_fullname);
+  disk_delete_volume_finish (thread_p, volid, info.vol_fullname, true);
   return NO_ERROR;
 
 error:
@@ -2828,12 +2854,13 @@ disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
  * thread_p (in)     : thread entry
  * volid (in)        : volume identifier
  * vol_fullname (in) : volume file name
+ * recreate_volinfo (in) : recreate the volume information file (not while redo is still changing the volume links)
  *
  * note: it may run again for the same volume (recovery), so each step skips what is already done. a failure here
  *       cannot be rolled back; the volume is already out of the database, so at worst an unused file is left.
  */
 static void
-disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname)
+disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname, bool recreate_volinfo)
 {
   if (fileio_get_volume_descriptor (volid) != NULL_VOLDES)
     {
@@ -2847,7 +2874,7 @@ disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol
       fileio_unformat (thread_p, vol_fullname);
     }
 
-  if (logpb_recreate_volume_info (thread_p) != NO_ERROR)
+  if (recreate_volinfo && logpb_recreate_volume_info (thread_p) != NO_ERROR)
     {
       /* restart rebuilds it from the volume links */
       er_clear ();
@@ -2948,6 +2975,41 @@ disk_rv_redo_delete_volume (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * disk_rv_finish_pending_delete_volume () - redo meets the creation of permanent volume volid while deletions are
+ *                                           pending. only the last permanent volume is deleted and a new volume
+ *                                           takes the id after the last one, so every pending deletion of volid or a
+ *                                           larger id was decided before this creation. finish them now, before the
+ *                                           new volume is created and cached with that id.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * volid (in)    : volume identifier of the new volume
+ */
+static void
+disk_rv_finish_pending_delete_volume (THREAD_ENTRY * thread_p, VOLID volid)
+{
+  int i = 0;
+
+  while (i < disk_Delvol_pending_count)
+    {
+      if (disk_Delvol_pending[i].volid >= volid)
+	{
+	  disk_delete_volume_finish (thread_p, disk_Delvol_pending[i].volid, disk_Delvol_pending[i].vol_fullname,
+				     false);
+	  disk_Delvol_volinfo_stale = true;
+
+	  /* drop the entry */
+	  disk_Delvol_pending[i] = disk_Delvol_pending[disk_Delvol_pending_count - 1];
+	  disk_Delvol_pending_count--;
+	}
+      else
+	{
+	  i++;
+	}
+    }
+}
+
+/*
  * disk_rv_dump_delete_volume () - dump RVDK_DELETE_VOLUME
  */
 void
@@ -2972,6 +3034,12 @@ disk_rv_complete_delete_volume (THREAD_ENTRY * thread_p)
   VOLID last_volid;
   int i;
 
+  if (disk_Delvol_volinfo_stale)
+    {
+      (void) logpb_recreate_volume_info (thread_p);
+      disk_Delvol_volinfo_stale = false;
+    }
+
   if (disk_Delvol_pending_count == 0)
     {
       return;
@@ -2985,7 +3053,7 @@ disk_rv_complete_delete_volume (THREAD_ENTRY * thread_p)
 
       if (entry->volid > last_volid)
 	{
-	  disk_delete_volume_finish (thread_p, entry->volid, entry->vol_fullname);
+	  disk_delete_volume_finish (thread_p, entry->volid, entry->vol_fullname, true);
 	}
       else if (disk_delete_volume_rollback (thread_p, entry->volid, entry->vol_fullname) != NO_ERROR)
 	{
