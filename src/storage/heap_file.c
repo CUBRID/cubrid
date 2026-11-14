@@ -2871,6 +2871,97 @@ heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
+ * heap_page_list_fix_next () - fix the next page of one sector of a page bitmap taken at scan start
+ *   return: S_SUCCESS (the page is held in watcher), S_END past the sector's last page (the held page is kept),
+ *	     S_ERROR
+ *   hfid(in): the heap
+ *   sector(in): the sector and its page bitmap
+ *   pgoffset(in/out): the page offset in the sector to look from; past the page returned
+ *   watcher(in/out): the held page, let go before the next one is fixed
+ *   vpid_out(out): the page fixed
+ *
+ * Note: a listed page may be deallocated since, or deallocated and allocated again as the file's table page
+ *	 (file_perm_dealloc); the fix reports both as ER_PB_BAD_PAGEID (pgbuf_ordered_unfix_reused_page ()) and the
+ *	 page is skipped.  Shared by the parallel heap scan and the serial sector-based heap scan.
+ */
+SCAN_CODE
+heap_page_list_fix_next (THREAD_ENTRY * thread_p, const HFID * hfid, const FILE_PARTIAL_SECTOR * sector,
+			 size_t * pgoffset, PGBUF_WATCHER * watcher, VPID * vpid_out)
+{
+  VPID vpid;
+  int error_code;
+
+  vpid.volid = sector->vsid.volid;
+  for (; *pgoffset < DISK_SECTOR_NPAGES; (*pgoffset)++)
+    {
+      /* straight to the next listed page: a sector of a small or thinned-out heap is mostly unset bits */
+      UINT64 rest = sector->page_bitmap >> *pgoffset;
+
+      if (rest == 0)
+	{
+	  *pgoffset = DISK_SECTOR_NPAGES;
+	  break;
+	}
+      *pgoffset += bit64_count_trailing_zeros (rest);
+      vpid.pageid = SECTOR_FIRST_PAGEID (sector->vsid.sectid) + (PAGEID) * pgoffset;
+      if (vpid.volid == hfid->vfid.volid && vpid.pageid == hfid->vfid.fileid)
+	{
+	  /* the file header page */
+	  continue;
+	}
+
+      /* release the held page first: the next page comes from the bitmap, not from this page's link, and holding
+       * this page while waiting deadlocks with vacuum deallocating an empty page */
+      if (watcher->pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	}
+
+      error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, watcher);
+      if (watcher->pgptr == NULL)
+	{
+	  if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
+	    {
+	      /* e.g. ER_INTERRUPTED */
+	      return S_ERROR;
+	    }
+	  /* deallocated since the bitmap was taken */
+	  er_clear ();
+	  continue;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      if (pgbuf_get_page_ptype (thread_p, watcher->pgptr) != PAGE_HEAP)
+	{
+	  /* the ordered fix lets a heap file's overflow page through too; a sector stays with its file, so a listed
+	   * page comes back as no other type, but a page that is not a heap page is never read as one */
+	  assert (false);
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  continue;
+	}
+
+      if (heap_page_is_bestspace (thread_p, watcher->pgptr))
+	{
+	  /* heap metadata, no rows */
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  continue;
+	}
+
+      *vpid_out = vpid;
+      (*pgoffset)++;
+      return S_SUCCESS;
+    }
+
+  return S_END;
+}
+
+/*
  * check_supplemental_log () - check if appending supplemental log is available
  *
  * return	  : available or not

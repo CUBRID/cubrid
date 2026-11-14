@@ -679,6 +679,7 @@ static int file_table_append_full_sector_page (THREAD_ENTRY * thread_p, PAGE_PTR
 static int file_table_add_full_sector (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, const VSID * vsid);
 STATIC_INLINE int file_table_collect_ftab_pages (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, bool collect_numerable,
 						 FILE_FTAB_COLLECTOR * collector_out) __attribute__ ((ALWAYS_INLINE));
+static int file_table_pages_to_buffer (THREAD_ENTRY * thread_p, const VPID * vpid_first, int max_pages);
 static int file_extdata_collect_ftab_pages (THREAD_ENTRY * thread_p, const FILE_EXTENSIBLE_DATA * extdata, bool * stop,
 					    void *args);
 STATIC_INLINE bool file_table_collector_has_page (FILE_FTAB_COLLECTOR * collector, VPID * vpid)
@@ -12586,6 +12587,48 @@ file_extdata_collect_data_sectors_full (THREAD_ENTRY * thread_p, const void *ite
 }
 
 /*
+ * file_table_pages_to_buffer () - read a file table's pages into the page buffer, holding no latch between them
+ *   return: error code (a page that is no table page any more ends the walk without an error)
+ *   vpid_first(in): the first page after the file header of a table's chain; may be NULL
+ *   max_pages(in): the file's table pages (bounds a walk that follows a link read without the header latch)
+ *
+ * Note: file_get_all_data_sectors () reads the same pages again under the file header latch, which stops every
+ *	 allocation and deallocation in the file; read here first, they are in the buffer then and the latch is
+ *	 held for no disk read.  Without the header latch the chain may change under the walk, so nothing read here
+ *	 is used.
+ */
+static int
+file_table_pages_to_buffer (THREAD_ENTRY * thread_p, const VPID * vpid_first, int max_pages)
+{
+  VPID vpid = *vpid_first;
+  PAGE_PTR page;
+
+  while (!VPID_ISNULL (&vpid) && max_pages-- > 0)
+    {
+      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page == NULL)
+	{
+	  int error_code = er_errid ();
+
+	  if (error_code == NO_ERROR || error_code == ER_PB_BAD_PAGEID)
+	    {
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+	  return error_code;
+	}
+      if (pgbuf_get_page_ptype (thread_p, page) != PAGE_FTAB)
+	{
+	  pgbuf_unfix (thread_p, page);
+	  return NO_ERROR;
+	}
+      vpid = ((FILE_EXTENSIBLE_DATA *) page)->vpid_next;
+      pgbuf_unfix (thread_p, page);
+    }
+  return NO_ERROR;
+}
+
+/*
  * file_get_all_data_sectors () - collect all data sectors
  *
  * return        : NO_ERROR or error code
@@ -12601,7 +12644,7 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
   FILE_HEADER *fhead = NULL;
   FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
   FILE_FTAB_COLLECTOR ftab_collector;
-  int i, j;
+  int i;
   int error_code = NO_ERROR;
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
@@ -12615,6 +12658,42 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
   fhead = (FILE_HEADER *) page_fhead;
   collector_out->npages = 0;
   collector_out->nsects = 0;
+  collector_out->partsect_ftab = NULL;
+
+  if (!FILE_IS_TEMPORARY (fhead))
+    {
+      VPID vpid_part_next, vpid_full_next;
+      int n_page_ftab = fhead->n_page_ftab;
+
+      FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+      vpid_part_next = extdata_ftab->vpid_next;
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      vpid_full_next = extdata_ftab->vpid_next;
+      if (!VPID_ISNULL (&vpid_part_next) || !VPID_ISNULL (&vpid_full_next))
+	{
+	  /* the tables have pages of their own: bring them into the buffer before the header latch is held over
+	   * them, so that an allocation in this file does not wait for their disk reads */
+	  pgbuf_unfix_and_init (thread_p, page_fhead);
+	  error_code = file_table_pages_to_buffer (thread_p, &vpid_part_next, n_page_ftab);
+	  if (error_code == NO_ERROR)
+	    {
+	      error_code = file_table_pages_to_buffer (thread_p, &vpid_full_next, n_page_ftab);
+	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page_fhead == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	  fhead = (FILE_HEADER *) page_fhead;
+	}
+    }
+
   collector_out->partsect_ftab =
     (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_sector_total * sizeof (FILE_PARTIAL_SECTOR));
 
@@ -12677,29 +12756,24 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 	}
     }
 
-  for (i = 0; i < ftab_collector.nsects; i++)
+  /* the header latch stops every allocation in this file; the table pages leave the list after it is released */
+  pgbuf_unfix (thread_p, page_fhead);
+
+  /* VSID is the first member of FILE_PARTIAL_SECTOR, and a sector holds one entry in each collector */
+  qsort (ftab_collector.partsect_ftab, ftab_collector.nsects, sizeof (FILE_PARTIAL_SECTOR), disk_compare_vsids);
+  for (i = 0; i < collector_out->nsects; i++)
     {
-      FILE_PARTIAL_SECTOR *ftab_sec = &ftab_collector.partsect_ftab[i];
-      FILE_PARTIAL_SECTOR *data_sec;
-      for (j = 0; j < collector_out->nsects; j++)
+      FILE_PARTIAL_SECTOR *data_sec = &collector_out->partsect_ftab[i];
+      FILE_PARTIAL_SECTOR *ftab_sec =
+	(FILE_PARTIAL_SECTOR *) bsearch (&data_sec->vsid, ftab_collector.partsect_ftab, ftab_collector.nsects,
+					 sizeof (FILE_PARTIAL_SECTOR), disk_compare_vsids);
+      if (ftab_sec != NULL)
 	{
-	  data_sec = &collector_out->partsect_ftab[j];
-	  if (VSID_EQ (&ftab_sec->vsid, &data_sec->vsid))
-	    {
-	      data_sec->page_bitmap &= ~ftab_sec->page_bitmap;
-	      break;
-	    }
+	  data_sec->page_bitmap &= ~ftab_sec->page_bitmap;
 	}
     }
 
-  pgbuf_unfix (thread_p, page_fhead);
   db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      db_private_free_and_init (thread_p, collector_out->partsect_ftab);
-      return ER_FAILED;
-    }
 
   return NO_ERROR;
 }
