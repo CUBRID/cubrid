@@ -5676,6 +5676,18 @@ hb_reload_config (void)
 
   hb_Cluster->nodes = NULL;
 
+  /* reload node list first, so that the ping hosts are checked against the new node list as in hb_cluster_initialize */
+  hb_Cluster->num_nodes =
+    hb_cluster_load_group_and_node_list ((char *) prm_get_string_value (PRM_ID_HA_NODE_LIST),
+					 (char *) prm_get_string_value (PRM_ID_HA_REPLICA_LIST));
+
+  if (hb_Cluster->num_nodes < 1
+      || (hb_Cluster->master && hb_return_node_by_name (hb_Cluster->master->host_name) == NULL))
+    {
+      error = ER_PRM_BAD_VALUE;
+      goto reconfig_error;
+    }
+
   /* reload ping hosts */
   hb_Cluster->num_ping_hosts = hb_cluster_load_ping_host_list (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
 
@@ -5694,21 +5706,9 @@ hb_reload_config (void)
 
       if (hb_cluster_check_valid_ping_server () == false)
 	{
-	  pthread_mutex_unlock (&hb_Cluster->lock);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto reconfig_error;
 	}
-    }
-
-  /* reload node list */
-  hb_Cluster->num_nodes =
-    hb_cluster_load_group_and_node_list ((char *) prm_get_string_value (PRM_ID_HA_NODE_LIST),
-					 (char *) prm_get_string_value (PRM_ID_HA_REPLICA_LIST));
-
-  if (hb_Cluster->num_nodes < 1
-      || (hb_Cluster->master && hb_return_node_by_name (hb_Cluster->master->host_name) == NULL))
-    {
-      error = ER_PRM_BAD_VALUE;
-      goto reconfig_error;
     }
 
   for (new_node = hb_Cluster->nodes; new_node; new_node = new_node->next)
