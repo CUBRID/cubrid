@@ -626,10 +626,12 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	    else
 	      {
 		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
-		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
-							 scale);
+		scale = float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							  scale);
 		hash = mht_1str_pseudo_key (calc_buf, DB_NUMERIC_BUF_SIZE);
 	      }
+	    /* the scale left tells 0.1 from 0.01, whose digits are the same 1 */
+	    hash ^= ((unsigned int) scale * MHT_KNUTH_MULTIPLIER);
 	  }
 	  break;
 	case DB_TYPE_CHAR:
@@ -2415,7 +2417,7 @@ unsigned int
 mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 {
   unsigned int hashcode = 0;
-  int i, len;
+  int len;
   const char *ptr;
 
   if (!val || DB_IS_NULL (val) || ht_size <= 1)
@@ -2479,16 +2481,19 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	     */
 	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
-		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (db_locate_numeric (val)), ht_size);
+		/* a fixed numeric hashes as it did: the hash partitions keep their rows */
+		scale = is_float_numeric ? scale : 0;
+		hashcode = numeric_repr_fold32 (db_locate_numeric (val));
 	      }
 	    else
 	      {
 		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
-		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
-							 scale);
-
-		hashcode = mht_get_shiftmult32 (numeric_repr_fold32 (calc_buf), ht_size);
+		scale = float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							  scale);
+		hashcode = numeric_repr_fold32 (calc_buf);
 	      }
+	    /* the scale left tells 0.1 from 0.01, whose digits are the same 1 */
+	    hashcode = mht_get_shiftmult32 (hashcode ^ ((unsigned int) scale * MHT_KNUTH_MULTIPLIER), ht_size);
 	  }
 	  break;
 	case DB_TYPE_DATE:
@@ -2533,24 +2538,8 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 		  len = (int) strlen (ptr);
 		}
 
-	      i = len;
-	      for (i--; 0 <= i && ptr[i]; i--)
-		{
-		  /* only the trailing ASCII space is ignored; the hashing for other characters depend on collation */
-		  if (ptr[i] != 0x20)
-		    {
-		      break;
-		    }
-		}
-	      i++;
-	    }
-	  if (!ptr || ptr[0] == 0 || i <= 0)
-	    {
-	      hashcode = 0;
-	    }
-	  else
-	    {
-	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, i);
+	      /* the collation's hash leaves out what its comparison ignores, trailing spaces among them */
+	      hashcode = MHT2STR_COLL (db_get_string_collation (val), (unsigned char *) ptr, len);
 	      hashcode = mht_reduce (hashcode, ht_size);
 	    }
 	  break;

@@ -2690,76 +2690,41 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
       goto error_exit;
     }
 
-  if (list_id != NULL)
+  hash_scan->hash_list_scan_type = qdata_hash_scan_method (list_id, mem_limit);
+  switch (hash_scan->hash_list_scan_type)
     {
-      UINT64 in_mem_size = 0;
-      UINT64 hybrid_size = 0;
-
-      /* the slot array is int-indexed; the estimates are computable only when tuple_cnt fits in int */
-      if (list_id->tuple_cnt <= INT_MAX)
+    case HASH_METH_IN_MEM:
+    case HASH_METH_HYBRID:
+      hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
+      if (hash_scan->memory.hash_table == NULL)
 	{
-	  UINT64 slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
-	  UINT64 entries_size = (UINT64) list_id->tuple_cnt * sizeof (MHT_HLS_ENTRY);
-	  UINT64 payload_size;
-
-	  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
-	  payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
-	  in_mem_size = slot_array_size + entries_size + payload_size;
-
-	  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
-	  payload_size = (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS);
-	  hybrid_size = slot_array_size + entries_size + payload_size;
+	  goto error_exit;
 	}
 
-      if (list_id->tuple_cnt <= INT_MAX && in_mem_size <= mem_limit)
+      hash_scan->memory.curr_hash_entry = NULL;
+      break;
+
+    case HASH_METH_HASH_FILE:
+      hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
+      if (hash_scan->file.hash_table == NULL)
 	{
-	  hash_scan->hash_list_scan_type = HASH_METH_IN_MEM;
-
-	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
-	  if (hash_scan->memory.hash_table == NULL)
-	    {
-	      goto error_exit;
-	    }
-
-	  hash_scan->memory.curr_hash_entry = NULL;
+	  goto error_exit;
 	}
-      else if (list_id->tuple_cnt <= INT_MAX && hybrid_size <= mem_limit)
+
+      if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
 	{
-	  hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
-
-	  hash_scan->memory.hash_table = mht_create_hls ("Hash Join", list_id->tuple_cnt, NULL, NULL);
-	  if (hash_scan->memory.hash_table == NULL)
-	    {
-	      goto error_exit;
-	    }
-
-	  hash_scan->memory.curr_hash_entry = NULL;
+	  /* the FHSID has no valid files; free it so that hjoin_scan_clear does not destroy them */
+	  db_private_free_and_init (thread_p, hash_scan->file.hash_table);
+	  goto error_exit;
 	}
-      else
-	{
-	  hash_scan->hash_list_scan_type = HASH_METH_HASH_FILE;
 
-	  hash_scan->file.hash_table = (FHSID *) db_private_alloc (thread_p, sizeof (FHSID));
-	  if (hash_scan->file.hash_table == NULL)
-	    {
-	      goto error_exit;
-	    }
+      hash_scan->file.curr_oid = OID_INITIALIZER;
+      hash_scan->file.is_dk_bucket = false;
+      break;
 
-	  if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
-	    {
-	      /* the FHSID has no valid files; free it so that hjoin_scan_clear does not destroy them */
-	      db_private_free_and_init (thread_p, hash_scan->file.hash_table);
-	      goto error_exit;
-	    }
-
-	  hash_scan->file.curr_oid = OID_INITIALIZER;
-	  hash_scan->file.is_dk_bucket = false;
-	}
-    }
-  else
-    {
-      /* skip hash table */
-      hash_scan->hash_list_scan_type = HASH_METH_NOT_USE;
+    default:
+      /* no list or no tuples: skip hash table */
+      break;
     }
 
   hash_scan->curr_hash_key = 0;
@@ -5206,7 +5171,7 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
 
 /*
  * hjoin_prehash_value_ok () - the value, read back from its column of the list, hashes as it does now
- *   return: true when mht_get_hash_number () gives the value and the one the build reads back from the list
+ *   return: true when qdata_hash_scan_value () gives the value and the one the build reads back from the list
  *	     (qfile_slot_read_column_value () with the column's domain, hjoin_fetch_key () without coercion) the same
  *	     number; false for every other value
  *   v(in): the value the list's column was written from, after the write
@@ -5218,11 +5183,11 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
  *     the hash is of those bits.
  *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes
  *     and read back zero-filled into the same 17 bytes, with the precision and scale the write recorded (the
- *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes, a fixed numeric's not
- *     normalized (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric ()).
+ *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes, normalized by the scale
+ *     (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric (), qdata_hash_number ()).
  *   - CHAR, VARCHAR with the column's collation: the bytes are written as the value holds them after the write (a
  *     CHAR is padded in the value itself first), compressed or not, and read back as those bytes with the column's
- *     collation; the hash is of the bytes up to their trailing spaces, by the collation.
+ *     collation; the hash is of those bytes, by the collation.
  */
 static bool
 hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
@@ -5265,9 +5230,9 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
  *   thread_p(in): the thread that wrote the tuple
  *   input(in): an armed input, its tuple descriptor still holding the values the tuple was written from
  *
- * The hash is qdata_hash_scan_key ()'s over the key values in key order (qdata_hash_scan_key_step (), the same
- * step, with the build's table size UINT_MAX), its file-method step left to the build; a tuple with a NULL key is
- * marked, as hjoin_fetch_key () has the build skip it.
+ * The hash is qdata_hash_scan_key ()'s over the key values in key order (qdata_hash_scan_key_fold () with the build's
+ * table size UINT_MAX), its file-method step (qdata_hash_scan_key_finish ()) left to the build; a tuple with a NULL
+ * key is marked, as hjoin_fetch_key () has the build skip it.
  */
 void
 hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
@@ -5353,7 +5318,7 @@ hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input)
 	  hjoin_prehash_invalidate (ph);
 	  return;
 	}
-      hash_val = qdata_hash_scan_key_step (hash_val, v, UINT_MAX);
+      hash_val = qdata_hash_scan_key_fold (hash_val, v, UINT_MAX);
     }
   ph->hashes[ph->cnt++] = hash_val;
 }

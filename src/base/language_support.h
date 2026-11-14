@@ -190,7 +190,7 @@ struct lang_collation
   int (*split_key) (const LANG_COLLATION * lang_coll, const bool is_desc, const unsigned char *str1, const int size1,
 		    const unsigned char *str2, const int size2, const unsigned char **key, int *byte_size,
 		    bool ignore_trailing_space);
-  /* compute hash value pseudokey (mht_2str_pseudo_key) */
+  /* the hash of a string: strings fastcmp finds equal hash alike */
   unsigned int (*mht2str) (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
