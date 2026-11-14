@@ -1308,6 +1308,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   OID *notification_class_oid;
   bool is_sysop_started = false;
   bool built_nonempty_tree = false;
+  bool is_no_logging_build_registered = false;	/* holds a logpb_no_logging_index_build_begin () slot */
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -1348,6 +1349,21 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
 #if defined (SERVER_MODE)
+  /* A no-logging build and the page copy of an online backup never overlap: while a backup copies pages, build with
+   * logging instead, and a backup that is about to copy waits for the registered builds (see logpb_backup ()). */
+  if (eligible_no_redo)
+    {
+      if (logpb_no_logging_index_build_begin ())
+	{
+	  is_no_logging_build_registered = true;
+	}
+      else
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BT_LOAD_NO_LOGGING_DURING_BACKUP, 1, bt_name);
+	  er_clear ();
+	  eligible_no_redo = false;
+	}
+    }
   load_args->no_redo = eligible_no_redo;
   /* Do NOT open a build sysop here. For SERVER_MODE, the topop rmutex must not be held across
    * btree_index_sort()'s parallel in-phase sort: px workers share this transaction's tdes and briefly
@@ -1740,6 +1756,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       log_append_postpone (thread_p, RVBT_NO_LOGGING_INDEX_DURABLE, &addr, 0, NULL);
     }
+  if (is_no_logging_build_registered)
+    {
+      /* the pages written without logging are on disk and the barrier above covers them: a backup may copy them */
+      logpb_no_logging_index_build_end ();
+      is_no_logging_build_registered = false;
+    }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
 
@@ -1817,6 +1839,11 @@ error:
   if (is_sysop_started)
     {
       log_sysop_abort (thread_p);
+    }
+
+  if (is_no_logging_build_registered)
+    {
+      logpb_no_logging_index_build_end ();
     }
 
   return NULL;

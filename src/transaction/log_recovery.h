@@ -35,6 +35,15 @@ extern int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log
 						    LOG_RCV * rcv, int undo_length, const char *undo_data,
 						    LOG_ZIP & redo_unzip);
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
+
+/* Media recovery judges a no-logging index build against the restored backup level with the highest number: where
+ * that level started copying pages.  LOG_RCV_MAX_BACKUP_LEVELS == FILEIO_BACKUP_UNDEFINED_LEVEL (asserted in
+ * log_recovery.c). */
+#define LOG_RCV_MAX_BACKUP_LEVELS 3
+
+extern bool log_rv_no_logging_index_is_covered_by_backup (const LOG_LSA * top_level_start_log_end_lsa,
+							  const LOG_LSA * barrier_lsa);
+extern void log_recovery_set_restore_backup_level (int level, const LOG_LSA * start_log_end_lsa);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 						   RECDES * record, bool is_undo);

@@ -1510,7 +1510,9 @@ $ LOADDB
 
 1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
 
-1395 마지막 에러
+1395 온라인 백업이 데이터베이스를 복사하고 있어 인덱스 %1$s 를 no-logging 대신 로깅하며 빌드합니다.
+
+1396 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
