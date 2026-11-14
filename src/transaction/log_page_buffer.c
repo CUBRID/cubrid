@@ -10041,8 +10041,16 @@ logpb_copy_volume (THREAD_ENTRY * thread_p, VOLID from_volid, const char *to_vol
    * checkpoint lsa
    */
 
-  (void) disk_set_creation (thread_p, LOG_DBCOPY_VOLID, to_volname, db_creation, to_volchkpt_lsa, false,
-			    DISK_DONT_FLUSH);
+  error_code = disk_set_creation (thread_p, LOG_DBCOPY_VOLID, to_volname, db_creation, to_volchkpt_lsa, false,
+				  DISK_DONT_FLUSH);
+  if (error_code != NO_ERROR)
+    {
+      /* e.g. the new name does not fit in the volume header; the copy is not registered yet, so remove it here */
+      (void) pgbuf_invalidate_all (thread_p, LOG_DBCOPY_VOLID);
+      fileio_dismount (thread_p, to_vdes);
+      fileio_unformat (thread_p, to_volname);
+      return error_code;
+    }
 
   logpb_flush_pages_direct (thread_p);
   (void) pgbuf_flush_all_unfixed_and_set_lsa_as_null (thread_p, LOG_DBCOPY_VOLID);
