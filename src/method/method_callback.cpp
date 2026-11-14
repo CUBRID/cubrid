@@ -1475,8 +1475,8 @@ exit:
 	return err;
       }
 
-    int db_type, prec;
-    short scale;
+    int db_type = DB_TYPE_NULL, prec = 0;
+    short scale = 0;
 
     if (attr)
       {
