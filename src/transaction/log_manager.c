@@ -2376,13 +2376,25 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
       return;
     }
 
-  /* 
-   * if pgptr is NULL, the user data can be spilled as un-encrypted. 
-   * Now it seems that there is no case, but can be in the future.
-   */
-  if (addr->pgptr != NULL && LOG_MAY_CONTAIN_USER_DATA (rcvindex))
+  if (LOG_MAY_CONTAIN_USER_DATA (rcvindex))
     {
-      if (pgbuf_get_tde_algorithm (addr->pgptr) != TDE_ALGORITHM_NONE)
+      TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+      if (addr->pgptr != NULL)
+	{
+	  tde_algo = pgbuf_get_tde_algorithm (addr->pgptr);
+	}
+      else if (addr->vfid != NULL && !VFID_ISNULL (addr->vfid))
+	{
+	  /* a logical undo without a page, such as RVBT_MVCC_NOTIFY_VACUUM: take the algorithm of the file, as the
+	   * logical undo of a system operation does */
+	  if (file_get_tde_algorithm (thread_p, addr->vfid, PGBUF_CONDITIONAL_LATCH, &tde_algo) != NO_ERROR)
+	    {
+	      tde_algo = TDE_ALGORITHM_NONE;
+	    }
+	}
+
+      if (tde_algo != TDE_ALGORITHM_NONE)
 	{
 	  if (prior_set_tde_encrypted (node, rcvindex) != NO_ERROR)
 	    {
