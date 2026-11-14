@@ -535,7 +535,8 @@ static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
 static bool la_is_done_state (int ha_server_state);
-static bool la_record_end_is_stale (void);
+static bool la_record_end_is_stale (const LOG_HEADER * iter_log_hdr);
+static bool la_is_received_log_end (const LOG_HEADER * iter_log_hdr);
 static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
 static unsigned long la_get_mem_size (void);
@@ -6482,18 +6483,49 @@ la_is_done_state (int ha_server_state)
 
 /*
  * la_record_end_is_stale() - check whether the record end an iteration reached is short of the copied log
- *   return: true if the source has stopped and the copied log header's eof is past final_lsa
+ *   return: true if the source has stopped and the copied log holds records past the end the iteration reached
+ *   iter_log_hdr(in): the copied log header the iteration started with
  *
  * Note: an iteration reads its page once. If the copied log grows meanwhile, the END_OF_LOG it reaches
  *       in that page is not the end of the copied log, although the header may have been re-read since.
  *       Only a stopped source matters: it is the one that lets the applier report done.
+ *       When neither header is synchronized, the eof is the source's and the iteration stops at the last
+ *       received page (see la_is_received_log_end ()). The copied log has grown only if that page has moved.
  */
 static bool
-la_record_end_is_stale (void)
+la_record_end_is_stale (const LOG_HEADER * iter_log_hdr)
 {
   const LOG_HEADER *log_hdr = la_Info.act_log.log_hdr;
 
-  return la_is_done_state (log_hdr->ha_server_state) && la_Info.final_lsa < log_hdr->eof_lsa;
+  if (!la_is_done_state (log_hdr->ha_server_state))
+    {
+      return false;
+    }
+
+  if (log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED
+      || iter_log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
+    {
+      return la_Info.final_lsa < log_hdr->eof_lsa;
+    }
+
+  return log_hdr->append_lsa.load ().pageid > iter_log_hdr->append_lsa.load ().pageid;
+}
+
+/*
+ * la_is_received_log_end() - check whether the records an iteration stops at the received pages are all it gets
+ *   return: true if the source is dead and the copied log header is not synchronized
+ *   iter_log_hdr(in): the copied log header the iteration started with
+ *
+ * Note: while copylogdb catches up, the copied log header keeps the source's eof and an append LSA of
+ *       (the last received page, NULL_OFFSET). If the source dies then, copylogdb records it dead in that
+ *       header and stops: the pages after the append page never arrive, so the record end the applier can
+ *       reach in the received pages is the end of the copied log.
+ */
+static bool
+la_is_received_log_end (const LOG_HEADER * iter_log_hdr)
+{
+  return iter_log_hdr->ha_server_state == HA_SERVER_STATE_DEAD
+    && iter_log_hdr->ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED;
 }
 
 static int
@@ -6523,8 +6555,11 @@ la_change_state (void)
   la_Info.last_file_state = la_Info.act_log.log_hdr->ha_file_status;
   la_Info.last_is_end_of_record = la_Info.is_end_of_record;
 
-  /* check log file status */
-  if (la_Info.is_end_of_record == true && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED))
+  /* check log file status. a dead source sends no more log, so the record end in the received pages is the end
+   * also when the header is not synchronized (la_is_received_log_end ()) */
+  if (la_Info.is_end_of_record == true
+      && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED
+	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_DEAD))
     {
       /* check server's state with log header */
       if (la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_ACTIVE
@@ -8619,6 +8654,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		}
 	      else if (la_Info.final_lsa > final_log_hdr.append_lsa.load ())
 		{
+		  if (la_is_received_log_end (&final_log_hdr))
+		    {
+		      la_Info.is_end_of_record = true;
+		    }
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
@@ -8636,6 +8675,19 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      if (la_Info.final_lsa == final_log_hdr.eof_lsa && lrec->type != LOG_END_OF_LOG)
 		{
 		  la_Info.is_end_of_record = true;
+		  la_invalidate_page_buffer (log_buf);
+		  break;
+		}
+
+	      /* a record that runs past the received pages: la_get_page () would wait in a loop for the next page,
+	       * which never arrives from a dead source */
+	      if (final_log_hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED
+		  && lrec->forw_lsa.pageid > final_log_hdr.append_lsa.load ().pageid)
+		{
+		  if (la_is_received_log_end (&final_log_hdr))
+		    {
+		      la_Info.is_end_of_record = true;
+		    }
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
@@ -8712,7 +8764,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      break;
 	    }
 
-	  if (la_Info.is_end_of_record == true && la_record_end_is_stale ())
+	  if (la_Info.is_end_of_record == true && la_record_end_is_stale (&final_log_hdr))
 	    {
 	      const LOG_LSA eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
 
