@@ -1063,6 +1063,7 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
   const char *db_name;
   DIR *dir_p;
   struct dirent *entry;
+  struct stat stat_buffer;
   VOLID volid;
 
   temp_path = prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
@@ -1072,7 +1073,8 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
     }
   db_name = fileio_get_base_file_name (boot_Db_full_name);
 
-  dir_p = opendir (temp_path);
+  /* a database in the root directory has an empty directory path */
+  dir_p = opendir (temp_path[0] != '\0' ? temp_path : "/");
   if (dir_p == NULL)
     {
       /* no temporary volume could have been created there */
@@ -1088,6 +1090,10 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 	}
 
       fileio_make_volume_temp_name (temp_vol_fullname, temp_path, db_name, volid);
+      if (stat (temp_vol_fullname, &stat_buffer) != 0 || !S_ISREG (stat_buffer.st_mode))
+	{
+	  continue;
+	}
       if (disk_is_permanent_volume_file (thread_p, temp_vol_fullname))
 	{
 	  /* a permanent volume named like a temporary volume (addvoldb -n) */

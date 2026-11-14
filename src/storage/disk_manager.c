@@ -6366,7 +6366,7 @@ end:
  * thread_p(in) : thread entry
  * vol_label_p(in) : volume label
  *
- * Note: The volume does not need to be mounted; the header is read from the file.
+ * Note: The volume does not need to be mounted; the header of a volume that is not mounted is read from the file.
  */
 bool
 disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p)
@@ -6374,12 +6374,20 @@ disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p)
   char data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *data;
   DISK_VOLUME_HEADER *vhdr;
   int vol_fd;
+  VOLID volid;
   off_t read_size;
   size_t page_reserver_area;
   struct stat stat_buffer;
   bool is_permanent = false;
 
   assert (vol_label_p != NULL);
+
+  /* Do not open a mounted volume again: closing the second descriptor would release the lock taken at mount. */
+  if (fileio_find_volume_descriptor_with_label (vol_label_p) != NULL_VOLDES)
+    {
+      volid = fileio_find_volume_id_with_label (thread_p, vol_label_p);
+      return volid != NULL_VOLID && volid < disk_Cache->nvols_perm;
+    }
 
   data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
   page_reserver_area = offsetof (FILEIO_PAGE, page);
