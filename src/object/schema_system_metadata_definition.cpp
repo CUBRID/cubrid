@@ -28,11 +28,13 @@ namespace cubschema
   {
   }
 
-  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t)
+  attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t,
+			const std::vector<std::string> &sig_domains)
     : kind {k}
     , name {n}
     , type {t}
     , dvalue_func {nullptr}
+    , signature_domains {sig_domains}
   {
   }
 

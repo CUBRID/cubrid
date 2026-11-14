@@ -33,6 +33,12 @@ namespace cubschema
 
   namespace system_catalog_initializer
   {
+    // authorization classes (defined by au_install ())
+    system_metadata_definition get_root ();
+    system_metadata_definition get_user ();
+    system_metadata_definition get_password ();
+    system_metadata_definition get_authorization ();
+
     // classes
     system_metadata_definition get_class ();
     system_metadata_definition get_attribute ();

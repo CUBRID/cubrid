@@ -39,6 +39,7 @@ namespace cubschema
 
     /* for system class */
     CLASS_METHOD,
+    METHOD,
 
     /* for system view */
     QUERY_SPEC
@@ -53,9 +54,14 @@ namespace cubschema
     std::string type;
     default_value_init_type dvalue_func;
 
+    // attribute_kind::METHOD, CLASS_METHOD: domain of each signature argument, index 0 is the return value
+    // (an empty string leaves that argument without a domain)
+    std::vector<std::string> signature_domains;
+
     // attribute_kind::COLUMN
     attribute (const std::string &name, const std::string &type, default_value_init_type dval_f = nullptr);
-    attribute (const attribute_kind kind, const std::string &name, const std::string &type = "");
+    attribute (const attribute_kind kind, const std::string &name, const std::string &type = "",
+	       const std::vector<std::string> &sig_domains = {});
   };
 
   // TODO: implement formatting utility function for std::string (like fmt library)

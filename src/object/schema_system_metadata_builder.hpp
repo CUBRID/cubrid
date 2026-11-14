@@ -32,6 +32,12 @@ namespace cubschema
   namespace system_metadata_builder
   {
     int install_classes (const std::vector<system_metadata_definition> &defs);
+    /*
+     * creates and defines the classes like install_classes (), but neither changes their owner nor grants on them
+     * nor runs their row initializers: the caller does it once the users exist (see au_install ()).
+     * class_mops gets the class created for each definition (nullptr for the ones not created yet), also on error.
+     */
+    int define_classes (const std::vector<system_metadata_definition> &defs, std::vector<MOP> &class_mops);
     int install_vclasses (const std::vector<system_metadata_definition> &defs);
     int rebuild_vclasses (const std::vector<system_metadata_definition> &defs, const std::string &owner_prefix);
   }
