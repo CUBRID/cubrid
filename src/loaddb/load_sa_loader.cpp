@@ -472,6 +472,16 @@ struct ldr_context
 static bool skip_current_class = false;
 static bool skip_current_instance = false;
 
+/*
+ * What the syntax-checking walk counts. A row of a valid class answers for its own errors
+ * and counts once. A class that cannot take rows - unknown, or none given - refuses every
+ * row of it but says so once, so it counts once: on its %class line when that line says
+ * it (ldr_count_invalid_class ()), or else on the first row that finds the context
+ * invalid. The rest of the class does not count.
+ */
+static bool ldr_row_started_valid = false;
+static bool ldr_invalid_class_counted = false;
+
 extern bool locator_Dont_check_foreign_key;	/* from locator_sr.h */
 
 /*
@@ -761,6 +771,7 @@ static int add_argument (LDR_CONTEXT *context);
 static void invalid_class_id_error (LDR_CONTEXT *context, int id);
 static int ldr_init_loader (LDR_CONTEXT *context);
 static void ldr_abort (void);
+static void ldr_count_invalid_class (LDR_CONTEXT *context);
 static void ldr_process_object_ref (object_ref_type *ref, int type, bool is_element);
 static int ldr_act_add_class_all_attrs (const char *class_name);
 static int ldr_json_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -969,6 +980,7 @@ error_exit:
     ldr_clear_ctor_values (ldr_Current_context);
 
     CHECK_SKIP ();
+    ldr_row_started_valid = ldr_Current_context->valid;
     if (ldr_Current_context->valid)
       {
 
@@ -1175,6 +1187,29 @@ error_exit:
 error_exit:
     if (ldr_Current_context->err_count || (err != NO_ERROR))
       {
+	if (ldr_Current_context->validation_only)
+	  {
+	    /*
+	     * The syntax-checking walk does not stop at a refused row: ldr_abort () has no jump
+	     * buffer to leave the parse through until the loading walk registers one. Count the
+	     * row, so ldr_sa_load () does not go on to load a file it has just refused, and clear
+	     * the error the row has already reported. Left set, process_line () takes it for an
+	     * error raised outside the rows, prints it again for every row after this one and
+	     * checks none of them.
+	     *
+	     * The rows of a class that cannot take rows count once between them, as the error
+	     * is said once; see ldr_invalid_class_counted.
+	     */
+	    if (ldr_row_started_valid || !ldr_invalid_class_counted)
+	      {
+		ldr_increment_err_total ();
+	      }
+	    if (!ldr_Current_context->valid)
+	      {
+		ldr_invalid_class_counted = true;
+	      }
+	    er_clear ();
+	  }
 	ldr_abort ();
       }
     ldr_Current_context->instance_started = 0;
@@ -2142,11 +2177,22 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
   RETURN_IF_NOT_VALID (context);
 
+  /*
+   * A value past the last attribute. Say it for the first such value of the row only - the
+   * ones after it, and the trailing brace of a collection that overflowed, are the same
+   * overflow - and leave the context valid. Marking the context invalid here ignored the
+   * rest of the class, not the rest of the row: start_line () does not reset an invalid
+   * context, so a validation walk reported nothing for the rows after this one, and a row
+   * skipped through --error-control-file took every row after it in the class along.
+   * finish_line () refuses the row; nothing below reads attrs[next_attr] for it.
+   */
   if (context->next_attr >= context->num_attrs)
     {
-      context->valid = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
-      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      if (context->next_attr == context->num_attrs && (type != LDR_COLLECTION || str != NULL))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+	  CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+	}
       goto error_exit;
     }
 
@@ -2263,9 +2309,13 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	 * to the element setter
 	 */
 	case LDR_COLLECTION:
-	  err = ER_LDR_NESTED_SET;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	  display_error (0);
+	  /*
+	   * Through the filter, as the loading walk refuses it. finish_line () counts a refused
+	   * row of this walk, and a count stops the load, so an error --error-control-file
+	   * ignores must not be counted here: the loading walk skips only this row for it.
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NESTED_SET, 0);
+	  CHECK_ERR (err, ER_LDR_NESTED_SET);
 	  break;
 	/* Check validity of date/time/timestamp string during validation */
 	case LDR_TIME:
@@ -4737,6 +4787,29 @@ error_exit:
 }
 
 /*
+ * ldr_count_invalid_class - count a class that cannot take rows, where it is reported
+ *    return: void
+ *    context(in): current context
+ * Note:
+ *    The syntax-checking walk only. The class is said to be wrong once, on its %class
+ *    line, so it counts once there, and its rows do not count again; see
+ *    ldr_invalid_class_counted. The error the lookup left is cleared too: it has been
+ *    said, and left set, process_line () says it a second time on the first row.
+ */
+static void
+ldr_count_invalid_class (LDR_CONTEXT *context)
+{
+  if (!context->validation_only)
+    {
+      return;
+    }
+
+  ldr_increment_err_total ();
+  ldr_invalid_class_counted = true;
+  er_clear ();
+}
+
+/*
  * ldr_act_init_context -
  *    return:
  *    context():
@@ -4752,6 +4825,9 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
   CHECK_SKIP ();
 
   er_clear ();
+
+  /* A new class: its rows have not been counted yet. */
+  ldr_invalid_class_counted = false;
 
   err = ldr_finish_context (context);
   if (err != NO_ERROR)
@@ -4785,6 +4861,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 						     LOADDB_MSG_EXCEED_MAX_USER_LEN),
 				     DB_MAX_USER_LENGTH - 1);
 	      CHECK_CONTEXT_VALIDITY (context, true);
+	      ldr_count_invalid_class (context);
 	      ldr_abort ();
 	      goto error_exit;
 	    }
@@ -4800,6 +4877,7 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 						 LOADDB_MSG_EXCEED_MAX_LEN),
 				 DB_MAX_IDENTIFIER_LENGTH - DB_MAX_USER_LENGTH - 1);
 	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_count_invalid_class (context);
 	  ldr_abort ();
 	  goto error_exit;
 	}
@@ -4810,7 +4888,13 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
 	  display_error_line (0);
 	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNKNOWN_CLASS),
 		   class_name);
+	  if (context->validation_only && er_errid () != NO_ERROR && er_errid () != ER_LC_UNKNOWN_CLASSNAME)
+	    {
+	      /* The lookup failed for a reason of its own; the message above does not say it. */
+	      display_error (0);
+	    }
 	  CHECK_CONTEXT_VALIDITY (context, true);
+	  ldr_count_invalid_class (context);
 	  ldr_abort ();
 	  goto error_exit;
 	}
