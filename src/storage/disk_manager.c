@@ -2862,16 +2862,28 @@ disk_cache_remove_volume (THREAD_ENTRY * thread_p, VOLID volid)
 static void
 disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol_fullname, bool recreate_volinfo)
 {
+  char mounted_fullname[PATH_MAX];
+  const char *target_fullname = vol_fullname;
+
   if (fileio_get_volume_descriptor (volid) != NULL_VOLDES)
     {
+      /* restoredb -u may have restored the volume to another path than the logged one; remove what is mounted */
+      const char *mounted = fileio_get_volume_label (volid, PEEK);
+      if (mounted != NULL)
+	{
+	  strncpy (mounted_fullname, mounted, sizeof (mounted_fullname) - 1);
+	  mounted_fullname[sizeof (mounted_fullname) - 1] = '\0';
+	  target_fullname = mounted_fullname;
+	}
+
       disk_cache_remove_volume (thread_p, volid);
       (void) pgbuf_invalidate_all (thread_p, volid);
     }
 
   /* dismounts the volume if it is mounted */
-  if (fileio_is_volume_exist (vol_fullname))
+  if (fileio_is_volume_exist (target_fullname))
     {
-      fileio_unformat (thread_p, vol_fullname);
+      fileio_unformat (thread_p, target_fullname);
     }
 
   if (recreate_volinfo && logpb_recreate_volume_info (thread_p) != NO_ERROR)
@@ -2880,7 +2892,7 @@ disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol
       er_clear ();
     }
 
-  disk_log ("disk_delete_volume_finish", "volume %d (%s) is deleted", volid, vol_fullname);
+  disk_log ("disk_delete_volume_finish", "volume %d (%s) is deleted", volid, target_fullname);
 }
 
 /*
