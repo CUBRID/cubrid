@@ -25,6 +25,7 @@
 
 #if !defined(WINDOWS)
 #define __STDC_FORMAT_MACROS
+#include "build_version.h"
 #include <inttypes.h>
 #endif
 

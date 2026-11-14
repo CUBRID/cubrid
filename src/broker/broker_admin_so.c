@@ -23,6 +23,7 @@
 
 #ident "$Id$"
 
+#include "build_version.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
