@@ -43,23 +43,45 @@ public class DeclProc extends DeclRoutine {
     public DeclProc(
             ParserRuleContext ctx,
             String name,
+            String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList,
+            int directive,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx, name, loopOptimizables, paramList, null, decls, body);
+        super(ctx, name, comment, loopOptimizables, paramList, directive, null, decls, body);
     }
 
     public DeclProc(
             ParserRuleContext ctx,
             String name,
+            String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
-            NodeList<DeclParam> paramList) {
-        super(ctx, name, loopOptimizables, paramList, null, null, null);
+            NodeList<DeclParam> paramList,
+            int directive) {
+        super(ctx, name, comment, loopOptimizables, paramList, directive, null, null, new Body());
     }
 
     @Override
     public String kind() {
         return "procedure";
+    }
+
+    @Override
+    public boolean givesBodyOf(Decl d) {
+
+        if (d == null || d.getClass() != DeclProc.class) {
+            return false;
+        }
+
+        DeclProc other = (DeclProc) d;
+
+        // name and parameters must be the same
+        if (!this.name.equals(other.name) || !this.paramList.equals(other.paramList)) {
+            return false;
+        }
+
+        // this must have a body and the other may not
+        return (this.body != null && other.body == null);
     }
 }

@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.type;
 
+import com.cubrid.jsp.data.DBType;
 import com.cubrid.plcsql.compiler.InstanceStore;
 
 public class TypeVarchar extends Type {
@@ -65,7 +66,14 @@ public class TypeVarchar extends Type {
     }
 
     private TypeVarchar(int length) {
-        super(IDX_STRING, getPlcName(length), "java.lang.String", getTypicalValueStr(length));
+        super(
+                IDX_STRING,
+                getPlcName(length),
+                "java.lang.String",
+                getTypicalValueStr(length),
+                DBType.DB_STRING,
+                length,
+                NO_SCALE);
         this.length = length;
     }
 }

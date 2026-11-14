@@ -61,6 +61,12 @@ namespace cubschema
     system_metadata_definition get_synonym ();
     system_metadata_definition get_histogram ();
     system_metadata_definition get_global_tran ();
+    system_metadata_definition get_package ();
+    system_metadata_definition get_package_code ();
+    system_metadata_definition get_package_var ();
+    system_metadata_definition get_package_exception ();
+    system_metadata_definition get_package_cursor ();
+    system_metadata_definition get_package_record_type ();
 
     // views
     system_metadata_definition get_view_class ();

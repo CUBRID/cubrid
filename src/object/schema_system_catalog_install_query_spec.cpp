@@ -496,7 +496,7 @@ sm_define_view_index_key_spec (void)
 std::string
 sm_define_view_auth_spec (void)
 {
-  char stmt [4096];
+  char stmt [8192];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof(stmt),
@@ -534,12 +534,33 @@ sm_define_view_auth_spec (void)
 	"WHERE "
           "[a].[object_of] = [s] "
           "AND [a].[object_type] = 5 "
-          "AND " AUTH_CHECK_USER ("[s].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " ",
+          "AND " AUTH_CHECK_USER ("[s].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " "
+   "UNION ALL "
+        "SELECT "
+	  "[a].[grantor].[name] AS [grantor_name], "
+	  "[a].[grantee].[name] AS [grantee_name], "
+          "'PACKAGE' AS [object_type], "
+          "[p].[pkg_name] AS [object_name], "
+          "[p].[owner].[name] AS [owner_name], "
+          "[a].[auth_type] AS [auth_type], "
+          "CASE [a].[is_grantable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_grantable], "
+          "[a].[created_time] AS [created_time], "
+          "[a].[updated_time] AS [updated_time] "
+        "FROM "
+          /* CT_CLASSAUTH_NAME, CT_PACKAGE_NAME */
+	  "[%s] AS [a], [%s] AS [p] "
+	"WHERE "
+          "[a].[object_of] = [p] "
+          "AND [a].[object_type] = 6 "
+          "AND " AUTH_CHECK_USER ("[p].[owner].[name], [a].[grantee].[name], [a].[grantor].[name]") " ",
 	CT_CLASSAUTH_NAME,
         CT_CLASS_NAME,
 
         CT_CLASSAUTH_NAME,
-        CT_STORED_PROC_NAME
+        CT_STORED_PROC_NAME,
+
+        CT_CLASSAUTH_NAME,
+        CT_PACKAGE_NAME
         );
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));

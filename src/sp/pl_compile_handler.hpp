@@ -44,7 +44,7 @@ namespace cubpl
       compile_handler ();
       ~compile_handler ();
 
-      int compile (const compile_request &req, cubmem::extensible_block &out_blk);
+      int compile (const plcsql_compile_request &req, cubmem::extensible_block &out_blk);
 
     private:
       int read_request (cubmem::block &response_blk, int &code);

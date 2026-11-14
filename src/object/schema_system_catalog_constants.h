@@ -51,10 +51,16 @@
 #define CT_AUTHORIZATION_NAME      "_db_authorization"
 #define CT_CHARSET_NAME		   "_db_charset"
 #define CT_DUAL_NAME               "dual"
-#define CT_SERVER_NAME          "_db_server"
+#define CT_SERVER_NAME             "_db_server"
 #define CT_SYNONYM_NAME            "_db_synonym"
 #define CT_HISTOGRAM_NAME       "_db_histogram"
 #define CT_GLOBAL_TRAN_NAME     "_db_global_tran"
+#define CT_PACKAGE_NAME                 "_db_package"
+#define CT_PACKAGE_CODE_NAME            "_db_package_code"
+#define CT_PACKAGE_VAR_NAME             "_db_package_var"
+#define CT_PACKAGE_EXCEPTION_NAME       "_db_package_exception"
+#define CT_PACKAGE_CURSOR_NAME          "_db_package_cursor"
+#define CT_PACKAGE_RECORD_TYPE_NAME     "_db_package_record_type"
 
 /* catalog vclasses */
 #define CTV_CLASS_NAME             "db_class"
@@ -79,7 +85,7 @@
 #define CTV_USER_NAME              "db_user"
 #define CTV_AUTHORIZATION_NAME     "db_authorization"
 #define CTV_CHARSET_NAME	   "db_charset"
-#define CTV_SERVER_NAME         "db_server"
+#define CTV_SERVER_NAME             "db_server"
 #define CTV_SYNONYM_NAME           "db_synonym"
 #define CTV_HISTOGRAM_NAME      "db_histogram"
 
@@ -97,7 +103,10 @@
 #define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
 
-#define SP_ATTR_TARGET_METHOD_LEN       (4096)
+// common to many system tables and views
+#define CT_COMMON_ATTR_UNIQUE_NAME             "unique_name"
+#define CT_COMMON_ATTR_OWNER                   "owner"
+
 
 /*
  * !! CAUTION !!

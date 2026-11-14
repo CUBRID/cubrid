@@ -42,22 +42,13 @@ public class DeclDynamicRecord extends DeclId {
         throw new RuntimeException("unreachable");
     }
 
-    public final String name;
-
     public DeclDynamicRecord(ParserRuleContext ctx, String name) {
-        super(ctx);
-
-        this.name = name;
+        super(ctx, name, null);
     }
 
     @Override
     public Type type() {
         return Type.RECORD_ANY;
-    }
-
-    @Override
-    public String name() {
-        return name;
     }
 
     @Override

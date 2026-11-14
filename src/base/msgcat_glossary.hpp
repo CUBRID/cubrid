@@ -37,6 +37,7 @@
 #define MSGCAT_GLOSSARY_SERVER                               4
 #define MSGCAT_GLOSSARY_SYNONYM                              5
 #define MSGCAT_GLOSSARY_PROCEDURE                            6
+#define MSGCAT_GLOSSARY_PACKAGE                              7
 
 #define MSGCAT_GET_GLOSSARY_MSG(id) \
   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_GLOSSARY, id)

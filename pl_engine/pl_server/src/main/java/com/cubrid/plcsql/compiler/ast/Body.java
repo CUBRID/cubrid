@@ -44,6 +44,15 @@ public class Body extends AstNode {
     public final NodeList<ExHandler> exHandlers;
     public final String label;
 
+    Body() {
+        super(null); // placeholder bodies are created in previsits and later replaced by real
+        // ones in visits
+
+        this.stmts = null;
+        this.exHandlers = null;
+        this.label = null;
+    }
+
     public Body(
             ParserRuleContext ctx,
             NodeList<Stmt> stmts,

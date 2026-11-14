@@ -30,26 +30,31 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.jsp.data.CompileResponse;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class DeclConst extends DeclIdTypeSpeced {
+public class DeclConst extends DeclIdTypeDeclared {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitDeclConst(this);
     }
 
-    public final String name;
     public final TypeSpec typeSpec;
     public final boolean notNull;
     public final Expr val;
 
     public DeclConst(
-            ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean notNull, Expr val) {
-        super(ctx);
+            ParserRuleContext ctx,
+            String name,
+            String comment,
+            TypeSpec typeSpec,
+            boolean notNull,
+            Expr val) {
+        super(ctx, name, comment);
 
-        this.name = name;
         this.typeSpec = typeSpec;
         this.notNull = notNull;
         this.val = val;
@@ -60,12 +65,18 @@ public class DeclConst extends DeclIdTypeSpeced {
     }
 
     @Override
-    public String name() {
-        return name;
+    public String kind() {
+        return "constant";
     }
 
     @Override
-    public String kind() {
-        return "constant";
+    public void addAsPkgItem(CompileResponse resp) {
+        resp.addPkgVar(
+                typeSpec.type.dbType,
+                typeSpec.type.prec,
+                typeSpec.type.scale,
+                ServerConstants.PKG_VAR_CONSTANT | (notNull ? ServerConstants.PKG_VAR_NOT_NULL : 0),
+                name,
+                comment);
     }
 }

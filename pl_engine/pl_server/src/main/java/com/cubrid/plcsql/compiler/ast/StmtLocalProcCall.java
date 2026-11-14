@@ -77,6 +77,6 @@ public class StmtLocalProcCall extends Stmt implements LocalRoutineCall {
         this.args = args;
         this.scope = scope;
         this.decl = decl;
-        prefixDeclBlock = decl.scope().declDone;
+        prefixDeclBlock = decl.scope.declDone;
     }
 }

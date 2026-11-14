@@ -36,22 +36,18 @@ import java.util.List;
 
 public class TypeRecord extends Type {
 
-    public final boolean ofTable;
-    public final String rowName;
+    public final String name;
     public final List<Misc.Pair<String, Type>> selectList;
 
     public boolean generateEq; // whether to generate a opEq method for this record type
 
     public static TypeRecord getInstance(
-            InstanceStore iStore,
-            boolean ofTable,
-            String rowName,
-            List<Misc.Pair<String, Type>> selectList) {
+            InstanceStore iStore, String name, List<Misc.Pair<String, Type>> selectList) {
 
         TypeRecord ret = iStore.typeRecord.get(selectList);
         if (ret == null) {
             int seq = iStore.typeRecord.size();
-            ret = new TypeRecord(ofTable, rowName, seq, selectList);
+            ret = new TypeRecord(name, seq, selectList);
             iStore.typeRecord.put(selectList, ret);
         }
 
@@ -69,19 +65,24 @@ public class TypeRecord extends Type {
 
     // keys are select lists.
 
-    private static String getPlcName(String rowName) {
-        return String.format("%s%%ROWTYPE", rowName);
+    private static String getPlcName(String name) {
+        return String.format("%s%%ROWTYPE", name);
     }
 
-    private static String getJavaName(boolean ofTable, String rowName) {
-        return String.format("$Record_%s_%s", (ofTable ? "T" : "C"), rowName.replace('.', '_'));
+    private static String getJavaName(String name) {
+        return String.format("$Record_%s", name.replace('.', '_'));
     }
 
-    private TypeRecord(
-            boolean ofTable, String rowName, int seq, List<Misc.Pair<String, Type>> selectList) {
-        super(IDX_RECORD, getPlcName(rowName + seq), getJavaName(ofTable, rowName + seq), null);
-        this.ofTable = ofTable;
-        this.rowName = rowName;
+    private TypeRecord(String name, int seq, List<Misc.Pair<String, Type>> selectList) {
+        super(
+                IDX_RECORD,
+                getPlcName(name + seq),
+                getJavaName(name + seq),
+                null,
+                NO_DB_TYPE,
+                NO_PREC,
+                NO_SCALE);
+        this.name = name;
         this.selectList = selectList;
     }
 }
