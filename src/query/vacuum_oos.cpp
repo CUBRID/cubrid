@@ -181,7 +181,7 @@ vacuum_oos_delete_reference (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const
 	  return ER_FAILED;
 	}
       /* walks the chain reading only node headers and deletes each node through oos_delete */
-      return internal_lob_delete (thread_p, *internal_lob_vfid, locator);
+      return internal_lob_delete (thread_p, *internal_lob_vfid, locator, false);
     }
 
   if (oos_vfid == NULL || VFID_ISNULL (oos_vfid))
@@ -641,7 +641,7 @@ vacuum_oos_delete_deferred_chains (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
 	}
 
       /* internal LOB pages are left to the growth-gate sweep */
-      error_code = oos_vacuum_delete_chain (thread_p, *vfid, reference.ref, is_lob ? NULL : &emptied_pages);
+      error_code = oos_vacuum_delete_chain (thread_p, *vfid, reference.ref, false, is_lob ? NULL : &emptied_pages);
       if (error_code != NO_ERROR)
 	{
 	  break;

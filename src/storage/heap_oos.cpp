@@ -1204,7 +1204,9 @@ heap_oos_test_disarm_fail_before_vfid_lookup ()
  * operations on MVCC-disabled classes (catalog tables), so this code can execute server-side too.
  * Caller MUST abort the transaction on error so oos_delete's per-chunk undo records replay any
  * partial deletes during rollback; otherwise the surviving recdes would reference already-deleted
- * OOS chunks.
+ * OOS chunks. An internal LOB chain is deleted at commit instead (internal_lob_delete at_commit):
+ * its file never reuses a slot, so the undo re-insert of a chunk fails once later inserts of the
+ * transaction took the page's space.
  *
  * Strict failure handling: the OOS header flag is set by the record transformer and read via
  * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
@@ -1290,7 +1292,7 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	  continue;
 	}
 
-      /* [리뷰] 비MVCC(SA·카탈로그) 경로만 옛 체인을 즉시 지운다. MVCC 경로의 회수는 vacuum 몫이다.
+      /* [리뷰] 비MVCC(SA·카탈로그) 경로만 옛 체인을 즉시 지운다(LOB 체인은 커밋 때). MVCC 경로의 회수는 vacuum 몫이다.
        * 스텁 kind로 LOB 파일과 OOS 파일을 가리고, 각 VFID는 처음 필요할 때 한 번만 찾는다.
        * 중간 실패 시 호출자가 abort해 부분 삭제를 undo로 되돌려야 한다. */
       /* A stale reference (page gone, slot empty, stamp mismatch) is skipped rather than failed, so the
@@ -1316,7 +1318,7 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	    {
 	      return ER_FAILED;
 	    }
-	  error_code = internal_lob_delete (thread_p, internal_lob_vfid, locator, &outcome);
+	  error_code = internal_lob_delete (thread_p, internal_lob_vfid, locator, true, &outcome);
 	}
       else
 	{

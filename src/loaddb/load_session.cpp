@@ -486,7 +486,7 @@ namespace cubload
 		continue;
 	      }
 
-	    int error = internal_lob_delete (&thread_ref, m_lob_slots.lob_vfid, slot.locator);
+	    int error = internal_lob_delete (&thread_ref, m_lob_slots.lob_vfid, slot.locator, true);
 	    if (error != NO_ERROR)
 	      {
 		return error;

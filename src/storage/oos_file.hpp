@@ -247,10 +247,16 @@ extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request
  * reference and a vanished or reused target is unexpected. */
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
 		       std::vector<VPID> *emptied_vpids = NULL, oos_delete_outcome *outcome_out = NULL);
+/* Like oos_delete, for an internal LOB chain deleted in a user transaction: the head is checked now (same outcomes),
+ * and the chain is removed when the transaction commits (RVOOS_DELETE_AT_COMMIT postpone, redo-only trim with the
+ * head). A rollback then has nothing to re-insert, so it cannot fail for lack of page space. */
+extern int oos_delete_at_commit (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+				 oos_delete_outcome *outcome_out = NULL);
 /* Vacuum only: trims a dead chain to its head, tail first with redo-only logs (no undo, no sysop). A head that is
- * gone or carries another identity stamp leaves nothing to trim, as in oos_delete. emptied_vpids as in oos_delete. */
+ * gone or carries another identity stamp leaves nothing to trim, as in oos_delete. emptied_vpids as in oos_delete.
+ * with_head: delete the head too, last; not vacuum but the commit-time delete of oos_delete_at_commit. */
 extern int oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
-				    std::vector<VPID> *emptied_vpids);
+				    bool with_head, std::vector<VPID> *emptied_vpids);
 /* Occupancy probe for tests and diagnostics: *out_exists is true iff SOME record occupies the slot
  * at oid. A deallocated page, a page that is no longer an OOS page and a removed slot all report
  * "gone" with NO_ERROR; any other failure is propagated. It proves occupancy, not identity: it
@@ -281,6 +287,7 @@ extern int oos_read_pull (THREAD_ENTRY *thread_p, OOS_READER &reader, oos_buffer
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_vacuum_cut (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
+extern int oos_rv_delete_at_commit (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 
 typedef enum
 {

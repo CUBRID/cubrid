@@ -941,7 +941,13 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL,
-   repl_data_insert_log_dump}
+   repl_data_insert_log_dump},
+  {RVOOS_DELETE_AT_COMMIT,
+   "RVOOS_DELETE_AT_COMMIT",
+   NULL,
+   oos_rv_delete_at_commit,
+   NULL,
+   log_rv_dump_hexa}
 };
 
 /*

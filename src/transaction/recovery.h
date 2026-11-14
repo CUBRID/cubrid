@@ -220,7 +220,9 @@ typedef enum
   /* Replication-only record. The target WAL record is still RVOOS_INSERT; this tag preserves
    * FILE_INTERNAL_LOB as the replica-side destination. Append-only on-disk value. */
   RVREPL_INTERNAL_LOB_INSERT = 145,
-  RV_LAST_LOGID = RVREPL_INTERNAL_LOB_INSERT,
+  /* Logical postpone: delete one OOS chain (VFID + chain reference) when its transaction commits. */
+  RVOOS_DELETE_AT_COMMIT = 146,
+  RV_LAST_LOGID = RVOOS_DELETE_AT_COMMIT,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

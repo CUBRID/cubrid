@@ -14899,7 +14899,7 @@ heap_internal_lob_move_to_partition (THREAD_ENTRY * thread_p, const OID * class_
     }
   if (error == NO_ERROR)
     {
-      error = internal_lob_delete (thread_p, source_vfid, *source_locator);
+      error = internal_lob_delete (thread_p, source_vfid, *source_locator, true);
     }
   return error;
 }

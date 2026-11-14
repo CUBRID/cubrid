@@ -5012,7 +5012,7 @@ ldr_delete_pending_internal_lobs (LDR_CONTEXT *context, size_t from)
       err = heap_internal_lob_get_class_vfid (thread_p, class_oid, &lob_vfid);
       for (size_t i = from; err == NO_ERROR && i < ldr_Lob_pending.size (); i++)
 	{
-	  err = internal_lob_delete (thread_p, lob_vfid, ldr_Lob_pending[i]);
+	  err = internal_lob_delete (thread_p, lob_vfid, ldr_Lob_pending[i], true);
 	}
     }
   if (from < ldr_Lob_pending.size ())

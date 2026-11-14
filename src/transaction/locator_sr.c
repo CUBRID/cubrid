@@ -6266,7 +6266,7 @@ locator_delete_orphan_internal_lobs (THREAD_ENTRY * thread_p, const OID * class_
       locator.oid = ref.ref.head_oid;
       locator.identity_stamp = ref.ref.identity_stamp;
       locator.length = ref.disk_length;
-      error_code = internal_lob_delete (thread_p, lob_vfid, locator);
+      error_code = internal_lob_delete (thread_p, lob_vfid, locator, true);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -6396,7 +6396,7 @@ locator_delete_moved_internal_lob_intermediates (THREAD_ENTRY * thread_p, const 
 	    {
 	      goto end;
 	    }
-	  error_code = internal_lob_delete (thread_p, lob_vfid, locator);
+	  error_code = internal_lob_delete (thread_p, lob_vfid, locator, true);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto end;

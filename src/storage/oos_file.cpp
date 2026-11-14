@@ -88,7 +88,7 @@ oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
 static void
 oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, PGSLOTID slotid, RECDES *recdes_p);
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref, bool at_commit,
 		  std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out);
 
 STATIC_INLINE __attribute__ ((ALWAYS_INLINE))
@@ -1135,6 +1135,15 @@ struct oos_new_page_args
 {
   PAGE_TYPE ptype;
   INT16 anchor_type;
+};
+
+/* RVOOS_DELETE_AT_COMMIT postpone data: the chain oos_delete_at_commit leaves to commit. */
+typedef struct oos_delete_at_commit_data OOS_DELETE_AT_COMMIT_DATA;
+struct oos_delete_at_commit_data
+{
+  VFID vfid;
+  OID head_oid;
+  LOG_LSA identity_stamp;
 };
 
 static int
@@ -3608,6 +3617,7 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *   thread_p(in): thread entry
  *   oos_vfid(in): OOS file identifier
  *   ref(in): head OID of the chain plus the identity stamp the caller's OOS inline stub carries
+ *   at_commit(in): after the head checks, log an RVOOS_DELETE_AT_COMMIT postpone instead of deleting
  *   emptied_vpids(out): optional; every page that holds zero records after one of this chain's
  *			 chunks was deleted from it is appended, once. A page that still holds
  *			 other chunks is not a reclaim candidate and is not reported.
@@ -3636,7 +3646,7 @@ oos_log_delete_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, 
  *       are intact. NULL is an ordinary stamp value here.
  */
 static int
-oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref, bool at_commit,
 		  std::vector<VPID> *emptied_vpids, oos_delete_outcome *outcome_out)
 {
   int error = NO_ERROR;
@@ -3663,7 +3673,8 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 	  /* The head fix must tolerate a vanished or retyped page: a retried delete may hold a stale OOS
 	   * reference whose whole page was reclaimed since (CBRD-26786) and possibly reused for another
 	   * purpose. The page type is checked under the latch before the slotted-page header is read. */
-	  error = oos_fix_page_if_oos (thread_p, current_oid, PGBUF_LATCH_WRITE, page_ptr);
+	  error = oos_fix_page_if_oos (thread_p, current_oid, at_commit ? PGBUF_LATCH_READ : PGBUF_LATCH_WRITE,
+				       page_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      oos_error ("head page fix failed for volid=%d, pageid=%d", current_oid.volid, current_oid.pageid);
@@ -3750,6 +3761,18 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 	      return ER_HEAP_OOS_CORRUPTED_RECORD;
 	    }
 	  is_head_chunk = false;
+
+	  if (at_commit)
+	    {
+	      /* Deleted at commit (oos_rv_delete_at_commit). Undoing an in-transaction delete re-inserts each
+	       * chunk, which fails once later inserts took the space (a LOB file never reuses a slot). */
+	      OOS_DELETE_AT_COMMIT_DATA data = { oos_vfid, ref.head_oid, ref.identity_stamp };
+	      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+
+	      log_append_postpone (thread_p, RVOOS_DELETE_AT_COMMIT, &addr, sizeof (data), &data);
+	      *outcome_out = OOS_DELETE_RECLAIMED;
+	      return NO_ERROR;
+	    }
 	}
 
       OID next_chunk_oid = header.next_chunk_oid;
@@ -3899,9 +3922,10 @@ oos_vacuum_delete_chunk (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID
  *   be reused first.  An old locator reads the original leading bytes, then a short chain, never skipped bytes.
  *   The head is checked against ref like oos_delete_chain (CBRD-26950): a head that is gone or carries another
  *   identity stamp leaves nothing to trim; a stamp-matching continuation chunk is a malformed reference.
+ *   with_head: also delete the head, last. Not vacuum: the commit-time delete of oos_delete_at_commit owns the chain.
  */
 int
-oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref, bool with_head,
 			 std::vector<VPID> *emptied_vpids)
 {
   int error = NO_ERROR;
@@ -4003,6 +4027,15 @@ oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos
 	{
 	  return error;
 	}
+    }
+  if (with_head && !chunks.empty ())
+    {
+      error = oos_vacuum_delete_chunk (thread_p, oos_vfid, chunks[0], emptied_vpids);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      oos_reclaim_note_delete (oos_vfid);
     }
   return NO_ERROR;
 }
@@ -4106,7 +4139,10 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       Why this is safe:
  *       - Transaction abort: undo records are replayed in reverse order,
  *         restoring all deleted chunks to their original slotids via
- *         spage_insert_for_recovery. The chain is fully restored.
+ *         spage_insert_for_recovery. The chain is fully restored, provided
+ *         nothing took the freed space before the abort. An internal LOB file
+ *         never reuses a slot, so its user-transaction deletes use
+ *         oos_delete_at_commit instead.
  *       - Crash recovery: same mechanism — incomplete transaction's undo
  *         records are replayed during recovery, restoring the chain.
  *       - Error mid-chain: partial deletes have undo records in the
@@ -4132,11 +4168,24 @@ oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &r
 	     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp));
 
   oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-  int err = oos_delete_chain (thread_p, oos_vfid, ref, emptied_vpids, &outcome);
+  int err = oos_delete_chain (thread_p, oos_vfid, ref, false, emptied_vpids, &outcome);
   if (err == NO_ERROR && outcome == OOS_DELETE_RECLAIMED)
     {
       oos_reclaim_note_delete (oos_vfid);
     }
+  if (outcome_out != NULL)
+    {
+      *outcome_out = outcome;
+    }
+  return err;
+}
+
+int
+oos_delete_at_commit (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+		      oos_delete_outcome *outcome_out)
+{
+  oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
+  int err = oos_delete_chain (thread_p, oos_vfid, ref, true, NULL, &outcome);
   if (outcome_out != NULL)
     {
       *outcome_out = outcome;
@@ -4325,6 +4374,20 @@ oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
 
   return NO_ERROR;
+}
+
+/* Run postpone of RVOOS_DELETE_AT_COMMIT. Redo-only like vacuum, so recovery never re-inserts a chunk: a crash part
+ * way leaves a shorter chain from the head, and the re-run (or a head already gone) finishes it. */
+int
+oos_rv_delete_at_commit (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  OOS_DELETE_AT_COMMIT_DATA data;
+
+  assert (rcv->length == (int) sizeof (data));
+  std::memcpy (&data, rcv->data, sizeof (data));
+
+  oos_chain_ref ref = { data.head_oid, data.identity_stamp };
+  return oos_vacuum_delete_chain (thread_p, data.vfid, ref, true, NULL);
 }
 
 INT64

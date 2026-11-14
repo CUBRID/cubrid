@@ -1145,7 +1145,7 @@ internal_lob_spool_range_reader (void *ctx, DB_BIGINT offset, char *buf, int siz
 
 int
 internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator,
-		     oos_delete_outcome *outcome_out)
+		     bool at_commit, oos_delete_outcome *outcome_out)
 {
   if (locator.length == 0 && OID_ISNULL (&locator.oid))
     {
@@ -1158,6 +1158,10 @@ internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNA
     }
 
   /* One ordinary OOS chain: the OOS delete checks the head's identity, then walks and removes every chunk. */
+  if (at_commit)
+    {
+      return oos_delete_at_commit (thread_p, lob_vfid, internal_lob_chain_ref (locator), outcome_out);
+    }
   return oos_delete (thread_p, lob_vfid, internal_lob_chain_ref (locator), NULL, outcome_out);
 }
 

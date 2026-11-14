@@ -167,9 +167,10 @@ extern int internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LO
 extern int internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_BIGINT count);
 extern int internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos_buffer dest, int &nread);
 extern int xinternal_lob_upload_release (THREAD_ENTRY *thread_p, INT64 token);
-/* outcome_out (optional): what oos_delete did with the chain, see oos_delete_outcome. */
+/* at_commit: oos_delete_at_commit (a delete inside a user transaction) instead of oos_delete (vacuum).
+ * outcome_out (optional): what the delete did with the chain, see oos_delete_outcome. */
 extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator,
-				oos_delete_outcome *outcome_out = NULL);
+				bool at_commit, oos_delete_outcome *outcome_out = NULL);
 
 extern bool internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator);

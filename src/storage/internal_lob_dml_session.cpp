@@ -280,7 +280,7 @@ internal_lob_dml_staging_context::delete_unadopted_direct_slots (THREAD_ENTRY *t
 	  continue;
 	}
 
-      int error = internal_lob_delete (thread_p, slot.direct_writer.lob_vfid, slot.direct_writer.locator);
+      int error = internal_lob_delete (thread_p, slot.direct_writer.lob_vfid, slot.direct_writer.locator, true);
       if (error != NO_ERROR)
 	{
 	  return error;
