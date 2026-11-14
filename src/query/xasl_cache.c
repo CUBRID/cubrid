@@ -106,6 +106,15 @@ struct xcache_stats
 };
 #define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
+/* The statistics one thread counts. Only the thread that owns the thread entry of the slot writes it, so counting is a
+ * plain load and store instead of an atomic read-modify-write on a line that every thread writes; the dump sums the
+ * slots. A slot takes whole cache lines so that two threads never write the same line. */
+typedef struct xcache_stats_slot XCACHE_STATS_SLOT;
+struct alignas (64) xcache_stats_slot
+{
+  XCACHE_STATS stats;
+};
+
 
 
 typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
@@ -140,7 +149,9 @@ struct xcache
   int max_plan_size;
   INT32 memory_usage_cache;
   INT32 memory_usage_clone;
-  XCACHE_STATS stats;
+  XCACHE_STATS stats;		/* counted by threads that have no slot, and the counts of freed slots */
+  XCACHE_STATS_SLOT *stats_slots;	/* one per thread entry index (SERVER_MODE only) */
+  int n_stats_slots;		/* 0 counts everything in stats */
 
   // *INDENT-OFF*
   xcache ()
@@ -161,6 +172,8 @@ struct xcache
     , memory_usage_cache (0)
     , memory_usage_clone (0)
     , stats XCACHE_STATS_INITIALIZER
+    , stats_slots (NULL)
+    , n_stats_slots (0)
   {
   }
   // *INDENT-ON*
@@ -187,8 +200,22 @@ XCACHE xcache_Global;
 #define xcache_Cleanup_array xcache_Global.cleanup_array
 
 /* Statistics */
-#define XCACHE_STAT_GET(name) ATOMIC_LOAD_64 (&xcache_Global.stats.name)
-#define XCACHE_STAT_INC(name) ATOMIC_INC_64 (&xcache_Global.stats.name, 1)
+#define XCACHE_STAT_GET(name) xcache_stat_get (offsetof (XCACHE_STATS, name))
+#define XCACHE_STAT_INC(thread_p, name) \
+  do \
+    { \
+      XCACHE_STATS *own_stats_ = xcache_own_stats (thread_p); \
+      if (own_stats_ != NULL) \
+	{ \
+	  __atomic_store_n (&own_stats_->name, __atomic_load_n (&own_stats_->name, __ATOMIC_RELAXED) + 1, \
+			    __ATOMIC_RELAXED); \
+	} \
+      else \
+	{ \
+	  ATOMIC_INC_64 (&xcache_Global.stats.name, 1); \
+	} \
+    } \
+  while (0)
 
 #define TIME_DIFF_SEC(t1, t2) (t1.tv_sec - t2.tv_sec)
 
@@ -311,6 +338,10 @@ static INT32 xcache_entry_get_clonesize (XASL_CACHE_ENTRY * xcache_entry);
 static void xcache_entry_add_mem_size (XASL_CACHE_ENTRY * xcache_entry, INT32 size);
 static void xcache_entry_sub_mem_size (XASL_CACHE_ENTRY * xcache_entry);
 static void xcache_stat_entry_deleted (THREAD_ENTRY * thread_p, bool at_cleanup);
+static void xcache_stats_slots_alloc (void);
+static void xcache_stats_slots_free (void);
+STATIC_INLINE XCACHE_STATS *xcache_own_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+static INT64 xcache_stat_get (size_t offset);
 static INT32 xcache_entry_get_one_clonesize (XASL_CACHE_ENTRY * xcache_entry);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
@@ -401,6 +432,8 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   /* set last_cleaned_time as current */
   gettimeofday (&xcache_Last_cleaned_time, NULL);
 
+  xcache_stats_slots_alloc ();
+
   xcache_log ("init successful.\n");
 
   xcache_Enabled = true;
@@ -442,7 +475,125 @@ xcache_finalize (THREAD_ENTRY * thread_p)
       free_and_init (xcache_Cleanup_array);
     }
 
+  xcache_stats_slots_free ();
+
   xcache_Enabled = false;
+}
+
+/*
+ * xcache_stats_slots_alloc () - Give every thread entry its own statistics slot.
+ *
+ * return : Void.
+ *
+ * NOTE: Without slots (SA_MODE, or no memory) the statistics are counted atomically in xcache_Global.stats as before.
+ */
+static void
+xcache_stats_slots_alloc (void)
+{
+#if defined (SERVER_MODE)
+  /* thread entry indexes run from 0 (the main thread) to the managed thread count; thread_num_total_threads () counts
+   * both */
+  int n_slots = (int) thread_num_total_threads ();
+
+  assert (xcache_Global.stats_slots == NULL);
+
+  xcache_Global.stats_slots =
+    (XCACHE_STATS_SLOT *) cub_aligned_alloc (alignof (XCACHE_STATS_SLOT), n_slots * sizeof (XCACHE_STATS_SLOT),
+					     __FILE__, __LINE__);
+  if (xcache_Global.stats_slots == NULL)
+    {
+      xcache_log ("could not allocate statistics slots; counting in the shared statistics.\n");
+      return;
+    }
+  memset (xcache_Global.stats_slots, 0, n_slots * sizeof (XCACHE_STATS_SLOT));
+  /* counting starts to use the slots once the count is set */
+  xcache_Global.n_stats_slots = n_slots;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * xcache_stats_slots_free () - Move the counts of the slots to the shared statistics and free the slots.
+ *
+ * return : Void.
+ *
+ * NOTE: Called after the hash map is destroyed, so no thread counts anymore.
+ */
+static void
+xcache_stats_slots_free (void)
+{
+  XCACHE_STATS_SLOT *slots = xcache_Global.stats_slots;
+  int n_slots = xcache_Global.n_stats_slots;
+  INT64 *shared = (INT64 *) & xcache_Global.stats;
+  int n_values = (int) (sizeof (XCACHE_STATS) / sizeof (INT64));
+  int i, j;
+
+  if (slots == NULL)
+    {
+      return;
+    }
+
+  xcache_Global.n_stats_slots = 0;
+  xcache_Global.stats_slots = NULL;
+  for (i = 0; i < n_slots; i++)
+    {
+      for (j = 0; j < n_values; j++)
+	{
+	  shared[j] += ((INT64 *) & slots[i].stats)[j];
+	}
+    }
+  free_and_init (slots);
+}
+
+/*
+ * xcache_own_stats () - The statistics slot of the thread, or NULL to count in the shared statistics.
+ *
+ * return	 : The slot statistics or NULL.
+ * thread_p (in) : Thread entry (NULL for the current thread).
+ */
+STATIC_INLINE XCACHE_STATS *
+xcache_own_stats (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (xcache_Global.n_stats_slots == 0)
+    {
+      return NULL;
+    }
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (thread_p->index < 0 || thread_p->index >= xcache_Global.n_stats_slots)
+    {
+      /* not an entry of the thread manager; count in the shared statistics */
+      return NULL;
+    }
+  return &xcache_Global.stats_slots[thread_p->index].stats;
+#else /* !SERVER_MODE */
+  (void) thread_p;
+  return NULL;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * xcache_stat_get () - Sum of a statistic over the shared statistics and every slot.
+ *
+ * return      : The statistic value.
+ * offset (in) : Offset of the statistic in XCACHE_STATS.
+ *
+ * NOTE: The slots are read while their threads count, so the sum is not one instant across the slots, but no count
+ *       is lost: every count is in exactly one place.
+ */
+static INT64
+xcache_stat_get (size_t offset)
+{
+  INT64 value = __atomic_load_n ((INT64 *) ((char *) &xcache_Global.stats + offset), __ATOMIC_RELAXED);
+  int i;
+
+  for (i = 0; i < xcache_Global.n_stats_slots; i++)
+    {
+      value += __atomic_load_n ((INT64 *) ((char *) &xcache_Global.stats_slots[i].stats + offset), __ATOMIC_RELAXED);
+    }
+  return value;
 }
 
 // *INDENT-OFF*
@@ -595,11 +746,11 @@ xcache_stat_entry_deleted (THREAD_ENTRY * thread_p, bool at_cleanup)
 {
   if (at_cleanup)
     {
-      XCACHE_STAT_INC (deletes_at_cleanup);
+      XCACHE_STAT_INC (thread_p, deletes_at_cleanup);
     }
   else
     {
-      XCACHE_STAT_INC (deletes);
+      XCACHE_STAT_INC (thread_p, deletes);
     }
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
   ATOMIC_INC_32 (&xcache_Entry_count, -1);
@@ -865,7 +1016,7 @@ xcache_compare_key (void *key1, void *key2)
   while (!XCACHE_ATOMIC_CAS_CACHE_FLAG (entry_key, cache_flag, cache_flag + 1));
 
   /* Successfully marked as reader. */
-  XCACHE_STAT_INC (fix);
+  XCACHE_STAT_INC (NULL, fix);
 
   xcache_log ("compare keys: key matched and fixed %s\n"
 	      "\t\t lookup key: \n" XCACHE_LOG_SHA1_TEXT
@@ -950,7 +1101,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
 
   xcache_check_logging ();
 
-  XCACHE_STAT_INC (lookups);
+  XCACHE_STAT_INC (thread_p, lookups);
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_LOOKUP);
 
   XASL_ID_SET_NULL (&lookup_key);
@@ -960,7 +1111,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
   if (*xcache_entry == NULL)
     {
       /* No match! */
-      XCACHE_STAT_INC (miss);
+      XCACHE_STAT_INC (thread_p, miss);
       perfmon_inc_stat (thread_p, PSTAT_PC_NUM_MISS);
       xcache_log ("could not find cache entry: \n"
 		  XCACHE_LOG_SHA1_TEXT XCACHE_LOG_TRAN_TEXT,
@@ -973,7 +1124,7 @@ xcache_find_sha1 (THREAD_ENTRY * thread_p, const SHA1Hash * sha1, const XASL_CAC
   xcache_Hashmap.end_tran (thread_p);
 
   perfmon_inc_stat (thread_p, PSTAT_PC_NUM_HIT);
-  XCACHE_STAT_INC (hits);
+  XCACHE_STAT_INC (thread_p, hits);
 
   assert (*xcache_entry != NULL);
 
@@ -1265,7 +1416,7 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
   (void) gettimeofday (&time_last_used, NULL);
   ATOMIC_TAS (&xcache_entry->time_last_used.tv_sec, time_last_used.tv_sec);
 
-  XCACHE_STAT_INC (unfix);
+  XCACHE_STAT_INC (thread_p, unfix);
   ATOMIC_INC_64 (&xcache_entry->ref_count, 1);
 
   /* Decrement the number of users. */
@@ -1738,7 +1889,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
   XASL_ID_SET_NULL (&xid);
   xid.sha1 = context->sha1;
 
-  XCACHE_STAT_INC (inserts);
+  XCACHE_STAT_INC (thread_p, inserts);
 
   /* Allocate XASL cache entry data. */
   if (n_oid > 0)
@@ -1866,7 +2017,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 	}
       else
 	{
-	  XCACHE_STAT_INC (found_at_insert);
+	  XCACHE_STAT_INC (thread_p, found_at_insert);
 	}
 
       if (inserted || !context->recompile_xasl)
@@ -1967,7 +2118,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 	      xcache_log ("(recompile) entry is recompiled by somebody else: \n"
 			  XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
 			  XCACHE_LOG_ENTRY_ARGS (*xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
-	      XCACHE_STAT_INC (failed_recompiles);
+	      XCACHE_STAT_INC (thread_p, failed_recompiles);
 	      xcache_unfix (thread_p, *xcache_entry);
 	      *xcache_entry = NULL;
 	      break;
@@ -1985,7 +2136,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 	  /* clear request recompile flag */
 	  xcache_entry_set_request_recompile_flag (thread_p, to_be_recompiled, false);
 	  *xcache_entry = NULL;
-	  XCACHE_STAT_INC (recompiles);
+	  XCACHE_STAT_INC (thread_p, recompiles);
 
 	  xcache_log ("(recompile) we marked entry to be recompiled: \n"
 		      XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
@@ -2952,7 +3103,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
   xcache_log ("cleanup finished: entries = %d, memory = %d \n"
 	      XCACHE_LOG_TRAN_TEXT, xcache_Entry_count, xcache_Memory_usage_cache, XCACHE_LOG_TRAN_ARGS (thread_p));
 
-  XCACHE_STAT_INC (cleanups);
+  XCACHE_STAT_INC (thread_p, cleanups);
 
   gettimeofday (&xcache_Last_cleaned_time, NULL);
   if (!ATOMIC_CAS_32 (&xcache_Cleanup_flag, 1, 0))
