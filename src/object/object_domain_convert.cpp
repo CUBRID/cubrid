@@ -3846,7 +3846,6 @@ tp_value_convert_float_to_char (const DB_VALUE *src, DB_VALUE *target, const TP_
 
   {
     char *str_float = tp_ftoa_buffer (src, target);
-
     if (str_float == nullptr)
       {
 	if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
@@ -3859,8 +3858,8 @@ tp_value_convert_float_to_char (const DB_VALUE *src, DB_VALUE *target, const TP_
 	    status = DOMAIN_INCOMPATIBLE;
 	  }
       }
-    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
-	     && ((int) strlen (str_float) > DB_VALUE_PRECISION (target)))
+    else if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+	     && db_value_precision (target) < (int) strlen (str_float))
       {
 	status = DOMAIN_OVERFLOW;
 	db_private_free_and_init (NULL, str_float);
@@ -3883,7 +3882,6 @@ tp_value_convert_double_to_char (const DB_VALUE *src, DB_VALUE *target, const TP
 
   {
     char *str_double = tp_dtoa_buffer (src, target);
-
     if (str_double == nullptr)
       {
 	if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
@@ -3896,8 +3894,8 @@ tp_value_convert_double_to_char (const DB_VALUE *src, DB_VALUE *target, const TP
 	    status = DOMAIN_INCOMPATIBLE;
 	  }
       }
-    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
-	     && ((int) strlen (str_double) > DB_VALUE_PRECISION (target)))
+    else if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+	     && db_value_precision (target) < (int) strlen (str_double))
       {
 	status = DOMAIN_OVERFLOW;
 	db_private_free_and_init (NULL, str_double);
