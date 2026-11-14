@@ -52,6 +52,10 @@ public class TypeSpec extends AstNode {
         this.type = type;
     }
 
+    public boolean isSameAs(TypeSpec other) {
+        return other.getClass() == TypeSpec.class && type == other.type;
+    }
+
     // bogus TypeSpec means one with the null context
     // TODO: use Type instead of TypeSpec in the symbol table and remove bogus TypeSpecs
 

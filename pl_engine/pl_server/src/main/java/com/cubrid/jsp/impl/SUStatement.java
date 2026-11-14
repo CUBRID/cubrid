@@ -31,6 +31,7 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class SUStatement {
@@ -288,7 +289,7 @@ public class SUStatement {
         colNameToIndex = new HashMap<String, Integer>(columnNumber);
         writtenColNameToIndex = new HashMap<String, Integer>(columnNumber);
         for (int i = 0; i < columnInfos.size(); i++) {
-            String name = columnInfos.get(i).colName.toLowerCase();
+            String name = columnInfos.get(i).colName.toLowerCase(Locale.ROOT);
             if (colNameToIndex.containsKey(name) == false) {
                 colNameToIndex.put(name, i);
             }

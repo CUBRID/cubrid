@@ -40,14 +40,25 @@ public class TypeSpecPercent extends TypeSpec {
         return visitor.visitTypeSpecPercent(this);
     }
 
-    public final String table;
-    public final String column;
+    public final String qualifier;
+    public final String id;
     public final int typeVisitMode;
+    public int qidKind; // ServerAPI.QID_TABLE_COLUMN or QID_PKG_VAR
 
-    public TypeSpecPercent(ParserRuleContext ctx, String table, String column, int typeVisitMode) {
+    public TypeSpecPercent(ParserRuleContext ctx, String qualifier, String id, int typeVisitMode) {
         super(ctx, null); // null: unknown yet
-        this.table = table;
-        this.column = column;
+        this.qualifier = qualifier;
+        this.id = id;
         this.typeVisitMode = typeVisitMode;
+    }
+
+    @Override
+    public boolean isSameAs(TypeSpec other) {
+        if (!(other instanceof TypeSpecPercent)) {
+            return false;
+        }
+
+        TypeSpecPercent o = (TypeSpecPercent) other;
+        return qualifier.equals(o.qualifier) && id.equals(o.id);
     }
 }

@@ -175,7 +175,7 @@ public abstract class Coercion {
 
         @Override
         public String javaCode(String exprJavaCode) {
-            assert false; // maybe, unreachable
+            // used for the arguments to OUT and IN OUT parameters of local or direct calls
             return String.format(
                     "setFieldsOf%1$s_To_%2$s(%3$s, new %2$s())",
                     src.javaCode, dst.javaCode, exprJavaCode);

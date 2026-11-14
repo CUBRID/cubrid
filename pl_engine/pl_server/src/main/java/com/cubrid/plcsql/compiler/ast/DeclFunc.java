@@ -30,7 +30,9 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclFunc extends DeclRoutine {
@@ -44,20 +46,35 @@ public class DeclFunc extends DeclRoutine {
             ParserRuleContext ctx,
             String name,
             String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             TypeSpec retTypeSpec,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx, name, comment, loopOptimizables, paramList, directive, retTypeSpec, decls, body);
+        super(
+                ctx,
+                name,
+                comment,
+                sqlUsesOfTopLevel,
+                loopOptimizables,
+                isPublic,
+                paramList,
+                directive,
+                retTypeSpec,
+                decls,
+                body);
     }
 
     public DeclFunc(
             ParserRuleContext ctx,
             String name,
             String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             TypeSpec retTypeSpec) {
@@ -65,36 +82,18 @@ public class DeclFunc extends DeclRoutine {
                 ctx,
                 name,
                 comment,
+                sqlUsesOfTopLevel,
                 loopOptimizables,
+                isPublic,
                 paramList,
                 directive,
                 retTypeSpec,
                 null,
-                new Body());
+                null);
     }
 
     @Override
     public String kind() {
         return "function";
-    }
-
-    @Override
-    public boolean givesBodyOf(Decl d) {
-
-        if (d == null || d.getClass() != DeclFunc.class) {
-            return false;
-        }
-
-        DeclFunc other = (DeclFunc) d;
-
-        // name and parameters must be the same
-        if (!this.name.equals(other.name)
-                || !this.paramList.equals(other.paramList)
-                || this.retTypeSpec.type != other.retTypeSpec.type) {
-            return false;
-        }
-
-        // this must have a body and the other may not
-        return (this.body != null && other.body == null);
     }
 }

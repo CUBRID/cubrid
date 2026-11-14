@@ -1988,7 +1988,7 @@ reload_moved_block_trigger (TR_TRIGGER * trigger, bool * moved)
   AU_SAVE_AND_DISABLE (save);
 
   /* an error raised inside the block may say the same, while the procedure itself is still there */
-  if (jsp_find_stored_procedure (trigger->block_sp_name, DB_AUTH_NONE) == NULL)
+  if (jsp_find_stored_procedure (trigger->block_sp_name) == NULL)
     {
       /* the new structure is made before the old one is freed, so a new action never takes the old address */
       old_action = trigger->action;
@@ -6865,7 +6865,7 @@ tr_change_block_procedure_owner (DB_OBJECT * trigger_object, DB_OBJECT * owner)
     }
   old_sp_name = db_get_string (&old_sp_value);
 
-  sp_mop = jsp_find_stored_procedure (old_sp_name, DB_AUTH_NONE);
+  sp_mop = jsp_find_stored_procedure (old_sp_name);
   if (sp_mop == NULL)
     {
       ASSERT_ERROR_AND_SET (error);

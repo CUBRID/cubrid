@@ -35,6 +35,23 @@ namespace cubmethod
 
 #define CUBRID_STMT_CALL_SP	0x7e
 
+  struct type_info : public cubpacking::packable_object
+  {
+    type_info ();
+    type_info (int db_type, short scale, int prec);
+
+    int db_type;
+    short scale;
+    int prec;
+
+    void pack (cubpacking::packer &serializator) const override;
+    void unpack (cubpacking::unpacker &deserializator) override;
+    size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
+
+    void dump ();
+  };
+
+
   struct column_info : public cubpacking::packable_object
   {
     column_info ();
