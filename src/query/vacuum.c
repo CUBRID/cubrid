@@ -5481,7 +5481,9 @@ vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data)
 /*
  * vacuum_recover_lost_block_data () - If and when server crashed, the block data buffer may have not been empty.
  *				       These blocks must be recovered by processing MVCC op log records and must be
- *				       added back to vacuum data.
+ *				       added back to vacuum data. The same is done after a normal shutdown if the
+ *				       MVCC op log records cached in log header span more than one block (they were
+ *				       logged while vacuum was disabled).
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -5508,10 +5510,17 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 		 (unsigned long long int) log_Gl.mvcc_table.get_global_oldest_visible ());
   if (LSA_ISNULL (&vacuum_Data.recovery_lsa))
     {
-      /* No recovery was done. */
-      return NO_ERROR;
+      /* No recovery was done. The MVCC op log records that are not in vacuum data yet are those cached in log header.
+       * They normally fit in one block, which is handed to vacuum data once the log moves to the next block. But while
+       * vacuum is disabled, no block is handed over and the cache keeps growing over many blocks. A single entry made
+       * from the cache would vacuum only the last block, so split the records into blocks here, the same way as after
+       * a crash. If the cached block is next to the last block in vacuum data, all records are in that one block. */
+      if (!log_Gl.hdr.does_block_need_vacuum
+	  || vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) <= vacuum_Data.get_last_blockid () + 1)
+	{
+	  return NO_ERROR;
+	}
     }
-  /* Recovery was done. */
 
   /* Initialize log_page_p. */
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_page_buf, MAX_ALIGNMENT);
