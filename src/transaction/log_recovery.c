@@ -1313,7 +1313,8 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 
       /* Nothing to undo */
       LSA_SET_NULL (&tdes->undo_nxlsa);
-      LSA_COPY (&tdes->tail_lsa, log_lsa);
+      /* log_lsa now points past the record header; the runtime records the start of the record */
+      LSA_COPY (&tdes->tail_lsa, &record_header_lsa);
       tdes->rcv.tran_start_postpone_lsa = tdes->tail_lsa;
 
       LSA_COPY (&tdes->posp_nxlsa, &start_posp->posp_lsa);
