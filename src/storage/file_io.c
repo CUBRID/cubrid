@@ -686,30 +686,37 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
  *   npages(in): number of pages just written
  *
  * Note: Nothing synchronizes temporary volumes: DWB does not take temporary pages, and fileio_synchronize_all walks
- *       only permanent volumes. The OS then keeps the pages as dirty page cache until its own writeback starts, so a
- *       large sort or index build can leave hundreds of MB that cannot be reclaimed until written. Once
- *       temp_writeback_size worth of temporary pages are written, start writeback of the volume without waiting for it
- *       (like PostgreSQL *_flush_after). This is only a hint: no durability is required for temporary pages, so
- *       a failure is ignored and a later write or read reports any real I/O error.
+ *       only permanent volumes (a permanent volume with temporary purpose is synchronized there). The OS then keeps
+ *       the pages as dirty page cache until its own writeback starts, so a large sort or index build can leave
+ *       hundreds of MB that cannot be reclaimed until written. Once temp_writeback_size worth of temporary pages are
+ *       written, start writeback of the volume without waiting for it to complete (the same call PostgreSQL makes for
+ *       its *_flush_after parameters, which it does not apply to temporary files). This is only a hint: no durability
+ *       is required for temporary pages, so a failure is ignored and a later write or read reports any real I/O error.
  */
 void
 fileio_writeback_temp_pages (THREAD_ENTRY * thread_p, int vol_fd, int npages)
 {
 #if defined (__linux__)
   int threshold = prm_get_integer_value (PRM_ID_TEMP_WRITEBACK_SIZE);
+  int count;
 
   if (threshold <= 0 || vol_fd == NULL_VOLDES)
     {
       return;
     }
 
-  if (ATOMIC_INC_32 (&fileio_Temp_written_page_count, npages) < threshold)
+  count = ATOMIC_INC_32 (&fileio_Temp_written_page_count, npages);
+  if (count < threshold)
     {
       return;
     }
 
-  /* a few pages counted by concurrent writers in between may be dropped; it only delays the next request slightly */
-  (void) ATOMIC_TAS_32 (&fileio_Temp_written_page_count, 0);
+  /* only the thread that resets the counter makes the request; if another writer added pages in between, the CAS
+   * fails and a later writer that sees the counter over the threshold resets it instead */
+  if (!ATOMIC_CAS_32 (&fileio_Temp_written_page_count, count, 0))
+    {
+      return;
+    }
 
   /* offset 0 and nbytes 0 cover the whole file; SYNC_FILE_RANGE_WRITE only starts writeback of the dirty pages */
   if (sync_file_range (vol_fd, 0, 0, SYNC_FILE_RANGE_WRITE) != 0)
