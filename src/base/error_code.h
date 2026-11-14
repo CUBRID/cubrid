@@ -1798,7 +1798,9 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1395
+#define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
+
+#define ER_LAST_ERROR                               -1396
 
 
 /*
