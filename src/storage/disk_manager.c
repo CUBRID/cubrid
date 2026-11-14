@@ -6366,7 +6366,8 @@ end:
  * thread_p(in) : thread entry
  * vol_label_p(in) : volume label
  *
- * Note: The volume does not need to be mounted; the header of a volume that is not mounted is read from the file.
+ * Note: The volume does not need to be mounted; the header of a file that is not a mounted permanent volume is read
+ *       from the file.
  */
 bool
 disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p)
@@ -6378,15 +6379,25 @@ disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p)
   off_t read_size;
   size_t page_reserver_area;
   struct stat stat_buffer;
+  struct stat mounted_stat;
   bool is_permanent = false;
 
   assert (vol_label_p != NULL);
 
-  /* Do not open a mounted volume again: closing the second descriptor would release the lock taken at mount. */
-  if (fileio_find_volume_descriptor_with_label (vol_label_p) != NULL_VOLDES)
+  /* Do not open a mounted permanent volume again: closing the second descriptor would release the lock taken at
+   * mount. Compare the file itself, not the label, since the same file can be reached by another path. */
+  if (stat (vol_label_p, &stat_buffer) != 0)
     {
-      volid = fileio_find_volume_id_with_label (thread_p, vol_label_p);
-      return volid != NULL_VOLID && volid < disk_Cache->nvols_perm;
+      return false;
+    }
+  for (volid = 0; volid < disk_Cache->nvols_perm; volid++)
+    {
+      vol_fd = fileio_get_volume_descriptor (volid);
+      if (vol_fd != NULL_VOLDES && fstat (vol_fd, &mounted_stat) == 0 && mounted_stat.st_dev == stat_buffer.st_dev
+	  && mounted_stat.st_ino == stat_buffer.st_ino)
+	{
+	  return true;
+	}
     }
 
   data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
