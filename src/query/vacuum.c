@@ -5503,6 +5503,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   MVCCID mvccid;
   VACUUM_LOG_BLOCKID crt_blockid;
   LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
+  VACUUM_DATA_ENTRY current_block_data;
+  bool restore_log_header = false;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 		 "vacuum_recover_lost_block_data, lsa = %lld|%d, global_oldest_visible_mvccid = %llu",
@@ -5686,17 +5688,9 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 
       if (data.blockid == vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.load ().pageid))
 	{
-	  log_Gl.hdr.oldest_visible_mvccid = data.oldest_visible_mvccid;
-	  log_Gl.hdr.newest_block_mvccid = data.newest_mvccid;
-	  log_Gl.hdr.does_block_need_vacuum = true;
-	  log_Gl.hdr.mvcc_op_log_lsa = mvcc_op_log_lsa;
-
-	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
-			 "Restore log global cached info: \n\t mvcc_op_log_lsa = %lld|%d \n"
-			 "\t oldest_visible_mvccid = %llu \n\t newest_block_mvccid = %llu ",
-			 LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa),
-			 (unsigned long long int) log_Gl.hdr.oldest_visible_mvccid,
-			 (unsigned long long int) log_Gl.hdr.newest_block_mvccid);
+	  /* restored to log header after the older blocks are produced */
+	  current_block_data = data;
+	  restore_log_header = true;
 	}
       else
 	{
@@ -5706,17 +5700,46 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       crt_blockid = vacuum_get_log_blockid (log_lsa.pageid);
     }
 
-  /* Produce recovered blocks. */
+  /* Produce recovered blocks, oldest first. There can be more blocks than the buffer holds (vacuum was disabled for
+   * long), so consume the buffer into vacuum data whenever it is full. The log header is restored only afterwards:
+   * if it held the current block while consuming, a log block change could produce that block ahead of older ones. */
+  thread_type tt;
+  vacuum_convert_thread_to_master (thread_p, tt);
   while (!vacuum_block_data_buffer_stack.empty ())
     {
-      vacuum_Block_data_buffer->produce (vacuum_block_data_buffer_stack.top ());
-      vacuum_block_data_buffer_stack.pop ();
+      if (vacuum_Block_data_buffer->produce (vacuum_block_data_buffer_stack.top ()))
+	{
+	  vacuum_block_data_buffer_stack.pop ();
+	  continue;
+	}
+      /* the buffer is full */
+      error_code = vacuum_consume_buffer_log_blocks (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  if (error_code == NO_ERROR && restore_log_header)
+    {
+      log_Gl.hdr.oldest_visible_mvccid = current_block_data.oldest_visible_mvccid;
+      log_Gl.hdr.newest_block_mvccid = current_block_data.newest_mvccid;
+      log_Gl.hdr.does_block_need_vacuum = true;
+      log_Gl.hdr.mvcc_op_log_lsa = mvcc_op_log_lsa;
+
+      vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
+		     "Restore log global cached info: \n\t mvcc_op_log_lsa = %lld|%d \n"
+		     "\t oldest_visible_mvccid = %llu \n\t newest_block_mvccid = %llu ",
+		     LSA_AS_ARGS (&log_Gl.hdr.mvcc_op_log_lsa),
+		     (unsigned long long int) log_Gl.hdr.oldest_visible_mvccid,
+		     (unsigned long long int) log_Gl.hdr.newest_block_mvccid);
     }
 
   /* Consume recovered blocks. */
-  thread_type tt;
-  vacuum_convert_thread_to_master (thread_p, tt);
-  error_code = vacuum_consume_buffer_log_blocks (thread_p);
+  if (error_code == NO_ERROR)
+    {
+      error_code = vacuum_consume_buffer_log_blocks (thread_p);
+    }
   if (error_code != NO_ERROR)
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "vacuum_recover_lost_block_data");
