@@ -144,8 +144,8 @@ namespace
 		{
 		  latch.lock ();
 		}
-	      LOG_LSA dep;
-	      wset_order_find_dependency (tx[t], &dep);
+	      LOG_LSA dependency_lsa;
+	      wset_order_find_dependency (tx[t], &dependency_lsa);
 	      commit_tx (tx[t], &commit);
 	      if (latched)
 		{
@@ -222,16 +222,16 @@ namespace
      * commit LSA. This remains deterministic even when publishers race. */
     log_tdes *probe_tx = make_tdes (999999);
     add_write_int (probe_tx, &cls, 0);
-    LOG_LSA dep = probe (probe_tx);
+    LOG_LSA dependency_lsa = probe (probe_tx);
     if (conflict)
       {
 	LOG_LSA expected = lsa_of (1000 + nthreads - 1, 0);
-	REQUIRE (LSA_EQ (&dep, &expected));
+	REQUIRE (LSA_EQ (&dependency_lsa, &expected));
       }
     else
       {
 	LOG_LSA expected = lsa_of (1000, 0);	/* key 0 belongs to thread 0 */
-	REQUIRE (LSA_EQ (&dep, &expected));
+	REQUIRE (LSA_EQ (&dependency_lsa, &expected));
       }
     delete probe_tx;
 
@@ -240,9 +240,9 @@ namespace
 	/* a key from thread 1's disjoint range must name thread 1's commit */
 	log_tdes *probe_tx1 = make_tdes (999998);
 	add_write_int (probe_tx1, &cls, keys_per_tx);
-	LOG_LSA dep1 = probe (probe_tx1);
+	LOG_LSA dependency_lsa_1 = probe (probe_tx1);
 	LOG_LSA expected1 = lsa_of (1001, 0);
-	REQUIRE (LSA_EQ (&dep1, &expected1));
+	REQUIRE (LSA_EQ (&dependency_lsa_1, &expected1));
 	delete probe_tx1;
       }
 

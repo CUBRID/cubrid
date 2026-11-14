@@ -678,31 +678,25 @@ repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info)
 }
 
 /*
- * repl_get_sysop_reason - name what produced the replication items of a system operation
+ * repl_get_sysop_source - name what produced the replication items of a system operation
  *
  *   tdes(in): transaction ending the system operation
  *   repl_start_index(in): first replication record that belongs to the operation
  *
  * return: "serial" (rows of _db_serial: AUTO_INCREMENT, serial NEXT_VALUE), "incr" (rows of a user class:
  *         INCR/DECR click counters), "checksum" (statement replication: checksumdb runs its updates this way),
- *         "mixed" when more than one of these, "none" when nothing is pending, or "overflow" when the
- *         transaction's writeset was dropped and every operation of it is applied in commit order anyway
+ *         "mixed" when more than one of these, or "none" when nothing is pending
  *
  * Note: Trace only. The class name sits after the packed key size in a data record (see repl_log_insert); a
  *       statement record carries no class name and is not read.
  */
 static const char *
-repl_get_sysop_reason (const LOG_TDES * tdes, int repl_start_index)
+repl_get_sysop_source (const LOG_TDES * tdes, int repl_start_index)
 {
   bool serial = false;
   bool user_data = false;
   bool statement = false;
   int kinds;
-
-  if (tdes->wset_overflow)
-    {
-      return "overflow";
-    }
 
   for (int item_index = repl_start_index; item_index < tdes->cur_repl_record; item_index++)
     {
@@ -776,7 +770,7 @@ repl_prepare_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, REPL_SYSOP_INFO * 
   info->item_count = 0;
   info->flushed_item_count = 0;
   info->leftover = false;
-  info->reason = "none";
+  info->source = "none";
 
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
       && log_does_allow_replication () == true && tdes->fl_mark_repl_recidx == -1)
@@ -798,7 +792,7 @@ repl_prepare_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, REPL_SYSOP_INFO * 
 	}
 
       /* classified before the append below marks the items flushed */
-      info->reason = repl_get_sysop_reason (tdes, start_index);
+      info->source = repl_get_sysop_source (tdes, start_index);
 
       /* Preserve the flush point before postpone processing. */
       log_append_repl_info (thread_p, tdes, false);
@@ -864,13 +858,13 @@ repl_finish_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END *
 	   * By keys: the label comes from the keys the operation collected, which are published at this SYSOP_END,
 	   * so only a later change of the same keys waits for it. */
 	  sysop_key_count =
-	    tdes->wset_hashes.size () > sysop_key_begin ? tdes->wset_hashes.size () - sysop_key_begin : 0;
+	    tdes->wset_entries.size () > sysop_key_begin ? tdes->wset_entries.size () - sysop_key_begin : 0;
 
 	  /* An operation that declared itself an independent replication unit (repl_start_flush_mark) and collected
 	   * the keys it changed is ordered by them, like a commit: only a later change of the same serial or row
-	   * waits for it. Commit order stays for a unit without keys (checksumdb, an overflowed writeset) and for a
+	   * waits for it. Commit order stays for a unit without keys (checksumdb, a transaction in fallback) and for a
 	   * SYSOP_END that also wrote records made before the operation started, whose keys it does not hold. */
-	  sysop_keyed = (sysop->repl_unit && !info->leftover && !tdes->wset_overflow && sysop_key_count > 0);
+	  sysop_keyed = (sysop->repl_unit && !info->leftover && !tdes->wset_fallback && sysop_key_count > 0);
 	  sysop_commit_order = !sysop_keyed;
 	  log_append_repl_sysop_end (thread_p, tdes, sysop_end, data_size, data, sysop_keyed,
 				     sysop_key_begin, &sysop_lsa);
@@ -910,16 +904,16 @@ repl_finish_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END *
   if (sysop_commit_order)
     {
       WSET_TRACE (1, "SYSOP master commit_order trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
-		  "dropped_keys=%zu overflow=%d reason=%s\n",
+		  "dropped_keys=%zu fallback=%d source=%s\n",
 		  tdes->trid, LSA_AS_ARGS (&tdes->wset_dependency_lsa), LSA_AS_ARGS (&sysop_lsa),
-		  sysop_key_count, tdes->wset_overflow ? 1 : 0, info->reason);
+		  sysop_key_count, tdes->wset_fallback ? 1 : 0, info->source);
     }
   else if (sysop_keyed)
     {
       WSET_TRACE (1, "SYSOP master keyed trid=%d dependency=%lld|%d sysop_lsa=%lld|%d "
-		  "published_keys=%zu reason=%s\n",
+		  "published_keys=%zu source=%s\n",
 		  tdes->trid, LSA_AS_ARGS (&tdes->wset_dependency_lsa), LSA_AS_ARGS (&sysop_lsa),
-		  sysop_key_count, info->reason);
+		  sysop_key_count, info->source);
     }
 
 }

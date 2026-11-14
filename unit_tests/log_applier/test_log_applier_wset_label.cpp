@@ -27,10 +27,10 @@
 
 TEST_CASE ("writeset label is consumed only by its transaction", "[log_applier_wset_label]")
 {
-  LOG_LSA dependency = test_lsa (100, 10);
+  LOG_LSA dependency_lsa = test_lsa (100, 10);
   LOG_LSA taken;
 
-  la_wset_label_store (7, &dependency);
+  la_wset_label_store (7, &dependency_lsa);
 
   REQUIRE (la_wset_label_matches (7));
   REQUIRE_FALSE (la_wset_label_take (8, &taken));
@@ -38,7 +38,7 @@ TEST_CASE ("writeset label is consumed only by its transaction", "[log_applier_w
   REQUIRE (la_wset_label_matches (7));
 
   REQUIRE (la_wset_label_take (7, &taken));
-  REQUIRE (LSA_EQ (&taken, &dependency));
+  REQUIRE (LSA_EQ (&taken, &dependency_lsa));
   REQUIRE_FALSE (la_wset_label_matches (7));
 }
 

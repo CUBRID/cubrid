@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_pending.hpp - interface for tasks waiting on an incomplete dependency
+ * log_applier_pending.hpp - interface for tasks waiting for dependencies or task-queue capacity
  */
 
 #ifndef _LOG_APPLIER_PENDING_HPP_

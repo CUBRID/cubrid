@@ -139,7 +139,7 @@ wset_trace_log_collected_key (LOG_TDES *tdes, const OID *class_oid, const VFID *
  *
  * Note: The public collection functions skip calls when collection is disabled. When the
  *       per-transaction limit is exceeded here, every collected key is dropped and the transaction
- *       falls back to commit order (see wset_overflow in log_impl.h). REF hashes are counted against
+ *       falls back to commit order (see wset_fallback in log_impl.h). REF hashes are counted against
  *       the same limit because they use the same per-transaction memory.
  */
 static int
@@ -149,7 +149,7 @@ wset_append_entry (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind)
 
   assert (tdes != NULL);
 
-  if ((INT64) tdes->wset_hashes.size () >= wset_config_get_key_limit ())
+  if ((INT64) tdes->wset_entries.size () >= wset_config_get_key_limit ())
     {
       wset_stat_count_key_limit_exceeded ();
       wset_switch_to_commit_order (tdes, WSET_FALLBACK_TRANSACTION_LIMIT);
@@ -161,12 +161,12 @@ wset_append_entry (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind)
   LSA_COPY (&entry.lsa, &tdes->tail_lsa);
   try
     {
-      tdes->wset_hashes.push_back (entry);
+      tdes->wset_entries.push_back (entry);
     }
   catch (const std::bad_alloc &)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (tdes->wset_hashes.size () + 1) * sizeof (LOG_WSET_ENTRY));
+	      (tdes->wset_entries.size () + 1) * sizeof (LOG_WSET_ENTRY));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -178,18 +178,18 @@ void
 wset_switch_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason)
 {
   assert (tdes != NULL);
-  if (tdes->wset_overflow)
+  if (tdes->wset_fallback)
     {
       return;
     }
 
   WSET_TRACE (1, "FALLBACK trid=%d reason=%s collected=%zu limit=%lld\n",
-	      tdes->trid, wset_fallback_reason_name (reason), tdes->wset_hashes.size (),
+	      tdes->trid, wset_fallback_reason_name (reason), tdes->wset_entries.size (),
 	      (long long) wset_config_get_key_limit ());
 
-  tdes->wset_overflow = true;
+  tdes->wset_fallback = true;
   tdes->wset_fallback_reason = reason;
-  std::vector<LOG_WSET_ENTRY> ().swap (tdes->wset_hashes);
+  std::vector<LOG_WSET_ENTRY> ().swap (tdes->wset_entries);
   wset_stat_count_fallback ();
 }
 
@@ -218,7 +218,7 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
   assert (index_vfid != NULL);
   assert (key != NULL);
 
-  if (tdes->wset_overflow || tdes->suppress_replication != 0)
+  if (tdes->wset_fallback || tdes->suppress_replication != 0)
     {
       return NO_ERROR;
     }
@@ -236,7 +236,7 @@ wset_add_write_key (LOG_TDES *tdes, const OID *class_oid, const VFID *index_vfid
     }
 
   error = wset_append_entry (tdes, hash, LOG_WSET_KIND_WRITE);
-  if (error == NO_ERROR && !tdes->wset_overflow)
+  if (error == NO_ERROR && !tdes->wset_fallback)
     {
       wset_trace_log_collected_key (tdes, class_oid, index_vfid, key, hash, LOG_WSET_KIND_WRITE);
     }
@@ -433,7 +433,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
   assert (fk_value != NULL);
   assert (parent_pk_domain != NULL);
 
-  if (tdes->wset_overflow || tdes->suppress_replication != 0)
+  if (tdes->wset_fallback || tdes->suppress_replication != 0)
     {
       return NO_ERROR;
     }
@@ -484,7 +484,7 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
   else if (error == NO_ERROR)
     {
       error = wset_append_entry (tdes, hash, LOG_WSET_KIND_REF);
-      if (error == NO_ERROR && !tdes->wset_overflow)
+      if (error == NO_ERROR && !tdes->wset_fallback)
 	{
 	  wset_trace_log_collected_key (tdes, ref_class_oid, index_vfid, &casted, hash, LOG_WSET_KIND_REF);
 	}
@@ -499,23 +499,22 @@ wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid,
  * wset_discard_sysop_keys - drop the keys a system operation collected from the outer writeset
  *
  *   tdes(in/out): transaction holding the collected keys
- *   sysop_key_begin(in): index in wset_hashes where the operation's keys start
+ *   sysop_key_begin(in): index in wset_entries where the operation's keys start
  *
- * Note: The operation's keys are the tail of wset_hashes at SYSOP_END time. They were never published
- *       (the operation is labeled for commit order), and the row locks they describe were released at
- *       SYSOP_END, so the outer commit must not probe or publish them.
+ * Note: Keyed SYSOPs publish these keys at SYSOP_END; commit-order SYSOPs discard them unpublished.
+ *       Remove them from the outer writeset so the outer COMMIT does not order the same changes again.
  */
 void
 wset_discard_sysop_keys (LOG_TDES *tdes, size_t sysop_key_begin)
 {
   assert (tdes != NULL);
 
-  if (sysop_key_begin >= tdes->wset_hashes.size ())
+  if (sysop_key_begin >= tdes->wset_entries.size ())
     {
       return;
     }
 
-  tdes->wset_hashes.erase (tdes->wset_hashes.begin () + sysop_key_begin, tdes->wset_hashes.end ());
+  tdes->wset_entries.erase (tdes->wset_entries.begin () + sysop_key_begin, tdes->wset_entries.end ());
 }
 
 /*
@@ -528,7 +527,7 @@ wset_discard_sysop_keys (LOG_TDES *tdes, size_t sysop_key_begin)
  *       same LSA, so a key stays exactly when the replication records it describes stay. A rolled-back
  *       statement and a partial rollback to a savepoint both abort a system operation. A key collected
  *       before the operation wrote any log record carries the parent LSA itself and is kept, which only
- *       makes later transactions wait longer. An overflow raised inside the operation stays raised.
+ *       makes later transactions wait longer. Fallback entered inside the operation remains active.
  */
 void
 wset_discard_keys_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa)
@@ -536,11 +535,11 @@ wset_discard_keys_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa)
   assert (tdes != NULL);
   assert (start_lsa != NULL);
 
-  tdes->wset_hashes.erase (std::remove_if (tdes->wset_hashes.begin (), tdes->wset_hashes.end (),
+  tdes->wset_entries.erase (std::remove_if (tdes->wset_entries.begin (), tdes->wset_entries.end (),
 			   [start_lsa] (const LOG_WSET_ENTRY &e)
   {
     return LSA_GT (&e.lsa, start_lsa);
-  }), tdes->wset_hashes.end ());
+  }), tdes->wset_entries.end ());
 }
 
 #endif /* SERVER_MODE || SA_MODE */

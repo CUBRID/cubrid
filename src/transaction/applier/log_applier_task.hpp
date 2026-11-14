@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_task.hpp - complete apply task dispatched by the coordinator
+ * log_applier_task.hpp - apply task assembled by the coordinator
  */
 
 #ifndef _LOG_APPLIER_TASK_HPP_
@@ -33,10 +33,14 @@
  * only holds a pointer to it, so a forward declaration is enough here. */
 typedef struct la_apply LA_APPLY;
 
+/* Apply unit: ends at LOG_COMMIT or an independently applied LOG_SYSOP_END.
+ * SYSOP fragment: replication items separated from the outer transaction at that SYSOP_END.
+ * Task: one worker submission of a COMMIT's items or one or more SYSOP fragments.
+ * Result: the outcome of processing a task, including errors; retired by the coordinator in dispatch order. */
 typedef struct la_task LA_TASK;
 struct la_task
 {
-  UINT64 seq;
+  UINT64 dispatch_seq;		/* integer assigned at dispatch; matches the result to its in-flight entry */
   int tranid;
   int rectype;
   LOG_LSA commit_lsa;
@@ -53,15 +57,14 @@ struct la_task
   UINT64 unit_key_hash;		/* a fragment of an independent replication unit ordered by a single key: the
 				 * key's writeset hash from the master's label; 0 otherwise. A later fragment of the
 				 * same key may join this task */
-  LOG_LSA dependency_lsa;	/* dependency commit LSA from the master, decoded from the
-				 * LOG_DUMMY_WSET_LABEL right before the commit; the gate waits for the transaction
-				 * at this LSA to finish. null = no dependency */
+  LOG_LSA dependency_lsa;	/* master's dependency from LOG_DUMMY_WSET_LABEL before COMMIT or independent
+				 * SYSOP_END; parallel dispatch waits until frontier reaches this LSA. NULL = no dependency */
 
   /* Monotonic timestamps used only for parallel-apply statistics. */
-  UINT64 created_ns;		/* coordinator completed the task */
+  UINT64 created_ns;		/* coordinator assembled the task */
   UINT64 pending_begin_ns;	/* dependency wait began; 0 when the task never waited for its dependency */
   UINT64 ready_ns;		/* dependency was satisfied; worker-capacity wait begins here */
-  UINT64 queue_enter_ns;	/* task entered the shared worker queue */
+  UINT64 queue_enter_ns;	/* task entered the shared task queue */
 };
 
 #endif /* _LOG_APPLIER_TASK_HPP_ */

@@ -51,8 +51,8 @@ extern void wset_history_unlock_after_probe (void);
 extern void wset_history_get_boundaries (LOG_LSA *history_start, LOG_LSA *prev_commit_lsa);
 extern bool wset_history_probe_key (LOG_WSET_HASH hash, LOG_WSET_KIND kind, LOG_WSET_SLOTS &slots,
 				    LOG_LSA &candidate, bool &candidate_is_ref);
-extern void wset_history_get_commit_order_dependency (LOG_LSA *dependency_out);
-extern void wset_history_record_commit (bool commit_order, const LOG_LSA *commit_lsa);
+extern void wset_history_get_commit_order_dependency (LOG_LSA *dependency_lsa);
+extern void wset_history_record_commit (bool fallback, const LOG_LSA *commit_lsa);
 extern void wset_history_publish_keys (LOG_TDES *tdes, size_t begin, size_t end, const LOG_LSA *commit_lsa);
 extern void wset_history_advance_start (const LOG_LSA *lsa);
 

@@ -114,7 +114,7 @@ struct repl_sysop_info
   int item_count;
   int flushed_item_count;
   bool leftover;
-  const char *reason;
+  const char *source;		/* replication-item source, for trace only */
 };
 typedef struct repl_sysop_info REPL_SYSOP_INFO;
 

@@ -72,7 +72,7 @@ namespace
   }
 
   /* the per-transaction key limit and the map capacity are both the cached
-   * ha_writeset_history_size; a fresh history_guard has initialized it. keep a
+   * ha_writeset_max_keys; a fresh history_guard has initialized it. keep a
    * flush chunk one key under the limit so the filler never overflows. */
   int
   history_cap ()
@@ -140,12 +140,12 @@ TEST_CASE ("A2: large single transaction collect/probe/flush cost", "[stress]")
       wset_add_write_key (tx, &cls, &WS_DEFAULT_VFID, &v);
     }
   double collect_ms = ms_since (collect_t0);
-  REQUIRE (!tx->wset_overflow);
-  REQUIRE (tx->wset_hashes.size () == (size_t) nkeys);
+  REQUIRE (!tx->wset_fallback);
+  REQUIRE (tx->wset_entries.size () == (size_t) nkeys);
 
-  LOG_LSA dep;
+  LOG_LSA dependency_lsa;
   auto t0 = clock_type::now ();
-  wset_order_find_dependency (tx, &dep);
+  wset_order_find_dependency (tx, &dependency_lsa);
   double probe_ms = ms_since (t0);
 
   LOG_LSA commit = lsa_of (10, 0);
@@ -233,8 +233,8 @@ TEST_CASE ("B2: throughput vs thread count", "[stress]")
       LOG_LSA commit = lsa_of (500, 0);
       double wall = run_parallel (nthreads, iters, [&] (int t)
       {
-	LOG_LSA dep;
-	wset_order_find_dependency (tx[t], &dep);
+	LOG_LSA dependency_lsa;
+	wset_order_find_dependency (tx[t], &dependency_lsa);
 	commit_tx (tx[t], &commit);
       });
 
@@ -276,8 +276,8 @@ TEST_CASE ("B3: cost scales with keys per commit", "[stress]")
       LOG_LSA commit = lsa_of (500, 0);
       double wall = run_parallel (nthreads, iters, [&] (int t)
       {
-	LOG_LSA dep;
-	wset_order_find_dependency (tx[t], &dep);
+	LOG_LSA dependency_lsa;
+	wset_order_find_dependency (tx[t], &dependency_lsa);
 	commit_tx (tx[t], &commit);
       });
 
@@ -311,11 +311,11 @@ TEST_CASE ("B3s: keys per commit, single thread (supplementary)", "[stress]")
       log_tdes *tx = make_worker (1, &cls, 0, ksize);
 
       LOG_LSA commit = lsa_of (500, 0);
-      LOG_LSA dep;
+      LOG_LSA dependency_lsa;
       auto t0 = clock_type::now ();
       for (int i = 0; i < iters; i++)
 	{
-	  wset_order_find_dependency (tx, &dep);
+	  wset_order_find_dependency (tx, &dependency_lsa);
 	  commit_tx (tx, &commit);
 	}
       double wall = ms_since (t0);
@@ -355,8 +355,8 @@ TEST_CASE ("B4: hot key vs disjoint keys", "[stress]")
     LOG_LSA commit = lsa_of (500, 0);
     hot_ms = run_parallel (nthreads, iters, [&] (int t)
     {
-      LOG_LSA dep;
-      wset_order_find_dependency (tx[t], &dep);
+      LOG_LSA dependency_lsa;
+      wset_order_find_dependency (tx[t], &dependency_lsa);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -377,8 +377,8 @@ TEST_CASE ("B4: hot key vs disjoint keys", "[stress]")
     LOG_LSA commit = lsa_of (500, 0);
     disjoint_ms = run_parallel (nthreads, iters, [&] (int t)
     {
-      LOG_LSA dep;
-      wset_order_find_dependency (tx[t], &dep);
+      LOG_LSA dependency_lsa;
+      wset_order_find_dependency (tx[t], &dependency_lsa);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -411,8 +411,8 @@ TEST_CASE ("B5: worst corner (many threads x large commits x large map)", "[stre
   LOG_LSA commit = lsa_of (900, 0);
   double wall = run_parallel (nthreads, iters, [&] (int t)
   {
-    LOG_LSA dep;
-    wset_order_find_dependency (tx[t], &dep);
+    LOG_LSA dependency_lsa;
+    wset_order_find_dependency (tx[t], &dependency_lsa);
     commit_tx (tx[t], &commit);
   });
 
@@ -428,8 +428,8 @@ TEST_CASE ("B5: worst corner (many threads x large commits x large map)", "[stre
 
 /* B6: reverse-order defence firing under load. A parent write that hits a key
  * whose REF slot is populated must consult ref_lsa (the defence path). Compare
- * throughput against the same write hitting keys with an empty read slot
- * (single-slot equivalent). The delta is the pure cost of the read-slot check;
+ * throughput against the same write hitting keys with an empty REF slot
+ * (single-slot equivalent). The delta is the pure cost of the REF slot check;
  * expected negligible (one extra LSA compare per key). */
 TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
 {
@@ -453,8 +453,8 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
     LOG_LSA commit = lsa_of (500, 0);
     baseline_ms = run_parallel (nthreads, iters, [&] (int t)
     {
-      LOG_LSA dep;
-      wset_order_find_dependency (tx[t], &dep);
+      LOG_LSA dependency_lsa;
+      wset_order_find_dependency (tx[t], &dependency_lsa);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -463,7 +463,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
       }
   }
 
-  /* defence: the same keys, but each also carries a read-slot stamp from a
+  /* defence: the same keys, but each also carries a REF slot stamp from a
    * child reference, so the WRITE probe takes the max(write_lsa, ref_lsa) path */
   {
     ws_history_guard history;
@@ -471,7 +471,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
     int total = nthreads * keys_per_tx;
 
     preload_write_keys (&parent_cls, total);	/* write slots */
-    /* stamp read slots via child references to the same keys */
+    /* stamp REF slots via child references to the same keys */
     {
       DB_VALUE v;
       int done = 0;
@@ -502,8 +502,8 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
     LOG_LSA commit = lsa_of (500, 0);
     defence_ms = run_parallel (nthreads, iters, [&] (int t)
     {
-      LOG_LSA dep;
-      wset_order_find_dependency (tx[t], &dep);
+      LOG_LSA dependency_lsa;
+      wset_order_find_dependency (tx[t], &dependency_lsa);
       commit_tx (tx[t], &commit);
     });
     for (auto *p : tx)
@@ -513,7 +513,7 @@ TEST_CASE ("B6: reverse-order defence firing vs baseline", "[stress]")
   }
 
   report ("B6 baseline (write slot only)", baseline_ms, "ms");
-  report ("B6 defence (read slot consulted)", defence_ms, "ms");
+  report ("B6 defence (REF slot consulted)", defence_ms, "ms");
 }
 
 /* helper for the FK-shaped cases below: a worker transaction with the key
@@ -548,7 +548,7 @@ namespace
  * row spends two of them, so the largest FK transaction holds half the rows of
  * the largest PK transaction: rows = limit/2 - 1, keys just under the limit.
  * Every parent is distinct, so flush publishes one entry per key (children get
- * the write slot, parents get the read slot). */
+ * the write slot, parents get the REF slot). */
 TEST_CASE ("F1: large single FK transaction collect/probe/flush cost", "[stress]")
 {
   ws_history_guard history;
@@ -559,12 +559,12 @@ TEST_CASE ("F1: large single FK transaction collect/probe/flush cost", "[stress]
   auto collect_t0 = clock_type::now ();
   log_tdes *tx = make_fk_worker (1, &child_cls, &parent_cls, 0, rows, 0, rows);
   double collect_ms = ms_since (collect_t0);
-  REQUIRE (!tx->wset_overflow);
-  REQUIRE (tx->wset_hashes.size () == (size_t) rows * 2);
+  REQUIRE (!tx->wset_fallback);
+  REQUIRE (tx->wset_entries.size () == (size_t) rows * 2);
 
-  LOG_LSA dep;
+  LOG_LSA dependency_lsa;
   auto t0 = clock_type::now ();
-  wset_order_find_dependency (tx, &dep);
+  wset_order_find_dependency (tx, &dependency_lsa);
   double probe_ms = ms_since (t0);
 
   LOG_LSA commit = lsa_of (10, 0);
@@ -604,11 +604,11 @@ TEST_CASE ("F4: FK rows per commit, single thread", "[stress]")
       log_tdes *tx = make_fk_worker (1, &child_cls, &parent_cls, 0, rows, 0, rows);
 
       LOG_LSA commit = lsa_of (500, 0);
-      LOG_LSA dep;
+      LOG_LSA dependency_lsa;
       auto t0 = clock_type::now ();
       for (int i = 0; i < iters; i++)
 	{
-	  wset_order_find_dependency (tx, &dep);
+	  wset_order_find_dependency (tx, &dependency_lsa);
 	  commit_tx (tx, &commit);
 	}
       double wall = ms_since (t0);
@@ -649,8 +649,8 @@ TEST_CASE ("F5: few transactions x mass FK inserts (16 threads, rows sweep)", "[
       LOG_LSA commit = lsa_of (500, 0);
       double wall = run_parallel (nthreads, iters, [&] (int t)
       {
-	LOG_LSA dep;
-	wset_order_find_dependency (tx[t], &dep);
+	LOG_LSA dependency_lsa;
+	wset_order_find_dependency (tx[t], &dependency_lsa);
 	commit_tx (tx[t], &commit);
       });
 

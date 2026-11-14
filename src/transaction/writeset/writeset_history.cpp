@@ -52,7 +52,7 @@ static bool wset_history_reserve_capacity (size_t publish_count);
 static void wset_history_release_capacity (size_t publish_count);
 static bool wset_history_publish_entries (LOG_TDES *tdes, size_t begin, size_t end,
     const LOG_LSA *commit_lsa);
-static void wset_history_clear_for_commit_order (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
+static void wset_history_clear_for_fallback (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
 static void wset_history_publish_with_capacity (LOG_TDES *tdes, size_t begin, size_t end,
     const LOG_LSA *commit_lsa);
 
@@ -139,36 +139,28 @@ wset_history_probe_key (LOG_WSET_HASH hash, LOG_WSET_KIND kind, LOG_WSET_SLOTS &
 }
 
 void
-wset_history_get_commit_order_dependency (LOG_LSA *dependency_out)
+wset_history_get_commit_order_dependency (LOG_LSA *dependency_lsa)
 {
-  assert (dependency_out != NULL);
+  assert (dependency_lsa != NULL);
 
   pthread_mutex_lock (&wset_History.seq_lock);
-  LSA_COPY (dependency_out, &wset_History.prev_commit_lsa);
-  if (!LSA_ISNULL (&wset_History.history_start)
-      && (LSA_ISNULL (dependency_out) || LSA_LT (dependency_out, &wset_History.history_start)))
-    {
-      LSA_COPY (dependency_out, &wset_History.history_start);
-    }
+  LSA_COPY (dependency_lsa, &wset_History.prev_commit_lsa);
+  wset_advance_lsa (dependency_lsa, &wset_History.history_start);
   pthread_mutex_unlock (&wset_History.seq_lock);
 }
 
-/* Called in log order; a commit-order transaction also raises the history floor. */
+/* Called in log order; a transaction in fallback also raises the history floor. */
 void
-wset_history_record_commit (bool commit_order, const LOG_LSA *commit_lsa)
+wset_history_record_commit (bool fallback, const LOG_LSA *commit_lsa)
 {
   assert (commit_lsa != NULL);
   assert (!LSA_ISNULL (commit_lsa));
 
   pthread_mutex_lock (&wset_History.seq_lock);
-  if (LSA_ISNULL (&wset_History.prev_commit_lsa) || LSA_GT (commit_lsa, &wset_History.prev_commit_lsa))
+  wset_advance_lsa (&wset_History.prev_commit_lsa, commit_lsa);
+  if (fallback)
     {
-      LSA_COPY (&wset_History.prev_commit_lsa, commit_lsa);
-    }
-  if (commit_order
-      && (LSA_ISNULL (&wset_History.history_start) || LSA_GT (commit_lsa, &wset_History.history_start)))
-    {
-      LSA_COPY (&wset_History.history_start, commit_lsa);
+      wset_advance_lsa (&wset_History.history_start, commit_lsa);
     }
   pthread_mutex_unlock (&wset_History.seq_lock);
 }
@@ -178,7 +170,7 @@ wset_history_publish_entries (LOG_TDES *tdes, size_t begin, size_t end, const LO
 {
   for (size_t index = begin; index < end; index++)
     {
-      const LOG_WSET_ENTRY &entry = tdes->wset_hashes[index];
+      const LOG_WSET_ENTRY &entry = tdes->wset_entries[index];
       try
 	{
 	  wset_History.map.publish (entry.hash, entry.kind, *commit_lsa);
@@ -204,10 +196,7 @@ wset_history_clear_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_ou
   assert (clear_floor != NULL);
   assert (!LSA_ISNULL (clear_floor));
 
-  if (LSA_ISNULL (&wset_History.history_start) || LSA_GT (clear_floor, &wset_History.history_start))
-    {
-      LSA_COPY (&wset_History.history_start, clear_floor);
-    }
+  wset_advance_lsa (&wset_History.history_start, clear_floor);
 
   assert (retired_map.size () == 0);
   wset_History.map.swap (retired_map);
@@ -243,7 +232,7 @@ wset_history_release_capacity (size_t publish_count)
 }
 
 static void
-wset_history_clear_for_commit_order (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
+wset_history_clear_for_fallback (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 {
   LOG_LSA history_start;
   size_t old_size;
@@ -327,11 +316,11 @@ wset_history_publish_keys (LOG_TDES *tdes, size_t begin, size_t end, const LOG_L
   assert (tdes != NULL);
   assert (commit_lsa != NULL);
   assert (!LSA_ISNULL (commit_lsa));
-  assert (begin <= end && end <= tdes->wset_hashes.size ());
+  assert (begin <= end && end <= tdes->wset_entries.size ());
 
-  if (tdes->wset_overflow)
+  if (tdes->wset_fallback)
     {
-      wset_history_clear_for_commit_order (tdes, commit_lsa);
+      wset_history_clear_for_fallback (tdes, commit_lsa);
       return;
     }
 
@@ -351,10 +340,7 @@ wset_history_advance_start (const LOG_LSA *lsa)
   assert (!LSA_ISNULL (lsa));
 
   pthread_mutex_lock (&wset_History.seq_lock);
-  if (LSA_ISNULL (&wset_History.history_start) || LSA_GT (lsa, &wset_History.history_start))
-    {
-      LSA_COPY (&wset_History.history_start, lsa);
-    }
+  wset_advance_lsa (&wset_History.history_start, lsa);
   pthread_mutex_unlock (&wset_History.seq_lock);
 }
 

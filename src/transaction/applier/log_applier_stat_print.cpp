@@ -150,7 +150,7 @@ la_stat_print_applyinfo (const char *log_path, const char *prefix_name, bool ver
 	      (long long) db_get_bigint (&out_value[11]), (long long) db_get_bigint (&out_value[12]));
       printf ("%-30s : %lld / %lld us\n", "Worker waits",
 	      (long long) db_get_bigint (&out_value[13]), (long long) db_get_bigint (&out_value[14]));
-      printf ("%-30s : %lld us\n", "Worker queue residence", (long long) db_get_bigint (&out_value[15]));
+      printf ("%-30s : %lld us\n", "Task queue residence", (long long) db_get_bigint (&out_value[15]));
       printf ("%-30s : %lld us\n", "Result collection delay", (long long) db_get_bigint (&out_value[16]));
       printf ("%-30s : %lld\n", "Out-of-order completions", (long long) db_get_bigint (&out_value[19]));
       printf ("%-30s : %d / %d\n", "Max task queue / pending", db_get_int (&out_value[22]),

@@ -137,9 +137,8 @@ enum log_rectype
 				 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
 				 * or undo images that never retrieved from the log. */
 
-  LOG_DUMMY_WSET_LABEL = 53,	/* carries a transaction's writeset dependency label, appended just before its
-				 * commit record. No-op for crash recovery; read by the replication applier to
-				 * gate parallel apply. */
+  LOG_DUMMY_WSET_LABEL = 53,	/* carries dependency metadata before COMMIT or independent SYSOP_END.
+				 * No-op for crash recovery; read by the replication applier to gate parallel apply. */
 
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
@@ -257,11 +256,11 @@ struct log_rec_ha_server_state
   INT64 at_time;		/* time recorded by active server */
 };
 
-/* writeset dependency label carried just before a transaction's commit record */
+/* Writeset dependency metadata carried just before COMMIT or independent SYSOP_END. */
 typedef struct log_rec_wset_label LOG_REC_WSET_LABEL;
 struct log_rec_wset_label
 {
-  LOG_LSA dependency_lsa;	/* dependency LSA selected from the writeset history at commit time */
+  LOG_LSA dependency_lsa;	/* dependency selected from history for this apply unit */
   UINT64 unit_key_hash;		/* an independent replication unit (serial update, INCR/DECR) ordered by a single key:
 				 * the writeset hash of that key; 0 otherwise. Consecutive units of one key may be
 				 * applied together by the slave */

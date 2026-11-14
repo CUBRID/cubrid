@@ -45,7 +45,7 @@ test_reset (const LOG_LSA *restart_lsa)
   la_gate_set_initial_frontier (restart_lsa);
 }
 
-TEST_CASE ("pending list records dependency readiness before worker queue capacity is available",
+TEST_CASE ("pending list records dependency readiness before task queue capacity is available",
 	   "[log_applier_pending]")
 {
   LOG_LSA l10 = test_lsa (10), l20 = test_lsa (20);

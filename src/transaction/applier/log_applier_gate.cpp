@@ -19,12 +19,10 @@
 /*
  * log_applier_gate.cpp - implementation of dependency and completion-frontier tracking
  *
- * The master labels each transaction with the commit LSA of the latest earlier transaction it conflicts
- * with. Workers running in parallel would still finish conflicting transactions out of order, so the gate
- * holds a transaction back until the gap-free frontier has reached its label (see la_gate_is_satisfied).
- * Only conflict order is enforced: independent transactions are dispatched at once and commute, so the slave
- * converges on the master without keeping commit order. A transaction held back waits in the pending list
- * (log_applier_pending.cpp) until this gate lets it pass.
+ * The gate compares an apply unit's dependency_lsa with the gap-free frontier for parallel dispatch.
+ * Dependencies cover key conflicts and conservative ordering boundaries such as commit-order fallback.
+ * The ring records COMMIT and independent SYSOP_END positions in log order; later completions cannot
+ * move the frontier past an unfinished earlier unit. Tasks waiting for their dependency stay pending.
  * Only the coordinator touches the gate, so it has no lock.
  */
 
@@ -43,8 +41,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* Commit-order ring entry: one commit read from the log. completed is set when it is applied, possibly out of
- * order. */
+/* Commit-order ring entry: one COMMIT or independent SYSOP_END, possibly completed out of order. */
 typedef struct la_gate_order LA_GATE_ORDER;
 struct la_gate_order
 {
@@ -52,12 +49,12 @@ struct la_gate_order
   bool completed;
 };
 
-/* Gap-free completion frontier: every commit at or below it is applied. */
-static LOG_LSA la_Gate_frontier = LSA_INITIALIZER;	/* NULL until the first commit starts it */
+/* Gap-free completion frontier: the last COMMIT or independent SYSOP_END through which every apply unit
+ * is applied. A later unit finishing first does not advance this boundary. */
+static LOG_LSA la_Gate_frontier = LSA_INITIALIZER;	/* NULL until the completion baseline is set */
 
-/* Commit-order ring: commits read from the log that the frontier has not passed, oldest first. Commits are
- * pushed in log order, so the ring is sorted by commit LSA. The coordinator stops reading the log while the
- * ring is full (LA_COMMIT_ORDER_CAPACITY). */
+/* Commit-order ring: apply units the frontier has not passed, oldest first. COMMIT and independent
+ * SYSOP_END positions are pushed in log order. The coordinator stops reading while the ring is full. */
 static LA_GATE_ORDER *la_Gate_order_ring = NULL;
 static int la_Gate_order_capacity = 0;
 static int la_Gate_order_head = 0;
@@ -74,9 +71,9 @@ static LA_GATE_ORDER *la_gate_order_find (const LOG_LSA *commit_lsa);
  * Note:
  *   The frontier is cleared as well. applylogdb restarts the applier inside the same process after the
  *   server goes down; a frontier kept from the previous run usually lies past the committed_lsa the new
- *   run restarts from, and la_gate_set_initial_frontier would keep it. Transactions re-applied from
+ *   run restarts from, and la_gate_set_initial_frontier would keep it. Apply units read again after
  *   committed_lsa would then pass the gate on predecessors this run has not applied yet. The ring of that
- *   run may also still hold commits, so it is emptied here rather than asserted empty.
+ *   run may also still hold apply units, so it is emptied here rather than asserted empty.
  */
 int
 la_gate_init (int commit_order_capacity)
@@ -106,7 +103,7 @@ la_gate_init (int commit_order_capacity)
 }
 
 /*
- * la_gate_order_get_count() - number of commits the frontier has not passed yet, finished or not
+ * la_gate_order_get_count() - number of apply units the frontier has not passed yet, finished or not
  */
 int
 la_gate_order_get_count (void)
@@ -119,9 +116,9 @@ la_gate_order_get_count (void)
  *   restart_lsa(in): restart point; everything at or below it was applied by the previous run
  *
  * Note:
- *   Commits at or below the restart point never enter the commit-order ring. Starting the frontier
- *   there lets a transaction that depends on one of them be dispatched instead of waiting forever.
- *   Called before every commit is pushed on the commit-order ring.
+ *   Apply units at or below the restart point never enter the commit-order ring. Starting the frontier
+ *   there lets a task that depends on one of them proceed instead of waiting forever.
+ *   Called before each apply unit is pushed on the commit-order ring.
  */
 void
 la_gate_set_initial_frontier (const LOG_LSA *restart_lsa)
@@ -138,7 +135,7 @@ la_gate_set_initial_frontier (const LOG_LSA *restart_lsa)
 
 /*
  * la_gate_get_frontier() - read the frontier
- *   return: true if the frontier is known, false before the first commit starts it
+ *   return: true if the completion baseline is known, false otherwise
  *   frontier(out): the frontier
  */
 bool
@@ -157,9 +154,9 @@ la_gate_get_frontier (LOG_LSA *frontier)
 }
 
 /*
- * la_gate_get_order_tail() - read the latest commit on the commit-order ring
- *   return: true if the ring holds a commit, false when it is empty
- *   commit_lsa(out): commit LSA of the last commit on the ring
+ * la_gate_get_order_tail() - read the latest apply-unit position on the commit-order ring
+ *   return: true if the ring holds an apply unit, false when it is empty
+ *   commit_lsa(out): COMMIT or independent SYSOP_END position of the last unit on the ring
  */
 bool
 la_gate_get_order_tail (LOG_LSA *commit_lsa)
@@ -177,29 +174,25 @@ la_gate_get_order_tail (LOG_LSA *commit_lsa)
 }
 
 /*
- * la_gate_bound_dependency() - lower a label that lies above the latest commit read to that commit
- *   return: true if the label was lowered
- *   dep(in/out): the transaction's dependency_lsa, the master's label
+ * la_gate_bound_dependency() - bound dependency_lsa by the latest previously read apply unit
+ *   return: true if dependency_lsa was lowered
+ *   dependency_lsa(in/out): dependency position decoded from LOG_DUMMY_WSET_LABEL
  *
  * Note:
- *   Called for a transaction before its own commit is pushed on the commit-order ring.
- *   A label means that every commit at or below it is applied, and it is normally a commit LSA. When the
- *   master restarts, it raises the floor of its labels to the end of its recovered log, which is no commit.
- *   The frontier only stops at commits, so it could pass such a label only after the next commit, the
- *   labelled transaction itself, is applied, and that transaction would wait for itself.
- *   The log is read in order and a label lies below its own commit, so no commit lies between the latest
- *   commit read and a label above it. Lowering the label to that commit keeps its meaning. The latest
- *   commit read is the tail of the ring, or the frontier when the ring is empty. A label that is a commit
- *   is never above it and is left as is.
+ *   Called before the current unit enters the ring. After a master restart, dependency_lsa can point
+ *   to the recovered-log end rather than a COMMIT or independent SYSOP_END. The frontier could reach
+ *   that position only after the current unit completed, making that unit wait for itself.
+ *   Logs are read in order, so no earlier apply unit lies between the latest previously read unit and
+ *   a dependency above it. Bound it by that unit's position (the ring tail, or frontier when empty).
  */
 bool
-la_gate_bound_dependency (LOG_LSA *dep)
+la_gate_bound_dependency (LOG_LSA *dependency_lsa)
 {
   LOG_LSA previous;
 
-  assert (dep != NULL);
+  assert (dependency_lsa != NULL);
 
-  if (LSA_ISNULL (dep))
+  if (LSA_ISNULL (dependency_lsa))
     {
       return false;
     }
@@ -209,20 +202,20 @@ la_gate_bound_dependency (LOG_LSA *dep)
       return false;
     }
 
-  if (!LSA_GT (dep, &previous))
+  if (!LSA_GT (dependency_lsa, &previous))
     {
       return false;
     }
 
-  LSA_COPY (dep, &previous);
+  LSA_COPY (dependency_lsa, &previous);
 
   return true;
 }
 
 /*
- * la_gate_order_push() - record a commit read from the log on the commit-order ring
+ * la_gate_order_push() - record an apply unit read from the log on the commit-order ring
  *   return: NO_ERROR, or ER_FAILED when the ring is full
- *   commit_lsa(in): commit LSA of the transaction; above every commit pushed before it
+ *   commit_lsa(in): COMMIT or independent SYSOP_END position; above every unit pushed before it
  *
  * Note:
  *   The ring cannot actually fill (see la_Gate_order_ring); the failure guards against a counting bug.
@@ -255,7 +248,7 @@ la_gate_order_push (const LOG_LSA *commit_lsa)
  * la_gate_advance_frontier() - advance the frontier over the completed head of the commit-order ring
  *
  * Note:
- *   Stops at the first commit that is not applied yet, so the frontier never skips a running commit
+ *   Stops at the first apply unit that is not applied yet, so the frontier never skips an unfinished unit
  *   even when later ones have finished.
  */
 void
@@ -280,11 +273,11 @@ la_gate_advance_frontier (void)
 }
 
 /*
- * la_gate_mark_completed() - record that a commit on the commit-order ring is applied
- *   commit_lsa(in): commit LSA of the applied transaction
+ * la_gate_mark_completed() - record that an apply unit on the commit-order ring is applied
+ *   commit_lsa(in): COMMIT or independent SYSOP_END position of the applied unit
  *
  * Note:
- *   A commit that is not on the ring (already behind the frontier) needs nothing and is ignored.
+ *   An apply unit that is not on the ring (already behind the frontier) needs nothing and is ignored.
  */
 void
 la_gate_mark_completed (const LOG_LSA *commit_lsa)
@@ -301,19 +294,15 @@ la_gate_mark_completed (const LOG_LSA *commit_lsa)
 }
 
 /*
- * la_gate_is_satisfied() - decide whether a transaction may be dispatched now
- *   return: true if everything the label stands for is applied, false if it must be parked in the pending list
- *   dep(in): the transaction's dependency_lsa, the master's label
+ * la_gate_is_satisfied() - check whether an apply unit's dependency is satisfied
+ *   return: true if all preceding work through dependency_lsa is applied, false otherwise
+ *   dependency_lsa(in): dependency position decoded from LOG_DUMMY_WSET_LABEL
  *
  * Note:
- *   Passes only when dep is NULL (nothing earlier conflicts) or dep <= frontier (every commit up to
- *   dep is applied with no hole).
- *   The labeled predecessor having finished above the frontier is not a pass. The master reduces all
- *   of a transaction's conflicting predecessors to their maximum LSA, so dep names one predecessor
- *   while standing for the rest, and the others may still be running; passing would let the
- *   transaction run beside them on the same rows. A read-slot label is no different: it names only
- *   the last of several referencers running in parallel, so the gate does not need to know which slot
- *   the label came from.
+ *   Passes when dependency_lsa is NULL or dependency_lsa <= frontier. Completing only the unit at
+ *   dependency_lsa does not prove that all earlier predecessors finished. This also applies to a
+ *   REF-derived maximum over parallel referencers, so the gate uses the gap-free frontier regardless
+ *   of which history slot supplied the dependency.
  *
  *   TODO: Verify parent/child ordering under this rule with dedicated tests: children of one parent run
  *         in parallel once the parent is applied, a parent change after its children waits for all of
@@ -321,21 +310,21 @@ la_gate_mark_completed (const LOG_LSA *commit_lsa)
  *         gives the same slave result as the master.
  */
 bool
-la_gate_is_satisfied (const LOG_LSA *dep)
+la_gate_is_satisfied (const LOG_LSA *dependency_lsa)
 {
-  assert (dep != NULL);
+  assert (dependency_lsa != NULL);
 
-  if (LSA_ISNULL (dep))
+  if (LSA_ISNULL (dependency_lsa))
     {
       return true;
     }
 
-  return !LSA_ISNULL (&la_Gate_frontier) && LSA_LE (dep, &la_Gate_frontier);
+  return !LSA_ISNULL (&la_Gate_frontier) && LSA_LE (dependency_lsa, &la_Gate_frontier);
 }
 
 /*
  * la_gate_order_at() - entry of the commit-order ring by position from the oldest
- *   pos(in): 0 for the oldest commit on the ring, la_Gate_order_count - 1 for the latest
+ *   pos(in): 0 for the oldest apply unit on the ring, la_Gate_order_count - 1 for the latest
  */
 static LA_GATE_ORDER *
 la_gate_order_at (int pos)
@@ -348,12 +337,12 @@ la_gate_order_at (int pos)
 }
 
 /*
- * la_gate_order_find() - look up a commit on the commit-order ring
- *   return: the ring entry, or NULL when the commit is not on the ring
- *   commit_lsa(in): commit LSA to look for
+ * la_gate_order_find() - look up an apply unit on the commit-order ring
+ *   return: the ring entry, or NULL when the unit is not on the ring
+ *   commit_lsa(in): COMMIT or independent SYSOP_END position to look for
  *
  * Note:
- *   The ring is sorted by commit LSA, so a binary search finds it.
+ *   The ring is sorted by apply-unit position, so a binary search finds it.
  */
 static LA_GATE_ORDER *
 la_gate_order_find (const LOG_LSA *commit_lsa)

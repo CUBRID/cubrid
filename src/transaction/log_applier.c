@@ -295,7 +295,7 @@ struct la_apply
   LOG_LSA last_lsa;
   LA_ITEM *head;
   LA_ITEM *tail;
-  /* SYSOP_END coordinate of this transaction's most recent independent serial fragment, or null when
+  /* SYSOP_END coordinate of this transaction's most recent independent SYSOP fragment, or null when
    * it produced none. The transaction's final commit task waits for this fragment to commit first. */
   LOG_LSA last_sysop_fragment_lsa;
 };
@@ -315,8 +315,8 @@ struct la_info
 
   /* map info */
   LOG_LSA final_lsa;		/* last processed log lsa */
-  LOG_LSA committed_lsa;	/* last committed commit log lsa */
-  LOG_LSA committed_rep_lsa;	/* last committed replication log lsa */
+  LOG_LSA committed_lsa;	/* frontier copied at retire and periodically stored in _db_ha_apply_info */
+  LOG_LSA committed_rep_lsa;	/* highest replication-record LSA from retired results; not a restart boundary */
   LOG_LSA last_committed_lsa;	/* last committed commit log lsa at the beginning of the applylogdb */
   LOG_LSA last_committed_rep_lsa;	/* last committed replication log lsa at the beginning of the applylogdb */
 
@@ -514,7 +514,7 @@ static int la_load_applied_tx_markers (void);
 static void la_free_applied_tx_markers (void);
 static bool la_applied_tx_marker_exists (const LOG_LSA * commit_lsa);
 static int la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * commit_lsa, LA_STATS * stats);
-static void la_apply_worker_end_context (LA_APPLY_WORKER_CONTEXT * context);
+static void la_worker_end_context (LA_APPLY_WORKER_CONTEXT * context);
 static int la_delete_applied_tx_markers (const LOG_LSA * upto_lsa);
 
 static bool la_ignore_on_error (int errid);
@@ -642,16 +642,16 @@ static bool la_coordinator_shutdown_requested (void *context);
 
 /* run on an apply worker thread; the first two are handed to the workers as callbacks */
 static void la_request_shutdown (void);
-static void la_stats_note_class (LA_STATS * stats, const char *class_name);
-static void la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
+static void la_stat_note_class (LA_STATS * stats, const char *class_name);
+static void la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 					unsigned long long *worker_applied_item_count, LA_RESULT * result);
-static void la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
+static void la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 				      unsigned long long *worker_applied_item_count, LA_RESULT * result);
-static int la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
+static int la_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
 				       LA_STATS * stats);
-static int la_apply_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
+static int la_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
 					const LA_STATS * stats, unsigned long long *worker_applied_item_count);
-static void la_apply_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task,
+static void la_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task,
 						      const LA_STATS * stats);
 
 static bool la_need_filter_out (LA_ITEM * item);
@@ -766,7 +766,7 @@ la_coordinator_before_dispatch (void *context, const LA_TASK * task)
  *   entry(in): the retired in-flight entry
  *
  * Note:
- *   A serial fragment owns a slot detached from its transaction, so the slot is freed with its items.
+ *   A SYSOP fragment owns a slot detached from its transaction, so the slot is freed with its items.
  *   Any other slot belongs to the repl_lists pool and is only cleared for reuse.
  */
 static void
@@ -894,12 +894,12 @@ la_coordinator_shutdown_requested (void *context)
 }
 
 /*
- * la_stats_note_class() - record the class of a row just applied
+ * la_stat_note_class() - record the class of a row just applied
  *   stats(in/out): the transaction's apply statistics
  *   class_name(in): class of the applied row
  */
 static void
-la_stats_note_class (LA_STATS * stats, const char *class_name)
+la_stat_note_class (LA_STATS * stats, const char *class_name)
 {
   if (stats->last_class_name[0] != '\0' && strcmp (stats->last_class_name, class_name) != 0)
     {
@@ -910,7 +910,7 @@ la_stats_note_class (LA_STATS * stats, const char *class_name)
 }
 
 /*
- * la_apply_worker_run_task() - apply one task on the calling worker and fill its result
+ * la_worker_run_task() - apply one task on the calling worker and fill its result
  *   context(in/out): the worker's apply context
  *   task(in): transaction to apply
  *   trace_level(in): ha_writeset_trace_level, read once by the worker
@@ -919,11 +919,11 @@ la_stats_note_class (LA_STATS * stats, const char *class_name)
  *
  * Note:
  *   The worker module calls this for each task it takes from the task queue; only COMMIT and SYSOP_END tasks
- *   are queued. The task is applied by la_apply_worker_apply_task. Around it, for the statistics, a task with
+ *   are queued. The task is applied by la_worker_apply_task. Around it, for the statistics, a task with
  *   items is shown as the worker's current task while it runs, and the time it took goes into result.
  */
 static void
-la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
+la_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 			  unsigned long long *worker_applied_item_count, LA_RESULT * result)
 {
   struct timeval begin;
@@ -940,7 +940,7 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
       la_stat_worker_begin (context->worker_idx, task, &begin, result->apply_begin_ns);
     }
 
-  la_apply_worker_apply_task (context, task, trace_level, worker_applied_item_count, result);
+  la_worker_apply_task (context, task, trace_level, worker_applied_item_count, result);
 
   result->apply_end_ns = la_clock_ns ();
   gettimeofday (&result->apply_end_time, NULL);
@@ -955,8 +955,8 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
 }
 
 /*
- * la_apply_worker_apply_task() - apply, flush and commit one task; the body of la_apply_worker_run_task
- *   the arguments are those of la_apply_worker_run_task
+ * la_worker_apply_task() - apply, flush and commit one task; the body of la_worker_run_task
+ *   the arguments are those of la_worker_run_task
  *
  * Note:
  *   The transaction's items are applied, its remaining changes are flushed and it commits on the slave, in
@@ -965,7 +965,7 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
  *   restart does not apply it again (LA_APPLIED_TX_MARKER_NAME).
  */
 static void
-la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
+la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
 			    unsigned long long *worker_applied_item_count, LA_RESULT * result)
 {
   int total_rows = 0;
@@ -981,7 +981,7 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
 		     "[WSET] worker apply end trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu "
 		     "rows=%d error=%d\n",
 		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     task->rectype, (size_t) context->worker_idx, (unsigned long long) task->seq, total_rows,
+		     task->rectype, (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, total_rows,
 		     result->error);
     }
 
@@ -992,7 +992,7 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
   if (result->error == NO_ERROR && total_rows > 0)
     {
       result->error = la_add_applied_tx_marker (context, &task->commit_lsa, &result->stats);
-      /* Every merged serial fragment must also be skipped after a restart. */
+      /* Every merged SYSOP fragment must also be skipped after a restart. */
       for (int i = 0; result->error == NO_ERROR && i < task->merged_count; i++)
 	{
 	  result->error = la_add_applied_tx_marker (context, &task->merged_lsa[i], &result->stats);
@@ -1001,7 +1001,7 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
 
   if (result->error == NO_ERROR)
     {
-      result->error = la_apply_worker_flush_task (context, task, trace_level, &result->stats);
+      result->error = la_worker_flush_task (context, task, trace_level, &result->stats);
     }
 
   if (result->error != NO_ERROR)
@@ -1014,11 +1014,11 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
       return;
     }
 
-  result->error = la_apply_worker_commit_task (context, task, trace_level, &result->stats, worker_applied_item_count);
+  result->error = la_worker_commit_task (context, task, trace_level, &result->stats, worker_applied_item_count);
 }
 
 /*
- * la_apply_worker_flush_task() - send the transaction's remaining buffered changes to the server
+ * la_worker_flush_task() - send the transaction's remaining buffered changes to the server
  *   return: NO_ERROR or the flush error
  *   context(in): the worker's apply context
  *   task(in): transaction being applied
@@ -1026,7 +1026,7 @@ la_apply_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, i
  *   stats(in/out): the transaction's apply statistics
  */
 static int
-la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level, LA_STATS * stats)
+la_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level, LA_STATS * stats)
 {
   int error;
 
@@ -1035,7 +1035,7 @@ la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * t
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] worker flush begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu unflushed=%d\n",
 		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     (size_t) context->worker_idx, (unsigned long long) task->seq, stats->num_unflushed);
+		     (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, stats->num_unflushed);
     }
 
   error = la_flush_repl_items (true, stats, &context->marker_class_oid);
@@ -1050,14 +1050,14 @@ la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * t
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] worker flush end trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu error=%d\n",
 		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     (size_t) context->worker_idx, (unsigned long long) task->seq, error);
+		     (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, error);
     }
 
   return error;
 }
 
 /*
- * la_apply_worker_commit_task() - commit the applied transaction on the slave
+ * la_worker_commit_task() - commit the applied transaction on the slave
  *   return: NO_ERROR or the commit error
  *   context(in): the worker's apply context
  *   task(in): transaction being applied
@@ -1066,7 +1066,7 @@ la_apply_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * t
  *   worker_applied_item_count(in/out): items this worker has applied so far
  */
 static int
-la_apply_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
+la_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, int trace_level,
 			     const LA_STATS * stats, unsigned long long *worker_applied_item_count)
 {
   int error;
@@ -1074,22 +1074,22 @@ la_apply_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * 
   *worker_applied_item_count +=
     stats->insert_counter + stats->update_counter + stats->delete_counter + stats->fail_counter;
 
-  /* TODO: test-only crash-injection hook; remove with la_apply_worker_test_block_before_commit */
-  la_apply_worker_test_block_before_commit (context, task, stats);
+  /* TODO: test-only crash-injection hook; remove with la_worker_test_block_before_commit */
+  la_worker_test_block_before_commit (context, task, stats);
 
   if (trace_level >= 2)
     {
       _er_log_debug (ARG_FILE_LINE,
 		     "[WSET] worker commit begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu\n",
 		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     (size_t) context->worker_idx, (unsigned long long) task->seq);
+		     (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq);
     }
 
   return la_commit_transaction (*worker_applied_item_count, &task->commit_lsa);
 }
 
 /*
- * la_apply_worker_test_block_before_commit() - crash-injection test hook that stalls one class before commit
+ * la_worker_test_block_before_commit() - crash-injection test hook that stalls one class before commit
  *   context(in): the worker's apply context
  *   task(in): transaction being applied
  *   stats(in): the transaction's apply statistics; last_class_name selects the stalled class
@@ -1100,12 +1100,12 @@ la_apply_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * 
  *   work. Kept in release builds and gated only by the environment variable; the stall length is
  *   CUBRID_HA_TEST_BLOCK_MSEC (default 60000 ms).
  *
- *   TODO: Test-only code. Remove it, with its call in la_apply_worker_commit_task, once the restart and
+ *   TODO: Test-only code. Remove it, with its call in la_worker_commit_task, once the restart and
  *         hole tests no longer need it. If they keep needing it, build it only in debug builds or read the
  *         environment variables once at startup instead of on every commit.
  */
 static void
-la_apply_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task,
+la_worker_test_block_before_commit (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task,
 					  const LA_STATS * stats)
 {
   const char *block_class = getenv ("CUBRID_HA_TEST_BLOCK_CLASS");
@@ -1184,21 +1184,21 @@ la_start_apply_workers (void)
   config.db_page_size = la_Info.act_log.db_iopagesize;
   config.recdes_pool_size = LA_MAX_UNFLUSHED_REPL_ITEMS;
   config.trace_level = prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL);
-  config.run_task = la_apply_worker_run_task;
+  config.run_task = la_worker_run_task;
   config.request_shutdown = la_request_shutdown;
-  config.end_context = la_apply_worker_end_context;
+  config.end_context = la_worker_end_context;
 
   return la_worker_start (la_apply_Workers, la_Info.worker_count, &config);
 }
 
 /*
- * la_apply_worker_end_context() - release what a worker kept for its tasks, before its connection is closed
+ * la_worker_end_context() - release what a worker kept for its tasks, before its connection is closed
  *   context(in/out): the worker's apply context
  *
  * Note: runs on the worker thread, so it frees that thread's pinned list too.
  */
 static void
-la_apply_worker_end_context (LA_APPLY_WORKER_CONTEXT * context)
+la_worker_end_context (LA_APPLY_WORKER_CONTEXT * context)
 {
   la_free_pinned_page_buffers ();
 }
@@ -6295,7 +6295,7 @@ end:
     }
   else
     {
-      la_stats_note_class (stats, item->class_name);
+      la_stat_note_class (stats, item->class_name);
       stats->delete_counter++;
       stats->num_unflushed++;
       error = la_flush_repl_items (false, stats, NULL);
@@ -6483,7 +6483,7 @@ end:
     }
   else
     {
-      la_stats_note_class (stats, item->class_name);
+      la_stat_note_class (stats, item->class_name);
       stats->update_counter++;
       stats->num_unflushed++;
       error = la_flush_repl_items (false, stats, NULL);
@@ -6685,7 +6685,7 @@ end:
     }
   else
     {
-      la_stats_note_class (stats, item->class_name);
+      la_stat_note_class (stats, item->class_name);
       stats->insert_counter++;
       stats->num_unflushed++;
       error = la_flush_repl_items (false, stats, NULL);
@@ -7040,11 +7040,11 @@ la_apply_statement_log (LA_ITEM * item, LA_STATS * stats)
  *   stats(in/out): the task's statistics
  *
  * Note:
- *   A SYSOP_END task is an independent serial fragment; an aborted transaction never reaches here.
- *   Re-apply is decided per transaction, not per item, so a transaction is never applied partially. A commit
- *   at or below last_committed_lsa, or one the previous run marked as applied, is skipped whole: applying a
- *   transaction twice is not safe for a key change or a statement (LA_APPLIED_TX_MARKER_NAME).
- *   Only the items are freed; the slot is freed when the coordinator retires the task.
+ *   A SYSOP_END task applies an independent SYSOP fragment; an outer ABORT does not undo that operation.
+ *   Re-apply is decided per task, not per item. A task whose commit_lsa is at or below last_committed_lsa,
+ *   or one the previous run marked as applied, is skipped whole: applying the same changes twice is not
+ *   safe for a key change or statement (LA_APPLIED_TX_MARKER_NAME). Items are freed here; the coordinator
+ *   releases the slot when the task retires.
  */
 static int
 la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA * commit_lsa, int *total_rows,
@@ -7309,17 +7309,15 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
 }
 
 /*
- * la_detach_sysop_fragment() - move a serial fragment's items into a standalone apply slot
+ * la_detach_sysop_fragment() - move a SYSOP fragment's items into a standalone apply slot
  *   return: new apply slot owning the fragment items, or NULL on allocation failure or empty fragment
  *   outer(in/out): the outer transaction's apply slot
  *   fragment_lsa(in): the SYSOP_END coordinate; items at or before it belong to the fragment
  *
  * Note:
- *   At a serial SYSOP_END only the operation's own replicated items are buffered in the apply list (the
- *   auto-increment sysop is logged before the row insert, and regular DML is emitted only at the outer
- *   commit), so the items at or before the SYSOP_END coordinate form the fragment. They are unlinked from
- *   the outer slot and moved into a freshly allocated standalone slot owned by the fragment task, leaving
- *   any later item for the outer transaction. The slot is freed when the fragment task retires.
+ *   Items recorded at or before a labeled SYSOP_END form an independently applied fragment. Move them
+ *   from the outer slot to a standalone slot owned by the fragment task, leaving any later items for
+ *   the outer transaction. The fragment slot is freed when its task retires.
  *
  *   If the outer slot has become a long transaction, it holds only its first item and the LSA of the last
  *   replication record, and its items are read back from the log when applied. Since they all lie at or
@@ -7405,7 +7403,7 @@ la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa)
  *   final(in): LSA of the record
  *
  * Note:
- *   A labeled operation (a serial update the master put in commit order) with buffered items becomes a
+ *   A labeled operation (ordered by keys or commit order on the master) with buffered items becomes a
  *   fragment task that the outer commit waits for; without buffered items its LSA is only marked completed.
  *   An unlabeled one, or one at or below committed_lsa, only leaves a trace.
  */
@@ -7517,8 +7515,8 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
  *   task(in/out): the commit task; its dependency is set here
  *
  * Note:
- *   The dependency is the label written right before the commit, raised to this transaction's own serial
- *   fragments so the outer commit runs after them. A writeset master labels every commit that has replicated
+ *   The dependency comes from LOG_DUMMY_WSET_LABEL before COMMIT, raised to this transaction's own SYSOP
+ *   fragments so the outer COMMIT runs after them. A writeset master labels every commit that has replicated
  *   items; without a label (a master that writes none, or a label it failed to write) the conflicts are
  *   unknown, so such a commit waits for every earlier commit, as the serial applier would.
  */
@@ -8545,10 +8543,10 @@ la_init (const char *log_path, const int max_mem_size)
 }
 
 /*
- * la_free_unretired_fragments() - free the slots of the serial fragments that have not retired
+ * la_free_unretired_fragments() - free the slots of the SYSOP fragments that have not retired
  *
  * Note:
- *   Called when the applier shuts down, after the workers have stopped. A serial fragment owns a slot of its own
+ *   Called when the applier shuts down, after the workers have stopped. A SYSOP fragment owns a slot of its own
  *   that is freed only when its task retires (la_coordinator_release_apply_slot). applylogdb restarts the applier
  *   inside the same process after the server goes down, so a fragment left on the in-flight list or the pending
  *   list would leave its slot behind on every restart. Any other task points at a repl_lists slot, which
@@ -8580,7 +8578,7 @@ la_free_unretired_fragments (void)
 }
 
 /*
- * la_free_pending_fragment() - la_pending_foreach callback that frees a parked serial fragment's slot
+ * la_free_pending_fragment() - la_pending_foreach callback that frees a parked SYSOP fragment's slot
  *   task(in): parked task
  *   arg(in): unused
  *

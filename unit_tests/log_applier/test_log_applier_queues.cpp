@@ -34,12 +34,12 @@
 #include <thread>
 
 static LA_RESULT
-test_result (UINT64 seq)
+test_result (UINT64 dispatch_seq)
 {
   LA_RESULT result;
 
   memset (&result, 0, sizeof (result));
-  result.seq = seq;
+  result.dispatch_seq = dispatch_seq;
   return result;
 }
 
@@ -129,7 +129,7 @@ TEST_CASE ("result queue returns results in FIFO order and try_pop does not wait
   for (UINT64 s = 0; s < 3; s++)
     {
       REQUIRE (la_result_queue_try_pop (&out) == NO_ERROR);
-      REQUIRE (out.seq == s);
+      REQUIRE (out.dispatch_seq == s);
     }
   REQUIRE (la_result_queue_try_pop (&out) == ER_FAILED);
 }
@@ -149,7 +149,7 @@ TEST_CASE ("result queue wait_for_result times out when empty and does not deque
   REQUIRE (la_result_queue_wait_for_result (100));
   REQUIRE (la_result_queue_get_count () == 1);
   REQUIRE (la_result_queue_try_pop (&out) == NO_ERROR);
-  REQUIRE (out.seq == 7);
+  REQUIRE (out.dispatch_seq == 7);
 }
 
 TEST_CASE ("result queue blocks a worker on a full queue until the coordinator takes one", "[log_applier_queues]")
@@ -175,9 +175,9 @@ TEST_CASE ("result queue blocks a worker on a full queue until the coordinator t
   worker.join ();
   REQUIRE (pushed);
   REQUIRE (la_result_queue_try_pop (&out) == NO_ERROR);
-  REQUIRE (out.seq == 1);
+  REQUIRE (out.dispatch_seq == 1);
   REQUIRE (la_result_queue_try_pop (&out) == NO_ERROR);
-  REQUIRE (out.seq == 2);
+  REQUIRE (out.dispatch_seq == 2);
 }
 
 TEST_CASE ("result queue shutdown releases a blocked worker and a waiting coordinator", "[log_applier_queues]")

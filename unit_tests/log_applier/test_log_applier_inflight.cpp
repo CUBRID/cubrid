@@ -28,54 +28,54 @@
 #include "error_code.h"
 
 static LA_RESULT
-test_result_for (UINT64 seq, int error = NO_ERROR)
+test_result_for (UINT64 dispatch_seq, int error = NO_ERROR)
 {
   LA_RESULT result;
 
   memset (&result, 0, sizeof (result));
-  result.seq = seq;
+  result.dispatch_seq = dispatch_seq;
   result.error = error;
   return result;
 }
 
 TEST_CASE ("in-flight list attaches out-of-order results and retires from the head only", "[log_applier_inflight]")
 {
-  UINT64 seq[3];
+  UINT64 dispatch_seq[3];
 
   REQUIRE (la_inflight_init (4) == NO_ERROR);
   for (int i = 0; i < 3; i++)
     {
-      REQUIRE (la_inflight_push (NULL, 100 + i, TEST_RECTYPE_COMMIT, &seq[i]) == NO_ERROR);
+      REQUIRE (la_inflight_push (NULL, 100 + i, TEST_RECTYPE_COMMIT, &dispatch_seq[i]) == NO_ERROR);
     }
-  REQUIRE (seq[0] == 0);
-  REQUIRE (seq[1] == 1);
-  REQUIRE (seq[2] == 2);
+  REQUIRE (dispatch_seq[0] == 0);
+  REQUIRE (dispatch_seq[1] == 1);
+  REQUIRE (dispatch_seq[2] == 2);
 
   /* workers finish the third and the first task before the second */
-  LA_RESULT r2 = test_result_for (seq[2]);
-  LA_RESULT r0 = test_result_for (seq[0]);
+  LA_RESULT r2 = test_result_for (dispatch_seq[2]);
+  LA_RESULT r0 = test_result_for (dispatch_seq[0]);
   REQUIRE (la_inflight_attach_result (&r2) == NO_ERROR);
   REQUIRE (la_inflight_attach_result (&r0) == NO_ERROR);
 
   LA_INFLIGHT_ENTRY *head = la_inflight_peek ();
   REQUIRE (head != NULL);
-  REQUIRE (la_inflight_entry_get_sequence (head) == seq[0]);
+  REQUIRE (la_inflight_entry_get_dispatch_seq (head) == dispatch_seq[0]);
   REQUIRE (la_inflight_entry_has_result (head));
   la_inflight_pop ();
 
   /* the second task has no result yet, so the finished third one waits behind it */
   head = la_inflight_peek ();
   REQUIRE (head != NULL);
-  REQUIRE (la_inflight_entry_get_sequence (head) == seq[1]);
+  REQUIRE (la_inflight_entry_get_dispatch_seq (head) == dispatch_seq[1]);
   REQUIRE_FALSE (la_inflight_entry_has_result (head));
-  REQUIRE (la_inflight_entry_get_sequence (la_inflight_entry_at (1)) == seq[2]);
+  REQUIRE (la_inflight_entry_get_dispatch_seq (la_inflight_entry_at (1)) == dispatch_seq[2]);
   REQUIRE (la_inflight_entry_has_result (la_inflight_entry_at (1)));
 
-  LA_RESULT r1 = test_result_for (seq[1], ER_FAILED);
+  LA_RESULT r1 = test_result_for (dispatch_seq[1], ER_FAILED);
   REQUIRE (la_inflight_attach_result (&r1) == NO_ERROR);
   REQUIRE (la_inflight_entry_get_result (la_inflight_peek ())->error == ER_FAILED);
   la_inflight_pop ();
-  REQUIRE (la_inflight_entry_get_sequence (la_inflight_peek ()) == seq[2]);
+  REQUIRE (la_inflight_entry_get_dispatch_seq (la_inflight_peek ()) == dispatch_seq[2]);
   la_inflight_pop ();
 
   REQUIRE (la_inflight_get_count () == 0);
@@ -84,17 +84,17 @@ TEST_CASE ("in-flight list attaches out-of-order results and retires from the he
 
 TEST_CASE ("in-flight list rejects a result whose task is not in flight", "[log_applier_inflight]")
 {
-  UINT64 seq;
+  UINT64 dispatch_seq;
 
   REQUIRE (la_inflight_init (2) == NO_ERROR);
-  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, &seq) == NO_ERROR);
+  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, &dispatch_seq) == NO_ERROR);
 
-  LA_RESULT unknown = test_result_for (seq + 7);
+  LA_RESULT unknown = test_result_for (dispatch_seq + 7);
   REQUIRE (la_inflight_attach_result (&unknown) == ER_FAILED);
   REQUIRE_FALSE (la_inflight_entry_has_result (la_inflight_peek ()));
 
   /* once retired, the same dispatch number is gone */
-  LA_RESULT r = test_result_for (seq);
+  LA_RESULT r = test_result_for (dispatch_seq);
   REQUIRE (la_inflight_attach_result (&r) == NO_ERROR);
   la_inflight_pop ();
   REQUIRE (la_inflight_attach_result (&r) == ER_FAILED);
@@ -102,13 +102,13 @@ TEST_CASE ("in-flight list rejects a result whose task is not in flight", "[log_
 
 TEST_CASE ("in-flight list refuses a push beyond its capacity and wraps around", "[log_applier_inflight]")
 {
-  UINT64 seq;
+  UINT64 dispatch_seq;
 
   REQUIRE (la_inflight_init (2) == NO_ERROR);
   REQUIRE (la_inflight_get_capacity () == 2);
-  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, &seq) == NO_ERROR);
-  REQUIRE (la_inflight_push (NULL, 2, TEST_RECTYPE_SYSOP_END, &seq) == NO_ERROR);
-  REQUIRE (la_inflight_push (NULL, 3, TEST_RECTYPE_COMMIT, &seq) == ER_FAILED);
+  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, &dispatch_seq) == NO_ERROR);
+  REQUIRE (la_inflight_push (NULL, 2, TEST_RECTYPE_SYSOP_END, &dispatch_seq) == NO_ERROR);
+  REQUIRE (la_inflight_push (NULL, 3, TEST_RECTYPE_COMMIT, &dispatch_seq) == ER_FAILED);
   REQUIRE (la_inflight_get_count () == 2);
   REQUIRE (la_inflight_entry_at (2) == NULL);
   REQUIRE (la_inflight_entry_at (-1) == NULL);
@@ -116,22 +116,22 @@ TEST_CASE ("in-flight list refuses a push beyond its capacity and wraps around",
 
   /* the ring reuses the freed slot; numbering keeps going */
   la_inflight_pop ();
-  REQUIRE (la_inflight_push (NULL, 3, TEST_RECTYPE_COMMIT, &seq) == NO_ERROR);
-  REQUIRE (seq == 2);
+  REQUIRE (la_inflight_push (NULL, 3, TEST_RECTYPE_COMMIT, &dispatch_seq) == NO_ERROR);
+  REQUIRE (dispatch_seq == 2);
   REQUIRE (la_inflight_entry_get_tranid (la_inflight_entry_at (0)) == 2);
   REQUIRE (la_inflight_entry_get_tranid (la_inflight_entry_at (1)) == 3);
 }
 
 TEST_CASE ("in-flight list init empties the list and restarts dispatch numbering", "[log_applier_inflight]")
 {
-  UINT64 seq;
+  UINT64 dispatch_seq;
 
   REQUIRE (la_inflight_init (4) == NO_ERROR);
-  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, &seq) == NO_ERROR);
-  REQUIRE (la_inflight_push (NULL, 2, TEST_RECTYPE_COMMIT, &seq) == NO_ERROR);
+  REQUIRE (la_inflight_push (NULL, 1, TEST_RECTYPE_COMMIT, &dispatch_seq) == NO_ERROR);
+  REQUIRE (la_inflight_push (NULL, 2, TEST_RECTYPE_COMMIT, &dispatch_seq) == NO_ERROR);
 
   REQUIRE (la_inflight_init (4) == NO_ERROR);
   REQUIRE (la_inflight_get_count () == 0);
-  REQUIRE (la_inflight_push (NULL, 3, TEST_RECTYPE_COMMIT, &seq) == NO_ERROR);
-  REQUIRE (seq == 0);
+  REQUIRE (la_inflight_push (NULL, 3, TEST_RECTYPE_COMMIT, &dispatch_seq) == NO_ERROR);
+  REQUIRE (dispatch_seq == 0);
 }

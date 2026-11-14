@@ -235,7 +235,7 @@ la_coordinator_enqueue_task (const LA_TASK *task_in, LA_SCHED_STATUS sched_statu
     {
       return error;
     }
-  task.seq = dispatch_seq;
+  task.dispatch_seq = dispatch_seq;
 
   if (sched_status == LA_SCHED_DISPATCHED && task.has_items && task.rectype == LOG_COMMIT)
     {
@@ -534,7 +534,7 @@ la_coordinator_retire_results (void)
       LA_WSET_TRACE (1, "coordinator retire trid=%d commit_lsa=%lld|%d type=%d worker=%d dispatch=%llu\n",
 		     result->tranid, LSA_AS_ARGS (&result->commit_lsa),
 		     result->rectype, result->worker_idx,
-		     (unsigned long long) la_inflight_entry_get_sequence (entry));
+		     (unsigned long long) la_inflight_entry_get_dispatch_seq (entry));
 
       /* the call must stay outside assert(): a release build drops the whole assert expression */
       has_frontier = la_gate_get_frontier (&frontier);
@@ -663,7 +663,7 @@ la_coordinator_merge_into_pending (LA_TASK *task, int *error)
 }
 
 /*
- * la_coordinator_submit_task - register and schedule one complete log task
+ * la_coordinator_submit_task - register and schedule one assembled task
  *
  * return: NO_ERROR or an error code
  *
@@ -672,7 +672,7 @@ la_coordinator_merge_into_pending (LA_TASK *task, int *error)
 int
 la_coordinator_submit_task (LA_TASK *task)
 {
-  LOG_LSA label;
+  LOG_LSA dependency_lsa;
   bool dependency_ready;
   int error;
 
@@ -689,13 +689,13 @@ la_coordinator_submit_task (LA_TASK *task)
 
   la_gate_set_initial_frontier (la_Coordinator_config.restart_lsa);
 
-  LSA_COPY (&label, &task->dependency_lsa);
+  LSA_COPY (&dependency_lsa, &task->dependency_lsa);
   if (la_gate_bound_dependency (&task->dependency_lsa))
     {
       LA_WSET_TRACE (1, "coordinator label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
 		     "dependency=%lld|%d\n",
 		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     LSA_AS_ARGS (&label), LSA_AS_ARGS (&task->dependency_lsa));
+		     LSA_AS_ARGS (&dependency_lsa), LSA_AS_ARGS (&task->dependency_lsa));
     }
 
   error = la_gate_order_push (&task->commit_lsa);

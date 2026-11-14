@@ -1640,9 +1640,9 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
-  tdes->wset_overflow = false;
+  tdes->wset_fallback = false;
   tdes->wset_fallback_reason = WSET_FALLBACK_TRANSACTION_LIMIT;
-  std::vector < LOG_WSET_ENTRY > ().swap (tdes->wset_hashes);
+  std::vector < LOG_WSET_ENTRY > ().swap (tdes->wset_entries);
   LSA_SET_NULL (&tdes->wset_dependency_lsa);
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
@@ -1725,9 +1725,9 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
-  tdes->wset_overflow = false;
+  tdes->wset_fallback = false;
   tdes->wset_fallback_reason = WSET_FALLBACK_TRANSACTION_LIMIT;
-  std::vector < LOG_WSET_ENTRY > ().swap (tdes->wset_hashes);
+  std::vector < LOG_WSET_ENTRY > ().swap (tdes->wset_entries);
   LSA_SET_NULL (&tdes->wset_dependency_lsa);
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
@@ -6729,8 +6729,8 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, repl_update_lsa);
   /* the writeset keys travel with the replication records they describe, so the commit written later from the
    * new descriptor still finds its dependency and publishes its keys */
-  REPLACE_COPY_2_DEST (dest, wset_hashes);
-  REPLACE_COPY_2_DEST (dest, wset_overflow);
+  REPLACE_COPY_2_DEST (dest, wset_entries);
+  REPLACE_COPY_2_DEST (dest, wset_fallback);
   REPLACE_COPY_2_DEST (dest, wset_fallback_reason);
   REPLACE_COPY_2_DEST (dest, wset_dependency_lsa);
   REPLACE_COPY_2_DEST (dest, first_save_entry);

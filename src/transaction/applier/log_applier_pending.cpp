@@ -17,11 +17,11 @@
  */
 
 /*
- * log_applier_pending.cpp - implementation of dependency-waiting task storage
+ * log_applier_pending.cpp - implementation of pending task storage
  *
- * The coordinator parks a transaction here when the gate does not let it pass yet, and keeps reading the log
- * instead of waiting. Every time a completion moves the gate's frontier, the coordinator takes out the parked
- * transactions the gate now lets pass, oldest first. A parked transaction is always on the gate's
+ * The coordinator parks a task here while its dependency is unsatisfied or the task queue is full, and
+ * keeps reading the log instead of waiting. It retries ready tasks as dependencies and queue capacity
+ * allow, oldest first. A parked task is always on the gate's
  * commit-order ring, so the list never holds more than the commit-order capacity.
  * Only the coordinator touches the list, so it has no lock.
  */
@@ -61,7 +61,7 @@ la_pending_reset (void)
 }
 
 /*
- * la_pending_push() - park a transaction whose predecessor is not applied yet
+ * la_pending_push() - park a task waiting for its dependency or task-queue capacity
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
  *   task(in): task to park; copied
  */
@@ -122,7 +122,7 @@ la_pending_mark_ready (UINT64 now_ns)
 }
 
 /*
- * la_pending_pop_ready() - take the oldest parked task whose predecessor is now applied
+ * la_pending_pop_ready() - take the oldest parked task whose dependency is satisfied
  *   return: true when a task was released, false when every parked task still waits
  *   task(out): the released task
  *
@@ -184,7 +184,7 @@ la_pending_pop_ready (LA_TASK *task)
  *   Called when the applier shuts down. applylogdb restarts the applier inside the same process after
  *   the server goes down, and a parked task left on the list would point at an apply slot freed by the
  *   shutdown: the next run would read its start_lsa as required_lsa and could dispatch it to a worker.
- *   The tasks are not lost: their commits lie after committed_lsa and the next run reads them again.
+ *   The tasks are not lost: their apply units lie after committed_lsa and the next run reads them again.
  */
 void
 la_pending_clear (void)

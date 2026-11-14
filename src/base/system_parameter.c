@@ -822,7 +822,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_STATISTICS_SAMPLE_PAGES "statistics_sample_pages"
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
-#define PRM_NAME_HA_WRITESET_HISTORY_SIZE "ha_writeset_history_size"
+#define PRM_NAME_HA_WRITESET_MAX_KEYS "ha_writeset_max_keys"
 #define PRM_NAME_HA_WRITESET_TRACE_LEVEL "ha_writeset_trace_level"
 #define PRM_NAME_HA_APPLY_WORKER_COUNT "ha_apply_worker_count"
 
@@ -5751,8 +5751,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_HA_WRITESET_HISTORY_SIZE,
-   PRM_NAME_HA_WRITESET_HISTORY_SIZE,
+  {PRM_ID_HA_WRITESET_MAX_KEYS,
+   PRM_NAME_HA_WRITESET_MAX_KEYS,
    (PRM_FOR_SERVER | PRM_FOR_HA),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,

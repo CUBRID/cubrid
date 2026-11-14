@@ -42,8 +42,8 @@ extern int wset_add_ref_key (LOG_TDES *tdes, const OID *ref_class_oid, const VFI
 			     DB_VALUE *fk_value, struct tp_domain *parent_pk_domain);
 extern void wset_switch_to_commit_order (LOG_TDES *tdes, WSET_FALLBACK_REASON reason);
 
-/* A system operation that replicated rows (serial update, INCR/DECR, checksumdb) is labeled for commit
- * order at its SYSOP_END and the keys it collected are dropped unpublished. */
+/* Remove a completed SYSOP's keys from the outer writeset. Keyed ordering publishes them first;
+ * commit-order processing discards them unpublished. */
 extern void wset_discard_sysop_keys (LOG_TDES *tdes, size_t sysop_key_begin);
 extern void wset_discard_keys_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa);
 

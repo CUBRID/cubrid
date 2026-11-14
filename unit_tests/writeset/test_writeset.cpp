@@ -21,8 +21,8 @@
  *                         commit history.
  *
  * Behavior cases pin down the dependency rules the parallel slave relies on:
- * who waits behind whom, what is published into the history, and how overflow
- * degrades to commit order. The per-key micro-benchmarks live in
+ * who waits behind whom, what is published into the history, and how fallback
+ * preserves commit order. The per-key micro-benchmarks live in
  * test_writeset_bench.cpp; the contention sweeps in
  * test_writeset_stress.cpp.
  */
@@ -63,11 +63,11 @@ require_write_ref_same_hash (TP_DOMAIN *parent_domain, TP_DOMAIN *child_domain, 
   REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_value,
 			     parent_domain) == NO_ERROR);
 
-  REQUIRE (parent->wset_hashes.size () == 1);
-  REQUIRE (child->wset_hashes.size () == 1);
-  REQUIRE (parent->wset_hashes[0].kind == LOG_WSET_KIND_WRITE);
-  REQUIRE (child->wset_hashes[0].kind == LOG_WSET_KIND_REF);
-  REQUIRE (parent->wset_hashes[0].hash == child->wset_hashes[0].hash);
+  REQUIRE (parent->wset_entries.size () == 1);
+  REQUIRE (child->wset_entries.size () == 1);
+  REQUIRE (parent->wset_entries[0].kind == LOG_WSET_KIND_WRITE);
+  REQUIRE (child->wset_entries[0].kind == LOG_WSET_KIND_REF);
+  REQUIRE (parent->wset_entries[0].hash == child->wset_entries[0].hash);
 
   pr_clear_value (&parent_value);
   pr_clear_value (&child_value);
@@ -186,20 +186,20 @@ TEST_CASE ("composite parent WRITE and child REF produce the same collision hash
 
   REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
   REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
-  REQUIRE (parent->wset_hashes.size () == 1);
-  REQUIRE (child->wset_hashes.size () == 1);
-  REQUIRE (parent->wset_hashes[0].hash == child->wset_hashes[0].hash);
+  REQUIRE (parent->wset_entries.size () == 1);
+  REQUIRE (child->wset_entries.size () == 1);
+  REQUIRE (parent->wset_entries[0].hash == child->wset_entries[0].hash);
 
   /* The equal hashes must also drive both dependency directions through the global history. */
   commit_tx (parent, &parent_commit);
-  LOG_LSA child_dependency = probe (child);
-  REQUIRE (LSA_EQ (&child_dependency, &parent_commit));
+  LOG_LSA child_dependency_lsa = probe (child);
+  REQUIRE (LSA_EQ (&child_dependency_lsa, &parent_commit));
 
   commit_tx (child, &child_commit);
   log_tdes *later_parent = make_tdes (3);
   REQUIRE (wset_add_write_key (later_parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
-  LOG_LSA later_parent_dependency = probe (later_parent);
-  REQUIRE (LSA_EQ (&later_parent_dependency, &child_commit));
+  LOG_LSA later_parent_dependency_lsa = probe (later_parent);
+  REQUIRE (LSA_EQ (&later_parent_dependency_lsa, &child_commit));
 
   pr_clear_value (&parent_key);
   pr_clear_value (&child_key);
@@ -273,11 +273,11 @@ TEST_CASE ("composite key string elements hash by their collation", "[writeset]"
     REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
     REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
     REQUIRE (wset_add_write_key (other_writer, &parent_class, &WS_DEFAULT_VFID, &child_key) == NO_ERROR);
-    REQUIRE (parent->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (other_writer->wset_hashes.size () == 1);
-    REQUIRE (parent->wset_hashes[0].hash == child->wset_hashes[0].hash);
-    REQUIRE (parent->wset_hashes[0].hash == other_writer->wset_hashes[0].hash);
+    REQUIRE (parent->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (other_writer->wset_entries.size () == 1);
+    REQUIRE (parent->wset_entries[0].hash == child->wset_entries[0].hash);
+    REQUIRE (parent->wset_entries[0].hash == other_writer->wset_entries[0].hash);
 
     pr_clear_value (&parent_key);
     pr_clear_value (&child_key);
@@ -296,9 +296,9 @@ TEST_CASE ("composite key string elements hash by their collation", "[writeset]"
 
     REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
     REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
-    REQUIRE (parent->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (parent->wset_hashes[0].hash != child->wset_hashes[0].hash);
+    REQUIRE (parent->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (parent->wset_entries[0].hash != child->wset_entries[0].hash);
 
     pr_clear_value (&parent_key);
     pr_clear_value (&child_key);
@@ -316,7 +316,7 @@ TEST_CASE ("composite key string elements hash by their collation", "[writeset]"
 
     REQUIRE (wset_add_write_key (parent, &parent_class, &WS_DEFAULT_VFID, &parent_key) == NO_ERROR);
     REQUIRE (wset_add_ref_key (child, &parent_class, &WS_DEFAULT_VFID, &child_key, parent_domain) == NO_ERROR);
-    REQUIRE (parent->wset_hashes[0].hash != child->wset_hashes[0].hash);
+    REQUIRE (parent->wset_entries[0].hash != child->wset_entries[0].hash);
 
     pr_clear_value (&parent_key);
     pr_clear_value (&child_key);
@@ -333,8 +333,8 @@ write_key_hash (const OID *class_oid, DB_VALUE *value)
   UINT64 hash;
 
   REQUIRE (wset_add_write_key (tdes, class_oid, &WS_DEFAULT_VFID, value) == NO_ERROR);
-  REQUIRE (tdes->wset_hashes.size () == 1);
-  hash = tdes->wset_hashes[0].hash;
+  REQUIRE (tdes->wset_entries.size () == 1);
+  hash = tdes->wset_entries[0].hash;
 
   delete tdes;
   return hash;
@@ -405,8 +405,8 @@ TEST_CASE ("a zoned timestamp key hashes by its UTC time, not its zone", "[write
     REQUIRE (write_key_hash (&class_oid, &value_a) != write_key_hash (&class_oid, &value_later));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &value_b, domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &value_a));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &value_a));
 
     delete child;
   }
@@ -438,8 +438,8 @@ TEST_CASE ("a zoned timestamp key hashes by its UTC time, not its zone", "[write
     REQUIRE (write_key_hash (&class_oid, &value_a) != write_key_hash (&class_oid, &value_later));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &value_b, domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &value_a));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &value_a));
 
     delete child;
   }
@@ -469,8 +469,8 @@ TEST_CASE ("a zoned timestamp key hashes by its UTC time, not its zone", "[write
     REQUIRE (write_key_hash (&class_oid, &key_a) != write_key_hash (&class_oid, &key_later));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_b, key_domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_a));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &key_a));
 
     pr_clear_value (&key_a);
     pr_clear_value (&key_b);
@@ -504,8 +504,8 @@ TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
     REQUIRE (write_key_hash (&class_oid, &plus_zero) != write_key_hash (&class_oid, &one));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &minus_zero, domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &plus_zero));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &plus_zero));
 
     delete child;
   }
@@ -528,8 +528,8 @@ TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
     REQUIRE (write_key_hash (&class_oid, &plus_zero) != write_key_hash (&class_oid, &one));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &minus_zero, domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &plus_zero));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &plus_zero));
 
     delete child;
   }
@@ -556,8 +556,8 @@ TEST_CASE ("a FLOAT or DOUBLE -0.0 key hashes as +0.0", "[writeset]")
     REQUIRE (write_key_hash (&class_oid, &key_plus) != write_key_hash (&class_oid, &key_one));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_minus, key_domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_plus));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &key_plus));
 
     pr_clear_value (&key_plus);
     pr_clear_value (&key_minus);
@@ -601,8 +601,8 @@ TEST_CASE ("a NUMERIC key hashes the number it stands for", "[writeset]")
     REQUIRE (write_key_hash (&class_oid, &two_places) != write_key_hash (&class_oid, &other));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &three_places, domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &two_places));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &two_places));
 
     delete child;
   }
@@ -678,8 +678,8 @@ TEST_CASE ("a MONETARY key hashes its amount without the currency", "[writeset]"
     REQUIRE (write_key_hash (&class_oid, &dollar) != write_key_hash (&class_oid, &other));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &won, domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &dollar));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &dollar));
 
     delete child;
   }
@@ -718,8 +718,8 @@ TEST_CASE ("a MONETARY key hashes its amount without the currency", "[writeset]"
     REQUIRE (write_key_hash (&class_oid, &key_dollar) != write_key_hash (&class_oid, &key_other));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_won, key_domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_dollar));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &key_dollar));
 
     pr_clear_value (&key_dollar);
     pr_clear_value (&key_won);
@@ -759,8 +759,8 @@ TEST_CASE ("a VARBIT key hashes its bytes without the bit length", "[writeset]")
     REQUIRE (write_key_hash (&class_oid, &one_bit) != write_key_hash (&class_oid, &two_bytes));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &two_bits, domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &one_bit));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &one_bit));
 
     delete child;
   }
@@ -787,8 +787,8 @@ TEST_CASE ("a VARBIT key hashes its bytes without the bit length", "[writeset]")
     REQUIRE (write_key_hash (&class_oid, &key_one_bit) != write_key_hash (&class_oid, &key_other));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_two_bits, key_domain) == NO_ERROR);
-    REQUIRE (child->wset_hashes.size () == 1);
-    REQUIRE (child->wset_hashes[0].hash == write_key_hash (&class_oid, &key_one_bit));
+    REQUIRE (child->wset_entries.size () == 1);
+    REQUIRE (child->wset_entries[0].hash == write_key_hash (&class_oid, &key_one_bit));
 
     pr_clear_value (&key_one_bit);
     pr_clear_value (&key_two_bits);
@@ -818,15 +818,15 @@ TEST_CASE ("a NaN key sends its transaction to commit order", "[writeset]")
     db_make_double (&one, 1.0);
 
     REQUIRE (wset_add_write_key (tdes_double, &class_oid, &WS_DEFAULT_VFID, &nan_double) == NO_ERROR);
-    REQUIRE (tdes_double->wset_overflow);
-    REQUIRE (tdes_double->wset_hashes.empty ());
+    REQUIRE (tdes_double->wset_fallback);
+    REQUIRE (tdes_double->wset_entries.empty ());
 
     REQUIRE (wset_add_write_key (tdes_float, &class_oid, &WS_DEFAULT_VFID, &nan_float) == NO_ERROR);
-    REQUIRE (tdes_float->wset_overflow);
+    REQUIRE (tdes_float->wset_fallback);
 
     REQUIRE (wset_add_write_key (tdes_one, &class_oid, &WS_DEFAULT_VFID, &one) == NO_ERROR);
-    REQUIRE_FALSE (tdes_one->wset_overflow);
-    REQUIRE (tdes_one->wset_hashes.size () == 1);
+    REQUIRE_FALSE (tdes_one->wset_fallback);
+    REQUIRE (tdes_one->wset_entries.size () == 1);
 
     delete tdes_double;
     delete tdes_float;
@@ -847,10 +847,10 @@ TEST_CASE ("a NaN key sends its transaction to commit order", "[writeset]")
     make_value_int_key (&key_nan, &key_domain, element_domain, &value, 1);
 
     REQUIRE (wset_add_write_key (writer, &class_oid, &WS_DEFAULT_VFID, &key_nan) == NO_ERROR);
-    REQUIRE (writer->wset_overflow);
+    REQUIRE (writer->wset_fallback);
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &key_nan, key_domain) == NO_ERROR);
-    REQUIRE (child->wset_overflow);
+    REQUIRE (child->wset_fallback);
 
     pr_clear_value (&key_nan);
     delete writer;
@@ -867,8 +867,8 @@ TEST_CASE ("a NaN key sends its transaction to commit order", "[writeset]")
     db_make_double (&nan_double, std::nan (""));
 
     REQUIRE (wset_add_ref_key (child, &class_oid, &WS_DEFAULT_VFID, &nan_double, domain) == NO_ERROR);
-    REQUIRE (child->wset_overflow);
-    REQUIRE (child->wset_hashes.empty ());
+    REQUIRE (child->wset_fallback);
+    REQUIRE (child->wset_entries.empty ());
 
     delete child;
   }
@@ -1298,8 +1298,8 @@ TEST_CASE ("trailing zero weights follow string comparison and preserve writeset
           REQUIRE (wset_add_write_key (deleter, &class_oid, &WS_DEFAULT_VFID, &before) == NO_ERROR);
           commit_tx (deleter, &commit_lsa);
           REQUIRE (wset_add_write_key (inserter, &class_oid, &WS_DEFAULT_VFID, &after) == NO_ERROR);
-          LOG_LSA dependency = probe (inserter);
-          CHECK (LSA_EQ (&dependency, &commit_lsa));
+          LOG_LSA dependency_lsa = probe (inserter);
+          CHECK (LSA_EQ (&dependency_lsa, &commit_lsa));
 
           pr_clear_value (&before);
           pr_clear_value (&after);
@@ -1317,8 +1317,8 @@ TEST_CASE ("independent transaction gets a NULL dependency", "[writeset]")
 
   add_write_int (t1, &cls, 1);
 
-  LOG_LSA dep = probe (t1);
-  REQUIRE (LSA_ISNULL (&dep));
+  LOG_LSA dependency_lsa = probe (t1);
+  REQUIRE (LSA_ISNULL (&dependency_lsa));
 
   delete t1;
 }
@@ -1336,8 +1336,8 @@ TEST_CASE ("same key waits behind its previous writer", "[writeset]")
   log_tdes *t2 = make_tdes (2);
   add_write_int (t2, &cls, 1);
 
-  LOG_LSA dep = probe (t2);
-  REQUIRE (LSA_EQ (&dep, &l1));
+  LOG_LSA dependency_lsa = probe (t2);
+  REQUIRE (LSA_EQ (&dependency_lsa, &l1));
 
   delete t1;
   delete t2;
@@ -1356,8 +1356,8 @@ TEST_CASE ("a different key is not serialized behind an unrelated commit", "[wri
   log_tdes *t2 = make_tdes (2);
   add_write_int (t2, &cls, 2);
 
-  LOG_LSA dep = probe (t2);
-  REQUIRE (LSA_ISNULL (&dep));
+  LOG_LSA dependency_lsa = probe (t2);
+  REQUIRE (LSA_ISNULL (&dependency_lsa));
 
   delete t1;
   delete t2;
@@ -1382,8 +1382,8 @@ TEST_CASE ("dependency is the newest commit among all touched keys", "[writeset]
   add_write_int (t3, &cls, 1);
   add_write_int (t3, &cls, 2);
 
-  LOG_LSA dep = probe (t3);
-  REQUIRE (LSA_EQ (&dep, &l2));
+  LOG_LSA dependency_lsa = probe (t3);
+  REQUIRE (LSA_EQ (&dependency_lsa, &l2));
 
   delete t1;
   delete t2;
@@ -1406,14 +1406,14 @@ TEST_CASE ("foreign-key reference waits behind the parent's writer", "[writeset]
   log_tdes *child = make_tdes (2);
   add_ref_int (child, &parent_cls, 7);
 
-  LOG_LSA dep = probe (child);
-  REQUIRE (LSA_EQ (&dep, &l1));
+  LOG_LSA dependency_lsa = probe (child);
+  REQUIRE (LSA_EQ (&dependency_lsa, &l1));
 
   delete parent;
   delete child;
 }
 
-TEST_CASE ("references stamp the read slot: siblings stay parallel, a later parent write waits", "[writeset]")
+TEST_CASE ("references stamp the REF slot: siblings stay parallel, a later parent write waits", "[writeset]")
 {
   ws_history_guard history;
   OID parent_cls = oid_of (1, 200, 1);
@@ -1425,28 +1425,28 @@ TEST_CASE ("references stamp the read slot: siblings stay parallel, a later pare
   commit_tx (parent, &l1);
 
   /* first child references the parent and commits: its own dependency is the
-   * parent's writer (write slot), and it stamps the read slot at flush */
+   * parent's writer (write slot), and it stamps the REF slot at flush */
   log_tdes *child1 = make_tdes (2);
   add_ref_int (child1, &parent_cls, 7);
-  LOG_LSA dep1 = probe (child1);
-  REQUIRE (LSA_EQ (&dep1, &l1));
+  LOG_LSA dependency_lsa_1 = probe (child1);
+  REQUIRE (LSA_EQ (&dependency_lsa_1, &l1));
   commit_tx (child1, &l2);
 
   /* a sibling referencing the same parent still depends on the parent only:
-   * references consult the write slot, never the read slot, so child1's stamp
+   * references consult the write slot, never the REF slot, so child1's stamp
    * does not chain the siblings */
   log_tdes *child2 = make_tdes (3);
   add_ref_int (child2, &parent_cls, 7);
-  LOG_LSA dep2 = probe (child2);
-  REQUIRE (LSA_EQ (&dep2, &l1));
+  LOG_LSA dependency_lsa_2 = probe (child2);
+  REQUIRE (LSA_EQ (&dependency_lsa_2, &l1));
 
   /* a later write to the parent row now sees the newest referencer (l2), not
    * just the previous writer (l1): the reverse-order blind spot of doc 5 is
    * closed. */
   log_tdes *parent_delete = make_tdes (4);
   add_write_int (parent_delete, &parent_cls, 7);
-  LOG_LSA dep3 = probe (parent_delete);
-  REQUIRE (LSA_EQ (&dep3, &l2));
+  LOG_LSA dependency_lsa_3 = probe (parent_delete);
+  REQUIRE (LSA_EQ (&dependency_lsa_3, &l2));
 
   delete parent;
   delete child1;
@@ -1454,7 +1454,7 @@ TEST_CASE ("references stamp the read slot: siblings stay parallel, a later pare
   delete parent_delete;
 }
 
-TEST_CASE ("read slot on a never-written key: parallel siblings, monotonic stamp, flagged writer", "[writeset]")
+TEST_CASE ("REF slot on a never-written key: parallel siblings, monotonic stamp, flagged writer", "[writeset]")
 {
   ws_history_guard history;
   OID parent_cls = oid_of (1, 200, 1);
@@ -1463,20 +1463,20 @@ TEST_CASE ("read slot on a never-written key: parallel siblings, monotonic stamp
 
   /* the referenced key has no write history (e.g. the parent row predates the
    * current history window): the reference creates the entry with only the
-   * read slot filled */
+   * REF slot filled */
   log_tdes *child1 = make_tdes (1);
   add_ref_int (child1, &parent_cls, 9);
-  LOG_LSA dep1 = probe (child1);
-  REQUIRE (LSA_ISNULL (&dep1));
+  LOG_LSA dependency_lsa_1 = probe (child1);
+  REQUIRE (LSA_ISNULL (&dependency_lsa_1));
   commit_tx (child1, &l5);
 
   /* a sibling still sees an empty write slot: independent */
   log_tdes *child2 = make_tdes (2);
   add_ref_int (child2, &parent_cls, 9);
-  LOG_LSA dep2 = probe (child2);
-  REQUIRE (LSA_ISNULL (&dep2));
+  LOG_LSA dependency_lsa_2 = probe (child2);
+  REQUIRE (LSA_ISNULL (&dependency_lsa_2));
 
-  /* an out-of-order (older) reference flush must not move the read slot backwards */
+  /* an out-of-order (older) reference flush must not move the REF slot backwards */
   log_tdes *child3 = make_tdes (3);
   add_ref_int (child3, &parent_cls, 9);
   commit_tx (child3, &l3);
@@ -1484,8 +1484,8 @@ TEST_CASE ("read slot on a never-written key: parallel siblings, monotonic stamp
   /* the parent's writer waits for the newest referencer (l5, not l3) */
   log_tdes *parent_delete = make_tdes (4);
   add_write_int (parent_delete, &parent_cls, 9);
-  LOG_LSA dep3 = probe (parent_delete);
-  REQUIRE (LSA_EQ (&dep3, &l5));
+  LOG_LSA dependency_lsa_3 = probe (parent_delete);
+  REQUIRE (LSA_EQ (&dependency_lsa_3, &l5));
 
   delete child1;
   delete child2;
@@ -1513,15 +1513,15 @@ TEST_CASE ("write slot keeps the newest commit when publishes arrive out of orde
 
   log_tdes *successor = make_tdes (3);
   add_write_int (successor, &cls, 7);
-  LOG_LSA dependency = probe (successor);
-  REQUIRE (LSA_EQ (&dependency, &newer_lsa));
+  LOG_LSA dependency_lsa = probe (successor);
+  REQUIRE (LSA_EQ (&dependency_lsa, &newer_lsa));
 
   delete newer;
   delete delayed_older;
   delete successor;
 }
 
-TEST_CASE ("overflow demotes to commit order and raises the history floor", "[writeset]")
+TEST_CASE ("fallback uses commit order and raises the history floor", "[writeset]")
 {
   ws_history_guard history;
   OID cls = oid_of (1, 100, 1);
@@ -1532,27 +1532,27 @@ TEST_CASE ("overflow demotes to commit order and raises the history floor", "[wr
   add_write_int (t1, &cls, 1);
   commit_tx (t1, &l1);
 
-  /* an overflowed transaction waits for everything before it (= prev commit) */
-  log_tdes *ovf = make_tdes (2);
-  ovf->wset_overflow = true;
-  LOG_LSA dep = probe (ovf);
-  REQUIRE (LSA_EQ (&dep, &l1));
+  /* a transaction in fallback waits for everything before it (= prev commit) */
+  log_tdes *fallback = make_tdes (2);
+  fallback->wset_fallback = true;
+  LOG_LSA dependency_lsa = probe (fallback);
+  REQUIRE (LSA_EQ (&dependency_lsa, &l1));
 
   /* and its flush clears the history and raises the floor, so everything
-   * after waits for the overflow commit */
-  commit_tx (ovf, &l3);
+   * after waits for the fallback commit */
+  commit_tx (fallback, &l3);
 
   log_tdes *t3 = make_tdes (3);
   add_write_int (t3, &cls, 99);
-  LOG_LSA dep3 = probe (t3);
-  REQUIRE (LSA_EQ (&dep3, &l3));
+  LOG_LSA dependency_lsa_3 = probe (t3);
+  REQUIRE (LSA_EQ (&dependency_lsa_3, &l3));
 
   delete t1;
-  delete ovf;
+  delete fallback;
   delete t3;
 }
 
-TEST_CASE ("delayed overflow clear preserves a newer published commit as the history floor", "[writeset]")
+TEST_CASE ("delayed fallback clear preserves a newer published commit as the history floor", "[writeset]")
 {
   ws_history_guard history;
   OID cls = oid_of (1, 100, 1);
@@ -1561,25 +1561,25 @@ TEST_CASE ("delayed overflow clear preserves a newer published commit as the his
 
   log_tdes *newer = make_tdes (2);
   add_write_int (newer, &cls, 7);
-  log_tdes *delayed_overflow = make_tdes (1);
-  delayed_overflow->wset_overflow = true;
+  log_tdes *delayed_fallback = make_tdes (1);
+  delayed_fallback->wset_fallback = true;
 
   /* logged in LSA order, published in the opposite order */
-  wset_order_record_commit (delayed_overflow, &older_lsa);
+  wset_order_record_commit (delayed_fallback, &older_lsa);
   wset_order_record_commit (newer, &newer_lsa);
   wset_order_publish_commit_keys (newer, &newer_lsa);
-  wset_order_publish_commit_keys (delayed_overflow, &older_lsa);
+  wset_order_publish_commit_keys (delayed_fallback, &older_lsa);
 
   REQUIRE (LSA_EQ (&wset_History.history_start, &newer_lsa));
   REQUIRE (wset_History.map.size () == 0);
 
   log_tdes *successor = make_tdes (3);
   add_write_int (successor, &cls, 7);
-  LOG_LSA dependency = probe (successor);
-  REQUIRE (LSA_EQ (&dependency, &newer_lsa));
+  LOG_LSA dependency_lsa = probe (successor);
+  REQUIRE (LSA_EQ (&dependency_lsa, &newer_lsa));
 
   delete newer;
-  delete delayed_overflow;
+  delete delayed_fallback;
   delete successor;
 }
 
@@ -1592,7 +1592,7 @@ TEST_CASE ("a barrier after key probing raises the resolved dependency", "[write
   log_tdes *writer = make_tdes (1);
   log_tdes *successor = make_tdes (2);
   wset_dependency_candidate candidate;
-  LOG_LSA dependency;
+  LOG_LSA dependency_lsa;
 
   add_write_int (writer, &cls, 7);
   commit_tx (writer, &writer_lsa);
@@ -1602,8 +1602,8 @@ TEST_CASE ("a barrier after key probing raises the resolved dependency", "[write
 
   /* This is the interval between the O(N) probe and taking prior_lsa_mutex. */
   wset_order_advance_barrier (&barrier_lsa, "TEST");
-  wset_order_resolve_dependency (successor, &candidate, &dependency);
-  REQUIRE (LSA_EQ (&dependency, &barrier_lsa));
+  wset_order_resolve_dependency (successor, &candidate, &dependency_lsa);
+  REQUIRE (LSA_EQ (&dependency_lsa, &barrier_lsa));
 
   delete writer;
   delete successor;
@@ -1619,18 +1619,18 @@ TEST_CASE ("a clear after key probing covers a detached history entry", "[writes
   log_tdes *successor = make_tdes (2);
   log_tdes *fallback = make_tdes (3);
   wset_dependency_candidate candidate;
-  LOG_LSA dependency;
+  LOG_LSA dependency_lsa;
 
   add_write_int (writer, &cls, 7);
   commit_tx (writer, &writer_lsa);
   add_write_int (successor, &cls, 7);
   wset_order_probe_keys (successor, 0, &candidate);
-  fallback->wset_overflow = true;
+  fallback->wset_fallback = true;
   commit_tx (fallback, &clear_lsa);
 
   REQUIRE (wset_History.map.size () == 0);
-  wset_order_resolve_dependency (successor, &candidate, &dependency);
-  REQUIRE (LSA_EQ (&dependency, &clear_lsa));
+  wset_order_resolve_dependency (successor, &candidate, &dependency_lsa);
+  REQUIRE (LSA_EQ (&dependency_lsa, &clear_lsa));
 
   delete writer;
   delete successor;
@@ -1647,7 +1647,7 @@ TEST_CASE ("a nonconflicting publish after probing does not force commit order",
   log_tdes *successor = make_tdes (2);
   log_tdes *other = make_tdes (3);
   wset_dependency_candidate candidate;
-  LOG_LSA dependency;
+  LOG_LSA dependency_lsa;
 
   add_write_int (writer, &cls, 7);
   commit_tx (writer, &writer_lsa);
@@ -1656,8 +1656,8 @@ TEST_CASE ("a nonconflicting publish after probing does not force commit order",
   add_write_int (other, &cls, 8);
   commit_tx (other, &other_lsa);
 
-  wset_order_resolve_dependency (successor, &candidate, &dependency);
-  REQUIRE (LSA_EQ (&dependency, &writer_lsa));
+  wset_order_resolve_dependency (successor, &candidate, &dependency_lsa);
+  REQUIRE (LSA_EQ (&dependency_lsa, &writer_lsa));
 
   delete writer;
   delete successor;
@@ -1681,16 +1681,16 @@ TEST_CASE ("probe never lowers a dependency below the observed history floor", "
   pthread_rwlock_unlock (&wset_History.history_lock);
 
   add_write_int (tx, &cls, 7);
-  LOG_LSA dependency = probe (tx);
+  LOG_LSA dependency_lsa = probe (tx);
 
-  REQUIRE (LSA_EQ (&dependency, &new_floor));
+  REQUIRE (LSA_EQ (&dependency_lsa, &new_floor));
 
   delete tx;
 }
 
-TEST_CASE ("per-transaction key limit flips the transaction to overflow", "[writeset]")
+TEST_CASE ("per-transaction key limit triggers transaction-wide fallback", "[writeset]")
 {
-  /* The per-transaction key limit is the runtime ha_writeset_history_size (its
+  /* The per-transaction key limit is the runtime ha_writeset_max_keys (its
    * production default is ten million). Inject a small cap so the overflow path
    * is reached deterministically after a handful of keys instead of collecting
    * millions. Adding keys until the flip lands on the key whose arrival makes
@@ -1701,13 +1701,13 @@ TEST_CASE ("per-transaction key limit flips the transaction to overflow", "[writ
   log_tdes *t1 = make_tdes (1);
 
   int added = 0;
-  while (!t1->wset_overflow)
+  while (!t1->wset_fallback)
     {
       add_write_int (t1, &cls, added++);
     }
-  REQUIRE (added == cap + 1);	/* the (cap+1)-th key is the one rejected into overflow */
-  REQUIRE (t1->wset_overflow);
-  REQUIRE (t1->wset_hashes.empty ());	/* the collected writeset is dropped */
+  REQUIRE (added == cap + 1);	/* the (cap+1)-th key triggers fallback */
+  REQUIRE (t1->wset_fallback);
+  REQUIRE (t1->wset_entries.empty ());	/* the collected writeset is dropped */
 
   delete t1;
 }
@@ -1732,14 +1732,14 @@ TEST_CASE ("an inherited key hashes alike whichever class of the hierarchy wrote
   add_write_int (by_sub, &sub, 1, &shared_pk);
   add_ref_int (ref_sup, &sup, 1, &shared_pk);
   add_write_int (other_index, &sub, 1, &other_pk);
-  REQUIRE (by_sup->wset_hashes[0].hash == by_sub->wset_hashes[0].hash);
-  REQUIRE (by_sup->wset_hashes[0].hash == ref_sup->wset_hashes[0].hash);
-  REQUIRE (by_sup->wset_hashes[0].hash != other_index->wset_hashes[0].hash);
+  REQUIRE (by_sup->wset_entries[0].hash == by_sub->wset_entries[0].hash);
+  REQUIRE (by_sup->wset_entries[0].hash == ref_sup->wset_entries[0].hash);
+  REQUIRE (by_sup->wset_entries[0].hash != other_index->wset_entries[0].hash);
 
   /* T1 deletes key 1 through sup; T2 inserting key 1 through sub must wait for T1 */
   commit_tx (by_sup, &l1);
-  LOG_LSA dep = probe (by_sub);
-  REQUIRE (LSA_EQ (&dep, &l1));
+  LOG_LSA dependency_lsa = probe (by_sub);
+  REQUIRE (LSA_EQ (&dependency_lsa, &l1));
 
   delete by_sup;
   delete by_sub;
@@ -1770,16 +1770,16 @@ TEST_CASE ("the same key under two different index vfids stays independent (PK v
    * dependency: a different index vfid means a different history slot */
   log_tdes *t2 = make_tdes (2);
   add_write_int (t2, &cls, 5, &uk_vfid);
-  LOG_LSA dep2 = probe (t2);
-  REQUIRE (LSA_ISNULL (&dep2));
+  LOG_LSA dependency_lsa_2 = probe (t2);
+  REQUIRE (LSA_ISNULL (&dependency_lsa_2));
   commit_tx (t2, &luk);
 
   /* and the reverse: a later write of value 5 under the primary-key index waits behind lpk (the
    * primary-key slot), not luk (the unique slot) - the two indexes are tracked separately */
   log_tdes *t3 = make_tdes (3);
   add_write_int (t3, &cls, 5, &pk_vfid);
-  LOG_LSA dep3 = probe (t3);
-  REQUIRE (LSA_EQ (&dep3, &lpk));
+  LOG_LSA dependency_lsa_3 = probe (t3);
+  REQUIRE (LSA_EQ (&dependency_lsa_3, &lpk));
 
   delete t1;
   delete t2;
@@ -1791,7 +1791,7 @@ TEST_CASE ("the same key under two different index vfids stays independent (PK v
  * if they ran one at a time. The global history map is a concurrent hash map
  * with a shared/exclusive history lock, so these cases confirm that per-key
  * publishing and probing race safely (no lost update on a disjoint key, and the
- * read slot keeps the newest referencer under concurrent stamps). Workers call
+ * REF slot keeps the newest referencer under concurrent stamps). Workers call
  * only probe/flush; the writeset is collected up front on the main thread, so
  * no worker touches the cast path (db_private_alloc / TLS THREAD_ENTRY). See
  * test_wset_concurrency.cpp for the throughput/latency comparison.
@@ -1860,15 +1860,15 @@ TEST_CASE ("concurrent siblings referencing one parent stay parallel", "[writese
 
   /* all siblings probe concurrently; each must depend only on the parent's
    * writer (references consult the write slot only), never on one another */
-  std::vector<LOG_LSA> dep (nsiblings);
+  std::vector<LOG_LSA> dependency_lsa (nsiblings);
   std::vector<std::thread> workers;
   for (int i = 0; i < nsiblings; i++)
     {
-      workers.emplace_back ([&child, &dep, i] ()
+      workers.emplace_back ([&child, &dependency_lsa, i] ()
       {
-	LOG_LSA d;
-	wset_order_find_dependency (child[i], &d);
-	dep[i] = d;
+	LOG_LSA referencer_dependency_lsa;
+	wset_order_find_dependency (child[i], &referencer_dependency_lsa);
+	dependency_lsa[i] = referencer_dependency_lsa;
       });
     }
   for (auto &w : workers)
@@ -1878,17 +1878,16 @@ TEST_CASE ("concurrent siblings referencing one parent stay parallel", "[writese
 
   for (int i = 0; i < nsiblings; i++)
     {
-      REQUIRE (LSA_EQ (&dep[i], &lp));
+      REQUIRE (LSA_EQ (&dependency_lsa[i], &lp));
       delete child[i];
     }
   delete parent;
 }
 
 /* ------------------------------------------------------------------------- *
- * Keys collected inside a system operation. A serial update collects its
- * db_serial key inside its own sysop; the server labels that SYSOP_END for
- * commit order and drops those keys unpublished, so the outer commit never
- * probes or publishes them. This case drives wset_discard_sysop_keys directly.
+ * Keys collected inside a system operation. Keyed SYSOPs publish before discarding
+ * their keys; commit-order SYSOPs discard them unpublished. Both remove the keys
+ * from the outer writeset. This case drives wset_discard_sysop_keys directly.
  * ------------------------------------------------------------------------- */
 
 TEST_CASE ("dropping a system operation's keys leaves the outer writeset intact", "[writeset]")
@@ -1899,31 +1898,31 @@ TEST_CASE ("dropping a system operation's keys leaves the outer writeset intact"
 
   log_tdes *tx = make_tdes (1);
   add_write_int (tx, &cls, 2);	/* outer key kept across the discard */
-  size_t sysop_begin = tx->wset_hashes.size ();
-  LOG_WSET_HASH outer_hash = tx->wset_hashes[0].hash;
+  size_t sysop_begin = tx->wset_entries.size ();
+  LOG_WSET_HASH outer_hash = tx->wset_entries[0].hash;
   add_write_int (tx, &cls, 10);	/* two keys collected inside the system operation */
   add_write_int (tx, &cls, 11);
 
   wset_discard_sysop_keys (tx, sysop_begin);
 
   /* only the operation's tail is gone; the outer key is untouched */
-  REQUIRE (tx->wset_hashes.size () == sysop_begin);
-  REQUIRE (tx->wset_hashes.size () == 1);
-  REQUIRE (tx->wset_hashes[0].hash == outer_hash);
+  REQUIRE (tx->wset_entries.size () == sysop_begin);
+  REQUIRE (tx->wset_entries.size () == 1);
+  REQUIRE (tx->wset_entries[0].hash == outer_hash);
 
   /* the surviving outer writeset still publishes normally */
   commit_tx (tx, &commit_lsa);
 
   log_tdes *reader = make_tdes (2);
   add_write_int (reader, &cls, 2);
-  LOG_LSA dep = probe (reader);
-  REQUIRE (LSA_EQ (&dep, &commit_lsa));
+  LOG_LSA dependency_lsa = probe (reader);
+  REQUIRE (LSA_EQ (&dependency_lsa, &commit_lsa));
 
   /* and a dropped key was never published, so a later writer of it has no dependency */
   log_tdes *sysop_reader = make_tdes (3);
   add_write_int (sysop_reader, &cls, 10);
-  LOG_LSA sysop_dep = probe (sysop_reader);
-  REQUIRE (LSA_ISNULL (&sysop_dep));
+  LOG_LSA sysop_dependency_lsa = probe (sysop_reader);
+  REQUIRE (LSA_ISNULL (&sysop_dependency_lsa));
 
   delete tx;
   delete reader;
@@ -1970,12 +1969,12 @@ TEST_CASE ("concurrent references then a parent write waits behind the newest re
       w.join ();
     }
 
-  /* a later write to the parent row must wait for the newest referencer (read
-   * slot holds the max under concurrent stamps: no lost update, monotonic) */
+  /* a later write to the parent row must wait for the newest referencer (REF slot
+   * holds the max under concurrent stamps: no lost update, monotonic) */
   log_tdes *parent_delete = make_tdes (900);
   add_write_int (parent_delete, &parent_cls, 7);
-  LOG_LSA dep = probe (parent_delete);
-  REQUIRE (LSA_EQ (&dep, &newest));
+  LOG_LSA dependency_lsa = probe (parent_delete);
+  REQUIRE (LSA_EQ (&dependency_lsa, &newest));
 
   for (int i = 0; i < nsiblings; i++)
     {
@@ -1985,25 +1984,25 @@ TEST_CASE ("concurrent references then a parent write waits behind the newest re
   delete parent_delete;
 }
 
-TEST_CASE ("sysop fallback label is the latest published coordinate", "[writeset]")
+TEST_CASE ("sysop commit-order label is the latest published coordinate", "[writeset]")
 {
   ws_history_guard history;
   OID cls = oid_of (1, 100, 1);
   LOG_LSA l1 = lsa_of (10, 0);
   log_tdes *t1 = make_tdes (1);
   log_tdes *t2 = make_tdes (2);
-  LOG_LSA dep;
+  LOG_LSA dependency_lsa;
 
   /* nothing published yet: no coordinate to wait for */
-  wset_order_find_sysop_dependency (t2, &dep);
-  REQUIRE (LSA_ISNULL (&dep));
+  wset_order_find_sysop_dependency (t2, &dependency_lsa);
+  REQUIRE (LSA_ISNULL (&dependency_lsa));
 
   add_write_int (t1, &cls, 1);
   commit_tx (t1, &l1);
 
   /* after a commit the label is that commit, whatever keys t2 touched */
-  wset_order_find_sysop_dependency (t2, &dep);
-  REQUIRE (LSA_EQ (&dep, &l1));
+  wset_order_find_sysop_dependency (t2, &dependency_lsa);
+  REQUIRE (LSA_EQ (&dependency_lsa, &l1));
 
   delete t1;
   delete t2;
@@ -2018,7 +2017,7 @@ TEST_CASE ("raising history_start makes later transactions wait for the sysop", 
   log_tdes *t1 = make_tdes (1);
   log_tdes *t2 = make_tdes (2);
   log_tdes *t3 = make_tdes (3);
-  LOG_LSA dep;
+  LOG_LSA dependency_lsa;
 
   add_write_int (t1, &cls, 1);
   commit_tx (t1, &l1);
@@ -2028,43 +2027,43 @@ TEST_CASE ("raising history_start makes later transactions wait for the sysop", 
 
   /* an unrelated key still waits for the sysop: the floor, not the history, decides */
   add_write_int (t2, &cls, 7);
-  dep = probe (t2);
-  REQUIRE (LSA_EQ (&dep, &sysop));
+  dependency_lsa = probe (t2);
+  REQUIRE (LSA_EQ (&dependency_lsa, &sysop));
 
   /* a key written before the sysop waits for the sysop too, not for its older writer */
   add_write_int (t3, &cls, 1);
-  dep = probe (t3);
-  REQUIRE (LSA_EQ (&dep, &sysop));
+  dependency_lsa = probe (t3);
+  REQUIRE (LSA_EQ (&dependency_lsa, &sysop));
 
-  /* the next fallback label is the sysop coordinate itself */
-  wset_order_find_sysop_dependency (t3, &dep);
-  REQUIRE (LSA_EQ (&dep, &sysop));
+  /* the next commit-order label is the sysop coordinate itself */
+  wset_order_find_sysop_dependency (t3, &dependency_lsa);
+  REQUIRE (LSA_EQ (&dependency_lsa, &sysop));
 
   delete t1;
   delete t2;
   delete t3;
 }
 
-TEST_CASE ("an overflowed transaction after a restart waits for the restart floor", "[writeset]")
+TEST_CASE ("a transaction in fallback after a restart waits for the restart floor", "[writeset]")
 {
   /* After a restart prev_commit_lsa is NULL and the floor is the end of the recovered log. A statement replicated
    * then, a DDL for instance, takes the commit-order fallback; without the floor its label is NULL, and the slave
    * runs it beside the transactions written before the restart. */
   ws_history_guard history;
   LOG_LSA restart = lsa_of (105, 0);
-  log_tdes *ovf = make_tdes (1);
-  LOG_LSA dep;
+  log_tdes *fallback = make_tdes (1);
+  LOG_LSA dependency_lsa;
 
   wset_order_advance_barrier (&restart, "RESTART");
 
-  ovf->wset_overflow = true;
-  dep = probe (ovf);
-  REQUIRE (LSA_EQ (&dep, &restart));
+  fallback->wset_fallback = true;
+  dependency_lsa = probe (fallback);
+  REQUIRE (LSA_EQ (&dependency_lsa, &restart));
 
-  delete ovf;
+  delete fallback;
 }
 
-TEST_CASE ("an overflowed transaction after a sysop waits for the sysop", "[writeset]")
+TEST_CASE ("a transaction in fallback after a sysop waits for the sysop", "[writeset]")
 {
   /* a system operation applied in commit order raises the floor above the last commit; the commit-order fallback
    * has to wait for it like every other transaction after it */
@@ -2073,17 +2072,17 @@ TEST_CASE ("an overflowed transaction after a sysop waits for the sysop", "[writ
   LOG_LSA l1 = lsa_of (10, 0);
   LOG_LSA sysop = lsa_of (12, 0);
   log_tdes *t1 = make_tdes (1);
-  log_tdes *ovf = make_tdes (2);
-  LOG_LSA dep;
+  log_tdes *fallback = make_tdes (2);
+  LOG_LSA dependency_lsa;
 
   add_write_int (t1, &cls, 1);
   commit_tx (t1, &l1);
   wset_order_advance_barrier (&sysop, "SYSOP_COMMIT_ORDER");
 
-  ovf->wset_overflow = true;
-  dep = probe (ovf);
-  REQUIRE (LSA_EQ (&dep, &sysop));
+  fallback->wset_fallback = true;
+  dependency_lsa = probe (fallback);
+  REQUIRE (LSA_EQ (&dependency_lsa, &sysop));
 
   delete t1;
-  delete ovf;
+  delete fallback;
 }

@@ -1615,7 +1615,7 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 	  {
 	    LOG_TDES *serial_tdes = LOG_FIND_TDES (tran_index);
 
-	    if (serial_tdes != NULL && !serial_tdes->wset_overflow)
+	    if (serial_tdes != NULL && !serial_tdes->wset_fallback)
 	      {
 		if (BTID_IS_NULL (&serial_Cached_btid))
 		  {
@@ -1629,9 +1629,9 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 		else
 		  {
 		    WSET_TRACE (1, "SERIAL master collect trid=%d class_oid=%d|%d|%d index_vfid=%d|%d "
-				"overflow=%d\n", serial_tdes->trid, serial_class_oidp->volid,
+				"fallback=%d\n", serial_tdes->trid, serial_class_oidp->volid,
 				serial_class_oidp->pageid, serial_class_oidp->slotid, serial_Cached_btid.vfid.volid,
-				serial_Cached_btid.vfid.fileid, (int) serial_tdes->wset_overflow);
+				serial_Cached_btid.vfid.fileid, (int) serial_tdes->wset_fallback);
 		  }
 	      }
 	  }

@@ -52,7 +52,7 @@ TEST_CASE ("hash unit cost benchmarks", "[benchmark]")
 	db_make_int (&v, seq++);
 	wset_add_write_key (scratch, &cls, &WS_DEFAULT_VFID, &v);
       }
-    scratch->wset_hashes.clear ();
+    scratch->wset_entries.clear ();
     return seq;
   };
 
@@ -63,7 +63,7 @@ TEST_CASE ("hash unit cost benchmarks", "[benchmark]")
 	db_make_int (&v, seq++);
 	wset_add_ref_key (scratch, &parent_cls, &WS_DEFAULT_VFID, &v, int_domain);
       }
-    scratch->wset_hashes.clear ();
+    scratch->wset_entries.clear ();
     return seq;
   };
 
@@ -89,11 +89,11 @@ TEST_CASE ("hash unit cost benchmarks", "[benchmark]")
       wset_add_write_key (worker, &cls, &WS_DEFAULT_VFID, &v);
     }
 
-  LOG_LSA dep;
+  LOG_LSA dependency_lsa;
   BENCHMARK ("probe x1000 keys vs 100k map (read mean/1000 for per-key ns)")
   {
-    wset_order_find_dependency (worker, &dep);
-    return dep.pageid;
+    wset_order_find_dependency (worker, &dependency_lsa);
+    return dependency_lsa.pageid;
   };
 
   LOG_LSA commit_lsa = lsa_of (200, 0);
@@ -144,11 +144,11 @@ TEST_CASE ("A1: probe per-key cost is flat across map size", "[benchmark]")
 	  wset_add_write_key (worker, &cls, &WS_DEFAULT_VFID, &v);
 	}
 
-      LOG_LSA dep;
+      LOG_LSA dependency_lsa;
       BENCHMARK ("probe x1000 vs map=" + std::to_string (msize) + " (read mean/1000 for per-key ns)")
       {
-	wset_order_find_dependency (worker, &dep);
-	return dep.pageid;
+	wset_order_find_dependency (worker, &dependency_lsa);
+	return dependency_lsa.pageid;
       };
 
       delete worker;
@@ -158,7 +158,7 @@ TEST_CASE ("A1: probe per-key cost is flat across map size", "[benchmark]")
 /* F0: per-key unit cost of the FK-side branches. The case above measures
  * probe/flush over WRITE keys; a foreign key adds REF keys, and those take
  * different branches: at probe a REF key reads only the write slot (a WRITE key
- * also compares the read slot), and at flush a REF key updates the read slot
+ * also compares the REF slot), and at flush a REF key updates the REF slot
  * only when the commit LSA is newer (a WRITE key overwrites unconditionally).
  * Also measures the FK row shape (one WRITE + one REF per row) so the per-row
  * cost of an FK insert can be read directly. */
@@ -208,14 +208,14 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
       wset_add_ref_key (ref_tx, &parent_cls, &WS_DEFAULT_VFID, &v, int_domain);
     }
 
-  LOG_LSA dep;
+  LOG_LSA dependency_lsa;
   BENCHMARK ("REF probe x1000 keys vs 100k map (read mean/1000 for per-key ns)")
   {
-    wset_order_find_dependency (ref_tx, &dep);
-    return dep.pageid;
+    wset_order_find_dependency (ref_tx, &dependency_lsa);
+    return dependency_lsa.pageid;
   };
 
-  /* the read slot only moves forward, so give every flush a newer commit LSA;
+  /* the REF slot only moves forward, so give every flush a newer commit LSA;
    * a repeated LSA would take the skip branch and undercount the update cost */
   INT64 ref_page = 200;
   BENCHMARK ("REF flush x1000 keys vs 100k map (read mean/1000 for per-key ns)")
@@ -237,8 +237,8 @@ TEST_CASE ("F0: FK per-key unit cost (REF probe/flush, FK row)", "[benchmark]")
 
   BENCHMARK ("FK-row probe x1000 rows (2000 keys; read mean/1000 for per-row ns)")
   {
-    wset_order_find_dependency (fk_tx, &dep);
-    return dep.pageid;
+    wset_order_find_dependency (fk_tx, &dependency_lsa);
+    return dependency_lsa.pageid;
   };
 
   INT64 fk_page = 100000;

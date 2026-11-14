@@ -18,6 +18,9 @@
 
 /*
  * writeset_trace.hpp - writeset diagnostic trace
+ *
+ * fallback= marks transaction-wide commit-order fallback; mode= identifies the ordering policy.
+ * SYSOP source= identifies the replication-item source; FALLBACK reason= identifies the fallback cause.
  */
 
 #ifndef _WRITESET_TRACE_HPP_

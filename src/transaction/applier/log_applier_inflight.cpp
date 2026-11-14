@@ -41,7 +41,7 @@
 
 struct la_inflight_entry
 {
-  UINT64 seq;
+  UINT64 dispatch_seq;
   LA_APPLY *apply;		/* owned by the applier; this entry prevents reuse until retire */
   int tranid;
   int rectype;
@@ -60,9 +60,9 @@ struct la_inflight_list
 };
 
 static LA_INFLIGHT_LIST la_Inflight = { NULL, 0, 0, 0, 0 };
-static UINT64 la_Dispatch_sequence = 0;	/* next dispatch number; never reused, so a result matches one entry */
+static UINT64 la_Dispatch_seq = 0;	/* next dispatch number; never reused, so a result matches one entry */
 
-static LA_INFLIGHT_ENTRY *la_inflight_find_by_seq (UINT64 seq);
+static LA_INFLIGHT_ENTRY *la_inflight_find_by_dispatch_seq (UINT64 dispatch_seq);
 
 /*
  * la_inflight_init() - allocate the FIFO for the commit-order capacity and restart dispatch numbering
@@ -97,7 +97,7 @@ la_inflight_init (int capacity)
     }
 
   la_Inflight.capacity = capacity;
-  la_Dispatch_sequence = 0;
+  la_Dispatch_seq = 0;
 
   return NO_ERROR;
 }
@@ -132,10 +132,10 @@ la_inflight_get_capacity (void)
  *   apply(in): repl_list slot the task applies
  *   tranid(in): transaction id
  *   rectype(in): LOG_COMMIT or LOG_SYSOP_END
- *   seq_out(out): dispatch number given to the task; may be NULL
+ *   dispatch_seq_out(out): dispatch number given to the task; may be NULL
  */
 int
-la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *seq_out)
+la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *dispatch_seq_out)
 {
   LA_INFLIGHT_ENTRY *entry;
 
@@ -147,16 +147,16 @@ la_inflight_push (LA_APPLY *apply, int tranid, int rectype, UINT64 *seq_out)
     }
 
   entry = &la_Inflight.entries[la_Inflight.tail];
-  entry->seq = la_Dispatch_sequence++;
+  entry->dispatch_seq = la_Dispatch_seq++;
   entry->apply = apply;
   entry->tranid = tranid;
   entry->rectype = rectype;
   entry->result_ready = false;
   memset (&entry->result, 0, sizeof (entry->result));
 
-  if (seq_out != NULL)
+  if (dispatch_seq_out != NULL)
     {
-      *seq_out = entry->seq;
+      *dispatch_seq_out = entry->dispatch_seq;
     }
 
   la_Inflight.tail = (la_Inflight.tail + 1) % la_Inflight.capacity;
@@ -201,7 +201,7 @@ la_inflight_pop (void)
 
 /*
  * la_inflight_attach_result() - store a worker's result on the entry with the same dispatch number
- *   return: NO_ERROR, or ER_FAILED when no entry carries result->seq
+ *   return: NO_ERROR, or ER_FAILED when no entry carries result->dispatch_seq
  *   result(in): result taken from the result queue
  */
 int
@@ -211,10 +211,10 @@ la_inflight_attach_result (const LA_RESULT *result)
 
   assert (result != NULL);
 
-  entry = la_inflight_find_by_seq (result->seq);
+  entry = la_inflight_find_by_dispatch_seq (result->dispatch_seq);
   if (entry == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "dispatch result seq mismatch");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "result dispatch_seq mismatch");
       return ER_FAILED;
     }
 
@@ -250,11 +250,11 @@ la_inflight_entry_at (int pos)
 }
 
 UINT64
-la_inflight_entry_get_sequence (const LA_INFLIGHT_ENTRY *entry)
+la_inflight_entry_get_dispatch_seq (const LA_INFLIGHT_ENTRY *entry)
 {
   assert (entry != NULL);
 
-  return entry->seq;
+  return entry->dispatch_seq;
 }
 
 LA_APPLY *
@@ -311,7 +311,7 @@ la_inflight_entry_get_result (const LA_INFLIGHT_ENTRY *entry)
 }
 
 static LA_INFLIGHT_ENTRY *
-la_inflight_find_by_seq (UINT64 seq)
+la_inflight_find_by_dispatch_seq (UINT64 dispatch_seq)
 {
   int i, idx;
 
@@ -320,7 +320,7 @@ la_inflight_find_by_seq (UINT64 seq)
     {
       LA_INFLIGHT_ENTRY *entry = &la_Inflight.entries[idx];
 
-      if (entry->seq == seq)
+      if (entry->dispatch_seq == dispatch_seq)
 	{
 	  return entry;
 	}

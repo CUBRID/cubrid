@@ -49,7 +49,7 @@ namespace wstest
   /* every case runs on a freshly initialized global history; initialize resets the
    * map, history_start and the commit-order baseline, so cases stay isolated.
    *
-   * The default constructor uses whatever ha_writeset_history_size the process
+   * The default constructor uses whatever ha_writeset_max_keys the process
    * currently has (its compiled default). The size-taking constructor injects a
    * small capacity before initialize so the per-transaction and map-capacity
    * paths can be exercised deterministically with a handful of keys instead of
@@ -66,9 +66,9 @@ namespace wstest
     }
 
     explicit ws_history_guard (int history_size)
-      : m_restore_size (true), m_saved_size (prm_get_integer_value (PRM_ID_HA_WRITESET_HISTORY_SIZE))
+      : m_restore_size (true), m_saved_size (prm_get_integer_value (PRM_ID_HA_WRITESET_MAX_KEYS))
     {
-      prm_set_integer_value (PRM_ID_HA_WRITESET_HISTORY_SIZE, history_size);
+      prm_set_integer_value (PRM_ID_HA_WRITESET_MAX_KEYS, history_size);
       wset_history_initialize ();
     }
 
@@ -77,7 +77,7 @@ namespace wstest
       wset_history_finalize ();
       if (m_restore_size)
 	{
-	  prm_set_integer_value (PRM_ID_HA_WRITESET_HISTORY_SIZE, m_saved_size);
+	  prm_set_integer_value (PRM_ID_HA_WRITESET_MAX_KEYS, m_saved_size);
 	}
     }
 
@@ -134,8 +134,8 @@ namespace wstest
     log_tdes *tdes = new log_tdes ();
 
     tdes->trid = trid;
-    tdes->wset_hashes.clear ();
-    tdes->wset_overflow = false;
+    tdes->wset_entries.clear ();
+    tdes->wset_fallback = false;
     LSA_SET_NULL (&tdes->wset_dependency_lsa);
     return tdes;
   }
@@ -163,10 +163,10 @@ namespace wstest
   inline LOG_LSA
   probe (log_tdes *tdes)
   {
-    LOG_LSA dep;
+    LOG_LSA dependency_lsa;
 
-    wset_order_find_dependency (tdes, &dep);
-    return dep;
+    wset_order_find_dependency (tdes, &dependency_lsa);
+    return dependency_lsa;
   }
 
   /* a commit as the server makes it: the commit-order state is updated when the commit record is logged

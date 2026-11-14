@@ -39,7 +39,7 @@
 								 * workers actually started is ha_apply_worker_count */
 #define LA_TASK_QUEUE_CAPACITY      1024	/* tasks handed to the workers but not yet taken by one */
 
-/* Size of the gate's commit-order ring: the most commits read from the log that the gap-free frontier has
+/* Size of the gate's commit-order ring: the most apply units read from the log that the gap-free frontier has
  * not passed yet, whether parked, queued, running, or finished but waiting behind an earlier one. The
  * in-flight list and the result queue are sized by it too, so none of them can fill. When the ring is full
  * the coordinator stops reading the log and only collects results until the frontier moves. */

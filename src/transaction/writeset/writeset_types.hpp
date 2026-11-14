@@ -28,18 +28,26 @@
 #include "storage_common.h"
 #include "log_lsa.hpp"
 
-/* Writeset ordering uses commit LSAs, not integer sequence numbers.
- * commit_lsa is a transaction's commit record location. dependency_lsa is the commit LSA that must
- * complete before an apply task can run. write_lsa and ref_lsa retain the last writer's and
- * referrer's commit LSAs for a key. A label carries dependency_lsa from master to slave.
- * The coordinator's dispatch sequence is a separate integer used to track apply progress. */
+/* Common writeset and parallel-apply terms:
+ * Apply unit: replicated changes ending at LOG_COMMIT or an independently applied LOG_SYSOP_END.
+ * commit_lsa: the unit's ending log position; ordering uses LSAs, not integer sequence numbers.
+ * dependency_lsa: the position through which earlier apply units must complete before this unit executes.
+ * write_lsa/ref_lsa: the latest commit_lsa published to a key's WRITE/REF slot.
+ * Label: LOG_DUMMY_WSET_LABEL, carrying the dependency_lsa and an optional independent-unit key hash.
+ * SYSOP fragment: replication items separated from the outer transaction at an independent SYSOP_END.
+ * Task/result: a worker submission and its outcome; a task may include merged SYSOP fragments.
+ * dispatch_seq: the integer assigned at dispatch to match a result with its in-flight entry for retire.
+ * Frontier: the latest contiguously completed apply-unit position, used to test dependencies.
+ * Commit order: ordering a unit after all earlier units; this policy also applies to some SYSOPs.
+ * Fallback: abandoning transaction-wide writeset ordering in favor of commit order. wset_fallback is
+ * the state; WSET_FALLBACK_REASON identifies its cause, and fallback_* counters report it. Functions
+ * named *_commit_order perform the ordering policy, and trace mode=COMMIT_ORDER identifies that policy.
+ * A SYSOP's commit-order policy does not by itself put its outer transaction into fallback. */
 
-/* FNV-1a hash of one key = class OID (8 bytes) + the index VFID (6 bytes) + its packed key value.
- * The index VFID distinguishes two indexes of the same class that pack the same key bytes (for
- * example a primary key and a unique key holding equal values); a child foreign-key reference folds
- * the parent primary key's VFID so the reference and the parent's own write meet in one slot. A
- * modified row yields a separate hash for its primary key and for each unique key, so every distinct
- * key a transaction touched contributes one hash. */
+/* Key identity is the index VFID plus the key normalized to the index's equality rules.
+ * Class OID is excluded because inherited PK/UNIQUE constraints share one B-tree. Including it would
+ * give the same index key different hashes across classes and miss their dependency.
+ * An FK REF uses the parent primary key's VFID and domain to meet the parent's WRITE in the same history slot. */
 typedef UINT64 LOG_WSET_HASH;
 
 /* A collected key is either written or referenced by this transaction.
@@ -69,5 +77,18 @@ struct wset_entry
 				 * after a system operation started lies after its parent LSA, which is how
 				 * wset_discard_keys_after_lsa finds the keys of an aborted operation */
 };
+
+/* Advance a boundary to a non-NULL candidate without moving it backward. The caller supplies any required lock. */
+inline void
+wset_advance_lsa (LOG_LSA *lsa, const LOG_LSA *candidate)
+{
+  assert (lsa != NULL);
+  assert (candidate != NULL);
+
+  if (!LSA_ISNULL (candidate) && (LSA_ISNULL (lsa) || LSA_LT (lsa, candidate)))
+    {
+      LSA_COPY (lsa, candidate);
+    }
+}
 
 #endif /* _WRITESET_TYPES_HPP_ */

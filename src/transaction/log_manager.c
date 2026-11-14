@@ -3753,7 +3753,7 @@ log_sysop_start (THREAD_ENTRY * thread_p)
   LSA_SET_NULL (&tdes->topops.stack[tdes->topops.last].posp_lsa);
 
   /* Remember this operation's key range. Replication publishes or discards it when the operation ends. */
-  tdes->topops.stack[tdes->topops.last].wset_mark = tdes->wset_hashes.size ();
+  tdes->topops.stack[tdes->topops.last].wset_mark = tdes->wset_entries.size ();
   tdes->topops.stack[tdes->topops.last].repl_flushed = false;
   tdes->topops.stack[tdes->topops.last].repl_unit = false;
   tdes->topops.stack[tdes->topops.last].repl_unit_begin = 0;
@@ -4686,7 +4686,7 @@ log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_EN
  *
  *   tdes(in): transaction carrying the operation's selected dependency
  *   by_keys(in): order the operation by its keys (from key_begin) instead of commit order
- *   key_begin(in): index in wset_hashes where the operation's keys start
+ *   key_begin(in): index in wset_entries where the operation's keys start
  *   sysop_end_lsa_out(out): LSA of the appended SYSOP_END record
  *
  * NOTE: The label and the SYSOP_END are written inside one prior_lsa_mutex region so no other
@@ -4713,10 +4713,10 @@ log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYS
     {
       wset_order_probe_keys (tdes, key_begin, &candidate);
       /* one key, possibly collected more than once (an INCR of two columns of one row) */
-      unit_key_hash = tdes->wset_hashes[key_begin].hash;
-      for (size_t i = key_begin; i < tdes->wset_hashes.size (); i++)
+      unit_key_hash = tdes->wset_entries[key_begin].hash;
+      for (size_t i = key_begin; i < tdes->wset_entries.size (); i++)
 	{
-	  if (tdes->wset_hashes[i].kind != LOG_WSET_KIND_WRITE || tdes->wset_hashes[i].hash != unit_key_hash)
+	  if (tdes->wset_entries[i].kind != LOG_WSET_KIND_WRITE || tdes->wset_entries[i].hash != unit_key_hash)
 	    {
 	      unit_key_hash = 0;
 	      break;

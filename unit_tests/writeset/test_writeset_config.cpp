@@ -17,7 +17,7 @@
  */
 
 /*
- * test_wset_config.cpp - the ha_writeset_history_size parameter really
+ * test_wset_config.cpp - the ha_writeset_max_keys parameter really
  *                                drives the history's two capacity limits.
  *
  * initialize() caches the parameter in writeset_config once,
@@ -32,7 +32,7 @@
 
 using namespace wstest;
 
-TEST_CASE ("config: initialize caches ha_writeset_history_size", "[writeset]")
+TEST_CASE ("config: initialize caches ha_writeset_max_keys", "[writeset]")
 {
   ws_history_guard history (4242);
   REQUIRE (wset_config_get_key_limit () == 4242);
@@ -73,13 +73,13 @@ TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "
    * keeps a new writer of it serialized behind the clear commit */
   log_tdes *t3 = make_tdes (3);
   add_write_int (t3, &cls, 0);	/* key 0 belonged to t1, wiped by the clear */
-  LOG_LSA dep = probe (t3);
-  REQUIRE (LSA_EQ (&dep, &l2));
+  LOG_LSA dependency_lsa = probe (t3);
+  REQUIRE (LSA_EQ (&dependency_lsa, &l2));
 
   log_tdes *t4 = make_tdes (4);
   add_write_int (t4, &cls, 100); /* key of the transaction that triggered the clear */
-  LOG_LSA dep4 = probe (t4);
-  REQUIRE (LSA_EQ (&dep4, &l2));
+  LOG_LSA dependency_lsa_4 = probe (t4);
+  REQUIRE (LSA_EQ (&dependency_lsa_4, &l2));
 
   delete t4;
   delete t1;
@@ -87,29 +87,29 @@ TEST_CASE ("config: map reaching capacity clears history and jumps the floor", "
   delete t3;
 }
 
-TEST_CASE ("config: a transaction exceeding the key limit overflows and drops its writeset", "[writeset]")
+TEST_CASE ("config: exceeding the key limit triggers fallback and drops the writeset", "[writeset]")
 {
-  /* the per-transaction limit is the same cached ha_writeset_history_size; a
-   * transaction overflows on the key whose arrival makes the collected count
-   * reach the limit, and its already-collected keys are dropped */
+  /* the per-transaction limit is the same cached ha_writeset_max_keys; a
+   * transaction enters fallback when the next key would exceed the limit,
+   * and its already-collected keys are dropped */
   const int cap = 8;
   ws_history_guard history (cap);
   OID cls = oid_of (1, 100, 1);
   log_tdes *tx = make_tdes (1);
 
   int added = 0;
-  while (!tx->wset_overflow)
+  while (!tx->wset_fallback)
     {
       add_write_int (tx, &cls, added++);
     }
   REQUIRE (added == cap + 1);
-  REQUIRE (tx->wset_overflow);
-  REQUIRE (tx->wset_hashes.empty ());
+  REQUIRE (tx->wset_fallback);
+  REQUIRE (tx->wset_entries.empty ());
 
-  /* an overflowed transaction stays overflowed: further keys are ignored */
+  /* a transaction stays in fallback: further keys are ignored */
   add_write_int (tx, &cls, 10000);
-  REQUIRE (tx->wset_overflow);
-  REQUIRE (tx->wset_hashes.empty ());
+  REQUIRE (tx->wset_fallback);
+  REQUIRE (tx->wset_entries.empty ());
 
   delete tx;
 }

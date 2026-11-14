@@ -96,7 +96,7 @@ la_stat_count_dispatch_direct (void)
 }
 
 /*
- * la_stat_count_dispatch_parked() - count a commit parked first because its dependency was not applied
+ * la_stat_count_dispatch_parked() - count a commit parked for dependency or task-queue capacity
  */
 void
 la_stat_count_dispatch_parked (void)
@@ -222,7 +222,7 @@ la_stat_add_result (const LA_RESULT *result)
       worker->error_count++;
     }
 
-  /* a serial fragment has no master commit time; the last applied transaction stays the last commit */
+  /* A SYSOP fragment has no master COMMIT time; these fields track only LOG_COMMIT tasks. */
   if (result->rectype == LOG_COMMIT)
     {
       LSA_COPY (&worker->last_applied_commit_lsa, &result->commit_lsa);

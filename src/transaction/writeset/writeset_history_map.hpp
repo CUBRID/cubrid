@@ -40,8 +40,8 @@ struct wset_slots
   LOG_LSA ref_lsa;
 };
 
-/* Global history of the writeset: for each key hash, the commit LSA of the last transaction that wrote the key
- * (write_lsa) and of the last one that referenced it (ref_lsa). The TBB map locks one key at a time, so
+/* Per-key history of the latest WRITE and REF positions (COMMIT or independent SYSOP_END).
+ * The TBB map locks one key at a time, so
  * probe and publish of different keys run in parallel; clear is not safe against them, so the caller holds
  * history_lock of LOG_WSET_HISTORY, shared for probe and publish and exclusive for swapping out the map. */
 class wset_history_map

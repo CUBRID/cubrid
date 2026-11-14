@@ -17,7 +17,7 @@
  */
 
 /*
- * log_applier_result.hpp - result returned after a worker applies one task
+ * log_applier_result.hpp - result returned after a worker processes one task
  */
 
 #ifndef _LOG_APPLIER_RESULT_HPP_
@@ -51,15 +51,16 @@ struct la_stats
 typedef struct la_result LA_RESULT;
 struct la_result
 {
-  UINT64 seq;			/* dispatch number; results arrive out of order on the shared queue, so this matches
+  UINT64 dispatch_seq;		/* dispatch number; results arrive out of order on the shared queue, so this matches
 				 * each one to its in-flight entry for in-order retire */
-  int tranid;			/* frees this transaction's commit node at retire */
+  int tranid;			/* master transaction id copied from the task, for retire and error traces */
   int rectype;
   int error;
   LOG_LSA commit_lsa;		/* marks this commit applied in the gate; releases transactions that depend on it */
   LOG_LSA *merged_lsa;		/* the task's merged fragments, also marked applied in the gate; freed at retire */
   int merged_count;
-  LOG_LSA committed_rep_lsa;	/* applied log position; advances la_Info.committed_rep_lsa (restart point) */
+  LOG_LSA committed_rep_lsa;	/* last applied replication-record LSA; advances the reported position in
+				 * la_Info.committed_rep_lsa, not the restart boundary */
   time_t log_record_time;
   int total_rows;		/* items the worker went through, as the serial applier counted them; summed into
 				 * la_Info.total_rows at retire, where a change makes the main loop store the apply info */
@@ -98,7 +99,7 @@ inline void
 la_result_init (LA_RESULT *result, const LA_TASK *task, int worker_idx)
 {
   memset (result, 0, sizeof (*result));
-  result->seq = task->seq;
+  result->dispatch_seq = task->dispatch_seq;
   result->tranid = task->tranid;
   result->rectype = task->rectype;
   result->commit_lsa = task->commit_lsa;

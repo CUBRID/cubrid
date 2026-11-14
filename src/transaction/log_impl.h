@@ -539,15 +539,12 @@ struct log_tdes
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */
 
-    std::vector < LOG_WSET_ENTRY > wset_hashes;	/* writeset keys collected this transaction */
-  bool wset_overflow;		/* This transaction's writeset was dropped and is no longer used. Set when the
-				 * per-transaction key limit is exceeded or when the change is replicated as a
-				 * statement or key index information is unavailable. A partial writeset is unsafe, so
-				 * probe/flush use commit-order replication instead. Technical key collection failures
-				 * are returned to the DML path and do not set this flag. */
-  WSET_FALLBACK_REASON wset_fallback_reason;	/* reason that set wset_overflow, counted at commit; statistics only */
-  LOG_LSA wset_dependency_lsa;	/* dependency selected from writeset history, carried by the WSET_LABEL
-				 * record just before this transaction's commit record */
+    std::vector < LOG_WSET_ENTRY > wset_entries;	/* writeset keys collected this transaction */
+  bool wset_fallback;		/* transaction-wide commit-order fallback; collected keys are discarded and
+				 * collection stops. Key limits, statement replication, NaN or unavailable key index
+				 * information set this flag; technical collection failures return an error to DML. */
+  WSET_FALLBACK_REASON wset_fallback_reason;	/* first fallback cause, counted at commit; statistics only */
+  LOG_LSA wset_dependency_lsa;	/* dependency carried by LOG_DUMMY_WSET_LABEL before COMMIT or independent SYSOP_END */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 

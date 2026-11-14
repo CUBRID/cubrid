@@ -43,7 +43,7 @@ test_lsa (LOG_PAGEID pageid, PGLENGTH offset = 0)
 }
 
 inline LA_TASK
-test_task (int tranid, LOG_LSA commit_lsa, LOG_LSA dependency)
+test_task (int tranid, LOG_LSA commit_lsa, LOG_LSA dependency_lsa)
 {
   LA_TASK task;
 
@@ -51,7 +51,7 @@ test_task (int tranid, LOG_LSA commit_lsa, LOG_LSA dependency)
   task.tranid = tranid;
   task.rectype = TEST_RECTYPE_COMMIT;
   task.commit_lsa = commit_lsa;
-  task.dependency_lsa = dependency;
+  task.dependency_lsa = dependency_lsa;
   task.has_items = true;
   return task;
 }

@@ -51,13 +51,13 @@ struct wset_statistics
   std::atomic<UINT64> history_clear_count { 0 };	/* times the whole history was cleared, for any reason */
 
   std::atomic<UINT64> commit_count { 0 };		/* commits that wrote a writeset label */
-  std::atomic<UINT64> commit_fallback_count { 0 };	/* of those, the ones labeled for commit order */
+  std::atomic<UINT64> commit_fallback_count { 0 };	/* transactions that committed in fallback */
   std::atomic<UINT64> fallback_key_limit_count { 0 };	/* ... because the transaction had too many keys */
   std::atomic<UINT64> fallback_statement_count { 0 };	/* ... because a change used statement replication */
   std::atomic<UINT64> fallback_nan_count { 0 };	/* ... because a constraint key was NaN */
   std::atomic<UINT64> fallback_key_unavailable_count { 0 }; /* ... because key index information was unavailable */
-  std::atomic<UINT64> conflict_ref_count { 0 };	/* commits whose dependency is a referencer of one of its keys */
-  std::atomic<UINT64> conflict_write_count { 0 };	/* commits whose dependency is a writer of one of its keys */
+  std::atomic<UINT64> conflict_ref_count { 0 };	/* key probes whose winning candidate came from a REF slot */
+  std::atomic<UINT64> conflict_write_count { 0 };	/* key probes whose winning candidate came from a WRITE slot */
   std::atomic<UINT64> clear_capacity_count { 0 };	/* times the history was cleared because it was full */
 };
 
@@ -129,7 +129,7 @@ wset_stat_count_clear_capacity (void)
 }
 
 /*
- * wset_stat_count_conflict - a commit's dependency came from one of its keys
+ * wset_stat_count_conflict - count a key probe that selected a per-key candidate, for COMMIT or SYSOP_END
  *   from_ref(in): from a referencer of the key (true) or from a writer (false)
  */
 void
@@ -147,7 +147,7 @@ wset_stat_count_conflict (bool from_ref)
 
 /*
  * wset_stat_count_commit - a commit wrote a writeset label
- *   fallback(in): labeled for commit order
+ *   fallback(in): transaction-wide commit-order fallback is active
  *   reason(in): reason the transaction entered commit-order fallback
  */
 void

@@ -39,7 +39,7 @@ static int wset_Trace_level = 0;
 void
 wset_config_initialize (void)
 {
-  wset_Key_limit = (INT64) prm_get_integer_value (PRM_ID_HA_WRITESET_HISTORY_SIZE);
+  wset_Key_limit = (INT64) prm_get_integer_value (PRM_ID_HA_WRITESET_MAX_KEYS);
   wset_Trace_level = prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL);
 }
 

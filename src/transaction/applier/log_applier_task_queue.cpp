@@ -19,9 +19,9 @@
 /*
  * log_applier_task_queue.cpp - implementation of the shared coordinator-to-worker task queue
  *
- * The coordinator pushes only tasks the dependency gate has let pass, and any idle worker takes the next
- * one. The gate has already made sure that every predecessor is applied, so it does not matter which
- * worker takes a task. The queue has its own mutex and condition variables; no thread holds this mutex
+ * With multiple workers, queued tasks have passed the dependency gate, so any idle worker can take them.
+ * With one worker, FIFO execution preserves commit order without a dependency-gate check.
+ * The queue has its own mutex and condition variables; no thread holds this mutex
  * and the result queue's at the same time, so the two queues cannot deadlock.
  */
 
@@ -72,14 +72,14 @@ la_task_queue_init (void)
 }
 
 /*
- * la_task_queue_push() - hand a transaction that passed the gate to the workers
+ * la_task_queue_push() - enqueue a task for worker execution
  *   return: NO_ERROR, or ER_FAILED when the queue is shutting down or full
  *   task(in): task to dispatch; copied into the queue
  *
  * Note:
- *   The gate has already confirmed that every transaction this one depends on is applied,
- *   so whichever idle worker takes it is safe and no worker is chosen here. The push never
- *   waits: the coordinator checks la_task_queue_is_full first and parks the task when there is no
+ *   With multiple workers, queued tasks have passed the dependency gate, so any idle worker can take them.
+ *   With one worker, FIFO execution preserves commit order without a dependency-gate check.
+ *   The push never waits: with multiple workers the coordinator parks a task when there is no
  *   room, so it keeps collecting results instead of sleeping on the queue. Only the coordinator
  *   pushes, so a room it saw cannot be taken by anyone else before it pushes.
  */
@@ -98,7 +98,7 @@ la_task_queue_push (const LA_TASK *task)
 
   if (la_Shared_task_queue.count >= LA_TASK_QUEUE_CAPACITY)
     {
-      /* callers check la_task_queue_is_full first */
+      /* Callers must ensure capacity before pushing. */
       pthread_mutex_unlock (&la_Shared_task_mutex);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "task queue full");
       assert (false);
@@ -141,7 +141,7 @@ la_task_queue_is_full (void)
  *
  * Note:
  *   On shutdown, queued tasks are abandoned. They were never retired, so
- *   committed_rep_lsa stays behind them and a restart applies them again.
+ *   committed_lsa stays behind them and a restart reads them again.
  */
 int
 la_task_queue_pop (LA_TASK *task)

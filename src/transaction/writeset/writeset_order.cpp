@@ -37,7 +37,7 @@
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 
-static void wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out);
+static void wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_lsa);
 
 /* Probe only while keys are stable and before acquiring prior_lsa_mutex. The history read lock prevents a
  * map swap, while TBB accessors protect individual slots from concurrent publishers. */
@@ -50,20 +50,20 @@ wset_order_probe_keys (LOG_TDES *tdes, size_t begin, wset_dependency_candidate *
 
   assert (tdes != NULL);
   assert (result != NULL);
-  assert (begin <= tdes->wset_hashes.size ());
+  assert (begin <= tdes->wset_entries.size ());
 
   LSA_SET_NULL (&result->lsa);
   result->from_ref = false;
-  if (tdes->wset_overflow)
+  if (tdes->wset_fallback)
     {
       return;
     }
 
   wset_history_lock_for_probe (&history_start, &prev_commit);
   LSA_COPY (&result->lsa, &history_start);
-  for (size_t index = begin; index < tdes->wset_hashes.size (); index++)
+  for (size_t index = begin; index < tdes->wset_entries.size (); index++)
     {
-      const LOG_WSET_ENTRY &entry = tdes->wset_hashes[index];
+      const LOG_WSET_ENTRY &entry = tdes->wset_entries[index];
       LOG_WSET_SLOTS slots;
       LOG_LSA candidate;
       bool candidate_is_ref;
@@ -97,65 +97,61 @@ wset_order_probe_keys (LOG_TDES *tdes, size_t begin, wset_dependency_candidate *
 /* Resolve in log order. No history reader lock or per-key work is allowed here: a clear or barrier after the
  * probe can only raise the dependency. Preserve the existing REF-slot rule and WRITE-slot upper bound. */
 void
-wset_order_resolve_dependency (LOG_TDES *tdes, const wset_dependency_candidate *candidate, LOG_LSA *dependency_out)
+wset_order_resolve_dependency (LOG_TDES *tdes, const wset_dependency_candidate *candidate, LOG_LSA *dependency_lsa)
 {
   LOG_LSA history_start;
   LOG_LSA prev_commit;
 
   assert (tdes != NULL);
   assert (candidate != NULL);
-  assert (dependency_out != NULL);
+  assert (dependency_lsa != NULL);
 
   wset_history_get_boundaries (&history_start, &prev_commit);
-  if (tdes->wset_overflow)
+  if (tdes->wset_fallback)
     {
-      LSA_COPY (dependency_out, &prev_commit);
+      LSA_COPY (dependency_lsa, &prev_commit);
     }
   else
     {
-      LSA_COPY (dependency_out, &candidate->lsa);
-      if (!candidate->from_ref && !LSA_ISNULL (&prev_commit) && LSA_GT (dependency_out, &prev_commit))
+      LSA_COPY (dependency_lsa, &candidate->lsa);
+      if (!candidate->from_ref && !LSA_ISNULL (&prev_commit) && LSA_GT (dependency_lsa, &prev_commit))
         {
-          LSA_COPY (dependency_out, &prev_commit);
+          LSA_COPY (dependency_lsa, &prev_commit);
         }
     }
 
-  if (!LSA_ISNULL (&history_start)
-      && (LSA_ISNULL (dependency_out) || LSA_LT (dependency_out, &history_start)))
-    {
-      LSA_COPY (dependency_out, &history_start);
-    }
+  wset_advance_lsa (dependency_lsa, &history_start);
 
-  if (tdes->wset_overflow)
+  if (tdes->wset_fallback)
     {
       WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
-                  tdes->trid, LSA_AS_ARGS (dependency_out));
+                  tdes->trid, LSA_AS_ARGS (dependency_lsa));
     }
   else
     {
       WSET_TRACE (1,
                   "DEPENDENCY trid=%d source=%s history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
                   tdes->trid, candidate->from_ref ? "REF_SLOT" : "WRITE_BOUND",
-                  LSA_AS_ARGS (&history_start), LSA_AS_ARGS (&prev_commit), LSA_AS_ARGS (dependency_out));
+                  LSA_AS_ARGS (&history_start), LSA_AS_ARGS (&prev_commit), LSA_AS_ARGS (dependency_lsa));
     }
 }
 
 static void
-wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out)
+wset_order_find_dependency_in_range (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_lsa)
 {
   wset_dependency_candidate candidate;
 
   wset_order_probe_keys (tdes, begin, &candidate);
-  wset_order_resolve_dependency (tdes, &candidate, dependency_out);
+  wset_order_resolve_dependency (tdes, &candidate, dependency_lsa);
 }
 
 void
-wset_order_find_dependency (LOG_TDES *tdes, LOG_LSA *dependency_out)
+wset_order_find_dependency (LOG_TDES *tdes, LOG_LSA *dependency_lsa)
 {
   assert (tdes != NULL);
-  assert (dependency_out != NULL);
+  assert (dependency_lsa != NULL);
 
-  wset_order_find_dependency_in_range (tdes, 0, dependency_out);
+  wset_order_find_dependency_in_range (tdes, 0, dependency_lsa);
 }
 
 /* Record the commit-order baseline while prior_lsa_mutex still fixes log order. */
@@ -163,7 +159,7 @@ void
 wset_order_record_commit (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 {
   assert (tdes != NULL);
-  wset_history_record_commit (tdes->wset_overflow, commit_lsa);
+  wset_history_record_commit (tdes->wset_fallback, commit_lsa);
 }
 
 /* Publish committed keys before the transaction releases its row locks. */
@@ -178,22 +174,22 @@ wset_order_publish_commit_keys (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
 	      "COMMIT trid=%d commit_lsa=%lld|%d dependency=%lld|%d entries=%zu fallback=%d\n",
 	      tdes->trid, LSA_AS_ARGS (commit_lsa),
 	      LSA_AS_ARGS (&tdes->wset_dependency_lsa),
-	      tdes->wset_hashes.size (), tdes->wset_overflow ? 1 : 0);
+	      tdes->wset_entries.size (), tdes->wset_fallback ? 1 : 0);
 
-  wset_stat_count_commit (tdes->wset_overflow, tdes->wset_fallback_reason);
-  wset_history_publish_keys (tdes, 0, tdes->wset_hashes.size (), commit_lsa);
+  wset_stat_count_commit (tdes->wset_fallback, tdes->wset_fallback_reason);
+  wset_history_publish_keys (tdes, 0, tdes->wset_entries.size (), commit_lsa);
 }
 
-/* A replicated SYSOP has no published keys, so it uses the commit-order boundary. */
+/* Find the commit-order dependency for a SYSOP that cannot use key ordering. */
 void
-wset_order_find_sysop_dependency (LOG_TDES *tdes, LOG_LSA *dependency_out)
+wset_order_find_sysop_dependency (LOG_TDES *tdes, LOG_LSA *dependency_lsa)
 {
   assert (tdes != NULL);
-  assert (dependency_out != NULL);
+  assert (dependency_lsa != NULL);
 
-  wset_history_get_commit_order_dependency (dependency_out);
+  wset_history_get_commit_order_dependency (dependency_lsa);
   WSET_TRACE (1, "DEPENDENCY trid=%d mode=SYSOP_COMMIT_ORDER dependency=%lld|%d\n", tdes->trid,
-	      LSA_AS_ARGS (dependency_out));
+	      LSA_AS_ARGS (dependency_lsa));
 }
 
 /* Make every later apply unit wait at least for this log coordinate. */
@@ -211,13 +207,13 @@ wset_order_advance_barrier (const LOG_LSA *lsa, const char *reason)
 /* An independent replication unit (serial update, INCR/DECR that commits on its own) is ordered by the keys it
  * collected, the tail of the key list from begin, like a commit. */
 void
-wset_order_find_sysop_key_dependency (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_out)
+wset_order_find_sysop_key_dependency (LOG_TDES *tdes, size_t begin, LOG_LSA *dependency_lsa)
 {
   assert (tdes != NULL);
-  assert (dependency_out != NULL);
-  assert (!tdes->wset_overflow);
+  assert (dependency_lsa != NULL);
+  assert (!tdes->wset_fallback);
 
-  wset_order_find_dependency_in_range (tdes, begin, dependency_out);
+  wset_order_find_dependency_in_range (tdes, begin, dependency_lsa);
 }
 
 /* Called in log order, inside prior_lsa_mutex, for a SYSOP_END ordered by its keys. The commit-order baseline moves
@@ -238,13 +234,13 @@ wset_order_publish_sysop_keys (LOG_TDES *tdes, size_t begin, const LOG_LSA *syso
   assert (tdes != NULL);
   assert (sysop_lsa != NULL);
   assert (!LSA_ISNULL (sysop_lsa));
-  assert (begin <= tdes->wset_hashes.size ());
+  assert (begin <= tdes->wset_entries.size ());
 
   WSET_TRACE (1, "SYSOP_PUBLISH trid=%d sysop_lsa=%lld|%d dependency=%lld|%d entries=%zu\n",
 	      tdes->trid, LSA_AS_ARGS (sysop_lsa), LSA_AS_ARGS (&tdes->wset_dependency_lsa),
-	      tdes->wset_hashes.size () - begin);
+	      tdes->wset_entries.size () - begin);
 
-  wset_history_publish_keys (tdes, begin, tdes->wset_hashes.size (), sysop_lsa);
+  wset_history_publish_keys (tdes, begin, tdes->wset_entries.size (), sysop_lsa);
 }
 
 #endif /* SERVER_MODE || SA_MODE */

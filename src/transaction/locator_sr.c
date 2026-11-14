@@ -8406,7 +8406,7 @@ locator_wset_trace_key_source (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const c
 {
   char *table_name = NULL;
 
-  if (!wset_trace_is_enabled (3) || tdes->wset_overflow || tdes->suppress_replication != 0)
+  if (!wset_trace_is_enabled (3) || tdes->wset_fallback || tdes->suppress_replication != 0)
     {
       return;
     }
@@ -8509,7 +8509,7 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
   assert (index->fk != NULL);
   assert (tdes != NULL);
 
-  if (tdes->wset_overflow || tdes->suppress_replication != 0)
+  if (tdes->wset_fallback || tdes->suppress_replication != 0)
     {
       return NO_ERROR;
     }

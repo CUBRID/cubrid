@@ -20,8 +20,9 @@
  * log_applier_coordinator.hpp - interface for coordinating parallel apply tasks
  *
  * The coordinator is the single owner of scheduling state. It registers tasks in commit order,
- * parks tasks whose dependency is not complete, dispatches runnable tasks, and retires worker
- * results only after the completed prefix advances.
+ * parks tasks waiting for dependencies or task-queue capacity, dispatches runnable tasks, and retires worker
+ * results in dispatch order after the workers finish their tasks.
+ * With one worker, tasks execute in commit order without a dependency-gate check.
  */
 
 #ifndef _LOG_APPLIER_COORDINATOR_HPP_
@@ -51,7 +52,7 @@ struct la_coordinator_config
 /* Initialize scheduling state before workers start. */
 extern int la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config);
 
-/* Register a completed log task and dispatch or park it. */
+/* Register an assembled task and dispatch or park it. */
 extern int la_coordinator_submit_task (LA_TASK *task);
 
 /* Complete an ordered SYSOP_END that has no replication items. */
