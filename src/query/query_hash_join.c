@@ -3068,6 +3068,21 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	}
     }
 
+  if (fetch_info->input->float_numeric_as_is)
+    {
+      /* CBRD-27798: a floating value of a negative scale read as it is may have come with a fixed NUMERIC's precision,
+       * as the converted values above would without DB_HJOIN_NUMERIC_PRECISION_DEFERRED; its hash needs its digits.
+       * One test a row: the input decided at unpack whether it has such a key */
+      for (key_index = 0; key_index < key->val_count; key_index++)
+	{
+	  if (converters[key_index] == NULL && TP_DOMAIN_TYPE (domains[key_index]) == DB_TYPE_NUMERIC
+	      && domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      qdata_hash_scan_float_numeric_set_digits (key->values[key_index]);
+	    }
+	}
+    }
+
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 

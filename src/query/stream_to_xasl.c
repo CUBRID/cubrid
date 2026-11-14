@@ -4027,6 +4027,8 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
        * (hjoin_init_domain_info) */
       int decided;
       ptr = or_unpack_int (ptr, &decided);
+      node_p->domain_info.outer.float_numeric_as_is = false;
+      node_p->domain_info.inner.float_numeric_as_is = false;
       for (int i = 0; i < domain_cnt && decided; i++)
 	{
 	  int kinds;
@@ -4043,6 +4045,18 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	  converters[domain_cnt + i] =
 	    hjoin_key_converter ((kinds >> 8) & 0xFF, TP_DOMAIN_TYPE (all_domains[domain_cnt + i]), common);
 	  ptr = stx_unpack_decided_compare (ptr, &compares[i]);
+	  /* CBRD-27798: a floating NUMERIC key read as it is counts its digits for its hash (hjoin_fetch_key ()) */
+	  for (int side = 0; side < 2; side++)
+	    {
+	      const TP_DOMAIN *domain = all_domains[side * domain_cnt + i];
+	      if (converters[side * domain_cnt + i] == NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC
+		  && domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  HASHJOIN_INPUT_DOMAIN_INFO *input =
+		    side == 0 ? &node_p->domain_info.outer : &node_p->domain_info.inner;
+		  input->float_numeric_as_is = true;
+		}
+	    }
 	  /* CBRD-27583: only a JSON key is coerced at the row (an exception: a JSON value carries its own type); no
 	   * common domain leaves its collation to the values */
 	  assert (((kinds & 0xFF) != DOMAIN_HASH_KEY_COERCED || TP_DOMAIN_TYPE (all_domains[i]) == DB_TYPE_JSON)

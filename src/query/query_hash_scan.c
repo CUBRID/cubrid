@@ -39,6 +39,7 @@
 #include "object_representation.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
+#include "numeric_opfunc.h"
 #include "string_opfunc.h"
 #include "query_hash_scan.h"
 #include "qfile_tuple_layout.h"
@@ -405,6 +406,151 @@ qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_met
   for (i = 0; i < ckey->val_count; i++)
     {
       hash_val = qdata_hash_scan_key_fold (hash_val, ckey->values[i], ht_size);
+    }
+
+  return qdata_hash_scan_key_finish (hash_val, hash_method);
+}
+
+/*
+ * qdata_hash_scan_is_float_numeric_key () - CBRD-27798: whether a key pair of a hash list scan hashes in a floating
+ *					      NUMERIC (pt_hash_key_domain ()): a side of a floating NUMERIC domain (one
+ *					      the pair converts to, or one it has), or two fixed NUMERICs of two scales,
+ *					      which XASL generation leaves unconverted only when their common domain is
+ *					      floating
+ *   returns: true for such a pair
+ *   build(in): the build key of the pair
+ *   probe(in): the probe key of the pair
+ */
+static bool
+qdata_hash_scan_is_float_numeric_key (const regu_variable_list_node * build, const regu_variable_list_node * probe)
+{
+  const TP_DOMAIN *domain[2] = { build->value.domain, probe->value.domain };
+  int side;
+
+  for (side = 0; side < 2; side++)
+    {
+      if (domain[side] != NULL && TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_NUMERIC
+	  && domain[side]->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  return true;
+	}
+    }
+  return domain[0] != NULL && domain[1] != NULL && TP_DOMAIN_TYPE (domain[0]) == DB_TYPE_NUMERIC
+    && TP_DOMAIN_TYPE (domain[1]) == DB_TYPE_NUMERIC && domain[0]->scale != domain[1]->scale;
+}
+
+/*
+ * qdata_hash_scan_has_float_numeric_key () - CBRD-27798: whether a hash list scan has a key pair that hashes in a
+ *					       floating NUMERIC (qdata_hash_scan_is_float_numeric_key ()), so that its
+ *					       build and probe hash by qdata_hash_scan_key_float_numeric ()
+ *   returns: true for such a scan
+ *   build(in): the scan's build keys
+ *   probe(in): the scan's probe keys, in the order of the build keys
+ */
+bool
+qdata_hash_scan_has_float_numeric_key (const regu_variable_list_node * build, const regu_variable_list_node * probe)
+{
+  for (; build != NULL && probe != NULL; build = build->next, probe = probe->next)
+    {
+      if (qdata_hash_scan_is_float_numeric_key (build, probe))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * qdata_hash_scan_float_numeric_set_digits () - CBRD-27798: give a floating NUMERIC of a negative scale the number of
+ *						 digits it has as its precision
+ *   returns: none
+ *   value(in/out): a key value of any type
+ *
+ * The normalized hash of a floating NUMERIC (mht_get_hash_number (), float_numeric_normalize_for_hash ()) multiplies a
+ * negative scale away up to 40 digits from the value's precision, which must then be the digits the value has. A
+ * fixed NUMERIC of a negative scale has its column's precision instead, and a value converted from one to a floating
+ * NUMERIC keeps it, so 1500000 in NUMERIC (38, -5) hashed as 1500 (hjoin_fetch_key () counts the digits when it
+ * converts such a value itself). The precision changes nothing else: values compare by their digits and scale.
+ */
+void
+qdata_hash_scan_float_numeric_set_digits (DB_VALUE * value)
+{
+  if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NUMERIC
+      && value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION && value->data.num.header.scale < 0)
+    {
+      value->data.num.header.precision = numeric_get_precision_digits (db_locate_numeric (value));
+    }
+}
+
+/*
+ * qdata_hash_scan_float_numeric_value () - CBRD-27798: hash one value of a key that hashes in a floating NUMERIC
+ *   returns: hash value
+ *   value(in): key value
+ *   ht_size(in): hash table size (in buckets)
+ *
+ * mht_get_hash_number () hashes a floating NUMERIC normalized (float_numeric_normalize_for_hash ()) but a fixed one by
+ * its digits at its own scale, and a key of a floating domain can hold fixed values (a CONNECT BY PRIOR value keeps
+ * the form of its operand). A fixed value hashes as the floating value of the same digits, precision and scale, so
+ * equal values of either form hash alike, as mht_valhash () normalizes a fixed NUMERIC too, and a negative scale
+ * normalizes from the digits the value has (qdata_hash_scan_float_numeric_set_digits ()). Any other value hashes as
+ * qdata_hash_scan_value () hashes it.
+ */
+static unsigned int
+qdata_hash_scan_float_numeric_value (const DB_VALUE * value, unsigned int ht_size)
+{
+  DB_VALUE floating;
+
+  if (value == NULL || DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC)
+    {
+      return qdata_hash_scan_value (value, ht_size);
+    }
+
+  /* a NUMERIC holds its digits in the value itself */
+  floating = *value;
+  if (floating.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      FIXED_TO_FLOAT_NUMERIC (&floating);
+    }
+  qdata_hash_scan_float_numeric_set_digits (&floating);
+  return mht_get_hash_number (ht_size, &floating);
+}
+
+/*
+ * qdata_hash_scan_key_float_numeric () - CBRD-27798: qdata_hash_scan_key () of a hash list scan that has a key pair
+ *					   hashing in a floating NUMERIC: that key's values hash by
+ *					   qdata_hash_scan_float_numeric_value (), every other key's as
+ *					   qdata_hash_scan_key () hashes them
+ *   returns: hash value
+ *   key(in): key
+ *   build(in): the scan's build keys
+ *   probe(in): the scan's probe keys, in the order of the build keys
+ *   ht_size(in): hash table size (in buckets)
+ *   hash_method(in): the hash table's method
+ */
+unsigned int
+qdata_hash_scan_key_float_numeric (const void *key, const regu_variable_list_node * build,
+				   const regu_variable_list_node * probe, unsigned int ht_size, HASH_METHOD hash_method)
+{
+  const HASH_SCAN_KEY *ckey = (const HASH_SCAN_KEY *) key;
+  unsigned int hash_val = 0, tmp_hash_val;
+  int i;
+
+  for (i = 0; i < ckey->val_count; i++, build = build->next, probe = probe->next)
+    {
+      assert (build != NULL && probe != NULL);
+      if (!qdata_hash_scan_is_float_numeric_key (build, probe))
+	{
+	  hash_val = qdata_hash_scan_key_fold (hash_val, ckey->values[i], ht_size);
+	  continue;
+	}
+      /* qdata_hash_scan_key_fold ()'s step over this value's hash */
+      hash_val = ROTL32 (hash_val, 13);
+      tmp_hash_val = qdata_hash_scan_float_numeric_value (ckey->values[i], ht_size);
+      hash_val ^= tmp_hash_val;
+      if (hash_val == 0)
+	{
+	  hash_val = tmp_hash_val;
+	}
     }
 
   return qdata_hash_scan_key_finish (hash_val, hash_method);
