@@ -21810,6 +21810,25 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
       goto exit;
     }
 
+  /* The row is rewritten in place, so it keeps its Internal LOB chains (adopted) instead of copying them:
+   * a copy and the delete of the old chain could not be undone on a full LOB page. */
+  for (i = 0, value = attr_info->values; i < attr_info->num_values; i++, value++)
+    {
+      INTERNAL_LOB_LOCATOR locator;
+
+      if (value->attrid != att_id && internal_lob_db_value_is_locator (&value->dbvalue, &locator) && !locator.adopted)
+	{
+	  DB_TYPE lob_type = DB_VALUE_DOMAIN_TYPE (&value->dbvalue);
+
+	  pr_clear_value (&value->dbvalue);
+	  error = internal_lob_make_adopt_locator_db_value (&value->dbvalue, lob_type, locator);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
+    }
+
   /* the class has XCH_M_LOCK */
   error =
     locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,

@@ -13884,7 +13884,8 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		}
 	    }
 
-	  if (locator_copyarea_add_fetch (class_oid, &oid, &recdes, offset, mobjs, obj) != NO_ERROR)
+	  /* the rows are read with their stored OOS stubs, and both callers resolve them through heap_attrinfo_* */
+	  if (locator_copyarea_add_fetch (class_oid, &oid, &recdes, offset, mobjs, obj, true) != NO_ERROR)
 	    {
 	      scan = S_ERROR;
 	      break;
