@@ -70,6 +70,13 @@ struct disk_volume_space_info
 #define DISK_SECTS_NPAGES(nsects) ((nsects) * DISK_SECTOR_NPAGES)
 #define DISK_PAGES_TO_SECTS(npages) (CEIL_PTVDIV (npages, DISK_SECTOR_NPAGES))
 
+/*
+ * Smallest first volume of a new database, in sectors. Every file reserves at least one sector, so the system catalog
+ * that createdb makes takes about 75 sectors whatever the page size. Volume sizes are rounded up to a multiple of 64
+ * sectors (one allocation table unit), and 64 sectors cannot hold the catalog: a generic volume would be added at once.
+ */
+#define DISK_MIN_FIRST_VOLUME_SECTS 128
+
 /* structure used to clone disk sector bitmaps to cross check against file tables */
 typedef struct disk_volmap_clone DISK_VOLMAP_CLONE;
 struct disk_volmap_clone
