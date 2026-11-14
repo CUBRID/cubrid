@@ -5641,6 +5641,7 @@ hb_reload_config (void)
   HB_NODE_ENTRY *old_nodes;
   HB_NODE_ENTRY *old_node, *old_myself, *old_master, *new_node;
   HB_PING_HOST_ENTRY *old_ping_hosts;
+  char old_group_id[HB_MAX_GROUP_ID_LEN];
 
   if (hb_Cluster == NULL)
     {
@@ -5673,6 +5674,8 @@ hb_reload_config (void)
   old_myself = hb_Cluster->myself;
   old_master = hb_Cluster->master;
   old_num_nodes = hb_Cluster->num_nodes;
+  /* hb_cluster_load_group_and_node_list () overwrites the group id */
+  strncpy_bufsize (old_group_id, hb_Cluster->group_id);
 
   hb_Cluster->nodes = NULL;
 
@@ -5771,6 +5774,7 @@ reconfig_error:
   hb_Cluster->myself = old_myself;
   hb_Cluster->master = old_master;
   hb_Cluster->num_nodes = old_num_nodes;
+  strncpy_bufsize (hb_Cluster->group_id, old_group_id);
 
   hb_list_move ((HB_LIST **) (&hb_Cluster->nodes), (HB_LIST **) (&old_nodes));
 
