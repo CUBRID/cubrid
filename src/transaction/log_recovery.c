@@ -28,6 +28,7 @@
 #include "dblink_2pc_daemon.h"
 #endif
 #include "boot_sr.h"
+#include "disk_manager.h"
 #include "locator_sr.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -896,6 +897,9 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "UNDO");
 
   boot_reset_db_parm (thread_p);
+
+  /* volume deletions noted by redo are finished or rolled back according to the final boot_Db_parm */
+  disk_rv_complete_delete_volume (thread_p);
 
   // *INDENT-OFF*
   log_system_tdes::rv_final ();

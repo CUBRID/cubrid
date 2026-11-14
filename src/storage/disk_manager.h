@@ -78,6 +78,26 @@ struct disk_volmap_clone
   char *map;
 };
 
+/* whether a permanent volume can be deleted by delvoldb */
+typedef enum
+{
+  DISK_DELVOL_OK = 0,		/* can be deleted */
+  DISK_DELVOL_FIRST_VOLUME,	/* volume 0 holds the system pages */
+  DISK_DELVOL_NOT_EXIST,	/* not a permanent volume of the database */
+  DISK_DELVOL_NOT_LAST,		/* only the last permanent volume can be deleted */
+  DISK_DELVOL_NOT_EMPTY		/* some sectors are in use */
+} DISK_DELVOL_STATUS;
+
+typedef struct disk_delvol_info DISK_DELVOL_INFO;
+struct disk_delvol_info
+{
+  VOLID volid;
+  DISK_VOLPURPOSE purpose;
+  DKNPAGES npages_total;
+  DKNPAGES npages_free;
+  char vol_fullname[PATH_MAX];
+};
+
 extern int disk_manager_init (THREAD_ENTRY * thread_p, bool load_form_disk);
 extern void disk_manager_final (void);
 
@@ -130,6 +150,13 @@ extern void disk_map_clone_free (DISK_VOLMAP_CLONE ** disk_map_clone);
 extern DISK_ISVALID disk_map_clone_clear (VSID * vsid, DISK_VOLMAP_CLONE * disk_map_clone);
 extern DISK_ISVALID disk_map_clone_check_leaks (DISK_VOLMAP_CLONE * disk_map_clone);
 #endif /* SA_MODE */
+
+extern int disk_check_delete_volume (THREAD_ENTRY * thread_p, VOLID volid, DISK_DELVOL_STATUS * status,
+				     DISK_DELVOL_INFO * info);
+extern int disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid);
+extern int disk_rv_redo_delete_volume (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern void disk_rv_dump_delete_volume (FILE * fp, int length_ignore, void *data);
+extern void disk_rv_complete_delete_volume (THREAD_ENTRY * thread_p);
 
 extern int disk_rv_redo_dboutside_newvol (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int disk_rv_undo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

@@ -102,6 +102,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     backupdb\n\
     restoredb\n\
     addvoldb\n\
+    delvoldb\n\
     spacedb\n\
     lockdb\n\
     tranlist\n\
@@ -167,6 +168,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     copydb\n\
     createdb\n\
     deletedb\n\
+    delvoldb\n\
     diagdb\n\
     installdb\n\
     tranlist\n\
@@ -1194,22 +1196,28 @@ valid options:\n\
   -k, --keys-file-path              복구에 사용될 키 파일 (_keys)의 경로 \n
 
 $set 54 MSGCAT_UTIL_SET_DELVOLDB
-21 Ready to remove the following volumes:\n\n
-22 Do you wish to proceed ? (Y/N)
-31 Cannot remove system volume or the first volume (Volid : %1$d).\n
-32 Cannot find the volume (Volid : %1$d).\n
-33 There are too many Volids (Max Volids : %1$d).\n
-34 Invalid Volid(%1$s).\n
+21 DBA 암호를 입력하십시오: 
+22 삭제할 볼륨 id를 입력하십시오 (q: 종료): 
+23 볼륨(볼륨 id: %1$d)을 삭제하시겠습니까? (y/n) 
+31 삭제할 수 있는 볼륨:\n\n
+32 volid  purpose            total_pages   free_pages  volume_name\n
+33 %1$5d  %2$-16s  %3$12d %4$12d  %5$s\n
+34 삭제할 수 있는 볼륨이 없습니다. 0번이 아닌 마지막 영구 볼륨이 비어 있을 때만 삭제할 수 있습니다.\n
+35 볼륨을 삭제하지 않았습니다.\n
+36 볼륨(볼륨 id: %1$d)을 삭제했습니다.\n
+41 잘못된 볼륨 id입니다 (%1$s).\n
+42 첫 번째 볼륨은 삭제할 수 없습니다 (볼륨 id: %1$d).\n
+43 영구 볼륨을 찾을 수 없습니다 (볼륨 id: %1$d).\n
+44 볼륨(볼륨 id: %1$d)을 삭제할 수 없습니다. 마지막 영구 볼륨(볼륨 id: %2$d)만 삭제할 수 있습니다.\n
+45 볼륨(볼륨 id: %1$d)을 삭제할 수 없습니다. 사용 중인 페이지가 있습니다.\n
 60 \
-delvoldb: Remove a empty volume-file of the database.\n\
-usage: %1$s delvoldb [OPTION] database-name -i Volid\n\
+delvoldb: 데이터베이스에서 빈 볼륨을 삭제\n\
+사용법: %1$s delvoldb [옵션] <데이터베이스 이름>\n\
 \n\
-valid options:\n\
-  -c, --clear-cache                clear all cached files in the temporary temp volume\n\
-  -f, --force                      remove the volume without a prompt for verification\n\
-  -p, --dba-password=PASS          password of the DBA user; will prompt if don't specify\n\
-  -S, --SA-mode                    stand-alone mode execution\n\
-  -C, --CS-mode                    client-server mode execution\n
+옵션:\n\
+  -S, --SA-mode                    독립 모드로 실행\n\
+  -i, --volid=ID                   삭제할 볼륨 id; 지정하지 않으면 입력을 요청함\n\
+  -p, --dba-password=PASS          DBA 사용자의 암호; 지정하지 않으면 입력을 요청함\n
 
 $set 55 MSGCAT_UTIL_SET_VACUUMDB
 20 Vacuumdb는 현재 클라이언트 서버 모드에서 지원되지 않습니다.\n

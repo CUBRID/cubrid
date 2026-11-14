@@ -180,4 +180,5 @@ extern int boot_get_new_volume_name_and_id (THREAD_ENTRY * thread_p, DB_VOLTYPE 
 					    const char *given_name, char *fullname_newvol_out,
 					    VOLID * volid_newvol_out);
 extern int boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID volid);
+extern int boot_dbparm_delete_last_volume (THREAD_ENTRY * thread_p, VOLID volid, VOLID prev_volid);
 #endif /* _BOOT_SR_H_ */

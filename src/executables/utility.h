@@ -691,12 +691,20 @@ typedef enum
 /* Message id in the set MSGCAT_UTIL_SET_DELVOLDB */
 typedef enum
 {
-  DELVOLDB_MSG_READY_TO_DEL = 21,
-  DELVOLDB_MSG_VERIFY = 22,
-  DELVOLDB_MSG_CANNOT_REMOVE_FIRST_VOL = 31,
-  DELVOLDB_MSG_CANNOT_FIND_VOL = 32,
-  DELVOLDB_MSG_TOO_MANY_VOLID = 33,
-  DELVOL_MSG_INVALID_VOLUME_ID = 34,
+  DELVOLDB_MSG_DBA_PASSWORD = 21,
+  DELVOLDB_MSG_CHOOSE_VOLID = 22,
+  DELVOLDB_MSG_VERIFY = 23,
+  DELVOLDB_MSG_LIST_HEADER = 31,
+  DELVOLDB_MSG_LIST_TITLE = 32,
+  DELVOLDB_MSG_LIST_ROW = 33,
+  DELVOLDB_MSG_NO_VOLUME = 34,
+  DELVOLDB_MSG_CANCELED = 35,
+  DELVOLDB_MSG_DONE = 36,
+  DELVOLDB_MSG_INVALID_VOLUME_ID = 41,
+  DELVOLDB_MSG_CANNOT_REMOVE_FIRST_VOL = 42,
+  DELVOLDB_MSG_CANNOT_FIND_VOL = 43,
+  DELVOLDB_MSG_NOT_LAST_VOL = 44,
+  DELVOLDB_MSG_NOT_EMPTY_VOL = 45,
   DELVOLDB_MSG_USAGE = 60
 } MSGCAT_DELVOLDB_MSG;
 
@@ -802,9 +810,7 @@ typedef enum
   BACKUPDB,
   RESTOREDB,
   ADDVOLDB,
-#if 0
   DELVOLDB,
-#endif
   SPACEDB,
   LOCKDB,
   KILLTRAN,
@@ -1018,9 +1024,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_BACKUPDB                    "backupdb"
 #define UTIL_OPTION_RESTOREDB                   "restoredb"
 #define UTIL_OPTION_ADDVOLDB                    "addvoldb"
-#if 0
 #define UTIL_OPTION_DELVOLDB                    "delvoldb"
-#endif
 #define UTIL_OPTION_SPACEDB                     "spacedb"
 #define UTIL_OPTION_LOCKDB                      "lockdb"
 #define UTIL_OPTION_TRANLIST                    "tranlist"
@@ -1202,21 +1206,13 @@ typedef struct _ha_config
 #define ADDVOL_VOLTYPE_L			"voltype"
 #define ADDVOL_VOLTYPE_S			't'
 
-#if 0
 /* delvoldb option list */
 #define DELVOL_VOLUME_ID_S                      'i'
-#define DELVOL_VOLUME_ID_L                      "volume-id"
-#define DELVOL_CLEAR_CACHE_S                    'c'
-#define DELVOL_CLEAR_CACHE_L                    "clear-cache"
-#define DELVOL_FORCE_S                          'f'
-#define DELVOL_FORCE_L                          "force"
+#define DELVOL_VOLUME_ID_L                      "volid"
 #define DELVOL_DBA_PASSWORD_S                   'p'
 #define DELVOL_DBA_PASSWORD_L                   "dba-password"
 #define DELVOL_SA_MODE_S                        'S'
 #define DELVOL_SA_MODE_L                        "SA-mode"
-#define DELVOL_CS_MODE_S                        'C'
-#define DELVOL_CS_MODE_L                        "CS-mode"
-#endif
 
 /* spacedb option list */
 #define SPACE_OUTPUT_FILE_S                     'o'
@@ -1922,9 +1918,7 @@ extern "C"
   extern int upgradedb (UTIL_FUNCTION_ARG * arg_map);
   extern int backupdb (UTIL_FUNCTION_ARG * arg_map);
   extern int addvoldb (UTIL_FUNCTION_ARG * arg_map);
-#if 0
   extern int delvoldb (UTIL_FUNCTION_ARG * arg_map);
-#endif
   extern int checkdb (UTIL_FUNCTION_ARG * arg_map);
   extern int spacedb (UTIL_FUNCTION_ARG * arg_map);
   extern int lockdb (UTIL_FUNCTION_ARG * arg_map);

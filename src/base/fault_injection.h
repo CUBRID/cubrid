@@ -65,6 +65,8 @@ typedef enum
   FI_TEST_DISK_MANAGER_VOLUME_ADD = 100000,
   FI_TEST_DISK_MANAGER_VOLUME_EXPAND = 100001,
   FI_TEST_DISK_MANAGER_VOLHEADER_HOLD = 100002,	/* keep the volume header latched, to make contention observable */
+  FI_TEST_DISK_MANAGER_VOLUME_DELETE_BEFORE_COMMIT = 100003,	/* exit before a volume deletion is decided */
+  FI_TEST_DISK_MANAGER_VOLUME_DELETE_AFTER_COMMIT = 100004,	/* exit after a volume deletion is decided */
 
   /* FILE IO (100100 ~ 100199) */
   FI_TEST_FILE_IO_FORMAT = 100100,

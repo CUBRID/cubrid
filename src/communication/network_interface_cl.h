@@ -62,6 +62,10 @@
 #include "network_cl.h"
 #endif
 
+#if defined (SA_MODE)
+#include "disk_manager.h"
+#endif
+
 // forward declarations
 #if defined (SA_MODE)
 struct bo_restart_arg;
@@ -225,6 +229,8 @@ extern int boot_find_last_temp (void);
 extern int boot_delete (const char *db_name, bool force_delete);
 #if defined (SA_MODE)
 extern int boot_restart_from_backup (int print_restart, const char *db_name, bo_restart_arg * r_args);
+extern int boot_check_delete_volume (VOLID volid, DISK_DELVOL_STATUS * status, DISK_DELVOL_INFO * info);
+extern int boot_delete_volume_extension (VOLID volid);
 #endif // SA_MODE
 extern bool boot_shutdown_server (ER_FINAL_CODE iserfinal);
 extern int boot_soft_rename (const char *old_db_name, const char *new_db_name, const char *new_db_path,

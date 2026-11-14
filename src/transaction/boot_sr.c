@@ -6190,6 +6190,56 @@ error:
 }
 
 /*
+ * boot_dbparm_delete_last_volume () - remove the last permanent volume from boot_Db_parm (reverse of
+ *                                     boot_dbparm_save_volume)
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * volid (in)      : last permanent volume, being deleted
+ * prev_volid (in) : permanent volume before it, the new last one
+ *
+ * note: the caller keeps a system operation started. if it is aborted after this succeeds, the heap record is rolled
+ *       back but the cached boot_Db_parm is not; the caller reloads it with boot_reset_db_parm.
+ */
+int
+boot_dbparm_delete_last_volume (THREAD_ENTRY * thread_p, VOLID volid, VOLID prev_volid)
+{
+  VPID vpid_boot_bp_parm;
+  BOOT_DB_PARM save_boot_db_parm = *boot_Db_parm;
+  int error_code = NO_ERROR;
+
+  assert (log_check_system_op_is_started (thread_p));
+
+  if (volid == LOG_DBFIRST_VOLID || volid != boot_Db_parm->last_volid || prev_volid >= volid
+      || boot_Db_parm->nvols <= 1)
+    {
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DISK_CANNOT_DELETE_VOLUME, 1, volid);
+      return ER_DISK_CANNOT_DELETE_VOLUME;
+    }
+
+  boot_Db_parm->last_volid = prev_volid;
+  boot_Db_parm->nvols--;
+
+  VPID_GET_FROM_OID (&vpid_boot_bp_parm, boot_Db_parm_oid);
+  log_append_undo_data2 (thread_p, RVPGBUF_FLUSH_PAGE, NULL, NULL, 0, sizeof (vpid_boot_bp_parm), &vpid_boot_bp_parm);
+
+  error_code = boot_db_parm_update_heap (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      *boot_Db_parm = save_boot_db_parm;
+      return error_code;
+    }
+
+  /* as in boot_dbparm_save_volume, restart should find the new number of volumes */
+  heap_flush (thread_p, boot_Db_parm_oid);
+  dwb_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);
+
+  return NO_ERROR;
+}
+
+/*
  * boot_db_parm_update_heap () - update heap record for boot_Db_parm
  *
  * return        : error code
