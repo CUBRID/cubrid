@@ -145,6 +145,7 @@ static int drop_stored_procedure_code (MOP sp_mop, bool allow_system_generated);
 
 static int jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, std::string &out);
 static int check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type);
+static const char *jsp_pl_call_name (PARSER_CONTEXT *parser, PT_NODE *node);
 
 extern bool ssl_client;
 
@@ -552,6 +553,69 @@ jsp_is_sp_parallel_eligible (const char *name)
   (void) name;
   return false;
 #endif
+}
+
+/*
+ * jsp_is_sp_deterministic - whether the stored function a call node names is declared DETERMINISTIC
+ *   return: true only with the DETERMINISTIC declaration; a lookup failure is false and raises no error
+ *   node(in): PT_METHOD_CALL of a stored procedure or function
+ *
+ * Note: the result reuse check (memoize, correlated subquery cache) reads it from the parse tree, in CS and SA
+ *       alike (CBRD-27993).
+ */
+bool
+jsp_is_sp_deterministic (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  DB_OBJECT *mop_p;
+  DB_VALUE directive_val;
+  int save;
+  bool deterministic = false;
+  const char *name = jsp_pl_call_name (parser, node);
+
+  if (name == NULL)
+    {
+      return false;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+  er_stack_push ();
+
+  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  if (mop_p != NULL && db_get (mop_p, SP_ATTR_DIRECTIVE, &directive_val) == NO_ERROR)
+    {
+      deterministic = (db_get_int (&directive_val) & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC) != 0;
+    }
+
+  er_stack_pop ();
+  AU_RESTORE (save);
+
+  return deterministic;
+}
+
+/* the catalog name of the routine a PT_METHOD_CALL calls */
+static const char *
+jsp_pl_call_name (PARSER_CONTEXT *parser, PT_NODE *node)
+{
+  PT_NODE *method_name_node = node->info.method_call.method_name;
+  const char *name;
+
+  if (method_name_node == NULL)
+    {
+      return NULL;
+    }
+  if (PT_NAME_RESOLVED (method_name_node))
+    {
+      int custom_print_saved = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_QUOTES;
+      parser->custom_print &= ~PT_PRINT_QUOTES;
+      name = parser_print_tree (parser, method_name_node);
+      parser->custom_print = custom_print_saved;
+    }
+  else
+    {
+      name = PT_NAME_ORIGINAL (method_name_node);
+    }
+  return name;
 }
 
 MOP
@@ -2335,21 +2399,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
   sp_entry entry (NUM_SP_ATTR);
 
   {
-    PT_NODE *method_name_node = node->info.method_call.method_name;
-
-    const char *name;
-    if (PT_NAME_RESOLVED (method_name_node))
-      {
-	int custom_print_saved = parser->custom_print;
-	parser->custom_print |= PT_SUPPRESS_QUOTES;
-	parser->custom_print &= ~PT_PRINT_QUOTES;
-	name = parser_print_tree (parser, method_name_node);
-	parser->custom_print = custom_print_saved;
-      }
-    else
-      {
-	name = PT_NAME_ORIGINAL (method_name_node);
-      }
+    const char *name = jsp_pl_call_name (parser, node);
 
     sig.name = db_private_strdup (NULL, name);
     if (PT_IS_METHOD (node))
@@ -2404,15 +2454,6 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 #if defined (CS_MODE)
 	sig.auth = db_private_strdup (NULL, auth_name);
-	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_DETERMINISTIC)
-	  {
-	    sig.is_deterministic = true;
-	  }
-	else
-	  {
-	    sig.is_deterministic = false;
-	  }
-
 	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
 	  {
 	    sig.is_parallel_enabled = true;

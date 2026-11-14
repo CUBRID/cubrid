@@ -175,6 +175,8 @@ extern void pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST
 					  const XASL_NODE * producer, const OUTPTR_LIST * output);
 extern void pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OUTPTR_LIST * output);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
+extern bool pt_is_result_reuse_safe (PARSER_CONTEXT * parser, PT_NODE * tree);
+extern SQ_KEY *pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
 extern REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,

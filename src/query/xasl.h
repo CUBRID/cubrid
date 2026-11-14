@@ -1402,6 +1402,9 @@ struct xasl_node
   bool iscan_oid_order;
 
   SQ_CACHE *sq_cache;
+  /* an NL inner's memoize key: the slots of the outer scans' columns its terms read, chosen at XASL generation;
+   * NULL: not memoized, n_elements 0: reads no outer value (CBRD-27993) */
+  SQ_KEY *memoize_key;
   int parallelism;		/* parallelism of the query */
 
 #if defined (CS_MODE) || defined (SA_MODE)
