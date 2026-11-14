@@ -1527,12 +1527,13 @@ namespace cubthread
 	     || !static_cast<worker_elastic *> (worker_p)->m_blocking_continuation_only;
     };
 
+    // the most recently returned worker first: it ran last, so its cache is still warm
     auto selected_it = this->m_available_workers.end ();
-    for (auto it = this->m_available_workers.begin (); it != this->m_available_workers.end (); ++it)
+    for (auto it = this->m_available_workers.rbegin (); it != this->m_available_workers.rend (); ++it)
       {
 	if (is_eligible (*it) && static_cast<worker_elastic *> (*it)->has_thread ())
 	  {
-	    selected_it = it;
+	    selected_it = std::prev (it.base ());
 	    break;
 	  }
       }

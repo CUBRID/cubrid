@@ -1568,10 +1568,10 @@
 
 #define ER_STREAM_NO_MORE_DATA                      -1215
 #define ER_STREAM_UNPACKING_INV_OBJ_ID              -1216
-#define ER_STREAM_RESERVED_2                        -1217
-#define ER_STREAM_RESERVED_3                        -1218
-#define ER_STREAM_RESERVED_4                        -1219
-#define ER_STREAM_RESERVED_5                        -1220
+#define ER_STREAM_SESSION_ERROR                     -1217
+#define ER_STREAM_NOT_OPEN                          -1218
+#define ER_STREAM_NOT_SUPPORTED                     -1219
+#define ER_STREAM_INVALID_USE                       -1220
 #define ER_STREAM_RESERVED_6                        -1221
 #define ER_STREAM_RESERVED_7                        -1222
 #define ER_STREAM_RESERVED_8                        -1223
