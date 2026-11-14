@@ -677,7 +677,8 @@ metadata_of_threads (void)
     {"Lockwait_state", "varchar(24)"},
     {"Next_wait_thread_index", "int"},
     {"Next_tran_wait_thread_index", "int"},
-    {"Next_worker_thread_index", "int"}
+    {"Next_worker_thread_index", "int"},
+    {"Wait_elapsed_msecs", "bigint"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

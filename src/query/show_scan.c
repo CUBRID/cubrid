@@ -78,7 +78,7 @@ struct show_request
   END_SCAN_FUNC end_func;	/* end scan function */
 };
 
-const size_t THREAD_SCAN_COLUMN_COUNT = 26;
+const size_t THREAD_SCAN_COLUMN_COUNT = 27;
 
 static SCAN_CODE showstmt_array_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 					   void *ptr);
@@ -795,6 +795,18 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   if (next_thrd != NULL)
     {
       db_make_int (&vals[idx], next_thrd->index);
+    }
+  else
+    {
+      db_make_null (&vals[idx]);
+    }
+  idx++;
+
+  /* Wait_elapsed_msecs: time since the thread entered its current wait; NULL unless the thread is waiting */
+  i64val = thrd->get_wait_elapsed_msecs ();
+  if (thrd->m_status == cubthread::entry::status::TS_WAIT && i64val >= 0)
+    {
+      db_make_bigint (&vals[idx], (DB_BIGINT) i64val);
     }
   else
     {

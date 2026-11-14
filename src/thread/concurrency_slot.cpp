@@ -367,6 +367,8 @@ namespace cubthread
     ulock.unlock ();
 
     saved_status = thread_p->resume_status;
+    // a new wait, even when it follows the lock or queue wait of the same suspension; the caller stops the clock
+    thread_p->start_wait_clock ();
     thread_p->resume_status = THREAD_CONCURRENCY_SLOT_SUSPENDED;
 
     // wait until the wakeup predicate is true
