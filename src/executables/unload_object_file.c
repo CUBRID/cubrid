@@ -61,7 +61,10 @@
 
 #include "message_catalog.h"
 #include "string_opfunc.h"
+#include "tz_support.h"
 #include "porting.h"
+#include "unloaddb.h"
+#include "compressor.hpp"
 
 volatile bool error_occurred = false;
 int g_io_buffer_size = 4096;
@@ -76,8 +79,11 @@ static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
+static int binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_length, DB_TYPE type);
+static int binary_print_tz (TEXT_OUTPUT * tout, DB_VALUE * value, DB_TYPE type);
 
 static int write_object_file (TEXT_BUFFER_BLK * head);
+static int binary_compress_output (TEXT_BUFFER_BLK * head, TEXT_BUFFER_BLK ** compressed);
 
 #if !defined(WINDOWS)
 extern S_WAITING_INFO wi_write_file;
@@ -880,6 +886,11 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
+      /*  Duplicate definitions of collation types are not permitted, so execution should not reach here. 
+       * It should have been handled by calling process_set() directly in process_value().
+       * So, let's add an assert() here and plan to remove fprint_special_set() in the future.
+       */
+      assert (false);
       CHECK_PRINT_ERROR (fprint_special_set (tout, db_get_set (value)));
       break;
     case DB_TYPE_BLOB:
@@ -888,6 +899,169 @@ desc_value_special_fprint (TEXT_OUTPUT * tout, DB_VALUE * value)
       break;
     default:
       CHECK_PRINT_ERROR (fprint_special_strings (tout, value));
+      break;
+    }
+
+exit_on_end:
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  goto exit_on_end;
+}
+
+int
+desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  const char *str_ptr = NULL;
+  char *json_body = NULL;
+  DB_CONST_C_BIT bits = NULL;
+  DB_TYPE type;
+  int len = 0;
+  type = DB_VALUE_TYPE (value);
+
+  switch (type)
+    {
+    case DB_TYPE_NULL:
+      CHECK_PRINT_ERROR (binary_print (tout, NULL, 0, type));
+      break;
+
+    case DB_TYPE_BIGINT:
+      CHECK_PRINT_ERROR (binary_print
+			 (tout, (u_char *) & (value->data.bigint), (int) sizeof (value->data.bigint), type));
+      break;
+
+    case DB_TYPE_INTEGER:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.i), (int) sizeof (value->data.i), type));
+      break;
+
+    case DB_TYPE_SMALLINT:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.sh), (int) sizeof (value->data.sh), type));
+      break;
+
+    case DB_TYPE_FLOAT:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.f), (int) sizeof (value->data.f), type));
+      break;
+
+    case DB_TYPE_DOUBLE:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.d), (int) sizeof (value->data.d), type));
+      break;
+
+    case DB_TYPE_ENUMERATION:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.enumeration.short_val),
+				       (int) sizeof (value->data.enumeration.short_val), type));
+      break;
+
+    case DB_TYPE_DATE:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.date), (int) sizeof (value->data.date), type));
+      break;
+
+    case DB_TYPE_TIME:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.time), (int) sizeof (value->data.time), type));
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) & (value->data.utime), (int) sizeof (value->data.utime), type));
+      break;
+
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_DATETIMETZ:
+      CHECK_PRINT_ERROR (binary_print_tz (tout, value, type));
+      break;
+
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+      CHECK_PRINT_ERROR (binary_print
+			 (tout, (u_char *) & (value->data.datetime), (int) sizeof (value->data.datetime), type));
+      break;
+    case DB_TYPE_MONETARY:
+      {
+	/* see UNLOAD_RAW_MONETARY_SIZE for the layout */
+	const DB_MONETARY *money = db_get_monetary (value);
+	int currency = (int) money->type;
+	u_char tmp[UNLOAD_RAW_MONETARY_SIZE];
+
+	memcpy (tmp, &money->amount, sizeof (double));
+	memcpy (tmp + sizeof (double), &currency, sizeof (int));
+
+	CHECK_PRINT_ERROR (binary_print (tout, tmp, (int) UNLOAD_RAW_MONETARY_SIZE, type));
+      }
+      break;
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      str_ptr = db_get_string (value);
+      len = db_get_string_size (value);
+      if (len < 0)
+	{
+	  len = (int) strlen (str_ptr);
+	}
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) str_ptr, len, type));
+      break;
+
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      /* db_get_bit () answers the length in bits, not in bytes */
+      bits = db_get_bit (value, &len);
+      CHECK_PRINT_ERROR (binary_print_bit (tout, (const u_char *) bits, len, type));
+      break;
+
+    case DB_TYPE_NUMERIC:
+      {
+	/* see UNLOAD_RAW_NUMERIC_HEADER_SIZE for the layout */
+	bool is_float_numeric;
+	int precision, scale;
+	const u_char *digits = (const u_char *) value->data.num.d.buf;
+	int skip = 0;
+	int length;
+	u_char tmp[UNLOAD_RAW_NUMERIC_HEADER_SIZE + sizeof (value->data.num.d.buf)];
+	u_char *flags = tmp + (sizeof (int) << 1);
+
+	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
+	memcpy (tmp, &precision, sizeof (int));
+	memcpy (tmp + sizeof (int), &scale, sizeof (int));
+
+	while (skip < (int) sizeof (value->data.num.d.buf) && digits[skip] == 0)
+	  {
+	    skip++;
+	  }
+	length = (int) sizeof (value->data.num.d.buf) - skip;
+
+	*flags = 0x00;
+	if (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value) && length > 0)
+	  {
+	    *flags |= UNLOAD_RAW_NUMERIC_NEGATIVE;
+	  }
+	if (is_float_numeric)
+	  {
+	    *flags |= UNLOAD_RAW_NUMERIC_FLOATING;
+	  }
+	flags[1] = (u_char) length;
+	memcpy (tmp + UNLOAD_RAW_NUMERIC_HEADER_SIZE, digits + skip, length);
+
+	CHECK_PRINT_ERROR (binary_print (tout, tmp, (int) UNLOAD_RAW_NUMERIC_HEADER_SIZE + length, type));
+      }
+      break;
+
+    case DB_TYPE_JSON:
+      json_body = db_get_json_raw_body (value);
+      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) json_body, strlen (json_body), type));
+      db_private_free (NULL, json_body);
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      [[fallthrough]];
+      /* other stubs */
+    case DB_TYPE_ERROR:
+    case DB_TYPE_POINTER:
+      assert (false);
+      break;
+
+    default:
+      /* the others are handled by callers or internal-use only types */
       break;
     }
 
@@ -911,6 +1085,10 @@ exit_on_error:
 void
 desc_value_print (print_output & output_ctx, DB_VALUE * value)
 {
+  /*
+   * This function is called only when outputting schema-related information in unloaddb. 
+   * It is not called during data object export.
+   */
   switch (DB_VALUE_TYPE (value))
     {
     case DB_TYPE_SET:
@@ -928,34 +1106,14 @@ desc_value_print (print_output & output_ctx, DB_VALUE * value)
     }
 }
 
-
-/*
- * text_print - print formatted text to TEXT_OUTPUT
- *    return: NO_ERROR if successful, error code otherwise
- *    tout(out): TEXT_OUTPUT
- *    buf(in): source buffer
- *    buflen(in): length of buffer
- *    fmt(in): format string
- *    ...(in): arguments
- */
-int
-text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...)
+static int
+text_print_buffer (TEXT_OUTPUT * tout, const char *buf, int buflen)
 {
   int error = NO_ERROR;
-  int nbytes, size;
-  va_list ap;
-  assert (buflen >= 0);
-
-  if (tout->tail_ptr == NULL)
-    {
-      assert (tout->head_ptr == NULL);
-      CHECK_PRINT_ERROR (get_text_output_mem (tout, ((buflen > 0) ? buflen : -1)));
-    }
-
-  size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
   if (buflen > 0)
     {
       int tlen = 0;
+      int size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
       assert (buf != NULL);
 
       while (buflen >= size)
@@ -979,8 +1137,47 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
 	  tout->tail_ptr->count += buflen;
 	}
     }
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+
+}
+
+
+/*
+ * text_print - print formatted text to TEXT_OUTPUT
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    buf(in): source buffer
+ *    buflen(in): length of buffer
+ *    fmt(in): format string
+ *    ...(in): arguments
+ */
+int
+text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ...)
+{
+  int error = NO_ERROR;
+  va_list ap;
+  assert (buflen >= 0);
+
+  if (tout->tail_ptr == NULL)
+    {
+      assert (tout->head_ptr == NULL);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, ((buflen > 0) ? buflen : -1)));
+    }
+
+  if (buflen > 0)
+    {
+      CHECK_PRINT_ERROR (text_print_buffer (tout, buf, buflen));
+    }
   else
     {
+      int nbytes, size;
+
+      size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
+
       va_start (ap, fmt);
       nbytes = vsnprintf (tout->tail_ptr->ptr, size, fmt, ap);
       va_end (ap);
@@ -1011,6 +1208,443 @@ exit_on_error:
 }
 
 int
+binary_reserve_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK ** rec_blk, char **rec_size_ptr)
+{
+  int error = NO_ERROR;
+  const BIN_REC_SIZE_TYPE rec_sz = BIN_END_OF_RECORDS;
+
+  /* the size field is back patched later on, it must not be split over two blocks */
+  if (tout->tail_ptr == NULL || (tout->tail_ptr->iosize - tout->tail_ptr->count) < (int) sizeof (rec_sz))
+    {
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, (int) sizeof (rec_sz)));
+    }
+
+  *rec_blk = tout->tail_ptr;
+  *rec_size_ptr = tout->tail_ptr->ptr;
+
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) &rec_sz, (int) sizeof (rec_sz)));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_discard_row - take a row of a binary section back out of TEXT_OUTPUT
+ *    return: void
+ *    tout(in/out): TEXT_OUTPUT the row was written to
+ *    rec_blk(in): block holding the size field of the row, see binary_reserve_row_size ()
+ *    rec_size_ptr(in): the size field
+ *
+ * Note: the bytes of the row are all still in tout, a row is handed to the writer only once it is complete
+ *       (text_print_request_flush () in process_object ()). What follows the size field is dropped and the
+ *       blocks the row went on to are released.
+ */
+static void
+binary_discard_row (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr)
+{
+  TEXT_BUFFER_BLK *next = rec_blk->next;
+
+  while (next != NULL)
+    {
+      TEXT_BUFFER_BLK *tp = next;
+
+      next = tp->next;
+      c_text_buf_mgr.release_text_buffer (tp);
+    }
+
+  rec_blk->next = NULL;
+  rec_blk->ptr = rec_size_ptr;
+  rec_blk->count = (int) (rec_size_ptr - rec_blk->buffer);
+  tout->tail_ptr = rec_blk;
+}
+
+/*
+ * binary_max_record_size - the largest row the binary section being written can hold
+ *    return: BIN_MAX_RECORD_SIZE, or BIN_MAX_COMPRESSED_RECORD_SIZE for a compressed section, whose row has to fit in
+ *            a block LZ4 can compress
+ */
+int64_t
+binary_max_record_size (void)
+{
+  return (g_data_format == OBJECT_FORMAT_BINARY_COMPRESSED) ? BIN_MAX_COMPRESSED_RECORD_SIZE : BIN_MAX_RECORD_SIZE;
+}
+
+/*
+ * binary_fill_row_size - write the size of a complete row of a binary section into its size field
+ *    return: NO_ERROR, or ER_FAILED when the row is larger than the size field can describe
+ *    tout(in/out): TEXT_OUTPUT the row was written to
+ *    rec_blk(in): block holding the size field, see binary_reserve_row_size ()
+ *    rec_size_ptr(in/out): the size field
+ *    row_size(out): size of the row, the size field excluded
+ *
+ * Note: The size field is set to BIN_END_OF_RECORDS until it's filled, which ends the section early.
+ *       If a row has an error, unloaddb drops it from the output instead of leaving it behind, 
+ *       because leaving it would cut the section short.
+ */
+int
+binary_fill_row_size (TEXT_OUTPUT * tout, TEXT_BUFFER_BLK * rec_blk, char *rec_size_ptr, int64_t * row_size)
+{
+  TEXT_BUFFER_BLK *ptr;
+  int64_t length;
+  BIN_REC_SIZE_TYPE size_field;
+
+  assert (rec_size_ptr != NULL && rec_blk != NULL);
+
+  /* counted in 64 bits, a row is made of values of up to 1GB each and can go past what the field holds */
+  length = (int64_t) (rec_blk->ptr - rec_size_ptr) - (int64_t) sizeof (BIN_REC_SIZE_TYPE);
+  for (ptr = rec_blk->next; ptr != NULL; ptr = ptr->next)
+    {
+      length += ptr->count;
+    }
+
+  *row_size = length;
+
+  if (length > binary_max_record_size ())
+    {
+      binary_discard_row (tout, rec_blk, rec_size_ptr);
+      return ER_FAILED;
+    }
+
+  /* a row has a column at least, so its size is never the end of records marker */
+  assert (length > BIN_END_OF_RECORDS);
+
+  size_field = (BIN_REC_SIZE_TYPE) length;
+  memcpy (rec_size_ptr, &size_field, sizeof (BIN_REC_SIZE_TYPE));
+
+  return NO_ERROR;
+}
+
+/*
+ * binary_print_header - print the header of one column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    is_null(in): the column is NULL
+ *    buf_size(in): number of data bytes which follow the header
+ *    type(in): type of the value
+ *
+ * Note: a column is [varint64 (size + 1)][type, 1 byte][size bytes of data]. One is added to the
+ *       size to tell an empty string from NULL, and a NULL column is a single 0x00 byte without a
+ *       type byte. The reader is binary_row_reader in src/loaddb/load_common.cpp.
+ */
+static int
+binary_print_header (TEXT_OUTPUT * tout, bool is_null, int buf_size, DB_TYPE type)
+{
+  int error = NO_ERROR;
+  int header_bytes = 0;
+  u_char column_header[13];	// varint64(10) + type(1) + safety(2)
+
+  if (is_null)
+    {
+      assert (buf_size == 0);
+      column_header[0] = 0;
+      header_bytes = 1;
+    }
+  else
+    {
+      int64_t tlen = (int64_t) buf_size + 1;
+      assert (buf_size >= 0);
+      header_bytes = encode_varint64 (tlen, column_header);
+      column_header[header_bytes++] = (u_char) type;
+    }
+
+  if (tout->tail_ptr == NULL)
+    {
+      assert (tout->head_ptr == NULL);
+      CHECK_PRINT_ERROR (get_text_output_mem (tout, buf_size + header_bytes));
+    }
+
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) column_header, header_bytes));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_print - print one column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    buf(in): data of the column, NULL for a NULL value
+ *    buf_size(in): size of the data
+ *    type(in): type of the value
+ */
+int
+binary_print (TEXT_OUTPUT * tout, const u_char * buf, int buf_size, DB_TYPE type)
+{
+  int error = NO_ERROR;
+
+  CHECK_PRINT_ERROR (binary_print_header (tout, (buf == NULL), buf_size, type));
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (char *) buf, buf_size));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_print_bit - print a BIT or VARBIT column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    bits(in): the bytes holding the bits
+ *    bit_length(in): length of the value in bits
+ *    type(in): DB_TYPE_BIT or DB_TYPE_VARBIT
+ *
+ * Note: the length in bits cannot be told from the number of bytes, so it leads the data:
+ *       [int bit length][(bit length + 7) / 8 bytes]
+ */
+static int
+binary_print_bit (TEXT_OUTPUT * tout, const u_char * bits, int bit_length, DB_TYPE type)
+{
+  int error = NO_ERROR;
+  int byte_size = (bit_length + 7) / 8;
+
+  CHECK_PRINT_ERROR (binary_print_header (tout, false, (int) UNLOAD_RAW_BIT_LENGTH_SIZE + byte_size, type));
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (const char *) &bit_length, (int) UNLOAD_RAW_BIT_LENGTH_SIZE));
+  CHECK_PRINT_ERROR (text_print_buffer (tout, (const char *) bits, byte_size));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_print_tz - print a TIMESTAMPTZ or DATETIMETZ column of a binary section row
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): TEXT_OUTPUT
+ *    value(in): the value
+ *    type(in): DB_TYPE_TIMESTAMPTZ or DB_TYPE_DATETIMETZ
+ *
+ * Note: a value of an offset TZ_ID is written as it is, one of a geographic TZ_ID as the text
+ *       form writes it. See UNLOAD_RAW_TZ_RAW for why.
+ */
+static int
+binary_print_tz (TEXT_OUTPUT * tout, DB_VALUE * value, DB_TYPE type)
+{
+  int error = NO_ERROR;
+  u_char tmp[1 + UNLOAD_RAW_TZ_TEXT_MAX];
+  int size = 1;
+  DB_TIMESTAMPTZ *ts_tz = NULL;
+  DB_DATETIMETZ *dt_tz = NULL;
+  const TZ_ID *tz_id;
+  TZ_REGION region;
+
+  assert (type == DB_TYPE_TIMESTAMPTZ || type == DB_TYPE_DATETIMETZ);
+
+  if (type == DB_TYPE_TIMESTAMPTZ)
+    {
+      ts_tz = db_get_timestamptz (value);
+      tz_id = &ts_tz->tz_id;
+    }
+  else
+    {
+      dt_tz = db_get_datetimetz (value);
+      tz_id = &dt_tz->tz_id;
+    }
+
+  /* decodes the bits of the TZ_ID only, without looking into the timezone library */
+  tz_id_to_region (tz_id, &region);
+
+  if (region.type == TZ_REGION_OFFSET)
+    {
+      tmp[0] = UNLOAD_RAW_TZ_RAW;
+      if (ts_tz != NULL)
+	{
+	  memcpy (tmp + size, &ts_tz->timestamp, sizeof (DB_TIMESTAMP));
+	  size += sizeof (DB_TIMESTAMP);
+	}
+      else
+	{
+	  memcpy (tmp + size, &dt_tz->datetime.date, sizeof (unsigned int));
+	  size += sizeof (unsigned int);
+	  memcpy (tmp + size, &dt_tz->datetime.time, sizeof (unsigned int));
+	  size += sizeof (unsigned int);
+	}
+      memcpy (tmp + size, tz_id, sizeof (TZ_ID));
+      size += sizeof (TZ_ID);
+    }
+  else
+    {
+      /* the text form of the value, without the quotes and the type name around it */
+      tmp[0] = UNLOAD_RAW_TZ_TEXT;
+      if (ts_tz != NULL)
+	{
+	  size += db_timestamptz_to_string ((char *) tmp + 1, UNLOAD_RAW_TZ_TEXT_MAX, &ts_tz->timestamp, tz_id);
+	}
+      else
+	{
+	  size += db_datetimetz_to_string ((char *) tmp + 1, UNLOAD_RAW_TZ_TEXT_MAX, &dt_tz->datetime, tz_id);
+	}
+    }
+
+  CHECK_PRINT_ERROR (binary_print (tout, tmp, size, type));
+
+  return error;
+exit_on_error:
+  CHECK_EXIT_ERROR (error);
+  return error;
+}
+
+/*
+ * binary_compress_output - turn the rows a TEXT_OUTPUT has gathered into the blocks of OBJECT_FORMAT_BINARY_COMPRESSED
+ *    return: NO_ERROR, or an error code when no memory is left
+ *    head(in): the blocks of the TEXT_OUTPUT, whole rows of OBJECT_FORMAT_BINARY ([uint32 row size][row]) only.
+ *              They are released whatever the outcome.
+ *    compressed(out): one block holding the compressed blocks, see BIN_BLOCK_HEADER_SIZE
+ *
+ * Note: a row can go on over several blocks of the TEXT_OUTPUT, so the rows are first gathered in one buffer when
+ *       there is more than one block, LZ4 takes its input in one piece. Then the rows are cut into blocks of about
+ *       BIN_BLOCK_RAW_SIZE on row boundaries and each one is compressed on its own.
+ *
+ *       It runs in the thread which made the rows, an extractor thread when there are several of them, so the
+ *       compression is shared out between those threads as the conversion of the values is.
+ */
+static int
+binary_compress_output (TEXT_BUFFER_BLK * head, TEXT_BUFFER_BLK ** compressed)
+{
+  int error = NO_ERROR;
+  TEXT_BUFFER_BLK *tp, *out = NULL;
+  char *raw = NULL, *gathered = NULL;
+  int64_t raw_size = 0, out_size = 0, pos, block_start, block_rows;
+  BIN_BLOCK_SIZE_TYPE header[4];
+
+  *compressed = NULL;
+
+  for (tp = head; tp != NULL; tp = tp->next)
+    {
+      raw_size += tp->count;
+    }
+
+  if (head->next == NULL)
+    {
+      raw = head->buffer;
+    }
+  else
+    {
+      gathered = (char *) malloc ((size_t) raw_size);
+      if (gathered == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) raw_size);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      pos = 0;
+      for (tp = head; tp != NULL; tp = tp->next)
+	{
+	  memcpy (gathered + pos, tp->buffer, tp->count);
+	  pos += tp->count;
+	}
+      raw = gathered;
+    }
+
+  /*
+   * The largest the blocks can come to, LZ4_compressBound () (n + n / 255 + 16) of each block with its header. A block
+   * is cut before BIN_BLOCK_RAW_SIZE only in front of a row that would take it past BIN_MAX_BLOCK_RAW_SIZE, which can
+   * happen once in what a TEXT_OUTPUT gathers, so there are at most raw_size / BIN_BLOCK_RAW_SIZE + 2 blocks. Should
+   * LZ4 still not fit what is left, it returns 0 and the block is stored as it is, which always fits.
+   */
+  out_size = raw_size + raw_size / 255 + (raw_size / BIN_BLOCK_RAW_SIZE + 2) * (BIN_BLOCK_HEADER_SIZE + 16);
+  if (out_size > INT_MAX)
+    {
+      /* a row is at most BIN_MAX_COMPRESSED_RECORD_SIZE, the rows a TEXT_OUTPUT gathers do not get near this */
+      assert (false);
+      error = ER_FAILED;
+      goto end;
+    }
+
+  out = c_text_buf_mgr.get_text_buffer ((int) out_size);
+  if (out == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  pos = 0;
+  while (pos < raw_size)
+    {
+      int stored_size;
+      char *dest;
+
+      /*
+       * Gather whole rows until BIN_BLOCK_RAW_SIZE is reached, and one row at least. A row which would take the block
+       * past what LZ4 takes in starts a block of its own.
+       */
+      block_start = pos;
+      block_rows = 0;
+      while (pos < raw_size && (block_rows == 0 || pos - block_start < BIN_BLOCK_RAW_SIZE))
+	{
+	  BIN_REC_SIZE_TYPE rec_size;
+	  int64_t rec_end;
+
+	  assert (pos + (int64_t) sizeof (rec_size) <= raw_size);
+	  memcpy (&rec_size, raw + pos, sizeof (rec_size));
+	  rec_end = pos + (int64_t) sizeof (rec_size) + rec_size;
+	  assert (rec_end <= raw_size);
+
+	  if (block_rows > 0 && rec_end - block_start > BIN_MAX_BLOCK_RAW_SIZE)
+	    {
+	      break;
+	    }
+
+	  pos = rec_end;
+	  block_rows++;
+	}
+
+      assert (pos - block_start <= BIN_MAX_BLOCK_RAW_SIZE);
+
+      dest = out->ptr + BIN_BLOCK_HEADER_SIZE;
+      stored_size =
+	cubcompress::compress < cubcompress::LZ4 > (raw + block_start, (int) (pos - block_start), dest,
+						    out->iosize - out->count - (int) BIN_BLOCK_HEADER_SIZE);
+      if (stored_size <= 0 || stored_size >= pos - block_start)
+	{
+	  /* LZ4 could not make the block smaller, it is stored as it is */
+	  stored_size = (int) (pos - block_start);
+	  memcpy (dest, raw + block_start, stored_size);
+	}
+
+      header[0] = (BIN_BLOCK_SIZE_TYPE) stored_size;
+      header[1] = (BIN_BLOCK_SIZE_TYPE) (pos - block_start);
+      header[2] = (BIN_BLOCK_SIZE_TYPE) block_rows;
+      /* of the raw bytes, which the reader has once it decompressed the block; 0 in a build for Windows */
+      header[3] = binary_block_checksum (raw + block_start, (size_t) (pos - block_start));
+      memcpy (out->ptr, header, BIN_BLOCK_HEADER_SIZE);
+
+      out->ptr += BIN_BLOCK_HEADER_SIZE + stored_size;
+      out->count += (int) BIN_BLOCK_HEADER_SIZE + stored_size;
+      assert (out->count <= out->iosize);
+    }
+
+  *compressed = out;
+  out = NULL;
+
+end:
+  while (head != NULL)
+    {
+      tp = head;
+      head = head->next;
+      c_text_buf_mgr.release_text_buffer (tp);
+    }
+
+  if (out != NULL)
+    {
+      c_text_buf_mgr.release_text_buffer (out);
+    }
+
+  if (gathered != NULL)
+    {
+      free_and_init (gathered);
+    }
+
+  return error;
+}
+
+int
 text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 {
   TEXT_BUFFER_BLK *tp, *head;
@@ -1037,7 +1671,13 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
       return NO_ERROR;
     }
 
-  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO)
+  /*
+   * The rows of a compressed section are gathered until they are worth a write, as with several threads, and not
+   * written one by one: they are compressed in blocks of BIN_BLOCK_RAW_SIZE, see binary_compress_output ().
+   */
+  bool compress = (g_data_format == OBJECT_FORMAT_BINARY_COMPRESSED);
+
+  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO && !compress)
     {
       tout->head_ptr = NULL;
       tout->tail_ptr = NULL;
@@ -1050,6 +1690,27 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
   tout->record_cnt++;
   if (force || head->next || ((head->iosize - head->count) < (((double) head->count / tout->record_cnt) * 1.5)))
     {
+      if (compress)
+	{
+	  int error;
+
+	  /* the blocks of tout are released either way */
+	  tout->head_ptr = NULL;
+	  tout->tail_ptr = NULL;
+	  tout->record_cnt = 0;
+
+	  error = binary_compress_output (head, &head);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (!g_multi_thread_mode && g_fd_handle != INVALID_FILE_NO)
+	    {
+	      return write_object_file (head);
+	    }
+	}
+
       do
 	{
 	  if (c_write_blk_queue.enqueue (head))
@@ -1066,6 +1727,11 @@ text_print_request_flush (TEXT_OUTPUT * tout, bool force)
 	  YIELD_THREAD ();
 	  if (error_occurred)
 	    {
+	      if (compress)
+		{
+		  /* no longer held by tout */
+		  c_text_buf_mgr.release_text_buffer (head);
+		}
 	      return ER_FAILED;
 	    }
 	}

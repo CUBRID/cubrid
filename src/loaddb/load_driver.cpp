@@ -86,6 +86,7 @@ namespace cubload
   {
     m_scanner->switch_streams (&iss);
     m_scanner->set_lineno (line_offset + 1);
+    m_scanner->clear_binary_block ();
     m_semantic_helper.reset_after_batch ();
 
     assert (m_class_installer != NULL && m_object_loader != NULL);

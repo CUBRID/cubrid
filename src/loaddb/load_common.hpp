@@ -27,6 +27,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <cstdint>
 #include <functional>
 #include <vector>
 #include "string_opfunc.h"
@@ -446,6 +447,15 @@ namespace cubload
       virtual void process_line (constant_type *cons) = 0;
 
       /*
+       * Process and inserts a row of a binary section. The row holds the raw attribute values the way
+       * unloaddb --data-format wrote them, see binary_row_reader below for the layout.
+       *
+       *    return: void
+       *    row(in): bytes of one row, the record size field excluded
+       */
+      virtual void process_binary_line (const string_type *row) = 0;
+
+      /*
        * Called after process_line, should implement login for cleaning up data after insert if required.
        */
       virtual void finish_line () = 0;
@@ -478,5 +488,213 @@ using load_status = cubload::load_status;
 	 (strncasecmp ((class_name), "glo", MAX(strlen(class_name), 3)) == 0      || \
 	  strncasecmp ((class_name), "glo_name", MAX(strlen(class_name), 8)) == 0  || \
 	  strncasecmp ((class_name), "glo_holder", MAX(strlen(class_name), 10)) == 0)
+
+
+/*
+ * Binary object file format, shared by unloaddb (writer) and loaddb (reader).
+ * A binary section holds one length prefixed record per row and is closed by a zero length.
+ * The size field is written in host byte order.
+ */
+typedef uint32_t BIN_REC_SIZE_TYPE;
+#define BIN_END_OF_RECORDS  (0)
+/* the largest row the size field can describe */
+#define BIN_MAX_RECORD_SIZE ((int64_t) UINT32_MAX)
+
+/*
+ * A binary section of OBJECT_FORMAT_BINARY_COMPRESSED holds its rows in blocks compressed with LZ4:
+ *
+ *   [uint32 stored size][uint32 raw size][uint32 row count][uint32 checksum][stored size bytes]
+ *   ... more blocks ...
+ *   [uint32 0]'\n'                <- BIN_END_OF_RECORDS in place of the stored size, as in OBJECT_FORMAT_BINARY
+ *
+ * The raw bytes of a block are whole rows laid out as OBJECT_FORMAT_BINARY lays them out, [uint32 row size][row],
+ * row count of them; a row never spans two blocks. A block is cut once its raw bytes reach BIN_BLOCK_RAW_SIZE, so a
+ * row larger than that has a block of its own. The stored bytes are the LZ4 block format (LZ4_compress_* and
+ * LZ4_decompress_safe ()), or the raw bytes as they are when the stored size equals the raw size, which is the case
+ * for a block LZ4 cannot make smaller.
+ *
+ * The checksum is XXH32 (seed 0) of the raw bytes, so it covers the stored bytes, the header and the decompression
+ * alike; a reader compares it once the block is decompressed. BIN_BLOCK_NO_CHECKSUM (0) means the writer had no XXH32
+ * and the reader does not check: a build for Windows writes it, since the LZ4 library it links has no XXH32 to offer,
+ * and does not check either. See binary_block_checksum ().
+ *
+ * The rows of a block count as row count lines, one per row as in OBJECT_FORMAT_BINARY, so line numbers are the same
+ * in both formats. split () in load_common.cpp cuts batches on block boundaries and reads the row count from the
+ * header to count them without decompressing.
+ *
+ * A block is the unit of compression rather than a row: a row is too short for LZ4 to find repeated bytes in it,
+ * those repeat between the rows. 64KB is the window of LZ4, a larger block hardly compresses better.
+ */
+typedef uint32_t BIN_BLOCK_SIZE_TYPE;
+#define BIN_BLOCK_HEADER_SIZE (4 * sizeof (BIN_BLOCK_SIZE_TYPE))
+#define BIN_BLOCK_NO_CHECKSUM (0)
+#define BIN_BLOCK_RAW_SIZE    (64 * 1024)
+/* the largest raw block, LZ4_MAX_INPUT_SIZE of lz4.h: a block larger than that cannot be compressed or decompressed */
+#define BIN_MAX_BLOCK_RAW_SIZE ((int64_t) 0x7E000000)
+/* the largest row a compressed section holds, which is the largest raw block with its row size field in it */
+#define BIN_MAX_COMPRESSED_RECORD_SIZE (BIN_MAX_BLOCK_RAW_SIZE - (int64_t) sizeof (BIN_REC_SIZE_TYPE))
+
+/*
+ * A NUMERIC value is written field by field, so that the size and the layout of the in-memory buffer
+ * (DB_NUMERIC_BUF_SIZE, the sign held apart from the digits) stay out of the file:
+ *
+ *   [int precision][int scale][1 byte flags][1 byte length][length bytes of the magnitude]
+ *
+ * The magnitude is an unsigned big-endian integer without its leading zero bytes, so zero has a
+ * length of 0. A reader right-aligns it in a buffer of its own size.
+ */
+#define UNLOAD_RAW_NUMERIC_HEADER_SIZE (sizeof (int) + sizeof (int) + 1 + 1)
+#define UNLOAD_RAW_NUMERIC_NEGATIVE    (0x02)
+#define UNLOAD_RAW_NUMERIC_FLOATING    (0x01)
+#define UNLOAD_RAW_NUMERIC_FLAGS       (UNLOAD_RAW_NUMERIC_NEGATIVE | UNLOAD_RAW_NUMERIC_FLOATING)
+
+/* a NUMERIC of BIN_FORMAT_VERSION_PRE_11_5: [int precision][int scale][the 16 byte two's complement buffer] */
+#define UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE (16)
+#define UNLOAD_RAW_NUMERIC_PRE_11_5_SIZE     (sizeof (int) + sizeof (int) + UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE)
+
+/*
+ * A MONETARY value is written field by field as well, rather than as DB_MONETARY, whose padding
+ * would put bytes of no meaning into the file:
+ *
+ *   [double amount][int currency (DB_CURRENCY)]
+ */
+#define UNLOAD_RAW_MONETARY_SIZE (sizeof (double) + sizeof (int))
+
+/*
+ * A TIMESTAMPTZ or DATETIMETZ value leads with a kind byte, since its TZ_ID is not always
+ * self-contained:
+ *
+ *   [UNLOAD_RAW_TZ_RAW][DB_TIMESTAMP | DB_DATE DB_TIME][TZ_ID]   an offset TZ_ID (+09:00)
+ *   [UNLOAD_RAW_TZ_TEXT][the value as the text form writes it]     a geographic TZ_ID (Asia/Seoul)
+ *
+ * An offset TZ_ID holds the offset itself and means the same to every build. A geographic one
+ * holds indexes into the timezone library (libcubrid_timezones), which differ between libraries
+ * built from different tzdata, so the value goes by its zone name instead and the reader looks the
+ * name up in its own library, as loading the text form does.
+ */
+#define UNLOAD_RAW_TZ_RAW      (0)
+#define UNLOAD_RAW_TZ_TEXT     (1)
+/* the longest text a geographic value is written as: a date, a time, a zone name and its abbreviation */
+#define UNLOAD_RAW_TZ_TEXT_MAX (256)
+
+/* a BIT or VARBIT value is written as its length in bits followed by the bytes holding the bits */
+#define UNLOAD_RAW_BIT_LENGTH_SIZE (sizeof (int))
+
+typedef enum
+{
+  OBJECT_FORMAT_TEXT = 0,
+  OBJECT_FORMAT_BINARY,
+  OBJECT_FORMAT_BINARY_COMPRESSED,	/* the rows of OBJECT_FORMAT_BINARY in LZ4 blocks, see BIN_BLOCK_HEADER_SIZE */
+  OBJECT_FORMAT_LAST
+} OBJECT_DATA_FORMAT;
+
+/*
+ * The "%format" command line of a class carries, next to the data format itself, the three
+ * properties a reader needs to decide whether it can read the binary section that follows:
+ *
+ *   %format <data format> <format version> <bit platform> <byte order>
+ *
+ * The format version identifies the encoding of the binary section, not the release that wrote
+ * it. unloaddb and loaddb move values through DB_VALUE rather than through disk images, so the
+ * disk compatibility level of the release says nothing about it: a release may change its disk
+ * image and keep this encoding, or the other way around. Bump BIN_FORMAT_VERSION whenever the
+ * bytes written for any type change, and keep the reader able to decode every earlier version.
+ * A reader refuses a version newer than its own.
+ *
+ * Fixed size values are still written in host byte order, so the bit platform and the byte order
+ * must match those of the reader.
+ *
+ * The first version is 3 rather than 1, to leave room for a backport of this format to an earlier
+ * release: a backport to 10.0 ~ 11.4 writes 2. An earlier release writes what its own DB_VALUE
+ * holds, so it is the reader of the later release that understands the earlier version, not the
+ * other way around.
+ *
+ * BIN_FORMAT_VERSION_PRE_11_5 is the version a backport to 10.0 ~ 11.4 writes. Those releases lay
+ * out every value the same way, and differ from BIN_FORMAT_VERSION in two points only:
+ *   - NUMERIC: [int precision][int scale][UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE bytes of the buffer],
+ *     the buffer being a two's complement big-endian integer (CBRD-26006 changed it to a magnitude
+ *     with the sign apart, and added the floating NUMERIC)
+ *   - NCHAR and VARNCHAR columns, of DB_TYPE_NCHAR and DB_TYPE_VARNCHAR, are read as CHAR and
+ *     VARCHAR, the way the text form reads N'...' (CBRD-24156 retired those types)
+ */
+#define BIN_FORMAT_VERSION          (3)
+#define BIN_FORMAT_VERSION_PRE_11_5 (2)
+
+#define BIN_FORMAT_ENDIAN_LITTLE (0)
+#define BIN_FORMAT_ENDIAN_BIG    (1)
+
+extern int binary_format_bit_platform (void);
+extern int binary_format_endian (void);
+extern BIN_BLOCK_SIZE_TYPE binary_block_checksum (const char *raw, size_t size);
+extern bool binary_block_checksum_matches (const char *raw, size_t size, BIN_BLOCK_SIZE_TYPE checksum);
+
+
+extern int encode_varint (int v, u_char *buf);
+extern int encode_varint64 (int64_t v, u_char *buf);
+extern bool decode_varint (u_char *buf, int buf_sz, int *val_ptr, int *consumed);
+extern bool decode_varint64 (u_char *buf, int buf_sz, int64_t *val_ptr, int *consumed);
+
+namespace cubload
+{
+  /*
+   * binary_column - one value of a row of a binary section
+   *
+   *    type is DB_TYPE_NULL for a NULL value, which carries no bytes. A collection is a column of its
+   *    own, whose bytes hold the number of elements as an int, and the elements follow it as the next
+   *    columns of the row. See binary_row_reader for the whole layout.
+   */
+  struct binary_column
+  {
+    DB_TYPE type;
+    const char *data;
+    std::size_t size;
+    std::size_t offset;		/* offset of the column in the row, for error messages */
+    int format_version;		/* BIN_FORMAT_VERSION or an earlier one, which decides how to read data */
+  };
+
+  /*
+   * binary_row_reader - walks the columns of one row of a binary section
+   *
+   *    A row is the sequence of its attribute values, each of them written by binary_print () in
+   *    src/executables/unload_object_file.c as
+   *
+   *      [varint64 (size + 1)][db type, 1 byte][size bytes of raw data]
+   *
+   *    where a varint of zero, a single 0x00 byte, stands for NULL and has no type byte.
+   *
+   *    A row that does not follow the layout is corrupted. next () then sets
+   *    ER_LDR_CORRUPTED_BINARY_RECORD, and every later call fails the same way: a column boundary that
+   *    was lost cannot be found again, so nothing behind it can be read.
+   *
+   *    The format version of the section, from its "%format" line, goes with every column so that
+   *    the data can be read the way that version wrote it. See BIN_FORMAT_VERSION.
+   */
+  class binary_row_reader
+  {
+    public:
+      binary_row_reader (const char *row, std::size_t size, int format_version);
+
+      bool has_more () const
+      {
+	return !m_corrupted && m_pos < m_size;
+      }
+
+      bool is_corrupted () const
+      {
+	return m_corrupted;
+      }
+
+      int next (binary_column &col);
+
+    private:
+      int set_corrupted ();
+
+      const char *m_row;
+      std::size_t m_size;
+      std::size_t m_pos;
+      bool m_corrupted;
+      int m_format_version;
+  };
+} // namespace cubload
 
 #endif /* _LOAD_COMMON_HPP_ */

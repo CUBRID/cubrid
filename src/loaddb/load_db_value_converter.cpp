@@ -31,7 +31,9 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "set_object.h"
 #include "string_opfunc.h"
+#include "tz_support.h"
 
 #include <array>
 #include <cassert>
@@ -339,12 +341,13 @@ namespace cubload
    *    The value is built with the literal's natural type and handed to tp_value_cast() against the attribute domain.
    *    The same cast SQL INSERT performs on the same literal.
    */
+  static int cast_to_attr_domain (db_value *natural, const attribute *attr, db_value *val);
+
   static int
   fallback_convert (const data_type ldr_type, const char *str, const size_t str_size, const attribute *attr,
 		    db_value *val)
   {
     db_value natural;
-    const tp_domain &domain = attr->get_domain ();
 
     db_make_null (&natural);
     db_make_null (val);
@@ -372,15 +375,35 @@ namespace cubload
 	return error_code;
       }
 
+    return cast_to_attr_domain (&natural, attr, val);
+  }
+
+  /*
+   * cast_to_attr_domain - cast a value of its natural type into the attribute domain
+   *    return: NO_ERROR or an error code
+   *    natural(in/out): the value to cast, cleared on return
+   *    attr(in): attribute being set
+   *    val(out): value in the attribute's domain
+   * Note:
+   *    The second half of fallback_convert (), shared with the binary section reader
+   *    (binary_to_db_value ()), so a value read from either form of the object file is refused
+   *    with the same error code and an --error-control-file names it the same way.
+   */
+  static int
+  cast_to_attr_domain (db_value *natural, const attribute *attr, db_value *val)
+  {
+    const tp_domain &domain = attr->get_domain ();
+    int error_code;
+
     error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
     if (error_code != NO_ERROR)
       {
-	db_value_clear (&natural);
+	db_value_clear (natural);
 	return error_code;
       }
 
     bool implicit_coercion = !TP_IS_CHAR_TYPE (domain.type->id);
-    TP_DOMAIN_STATUS status = tp_value_cast (&natural, val, const_cast<tp_domain *> (&domain), implicit_coercion);
+    TP_DOMAIN_STATUS status = tp_value_cast (natural, val, const_cast<tp_domain *> (&domain), implicit_coercion);
 
     if (status != DOMAIN_COMPATIBLE)
       {
@@ -406,16 +429,16 @@ namespace cubload
 	     * and --error-control-file filters by code, so a file naming -427 has to match the
 	     * overflow it was written for.
 	     */
-	    error_code = tp_domain_status_er_set (status, ARG_FILE_LINE, &natural, &domain);
+	    error_code = tp_domain_status_er_set (status, ARG_FILE_LINE, natural, &domain);
 	  }
 
-	db_value_clear (&natural);
+	db_value_clear (natural);
 	db_value_clear (val);
 
 	return error_code;
       }
 
-    db_value_clear (&natural);
+    db_value_clear (natural);
 
     return check_not_null (attr, val);
   }
@@ -1465,5 +1488,700 @@ namespace cubload
       }
 
     return NO_ERROR;
+  }
+
+  /*
+   * Binary section values
+   *
+   *    unloaddb --data-format writes each attribute value as the raw memory of its DB_VALUE payload,
+   *    see desc_value_special_fprint_binary () in src/executables/unload_object_file.c. The functions
+   *    below turn those bytes back into a DB_VALUE, of the type the object file names first, and
+   *    then into the attribute domain the way a text token reaches it:
+   *
+   *      - a string into a CHAR or VARCHAR column goes through to_db_generic_char (), the converter
+   *        a quoted string of the text form takes, so truncation and overflow are decided alike;
+   *      - a value of the attribute's own type is taken as it is, unless the domain carries a
+   *        precision the value has to be fitted to;
+   *      - anything else is cast by cast_to_attr_domain (), the cast fallback_convert () makes.
+   *
+   *    JSON and ELO values are written as text, the text their text form carries, and are converted
+   *    by the converters of that text.
+   */
+
+  static int
+  binary_corrupted (const binary_column &col)
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) col.offset);
+    return ER_LDR_CORRUPTED_BINARY_RECORD;
+  }
+
+  template <typename T>
+  static bool
+  binary_read_raw (const binary_column &col, T &out)
+  {
+    if (col.size != sizeof (T))
+      {
+	return false;
+      }
+
+    std::memcpy (&out, col.data, sizeof (T));
+    return true;
+  }
+
+  /*
+   * binary_make_numeric - build a NUMERIC value from its magnitude
+   *    return: NO_ERROR or an error code
+   *    col(in): the column, for the error message
+   *    magnitude(in): the magnitude, unsigned big-endian in a buffer of DB_NUMERIC_BUF_SIZE bytes
+   *    precision, scale, is_negative, is_floating(in): the rest of the value
+   *    val(out): the value
+   */
+  static int
+  binary_make_numeric (const binary_column &col, const unsigned char *magnitude, int precision, int scale,
+		       bool is_negative, bool is_floating, db_value *val)
+  {
+    /*
+     * The size checks of the callers let through any magnitude that fits the buffer. One with more
+     * digits than its precision would be stored as it is and read back as a wrong value, so it is
+     * refused here, as a damaged section.
+     */
+    if (numeric_get_precision_digits (const_cast<unsigned char *> (magnitude)) > precision)
+      {
+	return binary_corrupted (col);
+      }
+
+    /* zero has no sign */
+    if (is_negative)
+      {
+	is_negative = false;
+	for (int i = 0; i < DB_NUMERIC_BUF_SIZE; i++)
+	  {
+	    if (magnitude[i] != 0)
+	      {
+		is_negative = true;
+		break;
+	      }
+	  }
+      }
+
+    return db_make_numeric (val, (DB_C_NUMERIC) magnitude, precision, scale, DB_NUMERIC_BUF_SIZE, is_negative,
+			    is_floating);
+  }
+
+  /*
+   * binary_numeric - read a NUMERIC column of BIN_FORMAT_VERSION
+   *    [int precision][int scale][1 byte flags][1 byte length][magnitude], see UNLOAD_RAW_NUMERIC_HEADER_SIZE
+   */
+  static int
+  binary_numeric (const binary_column &col, db_value *val)
+  {
+    int precision, scale;
+    unsigned char flags;
+    std::size_t length;
+    unsigned char buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+
+    if (col.size < UNLOAD_RAW_NUMERIC_HEADER_SIZE)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (&precision, col.data, sizeof (int));
+    std::memcpy (&scale, col.data + sizeof (int), sizeof (int));
+    flags = (unsigned char) col.data[sizeof (int) << 1];
+    length = (unsigned char) col.data[ (sizeof (int) << 1) + 1];
+
+    /* a magnitude longer than the buffer of this build does not fit any NUMERIC it can hold */
+    if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION || (flags & ~UNLOAD_RAW_NUMERIC_FLAGS) != 0
+	|| length > sizeof (buf) || col.size != UNLOAD_RAW_NUMERIC_HEADER_SIZE + length)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (buf + sizeof (buf) - length, col.data + UNLOAD_RAW_NUMERIC_HEADER_SIZE, length);
+
+    return binary_make_numeric (col, buf, precision, scale, (flags & UNLOAD_RAW_NUMERIC_NEGATIVE) != 0,
+				(flags & UNLOAD_RAW_NUMERIC_FLOATING) != 0, val);
+  }
+
+  /*
+   * binary_numeric_pre_11_5 - read a NUMERIC column of BIN_FORMAT_VERSION_PRE_11_5
+   *    [int precision][int scale][UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE bytes of the buffer]
+   * Note:
+   *    10.0 ~ 11.4 hold a NUMERIC as a two's complement big-endian integer of 16 bytes, the sign
+   *    being its top bit, and have no floating NUMERIC. The magnitude of a negative one is its
+   *    two's complement negation. No NUMERIC of those releases reaches -2^127, which has none:
+   *    38 digits stay below 2^127.
+   */
+  static int
+  binary_numeric_pre_11_5 (const binary_column &col, db_value *val)
+  {
+    const std::size_t old_size = UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE;
+    int precision, scale;
+    unsigned char buf[DB_NUMERIC_BUF_SIZE] = { 0 };
+    unsigned char *digits = buf + sizeof (buf) - old_size;
+    bool is_negative;
+
+    static_assert (DB_NUMERIC_BUF_SIZE >= UNLOAD_RAW_NUMERIC_PRE_11_5_BUF_SIZE,
+		   "the buffer of 10.0 ~ 11.4 must fit in the buffer of this release");
+
+    if (col.size != UNLOAD_RAW_NUMERIC_PRE_11_5_SIZE)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (&precision, col.data, sizeof (int));
+    std::memcpy (&scale, col.data + sizeof (int), sizeof (int));
+    if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION || scale < 0 || scale > precision)
+      {
+	return binary_corrupted (col);
+      }
+
+    std::memcpy (digits, col.data + (sizeof (int) << 1), old_size);
+
+    is_negative = (digits[0] & 0x80) != 0;
+    if (is_negative)
+      {
+	/* two's complement negation: invert every bit, then add one from the least significant byte */
+	unsigned int carry = 1;
+
+	for (std::size_t i = old_size; i-- > 0;)
+	  {
+	    unsigned int byte = (unsigned char) ~digits[i] + carry;
+
+	    digits[i] = (unsigned char) byte;
+	    carry = byte >> 8;
+	  }
+      }
+
+    return binary_make_numeric (col, buf, precision, scale, is_negative, false, val);
+  }
+
+  /*
+   * binary_tz_value - build a TIMESTAMPTZ or DATETIMETZ value from its column
+   *    return: NO_ERROR or an error code
+   *    col(in): the column, of DB_TYPE_TIMESTAMPTZ or DB_TYPE_DATETIMETZ
+   *    attr(in): attribute being set, for the text converters
+   *    val(out): the value
+   * Note:
+   *    See UNLOAD_RAW_TZ_RAW for the two kinds. A geographic value comes as text and goes through
+   *    the converter of the text form, which looks its zone up in the timezone library of this
+   *    build, so it loads and fails the way the text form does.
+   */
+  static int
+  binary_tz_value (const binary_column &col, const attribute *attr, db_value *val)
+  {
+    const bool is_timestamp = (col.type == DB_TYPE_TIMESTAMPTZ);
+    const char *payload = col.data + 1;
+    std::size_t payload_size;
+
+    if (col.size < 1)
+      {
+	return binary_corrupted (col);
+      }
+    payload_size = col.size - 1;
+
+    switch ((unsigned char) col.data[0])
+      {
+      case UNLOAD_RAW_TZ_RAW:
+      {
+	TZ_ID tz_id;
+	TZ_REGION region;
+	std::size_t time_size = is_timestamp ? sizeof (DB_TIMESTAMP) : sizeof (unsigned int) * 2;
+
+	if (payload_size != time_size + sizeof (TZ_ID))
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	/* a geographic TZ_ID is never written this way, its indexes would mean nothing here */
+	std::memcpy (&tz_id, payload + time_size, sizeof (TZ_ID));
+	tz_id_to_region (&tz_id, &region);
+	if (region.type != TZ_REGION_OFFSET)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	if (is_timestamp)
+	  {
+	    DB_TIMESTAMPTZ v;
+
+	    std::memcpy (&v.timestamp, payload, sizeof (DB_TIMESTAMP));
+	    v.tz_id = tz_id;
+	    return db_make_timestamptz (val, &v);
+	  }
+	else
+	  {
+	    DB_DATETIMETZ v;
+
+	    std::memcpy (&v.datetime.date, payload, sizeof (unsigned int));
+	    std::memcpy (&v.datetime.time, payload + sizeof (unsigned int), sizeof (unsigned int));
+	    v.tz_id = tz_id;
+	    return db_make_datetimetz (val, &v);
+	  }
+      }
+
+      case UNLOAD_RAW_TZ_TEXT:
+      {
+	char text[UNLOAD_RAW_TZ_TEXT_MAX + 1];
+
+	if (payload_size > UNLOAD_RAW_TZ_TEXT_MAX)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	/* the text converters take a null terminated string */
+	std::memcpy (text, payload, payload_size);
+	text[payload_size] = '\0';
+
+	return is_timestamp ? to_db_timestamptz (text, payload_size, attr, val)
+	       : to_db_datetimetz (text, payload_size, attr, val);
+      }
+
+      default:
+	return binary_corrupted (col);
+      }
+  }
+
+  /*
+   * binary_value_hint - the domain a value of the given type is built after
+   *    return: the domain, or NULL when none fits
+   *    domain(in): attribute domain, or the domain of a collection
+   *    type(in): type the object file names for the value
+   * Note:
+   *    A string carries no codeset and an enumeration value no more than its index, so they are
+   *    built after the domain they are going into. For a collection that is the first element
+   *    domain of the same kind.
+   */
+  static const tp_domain *
+  binary_value_hint (const tp_domain *domain, DB_TYPE type)
+  {
+    const tp_domain *d = domain;
+
+    if (d != NULL && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (d)))
+      {
+	d = d->setdomain;
+      }
+
+    for (; d != NULL; d = d->next)
+      {
+	if (TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (d)))
+	  {
+	    return d;
+	  }
+
+	if (type == DB_TYPE_ENUMERATION && TP_DOMAIN_TYPE (d) == DB_TYPE_ENUMERATION)
+	  {
+	    return d;
+	  }
+
+	if (domain == NULL || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain)))
+	  {
+	    /* an attribute domain is not a list */
+	    break;
+	  }
+      }
+
+    return NULL;
+  }
+
+  /*
+   * binary_natural_value - build the value the object file wrote, in its own type
+   *    return: NO_ERROR or an error code
+   *    col(in): the column
+   *    attr(in): attribute being set, for error messages and for the text converters
+   *    hint(in): see binary_value_hint (), may be NULL
+   *    val(out): the value
+   * Note:
+   *    A string value points into the row and is not copied, the way a text token's value points
+   *    into the parse tree. It must not outlive the row.
+   */
+  static int
+  binary_natural_value (const binary_column &col, const attribute *attr, const tp_domain *hint, db_value *val)
+  {
+    db_make_null (val);
+
+    switch (col.type)
+      {
+      case DB_TYPE_NULL:
+	return NO_ERROR;
+
+      case DB_TYPE_SHORT:
+      {
+	DB_C_SHORT v;
+	return binary_read_raw (col, v) ? db_make_short (val, v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_INTEGER:
+      {
+	int v;
+	return binary_read_raw (col, v) ? db_make_int (val, v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_BIGINT:
+      {
+	DB_BIGINT v;
+	return binary_read_raw (col, v) ? db_make_bigint (val, v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_FLOAT:
+      {
+	float v;
+	return binary_read_raw (col, v) ? db_make_float (val, v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_DOUBLE:
+      {
+	double v;
+	return binary_read_raw (col, v) ? db_make_double (val, v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_MONETARY:
+      {
+	/* [double amount][int currency], see UNLOAD_RAW_MONETARY_SIZE */
+	double amount;
+	int currency;
+
+	if (col.size != UNLOAD_RAW_MONETARY_SIZE)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	std::memcpy (&amount, col.data, sizeof (double));
+	std::memcpy (&currency, col.data + sizeof (double), sizeof (int));
+
+	/* db_make_monetary () refuses it too, but as a wrong currency rather than as a damaged section */
+	if (currency < 0 || currency >= (int) DB_CURRENCY_NULL)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	return db_make_monetary (val, (DB_CURRENCY) currency, amount);
+      }
+
+      case DB_TYPE_DATE:
+      {
+	DB_DATE v;
+	return binary_read_raw (col, v) ? db_value_put_encoded_date (val, &v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_TIME:
+      {
+	DB_TIME v;
+	return binary_read_raw (col, v) ? db_value_put_encoded_time (val, &v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_TIMESTAMP:
+      {
+	DB_TIMESTAMP v;
+	return binary_read_raw (col, v) ? db_make_timestamp (val, v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_TIMESTAMPLTZ:
+      {
+	DB_TIMESTAMP v;
+	return binary_read_raw (col, v) ? db_make_timestampltz (val, v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_TIMESTAMPTZ:
+      case DB_TYPE_DATETIMETZ:
+	return binary_tz_value (col, attr, val);
+
+      case DB_TYPE_DATETIME:
+      {
+	DB_DATETIME v;
+	return binary_read_raw (col, v) ? db_make_datetime (val, &v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_DATETIMELTZ:
+      {
+	DB_DATETIME v;
+	return binary_read_raw (col, v) ? db_make_datetimeltz (val, &v) : binary_corrupted (col);
+      }
+
+      case DB_TYPE_NUMERIC:
+	return (col.format_version == BIN_FORMAT_VERSION_PRE_11_5) ? binary_numeric_pre_11_5 (col, val)
+	       : binary_numeric (col, val);
+
+      case DB_TYPE_CHAR:
+      case DB_TYPE_VARCHAR:
+      {
+	int codeset = LANG_SYS_CODESET;
+	int collation = LANG_SYS_COLLATION;
+
+	if (col.size > (std::size_t) DB_MAX_STRING_LENGTH)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	if (hint != NULL)
+	  {
+	    codeset = hint->codeset;
+	    collation = hint->collation_id;
+	  }
+
+	/* the cast into the target domain fits the length, so the natural value need not know it */
+	return db_make_varchar (val, DB_MAX_VARCHAR_PRECISION, col.data, (int) col.size, codeset, collation);
+      }
+
+      case DB_TYPE_BIT:
+      case DB_TYPE_VARBIT:
+      {
+	/* [int length in bits][the bytes holding the bits] */
+	int bit_length;
+
+	if (col.size < UNLOAD_RAW_BIT_LENGTH_SIZE)
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	std::memcpy (&bit_length, col.data, sizeof (int));
+	if (bit_length < 0 || bit_length > DB_MAX_VARBIT_PRECISION
+	    || col.size != UNLOAD_RAW_BIT_LENGTH_SIZE + (std::size_t) ((bit_length + 7) / 8))
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	return db_make_varbit (val, DB_MAX_VARBIT_PRECISION, col.data + UNLOAD_RAW_BIT_LENGTH_SIZE, bit_length);
+      }
+
+      case DB_TYPE_ENUMERATION:
+      {
+	/*
+	 * unloaddb writes the index only, so the value is looked up in the enumeration it is going
+	 * into. That assumes the enumeration lists its elements in the order the one the file was
+	 * written from did; the object file holds no description to check that against. An index
+	 * the enumeration does not have is refused.
+	 */
+	unsigned short index;
+
+	if (!binary_read_raw (col, index))
+	  {
+	    return binary_corrupted (col);
+	  }
+
+	if (hint == NULL)
+	  {
+	    /* not going into an enumeration, the index is all there is */
+	    return db_make_short (val, (DB_C_SHORT) index);
+	  }
+
+	if (index == 0)
+	  {
+	    /* the special empty element */
+	    return db_make_enumeration (val, 0, NULL, 0, (unsigned char) hint->codeset, hint->collation_id);
+	  }
+
+	if (index > DOM_GET_ENUM_ELEMS_COUNT (hint))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, attr->get_name ());
+	    return ER_OBJ_DOMAIN_CONFLICT;
+	  }
+
+	const DB_ENUM_ELEMENT *elem = &DOM_GET_ENUM_ELEM (hint, index);
+	return db_make_enumeration (val, index, DB_GET_ENUM_ELEM_STRING (elem), DB_GET_ENUM_ELEM_STRING_SIZE (elem),
+				    (unsigned char) DB_GET_ENUM_ELEM_CODESET (elem), hint->collation_id);
+      }
+
+      case DB_TYPE_JSON:
+	return to_db_json (col.data, col.size, attr, val);
+
+      case DB_TYPE_BLOB:
+      case DB_TYPE_CLOB:
+      {
+	/* the text of ^E'...', which to_db_elo_ext () reads as a null terminated string */
+	std::string elo_text (col.data, col.size);
+
+	return to_db_elo_ext (elo_text.c_str (), elo_text.size (), attr, val);
+      }
+
+      default:
+	/* a collection is read by binary_to_collection (), and unloaddb writes no other type */
+	return binary_corrupted (col);
+      }
+  }
+
+  /*
+   * binary_needs_cast - whether a value of the attribute's own type still has to be cast into it
+   *    return: true for a type whose domain carries a precision or a scale the value must fit
+   *    type(in): type of the attribute domain
+   */
+  static bool
+  binary_needs_cast (DB_TYPE type)
+  {
+    switch (type)
+      {
+      case DB_TYPE_NUMERIC:
+      case DB_TYPE_BIT:
+      case DB_TYPE_VARBIT:
+      case DB_TYPE_CHAR:
+      case DB_TYPE_VARCHAR:
+	return true;
+      default:
+	return false;
+      }
+  }
+
+  /*
+   * binary_to_collection - read a collection and the elements that follow it in the row
+   *    return: NO_ERROR or an error code
+   *    reader(in/out): the row, positioned after the collection column
+   *    col(in): the collection column, which holds the number of elements
+   *    attr(in): attribute being set
+   *    collection_domain(in): domain to create the collection with
+   *    val(out): the collection
+   * Note:
+   *    Every element is read even after one has failed, so that the reader stays on the column
+   *    boundaries and the attributes behind the collection can still be checked. The first failure
+   *    is the one returned.
+   */
+  static int
+  binary_to_collection (binary_row_reader &reader, const binary_column &col, const attribute *attr,
+			const tp_domain *collection_domain, db_value *val)
+  {
+    DB_COLLECTION *set = NULL;
+    int count = 0;
+    int error_code = NO_ERROR;
+
+    if (!binary_read_raw (col, count) || count < 0)
+      {
+	return binary_corrupted (col);
+      }
+
+    if (!TP_IS_SET_TYPE (TP_DOMAIN_TYPE (collection_domain)))
+      {
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+      }
+    else
+      {
+	set = set_create_with_domain (const_cast<tp_domain *> (collection_domain), 0);
+	if (set == NULL)
+	  {
+	    error_code = er_errid ();
+	    if (error_code == NO_ERROR)
+	      {
+		error_code = ER_FAILED;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      }
+	  }
+      }
+
+    for (int i = 0; i < count; i++)
+      {
+	binary_column elem;
+	db_value elem_val;
+
+	if (reader.next (elem) != NO_ERROR)
+	  {
+	    error_code = ER_LDR_CORRUPTED_BINARY_RECORD;
+	    break;
+	  }
+
+	if (TP_IS_SET_TYPE (elem.type))
+	  {
+	    /* unloaddb does not write nested collections, the row is not one it wrote */
+	    error_code = binary_corrupted (elem);
+	    break;
+	  }
+
+	if (error_code != NO_ERROR)
+	  {
+	    continue;
+	  }
+
+	int elem_error = binary_natural_value (elem, attr, binary_value_hint (collection_domain, elem.type), &elem_val);
+	if (elem_error == NO_ERROR)
+	  {
+	    cast_elem_to_set_domain (collection_domain->setdomain, &elem_val);
+
+	    /* the element is cloned into the collection */
+	    elem_error = set_add_element (set, &elem_val);
+	  }
+	db_value_clear (&elem_val);
+
+	if (elem_error != NO_ERROR)
+	  {
+	    error_code = elem_error;
+	  }
+      }
+
+    if (error_code != NO_ERROR)
+      {
+	if (set != NULL)
+	  {
+	    set_free (set);
+	  }
+	return error_code;
+      }
+
+    return db_make_collection (val, set);
+  }
+
+  /*
+   * binary_to_db_value - turn one column of a binary section row into the value of an attribute
+   *    return: NO_ERROR or an error code. ER_LDR_CORRUPTED_BINARY_RECORD means the row cannot be
+   *            read any further, reader.is_corrupted () tells whether that is the case
+   *    reader(in/out): the row, positioned after col. A collection reads its elements from it
+   *    col(in): the column
+   *    attr(in): attribute being set
+   *    collection_domain(in): domain to create a collection with, NULL for the attribute domain
+   *    val(out): value in the attribute's domain
+   */
+  int
+  binary_to_db_value (binary_row_reader &reader, const binary_column &col, const attribute *attr,
+		      const tp_domain *collection_domain, db_value *val)
+  {
+    const tp_domain &domain = attr->get_domain ();
+    DB_TYPE dom_type = domain.type->id;
+    db_value natural;
+    int error_code;
+
+    db_make_null (val);
+
+    if (TP_IS_SET_TYPE (col.type))
+      {
+	error_code = binary_to_collection (reader, col, attr, collection_domain != NULL ? collection_domain : &domain,
+					   val);
+	return error_code != NO_ERROR ? error_code : check_not_null (attr, val);
+      }
+
+    if (col.type == DB_TYPE_NULL)
+      {
+	return to_db_null (NULL, 0, attr, val);
+      }
+
+    if (TP_IS_CHAR_TYPE (col.type) && TP_IS_CHAR_TYPE (dom_type))
+      {
+	error_code = to_db_generic_char (dom_type, col.data, col.size, attr, val);
+	return error_code != NO_ERROR ? error_code : check_not_null (attr, val);
+      }
+
+    if (TP_IS_CHAR_TYPE (col.type) && dom_type == DB_TYPE_JSON)
+      {
+	/*
+	 * A string into a JSON attribute, which happens when the attribute was a string one at unload
+	 * time. The text form takes a quoted string into a JSON attribute with to_db_json (), so the
+	 * string goes through it here as well: a cast would refuse a string that is no JSON document
+	 * with another error code, which --error-control-file would not match.
+	 */
+	error_code = to_db_json (col.data, col.size, attr, val);
+	return error_code != NO_ERROR ? error_code : check_not_null (attr, val);
+      }
+
+    error_code = binary_natural_value (col, attr, binary_value_hint (&domain, col.type), &natural);
+    if (error_code != NO_ERROR)
+      {
+	db_value_clear (&natural);
+	return error_code;
+      }
+
+    if (db_value_type (&natural) == dom_type && !binary_needs_cast (dom_type))
+      {
+	/* the value is handed over as it is, with whatever it owns */
+	*val = natural;
+	return check_not_null (attr, val);
+      }
+
+    return cast_to_attr_domain (&natural, attr, val);
   }
 }

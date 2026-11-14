@@ -695,6 +695,10 @@ static void clist_final (void);
 static int is_internal_class (DB_OBJECT *class_);
 static void ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static void ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
+static void ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader,
+				  const cubload::binary_column &col);
+static void ldr_report_binary_error (LDR_CONTEXT *context, int error);
+static const LDR_STORE_SPEC *ldr_binary_store_slot (LDR_ATTDESC *attdesc, const DB_VALUE *val);
 static void ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_mismatch (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_ignore (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -708,6 +712,7 @@ static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len,
 static int ldr_null_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val);
+static int ldr_sink_instance (LDR_CONTEXT *context, LDR_ATTDESC *attdesc, DB_VALUE *val, bool direct, bool bound_bit);
 static void ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sys_class_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -1009,6 +1014,76 @@ error_exit:
       }
 
     process_values (cons, false);
+  }
+
+  /*
+   * sa_object_loader::process_binary_line - load one row of a binary section
+   *    row(in): the row, as the scanner took it out of the object file
+   * Note:
+   *    The counterpart of process_line (). A row that does not follow the layout of a binary
+   *    section stops where the layout was lost, nothing behind that point can be read.
+   */
+  void
+  sa_object_loader::process_binary_line (const string_type *row)
+  {
+    cubload::binary_row_reader reader (row->val, row->size, ldr_Driver->get_scanner ().get_format_version ());
+
+    CHECK_SKIP ();
+
+    if (er_errid () != NO_ERROR)
+      {
+	display_error (0);
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    if (reader.has_more () && ldr_Current_context->num_attrs == 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_NO_CLASS_OR_NO_ATTRIBUTE, 0);
+	if (ldr_Current_context->valid)
+	  {
+	    display_error (0);
+	  }
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    if (ldr_Current_context->act_mode == LDR_ACT_METH)
+      {
+	/* unloaddb never writes a binary section for a %class line with a constructor */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_STATE, 0);
+	display_error (0);
+	CHECK_CONTEXT_VALIDITY (ldr_Current_context, true);
+	ldr_abort ();
+	return;
+      }
+
+    /* a column that breaks the layout ends the row, ldr_act_binary_value () reports one inside a collection */
+    while (reader.has_more () && ldr_Current_context->valid)
+      {
+	cubload::binary_column col;
+
+	if (reader.next (col) != NO_ERROR)
+	  {
+	    ldr_report_binary_error (ldr_Current_context, ER_LDR_CORRUPTED_BINARY_RECORD);
+	    break;
+	  }
+
+	ldr_act_binary_value (ldr_Current_context, reader, col);
+      }
+
+    if (reader.is_corrupted ())
+      {
+	/*
+	 * The row was reported where its layout was lost, and what is left of it cannot be read.
+	 * Do not let finish_line () report the attributes it never reached as missing on top of
+	 * that: the row is one failure, and with --error-control-file ignoring it, that second
+	 * error would still fail the load.
+	 */
+	ldr_Current_context->next_attr = ldr_Current_context->num_attrs;
+      }
   }
 
   /*
@@ -2339,6 +2414,234 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 error_exit:
   /* The element was cloned into the collection, so release whatever the conversion and the cast allocated. */
   db_value_clear (&tempval);
+  ldr_increment_err_count (context, (err != NO_ERROR));
+}
+
+/*
+ * ldr_skip_binary_elements - step over the elements of a collection column
+ *    return: NO_ERROR, or ER_LDR_CORRUPTED_BINARY_RECORD
+ *    reader(in/out): the row, positioned after col
+ *    col(in): the column, nothing is done unless it is a collection
+ * Note:
+ *    The elements of a collection follow it as columns of their own, so a collection that is not
+ *    converted still has to be read through to reach the next attribute.
+ */
+static int
+ldr_skip_binary_elements (cubload::binary_row_reader &reader, const cubload::binary_column &col)
+{
+  int count = 0;
+  cubload::binary_column elem;
+
+  if (!TP_IS_SET_TYPE (col.type))
+    {
+      return NO_ERROR;
+    }
+
+  if (col.size != sizeof (count))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) col.offset);
+      return ER_LDR_CORRUPTED_BINARY_RECORD;
+    }
+
+  memcpy (&count, col.data, sizeof (count));
+  for (int i = 0; i < count; i++)
+    {
+      if (reader.next (elem) != NO_ERROR)
+	{
+	  return ER_LDR_CORRUPTED_BINARY_RECORD;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * ldr_report_binary_error - report an error of a binary section row that belongs to no attribute
+ *    return: void
+ *    context(in/out): current context
+ *    error(in): the error, already set
+ */
+static void
+ldr_report_binary_error (LDR_CONTEXT *context, int error)
+{
+  int err = NO_ERROR;
+
+  CHECK_ERR (err, error);
+
+error_exit:
+  ldr_increment_err_count (context, (err != NO_ERROR));
+}
+
+/*
+ * ldr_binary_store_slot - the store slot a value of a binary section row is written through
+ *    return: the slot, or NULL to store the value through the object template
+ *    attdesc(in): descriptor of the attribute being set
+ *    val(in): the value, already in the attribute's domain (binary_to_db_value ())
+ * Note:
+ *    A value of the text form is written the way ldr_act_add_attr () set up the slot of its token:
+ *    straight into the instance image (setmem) for the token that names the attribute's own type,
+ *    through the object template (obj_desc_set ()) otherwise. A binary value carries no token, but
+ *    it reaches the attribute in the attribute's domain, which is what the token of that domain
+ *    makes of it. So it takes the slot of that token and is written the same way. A domain no
+ *    token names directly, NUMERIC or BIT for instance, keeps the template, as it does in the text
+ *    form.
+ */
+static const LDR_STORE_SPEC *
+ldr_binary_store_slot (LDR_ATTDESC *attdesc, const DB_VALUE *val)
+{
+  DB_TYPE dom_type = TP_DOMAIN_TYPE (attdesc->att->domain);
+  data_type token;
+
+  if (db_value_type (val) != dom_type)
+    {
+      return NULL;
+    }
+
+  switch (dom_type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+      token = LDR_INT;
+      break;
+    case DB_TYPE_FLOAT:
+      token = LDR_FLOAT;
+      break;
+    case DB_TYPE_DOUBLE:
+      token = LDR_DOUBLE;
+      break;
+    case DB_TYPE_DATE:
+      token = LDR_DATE;
+      break;
+    case DB_TYPE_TIME:
+      token = LDR_TIME;
+      break;
+    case DB_TYPE_TIMESTAMP:
+      token = LDR_TIMESTAMP;
+      break;
+    case DB_TYPE_TIMESTAMPLTZ:
+      token = LDR_TIMESTAMPLTZ;
+      break;
+    case DB_TYPE_TIMESTAMPTZ:
+      token = LDR_TIMESTAMPTZ;
+      break;
+    case DB_TYPE_DATETIME:
+      token = LDR_DATETIME;
+      break;
+    case DB_TYPE_DATETIMELTZ:
+      token = LDR_DATETIMELTZ;
+      break;
+    case DB_TYPE_DATETIMETZ:
+      token = LDR_DATETIMETZ;
+      break;
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      token = LDR_STR;
+      break;
+    case DB_TYPE_MONETARY:
+      token = LDR_MONETARY;
+      break;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      token = LDR_ELO_EXT;
+      break;
+    default:
+      return NULL;
+    }
+
+  const LDR_STORE_SPEC *slot = &attdesc->store[token];
+  if (slot->handler != NULL || !slot->direct)
+    {
+      return NULL;
+    }
+
+  return slot;
+}
+
+/*
+ * ldr_act_binary_value - store one column of a binary section row
+ *    return: void
+ *    context(in/out): current context
+ *    reader(in/out): the row, positioned after col. A collection reads its elements from it
+ *    col(in): the column
+ * Note:
+ *    The counterpart of ldr_act_attr () for a row unloaddb --data-format wrote. The value is
+ *    built by binary_to_db_value (), which the server side uses as well, and handed to the sink
+ *    a collection goes to on a text line, see ldr_collection_db_collection ().
+ */
+static void
+ldr_act_binary_value (LDR_CONTEXT *context, cubload::binary_row_reader &reader, const cubload::binary_column &col)
+{
+  LDR_ATTDESC *attdesc;
+  DB_VALUE val;
+  int err = NO_ERROR;
+  int conv_err;
+
+  db_make_null (&val);
+
+  if (context->next_attr >= context->num_attrs)
+    {
+      context->valid = false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+      goto error_exit;
+    }
+
+  if (context->validation_only)
+    {
+      /* there are no attribute descriptors to convert with, see ldr_act_add_attr () */
+      CHECK_ERR (err, ldr_skip_binary_elements (reader, col));
+      goto error_exit;
+    }
+
+  attdesc = &context->attrs[context->next_attr];
+
+  conv_err = cubload::binary_to_db_value (reader, col, attdesc->conv_att, attdesc->collection_domain, &val);
+  if (conv_err == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
+    {
+      /* name the class as well, see ldr_convert_value () */
+      char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
+
+      snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", context->class_name, attdesc->att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, conv_err, 1, class_attr);
+    }
+
+  ENSURE_ERR_SET (conv_err);
+  CHECK_ERR (err, conv_err);
+
+  if (conv_err != NO_ERROR)
+    {
+      /* --error-control-file ignores the error and the instance is skipped, there is no value to store */
+      goto error_exit;
+    }
+
+  if (context->attr_type != LDR_ATTRIBUTE_ANY)
+    {
+      CHECK_ERR (err, ldr_sink_class_object (context, attdesc->att, &val));
+    }
+  else if (DB_IS_NULL (&val))
+    {
+      /* what a NULL token of the text form does, see ldr_act_add_attr () */
+      CHECK_ERR (err, ldr_null_db_generic (context, NULL, 0, attdesc));
+    }
+  else
+    {
+      const LDR_STORE_SPEC *slot = ldr_binary_store_slot (attdesc, &val);
+
+      if (slot != NULL)
+	{
+	  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
+	}
+      else
+	{
+	  CHECK_ERR (err, ldr_generic (context, &val));
+	}
+    }
+
+error_exit:
+  /* a collection is not freed by this, it was handed to the object, see ldr_collection_db_collection () */
+  db_value_clear (&val);
+  context->next_attr += 1;
   ldr_increment_err_count (context, (err != NO_ERROR));
 }
 
@@ -6300,7 +6603,12 @@ ldr_sa_load (load_args *args, int *status, volatile bool *interrupted)
   int ldr_init_ret = NO_ERROR;
   int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
 
-  std::ifstream object_file (args->object_file);
+  /*
+   * Opened in binary mode, as the insert pass below and split () in load_common.cpp open it. A binary
+   * section holds raw bytes, which a text mode stream on Windows changes ("\r\n" into "\n", and 0x1A
+   * taken as the end of the file), and the scanner reads "\r\n" as a new line by itself.
+   */
+  std::ifstream object_file (args->object_file, std::fstream::in | std::fstream::binary);
 
   ldr_init_driver ();
 

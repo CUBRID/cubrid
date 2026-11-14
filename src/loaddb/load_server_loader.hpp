@@ -81,6 +81,7 @@ namespace cubload
 
       void start_line (int object_id) override;
       void process_line (constant_type *cons) override;
+      void process_binary_line (const string_type *row) override;
       void finish_line () override;
       void flush_records () override;
 
@@ -101,6 +102,7 @@ namespace cubload
       bool report_value_error ();
       int process_generic_constant (constant_type *cons, const attribute &attr, bool is_element);
       int process_collection_constant (constant_type *cons, const attribute &attr);
+      int process_binary_value (binary_row_reader &reader, const binary_column &col, const attribute &attr);
 
       void clear_db_values ();
       db_value &get_attribute_db_value (size_t attr_index);

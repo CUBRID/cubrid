@@ -38,6 +38,8 @@ namespace cubload
   DB_TYPE get_token_db_type (const data_type ldr_type);
   int check_not_null (const attribute *attr, const db_value *val);
   void cast_elem_to_set_domain (const tp_domain *setdomain, db_value *val);
+  int binary_to_db_value (binary_row_reader &reader, const binary_column &col, const attribute *attr,
+			  const tp_domain *collection_domain, db_value *val);
 
 } // namespace cubload
 
