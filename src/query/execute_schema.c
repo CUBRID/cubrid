@@ -4212,8 +4212,9 @@ error_exit:
  *   fill_factor(in): Target fill ratio in percent
  *   keys_compacted(in/out): Accumulated number of keys whose chain lost at least one page
  *   pages_freed(in/out): Accumulated number of overflow pages deallocated
- *   pairs_skipped(in/out): Accumulated number of page pairs left alone because vacuum has not removed a reused
- *			   OID's old versions yet (no OID boundary to split at)
+ *   pairs_skipped(in/out): Accumulated number of page pairs and keys left alone until vacuum catches up: a page pair
+ *			   with no OID boundary to split at (a reused OID's old versions), or a key whose leaf record
+ *			   holds no stable object (CBRD-27972)
  */
 static int
 do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor, INT64 * keys_compacted,
@@ -4338,7 +4339,7 @@ do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (error == NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "ALTER INDEX %s ON %s COMPACT (fill_factor=%d): %lld keys compacted, %lld overflow "
-		    "pages freed, %lld page pairs skipped (no OID boundary, vacuum pending)\n", index_name, class_name,
+		    "pages freed, %lld page pairs or keys skipped (vacuum pending)\n", index_name, class_name,
 		    fill_factor, (long long) keys_compacted, (long long) pages_freed, (long long) pairs_skipped);
     }
 

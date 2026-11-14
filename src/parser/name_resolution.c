@@ -2461,7 +2461,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 #endif /* 0 */
 
       /* convert to CNF and tag taggable terms */
-      node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+      node->info.query.q.select.where = pt_cnf_where (parser, node->info.query.q.select.where);
 
       /* list search twice one-pass: set outer join type, edge two-pass: set outer join sarg outer join sarg matrix:
        * X.i=Y.i and Y.i=Z.i and Y.j=1 case 1: X right Y right Z -> put Y(+)-sarg to Z case 2: X right Y left Z ->
@@ -3540,7 +3540,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  }
 	else
 	  {
-	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
+	    /* a name not found in a class sets ER_OBJ_INVALID_ATTRIBUTE, but a name in group by/having not found in
+	     * a derived table or a CTE sets no error (see pt_bind_name_or_path_in_scope ()) */
+	    if (parser->flag.is_parsing_static_sql == 1
+		&& (er_errid () == ER_OBJ_INVALID_ATTRIBUTE
+		    || (er_errid () == NO_ERROR && !pt_has_error (parser) && is_pt_name_in_group_having (node))))
 	      {
 		er_clear ();
 		pt_reset_error (parser);
