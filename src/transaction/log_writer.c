@@ -323,9 +323,24 @@ logwr_read_log_header (void)
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DISK_INCONSISTENT_VOL_HEADER, 1,
 		      logwr_Gl.active_name);
 
-	      fileio_dismount_without_fsync (NULL, LOG_DBLOG_ACTIVE_VOLID);
+	      /* Close the descriptor mounted above and forget it, so that a new active log is created when the first
+	       * pages arrive. If it stayed in append_vdes, the pages would go to the removed file. */
+	      fileio_dismount_without_fsync (NULL, logwr_Gl.append_vdes);
+	      logwr_Gl.append_vdes = NULL_VOLDES;
 	      fileio_unformat (NULL, logwr_Gl.active_name);
 	      er_clear ();
+
+	      if (fileio_is_volume_exist (logwr_Gl.active_name))
+		{
+		  /* Could not remove it. The pages would have nowhere to go: no descriptor, and no new active log is
+		   * created while this one exists. */
+		  char error_str[LINE_MAX];
+
+		  snprintf (error_str, sizeof (error_str), "Unable to remove the active log %s whose header page is "
+			    "only formatted", logwr_Gl.active_name);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, error_str);
+		  return ER_HA_GENERIC_ERROR;
+		}
 	      return NO_ERROR;
 	    }
 
