@@ -517,8 +517,11 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   time_t stime;
   int msecs;
   DB_DATETIME time_val;
+  cubthread::entry::status thread_status;
 
-  if (thrd->m_status == cubthread::entry::status::TS_DEAD)
+  /* read the status once so that Status and Wait_elapsed_msecs of a row agree */
+  thread_status = thrd->m_status;
+  if (thread_status == cubthread::entry::status::TS_DEAD)
     {
       // thread entry does not belong to a running thread; should not be shown in SHOW THREADS statement
       return;
@@ -561,7 +564,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   idx++;
 
   /* Status */
-  db_make_string (&vals[idx], thread_status_to_string (thrd->m_status));
+  db_make_string (&vals[idx], thread_status_to_string (thread_status));
   idx++;
 
   /* Resume_status */
@@ -804,7 +807,7 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
 
   /* Wait_elapsed_msecs: time since the thread entered its current wait; NULL unless the thread is waiting */
   i64val = thrd->get_wait_elapsed_msecs ();
-  if (thrd->m_status == cubthread::entry::status::TS_WAIT && i64val >= 0)
+  if (thread_status == cubthread::entry::status::TS_WAIT && i64val >= 0)
     {
       db_make_bigint (&vals[idx], (DB_BIGINT) i64val);
     }
