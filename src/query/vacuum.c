@@ -1515,6 +1515,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
   HFID hfid = HFID_INITIALIZER;
   bool reusable = false;
   int object_count = 0;
+  int skipped_page_error = NO_ERROR;
 
   if (worker->n_heap_objects == 0)
     {
@@ -1560,20 +1561,43 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 #if defined (NDEBUG)
 	  if (!thread_p->shutdown)
 	    {
-	      // unexpected case
-	      // debug crashes; but can release do about it? just try to clean as much as possible
-	      er_clear ();
+	      /* Unexpected error; debug crashes above. Retrying the page here would repeat the error as long as it
+	       * lasts, so skip it and clean the rest of the block. The first error leaves the block unfinished, and
+	       * the skipped page is vacuumed again when the block is run again. */
+	      if (skipped_page_error == NO_ERROR)
+		{
+		  er_stack_push ();
+		  skipped_page_error = error_code;
+		}
+	      else
+		{
+		  er_clear ();
+		}
 	      error_code = NO_ERROR;
+	      page_ptr = obj_ptr;
 	      continue;
 	    }
 #endif // not DEBUG
 
-	  return error_code;
+	  break;
 	}
       /* Advance to next page. */
       page_ptr = obj_ptr;
     }
-  return NO_ERROR;
+
+  if (skipped_page_error != NO_ERROR)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  er_stack_pop ();
+	  error_code = skipped_page_error;
+	}
+      else
+	{
+	  er_stack_pop_and_keep_error ();
+	}
+    }
+  return error_code;
 }
 
 /*
@@ -1702,6 +1726,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  ASSERT_ERROR ();
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Failed to get hfid.");
+	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return error_code;
 	}
       /* we need to also output to avoid checking again for other objects */
