@@ -11004,8 +11004,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		      if (nextcase->data_type)
 			{
 			  parser_free_tree (parser, nextcase->data_type);
-			  nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
 			}
+		      /* set it even if nextcase had none; constant folding casts nextcase to it */
+		      nextcase->data_type = parser_copy_tree_list (parser, next_arg1->data_type);
 		    }
 		  /* set nextcase to nextcase->arg2 and continue */
 		  prev = nextcase;
