@@ -2886,6 +2886,9 @@ disk_delete_volume_finish (THREAD_ENTRY * thread_p, VOLID volid, const char *vol
       fileio_unformat (thread_p, target_fullname);
     }
 
+  /* backups taken before the deletion still hold the volume; the next backup must not be an increment on them */
+  logpb_reset_backup_lsa (thread_p, !log_is_in_crash_recovery ());
+
   if (recreate_volinfo && logpb_recreate_volume_info (thread_p) != NO_ERROR)
     {
       /* restart rebuilds it from the volume links */
