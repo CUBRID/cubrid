@@ -101,6 +101,13 @@
 #define COMMAND_MEMBERS         "members"
 #define COMMAND_GROUPS          "groups"
 
+/*
+ * Smallest first volume createdb makes, in sectors. Every file reserves at least one sector, so the system catalog
+ * takes about 75 sectors whatever the page size. The volume size is rounded up to a multiple of 64 sectors (one
+ * allocation table unit), and 64 sectors cannot hold the catalog: createdb then adds a generic volume right away.
+ */
+#define CREATEDB_MIN_VOLUME_SECTS 128
+
 #if defined(WINDOWS)
 typedef int pid_t;
 #define strtok_r	strtok_s
@@ -546,6 +553,10 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   /* determine volume number of sectors */
   db_volume_sect = disk_sectors_to_extend_npages (db_volume_pages);
+  if (db_volume_sect < CREATEDB_MIN_VOLUME_SECTS)
+    {
+      db_volume_sect = CREATEDB_MIN_VOLUME_SECTS;
+    }
   /* adjust the number of pages according to the number of sectors */
   db_volume_pages = DISK_SECTOR_NPAGES * db_volume_sect;
 
