@@ -6128,13 +6128,20 @@ logtb_check_class_for_rr_isolation_err (const OID * class_oid)
   return false;
 }
 
+/*
+ * logtb_slam_transaction () - interrupt the transaction and request to shut down its connection
+ *
+ *   tran_index(in): transaction to slam
+ *   wait_seconds(in): seconds to wait for the connection to be closed (LOGTB_SLAM_NO_WAIT: do not wait).
+ *                     A caller holding TR_TABLE_CS must not wait: closing the connection needs TR_TABLE_CS.
+ */
 void
-logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index)
+logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index, int wait_seconds)
 {
   logtb_set_tran_index_interrupt (thread_p, tran_index, true);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CONN_SHUTDOWN, 0);
 #if defined (SERVER_MODE)
-  css_shutdown_conn_by_tran_index (tran_index, LOGTB_RETRY_SLAM_MAX_TIMES);
+  css_shutdown_conn_by_tran_index (tran_index, wait_seconds);
 #endif // SERVER_MODE
 }
 
@@ -6239,7 +6246,7 @@ xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill
 
       if (kill_pid == slam_pid && strcmp (kill_user_p, slam_user_p) == 0 && strcmp (kill_host_p, slam_host_p) == 0)
 	{
-	  logtb_slam_transaction (thread_p, kill_tran_index);
+	  logtb_slam_transaction (thread_p, kill_tran_index, LOGTB_SLAM_WAIT_SECONDS);
 	  signaled = true;
 	}
       else
@@ -6323,7 +6330,7 @@ xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_index, bool is_
 	    }
 	}
 
-      if (css_shutdown_conn_by_tran_index (tran_index, LOGTB_RETRY_SLAM_MAX_TIMES) != NO_ERROR)
+      if (css_shutdown_conn_by_tran_index (tran_index, LOGTB_SLAM_WAIT_SECONDS) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}

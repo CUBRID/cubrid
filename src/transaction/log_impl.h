@@ -1253,7 +1253,10 @@ extern void logpb_dump_log_page_area (THREAD_ENTRY * thread_p, LOG_PAGE * log_pg
 extern void logpb_page_get_first_null_block_lsa (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr,
 						 LOG_LSA * first_null_block_lsa);
 
-extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index);
+/* wait_seconds of logtb_slam_transaction (): how long to wait for the slammed connection to be closed */
+#define LOGTB_SLAM_NO_WAIT 0
+#define LOGTB_SLAM_WAIT_SECONDS 10
+extern void logtb_slam_transaction (THREAD_ENTRY * thread_p, int tran_index, int wait_seconds);
 extern int xlogtb_kill_tran_index (THREAD_ENTRY * thread_p, int kill_tran_index, char *kill_user, char *kill_host,
 				   int kill_pid);
 extern int xlogtb_kill_or_interrupt_tran (THREAD_ENTRY * thread_p, int tran_id, bool is_dba_group_member,

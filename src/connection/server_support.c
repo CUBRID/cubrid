@@ -1777,8 +1777,10 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
       if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) != 0)
 	{
 	  LOG_TDES *tdes;
+	  int remaining;
 
-	  /* try to kill transaction. */
+	  /* try to kill transaction. Only request the shutdown while holding TR_TABLE_CS; closing a connection needs
+	   * TR_TABLE_CS (logtb_release_tran_index), so waiting for it here would wait out the whole timeout. */
 	  TR_TABLE_CS_ENTER (thread_p);
 	  // start from transaction index i = 1; system transaction cannot be killed
 	  for (i = 1; i < log_Gl.trantable.num_total_indices; i++)
@@ -1789,13 +1791,27 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 		  if (!BOOT_IS_ALLOWED_CLIENT_TYPE_IN_MT_MODE (tdes->client.get_host_name (), boot_Host_name,
 							       tdes->client.client_type))
 		    {
-		      logtb_slam_transaction (thread_p, tdes->tran_index);
+		      logtb_slam_transaction (thread_p, tdes->tran_index, LOGTB_SLAM_NO_WAIT);
 		    }
 		}
 	    }
 	  TR_TABLE_CS_EXIT (thread_p);
 
-	  thread_sleep (2000);	/* 2000 msec */
+	  /* wait for the slammed connections to be closed, without holding TR_TABLE_CS */
+	  for (i = 0; i < LOGTB_SLAM_WAIT_SECONDS * 10; i++)
+	    {
+	      if (logtb_count_not_allowed_clients_in_maintenance_mode (thread_p) == 0)
+		{
+		  break;
+		}
+	      thread_sleep (100);	/* 100 msec */
+	    }
+	  remaining = logtb_count_not_allowed_clients_in_maintenance_mode (thread_p);
+	  if (remaining != 0)
+	    {
+	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: %d not allowed clients remain after %d sec\n",
+			    remaining, LOGTB_SLAM_WAIT_SECONDS);
+	    }
 	}
       break;
 
