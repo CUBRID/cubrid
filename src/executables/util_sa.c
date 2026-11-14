@@ -553,7 +553,8 @@ createdb (UTIL_FUNCTION_ARG * arg)
     }
   /* determine volume number of sectors */
   db_volume_sect = disk_sectors_to_extend_npages (db_volume_pages);
-  if (db_volume_sect < CREATEDB_MIN_VOLUME_SECTS)
+  /* 0 pages makes the server use db_volume_size instead; keep it */
+  if (db_volume_sect > 0 && db_volume_sect < CREATEDB_MIN_VOLUME_SECTS)
     {
       db_volume_sect = CREATEDB_MIN_VOLUME_SECTS;
     }
