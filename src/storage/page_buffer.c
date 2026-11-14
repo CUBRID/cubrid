@@ -11481,6 +11481,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   DWB_SLOT *dwb_slot = NULL;
   LOG_LSA lsa;
   FILEIO_WRITE_MODE write_mode;
+  int vol_fd;
   bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid);
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
@@ -11623,10 +11624,15 @@ copy_unflushed_lsa:
       write_mode = (dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE);
 
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOWRITES);
-      if (fileio_write (thread_p, fileio_get_volume_descriptor (bufptr->vpid.volid), iopage, bufptr->vpid.pageid,
-			IO_PAGESIZE, write_mode) == NULL)
+      vol_fd = fileio_get_volume_descriptor (bufptr->vpid.volid);
+      if (fileio_write (thread_p, vol_fd, iopage, bufptr->vpid.pageid, IO_PAGESIZE, write_mode) == NULL)
 	{
 	  error = ER_FAILED;
+	}
+      else if (is_temp)
+	{
+	  /* nothing synchronizes temporary pages; keep them from piling up as dirty OS page cache */
+	  fileio_writeback_temp_pages (thread_p, vol_fd, 1);
 	}
     }
 

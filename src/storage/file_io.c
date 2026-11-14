@@ -467,6 +467,8 @@ static FILEIO_BACKUP_INFO_QUEUE fileio_Backup_vol_info_data[2] =
 static pthread_mutex_t fileio_Flushed_page_counter_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 static int fileio_Flushed_page_count = 0;
+/* temporary pages written since the last writeback request; see fileio_writeback_temp_pages () */
+static int fileio_Temp_written_page_count = 0;
 
 static TOKEN_BUCKET fc_Token_bucket_s;
 static TOKEN_BUCKET *fc_Token_bucket = NULL;
@@ -675,6 +677,47 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
       fileio_synchronize_all (thread_p);
     }
 #endif /* SERVER_MODE */
+}
+
+/*
+ * fileio_writeback_temp_pages () - Ask the OS to start writing back a volume after enough temporary pages were written
+ *   return: void
+ *   vol_fd(in): descriptor of the volume the temporary pages were just written to
+ *   npages(in): number of pages just written
+ *
+ * Note: Nothing synchronizes temporary volumes: DWB does not take temporary pages, and fileio_synchronize_all walks
+ *       only permanent volumes. The OS then keeps the pages as dirty page cache until its own writeback starts, so a
+ *       large sort or index build can leave hundreds of MB that cannot be reclaimed until written. Once
+ *       temp_writeback_size worth of temporary pages are written, start writeback of the volume without waiting for it
+ *       (like PostgreSQL *_flush_after). This is only a hint: no durability is required for temporary pages, so
+ *       a failure is ignored and a later write or read reports any real I/O error.
+ */
+void
+fileio_writeback_temp_pages (THREAD_ENTRY * thread_p, int vol_fd, int npages)
+{
+#if defined (__linux__)
+  int threshold = prm_get_integer_value (PRM_ID_TEMP_WRITEBACK_SIZE);
+
+  if (threshold <= 0 || vol_fd == NULL_VOLDES)
+    {
+      return;
+    }
+
+  if (ATOMIC_INC_32 (&fileio_Temp_written_page_count, npages) < threshold)
+    {
+      return;
+    }
+
+  /* a few pages counted by concurrent writers in between may be dropped; it only delays the next request slightly */
+  (void) ATOMIC_TAS_32 (&fileio_Temp_written_page_count, 0);
+
+  /* offset 0 and nbytes 0 cover the whole file; SYNC_FILE_RANGE_WRITE only starts writeback of the dirty pages */
+  if (sync_file_range (vol_fd, 0, 0, SYNC_FILE_RANGE_WRITE) != 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "fileio_writeback_temp_pages: sync_file_range failed on fd %d, errno %d\n", vol_fd,
+		    errno);
+    }
+#endif /* __linux__ */
 }
 
 /*
