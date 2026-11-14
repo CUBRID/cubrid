@@ -1511,7 +1511,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Last Error
+1395 Volume %1$d cannot be deleted. Only the last permanent volume, other than volume 0, can be deleted when it has no used sectors.
+
+1396 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

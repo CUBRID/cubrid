@@ -1695,6 +1695,41 @@ logpb_is_log_active_from_backup_useful (THREAD_ENTRY * thread_p, const char *act
 }
 
 /*
+ * logpb_reset_backup_lsa - forget the backup checkpoints so that the next backup must be a full (level 0) one
+ *
+ * return: nothing
+ *
+ *   flush(in): write the log header now. during recovery the header is written by the checkpoint at its end.
+ *
+ * NOTE: used when the set of volumes shrinks (delvoldb). an incremental backup on top of an older backup would restore
+ *       the deleted volume from the older level, while the log replayed from the newer level never deletes it.
+ */
+void
+logpb_reset_backup_lsa (THREAD_ENTRY * thread_p, bool flush)
+{
+  bool own_cs = LOG_CS_OWN_WRITE_MODE (thread_p);
+
+  if (!own_cs)
+    {
+      LOG_CS_ENTER (thread_p);
+    }
+
+  LSA_SET_NULL (&log_Gl.hdr.bkup_level0_lsa);
+  LSA_SET_NULL (&log_Gl.hdr.bkup_level1_lsa);
+  LSA_SET_NULL (&log_Gl.hdr.bkup_level2_lsa);
+
+  if (flush)
+    {
+      logpb_flush_header (thread_p);
+    }
+
+  if (!own_cs)
+    {
+      LOG_CS_EXIT (thread_p);
+    }
+}
+
+/*
  * logpb_flush_header - Flush log header
  *
  * return: nothing

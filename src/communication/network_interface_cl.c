@@ -4260,6 +4260,52 @@ boot_add_volume_extension (DBDEF_VOL_EXT_INFO * ext_info)
 #endif /* !CS_MODE */
 }
 
+#if defined (SA_MODE)
+/*
+ * boot_check_delete_volume - check whether a permanent volume can be deleted (delvoldb)
+ *
+ * return: error code
+ *
+ *   volid(in): volume identifier, or NULL_VOLID for the last permanent volume
+ *   status(out): whether the volume can be deleted
+ *   info(out): volume information
+ */
+int
+boot_check_delete_volume (VOLID volid, DISK_DELVOL_STATUS * status, DISK_DELVOL_INFO * info)
+{
+  int error_code;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  error_code = disk_check_delete_volume (thread_p, volid, status, info);
+
+  exit_server (*thread_p);
+
+  return error_code;
+}
+
+/*
+ * boot_delete_volume_extension - delete the last permanent volume when it is empty (delvoldb)
+ *
+ * return: error code
+ *
+ *   volid(in): volume identifier
+ */
+int
+boot_delete_volume_extension (VOLID volid)
+{
+  int error_code;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  error_code = disk_delete_volume_extension (thread_p, volid);
+
+  exit_server (*thread_p);
+
+  return error_code;
+}
+#endif /* SA_MODE */
+
 /*
  * boot_check_db_consistency -
  *
