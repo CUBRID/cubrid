@@ -47,6 +47,13 @@ extern int check_client_internal_lob_dml_params (int var_cnt, const DB_VALUE * v
 extern bool query_is_internal_lob_file_source (const DB_VALUE * value);
 extern int query_copy_without_unused_file_sources (int var_cnt, const DB_VALUE * varptr, const bool * used_vars,
 						   DB_VALUE ** copy_out);
+extern bool query_needs_internal_lob_dml_stream (int var_cnt, const DB_VALUE * varptr, const bool * used_vars,
+						 const bool * direct_vars);
+extern int prepare_and_execute_query_with_internal_lob_dml (char *stream, int stream_size, QUERY_ID * query_idp,
+							    int var_cnt, const DB_VALUE * varptr,
+							    QFILE_LIST_ID ** list_idp, QUERY_FLAG flag,
+							    const OID * direct_class_oid, const bool * used_vars,
+							    const bool * direct_vars);
 #endif /* CS_MODE */
 extern int prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, int var_cnt,
 				      DB_VALUE * varptr, QFILE_LIST_ID ** result, QUERY_FLAG flag);

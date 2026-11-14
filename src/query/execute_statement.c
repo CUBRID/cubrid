@@ -218,6 +218,7 @@ static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, boo
 static int do_prepare_and_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement,
 							XASL_STREAM * stream, QFILE_LIST_ID ** list_id,
 							QUERY_FLAG query_flag);
+static const OID *do_get_internal_lob_update_class_oid (PT_NODE * statement);
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
@@ -10738,6 +10739,63 @@ do_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * statement, Q
   return err;
 }
 
+#if defined(CS_MODE)
+/*
+ * do_prepare_and_execute_internal_lob_dml () - Run an INSERT/UPDATE that was not prepared through the Internal LOB
+ *   DML stream, as a prepared one runs, when a LOB column value must be streamed
+ *   return: error code
+ *   streamed(out): false when no value needs the stream; nothing ran then
+ *
+ * The server refuses a LOB file source among the values of prepare_and_execute_query ().
+ */
+static int
+do_prepare_and_execute_internal_lob_dml (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_STREAM * stream,
+					 QFILE_LIST_ID ** list_id, QUERY_FLAG query_flag, bool * streamed)
+{
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+  const OID *direct_class_oid = NULL;
+  bool *used_vars = NULL, *direct_vars = NULL;
+  int err;
+
+  *streamed = false;
+  if (!query_needs_internal_lob_dml_stream (var_count, parser->host_variables, NULL, NULL))
+    {
+      return NO_ERROR;
+    }
+
+  err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+  if (err == NO_ERROR)
+    {
+      err = do_get_internal_lob_direct_host_vars (parser, statement, &direct_vars);
+    }
+  if (err == NO_ERROR
+      && query_needs_internal_lob_dml_stream (var_count, parser->host_variables, used_vars, direct_vars))
+    {
+      if (statement->node_type == PT_UPDATE)
+	{
+	  direct_class_oid = do_get_internal_lob_update_class_oid (statement);
+	}
+      else
+	{
+	  PT_NODE *flat = statement->info.insert.spec->info.spec.flat_entity_list;
+
+	  direct_class_oid = do_get_internal_lob_direct_class_oid (flat != NULL ? flat->info.name.db_object : NULL);
+	  if (parser->flag.return_generated_keys)
+	    {
+	      query_flag |= RETURN_GENERATED_KEYS;
+	    }
+	}
+      *streamed = true;
+      err = prepare_and_execute_query_with_internal_lob_dml (stream->buffer, stream->buffer_size, &parser->query_id,
+							     var_count, parser->host_variables, list_id, query_flag,
+							     direct_class_oid, used_vars, direct_vars);
+    }
+  free_and_init (used_vars);
+  free_and_init (direct_vars);
+  return err;
+}
+#endif /* CS_MODE */
+
 /*
  * do_prepare_and_execute_query_with_host_vars () - prepare_and_execute_query () with the host variables of
  *   do_get_statement_host_vars ()
@@ -10749,6 +10807,19 @@ do_prepare_and_execute_query_with_host_vars (PARSER_CONTEXT * parser, PT_NODE * 
 {
   DB_VALUE *vars;
   int err;
+
+#if defined(CS_MODE)
+  if (statement->node_type == PT_INSERT || statement->node_type == PT_UPDATE)
+    {
+      bool streamed;
+
+      err = do_prepare_and_execute_internal_lob_dml (parser, statement, stream, list_id, query_flag, &streamed);
+      if (err != NO_ERROR || streamed)
+	{
+	  return err;
+	}
+    }
+#endif /* CS_MODE */
 
   err = do_get_statement_host_vars (parser, statement, &vars);
   if (err != NO_ERROR)
