@@ -280,7 +280,8 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
 }
 
 /*
- * qdata_hash_scan_value () - hash one key value; -0.0 and +0.0 compare equal, so a zero hashes as +0
+ * qdata_hash_scan_value () - hash one key value; -0.0 and +0.0 compare equal, so a zero hashes as +0, and a NaN
+ *			      equals every other NaN, whatever its sign and bits (MR_CMP_FLOATING ()), so it hashes as one
  *   returns: hash value
  *   value(in): key value
  *   ht_size(in): hash table size (in buckets)
@@ -292,7 +293,7 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
 unsigned int
 qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 {
-  DB_VALUE zero;
+  DB_VALUE canon;		/* +0 for a zero, the one NaN for a NaN */
 
   if (value != NULL && !DB_IS_NULL (value))
     {
@@ -300,26 +301,27 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
       switch (DB_VALUE_DOMAIN_TYPE (value))
 	{
 	case DB_TYPE_FLOAT:
-	  if (db_get_float (value) == 0.0f)
+	  if (db_get_float (value) == 0.0f || isnan (db_get_float (value)))
 	    {
-	      db_make_float (&zero, 0.0f);
-	      return mht_get_hash_number (ht_size, &zero);
+	      db_make_float (&canon, isnan (db_get_float (value)) ? NAN : 0.0f);
+	      return mht_get_hash_number (ht_size, &canon);
 	    }
 	  break;
 
 	case DB_TYPE_DOUBLE:
-	  if (db_get_double (value) == 0.0)
+	  if (db_get_double (value) == 0.0 || isnan (db_get_double (value)))
 	    {
-	      db_make_double (&zero, 0.0);
-	      return mht_get_hash_number (ht_size, &zero);
+	      db_make_double (&canon, isnan (db_get_double (value)) ? NAN : 0.0);
+	      return mht_get_hash_number (ht_size, &canon);
 	    }
 	  break;
 
 	case DB_TYPE_MONETARY:
-	  if (db_get_monetary (value)->amount == 0.0)
+	  if (db_get_monetary (value)->amount == 0.0 || isnan (db_get_monetary (value)->amount))
 	    {
-	      db_make_monetary (&zero, db_get_monetary (value)->type, 0.0);
-	      return mht_get_hash_number (ht_size, &zero);
+	      db_make_monetary (&canon, db_get_monetary (value)->type,
+				isnan (db_get_monetary (value)->amount) ? NAN : 0.0);
+	      return mht_get_hash_number (ht_size, &canon);
 	    }
 	  break;
 

@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 
 #include "object_primitive.h"
 
@@ -76,6 +77,12 @@ extern unsigned int db_on_server;
 
 #define MR_CMP(d1, d2)                                     \
      ((d1) < (d2) ? DB_LT : (d1) > (d2) ? DB_GT : DB_EQ)
+
+/* FLOAT, DOUBLE and MONETARY: a NaN equals a NaN and is above every other value. MR_CMP () finds a NaN equal to
+ * every value, an order no sort, index or GROUP BY can keep, and the C operators find it unequal to every value */
+#define MR_CMP_FLOATING(d1, d2)                            \
+     ((d1) < (d2) ? DB_LT : (d1) > (d2) ? DB_GT : (d1) == (d2) ? DB_EQ \
+      : isnan (d1) ? (isnan (d2) ? DB_EQ : DB_GT) : DB_LT)
 
 #define MR_CMP_RETURN_CODE(c)                              \
      ((c) < 0 ? DB_LT : (c) > 0 ? DB_GT : DB_EQ)
@@ -2980,7 +2987,7 @@ mr_index_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   COPYMEM (float, &f1, mem1);
   COPYMEM (float, &f2, mem2);
 
-  return MR_CMP (f1, f2);
+  return MR_CMP_FLOATING (f1, f2);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -2993,7 +3000,7 @@ mr_data_cmpdisk_float (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
   OR_GET_FLOAT (mem1, &f1);
   OR_GET_FLOAT (mem2, &f2);
 
-  return MR_CMP (f1, f2);
+  return MR_CMP_FLOATING (f1, f2);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -3004,7 +3011,7 @@ mr_cmpval_float (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   f1 = db_get_float (value1);
   f2 = db_get_float (value2);
 
-  return MR_CMP (f1, f2);
+  return MR_CMP_FLOATING (f1, f2);
 }
 
 /*
@@ -3171,7 +3178,7 @@ mr_index_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coer
   COPYMEM (double, &d1, mem1);
   COPYMEM (double, &d2, mem2);
 
-  return MR_CMP (d1, d2);
+  return MR_CMP_FLOATING (d1, d2);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -3184,7 +3191,7 @@ mr_data_cmpdisk_double (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   OR_GET_DOUBLE (mem1, &d1);
   OR_GET_DOUBLE (mem2, &d2);
 
-  return MR_CMP (d1, d2);
+  return MR_CMP_FLOATING (d1, d2);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -3196,7 +3203,7 @@ mr_cmpval_double (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
   d1 = db_get_double (value1);
   d2 = db_get_double (value2);
 
-  return MR_CMP (d1, d2);
+  return MR_CMP_FLOATING (d1, d2);
 }
 
 /*
@@ -4617,7 +4624,7 @@ mr_index_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerc
   COPYMEM (double, &m1.amount, (char *) mem1 + tp_Integer.disksize);
   COPYMEM (double, &m2.amount, (char *) mem2 + tp_Integer.disksize);
 
-  return MR_CMP (m1.amount, m2.amount);
+  return MR_CMP_FLOATING (m1.amount, m2.amount);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -4630,7 +4637,7 @@ mr_data_cmpdisk_money (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coerci
   OR_GET_MONETARY (mem1, &m1);
   OR_GET_MONETARY (mem2, &m2);
 
-  return MR_CMP (m1.amount, m2.amount);
+  return MR_CMP_FLOATING (m1.amount, m2.amount);
 }
 
 static DB_VALUE_COMPARE_RESULT
@@ -4641,7 +4648,7 @@ mr_cmpval_money (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tota
   m1 = db_get_monetary (value1);
   m2 = db_get_monetary (value2);
 
-  return MR_CMP (m1->amount, m2->amount);
+  return MR_CMP_FLOATING (m1->amount, m2->amount);
 }
 
 /*

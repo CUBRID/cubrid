@@ -78,6 +78,7 @@ static int move_n_days (int *monthp, int *dayp, int *yearp, const int interval);
 static int round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
 static double truncate_double (double num, double integer);
 static DB_BIGINT truncate_bigint (DB_BIGINT num, DB_BIGINT integer);
+static bool round_bigint (DB_BIGINT num, DB_BIGINT place, DB_BIGINT * result);
 static int truncate_date (DB_DATE * date, const DB_VALUE * format_str);
 static int get_number_dbval_as_double (double *d, const DB_VALUE * value);
 static int get_number_dbval_as_long_double (long double *ld, const DB_VALUE * value);
@@ -85,6 +86,7 @@ static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * v
 					      const DB_VALUE * value3, const DB_VALUE * value4);
 static int is_str_find_all (DB_VALUE * val, bool & find_all);
 static bool is_any_arg_null (DB_VALUE * const *args, int num_args);
+static bool is_nan_number (const DB_VALUE * value);
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -2360,8 +2362,6 @@ int
 db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
   DB_TYPE type1, type2;
-  short s1;
-  int i1;
   float f1;
   double d1, d2 = 0.0;
   DB_BIGINT bi1, bi2, bi_tmp;
@@ -2369,6 +2369,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   unsigned char num[DB_NUMERIC_BUF_SIZE];
   char num_string[NUMERIC_MAX_STRING_SIZE];
   bool is_value_negative = false;
+  bool overflow;
   char *ptr, *end;
   int need_round = 0;
   int p, s;
@@ -2477,27 +2478,65 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   switch (type1)
     {
     case DB_TYPE_SHORT:
-      s1 = db_get_short (value1);
-      dtmp = round_double (s1, d2);
-      db_make_short (result, (short) dtmp);
-      break;
     case DB_TYPE_INTEGER:
-      i1 = db_get_int (value1);
-      dtmp = round_double (i1, d2);
-      db_make_int (result, (int) dtmp);
-      break;
     case DB_TYPE_BIGINT:
-      bi1 = db_get_bigint (value1);
-      dtmp = round_double ((double) bi1, d2);
-      bi_tmp = (DB_BIGINT) dtmp;
-#if defined(AIX)
-      /* in AIX, double to long will not overflow, make it the same as linux. */
-      if (dtmp == (double) DB_BIGINT_MAX)
+      if (type1 == DB_TYPE_SHORT)
 	{
-	  bi_tmp = DB_BIGINT_MIN;
+	  bi1 = db_get_short (value1);
 	}
-#endif
-      db_make_bigint (result, bi_tmp);
+      else if (type1 == DB_TYPE_INTEGER)
+	{
+	  bi1 = db_get_int (value1);
+	}
+      else
+	{
+	  bi1 = db_get_bigint (value1);
+	}
+
+      if (FINITE (d2) && d2 == floor (d2))
+	{
+	  /* an integer place rounds in integers: through a double a BIGINT loses the digits past 2^53, and a place
+	   * whose power of ten is not exact in binary moves the result by one */
+	  overflow = round_bigint (bi1, (d2 > 0) ? 0 : (d2 < -20) ? -20 : (DB_BIGINT) d2, &bi_tmp);
+	}
+      else
+	{
+	  /* a fractional, infinite or NaN place keeps the double rounding; the cast back is undefined for a NaN
+	   * or a value past the range, so they are checked first */
+	  dtmp = round_double ((double) bi1, d2);
+	  overflow = OR_CHECK_BIGINT_OVERFLOW_FROM_FP (dtmp);
+	  bi_tmp = overflow ? 0 : (DB_BIGINT) dtmp;
+	}
+
+      if (!overflow)
+	{
+	  overflow = ((type1 == DB_TYPE_SHORT && OR_CHECK_SHORT_OVERFLOW (bi_tmp))
+		      || (type1 == DB_TYPE_INTEGER && OR_CHECK_INT_OVERFLOW (bi_tmp)));
+	}
+
+      if (overflow)
+	{
+	  /* the result keeps the type of the value, so past its range it is an error, as for a CAST; a place
+	   * whose scale is not finite has its double overflow set by round_double () already */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type1));
+	    }
+	  break;
+	}
+
+      if (type1 == DB_TYPE_SHORT)
+	{
+	  db_make_short (result, (short) bi_tmp);
+	}
+      else if (type1 == DB_TYPE_INTEGER)
+	{
+	  db_make_int (result, (int) bi_tmp);
+	}
+      else
+	{
+	  db_make_bigint (result, bi_tmp);
+	}
       break;
     case DB_TYPE_FLOAT:
       f1 = db_get_float (value1);
@@ -3266,6 +3305,61 @@ truncate_bigint (DB_BIGINT num, DB_BIGINT integer)
   num -= num % integer;
 
   return num;
+}
+
+/*
+ * round_bigint ()
+ *   return: true if the rounded value does not fit a BIGINT
+ *   num(in)    :
+ *   place(in)  : places right of the decimal point
+ *   result(out): num rounded half away from zero, as round_double () rounds
+ */
+static bool
+round_bigint (DB_BIGINT num, DB_BIGINT place, DB_BIGINT * result)
+{
+  /* 10^0 .. 10^18, the powers of ten a BIGINT holds */
+  static const DB_BIGINT powers_of_ten[] = {
+    1LL, 10LL, 100LL, 1000LL, 10000LL, 100000LL, 1000000LL, 10000000LL, 100000000LL, 1000000000LL, 10000000000LL,
+    100000000000LL, 1000000000000LL, 10000000000000LL, 100000000000000LL, 1000000000000000LL, 10000000000000000LL,
+    100000000000000000LL, 1000000000000000000LL
+  };
+  DB_BIGINT unit, rest;
+
+  if (place >= 0)
+    {
+      *result = num;
+      return false;
+    }
+
+  if (place < -19)
+    {
+      /* half the unit is 5 * 10^19 or more, past every BIGINT */
+      *result = 0;
+      return false;
+    }
+
+  if (place == -19)
+    {
+      /* the unit 10^19 is past the BIGINT range: from half the unit up the value rounds to a multiple of it */
+      *result = 0;
+      return (num >= 5000000000000000000LL || num <= -5000000000000000000LL);
+    }
+
+  unit = powers_of_ten[-place];
+  rest = num % unit;		/* has the sign of num, and |rest| < unit <= 10^18, so 2 * rest does not overflow */
+  num -= rest;
+
+  if (2 * rest >= unit)
+    {
+      return OR_ADD_OVERFLOW (num, unit, result);
+    }
+  else if (2 * rest <= -unit)
+    {
+      return OR_SUB_OVERFLOW (num, unit, result);
+    }
+
+  *result = num;
+  return false;
 }
 
 /*
@@ -4769,7 +4863,8 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
     }
 
   d4 = db_get_double (value4);
-  if (d4 < 1 || d4 >= DB_INT32_MAX)
+  /* a NaN fails every comparison: the count has to fall inside the range, not just miss its ends */
+  if (!(d4 >= 1 && d4 < DB_INT32_MAX))
     {
       RETURN_ERROR (ER_PROC_WIDTH_BUCKET_COUNT);
     }
@@ -4850,6 +4945,13 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
     default:
       break;
+    }
+
+  /* a NaN fails every comparison of the double path, which would pick a bucket by the order of the tests, and the
+   * NUMERIC path would coerce it to 0 */
+  if (is_nan_number (value1) || is_nan_number (value2) || is_nan_number (value3))
+    {
+      RETURN_ERROR (ER_QPROC_INVALID_PARAMETER);
     }
 
   /* the type of value1 is fixed */
@@ -5062,7 +5164,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
     {
       RETURN_ERROR (ER_QPROC_OVERFLOW_DIVISION);
     }
-  else if (OR_CHECK_INT_OVERFLOW (d_ret))
+  else if (OR_CHECK_INT_OVERFLOW_FROM_FP (d_ret))
     {
       RETURN_ERROR (ER_QPROC_OVERFLOW_ADDITION);
     }
@@ -6751,4 +6853,25 @@ is_any_arg_null (DB_VALUE * const *args, int num_args)
 	}
     }
   return false;
+}
+
+/*
+ * is_nan_number () - whether a FLOAT, DOUBLE or MONETARY value is NaN
+ *   return: true if NaN
+ *   value(in): input db_value
+ */
+static bool
+is_nan_number (const DB_VALUE * value)
+{
+  switch (DB_VALUE_DOMAIN_TYPE (value))
+    {
+    case DB_TYPE_FLOAT:
+      return isnan (db_get_float (value));
+    case DB_TYPE_DOUBLE:
+      return isnan (db_get_double (value));
+    case DB_TYPE_MONETARY:
+      return isnan (db_get_monetary (value)->amount);
+    default:
+      return false;
+    }
 }
