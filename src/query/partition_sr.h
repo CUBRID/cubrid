@@ -122,14 +122,18 @@ extern int partition_prune_spec_for_row (THREAD_ENTRY * thread_p, val_descr * vd
 
 extern void partition_clear_spec_row_pruning (access_spec_node * spec);
 
+/* *INDENT-OFF* */
 extern int partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   HEAP_SCANCACHE * scan_cache, PRUNING_CONTEXT * pcontext, int op_type,
-				   OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid);
+				   OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid,
+                                const heap_pending_record *pending = nullptr);
 
 extern int partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid,
-				   HFID * pruned_hfid, OID * superclass_oid);
+				   HFID * pruned_hfid, OID * superclass_oid,
+                                const heap_pending_record *pending = nullptr);
 
+/* *INDENT-ON* */
 extern int partition_prune_unique_btid (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID * class_oid, HFID * class_hfid,
 					BTID * btid);
 

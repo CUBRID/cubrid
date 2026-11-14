@@ -93,6 +93,10 @@ typedef enum
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6 = 600003,	/* after (4),(3) before (5) enqueue to daemon */
   FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7 = 600004,	/* after (6) send decision, before (7) DELETE row */
 
+  /* VACUUM */
+  FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT = 700000,	/* vacuum's wait for a busy heap header fails at once as a latch
+							 * timeout; arg is the header VPID */
+
   /* etc .... */
 
 } FI_TEST_CODE;

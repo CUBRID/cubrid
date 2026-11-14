@@ -1798,7 +1798,21 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1395
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1395
+
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1396
+
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1397
+
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1398
+
+#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1399
+
+#define ER_BO_INCOMPATIBLE_STORAGE_FORMAT           -1400
+
+#define ER_VACUUM_OOS_LOOKUP_DEFERRED               -1401
+
+#define ER_LAST_ERROR                               -1402
 
 
 /*

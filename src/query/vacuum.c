@@ -45,6 +45,7 @@
 #include "object_representation.h"
 #include "object_representation_sr.h"
 #include "overflow_file.h"
+#include "vacuum_oos.hpp"
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "resource_shared_pool.hpp"
@@ -62,6 +63,7 @@
 #include "util_func.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <stack>
@@ -298,7 +300,8 @@ class vacuum_job_cursor
     const vacuum_data_entry &get_current_entry () const;    // get current entry; cursor must be valid
     void start_job_on_current_entry () const;
 
-    int force_data_update ();
+    // Rewind interrupted jobs only at the beginning of a master iteration.
+    int force_data_update (bool retry_interrupted = false);
     void unload ();                                   // unload page/index
     void load ();                                     // load page/index
 
@@ -309,6 +312,8 @@ class vacuum_job_cursor
     void search ();                                         // search page/index of cursor blockid
 
     VACUUM_LOG_BLOCKID m_blockid;     // current cursor blockid
+    VACUUM_LOG_BLOCKID m_retry_blockid; // earliest interrupted job to revisit on the next master iteration
+    std::chrono::steady_clock::time_point m_next_retry_time;  // no revisit before this time
     VACUUM_DATA_PAGE *m_page;         // loaded page of blockid or null
     INT16 m_index;                    // loaded index of blockid or INDEX_NOT_FOUND
 };
@@ -363,6 +368,7 @@ struct vacuum_data
     int page_data_max_count;	/* Maximum data entries fitting one vacuum data page. */
 
     int log_block_npages;		/* The number of pages in a log block. */
+    VACUUM_LOG_BLOCKID interrupted_partial_blockid;	/* Failed partial block; publish it as interrupted. */
 
     bool is_loaded;		/* True if vacuum data is loaded. */
     vacuum_shutdown_sequence shutdown_sequence;
@@ -385,6 +391,7 @@ struct vacuum_data
       , last_page (NULL)
       , page_data_max_count (0)
       , log_block_npages (0)
+      , interrupted_partial_blockid (VACUUM_NULL_LOG_BLOCKID)
       , is_loaded (false)
       , shutdown_sequence ()
       , is_archive_removal_safe (false)
@@ -406,7 +413,7 @@ struct vacuum_data
     // same as last blockid
     void set_last_blockid (VACUUM_LOG_BLOCKID blockid);	// set new value for last blockid of vacuum data
 
-    int update ();
+    int update (VACUUM_LOG_BLOCKID *first_interrupted_blockid = NULL);
     void set_oldest_unvacuumed_on_boot ();
 
   private:
@@ -520,6 +527,7 @@ struct vacuum_heap_helper
 
   HFID hfid;			/* Heap file identifier. */
   VFID overflow_vfid;		/* Overflow file identifier. */
+  VFID oos_vfid;		/* OOS file identifier (if any). */
   bool reusable;		/* True if heap file has reusable slots. */
 
   MVCC_SATISFIES_VACUUM_RESULT can_vacuum;	/* Result of vacuum check. */
@@ -676,7 +684,7 @@ class ovfp_threshold_mgr g_ovfp_threshold_mgr;
 /* Vacuum static functions. */
 static void vacuum_update_keep_from_log_pageid (THREAD_ENTRY * thread_p);
 static int vacuum_compare_blockids (const void *ptr1, const void *ptr2);
-static int vacuum_data_mark_finished (THREAD_ENTRY * thread_p);
+static int vacuum_data_mark_finished (THREAD_ENTRY * thread_p, VACUUM_LOG_BLOCKID * first_interrupted_blockid);
 static void vacuum_data_empty_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * prev_data_page,
 				    VACUUM_DATA_PAGE ** data_page);
 static void vacuum_data_initialize_new_page (THREAD_ENTRY * thread_p, VACUUM_DATA_PAGE * data_page);
@@ -708,8 +716,10 @@ static int vacuum_collect_heap_objects (THREAD_ENTRY * thread_p, VACUUM_WORKER *
 static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid);
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool * pages_released);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+			       VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -749,8 +759,8 @@ static void vacuum_data_unload_first_and_last_page (THREAD_ENTRY * thread_p);
 static void vacuum_data_empty_update_last_blockid (THREAD_ENTRY * thread_p);
 
 #if defined (SA_MODE)
-static void vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
-			       PERF_UTIME_TRACKER & perf_tracker);
+static int vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
+			      PERF_UTIME_TRACKER & perf_tracker);
 #endif // SA_MODE
 
 #if !defined (NDEBUG)
@@ -947,7 +957,7 @@ static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;	  // ent
 /* *INDENT-ON* */
 
 #if defined (SA_MODE)
-static void
+static int
 vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry, bool is_partial,
 		   PERF_UTIME_TRACKER & perf_tracker)
 {
@@ -959,13 +969,14 @@ vacuum_sa_run_job (THREAD_ENTRY * thread_p, const VACUUM_DATA_ENTRY & data_entry
   assert (save_type == thread_type::TT_VACUUM_MASTER);
 
   VACUUM_DATA_ENTRY copy_data_entry = data_entry;
-  vacuum_process_log_block (thread_p, &copy_data_entry, is_partial);
+  int error_code = vacuum_process_log_block (thread_p, &copy_data_entry, is_partial);
 
   vacuum_convert_thread_to_master (thread_p, save_type);
   assert (save_type == thread_type::TT_VACUUM_WORKER);
   vacuum_Worker_entry_manager->retire_worker (*worker_p);
 
   PERF_UTIME_TRACKER_START (thread_p, &perf_tracker);
+  return error_code;
 }
 #endif // SA_MODE
 
@@ -1027,16 +1038,18 @@ xvacuum (THREAD_ENTRY * thread_p)
     {
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_check_interrupt))
 	{
-	  cursor.unload ();
-	  vacuum_Data.update ();
-	  return NO_ERROR;
+	  goto end;
 	}
 
       if (cursor.get_current_entry ().is_available ())
 	{
 	  cursor.start_job_on_current_entry ();
 	  // job will be executed immediately
-	  vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
+	  error_code = vacuum_sa_run_job (thread_p, cursor.get_current_entry (), false, perf_tracker);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto end;
+	    }
 	}
       else
 	{
@@ -1073,12 +1086,21 @@ xvacuum (THREAD_ENTRY * thread_p)
       // *INDENT-OFF*
       vacuum_data_entry partial_entry { log_Gl.hdr };
       // *INDENT-ON*
+      /* Do not publish this partial block while vacuum appends its own log records. */
       log_Gl.hdr.does_block_need_vacuum = false;
 
       // can't be interrupted
       bool save_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-      vacuum_sa_run_job (thread_p, partial_entry, true, perf_tracker);
+      error_code = vacuum_sa_run_job (thread_p, partial_entry, true, perf_tracker);
       (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
+      if (error_code != NO_ERROR)
+	{
+	  /* The saved LSA and MVCC bounds are unchanged; a later run must finish this partial block. */
+	  log_Gl.hdr.does_block_need_vacuum = true;
+	  vacuum_Data.interrupted_partial_blockid = partial_entry.get_blockid ();
+	  goto end;
+	}
+      vacuum_Data.interrupted_partial_blockid = VACUUM_NULL_LOG_BLOCKID;
     }
 
   /* All vacuum complete. */
@@ -1103,13 +1125,41 @@ xvacuum (THREAD_ENTRY * thread_p)
 
   vacuum_Data.is_vacuum_complete = true;
 
+end:
+  if (!vacuum_Data.is_vacuum_complete)
+    {
+      /* Persist completed/interrupted jobs, but retain unfinished blocks and partial-block header information. */
+      cursor.unload ();
+      vacuum_Data.update ();
+      vacuum_data_unload_first_and_last_page (thread_p);
+    }
+
   PERF_UTIME_TRACKER_TIME (thread_p, &perf_tracker, PSTAT_VAC_MASTER);
 
   vacuum_restore_thread (thread_p, save_type);
 
-  return NO_ERROR;
+  return error_code;
 #endif /* SA_MODE */
 }
+
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+/*
+ * vacuum_wakeup_master_daemon () - Wake the vacuum master daemon for OOS tests.
+ */
+int
+vacuum_wakeup_master_daemon (void)
+{
+#if defined (SERVER_MODE)
+  if (vacuum_Master_daemon == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+  vacuum_Master_daemon->wakeup ();
+#endif /* SERVER_MODE */
+  return NO_ERROR;
+}
+#endif /* CUBRID_UNIT_TEST_ENABLED */
 
 /*
  * xvacuum_dump - Dump the contents of vacuum
@@ -1309,6 +1359,11 @@ vacuum_boot (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
+  /* A saved partial block may have been partly vacuumed by a previous standalone session. Preserve that hint if
+   * this session publishes it as a full block, including when standalone startup vacuum is skipped. */
+  vacuum_Data.interrupted_partial_blockid = log_Gl.hdr.does_block_need_vacuum
+    ? vacuum_get_log_blockid (log_Gl.hdr.mvcc_op_log_lsa.pageid) : VACUUM_NULL_LOG_BLOCKID;
+
   /* first things first... load vacuum data and do some recovery if required */
   error_code = vacuum_data_load_and_recover (thread_p);
   if (error_code != NO_ERROR)
@@ -1442,7 +1497,7 @@ vacuum_finalize (THREAD_ENTRY * thread_p)
   /* Make sure all finished job queues are consumed. */
   if (vacuum_Finished_job_queue != NULL)
     {
-      vacuum_data_mark_finished (thread_p);
+      vacuum_data_mark_finished (thread_p, NULL);
       if (!vacuum_Finished_job_queue->is_empty ())
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -1515,6 +1570,7 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
   HFID hfid = HFID_INITIALIZER;
   bool reusable = false;
   int object_count = 0;
+  bool deferred = false;
 
   if (worker->n_heap_objects == 0)
     {
@@ -1550,6 +1606,32 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
       /* Vacuum page. */
       error_code =
 	vacuum_heap_page (thread_p, page_ptr, object_count, threshold_mvccid, &hfid, &reusable, was_interrupted);
+      if (error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED)
+	{
+	  /* The first deferral decides the block. Every page of this heap would wait for its header again, so a later
+	   * run of the block retries the whole heap. */
+	  if (!deferred)
+	    {
+	      er_stack_push ();
+	      deferred = true;
+	    }
+	  else
+	    {
+	      er_clear ();
+	    }
+	  error_code = NO_ERROR;
+	  for (page_ptr = obj_ptr;
+	       page_ptr < worker->heap_objects + worker->n_heap_objects && VFID_EQ (&page_ptr->vfid, &vfid); page_ptr++)
+	    {
+	      ;
+	    }
+	  continue;
+	}
+      if (error_code == ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  /* Keep the incomplete block retryable in both debug and release builds. */
+	  break;
+	}
       if (error_code != NO_ERROR)
 	{
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
@@ -1568,12 +1650,25 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	    }
 #endif // not DEBUG
 
-	  return error_code;
+	  break;
 	}
       /* Advance to next page. */
       page_ptr = obj_ptr;
     }
-  return NO_ERROR;
+
+  if (deferred)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  er_stack_pop ();
+	  error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	}
+      else
+	{
+	  er_stack_pop_and_keep_error ();
+	}
+    }
+  return error_code;
 }
 
 /*
@@ -1596,6 +1691,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   HEAP_PAGE_VACUUM_STATUS page_vacuum_status;	/* Current page vacuum status. */
   int error_code = NO_ERROR;	/* Error code. */
   int obj_index = 0;		/* Index used to iterate the object array. */
+
+  VACUUM_OOS_EMPTIED_PAGES oos_emptied_pages;
 
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
@@ -1632,6 +1729,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.can_vacuum = VACUUM_RECORD_CANNOT_VACUUM;
   helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
+  VFID_SET_NULL (&helper.oos_vfid);
 
   /* Fix heap page. */
   if (was_interrupted)
@@ -1757,7 +1855,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
-	      error_code = vacuum_heap_record (thread_p, &helper);
+	      error_code = vacuum_heap_record (thread_p, &helper, &oos_emptied_pages);
 	    }
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
@@ -1771,6 +1869,16 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.forward_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, helper.forward_page);
+	    }
+	  if (error_code == ER_INTERRUPTED)
+	    {
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
+	    }
+	  if (error_code == ER_OUT_OF_VIRTUAL_MEMORY)
+	    {
+	      /* The current sysop was aborted. Leave the block incomplete so this record can be retried. */
+	      goto end;
 	    }
 	  if (error_code != NO_ERROR)
 	    {
@@ -1915,6 +2023,18 @@ end:
       vacuum_heap_page_log_and_reset (thread_p, &helper, true, true);
     }
 
+  /* Reclaim only after the home page is unfixed: the reclaim takes the OOS stats header WRITE
+   * latch and one dealloc sysop per page, which must not extend the home page latch hold. */
+  if (error_code == NO_ERROR && !oos_emptied_pages.empty ())
+    {
+      assert (!VFID_ISNULL (&helper.oos_vfid));
+      error_code = vacuum_oos_reclaim_empty_pages (thread_p, &helper.oos_vfid, &oos_emptied_pages);
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	}
+    }
+
   return error_code;
 }
 
@@ -1941,6 +2061,9 @@ vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper
   VPID forward_vpid;		/* Forward page VPID. */
   int error_code = NO_ERROR;	/* Error code. */
   PGBUF_LATCH_CONDITION fwd_condition;	/* Condition to latch forward page for REC_RELOCATION. */
+  /* Set once the OOS file lookup released the heap pages to wait for the heap header. Its answer is then final, so a
+   * failure it absorbed does not release the pages again. */
+  bool oos_header_waited = false;
 
   /* Assert expected arguments. */
   assert (helper != NULL);
@@ -2065,6 +2188,19 @@ retry_prepare:
 	  assert_release (false);
 	  return error_code;
 	}
+
+      if (!oos_header_waited)
+	{
+	  error_code = vacuum_heap_prepare_oos_vfid (thread_p, helper, &oos_header_waited);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (oos_header_waited)
+	    {
+	      goto retry_prepare;
+	    }
+	}
       return NO_ERROR;
 
     case REC_BIGONE:
@@ -2174,6 +2310,19 @@ retry_prepare:
 	  assert_release (false);
 	  return ER_FAILED;
 	}
+
+      if (!oos_header_waited)
+	{
+	  error_code = vacuum_heap_prepare_oos_vfid (thread_p, helper, &oos_header_waited);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (oos_header_waited)
+	    {
+	      goto retry_prepare;
+	    }
+	}
       break;
 
     default:
@@ -2194,6 +2343,73 @@ retry_prepare:
   VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
 
   /* Success. */
+  return NO_ERROR;
+}
+
+/*
+ * vacuum_heap_prepare_oos_vfid () - Find the OOS file of the heap if the current record needs it.
+ *
+ * return		   : Error code. On a vacuum worker a failed lookup is ER_VACUUM_OOS_LOOKUP_DEFERRED, and no
+ *			     heap page is fixed.
+ * thread_p (in)	   : Thread entry.
+ * helper (in/out)	   : Vacuum heap helper. Its record is a copy and stays valid while pages are released.
+ * pages_released (out) : True if the heap pages were released and only the home page was fixed again. The caller
+ *			  restarts from the slot, because the record may have changed.
+ *
+ * heap_alloc_new_pages latches the heap header before a heap page, and page latches have no deadlock detection. So
+ * this function waits for the heap header only after it releases the heap pages.
+ */
+static int
+vacuum_heap_prepare_oos_vfid (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool * pages_released)
+{
+  int error_code = NO_ERROR;
+
+  *pages_released = false;
+
+  if (!VFID_ISNULL (&helper->oos_vfid) || !heap_recdes_contains_oos (&helper->record))
+    {
+      return NO_ERROR;
+    }
+
+  if (!heap_oos_find_vfid_nowait (thread_p, &helper->hfid, &helper->oos_vfid))
+    {
+      VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
+
+      if (helper->forward_page != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, helper->forward_page);
+	}
+      vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
+      *pages_released = true;
+
+      error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record, &helper->oos_vfid);
+      if (error_code != NO_ERROR)
+	{
+	  if (vacuum_is_thread_vacuum_worker (thread_p))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_OOS_LOOKUP_DEFERRED, 6,
+		      VFID_AS_ARGS (&helper->hfid.vfid), error_code, VPID_AS_ARGS (&helper->home_vpid),
+		      helper->crt_slotid);
+	      error_code = ER_VACUUM_OOS_LOOKUP_DEFERRED;
+	    }
+	  return error_code;
+	}
+
+      helper->home_page =
+	pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (helper->home_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.", VPID_AS_ARGS (&helper->home_vpid));
+	  return error_code;
+	}
+    }
+
+  if (VFID_ISNULL (&helper->oos_vfid))
+    {
+      vacuum_oos_report_missing_oos_file (&helper->hfid, &helper->record, helper->crt_slotid, helper->record_type);
+    }
   return NO_ERROR;
 }
 
@@ -2230,8 +2446,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       /* Remove insert MVCCID and prev version lsa. */
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset. */
       existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
@@ -2249,7 +2465,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2277,6 +2494,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
     case REC_BIGONE:
       /* First overflow page is required. */
       assert (helper->forward_page != NULL);
+      assert (!RECORD_HEADER_HAS_OOS (&helper->mvcc_header));
 
       /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
@@ -2308,8 +2526,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       assert (helper->record.type == REC_HOME);
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset */
       existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
@@ -2327,7 +2545,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2369,20 +2588,50 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
+ * oos_emptied_pages_out (out) : OOS pages the deletes emptied are appended, each once; the caller
+ *				 reclaims them AFTER unfixing the home page, never here.
  */
 static int
-vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+		    VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out)
 {
   /* Assert expected arguments. */
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
+  assert (oos_emptied_pages_out != NULL);
 
-  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE)
+  /* Does removing this record touch more than the home page?  Two independent axes decide:
+   *
+   *   body footprint (record_type)       OOS footprint (heap_recdes_contains_oos)
+   *   ----------------------------       ----------------------------------------
+   *   REC_HOME       : home only  (1)    no OOS  : 0 extra pages
+   *   REC_RELOCATION : home + fwd  (2)   has OOS : N OOS pages (N>=1; multi-chunk -> more)
+   *   REC_BIGONE     : home + ovf  (>1)
+   *
+   *   total footprint = body + OOS  ==>  a sysop is needed iff it crosses the home page (total > 1):
+   *
+   *     record_type     OOS?   pages touched          path
+   *     -----------     ----   -------------          ---------------------------------
+   *     REC_HOME        no     home only              bulk log, NO sysop
+   *     REC_HOME        yes    home + OOS pages       one sysop   (this is `has_oos`)
+   *     REC_RELOCATION  any    home + fwd (+ OOS)     one sysop
+   *     REC_BIGONE      n/a    home + ovf chain       one sysop   (OOS must not coexist; abort below)
+   *
+   * The sysop bundles every per-page log record of a multi-page removal into one atomic unit, so a crash
+   * cannot leave it half-done (heap slot vacuumed but its OOS chunks still referenced, or vice versa).
+   * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
+   * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
+   * an otherwise single-page REC_HOME into the sysop path. */
+  bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
+		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
+		  && heap_recdes_contains_oos (&helper->record));
+
+  if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
     {
-      /* HOME record of rel/big records are performed as a single operation: flush all existing vacuumed slots before
-       * starting a system op for current record */
+      /* Multi-page operations (rel/big/oos) are performed as a single operation: flush all existing
+       * vacuumed slots before starting a system op for current record */
       vacuum_heap_page_log_and_reset (thread_p, helper, false, false);
       log_sysop_start (thread_p);
     }
@@ -2439,6 +2688,18 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
+      /* Delete OOS records (if any) before committing the sysop. */
+      if (has_oos)
+	{
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     oos_emptied_pages_out);
+	  if (oos_err != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      return oos_err;
+	    }
+	}
+
       log_sysop_commit (thread_p);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
@@ -2450,6 +2711,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (helper->forward_page != NULL);
       /* Overflow first page is required. */
       assert (!VFID_ISNULL (&helper->overflow_vfid));
+      assert (!RECORD_HEADER_HAS_OOS (&helper->mvcc_header));
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2479,7 +2741,30 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       break;
 
     case REC_HOME:
-      helper->n_bulk_vacuumed++;
+      if (has_oos)
+	{
+	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS chunk deletes must share the one
+	   * sysop opened above so a crash between them cannot leave dangling OOS references. The bulk path
+	   * would split them across sysop boundaries. The slot was already cleared via spage_vacuum_slot;
+	   * commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE cases. */
+	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
+	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
+					     helper->reusable);
+
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     oos_emptied_pages_out);
+	  if (oos_err != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      return oos_err;
+	    }
+
+	  log_sysop_commit (thread_p);
+	}
+      else
+	{
+	  helper->n_bulk_vacuumed++;
+	}
 
       perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_VACUUMS);
       break;
@@ -2815,12 +3100,12 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
 	  /* Clear previous version. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;
@@ -3053,7 +3338,7 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.first_page);
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.last_page);
 
-  decrease_outstanding_job (m_cursor.force_data_update ());
+  decrease_outstanding_job (m_cursor.force_data_update (true));
 
   /* any vacuum block may reference a TDE-encrypted log page. Keep its metadata persistent, but do not dispatch jobs
    * until the cipher is available. The backlog is preserved and can be processed after restarting with the key. */
@@ -3304,6 +3589,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   bool dummy_continue_check = false;
 #endif /* SA_MODE */
 
+  VACUUM_OOS_VFID_MEMO oos_vfid_memo;
+
   if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
       return NO_ERROR;
@@ -3448,6 +3735,26 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  vacuum_er_log (VACUUM_ER_LOG_HEAP | VACUUM_ER_LOG_WORKER,
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
+
+	  /* Free the old OOS values an UPDATE left behind. Only RVHF_UPDATE_NOTIFY_VACUUM should reach here:
+	   *
+	   *   - UPDATE writes new OOS OIDs. The old ones survive only in the undo image; the live slot no
+	   *     longer points at them, so vacuum's normal REMOVE path never sees them. Reading the undo
+	   *     image is the only way left to free them.
+	   *   - DELETE keeps the same OIDs, so REMOVE frees them already. Freeing them here too would be a
+	   *     double free and trip an assert -- so the check below lets UPDATE in but keeps DELETE out.
+	   *   - The same check keeps other heap ops out; vacuum_process_log_record does not even unpack their
+	   *     undo image. */
+	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+	    {
+	      error_code =
+		vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	      if (error_code != NO_ERROR)
+		{
+		  vacuum_check_shutdown_interruption (thread_p, error_code);
+		  goto end;
+		}
+	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
 	{
@@ -3579,6 +3886,20 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	    }
 	  db_private_free_and_init (thread_p, es_uri);
 	}
+      else if (log_record_data.rcvindex == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
+	{
+	  /* MVCC remove_old_forward forward REC_NEWHOME delete (heap_update_relocation). The old forward
+	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
+	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
+	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
+	  error_code =
+	    vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  if (error_code != NO_ERROR)
+	    {
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
+	    }
+	}
       else
 	{
 	  /* Safeguard code */
@@ -3596,7 +3917,10 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
   error_code = vacuum_heap (thread_p, worker, threshold_mvccid, was_interrupted);
   if (error_code != NO_ERROR)
     {
-      vacuum_check_shutdown_interruption (thread_p, error_code);
+      if (error_code != ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	}
       goto end;
     }
   assert (worker->state == VACUUM_WORKER_STATE_EXECUTE);
@@ -3758,20 +4082,23 @@ vacuum_finished_block_vacuum (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data,
     }
   else
     {
-      /* We expect that worker job is abandoned during shutdown. But all other cases are error cases. */
+      /* Shutdown, allocation failures and deferred OOS lookups leave the block available for a later retry. */
       int error_level =
 #if defined (SERVER_MODE)
 	thread_p->shutdown ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
 
 #if !defined (NDEBUG)
-      /* Interrupting jobs without shutdown is unacceptable. */
-      assert (thread_p->shutdown);
-      assert (vacuum_Data.shutdown_sequence.is_shutdown_requested ());
+      /* Other reasons for abandoning a worker job remain unexpected. */
+      assert (thread_p->shutdown || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
+	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
+      assert (vacuum_Data.shutdown_sequence.is_shutdown_requested () || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
+	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 #endif /* !NDEBUG */
 
 #else /* !SERVER_MODE */
 	er_errid () == ER_INTERRUPTED ? VACUUM_ER_LOG_WARNING : VACUUM_ER_LOG_ERROR;
-      assert (er_errid () == ER_INTERRUPTED);
+      assert (er_errid () == ER_INTERRUPTED || er_errid () == ER_OUT_OF_VIRTUAL_MEMORY
+	      || er_errid () == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 #endif /* !SERVER_MODE */
 
       /* Vacuum will have to be re-run */
@@ -4080,9 +4407,13 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
     }
 
   /* We are here because the file that will be vacuumed is not dropped. */
-  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex) && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+  if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
+      && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
+      && log_record_data->rcvindex != RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
     {
-      /* No need to unpack undo data */
+      /* Vacuum needs the undo image only for these ops, so anything else returns now without
+       * unpacking it: BTREE ops, the two OOS forward-walk tags -- RVHF_UPDATE_NOTIFY_VACUUM and
+       * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM -- and ES (RVES_NOTIFY_VACUUM). */
       return NO_ERROR;
     }
 
@@ -4641,9 +4972,10 @@ vacuum_is_work_in_progress (THREAD_ENTRY * thread_p)
  *
  * return	 : The count of jobs marked as finished.
  * thread_p (in) : Thread entry.
+ * first_interrupted_blockid (in/out): Earliest interrupted block, or NULL if no retry cursor is maintained.
  */
 static int
-vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
+vacuum_data_mark_finished (THREAD_ENTRY * thread_p, VACUUM_LOG_BLOCKID * first_interrupted_blockid)
 {
 #define TEMP_BUFFER_SIZE VACUUM_FINISHED_JOB_QUEUE_CAPACITY
   VACUUM_LOG_BLOCKID finished_blocks[TEMP_BUFFER_SIZE];
@@ -4711,6 +5043,11 @@ vacuum_data_mark_finished (THREAD_ENTRY * thread_p)
 	    {
 	      /* Block was not completely vacuumed. Job was interrupted. */
 	      data->set_interrupted ();
+	      if (first_interrupted_blockid != NULL
+		  && (*first_interrupted_blockid == VACUUM_NULL_LOG_BLOCKID || blockid < *first_interrupted_blockid))
+		{
+		  *first_interrupted_blockid = blockid;
+		}
 
 	      vacuum_er_log_warning (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_JOBS,
 				     "Mark block %lld as interrupted.", (long long int) data->get_blockid ());
@@ -5299,6 +5636,12 @@ vacuum_consume_buffer_log_blocks (THREAD_ENTRY * thread_p)
 	      LSA_COPY (&page_free_data->start_lsa, &consumed_data.start_lsa);
 	      page_free_data->newest_mvccid = consumed_data.newest_mvccid;
 	      page_free_data->oldest_visible_mvccid = consumed_data.oldest_visible_mvccid;
+	      if (next_blockid == vacuum_Data.interrupted_partial_blockid)
+		{
+		  /* Earlier partial work may already have vacuumed or deallocated heap pages in this block. */
+		  page_free_data->set_interrupted ();
+		  vacuum_Data.interrupted_partial_blockid = VACUUM_NULL_LOG_BLOCKID;
+		}
 	      assert (log_Gl.mvcc_table.get_global_oldest_visible () >= page_free_data->oldest_visible_mvccid);
 #if !defined (NDEBUG)
 	      /* Check that oldest_mvccid is not decreasing. */
@@ -7823,6 +8166,24 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 
   vacuum_data_load_first_and_last_page (thread_p);
 
+#if defined (SA_MODE)
+  if (!vacuum_Data.is_vacuum_complete)
+    {
+      /* A failed or skipped vacuum may leave full blocks, or a partial block published by later shutdown logging.
+       * Persist queued entries before log_final, and never reflect unfinished blocks as already covered. */
+      thread_type save_type;
+      vacuum_convert_thread_to_master (thread_p, save_type);
+      vacuum_Data.update ();
+      vacuum_restore_thread (thread_p, save_type);
+
+      if (!vacuum_Data.is_empty () || log_Gl.hdr.does_block_need_vacuum)
+	{
+	  vacuum_data_unload_first_and_last_page (thread_p);
+	  return;
+	}
+    }
+#endif /* SA_MODE */
+
   VACUUM_LOG_BLOCKID last_blockid = logpb_last_complete_blockid ();
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
@@ -8001,7 +8362,9 @@ vacuum_check_shutdown_interruption (const THREAD_ENTRY * thread_p, int error_cod
   // interrupted is accepted if:
   // 1. this is an active worker thread
   // 2. or server is shutting down
-  assert (!vacuum_is_thread_vacuum_worker (thread_p) || (thread_p->shutdown && error_code == ER_INTERRUPTED));
+  // 3. or the block is left for a later run
+  assert (!vacuum_is_thread_vacuum_worker (thread_p) || (thread_p->shutdown && error_code == ER_INTERRUPTED)
+	  || error_code == ER_VACUUM_OOS_LOOKUP_DEFERRED);
 }
 
 //
@@ -8117,7 +8480,7 @@ vacuum_data::set_last_blockid (VACUUM_LOG_BLOCKID blockid)
 }
 
 int
-vacuum_data::update ()
+vacuum_data::update (VACUUM_LOG_BLOCKID *first_interrupted_blockid)
 {
   cubthread::entry *thread_p = &cubthread::get_entry ();
   int mark_finished;
@@ -8133,7 +8496,7 @@ vacuum_data::update ()
   // When vacuum data is empty, just don't update oldest_unvacuumed
 
   // first remove vacuumed blocks
-  mark_finished = vacuum_data_mark_finished (thread_p);
+  mark_finished = vacuum_data_mark_finished (thread_p, first_interrupted_blockid);
 
   // then consume new generated blocks
   vacuum_consume_buffer_log_blocks (thread_p);
@@ -8296,6 +8659,8 @@ vacuum_data_page::get_first_blockid () const
 //
 vacuum_job_cursor::vacuum_job_cursor ()
   : m_blockid (VACUUM_NULL_LOG_BLOCKID)
+  , m_retry_blockid (VACUUM_NULL_LOG_BLOCKID)
+  , m_next_retry_time ()
   , m_page (NULL)
   , m_index (vacuum_data_page::INDEX_NOT_FOUND)
 {
@@ -8372,13 +8737,36 @@ vacuum_job_cursor::start_job_on_current_entry () const
   vacuum_set_dirty_data_page_dont_free (thread_p, m_page);
 }
 
+// A job that fails at once would otherwise run again on every master iteration.
+static const std::chrono::milliseconds VACUUM_RETRY_INTERRUPTED_INTERVAL (1000);
+
 int
-vacuum_job_cursor::force_data_update ()
+vacuum_job_cursor::force_data_update (bool retry_interrupted)
 {
   int mark_finished;
+  const bool had_interrupted = m_retry_blockid != VACUUM_NULL_LOG_BLOCKID;
 
   unload ();   // can't be loaded while updating
-  mark_finished = vacuum_Data.update ();
+  mark_finished = vacuum_Data.update (&m_retry_blockid);
+  if (m_retry_blockid != VACUUM_NULL_LOG_BLOCKID)
+    {
+      const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now ();
+      if (!had_interrupted)
+        {
+          // Count the interval from the first failure, whichever update sees it.
+          m_next_retry_time = now + VACUUM_RETRY_INTERRUPTED_INTERVAL;
+        }
+      // Revisit failed jobs at most once per VACUUM_RETRY_INTERRUPTED_INTERVAL, and only at the start of a master
+      // iteration. Mid-iteration updates must keep forward progress.
+      if (retry_interrupted && now >= m_next_retry_time)
+        {
+          if (m_retry_blockid < m_blockid)
+            {
+              m_blockid = m_retry_blockid;
+            }
+          m_retry_blockid = VACUUM_NULL_LOG_BLOCKID;
+        }
+    }
   readjust_to_vacuum_data_changes ();
   load ();
   

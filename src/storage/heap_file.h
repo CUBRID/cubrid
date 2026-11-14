@@ -44,6 +44,9 @@
 // forward declarations
 class multi_index_unique_stats;
 class record_descriptor;
+/* *INDENT-OFF* */
+class heap_pending_record;
+/* *INDENT-ON* */
 
 #define HFID_EQ(hfid_ptr1, hfid_ptr2) \
   ((hfid_ptr1) == (hfid_ptr2) \
@@ -368,6 +371,18 @@ typedef enum
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
 
+/* Use CONSUME_RAW_BYTES only when the caller needs materialized logical RECDES bytes outside the OOS-aware
+ * attribute layer; otherwise preserve the stored RECDES (CBRD-26847). */
+typedef enum
+{
+  HEAP_RECDES_CONSUMPTION_POLICY_INVALID = 0,
+  HEAP_RECDES_CONSUME_RAW_BYTES,	/* materialize OOS values before the caller consumes raw RECDES bytes */
+  HEAP_RECDES_DONT_CONSUME_RAW_BYTES	/* preserve stored RECDES; resolve values through the attr layer */
+} HEAP_RECDES_CONSUMPTION_POLICY;
+
+#define HEAP_IS_VALID_RECDES_CONSUMPTION_POLICY(policy) \
+  ((policy) == HEAP_RECDES_CONSUME_RAW_BYTES || (policy) == HEAP_RECDES_DONT_CONSUME_RAW_BYTES)
+
 typedef struct heap_get_context HEAP_GET_CONTEXT;
 struct heap_get_context
 {
@@ -390,6 +405,9 @@ struct heap_get_context
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
+
+  HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy;
+  bool keep_recdes_buffer;	/* true if caller-positioned recdes_p->data must not be rebound to scan cache */
 };
 
 /* Forward definition. */
@@ -427,12 +445,14 @@ extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p, HE
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
-			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+			    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);
 extern SCAN_CODE heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * prev_oid,
-			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+			    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid,
 				  OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 
@@ -505,8 +525,10 @@ extern int heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, 
 extern void heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info);
+/* *INDENT-OFF* */
 extern int heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-					HEAP_CACHE_ATTRINFO * attr_info);
+					HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record *pending = nullptr);
+/* *INDENT-ON* */
 extern int heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 					     HEAP_CACHE_ATTRINFO * attr_info);
 extern int heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes,
@@ -522,6 +544,11 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_
 						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, record_descriptor * new_recdes);
+
+/* *INDENT-OFF* */
+extern SCAN_CODE heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info,
+    RECDES *old_recdes, heap_pending_record *pending, bool copy_lobs = true);
+/* *INDENT-ON* */
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
@@ -544,9 +571,13 @@ extern OR_ATTRIBUTE *heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRIN
 extern int heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out);
 extern int heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out,
 					  int *disk_size);
+
+/* *INDENT-OFF* */
 extern DB_VALUE *heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 					 RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
-					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain);
+					 FUNC_PRED_UNPACK_INFO * func_indx_preds, TP_DOMAIN ** key_domain,
+                                         const heap_pending_record *pending = nullptr);
+/* *INDENT-ON* */
 
 extern BTID *heap_indexinfo_get_btid (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo);
 extern int heap_indexinfo_get_num_attrs (int btid_index, HEAP_CACHE_ATTRINFO * attrinfo);
@@ -657,6 +688,8 @@ extern SCAN_CODE heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_
 					void *ptr);
 extern SCAN_CODE heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 					  void *ptr);
+extern SCAN_CODE heap_oos_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
+				     void *ptr);
 extern int heap_header_capacity_end_scan (THREAD_ENTRY * thread_p, void **ptr);
 
 extern SCAN_CODE heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid, VPID * prev_vpid,
@@ -714,15 +747,18 @@ extern void heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pg
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+					   HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
-						int ispeeking, int old_chn, bool is_cached_scan = false);
+						int ispeeking, int old_chn,
+						HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy,
+						bool is_cached_scan = false);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
 				   OID * class_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				   int old_chn);
+				   int old_chn, HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
 extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan,
@@ -744,14 +780,45 @@ extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npage
 				 PGBUF_WATCHER * new_pg_watcher);
 
 extern int heap_nonheader_page_capacity ();
+extern int heap_oos_inline_target_size (void);
 
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data);
+
+extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
+extern bool heap_oos_find_vfid_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid);
+extern bool heap_recdes_contains_oos (const RECDES * record);
+extern bool heap_recdes_has_valid_header (const RECDES * record);
+
+/* Read raw variable-offset-table entries, including their flag bits. The pair accessor checks both entries. */
+extern int heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out);
+extern int heap_recdes_get_var_offset_pair (const RECDES * recdes, int location, int *entry_out, int *next_entry_out);
+
+/* Locates the OOS inline stub of variable attribute `location` after checking that its field is exactly one
+ * stub inside the record. Every stub reader and the replica fixup locate the stub through it; the heap
+ * writer lays the field out itself and bounds it against its own buffer (CBRD-26950). */
+extern int heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stub_out);
+
 // *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
 						 const std::vector<VPID> &heap_pages_array);
 // *INDENT-ON*
+
+// Currently heap_file.c uses GNU indent as formatting tool and it does not support C++,
+// so we need to turn off indent for this part of code.
+// TODO: Rename heap_file.c to heap_file.cpp and enable C++ formatting in indent tool, then we can remove the following lines.
+
+// *INDENT-OFF*
+struct oos_chain_ref;		// oos_file.hpp: head OOS OID + identity stamp
+using OOS_REF_VECTOR = std::vector<oos_chain_ref>;
+// *INDENT-ON*
+
+/* Parses every OOS inline stub of record into a chain reference (head OOS OID + identity stamp),
+ * the value the delete paths hand to oos_delete (CBRD-26950). A stub whose field is malformed fails
+ * with ER_HEAP_OOS_BAD_INLINE_HEADER (error set) and leaves oos_refs empty; an offset table without a
+ * terminator or without any OOS entry still fails with ER_FAILED. */
+extern int heap_recdes_get_oos_refs (const RECDES * record, OOS_REF_VECTOR & oos_refs);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

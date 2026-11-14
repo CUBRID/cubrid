@@ -169,6 +169,7 @@ static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
 #define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
+#define COLUMN_CONSTRAINT_STORAGE	(0x400)
 
 #define STACK_SIZE	128
 
@@ -391,6 +392,7 @@ static PT_NODE *parser_get_alter_node (void);
 
 static void parser_save_attr_def_one (PT_NODE * node);
 static PT_NODE *parser_get_attr_def_one (void);
+static void parser_reject_non_normal_attr_storage (PARSER_CONTEXT * parser, PT_NODE * node);
 
 static void parser_push_orderby_node (PT_NODE * node);
 static PT_NODE *parser_top_orderby_node (void);
@@ -1585,6 +1587,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> FILL_FACTOR
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
+%token <cptr> FORCE_OUTLINE
 %token <cptr> FULLSCAN
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
@@ -1610,6 +1613,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
+%token <cptr> PREFER_INLINE
+%token <cptr> PREFER_OUTLINE
+%token <cptr> STORAGE
 %token <cptr> ISNULL
 %token <cptr> KEYLIMIT
 %token <cptr> KEYS
@@ -1669,6 +1675,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NULLS
 %token <cptr> OFFSET
 %token <cptr> ONLINE
+%token <cptr> OOS
 %token <cptr> OPEN
 %token <cptr> ORDINALITY
 %token <cptr> OVER
@@ -6510,6 +6517,8 @@ alter_modify_clause_for_alter_list
 
 			    node->info.alter.alter_clause.attr_mthd.attr_def_list->
 				info.attr_def.attr_type = PT_META_ATTR;
+			    parser_reject_non_normal_attr_storage
+			      (this_parser, node->info.alter.alter_clause.attr_mthd.attr_def_list);
 			  }
 		}}
 	;
@@ -6533,6 +6542,7 @@ alter_change_clause_for_alter_list
 			    att = node->info.alter.alter_clause.attr_mthd.attr_def_list;
 			    att->info.attr_def.attr_type =
 			      node->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.meta_class;
+			    parser_reject_non_normal_attr_storage (this_parser, att);
 			  }
 		}}
 	;
@@ -7682,7 +7692,15 @@ show_heap_type_id
 	;
 
 show_type_id
-	: ALL INDEXES HEADER
+	: HEAP OOS
+		{{
+			$$ = SHOWSTMT_HEAP_OOS;
+		}}
+	| ALL HEAP OOS
+		{{
+			$$ = SHOWSTMT_ALL_HEAP_OOS;
+		}}
+	| ALL INDEXES HEADER
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_HEADER;
 		}}
@@ -10166,6 +10184,15 @@ attr_def_one
 			      {
 			        node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
 			      }
+			    if ((mask & COLUMN_CONSTRAINT_STORAGE)
+				&& (node->info.attr_def.attr_type == PT_SHARED
+				    || node->info.attr_def.attr_type == PT_META_ATTR))
+			      {
+				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE,
+					    node->info.attr_def.attr_name->info.name.original);
+				node->info.attr_def.attr_storage = PT_ATTR_STORAGE_UNSET;
+			      }
 			  }
 
 			$$ = node;
@@ -10302,6 +10329,10 @@ column_constraint_and_comment_def
 	| column_invisible_def
 		{{
 			$$ = COLUMN_CONSTRAINT_INVISIBLE;
+		}}
+	| column_storage_def
+		{{
+			$$ = COLUMN_CONSTRAINT_STORAGE;
 		}}
 	;
 
@@ -10680,6 +10711,29 @@ column_invisible_def
 		{{
 			PT_NODE* attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE;
+		}}
+	;
+
+column_storage_def
+	: STORAGE PREFER_INLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_PREFER_INLINE;
+		}}
+	| STORAGE FORCE_OUTLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_FORCE_OUTLINE;
+		}}
+	| STORAGE DEFAULT
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_DEFAULT;
+		}}
+	| STORAGE PREFER_OUTLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_PREFER_OUTLINE;
 		}}
 	;
 
@@ -20813,6 +20867,7 @@ identifier
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FILL_FACTOR            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FORCE_OUTLINE          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20896,6 +20951,7 @@ identifier
 	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OOS                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20912,6 +20968,8 @@ identifier
 	| PERCENT_RANK           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PREFER_INLINE          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PREFER_OUTLINE         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20955,6 +21013,7 @@ identifier
 	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STORAGE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -23513,6 +23572,20 @@ static PT_NODE *
 parser_get_attr_def_one ()
 {
   return parser_attr_def_one_saved;
+}
+
+static void
+parser_reject_non_normal_attr_storage (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (node == NULL || node->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      || (node->info.attr_def.attr_type != PT_SHARED && node->info.attr_def.attr_type != PT_META_ATTR))
+    {
+      return;
+    }
+
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE,
+	      node->info.attr_def.attr_name->info.name.original);
+  node->info.attr_def.attr_storage = PT_ATTR_STORAGE_UNSET;
 }
 
 static PT_NODE *parser_orderby_node_stack_default[STACK_SIZE];

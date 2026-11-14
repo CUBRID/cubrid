@@ -170,6 +170,18 @@ showstmt_scan_init (void)
   req->next_func = heap_capacity_next_scan;
   req->end_func = heap_header_capacity_end_scan;
 
+  req = &show_Requests[SHOWSTMT_HEAP_OOS];
+  req->show_type = SHOWSTMT_HEAP_OOS;
+  req->start_func = heap_header_capacity_start_scan;
+  req->next_func = heap_oos_next_scan;
+  req->end_func = heap_header_capacity_end_scan;
+
+  req = &show_Requests[SHOWSTMT_ALL_HEAP_OOS];
+  req->show_type = SHOWSTMT_ALL_HEAP_OOS;
+  req->start_func = heap_header_capacity_start_scan;
+  req->next_func = heap_oos_next_scan;
+  req->end_func = heap_header_capacity_end_scan;
+
   req = &show_Requests[SHOWSTMT_INDEX_HEADER];
   req->show_type = SHOWSTMT_INDEX_HEADER;
   req->start_func = btree_index_start_scan;

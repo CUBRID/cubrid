@@ -175,6 +175,8 @@ enum
   P_TYPE,			/* type (domain) change */
   P_IS_PARTITION_COL,		/* class has partitions */
   P_COMMENT,			/* has comment */
+  P_OOS_PREFER_INLINE,		/* STORAGE PREFER_INLINE (lower OOS demotion priority) */
+  P_OOS_FORCE_OUTLINE,		/* STORAGE FORCE_OUTLINE (bypass record gate for values larger than OOS stub) */
   NUM_ATT_CHG_PROP
 };
 
@@ -281,6 +283,8 @@ static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctempl
 static int build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attr_def,
 				  PT_NODE * attr_old_name, PT_NODE * constraints,
 				  SM_ATTR_PROP_CHG * attr_chg_properties);
+
+static void build_attr_flag_change_property (int *prop, bool was_set, bool is_unspecified, bool is_requested);
 
 static int build_att_type_change_map (TP_DOMAIN * curr_domain, TP_DOMAIN * req_domain,
 				      SM_ATTR_PROP_CHG * attr_chg_properties);
@@ -8251,6 +8255,31 @@ get_attr_name (PT_NODE * attribute)
 	  ? attribute->info.attr_def.attr_name->alias_print : attribute->info.attr_def.attr_name->info.name.original);
 }
 
+static bool
+do_is_oos_storage_eligible_attribute (DB_CTMPL * ctemplate, SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+{
+  assert (ctemplate != NULL);
+  assert (domain != NULL);
+
+  return name_space == ID_ATTRIBUTE && smt_get_class_type (ctemplate) == SM_CLASS_CT
+    && pr_is_variable_type (TP_DOMAIN_TYPE (domain));
+}
+
+static int
+do_validate_oos_storage_setting (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
+				 SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+{
+  if (attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      || do_is_oos_storage_eligible_attribute (ctemplate, name_space, domain))
+    {
+      return NO_ERROR;
+    }
+
+  PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_STORAGE_REQUIRES_VARIABLE_NORMAL_ATT, get_attr_name (attribute));
+  return ER_PT_SEMANTIC;
+}
+
 /*
  * do_add_attribute() - Adds an attribute to a class object
  *   return: Error code
@@ -8420,6 +8449,33 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	{
 	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
 	}
+    }
+
+  if (error == NO_ERROR && attribute->info.attr_def.attr_storage != PT_ATTR_STORAGE_UNSET)
+    {
+      /* Validated after the pre-existing checks so that errors such as a duplicate attribute name keep their
+       * original precedence.  attr_db_domain may have been freed by domain caching inside
+       * smt_add_attribute_w_dflt_w_order, so consult the domain owned by the template attribute. */
+
+      /* skip finding attribute if att is already available */
+      if (att == NULL)
+	{
+	  error = smt_find_attribute (ctemplate, attr_name, meta ? 1 : 0, &att);
+	}
+
+      if (error == NO_ERROR)
+	{
+	  error = do_validate_oos_storage_setting (parser, ctemplate, attribute, name_space, att->domain);
+	}
+    }
+
+  if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+    }
+  else if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
+    {
+      att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
     }
 
   comment = attribute->info.attr_def.comment;
@@ -11916,6 +11972,28 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       found_att->flags &= ~(SM_ATTFLAG_INVISIBLE_COLUMN);
     }
 
+  /* add or drop STORAGE PREFER_INLINE option */
+  if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_FORCE_OUTLINE);
+      found_att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
+    }
+
+  /* add or drop STORAGE FORCE_OUTLINE option */
+  if (is_att_prop_set (attr_chg_prop->p[P_OOS_FORCE_OUTLINE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
+      found_att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_OOS_FORCE_OUTLINE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_FORCE_OUTLINE);
+    }
+
   /* delete or (re-)create auto_increment attribute's serial object */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST))
@@ -12099,6 +12177,40 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 exit:
   db_value_clear (&stack_value);
   return error;
+}
+
+/*
+ * build_attr_flag_change_property() - Builds the change property of an attribute flag (INVISIBLE, STORAGE option)
+ *   return: none
+ *   prop(out): change property to build
+ *   was_set(in): the flag is set on the existing attribute
+ *   is_unspecified(in): the new attribute definition does not mention the flag's clause
+ *   is_requested(in): the new attribute definition sets the flag
+ *
+ */
+static void
+build_attr_flag_change_property (int *prop, bool was_set, bool is_unspecified, bool is_requested)
+{
+  *prop = 0;
+  if (was_set)
+    {
+      *prop |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (is_unspecified)
+    {
+      *prop |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (is_requested)
+    {
+      /* PRESENT_NEW without PRESENT_OLD becomes GAINED in the consolidate loop of build_attr_change_map */
+      *prop |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (*prop & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /* the flag was set and the new definition clears it: the attribute lost it */
+      *prop |= ATT_CHG_PROPERTY_LOST;
+      *prop &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
 }
 
 /*
@@ -12289,33 +12401,23 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   /* constraint CHECK : not supported, just mark as checked */
   attr_chg_properties->p[P_CONSTR_CHECK] = 0;
 
-  /* INVISIBLE COLUMN */
-  attr_chg_properties->p[P_INVISIBLE] = 0;
-  if (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
-    {
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
-  if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET)
-    {
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_UNCHANGED;
-    }
-  else if (attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
-    {
-      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
-    }
-  else if (attr_chg_properties->p[P_INVISIBLE] & ATT_CHG_PROPERTY_PRESENT_OLD)
-    {
-      /*
-       * attr_invisible == PT_ATTR_VISIBLE  -> NOW VISIBLE
-       * P_INVISIBLE & PRESENT_OLD          -> WAS INVISIBLE
-       *
-       * it changed from invisible to visible.
-       * This means the attribute has lost its invisible state
-       */
-      attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
-    }
+  /* INVISIBLE COLUMN: lost when the new definition says VISIBLE */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_INVISIBLE],
+				   (att->flags & SM_ATTFLAG_INVISIBLE_COLUMN) != 0,
+				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE_UNSET,
+				   attr_def->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE);
+
+  /* STORAGE PREFER_INLINE: lost when the new definition sets another STORAGE option */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_PREFER_INLINE],
+				   (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE) != 0,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE);
+
+  /* STORAGE FORCE_OUTLINE: lost when the new definition sets another STORAGE option */
+  build_attr_flag_change_property (&attr_chg_properties->p[P_OOS_FORCE_OUTLINE],
+				   (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) != 0,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET,
+				   attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE);
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)
@@ -12571,6 +12673,30 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       assert (er_errid () != NO_ERROR);
       return (er_errid ());
     }
+
+  error = do_validate_oos_storage_setting (parser, ctemplate, attr_def, attr_chg_properties->new_name_space,
+					   attr_db_domain);
+  if (error != NO_ERROR)
+    {
+      tp_domain_free (attr_db_domain);
+      return error;
+    }
+
+  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      && !do_is_oos_storage_eligible_attribute (ctemplate, attr_chg_properties->new_name_space, attr_db_domain))
+    {
+      if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+	{
+	  attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
+	  attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
+	}
+      if (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+	{
+	  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
+	  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
+	}
+    }
+
   attr_chg_properties->p[P_TYPE] = 0;
   attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
   attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
