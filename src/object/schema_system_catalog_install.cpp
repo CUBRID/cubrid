@@ -368,6 +368,149 @@ catcls_rebuild_vclasses (void)
 namespace cubschema
 {
   /* ========================================================================== */
+  /* DEFINITION (AUTHORIZATION CLASS) */
+  /* ========================================================================== */
+
+  /*
+   * The authorization classes are defined by au_install () before any user exists, so their definitions carry
+   * no authorization: au_install () changes their owner to DBA and grants on them once the users are created.
+   */
+
+  system_metadata_definition
+  system_catalog_initializer::get_root ()
+  {
+    /*
+     * Authorization root, might not need this if we restrict the generation of
+     * user and group objects but could be useful in other ways.
+     */
+    return system_metadata_definition (
+		   // name
+		   AU_ROOT_CLASS_NAME,
+		   // columns
+    {
+      {"charset", "integer"},
+      {"lang", "string"},
+      {"timezone_checksum", "string"},
+      // class methods (need signatures for these !)
+      {attribute_kind::CLASS_METHOD, "add_user", "au_add_user_method"},
+      {attribute_kind::CLASS_METHOD, "drop_user", "au_drop_user_method"},
+      {attribute_kind::CLASS_METHOD, "find_user", "au_find_user_method", {"string"}},
+      {attribute_kind::CLASS_METHOD, "print_authorizations", "au_describe_root_method"},
+      {attribute_kind::CLASS_METHOD, "info", "au_info_method"},
+      {attribute_kind::CLASS_METHOD, "change_owner", "au_change_owner_method"},
+      {attribute_kind::CLASS_METHOD, "change_trigger_owner", "au_change_trigger_owner_method"},
+      {attribute_kind::CLASS_METHOD, "get_owner", "au_get_owner_method"},
+      {attribute_kind::CLASS_METHOD, "change_sp_owner", "au_change_sp_owner_method"}
+    },
+// constraints
+    {},
+// authorization (applied by au_install ())
+    {nullptr, {}},
+// initializer (au_install () creates the single root object)
+    nullptr
+	   );
+  }
+
+  system_metadata_definition
+  system_catalog_initializer::get_user ()
+  {
+    return system_metadata_definition (
+		   // name
+		   AU_USER_CLASS_NAME,
+		   // columns
+    {
+      /* If the attribute configuration is changed, the CATCLS_USER_ATTR_IDX_NAME also be changed.
+       *   - CATCLS_USER_ATTR_IDX_NAME is defined in the cubload::server_class_installer::locate_class () function.
+       */
+      {"name", "varchar(32)"}, /* DB_MAX_USER_LENGTH */
+      {"id", "integer"},
+      {"password", AU_PASSWORD_CLASS_NAME},
+      {"direct_groups", "set of (_db_user)"},
+      {"groups", "set of (_db_user)"},
+      {"authorization", AU_AUTH_CLASS_NAME},
+      {AU_USER_ATTR_IS_LOGINABLE, "integer"},
+      {AU_USER_ATTR_IS_SYSTEM_CREATED, "integer"},
+      {"comment", "varchar(1024)"},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // methods (need signatures for these)
+      {attribute_kind::METHOD, "set_password", "au_set_password_method"},
+      {attribute_kind::METHOD, "set_password_encoded", "au_set_password_encoded_method"},
+      {attribute_kind::METHOD, "set_password_encoded_sha1", "au_set_password_encoded_sha1_method"},
+      {attribute_kind::METHOD, "add_member", "au_add_member_method"},
+      {attribute_kind::METHOD, "drop_member", "au_drop_member_method"},
+      {attribute_kind::METHOD, "print_authorizations", "au_describe_user_method"},
+      // class methods
+      {attribute_kind::CLASS_METHOD, "add_user", "au_add_user_method"},
+      {attribute_kind::CLASS_METHOD, "drop_user", "au_drop_user_method"},
+      {attribute_kind::CLASS_METHOD, "find_user", "au_find_user_method", {"string"}},
+      {attribute_kind::CLASS_METHOD, "login", "au_login_method"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_UNIQUE, "", {"name", nullptr}}
+    },
+// authorization (applied by au_install ())
+    {nullptr, {}},
+// initializer
+    nullptr
+	   );
+  }
+
+  system_metadata_definition
+  system_catalog_initializer::get_password ()
+  {
+    return system_metadata_definition (
+		   // name
+		   AU_PASSWORD_CLASS_NAME,
+		   // columns
+    {
+      {"password", "string"},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      /* not yet implemented */
+      {"expire_time", "datetime"}
+    },
+// constraints
+    {},
+// authorization (applied by au_install ())
+    {nullptr, {}},
+// initializer
+    nullptr
+	   );
+  }
+
+  system_metadata_definition
+  system_catalog_initializer::get_authorization ()
+  {
+    /*
+     * Authorization object, the grant set could go directly in the user object
+     * but it might be better to keep it separate in order to use the special
+     * read-once lock for the authorization object only.
+     */
+    return system_metadata_definition (
+		   // name
+		   AU_AUTH_CLASS_NAME,
+		   // columns
+    {
+      {"owner", AU_USER_CLASS_NAME},
+      {"grants", "sequence"},
+      // class methods
+      {
+	attribute_kind::CLASS_METHOD, "check_authorization", "au_check_authorization_method",
+	{"integer", "varchar(255)", "integer"}
+      }
+    },
+// constraints
+    {},
+// authorization (applied by au_install ())
+    {nullptr, {}},
+// initializer
+    nullptr
+	   );
+  }
+
+  /* ========================================================================== */
   /* DEFINITION (CLASS) */
   /* ========================================================================== */
 

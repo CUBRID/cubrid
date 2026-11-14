@@ -35,13 +35,12 @@
 #include "object_primitive.h"
 #include "schema_manager.h" /* sm_find_class() */
 #include "schema_system_catalog_constants.h"
-#include "locator_cl.h" /* locator_create_heap_if_needed () */
+#include "schema_system_catalog_install.hpp" /* system_catalog_initializer */
+#include "schema_system_metadata_builder.hpp" /* system_metadata_builder::define_classes () */
 #include "trigger_manager.h" /* tr_invalidate_user_cache () */
 
 bool use_console_password = false; // If true, allows password input from the console
 
-// static functions
-static int au_add_method_check_authorization (void);
 
 void
 authenticate_context::reset (void)
@@ -289,163 +288,40 @@ int
 authenticate_context::install (void)
 {
   MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL;
-  SM_TEMPLATE *def;
   AU_USER_CACHE *user_cache;
   int exists, save, index;
 
   AU_SAVE_AND_DISABLE (save);
 
   /*
-   * create the system authorization objects, add attributes later since they
-   * have domain dependencies
+   * create and define the system authorization classes (db_root, _db_user, _db_password, _db_authorization),
+   * their owner is changed and the grants on them are made below once the users exist
    */
-  root_cls = db_create_class (AU_ROOT_CLASS_NAME);
-  user_cls = db_create_class (AU_USER_CLASS_NAME);
-  pass_cls = db_create_class (AU_PASSWORD_CLASS_NAME);
-  auth_cls = db_create_class (AU_AUTH_CLASS_NAME);
-
-  if (root_cls == NULL || user_cls == NULL || pass_cls == NULL || auth_cls == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  sm_mark_system_class (root_cls, 1);
-  sm_mark_system_class (user_cls, 1);
-  sm_mark_system_class (pass_cls, 1);
-  sm_mark_system_class (auth_cls, 1);
-
-  /*
-   * db_root
-   */
-
-  /*
-   * Authorization root, might not need this if we restrict the generation of
-   * user and  group objects but could be useful in other ways.
-   */
-  def = smt_edit_class_mop (root_cls, AU_ALTER);
-  if (def == NULL)
-    {
-      goto exit_on_error;
-    }
-  smt_add_attribute (def, "charset", "integer", NULL);
-  smt_add_attribute (def, "lang", "string", NULL);
-  smt_add_attribute (def, "timezone_checksum", "string", NULL);
-
-
-  /* need signatures for these ! */
-  smt_add_class_method (def, "add_user", "au_add_user_method");
-  smt_add_class_method (def, "drop_user", "au_drop_user_method");
-
-  smt_add_class_method (def, "find_user", "au_find_user_method");
-  smt_assign_argument_domain (def, "find_user", true, NULL, 0, "string", (DB_DOMAIN *) 0);
-
-  smt_add_class_method (def, "print_authorizations", "au_describe_root_method");
-  smt_add_class_method (def, "info", "au_info_method");
-  smt_add_class_method (def, "change_owner", "au_change_owner_method");
-  smt_add_class_method (def, "change_trigger_owner", "au_change_trigger_owner_method");
-  smt_add_class_method (def, "get_owner", "au_get_owner_method");
-  smt_add_class_method (def, "change_sp_owner", "au_change_sp_owner_method");
-
-  if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (root_cls, false) == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /*
-   * _db_user
-   */
-
-  def = smt_edit_class_mop (user_cls, AU_ALTER);
-  if (def == NULL)
-    {
-      goto exit_on_error;
-    }
-  /* If the attribute configuration is changed, the CATCLS_USER_ATTR_IDX_NAME also be changed.
-   *   - CATCLS_USER_ATTR_IDX_NAME is defined in the cubload::server_class_installer::locate_class () function.
-   */
-  smt_add_attribute (def, "name", "varchar(32)", (DB_DOMAIN *) 0); /* DB_MAX_USER_LENGTH */
-  smt_add_attribute (def, "id", "integer", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "password", AU_PASSWORD_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "direct_groups", "set of (_db_user)", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "groups", "set of (_db_user)", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
-  smt_add_attribute (def, AU_USER_ATTR_IS_SYSTEM_CREATED, "integer", NULL);
-  smt_add_attribute (def, "comment", "varchar(1024)", NULL);
-  smt_add_attribute (def, "created_time", "datetime", NULL);
-  smt_add_attribute (def, "updated_time", "datetime", NULL);
-  /* need signatures for these */
-  smt_add_method (def, "set_password", "au_set_password_method");
-  smt_add_method (def, "set_password_encoded", "au_set_password_encoded_method");
-  smt_add_method (def, "set_password_encoded_sha1", "au_set_password_encoded_sha1_method");
-  smt_add_method (def, "add_member", "au_add_member_method");
-  smt_add_method (def, "drop_member", "au_drop_member_method");
-  smt_add_method (def, "print_authorizations", "au_describe_user_method");
-  smt_add_class_method (def, "add_user", "au_add_user_method");
-  smt_add_class_method (def, "drop_user", "au_drop_user_method");
-
-  smt_add_class_method (def, "find_user", "au_find_user_method");
-  smt_assign_argument_domain (def, "find_user", true, NULL, 0, "string", (DB_DOMAIN *) 0);
-  smt_add_class_method (def, "login", "au_login_method");
-
-  if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (user_cls, false) == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /* Add Unique Index */
   {
-    const char *names[] = { "name", NULL };
+    namespace initializer = cubschema::system_catalog_initializer;
 
-    if (db_add_constraint (user_cls, DB_CONSTRAINT_UNIQUE, NULL, names, 0) != NO_ERROR)
+    const std::vector<cubschema::system_metadata_definition> class_defs =
+    {
+      initializer::get_root (),
+      initializer::get_user (),
+      initializer::get_password (),
+      initializer::get_authorization ()
+    };
+    std::vector<MOP> class_mops;
+
+    int error = cubschema::system_metadata_builder::define_classes (class_defs, class_mops);
+
+    /* keep the classes created so far, so that exit_on_error drops them */
+    root_cls = class_mops[0];
+    user_cls = class_mops[1];
+    pass_cls = class_mops[2];
+    auth_cls = class_mops[3];
+
+    if (error != NO_ERROR)
       {
 	goto exit_on_error;
       }
   }
-
-  /*
-   * _db_password
-   */
-
-  def = smt_edit_class_mop (pass_cls, AU_ALTER);
-  if (def == NULL)
-    {
-      goto exit_on_error;
-    }
-  smt_add_attribute (def, "password", "string", (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "created_time", "datetime", NULL);
-  smt_add_attribute (def, "updated_time", "datetime", NULL);
-  /* not yet implemented */
-  smt_add_attribute (def, "expire_time", "datetime", NULL);
-
-  if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (pass_cls, false) == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /*
-   * _db_authorization
-   */
-
-  /*
-   * Authorization object, the grant set could go directly in the user object
-   * but it might be better to keep it separate in order to use the special
-   * read-once lock for the authorization object only.
-   */
-
-  def = smt_edit_class_mop (auth_cls, AU_ALTER);
-  if (def == NULL)
-    {
-      goto exit_on_error;
-    }
-  smt_add_attribute (def, "owner", AU_USER_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "grants", "sequence", (DB_DOMAIN *) 0);
-
-  if (sm_update_class (def, NULL) != NO_ERROR || locator_create_heap_if_needed (auth_cls, false) == NULL)
-    {
-      goto exit_on_error;
-    }
-
 
   /* Create the single authorization root object */
   root = obj_create (root_cls);
@@ -497,8 +373,6 @@ authenticate_context::install (void)
     {
       goto exit_on_error;
     }
-
-  au_add_method_check_authorization ();
 
   AU_RESTORE (save);
 
@@ -1083,47 +957,4 @@ int authenticate_context::is_loginable_user (MOP user)
     }
 
   return false;
-}
-
-//
-// STATIC FUNCTIONS
-//
-
-/*
- * au_add_method_check_authorization -
- *    return: error code
- */
-static int
-au_add_method_check_authorization (void)
-{
-  MOP auth;
-  SM_TEMPLATE *def;
-  int save;
-
-  AU_SAVE_AND_DISABLE (save);
-
-  auth = db_find_class (AU_AUTH_CLASS_NAME);
-  if (auth == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  def = smt_edit_class_mop (auth, AU_ALTER);
-  if (def == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  smt_add_class_method (def, "check_authorization", "au_check_authorization_method");
-  smt_assign_argument_domain (def, "check_authorization", true, NULL, 0, "integer", (DB_DOMAIN *) 0);
-  smt_assign_argument_domain (def, "check_authorization", true, NULL, 1, "varchar(255)", (DB_DOMAIN *) 0);
-  smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
-  sm_update_class (def, NULL);
-
-  AU_RESTORE (save);
-  return NO_ERROR;
-
-exit_on_error:
-  AU_RESTORE (save);
-  return ER_FAILED;
 }

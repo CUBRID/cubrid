@@ -31,6 +31,29 @@
 namespace cubschema
 {
   static int
+  assign_signature_domains (SM_TEMPLATE *tmpl, const attribute &attr, const bool is_class_method)
+  {
+    const std::vector<std::string> &domains = attr.signature_domains;
+
+    for (size_t i = 0; i < domains.size (); i++)
+      {
+	if (domains[i].empty ())
+	  {
+	    continue;
+	  }
+
+	int error_code = smt_assign_argument_domain (tmpl, attr.name.data (), is_class_method, NULL, (int) i,
+			 domains[i].data (), (DB_DOMAIN *) 0);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  static int
   add_attributes (SM_TEMPLATE *tmpl, const std::vector <attribute> &attributes)
   {
     int error_code = NO_ERROR;
@@ -63,6 +86,18 @@ namespace cubschema
 	    break;
 	  case attribute_kind::CLASS_METHOD:
 	    error_code = smt_add_class_method (tmpl, name, type);
+	    if (error_code == NO_ERROR)
+	      {
+		error_code = assign_signature_domains (tmpl, attr, true);
+	      }
+	    break;
+	  case attribute_kind::METHOD:
+	    assert (tmpl->class_type == SM_CLASS_CT);
+	    error_code = smt_add_method (tmpl, name, type);
+	    if (error_code == NO_ERROR)
+	      {
+		error_code = assign_signature_domains (tmpl, attr, false);
+	      }
 	    break;
 	  default:
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -145,8 +180,9 @@ namespace cubschema
     return class_mop;
   }
 
+  /* defines the columns, methods and constraints of a class and creates its heap, without authorization */
   static int
-  build_class (const MOP class_mop, const system_metadata_definition &def)
+  define_class (const MOP class_mop, const system_metadata_definition &def)
   {
     int error_code = NO_ERROR;
 
@@ -221,6 +257,18 @@ namespace cubschema
 	return er_errid ();
       }
 
+    return NO_ERROR;
+  }
+
+  static int
+  build_class (const MOP class_mop, const system_metadata_definition &def)
+  {
+    int error_code = define_class (class_mop, def);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
     error_code = apply_authorization (class_mop, def.auth);
     if (error_code != NO_ERROR)
       {
@@ -282,10 +330,11 @@ namespace cubschema
 
   static int
   install_definitions (const std::vector<system_metadata_definition> &defs,
-		       int (*build) (const MOP, const system_metadata_definition &))
+		       int (*build) (const MOP, const system_metadata_definition &), std::vector<MOP> &class_mops)
   {
-    std::vector<MOP> class_mops (defs.size (), nullptr);
     int error_code = NO_ERROR;
+
+    class_mops.assign (defs.size (), nullptr);
 
     /* create every class before defining any: a definition may refer to a class defined after it */
     for (size_t i = 0; i < defs.size (); i++)
@@ -314,13 +363,24 @@ namespace cubschema
   int
   system_metadata_builder::install_classes (const std::vector<system_metadata_definition> &defs)
   {
-    return install_definitions (defs, build_class);
+    std::vector<MOP> class_mops;
+
+    return install_definitions (defs, build_class, class_mops);
+  }
+
+  int
+  system_metadata_builder::define_classes (const std::vector<system_metadata_definition> &defs,
+      std::vector<MOP> &class_mops)
+  {
+    return install_definitions (defs, define_class, class_mops);
   }
 
   int
   system_metadata_builder::install_vclasses (const std::vector<system_metadata_definition> &defs)
   {
-    return install_definitions (defs, build_vclass);
+    std::vector<MOP> class_mops;
+
+    return install_definitions (defs, build_vclass, class_mops);
   }
 
   int
