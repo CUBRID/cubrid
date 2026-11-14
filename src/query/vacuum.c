@@ -1726,6 +1726,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  ASSERT_ERROR ();
 	  vacuum_check_shutdown_interruption (thread_p, error_code);
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Failed to get hfid.");
+	  pgbuf_unfix_and_init (thread_p, helper.home_page);
 	  return error_code;
 	}
       /* we need to also output to avoid checking again for other objects */
