@@ -888,7 +888,8 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
     }
 
   /* check before logging; the header must not be changed after the change is logged */
-  if (disk_vhdr_check_vol_names_size (vhdr, new_vol_fullname, NULL) != NO_ERROR)
+  error_code = disk_vhdr_check_vol_names_size (vhdr, new_vol_fullname, NULL);
+  if (error_code != NO_ERROR)
     {
       goto error;
     }
@@ -986,7 +987,7 @@ error:
 
   pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
-  return ER_FAILED;
+  return (error_code != NO_ERROR) ? error_code : ER_FAILED;
 }
 
 /*
@@ -1028,7 +1029,8 @@ disk_set_link (THREAD_ENTRY * thread_p, INT16 volid, INT16 next_volid, const cha
   vpid.pageid = DISK_VOLHEADER_PAGE;
 
   /* check before logging; the header must not be changed after the change is logged */
-  if (disk_vhdr_check_vol_names_size (vhdr, NULL, next_volext_fullname) != NO_ERROR)
+  error_code = disk_vhdr_check_vol_names_size (vhdr, NULL, next_volext_fullname);
+  if (error_code != NO_ERROR)
     {
       goto error;
     }
@@ -1115,7 +1117,7 @@ error:
 
   pgbuf_unfix_and_init (thread_p, addr.pgptr);
 
-  return ER_FAILED;
+  return (error_code != NO_ERROR) ? error_code : ER_FAILED;
 }
 
 /*
