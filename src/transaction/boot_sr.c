@@ -1051,7 +1051,8 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
  * Note: A temporary volume is added and removed without logging, and boot_Db_parm counts them only in memory; the
  *       count reaches the disk only along with other changes of boot_Db_parm. So after a crash the count on disk
  *       does not tell which temporary volumes exist. Every file in the temporary volume directory that is named as
- *       a temporary volume of this database is removed, except a permanent volume that was given such a name.
+ *       a temporary volume of this database is removed, except a permanent volume that was given such a name and a
+ *       file that cannot be opened.
  *       At restart, a volume beyond the temporary volumes known by boot_Db_parm is notified as unknown.
  */
 static void
@@ -1064,6 +1065,7 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
   DIR *dir_p;
   struct dirent *entry;
   struct stat stat_buffer;
+  bool is_permanent;
   VOLID volid;
 
   temp_path = prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
@@ -1094,9 +1096,14 @@ boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 	{
 	  continue;
 	}
-      if (disk_is_permanent_volume_file (thread_p, temp_vol_fullname))
+      if (disk_is_permanent_volume_file (thread_p, temp_vol_fullname, &is_permanent) != NO_ERROR)
 	{
-	  /* a permanent volume named like a temporary volume (addvoldb -n) */
+	  /* not a temporary volume of this server, which can always open its own; leave it (the error is logged) */
+	  continue;
+	}
+      if (is_permanent)
+	{
+	  /* a permanent volume named like a temporary volume (addvoldb -n, or another database) */
 	  continue;
 	}
 
