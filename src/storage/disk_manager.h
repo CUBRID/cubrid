@@ -89,6 +89,7 @@ extern int disk_add_volume_extension (THREAD_ENTRY * thread_p, DB_VOLPURPOSE pur
 extern void disk_lock_extend (void);
 extern void disk_unlock_extend (void);
 extern int disk_unformat (THREAD_ENTRY * thread_p, const char *vol_fullname);
+extern bool disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p);
 extern int disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_fullname,
 			      const INT64 * new_dbcreation, const LOG_LSA * new_chkptlsa, bool logchange,
 			      DISK_FLUSH_TYPE flush_page);

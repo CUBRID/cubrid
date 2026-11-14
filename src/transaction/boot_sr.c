@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 #if defined(SOLARIS)
 #include <netdb.h>
@@ -176,11 +177,9 @@ static int boot_Server_process_id = 1;
 
 /* Functions */
 static int boot_get_db_parm (THREAD_ENTRY * thread_p, BOOT_DB_PARM * dbparm, OID * dbparm_oid);
-static int boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel);
 
 static int boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION delete_action);
-static void boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid);
-static void boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p);
+static VOLID boot_get_temp_volid_from_name (const char *file_name, const char *db_name);
 static int boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_addmore_vols);
 static int boot_find_rest_volumes (THREAD_ENTRY * thread_p, BO_RESTART_ARG * r_args, VOLID volid,
 				   int (*fun) (THREAD_ENTRY * thread_p, VOLID xvolid, const char *vlabel, void *args),
@@ -480,59 +479,6 @@ const char *
 boot_get_lob_path (void)
 {
   return boot_Lob_path;
-}
-
-/*
- * boot_remove_temp_volume () - remove a volume from the database
- *
- * return : NO_ERROR if all OK, ER_ status otherwise
- *
- *   volid(in): Volume identifier to remove
- *
- * Note: Remove a volume from the database. The deletion of the volume is done
- *       independently of the destiny of the current transaction. That is,
- *       if this function finishes successfully the removal is made permanent,
- *       if the function fails, whatever was done is aborted.
- *       Currently, we do not allow to remove permanent volumes. In the future
- *       we may allow the removal of any volume but the primary volume
- *       (LOG_DBFIRST_VOLID).
- */
-static int
-boot_remove_temp_volume (THREAD_ENTRY * thread_p, VOLID volid, const char *vlabel)
-{
-  /* Make sure that this is a temporary volume */
-  if (volid < boot_Db_parm->temp_last_volid)
-    {
-      if (volid >= LOG_DBFIRST_VOLID && volid <= boot_Db_parm->last_volid)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME, 1,
-		  fileio_get_volume_label (volid, PEEK));
-	  return ER_BO_TRYING_TO_REMOVE_PERMANENT_VOLUME;
-	}
-      else
-	{
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_FILE_UNKNOWN_VOLID, 1, volid);
-	  return ER_FILE_UNKNOWN_VOLID;
-	}
-    }
-
-  /* Do the following for temporary volumes */
-  boot_Db_parm->temp_nvols--;
-  if (boot_Db_parm->temp_nvols <= 0)
-    {
-      boot_Db_parm->temp_last_volid = NULL_VOLID;
-    }
-  else if (boot_Db_parm->temp_last_volid == volid)
-    {
-      boot_Db_parm->temp_last_volid = volid + 1;
-    }
-
-  /* The volume is not known by the system any longer. */
-  (void) pgbuf_invalidate_all (thread_p, volid);
-
-  fileio_unformat (thread_p, vlabel);
-
-  return NO_ERROR;
 }
 
 /*
@@ -901,21 +847,6 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
 {
   int error_code = NO_ERROR;
 
-  /* if volumes exist beyond bo_Dbparm.temp_last_volid, we remove the volumes.
-   * there is no logging to add or remove a temporary temp volume, but logging to update bo_Dbparm.
-   * so, unknown volumes can be possible to exist.
-   */
-  if (!BO_IS_SERVER_RESTARTED ())
-    {
-      boot_remove_unknown_temp_volumes (thread_p);
-    }
-
-  if (boot_Db_parm->temp_nvols == 0)
-    {
-      assert (boot_Db_parm->temp_last_volid == NULL_VOLID);
-      return NO_ERROR;
-    }
-
   boot_remove_temp_volumes (thread_p);
 
   if (delete_action == ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION)
@@ -923,12 +854,13 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
       return NO_ERROR;
     }
 
-  if (boot_Db_parm->temp_nvols != 0 || boot_Db_parm->temp_last_volid != NULL_VOLID)
+  if (boot_Db_parm->temp_nvols == 0 && boot_Db_parm->temp_last_volid == NULL_VOLID)
     {
-      /* something bad happened. Reset it anyway. */
-      boot_Db_parm->temp_nvols = 0;
-      boot_Db_parm->temp_last_volid = NULL_VOLID;
+      return NO_ERROR;
     }
+
+  boot_Db_parm->temp_nvols = 0;
+  boot_Db_parm->temp_last_volid = NULL_VOLID;
 
   error_code = boot_db_parm_update_heap (thread_p);
   if (error_code != NO_ERROR)
@@ -940,67 +872,44 @@ boot_remove_all_temp_volumes (THREAD_ENTRY * thread_p, REMOVE_TEMP_VOL_ACTION de
   return error_code;
 }
 
-static void
-boot_make_temp_volume_fullname (char *temp_vol_fullname, VOLID temp_volid)
-{
-  const char *temp_path;
-  const char *temp_name;
-  char *alloc_tempath = NULL;
-
-  assert (temp_vol_fullname != NULL);
-
-  temp_vol_fullname[0] = '\0';
-
-  alloc_tempath = (char *) malloc (strlen (boot_Db_full_name) + 1);
-  if (alloc_tempath == NULL)
-    {
-      return;
-    }
-  temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
-  if (temp_path == NULL || temp_path[0] == '\0')
-    {
-      temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
-    }
-  temp_name = fileio_get_base_file_name (boot_Db_full_name);
-
-  fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-
-  if (alloc_tempath)
-    {
-      free_and_init (alloc_tempath);
-    }
-}
-
 /*
- * boot_remove_unknown_temp_volumes () -
+ * boot_get_temp_volid_from_name () - get the volume identifier from the file name of a temporary volume
  *
- * return: none
+ * return : volume identifier, or NULL_VOLID if the file name is not the name of a temporary volume of the database
+ *
+ *   file_name(in): file name without the directory
+ *   db_name(in): database name
+ *
+ * Note: A temporary volume is named db_name + FILEIO_VOLTMP_PREFIX + volid by fileio_make_volume_temp_name ().
  */
-static void
-boot_remove_unknown_temp_volumes (THREAD_ENTRY * thread_p)
+static VOLID
+boot_get_temp_volid_from_name (const char *file_name, const char *db_name)
 {
-  VOLID temp_volid;
-  char temp_vol_fullname[PATH_MAX];
+  char temp_vol_name[PATH_MAX];
+  size_t prefix_len = strlen (db_name) + strlen (FILEIO_VOLTMP_PREFIX);
+  int volid;
 
-  if (boot_Db_parm->temp_last_volid == NULL_VOLID)
+  if (strncmp (file_name, db_name, strlen (db_name)) != 0
+      || strncmp (file_name + strlen (db_name), FILEIO_VOLTMP_PREFIX, strlen (FILEIO_VOLTMP_PREFIX)) != 0
+      || strlen (file_name + prefix_len) > 5 /* digits of LOG_MAX_DBVOLID */ )
     {
-      temp_volid = LOG_MAX_DBVOLID;
-    }
-  else
-    {
-      temp_volid = boot_Db_parm->temp_last_volid - 1;
+      return NULL_VOLID;
     }
 
-  for (; temp_volid > boot_Db_parm->last_volid; temp_volid--)
+  volid = atoi (file_name + prefix_len);
+  if (volid <= boot_Db_parm->last_volid || volid > LOG_MAX_DBVOLID)
     {
-      boot_make_temp_volume_fullname (temp_vol_fullname, temp_volid);
-      if (!fileio_is_volume_exist (temp_vol_fullname))
-	{
-	  break;
-	}
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
-      fileio_unformat (thread_p, temp_vol_fullname);
+      return NULL_VOLID;
     }
+
+  /* the name must be exactly what fileio_make_volume_temp_name () makes for this volid (no sign, no leading zeros) */
+  snprintf (temp_vol_name, sizeof (temp_vol_name), "%s%s%03d", db_name, FILEIO_VOLTMP_PREFIX, volid);
+  if (strcmp (temp_vol_name, file_name) != 0)
+    {
+      return NULL_VOLID;
+    }
+
+  return (VOLID) volid;
 }
 
 /*
@@ -1137,49 +1046,66 @@ boot_find_rest_permanent_volumes (THREAD_ENTRY * thread_p, bool newvolpath, bool
 }
 
 /*
- * boot_remove_temp_volumes () - Find temporary volumes and remove them
+ * boot_remove_temp_volumes () - find the temporary volumes of the database in their directory and remove them
  *
- * Note: The given function is called for every single temporary volume which is different from the given one.
+ * Note: A temporary volume is added and removed without logging, and boot_Db_parm counts them only in memory; the
+ *       count reaches the disk only along with other changes of boot_Db_parm. So after a crash the count on disk
+ *       does not tell which temporary volumes exist. Every file in the temporary volume directory that is named as
+ *       a temporary volume of this database is removed, except a permanent volume that was given such a name.
+ *       At restart, a volume beyond the temporary volumes known by boot_Db_parm is notified as unknown.
  */
 static void
 boot_remove_temp_volumes (THREAD_ENTRY * thread_p)
 {
-  VOLID temp_volid;
   char temp_vol_fullname[PATH_MAX];
+  char dir_buf[PATH_MAX];
   const char *temp_path;
-  const char *temp_name;
-  char *alloc_tempath = NULL;
+  const char *db_name;
+  DIR *dir_p;
+  struct dirent *entry;
+  VOLID volid;
 
-  /*
-   * Get the name of the extension: ext_path|dbname|"ext"|volid
-   */
-
-  /* Use the directory where the primary volume is located */
-  alloc_tempath = (char *) malloc (strlen (boot_Db_full_name) + 1);
-  if (alloc_tempath == NULL)
-    {
-      return;
-    }
-  temp_path = (char *) prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
+  temp_path = prm_get_string_value (PRM_ID_IO_TEMP_VOLUME_PATH);
   if (temp_path == NULL || temp_path[0] == '\0')
     {
-      temp_path = fileio_get_directory_path (alloc_tempath, boot_Db_full_name);
+      temp_path = fileio_get_directory_path (dir_buf, boot_Db_full_name);
     }
-  temp_name = fileio_get_base_file_name (boot_Db_full_name);
+  db_name = fileio_get_base_file_name (boot_Db_full_name);
 
-  for (temp_volid = boot_Db_parm->temp_last_volid; temp_volid <= LOG_MAX_DBVOLID; temp_volid++)
+  dir_p = opendir (temp_path);
+  if (dir_p == NULL)
     {
-      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, temp_name, temp_volid);
-      if (fileio_is_volume_exist (temp_vol_fullname) == true)
+      /* no temporary volume could have been created there */
+      return;
+    }
+
+  while ((entry = readdir (dir_p)) != NULL)
+    {
+      volid = boot_get_temp_volid_from_name (entry->d_name, db_name);
+      if (volid == NULL_VOLID)
 	{
-	  (void) boot_remove_temp_volume (thread_p, temp_volid, temp_vol_fullname);
+	  continue;
 	}
+
+      fileio_make_volume_temp_name (temp_vol_fullname, temp_path, db_name, volid);
+      if (disk_is_permanent_volume_file (thread_p, temp_vol_fullname))
+	{
+	  /* a permanent volume named like a temporary volume (addvoldb -n) */
+	  continue;
+	}
+
+      if (!BO_IS_SERVER_RESTARTED ()
+	  && (boot_Db_parm->temp_last_volid == NULL_VOLID || volid < boot_Db_parm->temp_last_volid))
+	{
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_VOLUME, 1, temp_vol_fullname);
+	}
+
+      /* The volume is not known by the system any longer. */
+      (void) pgbuf_invalidate_all (thread_p, volid);
+      fileio_unformat (thread_p, temp_vol_fullname);
     }
 
-  if (alloc_tempath)
-    {
-      free_and_init (alloc_tempath);
-    }
+  closedir (dir_p);
 }
 
 /*

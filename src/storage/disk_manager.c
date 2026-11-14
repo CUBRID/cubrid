@@ -6359,6 +6359,53 @@ end:
 }
 
 /*
+ * disk_is_permanent_volume_file () - does the file start with the header of a permanent volume?
+ *
+ * return : true if the file is a CUBRID volume of permanent type, false otherwise (no such file, not a CUBRID
+ *          volume, a temporary volume, or the header cannot be read)
+ * thread_p(in) : thread entry
+ * vol_label_p(in) : volume label
+ *
+ * Note: The volume does not need to be mounted; the header is read from the file.
+ */
+bool
+disk_is_permanent_volume_file (THREAD_ENTRY * thread_p, const char *vol_label_p)
+{
+  char data_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT], *data;
+  DISK_VOLUME_HEADER *vhdr;
+  int vol_fd;
+  off_t read_size;
+  size_t page_reserver_area;
+  struct stat stat_buffer;
+  bool is_permanent = false;
+
+  assert (vol_label_p != NULL);
+
+  data = PTR_ALIGN (data_buf, MAX_ALIGNMENT);
+  page_reserver_area = offsetof (FILEIO_PAGE, page);
+  vhdr = (DISK_VOLUME_HEADER *) (data + page_reserver_area);
+
+  vol_fd = fileio_open (vol_label_p, O_RDONLY, 0);
+  if (vol_fd == NULL_VOLDES)
+    {
+      return false;
+    }
+
+  read_size = page_reserver_area + offsetof (DISK_VOLUME_HEADER, type) + sizeof (vhdr->type);
+  if (fstat (vol_fd, &stat_buffer) == 0 && stat_buffer.st_size >= read_size
+      && fileio_read (thread_p, vol_fd, data, 0, read_size) != NULL
+      && strncmp (vhdr->magic, CUBRID_MAGIC_DATABASE_VOLUME, CUBRID_MAGIC_MAX_LENGTH) == 0
+      && vhdr->type == DB_PERMANENT_VOLTYPE)
+    {
+      is_permanent = true;
+    }
+
+  fileio_close (vol_fd);
+
+  return is_permanent;
+}
+
+/*
  * disk_compatible_type_and_purpose () - is volume purpose compatible to volume type?
  *
  * return       : true if compatible, false otherwise
