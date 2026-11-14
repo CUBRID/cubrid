@@ -61,6 +61,9 @@
 
 #include <malloc.h>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -304,6 +307,7 @@ static PT_NODE *pt_apply_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * p, vo
 static PT_NODE *pt_apply_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_copy (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_sp_body (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 
 static PARSER_APPLY_NODE_FUNC pt_apply_func_array[PT_NODE_NUMBER];
@@ -471,6 +475,7 @@ static PARSER_VARCHAR *pt_print_alter_synonym (PARSER_CONTEXT * parser, PT_NODE 
 static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_copy (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4460,6 +4465,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "width_bucket";
     case PT_TRACE_STATS:
       return "trace_stats";
+    case PT_COPY_REJECTED_ROWS:
+      return "copy_rejected_rows";
     case PT_INDEX_PREFIX:
       return "index_prefix ";
     case PT_SLEEP:
@@ -5532,6 +5539,7 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_CREATE_SYNONYM] = pt_apply_create_synonym;
   pt_apply_func_array[PT_DROP_SYNONYM] = pt_apply_drop_synonym;
   pt_apply_func_array[PT_RENAME_SYNONYM] = pt_apply_rename_synonym;
+  pt_apply_func_array[PT_COPY] = pt_apply_copy;
   pt_apply_func_array[PT_SP_BODY] = pt_apply_sp_body;
 
   pt_apply_f = pt_apply_func_array;
@@ -5667,6 +5675,7 @@ pt_init_init_f (void)
   pt_init_func_array[PT_CREATE_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_DROP_SYNONYM] = pt_init_func_null_function;
   pt_init_func_array[PT_RENAME_SYNONYM] = pt_init_func_null_function;
+  pt_init_func_array[PT_COPY] = pt_init_func_null_function;
   pt_init_func_array[PT_SP_BODY] = pt_init_func_null_function;
 
   pt_init_f = pt_init_func_array;
@@ -5795,6 +5804,7 @@ pt_init_print_f (void)
   pt_print_func_array[PT_CREATE_SYNONYM] = pt_print_create_synonym;
   pt_print_func_array[PT_DROP_SYNONYM] = pt_print_drop_synonym;
   pt_print_func_array[PT_RENAME_SYNONYM] = pt_print_rename_synonym;
+  pt_print_func_array[PT_COPY] = pt_print_copy;
   pt_print_func_array[PT_SP_BODY] = pt_print_sp_body;
 
   pt_print_f = pt_print_func_array;
@@ -12819,6 +12829,9 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TRACE_STATS:
       q = pt_append_nulstring (parser, q, " trace_stats()");
+      break;
+    case PT_COPY_REJECTED_ROWS:
+      q = pt_append_nulstring (parser, q, " copy_rejected_rows()");
       break;
     case PT_LIKE_ESCAPE:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
@@ -21275,6 +21288,117 @@ pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_varchar (parser, q, r1);
 
   parser->custom_print = save_custom;
+
+  return q;
+}
+
+/*
+ * pt_apply_copy () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_copy (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.copy.table_name, arg);
+  PT_APPLY_WALK (parser, p->info.copy.column_list, arg);
+  PT_APPLY_WALK (parser, p->info.copy.fmt.csv.null_str, arg);
+  PT_APPLY_WALK (parser, p->info.copy.reject_limit, arg);
+
+  return p;
+}
+
+/*
+ * pt_print_copy () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ */
+static PARSER_VARCHAR *
+pt_print_copy (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *q = NULL, *r;
+
+  q = pt_append_nulstring (parser, q, "COPY ");
+
+  r = pt_print_bytes (parser, p->info.copy.table_name);
+  q = pt_append_varchar (parser, q, r);
+
+  if (p->info.copy.column_list)
+    {
+      q = pt_append_nulstring (parser, q, " (");
+      r = pt_print_bytes_l (parser, p->info.copy.column_list);
+      q = pt_append_varchar (parser, q, r);
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
+  if (p->info.copy.direction == 0)
+    {
+      q = pt_append_nulstring (parser, q, " FROM STDIN");
+    }
+
+  /* The format and every option, so that the printout reads back as the same
+   * statement. A one-character literal that is itself a quote is doubled. */
+  q = pt_append_nulstring (parser, q, (p->info.copy.format == 1) ? " WITH (FORMAT CSV" : " WITH (FORMAT BINARY");
+  if (p->info.copy.fmt.csv.delimiter > 0)
+    {
+      char opt[32];
+
+      if (p->info.copy.fmt.csv.delimiter == '\'')
+	{
+	  snprintf (opt, sizeof (opt), ", DELIMITER ''''");
+	}
+      else
+	{
+	  snprintf (opt, sizeof (opt), ", DELIMITER '%c'", (char) p->info.copy.fmt.csv.delimiter);
+	}
+      q = pt_append_nulstring (parser, q, opt);
+    }
+  if (p->info.copy.fmt.csv.quote > 0)
+    {
+      char opt[32];
+
+      if (p->info.copy.fmt.csv.quote == '\'')
+	{
+	  snprintf (opt, sizeof (opt), ", QUOTE ''''");
+	}
+      else
+	{
+	  snprintf (opt, sizeof (opt), ", QUOTE '%c'", (char) p->info.copy.fmt.csv.quote);
+	}
+      q = pt_append_nulstring (parser, q, opt);
+    }
+  if (p->info.copy.fmt.csv.header)
+    {
+      q = pt_append_nulstring (parser, q, ", HEADER");
+    }
+  if (p->info.copy.fmt.csv.null_str != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", NULL ");
+      r = pt_print_bytes (parser, p->info.copy.fmt.csv.null_str);
+      q = pt_append_varchar (parser, q, r);
+    }
+  if (p->info.copy.on_error == PT_COPY_ON_ERROR_STOP)
+    {
+      q = pt_append_nulstring (parser, q, ", ON_ERROR STOP");
+    }
+  else if (p->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE)
+    {
+      q = pt_append_nulstring (parser, q, ", ON_ERROR IGNORE");
+    }
+  if (p->info.copy.reject_limit != NULL)
+    {
+      q = pt_append_nulstring (parser, q, ", REJECT_LIMIT ");
+      r = pt_print_bytes (parser, p->info.copy.reject_limit);
+      q = pt_append_varchar (parser, q, r);
+    }
+  if (p->info.copy.bulk)
+    {
+      q = pt_append_nulstring (parser, q, ", BULK");
+    }
+  q = pt_append_nulstring (parser, q, ")");
 
   return q;
 }

@@ -1798,7 +1798,12 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1395
+#define ER_COPY_NOT_SUPPORTED                       -1395
+#define ER_COPY_BINARY_FORMAT_ERROR                 -1396
+#define ER_COPY_CSV_FORMAT_ERROR                    -1397
+#define ER_COPY_INVALID_OPTION                      -1398
+
+#define ER_LAST_ERROR                               -1399
 
 
 /*

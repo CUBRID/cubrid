@@ -1511,7 +1511,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Last Error
+1395 COPY FROM is not supported for "%1$s".
+
+1396 COPY binary format error: %1$s.
+
+1397 COPY CSV format error: %1$s.
+
+1398 COPY FROM: %1$s.
+
+1399 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

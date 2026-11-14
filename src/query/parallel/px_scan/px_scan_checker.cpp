@@ -383,7 +383,7 @@ namespace parallel_scan
     result |= check<is_outptr_list> (arg->pred);
     /* also listed in qo_check_serial_block_expr () (query_planner.c) */
     if (arg->opcode == T_TRACE_STATS || arg->opcode == T_EVALUATE_VARIABLE || arg->opcode == T_DEFINE_VARIABLE
-	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE)
+	|| arg->opcode == T_CURRENT_VALUE || arg->opcode == T_NEXT_VALUE || arg->opcode == T_COPY_REJECTED_ROWS)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
