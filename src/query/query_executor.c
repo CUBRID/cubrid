@@ -3216,25 +3216,25 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	    }
 	}
     }
-  if (xasl->bptr_list)
+  for (XASL_NODE * xasl_p = xasl->bptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->bptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->bptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
-  if (xasl->dptr_list)
+  for (XASL_NODE * xasl_p = xasl->dptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->dptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->dptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
-  if (xasl->fptr_list)
+  for (XASL_NODE * xasl_p = xasl->fptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->fptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->fptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
-  if (xasl->scan_ptr)
+  for (XASL_NODE * xasl_p = xasl->scan_ptr; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->scan_ptr, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->scan_ptr, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
 
   /* clear the CONNECT BY node */
@@ -3382,10 +3382,10 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
 
-	if (buildlist->eptr_list)
+	for (XASL_NODE * xasl_p = buildlist->eptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
 	  {
-	    XASL_SET_FLAG (buildlist->eptr_list, decache_clone_flag);
-	    pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, buildlist->eptr_list, is_final);
+	    XASL_SET_FLAG (xasl_p, decache_clone_flag);
+	    pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
 	  }
 
 
