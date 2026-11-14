@@ -6828,7 +6828,8 @@ static const char *
 qo_node_partition_key (QO_NODE * node, int *partitions)
 {
   SM_PARTITION *partition;
-  DB_VALUE attr_name, part_count;
+  DB_VALUE *attr_name;
+  DB_VALUE part_count;
   const char *key_name;
   int key_len;
 
@@ -6838,9 +6839,9 @@ qo_node_partition_key (QO_NODE * node, int *partitions)
     }
 
   partition = QO_NODE_INFO_SMCLASS (node)->partition;
-  if (partition->values == NULL || set_get_element_nocopy (partition->values, 0, &attr_name) != NO_ERROR
-      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (&attr_name)
-      || DB_IS_NULL (&part_count) || (key_name = db_get_string (&attr_name)) == NULL)
+  if (partition->values == NULL || setobj_get_element_ptr (partition->values->set, 0, &attr_name) != NO_ERROR
+      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (attr_name)
+      || DB_IS_NULL (&part_count) || (key_name = db_get_string (attr_name)) == NULL)
     {
       return NULL;
     }
