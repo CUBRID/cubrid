@@ -651,13 +651,9 @@ la_coordinator_merge_into_pending (LA_TASK *task, int *error)
   LSA_COPY (&target->merged_lsa[target->merged_count], &task->commit_lsa);
   target->merged_count++;
 
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] coordinator merge trid=%d sysop_lsa=%lld|%d into trid=%d sysop_lsa=%lld|%d merged=%d\n",
-		     task->tranid, (long long) task->commit_lsa.pageid, (int) task->commit_lsa.offset, target->tranid,
-		     (long long) target->commit_lsa.pageid, (int) target->commit_lsa.offset, target->merged_count);
-    }
+  LA_WSET_TRACE (1, "coordinator merge trid=%d sysop_lsa=%lld|%d into trid=%d sysop_lsa=%lld|%d merged=%d\n",
+		 task->tranid, LSA_AS_ARGS (&task->commit_lsa), target->tranid,
+		 LSA_AS_ARGS (&target->commit_lsa), target->merged_count);
 
   return true;
 }

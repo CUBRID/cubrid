@@ -975,15 +975,12 @@ la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int tra
 		       &result->stats);
   result->total_rows = total_rows;
 
-  if (trace_level >= 2)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] worker apply end trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu "
-		     "rows=%d error=%d\n",
-		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     task->rectype, (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, total_rows,
-		     result->error);
-    }
+  LA_WSET_TRACE_IF (trace_level >= 2,
+		    "worker apply end trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu "
+		    "rows=%d error=%d\n",
+		    task->tranid, LSA_AS_ARGS (&task->commit_lsa),
+		    task->rectype, (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, total_rows,
+		    result->error);
 
   /* Queue the markers after the data, before the final flush. They use the same row batch and slave
    * transaction, so no SQL compilation or separate marker INSERT request is needed.
@@ -1030,13 +1027,10 @@ la_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, i
 {
   int error;
 
-  if (trace_level >= 2)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] worker flush begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu unflushed=%d\n",
-		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, stats->num_unflushed);
-    }
+  LA_WSET_TRACE_IF (trace_level >= 2,
+		    "worker flush begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu unflushed=%d\n",
+		    task->tranid, LSA_AS_ARGS (&task->commit_lsa),
+		    (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, stats->num_unflushed);
 
   error = la_flush_repl_items (true, stats, &context->marker_class_oid);
   if (error == NO_ERROR && __gv_loc_repl.ws_get_repl_obj_count () == 0)
@@ -1045,13 +1039,10 @@ la_worker_flush_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, i
       la_release_oversized_recdes (context);
     }
 
-  if (trace_level >= 2)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] worker flush end trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu error=%d\n",
-		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, error);
-    }
+  LA_WSET_TRACE_IF (trace_level >= 2,
+		    "worker flush end trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu error=%d\n",
+		    task->tranid, LSA_AS_ARGS (&task->commit_lsa),
+		    (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq, error);
 
   return error;
 }
@@ -1077,13 +1068,10 @@ la_worker_commit_task (LA_APPLY_WORKER_CONTEXT * context, const LA_TASK * task, 
   /* TODO: test-only crash-injection hook; remove with la_worker_test_block_before_commit */
   la_worker_test_block_before_commit (context, task, stats);
 
-  if (trace_level >= 2)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "[WSET] worker commit begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu\n",
-		     task->tranid, LSA_AS_ARGS (&task->commit_lsa),
-		     (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq);
-    }
+  LA_WSET_TRACE_IF (trace_level >= 2,
+		    "worker commit begin trid=%d commit_lsa=%lld|%d worker=%zu dispatch=%llu\n",
+		    task->tranid, LSA_AS_ARGS (&task->commit_lsa),
+		    (size_t) context->worker_idx, (unsigned long long) task->dispatch_seq);
 
   return la_commit_transaction (*worker_applied_item_count, &task->commit_lsa);
 }
@@ -6388,14 +6376,16 @@ la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS
    * return whatever error id the thread last had. */
   if (LSA_ISNULL (&item->target_lsa))
     {
-      if (la_wset_trace_is_enabled (2))
+      bool trace_enabled = la_wset_trace_is_enabled (2);
+
+      if (trace_enabled)
 	{
 	  string_buffer sb;
 
 	  db_sprint_value (la_get_item_pk_value (item), sb);
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] worker skip update without log position worker=%zu class=%s pk=%.255s\n",
-			 (size_t) context->worker_idx, item->class_name, sb.get_buffer ());
+	  LA_WSET_TRACE_IF (trace_enabled,
+			    "worker skip update without log position worker=%zu class=%s pk=%.255s\n",
+			    (size_t) context->worker_idx, item->class_name, sb.get_buffer ());
 	}
 
       return NO_ERROR;
@@ -7493,16 +7483,18 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 		    "coordinator skip_sysop_end_already_committed trid=%d lsa=%lld|%d committed=%lld|%d\n",
 		    lrec->trid, LSA_AS_ARGS (final),
 		    LSA_AS_ARGS (&la_Info.committed_lsa));
-      if (la_wset_trace_is_enabled (2))
+
+      bool trace_enabled = la_wset_trace_is_enabled (2);
+
+      if (trace_enabled)
 	{
 	  LA_APPLY *sysop_apply = la_find_apply_list (lrec->trid);
 
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
-			 "action=skip\n",
-			 lrec->trid, LSA_AS_ARGS (final),
-			 LSA_AS_ARGS (&la_Info.committed_lsa),
-			 sysop_apply == NULL ? 0 : sysop_apply->num_items);
+	  LA_WSET_TRACE_IF (trace_enabled,
+			    "coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
+			    "action=skip\n",
+			    lrec->trid, LSA_AS_ARGS (final),
+			    LSA_AS_ARGS (&la_Info.committed_lsa), sysop_apply == NULL ? 0 : sysop_apply->num_items);
 	}
     }
 
@@ -7722,14 +7714,18 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_ABORT:
-      if (la_wset_trace_is_enabled (1))
-	{
-	  LA_APPLY *abort_apply = la_find_apply_list (lrec->trid);
+      {
+	bool trace_enabled = la_wset_trace_is_enabled (1);
 
-	  _er_log_debug (ARG_FILE_LINE, "[WSET] coordinator abort trid=%d abort_lsa=%lld|%d items=%d path=%s\n",
-			 lrec->trid, LSA_AS_ARGS (final),
-			 abort_apply == NULL ? 0 : abort_apply->num_items, "parallel");
-	}
+	if (trace_enabled)
+	  {
+	    LA_APPLY *abort_apply = la_find_apply_list (lrec->trid);
+
+	    LA_WSET_TRACE_IF (trace_enabled, "coordinator abort trid=%d abort_lsa=%lld|%d items=%d path=%s\n",
+			      lrec->trid, LSA_AS_ARGS (final),
+			      abort_apply == NULL ? 0 : abort_apply->num_items, "parallel");
+	  }
+      }
       la_free_repl_items_by_tranid (lrec->trid);
       break;
 

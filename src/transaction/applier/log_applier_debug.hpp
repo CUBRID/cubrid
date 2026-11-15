@@ -36,15 +36,18 @@ la_wset_trace_is_enabled (int level)
   return prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= level;
 }
 
-#define LA_WSET_TRACE(level, ...) \
+/* Preserve the worker's cached trace decision instead of re-reading the parameter. */
+#define LA_WSET_TRACE_IF(enabled, ...) \
   do \
     { \
-      if (la_wset_trace_is_enabled (level)) \
+      if (enabled) \
 	{ \
 	  _er_log_debug (ARG_FILE_LINE, "[WSET] " __VA_ARGS__); \
 	} \
     } \
   while (0)
+
+#define LA_WSET_TRACE(level, ...) LA_WSET_TRACE_IF (la_wset_trace_is_enabled (level), __VA_ARGS__)
 
 #if !defined (NDEBUG)
 #define LA_DEBUG_LOG(...) er_log_debug (__VA_ARGS__)

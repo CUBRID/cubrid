@@ -341,10 +341,10 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
       if (trace_task)
 	{
 	  LA_TIME_BEGIN (task_begin);
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] worker apply begin trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu\n",
-			 task.tranid, LSA_AS_ARGS (&task.commit_lsa), task.rectype,
-			 (size_t) context->worker_idx, (unsigned long long) task.dispatch_seq);
+	  LA_WSET_TRACE_IF (trace_task,
+			    "worker apply begin trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu\n",
+			    task.tranid, LSA_AS_ARGS (&task.commit_lsa), task.rectype,
+			    (size_t) context->worker_idx, (unsigned long long) task.dispatch_seq);
 	}
 
       result.apply_begin_ns = la_worker_clock_ns ();
@@ -357,14 +357,14 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
 	  bool one_class = (!result.stats.multi_class && result.stats.last_class_name[0] != '\0');
 
 	  LA_TIME_ACCUM_USEC (task_begin, elapsed_usec);
-	  _er_log_debug (ARG_FILE_LINE,
-			 "[WSET] worker apply done trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu "
-			 "error=%d elapsed_usec=%llu%s%s\n",
-			 task.tranid, LSA_AS_ARGS (&task.commit_lsa),
-			 task.rectype, (size_t) context->worker_idx, (unsigned long long) task.dispatch_seq,
-			 result.error,
-			 (unsigned long long) elapsed_usec, one_class ? " class=" : "",
-			 one_class ? result.stats.last_class_name : "");
+	  LA_WSET_TRACE_IF (trace_task,
+			    "worker apply done trid=%d commit_lsa=%lld|%d type=%d worker=%zu dispatch=%llu "
+			    "error=%d elapsed_usec=%llu%s%s\n",
+			    task.tranid, LSA_AS_ARGS (&task.commit_lsa),
+			    task.rectype, (size_t) context->worker_idx, (unsigned long long) task.dispatch_seq,
+			    result.error,
+			    (unsigned long long) elapsed_usec, one_class ? " class=" : "",
+			    one_class ? result.stats.last_class_name : "");
 	}
 
       error = la_result_queue_push (&result);
