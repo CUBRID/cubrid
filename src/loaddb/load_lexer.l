@@ -876,66 +876,57 @@ static_assert (BIN_MAX_BLOCK_RAW_SIZE == LZ4_MAX_INPUT_SIZE, "a raw block is at 
 
 /*
  * read_binary () - copy raw bytes of a binary section out of the scanner input
- *   return: number of bytes copied
+ *   return: number of bytes copied, fewer than len only at the end of the input
  *   buf (out): destination
  *   len (in): number of bytes to copy
  *
  * Note: the bytes of a binary section carry no structure a flex rule could match, so they are
- *       taken straight out of the scanner buffer. yyinput () reads the very same buffer one byte
- *       at a time, here it only refills an exhausted buffer and reports the end of the input.
+ *       taken out of the input here. Those the scanner buffer already holds are copied from it,
+ *       and the rest is read straight from the input stream with LexerInput (), which tells the
+ *       end of the input by the count it returns: 0 at the end, whatever the bytes are.
  *
- *       The buffer members touched below, along with the null termination dance around
- *       yy_hold_char, are the ones yyinput () itself maintains. They are internals of the
- *       generated scanner, which is why every access to them is confined to this function.
+ *       yyinput () is not used to refill the buffer. What it returns at the end of the input
+ *       differs between flex releases: 0 in flex 2.6, which a NUL byte of the data returns as
+ *       well, and EOF in flex 2.5. A refill also keeps every byte read since the start of the
+ *       current token, the size field, so a large row or block would be copied over and over.
+ *
+ *       Once the buffer is exhausted the scanner refills it on its own at the next token, from
+ *       the stream position after the bytes read here. The buffer members touched below, along
+ *       with the null termination dance around yy_hold_char, are the ones yyinput () itself
+ *       maintains. They are internals of the generated scanner, which is why every access to
+ *       them is confined to this function.
  */
 size_t
 cubload::scanner::read_binary (char *buf, size_t len)
 {
-  size_t read_bytes = 0;
+  size_t read_bytes;
+
+  /* yytext is kept null terminated inside the buffer, put the overwritten character back */
+  *yy_c_buf_p = yy_hold_char;
+
+  read_bytes = (size_t) ((YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + yy_n_chars) - yy_c_buf_p);
+  if (read_bytes > len)
+    {
+      read_bytes = len;
+    }
+  memcpy (buf, yy_c_buf_p, read_bytes);
+  yy_c_buf_p += read_bytes;
+
+  /* restore the null termination the rule machinery expects to find */
+  yy_hold_char = *yy_c_buf_p;
+  *yy_c_buf_p = '\0';
 
   while (read_bytes < len)
     {
-      size_t available;
-      int c;
+      size_t want = len - read_bytes;
+      int got = LexerInput (buf + read_bytes, (int) (want > INT_MAX ? INT_MAX : want));
 
-      /* yytext is kept null terminated inside the buffer, put the overwritten character back */
-      *yy_c_buf_p = yy_hold_char;
-
-      available = (size_t) ((YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + yy_n_chars) - yy_c_buf_p);
-      if (available > len - read_bytes)
+      if (got <= 0)
 	{
-	  available = len - read_bytes;
-	}
-
-      if (available > 0)
-	{
-	  memcpy (buf + read_bytes, yy_c_buf_p, available);
-	  yy_c_buf_p += available;
-	  read_bytes += available;
-	}
-
-      /* restore the null termination the rule machinery expects to find */
-      yy_hold_char = *yy_c_buf_p;
-      *yy_c_buf_p = '\0';
-
-      if (available > 0)
-	{
-	  continue;
-	}
-
-      /*
-       * The buffer ran dry. 
-       * yyinput () refills it and hands back the first byte of the new content, or 0 at the end of the input.
-       * A 0 is also a genuine NUL byte, the two are told apart by the buffer holding data again afterwards.
-       */
-      c = yyinput ();
-      if (c == 0 && yy_c_buf_p >= YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + yy_n_chars)
-	{
-	  /* end of the input, the caller reports the short count as a truncated section */
+	  /* the end of the input (0) or a read error (-1), the caller reports a truncated section */
 	  break;
 	}
-
-      buf[read_bytes++] = (char) c;
+      read_bytes += (size_t) got;
     }
 
   return read_bytes;
