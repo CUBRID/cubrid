@@ -6559,7 +6559,7 @@ la_change_state (void)
    * also when the header is not synchronized (la_is_received_log_end ()) */
   if (la_Info.is_end_of_record == true
       && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED
-	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_DEAD))
+	  || la_is_received_log_end (la_Info.act_log.log_hdr)))
     {
       /* check server's state with log header */
       if (la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_ACTIVE
@@ -6644,6 +6644,20 @@ la_change_state (void)
 		    css_ha_applier_state_string ((HA_LOG_APPLIER_STATE) new_state),
 		    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+
+	  if (new_state == HA_LOG_APPLIER_STATE_DONE && la_is_received_log_end (la_Info.act_log.log_hdr))
+	    {
+	      const LOG_LSA append_lsa = la_Info.act_log.log_hdr->append_lsa;
+	      const LOG_LSA eof_lsa = la_Info.act_log.log_hdr->eof_lsa;
+
+	      snprintf (buffer, sizeof (buffer),
+			"the source (%s@%s) died before the copied log was synchronized. "
+			"applied the records before %lld|%d, received up to page %lld, "
+			"the log from there to the source's eof %lld|%d was not received",
+			la_slave_db_name, la_peer_host, LSA_AS_ARGS (&la_Info.final_lsa),
+			(long long int) append_lsa.pageid, LSA_AS_ARGS (&eof_lsa));
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
+	    }
 
 	  la_Info.apply_state = new_state;
 	}
@@ -8652,8 +8666,13 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
-	      else if (la_Info.final_lsa > final_log_hdr.append_lsa.load ())
+	      else if (la_Info.final_lsa > final_log_hdr.append_lsa.load ()
+		       && !(la_is_received_log_end (&final_log_hdr)
+			    && la_Info.final_lsa.pageid == final_log_hdr.append_lsa.load ().pageid))
 		{
+		  /* the append page itself was received whole (it is short of the source's eof). when the source is
+		   * dead, its records whose next record starts in it are applied: the forw_lsa check below stops at
+		   * the first one whose next record starts past it */
 		  if (la_is_received_log_end (&final_log_hdr))
 		    {
 		      la_Info.is_end_of_record = true;
