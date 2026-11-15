@@ -43,6 +43,8 @@ extern int execute_query_with_internal_lob_dml (const XASL_ID * xasl_id, QUERY_I
 						const OID * direct_class_oid, const bool * used_vars,
 						const bool * direct_vars);
 extern int check_client_internal_lob_dml_params (int var_cnt, const DB_VALUE * varptr, const bool * used_vars);
+extern int query_set_one_shot_plan_key (compile_context * context);
+extern void query_drop_one_shot_plan (const compile_context * context);
 #if defined(CS_MODE)
 extern bool query_is_internal_lob_file_source (const DB_VALUE * value);
 extern int query_copy_without_unused_file_sources (int var_cnt, const DB_VALUE * varptr, const bool * used_vars,

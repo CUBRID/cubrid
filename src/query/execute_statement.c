@@ -89,6 +89,7 @@
 #include "arithmetic.h"
 #include "xasl_to_stream.h"
 #include "query_cl.h"
+#include "internal_lob_marker.h"
 #include "parser_support.h"
 #include "string_opfunc.h"
 #include "tz_support.h"
@@ -18744,6 +18745,62 @@ exit:
 }
 
 /*
+ * do_merge_internal_lob_at_server () - Run a MERGE that was not prepared as a prepared one runs, server-side, when a
+ *   LOB column value is a payload not in storage yet (a file source), which the client object path cannot write
+ *   return: error code or the row count
+ *   done(out): false when there is no such value or the MERGE needs the client path; nothing ran then
+ */
+static int
+do_merge_internal_lob_at_server (PARSER_CONTEXT * parser, PT_NODE * statement, bool * done)
+{
+  const int var_count = parser->host_var_count + parser->auto_param_count;
+  bool *used_vars = NULL, *direct_vars = NULL;
+  bool has_payload = false;
+  int err, i;
+
+  *done = false;
+  err = do_get_internal_lob_used_host_vars (parser, statement, &used_vars);
+  if (err == NO_ERROR)
+    {
+      err = do_get_internal_lob_direct_host_vars (parser, statement, &direct_vars);
+    }
+  for (i = 0; err == NO_ERROR && i < var_count && !has_payload; i++)
+    {
+      const DB_VALUE *value = &parser->host_variables[i];
+
+      has_payload = (used_vars[i] && direct_vars[i]
+		     && (DB_VALUE_TYPE (value) == DB_TYPE_BLOB || DB_VALUE_TYPE (value) == DB_TYPE_CLOB)
+		     && internal_lob_marker_is_unresolved_transport (db_value_get_internal_lob_marker (value)));
+    }
+  free_and_init (used_vars);
+  free_and_init (direct_vars);
+  if (err != NO_ERROR || !has_payload)
+    {
+      *done = (err != NO_ERROR);
+      return err;
+    }
+
+  /* do_prepare_merge () caches the plan of a MERGE that cannot be prepared for this execution only */
+  err = do_prepare_merge (parser, statement);
+  if (err == NO_ERROR && (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP))
+    {
+      *done = true;
+      err = do_execute_merge (parser, statement);
+      if (statement->xasl_id != NULL)
+	{
+	  query_drop_one_shot_plan (&parser->context);
+	  pt_free_statement_xasl_id (statement);
+	}
+    }
+  else
+    {
+      *done = (err != NO_ERROR);
+    }
+  statement->info.merge.flags &= ~PT_MERGE_INFO_SERVER_OP;
+  return err;
+}
+
+/*
  * do_merge () - MERGE statement
  *   return:
  *   parser(in):
@@ -18776,9 +18833,16 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int au_save = 0;
   int outer_au_save = 0;
   bool insert_only = false;
+  bool done = false;
   PT_NODE *copy_assigns, *save_assigns;
 
   CHECK_MODIFICATION_ERROR ();
+
+  err = do_merge_internal_lob_at_server (parser, statement, &done);
+  if (done)
+    {
+      return err;
+    }
 
   /* savepoint for statement atomicity */
   savepoint_name = mq_generate_name (parser, "UmsP", &merge_savepoint_number);
@@ -19423,16 +19487,25 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return err;
 	}
       parser->flag.dont_prt_long_string = 0;
-      if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
+      if (statement->flag.cannot_prepare)
+	{
+	  /* run once by do_merge (): the plan holds values read now, such as a file length */
+	  err = query_set_one_shot_plan_key (contextp);
+	  if (err != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+      else if (parser->flag.long_string_skipped || parser->flag.print_type_ambiguity)
 	{
 	  statement->flag.cannot_prepare = 1;
 	  statement->info.merge.flags &= ~PT_MERGE_INFO_SERVER_OP;
 	  goto cleanup;
 	}
 
-      /* lookup in XASL cache */
-      contextp->recompile_xasl = statement->flag.recompile;
-      if (statement->flag.recompile == 0)
+      /* lookup in XASL cache; never for a one-shot plan */
+      contextp->recompile_xasl = statement->flag.recompile || statement->flag.cannot_prepare;
+      if (!contextp->recompile_xasl)
 	{
 	  err = prepare_query (contextp, &stream);
 	  if (err != NO_ERROR)
@@ -19554,8 +19627,9 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto cleanup;
 	}
     }
-  else
+  else if (!statement->flag.cannot_prepare)
     {
+      /* do_merge () runs one that cannot be prepared client-side by itself */
       if (statement->info.merge.update.assignment && !insert_only)
 	{
 	  /* make the SELECT statement for OID list to be updated */

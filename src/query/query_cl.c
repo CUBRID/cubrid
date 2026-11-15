@@ -928,13 +928,44 @@ exit:
 #endif /* !CS_MODE */
 }
 
+/*
+ * query_set_one_shot_plan_key () - Key the plan of context to this execution only, for a plan that holds values read
+ *   now, such as the file length of CLOB_LENGTH (CLOB_FROM_FILE (...)); drop it with query_drop_one_shot_plan ()
+ *   return: error code
+ */
+int
+query_set_one_shot_plan_key (COMPILE_CONTEXT * context)
+{
+  static CUB_THREAD_LOCAL unsigned int one_shot_count = 0;
+  static CUB_THREAD_LOCAL char hash_text[64];
+
+  snprintf (hash_text, sizeof (hash_text), "internal LOB one-shot DML %d %u", tm_Tran_index, ++one_shot_count);
+  context->sql_hash_text = hash_text;
+  /* insert even if the key were taken: never run another statement's plan */
+  context->recompile_xasl = true;
+  return SHA1Compute ((const unsigned char *) hash_text, strlen (hash_text), &context->sha1);
+}
+
+/*
+ * query_drop_one_shot_plan () - Drop the plan cached under the key of query_set_one_shot_plan_key ()
+ */
+void
+query_drop_one_shot_plan (const COMPILE_CONTEXT * context)
+{
+  char sha1_text[45];
+
+  snprintf (sha1_text, sizeof (sha1_text), "%08x %08x %08x %08x %08x", SHA1_AS_ARGS (&context->sha1));
+  er_stack_push ();
+  (void) qmgr_drop_query_plans_by_sha1 (sha1_text);
+  er_stack_pop ();
+}
+
 #if defined(CS_MODE)
 /*
  * prepare_and_execute_query_with_internal_lob_dml () - prepare_and_execute_query () for an INSERT/UPDATE that was
  *   not prepared and has a LOB value to stream (query_needs_internal_lob_dml_stream ())
  *
- * The DML stream runs a cached plan, so this plan is cached under a key of this execution only and dropped after:
- * it holds values read now, such as the file length of CLOB_LENGTH (CLOB_FROM_FILE (...)).
+ * The DML stream runs a cached plan, so this plan is cached under a key of this execution only and dropped after.
  */
 int
 prepare_and_execute_query_with_internal_lob_dml (char *stream, int stream_size, QUERY_ID * query_idp, int var_cnt,
@@ -942,21 +973,14 @@ prepare_and_execute_query_with_internal_lob_dml (char *stream, int stream_size, 
 						 const OID * direct_class_oid, const bool * used_vars,
 						 const bool * direct_vars)
 {
-  static CUB_THREAD_LOCAL unsigned int one_shot_count = 0;
   COMPILE_CONTEXT context;
   XASL_STREAM xasl_stream;
-  char hash_text[64];
-  char sha1_text[45];
   int error;
 
   *list_idp = NULL;
 
   memset (&context, 0, sizeof (context));
-  snprintf (hash_text, sizeof (hash_text), "internal LOB one-shot DML %d %u", tm_Tran_index, ++one_shot_count);
-  context.sql_hash_text = hash_text;
-  /* insert even if the key were taken: never run another statement's plan */
-  context.recompile_xasl = true;
-  error = SHA1Compute ((const unsigned char *) hash_text, strlen (hash_text), &context.sha1);
+  error = query_set_one_shot_plan_key (&context);
   if (error != NO_ERROR)
     {
       return error;
@@ -979,10 +1003,7 @@ prepare_and_execute_query_with_internal_lob_dml (char *stream, int stream_size, 
   error = execute_query_with_internal_lob_dml (xasl_stream.xasl_id, query_idp, var_cnt, varptr, list_idp, flag, NULL,
 					       NULL, direct_class_oid, used_vars, direct_vars);
 
-  snprintf (sha1_text, sizeof (sha1_text), "%08x %08x %08x %08x %08x", SHA1_AS_ARGS (&context.sha1));
-  er_stack_push ();
-  (void) qmgr_drop_query_plans_by_sha1 (sha1_text);
-  er_stack_pop ();
+  query_drop_one_shot_plan (&context);
   free_and_init (xasl_stream.xasl_id);
   return error;
 }
