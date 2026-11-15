@@ -506,8 +506,10 @@ enum param_id
 
   PRM_ID_STATS_FULLSCAN_MAX_PAGES,
 
+  PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_STATS_FULLSCAN_MAX_PAGES
+  PRM_LAST_ID = PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL
 };
 typedef enum param_id PARAM_ID;
 

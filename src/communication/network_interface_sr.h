@@ -151,8 +151,10 @@ extern void smnt_server_copy_stats (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void smnt_server_copy_global_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sct_check_rep_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
-extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize);
-extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout);
+extern int xs_receive_data_from_client (THREAD_ENTRY * thread_p, char **area, int *datasize,
+					bool check_preexisting_error);
+extern int xs_receive_data_from_client_with_timeout (THREAD_ENTRY * thread_p, char **area, int *datasize, int timeout,
+						     bool check_interrupt);
 
 extern void slocator_assign_oid_batch (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_find_lockhint_class_oids (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

@@ -1643,6 +1643,13 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  else
 	    {
 	      has_coerced_values[i] = true;
+
+	      /* a non-NULL value can be NULL after the coercion, as '' to NUMERIC with numeric_empty_string_as_null.
+	       * a NULL key matches no row, the same as a NULL value above */
+	      if (DB_IS_NULL (&coerced_values[i]) && !(is_iss && i == 0))
+		{
+		  goto end;
+		}
 	    }
 	}
       else if (idx_type_id == DB_TYPE_NUMERIC || idx_type_id == DB_TYPE_CHAR || idx_type_id == DB_TYPE_BIT
@@ -3713,6 +3720,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	    }
 	  if (fhs_create (thread_p, llsidp->hlsid.file.hash_table, llsidp->list_id->tuple_cnt) == NULL)
 	    {
+	      /* the FHSID has no valid files; free it so that closing the scan does not destroy them */
+	      db_private_free_and_init (thread_p, llsidp->hlsid.file.hash_table);
 	      return S_ERROR;
 	    }
 	}
