@@ -374,7 +374,8 @@ struct lk_tran_lock
   LK_ENTRY *inst_hold_list;	/* instance lock hold list */
   LK_ENTRY *class_hold_list;	/* class lock hold list */
   LK_ENTRY *root_class_hold;	/* root class lock hold */
-  LK_ENTRY *lk_entry_pool;	/* local pool of lock entries, used only by the thread that set lk_entry_pool_busy */
+  LK_ENTRY *lk_entry_pool;	/* local pool of lock entries, used only by the thread that set lk_entry_pool_busy
+				 * (server start and shutdown fill and free it without the flag, on one thread) */
   int lk_entry_pool_count;	/* Current count of lock entries in local pool. */
   bool lk_entry_pool_busy;	/* a thread of the transaction is using lk_entry_pool and its count (atomic access) */
   int inst_hold_count;		/* # of entries in inst_hold_list */
