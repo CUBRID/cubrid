@@ -790,6 +790,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   net_server_func func;
   int status = CSS_NO_ERRORS;
   int error_code;
+  int lost_tran_index;
   CSS_CONN_ENTRY *conn;
 
   if (buffer == NULL && size > 0)
@@ -826,6 +827,17 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   if (IS_INVALID_SOCKET (conn->fd) || conn->status != CONN_OPEN)
     {
       /* have nothing to do because the client has gone */
+      goto end;
+    }
+
+  /* the connection's transaction has moved to another connection (2PC attach), so it has
+   * no transaction to run the request in */
+  lost_tran_index = conn->get_lost_tran_index ();
+  if (lost_tran_index != NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, lost_tran_index);
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (conn, rid);
       goto end;
     }
 
