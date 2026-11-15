@@ -147,7 +147,7 @@ namespace
   }
 
   /* the ids of the records, run by run, in the order next () reads them, and the runs the sorter split */
-  std::vector<std::vector<uint64_t>>
+  std::vector<std::vector<uint64_t> >
   sort_in_runs (const std::vector<test_record> &input, size_t buffer_bytes, long *split_runs)
   {
     const BTSORT_RUN_SORTER &sorter = btsort_merge_sorter;
