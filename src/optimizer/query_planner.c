@@ -316,6 +316,7 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
 static bool qo_node_is_multi_class (QO_NODE * node);
+static bool qo_outer_join_inner_scans_per_class (QO_PLAN * inner);
 static double qo_seg_ndv (QO_SEGMENT * seg);
 static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
 static double qo_node_filtered_rows (QO_NODE * node);
@@ -5069,8 +5070,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
 	   * the NULL row of each class. A partitioned table is walked per outer row instead, which returns it once
 	   * after the last partition (CBRD-27866), unless a class hierarchy scan of the query could follow it, which
 	   * only the iterator moves to its next class (gen_inner ()). */
-	  if (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
-	      && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node))
+	  if (qo_outer_join_inner_scans_per_class (inner))
 	    {
 	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
 	    }
@@ -5748,6 +5748,25 @@ qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
     }
 
   return true;
+}
+
+/*
+ * qo_outer_join_inner_scans_per_class () - whether an outer join inner scans a class hierarchy class by class
+ *   return: bool
+ *   inner(in): the inner plan of the NL join
+ *
+ * Note: an Object fetch inner is driven by the scan at the bottom of its path.
+ */
+static bool
+qo_outer_join_inner_scans_per_class (QO_PLAN * inner)
+{
+  while (inner->plan_type == QO_PLANTYPE_FOLLOW)
+    {
+      inner = inner->plan_un.follow.head;
+    }
+
+  return (inner->plan_type == QO_PLANTYPE_SCAN && QO_NODE_IS_CLASS_HIERARCHY (inner->plan_un.scan.node)
+	  && !qo_nl_inner_partitions_walk_per_row (inner->plan_un.scan.node));
 }
 
 /*
