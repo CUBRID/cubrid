@@ -70,7 +70,7 @@ struct au_grant
 #define GRANT_ENTRY_SOURCE(index) 	((index) + 2)
 #define GRANT_ENTRY_CACHE(index) 	((index) + 3)
 
-extern int apply_grants (MOP auth, MOP class_mop, unsigned int *bits);
+extern int apply_grants (MOP auth, DB_OBJECT_TYPE obj_type, MOP class_mop, unsigned int *bits);
 extern int get_grants (MOP auth, DB_SET **grant_ptr, int filter);
 
 // debugging purpose

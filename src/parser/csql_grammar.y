@@ -662,6 +662,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_access_modifier
 %type <number> opt_authid
 %type <number> opt_deterministic
+%type <number> sensitivity_label_kind
 %type <c3> opt_sp_option_list
 %type <c3> sp_option_list
 %type <c2> sp_option_item
@@ -718,6 +719,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> procedure_or_function_name
 %type <node> procedure_or_function_name_list
 %type <node> opt_alter_synonym
+%type <node> sensitivity_label_name
+%type <node> opt_sensitivity_label_level
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -1570,6 +1573,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
 %token <cptr> GE_LT_
+%token <cptr> GRADE
 %token <cptr> GRANTS
 %token <cptr> GROUP_CONCAT
 %token <cptr> GROUPS
@@ -1588,6 +1592,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INF_LE_
 %token <cptr> INF_LT_
 %token <cptr> INFINITE_
+%token <cptr> INFO_TYPE
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
@@ -1709,6 +1714,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> SHOW
 %token <cptr> SLOTS
 %token <cptr> SLOTTED
+%token <cptr> SOURCE
 %token <cptr> STABILITY
 %token <cptr> START_
 %token <cptr> STATEMENT
@@ -3282,6 +3288,22 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| CREATE SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name opt_sensitivity_label_level
+	  opt_comment_spec
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.level = $6;
+			    node->info.sensitivity_label.comment = $7;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 class_name_for_synonym
@@ -4270,6 +4292,36 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| ALTER SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name opt_sensitivity_label_level
+	  opt_comment_spec
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.level = $6;
+			    node->info.sensitivity_label.comment = $7;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name RENAME AS sensitivity_label_name
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.new_name = $8;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 view_or_vclass
@@ -4709,6 +4761,19 @@ drop_stmt
 			      {
 				PT_ERROR (this_parser, node, "PUBLIC SYNONYM is not supported.");
 			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| DROP SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
 			  }
 
 			$$ = node;
@@ -20818,6 +20883,7 @@ identifier
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GRADE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GRANTS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GROUPS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GROUP_CONCAT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20834,6 +20900,7 @@ identifier
 	| INDEXES                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INDEX_PREFIX           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INFINITE_              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INFO_TYPE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INF_LE_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INF_LT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| INSTANCES              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20951,6 +21018,7 @@ identifier
 	| SHOW                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SLOTS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SLOTTED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SOURCE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STABILITY              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| START_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STATEMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -22767,6 +22835,59 @@ opt_alter_synonym
 			$$ = NULL;
 		}}
 	| For class_name_for_synonym
+		{{
+			$$ = $2;
+		}}
+	;
+
+sensitivity_label_kind
+	: GRADE
+		{{
+			$$ = PT_SENSITIVITY_LABEL_GRADE;
+		}}
+	| INFO_TYPE
+		{{
+			$$ = PT_SENSITIVITY_LABEL_INFO_TYPE;
+		}}
+	| SOURCE
+		{{
+			$$ = PT_SENSITIVITY_LABEL_SOURCE;
+		}}
+	;
+
+sensitivity_label_name
+	: char_string_literal
+		{{
+			PT_NODE *node = $1;
+
+			if (node)
+			  {
+			    node->type_enum = PT_TYPE_VARCHAR;
+
+			    if (node->info.value.data_value.str->length == 0
+				|| node->info.value.data_value.str->length >= DB_MAX_IDENTIFIER_LENGTH)
+			      {
+				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+					    MSGCAT_SYNTAX_INVALID_SENSITIVITY_LABEL_NAME_LEN, DB_MAX_IDENTIFIER_LENGTH - 1);
+			      }
+			    else
+			      {
+				(void) pt_check_identifier (this_parser, node,
+							    (const char *) node->info.value.data_value.str->bytes);
+			      }
+			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
+			  }
+
+			$$ = node;
+		}}
+	;
+
+opt_sensitivity_label_level
+	: /* empty */
+		{{
+			$$ = NULL;
+		}}
+	| LEVEL unsigned_int32
 		{{
 			$$ = $2;
 		}}

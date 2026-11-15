@@ -1505,7 +1505,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1390 The secret of session %1$u does not match.
 1391 Cannot end or keep session %1$u because it is not attached to this connection.
 
-1392 Last Error
+1392 Sensitivity label %1$s "%2$s" already exists.
+1393 Sensitivity label %1$s "%2$s" does not exist.
+1394 Sensitivity label %1$s "%2$s" is referenced by a label.
+1395 Sensitivity label grade level %1$d already exists.
+1396 Cannot assign the next sensitivity label grade level: the highest level is already %1$d.
+
+1397 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -1674,6 +1680,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
+141 Length of a sensitivity label name must be between 1 and %1$d bytes.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -2022,6 +2029,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
+345 LEVEL can be specified only for a sensitivity label grade.
+346 No options specified for ALTER SENSITIVITY LABEL.
+347 The level of a sensitivity label grade must be 1 or greater.
 
 
 

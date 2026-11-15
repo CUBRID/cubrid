@@ -1526,6 +1526,9 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_CREATE_SYNONYM:
 	case PT_DROP_SYNONYM:
 	case PT_RENAME_SYNONYM:
+	case PT_ALTER_SENSITIVITY_LABEL:
+	case PT_CREATE_SENSITIVITY_LABEL:
+	case PT_DROP_SENSITIVITY_LABEL:
 	  return true;
 	default:
 	  break;

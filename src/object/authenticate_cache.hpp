@@ -185,4 +185,6 @@ class authenticate_cache
     void free_user_cache (AU_USER_CACHE *u);
 };
 
+extern int au_compute_privilege (DB_OBJECT_TYPE obj_type, MOP mop, MOP owner, unsigned int *bits);
+
 #endif // _AUTHENTICATE_CACHE_HPP_

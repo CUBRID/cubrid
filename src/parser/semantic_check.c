@@ -203,6 +203,7 @@ static void pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_check_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -9551,6 +9552,42 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
   /* old_synonym_obj != NULL && new_synonym_obj == NULL && er_errid () == ER_LC_UNKNOWN_CLASSNAME */
 }
 
+/*
+ * pt_check_sensitivity_label () - static checks of CREATE/ALTER/DROP SENSITIVITY LABEL
+ *   return: none
+ *   parser(in): parser context
+ *   node(in): the statement
+ *
+ *   Whether a name or a level is registered is checked at execution, since it can change after prepare.
+ */
+static void
+pt_check_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_SENSITIVITY_LABEL_INFO *info = &node->info.sensitivity_label;
+
+  if (info->level != NULL)
+    {
+      if (info->kind != PT_SENSITIVITY_LABEL_GRADE)
+	{
+	  PT_ERRORm (parser, info->level, MSGCAT_SET_PARSER_SEMANTIC,
+		     MSGCAT_SEMANTIC_SENSITIVITY_LABEL_LEVEL_NOT_GRADE);
+	  return;
+	}
+
+      if (info->level->info.value.data_value.i < 1)
+	{
+	  PT_ERRORm (parser, info->level, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_INVALID_LEVEL);
+	  return;
+	}
+    }
+
+  if (node->node_type == PT_ALTER_SENSITIVITY_LABEL && info->new_name == NULL && info->level == NULL
+      && info->comment == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_ALTER_NO_OPTION);
+    }
+}
+
 static bool
 pt_is_defined_class (PARSER_CONTEXT * parser, PT_NODE * data_type)
 {
@@ -13692,6 +13729,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
     case PT_RENAME_SYNONYM:
       pt_check_rename_synonym (parser, node);
+      break;
+
+    case PT_CREATE_SENSITIVITY_LABEL:
+    case PT_ALTER_SENSITIVITY_LABEL:
+    case PT_DROP_SENSITIVITY_LABEL:
+      pt_check_sensitivity_label (parser, node);
       break;
 
     case PT_CREATE_STORED_PROCEDURE:
