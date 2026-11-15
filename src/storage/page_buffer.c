@@ -1233,6 +1233,7 @@ static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * b
 STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread,
 					    bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
+static void pgbuf_writeback_temp_page (THREAD_ENTRY * thread_p, VOLID volid);
 STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
 
@@ -1393,6 +1394,7 @@ static cubthread::daemon *pgbuf_Page_maintenance_daemon = NULL;
 static cubthread::daemon *pgbuf_Page_flush_daemon = NULL;
 static cubthread::daemon *pgbuf_Page_post_flush_daemon = NULL;
 static cubthread::daemon *pgbuf_Flush_control_daemon = NULL;
+static cubthread::daemon *pgbuf_Temp_writeback_daemon = NULL;
 // *INDENT-ON*
 #endif /* SERVER_MODE */
 
@@ -11632,7 +11634,7 @@ copy_unflushed_lsa:
       else if (is_temp)
 	{
 	  /* nothing synchronizes temporary pages; keep them from piling up as dirty OS page cache */
-	  fileio_writeback_temp_pages (thread_p, vol_fd, 1);
+	  pgbuf_writeback_temp_page (thread_p, bufptr->vpid.volid);
 	}
     }
 
@@ -11695,6 +11697,33 @@ copy_unflushed_lsa:
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pgbuf_writeback_temp_page () - Count a temporary page just written and start writeback of its volume when due
+ *   return: void
+ *   volid(in): volume of the page
+ *
+ * Note: The request can block while the device queue is full, and the writer still has the page marked as flushing
+ *       (and may hold its latch); the page flush daemon also feeds victims to all threads. So on the server the
+ *       writer only marks the volume and the temp writeback daemon makes the request. Without the daemon (SA mode,
+ *       or after it is destroyed at shutdown) the writer makes the request itself.
+ */
+static void
+pgbuf_writeback_temp_page (THREAD_ENTRY * thread_p, VOLID volid)
+{
+#if defined (SERVER_MODE)
+  if (pgbuf_Temp_writeback_daemon != NULL)
+    {
+      if (fileio_writeback_temp_pages (thread_p, volid, 1, true))
+	{
+	  pgbuf_Temp_writeback_daemon->wakeup ();
+	}
+      return;
+    }
+#endif /* SERVER_MODE */
+
+  (void) fileio_writeback_temp_pages (thread_p, volid, 1, false);
 }
 
 /*
@@ -18052,6 +18081,36 @@ pgbuf_flush_control_daemon_init ()
 #endif /* SERVER_MODE */
 
 #if defined (SERVER_MODE)
+static void
+pgbuf_temp_writeback_execute (cubthread::entry & thread_ref)
+{
+  /* a wakeup sent while this runs is lost; repeat until a pass finds no request */
+  while (fileio_writeback_requested_volumes (&thread_ref) > 0)
+    {
+      ;
+    }
+}
+
+/*
+ * pgbuf_temp_writeback_daemon_init () - initialize the daemon that starts OS writeback of temporary volumes for the
+ *                                       page flush daemon
+ */
+REGISTER_DAEMON (pgbuf_temp_writeback);
+
+static void
+pgbuf_temp_writeback_daemon_init ()
+{
+  assert (pgbuf_Temp_writeback_daemon == NULL);
+
+  /* woken up on each request; the period only bounds a request marked after the last pass found none */
+  cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (100));
+  cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (pgbuf_temp_writeback_execute);
+
+  pgbuf_Temp_writeback_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "pgbuf-temp-writeback");
+}
+#endif /* SERVER_MODE */
+
+#if defined (SERVER_MODE)
 /*
  * pgbuf_daemons_init () - initialize page buffer daemon threads
  */
@@ -18062,6 +18121,7 @@ pgbuf_daemons_init ()
   pgbuf_page_flush_daemon_init ();
   pgbuf_page_post_flush_daemon_init ();
   pgbuf_flush_control_daemon_init ();
+  pgbuf_temp_writeback_daemon_init ();
 }
 #endif /* SERVER_MODE */
 
@@ -18076,6 +18136,8 @@ pgbuf_daemons_destroy ()
   cubthread::get_manager ()->destroy_daemon (pgbuf_Page_flush_daemon);
   cubthread::get_manager ()->destroy_daemon (pgbuf_Page_post_flush_daemon);
   cubthread::get_manager ()->destroy_daemon (pgbuf_Flush_control_daemon);
+  /* last, after the page flush daemon that wakes it up most */
+  cubthread::get_manager ()->destroy_daemon (pgbuf_Temp_writeback_daemon);
 }
 #endif /* SERVER_MODE */
 

@@ -407,6 +407,8 @@ struct fileio_volinfo
 #if defined(SERVER_MODE) && defined(WINDOWS)
   pthread_mutex_t vol_mutex;	/* for fileio_read()/fileio_write() */
 #endif				/* SERVER_MODE && WINDOWS */
+  int temp_written_pages;	/* temporary pages written since the last writeback request */
+  int temp_writeback_requested;	/* 1 while a writeback request waits for fileio_writeback_requested_volumes () */
   char vlabel[PATH_MAX];
 };
 
@@ -467,8 +469,6 @@ static FILEIO_BACKUP_INFO_QUEUE fileio_Backup_vol_info_data[2] =
 static pthread_mutex_t fileio_Flushed_page_counter_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 static int fileio_Flushed_page_count = 0;
-/* temporary pages written since the last writeback request; see fileio_writeback_temp_pages () */
-static int fileio_Temp_written_page_count = 0;
 
 static TOKEN_BUCKET fc_Token_bucket_s;
 static TOKEN_BUCKET *fc_Token_bucket = NULL;
@@ -680,51 +680,182 @@ fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage)
 }
 
 /*
- * fileio_writeback_temp_pages () - Ask the OS to start writing back a volume after enough temporary pages were written
+ * fileio_find_volume_info_by_id () - Find the cached information of a mounted permanent or temporary volume
+ *   return: volume information or NULL
+ *   vol_id(in): volume identifier
+ *
+ * Note: Same lookup as fileio_get_volume_descriptor (); system volumes (log, DWB, backup) are not in this cache.
+ */
+static FILEIO_VOLUME_INFO *
+fileio_find_volume_info_by_id (VOLID vol_id)
+{
+  int i, j;
+
+  if (vol_id <= NULL_VOLID || fileio_Vol_info_header.volinfo == NULL)
+    {
+      return NULL;
+    }
+
+  if (vol_id < fileio_Vol_info_header.next_temp_volid)
+    {
+      if (vol_id >= fileio_Vol_info_header.max_perm_vols)
+	{
+	  return NULL;
+	}
+      i = vol_id / FILEIO_VOLINFO_INCREMENT;
+      j = vol_id % FILEIO_VOLINFO_INCREMENT;
+    }
+  else
+    {
+      if ((LOG_MAX_DBVOLID - vol_id) >= fileio_Vol_info_header.max_temp_vols)
+	{
+	  return NULL;
+	}
+      i = fileio_Vol_info_header.num_volinfo_array - 1 - (LOG_MAX_DBVOLID - vol_id) / FILEIO_VOLINFO_INCREMENT;
+      j = FILEIO_VOLINFO_INCREMENT - 1 - (LOG_MAX_DBVOLID - vol_id) % FILEIO_VOLINFO_INCREMENT;
+    }
+
+  if (fileio_Vol_info_header.volinfo[i] == NULL)
+    {
+      return NULL;
+    }
+
+  return &fileio_Vol_info_header.volinfo[i][j];
+}
+
+/*
+ * fileio_start_writeback () - Ask the OS to start writing back the dirty pages of a volume, without waiting
  *   return: void
- *   vol_fd(in): descriptor of the volume the temporary pages were just written to
+ *   vol_fd(in): volume descriptor
+ */
+static void
+fileio_start_writeback (int vol_fd)
+{
+#if defined (__linux__)
+  /* offset 0 and nbytes 0 cover the whole file; SYNC_FILE_RANGE_WRITE only starts writeback of the dirty pages, but
+   * it can block while the device request queue is full */
+  if (sync_file_range (vol_fd, 0, 0, SYNC_FILE_RANGE_WRITE) != 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "fileio_start_writeback: sync_file_range failed on fd %d, errno %d\n", vol_fd,
+		    errno);
+    }
+#endif /* __linux__ */
+}
+
+/*
+ * fileio_writeback_temp_pages () - Count temporary pages written to a volume and, once temp_writeback_size worth of
+ *                                  them were written, ask the OS to start writing back the volume
+ *   return: true if the request was left to fileio_writeback_requested_volumes (); the caller must wake the thread that
+ *           calls it
+ *   vol_id(in): volume the temporary pages were just written to
  *   npages(in): number of pages just written
+ *   defer(in): true to only mark the volume, so the caller does not wait on the device
  *
  * Note: Nothing synchronizes temporary volumes: DWB does not take temporary pages, and fileio_synchronize_all walks
  *       only permanent volumes (a permanent volume with temporary purpose is synchronized there). The OS then keeps
  *       the pages as dirty page cache until its own writeback starts, so a large sort or index build can leave
  *       hundreds of MB that cannot be reclaimed until written. Once temp_writeback_size worth of temporary pages are
- *       written, start writeback of the volume without waiting for it to complete (the same call PostgreSQL makes for
- *       its *_flush_after parameters, which it does not apply to temporary files). This is only a hint: no durability
- *       is required for temporary pages, so a failure is ignored and a later write or read reports any real I/O error.
+ *       written to a volume, start writeback of that volume without waiting for it to complete (the same call
+ *       PostgreSQL makes for its *_flush_after parameters, which it does not apply to temporary files). This is only
+ *       a hint: no durability is required for temporary pages, so a failure is ignored and a later write or read
+ *       reports any real I/O error.
  */
-void
-fileio_writeback_temp_pages (THREAD_ENTRY * thread_p, int vol_fd, int npages)
+bool
+fileio_writeback_temp_pages (THREAD_ENTRY * thread_p, VOLID vol_id, int npages, bool defer)
 {
 #if defined (__linux__)
   int threshold = prm_get_integer_value (PRM_ID_TEMP_WRITEBACK_SIZE);
+  FILEIO_VOLUME_INFO *vol_info_p;
   int count;
 
-  if (threshold <= 0 || vol_fd == NULL_VOLDES)
+  if (threshold <= 0)
     {
-      return;
+      return false;
     }
 
-  count = ATOMIC_INC_32 (&fileio_Temp_written_page_count, npages);
+  vol_info_p = fileio_find_volume_info_by_id (vol_id);
+  if (vol_info_p == NULL || vol_info_p->vdes == NULL_VOLDES)
+    {
+      return false;
+    }
+
+  count = ATOMIC_INC_32 (&vol_info_p->temp_written_pages, npages);
   if (count < threshold)
     {
-      return;
+      return false;
     }
 
   /* only the thread that resets the counter makes the request; if another writer added pages in between, the CAS
    * fails and a later writer that sees the counter over the threshold resets it instead */
-  if (!ATOMIC_CAS_32 (&fileio_Temp_written_page_count, count, 0))
+  if (!ATOMIC_CAS_32 (&vol_info_p->temp_written_pages, count, 0))
     {
-      return;
+      return false;
     }
 
-  /* offset 0 and nbytes 0 cover the whole file; SYNC_FILE_RANGE_WRITE only starts writeback of the dirty pages */
-  if (sync_file_range (vol_fd, 0, 0, SYNC_FILE_RANGE_WRITE) != 0)
+  if (defer)
     {
-      er_log_debug (ARG_FILE_LINE, "fileio_writeback_temp_pages: sync_file_range failed on fd %d, errno %d\n", vol_fd,
-		    errno);
+      /* a request that is still waiting covers this one too */
+      return ATOMIC_TAS_32 (&vol_info_p->temp_writeback_requested, 1) == 0;
     }
+
+  fileio_start_writeback (vol_info_p->vdes);
 #endif /* __linux__ */
+  return false;
+}
+
+/*
+ * fileio_writeback_requested_volume () - Start writeback of a volume if fileio_writeback_temp_pages () requested it
+ *   return: false (to visit every volume)
+ *   arg(in/out): arg->vdes counts the volumes requested
+ */
+static bool
+fileio_writeback_requested_volume (THREAD_ENTRY * thread_p, FILEIO_VOLUME_INFO * vol_info_p, APPLY_ARG * arg)
+{
+  int vol_fd;
+
+  if (vol_info_p->temp_writeback_requested == 0 || ATOMIC_TAS_32 (&vol_info_p->temp_writeback_requested, 0) == 0)
+    {
+      return false;
+    }
+
+  /* the volume may be dismounted meanwhile; a closed or reused descriptor only makes the hint useless */
+  vol_fd = vol_info_p->vdes;
+  if (vol_fd != NULL_VOLDES)
+    {
+      fileio_start_writeback (vol_fd);
+    }
+  arg->vdes++;
+
+  return false;
+}
+
+/*
+ * fileio_writeback_requested_volumes () - Start writeback of every volume that fileio_writeback_temp_pages () marked
+ *   return: number of volumes requested
+ *
+ * Note: A volume marked while this runs is not followed by a wakeup that the caller can see (a daemon that is not
+ *       sleeping ignores wakeups, and a marked volume does not wake it again), so the caller repeats until it
+ *       returns 0.
+ */
+int
+fileio_writeback_requested_volumes (THREAD_ENTRY * thread_p)
+{
+  APPLY_ARG arg = { 0 };
+
+  if (prm_get_integer_value (PRM_ID_TEMP_WRITEBACK_SIZE) <= 0 || fileio_Vol_info_header.volinfo == NULL)
+    {
+      /* nothing is marked while the parameter is off; a mark left from before it was turned off waits until it is on */
+      return 0;
+    }
+
+  /* the union member vdes is used as the counter of requested volumes */
+  arg.vdes = 0;
+
+  /* temporary volumes, and permanent volumes with temporary purpose */
+  (void) fileio_traverse_temporary_volume (thread_p, fileio_writeback_requested_volume, &arg);
+  (void) fileio_traverse_permanent_volume (thread_p, fileio_writeback_requested_volume, &arg);
+
+  return arg.vdes;
 }
 
 /*
@@ -1048,6 +1179,8 @@ fileio_allocate_and_initialize_volume_info (FILEIO_VOLUME_HEADER * header_p, int
       vol_info_p[i].volid = NULL_VOLID;
       vol_info_p[i].vdes = NULL_VOLDES;
       vol_info_p[i].lockf_type = FILEIO_NOT_LOCKF;
+      vol_info_p[i].temp_written_pages = 0;
+      vol_info_p[i].temp_writeback_requested = 0;
       vol_info_p[i].vlabel[0] = '\0';
 #if defined(WINDOWS)
       pthread_mutex_init (&vol_info_p[i].vol_mutex, NULL);
