@@ -372,11 +372,18 @@ namespace cubschema
     return apply_authorization (class_mop, def.auth);
   }
 
+  /*
+   * created_mops, when given, gets the class created for each definition (nullptr for the ones not created yet),
+   * also on error
+   */
   static int
   install_definitions (const std::vector<system_metadata_definition> &defs,
-		       int (*build) (const MOP, const system_metadata_definition &), std::vector<MOP> &class_mops)
+		       int (*build) (const MOP, const system_metadata_definition &),
+		       std::vector<MOP> *created_mops = nullptr)
   {
     int error_code = NO_ERROR;
+    std::vector<MOP> own_mops;
+    std::vector<MOP> &class_mops = (created_mops != nullptr) ? *created_mops : own_mops;
 
     class_mops.assign (defs.size (), nullptr);
 
@@ -407,24 +414,20 @@ namespace cubschema
   int
   system_metadata_builder::install_classes (const std::vector<system_metadata_definition> &defs)
   {
-    std::vector<MOP> class_mops;
-
-    return install_definitions (defs, build_class, class_mops);
+    return install_definitions (defs, build_class);
   }
 
   int
   system_metadata_builder::define_classes (const std::vector<system_metadata_definition> &defs,
       std::vector<MOP> &class_mops)
   {
-    return install_definitions (defs, define_class_heap_first, class_mops);
+    return install_definitions (defs, define_class_heap_first, &class_mops);
   }
 
   int
   system_metadata_builder::install_vclasses (const std::vector<system_metadata_definition> &defs)
   {
-    std::vector<MOP> class_mops;
-
-    return install_definitions (defs, build_vclass, class_mops);
+    return install_definitions (defs, build_vclass);
   }
 
   int
