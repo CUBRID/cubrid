@@ -1218,7 +1218,7 @@ $set 54 MSGCAT_UTIL_SET_DELVOLDB
 33 %1$5d  %2$-16s  %3$12d %4$12d  %5$s\n
 34 There is no volume that can be deleted. Only the last permanent volume, other than volume 0, can be deleted when it has no used sectors.\n
 35 The volume was not deleted.\n
-36 The volume (volume id: %1$d) has been deleted.\n
+36 The volume (volume id: %1$d) has been deleted. The next backup must be a full backup (level 0); a level 1 or 2 backup is refused until then.\n
 41 Invalid volume id (%1$s).\n
 42 Cannot delete the first volume (volume id: %1$d).\n
 43 Cannot find the permanent volume (volume id: %1$d).\n
