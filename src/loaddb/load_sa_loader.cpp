@@ -2184,7 +2184,9 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
    * rest of the class, not the rest of the row: start_line () does not reset an invalid
    * context, so a validation walk reported nothing for the rows after this one, and a row
    * skipped through --error-control-file took every row after it in the class along.
-   * finish_line () refuses the row; nothing below reads attrs[next_attr] for it.
+   * finish_line () refuses the row; nothing below reads attrs[next_attr] for it, and the
+   * instance reference setters, which run before this for an @class|id value, check
+   * ldr_ref_slot_exists () because next_attr may by then be past the last descriptor.
    */
   if (context->next_attr >= context->num_attrs)
     {
@@ -6013,6 +6015,24 @@ invalid_class_id_error (LDR_CONTEXT *context, int id)
 }
 
 /*
+ * ldr_ref_slot_exists - Whether attrs[next_attr] is there for an instance reference.
+ *    return: true if next_attr names an allocated descriptor
+ *    context(in): context
+ * Note:
+ *    attrs holds exactly num_attrs + arg_count descriptors. A reference that comes
+ *    after the last one belongs to a row with too many values: next_attr has run past
+ *    the end, and keeps running for each further value because an overflow no longer
+ *    invalidates the context. The reference is resolved before ldr_act_attr () sees the
+ *    value, so the setters below must not reach for the slot. ldr_act_attr () reports
+ *    the overflow and finish_line () refuses the row.
+ */
+static bool
+ldr_ref_slot_exists (const LDR_CONTEXT *context)
+{
+  return context->next_attr < context->num_attrs + context->arg_count;
+}
+
+/*
  * ldr_act_set_ref_class - Find the class that is about to be used in an
  * instance reference.
  *    return: void
@@ -6027,7 +6047,7 @@ ldr_act_set_ref_class (LDR_CONTEXT *context, char *name)
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       mop = db_find_class (name);
       if (mop != NULL)
@@ -6054,7 +6074,7 @@ ldr_act_set_instance_id (LDR_CONTEXT *context, int id)
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       if (context->attrs[context->next_attr].ref_class != NULL)
 	{
@@ -6085,7 +6105,7 @@ ldr_act_set_ref_class_id (LDR_CONTEXT *context, int id)
   CHECK_SKIP ();
   RETURN_IF_NOT_VALID (context);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       class_ = ldr_get_class_from_id (id);
       if (class_ != NULL)
@@ -6104,7 +6124,7 @@ ldr_act_get_ref_class (LDR_CONTEXT *context)
 {
   RETURN_IF_NOT_VALID_WITH (context, NULL);
 
-  if (!context->validation_only)
+  if (!context->validation_only && ldr_ref_slot_exists (context))
     {
       return context->attrs[context->next_attr].ref_class;
     }
