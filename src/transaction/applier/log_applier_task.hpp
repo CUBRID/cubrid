@@ -50,7 +50,8 @@ struct la_task
   bool has_items;		/* false for a commit without replicated items; the worker does not trace it */
   /* Later fragments of the same key merged into this pending fragment task (la_coordinator_submit_task): the
    * worker applies their items in the same slave transaction and marks each of them applied, and the coordinator
-   * completes each of their LSAs in the gate. Owned by the task, then by its result; freed at retire. */
+   * completes each of their LSAs in the gate. Pending owns the array until dispatch; in-flight then owns it
+   * until retire or shutdown. The worker and result only borrow it. */
   LOG_LSA *merged_lsa;
   int merged_count;
   int merged_capacity;

@@ -29,6 +29,8 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <stdint.h>
 #if !defined (WINDOWS)
 #include <sys/time.h>
 #endif
@@ -140,7 +142,7 @@
   do { \
     if ((offset)+(length) >= LA_LOGAREA_SIZE) { \
       if (((pgptr) = la_get_page(++(pageid))) == NULL) { \
-        result = ER_IO_READ; \
+        result = er_errid () != NO_ERROR ? er_errid () : ER_IO_READ; \
       } \
       (offset) = 0; \
     } \
@@ -151,7 +153,8 @@
     (offset) = DB_ALIGN((offset), MAX_ALIGNMENT); \
     while ((offset) >= LA_LOGAREA_SIZE) { \
       if (((log_pgptr) = la_get_page(++(pageid))) == NULL) { \
-        result = ER_IO_READ; \
+        result = er_errid () != NO_ERROR ? er_errid () : ER_IO_READ; \
+        break; \
       } \
       (offset) -= LA_LOGAREA_SIZE; \
       (offset) = DB_ALIGN((offset), MAX_ALIGNMENT); \
@@ -495,10 +498,11 @@ static int la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer);
 static int la_expand_cache_log_buffer (LA_CACHE_PB * cache_pb, int slb_cnt, int slb_size);
 static LA_CACHE_BUFFER *la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pagesize,
 						 int buffer_size);
-static void la_pin_page_buffer (LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid);
+static int la_pin_page_buffer (LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid);
 static void la_free_pinned_page_buffers (void);
-static LA_CACHE_BUFFER *la_get_page_buffer (LOG_PAGEID pageid);
+static LA_CACHE_BUFFER *la_get_page_buffer (LOG_PAGEID pageid, int *error);
 static LOG_PAGE *la_get_page (LOG_PAGEID pageid);
+static void la_unfix_page_buffer (LA_CACHE_BUFFER * cache_buffer);
 static void la_release_page_buffer (LOG_PAGEID pageid);
 static void la_release_pinned_page_buffers (const LA_CACHE_BUFFER * keep);
 static void la_invalidate_page_buffer (LA_CACHE_BUFFER * cache_buffer);
@@ -533,7 +537,7 @@ static int la_does_page_exist (LOG_PAGEID pageid);
 static int la_init_repl_lists (bool need_realloc);
 static bool la_is_repl_lists_empty ();
 static LA_APPLY *la_find_apply_list (int tranid);
-static void la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
+static int la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 				 LOG_PAGE * log_pgptr);
 static LA_ITEM *la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa);
 static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
@@ -541,6 +545,7 @@ static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static DB_VALUE *la_get_item_pk_value (LA_ITEM * item);
 static void la_clear_repl_item_key (LA_ITEM * item);
 static LA_ITEM *la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
+static int la_unpack_repl_string (char **ptr, char **value);
 static int la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end);
 static void la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_repl_item (LA_APPLY * apply, LA_ITEM * item);
@@ -551,7 +556,7 @@ static void la_clear_applied_info (LA_APPLY * apply);
 static void la_clear_all_repl_lists (void);
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
-static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
+static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int *error);
 static int la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_lsa, UINT64 * unit_key_hash);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
@@ -611,9 +616,9 @@ static void la_shutdown (void);
 static int la_remove_archive_logs (const char *db_name, int last_deleted_arv_num, int nxarv_num,
 				   int max_arv_count_to_delete);
 
-static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans, LOG_LSA * last_lsa);
+static LA_ITEM *la_get_next_repl_item (LA_ITEM * item, bool is_long_trans, LOG_LSA * last_lsa, int *error);
 static LA_ITEM *la_get_next_repl_item_from_list (LA_ITEM * item);
-static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa);
+static LA_ITEM *la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa, int *error);
 
 static int la_commit_transaction (unsigned long long applied_item_count, const LOG_LSA * commit_lsa);
 static int la_find_last_deleted_arv_num (void);
@@ -639,11 +644,12 @@ static void la_coordinator_release_apply_slot (LA_INFLIGHT_ENTRY * entry);
 static void la_coordinator_add_result_stats (const LA_RESULT * result);
 static int la_coordinator_store_apply_info_at_interval (void);
 static int la_coordinator_before_dispatch (void *context, const LA_TASK * task);
+static void la_coordinator_discard_task (void *context, LA_TASK * task);
 static void la_coordinator_retire_entry (void *context, LA_INFLIGHT_ENTRY * entry, const LOG_LSA * frontier);
 static int la_coordinator_store_progress (void *context);
 static bool la_coordinator_shutdown_requested (void *context);
 
-/* run on an apply worker thread; the first two are handed to the workers as callbacks */
+/* Worker callbacks and helpers for applying one task. */
 static void la_request_shutdown (void);
 static void la_stat_note_class (LA_STATS * stats, const char *class_name);
 static void la_worker_apply_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int trace_level,
@@ -1153,6 +1159,7 @@ la_coordinator_initialize_resources (void)
   config.store_progress = la_coordinator_store_progress;
   config.shutdown_requested = la_coordinator_shutdown_requested;
   config.merge_task = la_coordinator_merge_fragment;
+  config.discard_task = la_coordinator_discard_task;
   config.context = NULL;
 
   return la_coordinator_initialize (&config);
@@ -1247,7 +1254,7 @@ la_coordinator_commit_apply_info (void)
 	  if (deleted < 0)
 	    {
 	      er_log_debug (ARG_FILE_LINE, "cannot delete applied-tx markers up to %lld|%d\n",
-			    (long long) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset);
+			    LSA_AS_ARGS (&la_Info.committed_lsa));
 	    }
 
 	  res = db_commit_transaction ();
@@ -1996,45 +2003,53 @@ la_cache_buffer_replace (LA_CACHE_PB * cache_pb, LOG_PAGEID pageid, int io_pages
 
 /*
  * la_pin_page_buffer() - add a fix the calling thread took to its pinned list
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY; failure leaves the list unchanged
  *   cache_buffer(in): the fixed buffer
  *   pageid(in): the page id it was fixed for
  *
  * Note:
  *   A full list doubles. Growing past LA_MIN_PINNED_PAGE_BUFFERS is written to the error log: a unit of work
  *   holds that many fixes, a record spanning that many log pages or fixes not released where they should be. If
- *   the list cannot grow, the fix is not recorded, so it is never released and the buffer never replaced; the
- *   cache grows instead of handing a page in use to another one.
+ *   the list cannot grow, the caller must roll back the unrecorded fix before returning an error.
  */
-static void
+static int
 la_pin_page_buffer (LA_CACHE_BUFFER * cache_buffer, LOG_PAGEID pageid)
 {
   if (la_Pinned_page_buffer_count == la_Pinned_page_buffer_capacity)
     {
-      int new_capacity = (la_Pinned_page_buffer_capacity == 0) ? LA_MIN_PINNED_PAGE_BUFFERS
-	: la_Pinned_page_buffer_capacity * 2;
+      size_t new_capacity = (la_Pinned_page_buffer_capacity == 0) ? LA_MIN_PINNED_PAGE_BUFFERS
+	: (size_t) la_Pinned_page_buffer_capacity * 2;
       LA_PINNED_PAGE_BUFFER *new_list;
+
+      if (new_capacity > INT_MAX || new_capacity > SIZE_MAX / sizeof (LA_PINNED_PAGE_BUFFER))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZE_MAX);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
       new_list =
 	(LA_PINNED_PAGE_BUFFER *) realloc (la_Pinned_page_buffers, sizeof (LA_PINNED_PAGE_BUFFER) * new_capacity);
       if (new_list == NULL)
 	{
-	  _er_log_debug (ARG_FILE_LINE, "la_pin_page_buffer: cannot grow the pinned list past %d, page %lld stays "
-			 "fixed\n", la_Pinned_page_buffer_count, (long long) pageid);
-	  return;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (LA_PINNED_PAGE_BUFFER) * new_capacity);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
       la_Pinned_page_buffers = new_list;
-      la_Pinned_page_buffer_capacity = new_capacity;
+      la_Pinned_page_buffer_capacity = (int) new_capacity;
       if (new_capacity > LA_MIN_PINNED_PAGE_BUFFERS)
 	{
 	  _er_log_debug (ARG_FILE_LINE, "la_pin_page_buffer: pinned list grown to %d entries, page %lld\n",
-			 new_capacity, (long long) pageid);
+			 la_Pinned_page_buffer_capacity, (long long) pageid);
 	}
     }
 
   la_Pinned_page_buffers[la_Pinned_page_buffer_count].buffer = cache_buffer;
   la_Pinned_page_buffers[la_Pinned_page_buffer_count].pageid = pageid;
   la_Pinned_page_buffer_count++;
+
+  return NO_ERROR;
 }
 
 /*
@@ -2051,11 +2066,15 @@ la_free_pinned_page_buffers (void)
   la_Pinned_page_buffer_capacity = 0;
 }
 
+/* error is NO_ERROR for a page not yet available; pin-list failures must not be retried as missing pages. */
 static LA_CACHE_BUFFER *
-la_get_page_buffer (LOG_PAGEID pageid)
+la_get_page_buffer (LOG_PAGEID pageid, int *error)
 {
   LA_CACHE_PB *cache_pb = la_Info.cache_pb;
   LA_CACHE_BUFFER *cache_buffer = NULL;
+
+  assert (error != NULL);
+  *error = NO_ERROR;
   pthread_mutex_lock (&cache_pb->mutex);
 
   /* find the target page in the cache buffer */
@@ -2093,7 +2112,14 @@ la_get_page_buffer (LOG_PAGEID pageid)
   cache_buffer->fix_count++;
   pthread_mutex_unlock (&cache_pb->mutex);
 
-  la_pin_page_buffer (cache_buffer, pageid);
+  *error = la_pin_page_buffer (cache_buffer, pageid);
+  if (*error != NO_ERROR)
+    {
+      pthread_mutex_lock (&cache_pb->mutex);
+      la_unfix_page_buffer (cache_buffer);
+      pthread_mutex_unlock (&cache_pb->mutex);
+      return NULL;
+    }
 
   return cache_buffer;
 }
@@ -2102,6 +2128,7 @@ static LOG_PAGE *
 la_get_page (LOG_PAGEID pageid)
 {
   LA_CACHE_BUFFER *cache_buffer = NULL;
+  int error = NO_ERROR;
 
   assert (pageid != NULL_PAGEID);
   if (pageid == NULL_PAGEID)
@@ -2111,9 +2138,14 @@ la_get_page (LOG_PAGEID pageid)
 
   do
     {
-      cache_buffer = la_get_page_buffer (pageid);
+      cache_buffer = la_get_page_buffer (pageid, &error);
     }
-  while (cache_buffer == NULL);	/* we must get this page */
+  while (cache_buffer == NULL && error == NO_ERROR);	/* retry only pages not yet available */
+
+  if (cache_buffer == NULL)
+    {
+      return NULL;
+    }
 
   return &cache_buffer->logpage;
 }
@@ -2363,11 +2395,11 @@ la_lower_lsa_by_pending_task (const LA_TASK * task, void *arg)
  *   required_lsa(out): that position, or final_lsa when nothing is being read or applied
  *
  * Note:
- *   required_lsa is the lowest log position a worker may still have to read. The repl_lists slots give the
- *   first item position of every transaction being read. A SYSOP_END fragment keeps its items in a slot of
+ *   The repl_lists slots retain the first transaction log position, including records needed to rebuild
+ *   row images after a restart. A SYSOP_END fragment inherits that position in a slot of
  *   its own that lives on the pending list or the in-flight list until the fragment retires, so those two
  *   are scanned as well: an abort frees the outer slot at once while the fragment may still be running,
- *   and required_lsa must not pass its items before the worker has read them.
+ *   and required_lsa must preserve that position until the fragment retires.
  */
 static int
 la_find_required_lsa (LOG_LSA * required_lsa)
@@ -2436,8 +2468,7 @@ la_find_required_lsa (LOG_LSA * required_lsa)
 
       snprintf (buffer, sizeof (buffer),
 		"applylogdb computed required_lsa 0|0 (slots from %lld|%d, tasks from %lld|%d, final %lld|%d)",
-		(long long) slot_lowest.pageid, (int) slot_lowest.offset, (long long) task_lowest.pageid,
-		(int) task_lowest.offset, (long long) la_Info.final_lsa.pageid, (int) la_Info.final_lsa.offset);
+		LSA_AS_ARGS (&slot_lowest), LSA_AS_ARGS (&task_lowest), LSA_AS_ARGS (&la_Info.final_lsa));
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
       assert (false);
     }
@@ -3417,8 +3448,7 @@ la_load_applied_tx_markers (void)
   if (count > 0)
     {
       er_log_debug (ARG_FILE_LINE, "applied-tx markers loaded: %d, from %lld|%d to %lld|%d\n", count,
-		    (long long) la_Applied_tx_markers[0].pageid, (int) la_Applied_tx_markers[0].offset,
-		    (long long) la_Applied_tx_markers[count - 1].pageid, (int) la_Applied_tx_markers[count - 1].offset);
+		    LSA_AS_ARGS (&la_Applied_tx_markers[0]), LSA_AS_ARGS (&la_Applied_tx_markers[count - 1]));
     }
 
   return NO_ERROR;
@@ -3901,7 +3931,7 @@ la_apply_pre (void)
 
 /*
  * la_does_page_exist() - check whether page is exist
- *   return:
+ *   return: page location, LA_PAGE_DOESNOT_EXIST, or a negative pin-list error
  *     pageid(in): the target page id
  *
  * Note
@@ -3911,8 +3941,13 @@ la_does_page_exist (LOG_PAGEID pageid)
 {
   LA_CACHE_BUFFER *log_buffer;
   int log_exist = LA_PAGE_DOESNOT_EXIST;
+  int error = NO_ERROR;
 
-  log_buffer = la_get_page_buffer (pageid);
+  log_buffer = la_get_page_buffer (pageid, &error);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
   if (log_buffer != NULL)
     {
       if (log_buffer->pageid == pageid && log_buffer->logpage.hdr.logical_pageid == pageid
@@ -4128,7 +4163,7 @@ la_add_apply_list (int tranid)
 
 /*
  * la_log_copy_fromlog() - copy a portion of the log
- *   return: none
+ *   return: NO_ERROR or page-read error; the output is incomplete on error
  *   rec_type(out)
  *   area: Area where the portion of the log is copied.
  *               (Set as a side effect)
@@ -4147,7 +4182,7 @@ la_add_apply_list (int tranid)
  *   area is set as a side effect.
  *   log_pageid, log_offset, and log_pgptr are set as a side effect.
  */
-static void
+static int
 la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pageid, PGLENGTH log_offset,
 		     LOG_PAGE * log_pgptr)
 {
@@ -4168,8 +4203,7 @@ la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pag
       LA_LOG_COPY_ADVANCE (error, log_offset, log_pageid, pg, fixed_pageid);
       if (pg == NULL)
 	{
-	  /* TODO: huh? what happend */
-	  break;
+	  goto end;
 	}
 
       copy_length = ((log_offset + rec_length <= LA_LOGAREA_SIZE) ? rec_length : LA_LOGAREA_SIZE - log_offset);
@@ -4189,8 +4223,7 @@ la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pag
       LA_LOG_COPY_ADVANCE (error, log_offset, log_pageid, pg, fixed_pageid);
       if (pg == NULL)
 	{
-	  /* TODO: huh? what happend */
-	  break;
+	  goto end;
 	}
       copy_length = ((log_offset + t_length <= LA_LOGAREA_SIZE) ? t_length : LA_LOGAREA_SIZE - log_offset);
       memcpy (area + area_offset, (char *) (pg)->area + log_offset, copy_length);
@@ -4199,10 +4232,13 @@ la_log_copy_fromlog (char *rec_type, char *area, int *length, LOG_PAGEID log_pag
       log_offset += copy_length;
     }
 
+end:
   if (fixed_pageid != NULL_PAGEID)
     {
       la_release_page_buffer (fixed_pageid);
     }
+
+  return error;
 }
 
 static LA_ITEM *
@@ -4362,6 +4398,26 @@ la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end)
   return NO_ERROR;
 }
 
+/*
+ * la_unpack_repl_string() - unpack a replication string without hiding allocation failure as SQL NULL
+ *   ptr(in/out): packed input, advanced past the string
+ *   value(out): allocated string, or NULL for an encoded NULL
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ */
+static int
+la_unpack_repl_string (char **ptr, char **value)
+{
+  bool is_null = OR_GET_INT (*ptr) == -1;
+
+  *ptr = or_unpack_string_alloc (*ptr, value);
+  if (!is_null && *value == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return NO_ERROR;
+}
+
 static LA_ITEM *
 la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa)
 {
@@ -4407,26 +4463,38 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
   area = (char *) malloc (length);
   if (area == NULL)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
       return NULL;
     }
 
-  (void) la_log_copy_fromlog (NULL, area, &length, pageid, offset, repl_log_pgptr);
+  error = la_log_copy_fromlog (NULL, area, &length, pageid, offset, repl_log_pgptr);
+  if (error != NO_ERROR)
+    {
+      goto error_return;
+    }
 
   item = la_new_repl_item (lsa, &repl_log->lsa);
   if (item == NULL)
     {
       goto error_return;
     }
+  item->log_type = log_type;
 
   switch (log_type)
     {
     case LOG_REPLICATION_DATA:
       ptr = or_unpack_int (area, &item->packed_key_value_length);
-      ptr = or_unpack_string_alloc (ptr, &item->class_name);
+      error = la_unpack_repl_string (&ptr, &item->class_name);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
 
       item->packed_key_value = (char *) malloc (item->packed_key_value_length);
       if (item->packed_key_value == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) item->packed_key_value_length);
 	  goto error_return;
 	}
 
@@ -4447,12 +4515,28 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
 
     case LOG_REPLICATION_STATEMENT:
       ptr = or_unpack_int (area, &item->item_type);
-      ptr = or_unpack_string_alloc (ptr, &item->class_name);
-      ptr = or_unpack_string_alloc (ptr, &str_value);
+      error = la_unpack_repl_string (&ptr, &item->class_name);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      error = la_unpack_repl_string (&ptr, &str_value);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
       db_make_string (&item->key, str_value);
       item->key.need_clear = false;
-      ptr = or_unpack_string_alloc (ptr, &item->db_user);
-      ptr = or_unpack_string_alloc (ptr, &item->ha_sys_prm);
+      error = la_unpack_repl_string (&ptr, &item->db_user);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      error = la_unpack_repl_string (&ptr, &item->ha_sys_prm);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
 
       break;
 
@@ -4461,8 +4545,6 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error_return;
     }
-
-  item->log_type = log_type;
 
   if (area)
     {
@@ -4747,34 +4829,35 @@ la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa)
 
 /*
  * la_retrieve_eot_time() - Retrieve the timestamp of End of Transaction
- *   return: NO_ERROR or error code
+ *   return: timestamp, or 0 when the timestamp cannot be read
  *   log_pgptr : pointer to the log page
+ *   error(out): page-read error, or NO_ERROR
  *
  * Note:
  */
 static time_t
-la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
+la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa, int *error)
 {
-  int error = NO_ERROR;
   LOG_REC_DONETIME *donetime;
   LOG_PAGEID pageid;
   PGLENGTH offset;
   LOG_PAGE *pg;
 
+  *error = NO_ERROR;
   pageid = lsa->pageid;
   offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
 
   pg = pgptr;
 
-  LA_LOG_READ_ALIGN (error, offset, pageid, pg);
-  if (error != NO_ERROR)
+  LA_LOG_READ_ALIGN (*error, offset, pageid, pg);
+  if (*error != NO_ERROR)
     {
       /* cannot get eot time */
       return 0;
     }
 
-  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, SSIZEOF (*donetime), offset, pageid, pg);
-  if (error != NO_ERROR)
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (*error, SSIZEOF (*donetime), offset, pageid, pg);
+  if (*error != NO_ERROR)
     {
       /* cannot get eot time */
       return 0;
@@ -4786,7 +4869,7 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
 
 /*
  * la_get_wset_label() - read the dependency the master attached to a LOG_DUMMY_WSET_LABEL record
- *   return: NO_ERROR, or ER_IO_READ when a log page the record spans cannot be read
+ *   return: NO_ERROR or an error code; page availability is waited for by la_get_page()
  *   pgptr(in): log page holding the label record
  *   lsa(in): LSA of the label record
  *   dependency_lsa(out): dependency read from the label; NULL LSA if it cannot be read, which the caller must
@@ -5196,7 +5279,12 @@ la_get_undoredo_diff (LA_APPLY_WORKER_CONTEXT * context, LOG_PAGE ** pgptr, LOG_
     }
 
   /* get undo data for XOR process */
-  la_log_copy_fromlog (NULL, *undo_data, undo_length, *pageid, *offset, *pgptr);
+  error = la_log_copy_fromlog (NULL, *undo_data, undo_length, *pageid, *offset, *pgptr);
+  if (error != NO_ERROR)
+    {
+      free_and_init (*undo_data);
+      return error;
+    }
 
   if (*is_undo_zip && *undo_length > 0)
     {
@@ -5491,7 +5579,15 @@ la_get_log_data (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * lrec, LO
     {
       zip_len = GET_ZIP_LEN (temp_length);
       /* Get Zip Data */
-      la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
+      error = la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
+      if (error != NO_ERROR)
+	{
+	  if (undo_data != NULL)
+	    {
+	      free_and_init (undo_data);
+	    }
+	  return error;
+	}
 
       if (zip_len != 0)
 	{
@@ -5518,7 +5614,7 @@ la_get_log_data (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * lrec, LO
   else
     {
       /* Get Redo Data */
-      la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
+      error = la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
     }
 
   *d_length = length;
@@ -5560,6 +5656,18 @@ la_get_overflow_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * l
   while (!LSA_ISNULL (&current_lsa))
     {
       current_log_page = la_get_page (current_lsa.pageid);
+      if (current_log_page == NULL)
+	{
+	  error = er_errid ();
+	  while (ovf_list_head != NULL)
+	    {
+	      ovf_list_data = ovf_list_head;
+	      ovf_list_head = ovf_list_head->next;
+	      free_and_init (ovf_list_data->data);
+	      free_and_init (ovf_list_data);
+	    }
+	  return error;
+	}
       current_log_record = LOG_GET_LOG_RECORD_HEADER (current_log_page, &current_lsa);
 
       if (current_log_record->trid != log_record->trid || current_log_record->type == LOG_DUMMY_OVF_RECORD)
@@ -5616,6 +5724,18 @@ la_get_overflow_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * l
 		  free_and_init (ovf_list_data->data);
 		}
 	      free_and_init (ovf_list_data);
+	    }
+	  if (error == ER_OUT_OF_VIRTUAL_MEMORY)
+	    {
+	      la_release_page_buffer (current_lsa.pageid);
+	      while (ovf_list_head != NULL)
+		{
+		  ovf_list_data = ovf_list_head;
+		  ovf_list_head = ovf_list_head->next;
+		  free_and_init (ovf_list_data->data);
+		  free_and_init (ovf_list_data);
+		}
+	      return error;
 	    }
 	}
 
@@ -5749,7 +5869,15 @@ la_get_next_update_log (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * p
 	      offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa.offset;
 	      pageid = lsa.pageid;
 	      LA_LOG_READ_ALIGN (error, offset, pageid, pg);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
 	      LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pg);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
 	      if (error == NO_ERROR)
 		{
 		  if (is_mvcc_log == true)
@@ -5771,6 +5899,10 @@ la_get_next_update_log (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * p
 		      && undoredo->data.offset == prev_log->data.offset && undoredo->data.volid == prev_log->data.volid)
 		    {
 		      LA_LOG_READ_ADD_ALIGN (error, log_size, offset, pageid, pg);
+		      if (error != NO_ERROR)
+			{
+			  return error;
+			}
 		      if (is_diff)
 			{
 			  error = la_get_undoredo_diff (context, &pg, &pageid, &offset, &is_undo_zip, &undo_data,
@@ -5790,10 +5922,27 @@ la_get_next_update_log (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * p
 			  LA_LOG_READ_ADD_ALIGN (error, GET_ZIP_LEN (undo_length), offset, pageid, pg);
 			}
 
+		      if (error != NO_ERROR)
+			{
+			  if (undo_data != NULL)
+			    {
+			      free_and_init (undo_data);
+			    }
+			  return error;
+			}
+
 		      if (ZIP_CHECK (temp_length))
 			{
 			  zip_len = GET_ZIP_LEN (temp_length);
-			  la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
+			  error = la_log_copy_fromlog (NULL, *data, &zip_len, pageid, offset, pg);
+			  if (error != NO_ERROR)
+			    {
+			      if (undo_data != NULL)
+				{
+				  free_and_init (undo_data);
+				}
+			      return error;
+			    }
 
 			  if (zip_len != 0)
 			    {
@@ -5819,7 +5968,7 @@ la_get_next_update_log (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * p
 			}
 		      else
 			{
-			  la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
+			  error = la_log_copy_fromlog (rec_type ? *rec_type : NULL, *data, &length, pageid, offset, pg);
 			}
 
 		      *d_length = length;
@@ -5841,6 +5990,10 @@ la_get_next_update_log (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER * p
 	}
 
       pg = la_get_page (lsa.pageid);
+      if (pg == NULL)
+	{
+	  return er_errid ();
+	}
     }
 
   return error;
@@ -5860,6 +6013,10 @@ la_get_relocation_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_RECORD_HEADER *
   if (!LSA_ISNULL (&lsa))
     {
       pg = la_get_page (lsa.pageid);
+      if (pg == NULL)
+	{
+	  return er_errid ();
+	}
       tmp_lrec = LOG_GET_LOG_RECORD_HEADER (pg, &lsa);
       if (tmp_lrec->trid != lrec->trid)
 	{
@@ -5965,6 +6122,11 @@ la_get_recdes (LA_APPLY_WORKER_CONTEXT * context, LOG_LSA * lsa, LOG_PAGE * pgpt
 	{
 	  recdes->type = *(INT16 *) (rec_type);
 	}
+    }
+
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   if (*rcvindex == RVHF_MVCC_INSERT && recdes->type != REC_BIGONE)
@@ -7134,7 +7296,7 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	{
 	  /* already applied before this process started: log once per transaction, never per item */
 	  er_log_debug (ARG_FILE_LINE, "ws_repl skip whole txn (already committed) trid %d commit_lsa %lld|%d",
-			apply->tranid, (long long int) commit_lsa->pageid, (int) commit_lsa->offset);
+			apply->tranid, LSA_AS_ARGS (commit_lsa));
 	}
       la_free_all_repl_items (apply);
       return NO_ERROR;
@@ -7197,8 +7359,8 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	    }
 	  else
 	    {
-	      /* reconnect to server due to error while flushing repl items */
-	      if (LA_IS_FLUSH_ERROR (error))
+	      /* A failed log read allocation must abort the task; it cannot be skipped as a data-row error. */
+	      if (LA_IS_FLUSH_ERROR (error) || error == ER_OUT_OF_VIRTUAL_MEMORY)
 		{
 		  goto end;
 		}
@@ -7249,13 +7411,22 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	    }
 	}
 
-      next_item = la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa);
+      next_item = la_get_next_repl_item (item, apply->is_long_trans, &apply->last_lsa, &error);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
       la_free_repl_item (apply, item);
       item = next_item;
     }
 
 end:
   la_release_pinned_page_buffers (NULL);
+  if (item != NULL)
+    {
+      /* A long-transaction item read from the log may no longer belong to apply's linked list. */
+      la_free_repl_item (apply, item);
+    }
 
   *total_rows += apply_repl_log_cnt;
   la_free_all_repl_items (apply);
@@ -7291,11 +7462,12 @@ la_free_repl_items_by_tranid (int tranid)
 }
 
 static LA_ITEM *
-la_get_next_repl_item (LA_ITEM * item, bool is_long_trans, LOG_LSA * last_lsa)
+la_get_next_repl_item (LA_ITEM * item, bool is_long_trans, LOG_LSA * last_lsa, int *error)
 {
+  *error = NO_ERROR;
   if (is_long_trans)
     {
-      return la_get_next_repl_item_from_log (item, last_lsa);
+      return la_get_next_repl_item_from_log (item, last_lsa, error);
     }
   else
     {
@@ -7310,7 +7482,7 @@ la_get_next_repl_item_from_list (LA_ITEM * item)
 }
 
 static LA_ITEM *
-la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
+la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa, int *error)
 {
   LOG_LSA prev_repl_lsa;
   LOG_LSA curr_lsa;
@@ -7326,6 +7498,11 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
   while (!LSA_ISNULL (&curr_lsa))
     {
       curr_log_page = la_get_page (curr_lsa.pageid);
+      if (curr_log_page == NULL)
+	{
+	  *error = er_errid ();
+	  break;
+	}
       curr_log_record = LOG_GET_LOG_RECORD_HEADER (curr_log_page, &curr_lsa);
 
       if (prev_repl_log_record == NULL)
@@ -7333,6 +7510,8 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
 	  prev_repl_log_record = (LOG_RECORD_HEADER *) malloc (sizeof (LOG_RECORD_HEADER));
 	  if (prev_repl_log_record == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_RECORD_HEADER));
+	      *error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      return NULL;
 	    }
 
@@ -7349,7 +7528,11 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
 	  if (curr_log_record->type == LOG_REPLICATION_DATA || curr_log_record->type == LOG_REPLICATION_STATEMENT)
 	    {
 	      next_item = la_make_repl_item (curr_log_page, curr_log_record->type, curr_log_record->trid, &curr_lsa);
-	      assert (next_item);
+	      if (next_item == NULL)
+		{
+		  *error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+		}
+	      assert (next_item != NULL || *error != NO_ERROR);
 
 	      break;
 	    }
@@ -7378,7 +7561,7 @@ la_get_next_repl_item_from_log (LA_ITEM * item, LOG_LSA * last_lsa)
  *   fragment_lsa(in): the SYSOP_END coordinate; items at or before it belong to the fragment
  *
  * Note:
- *   Items recorded at or before a labeled SYSOP_END form an independently applied fragment. Move them
+ *   Items recorded at or before a SYSOP_END form an independently applied fragment. Move them
  *   from the outer slot to a standalone slot owned by the fragment task, leaving any later items for
  *   the outer transaction. The fragment slot is freed when its task retires.
  *
@@ -7466,9 +7649,9 @@ la_detach_sysop_fragment (LA_APPLY * outer, const LOG_LSA * fragment_lsa)
  *   final(in): LSA of the record
  *
  * Note:
- *   A labeled operation (ordered by keys or commit order on the master) with buffered items becomes a
- *   fragment task that the outer commit waits for; without buffered items its LSA is only marked completed.
- *   An unlabeled one, or one at or below committed_lsa, only leaves a trace.
+ *   Buffered items become a fragment that the outer commit waits for. Without a label, as in logs written
+ *   before writesets, or when a long fragment includes outer items, it runs in commit order.
+ *   An end without items is only marked completed.
  */
 static int
 la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
@@ -7480,7 +7663,8 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
     {
       LA_APPLY *sysop_apply = la_find_apply_list (lrec->trid);
 
-      if (la_wset_label_matches (lrec->trid) && sysop_apply != NULL && sysop_apply->head != NULL)
+      labeled = la_wset_label_matches (lrec->trid);
+      if (sysop_apply != NULL && sysop_apply->head != NULL)
 	{
 	  LA_APPLY *fragment = la_detach_sysop_fragment (sysop_apply, final);
 	  LA_TASK task;
@@ -7497,7 +7681,15 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 	  task.log_record_time = 0;
 	  task.apply = fragment;
 	  task.has_items = true;
-	  (void) la_wset_label_take (lrec->trid, &task.dependency_lsa, &task.unit_key_hash);
+	  if (labeled)
+	    {
+	      (void) la_wset_label_take (lrec->trid, &task.dependency_lsa, &task.unit_key_hash);
+	    }
+	  else
+	    {
+	      LSA_SET_NULL (&task.dependency_lsa);
+	      task.unit_key_hash = 0;
+	    }
 	  if (fragment->is_long_trans)
 	    {
 	      /* holds the outer transaction's items too, not only the unit's */
@@ -7518,29 +7710,33 @@ la_coordinator_process_sysop_end (LOG_RECORD_HEADER * lrec, LOG_LSA * final)
 			 LSA_AS_ARGS (&task.dependency_lsa),
 			 fragment->num_items, (int) fragment->is_long_trans);
 
-	  return la_coordinator_submit_task (&task);
+	  error = la_coordinator_submit_task (&task, !labeled || fragment->is_long_trans);
+	  if (error != NO_ERROR && task.apply != NULL)
+	    {
+	      /* A failure before dispatch leaves this fragment outside the shutdown-owned lists. */
+	      la_free_all_repl_items (task.apply);
+	      free_and_init (task.apply);
+	    }
+
+	  return error;
 	}
 
-      /* without this the outer commit, whose dependency is this LSA, would wait forever */
-      labeled = la_wset_label_matches (lrec->trid);
       if (labeled)
 	{
-	  /* the label belonged to this SYSOP_END; a later unlabeled SYSOP_END of the trid must not match it again */
 	  (void) la_wset_label_take (lrec->trid, NULL);
-
-	  error = la_coordinator_complete_without_task (final);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	}
+      error = la_coordinator_complete_without_task (final);
+      if (error != NO_ERROR)
+	{
+	  return error;
 	}
 
       LA_DEBUG_LOG (ARG_FILE_LINE,
-		    "coordinator defer_sysop_end trid=%d lsa=%lld|%d apply=%p head=%p committed=%lld|%d\n",
+		    "coordinator complete_sysop_end trid=%d lsa=%lld|%d apply=%p head=%p committed=%lld|%d\n",
 		    lrec->trid, LSA_AS_ARGS (final), (void *) sysop_apply,
 		    (sysop_apply ? (void *) sysop_apply->head : NULL), LSA_AS_ARGS (&la_Info.committed_lsa));
       LA_WSET_TRACE (labeled ? 1 : 2, "coordinator sysop_end trid=%d sysop_lsa=%lld|%d committed_lsa=%lld|%d items=%d "
-		     "action=defer labeled=%d long=%d\n",
+		     "action=complete_without_task labeled=%d long=%d\n",
 		     lrec->trid, LSA_AS_ARGS (final),
 		     LSA_AS_ARGS (&la_Info.committed_lsa),
 		     sysop_apply == NULL ? 0 : sysop_apply->num_items, (int) labeled,
@@ -7630,13 +7826,13 @@ la_coordinator_process_commit (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PA
   bool has_label;
   int error;
 
-  eot_time = la_retrieve_eot_time (pg_ptr, final);
+  eot_time = la_retrieve_eot_time (pg_ptr, final, &error);
+  if (error == ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      return error;
+    }
 
-  /* wait for delayed/time-bound replication; la_delay_replica waits only when ha_mode=replica
-   * TODO: CBRD-27508 targets the HA master/slave pair and does not handle the replica options. The coordinator
-   *       sleeps here, so worker results are not collected or retired meanwhile: ha_replica_delay delays more
-   *       than configured, and ha_replica_time_bound may pause with parked transactions committed before the
-   *       bound still unapplied. Handle both before running the parallel applier on a replica. */
+  /* Honor replica timing before submitting this COMMIT, while earlier tasks continue to make progress. */
   if (eot_time != 0)
     {
       error = la_delay_replica (eot_time);
@@ -7732,23 +7928,39 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   switch (lrec->type)
     {
     case LOG_END_OF_LOG:
-      if (la_does_page_exist (final->pageid + 1) && la_does_page_exist (final->pageid) == LA_PAGE_EXST_IN_ARCHIVE_LOG)
-	{
-	  /* when we meet the END_OF_LOG of archive file, skip log page */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG, 2, final->pageid,
-		  final->offset);
-	  final->pageid++;
-	  final->offset = 0;
-	}
-      else
-	{
-	  /* we meet the END_OF_LOG */
+      {
+	int next_page_exists = la_does_page_exist (final->pageid + 1);
+	int current_page_exists = LA_PAGE_DOESNOT_EXIST;
+	if (next_page_exists < 0)
+	  {
+	    return next_page_exists;
+	  }
+	if (next_page_exists != LA_PAGE_DOESNOT_EXIST)
+	  {
+	    current_page_exists = la_does_page_exist (final->pageid);
+	    if (current_page_exists < 0)
+	      {
+		return current_page_exists;
+	      }
+	  }
+	if (next_page_exists != LA_PAGE_DOESNOT_EXIST && current_page_exists == LA_PAGE_EXST_IN_ARCHIVE_LOG)
+	  {
+	    /* when we meet the END_OF_LOG of archive file, skip log page */
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_UNEXPECTED_EOF_IN_ARCHIVE_LOG, 2, final->pageid,
+		    final->offset);
+	    final->pageid++;
+	    final->offset = 0;
+	  }
+	else
+	  {
+	    /* we meet the END_OF_LOG */
 #if defined (LA_VERBOSE_DEBUG)
-	  er_log_debug (ARG_FILE_LINE, "reached END_OF_LOG in active log. LSA(%d|%d)", final->pageid, final->offset);
+	    er_log_debug (ARG_FILE_LINE, "reached END_OF_LOG in active log. LSA(%d|%d)", final->pageid, final->offset);
 #endif
-	  la_Info.is_end_of_record = true;
-	}
-      return ER_INTERRUPTED;
+	    la_Info.is_end_of_record = true;
+	  }
+	return ER_INTERRUPTED;
+      }
 
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
@@ -7817,6 +8029,10 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       ha_server_state = la_get_ha_server_state (pg_ptr, final);
       if (ha_server_state == NULL)
 	{
+	  if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to read LOG_DUMMY_HA_SERVER_STATE");
 	  break;
 	}
@@ -7876,7 +8092,12 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
    * don't know the exact offset of the next record. the offset would be adjusted after getting the next log page */
   if (lrec->forw_lsa.pageid == -1 || lrec->type <= LOG_SMALLER_LOGREC_TYPE || lrec->type >= LOG_LARGER_LOGREC_TYPE)
     {
-      if (la_does_page_exist (final->pageid) == LA_PAGE_EXST_IN_ARCHIVE_LOG)
+      int page_exists = la_does_page_exist (final->pageid);
+      if (page_exists < 0)
+	{
+	  return page_exists;
+	}
+      if (page_exists == LA_PAGE_EXST_IN_ARCHIVE_LOG)
 	{
 	  snprintf (buffer, sizeof (buffer), "process last log record in archive. LSA: %lld|%d",
 		    (long long int) final->pageid, (int) final->offset);
@@ -8563,6 +8784,16 @@ la_init (const char *log_path, const int max_mem_size)
    * can never index past the per-worker arrays */
   la_Info.worker_count = prm_get_integer_value (PRM_ID_HA_APPLY_WORKER_COUNT);
   la_Info.worker_count = MAX (1, MIN (la_Info.worker_count, LA_MAX_WORKER_COUNT));
+  /* Keep replica apply single-worker until parallel delay/time-bound behavior is validated. */
+  if (prm_get_integer_value (PRM_ID_HA_MODE) == HA_MODE_REPLICA && la_Info.worker_count > 1)
+    {
+      char msg[LINE_MAX];
+
+      snprintf (msg, sizeof (msg), "applylogdb in replica mode: ha_apply_worker_count=%d "
+		"is reduced to one apply worker", la_Info.worker_count);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, msg);
+      la_Info.worker_count = 1;
+    }
 #if !defined (CS_MODE) || !defined (MULTI_CONN_TO_A_SERVER)
   /* without MULTI_CONN_TO_A_SERVER a worker has no connection of its own and uses this process's client,
    * so only one worker can run, and it runs each task alone (la_coordinator_submit_task) */
@@ -8664,6 +8895,20 @@ la_free_pending_fragment (const LA_TASK * task, void *arg)
       la_free_all_repl_items (apply);
       free_and_init (apply);
     }
+}
+
+/*
+ * la_coordinator_discard_task() - release a task removed from pending before dispatch fails
+ *   context(in): unused
+ *   task(in/out): task that has not transferred its slot to in-flight
+ *
+ * Note: Ordinary transaction slots still belong to repl_lists and are freed during shutdown.
+ */
+static void
+la_coordinator_discard_task (void *context, LA_TASK * task)
+{
+  la_free_pending_fragment (task, NULL);
+  task->apply = NULL;
 }
 
 static void
@@ -10177,11 +10422,16 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  /* get the target page from log */
-	  log_buf = la_get_page_buffer (la_Info.final_lsa.pageid);
+	  log_buf = la_get_page_buffer (la_Info.final_lsa.pageid, &error);
 	  LSA_COPY (&old_lsa, &la_Info.final_lsa);
 
 	  if (log_buf == NULL)
 	    {
+	      if (error != NO_ERROR)
+		{
+		  la_shutdown ();
+		  return error;
+		}
 	      if (la_applier_need_shutdown == true)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
@@ -10239,9 +10489,19 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
 		  la_invalidate_page_buffer (log_buf);
 		  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
+		  int next_page_exists = LA_PAGE_DOESNOT_EXIST;
 		  if ((final_log_hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
-		      && ((la_Info.final_lsa.pageid + 1) <= final_log_hdr.eof_lsa.load ().pageid)
-		      && (la_does_page_exist (la_Info.final_lsa.pageid + 1) != LA_PAGE_DOESNOT_EXIST))
+		      && ((la_Info.final_lsa.pageid + 1) <= final_log_hdr.eof_lsa.load ().pageid))
+		    {
+		      next_page_exists = la_does_page_exist (la_Info.final_lsa.pageid + 1);
+		      if (next_page_exists < 0)
+			{
+			  error = next_page_exists;
+			  la_shutdown ();
+			  return error;
+			}
+		    }
+		  if (next_page_exists != LA_PAGE_DOESNOT_EXIST)
 		    {
 		      const LOG_LSA hdr_append_lsa = final_log_hdr.append_lsa;
 
@@ -10252,7 +10512,14 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 			      final_log_hdr.ha_file_status, la_Info.is_end_of_record);
 
 		      /* make sure to target page does not exist */
-		      if (la_does_page_exist (la_Info.final_lsa.pageid) == LA_PAGE_DOESNOT_EXIST
+		      int page_exists = la_does_page_exist (la_Info.final_lsa.pageid);
+		      if (page_exists < 0)
+			{
+			  error = page_exists;
+			  la_shutdown ();
+			  return error;
+			}
+		      if (page_exists == LA_PAGE_DOESNOT_EXIST
 			  && la_Info.final_lsa.pageid < final_log_hdr.eof_lsa.load ().pageid)
 			{
 			  er_log_debug (ARG_FILE_LINE, "skip this page (pageid=%lld/%lld/%lld)",
@@ -10380,6 +10647,12 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  else if (LA_IS_FLUSH_ERROR (error))
 		    {
 		      la_coordinator_exit ("log_record_process_flush_error", error);
+		      la_shutdown ();
+		      return error;
+		    }
+		  else if (error == ER_OUT_OF_VIRTUAL_MEMORY)
+		    {
+		      la_coordinator_exit ("log_record_process_out_of_memory", error);
 		      la_shutdown ();
 		      return error;
 		    }
@@ -10554,7 +10827,9 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 }
 
 /*
- * la_delay_replica () -
+ * la_delay_replica () - honor replica delay and time bound without stalling earlier tasks
+ *   eot_time(in): master COMMIT time of the next task
+ *   return: NO_ERROR or an error code
  */
 static int
 la_delay_replica (time_t eot_time)
@@ -10593,6 +10868,12 @@ la_delay_replica (time_t eot_time)
 
 	  if (eot_time >= replica_time_bound)
 	    {
+	      error = la_coordinator_drain ();
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
 	      error = la_log_commit (true);
 	      if (error != NO_ERROR)
 		{
@@ -10605,15 +10886,28 @@ la_delay_replica (time_t eot_time)
 			prm_get_name (PRM_ID_HA_REPLICA_TIME_BOUND));
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
 
-	      /* applylogdb waits indefinitely */
-	      select (0, NULL, NULL, NULL, NULL);
+	      /* This COMMIT is outside the bound; a signal must not let it fall through to submission. */
+	      while (!la_applier_need_shutdown)
+		{
+		  LA_SLEEP (0, 100 * 1000);
+		}
+	      return ER_INTERRUPTED;
 	    }
 	}
       else if (replica_delay > 0)
 	{
 	  while ((time (NULL) - eot_time) < replica_delay)
 	    {
-	      LA_SLEEP (0, 100 * 1000);
+	      if (la_applier_need_shutdown)
+		{
+		  return ER_INTERRUPTED;
+		}
+	      error = la_coordinator_collect_and_retire ();
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      (void) la_result_queue_wait_for_result (100);
 	    }
 	}
     }

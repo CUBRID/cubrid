@@ -31,6 +31,7 @@
 #include "log_applier_stat.hpp"
 #include "log_applier_task_queue.hpp"
 #include "error_manager.h"
+#include "memory_alloc.h"
 #include "log_record.hpp"
 #include "system_parameter.h"
 
@@ -55,7 +56,7 @@ static bool la_Coordinator_initialized = false;
 static UINT64 la_coordinator_clock_ns (void);
 static int la_coordinator_drain_ready (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
-static int la_coordinator_enqueue_task (const LA_TASK *task_in, LA_SCHED_STATUS sched_status);
+static int la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status);
 static void la_coordinator_trace_schedule (const LA_TASK *task, LA_SCHED_STATUS sched_status, UINT64 dispatch_seq);
 static int la_coordinator_collect_results (void);
 static int la_coordinator_record_result (LA_RESULT *result);
@@ -103,6 +104,7 @@ la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config)
   assert (config->retire_entry != NULL);
   assert (config->store_progress != NULL);
   assert (config->shutdown_requested != NULL);
+  assert (config->discard_task != NULL);
 
   la_Coordinator_config = *config;
 
@@ -152,6 +154,11 @@ la_coordinator_drain_ready (void)
       error = la_coordinator_enqueue_task (&task, LA_SCHED_RELEASED);
       if (error != NO_ERROR)
 	{
+	  if (task.apply != NULL || task.merged_lsa != NULL)
+	    {
+	      la_Coordinator_config.discard_task (la_Coordinator_config.context, &task);
+	      free_and_init (task.merged_lsa);
+	    }
 	  return error;
 	}
     }
@@ -198,13 +205,13 @@ la_coordinator_wait_for_commit_order_slot (void)
  *
  * return: NO_ERROR or an error code
  *
- *   task_in(in): task released by the dependency gate
+ *   task_in(in/out): task to dispatch; apply and merged_lsa are cleared when in-flight takes ownership
  *   sched_status(in): reason the task is being dispatched
  *
  * Note: the in-flight entry is created first so every worker result has a matching dispatch number.
  */
 static int
-la_coordinator_enqueue_task (const LA_TASK *task_in, LA_SCHED_STATUS sched_status)
+la_coordinator_enqueue_task (LA_TASK *task_in, LA_SCHED_STATUS sched_status)
 {
   LA_TASK task;
   UINT64 dispatch_seq = 0;
@@ -230,11 +237,15 @@ la_coordinator_enqueue_task (const LA_TASK *task_in, LA_SCHED_STATUS sched_statu
       return error;
     }
 
-  error = la_inflight_push (task.apply, task.tranid, task.rectype, &dispatch_seq);
+  error = la_inflight_push (task.apply, task.tranid, task.rectype, &dispatch_seq, task.merged_lsa);
   if (error != NO_ERROR)
     {
       return error;
     }
+  task_in->apply = NULL;
+  task_in->merged_lsa = NULL;
+  task_in->merged_count = 0;
+  task_in->merged_capacity = 0;
   task.dispatch_seq = dispatch_seq;
 
   if (sched_status == LA_SCHED_DISPATCHED && task.has_items && task.rectype == LOG_COMMIT)
@@ -540,10 +551,6 @@ la_coordinator_retire_results (void)
       has_frontier = la_gate_get_frontier (&frontier);
       assert (has_frontier);
       la_Coordinator_config.retire_entry (la_Coordinator_config.context, entry, has_frontier ? &frontier : NULL);
-      if (result->merged_lsa != NULL)
-	{
-	  free ((void *) result->merged_lsa);
-	}
       la_inflight_pop ();
 
       error = la_Coordinator_config.store_progress (la_Coordinator_config.context);
@@ -557,16 +564,14 @@ la_coordinator_retire_results (void)
 }
 
 /*
- * la_coordinator_run_alone - drain existing work and run one task by itself
+ * la_coordinator_drain - dispatch pending tasks and wait for all accepted work to retire
  *
  * return: NO_ERROR or an error code
  */
-static int
-la_coordinator_run_alone (LA_TASK *task)
+int
+la_coordinator_drain (void)
 {
   int error;
-
-  assert (task != NULL);
 
   do
     {
@@ -583,6 +588,25 @@ la_coordinator_run_alone (LA_TASK *task)
 	}
     }
   while (!la_pending_is_empty ());
+
+  return NO_ERROR;
+}
+
+/*
+ * la_coordinator_run_alone - drain existing work and run one task by itself
+ *
+ * return: NO_ERROR or an error code
+ */
+static int
+la_coordinator_run_alone (LA_TASK *task)
+{
+  assert (task != NULL);
+
+  int error = la_coordinator_drain ();
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   error = la_coordinator_enqueue_task (task, LA_SCHED_DISPATCHED);
   if (error != NO_ERROR)
@@ -664,9 +688,10 @@ la_coordinator_merge_into_pending (LA_TASK *task, int *error)
  * return: NO_ERROR or an error code
  *
  *   task(in/out): task to dispatch now or retain until its dependency is complete
+ *   commit_order(in): finish preceding work, then apply and retire this task before returning
  */
 int
-la_coordinator_submit_task (LA_TASK *task)
+la_coordinator_submit_task (LA_TASK *task, bool commit_order)
 {
   LOG_LSA dependency_lsa;
   bool dependency_ready;
@@ -698,6 +723,11 @@ la_coordinator_submit_task (LA_TASK *task)
   if (error != NO_ERROR)
     {
       return error;
+    }
+
+  if (commit_order)
+    {
+      return la_coordinator_run_alone (task);
     }
 
   if (la_Coordinator_config.worker_count == 1)

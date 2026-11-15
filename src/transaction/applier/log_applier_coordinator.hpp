@@ -46,20 +46,24 @@ struct la_coordinator_config
   bool (*shutdown_requested) (void *context); /* stop coordinator waits when the applier is shutting down */
   bool (*merge_task) (void *context, LA_TASK *target, LA_TASK *task); /* move task's items into the parked
 									   * target; false if they cannot join */
+  void (*discard_task) (void *context, LA_TASK *task); /* release an undispatched task's apply slot */
   void *context;
 };
 
 /* Initialize scheduling state before workers start. */
 extern int la_coordinator_initialize (const LA_COORDINATOR_CONFIG *config);
 
-/* Register an assembled task and dispatch or park it. */
-extern int la_coordinator_submit_task (LA_TASK *task);
+/* Register an assembled task. commit_order waits for preceding work and retires this task before returning. */
+extern int la_coordinator_submit_task (LA_TASK *task, bool commit_order = false);
 
 /* Complete an ordered SYSOP_END that has no replication items. */
 extern int la_coordinator_complete_without_task (const LOG_LSA *lsa);
 
 /* Collect worker results and retire the completed dispatch prefix. */
 extern int la_coordinator_collect_and_retire (void);
+
+/* Dispatch pending tasks and wait for all accepted work to retire. */
+extern int la_coordinator_drain (void);
 
 /* Return true after pending, in-flight and commit-order state are empty. */
 extern bool la_coordinator_drain_complete (void);

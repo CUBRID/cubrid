@@ -57,7 +57,7 @@ struct la_result
   int rectype;
   int error;
   LOG_LSA commit_lsa;		/* marks this commit applied in the gate; releases transactions that depend on it */
-  LOG_LSA *merged_lsa;		/* the task's merged fragments, also marked applied in the gate; freed at retire */
+  LOG_LSA *merged_lsa;		/* borrowed from in-flight until retire; also marked applied in the gate */
   int merged_count;
   LOG_LSA committed_rep_lsa;	/* last applied replication-record LSA; advances the reported position in
 				 * la_Info.committed_rep_lsa, not the restart boundary */
@@ -83,7 +83,7 @@ struct la_result
   /* statistics only: summed into la_Info at retire */
   LA_STATS stats;
 
-  /* debug only: no apply decision reads these */
+  /* worker identity for traces and per-worker statistics */
   int worker_idx;		/* which worker produced this result on the shared result queue */
 };
 
