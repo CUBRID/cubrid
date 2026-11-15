@@ -51,10 +51,12 @@ static int nops_oldest = NOPS_OLDEST;
 /* thread entries and transaction descriptors created once; thread entry i works under tran index i + 1, and the
  * order writer borrows the last index as its second transaction */
 #define TEST_MAX_THREADS 128
-#define TEST_NUM_TRAN_INDICES (TEST_MAX_THREADS + 2)
-#define TEST_ORDER_SECOND_TRAN_INDEX (TEST_NUM_TRAN_INDICES - 1)
+/* order writers; each one also borrows one extra tran index after the thread entries' indices */
+#define TEST_ORDER_WRITERS 4
+#define TEST_NUM_TRAN_INDICES (TEST_MAX_THREADS + 1 + TEST_ORDER_WRITERS)
+#define TEST_ORDER_SECOND_TRAN_INDEX(writer) (TEST_MAX_THREADS + 1 + (writer))
 /* upper bound of operations per thread given on the command line */
-#define TEST_MAX_OPS 100000000
+#define TEST_MAX_OPS 10000000
 
 /* bit area sizes expressed in bits */
 #define MVCC_BITAREA_ELEMENT_BITS 64
@@ -138,13 +140,15 @@ test_now_ns (void)
 }
 
 /*
- * Order oracle (CBRD-26971).  One writer thread owns two transactions.  In each round it takes two MVCCIDs,
- * publishes the pair, and commits them one after the other.  Snapshot threads check every snapshot they build:
+ * Order oracle (CBRD-26971).  Each of TEST_ORDER_WRITERS writer threads owns two transactions.  In each round it
+ * takes two MVCCIDs, publishes the pair, and commits them one after the other.  Snapshot threads check every snapshot
+ * they build:
  *  - real time: an id whose commit returned before the snapshot started is visible;
  *  - order: if a pair's second commit is visible, its first commit is visible too (the last two pairs are checked:
  *    the last one may be between its commits, the one before it is done);
  *  - vacuum bound: the global oldest visible MVCCID never passes the snapshot's lowest active MVCCID.
- * The writer keeps going while snapshot threads run (at least one round, at most nops_snapshot rounds).
+ * Every writer keeps its own pairs.  The writers keep going while snapshot threads run (at least one round each, at
+ * most nops_snapshot rounds each).
  * The current table passes trivially; a table that lets commits and snapshots overlap must keep passing.
  */
 typedef struct test_order_pair TEST_ORDER_PAIR;
@@ -154,12 +158,13 @@ struct test_order_pair
   MVCCID second_completed;
 };
 
-static TEST_ORDER_PAIR *order_pairs = NULL;
+static TEST_ORDER_PAIR *order_pairs[TEST_ORDER_WRITERS];
 static int nops_order = 0;
+static int order_writer_first_entry = 0;
 // *INDENT-OFF*
 static std::atomic<int> snapshot_threads_running (0);
-static std::atomic<int> order_pairs_published (0);
-static std::atomic<MVCCID> order_last_completed (MVCCID_NULL);
+static std::atomic<int> order_pairs_published[TEST_ORDER_WRITERS];
+static std::atomic<MVCCID> order_last_completed[TEST_ORDER_WRITERS];
 // *INDENT-ON*
 
 static UINT64 count_order_rounds = 0;
@@ -381,16 +386,19 @@ test_mvcc_get_snapshot (void *param)
 
   UINT64 local_ns = 0, local_checks = 0, local_stale = 0, local_order = 0, local_vacuum = 0;
   MVCC_SNAPSHOT *snapshot;
-  MVCCID done_before, oldest_visible;
-  int published, k;
+  MVCCID done_before[TEST_ORDER_WRITERS], oldest_visible;
+  int published[TEST_ORDER_WRITERS], k, w;
   TEST_ORDER_PAIR *pair;
   UINT64 t0;
 
   for (i = 0; i < nops_snapshot; i++)
     {
       /* everything read here happened before the snapshot started */
-      done_before = order_last_completed.load (std::memory_order_acquire);
-      published = order_pairs_published.load (std::memory_order_acquire);
+      for (w = 0; w < TEST_ORDER_WRITERS; w++)
+	{
+	  done_before[w] = order_last_completed[w].load (std::memory_order_acquire);
+	  published[w] = order_pairs_published[w].load (std::memory_order_acquire);
+	}
 
       t0 = test_now_ns ();
       snapshot = logtb_get_mvcc_snapshot (thread_p);
@@ -400,17 +408,21 @@ test_mvcc_get_snapshot (void *param)
 	  local_count_snapshots++;
 
 	  local_checks++;
-	  if (MVCCID_IS_VALID (done_before) && !test_is_committed_in_snapshot (thread_p, done_before, snapshot))
+	  for (w = 0; w < TEST_ORDER_WRITERS; w++)
 	    {
-	      local_stale++;
-	    }
-	  for (k = published - 1; k >= 0 && k >= published - 2; k--)
-	    {
-	      pair = &order_pairs[k];
-	      if (test_is_committed_in_snapshot (thread_p, pair->second_completed, snapshot)
-		  && !test_is_committed_in_snapshot (thread_p, pair->first_completed, snapshot))
+	      if (MVCCID_IS_VALID (done_before[w])
+		  && !test_is_committed_in_snapshot (thread_p, done_before[w], snapshot))
 		{
-		  local_order++;
+		  local_stale++;
+		}
+	      for (k = published[w] - 1; k >= 0 && k >= published[w] - 2; k--)
+		{
+		  pair = &order_pairs[w][k];
+		  if (test_is_committed_in_snapshot (thread_p, pair->second_completed, snapshot)
+		      && !test_is_committed_in_snapshot (thread_p, pair->first_completed, snapshot))
+		    {
+		      local_order++;
+		    }
 		}
 	    }
 	  /* this transaction's lowest active MVCCID is published, so vacuum must stay at or below it */
@@ -544,6 +556,8 @@ test_mvcc_order_writer (void *param)
   int i;
   THREAD_ENTRY *thread_p = (THREAD_ENTRY *) param;
   int own_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  int writer = thread_p->index - order_writer_first_entry;
+  int second_tran_index = TEST_ORDER_SECOND_TRAN_INDEX (writer);
   int tran_a, tran_b, tran_tmp;
   MVCCID id_a, id_b, id_tmp;
   unsigned int local_rounds = 0;
@@ -556,7 +570,7 @@ test_mvcc_order_writer (void *param)
     {
       thread_p->tran_index = own_tran_index;
       id_a = logtb_get_current_mvccid (thread_p);
-      thread_p->tran_index = TEST_ORDER_SECOND_TRAN_INDEX;
+      thread_p->tran_index = second_tran_index;
       id_b = logtb_get_current_mvccid (thread_p);
       if (id_a == MVCCID_NULL || id_b == MVCCID_NULL)
 	{
@@ -565,7 +579,7 @@ test_mvcc_order_writer (void *param)
 
       /* alternate older-first and newer-first, so both ends of the active range move first */
       tran_a = own_tran_index;
-      tran_b = TEST_ORDER_SECOND_TRAN_INDEX;
+      tran_b = second_tran_index;
       if (i % 2 != 0)
 	{
 	  id_tmp = id_a;
@@ -575,14 +589,14 @@ test_mvcc_order_writer (void *param)
 	  tran_a = tran_b;
 	  tran_b = tran_tmp;
 	}
-      order_pairs[i].first_completed = id_a;
-      order_pairs[i].second_completed = id_b;
-      order_pairs_published.store (i + 1, std::memory_order_release);
+      order_pairs[writer][i].first_completed = id_a;
+      order_pairs[writer][i].second_completed = id_b;
+      order_pairs_published[writer].store (i + 1, std::memory_order_release);
 
       test_order_commit (thread_p, tran_a);
-      order_last_completed.store (id_a, std::memory_order_release);
+      order_last_completed[writer].store (id_a, std::memory_order_release);
       test_order_commit (thread_p, tran_b);
-      order_last_completed.store (id_b, std::memory_order_release);
+      order_last_completed[writer].store (id_b, std::memory_order_release);
 
       local_rounds++;
     }
@@ -607,8 +621,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
   int idx_thread_entry;
   char msg[256];
 
-  /* one more thread: the order writer */
-  numthreads = num_snapshot_threads + num_complete_threads + num_oldest_mvccid_threads + 1;
+  numthreads = num_snapshot_threads + num_complete_threads + num_oldest_mvccid_threads + TEST_ORDER_WRITERS;
   sprintf (msg, "test_mvcc_operations (%d snapshot threads, %d complete threads, %d oldest threads)",
 	   num_snapshot_threads, num_complete_threads, num_oldest_mvccid_threads);
   begin (msg);
@@ -629,15 +642,18 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
   count_order_rounds = count_checks = count_stale = count_order_violations = count_vacuum_violations = 0;
   total_snapshot_ns = total_complete_ns = 0;
   nops_order = nops_snapshot;
-  order_pairs = (TEST_ORDER_PAIR *) malloc (nops_order * sizeof (TEST_ORDER_PAIR));
-  if (order_pairs == NULL)
+  for (i = 0; i < TEST_ORDER_WRITERS; i++)
     {
-      printf (" %s: %s\n", "FAILED", "out of memory");
-      return ER_FAILED;
+      order_pairs[i] = (TEST_ORDER_PAIR *) malloc (nops_order * sizeof (TEST_ORDER_PAIR));
+      if (order_pairs[i] == NULL)
+	{
+	  printf (" %s: %s\n", "FAILED", "out of memory");
+	  return ER_FAILED;
+	}
+      order_pairs_published[i].store (0);
+      order_last_completed[i].store (MVCCID_NULL);
     }
   snapshot_threads_running.store (num_snapshot_threads);
-  order_pairs_published.store (0);
-  order_last_completed.store (MVCCID_NULL);
   idx_thread_entry = 0;
   for (i = 0; i < num_snapshot_threads; i++, idx_thread_entry++)
     {
@@ -669,13 +685,16 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 	}
     }
 
-  if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_order_writer,
-		      (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
+  order_writer_first_entry = idx_thread_entry;
+  for (i = 0; i < TEST_ORDER_WRITERS; i++, idx_thread_entry++)
     {
-      printf (" %s: %s\n", "FAILED", "thread create error");
-      return ER_FAILED;
+      if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_order_writer,
+			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
+	{
+	  printf (" %s: %s\n", "FAILED", "thread create error");
+	  return ER_FAILED;
+	}
     }
-  idx_thread_entry++;
 
   for (i = 0; i < numthreads; i++)
     {
@@ -688,7 +707,10 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 	  return ER_FAILED;
 	}
     }
-  free_and_init (order_pairs);
+  for (i = 0; i < TEST_ORDER_WRITERS; i++)
+    {
+      free_and_init (order_pairs[i]);
+    }
 
   if (count_snapshots != (UINT64) num_snapshot_threads * nops_snapshot)
     {
@@ -715,7 +737,8 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
 	  count_snapshots > 0 ? (double) total_snapshot_ns / count_snapshots : 0.0,
 	  count_complete > 0 ? (double) total_complete_ns / count_complete : 0.0,
 	  (unsigned long long) count_order_rounds, (unsigned long long) count_checks);
-  if (count_order_rounds == 0 || count_stale != 0 || count_order_violations != 0 || count_vacuum_violations != 0)
+  if (count_order_rounds < TEST_ORDER_WRITERS || count_stale != 0 || count_order_violations != 0
+      || count_vacuum_violations != 0)
     {
       printf (" %s: order rounds %llu, stale snapshots %llu, order violations %llu, vacuum bound violations %llu\n",
 	      "FAILED", (unsigned long long) count_order_rounds, (unsigned long long) count_stale,
