@@ -9186,13 +9186,13 @@ sch_procedures (T_NET_BUF * net_buf, char *schema_name, char *sp_name, char patt
   ut_tolower (sp_name);
 
   STRING_APPEND (sql_p, avail_size,
-		 "SELECT routine_schema, routine_name, routine_comment FROM information_schema.routines "
-		 "WHERE routine_type = '%s' ", is_function ? "FUNCTION" : "PROCEDURE");
+		 "SELECT routine_schema, routine_name, routine_comment, specific_name "
+		 "FROM information_schema.routines WHERE routine_type = '%s' ", is_function ? "FUNCTION" : "PROCEDURE");
   sch_append_name_condition (&sql_p, &avail_size, "routine_schema", schema_name,
 			     pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH, true);
   sch_append_name_condition (&sql_p, &avail_size, "routine_name", sp_name, pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH,
 			     false);
-  STRING_APPEND (sql_p, avail_size, "ORDER BY routine_schema, routine_name");
+  STRING_APPEND (sql_p, avail_size, "ORDER BY routine_schema, routine_name, specific_name");
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
@@ -9218,28 +9218,30 @@ sch_procedure_columns (T_NET_BUF * net_buf, char *schema_name, char *sp_name, ch
   ut_tolower (param_name);
 
   STRING_APPEND (sql_p, avail_size,
-		 "SELECT specific_schema, specific_name, ordinal_position, parameter_name, parameter_mode, data_type, "
-		 "parameter_default, parameter_comment FROM information_schema.parameters WHERE routine_type = '%s' ",
-		 is_function ? "FUNCTION" : "PROCEDURE");
-  sch_append_name_condition (&sql_p, &avail_size, "specific_schema", schema_name,
+		 "SELECT r.routine_schema, r.routine_name, p.ordinal_position, p.parameter_name, p.parameter_mode, "
+		 "p.data_type, p.parameter_default, p.parameter_comment, p.specific_name "
+		 "FROM information_schema.parameters p JOIN information_schema.routines r "
+		 "ON r.specific_schema = p.specific_schema AND r.specific_name = p.specific_name "
+		 "WHERE r.routine_type = '%s' ", is_function ? "FUNCTION" : "PROCEDURE");
+  sch_append_name_condition (&sql_p, &avail_size, "r.routine_schema", schema_name,
 			     pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH, true);
-  sch_append_name_condition (&sql_p, &avail_size, "specific_name", sp_name, pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH,
-			     false);
-  sch_append_name_condition (&sql_p, &avail_size, "LOWER (parameter_name)", param_name,
+  sch_append_name_condition (&sql_p, &avail_size, "r.routine_name", sp_name,
+			     pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH, false);
+  sch_append_name_condition (&sql_p, &avail_size, "LOWER (p.parameter_name)", param_name,
 			     pattern_flag & CCI_PARAM_NAME_PATTERN_MATCH, false);
 
   if (is_function)
     {
       STRING_APPEND (sql_p, avail_size,
-		     "UNION ALL SELECT routine_schema, routine_name, 0, NULL, 'RETURN', data_type, NULL, NULL "
-		     "FROM information_schema.routines WHERE routine_type = 'FUNCTION' ");
+		     "UNION ALL SELECT routine_schema, routine_name, 0, NULL, 'RETURN', data_type, NULL, NULL, "
+		     "specific_name FROM information_schema.routines WHERE routine_type = 'FUNCTION' ");
       sch_append_name_condition (&sql_p, &avail_size, "routine_schema", schema_name,
 				 pattern_flag & CCI_CLASS_NAME_PATTERN_MATCH, true);
       sch_append_name_condition (&sql_p, &avail_size, "routine_name", sp_name,
 				 pattern_flag & CCI_ATTR_NAME_PATTERN_MATCH, false);
     }
 
-  STRING_APPEND (sql_p, avail_size, "ORDER BY 1, 2, 3");
+  STRING_APPEND (sql_p, avail_size, "ORDER BY 1, 2, 9, 3");
 
   num_result = sch_query_execute (srv_handle, sql_stmt, net_buf);
   if (num_result < 0)
