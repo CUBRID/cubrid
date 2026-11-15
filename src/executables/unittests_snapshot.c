@@ -48,8 +48,8 @@ static int nops_snapshot = NOPS_SNAPSHOT;
 static int nops_complete = NOPS_COMPLPETE;
 static int nops_oldest = NOPS_OLDEST;
 
-/* thread entries and transaction descriptors created once; thread entry i works under tran index i + 1, and the
- * order writer borrows the last index as its second transaction */
+/* thread entries and transaction descriptors created once; thread entry i works under tran index i + 1, and order
+ * writer w borrows tran index TEST_MAX_THREADS + 1 + w as its second transaction */
 #define TEST_MAX_THREADS 128
 /* order writers; each one also borrows one extra tran index after the thread entries' indices */
 #define TEST_ORDER_WRITERS 4
@@ -647,6 +647,10 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
       order_pairs[i] = (TEST_ORDER_PAIR *) malloc (nops_order * sizeof (TEST_ORDER_PAIR));
       if (order_pairs[i] == NULL)
 	{
+	  while (--i >= 0)
+	    {
+	      free_and_init (order_pairs[i]);
+	    }
 	  printf (" %s: %s\n", "FAILED", "out of memory");
 	  return ER_FAILED;
 	}
