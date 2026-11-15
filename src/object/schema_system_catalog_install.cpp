@@ -960,6 +960,8 @@ namespace cubschema
 		   CT_HA_APPLY_INFO_NAME,
 		   // columns
     {
+      {attribute_kind::CLASS_ATTRIBUTE, "last_stream_id", "bigint", make_int_value_fn (0)},
+      {"stream_id", "bigint"},
       {"db_name", format_varchar (255)},
       {"db_creation_time", "datetime"},
       {"copied_log_path", format_varchar (4096)},
@@ -989,6 +991,8 @@ namespace cubschema
     },
 // constraints
     {
+      {DB_CONSTRAINT_UNIQUE, "", {"stream_id", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"stream_id", nullptr}},
       {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}},
       {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
       {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
@@ -1303,14 +1307,14 @@ namespace cubschema
 		   CT_HA_APPLIED_TX_MARKER_NAME,
 		   // columns
     {
-      {"copied_log_path", format_varchar (4096)},
+      {"stream_id", "bigint"},
       {"commit_pageid", "bigint"},
       {"commit_offset", "integer"}
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"copied_log_path", "commit_pageid", "commit_offset", nullptr}},
-      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+      {DB_CONSTRAINT_UNIQUE, "", {"stream_id", "commit_pageid", "commit_offset", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"stream_id", nullptr}},
       {DB_CONSTRAINT_NOT_NULL, "", {"commit_pageid", nullptr}},
       {DB_CONSTRAINT_NOT_NULL, "", {"commit_offset", nullptr}},
     },

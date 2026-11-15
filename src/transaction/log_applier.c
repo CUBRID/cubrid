@@ -306,6 +306,7 @@ struct la_info
 {
   /* log info */
   char log_path[PATH_MAX];
+  INT64 stream_id;		/* persistent ID of this copied log; fixed before workers start */
   char loginf_path[PATH_MAX];
   LA_ACT_LOG act_log;
   LA_ARV_LOG arv_log;
@@ -411,6 +412,7 @@ struct la_ovf_page_list
 typedef struct la_ha_apply_info LA_HA_APPLY_INFO;
 struct la_ha_apply_info
 {
+  INT64 stream_id;
   char db_name[256];
   DB_DATETIME creation_time;
   char copied_log_path[4096];
@@ -506,6 +508,7 @@ static int la_find_required_lsa (LOG_LSA * required_lsa);
 
 static int la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY_INFO * ha_apply_info);
 static int la_insert_ha_apply_info (DB_DATETIME * creation_time);
+static int la_allocate_apply_stream_id (INT64 * stream_id);
 static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
 static int la_update_ha_last_applied_info (void);
@@ -2456,7 +2459,7 @@ static int
 la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY_INFO * ha_apply_info)
 {
 #define LA_IN_VALUE_COUNT       2
-#define LA_OUT_VALUE_COUNT      23
+#define LA_OUT_VALUE_COUNT      24
 
   int res;
   int in_value_idx, out_value_idx;
@@ -2497,8 +2500,8 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	    "   schema_counter, "	/* 22 */
 	    "   commit_counter, "	/* 23 */
 	    "   fail_counter, "	/* 24 */
-	    "   start_time "	/* 25 */
-	    " FROM %s WHERE db_name = ? and copied_log_path = ? ;", CT_HA_APPLY_INFO_NAME);
+	    "   start_time, "	/* 25 */
+	    "   stream_id " " FROM %s WHERE db_name = ? and copied_log_path = ? ;", CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
   db_make_varchar (&in_value[in_value_idx++], 255, (char *) prefix_name, strlen (prefix_name), LANG_SYS_CODESET,
@@ -2626,6 +2629,8 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 	  ha_apply_info->start_time.date = db_time->date;
 	  ha_apply_info->start_time.time = db_time->time;
 
+	  ha_apply_info->stream_id = db_get_bigint (&out_value[out_value_idx++]);
+
 	  assert_release (out_value_idx == LA_OUT_VALUE_COUNT);
 
 	  for (i = 0; i < LA_OUT_VALUE_COUNT; i++)
@@ -2654,10 +2659,55 @@ la_get_ha_apply_info (const char *log_path, const char *prefix_name, LA_HA_APPLY
 #undef LA_OUT_VALUE_COUNT
 }
 
+/*
+ * la_allocate_apply_stream_id - reserve a copied-log ID in the caller's transaction
+ *   return: NO_ERROR or error code
+ *   stream_id(out): positive ID, never reused after the allocation is committed
+ *
+ * Note: The class attribute survives apply-info row deletion. Its update holds the DB lock until commit;
+ *       BIGINT overflow fails the update instead of wrapping the ID.
+ */
+static int
+la_allocate_apply_stream_id (INT64 * stream_id)
+{
+  DB_VALUE value;
+  MOP class_mop;
+  int error;
+  int au_save;
+
+  assert (stream_id != NULL);
+
+  error = la_update_query_execute_with_values ("UPDATE CLASS [" CT_HA_APPLY_INFO_NAME "] "
+					       "SET last_stream_id = last_stream_id + 1;", 0, NULL, true);
+  if (error < 0)
+    {
+      return error;
+    }
+
+  db_make_null (&value);
+  AU_SAVE_AND_DISABLE (au_save);
+  class_mop = db_find_class (CT_HA_APPLY_INFO_NAME);
+  error = class_mop == NULL ? er_errid () : db_get (class_mop, "last_stream_id", &value);
+  AU_RESTORE (au_save);
+
+  if (error == NO_ERROR && (DB_VALUE_TYPE (&value) != DB_TYPE_BIGINT || db_get_bigint (&value) <= 0))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Invalid apply stream ID");
+      error = ER_HA_GENERIC_ERROR;
+    }
+  if (error == NO_ERROR)
+    {
+      *stream_id = db_get_bigint (&value);
+    }
+  db_value_clear (&value);
+
+  return error;
+}
+
 static int
 la_insert_ha_apply_info (DB_DATETIME * creation_time)
 {
-#define LA_IN_VALUE_COUNT       15
+#define LA_IN_VALUE_COUNT       16
 
   int res;
   LA_ACT_LOG *act_log;
@@ -2669,6 +2719,17 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
   FILE *fp;
 
   act_log = &la_Info.act_log;
+
+  /* A running stream keeps its ID and markers: workers may already have committed beyond the coordinator's
+   * frontier. Allocate an ID only when starting a new stream. */
+  if (la_Info.stream_id == 0)
+    {
+      res = la_allocate_apply_stream_id (&la_Info.stream_id);
+      if (res != NO_ERROR)
+	{
+	  return res;
+	}
+    }
 
   snprintf (query_buf, sizeof (query_buf), "INSERT INTO %s "	/* INSERT */
 	    "( db_name, "	/* 1 */
@@ -2696,8 +2757,8 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
 	    "  schema_counter, "	/* 23 */
 	    "  commit_counter, "	/* 24 */
 	    "  fail_counter, "	/* 25 */
-	    "  start_time ) "	/* 26 */
-	    " VALUES ( ?, "	/* 1. db_name */
+	    "  start_time, "	/* 26 */
+	    "  stream_id ) " " VALUES ( ?, "	/* 1. db_name */
 	    "   ?, "		/* 2. db_creation_time */
 	    "   ?, "		/* 3. copied_log_path */
 	    "   ?, "		/* 4. committed_lsa_pageid */
@@ -2722,7 +2783,8 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
 	    "   0, "		/* 23. schema_counter */
 	    "   0, "		/* 24. commit_counter */
 	    "   0, "		/* 25. fail_counter */
-	    "   SYS_DATETIME "	/* 26. start_time */
+	    "   SYS_DATETIME, "	/* 26. start_time */
+	    "   ? "		/* stream_id */
 	    "   ) ;", CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
@@ -2761,6 +2823,8 @@ la_insert_ha_apply_info (DB_DATETIME * creation_time)
   /* 14 ~ 15. required_lsa */
   db_make_bigint (&in_value[in_value_idx++], la_Info.required_lsa.pageid);
   db_make_int (&in_value[in_value_idx++], la_Info.required_lsa.offset);
+
+  db_make_bigint (&in_value[in_value_idx++], la_Info.stream_id);
 
   assert_release (in_value_idx == LA_IN_VALUE_COUNT);
 
@@ -2922,6 +2986,13 @@ la_get_last_ha_applied_info (void)
   res = la_get_ha_apply_info (la_Info.log_path, act_log->log_hdr->prefix_name, &apply_info);
   if (res > 0)
     {
+      if (apply_info.stream_id <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Invalid stored apply stream ID");
+	  return ER_HA_GENERIC_ERROR;
+	}
+      la_Info.stream_id = apply_info.stream_id;
+
       LSA_COPY (&la_Info.committed_lsa, &apply_info.committed_lsa);
       LSA_COPY (&la_Info.committed_rep_lsa, &apply_info.committed_rep_lsa);
       LSA_COPY (&la_Info.append_lsa, &apply_info.append_lsa);
@@ -2980,19 +3051,8 @@ la_get_last_ha_applied_info (void)
 
   if (insert_apply_info == true)
     {
+      /* A new ID prevents markers of an older log stream from matching its commits. */
       res = la_insert_ha_apply_info (&log_db_creation_time);
-
-      /* no apply info means the replication of this copied log starts over, so a marker left from an earlier
-       * stream must not skip its commits */
-      if (res > 0)
-	{
-	  int deleted = la_delete_applied_tx_markers (NULL);
-
-	  if (deleted < 0)
-	    {
-	      return deleted;
-	    }
-	}
     }
   else
     {
@@ -3008,7 +3068,11 @@ la_get_last_ha_applied_info (void)
       return res;
     }
 
-  (void) db_commit_transaction ();
+  res = db_commit_transaction ();
+  if (res != NO_ERROR)
+    {
+      return res;
+    }
 
   LSA_COPY (&la_Info.last_committed_lsa, &la_Info.committed_lsa);
   LSA_COPY (&la_Info.last_committed_rep_lsa, &la_Info.committed_rep_lsa);
@@ -3181,6 +3245,13 @@ la_delete_ha_apply_info (void)
 
   act_log = &la_Info.act_log;
 
+  res = la_delete_applied_tx_markers (NULL);
+  if (res < 0)
+    {
+      (void) db_abort_transaction ();
+      return res;
+    }
+
   snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s WHERE db_name = ? AND copied_log_path = ?",
 	    CT_HA_APPLY_INFO_NAME);
 
@@ -3199,13 +3270,17 @@ la_delete_ha_apply_info (void)
       db_value_clear (&in_value[i]);
     }
 
-  /* the replication starts over from the beginning, so a marker from the old stream must not skip its commits */
-  if (res >= 0)
+  if (res < 0)
     {
-      (void) la_delete_applied_tx_markers (NULL);
+      (void) db_abort_transaction ();
+      return res;
     }
 
-  (void) db_commit_transaction ();
+  res = db_commit_transaction ();
+  if (res == NO_ERROR)
+    {
+      la_Info.stream_id = 0;
+    }
 
   return res;
 
@@ -3219,13 +3294,11 @@ la_delete_ha_apply_info (void)
  * the slave. The worker inserts the marker in the same slave transaction as the data, so the marker exists
  * exactly when the data is committed, and a restart skips the commits that have one. Markers at or below the
  * stored committed_lsa are deleted in bounded batches. Any remaining ones are ignored when loading markers.
- * The copied log path keeps apart the markers of the appliers a node runs, one per remote node.
- * TODO: Replace the repeated copied-log path in marker keys with a compact persistent stream identifier.
- * Preserve the identity of each stream across restarts and replication reinitialization.
+ * A persistent stream_id in the apply info keeps apart the markers of copied logs without repeating their path
+ * in every marker. Restart reads the same ID; reinitialization deletes its markers and allocates a new ID.
  *
- * The markers only mean something next to the apply info of the same copied log: where the apply info is created
- * anew or deleted, the markers of that copied log are deleted in the same transaction (la_get_last_ha_applied_info,
- * la_delete_ha_apply_info, and restoreslave), so a marker left from another log stream cannot skip a commit.
+ * Reinitialization deletes the stream's markers and apply info in one transaction. A replacement row for the
+ * same running stream retains its ID; a new stream receives a new ID, so old markers cannot skip its commits.
  * The table is a system catalog so that a user statement replicated from the master cannot drop or change it.
  *
  * A row change must not be applied twice. An INSERT of key 1 followed by an UPDATE of key 1 to 2 brings key 1
@@ -3260,12 +3333,12 @@ la_load_applied_tx_markers (void)
   la_free_applied_tx_markers ();
 
   snprintf (query_buf, sizeof (query_buf),
-	    "SELECT commit_pageid, commit_offset FROM [%s] WHERE copied_log_path = ? "
+	    "SELECT commit_pageid, commit_offset FROM [%s] WHERE stream_id = ? "
 	    "AND (commit_pageid > ? OR (commit_pageid = ? AND commit_offset > ?)) "
 	    "ORDER BY commit_pageid, commit_offset;", LA_APPLIED_TX_MARKER_NAME);
 
-  db_make_varchar (&in_value[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  assert (la_Info.stream_id > 0);
+  db_make_bigint (&in_value[0], la_Info.stream_id);
   db_make_bigint (&in_value[1], la_Info.last_committed_lsa.pageid);
   db_make_bigint (&in_value[2], la_Info.last_committed_lsa.pageid);
   db_make_int (&in_value[3], la_Info.last_committed_lsa.offset);
@@ -3439,7 +3512,7 @@ la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * com
       goto end;
     }
 
-  attributes[0] = classobj_find_attribute (class_, "copied_log_path", 0);
+  attributes[0] = classobj_find_attribute (class_, "stream_id", 0);
   attributes[1] = classobj_find_attribute (class_, "commit_pageid", 0);
   attributes[2] = classobj_find_attribute (class_, "commit_offset", 0);
   if (attributes[0] == NULL || attributes[1] == NULL || attributes[2] == NULL)
@@ -3450,7 +3523,8 @@ la_add_applied_tx_marker (LA_APPLY_WORKER_CONTEXT * context, const LOG_LSA * com
     }
 
   COPY_OID (&context->marker_class_oid, ws_oid (class_mop));
-  db_make_varchar (&values[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  assert (la_Info.stream_id > 0);
+  db_make_bigint (&values[0], la_Info.stream_id);
   db_make_bigint (&values[1], commit_lsa->pageid);
   db_make_int (&values[2], commit_lsa->offset);
   object.classop = class_mop;
@@ -3523,18 +3597,17 @@ la_delete_applied_tx_markers (const LOG_LSA * upto_lsa)
   int in_value_count = 1;
   int res;
 
-  db_make_varchar (&in_value[0], 4096, la_Info.log_path, strlen (la_Info.log_path), LANG_SYS_CODESET,
-		   LANG_SYS_COLLATION);
+  assert (la_Info.stream_id > 0);
+  db_make_bigint (&in_value[0], la_Info.stream_id);
 
   if (upto_lsa == NULL)
     {
-      snprintf (query_buf, sizeof (query_buf), "DELETE FROM [%s] WHERE copied_log_path = ?;",
-		LA_APPLIED_TX_MARKER_NAME);
+      snprintf (query_buf, sizeof (query_buf), "DELETE FROM [%s] WHERE stream_id = ?;", LA_APPLIED_TX_MARKER_NAME);
     }
   else
     {
       snprintf (query_buf, sizeof (query_buf),
-		"DELETE FROM [%s] WHERE copied_log_path = ? "
+		"DELETE FROM [%s] WHERE stream_id = ? "
 		"AND (commit_pageid < ? OR (commit_pageid = ? AND commit_offset <= ?)) LIMIT ?;",
 		LA_APPLIED_TX_MARKER_NAME);
       db_make_bigint (&in_value[1], upto_lsa->pageid);
@@ -10442,7 +10515,12 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
       /* a worker still running could commit a marker of the old stream after the markers are deleted */
       la_stop_apply_workers ();
-      la_delete_ha_apply_info ();
+      error = la_delete_ha_apply_info ();
+      if (error != NO_ERROR)
+	{
+	  la_shutdown ();
+	  return error;
+	}
       (void) la_update_last_deleted_arv_num (la_Info.log_path_lockf_vdes, -1);
 
       la_Info.reinit_copylog = false;

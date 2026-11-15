@@ -4654,8 +4654,10 @@ delete_ha_applied_tx_markers (const char *keep_copied_log_path)
     }
   else
     {
-      snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s WHERE copied_log_path <> ?",
-		CT_HA_APPLIED_TX_MARKER_NAME);
+      snprintf (query_buf, sizeof (query_buf),
+		"DELETE FROM %s WHERE stream_id NOT IN "
+		"(SELECT stream_id FROM %s WHERE copied_log_path = ?)",
+		CT_HA_APPLIED_TX_MARKER_NAME, CT_HA_APPLY_INFO_NAME);
       db_make_varchar (&in_value, 4096, keep_copied_log_path, strlen (keep_copied_log_path), LANG_SYS_CODESET,
 		       LANG_SYS_COLLATION);
       res = db_execute_with_values (query_buf, &result, &query_error, 1, &in_value);
@@ -4784,8 +4786,8 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 	    "  schema_counter, "	/* 23 */
 	    "  commit_counter, "	/* 24 */
 	    "  fail_counter, "	/* 25 */
-	    "  start_time ) "	/* 26 */
-	    " VALUES ( ?, "	/* 1. db_name */
+	    "  start_time, "	/* 26 */
+	    "  stream_id ) " " VALUES ( ?, "	/* 1. db_name */
 	    "   ?, "		/* 2. db_creation_time */
 	    "   ?, "		/* 3. copied_log_path */
 	    "   ?, "		/* 4. committed_lsa_pageid */
@@ -4810,8 +4812,8 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 	    "   0, "		/* 23. schema_counter */
 	    "   0, "		/* 24. commit_counter */
 	    "   0, "		/* 25. fail_counter */
-	    "   NULL "		/* 26. start_time */
-	    "   ) ;", CT_HA_APPLY_INFO_NAME);
+	    "   NULL, "		/* 26. start_time */
+	    "   (SELECT last_stream_id FROM CLASS [%s]) " "   ) ;", CT_HA_APPLY_INFO_NAME, CT_HA_APPLY_INFO_NAME);
 
   in_value_idx = 0;
 
@@ -4840,7 +4842,16 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 
   AU_SAVE_AND_DISABLE (au_save);
 
-  res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
+  res = db_execute ("UPDATE CLASS [" CT_HA_APPLY_INFO_NAME "] "
+		    "SET last_stream_id = last_stream_id + 1;", &result, &query_error);
+  if (res >= 0)
+    {
+      res = db_query_end (result);
+    }
+  if (res >= 0)
+    {
+      res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
+    }
   if (res >= 0)
     {
       int error;
@@ -5165,7 +5176,18 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	}
 
     }
-  db_commit_transaction ();
+  error_code = db_commit_transaction ();
+  if (error_code != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      fprintf (stderr,
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE,
+			       RESTORESLAVE_MSG_HA_CATALOG_FAIL), db_creation_time,
+	       restart_arg.restart_repl_lsa.pageid, restart_arg.restart_repl_lsa.offset);
+      (void) db_abort_transaction ();
+      db_shutdown ();
+      return EXIT_FAILURE;
+    }
   db_shutdown ();
 
   return EXIT_SUCCESS;

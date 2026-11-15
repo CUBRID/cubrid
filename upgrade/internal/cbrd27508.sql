@@ -19,6 +19,17 @@
 -- get_ha_applied_tx_marker (schema_system_catalog_install.cpp). upgradedb marks them as system classes after the
 -- scripts run.
 
+-- A class attribute allocates IDs even after every apply-info row has been removed.
+ALTER TABLE _db_ha_apply_info ADD CLASS ATTRIBUTE last_stream_id BIGINT DEFAULT 0;
+ALTER TABLE _db_ha_apply_info ADD COLUMN stream_id BIGINT;
+UPDATE _db_ha_apply_info a SET stream_id =
+  (SELECT COUNT(*) + 1 FROM _db_ha_apply_info b
+   WHERE b.db_name < a.db_name OR (b.db_name = a.db_name AND b.copied_log_path < a.copied_log_path));
+UPDATE CLASS _db_ha_apply_info SET last_stream_id =
+  (SELECT COALESCE(MAX(stream_id), 0) FROM _db_ha_apply_info);
+ALTER TABLE _db_ha_apply_info MODIFY stream_id BIGINT NOT NULL;
+ALTER TABLE _db_ha_apply_info ADD UNIQUE (stream_id);
+
 -- parallel apply statistics of each applylogdb on this node, one row per applier
 CREATE TABLE _db_ha_apply_stat (
   db_name VARCHAR(255) NOT NULL,
@@ -84,8 +95,8 @@ GRANT SELECT ON _db_ha_apply_worker_stat TO information_schema;
 
 -- commits an applylogdb on this node has applied above its stored position, one row per commit
 CREATE TABLE _db_ha_applied_tx_marker (
-  copied_log_path VARCHAR(4096) NOT NULL,
+  stream_id BIGINT NOT NULL,
   commit_pageid BIGINT NOT NULL,
   commit_offset INTEGER NOT NULL,
-  UNIQUE (copied_log_path, commit_pageid, commit_offset)
+  UNIQUE (stream_id, commit_pageid, commit_offset)
 ) DONT_REUSE_OID;
