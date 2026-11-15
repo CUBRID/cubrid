@@ -6228,8 +6228,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	  status = DOMAIN_INCOMPATIBLE;
 	}
-      else if (original_type == DB_TYPE_CLOB && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR)
-	       && src == dest)
+      else if ((original_type == DB_TYPE_CLOB || original_type == DB_TYPE_CFILE)
+	       && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR) && src == dest)
 	{
 	  /* The legacy nested CLOB cast wrote dest, then its outer alias
 	   * handling replaced it with the untouched typed NULL temporary.
@@ -6250,7 +6250,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
       if ((desired_type == DB_TYPE_BIT || desired_type == DB_TYPE_VARBIT) && original_type != DB_TYPE_CHAR
 	  && original_type != DB_TYPE_VARCHAR && original_type != DB_TYPE_ENUMERATION && original_type != DB_TYPE_BIT
-	  && original_type != DB_TYPE_VARBIT && original_type != DB_TYPE_BLOB)
+	  && original_type != DB_TYPE_VARBIT && original_type != DB_TYPE_BLOB && original_type != DB_TYPE_BFILE)
 	{
 	  /* any other source is coerced as a bit string for the error that coercion sets */
 	  (void) db_bit_string_coerce (src, target, &data_stat);

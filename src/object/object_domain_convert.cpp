@@ -2780,6 +2780,20 @@ tp_value_convert_varbit_to_bit (const DB_VALUE *src, DB_VALUE *target, const TP_
   return status;
 }
 
+/* the bytes of a BLOB, or of a BFILE (develop's BLOB) */
+static int
+tp_lob_to_bit (const DB_VALUE *src, DB_VALUE *bits)
+{
+  return DB_VALUE_TYPE (src) == DB_TYPE_BFILE ? db_bfile_to_bit (src, NULL, bits) : db_blob_to_bit (src, NULL, bits);
+}
+
+/* the text of a CLOB, or of a CFILE (develop's CLOB), in the codeset cs */
+static int
+tp_lob_to_char (const DB_VALUE *src, const DB_VALUE *cs, DB_VALUE *chars)
+{
+  return DB_VALUE_TYPE (src) == DB_TYPE_CFILE ? db_cfile_to_char (src, cs, chars) : db_clob_to_char (src, cs, chars);
+}
+
 static TP_DOMAIN_STATUS
 tp_value_convert_blob_to_bit (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 			      date_conversion_error *error)
@@ -2792,7 +2806,7 @@ tp_value_convert_blob_to_bit (const DB_VALUE *src, DB_VALUE *target, const TP_DO
 
     db_make_null (&tmpval);
 
-    err = db_blob_to_bit (src, NULL, &tmpval);
+    err = tp_lob_to_bit (src, &tmpval);
     if (err == NO_ERROR)
       {
 	status = tp_value_convert_varbit_to_bit (&tmpval, target, desired_domain, error);
@@ -2838,7 +2852,7 @@ tp_value_convert_blob_to_varbit (const DB_VALUE *src, DB_VALUE *target, const TP
 
     db_make_null (&tmpval);
 
-    err = db_blob_to_bit (src, NULL, &tmpval);
+    err = tp_lob_to_bit (src, &tmpval);
     if (err == NO_ERROR)
       {
 	status = tp_value_convert_bit_to_bit (&tmpval, target, desired_domain, error);
@@ -3657,7 +3671,7 @@ tp_value_convert_clob_to_varchar (const DB_VALUE *src, DB_VALUE *target, const T
     db_make_null (&tmpval);
     /* convert directly from CLOB into charset of desired domain string */
     db_make_int (&cs, desired_domain->codeset);
-    err = db_clob_to_char (src, &cs, &tmpval);
+    err = tp_lob_to_char (src, &cs, &tmpval);
     if (err == NO_ERROR)
       {
 	TP_DOMAIN_STATUS nested_status =
@@ -4441,7 +4455,7 @@ tp_value_convert_clob_to_char (const DB_VALUE *src, DB_VALUE *target, const TP_D
     db_make_null (&tmpval);
     /* convert directly from CLOB into charset of desired domain string */
     db_make_int (&cs, desired_domain->codeset);
-    err = db_clob_to_char (src, &cs, &tmpval);
+    err = tp_lob_to_char (src, &cs, &tmpval);
     if (err == NO_ERROR)
       {
 	TP_DOMAIN_STATUS nested_status =
@@ -4504,6 +4518,26 @@ tp_value_convert_bit_to_blob (const DB_VALUE *src, DB_VALUE *target, const TP_DO
   err = db_bit_to_blob (src, target);
 
   return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_blob (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+			       date_conversion_error *error)
+{
+  return db_char_to_blob (src, target) < 0 ? DOMAIN_ERROR : DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_blob (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+				      date_conversion_error *error)
+{
+  DB_VALUE varchar_val;
+
+  if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+    {
+      return DOMAIN_ERROR;
+    }
+  return tp_value_convert_char_to_blob (&varchar_val, target, desired_domain, error);
 }
 
 static TP_DOMAIN_STATUS
@@ -5505,6 +5539,37 @@ tp_value_convert_blob_to_enumeration (const DB_VALUE *src, DB_VALUE *target, con
 	   status, exit);
   }
   return DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_enumeration (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+				      date_conversion_error *error)
+{
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  unsigned short val_idx = 0;
+  int val_str_size = 0;
+  const char *val_str = NULL;
+  bool exit = false;
+  DB_VALUE conv_val;
+  const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+
+  db_make_null (&conv_val);
+  if (src->domain.general_info.is_null)
+    {
+      db_make_null (target);
+      return DOMAIN_COMPATIBLE;
+    }
+
+  db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+  db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain), TP_DOMAIN_COLLATION (string_domain));
+  status = tp_value_convert_clob_to_varchar (src, &conv_val, string_domain, error);
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      val_str = db_get_string (&conv_val);
+      val_str_size = db_get_string_size (&conv_val);
+    }
+  return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size, status,
+	 exit);
 }
 
 static TP_DOMAIN_STATUS
@@ -7292,7 +7357,26 @@ tp_value_convert_json_scalar_to_clob (const DB_VALUE *src, DB_VALUE *target, con
   return status;
 }
 
-/* only a JSON string goes into BFILE/CFILE, as develop's BLOB/CLOB */
+/* only a JSON string goes into BLOB/BFILE/CFILE, as develop's BLOB/CLOB */
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_blob (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+				      date_conversion_error *error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  if (db_json_get_type (db_get_json_document (src)) == DB_JSON_STRING)
+    {
+      status = tp_value_convert_char_to_blob (&scalar, target, desired_domain, error);
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
 static TP_DOMAIN_STATUS
 tp_value_convert_json_scalar_to_bfile (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				       date_conversion_error *error)
@@ -7484,7 +7568,7 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  *  INTEGER              1  .=ccc........c....c...c..c.....c.....o....o
  *  FLOAT                2  .c=cc........c....c...c..c.....c.....o....o
  *  DOUBLE               3  .cc=c........c....c...c..c.....c.....o....o
- *  VARCHAR              4  .OOOo.....OOOO....O...OOOo.....OO...AoOOOOO
+ *  VARCHAR              4  .OOOo.....OOOO....O...OOOo.....OO.A.AoOOOOO
  *  OBJECT               5  .....o..........o..oo......................
  *  SET                  6  ......ooo..................................
  *  MULTISET             7  ......ooo..................................
@@ -7503,9 +7587,9 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  *  OID                 20  ....................o......................
  *  DB_VALUE            21  ...........................................
  *  NUMERIC             22  .cccc........c....c...c..c.....c.....o....o
- *  BIT                 23  ....O..................ooO.........A.o....o
- *  VARBIT              24  ....O..................ooO.........A.o....o
- *  CHAR                25  .OOOo.....OOOO....O...OOOo.....OO...AoOOOOO
+ *  BIT                 23  ....O..................ooO.......A.A.o....o
+ *  VARBIT              24  ....O..................ooO.......A.A.o....o
+ *  CHAR                25  .OOOo.....OOOO....O...OOOo.....OO.A.AoOOOOO
  *  NCHAR_DEPRECATED    26  ...........................................
  *  VARNCHAR_DEPRECATED 27  ...........................................
  *  RESULTSET           28  ............................=..............
@@ -7515,16 +7599,16 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  *  DATETIME            32  ....c......cc............c......=....acccco
  *  BFILE               33  ....A..................AAA.......=...A....O
  *  CFILE               34  ....A....................A........=..A....O
- *  BLOB                35  .......................AA..........=.......
+ *  BLOB                35  ....A..................AAA.........=.A....O
  *  CLOB                36  ....A....................A..........=A....O
- *  ENUMERATION         37  .oooo.....oooo....o...oooo.....oo..AAoooooo
+ *  ENUMERATION         37  .oooo.....oooo....o...oooo.....ooAAAAoooooo
  *  TIMESTAMPTZ         38  .aaac......cca....a...a..c.....ac....a=ccco
  *  TIMESTAMPLTZ        39  .aaac......cca....a...a..c.....ac....ac=cco
  *  DATETIMETZ          40  ....c......cc............c......c....acc=co
  *  DATETIMELTZ         41  ....c......cc............c......c....accc=o
  *  JSON                42  .oooO.............o...o..O.....o..........o
  *
- *  126 o, 115 c, 60 a (64 cells upper case), 23 =, 1525 '.'. JSON is one column but several inside:
+ *  127 o, 115 c, 69 a (74 cells upper case), 23 =, 1515 '.'. JSON is one column but several inside:
  *  tp_value_convert_json_scalar_to_<dst> accepts some scalar kinds only (a DATE takes DB_JSON_STRING alone); a kind not
  *  listed is DOMAIN_INCOMPATIBLE at the value.
  */
@@ -7767,6 +7851,7 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_DATETIMETZ:
 	  return tp_value_convert_datetimetz_to_char;
 	case DB_TYPE_CLOB:
+	case DB_TYPE_CFILE:
 	  return strict ? tp_value_convert_incompatible : tp_value_convert_clob_to_char;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_char;
@@ -7817,6 +7902,7 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_DATETIMETZ:
 	  return tp_value_convert_datetimetz_to_varchar;
 	case DB_TYPE_CLOB:
+	case DB_TYPE_CFILE:
 	  return strict ? tp_value_convert_incompatible : tp_value_convert_clob_to_varchar;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_varchar;
@@ -7855,6 +7941,7 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARBIT:
 	  return tp_value_convert_varbit_to_bit;
 	case DB_TYPE_BLOB:
+	case DB_TYPE_BFILE:
 	  return strict ? tp_value_convert_incompatible : tp_value_convert_blob_to_bit;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_bit;
@@ -7875,6 +7962,7 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARBIT:
 	  return tp_value_convert_bit_to_bit;
 	case DB_TYPE_BLOB:
+	case DB_TYPE_BFILE:
 	  return strict ? tp_value_convert_incompatible : tp_value_convert_blob_to_varbit;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_varbit;
@@ -8191,12 +8279,19 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	}
       break;
     case DB_TYPE_BLOB:
+      /* develop's BLOB row, as BFILE */
       switch (src)
 	{
-	/* a string, an ENUM or a JSON into BLOB is explicit only (CHAR_TO_BLOB, BLOB_FROM_FILE) */
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_blob;
 	case DB_TYPE_BIT:
 	case DB_TYPE_VARBIT:
 	  return strict ? tp_value_convert_incompatible : tp_value_convert_bit_to_blob;
+	case DB_TYPE_ENUMERATION:
+	  return strict ? tp_value_convert_incompatible : tp_value_convert_enumeration_to_blob;
+	case DB_TYPE_JSON:
+	  return tp_value_convert_json_scalar_to_blob;
 	default:
 	  break;
 	}
@@ -8257,9 +8352,11 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_DATETIMETZ:
 	  return tp_value_convert_datetimetz_to_enumeration;
 	case DB_TYPE_BLOB:
+	case DB_TYPE_BFILE:
 	  return strict ? tp_value_convert_incompatible : tp_value_convert_blob_to_enumeration;
 	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_varchar_to_enumeration;
+	case DB_TYPE_CFILE:
+	  return strict ? tp_value_convert_incompatible : tp_value_convert_clob_to_enumeration;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_enumeration;
 	case DB_TYPE_JSON:
