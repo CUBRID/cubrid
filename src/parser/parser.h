@@ -276,6 +276,7 @@ extern "C"
   extern PT_NODE *pt_bind_type_from_dbval (PARSER_CONTEXT *, PT_NODE *, DB_VALUE *);
 
   extern PT_NODE *pt_cnf (PARSER_CONTEXT * parser, PT_NODE * node);
+  extern PT_NODE *pt_cnf_where (PARSER_CONTEXT * parser, PT_NODE * node);
 
   extern PT_NODE *pt_sort_in_desc_order (PT_NODE * vlist);
 
