@@ -24,6 +24,8 @@
 
 #include <mutex>
 
+#include "log_impl.h"		/* LOG_FIND_CURRENT_TDES, log_tdes::is_under_sysop */
+#include "pl_session.hpp"	/* cubpl::get_session */
 #include "system.h"		/* UINT32, UINT64 */
 #include "system_parameter.h"	/* sysprm_get_range, PRM_ID_PARALLELISM */
 #include "thread_manager.hpp"	/* cubthread::system_core_count */
@@ -33,6 +35,51 @@
 
 namespace parallel_query
 {
+  /*
+   * is_under_system_operation () - would a worker of this thread block on the transaction's system operation?
+   *   return: true if no worker may be started
+   *
+   * Workers share the leader's transaction index. A worker that opens a system operation blocks on rmutex_topop while
+   * the leader waits for it (CBRD-27492).
+   *   e.g. file_create -> disk_reserve_sectors -> log_sysop_start for a temp file.
+   * The result depends on who owns the open system operation:
+   *   - none is open, or it ended between the two reads (the owner is empty): false
+   *   - this thread owns it: true. The leader waits for its workers while holding it.
+   *       e.g. the statement-level system operation of MERGE.
+   *   - a thread of the PL session owns it: true. lock_topop () lets those threads re-enter rmutex_topop.
+   *   - any other thread owns it: false. It ends without waiting for this thread (CBRD-27938).
+   *       e.g. a sibling worker in disk_reserve_sectors.
+   *
+   * rmutex_topop.owner is read without synchronization; a value other than this thread's only means "not this thread".
+   * TODO: with CBRD-27562 a worker no longer opens a system operation for temp files; check whether the owner
+   * comparison can then be dropped.
+   */
+  bool is_under_system_operation () noexcept
+  {
+    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES ();
+
+    if (tdes == NULL || !tdes->is_under_sysop ())
+      {
+	return false;
+      }
+
+    const thread_id_t owner = tdes->rmutex_topop.owner;
+
+    if (owner == thread_id_t ())
+      {
+	return false;	/* ended between the two reads */
+      }
+
+    if (owner == thread_get_thread_entry_info ()->get_id ())
+      {
+	return true;
+      }
+
+    cubpl::session *session = cubpl::get_session ();
+
+    return session != NULL && session->is_thread_involved (owner);
+  }
+
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
@@ -68,6 +115,11 @@ namespace parallel_query
 
     assert (hint_degree == -1 /* auto-compute */ || (hint_degree >= 0 && hint_degree <= PRM_MAX_PARALLELISM));
 
+    if (is_under_system_operation ())
+      {
+	return 0;	/* disable: workers sharing this transaction would deadlock on its system operation (CBRD-27492) */
+      }
+
     switch (type)
       {
       case parallel_type::SCAN:
@@ -75,6 +127,11 @@ namespace parallel_query
 	break;
 
       case parallel_type::HASH_JOIN:
+	page_threshold = (UINT32) hash_join_page_threshold;
+	break;
+
+      case parallel_type::MERGE_JOIN:
+	/* like hash join, consumes a pair of join input list files — share its threshold */
 	page_threshold = (UINT32) hash_join_page_threshold;
 	break;
 
@@ -129,7 +186,8 @@ namespace parallel_query
       }
     else if ((UINT32) hint_degree >= start_degree)
       {
-	hint_degree = MIN (hint_degree, system_core_count);
+	/* reached only from the "hint_degree >= 0" branch above, so the unsigned cast cannot wrap */
+	hint_degree = (int) MIN ((std::size_t) hint_degree, system_core_count);
 
 	/* hint first, ignore the parallelism parameter */
 	if (num_pages < (UINT64) hint_degree)

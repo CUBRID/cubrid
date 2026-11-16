@@ -78,6 +78,10 @@
 #include "network_interface_cl.h"
 #endif
 
+#if defined (SERVER_MODE)
+#include "log_impl.h"
+#endif /* SERVER_MODE */
+
 #include "storage_common.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "heap_file.h"
@@ -113,6 +117,8 @@ static const int CSS_TCP_MIN_NUM_RETRIES = 3;
 #if !defined (SERVER_MODE)
 static void css_default_server_timeout_fn (void);
 static CSS_SERVER_TIMEOUT_FN css_server_timeout_fn = css_default_server_timeout_fn;
+static bool css_default_abort_server_wait_fn (void);
+static CSS_ABORT_SERVER_WAIT_FN css_abort_server_wait_fn = css_default_abort_server_wait_fn;
 static bool css_default_check_server_alive_fn (const char *db_name, const char *db_host);
 CSS_CHECK_SERVER_ALIVE_FN css_check_server_alive_fn = css_default_check_server_alive_fn;
 #endif /* !SERVER_MODE */
@@ -202,6 +208,13 @@ css_default_server_timeout_fn (void)
 {
   /* do nothing */
   return;
+}
+
+static bool
+css_default_abort_server_wait_fn (void)
+{
+  /* do nothing */
+  return false;
 }
 
 #elif defined(WINDOWS)
@@ -425,6 +438,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 		{
 		  css_server_timeout_fn ();
 		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
 #endif /* !SERVER_MODE */
 
 	      continue;
@@ -468,6 +488,13 @@ css_readn (SOCKET fd, char *ptr, int nbytes, int timeout)
 	      if (css_server_timeout_fn != NULL)
 		{
 		  css_server_timeout_fn ();
+		}
+
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
 		}
 #endif /* !SERVER_MODE */
 
@@ -1032,6 +1059,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
 	{
 	  if (errno == EINTR)
 	    {
+#if !defined (SERVER_MODE)
+	      if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+		{
+		  /* the client gave this wait up (e.g. it is shutting down) */
+		  errno = EINTR;
+		  return -1;
+		}
+#endif /* !SERVER_MODE */
+
 	      continue;
 	    }
 
@@ -1083,6 +1119,15 @@ css_vector_send (SOCKET fd, struct iovec *vec[], int *len, int bytes_written, in
       /* n < 0 */
       if (unlikely (errno == EINTR))
 	{
+#if !defined (SERVER_MODE)
+	  if (css_abort_server_wait_fn != NULL && css_abort_server_wait_fn ())
+	    {
+	      /* the client gave this wait up (e.g. it is shutting down) */
+	      errno = EINTR;
+	      return -1;
+	    }
+#endif /* !SERVER_MODE */
+
 	  continue;
 	}
 
@@ -1940,6 +1985,18 @@ void
 css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN callback_fn)
 {
   css_server_timeout_fn = callback_fn;
+}
+
+/*
+ * css_register_abort_server_wait_fn () - regist the callback function
+ *   return: void
+ *   callback_fn(in): asked when a wait for the server is interrupted by a
+ *                    signal; returning true gives that wait up
+ */
+void
+css_register_abort_server_wait_fn (CSS_ABORT_SERVER_WAIT_FN callback_fn)
+{
+  css_abort_server_wait_fn = callback_fn;
 }
 #endif /* !SERVER_MODE */
 
@@ -2844,6 +2901,17 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
  void
  css_conn_entry::set_tran_index (int tran_index)
  {
+#if defined (SERVER_MODE)
+   /* on the server this is only the index a packet claims. The
+    * connection runs under the index the server assigned (get_tran_index ()),
+    * so the claim is not stored; one that differs is logged once. */
+   if (tran_index != NULL_TRAN_INDEX && tran_index != owned_tran_index && !reported_foreign_tran_index)
+     {
+       reported_foreign_tran_index = true;
+       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CSS_TRAN_INDEX_NOT_OWNED, 2, tran_index,
+	       owned_tran_index.load ());
+     }
+#else
    // can never be system transaction index
    if (tran_index == LOG_SYSTEM_TRAN_INDEX)
      {
@@ -2851,13 +2919,91 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
        tran_index = NULL_TRAN_INDEX;
      }
    transaction_id = tran_index;
+#endif /* SERVER_MODE */
+ }
+
+ /*
+  * css_conn_entry::assign_tran_index () - the index the server gave this
+  *   connection (client registration or 2PC attach); NULL_TRAN_INDEX for none.
+  */
+ void
+ css_conn_entry::assign_tran_index (int tran_index)
+ {
+   reported_foreign_tran_index = false;
+   owned_tran_index = tran_index;
+   transaction_id = tran_index;
+ }
+
+ /*
+  * css_conn_entry::claim_tran_index () - assign the index only if the connection
+  *   has none yet, in one atomic step.
+  *   return: false if another registration on this connection got there first
+  */
+ bool
+ css_conn_entry::claim_tran_index (int tran_index)
+ {
+   int none = NULL_TRAN_INDEX;
+
+   if (!owned_tran_index.compare_exchange_strong (none, tran_index))
+     {
+       return false;
+     }
+   reported_foreign_tran_index = false;
+   transaction_id = tran_index;
+   return true;
+ }
+
+ /*
+  * css_conn_entry::release_tran_index () - forget the assigned index once it is released.
+  */
+ void
+ css_conn_entry::release_tran_index (void)
+ {
+   assign_tran_index (NULL_TRAN_INDEX);
+ }
+
+ /*
+  * css_conn_entry::get_lost_tran_index () - the index the server assigned this connection, once its
+  *   transaction has moved to another connection (2PC attach); NULL_TRAN_INDEX otherwise.
+  */
+ int
+ css_conn_entry::get_lost_tran_index (void)
+ {
+#if defined (SERVER_MODE)
+   int tran_index = owned_tran_index;
+
+   if (tran_index != NULL_TRAN_INDEX && get_tran_index () == NULL_TRAN_INDEX)
+     {
+       return tran_index;
+     }
+#endif /* SERVER_MODE */
+   return NULL_TRAN_INDEX;
  }
 
  int
  css_conn_entry::get_tran_index ()
  {
+#if defined (SERVER_MODE)
+   int tran_index = owned_tran_index;
+   LOG_TDES *tdes;
+
+   if (tran_index == NULL_TRAN_INDEX)
+     {
+       return NULL_TRAN_INDEX;
+     }
+
+   /* the index counts only while its transaction still belongs to this connection: a 2PC attach
+    * moves it to another connection, which may end it and leave the index to a new client */
+   tdes = LOG_FIND_TDES (tran_index);
+   if (tdes == NULL || tdes->client_id != client_id)
+     {
+       return NULL_TRAN_INDEX;
+     }
+   return tran_index;
+#else
    assert (transaction_id != LOG_SYSTEM_TRAN_INDEX);
    return transaction_id;
+#endif /* SERVER_MODE */
  }
 
  void

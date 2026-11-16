@@ -383,7 +383,10 @@ mvcc_satisfies_vacuum (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MV
  *   page_ptr(in): the page where the record reside
  *
  * Note: The function return a complex result since delete/update commands
- *	    needs to know not only if the row is visible or not
+ *	    needs to know not only if the row is visible or not.
+ *
+ *	 An inserter or deleter that has completed its MVCC stays in progress until it releases its self-lock, see
+ *	 logtb_is_active_other_mvccid ().
  */
 MVCC_SATISFIES_DELETE_RESULT
 mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
@@ -414,7 +417,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	    }
 	  return DELETE_RECORD_CAN_DELETE;
 	}
-      else if (MVCC_IS_REC_INSERTER_ACTIVE (thread_p, rec_header))
+      else if (logtb_is_active_other_mvccid (thread_p, rec_header->mvcc_ins_id))
 	{
 	  /* Record is inserted by an active transaction and is not visible to current transaction. */
 	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT))
@@ -456,7 +459,7 @@ mvcc_satisfies_delete (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
 	    }
 	  return DELETE_RECORD_SELF_DELETED;
 	}
-      else if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
+      else if (logtb_is_active_other_mvccid (thread_p, rec_header->mvcc_del_id))
 	{
 	  /* Record was deleted by an active transaction. Current transaction must wait until the deleter completes. */
 	  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT))
@@ -614,6 +617,61 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 	  return TOO_OLD_FOR_SNAPSHOT;
 	}
     }
+}
+
+/*
+ * mvcc_satisfies_committed () - Check whether a record version is the latest committed one, independently of any
+ *				 transaction snapshot.
+ *
+ * return	  : SNAPSHOT_SATISFIED when the version was inserted by a committed transaction (or by the current
+ *		    one) and is not deleted by a committed transaction (or by the current one); TOO_NEW_FOR_SNAPSHOT
+ *		    when another, still active transaction inserted it (the caller then falls back to the previous
+ *		    version, if any); TOO_OLD_FOR_SNAPSHOT when its deleter has committed or is the current transaction.
+ * thread_p (in)  : Thread entry.
+ * rec_header (in): MVCC record header.
+ * snapshot (in)  : The snapshot descriptor carrying this function.
+ *
+ * NOTE: This is mvcc_satisfies_dirty () minus the uncommitted versions of other transactions: it yields the last
+ *	 committed state of a record without building the transaction snapshot. CBRD-27369 uses it to read the
+ *	 _db_histogram catalog at query compile time, where the reader must neither block on nor observe a concurrent
+ *	 UPDATE STATISTICS, and must not pin the transaction's MVCC snapshot before the statement itself runs.
+ *
+ * NOTE: The snapshot argument can never be the transaction snapshot!
+ */
+MVCC_SATISFIES_SNAPSHOT_RESULT
+mvcc_satisfies_committed (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot)
+{
+  assert (rec_header != NULL && snapshot != NULL);
+
+  if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID) && !MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header)
+      && MVCC_IS_REC_INSERTER_ACTIVE (thread_p, rec_header))
+    {
+      /* inserted by another transaction that has not committed yet */
+      return TOO_NEW_FOR_SNAPSHOT;
+    }
+
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
+    {
+      /* committed (or own) insert, not deleted.  'committed' is relative to OTHER transactions: like
+       * mvcc_satisfies_dirty, this transaction's own uncommitted insert is visible and its own
+       * uncommitted delete (below) hides the row.  Callers that want "what a new transaction would
+       * see" must exclude their own dirty objects themselves. */
+      return SNAPSHOT_SATISFIED;
+    }
+
+  if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
+    {
+      return TOO_OLD_FOR_SNAPSHOT;
+    }
+
+  if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
+    {
+      /* deleted by another transaction that has not committed yet: still the last committed version */
+      return SNAPSHOT_SATISFIED;
+    }
+
+  /* the deleter has committed */
+  return TOO_OLD_FOR_SNAPSHOT;
 }
 
 /*

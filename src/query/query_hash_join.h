@@ -34,17 +34,6 @@
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*
- * Debug Macros
- */
-
-#define HASHJOIN_PROFILE_TIME 0
-#define HASHJOIN_COLLISION_RATE 0
-#define HASHJOIN_DUMP_PARTITION 0
-#define HASHJOIN_DUMP_HASH_TABLE 0
-#define HASHJOIN_DUMP_BUILD 0
-#define HASHJOIN_DUMP_PROBE 0
-
-/*
  * Forward Declarations
  */
 
@@ -55,6 +44,7 @@ namespace parallel_query
 
 struct xasl_node;
 struct tp_domain;
+struct DOMAIN_COMPARE;
 
 typedef struct xasl_node XASL_NODE;
 typedef struct tp_domain TP_DOMAIN;
@@ -83,33 +73,13 @@ typedef enum hashjoin_merge_method
   HASHJOIN_MERGE_CONNECT
 } HASHJOIN_MERGE_METHOD;
 
-typedef enum hashjoin_profile_step
-{
-  HASHJOIN_PROFILE_NONE = 0,
-  HASHJOIN_PROFILE_BUILD_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_BUILD_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_BUILD_INSERT,	/* hjoin_build_key */
-  HASHJOIN_PROFILE_PROBE_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_PROBE_SEARCH,	/* hjoin_probe_key */
-  HASHJOIN_PROFILE_PROBE_MATCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_ADD,	/* hjoin_merge_tuple_to_list_id */
-  HASHJOIN_PROFILE_MERGE	/* hjoin_merge_qlist */
-} HASHJOIN_PROFILE_STEP;
-
-typedef enum hashjoin_print_step
-{
-  HASHJOIN_PRINT_NONE = 0,
-  HASHJOIN_PRINT_READ_KEY,
-  HASHJOIN_PRINT_NOT_MATCHED_KEY,
-  HASHJOIN_PRINT_NOT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_FILL_EMPTY_KEY
-} HASHJOIN_PRINT_STEP;
-
 /*
  * Struct & Typedef Definitions
  */
+
+/* A hash join's runtime filter (query_hash_join.c, hjoin_rtf_*): the build input's keys, checked on the probe
+ * input's outermost scan before its nested scans run, so rows that cannot match never reach them. */
+typedef struct hjoin_runtime_filter HJOIN_RUNTIME_FILTER;
 
 typedef struct hashjoin_input
 {
@@ -123,6 +93,10 @@ typedef struct hashjoin_input_domain_info
 {
   TP_DOMAIN **domains;
   int *value_indexes;
+  /* [key] the converter of this input's value into the key's common domain (coerce_domains), NULL none */
+  TP_VALUE_CONVERTER *converters;
+  /* [key] the comparison of the two inputs' values once converted: tp_value_compare without coercion, decided */
+  DOMAIN_COMPARE *compares;
 } HASHJOIN_INPUT_DOMAIN_INFO;
 
 typedef struct hashjoin_domain_info
@@ -133,8 +107,8 @@ typedef struct hashjoin_domain_info
   /* Common domains of build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
-  /* Whether to use the coerce domain. */
-  bool need_coerce_domains;
+  /* the compiler decided the join from the inputs' column domains (XASL stream) */
+  bool decided;
 } HASHJOIN_DOMAIN_INFO;
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -190,43 +164,13 @@ typedef struct hashjoin_probe_stats : hashjoin_input_stats
 } HASHJOIN_PROBE_STATS;
 // *INDENT-ON*
 
-#if HASHJOIN_PROFILE_TIME
-typedef struct hashjoin_profile_stats
-{
-  struct
-  {
-    TSCTIMEVAL fetch;		/* hjoin_fetch_key */
-    TSCTIMEVAL hash;		/* qdata_hash_scan_key */
-    TSCTIMEVAL insert;		/* hjoin_build_key */
-  } build;
-
-  struct
-  {
-    TSCTIMEVAL fetch;		/* hjoin_fetch_key */
-    TSCTIMEVAL hash;		/* qdata_hash_scan_key */
-    TSCTIMEVAL search;		/* hjoin_probe_key */
-    TSCTIMEVAL match;		/* hjoin_fetch_key */
-    TSCTIMEVAL add;		/* hjoin_merge_tuple_to_list_id */
-  } probe;
-
-  struct
-  {
-    TSCTIMEVAL elapsed_time;	/* hjoin_fetch_key */
-    UINT64 fetches;
-    UINT64 ioreads;
-    UINT64 qualified_rows;
-  } merge;
-} HASHJOIN_PROFILE_STATS;
-#endif /* HASHJOIN_PROFILE_TIME */
-
 typedef struct hashjoin_start_stats
 {
   TSC_TICKS tick;
   UINT64 fetches;
   UINT64 ioreads;
-  HASHJOIN_PROFILE_STEP step;
 } HASHJOIN_START_STATS;
-#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, HASHJOIN_PROFILE_NONE }
+#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0 }
 
 typedef struct hashjoin_stats
 {
@@ -240,17 +184,14 @@ typedef struct hashjoin_stats
 
   bool swap_join_inputs;
 
-  double collision_rate;
+  /* the build read each tuple's hash from the hashes its input took as the tuples were written (HJOIN_PREHASH)
+   * instead of reading its keys and hashing them */
+  bool build_prehashed;
 
   HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS parallel;
   HASHJOIN_BUILD_STATS build;
   HASHJOIN_PROBE_STATS probe;
-
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_INPUT_STATS merge;
-  HASHJOIN_PROFILE_STATS profile;
-#endif				/* HASHJOIN_PROFILE_TIME */
 } HASHJOIN_STATS;
 
 typedef struct hashjoin_stats_group
@@ -260,6 +201,33 @@ typedef struct hashjoin_stats_group
   HASHJOIN_STATS *context_stats;
   UINT32 context_cnt;
 } HASHJOIN_STATS_GROUP;
+
+/* HJOIN_PREHASH: the build input's key hashes, taken as its tuples are written to its list.
+ *
+ * Armed on the input the plan builds from (hjoin_prehash_arm ()) before it runs; then every tuple
+ * qexec_end_one_iteration () writes to the input's list appends, in write order, the hash qdata_hash_scan_key ()
+ * gives the tuple's key values as the build reads them back from the list (hjoin_prehash_append ()), or marks the
+ * tuple as one with a NULL key, which the build skips.  The single build (hjoin_build ()) reads the hashes in step
+ * with its scan of the list instead of reading the keys and hashing them, when every tuple of the list has its
+ * hash (hjoin_prehash_for_build ()).  Owned by the join's node; the arrays are the arming thread's, freed by
+ * hjoin_prehash_release (). */
+typedef struct hjoin_prehash
+{
+  XASL_NODE *input;		/* the armed input (its hj_prehash points here), or NULL */
+  THREAD_ENTRY *owner;		/* the thread that armed it, the one that runs the join: the only one that appends */
+  const int *key_cols;		/* the input's key columns, in key order (merge_info) */
+  int key_cnt;
+  bool valid;			/* every tuple written so far has its hash, in write order */
+  struct qmgr_temp_file *tfile;	/* the list file the hashes were taken from (its tfile_vfid at the first tuple) */
+  UINT32 *hashes;		/* [cnt]: per tuple, the key hash before qdata_hash_scan_key_finish () */
+  INT64 cnt;
+  INT64 cap;
+  INT64 *null_rows;		/* [null_cnt], ascending: the tuples with a NULL key (no hash; the build skips them) */
+  INT64 null_cnt;
+  INT64 null_cap;
+  UINT64 mem_limit;		/* max_hash_list_scan_size: the arrays never grow past it */
+  INT64 max_cnt;		/* past this many tuples the hashes cannot be the build's (hjoin_check_partition ()) */
+} HJOIN_PREHASH;
 
 /* HASHJOIN_FETCH_INFO */
 typedef struct hashjoin_fetch_info
@@ -273,7 +241,6 @@ typedef struct hashjoin_fetch_info
    * which is a member of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT_DOMAIN_INFO *input;
   TP_DOMAIN **coerce_domains;
-  bool need_coerce_domains;
 
   /* True when the regu_list_pred values are ready in val_descr for the current tuple,
    * so a predicate can reuse them instead of preparing them again.
@@ -373,6 +340,8 @@ typedef struct hashjoin_context
   HASHJOIN_FETCH_INFO *probe;
 
   HASH_LIST_SCAN hash_scan;
+
+  OUTPTR_LIST *outptr_list;
   PRED_EXPR *during_join_pred;
   PRED_EXPR *after_join_pred;
   VAL_DESCR *val_descr;
@@ -386,23 +355,25 @@ typedef struct hashjoin_context
 /* HASHJOIN_MANAGER*/
 typedef struct hashjoin_manager
 {
-  /* Pointer to a member of HASHJOIN_PROC_NODE. */
+  /* Reference to members of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT *outer;
   HASHJOIN_INPUT *inner;
   QFILE_LIST_MERGE_INFO *merge_info;
+  bool has_ineligible;
 
   /* Copy of a member of QFILE_LIST_MERGE_INFO. */
   JOIN_TYPE join_type;
   int key_cnt;
 
-  /* Pointers to members of XASL_NODE. */
-  PRED_EXPR *during_join_pred;
-  PRED_EXPR *after_join_pred;
+  /* Copy of a member of XASL_NODE (parallelism) as the requested degree, then the workers reserved, or 0 when
+   * hjoin_try_parallel () or hjoin_try_parallel_probe () decides on a serial join. */
   int num_parallel_threads;
 
-  /* Pointer to a member of XASL_STATE. */
+  /* Copy of a member of XASL_STATE. */
   QUERY_ID query_id;
-  VAL_DESCR *val_descr;
+
+  /* max_hash_list_scan_size, read once per join */
+  UINT64 mem_limit;
 
   HASHJOIN_CONTEXT single_context;
   HASHJOIN_CONTEXT *contexts;
@@ -419,46 +390,8 @@ typedef struct hashjoin_manager
 
   /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
-
-#if HASHJOIN_DUMP_HASH_TABLE
-  pthread_mutex_t dump_hash_table_mutex;
-#endif				/* HASHJOIN_DUMP_HASH_TABLE */
+  HJOIN_PREHASH *prehash;
 } HASHJOIN_MANAGER;
-
-/*
- * Macro Function Declarations
- */
-
-#if HASHJOIN_PROFILE_TIME
-#define HJOIN_PROFILE_START(thread_p, start_stats_p, step) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       hjoin_profile_start ((thread_p), (start_stats_p), (step)); \
-     }
-#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
-     }
-#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       assert ((step) == HASHJOIN_PROFILE_MERGE); \
-       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
-       (stats_p)->merge.qualified_rows = (rows); \
-     }
-#else
-#define HJOIN_PROFILE_START(thread_p, start_stats, step) ((void) 0)
-#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) ((void) 0)
-#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) ((void) 0)
-#endif /* HASHJOIN_PROFILE_TIME */
-
-#if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
-#define HJOIN_PRINT_TUPLE(list_id, tuple, step) \
-  hjoin_print_tuple ((list_id), (tuple), (step))
-#else
-#define HJOIN_PRINT_TUPLE(list_id, tuple, step) ((void) 0)
-#endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
 /*
  * Function Declarations
@@ -477,10 +410,12 @@ void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 
 /* Hash List Scan */
-int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
+int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, UINT64 mem_limit,
+		     QFILE_LIST_ID * list_id);
 void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 /* Hash Join Processing */
+TP_VALUE_CONVERTER hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_DOMAIN * common);
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);
@@ -490,9 +425,9 @@ DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe
 			    PRED_EXPR * pred, VAL_DESCR * val_descr);
 
 /* Merge QFILE_LIST_ID */
-int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
-				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
-				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
+int hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
+				QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
+				QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
 
 void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
 void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);
@@ -501,12 +436,40 @@ void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_s
 UINT64 *hjoin_trace_get_worker_stats (HASHJOIN_MANAGER * manager, int index);
 void hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 
-#if HASHJOIN_PROFILE_TIME
-void hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats, HASHJOIN_PROFILE_STEP step);
-void hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats, HASHJOIN_START_STATS * start_stats,
-			HASHJOIN_PROFILE_STEP step);
-#endif /* HASHJOIN_PROFILE_TIME */
-
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* runtime filter: which input runs first (NULL: none) and which one the filter goes on */
+extern XASL_NODE *hjoin_rtf_first_input (XASL_NODE * hashjoin_xasl, XASL_NODE ** target);
+/* after the first input ran: build the filter from its list and put it on the target, when it is small enough */
+extern int hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE * first, XASL_NODE * target);
+/* a row of the target's outermost scan: false when its key is in no build row.  A lookup only: the caller counts
+ * the row on its XASL node (rtf_rows, rtf_dropped) */
+extern bool hjoin_rtf_pass (const HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key);
+/* The first rows a node checks against the filter are its sample: once rtf_rows reaches this many, the caller asks
+ * hjoin_rtf_sample () whether the filter earns its lookups on this node -- it leaves the node (xasl->rtf NULL,
+ * rtf_off the rows checked) when it dropped fewer than one row in eight of them; true then.  The row path asks at
+ * the row that completes the sample, the batch consumer at the chunk that crosses it. */
+#define HJOIN_RTF_PROBE_SAMPLE (4096)
+extern bool hjoin_rtf_sample (XASL_NODE * xasl);
+/* the same lookup on a key already read as an integer (a DATE as its day count): the page batch's leaf */
+extern bool hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key);
+/* the lookup over n keys at once (the page batch's leaf, a chunk at a time): their slots hashed and fetched ahead of
+ * the probes, hit[i] set to whether keys[i] is in the filter */
+extern void hjoin_rtf_contains_n (const HJOIN_RUNTIME_FILTER * rtf, const INT64 * keys, int n, unsigned char *hit);
+extern bool hjoin_rtf_is_date (const HJOIN_RUNTIME_FILTER * rtf);
+/* a parallel worker's own XASL: the same filter, on the worker's value list cell; unbind adds the clone's counters
+ * to orig's (the node the clone was bound from) and drops the alias */
+extern void hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig);
+extern void hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig);
+extern void hjoin_rtf_release (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl);
+
+/* build input hashes (HJOIN_PREHASH): armed before the join's inputs run, appended per tuple the input writes,
+ * dropped when the input writes a tuple some other way, released with the join or the node's clear */
+extern void hjoin_prehash_arm (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl);
+extern void hjoin_prehash_append (THREAD_ENTRY * thread_p, XASL_NODE * input);
+extern void hjoin_prehash_drop (XASL_NODE * input);
+extern void hjoin_prehash_release (THREAD_ENTRY * thread_p, HJOIN_PREHASH * prehash);
+#endif
 
 #endif /* _QUERY_HASH_JOIN_H_ */

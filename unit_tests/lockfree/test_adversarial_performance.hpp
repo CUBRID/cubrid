@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,19 +16,12 @@
  *
  */
 
+#ifndef _TEST_ADVERSARIAL_PERFORMANCE_HPP_
+#define _TEST_ADVERSARIAL_PERFORMANCE_HPP_
 
-/*
- * cas_error_log.h -
- */
+namespace test_lockfree
+{
+  int test_adversarial_performance ();
+}
 
-#ifndef	_CAS_ERROR_LOG_H_
-#define	_CAS_ERROR_LOG_H_
-
-#ident "$Id$"
-
-extern void cas_error_log_open (char *br_name);
-extern void cas_error_log_close (bool flag);
-extern void cas_error_log_write (int dbms_errno, const char *dbms_errmsg);
-extern char *cas_error_log_get_eid (char *buf, size_t bufsz);
-
-#endif /* _CAS_ERROR_LOG_H_ */
+#endif // !_TEST_ADVERSARIAL_PERFORMANCE_HPP_

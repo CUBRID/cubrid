@@ -56,7 +56,13 @@ T_SHM_SHARD_CONN *shm_conn_p = NULL;
 static int proxy_shm_initialize (void);
 /* END OF SHARD SHM */
 
-bool proxy_Keep_running;
+/* Cleared by cleanup() on SIGTERM/SIGINT to request a graceful shutdown that is
+ * carried out from the main loop. Initialised here rather than in main() so a
+ * signal arriving during start-up is not overwritten afterwards.
+ * volatile sig_atomic_t: written from a signal handler and polled by the loop,
+ * so the compiler must not cache it. 
+ */
+volatile sig_atomic_t proxy_Keep_running = true;
 
 static void cleanup (int signo);
 
@@ -82,12 +88,11 @@ proxy_term (void)
 static void
 cleanup (int signo)
 {
-  signal (signo, SIG_IGN);
 
-  proxy_term ();
-  exit (0);
+  (void) signo;
 
-  return;
+  /* Avoid async-signal-unsafe functions in signal handlers to prevent aborts; defer graceful shutdown to the main loop. */
+  proxy_Keep_running = false;
 }
 
 int
@@ -222,8 +227,7 @@ main (int argc, char *argv[])
     }
 
   PROXY_LOG (PROXY_LOG_MODE_ERROR, "Shard proxy started.");
-  proxy_Keep_running = true;
-  while (proxy_Keep_running == true)
+  while (proxy_Keep_running)
     {
       /*
        * Since every operation in proxy main is non-blocking

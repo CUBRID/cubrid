@@ -718,7 +718,7 @@ $ LOADDB
 645 시스템 에러: 트랜잭션 "%2$d"의 상태 "%1$s" (인덱스 "%3$d")은(는)\n 클라이언트 postpone/undo action을 적용하기 위한 올바른 상태가 아니기 때문에 무시됩니다.
 646 시스템 에러: 로그 인덱스 "%1$s"을(를) 위한 compensating 레코드가 없습니다.\n compensating 레코드가 없으면 crash recovery가 올바르게 끝나지 않습니다.
 647 백업 "%1$s"은(는) 주어진 데이터베이스에 속하지 않습니다. 
-648 백업이 현재 "%1$s" release "%2$s"와 호환되지 않습니다.
+648 백업(release "%3$s")이 현재 "%1$s" release "%2$s"와 호환되지 않습니다.
 649 주어진 precision %1$d는 유효하지 않습니다; %2$d에서 %3$d사이의 값이어야 합니다.
 650 'max_clients=%1$d'를 위한 충분한 스레드를 생성하지 못했습니다.
 651 %2$d 개의 스레드 각각에 정렬 버퍼 %1$d을(를) 할당할 수 없습니다.
@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 스트림 세션 오류: %1$s.
+1218 스트림이 열려 있지 않음: %1$s.
+1219 지원하지 않는 스트림: %1$s.
+1220 잘못된 스트림 사용: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1484,14 +1484,39 @@ $ LOADDB
 
 1379 CDC: 클라이언트에 전달한 추출 위치 (%1$lld|%2$d) 때문에 archive log 볼륨 %3$d 를 보존합니다.
 
-1380 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
+1380 PARALLEL_ENABLE로 선언되었거나 병렬 질의 워커에서 실행 중인 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
 
 1381 시스템 메타데이터가 현재 CUBRID 버전과 호환되지 않습니다. 'cubrid upgradedb'를 실행하세요.
 1382 시스템 메타데이터 버전이 현재 CUBRID 버전이 지원하는 것보다 최신입니다. 다운그레이드는 지원되지 않습니다.
 
+<<<<<<< HEAD
 1383 속성 "%1$s"의 저장된 DEFAULT 식을 복원할 수 없습니다.
 
 1384 마지막 에러
+=======
+1383 %1$s에서 질의 노드의 도메인이 확정되지 않았습니다 (질의 %2$s, 노드 %3$d, 도메인 %4$s).
+
+1384 세션변수 @%1$s 의 타입은 이 문장에서 %2$s 이며, %3$s 가 아닙니다.
+
+1385 유효하지 않은 사용자명 또는 비밀번호입니다.
+
+1386 HA repl info: 시리얼 "%1$s"의 복제된 _db_serial 이미지를 이 노드에 적용하지 않고 (%2$s) 이 노드의 행을 유지합니다: current_val %3$s, 이미지 %4$s, 블록 끝 %5$s.
+
+1387 sub-client %2$d개가 살아 있는 동안에는 %1$s을(를) 실행할 수 없습니다.
+1388 main client가 연결되어 있지 않거나 재시작 중이므로 sub-client를 시작할 수 없습니다.
+1389 %1$s은(는) main client 스레드에서 호출할 수 없습니다.
+
+1390 세션 %1$u의 비밀값이 일치하지 않습니다.
+1391 세션 %1$u은(는) 이 연결의 세션이 아니므로 종료하거나 유지할 수 없습니다.
+
+1392 연결이 트랜잭션 인덱스 %1$d 를 사용했으나, 서버가 이 연결에 할당한 인덱스는 %2$d 입니다. 할당된 인덱스를 사용했습니다.
+
+1393 시스템 생성 stored procedure를 변경(alter)할 수 없습니다.
+
+1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
+
+1395 마지막 에러
+>>>>>>> upstream/develop
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1657,8 +1682,8 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
 136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
-138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
+140 FILL_FACTOR 인자 값은 %1$d에서 %2$d까지 허용됩니다.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -2006,7 +2031,12 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
+<<<<<<< HEAD
 344 유효하지 않은 DEFAULT 절: 괄호 없는 식은 레거시 기본값 함수에만 허용됩니다. 식을 괄호로 감싸십시오. 예: DEFAULT (...).
+=======
+344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
+345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
+>>>>>>> upstream/develop
 
 
 

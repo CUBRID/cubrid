@@ -800,6 +800,13 @@ intl_prevchar_euc (const unsigned char *s, const unsigned char *s_start, int *pr
   assert (s != NULL);
   assert (s > s_start);
 
+  /* every byte of a multi-byte EUC char is 8-bit, so an ASCII byte is a char of its own */
+  if (!IS_8BIT (*(s - 1)))
+    {
+      *prev_char_length = 1;
+      return s - 1;
+    }
+
   if (s - 3 >= s_start && *(s - 3) == SS3)
     {
       *prev_char_length = 3;

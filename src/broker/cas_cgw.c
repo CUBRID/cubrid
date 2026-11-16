@@ -136,7 +136,14 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_STREAM_SEND_DATA */
+  fn_not_supported,		/* CAS_FC_STREAM_END */
+  fn_not_supported,		/* CAS_FC_STREAM_INIT */
+  fn_not_supported,		/* CAS_FC_STREAM_ABORT */
+  fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_not_supported,		/* CAS_FC_STREAM_READ */
+  fn_not_supported		/* CAS_FC_STREAM_RELEASE */
 };
 
 static const char *server_func_name[] = {
@@ -183,8 +190,20 @@ static const char *server_func_name[] = {
   "prepare_and_execute",
   "cursor_close",
   "get_shard_info",
-  "set_cas_change_mode"
+  "set_cas_change_mode",
+  "stream_send_data",
+  "stream_end",
+  "stream_init",
+  "stream_abort",
+  "stream_read_open",
+  "stream_read",
+  "stream_release"
 };
+
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
 
 static int cgw_cas_main (void);
 static int cgw_cas_init (void);
@@ -199,7 +218,7 @@ static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, 
 				 char *db_name, char *db_user, const char *url, bool is_new_connection);
 static void cgw_cleanup_session (void);
 
-static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
+static void cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info);
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
 
 
@@ -218,17 +237,7 @@ main (int argc, char *argv[])
   int res = 0;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cas_sig_handler);
-  signal (SIGINT, cas_sig_handler);
-  signal (SIGSEGV, cas_sig_handler);
-  signal (SIGABRT, cas_sig_handler);
-  signal (SIGFPE, cas_sig_handler);
-  signal (SIGILL, cas_sig_handler);
-  signal (SIGBUS, cas_sig_handler);
-  signal (SIGSYS, cas_sig_handler);
-  signal (SIGUSR1, SIG_IGN);
-  signal (SIGPIPE, SIG_IGN);
-  signal (SIGXFSZ, SIG_IGN);
+  cas_register_signal_handlers ();
 #endif /* WINDOWS */
 
   if (cgw_cas_init () < 0)
@@ -259,7 +268,7 @@ main (int argc, char *argv[])
 static int
 cgw_cas_main (void)
 {
-  CGW_CONTEXT cgw_ctx = { 0 };
+  CGW_CONTEXT cgw_ctx = { };
   CAS_MAIN_OPS ops = {
     .init_specific = cgw_init,	/* CGW specific initialization */
     .pre_db_connect = cgw_pre_db_connect,
@@ -289,7 +298,7 @@ cgw_cas_main (void)
 }
 
 static void
-cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
+cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info)
 {
   char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
   char *p = msgbuf;
@@ -485,6 +494,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   int con_status_to_restore, old_con_status;
   T_SERVER_FUNC server_fn;
+  bool func_code_unknown;
   FN_RETURN fn_ret = FN_KEEP_CONN;
 
   error_info_clear ();
@@ -538,7 +548,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	  if (cas_log_msg == NULL)
 	    {
-	      if (is_net_timed_out ())
+	      if (cas_shutdown_signo)
+		{
+		  cas_log_msg = "SHUTDOWN REQUESTED";
+		}
+	      else if (is_net_timed_out ())
 		{
 		  if (as_info->reset_flag == TRUE)
 		    {
@@ -595,7 +609,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       return FN_CLOSE_CONN;
     }
 
-  if (func_code <= 0 || func_code >= CAS_FC_MAX)
+  if (func_code <= 0 || func_code >= CAS_FC_PROBE_MAX)
     {
       FREE_MEM (argv);
       FREE_MEM (read_msg);
@@ -603,6 +617,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
+  /* a code a later release adds: answered as not implemented, as cas.c does */
+  func_code_unknown = (func_code >= CAS_FC_MAX);
 
   /* PROTOCOL_V2 is used only 9.0.0 */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
@@ -622,7 +638,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   con_status_to_restore = -1;
 
-  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code) || func_code_unknown)
     {
       if (is_first_request == true)
 	{
@@ -650,26 +666,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       con_status_before_check_cas = -1;
     }
 
-  strcpy (as_info->log_msg, server_func_name[func_code - 1]);
+  strcpy (as_info->log_msg, func_code_unknown ? "fn_not_supported" : server_func_name[func_code - 1]);
 
-  server_fn = server_fn_table[func_code - 1];
-
-  if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
-    {
-      assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
-      if (prev_cas_info[CAS_INFO_STATUS] != client_msg_header.info_ptr[CAS_INFO_STATUS])
-	{
-	  cas_log_debug (ARG_FILE_LINE,
-			 "[%d][PREV : %d, RECV : %d], " "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
-			 "[JID : %d] \n", func_code - 1, prev_cas_info[CAS_INFO_STATUS],
-			 client_msg_header.info_ptr[CAS_INFO_STATUS], prev_cas_info[CAS_INFO_RESERVED_1],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1], prev_cas_info[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
-	}
-#endif /* end for debug */
-    }
+  server_fn = func_code_unknown ? fn_not_supported : server_fn_table[func_code - 1];
 
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
@@ -723,9 +722,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
     {
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
-
-  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
-		 err_info.err_number);
 
   if (con_status_to_restore != -1)
     {
@@ -837,15 +833,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	{
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
 	}
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
-      prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
-      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
-      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
-#endif /* end for debug */
-
-
 
       *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
       memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr, NET_BUF_HEADER_MSG_SIZE);

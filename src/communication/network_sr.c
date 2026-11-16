@@ -434,6 +434,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_key_type;
 
+  req_p = &net_Requests[NET_SERVER_BTREE_COMPACT_OVERFLOW];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sbtree_compact_overflow;
+
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;
@@ -460,6 +464,10 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
 
+  req_p = &net_Requests[NET_SERVER_QST_LOG_STATS_PROGRESS];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sqst_log_stats_progress;
+
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;
@@ -483,8 +491,14 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_SHA1_PLANS];
   req_p->processing_function = sqmgr_drop_query_plans_by_sha1;
 
+  req_p = &net_Requests[NET_SERVER_QM_QUERY_DROP_CLONES];
+  req_p->processing_function = sqmgr_drop_query_clones;
+
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_PLANS];
   req_p->processing_function = sqmgr_dump_query_plans;
+
+  req_p = &net_Requests[NET_SERVER_QM_BIND_VARIANT];
+  req_p->processing_function = sqmgr_bind_variant;
 
   req_p = &net_Requests[NET_SERVER_QM_QUERY_DUMP_CACHE];
   req_p->processing_function = sqmgr_dump_query_cache;
@@ -707,6 +721,38 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_LD_UPDATE_STATS];
   req_p->processing_function = sloaddb_update_stats;
 
+  /* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+  req_p = &net_Requests[NET_SERVER_STREAM_INIT];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_from_init;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_SEND_DATA];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_send_data;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_END];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sstream_end;
+
+  /* the only one of the four without CHECK_DB_MODIFICATION: it writes nothing, and a server that
+   * turned read-only mid-stream would otherwise refuse the request that cleans the stream up */
+  req_p = &net_Requests[NET_SERVER_STREAM_ABORT];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_abort;
+
+  /* the download family reads, so a read-only server serves it */
+  req_p = &net_Requests[NET_SERVER_STREAM_READ_OPEN];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read_open;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_READ];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_read;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_RELEASE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_release;
+
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;
@@ -743,7 +789,16 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
   req_p->processing_function = scdc_end_session;
 
-  /* flashback */
+  /* the CDC channel authenticates itself with these two, so they run before any
+   * authorization state exists on the connection */
+  req_p = &net_Requests[NET_SERVER_CDC_AUTH_CHALLENGE];
+  req_p->processing_function = scdc_auth_challenge;
+
+  req_p = &net_Requests[NET_SERVER_CDC_AUTH_RESPONSE];
+  req_p->processing_function = scdc_auth_response;
+
+  /* flashback : DBA-only, checked first thing in each handler with
+   * log_extract_check_authorization (), the function CDC uses too */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
   req_p->processing_function = sflashback_get_summary;
 
@@ -798,6 +853,7 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
   net_server_func func;
   int status = CSS_NO_ERRORS;
   int error_code;
+  int lost_tran_index;
   CSS_CONN_ENTRY *conn;
 
   conn = thread_p->conn_entry;
@@ -836,6 +892,17 @@ net_server_request (THREAD_ENTRY * thread_p, unsigned int rid, int request, int 
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_NET_UNKNOWN_SERVER_REQ, 0);
       return_error_to_client (thread_p, rid);
+      goto end;
+    }
+
+  /* the connection's transaction has moved to another connection (2PC attach), so it has
+   * no transaction to run the request in */
+  lost_tran_index = conn->get_lost_tran_index ();
+  if (lost_tran_index != NULL_TRAN_INDEX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, lost_tran_index);
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (conn, rid);
       goto end;
     }
 

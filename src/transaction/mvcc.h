@@ -278,6 +278,8 @@ extern MVCC_SATISFIES_DELETE_RESULT mvcc_satisfies_delete (THREAD_ENTRY * thread
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							    MVCC_SNAPSHOT * snapshot);
+extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_committed (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
+								MVCC_SNAPSHOT * snapshot);
 extern bool mvcc_is_mvcc_disabled_class (const OID * class_oid);
 
 #endif /* _MVCC_H_ */

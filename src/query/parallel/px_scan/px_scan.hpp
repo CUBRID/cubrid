@@ -63,7 +63,6 @@ namespace parallel_scan
 	  m_input_handler (nullptr),
 	  m_result_handler (nullptr),
 	  m_on_trace (false),
-	  m_px_stats_initialized_by_me (false),
 	  m_result_handler_read_initialized (false),
 	  m_task_started (false),
 	  m_trace_handler (),
@@ -74,7 +73,6 @@ namespace parallel_scan
 	  m_is_grouped (is_grouped),
 	  m_is_cached_scan (is_cached_scan),
 	  m_uses_xasl_clone (false),
-	  m_g_agg_domain_resolve_need (false),
 	  m_list_id (list_id),
 	  m_indx_info (indx_info)
       {}
@@ -110,7 +108,6 @@ namespace parallel_scan
       input_handler_t *m_input_handler;
       result_handler<result_type> *m_result_handler;
       bool m_on_trace;
-      bool m_px_stats_initialized_by_me;
       bool m_result_handler_read_initialized;
       bool m_task_started;
       trace_handler m_trace_handler;
@@ -122,7 +119,6 @@ namespace parallel_scan
       bool m_is_grouped;
       bool m_is_cached_scan;	/* cached-scan activation for the driving scan, decided in qexec_open_scan () */
       bool m_uses_xasl_clone;
-      bool m_g_agg_domain_resolve_need;
       QFILE_LIST_ID *m_list_id;
       INDX_INFO *m_indx_info;
   };

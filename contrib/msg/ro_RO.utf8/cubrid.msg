@@ -1284,10 +1284,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 Nu mai există suficiente date de citit din stream-ul %1$s de la poziţia %2$lld, dimensiunea %3$zu.
 1216 Id-ul despachetat: %1$d, nu este valid.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Stream session error: %1$s.
+1218 The stream is not open: %1$s.
+1219 The stream is not supported: %1$s.
+1220 Invalid use of a stream: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1613,7 +1613,6 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 Nu au fost specificate opțiuni pentru ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
-138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Memorie epuizată.

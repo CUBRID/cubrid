@@ -89,9 +89,6 @@ extern T_ERROR_INFO err_info;
 extern char stripped_column_name;
 extern char cas_client_type;
 
-/* CAS info buffer */
-extern char prev_cas_info[CAS_INFO_SIZE];
-
 /* Network socket */
 extern SOCKET new_req_sock_fd;
 

@@ -830,11 +830,12 @@ namespace cubmethod
     int stmt_id = db_compile_statement (m_session);
     if (stmt_id < 0)
       {
-	m_stmt_type = get_stmt_type (m_sql_stmt);
-	if (stmt_id == ER_PT_SEMANTIC && m_stmt_type != CUBRID_STMT_SELECT && m_stmt_type != CUBRID_MAX_STMT_TYPE)
+	/* the caller reads this for DDL audit even on failure; prepare () closes the session afterwards */
+	if (m_session->statements && m_session->statements[0])
 	  {
-	    close_and_free_session ();
+	    m_stmt_type = m_session->statements[0]->node_type;
 	  }
+
 	m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
 	m_is_prepared = false;
 	return ER_FAILED;
@@ -868,6 +869,10 @@ namespace cubmethod
 	m_error_ctx.set_error (METHOD_CALLBACK_ER_INVALID_CALL_STMT, NULL, __FILE__, __LINE__);
 	return ER_FAILED;
       }
+
+    /* skip leading whitespace/comments before classifying the statement */
+    std::size_t pos = skip_leading_whitespace_and_comment (sql_stmt_copy, 0);
+    sql_stmt_copy = sql_stmt_copy.substr (pos);
 
     str_trim (sql_stmt_copy);
     int stmt_type = get_stmt_type (sql_stmt_copy);
