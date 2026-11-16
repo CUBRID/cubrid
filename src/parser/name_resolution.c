@@ -12206,12 +12206,14 @@ pt_find_static_sql_host_var (const PARSER_CONTEXT * parser, const PT_NODE * name
     {
       if (parser->static_sql_host_vars[i].end == name_node->buffer_pos)
 	{
-	  assert (parser->static_sql_host_vars[i].label != NULL
-		  && strcmp (parser->static_sql_host_vars[i].label, label) == 0);
 	  if (parser->static_sql_host_vars[i].label != NULL
 	      && strcmp (parser->static_sql_host_vars[i].label, label) == 0)
 	    {
 	      return i;
+	    }
+	  else
+	    {
+	      assert (false);
 	    }
 	}
     }
