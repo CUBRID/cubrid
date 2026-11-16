@@ -1291,10 +1291,10 @@ $ LOADDB
 1218 The stream is not open: %1$s.
 1219 The stream is not supported: %1$s.
 1220 Invalid use of a stream: %1$s.
-1221 Reserved error for stream/replication.
-1222 Reserved error for stream/replication.
-1223 Reserved error for stream/replication.
-1224 Reserved error for stream/replication.
+1221 COPY FROM is not supported for "%1$s".
+1222 COPY binary format error: %1$s.
+1223 COPY CSV format error: %1$s.
+1224 COPY FROM: %1$s.
 1225 Reserved error for stream/replication.
 1226 Reserved error for stream/replication.
 1227 Reserved error for stream/replication.
@@ -1511,15 +1511,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 COPY FROM is not supported for "%1$s".
-
-1396 COPY binary format error: %1$s.
-
-1397 COPY CSV format error: %1$s.
-
-1398 COPY FROM: %1$s.
-
-1399 Last Error
+1395 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

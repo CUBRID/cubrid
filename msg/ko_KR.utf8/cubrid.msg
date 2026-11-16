@@ -1291,10 +1291,10 @@ $ LOADDB
 1218 스트림이 열려 있지 않음: %1$s.
 1219 지원하지 않는 스트림: %1$s.
 1220 잘못된 스트림 사용: %1$s.
-1221 Reserved error for stream/replication.
-1222 Reserved error for stream/replication.
-1223 Reserved error for stream/replication.
-1224 Reserved error for stream/replication.
+1221 COPY FROM은 "%1$s"에 대해 지원되지 않습니다.
+1222 COPY 바이너리 형식 오류: %1$s.
+1223 COPY CSV 형식 오류: %1$s.
+1224 COPY FROM: %1$s.
 1225 Reserved error for stream/replication.
 1226 Reserved error for stream/replication.
 1227 Reserved error for stream/replication.
@@ -1510,15 +1510,7 @@ $ LOADDB
 
 1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
 
-1395 COPY FROM은 "%1$s"에 대해 지원되지 않습니다.
-
-1396 COPY 바이너리 형식 오류: %1$s.
-
-1397 COPY CSV 형식 오류: %1$s.
-
-1398 COPY FROM: %1$s.
-
-1399 마지막 에러
+1395 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
