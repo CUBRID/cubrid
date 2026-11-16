@@ -346,7 +346,7 @@ jobs:
                   | @tsv' \
             "${RUNNER_TEMP}/open-prs.json" > "${RUNNER_TEMP}/prs.tsv"
 
-          # A younger verdict may still be settling: no re-run.
+          # A younger verdict may still be settling.
           MIN_AGE_SEC=1800
           NOW=$(date -u +%s)
           RERUN_N=0
@@ -357,13 +357,9 @@ jobs:
             # Only blocks: while the newest run waits on GitHub the rollup hides it,
             # and a re-run of an older run does not count.
             [ "${STANDING}" = SUCCESS ] || continue
-            YOUNG=''
-            [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && YOUNG=1
-            # Young PRs are aligned too: re-running a run from before ALIGN leaves entries stale.
-            [ -n "${YOUNG}" ] && [ "${SWEPT_N}" = 0 ] && continue
+            [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && continue
 
-            # A young verdict may postdate the list, so it goes to the judge.
-            if [ -z "${YOUNG}" ] && grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
+            if grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
               EXPECTED=FAILURE
             else
               OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}") || {
@@ -372,6 +368,7 @@ jobs:
               }
               EXPECTED=$( [ "$(head -n 1 <<< "${OUT}")" = BLOCK ] && echo FAILURE || echo SUCCESS )
             fi
+            [ "${EXPECTED}" = FAILURE ] || continue
 
             if [ "${SWEPT_N}" != 0 ]; then
               if ! N=$(GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${EXPECTED,,}" \
@@ -385,9 +382,6 @@ jobs:
               fi
             fi
 
-            STALE_GATE=''
-            [ -z "${YOUNG}" ] && [ "${EXPECTED}" = FAILURE ] && STALE_GATE=1
-            [ -z "${STALE_GATE}" ] && continue
             if ERR=$(GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/actions/jobs/${JOB_ID}/rerun" --silent 2>&1); then
               echo "::notice::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED} — re-ran the gate"
               RERUN_N=$((RERUN_N + 1))
