@@ -1001,7 +1001,7 @@ css_process_ha_ping_host_info (CSS_CONN_ENTRY * conn, unsigned short request_id)
       goto error_return;
     }
 
-  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+  if (!hb_is_tcp_ping ())
     {
       hb_get_ping_host_info_string (&buffer);
     }

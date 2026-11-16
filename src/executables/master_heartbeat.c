@@ -921,7 +921,7 @@ hb_cluster_job_calc_score (HB_JOB_ARG * arg)
 
       if (hb_Cluster->num_ping_hosts > 0)
 	{
-	  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	  if (!hb_Cluster->is_tcp_ping)
 	    {
 	      hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
 	    }
@@ -1061,7 +1061,7 @@ hb_cluster_job_check_ping (HB_JOB_ARG * arg)
     {
       for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
 	{
-	  if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	  if (!hb_Cluster->is_tcp_ping)
 	    {
 	      ping_result = hb_check_ping (ping_host->host_name);
 	    }
@@ -1241,7 +1241,7 @@ hb_cluster_job_failover (HB_JOB_ARG * arg)
 
   if (hb_Cluster->num_ping_hosts > 0)
     {
-      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+      if (!hb_Cluster->is_tcp_ping)
 	{
 	  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
 	}
@@ -1339,7 +1339,7 @@ hb_cluster_job_demote (HB_JOB_ARG * arg)
 
 	  if (hb_Cluster->num_ping_hosts > 0)
 	    {
-	      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+	      if (!hb_Cluster->is_tcp_ping)
 		{
 		  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
 		}
@@ -1419,7 +1419,7 @@ hb_cluster_job_failback (HB_JOB_ARG * arg)
 
   if (hb_Cluster->num_ping_hosts > 0)
     {
-      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+      if (!hb_Cluster->is_tcp_ping)
 	{
 	  hb_help_sprint_ping_host_info (hb_info_str, HB_INFO_STR_MAX);
 	}
@@ -1516,7 +1516,7 @@ hb_cluster_check_valid_ping_server (void)
 
   for (ping_host = hb_Cluster->ping_hosts; ping_host; ping_host = ping_host->next)
     {
-      if (prm_get_string_value (PRM_ID_HA_PING_HOSTS))
+      if (!hb_Cluster->is_tcp_ping)
 	{
 	  ping_host->ping_result = hb_check_ping (ping_host->host_name);
 	}
@@ -5060,6 +5060,7 @@ hb_cluster_initialize (const char *nodes, const char *replicas)
       return ER_PRM_BAD_VALUE;
     }
 
+  hb_Cluster->is_tcp_ping = (prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL);
   hb_Cluster->num_ping_hosts = hb_cluster_load_ping_host_list (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
 
   if (hb_cluster_check_valid_ping_server () == false)
@@ -5642,6 +5643,7 @@ hb_reload_config (void)
   HB_NODE_ENTRY *old_node, *old_myself, *old_master, *new_node;
   HB_PING_HOST_ENTRY *old_ping_hosts;
   char old_group_id[HB_MAX_GROUP_ID_LEN];
+  bool old_is_tcp_ping;
 
   if (hb_Cluster == NULL)
     {
@@ -5666,6 +5668,7 @@ hb_reload_config (void)
   hb_list_move ((HB_LIST **) (&old_ping_hosts), (HB_LIST **) (&hb_Cluster->ping_hosts));
   old_num_ping_hosts = hb_Cluster->num_ping_hosts;
   old_ping_timeout = hb_Cluster->ping_timeout;
+  old_is_tcp_ping = hb_Cluster->is_tcp_ping;
 
   hb_Cluster->ping_hosts = NULL;
 
@@ -5691,7 +5694,8 @@ hb_reload_config (void)
       goto reconfig_error;
     }
 
-  /* reload ping hosts */
+  /* reload ping hosts. how they are checked follows the reloaded list, and goes back with it on failure */
+  hb_Cluster->is_tcp_ping = (prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL);
   hb_Cluster->num_ping_hosts = hb_cluster_load_ping_host_list (prm_get_string_value (PRM_ID_HA_PING_HOSTS));
 
   if (hb_cluster_check_valid_ping_server () == false)
@@ -5764,6 +5768,7 @@ reconfig_error:
 /* restore ping hosts */
   hb_Cluster->num_ping_hosts = old_num_ping_hosts;
   hb_Cluster->ping_timeout = old_ping_timeout;
+  hb_Cluster->is_tcp_ping = old_is_tcp_ping;
 
   hb_cluster_remove_all_ping_hosts (hb_Cluster->ping_hosts);
 
@@ -5885,6 +5890,30 @@ hb_get_admin_info_string (char **str)
   pthread_mutex_unlock (&css_Master_er_log_enable_lock);
 
   return;
+}
+
+/*
+ * hb_is_tcp_ping - whether the ping hosts in use are checked by TCP (ha_tcp_ping_hosts)
+ *   return: true if TCP ping
+ *
+ * Note: it follows the loaded ping host list, not the parameter. A failed reload brings the old list back
+ *       while the parameters keep the reloaded values.
+ */
+bool
+hb_is_tcp_ping (void)
+{
+  bool is_tcp_ping;
+
+  if (hb_Cluster == NULL)
+    {
+      return prm_get_string_value (PRM_ID_HA_PING_HOSTS) == NULL;
+    }
+
+  pthread_mutex_lock (&hb_Cluster->lock);
+  is_tcp_ping = hb_Cluster->is_tcp_ping;
+  pthread_mutex_unlock (&hb_Cluster->lock);
+
+  return is_tcp_ping;
 }
 
 /*

@@ -262,6 +262,7 @@ struct hb_cluster
 
   HB_PING_HOST_ENTRY *ping_hosts;
   int num_ping_hosts;
+  bool is_tcp_ping;		/* ping_hosts are ha_tcp_ping_hosts: ha_ping_hosts was not set when they were loaded */
   int ping_timeout;		/* TCP ping only */
 
   HB_UI_NODE_ENTRY *ui_nodes;
@@ -395,6 +396,7 @@ extern void hb_cleanup_conn_and_start_process (CSS_CONN_ENTRY * conn, SOCKET sfd
 
 extern void hb_get_node_info_string (char **str, bool verbose_yn);
 extern void hb_get_process_info_string (char **str, bool verbose_yn);
+extern bool hb_is_tcp_ping (void);
 extern void hb_get_ping_host_info_string (char **str);
 extern void hb_get_tcp_ping_host_info_string (char **str);
 extern void hb_get_admin_info_string (char **str);
