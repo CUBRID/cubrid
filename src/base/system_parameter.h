@@ -582,9 +582,10 @@ enum param_id
   PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
 
   PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+  PRM_ID_OOS_TRIGGER_THRESHOLD,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL
+  PRM_LAST_ID = PRM_ID_OOS_TRIGGER_THRESHOLD
 };
 typedef enum param_id PARAM_ID;
 

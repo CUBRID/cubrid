@@ -831,6 +831,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 #define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 #define PRM_NAME_ROW_SNAPSHOT_MAX_ROWS "row_snapshot_max_rows"
+#define PRM_NAME_OOS_TRIGGER_THRESHOLD "oos_trigger_threshold"
 
 #define PRM_NAME_HASH_JOIN_RUNTIME_FILTER "hash_join_runtime_filter"
 
@@ -5781,6 +5782,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_OOS_TRIGGER_THRESHOLD,
+   PRM_NAME_OOS_TRIGGER_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.bi = 0}},
+   {false, {.bi = 0}},
+   {false, {.bi = IO_MAX_PAGE_SIZE}},
+   {false, {.bi = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

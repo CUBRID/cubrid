@@ -3967,6 +3967,14 @@ heap_manager_initialize (void)
 		    8 * SPAGE_SLOT_SIZE /* margin */ , HEAP_MAX_ALIGN);
   heap_Slotted_overhead = SPAGE_SLOT_SIZE;
 
+  UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
+  if (oos_trigger_threshold != 0
+      && (oos_trigger_threshold <= OR_OOS_INLINE_SIZE || oos_trigger_threshold > (UINT64) heap_Maxslotted_reclength))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PRM_BAD_VALUE, 1, prm_get_name (PRM_ID_OOS_TRIGGER_THRESHOLD));
+      return ER_PRM_BAD_VALUE;
+    }
+
   /* Initialize the class representation cache */
   ret = heap_chnguess_initialize ();
   if (ret != NO_ERROR)
@@ -14223,12 +14231,18 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
 /*
  * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
  *
- * Compute the PostgreSQL-style physical target: four aligned records and their slots must fit in the usable heap page
- * capacity. Heap unfill space is a page-selection policy and must not affect the OOS trigger or demotion target.
+ * A zero oos_trigger_threshold selects the PostgreSQL-style physical target: four aligned records and their slots must
+ * fit in the usable heap page capacity. A nonzero value is the byte target. Neither target depends on heap unfill space.
  */
 int
 heap_oos_inline_target_size (void)
 {
+  const UINT64 oos_trigger_threshold = prm_get_bigint_value (PRM_ID_OOS_TRIGGER_THRESHOLD);
+  if (oos_trigger_threshold != 0)
+    {
+      return (int) oos_trigger_threshold;
+    }
+
   const int page_capacity = heap_nonheader_page_capacity ();
   int target_size;
   int packed_size;
