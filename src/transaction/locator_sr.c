@@ -5267,6 +5267,8 @@ locator_collect_children_of_key (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_V
       /* with no action before this check nothing can turn into a child of the key, so the scan also tells whether a
        * committed child fails the statement or there is nothing for the check to find */
       rs.snapshot.snapshot_fnc = action_seen ? locator_satisfies_child_being_written : locator_satisfies_restrict_entry;
+      /* in memory only: the check reads the list whole, to look up each entry its index scan meets */
+      collected[fk_i].mem_limit = INT_MAX;
       error_code = locator_scan_fk_key (thread_p, fkref, key, &rs, false, &oid_list, &collected[fk_i]);
       if (error_code != NO_ERROR)
 	{
