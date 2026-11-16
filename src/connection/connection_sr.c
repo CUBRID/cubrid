@@ -3064,6 +3064,33 @@ css_remove_all_unexpected_packets (CSS_CONN_ENTRY * conn)
 }
 
 /*
+ * css_set_auth_proof () - record that this connection has just proven
+ *   user_name's password, or forget any proof when user_name is NULL.
+ */
+void
+css_set_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
+{
+  int r;
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  if (user_name != NULL)
+    {
+      strncpy (conn->auth_user, user_name, DB_MAX_USER_LENGTH);
+      conn->auth_user[DB_MAX_USER_LENGTH] = '\0';
+      conn->auth_verified = true;
+    }
+  else
+    {
+      conn->auth_verified = false;
+    }
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+}
+
+/*
  * css_consume_auth_proof () - has this connection just proven user_name's
  *   password? The proof is spent either way.
  */
@@ -3071,13 +3098,21 @@ bool
 css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name)
 {
   bool proven;
+  int r;
 
-  proven = (conn != NULL && conn->auth_verified && user_name != NULL
-	    && intl_identifier_casecmp (conn->auth_user, user_name) == 0);
-  if (conn != NULL)
+  if (conn == NULL)
     {
-      conn->auth_verified = false;
+      return false;
     }
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  proven = (conn->auth_verified && user_name != NULL && intl_identifier_casecmp (conn->auth_user, user_name) == 0);
+  conn->auth_verified = false;
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
 
   return proven;
 }

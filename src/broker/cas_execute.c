@@ -638,7 +638,16 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
-      (void) db_find_or_create_session (db_user, program_name);
+
+      /* the server switches the session to db_user here; if it refuses, reconnect as the
+       * failed au_login () does rather than go on as a user the server did not switch to */
+      err_code = db_find_or_create_session (db_user, program_name);
+      if (err_code < 0)
+	{
+	  ux_database_shutdown_for_reconnect ();
+
+	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
+	}
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
