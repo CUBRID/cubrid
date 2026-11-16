@@ -87,7 +87,7 @@ heap_create_insert_context/update_context/delete_context
 
 The physical helpers are internal implementation functions, not SQL-visible entry points. Logging order varies by
 operation. For example, insert logs after physical insertion, while non-MVCC delete logs the old image before deletion.
-See `heap_insert_logical()` and `heap_delete_physical()` in [heap_file.c](../heap_file.c).
+See `heap_insert_logical()` and the non-MVCC branch of `heap_delete_home()` in [heap_file.c](../heap_file.c).
 
 ## MVCC And Visibility
 
