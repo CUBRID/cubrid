@@ -836,6 +836,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 // #endregion
 
+#define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -5770,6 +5772,18 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+   PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_QRY_STRING | PRM_FORCE_SERVER | PRM_FOR_PL_CONTEXT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -5787,6 +5801,7 @@ static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
 static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
 static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
 static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 353, "update SysParam.java");
+static_assert (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL == 403, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
