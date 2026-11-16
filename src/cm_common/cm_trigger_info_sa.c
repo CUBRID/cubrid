@@ -41,6 +41,7 @@
 
 static void write_err_msg (char *errfile, char *msg);
 static void get_trigger_information (FILE * fp, DB_OBJECT * trigger_obj);
+static void replace_line_breaks (char *value);
 
 int
 main (int argc, char *argv[])
@@ -202,6 +203,7 @@ get_trigger_information (FILE * fp, DB_OBJECT * triggerobj)
     case TR_ACT_EXPRESSION:	/* act like TR_ACT_PRINT */
     case TR_ACT_PRINT:
       db_trigger_action (triggerobj, &action);
+      replace_line_breaks (action);
       fprintf (fp, MSGFMT, "action", action);
       if (action != NULL)
 	{
@@ -281,7 +283,34 @@ get_trigger_information (FILE * fp, DB_OBJECT * triggerobj)
   db_trigger_comment (triggerobj, &comment);
   if (comment != NULL)
     {
+      replace_line_breaks (comment);
       fprintf (fp, MSGFMT, "comment", comment);
       db_string_free ((char *) comment);
+    }
+}
+
+/*
+ * replace_line_breaks () - turn line breaks in a value into spaces
+ *   value(in/out): the value to write, or NULL
+ *
+ * nv_readfrom () reads one name:value pair per line.
+ * A PL/CSQL block action or a comment can have many lines.
+ */
+static void
+replace_line_breaks (char *value)
+{
+  char *c;
+
+  if (value == NULL)
+    {
+      return;
+    }
+
+  for (c = value; *c != '\0'; c++)
+    {
+      if (*c == '\n' || *c == '\r')
+	{
+	  *c = ' ';
+	}
     }
 }

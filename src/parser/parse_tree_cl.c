@@ -9276,9 +9276,9 @@ pt_init_delete (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1, *r2;
+  PARSER_VARCHAR *q = 0, *r1, *r2, *target;
 
-  r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
+  target = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
   if (p->info.delete_.with != NULL)
@@ -9468,7 +9468,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, " */");
     }
-  if (r1)
+  if (target)
     {
       /* DELETE without target FROM ... for dblink's other DBMS */
       if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
@@ -9476,13 +9476,13 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.delete_.spec->next)
 	    {
 	      q = pt_append_nulstring (parser, q, " ");
-	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_varchar (parser, q, target);
 	    }
 	}
       else
 	{
 	  q = pt_append_nulstring (parser, q, " ");
-	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_varchar (parser, q, target);
 	}
     }
   q = pt_append_nulstring (parser, q, " from ");
@@ -16347,6 +16347,7 @@ pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.trigger_action.expression, arg);
   PT_APPLY_WALK (parser, p->info.trigger_action.string, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_action.plcsql_block, arg);
   return p;
 }
 
@@ -16376,6 +16377,13 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_EXPRESSION:
       r1 = pt_print_bytes (parser, p->info.trigger_action.expression);
       b = pt_append_varchar (parser, b, r1);
+      break;
+    case PT_PLCSQL_BLOCK:
+      /* the block as the user wrote it, without quotes */
+      if (p->info.trigger_action.plcsql_block != NULL)
+	{
+	  b = pt_append_varchar (parser, b, p->info.trigger_action.plcsql_block->info.value.data_value.str);
+	}
       break;
     default:
       break;

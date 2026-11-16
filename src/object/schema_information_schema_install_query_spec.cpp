@@ -992,7 +992,7 @@ sm_define_view_triggers_spec (void)
         "WHEN %d THEN 'INVALIDATE TRANSACTION' "
         /* TR_ACT_PRINT */
         "WHEN %d THEN CONCAT ('PRINT ''', [tr].[action_definition], '''') "
-        "ELSE [tr].[action_definition] "
+        "ELSE NVL ([tr].[action_block], [tr].[action_definition]) "
       "END AS [action_statement], "
       /* row events: TR_EVENT_UPDATE/DELETE/INSERT; statement events: TR_EVENT_STATEMENT_*; NULL for COMMIT/ROLLBACK */
       "CASE "
