@@ -307,6 +307,8 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE) \
   /* END of an internal LOB DML stream, whose statement may call back to the client */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_DML_END) \
+  /* the internal LOB locators a session's client was given, kept in the session when a CAS lets the client go */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_INTERNAL_LOB_ISSUED) \
   \
   /* shared byte-stream transport, both directions */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_INIT) \

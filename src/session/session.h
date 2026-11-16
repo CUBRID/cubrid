@@ -126,6 +126,7 @@ extern int session_internal_lob_upload_consume (THREAD_ENTRY * thread_p, INT64 t
 						DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator);
 extern int session_internal_lob_load_consume (THREAD_ENTRY * thread_p, INT64 slot, const OID * class_oid,
 					      DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator);
+extern internal_lob_issued_locators *session_internal_lob_issued (THREAD_ENTRY * thread_p);
 
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);

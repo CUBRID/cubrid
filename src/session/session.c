@@ -164,6 +164,7 @@ struct session_state
   stream_handle_table *stream_handles_p;	/* made at the first download, kept while the entry lives */
   PL_SESSION *pl_session_p;
   internal_lob_upload_store *internal_lob_upload_store_p;
+  internal_lob_issued_locators *internal_lob_issued_p;	/* filled by a CAS that lets the client go */
 
   // *INDENT-OFF*
   session_state ();
@@ -366,6 +367,7 @@ session_state_init (void *st)
   session_p->stream_session_tran_index = NULL_TRAN_INDEX;
   session_p->stream_session_trid = NULL_TRANID;
   session_p->stream_user = NULL;
+  session_p->internal_lob_issued_p = NULL;
   /* the entry's table, if an earlier session made one, was closed when that session ended */
   if (session_p->stream_handles_p != NULL)
     {
@@ -387,6 +389,19 @@ session_state_init (void *st)
   if (session_p->internal_lob_upload_store_p == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (internal_lob_upload_store));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  try
+  {
+    session_p->internal_lob_issued_p = new internal_lob_issued_locators ();
+  }
+  catch (const std::bad_alloc &)
+  {
+    session_p->internal_lob_issued_p = NULL;
+  }
+  if (session_p->internal_lob_issued_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (internal_lob_issued_locators));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -423,6 +438,11 @@ session_state_uninit (void *st)
     {
       delete session->internal_lob_upload_store_p;
       session->internal_lob_upload_store_p = NULL;
+    }
+  if (session->internal_lob_issued_p != NULL)
+    {
+      delete session->internal_lob_issued_p;
+      session->internal_lob_issued_p = NULL;
     }
 
   if (session->pl_session_p)
@@ -4045,6 +4065,26 @@ session_internal_lob_upload_abort (THREAD_ENTRY * thread_p, INT64 token)
       return stream_session_set_error ("internal LOB upload store is unavailable");
     }
   return state_p->internal_lob_upload_store_p->abort (token);
+}
+
+/*
+ * session_internal_lob_issued () - The session's copy of the locators its client was given (sinternal_lob_issued)
+ *   return: NULL with an error when there is no session
+ */
+internal_lob_issued_locators *
+session_internal_lob_issued (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_EXPIRED, 0);
+	}
+      return NULL;
+    }
+  return state_p->internal_lob_issued_p;
 }
 
 /* the statement that bound the upload is closed; nothing staged in this session is not an error */

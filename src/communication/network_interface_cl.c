@@ -12987,20 +12987,48 @@ internal_lob_dml_from_end (INT64 * count)
  * privilege of its table, the check an OID read gets.
  */
 #if defined (CS_MODE)
-#define INTERNAL_LOB_ISSUED_MAX (1024 * 1024)	/* a bound, not a cache: a dropped locator only gets checked */
+static internal_lob_issued_locators internal_lob_Issued;
 
-// *INDENT-OFF*
-static std::mutex internal_lob_Issued_mutex;
-/* [0] the latest locators, [1] the ones before: a full [0] becomes [1], so the ones just received are never dropped */
-static std::unordered_set<std::uint64_t> internal_lob_Issued[2];
-// *INDENT-ON*
-
-static
-  std::uint64_t
-internal_lob_issued_key (const INTERNAL_LOB_MARKER_LOCATOR_FIELDS * fields)
+/* NET_SERVER_INTERNAL_LOB_ISSUED: keep keys in the client's server session, or find one key there */
+static int
+internal_lob_issued_request (int op, const std::uint64_t * keys, int count, bool * found)
 {
-  return ((std::uint64_t) (std::uint16_t) fields->volid << 48) | ((std::uint64_t) (std::uint32_t) fields->pageid << 16)
-    | (std::uint64_t) (std::uint16_t) fields->slotid;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int request_size = OR_INT_SIZE * 2 + count * OR_INT64_SIZE;
+  char *request;
+  char *ptr;
+  int reply_found = 0;
+  int err;
+
+  request = (char *) malloc ((size_t) request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  ptr = or_pack_int (request, op);
+  ptr = or_pack_int (ptr, count);
+  for (int i = 0; i < count; i++)
+    {
+      ptr = or_pack_int64 (ptr, (INT64) keys[i]);
+    }
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_ISSUED, request, request_size, reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  free_and_init (request);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  ptr = or_unpack_int (reply, &err);
+  (void) or_unpack_int (ptr, &reply_found);
+  if (found != NULL)
+    {
+      *found = (err == NO_ERROR && reply_found != 0);
+    }
+  return err;
 }
 #endif /* CS_MODE */
 
@@ -13019,13 +13047,7 @@ internal_lob_locator_note_issued (const char *locator, int size)
       return;
     }
 
-  std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
-  if (internal_lob_Issued[0].size () >= INTERNAL_LOB_ISSUED_MAX / 2)
-    {
-      internal_lob_Issued[1].swap (internal_lob_Issued[0]);
-      std::unordered_set < std::uint64_t > ().swap (internal_lob_Issued[0]);
-    }
-  internal_lob_Issued[0].insert (internal_lob_issued_key (&fields));
+  internal_lob_Issued.add (internal_lob_issued_locators::key (fields.volid, fields.pageid, fields.slotid));
 #endif /* CS_MODE */
 }
 
@@ -13036,9 +13058,30 @@ void
 internal_lob_locator_forget_issued (void)
 {
 #if defined (CS_MODE)
-  std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
-  internal_lob_Issued[0].clear ();
-  internal_lob_Issued[1].clear ();
+  internal_lob_Issued.clear ();
+#endif /* CS_MODE */
+}
+
+/*
+ * internal_lob_locator_hand_over_issued () - Move them to the client's server session, which a CAS that serves the
+ *   client next looks in; done when a CAS lets a client go and keeps its session.
+ */
+int
+internal_lob_locator_hand_over_issued (void)
+{
+#if defined (CS_MODE)
+  // *INDENT-OFF*
+  std::vector<std::uint64_t> keys;
+  // *INDENT-ON*
+
+  internal_lob_Issued.take (keys);
+  if (keys.empty ())
+    {
+      return NO_ERROR;
+    }
+  return internal_lob_issued_request (INTERNAL_LOB_ISSUED_KEEP, keys.data (), (int) keys.size (), NULL);
+#else /* CS_MODE */
+  return NO_ERROR;
 #endif /* CS_MODE */
 }
 
@@ -13066,11 +13109,22 @@ internal_lob_locator_check_access (const char *locator, int size)
     }
 
   {
-    std::lock_guard < std::mutex > lock (internal_lob_Issued_mutex);
-    std::uint64_t key = internal_lob_issued_key (&fields);
+    std::uint64_t key = internal_lob_issued_locators::key (fields.volid, fields.pageid, fields.slotid);
+    bool found = false;
 
-    if (internal_lob_Issued[0].count (key) > 0 || internal_lob_Issued[1].count (key) > 0)
+    if (internal_lob_Issued.has (key))
       {
+	return NO_ERROR;
+      }
+    /* given to this client by a CAS that served it before (internal_lob_locator_hand_over_issued) */
+    error = internal_lob_issued_request (INTERNAL_LOB_ISSUED_FIND, &key, 1, &found);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    if (found)
+      {
+	internal_lob_Issued.add (key);
 	return NO_ERROR;
       }
   }

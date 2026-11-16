@@ -23,6 +23,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <cstdint>
+#include <mutex>
+#include <unordered_set>
+#include <vector>
+
 #include "dbtype_def.h"
 
 /*
@@ -461,5 +466,63 @@ internal_lob_marker_split_length (char lob_type, DB_BIGINT logical_length, DB_BI
     }
   return true;
 }
+
+// *INDENT-OFF*
+/* The locators (by chain OID) the server sent one client: the client's copy, and its server session's copy that the
+ * CAS a client leaves fills.  Two generations in one bound: a full latest one pushes out the one before. */
+class internal_lob_issued_locators
+{
+  public:
+    static std::uint64_t key (int volid, int pageid, int slotid)
+    {
+      return ((std::uint64_t) (std::uint16_t) volid << 48) | ((std::uint64_t) (std::uint32_t) pageid << 16)
+	     | (std::uint64_t) (std::uint16_t) slotid;
+    }
+
+    void add (std::uint64_t key)
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      if (m_keys[0].size () >= MAX_KEYS / 2)
+	{
+	  m_keys[1].swap (m_keys[0]);
+	  std::unordered_set<std::uint64_t> ().swap (m_keys[0]);
+	}
+      m_keys[0].insert (key);
+    }
+
+    bool has (std::uint64_t key)
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      return m_keys[0].count (key) > 0 || m_keys[1].count (key) > 0;
+    }
+
+    void clear ()
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      m_keys[0].clear ();
+      m_keys[1].clear ();
+    }
+
+    /* moves every key out, the older generation first */
+    void take (std::vector<std::uint64_t> &keys)
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+      keys.assign (m_keys[1].begin (), m_keys[1].end ());
+      keys.insert (keys.end (), m_keys[0].begin (), m_keys[0].end ());
+      m_keys[0].clear ();
+      m_keys[1].clear ();
+    }
+
+  private:
+    static constexpr std::size_t MAX_KEYS = 1024 * 1024;	/* a bound, not a cache: a dropped locator only gets checked */
+
+    std::mutex m_mutex;
+    std::unordered_set<std::uint64_t> m_keys[2];	/* [0] the latest, [1] the ones before */
+};
+// *INDENT-ON*
+
+/* NET_SERVER_INTERNAL_LOB_ISSUED operations */
+#define INTERNAL_LOB_ISSUED_KEEP 0	/* add the keys to the session's copy */
+#define INTERNAL_LOB_ISSUED_FIND 1	/* is the one key in it? */
 
 #endif /* _INTERNAL_LOB_MARKER_H_ */

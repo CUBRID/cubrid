@@ -10556,6 +10556,64 @@ sinternal_lob_upload_release (THREAD_ENTRY *thread_p, unsigned int rid, char *re
 }
 
 /*
+ * sinternal_lob_issued - Keep locators the session's client was given, or tell whether it was given one.
+ *   Request : op (int, INTERNAL_LOB_ISSUED_KEEP or _FIND), count (int), count keys (int64); FIND has one key
+ *   Reply   : err (int), found (int)
+ */
+void
+sinternal_lob_issued (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = request;
+  internal_lob_issued_locators *issued = NULL;
+  int op = -1;
+  int count = 0;
+  bool found = false;
+  int err = NO_ERROR;
+
+  if (reqlen >= OR_INT_SIZE * 2)
+    {
+      ptr = or_unpack_int (ptr, &op);
+      ptr = or_unpack_int (ptr, &count);
+    }
+  if (count <= 0 || (INT64) count * OR_INT64_SIZE != (INT64) reqlen - OR_INT_SIZE * 2
+      || (op != INTERNAL_LOB_ISSUED_KEEP && op != INTERNAL_LOB_ISSUED_FIND)
+      || (op == INTERNAL_LOB_ISSUED_FIND && count != 1))
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+    }
+  else if ((issued = session_internal_lob_issued (thread_p)) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+    }
+
+  for (int i = 0; err == NO_ERROR && i < count; i++)
+    {
+      INT64 key;
+
+      ptr = or_unpack_int64 (ptr, &key);
+      if (op == INTERNAL_LOB_ISSUED_FIND)
+	{
+	  found = issued->has ((std::uint64_t) key);
+	}
+      else
+	{
+	  issued->add ((std::uint64_t) key);
+	}
+    }
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  ptr = or_pack_int (reply, err);
+  (void) or_pack_int (ptr, found ? 1 : 0);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * svacuum_dump -
  *
  * return:

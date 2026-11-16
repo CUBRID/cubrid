@@ -62,6 +62,7 @@
 #include "cas_net_buf.h"
 #include "query_replace.h"
 #include "cas_execute.h"
+#include "network_interface_cl.h"
 #include "connection_support.hpp"
 #include "broker_process_size.h"
 #include "cas_ssl.h"
@@ -485,6 +486,12 @@ cas_cleanup_session (void)
 	{
 	  as_info->reset_flag = TRUE;
 	}
+    }
+
+  if (cas_shutdown_signo || cas_main_fn_ret == FN_KEEP_SESS)
+    {
+      /* the client may go on in another CAS: its session keeps the locators this CAS gave it */
+      (void) internal_lob_locator_hand_over_issued ();
     }
 
   if (cas_shutdown_signo)

@@ -446,6 +446,7 @@ extern int internal_lob_read_from_release (INT64 handle);
 extern void internal_lob_locator_note_issued (const char *locator, int size);
 extern void internal_lob_locator_note_issued_value (const DB_VALUE * value);
 extern void internal_lob_locator_forget_issued (void);
+extern int internal_lob_locator_hand_over_issued (void);
 extern int internal_lob_locator_check_access (const char *locator, int size);
 extern int internal_lob_locator_check_value (const DB_VALUE * value);
 
