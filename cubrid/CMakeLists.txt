@@ -329,6 +329,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_representation.c
+  ${BASE_DIR}/replication_key.c
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/schema_information_schema.cpp
   ${OBJECT_DIR}/schema_system_catalog.cpp
