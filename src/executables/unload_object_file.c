@@ -1046,8 +1046,19 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 
     case DB_TYPE_JSON:
       json_body = db_get_json_raw_body (value);
-      CHECK_PRINT_ERROR (binary_print (tout, (u_char *) json_body, strlen (json_body), type));
-      db_private_free (NULL, json_body);
+      if (json_body == NULL)
+	{
+	  /* the allocation has set the error, which exit_on_error picks up */
+	  goto exit_on_error;
+	}
+
+      /* the body is freed whether it is printed or not */
+      error = binary_print (tout, (u_char *) json_body, strlen (json_body), type);
+      db_private_free_and_init (NULL, json_body);
+      if (error != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
       break;
 
     case DB_TYPE_SET:
