@@ -4501,7 +4501,6 @@ exit:
   return error_code;
 }
 
-
 /*
  * heap_build_bestspace () - Load and rebuild a bestspace from heap file
  *   return:
@@ -5486,7 +5485,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-
   return NO_ERROR;
 }
 
@@ -5528,7 +5526,6 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
     }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
-
 
   return ret;
 }
@@ -6985,6 +6982,70 @@ heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 }
 
 /*
+ * heap_scancache_switch_class () - point a query scan cache at the heap of another class
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   scan_cache(in/out): a scan cache started by heap_scancache_start () for a query scan
+ *   hfid(in): the heap of the class
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   lock_held(in): the scan already holds the IS_LOCK of the class (a partition it switched to before)
+ *
+ * Note: as heap_scancache_end () and heap_scancache_start () would, keeping what does not depend on the heap
+ *	 (the snapshot, the work area, the index statistics) (CBRD-27866).
+ */
+int
+heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
+			     const OID * class_oid, bool lock_held)
+{
+  if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN || scan_cache->local_cache_handle != NULL
+      || scan_cache->partition_list != NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (scan_cache->cache_last_fix_page == true && scan_cache->page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+
+  if (!lock_held)
+    {
+      int granted;
+#if defined(SERVER_MODE)
+      THREAD_ENTRY *main_thread_p = NULL;
+      if (thread_p->m_px_orig_thread_entry != NULL)
+	{
+	  main_thread_p = thread_get_main_thread (thread_p);
+	  pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
+#if defined(SERVER_MODE)
+      if (main_thread_p != NULL)
+	{
+	  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      if (granted != LK_GRANTED)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+    }
+
+  scan_cache->node.class_oid = *class_oid;
+  scan_cache->node.hfid = *hfid;
+  scan_cache->node.classname = NULL;
+  scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (class_oid);
+  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  heap_scancache_reset_insert_hint (scan_cache);
+
+  return NO_ERROR;
+}
+
+/*
  * heap_scancache_end_when_scan_will_resume () -
  *   return:
  *   scan_cache(in):
@@ -7536,7 +7597,6 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   /* Shouldn't be here. */
   return S_ERROR;
 }
-
 
 /*
  * heap_next_internal () - Retrieve of peek next object.
@@ -8154,7 +8214,6 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
-
       if (scan == S_SUCCESS)
 	{
 	  /*
@@ -8201,7 +8260,6 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
   return scan;
 }
-
 
 /* A page whose first chunk the batch collects, its lines asked for at once: heap_page_collect_visible () reads nearly
  * every record of it -- the slot, then the record's header first, then its columns -- and a header's first load waited
@@ -11064,6 +11122,72 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 /*
+ * heap_attrinfo_switch_class () - point an attribute cache at another class with the same attributes
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   attr_info(in/out): an attribute cache started by heap_attrinfo_start ()
+ *
+ * Note: the partitions of a table have the same attributes, so the cache keeps its attribute ids and its value
+ *	 array and takes the class representation of the other partition, as heap_attrinfo_end () and
+ *	 heap_attrinfo_start () would without freeing and allocating the values (CBRD-27866).
+ */
+int
+heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  HEAP_ATTRVALUE *value;
+  int i;
+
+  if (attr_info->num_values == -1)
+    {
+      /* an empty cache (no attributes): nothing is bound to the class */
+      return NO_ERROR;
+    }
+
+  (void) heap_attrinfo_clear_dbvalues (attr_info);
+  (void) heap_attrinfo_recache (thread_p, NULL_REPRID, attr_info);
+  if (attr_info->last_classrepr != NULL)
+    {
+      heap_classrepr_free_and_init (attr_info->last_classrepr, &attr_info->last_cacheindex);
+    }
+
+  attr_info->class_oid = *class_oid;
+  attr_info->last_cacheindex = -1;
+  attr_info->read_cacheindex = -1;
+  attr_info->read_classrepr = NULL;
+  OID_SET_NULL (&attr_info->inst_oid);
+  attr_info->inst_chn = NULL_CHN;
+  attr_info->lazy_recdes = NULL;
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+      value->state = HEAP_UNINIT_ATTRVALUE;
+      value->do_increment = 0;
+      value->last_attrepr = NULL;
+      value->read_attrepr = NULL;
+      value->rd_attrepr = NULL;
+    }
+
+  attr_info->last_classrepr =
+    heap_classrepr_get (thread_p, &attr_info->class_oid, NULL, NULL_REPRID, &attr_info->last_cacheindex);
+  if (attr_info->last_classrepr == NULL)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      ASSERT_ERROR ();
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  if (heap_attrinfo_recache_attrepr (attr_info, true) != NO_ERROR)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_clear_dbvalues () - Clear current dbvalues of attribute
  *                                 information
  *   return: NO_ERROR
@@ -11114,7 +11238,6 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 
   return ret;
 }
-
 
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
  * live, derived once per record instead of once per attribute.  The body is written out here
@@ -12824,6 +12947,27 @@ exit_on_error:
 }
 
 /*
+ * heap_attrinfo_check_not_null_after_coercion () - check NOT NULL again on the value after coercion
+ *   return: NO_ERROR or ER_NULL_CONSTRAINT_VIOLATION
+ *   value(in): the attribute value after coercion
+ *
+ * Note: NOT NULL is checked against the value before coercion. However, coercion can still produce NULL:
+ *       '' converted to NUMERIC with numeric_empty_string_as_null, or a failed coercion with
+ *       return_null_on_function_errors.
+ */
+static int
+heap_attrinfo_check_not_null_after_coercion (const HEAP_ATTRVALUE * value)
+{
+  if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+      return ER_NULL_CONSTRAINT_VIOLATION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_set () - Set the value of given attribute
  *   return: NO_ERROR
  *   inst_oid(in): The instance oid
@@ -12875,6 +13019,10 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 	  assert (er_errid () != NO_ERROR);
 
 	  db_make_null (&value->dbvalue);
+	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
 	}
     }
 
@@ -13030,6 +13178,10 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, catalog);
 	  assert (er_errid () != NO_ERROR);
 	  db_make_null (&value->dbvalue);
+	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
 	}
     }
   if (ret != NO_ERROR)
@@ -14129,7 +14281,6 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
 
   return id;
 }
-
 
 /*
  * heap_attrinfo_start_with_btid () - Initialize an attribute information structure
@@ -19280,9 +19431,33 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    }
 	}
 
-      if (!DB_IS_NULL (&orig_value))
+      if (!DB_IS_NULL (&orig_value) && DB_IS_NULL (&(value->dbvalue)))
 	{
-	  assert (!DB_IS_NULL (&(value->dbvalue)));
+	  /* '' and a whitespace-only string are NULL as NUMERIC with numeric_empty_string_as_null. */
+	  assert (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL) && dest_type == DB_TYPE_NUMERIC
+		  && QSTR_IS_ANY_CHAR (src_type));
+
+	  /* For attributes that are already NOT NULL, treat values that become NULL during coercion as
+	   * conversion failures, since existing NULL values are checked only when NOT NULL is newly added. */
+	  if (value->last_attrepr->is_notnull)
+	    {
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
+		{
+		  error = ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  goto exit;
+		}
+
+	      error =
+		db_value_domain_default (&(value->dbvalue), dest_type, dest_prec, dest_dom->scale, dest_dom->codeset,
+					 dest_dom->collation_id, &dest_dom->enumeration);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      log_warning = true;
+	      warning_code = ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT;
+	    }
 	}
 
       if (log_warning)
@@ -20585,7 +20760,6 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL);
 }
-
 
 /*
  * heap_next_record_info () - Retrieve or peek next object.
@@ -24945,7 +25119,6 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 					  LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
 
-
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -25154,7 +25327,6 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
 					  LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
     }
-
 
 error:
 
@@ -25430,7 +25602,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  LOG_SUPPLEMENT_UPDATE, &context->class_oid, &context->supp_undo_lsa,
 					  &context->supp_redo_lsa);
     }
-
 
 exit:
 
