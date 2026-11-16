@@ -24,18 +24,33 @@
 
 #include <functional>
 #include <cstring>
+#include <new>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubmem
 {
+  /* In the server, operator new is the no-throw one of memory_wrapper.hpp and returns NULL when it fails; throw
+   * instead, as new does in the client, so a block never records a size it does not have. */
+  static char *
+  new_chars (size_t size)
+  {
+    char *ptr = new char[size];
+
+    if (ptr == NULL)
+      {
+	throw std::bad_alloc ();
+      }
+    return ptr;
+  }
+
   void
   standard_alloc (block &b, size_t size)
   {
     if (b.ptr == NULL || b.dim == 0)
       {
-	b.ptr = new char[size];
+	b.ptr = new_chars (size);
 	b.dim = size;
       }
     else if (size <= b.dim)
@@ -44,7 +59,7 @@ namespace cubmem
       }
     else
       {
-	char *new_ptr = new char[size];
+	char *new_ptr = new_chars (size);
 	std::memcpy (new_ptr, b.ptr, b.dim);
 
 	delete[] b.ptr;
@@ -69,7 +84,7 @@ namespace cubmem
   {
     if (b.ptr == NULL || b.dim == 0)
       {
-	b.ptr = new char[size];
+	b.ptr = new_chars (size);
 	b.dim = size;
       }
     else if (size <= b.dim)
@@ -83,7 +98,7 @@ namespace cubmem
 	for (new_size = b.dim; new_size < size; new_size *= 2)
 	  ;
 
-	char *new_ptr = new char[new_size];
+	char *new_ptr = new_chars (new_size);
 	std::memcpy (new_ptr, b.ptr, b.dim);
 
 	delete[] b.ptr;

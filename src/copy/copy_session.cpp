@@ -455,17 +455,27 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
-	if (heap_attrinfo_transform_to_disk_except_lob (thread_p, &attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
+	/* the record is as large as the row the client sent, and building it holds no latch */
+	try
 	  {
-	    error = er_errid ();
-	    if (error == NO_ERROR)
+	    if (heap_attrinfo_transform_to_disk_except_lob (thread_p, &attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
 	      {
-		error = ER_FAILED;
+		error = er_errid ();
+		if (error == NO_ERROR)
+		  {
+		    error = ER_FAILED;
+		  }
+		goto cleanup;
 	      }
+
+	    m_recdes_collected.push_back (std::move (new_recdes));
+	  }
+	catch (const std::bad_alloc &)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) bytes_consumed);
+	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto cleanup;
 	  }
-
-	m_recdes_collected.push_back (std::move (new_recdes));
       }
 
       for (int i = 0; i < m_num_cols; i++)
