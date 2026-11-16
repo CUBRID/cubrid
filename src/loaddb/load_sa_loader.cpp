@@ -2437,18 +2437,29 @@ ldr_skip_binary_elements (cubload::binary_row_reader &reader, const cubload::bin
       return NO_ERROR;
     }
 
+  /* how many element columns follow is not known, so the row cannot be read any further */
   if (col.size != sizeof (count))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) col.offset);
-      return ER_LDR_CORRUPTED_BINARY_RECORD;
+      return reader.set_corrupted_at (col.offset);
     }
 
   memcpy (&count, col.data, sizeof (count));
+  if (count < 0)
+    {
+      return reader.set_corrupted_at (col.offset);
+    }
+
   for (int i = 0; i < count; i++)
     {
       if (reader.next (elem) != NO_ERROR)
 	{
 	  return ER_LDR_CORRUPTED_BINARY_RECORD;
+	}
+
+      /* unloaddb does not write nested collections, and the elements of this one would be left unread */
+      if (TP_IS_SET_TYPE (elem.type))
+	{
+	  return reader.set_corrupted_at (elem.offset);
 	}
     }
 

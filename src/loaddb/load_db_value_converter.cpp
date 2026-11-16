@@ -2057,7 +2057,8 @@ namespace cubload
 
     if (!binary_read_raw (col, count) || count < 0)
       {
-	return binary_corrupted (col);
+	/* how many element columns follow is not known, so the row cannot be read any further */
+	return reader.set_corrupted_at (col.offset);
       }
 
     if (!TP_IS_SET_TYPE (TP_DOMAIN_TYPE (collection_domain)))
@@ -2092,8 +2093,11 @@ namespace cubload
 
 	if (TP_IS_SET_TYPE (elem.type))
 	  {
-	    /* unloaddb does not write nested collections, the row is not one it wrote */
-	    error_code = binary_corrupted (elem);
+	    /*
+	     * unloaddb does not write nested collections, the row is not one it wrote. The elements left are not
+	     * read, so the reader is no longer on a column boundary and nothing behind it can be read either.
+	     */
+	    error_code = reader.set_corrupted_at (elem.offset);
 	    break;
 	  }
 

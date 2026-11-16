@@ -1525,8 +1525,14 @@ namespace cubload
   int
   binary_row_reader::set_corrupted ()
   {
+    return set_corrupted_at (m_pos);
+  }
+
+  int
+  binary_row_reader::set_corrupted_at (std::size_t offset)
+  {
     m_corrupted = true;
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) m_pos);
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) offset);
     return ER_LDR_CORRUPTED_BINARY_RECORD;
   }
 

@@ -667,7 +667,9 @@ namespace cubload
    *
    *    A row that does not follow the layout is corrupted. next () then sets
    *    ER_LDR_CORRUPTED_BINARY_RECORD, and every later call fails the same way: a column boundary that
-   *    was lost cannot be found again, so nothing behind it can be read.
+   *    was lost cannot be found again, so nothing behind it can be read. A caller that finds the layout
+   *    broken itself, the elements of a collection, marks the row with set_corrupted_at () likewise, so
+   *    that what follows is not read as the next attributes.
    *
    *    The format version of the section, from its "%format" line, goes with every column so that
    *    the data can be read the way that version wrote it. See BIN_FORMAT_VERSION.
@@ -688,6 +690,9 @@ namespace cubload
       }
 
       int next (binary_column &col);
+
+      /* mark the row as corrupted at the offset given, and set ER_LDR_CORRUPTED_BINARY_RECORD for it */
+      int set_corrupted_at (std::size_t offset);
 
     private:
       int set_corrupted ();
