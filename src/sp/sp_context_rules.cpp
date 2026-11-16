@@ -694,8 +694,9 @@ sp_stmt_entry_name (sp_stmt_category stmt_category, int stmt_type)
  *       3. a write inside a SQL statement: rejected when it writes a class a running statement reads or writes
  *       Anything else is allowed. A procedure called alone by a CALL statement is not restricted by 2 and 3. A
  *       procedure called by a trigger action's CALL runs one level below the trigger (sp_trigger_call_guard), so
- *       2 and 3 apply to it and 1 reports the trigger. Rule 3 is checked where the writes are about to be done:
- *       sp_check_xasl_allowed () for an XASL and sp_check_object_write () for an object.
+ *       2 and 3 apply to it. 1 reports the trigger for anything run while a trigger runs. Rule 3 is checked where
+ *       the writes are about to be done: sp_check_xasl_allowed () for an XASL and sp_check_object_write () for an
+ *       object.
  */
 int
 sp_check_statement_allowed (sp_stmt_category stmt_category, int stmt_type)
@@ -704,18 +705,18 @@ sp_check_statement_allowed (sp_stmt_category stmt_category, int stmt_type)
 
   if (stmt_category == SP_STMT_TCL || stmt_category == SP_STMT_DDL)
     {
-      if (in_sql && sp_In_sql_depth != sp_Trigger_call_depth)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TCL_DDL_IN_QUERY, 1,
-		  sp_stmt_entry_name (stmt_category, stmt_type));
-	  return ER_SP_TCL_DDL_IN_QUERY;
-	}
-
       if (sp_In_trigger_depth > 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TCL_DDL_IN_TRIGGER, 1,
 		  sp_stmt_entry_name (stmt_category, stmt_type));
 	  return ER_SP_TCL_DDL_IN_TRIGGER;
+	}
+
+      if (in_sql)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TCL_DDL_IN_QUERY, 1,
+		  sp_stmt_entry_name (stmt_category, stmt_type));
+	  return ER_SP_TCL_DDL_IN_QUERY;
 	}
 
       return NO_ERROR;

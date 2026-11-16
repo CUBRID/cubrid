@@ -9040,6 +9040,8 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
   bool has_delete, should_delete = false;
   bool client_check_serializable_conflict = false;
 
+  sp_tree_frame_guard frame_guard (statement != NULL && statement->flag.has_sp_call, parser, statement);
+
   if (list_id == NULL || statement == NULL)
     {
       er_set (ER_ERROR_SEVERITY, __FILE__, __LINE__, ER_REGU_SYSTEM, 0);
@@ -9111,64 +9113,60 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
   /* set prefetching lock mode to WRITE access since we'll be updating all the objects in the list file. */
   (void) cursor_set_prefetch_lock_mode (&cursor_id, DB_FETCH_WRITE);
 
-  {
-    sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+  cursor_status = cursor_next_tuple (&cursor_id);
 
-    cursor_status = cursor_next_tuple (&cursor_id);
+  while (cursor_status == DB_CURSOR_SUCCESS)
+    {
+      /* read OIDs and runtime computed values */
+      if (cursor_get_tuple_value_list (&cursor_id, vals_cnt, dbvals) != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	  cursor_close (&cursor_id);
+	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
+	    {
+	      (void) tran_abort_upto_system_savepoint (savepoint_name);
+	    }
+	  goto done;
+	}
 
-    while (cursor_status == DB_CURSOR_SUCCESS)
-      {
-	/* read OIDs and runtime computed values */
-	if (cursor_get_tuple_value_list (&cursor_id, vals_cnt, dbvals) != NO_ERROR)
-	  {
-	    assert (er_errid () != NO_ERROR);
-	    error = er_errid ();
-	    cursor_close (&cursor_id);
-	    if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
-	      {
-		(void) tran_abort_upto_system_savepoint (savepoint_name);
-	      }
-	    goto done;
-	  }
+      if (has_delete)
+	{
+	  /* We may get NULL as an expr value. See pt_to_merge_update_query(...). */
+	  if (DB_IS_NULL (&dbvals[upd_cls_cnt]))
+	    {
+	      should_delete = false;
+	    }
+	  else
+	    {
+	      should_delete = db_get_int (&dbvals[upd_cls_cnt]);
+	    }
+	}
 
-	if (has_delete)
-	  {
-	    /* We may get NULL as an expr value. See pt_to_merge_update_query(...). */
-	    if (DB_IS_NULL (&dbvals[upd_cls_cnt]))
-	      {
-		should_delete = false;
-	      }
-	    else
-	      {
-		should_delete = db_get_int (&dbvals[upd_cls_cnt]);
-	      }
-	  }
+      /* perform update for current tuples */
+      error =
+	update_object_tuple (parser, assigns, assign_count, cls_info, upd_cls_cnt, turn_off_unique_check,
+			     turn_off_server_serializable_conflict_check, NORMAL_UPDATE, should_delete);
 
-	/* perform update for current tuples */
-	error =
-	  update_object_tuple (parser, assigns, assign_count, cls_info, upd_cls_cnt, turn_off_unique_check,
-			       turn_off_server_serializable_conflict_check, NORMAL_UPDATE, should_delete);
-
-	/* close cursor and restore to savepoint in case of error */
-	if (error < NO_ERROR)
-	  {
+      /* close cursor and restore to savepoint in case of error */
+      if (error < NO_ERROR)
+	{
 #if 0				/* TODO */
-	    /* mq_evaluate_check_option () do not er_set () */
-	    assert (er_errid () != NO_ERROR);
+	  /* mq_evaluate_check_option () do not er_set () */
+	  assert (er_errid () != NO_ERROR);
 #endif
-	    error = er_errid ();
-	    cursor_close (&cursor_id);
-	    if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
-	      {
-		(void) tran_abort_upto_system_savepoint (savepoint_name);
-	      }
-	    goto done;
-	  }
+	  error = er_errid ();
+	  cursor_close (&cursor_id);
+	  if (savepoint_name && (error != ER_LK_UNILATERALLY_ABORTED))
+	    {
+	      (void) tran_abort_upto_system_savepoint (savepoint_name);
+	    }
+	  goto done;
+	}
 
-	count += error;		/* number of objects affected. Incorrect for multi-table update !!! */
-	cursor_status = cursor_next_tuple (&cursor_id);
-      }
-  }
+      count += error;		/* number of objects affected. Incorrect for multi-table update !!! */
+      cursor_status = cursor_next_tuple (&cursor_id);
+    }
 
   /* close cursor and restore to savepoint in case of error */
   if (cursor_status != DB_CURSOR_END)
@@ -10957,6 +10955,8 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
       return NO_ERROR;
     }
 
+  sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+
   assert (parser->query_id != NULL_QUERY_ID);
   assert (parser->query_id == list_id->query_id);
 
@@ -11020,81 +11020,77 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
 
   cursor_id.query_id = parser->query_id;
 
-  {
-    sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+  cursor_status = cursor_next_tuple (&cursor_id);
 
-    cursor_status = cursor_next_tuple (&cursor_id);
+  while ((error >= NO_ERROR) && cursor_status == DB_CURSOR_SUCCESS)
+    {
+      error = cursor_get_tuple_value_list (&cursor_id, attrs_cnt, oids);
+      /* The select list contains instance OID - class OID pairs */
+      for (idx = 0; idx < attrs_cnt && error >= NO_ERROR; idx++)
+	{
+	  if (DB_IS_NULL (&oids[idx]))
+	    {
+	      continue;
+	    }
 
-    while ((error >= NO_ERROR) && cursor_status == DB_CURSOR_SUCCESS)
-      {
-	error = cursor_get_tuple_value_list (&cursor_id, attrs_cnt, oids);
-	/* The select list contains instance OID - class OID pairs */
-	for (idx = 0; idx < attrs_cnt && error >= NO_ERROR; idx++)
-	  {
-	    if (DB_IS_NULL (&oids[idx]))
-	      {
-		continue;
-	      }
+	  mop = db_get_object (&oids[idx]);
 
-	    mop = db_get_object (&oids[idx]);
+	  error = db_is_deleted (mop);
+	  if (error < 0)
+	    {
+	      return error;
+	    }
+	  if (error > 0)
+	    {
+	      /* if the object is an invalid object (was already deleted) then skip the delete, instance flush and
+	       * count steps */
+	      error = NO_ERROR;
+	      continue;
+	    }
 
-	    error = db_is_deleted (mop);
-	    if (error < 0)
-	      {
-		return error;
-	      }
-	    if (error > 0)
-	      {
-		/* if the object is an invalid object (was already deleted) then skip the delete, instance flush and
-		 * count steps */
-		error = NO_ERROR;
-		continue;
-	      }
+	  if (flush_to_server[idx] == -1)
+	    {
+	      /* the following code may be improved to not flush every time */
+	      if (has_unique_constraint (mop) || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+		{
+		  flush_to_server[idx] = 1;
+		}
+	      else
+		{
+		  flush_to_server[idx] = 0;
+		}
+	    }
 
-	    if (flush_to_server[idx] == -1)
-	      {
-		/* the following code may be improved to not flush every time */
-		if (has_unique_constraint (mop) || TM_TRAN_ISOLATION () >= TRAN_REP_READ)
-		  {
-		    flush_to_server[idx] = 1;
-		  }
-		else
-		  {
-		    flush_to_server[idx] = 0;
-		  }
-	      }
+	  // In has_unique_constraint (mop) is just for checking whether flushing to server is required, an error should be ignored.
+	  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+	    {
+	      er_clear ();
+	    }
 
-	    // In has_unique_constraint (mop) is just for checking whether flushing to server is required, an error should be ignored.
-	    if (er_errid () == ER_OBJ_NO_COMPONENTS)
-	      {
-		er_clear ();
-	      }
+	  error = delete_object_tuple (mop);
+	  if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
+	    {
+	      er_clear ();
+	      error = NO_ERROR;
+	      continue;
+	    }
 
-	    error = delete_object_tuple (mop);
-	    if (error == ER_HEAP_UNKNOWN_OBJECT && do_Trigger_involved)
-	      {
-		er_clear ();
-		error = NO_ERROR;
-		continue;
-	      }
+	  if ((error >= NO_ERROR) && flush_to_server[idx])
+	    {
+	      error = (locator_flush_instance (mop) == NO_ERROR) ? 0 : (er_errid () != NO_ERROR ? er_errid () : -1);
+	    }
 
-	    if ((error >= NO_ERROR) && flush_to_server[idx])
-	      {
-		error = (locator_flush_instance (mop) == NO_ERROR) ? 0 : (er_errid () != NO_ERROR ? er_errid () : -1);
-	      }
+	  if (error >= NO_ERROR)
+	    {
+	      count++;		/* another object has been deleted */
+	    }
+	}
 
-	    if (error >= NO_ERROR)
-	      {
-		count++;	/* another object has been deleted */
-	      }
-	  }
-
-	if (error >= NO_ERROR)
-	  {
-	    cursor_status = cursor_next_tuple (&cursor_id);
-	  }
-      }
-  }
+      if (error >= NO_ERROR)
+	{
+	  cursor_status = cursor_next_tuple (&cursor_id);
+	}
+    }
 
   if ((error >= NO_ERROR) && cursor_status != DB_CURSOR_END)
     {
