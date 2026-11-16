@@ -9914,8 +9914,8 @@ btree_keyoid_checkscan_check (THREAD_ENTRY * thread_p, BTREE_CHECKSCAN * btscan,
 
   if (BTREE_IS_UNIQUE (btid_int->unique_pk) && cls_oid != NULL && !OID_ISNULL (cls_oid))
     {
-      /* a unique index of a class hierarchy keeps the class of each object, and it must be the class of the row, as
-       * the index scan required */
+      /* a unique index can hold the objects of several classes (a class hierarchy, or the partitions of a partitioned
+       * table), so the class of the found object must also be the class of the row */
       RECDES found_record;
       BTREE_NODE_TYPE node_type;
       int found_after_key_offset;
