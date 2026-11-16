@@ -37,23 +37,23 @@
   (((x) << (r)) | ((x) >> (32 - (r))))
 
 /*
- * The standard 32-bit offset basis (0x811C9DC5) and prime (0x01000193 = 2^24 + 2^8 + 0x93) of the FNV-1a hash
+ * The standard 32-bit offset basis (0x811C9DC5) and prime (0x01000193) of the FNV-1a hash
  * (Fowler-Noll-Vo, public domain): http://www.isthe.com/chongo/tech/comp/fnv/
  */
 #define MHT_FNV_OFFSET 2166136261u
 #define MHT_FNV_PRIME 16777619u
 
 /*
- * 2^32 / the golden ratio (2654435769): the multiplier of Knuth's multiplicative hashing (TAOCP Vol. 3, 6.4), also the
- * delta of the TEA cipher and the constant of boost's hash_combine. A small integer times it spreads over all the bits.
+ * 2^32 / the golden ratio (2654435769): the multiplier of Knuth's multiplicative hashing (TAOCP Vol. 3, 6.4).
+ * A small integer times it spreads over all the bits.
  */
 #define MHT_KNUTH_MULTIPLIER 0x9e3779b9u
 
 /*
- * round (2^64 / pi), an odd number: the multiplier of a folded multiply, which XORs the high half of the 128-bit product
- * into its low half. FxHasher in rustc-hash 1.x, a hash taken from Firefox, multiplies by it too.
+ * round (2^64 / pi), an odd number: the multiplier of FxHasher (rustc-hash 1.x, a hash taken from Firefox). Here it is
+ * the multiplier of a folded multiply, which XORs the high half of the 128-bit product into its low half.
  */
-#define MHT_FOLD_MULTIPLIER 0x517cc1b727220a95ULL
+#define MHT_FX_MULTIPLIER 0x517cc1b727220a95ULL
 
 #define MHT2STR_COLL(id, str, size) \
   (LANG_GET_COLLATION (id))->mht2str ((LANG_GET_COLLATION (id)), (str), (size))
@@ -216,7 +216,7 @@ extern unsigned int mht_hls_slot_count (int est_size);
  *
  * The multiplies of FNV-1a carry only into the high bits, so the low bits of the hash depend only on the low bits of
  * the input: a string of a part repeated an even number of times has its low bit fixed. The hash tables take the low
- * bits (hash % n, hash & mask): a hash join puts all such rows in one partition.
+ * bits (hash & mask in mht_put_hls ()): such strings start probing from only half of the slots.
  */
 STATIC_INLINE unsigned int
 mht_mix_hash (unsigned int hash)

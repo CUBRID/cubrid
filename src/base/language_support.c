@@ -4554,7 +4554,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
 
   /*
    * The collation elements (CE) of a character: a CE is one set of weights, one per level. Most characters have one
-   * CE and an expansion has more. num_ce counts them and ce_index walks them.
+   * CE and an expansion has more. num_ce counts them and ce_index is the one read.
    */
   UCA_L13_W *uca_w_l13 = NULL;
   UCA_L4_W *uca_w_l4 = NULL;
@@ -5918,7 +5918,7 @@ lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_
  *   nul_as_space(in), to_upper(in): as lang_hash_bytes takes them
  *
  * The high half of the product, XORed into the low half, brings the high bits of a step down to where the next chunk
- * lands. A plain multiply carries only into the high bits: an FxHasher step, (rotl (hash, 5) ^ chunk) * K, gave the
+ * lands. A plain multiply carries only into the high bits: FxHasher's step, (rotl (hash, 5) ^ chunk) * K, gives the
  * same hash to many strings of digits padded with zeros to 9, 17 or 20 bytes.
  */
 STATIC_INLINE UINT64
@@ -5935,7 +5935,7 @@ lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upp
       chunk = lang_hash_u64_upper (chunk);
     }
 
-  product = (unsigned __int128) (hash_key ^ chunk) * MHT_FOLD_MULTIPLIER;
+  product = (unsigned __int128) (hash_key ^ chunk) * MHT_FX_MULTIPLIER;
   return (UINT64) product ^ (UINT64) (product >> 64);
 }
 

@@ -2481,7 +2481,7 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	     */
 	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
-		/* a fixed numeric hashes as it did: the hash partitions keep their rows */
+		/* a fixed NUMERIC keeps this hash: the hash partitioned tables place their rows by it */
 		scale = is_float_numeric ? scale : 0;
 		hashcode = numeric_repr_fold32 (db_locate_numeric (val));
 	      }
