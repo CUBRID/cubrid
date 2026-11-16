@@ -1086,10 +1086,22 @@ namespace cubload
 			return ER_FAILED;
 		      }
 
-		    compressed_mode = (data_format == OBJECT_FORMAT_BINARY_COMPRESSED);
-		    binary_mode = true;
-		    first_binary_batch = true;
-		    continue;
+		    if (arg_end != arg && data_format == OBJECT_FORMAT_TEXT)
+		      {
+			/*
+			 * The rows which follow are text, as the scanner reads them after this command line, so the
+			 * line stays on the text path and goes to the server as a line of its batch, where the scanner
+			 * checks the rest of its arguments.
+			 */
+			format_string.clear ();
+		      }
+		    else
+		      {
+			compressed_mode = (data_format == OBJECT_FORMAT_BINARY_COMPRESSED);
+			binary_mode = true;
+			first_binary_batch = true;
+			continue;
+		      }
 		  }
 	      }
 
