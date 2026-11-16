@@ -73,6 +73,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "copy_column_types.h"
+#include "copy_stream_kind.h"
 #include "object_representation.h"
 #include "trigger_manager.h"
 #include "release_string.h"
@@ -23282,6 +23283,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   int is_partitioned = 0;
   const char *null_str = "";	/* CSV: the unquoted field that reads as NULL */
   DB_BIGINT reject_limit = 0;	/* ON_ERROR IGNORE: the most rows it may reject, 0 for no limit */
+  COPY_CONFIG config;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -23510,7 +23512,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* CSV-only options are rejected for the BINARY format (DDL-time error). */
-  if (statement->info.copy.format != 1
+  if (statement->info.copy.format != COPY_FORMAT_CSV
       && (statement->info.copy.fmt.csv.delimiter != 0 || statement->info.copy.fmt.csv.quote != 0
 	  || statement->info.copy.fmt.csv.header != 0))
     {
@@ -23520,7 +23522,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  if (statement->info.copy.format != 1 && statement->info.copy.fmt.csv.null_str != NULL)
+  if (statement->info.copy.format != COPY_FORMAT_CSV && statement->info.copy.fmt.csv.null_str != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, "NULL is only valid with FORMAT CSV");
       error = ER_COPY_INVALID_OPTION;
@@ -23536,7 +23538,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = ER_COPY_INVALID_OPTION;
       goto end;
     }
-  if (statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE && statement->info.copy.format != 1)
+  if (statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE && statement->info.copy.format != COPY_FORMAT_CSV)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
 	      "ON_ERROR IGNORE is only valid with FORMAT CSV");
@@ -23589,7 +23591,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
    * QUOTE '<LF>' is the worst of them: it opens a quoted field that the row
    * terminator can never close, so the decoder buffers the whole stream and
    * then reports a zero-row success. */
-  if (statement->info.copy.format == 1)
+  if (statement->info.copy.format == COPY_FORMAT_CSV)
     {
       int delim = (statement->info.copy.fmt.csv.delimiter != 0) ? statement->info.copy.fmt.csv.delimiter : ',';
       int quote = (statement->info.copy.fmt.csv.quote != 0) ? statement->info.copy.fmt.csv.quote : '"';
@@ -23640,10 +23642,19 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
-			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
-			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk, null_str,
-			  statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE, reject_limit);
+  config.table_name = table_name;
+  config.num_cols = ncols;
+  config.format = statement->info.copy.format;
+  config.delimiter = statement->info.copy.fmt.csv.delimiter;
+  config.quote = statement->info.copy.fmt.csv.quote;
+  config.header = statement->info.copy.fmt.csv.header;
+  config.bulk = statement->info.copy.bulk;
+  config.null_str = null_str;
+  config.on_error_ignore = (statement->info.copy.on_error == PT_COPY_ON_ERROR_IGNORE);
+  config.reject_limit = reject_limit;
+  config.col_types = col_types;
+  config.attr_ids = col_ids;
+  error = copy_from_init (&config);
   if (error == NO_ERROR)
     {
       stream_from_set_savepoint (UNIQUE_SAVEPOINT_COPY);

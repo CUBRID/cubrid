@@ -3715,7 +3715,7 @@ struct pt_copy_info
   PT_NODE *table_name;		/* PT_NAME: target table */
   PT_NODE *column_list;		/* PT_NAME (list): column names, or NULL for all */
   int direction;		/* 0 = FROM, 1 = TO */
-  int format;			/* 0 = BINARY, 1 = CSV, 2 = LOADDB */
+  int format;			/* COPY_FORMAT_BINARY or COPY_FORMAT_CSV (copy_stream_kind.h) */
   int bulk;			/* 1 = bulk-load mode (BU_LOCK + batch insert); all formats */
   int on_error;			/* PT_COPY_ON_ERROR_* */
   PT_NODE *reject_limit;	/* PT_VALUE: REJECT_LIMIT n, or NULL */

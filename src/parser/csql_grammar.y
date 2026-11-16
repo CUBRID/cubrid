@@ -149,6 +149,7 @@ static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #include "storage_common.h"
 #include "sp_constants.hpp"
 #include "db_function.hpp"
+#include "copy_stream_kind.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4511,7 +4512,7 @@ copy_stmt
 			    node->info.copy.table_name = $2;
 			    node->info.copy.column_list = $3;
 			    node->info.copy.direction = 0;	/* FROM */
-			    node->info.copy.format = $9;	/* 0 = BINARY, 1 = CSV */
+			    node->info.copy.format = $9;
 			    node->info.copy.fmt.csv.delimiter = 0;
 			    node->info.copy.fmt.csv.quote = 0;
 			    node->info.copy.fmt.csv.header = 0;
@@ -4552,9 +4553,9 @@ copy_stmt
 
 copy_format
 	: BINARY
-		{{ $$ = 0; }}
+		{{ $$ = COPY_FORMAT_BINARY; }}
 	| CSV_
-		{{ $$ = 1; }}
+		{{ $$ = COPY_FORMAT_CSV; }}
 	;
 
 opt_copy_csv_option_list

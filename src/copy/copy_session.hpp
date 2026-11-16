@@ -36,10 +36,6 @@
 #include <string>
 #include <vector>
 
-/* COPY row formats (mirror PT_COPY_INFO.format: 0 = BINARY, 1 = CSV) */
-#define COPY_FORMAT_BINARY 0
-#define COPY_FORMAT_CSV    1
-
 class copy_session : public stream_session
 {
   public:
@@ -47,9 +43,7 @@ class copy_session : public stream_session
     ~copy_session () override;
 
     /* binding-specific open (not part of the stream_session seam) */
-    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
-	      int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str,
-	      int on_error_ignore, std::int64_t reject_limit);
+    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const COPY_CONFIG &config);
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;

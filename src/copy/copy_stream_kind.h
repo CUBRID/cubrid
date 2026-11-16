@@ -17,7 +17,7 @@
  */
 
 /*
- * copy_stream_kind.h - COPY's tag on the byte-stream transport.
+ * copy_stream_kind.h - COPY's tag and open request on the byte-stream transport.
  *
  * The transport declares only the bound of the tag space; the value is this
  * consumer's to name. It is shared because the two halves of the COPY binding
@@ -30,11 +30,40 @@
 #ifndef _COPY_STREAM_KIND_H_
 #define _COPY_STREAM_KIND_H_
 
+#include "dbtype_def.h"
+
 #define STREAM_KIND_COPY 0
 
 /* The first int of COPY's config blob. A server accepts every version up to its own.
  * 2: the CSV NULL string follows bulk.
- * 3: ON_ERROR IGNORE (int) and REJECT_LIMIT (int64 as high, low int) follow the NULL string. */
+ * 3: ON_ERROR IGNORE (int) and REJECT_LIMIT (int64) follow the NULL string. */
 #define COPY_CONFIG_VERSION 3
+
+#define COPY_FORMAT_BINARY 0
+#define COPY_FORMAT_CSV    1
+
+/*
+ * What COPY's open request carries. The client packs it in copy_from_init () and
+ * the server unpacks it in copy_session_create (), after the version and in this
+ * order: table_name (string), num_cols, format, delimiter, quote, header, bulk
+ * (int), null_str (string), on_error_ignore (int), reject_limit (int64), then
+ * col_types and attr_ids (int each, num_cols of them).
+ */
+typedef struct copy_config COPY_CONFIG;
+struct copy_config
+{
+  const char *table_name;
+  int num_cols;
+  int format;			/* COPY_FORMAT_BINARY or COPY_FORMAT_CSV */
+  int delimiter;		/* CSV; 0 for ',' */
+  int quote;			/* CSV; 0 for '"' */
+  int header;			/* CSV: the first line is a header to skip */
+  int bulk;
+  const char *null_str;		/* CSV: the unquoted field that reads as NULL */
+  int on_error_ignore;		/* CSV: skip a row in error instead of failing */
+  DB_BIGINT reject_limit;	/* the most rows ON_ERROR IGNORE may skip; 0 for no limit */
+  const DB_TYPE *col_types;	/* the target columns in the statement's order */
+  const int *attr_ids;		/* carry the column list, which the types alone cannot express */
+};
 
 #endif /* _COPY_STREAM_KIND_H_ */

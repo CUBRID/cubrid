@@ -94,30 +94,28 @@ copy_session::~copy_session ()
 }
 
 int
-copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *attr_ids,
-		    int num_cols, int format, int delimiter, int quote, int header, int bulk, const char *null_str,
-		    int on_error_ignore, std::int64_t reject_limit)
+copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const COPY_CONFIG &config)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
   bool attrinfo_started = false;
 
   COPY_OID (&m_class_oid, class_oid);
-  m_num_cols = num_cols;
-  m_format = format;
-  m_delimiter = (delimiter != 0) ? (char) delimiter : ',';
-  m_quote = (quote != 0) ? (char) quote : '"';
-  m_null_str = (null_str != NULL) ? null_str : "";
-  m_on_error_ignore = (on_error_ignore != 0);
-  m_reject_limit = reject_limit;
+  m_num_cols = config.num_cols;
+  m_format = config.format;
+  m_delimiter = (config.delimiter != 0) ? (char) config.delimiter : ',';
+  m_quote = (config.quote != 0) ? (char) config.quote : '"';
+  m_null_str = (config.null_str != NULL) ? config.null_str : "";
+  m_on_error_ignore = (config.on_error_ignore != 0);
+  m_reject_limit = config.reject_limit;
   m_rows_rejected = 0;
 
   /* COPY_REJECTED_ROWS () answers for the COPY that ran last, so a COPY that
    * fails does not leave the count of an earlier one behind */
   (void) session_set_copy_rejected_rows (thread_p, 0);
-  m_skip_header = (header != 0);
-  m_bulk = (bulk != 0);
-  m_col_types.assign (col_types, col_types + num_cols);
+  m_skip_header = (config.header != 0);
+  m_bulk = (config.bulk != 0);
+  m_col_types.assign (config.col_types, config.col_types + config.num_cols);
   m_rows_loaded = 0;
 
   FILE_TYPE ftype;
@@ -151,23 +149,23 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
     int n_attrs = attrinfo.last_classrepr->n_attributes;
     OR_ATTRIBUTE *attrs = attrinfo.last_classrepr->attributes;
 
-    if (num_cols > n_attrs)
+    if (m_num_cols > n_attrs)
       {
 	error = ER_COPY_NOT_SUPPORTED;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "more COPY columns than the table has attributes");
 	goto exit;
       }
 
-    m_attr_ids.resize (num_cols);
-    m_col_domains.resize (num_cols);
-    m_col_notnull.resize (num_cols);
-    for (int i = 0; i < num_cols; i++)
+    m_attr_ids.resize (m_num_cols);
+    m_col_domains.resize (m_num_cols);
+    m_col_notnull.resize (m_num_cols);
+    for (int i = 0; i < m_num_cols; i++)
       {
 	int j;
 
 	for (j = 0; j < n_attrs; j++)
 	  {
-	    if (attrs[j].id == attr_ids[i])
+	    if (attrs[j].id == config.attr_ids[i])
 	      {
 		break;
 	      }
@@ -178,11 +176,11 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "a COPY target column no longer exists");
 	    goto exit;
 	  }
-	m_attr_ids[i] = attr_ids[i];
+	m_attr_ids[i] = config.attr_ids[i];
 
 	/* The client chose each column's decoder from the type it saw. A type
 	 * changed since then would decode the bytes as something else. */
-	if (attrs[j].type != col_types[i])
+	if (attrs[j].type != config.col_types[i])
 	  {
 	    error = ER_COPY_NOT_SUPPORTED;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "a COPY target column changed its type");
@@ -714,17 +712,10 @@ copy_session::abort (THREAD_ENTRY *thread_p)
 }
 
 /*
- * copy_session_create () - Decode the COPY config blob and build a copy_session.
- *   config(in): pointer to the COPY config bytes (table/ncols/options/col_types)
- *   config_len(in): length of the config blob; every read below is bounded by it
+ * copy_session_create () - Unpack COPY's config blob (COPY_CONFIG) and open a copy_session.
+ *   config(in), config_len(in): the blob as it came off the wire; every read below is bounded by config_len
  *   error_code(out): NO_ERROR or the failure code
- *   return: opened copy_session on success, NULL on error
- *
- * COPY config encoding: version (int), table_name (string), num_cols (int),
- * format (int), delimiter (int), quote (int), header (int), bulk (int),
- * [version 2: null_str (string)], [version 3: on_error_ignore (int),
- * reject_limit (int64 as high int, low int)], col_types (int[num_cols]),
- * attr_ids (int[num_cols]).
+ *   return: the opened copy_session, or NULL
  */
 static stream_session *
 copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len, int *error_code)
@@ -732,26 +723,17 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
   /* or_unpack_* take a mutable pointer although they only read through it */
   char *ptr = const_cast<char *> (config);
   const char *config_end = config + config_len;
+  COPY_CONFIG cfg = COPY_CONFIG ();
   char *table_name = NULL;
-  int name_len = 0;
-  int num_cols = 0;
-  int format = 0;
-  int delimiter = 0;
-  int quote = 0;
-  int header = 0;
-  int bulk = 0;
-  int version = 0;
   char *null_str = NULL;
-  int on_error_ignore = 0;
-  std::int64_t reject_limit = 0;
+  int name_len = 0;
+  int version = 0;
   DB_TYPE *col_types = NULL;
   int *attr_ids = NULL;
   copy_session *session = NULL;
 
   *error_code = NO_ERROR;
 
-  /* The blob comes straight off the wire, so bound every read by config_len
-   * before trusting a length taken from it. */
   if (config_len < 2 * OR_INT_SIZE)
     {
       goto invalid_config;
@@ -771,19 +753,25 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
     {
       goto invalid_config;
     }
+  cfg.table_name = table_name;
 
   if (config_end - ptr < 6 * OR_INT_SIZE)
     {
       goto invalid_config;
     }
 
-  ptr = or_unpack_int (ptr, &num_cols);
-  /* format: 0 = BINARY, 1 = CSV */
-  ptr = or_unpack_int (ptr, &format);
-  ptr = or_unpack_int (ptr, &delimiter);
-  ptr = or_unpack_int (ptr, &quote);
-  ptr = or_unpack_int (ptr, &header);
-  ptr = or_unpack_int (ptr, &bulk);
+  ptr = or_unpack_int (ptr, &cfg.num_cols);
+  ptr = or_unpack_int (ptr, &cfg.format);
+  ptr = or_unpack_int (ptr, &cfg.delimiter);
+  ptr = or_unpack_int (ptr, &cfg.quote);
+  ptr = or_unpack_int (ptr, &cfg.header);
+  ptr = or_unpack_int (ptr, &cfg.bulk);
+
+  /* any other value would be decoded as BINARY without its end-of-data check */
+  if (cfg.format != COPY_FORMAT_BINARY && cfg.format != COPY_FORMAT_CSV)
+    {
+      goto invalid_config;
+    }
 
   if (version >= 2)
     {
@@ -803,52 +791,52 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
 	{
 	  goto invalid_config;
 	}
+      cfg.null_str = null_str;
     }
 
   if (version >= 3)
     {
-      int hi, lo;
-
-      if (config_end - ptr < 3 * OR_INT_SIZE)
+      if (config_end - ptr < OR_INT_SIZE + OR_INT64_SIZE)
 	{
 	  goto invalid_config;
 	}
-      ptr = or_unpack_int (ptr, &on_error_ignore);
-      ptr = or_unpack_int (ptr, &hi);
-      ptr = or_unpack_int (ptr, &lo);
-      reject_limit = (std::int64_t) (((std::uint64_t) (unsigned int) hi << 32) | (unsigned int) lo);
+      ptr = or_unpack_int (ptr, &cfg.on_error_ignore);
+      OR_GET_INT64 (ptr, &cfg.reject_limit);
+      ptr += OR_INT64_SIZE;
       /* do_copy refuses these; a client that sends them anyway is not trusted
        * to skip BINARY rows whose boundary it cannot know */
-      if ((on_error_ignore != 0 && format != COPY_FORMAT_CSV) || reject_limit < 0)
+      if ((cfg.on_error_ignore != 0 && cfg.format != COPY_FORMAT_CSV) || cfg.reject_limit < 0)
 	{
 	  goto invalid_config;
 	}
     }
 
-  if (num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE / 2 < num_cols)
+  if (cfg.num_cols <= 0 || (config_end - ptr) / OR_INT_SIZE / 2 < cfg.num_cols)
     {
       goto invalid_config;
     }
 
-  col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
-  attr_ids = (int *) db_private_alloc (thread_p, num_cols * sizeof (int));
+  col_types = (DB_TYPE *) db_private_alloc (thread_p, cfg.num_cols * sizeof (DB_TYPE));
+  attr_ids = (int *) db_private_alloc (thread_p, cfg.num_cols * sizeof (int));
   if (col_types == NULL || attr_ids == NULL)
     {
       *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit;
     }
 
-  for (int i = 0; i < num_cols; i++)
+  for (int i = 0; i < cfg.num_cols; i++)
     {
       int type_val;
       ptr = or_unpack_int (ptr, &type_val);
       col_types[i] = (DB_TYPE) type_val;
     }
 
-  for (int i = 0; i < num_cols; i++)
+  for (int i = 0; i < cfg.num_cols; i++)
     {
       ptr = or_unpack_int (ptr, &attr_ids[i]);
     }
+  cfg.col_types = col_types;
+  cfg.attr_ids = attr_ids;
 
   {
     OID class_oid;
@@ -856,10 +844,10 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
 
     /* bulk mode pre-acquires a class-level BU_LOCK (like loaddb) so the batch
      * insert can skip per-row MVCC-id and per-row class/btree locks. */
-    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, (bulk ? BU_LOCK : NULL_LOCK));
+    status = xlocator_find_class_oid (thread_p, cfg.table_name, &class_oid, (cfg.bulk ? BU_LOCK : NULL_LOCK));
     if (status != LC_CLASSNAME_EXIST)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, cfg.table_name);
 	*error_code = ER_LC_UNKNOWN_CLASSNAME;
 	goto exit;
       }
@@ -871,8 +859,7 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
 	goto exit;
       }
 
-    *error_code = session->init (thread_p, &class_oid, col_types, attr_ids, num_cols, format, delimiter, quote,
-				 header, bulk, null_str, on_error_ignore, reject_limit);
+    *error_code = session->init (thread_p, &class_oid, cfg);
     if (*error_code != NO_ERROR)
       {
 	delete session;

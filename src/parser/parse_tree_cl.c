@@ -58,6 +58,7 @@
 #include "tde.h"
 #include "jsp_cl.h"
 #include "xasl.h"
+#include "copy_stream_kind.h"
 
 #include <malloc.h>
 
@@ -21341,7 +21342,9 @@ pt_print_copy (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* The format and every option, so that the printout reads back as the same
    * statement. A one-character literal that is itself a quote is doubled. */
-  q = pt_append_nulstring (parser, q, (p->info.copy.format == 1) ? " WITH (FORMAT CSV" : " WITH (FORMAT BINARY");
+  q =
+    pt_append_nulstring (parser, q,
+			 (p->info.copy.format == COPY_FORMAT_CSV) ? " WITH (FORMAT CSV" : " WITH (FORMAT BINARY");
   if (p->info.copy.fmt.csv.delimiter > 0)
     {
       char opt[32];
