@@ -9692,7 +9692,7 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL, *area = NULL;
   char *db_user = NULL, *host = NULL, *program_name = NULL;
-  char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
+  char db_user_upper[CSS_AU_NAME_SIZE] = { '\0' };
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   char session_secret[SESSION_SECRET_SIZE];
   SESSION_PARAM *session_params = NULL;
@@ -9791,13 +9791,25 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	  intl_identifier_upper (db_user, db_user_upper);
 	}
 
+      if (db_user_upper[0] == '\0'
+	  || (current_user != NULL && intl_identifier_casecmp (current_user, db_user_upper) == 0))
+	{
+	  /* no switch, but spend a proof made for it so none is left on the connection */
+	  (void) css_consume_auth_proof (thread_p->conn_entry, db_user_upper);
+	}
       /* same rule as slogin_user () */
-      if (db_user_upper[0] != '\0'
-	  && (current_user == NULL || intl_identifier_casecmp (current_user, db_user_upper) != 0)
-	  && auth_may_switch_user (thread_p, db_user_upper))
+      else if (auth_may_switch_user (thread_p, db_user_upper))
 	{
 	  logtb_set_current_user_name (thread_p, db_user_upper);
 	  current_user = db_user_upper;
+	}
+      else if (error == NO_ERROR)
+	{
+	  /* refused, and said so as slogin_user () does, so the client does not go on as
+	   * a user the server did not switch to */
+	  error = ER_AU_INVALID_PASSWORD;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  (void) return_error_to_client (thread_p, rid);
 	}
 
       if (current_user != NULL)
@@ -12148,7 +12160,7 @@ sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
   int error = ER_AU_INVALID_PASSWORD;
 
   /* a new attempt spends whatever this connection proved before */
-  thread_p->conn_entry->auth_verified = false;
+  css_set_auth_proof (thread_p->conn_entry, NULL);
 
   /* request: user | nonce | issued_at | tag | answer */
   ptr = (request != NULL) ? cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) : NULL;
@@ -12186,9 +12198,7 @@ sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqle
   else
     {
       error = NO_ERROR;
-      strncpy (thread_p->conn_entry->auth_user, user_name, DB_MAX_USER_LENGTH);
-      thread_p->conn_entry->auth_user[DB_MAX_USER_LENGTH] = '\0';
-      thread_p->conn_entry->auth_verified = true;
+      css_set_auth_proof (thread_p->conn_entry, user_name);
     }
   memset (stored, 0, sizeof (stored));
 
