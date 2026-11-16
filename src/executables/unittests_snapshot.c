@@ -619,6 +619,7 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
   int numthreads;
   pthread_t threads[TEST_MAX_THREADS];
   int idx_thread_entry;
+  int error = NO_ERROR;
   char msg[256];
 
   numthreads = num_snapshot_threads + num_complete_threads + num_oldest_mvccid_threads + TEST_ORDER_WRITERS;
@@ -659,61 +660,71 @@ test_mvcc_operations (int num_snapshot_threads, int num_complete_threads, int nu
     }
   snapshot_threads_running.store (num_snapshot_threads);
   idx_thread_entry = 0;
-  for (i = 0; i < num_snapshot_threads; i++, idx_thread_entry++)
+  for (i = 0; i < num_snapshot_threads && error == NO_ERROR; i++, idx_thread_entry++)
     {
       if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_get_snapshot,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
-  for (i = 0; i < num_complete_threads; i++, idx_thread_entry++)
+  for (i = 0; i < num_complete_threads && error == NO_ERROR; i++, idx_thread_entry++)
     {
       if (pthread_create (&threads[idx_thread_entry], NULL, test_new_mvcc_complete,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
-  for (i = 0; i < num_oldest_mvccid_threads; i++, idx_thread_entry++)
+  for (i = 0; i < num_oldest_mvccid_threads && error == NO_ERROR; i++, idx_thread_entry++)
     {
       if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_get_oldest,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
   order_writer_first_entry = idx_thread_entry;
-  for (i = 0; i < TEST_ORDER_WRITERS; i++, idx_thread_entry++)
+  for (i = 0; i < TEST_ORDER_WRITERS && error == NO_ERROR; i++, idx_thread_entry++)
     {
       if (pthread_create (&threads[idx_thread_entry], NULL, test_mvcc_order_writer,
 			  (void *) (thread_array + idx_thread_entry)) != NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread create error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  break;
 	}
     }
 
-  for (i = 0; i < numthreads; i++)
+  /* Wait for every thread that started, also after a failure: they use the MVCC table and the pair arrays, which
+   * the caller and this function free. idx_thread_entry is the number of threads created. */
+  for (i = 0; i < idx_thread_entry; i++)
     {
       void *retval;
 
       pthread_join (threads[i], &retval);
-      if (retval != NO_ERROR)
+      if (retval != NO_ERROR && error == NO_ERROR)
 	{
 	  printf (" %s: %s\n", "FAILED", "thread proc error");
-	  return ER_FAILED;
+	  error = ER_FAILED;
 	}
     }
   for (i = 0; i < TEST_ORDER_WRITERS; i++)
     {
       free_and_init (order_pairs[i]);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   if (count_snapshots != (UINT64) num_snapshot_threads * nops_snapshot)
