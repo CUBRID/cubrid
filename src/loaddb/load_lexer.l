@@ -825,8 +825,15 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
      * looks like, see split () in load_common.cpp. The end of records marker and the new line
      * which closes the section stayed in a later batch, so the line the rows of this one make up
      * is closed from here. Scanning goes on in INITIAL, where the end of input terminates it.
+     *
+     * SA mode scans the object file itself, in one piece, so there the end of records marker is
+     * missing: the object file is truncated after a whole row or block. The marker would have been
+     * on the line after yylineno.
      */
     PRINT ("BINARY_BLOCK batch end %s\n", "");
+#if defined (SA_MODE)
+    fail_binary_section_at (yylineno + 1, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
+#endif
     BEGIN INITIAL;
     return token::NL;
 }
