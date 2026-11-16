@@ -26,7 +26,7 @@
 #ifndef _COPY_CSV_DECODER_HPP_
 #define _COPY_CSV_DECODER_HPP_
 
-#include "copy_binary_decoder.hpp"	/* COPY_COL_DOMAIN */
+#include "copy_decode_common.hpp"
 #include "dbtype_def.h"
 
 #include <string>

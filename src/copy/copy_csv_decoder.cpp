@@ -22,7 +22,6 @@
 
 #include "copy_csv_decoder.hpp"
 
-#include "copy_binary_decoder.hpp"	/* COPY_DECODE_NEED_MORE */
 #include "copy_column_types.h"
 #include "chartype.h"
 #include "db_date.h"

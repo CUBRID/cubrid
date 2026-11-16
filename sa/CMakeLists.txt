@@ -636,6 +636,7 @@ set(LOADDB_HEADERS
 set(COPY_SOURCES
   ${COPY_DIR}/copy_binary_decoder.cpp
   ${COPY_DIR}/copy_csv_decoder.cpp
+  ${COPY_DIR}/copy_decode_common.cpp
   ${COPY_DIR}/copy_session.cpp
   )
 
@@ -645,6 +646,7 @@ set(COPY_HEADERS
   ${COPY_DIR}/copy_binary_format.hpp
   ${COPY_DIR}/copy_binary_decoder.hpp
   ${COPY_DIR}/copy_csv_decoder.hpp
+  ${COPY_DIR}/copy_decode_common.hpp
   ${COPY_DIR}/copy_session.hpp
   )
 
