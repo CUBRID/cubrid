@@ -1809,8 +1809,13 @@ css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE state, bool
 	  remaining = logtb_count_not_allowed_clients_in_maintenance_mode (thread_p);
 	  if (remaining != 0)
 	    {
-	      er_log_debug (ARG_FILE_LINE, "css_change_ha_server_state: %d not allowed clients remain after %d sec\n",
-			    remaining, LOGTB_SLAM_WAIT_SECONDS);
+	      char msg[LINE_MAX];
+
+	      /* the change goes on. leave in the server error log why such clients are still connected */
+	      snprintf (msg, sizeof (msg), "changing to maintenance mode with %d client(s) not allowed in maintenance "
+			"mode still connected %d sec after they were requested to close", remaining,
+			LOGTB_SLAM_WAIT_SECONDS);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, msg);
 	    }
 	}
       break;
