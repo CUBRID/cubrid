@@ -25,6 +25,7 @@
 #include "copy_binary_decoder.hpp"
 #include "copy_binary_format.hpp"
 #include "copy_column_types.h"
+#include "chartype.h"
 #include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
@@ -181,6 +182,19 @@ binary_error (std::int64_t row, int col, const char *reason)
   return copy_format_error (ER_COPY_BINARY_FORMAT_ERROR, row, col, reason);
 }
 
+static bool
+copy_text_is_blank (const char *text, int text_len)
+{
+  for (int i = 0; i < text_len; i++)
+    {
+      if (!char_isspace (text[i]))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 copy_cast_result
 copy_text_to_column (const char *text, int text_len, const COPY_COL_DOMAIN *dom, DB_VALUE *val)
 {
@@ -190,6 +204,14 @@ copy_text_to_column (const char *text, int text_len, const COPY_COL_DOMAIN *dom,
   int collation = LANG_SYS_COLLATION;
 
   assert (domain != NULL);
+
+  /* A blank field is not a number, as for the integer and floating types; INSERT's cast reads it as 0. */
+  if ((TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC || TP_DOMAIN_TYPE (domain) == DB_TYPE_MONETARY)
+      && copy_text_is_blank (text, text_len))
+    {
+      db_make_null (val);
+      return COPY_CAST_BAD_VALUE;
+    }
 
   /* The text is in the column's own codeset where the column has one (ENUM),
    * and JSON text is UTF-8; the cast converts from whatever the source says. */

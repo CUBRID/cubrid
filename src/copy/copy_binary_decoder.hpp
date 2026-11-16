@@ -87,7 +87,8 @@ extern int copy_format_error (int error_code, std::int64_t row, int col, const c
  * copy_text_to_column () - Cast the text of a field to its column's domain, for
  *   the types copy_type_is_text_cast () names. The cast is the one INSERT
  *   applies to a string, so a value that would have to be truncated, or that
- *   is out of the column's range, is refused rather than stored.
+ *   is out of the column's range, is refused rather than stored. A blank
+ *   number is refused too, where INSERT reads it as 0.
  *   return: COPY_CAST_OK, or why it failed. Nothing is raised: only the caller
  *           knows the format, row and column the error has to name.
  */
