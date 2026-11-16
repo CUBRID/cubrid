@@ -60,6 +60,7 @@
 #include "schema_system_catalog_constants.h"
 #include "execute_statement.h"
 #include "network_interface_cl.h"
+#include "sp_context_rules.hpp"
 
 #include "dbtype.h"
 
@@ -1906,6 +1907,13 @@ create_template_object (OBJ_TEMPLATE * template_ptr)
   ws_class_has_object_dependencies (template_ptr->classobj);
 
   class_ = template_ptr->class_;
+
+  if (sp_In_sql_depth > 0
+      && sp_check_object_write ((class_->class_type != SM_VCLASS_CT) ? template_ptr->classobj :
+				template_ptr->base_classobj) != NO_ERROR)
+    {
+      return NULL;
+    }
 
   /*
    * NOTE: garbage collection can occur in either the call to locator_add_instance

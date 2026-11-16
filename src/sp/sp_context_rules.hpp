@@ -56,6 +56,7 @@ extern CUB_THREAD_LOCAL int sp_In_sql_depth;
 extern CUB_THREAD_LOCAL int sp_In_trigger_depth;
 extern CUB_THREAD_LOCAL int sp_Trigger_call_depth;
 extern CUB_THREAD_LOCAL bool sp_In_statement_savepoint;
+extern CUB_THREAD_LOCAL bool sp_Object_lock_only;
 
 #if defined (SA_MODE)
 /* true while the request being served in process is a query execution, false for a CALL */

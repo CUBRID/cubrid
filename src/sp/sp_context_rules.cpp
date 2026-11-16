@@ -44,6 +44,7 @@ CUB_THREAD_LOCAL int sp_In_sql_depth = 0;
 CUB_THREAD_LOCAL int sp_In_trigger_depth = 0;
 CUB_THREAD_LOCAL int sp_Trigger_call_depth = 0;
 CUB_THREAD_LOCAL bool sp_In_statement_savepoint = false;
+CUB_THREAD_LOCAL bool sp_Object_lock_only = false;
 
 struct sp_frame
 {
@@ -269,9 +270,42 @@ sp_oid_list_contains (const std::vector<OID> &class_oids, const OID *oid)
   return false;
 }
 
+/*
+ * sp_table_oid () - the class a class stands for in the rules: the partitioned table for a partition, or itself
+ *   return: the class
+ *   class_oid(in): a class
+ */
+static const OID *
+sp_table_oid (const OID *class_oid)
+{
+  DB_OBJECT *class_mop = ws_mop (class_oid, NULL);
+  DB_OBJECT *root = NULL;
+
+  if (class_mop == NULL)
+    {
+      return class_oid;
+    }
+
+  if (do_get_partition_parent (class_mop, &root) != NO_ERROR)
+    {
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  er_clear ();
+	}
+      return class_oid;
+    }
+
+  return (root != NULL) ? ws_oid (root) : class_oid;
+}
+
 static void
 sp_oid_list_add (const OID *oid, std::vector<OID> &class_oids)
 {
+  if (oid != NULL && !OID_ISNULL (oid))
+    {
+      oid = sp_table_oid (oid);
+    }
+
   if (oid != NULL && !OID_ISNULL (oid) && !sp_oid_list_contains (class_oids, oid))
     {
       class_oids.push_back (*oid);
@@ -373,14 +407,6 @@ sp_add_affected_classes (DB_OBJECT *class_mop, bool cascades, std::vector<OID> &
       return error;
     }
 
-  if (class_->partition != NULL)
-    {
-      for (DB_OBJLIST *user = class_->users; user != NULL; user = user->next)
-	{
-	  sp_oid_list_add (ws_oid (user->op), class_oids);
-	}
-    }
-
   if (!cascades)
     {
       return NO_ERROR;
@@ -427,6 +453,11 @@ sp_add_subclasses (DB_OBJECT *class_mop, std::vector<OID> &class_oids)
   if (error != NO_ERROR)
     {
       return error;
+    }
+
+  if (class_->partition != NULL)
+    {
+      return NO_ERROR;
     }
 
   for (DB_OBJLIST *user = class_->users; user != NULL; user = user->next)
@@ -551,6 +582,7 @@ sp_check_writes (const std::vector<OID> &write_class_oids, bool cascades)
       return NO_ERROR;
     }
 
+  assert (!sp_Frames.empty () && sp_Frames.front ().depth < sp_In_sql_depth);
   if (sp_Frames.empty () || sp_Frames.front ().depth >= sp_In_sql_depth)
     {
       return NO_ERROR;
@@ -728,7 +760,13 @@ sp_allowed_write_known (const OID *class_oid, bool cascades)
 int
 sp_check_object_write (DB_OBJECT *object)
 {
-  if (sp_In_sql_depth <= 0 || object == NULL || sp_Frames.empty () || sp_Frames.front ().depth >= sp_In_sql_depth)
+  if (sp_In_sql_depth <= 0 || object == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  assert (!sp_Frames.empty () && sp_Frames.front ().depth < sp_In_sql_depth);
+  if (sp_Frames.empty () || sp_Frames.front ().depth >= sp_In_sql_depth)
     {
       return NO_ERROR;
     }
@@ -760,7 +798,7 @@ sp_check_object_write (DB_OBJECT *object)
 	  return sp_skip_deleted_class ();
 	}
 
-      cascades = !OID_ISTEMP (ws_oid (instance));
+      cascades = !OID_ISTEMP (ws_oid (instance)) && !sp_Object_lock_only;
     }
 
   const OID *class_oid = ws_oid (class_mop);
@@ -935,6 +973,7 @@ sp_reset_context (void)
   sp_In_trigger_depth = 0;
   sp_Trigger_call_depth = 0;
   sp_In_statement_savepoint = false;
+  sp_Object_lock_only = false;
 #if defined (SA_MODE)
   sp_Sa_query_request = false;
 #endif /* SA_MODE */

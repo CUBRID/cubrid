@@ -27,6 +27,7 @@
 #include "method_query_util.hpp"
 #include "object_primitive.h"
 #include "oid.h"
+#include "sp_context_rules.hpp"
 
 namespace cubmethod
 {
@@ -320,7 +321,12 @@ namespace cubmethod
 	    m_error_ctx.set_error (METHOD_CALLBACK_ER_OBJECT, NULL, __FILE__, __LINE__);
 	    return ER_FAILED;
 	  }
+
+	bool lock_only = sp_Object_lock_only;
+	sp_Object_lock_only = true;
 	error = db_lock_write (obj);
+	sp_Object_lock_only = lock_only;
+
 	if (error < 0)
 	  {
 	    m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
