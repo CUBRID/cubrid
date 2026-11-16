@@ -4935,21 +4935,9 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	  return NULL;
 	}
     }
-  ptr = or_unpack_int (ptr, &offset);
-  insert_info->default_types = NULL;
-  if (offset != 0 && insert_info->num_default_expr > 0)
-    {
-      insert_info->default_types =
-	stx_restore_int_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_default_expr);
-      if (insert_info->default_types == NULL)
-	{
-	  return NULL;
-	}
-    }
   /* planned with the node's value list (stx_plan_insert_assignments) */
   insert_info->value_types = NULL;
   insert_info->convs = NULL;
-  insert_info->default_convs = NULL;
 
   ptr = or_unpack_int (ptr, &insert_info->num_default_slots);
   if (insert_info->num_default_slots == 0)
@@ -5100,9 +5088,8 @@ stx_plan_update_assignments (XASL_NODE * xasl, bool has_delete)
 
 /*
  * stx_plan_insert_assignments () - CBRD-27583: an INSERT's converters of each value into its attribute's
- *   domain: a default value comes in the attribute's domain, a row of values from its regus, a SELECT's (and a
- *   MERGE's) from the slots of the node's value list its scan fills; and each default's, from the type XASL
- *   generation decided it is made in, into its attribute's domain
+ *   domain: a default comes in the attribute's domain (a DEFAULT slot casts its value into it), a row of values
+ *   from its regus, a SELECT's (and a MERGE's) from the slots of the node's value list its scan fills
  *   return: NO_ERROR, or ER_FAILED out of memory
  */
 static int
@@ -5122,21 +5109,6 @@ stx_plan_insert_assignments (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       return ER_FAILED;
-    }
-  if (insert->default_types != NULL)
-    {
-      insert->default_convs =
-	(TP_VALUE_CONVERTER *) stx_alloc_struct (thread_p, sizeof (TP_VALUE_CONVERTER) * insert->num_default_expr);
-      if (insert->default_convs == NULL)
-	{
-	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-	  return ER_FAILED;
-	}
-      for (int k = 0; k < insert->num_default_expr; k++)
-	{
-	  insert->default_convs[k] =
-	    tp_value_find_converter ((DB_TYPE) insert->default_types[k], insert->att_domains[k], DOMAIN_CONVERT_ASSIGN);
-	}
     }
   for (int r = 0; r < rows; r++)
     {
