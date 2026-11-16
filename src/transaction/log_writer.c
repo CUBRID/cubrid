@@ -334,7 +334,7 @@ logwr_read_log_header (void)
 		{
 		  /* Could not remove it. The pages would have nowhere to go: no descriptor, and no new active log is
 		   * created while this one exists. */
-		  char error_str[LINE_MAX];
+		  char error_str[PATH_MAX + 128];
 
 		  snprintf (error_str, sizeof (error_str), "Unable to remove the active log %s whose header page is "
 			    "only formatted", logwr_Gl.active_name);
