@@ -380,6 +380,15 @@ typedef struct corr_info
   UINTPTR id;
 } CORR_INFO;
 
+typedef struct pt_collected_class_oids PT_COLLECTED_CLASS_OIDS;
+struct pt_collected_class_oids
+{
+  OID *subinsert_class_oids;
+  int num_subinsert_class_oids;
+  OID *click_counter_class_oids;
+  int num_click_counter_class_oids;
+};
+
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 bool query_Plan_dump_fp_open = false;
@@ -484,6 +493,8 @@ static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
 static int pt_append_class_oids (OID ** oid_list, int *n_oid_list, const OID * class_oids, int count);
 static bool pt_oid_array_contains (const OID * oid_list, int n_oid_list, const OID * oid);
 static void pt_reset_subinsert_class_oids (void);
+static void pt_push_collected_class_oids (PT_COLLECTED_CLASS_OIDS * outer);
+static void pt_pop_collected_class_oids (const PT_COLLECTED_CLASS_OIDS * outer);
 static int pt_add_subinsert_class_oids (const OID * class_oids, int count);
 static PT_NODE *pt_add_spec_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_add_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * statement, XASL_NODE * xasl);
@@ -9510,6 +9521,38 @@ pt_reset_subinsert_class_oids (void)
 }
 
 /*
+ * pt_push_collected_class_oids () - set aside the classes collected for the XASL being generated and start empty, for
+ *				      an XASL generated inside it
+ *   return: none
+ *   outer(out): the classes set aside
+ */
+static void
+pt_push_collected_class_oids (PT_COLLECTED_CLASS_OIDS * outer)
+{
+  outer->subinsert_class_oids = pt_Subinsert_class_oids;
+  outer->num_subinsert_class_oids = pt_Num_subinsert_class_oids;
+  outer->click_counter_class_oids = pt_Click_counter_class_oids;
+  outer->num_click_counter_class_oids = pt_Num_click_counter_class_oids;
+  pt_reset_subinsert_class_oids ();
+  pt_Click_counter_class_oids = NULL;
+  pt_Num_click_counter_class_oids = 0;
+}
+
+/*
+ * pt_pop_collected_class_oids () - bring back the classes set aside by pt_push_collected_class_oids ()
+ *   return: none
+ *   outer(in): the classes set aside
+ */
+static void
+pt_pop_collected_class_oids (const PT_COLLECTED_CLASS_OIDS * outer)
+{
+  pt_Subinsert_class_oids = outer->subinsert_class_oids;
+  pt_Num_subinsert_class_oids = outer->num_subinsert_class_oids;
+  pt_Click_counter_class_oids = outer->click_counter_class_oids;
+  pt_Num_click_counter_class_oids = outer->num_click_counter_class_oids;
+}
+
+/*
  * pt_add_subinsert_class_oids () - note classes a nested insert writes, for the insert that contains it
  *   return: NO_ERROR or ER_FAILED
  *   class_oids(in): the classes
@@ -9667,8 +9710,7 @@ pt_make_regu_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   XASL_NODE *xasl = NULL;
   REGU_VARIABLE *regu = NULL;
-  OID *outer_subinsert_class_oids;
-  int outer_num_subinsert_class_oids;
+  PT_COLLECTED_CLASS_OIDS outer;
 
   if (statement == NULL || statement->node_type != PT_INSERT)
     {
@@ -9677,11 +9719,9 @@ pt_make_regu_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* Generate xasl for insert statement */
-  outer_subinsert_class_oids = pt_Subinsert_class_oids;
-  outer_num_subinsert_class_oids = pt_Num_subinsert_class_oids;
+  pt_push_collected_class_oids (&outer);
   xasl = pt_to_insert_xasl (parser, statement);
-  pt_Subinsert_class_oids = outer_subinsert_class_oids;
-  pt_Num_subinsert_class_oids = outer_num_subinsert_class_oids;
+  pt_pop_collected_class_oids (&outer);
   if (xasl == NULL)
     {
       return NULL;
@@ -28608,15 +28648,14 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   XASL_NODE *xasl = NULL;
   PT_NODE *next;
   bool is_system_generated_stmt;
+  PT_COLLECTED_CLASS_OIDS outer;
+  bool class_oids_failed = false;
 
   assert (parser != NULL && node != NULL);
 
   next = node->next;
   node->next = NULL;
   parser->dbval_cnt = 0;
-  pt_Click_counter_class_oids = NULL;
-  pt_Num_click_counter_class_oids = 0;
-  pt_reset_subinsert_class_oids ();
 
   is_system_generated_stmt = node->flag.is_system_generated_stmt;
 
@@ -28629,6 +28668,8 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       return NULL;
     }
+
+  pt_push_collected_class_oids (&outer);
 
   switch (node->node_type)
     {
@@ -28766,8 +28807,14 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	      && pt_add_for_update_class_oids (xasl, node) != NO_ERROR)
 	  || pt_add_read_class_oids (parser, node, xasl) != NO_ERROR)
 	{
-	  return NULL;
+	  class_oids_failed = true;
 	}
+    }
+
+  pt_pop_collected_class_oids (&outer);
+  if (class_oids_failed)
+    {
+      return NULL;
     }
 
   if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
