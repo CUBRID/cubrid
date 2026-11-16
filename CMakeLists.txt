@@ -605,15 +605,13 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 
-<<<<<<< HEAD
-# Store residual column DEFAULTs in their REGU form as well and evaluate that form on the server
-# (the DEFAULT is otherwise compiled with each INSERT)
-#add_definitions(-DDEFAULT_EXPR_REGU_STREAM)
-=======
 if(MULTI_CONN_TO_A_SERVER)
   add_definitions(-DMULTI_CONN_TO_A_SERVER)
 endif(MULTI_CONN_TO_A_SERVER)
->>>>>>> upstream/develop
+
+# Store residual column DEFAULTs in their REGU form as well and evaluate that form on the server
+# (the DEFAULT is otherwise compiled with each INSERT)
+#add_definitions(-DDEFAULT_EXPR_REGU_STREAM)
 
 # platform specifie configurations
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")

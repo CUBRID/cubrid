@@ -4898,53 +4898,6 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	}
     }
 
-<<<<<<< HEAD
-  ptr = or_unpack_int (ptr, &insert_info->num_default_slots);
-  if (insert_info->num_default_slots == 0)
-    {
-      insert_info->default_slots = NULL;
-    }
-  else
-    {
-      insert_info->default_slots =
-	(INSERT_DEFAULT_SLOT *) stx_alloc_struct (thread_p,
-						  sizeof (INSERT_DEFAULT_SLOT) * insert_info->num_default_slots);
-      if (insert_info->default_slots == NULL)
-	{
-	  goto error;
-	}
-      for (i = 0; i < insert_info->num_default_slots; i++)
-	{
-	  int volatility;
-
-	  ptr = or_unpack_int (ptr, &insert_info->default_slots[i].att_index);
-	  ptr = or_unpack_int (ptr, &volatility);
-	  insert_info->default_slots[i].volatility = (PT_VOLATILITY) volatility;
-	  ptr = or_unpack_int (ptr, &offset);
-	  insert_info->default_slots[i].expr =
-	    stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-	  if (insert_info->default_slots[i].expr == NULL)
-	    {
-	      return NULL;
-	    }
-	  ptr = or_unpack_int (ptr, &offset);
-	  if (offset == 0)
-	    {
-	      insert_info->default_slots[i].value = NULL;
-	    }
-	  else
-	    {
-	      insert_info->default_slots[i].value =
-		stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-	      if (insert_info->default_slots[i].value == NULL)
-		{
-		  return NULL;
-		}
-	    }
-	}
-    }
-
-=======
   ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
   ptr = or_unpack_int (ptr, &insert_info->remote_odku_val_start);
   ptr = or_unpack_int (ptr, &insert_info->remote_num_odku_bound);
@@ -4998,7 +4951,51 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
   insert_info->convs = NULL;
   insert_info->default_convs = NULL;
 
->>>>>>> upstream/develop
+  ptr = or_unpack_int (ptr, &insert_info->num_default_slots);
+  if (insert_info->num_default_slots == 0)
+    {
+      insert_info->default_slots = NULL;
+    }
+  else
+    {
+      insert_info->default_slots =
+	(INSERT_DEFAULT_SLOT *) stx_alloc_struct (thread_p,
+						  sizeof (INSERT_DEFAULT_SLOT) * insert_info->num_default_slots);
+      if (insert_info->default_slots == NULL)
+	{
+	  goto error;
+	}
+      for (i = 0; i < insert_info->num_default_slots; i++)
+	{
+	  int volatility;
+
+	  ptr = or_unpack_int (ptr, &insert_info->default_slots[i].att_index);
+	  ptr = or_unpack_int (ptr, &volatility);
+	  insert_info->default_slots[i].volatility = (PT_VOLATILITY) volatility;
+	  ptr = or_unpack_int (ptr, &offset);
+	  insert_info->default_slots[i].expr =
+	    stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	  if (insert_info->default_slots[i].expr == NULL)
+	    {
+	      return NULL;
+	    }
+	  ptr = or_unpack_int (ptr, &offset);
+	  if (offset == 0)
+	    {
+	      insert_info->default_slots[i].value = NULL;
+	    }
+	  else
+	    {
+	      insert_info->default_slots[i].value =
+		stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	      if (insert_info->default_slots[i].value == NULL)
+		{
+		  return NULL;
+		}
+	    }
+	}
+    }
+
   return ptr;
 
 error:

@@ -1489,11 +1489,6 @@ $ LOADDB
 1381 시스템 메타데이터가 현재 CUBRID 버전과 호환되지 않습니다. 'cubrid upgradedb'를 실행하세요.
 1382 시스템 메타데이터 버전이 현재 CUBRID 버전이 지원하는 것보다 최신입니다. 다운그레이드는 지원되지 않습니다.
 
-<<<<<<< HEAD
-1383 속성 "%1$s"의 저장된 DEFAULT 식을 복원할 수 없습니다.
-
-1384 마지막 에러
-=======
 1383 %1$s에서 질의 노드의 도메인이 확정되지 않았습니다 (질의 %2$s, 노드 %3$d, 도메인 %4$s).
 
 1384 세션변수 @%1$s 의 타입은 이 문장에서 %2$s 이며, %3$s 가 아닙니다.
@@ -1515,8 +1510,9 @@ $ LOADDB
 
 1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
 
-1395 마지막 에러
->>>>>>> upstream/develop
+1395 속성 "%1$s"의 저장된 DEFAULT 식을 복원할 수 없습니다.
+
+1396 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2031,12 +2027,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
-<<<<<<< HEAD
-344 유효하지 않은 DEFAULT 절: 괄호 없는 식은 레거시 기본값 함수에만 허용됩니다. 식을 괄호로 감싸십시오. 예: DEFAULT (...).
-=======
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
 345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
->>>>>>> upstream/develop
+346 유효하지 않은 DEFAULT 절: 괄호 없는 식은 레거시 기본값 함수에만 허용됩니다. 식을 괄호로 감싸십시오. 예: DEFAULT (...).
 
 
 

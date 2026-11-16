@@ -3946,18 +3946,15 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
-<<<<<<< HEAD
     unsigned is_restored_default:1;	/* root of a DEFAULT tree copy grafted into a statement: type checking
 					 * keeps the types it was restored with */
     unsigned is_own_default:1;	/* an INSERT value that is the DEFAULT of its own column (the DEFAULT keyword, or
 				 * DEFAULT (c) in the place of c): all of them share the DEFAULT slot of the column */
-=======
     unsigned is_dblink_odku_value:1;	/* a remote INSERT ... SELECT ODKU value bound from the source row, and its copy
 					 * at the end of the source select list */
     unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
 					 * target selection for bind-value plan variants, so its
 					 * executions choose among the query's plans by fingerprint */
->>>>>>> upstream/develop
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.
@@ -4236,10 +4233,8 @@ struct parser_context
     unsigned is_generating_merge_xasl:1;	/* set while pt_to_merge_xasl () runs: the queries it plans, the USING source
 						 * included, execute under a system operation, so serially */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
-<<<<<<< HEAD
     unsigned print_client_values:1;	/* the XASL cache key being printed must carry the client values the
 					 * statement compiles (pt_op_reads_client_value) */
-=======
     unsigned print_host_var_source:1;	/* CBRD-27583: a plan dump or trace print: a derived host variable
 					 * position prints as the user position it is derived from */
     unsigned host_var_derive_later:1;	/* CBRD-27583: this later translation runs at every execution, cache hit or
@@ -4253,7 +4248,6 @@ struct parser_context
 					 * the values' format classes and ELT indexes */
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
->>>>>>> upstream/develop
   } flag;
 };
 

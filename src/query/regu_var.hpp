@@ -30,11 +30,8 @@
 #include "object_primitive.h"
 #include "db_function.hpp"
 #include "xasl_sp.hpp"
-<<<<<<< HEAD
 #include "volatility.h"
-=======
 #include "domain_rules.h"
->>>>>>> upstream/develop
 
 #include <functional>
 
@@ -235,25 +232,6 @@ const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query *
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
-<<<<<<< HEAD
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-/* bits 14-15 are not flags but one 2-bit PT_VOLATILITY value: the volatility of a residual column DEFAULT,
- * stamped on its root regu at DDL time and persisted in the catalog with it, read by Server Evaluation to
- * evaluate once per statement (STABLE) or once per row (VOLATILE).  Persisted: never reuse them for a flag. */
-const int REGU_VARIABLE_DEFAULT_IMMUTABLE_BITS = 0x4000;	/* PT_VOLATILITY_IMMUTABLE (1) << 14 */
-const int REGU_VARIABLE_DEFAULT_STABLE_BITS = 0x8000;	/* PT_VOLATILITY_STABLE    (2) << 14 */
-const int REGU_VARIABLE_DEFAULT_VOLATILE_BITS = 0xC000;	/* PT_VOLATILITY_VOLATILE  (3) << 14 */
-const int REGU_VARIABLE_DEFAULT_VOLATILITY_MASK = 0xC000;
-const int REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT = 14;
-
-static_assert (REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT == 14 &&
-	       REGU_VARIABLE_DEFAULT_VOLATILITY_MASK == (0x3 << 14) &&
-	       REGU_VARIABLE_DEFAULT_IMMUTABLE_BITS == (PT_VOLATILITY_IMMUTABLE << 14) &&
-	       REGU_VARIABLE_DEFAULT_STABLE_BITS == (PT_VOLATILITY_STABLE << 14) &&
-	       REGU_VARIABLE_DEFAULT_VOLATILE_BITS == (PT_VOLATILITY_VOLATILE << 14),
-	       "REGU_VARIABLE_DEFAULT_* bits out of sync with PT_VOLATILITY");
-#endif /* DEFAULT_EXPR_REGU_STREAM */
-=======
 const int REGU_VARIABLE_KEY_LIMIT_ARITH = 0x4000;	/* T_SUB/T_LEAST/T_GREATEST the optimizer builds for a key limit;
 							 * key_limit_eval () computes these nodes on their operands */
 
@@ -268,7 +246,24 @@ const int REGU_CONV_NULL_ON_FUNCTION_ERRORS =
 	0x10;	/* an arithmetic operand: NULL under return_null_on_function_errors */
 const int REGU_CONV_INVALID_DATATYPE =
 	0x20;	/* ROUND's and TRUNC's operand: ER_QPROC_INVALID_DATATYPE, NULL under return_null_on_function_errors */
->>>>>>> upstream/develop
+
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+/* bits 15-16 are not flags but one 2-bit PT_VOLATILITY value: the volatility of a residual column DEFAULT,
+ * stamped on its root regu at DDL time and persisted in the catalog with it, read by Server Evaluation to
+ * evaluate once per statement (STABLE) or once per row (VOLATILE).  Persisted: never reuse them for a flag. */
+const int REGU_VARIABLE_DEFAULT_IMMUTABLE_BITS = 0x8000;	/* PT_VOLATILITY_IMMUTABLE (1) << 15 */
+const int REGU_VARIABLE_DEFAULT_STABLE_BITS = 0x10000;	/* PT_VOLATILITY_STABLE    (2) << 15 */
+const int REGU_VARIABLE_DEFAULT_VOLATILE_BITS = 0x18000;	/* PT_VOLATILITY_VOLATILE  (3) << 15 */
+const int REGU_VARIABLE_DEFAULT_VOLATILITY_MASK = 0x18000;
+const int REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT = 15;
+
+static_assert (REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT == 15 &&
+	       REGU_VARIABLE_DEFAULT_VOLATILITY_MASK == (0x3 << 15) &&
+	       REGU_VARIABLE_DEFAULT_IMMUTABLE_BITS == (PT_VOLATILITY_IMMUTABLE << 15) &&
+	       REGU_VARIABLE_DEFAULT_STABLE_BITS == (PT_VOLATILITY_STABLE << 15) &&
+	       REGU_VARIABLE_DEFAULT_VOLATILE_BITS == (PT_VOLATILITY_VOLATILE << 15),
+	       "REGU_VARIABLE_DEFAULT_* bits out of sync with PT_VOLATILITY");
+#endif /* DEFAULT_EXPR_REGU_STREAM */
 
 class regu_variable_node
 {
@@ -353,12 +348,6 @@ inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
-<<<<<<< HEAD
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-inline PT_VOLATILITY REGU_VARIABLE_GET_DEFAULT_VOLATILITY (const regu_variable_node *regu);
-inline void REGU_VARIABLE_SET_DEFAULT_VOLATILITY (regu_variable_node *regu, PT_VOLATILITY v);
-#endif
-=======
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
 inline bool is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var);
 inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
@@ -366,7 +355,10 @@ inline bool arith_decides_arith (const arith_list_node *arith);
 inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
 inline const DOMAIN_COMPARE *arith_decided_compares (const arith_list_node *arith);
 inline DB_TYPE arith_result_type (const arith_list_node *arith);
->>>>>>> upstream/develop
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+inline PT_VOLATILITY REGU_VARIABLE_GET_DEFAULT_VOLATILITY (const regu_variable_node *regu);
+inline void REGU_VARIABLE_SET_DEFAULT_VOLATILITY (regu_variable_node *regu, PT_VOLATILITY v);
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -400,23 +392,6 @@ REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
   return DB_TYPE_UNKNOWN;
 }
 
-<<<<<<< HEAD
-#if defined (DEFAULT_EXPR_REGU_STREAM)
-PT_VOLATILITY
-REGU_VARIABLE_GET_DEFAULT_VOLATILITY (const regu_variable_node *regu)
-{
-  return (PT_VOLATILITY) ((regu->flags & REGU_VARIABLE_DEFAULT_VOLATILITY_MASK)
-			  >> REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT);
-}
-
-void
-REGU_VARIABLE_SET_DEFAULT_VOLATILITY (regu_variable_node *regu, PT_VOLATILITY v)
-{
-  regu->flags &= ~REGU_VARIABLE_DEFAULT_VOLATILITY_MASK;
-  regu->flags |= (((int) v) << REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT) & REGU_VARIABLE_DEFAULT_VOLATILITY_MASK;
-}
-#endif /* DEFAULT_EXPR_REGU_STREAM */
-=======
 /* A variable POS: a host variable position whose domain the compiler left VARIABLE: the bound value carries its
  * type. */
 bool
@@ -493,5 +468,20 @@ arith_result_type (const arith_list_node *arith)
     }
   return DB_TYPE_NULL;
 }
->>>>>>> upstream/develop
+
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+PT_VOLATILITY
+REGU_VARIABLE_GET_DEFAULT_VOLATILITY (const regu_variable_node *regu)
+{
+  return (PT_VOLATILITY) ((regu->flags & REGU_VARIABLE_DEFAULT_VOLATILITY_MASK)
+			  >> REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT);
+}
+
+void
+REGU_VARIABLE_SET_DEFAULT_VOLATILITY (regu_variable_node *regu, PT_VOLATILITY v)
+{
+  regu->flags &= ~REGU_VARIABLE_DEFAULT_VOLATILITY_MASK;
+  regu->flags |= (((int) v) << REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT) & REGU_VARIABLE_DEFAULT_VOLATILITY_MASK;
+}
+#endif /* DEFAULT_EXPR_REGU_STREAM */
 #endif /* _REGU_VAR_HPP_ */

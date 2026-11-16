@@ -1490,11 +1490,6 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
 1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
 
-<<<<<<< HEAD
-1383 The stored DEFAULT expression of attribute "%1$s" cannot be restored.
-
-1384 Last Error
-=======
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
 1384 Session variable @%1$s has the type %2$s in this statement, not %3$s.
@@ -1516,9 +1511,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Last Error
+1395 The stored DEFAULT expression of attribute "%1$s" cannot be restored.
 
->>>>>>> upstream/develop
+1396 Last Error
+
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2033,12 +2029,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
-<<<<<<< HEAD
-344 Invalid DEFAULT clause: a bare expression is only allowed for legacy default functions; wrap the expression in parentheses, e.g. DEFAULT (...).
-=======
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
->>>>>>> upstream/develop
+346 Invalid DEFAULT clause: a bare expression is only allowed for legacy default functions; wrap the expression in parentheses, e.g. DEFAULT (...).
 
 
 

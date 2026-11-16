@@ -2083,20 +2083,15 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
     }
   cls_name = spec->info.spec.entity_name;
 
-<<<<<<< HEAD
-  /* a residual DEFAULT expression referencing the statement clock needs the server time synchronized before the
-   * Local Evaluation path evaluates it */
-  if (pt_class_defaults_read_statement_clock (parser, cls_name->info.name.db_object, node))
-=======
   if (cls_name == NULL)
     {
       /* a remote target in the derived dblink table shape has no local class */
       return;
     }
 
-  au_fetch_class_force (cls_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (smclass)
->>>>>>> upstream/develop
+  /* a residual DEFAULT expression referencing the statement clock needs the server time synchronized before the
+   * Local Evaluation path evaluates it */
+  if (pt_class_defaults_read_statement_clock (parser, cls_name->info.name.db_object, node))
     {
       node->flag.si_datetime = true;
       db_make_null (&parser->sys_datetime);

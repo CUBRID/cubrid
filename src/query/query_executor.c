@@ -18567,7 +18567,6 @@ exit_on_error:
 
 #if defined (DEFAULT_EXPR_REGU_STREAM)
 /*
-<<<<<<< HEAD
  * qexec_prepare_default_expr_stream () - deserialize a residual DEFAULT's stored
  *	REGU form once, returning the FUNC_PRED (and the XASL_UNPACK_INFO that owns
  *	it, which the caller must free).  Deserializing once per statement and
@@ -18582,32 +18581,6 @@ exit_on_error:
 static int
 qexec_prepare_default_expr_stream (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, FUNC_PRED ** func_pred,
 				   XASL_UNPACK_INFO ** unpack_info)
-=======
- * qexec_default_format_domain () - the result domain TO_CHAR takes from a default expression's format
- *
- * The format is the literal the schema keeps, made by db_make_string: a VARCHAR in the system codeset and collation.
- * Its type gives the domain whatever its content, as any literal's type does; no row value resolves it.
- */
-static TP_DOMAIN *
-qexec_default_format_domain (void)
-{
-  return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, LANG_SYS_COLLATION);
-}
-
-/*
- * qexec_generate_row_default_expr () - Generate a row-level default expression value
- *   return: NO_ERROR or ER_code
- *   attr(in): attribute metadata
- *   xasl_state(in): XASL state containing value descriptor
- *   uuid_state(in): UUID generation state
- *   out_val(out): generated value
- *   value_type(in): the type XASL generation decided the generator makes (INSERT_PROC_NODE default_types)
- *   conv(in): a value of that type into the attribute's domain, found at unpack
- */
-static int
-qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
-				 DB_VALUE * out_val, DB_TYPE value_type, TP_VALUE_CONVERTER conv)
->>>>>>> upstream/develop
 {
   assert (attr->current_default_value.default_expr.default_expr_regu_stream != NULL);
 
@@ -18644,19 +18617,7 @@ qexec_default_expr_notnull_error (THREAD_ENTRY * thread_p, const OID * class_oid
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, name);
 	  if (alloced_name == 1)
 	    {
-<<<<<<< HEAD
 	      db_private_free_and_init (thread_p, name);
-=======
-	      result_domain = NULL;
-	    }
-	  else if (DB_IS_NULL (&format_val))
-	    {
-	      result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
-	    }
-	  else
-	    {
-	      result_domain = qexec_default_format_domain ();
->>>>>>> upstream/develop
 	    }
 	  heap_scancache_end (thread_p, &scan);
 	  return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
@@ -18664,26 +18625,8 @@ qexec_default_expr_notnull_error (THREAD_ENTRY * thread_p, const OID * class_oid
       heap_scancache_end (thread_p, &scan);
     }
 
-<<<<<<< HEAD
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
   return ER_NULL_CONSTRAINT_VIOLATION;
-=======
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  /* CBRD-27583: the converter the unpack found for the type XASL generation decided the generator makes */
-  assert (DB_IS_NULL (out_val) || DB_VALUE_DOMAIN_TYPE (out_val) == value_type);
-  status = tp_value_cast_with_converter (out_val, out_val, attr->domain, false, value_type, conv);
-  if (status != DOMAIN_COMPATIBLE)
-    {
-      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, out_val, attr->domain);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
->>>>>>> upstream/develop
 }
 
 /*
@@ -18815,20 +18758,9 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
 	  return ER_FAILED;
 	}
 
-<<<<<<< HEAD
       /* VOLATILE residual: re-evaluate the expression so every row gets a distinct value */
       pr_clear_value (insert->vals[k]);
       error = qexec_eval_default_expr (thread_p, slot->expr, xasl_state, &insert->class_oid, attr, insert->vals[k]);
-=======
-      expr_type = attr->current_default_value.default_expr.default_expr_type;
-      if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type))
-	{
-	  continue;
-	}
-
-      error = qexec_generate_row_default_expr (attr, xasl_state, &uuid_state, insert->vals[k],
-					       (DB_TYPE) insert->default_types[k], insert->default_convs[k]);
->>>>>>> upstream/develop
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -19230,7 +19162,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
-<<<<<<< HEAD
 	  continue;
 	}
       if (attr->current_default_value.val_length > 0)
@@ -19268,87 +19199,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       pr_clear_value (slots[s].value);
       if (qexec_eval_default_expr (thread_p, slots[s].expr, xasl_state, &insert->class_oid, attr, slots[s].value)
 	  != NO_ERROR)
-=======
-	  break;
-
-	default:
-	  assert (0);
-	  error = ER_FAILED;
-	  GOTO_EXIT_ON_ERROR;
-	  break;
-	}
-
-      if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
-	{
-	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
-	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
-	    {
-	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
-	      has_user_format = 1;
-	    }
-	  else
-	    {
-	      db_make_null (&format_val);
-	      has_user_format = 0;
-	    }
-
-	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-	  db_make_int (&lang_val, flag);
-
-	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
-	    {
-	      /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
-	      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&insert_val)))
-		{
-		  result_domain = NULL;
-		}
-	      else if (DB_IS_NULL (&format_val))
-		{
-		  result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
-		}
-	      else
-		{
-		  result_domain = qexec_default_format_domain ();
-		}
-	    }
-	  else
-	    {
-	      result_domain = attr->domain;
-	    }
-
-	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
-
-	  if (has_user_format)
-	    {
-	      pr_clear_value (&format_val);
-	    }
-	}
-      else
-	{
-	  pr_clone_value (&insert_val, insert->vals[k]);
-	}
-
-      pr_clear_value (&insert_val);
-
-      if (error != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      if (attr->current_default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
-	{
-	  /* skip the value cast */
-	  continue;
-	}
-
-      /* CBRD-27583: the converter the unpack found for the type XASL generation decided the default is made
-       * in; a row default is still NULL here */
-      assert (DB_IS_NULL (insert->vals[k]) || DB_VALUE_DOMAIN_TYPE (insert->vals[k]) == insert->default_types[k]);
-      status = tp_value_cast_with_converter (insert->vals[k], insert->vals[k], attr->domain, false,
-					     (DB_TYPE) insert->default_types[k], insert->default_convs[k]);
-      if (status != DOMAIN_COMPATIBLE)
->>>>>>> upstream/develop
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}

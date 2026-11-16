@@ -1002,7 +1002,6 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
   // do not use initialized db value
   if (default_value->info.value.db_value_is_initialized)
     {
-<<<<<<< HEAD
       default_value->info.value.db_value_is_initialized = false;
     }
 
@@ -1031,33 +1030,6 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
 	      out.append (db_get_string (&tmp_val));
 	      db_value_clear (&tmp_val);
 	    }
-=======
-      if (default_expr.default_expr_op == T_TO_CHAR)
-	{
-	  out.append ("TO_CHAR(");
-	}
-
-      const char *default_value_expr_type_string = db_default_expression_string (default_expr.default_expr_type);
-      if (default_value_expr_type_string != NULL)
-	{
-	  out.append (default_value_expr_type_string);
-	}
-      else
-	{
-	  out.append (parser_print_tree (parser, node));
-	}
-
-      if (default_expr.default_expr_op == T_TO_CHAR)
-	{
-	  if (default_expr.default_expr_format != NULL)
-	    {
-	      out.append (", \'");
-	      out.append (default_expr.default_expr_format);
-	      out.append ("\'");
-	    }
-
-	  out.append (")");
->>>>>>> upstream/develop
 	}
     }
   else
