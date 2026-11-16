@@ -26,7 +26,7 @@
 #include <float.h>
 #include "query_rewrite.h"
 
-static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where);
+static void qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where, bool in_tree);
 static void qo_reduce_comp_pair_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -50,7 +50,7 @@ qo_rewrite_terms (PARSER_CONTEXT * parser, PT_NODE * nodes, PT_NODE ** terms)
 {
   if (*terms)
     {
-      qo_converse_sarg_terms (parser, *terms);
+      qo_converse_sarg_terms (parser, *terms, false);
       qo_reduce_comp_pair_terms (parser, terms);
       qo_rewrite_like_terms (parser, terms);
       qo_convert_to_range (parser, terms);
@@ -1453,7 +1453,8 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  * qo_converse_sarg_terms () -
  *   return:
  *   parser(in):
- *   where(in): CNF list of WHERE clause
+ *   where(in): CNF list of WHERE clause, or an operand of AND or OR in one of its terms
+ *   in_tree(in): true if where is such an operand
  *
  * Note:
  *      Convert terms of the form 'constant op attr' to 'attr op constant'
@@ -1484,7 +1485,7 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
  *	prior (attr) between -opd2 and -opd1
  */
 static void
-qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
+qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where, bool in_tree)
 {
   PT_NODE *cnf_node, *dnf_node, *arg1, *arg2, *arg1_arg1, *arg2_arg1;
   PT_NODE *arg1_prior_father, *arg2_prior_father;
@@ -1540,8 +1541,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	    {
 	      /* term in the form of '-attr between opd1 and opd2' convert to '-attr >= opd1 and -attr <= opd2' */
 
-	      /* check for one range spec */
-	      if (cnf_node == dnf_node && dnf_node->or_next == NULL)
+	      /* check for one range spec; an operand of AND or OR is not a term of the CNF list, and the term
+	       * linked to its next would not be read as a conjunct of it */
+	      if (!in_tree && cnf_node == dnf_node && dnf_node->or_next == NULL)
 		{
 		  arg2 = dnf_node->info.expr.arg2;
 		  assert (arg2->node_type == PT_EXPR);
@@ -1770,9 +1772,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      /* not CNF form; what do I have to do? */
 
 	      /* traverse left child */
-	      qo_converse_sarg_terms (parser, arg1);
+	      qo_converse_sarg_terms (parser, arg1, true);
 	      /* traverse right child */
-	      qo_converse_sarg_terms (parser, arg2);
+	      qo_converse_sarg_terms (parser, arg2, true);
 
 	    }
 	  else if (op_type == PT_OR)
@@ -1780,9 +1782,9 @@ qo_converse_sarg_terms (PARSER_CONTEXT * parser, PT_NODE * where)
 	      /* not DNF form; what do I have to do? */
 
 	      /* traverse left child */
-	      qo_converse_sarg_terms (parser, arg1);
+	      qo_converse_sarg_terms (parser, arg1, true);
 	      /* traverse right child */
-	      qo_converse_sarg_terms (parser, arg2);
+	      qo_converse_sarg_terms (parser, arg2, true);
 
 	    }
 	  /* sargable term, where 'op_type' is one of '=', '<' '<=', '>', or '>=' */
