@@ -31,7 +31,7 @@ oos_require_env
 columns="id INT PRIMARY KEY, k INT, c1 BIT VARYING, c2 BIT VARYING"
 sql=""
 for table in t_reuse_inline t_reuse_mixed t_reuse_vacuum t_reuse_snapshot t_reuse_savepoint t_reuse_abort \
-	     t_reuse_repl t_reuse_inplace t_reuse_incr; do
+	     t_reuse_repl t_reuse_inplace t_reuse_incr t_reuse_inplace_snapshot t_reuse_delete_snapshot; do
   sql+="DROP TABLE IF EXISTS $table; CREATE TABLE $table ($columns); "
 done
 sql+="DROP TABLE IF EXISTS t_reuse_part; "

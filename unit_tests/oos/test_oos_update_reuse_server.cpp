@@ -66,6 +66,16 @@ namespace
     DB_BIGINT length = 0;
   };
 
+  /* What a reader got for a row: how its read ended, the error it left, and the values of the version it found. */
+  struct snapshot_read
+  {
+    SCAN_CODE scan = S_ERROR;
+    int error = NO_ERROR;
+    std::string k;
+    std::string c1;
+    std::string c2;
+  };
+
   bool
   same_chain (const oos_column &a, const oos_column &b)
   {
@@ -310,8 +320,8 @@ class OosUpdateReuse : public ::testing::Test
       return record;
     }
 
-    /* The version of the row the current transaction's snapshot sees. */
-    std::string visible_record (const OID &oid)
+    /* The version of the row the current transaction's snapshot sees, if any. */
+    SCAN_CODE read_visible (const OID &oid, std::string &record)
     {
       HEAP_SCANCACHE scan_cache;
       EXPECT_EQ (heap_scancache_start (thread_p, &scan_cache, &hfid, &class_oid, false,
@@ -320,9 +330,15 @@ class OosUpdateReuse : public ::testing::Test
       OID oid_copy = oid;
       SCAN_CODE scan = heap_get_visible_version (thread_p, &oid_copy, &class_oid, &recdes, &scan_cache, COPY,
 		       NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
-      std::string record = scan == S_SUCCESS ? std::string (recdes.data, recdes.length) : std::string ();
+      record = scan == S_SUCCESS ? std::string (recdes.data, recdes.length) : std::string ();
       (void) heap_scancache_end (thread_p, &scan_cache);
-      EXPECT_EQ (scan, S_SUCCESS);
+      return scan;
+    }
+
+    std::string visible_record (const OID &oid)
+    {
+      std::string record;
+      EXPECT_EQ (read_visible (oid, record), S_SUCCESS);
       return record;
     }
 
@@ -426,6 +442,56 @@ class OosUpdateReuse : public ::testing::Test
 	}
       (void) heap_scancache_end (thread_p, &scan_cache);
       commit_current_tran ();
+    }
+
+    /* A reader takes its snapshot, holding no lock on the class, before an UPDATE of k commits; later_write then
+     * commits, and the reader reads the row under the IS_LOCK a statement takes. The UPDATE reuses the row's OOS
+     * chains or, with reuse false, assigns c1 and c2 their own values and so writes new chains, as every UPDATE did
+     * before CBRD-27230. */
+    void read_across_later_write (int id, bool reuse, const std::function<void (OID &)> &later_write,
+				  snapshot_read &seen)
+    {
+      OID oid = insert_row (id);
+      commit_current_tran ();
+      const oos_column v0_c1 = oos_column_of (latest_record (oid), attr_c1);
+
+      const int worker_idx = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+      TRAN_STATE reader_state;
+      const int reader_idx = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, &reader_state,
+			     TRAN_LOCK_INFINITE_WAIT, TRAN_REPEATABLE_READ);
+      ASSERT_NE (reader_idx, NULL_TRAN_INDEX);
+      ASSERT_NE (logtb_get_mvcc_snapshot (thread_p), nullptr);
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+      scope_exit end_reader ([&] () noexcept
+      {
+	LOG_SET_CURRENT_TRAN_INDEX (thread_p, reader_idx);
+	(void) log_abort (thread_p, reader_idx);
+	logtb_release_tran_index (thread_p, reader_idx);
+	LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+      });
+
+      const int k = 1;
+      ASSERT_EQ (reuse ? update_row (oid, &k, nullptr, nullptr) : update_row (oid, &k, &C1_VALUE, &C2_VALUE),
+		 NO_ERROR);
+      commit_current_tran ();
+      ASSERT_EQ (same_chain (oos_column_of (latest_record (oid), attr_c1), v0_c1), reuse);
+
+      ASSERT_NO_FATAL_FAILURE (later_write (oid));
+      commit_current_tran ();
+
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, reader_idx);
+      ASSERT_EQ (lock_object (thread_p, &class_oid, oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK), LK_GRANTED);
+      er_clear ();
+      std::string record;
+      seen.scan = read_visible (oid, record);
+      if (seen.scan == S_SUCCESS)
+	{
+	  seen.k = value_of (oid, record, attr_k);
+	  seen.c1 = value_of (oid, record, attr_c1);
+	  seen.c2 = value_of (oid, record, attr_c2);
+	}
+      seen.error = er_errid ();
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
     }
 };
 
@@ -709,6 +775,63 @@ TEST_F (OosUpdateReuse, InPlaceUpdateWritesNewChains)
   EXPECT_EQ (value_of (oid, after, attr_k), "1");
   EXPECT_EQ (value_of (oid, after, attr_c1), C1_VALUE);
   EXPECT_EQ (value_of (oid, after, attr_c2), C2_VALUE);
+}
+
+/* ALTER ... CHANGE rewrites each row in place and reclaims the chains it drops at commit without waiting for
+ * snapshots, a chain the row's last UPDATE reused from the version before it included. The rewrite also drops the
+ * row's link to its older versions, so a snapshot older than that UPDATE cannot reach the version whose chain was
+ * reclaimed: it reads the row as it would had the UPDATE written new chains. Keeping the link would hand that
+ * snapshot the reclaimed chain. */
+TEST_F (OosUpdateReuse, OldSnapshotAcrossInPlaceRewriteOfReusedChainMatchesNewChains)
+{
+  open_table ("dba.t_reuse_inplace_snapshot");
+  auto alter_change = [&] (OID &oid)
+  {
+    /* as xlocator_upgrade_instances_domain does: SCH_M on the class, vacuum below the oldest snapshot, then the row */
+    ASSERT_EQ (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_M_LOCK, LK_UNCOND_LOCK), LK_GRANTED);
+    HEAP_SCANCACHE scan_cache;
+    ASSERT_EQ (heap_scancache_start_modify (thread_p, &scan_cache, &hfid, &class_oid, SINGLE_ROW_UPDATE, NULL),
+	       NO_ERROR);
+    LOG_FIND_CURRENT_TDES (thread_p)->lock_global_oldest_visible_mvccid ();
+    const int error = heap_vacuum_all_objects (thread_p, &scan_cache, log_Gl.mvcc_table.get_global_oldest_visible ());
+    heap_scancache_end_modify (thread_p, &scan_cache);
+    ASSERT_EQ (error, NO_ERROR);
+    ASSERT_EQ (lock_object (thread_p, &oid, &class_oid, X_LOCK, LK_UNCOND_LOCK), LK_GRANTED);
+    const int k = 2;
+    ASSERT_EQ (update_row (oid, &k, nullptr, nullptr, UPDATE_INPLACE_OLD_MVCCID), NO_ERROR);
+  };
+
+  snapshot_read reused, rewritten;
+  ASSERT_NO_FATAL_FAILURE (read_across_later_write (1, true, alter_change, reused));
+  ASSERT_NO_FATAL_FAILURE (read_across_later_write (2, false, alter_change, rewritten));
+
+  EXPECT_EQ (reused.error, NO_ERROR) << "the snapshot read a chain the rewrite reclaimed";
+  EXPECT_EQ (rewritten.error, NO_ERROR);
+  EXPECT_EQ (reused.scan, rewritten.scan);
+  EXPECT_EQ (reused.k, rewritten.k);
+  EXPECT_EQ (reused.c1, rewritten.c1);
+  EXPECT_EQ (reused.c2, rewritten.c2);
+}
+
+/* An UPDATE that moves a row to another partition, as ALTER ... PARTITION BY does to every row, deletes it MVCC
+ * style, so vacuum reclaims the chains of the deleted version only once no snapshot can read it or the version
+ * before it, which shares them. */
+TEST_F (OosUpdateReuse, OldSnapshotReadsTheReusedChainAfterTheRowIsDeleted)
+{
+  open_table ("dba.t_reuse_delete_snapshot");
+  auto delete_row = [&] (OID &oid)
+  {
+    lock_class ();
+    ASSERT_EQ (force (oid, LC_FLUSH_DELETE, SINGLE_ROW_DELETE, NULL, 0), NO_ERROR);
+  };
+
+  snapshot_read seen;
+  ASSERT_NO_FATAL_FAILURE (read_across_later_write (1, true, delete_row, seen));
+  EXPECT_EQ (seen.error, NO_ERROR);
+  EXPECT_EQ (seen.scan, S_SUCCESS);
+  EXPECT_EQ (seen.k, "0");
+  EXPECT_EQ (seen.c1, C1_VALUE);
+  EXPECT_EQ (seen.c2, C2_VALUE);
 }
 
 /* An increment recomputes only its own column; the OOS columns the statement does not assign keep their chains. */

@@ -421,7 +421,9 @@ add_test(NAME test_oos_update_reuse_write COMMAND test_oos_update_reuse_server
 string(CONCAT oos_update_reuse_reclaim_filter
   "OosUpdateReuse.MixedUpdateDropsOnlyTheAssignedChain:"
   "OosUpdateReuse.VacuumReclaimsAReusedChainOnceAVersionDropsIt:"
-  "OosUpdateReuse.SnapshotOfTheReusingVersionHoldsTheReclaim"
+  "OosUpdateReuse.SnapshotOfTheReusingVersionHoldsTheReclaim:"
+  "OosUpdateReuse.OldSnapshotAcrossInPlaceRewriteOfReusedChainMatchesNewChains:"
+  "OosUpdateReuse.OldSnapshotReadsTheReusedChainAfterTheRowIsDeleted"
 )
 add_test(NAME test_oos_update_reuse_reclaim COMMAND test_oos_update_reuse_server
   "--gtest_filter=${oos_update_reuse_reclaim_filter}")
