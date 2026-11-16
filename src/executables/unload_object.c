@@ -588,18 +588,17 @@ check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_re
 
 
 /*
- * check_include_object_domain - check for a domain a class cannot be unloaded with in the data format given
+ * check_include_object_domain - check for a domain that may hold an object
  *    return: true when the domain list holds such a domain
  *    dom_list(in): domains of an attribute, or the element domains of a collection
  *    db_type(out): type of the domain found, DB_TYPE_NULL for a collection of no element domain
- *    data_format(in): data format the class is to be unloaded with
  * Note:
- *    A collection declared with no element domain may hold any value, OBJECT included, so it is found in
- *    every data format. A binary section has no place for an object reference, and an extractor thread
- *    cannot print one either, as it has no thread entry that SA_MODE needs to look the object up.
+ *    A collection declared with no element domain may hold any value, OBJECT included, so it is found as
+ *    well. A binary section has no place for an object reference, and an extractor thread cannot print one
+ *    either, as it has no thread entry that SA_MODE needs to look the object up.
  */
 static bool
-check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type, int data_format)
+check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type)
 {
   DB_DOMAIN *dom;
 
@@ -620,17 +619,8 @@ check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type, int data_f
 	      *db_type = DB_TYPE_NULL;
 	      return true;
 	    }
-	  if (check_include_object_domain (db_domain_set (dom), db_type, data_format))
+	  if (check_include_object_domain (db_domain_set (dom), db_type))
 	    {
-	      return true;
-	    }
-	  break;
-
-	case DB_TYPE_ERROR:
-	case DB_TYPE_POINTER:
-	  if (data_format != OBJECT_FORMAT_TEXT)
-	    {
-	      *db_type = TP_DOMAIN_TYPE (dom);
 	      return true;
 	    }
 	  break;
@@ -1858,7 +1848,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
     }
 
   // reset variable
-  g_data_format = 0;
+  g_data_format = OBJECT_FORMAT_TEXT;
 
   if (IS_CLASS_REQUESTED (cl_no))
     {
@@ -1948,7 +1938,7 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 	    case DB_TYPE_SET:
 	    case DB_TYPE_MULTISET:
 	    case DB_TYPE_SEQUENCE:
-	      if (check_include_object_domain (class_ptr->attributes[i].domain, &db_type_in, data_format))
+	      if (check_include_object_domain (class_ptr->attributes[i].domain, &db_type_in))
 		{
 		  if (db_type_in == DB_TYPE_NULL)
 		    {
@@ -1965,14 +1955,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 		  data_format = OBJECT_FORMAT_TEXT;
 		  done = true;
 		}
-	      break;
-
-	    case DB_TYPE_ERROR:
-	    case DB_TYPE_POINTER:
-	      fprintf (stderr, "warning: %s%s%s has %s type.\n", PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)),
-		       db_get_type_name (db_type));
-	      data_format = OBJECT_FORMAT_TEXT;
-	      done = (nthreads > 0) ? false : true;
 	      break;
 
 	    default:

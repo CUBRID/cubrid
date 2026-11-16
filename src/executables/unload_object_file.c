@@ -1063,8 +1063,8 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 
     default:
       /*
-       * A collection, an object and a LOB are written by process_value (), and a class with an ERROR or a
-       * POINTER column is unloaded in text, see process_class (); the rest are internal types no column holds.
+       * A collection, an object and a LOB are written by process_value (), and the rest are internal or
+       * method argument types no column holds.
        * A type that gets here anyway has no binary form yet, and writing nothing for it would leave a row
        * loaddb rejects with no word from unloaddb, so it fails here.
        */

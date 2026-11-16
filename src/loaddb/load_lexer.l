@@ -97,7 +97,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 
 %option yyclass="cubload::scanner"
 
-%x BRACKET_ID DELIMITED_ID DQS SQS COMMENT FORMAT_ARG BINARY_MODE BINARY_BLOCK ABORTED
+%x BRACKET_ID DELIMITED_ID DQS SQS COMMENT FORMAT_ARG BINARY_MODE BINARY_BLOCK ABORTED TERMINATED
 
 %%
     /*
@@ -850,30 +850,39 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
   /*
    * Entered once an object file has been found unreadable and the failure has been reported. The
    * rest of the input is raw data the text rules cannot match, scanning it would report a lexical
-   * error per byte on top of the failure which is already known, so it is dropped instead.
+   * error per byte on top of the failure which is already known. It is not read either: the load
+   * fails on the failure reported, in SA mode before the load pass, so nothing past it would be
+   * of use, and the rest of an object file can be tens of GB.
    *
    * A new line is handed to the grammar so that the line the "%format" command line opened is
-   * closed and the parse ends without a syntax error of its own. Scanning goes on in INITIAL,
-   * where the end of the input terminates it.
+   * closed and the parse ends without a syntax error of its own. The scan ends at the next call,
+   * see TERMINATED.
    */
 <ABORTED>(.|\n) {
-    char scrap[4096];
-
     clear_binary_block ();
 
-    while (read_binary (scrap, sizeof (scrap)) == sizeof (scrap))
-      {
-	;
-      }
-
     PRINT ("ABORTED %s\n", "");
-    BEGIN INITIAL;
+    BEGIN TERMINATED;
     return token::NL;
 }
 
 <ABORTED><<EOF>> {
     BEGIN INITIAL;
     return token::NL;
+}
+
+  /*
+   * Ends the scan with the rest of the input left unread, see ABORTED. The start condition is set
+   * back to INITIAL, as it is kept from one parse to the next, a batch on the server.
+   */
+<TERMINATED>(.|\n) {
+    BEGIN INITIAL;
+    yyterminate ();
+}
+
+<TERMINATED><<EOF>> {
+    BEGIN INITIAL;
+    yyterminate ();
 }
 
 %%

@@ -634,9 +634,7 @@ extern BIN_BLOCK_SIZE_TYPE binary_block_checksum (const char *raw, size_t size);
 extern bool binary_block_checksum_matches (const char *raw, size_t size, BIN_BLOCK_SIZE_TYPE checksum);
 
 
-extern int encode_varint (int v, u_char *buf);
 extern int encode_varint64 (int64_t v, u_char *buf);
-extern bool decode_varint (u_char *buf, int buf_sz, int *val_ptr, int *consumed);
 extern bool decode_varint64 (u_char *buf, int buf_sz, int64_t *val_ptr, int *consumed);
 
 namespace cubload

@@ -1463,25 +1463,9 @@ binary_block_checksum_matches (const char *raw, size_t size, BIN_BLOCK_SIZE_TYPE
  * silently truncated to its lowest seven bits, so callers must guarantee the sign themselves.
  *
  * If you need to handle negative numbers, use zigzag encoding.
- * encoding:  (n << 1) ^ (n >> 31)
+ * encoding:  (n << 1) ^ (n >> 63)
  * decoding:  (n >> 1) ^ -(n & 1)
  */
-
-int
-encode_varint (int v, u_char *buf)
-{
-  int i = 0;
-  assert (v >= 0);
-
-  while (v >= 0x80)
-    {
-      buf[i++] = (u_char) (v & 0x7F) | 0x80;
-      v >>= 7;
-    }
-
-  buf[i++] = (u_char) (v & 0x7F);
-  return i;
-}
 
 int
 encode_varint64 (int64_t v, u_char *buf)
@@ -1497,33 +1481,6 @@ encode_varint64 (int64_t v, u_char *buf)
 
   buf[i++] = (u_char) (v & 0x7F);
   return i;
-}
-
-bool
-decode_varint (u_char *buf, int buf_sz, int *val_ptr, int *consumed)
-{
-  int result = 0;
-  int shift = 0;
-
-  for (int i = 0; i < buf_sz; i++)
-    {
-      if (shift >= 32 || (shift == 28 && buf[i] > 0x0F))
-	{
-	  return false;
-	}
-
-      result |= (int) (buf[i] & 0x7F) << shift;
-      if ((buf[i] & 0x80) == 0)
-	{
-	  *val_ptr = result;
-	  *consumed = i + 1;
-	  return true;
-	}
-
-      shift += 7;
-    }
-
-  return false;
 }
 
 bool
