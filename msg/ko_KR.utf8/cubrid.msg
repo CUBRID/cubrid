@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 스트림 세션 오류: %1$s.
+1218 스트림이 열려 있지 않음: %1$s.
+1219 지원하지 않는 스트림: %1$s.
+1220 잘못된 스트림 사용: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1506,15 +1506,19 @@ $ LOADDB
 
 1392 연결이 트랜잭션 인덱스 %1$d 를 사용했으나, 서버가 이 연결에 할당한 인덱스는 %2$d 입니다. 할당된 인덱스를 사용했습니다.
 
-1393 HA 복제 제약 위반: 테이블 생성 시 복제 후보 키(기본 키 또는 NOT NULL UNIQUE 제약)가 필요합니다. 없을 경우 REPLICATION 옵션을 OFF로 설정하십시오.
+1393 시스템 생성 stored procedure를 변경(alter)할 수 없습니다.
 
-1394 HA 복제 제약 위반: 클래스의 복제 옵션을 변경할 수 없습니다.
+1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
 
-1395 HA 복제 제약 위반: HA 모드에서는 복제가 활성화된 테이블이 복제 옵션이 OFF인 테이블을 외래 키로 참조할 수 없습니다.
+1395 HA 복제 제약 위반: 테이블 생성 시 복제 후보 키(기본 키 또는 NOT NULL UNIQUE 제약)가 필요합니다. 없을 경우 REPLICATION 옵션을 OFF로 설정하십시오.
 
-1396 HA 복제 제약 위반: %1$d개의 복제 제약 위반이 발생하여 HA 모드를 시작할 수 없습니다. 자세한 내용은 '%2$s'을(를) 참고하세요.
+1396 HA 복제 제약 위반: 클래스의 복제 옵션을 변경할 수 없습니다.
 
-1397 마지막 에러
+1397 HA 복제 제약 위반: HA 모드에서는 복제가 활성화된 테이블이 복제 옵션이 OFF인 테이블을 외래 키로 참조할 수 없습니다.
+
+1398 HA 복제 제약 위반: %1$d개의 복제 제약 위반이 발생하여 HA 모드를 시작할 수 없습니다. 자세한 내용은 '%2$s'을(를) 참고하세요.
+
+1399 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2030,6 +2034,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
+345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
 
 
 

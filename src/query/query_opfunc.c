@@ -2171,24 +2171,15 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
       db_make_null (result_p);
       return NO_ERROR;
     }
-  TP_DOMAIN_STATUS dom_status;
-  if (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p))
+  /* CBRD-27583: the value has the planned type and the domain fixes its type and collation (checked also for
+   * compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT results) */
+  assert (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p));
+  /* the plan's converter, which the cast takes in place of its lookup */
+  if (conv == NULL)
     {
-      /* the plan's converter, which the cast takes in place of its lookup */
-      if (conv == NULL)
-	{
-	  return NO_ERROR;
-	}
-      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
+      return NO_ERROR;
     }
-  else
-    {
-      /* CBRD-27583: not reached - a value of another type than planned, or a domain that leaves the value's type or
-       * collation to it (checked also for compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT / VARBIT
-       * results); a release build coerces it by its own type */
-      assert (false);
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-    }
+  const TP_DOMAIN_STATUS dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       const int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
@@ -5156,10 +5147,6 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 {
   DB_TYPE type1, type2;
   int error = NO_ERROR;
-  DB_VALUE cast_value1;
-  DB_VALUE cast_value2;
-  TP_DOMAIN *cast_dom1 = NULL;
-  TP_DOMAIN *cast_dom2 = NULL;
   TP_DOMAIN_STATUS dom_status;
 
   if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
@@ -5170,51 +5157,10 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
   type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
 
-  /* string STRCAT date: cast date to string, concat as strings */
-  /* string STRCAT number: cast number to string, concat as strings */
-  if (TP_IS_CHAR_TYPE (type1) && (TP_IS_DATE_OR_TIME_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2)))
-    {
-      cast_dom2 = tp_domain_resolve_value (dbval1_p, NULL);
-    }
-  else if ((TP_IS_DATE_OR_TIME_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1)) && TP_IS_CHAR_TYPE (type2))
-    {
-      cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
-    }
-  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row reaches
-   * the cast of a value by its type here */
-  assert (cast_dom1 == NULL && cast_dom2 == NULL);
-
-  db_make_null (&cast_value1);
-  db_make_null (&cast_value2);
-
-  if (cast_dom1 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  pr_clear_value (&cast_value1);
-	  pr_clear_value (&cast_value2);
-	  return error;
-	}
-      dbval1_p = &cast_value1;
-    }
-
-  if (cast_dom2 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  pr_clear_value (&cast_value1);
-	  pr_clear_value (&cast_value2);
-	  return error;
-	}
-      dbval2_p = &cast_value2;
-    }
-
-  type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
-  type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
+  /* CBRD-27583: XASL generation casts a concatenation's date or number operand to a string, so no row concatenates
+   * a string with a date or a number */
+  assert (!(TP_IS_CHAR_TYPE (type1) && (TP_IS_DATE_OR_TIME_TYPE (type2) || TP_IS_NUMERIC_TYPE (type2))));
+  assert (!((TP_IS_DATE_OR_TIME_TYPE (type1) || TP_IS_NUMERIC_TYPE (type1)) && TP_IS_CHAR_TYPE (type2)));
 
   if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
@@ -5234,13 +5180,15 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  /* CBRD-27583: the other operand is the value: one of another type than planned takes the node's domain by the
 	   * converter its operand's type found at unpack, as the row coerced it before */
 	  const int i = DB_IS_NULL (dbval1_p) ? 1 : 0;
-	  const DB_TYPE type = i == 0 ? type1 : type2;
-	  if (arith != NULL && domain_p == arith->domain && type != planned && type == arith->conv_type[i])
+	  if (arith != NULL && domain_p == arith->domain && arith->conv[i] != NULL && arith->conv_type[i] != planned)
 	    {
-	      dom_status = tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p, type,
-							      arith->conv[i]);
-	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR
-		: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, i == 0 ? dbval1_p : dbval2_p, domain_p);
+	      assert ((i == 0 ? type1 : type2) == arith->conv_type[i]);
+	      dom_status =
+		tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p,
+						   arith->conv_type[i], arith->conv[i]);
+	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR : tp_domain_status_er_set (dom_status, ARG_FILE_LINE,
+											   i == 0 ? dbval1_p : dbval2_p,
+											   domain_p);
 	    }
 	}
       else
@@ -5259,17 +5207,21 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     case DB_TYPE_NUMERIC:
     case DB_TYPE_MONETARY:
       {
-	/* a number first operand adds, as the typed additions did: a number or a date or time second operand, no
-	 * value for any other */
-	DB_TYPE left_target, right_target;
-	DOMAIN_ARITH arith;
-
-	(void) domain_arith_rule (T_ADD, type1, type2, &left_target, &right_target, &arith);
-	if (arith.kind == DOMAIN_ARITH_NUMBER)
+	/* a number first operand adds, as the typed additions do: only an addition whose value its consumer reads as
+	 * a string (oracle_style_empty_string) comes here, by what its node decided (a concatenation's operands are
+	 * strings); a number or a date or time second operand, no value for any other */
+	if (arith == NULL || !arith_decides_arith (arith))
 	  {
-	    error = qdata_number_operator (T_ADD, arith.type, dbval1_p, dbval2_p, result_p);
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	    return ER_QPROC_INVALID_DATATYPE;
 	  }
-	else if (arith.kind == DOMAIN_ARITH_DATE)
+	const DOMAIN_ARITH *decided = arith_decided_arith (arith);
+	if (decided->kind == DOMAIN_ARITH_NUMBER)
+	  {
+	    error = qdata_number_operator (T_ADD, decided->type, dbval1_p, dbval2_p, result_p);
+	  }
+	else if (decided->kind == DOMAIN_ARITH_DATE)
 	  {
 	    error = qdata_add_datetime_value (dbval1_p, dbval2_p, result_p, domain_p);
 	  }
@@ -5341,15 +5293,6 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   if (error != NO_ERROR)
     {
       return error;
-    }
-
-  if (cast_dom1)
-    {
-      pr_clear_value (&cast_value1);
-    }
-  if (cast_dom2)
-    {
-      pr_clear_value (&cast_value2);
     }
 
   return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
@@ -6199,11 +6142,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      /* exception to deciding before the rows: an argument whose domain leaves its values' type to the data reads the
-       * list's column as the list holds it */
       assert (!domain_is_variable (regu_p->domain));
-      TP_DOMAIN *column_domain = domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
-      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, column_domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, regu_p->domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -6532,9 +6472,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  /* get the required column, as CONNECT_BY_ROOT reads its argument */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      TP_DOMAIN *column_domain =
-		domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
-	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, column_domain) != NO_ERROR)
+	      assert (!domain_is_variable (regu_p->domain));
+	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, regu_p->domain) != NO_ERROR)
 		{
 		  goto error;
 		}

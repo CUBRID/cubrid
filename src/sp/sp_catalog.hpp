@@ -105,7 +105,7 @@ struct sp_code_info
   std::string created_time;
   MOP owner;
   int is_static;
-  int is_system_generated;
+  int is_system_generated {0};
   int stype;
   std::string scode;
   int otype;
@@ -162,6 +162,7 @@ int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
 int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
 // update into system catalogs
+int sp_replace_stored_procedure (MOP sp_mop, SP_INFO &info);
 int sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info);
 
 // getter
