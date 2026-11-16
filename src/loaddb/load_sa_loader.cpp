@@ -1197,8 +1197,10 @@ error_exit:
 	     * error raised outside the rows, prints it again for every row after this one and
 	     * checks none of them.
 	     *
-	     * The rows of a class that cannot take rows count once between them, as the error
-	     * is said once; see ldr_invalid_class_counted.
+	     * The count is per row, not per message: a row with two bad values prints both
+	     * and counts 1. The rows of a class that cannot take rows count once between
+	     * them, as the error is said once; see ldr_invalid_class_counted. What else goes
+	     * into the count is listed at ldr_increment_err_total ().
 	     */
 	    if (ldr_row_started_valid || !ldr_invalid_class_counted)
 	      {
@@ -1218,9 +1220,17 @@ error_exit:
 } // namespace cubload
 
 /*
- * ldr_increment_err_total - increment err_total count of the given context
+ * ldr_increment_err_total - increment err_total count of the current context
  *    return: void
- *    context(out): context
+ * Note:
+ *    err_total is the N of "N errors detected." It counts what was refused, not the
+ *    messages printed for it:
+ *      - a row the syntax-checking walk refused counts 1, however many of its values
+ *        were wrong and however many lines were printed for them;
+ *      - a class that cannot take rows counts 1 on its %class line, and its rows do
+ *        not count again (ldr_count_invalid_class, ldr_invalid_class_counted);
+ *      - a syntax error of the data file counts 1 (error_handler::log_error_message).
+ *    An error ignored through --error-control-file is not counted.
  */
 void
 ldr_increment_err_total ()
