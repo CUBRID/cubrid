@@ -2321,8 +2321,10 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
    * sees: with the overflow ignored through --error-control-file, a bad date or a
    * nested set inside it refused the whole file instead of skipping the row.
    *
-   * Instance attributes only. A %constructor line is bounded by num_attrs + arg_count,
-   * and a class attribute line still invalidates the context on overflow.
+   * LDR_ACT_ATTR only, which is every line of the validation walk but a %constructor
+   * one: ldr_act_restrict_attributes () sets LDR_ACT_CLASS_ATTR on the loading walk
+   * only. A %constructor line is bounded by num_attrs + arg_count, and on the loading
+   * walk a class attribute line's elements are dropped by the test below.
    */
   if (context->act_mode == LDR_ACT_ATTR && context->next_attr >= context->num_attrs)
     {
@@ -2997,12 +2999,21 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
 
   CHECK_VALIDATION_ONLY (context);
 
+  /*
+   * A value past the last attribute, said once per line and leaving the context valid, as
+   * ldr_act_attr () does and for the same reason: an invalid context is not reset by
+   * start_line (), so with the overflow ignored through --error-control-file every
+   * following line of the block was dropped without a word. Only the loading walk gets
+   * here; the validation walk reads a class attribute line through ldr_act_attr (), see
+   * ldr_act_restrict_attributes (). No descriptor is left to read; ldr_act_meth () explains.
+   */
   if (context->next_attr >= context->num_attrs)
     {
-      context->valid = false;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
-      CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
-      /* No descriptor left to read; ldr_act_meth () explains. */
+      if (context->next_attr == context->num_attrs && (type != LDR_COLLECTION || str != NULL))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_VALUE_OVERFLOW, 1, context->num_attrs);
+	  CHECK_ERR (err, ER_LDR_VALUE_OVERFLOW);
+	}
       goto error_exit;
     }
 
