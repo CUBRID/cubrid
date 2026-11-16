@@ -1589,6 +1589,11 @@ qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       (void) qfile_close_list (thread_p, xasl->list_id);
       qfile_destroy_list (thread_p, xasl->list_id);
     }
+  else if (xasl->list_id && XASL_IS_FLAGED (xasl, XASL_SHARED_VIEW_REP))
+    {
+      /* a copy of the XASL of a shared view read the result of the original (qexec_execute_shared_view ()) */
+      qfile_clear_list_id (xasl->list_id);
+    }
 
   single_tuple = xasl->single_tuple;
   if (single_tuple)
@@ -2386,6 +2391,13 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      && XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	    {
 	      XASL_SET_FLAG (p->s.list_node.xasl_node, XASL_DECACHE_CLONE);
+	      pg_cnt += qexec_clear_xasl (thread_p, p->s.list_node.xasl_node, is_final, for_parallel_aptr);
+	    }
+	  else if (p->s.list_node.xasl_node && XASL_IS_FLAGED (p->s.list_node.xasl_node, XASL_SHARED_VIEW_REP)
+		   && p->s.list_node.xasl_node->list_id != NULL && p->s.list_node.xasl_node->list_id->is_result_cached)
+	    {
+	      /* a copy of the XASL of a shared view that read the result of the original or made it
+	       * (qexec_execute_shared_view ()) may be reached only from this scan */
 	      pg_cnt += qexec_clear_xasl (thread_p, p->s.list_node.xasl_node, is_final, for_parallel_aptr);
 	    }
 	  break;
@@ -3950,7 +3962,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     }
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
-  new_xasl_state->shared_views = NULL;
+  new_xasl_state->shared_views = xasl_state_p->shared_views;
   new_xasl_state->vd.xasl_state = new_xasl_state;
   new_xasl_state->vd.dbval_cnt = xasl_state_p->vd.dbval_cnt;
   new_xasl_state->vd.drand = xasl_state_p->vd.drand;
@@ -11228,8 +11240,8 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	  {
 	    XASL_NODE *list_xasl = ACCESS_SPEC_XASL_NODE (curr_spec);
 
-	    /* the XASL of a shared view group is executed by the first reference that reads its result, under the lock
-	     * of the group */
+	    /* the XASL of a shared view group is executed by the first reference that reads its result; its status is
+	     * read under the lock of the group, since a worker of a parallel scan may have made it */
 	    if (list_xasl != NULL && XASL_IS_FLAGED (list_xasl, XASL_SHARED_VIEW_REP) && vd->xasl_state != NULL
 		&& vd->xasl_state->shared_views != NULL)
 	      {
@@ -21506,11 +21518,13 @@ qexec_destroy_shared_view_table (qexec_shared_view_table * table)
 /*
  * qexec_execute_shared_view () - make the result of the XASL of a shared view group once, and read it
  *   return: NO_ERROR, or ER_code
- *   xasl(in): the XASL of the group
+ *   xasl(in): the XASL of the group, or a copy of it that a worker of a parallel scan runs
  *   xasl_state(in):
  *
  * Note: the first reference that needs the result executes the XASL under the lock of the group; the others wait
- *	 for it and read its result.
+ *	 for it and read its result. A copy of the XASL hands the result it made over to the original, and reads the
+ *	 result of the original like a result-cached list file, which it does not destroy. A copy whose original is not
+ *	 found makes its own result, as the derived table of an unshared view does.
  */
 static int
 qexec_execute_shared_view (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
@@ -21529,6 +21543,11 @@ qexec_execute_shared_view (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
     }
   if (view == NULL)
     {
+      /* only this thread makes and reads the result of such a copy */
+      if (xasl->status == XASL_SUCCESS)
+	{
+	  return NO_ERROR;
+	}
       return qexec_execute_mainblock_internal (thread_p, xasl, xasl_state, NULL);
     }
   orig = view->xasl;
@@ -21538,6 +21557,22 @@ qexec_execute_shared_view (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   if (IS_XASL_INITIAL_STATUS (orig->status))
     {
       error = qexec_execute_mainblock_internal (thread_p, xasl, xasl_state, NULL);
+      if (xasl != orig)
+	{
+	  if (error == NO_ERROR)
+	    {
+	      error = qfile_copy_list_id (orig->list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
+	    }
+	  if (error == NO_ERROR)
+	    {
+	      qfile_clear_list_id (xasl->list_id);
+	      orig->status = XASL_SUCCESS;
+	    }
+	  else
+	    {
+	      orig->status = XASL_FAILURE;
+	    }
+	}
     }
 
   if (orig->status != XASL_SUCCESS)
@@ -21548,6 +21583,24 @@ qexec_execute_shared_view (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	}
       return er_errid ();
+    }
+
+  if (xasl != orig && !xasl->list_id->is_result_cached)
+    {
+      if (xasl->list_id->type_list.type_cnt != 0)
+	{
+	  qfile_clear_list_id (xasl->list_id);
+	}
+      error = qfile_copy_list_id (xasl->list_id, orig->list_id, true, QFILE_COPY_DEPENDENT);
+      if (error == NO_ERROR)
+	{
+	  xasl->list_id->is_result_cached = true;
+	  xasl->status = XASL_SUCCESS;
+	}
+      else
+	{
+	  xasl->status = XASL_FAILURE;
+	}
     }
 
   pthread_mutex_unlock (&view->lock);
@@ -22290,8 +22343,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      /* a subquery flagged XASL_NO_PARALLEL_SUBQUERY on its own node contains an
 		       * SP/method call somewhere in its subtree: run it inline on the main thread
 		       * while unflagged siblings still go to px workers */
-		      /* the XASL of a shared view group is made and read under its lock in the main thread; a parallel
-		       * task would clear it when it ends */
+		      /* the XASL of a shared view group is made and read under its lock in the main thread and in the
+		       * workers of parallel scans; a parallel task would clear it when it ends */
 		      if (xasl->px_executor && !XASL_IS_FLAGED (xptr2, XASL_NO_PARALLEL_SUBQUERY)
 			  && !qexec_uses_shared_view (xptr2))
 			{
