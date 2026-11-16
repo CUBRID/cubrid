@@ -26,6 +26,7 @@
 #include "porting.h"
 #include "system.h"
 #include "thread_compat.hpp"
+#include "db_multi_threads_connections.h"
 
 const size_t MAX_PTR_BLOCKS = 256;
 
@@ -75,6 +76,11 @@ struct xasl_unpack_info
   int track_allocated_bufers;
 
   bool use_xasl_clone;		/* true, if uses xasl clone */
+  bool index_stream;		/* a filter or function index predicate or expression: its domains need not describe its
+				 * values (stx_decide_stream_compare) */
+  /* CBRD-27817: the domains the compilation left to the values (stx_unpack_domain) and the first one's type */
+  int n_undecided;
+  int undecided_type;		/* DB_TYPE */
 };
 
 XASL_UNPACK_INFO *get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);

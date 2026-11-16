@@ -91,6 +91,17 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
+  void slot_iterator::resume_after (PGSLOTID slot)
+  {
+    OID_SET_NULL (&m_cur_oid);
+    if (slot > 0)
+      {
+	m_cur_oid.volid = m_vpid.volid;
+	m_cur_oid.pageid = m_vpid.pageid;
+	m_cur_oid.slotid = slot;
+      }
+  }
+
   SCAN_CODE slot_iterator::next_qualified_slot_with_peek (THREAD_ENTRY *thread_p)
   {
     OID retry_oid;
@@ -120,10 +131,6 @@ restart_scan_oid:
 	  }
 	ev_res = eval_data_filter (thread_p, &m_cur_oid, &m_recdes, m_scan_cache,
 				   &m_data_filter);
-	if (m_on_trace)
-	  {
-	    m_scan_stats->qualified_rows++;
-	  }
 	if (ev_res == V_ERROR)
 	  {
 	    return S_ERROR;
@@ -138,6 +145,10 @@ restart_scan_oid:
 	if (ev_res != V_TRUE)
 	  {
 	    continue;
+	  }
+	if (m_on_trace)
+	  {
+	    m_scan_stats->qualified_rows++;
 	  }
 	if (m_rest_regu_list)
 	  {

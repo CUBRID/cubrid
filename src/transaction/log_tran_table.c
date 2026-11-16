@@ -83,6 +83,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error Does not belong to CS_MODE
+#endif
+
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
 #define NUM_ASSIGNED_TRAN_INDICES log_Gl.trantable.num_assigned_indices
@@ -1144,6 +1148,21 @@ logtb_rv_assign_mvccid_for_undo_recovery (THREAD_ENTRY * thread_p, MVCCID mvccid
 }
 
 /*
+ * logtb_release_conn_tran_index - if the calling connection owns tran_index,
+ *   it no longer does.
+ */
+static void
+logtb_release_conn_tran_index (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->get_tran_index () == tran_index)
+    {
+      thread_p->conn_entry->release_tran_index ();
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
  * logtb_release_tran_index - return an assigned transaction index
  *
  * return: nothing
@@ -1160,6 +1179,8 @@ void
 logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   qmgr_clear_trans_wakeup (thread_p, tran_index, true, false);
   heap_chnguess_clear (thread_p, tran_index);
@@ -1239,6 +1260,8 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 #endif /* SERVER_MODE */
 
   log_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  logtb_release_conn_tran_index (thread_p, tran_index);
 
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index > NUM_TOTAL_TRAN_INDICES || tdes == NULL || tdes->trid == NULL_TRANID)
@@ -2551,6 +2574,9 @@ logtb_find_state (int tran_index)
  *               (in milliseconds)
  *
  * Note:Reset the default waiting time for the current transaction index(client).
+ *      Every thread working for the transaction reads it, and so do other transactions (deadlock victim choice,
+ *      lock dumps). A temporary waiting time that only the calling thread needs, in code that may run while other
+ *      threads of the same transaction run, belongs to logtb_set_thread_wait_msecs () instead.
  */
 int
 xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
@@ -2558,6 +2584,9 @@ xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int old_wait_msecs;		/* The old waiting time to be returned */
   int tran_index;
+
+  /* the requests of a thread with an override read the override first and would not see this value */
+  assert (thread_p == NULL || thread_p->wait_msecs_override == LK_WAIT_NOT_OVERRIDDEN);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -2595,6 +2624,72 @@ logtb_find_wait_msecs (int tran_index)
       assert (false);
       return 0;
     }
+}
+
+/*
+ * logtb_set_thread_wait_msecs - override the waiting time of the current thread only
+ *
+ * return: the previous override of the thread; pass it back to restore it
+ *
+ *   thread_p(in): thread entry
+ *   wait_msecs(in): waiting time for the locks and page latches this thread requests until the override is
+ *                   restored, or LK_WAIT_NOT_OVERRIDDEN to wait as the transaction does
+ *
+ * Note: tdes->wait_msecs is read by every thread working for the transaction: parallel query, sort and index
+ *       build workers copy their parent's tran_index, and the daemons of the system transaction share one tdes.
+ *       A temporary value saved and restored there by one thread is seen by the others while it is set, and two
+ *       overlapping save/restore pairs can leave one thread's temporary value on the transaction after both are
+ *       done, where it stays until the client resets it or disconnects. Code that may run while other threads of
+ *       its transaction run sets its temporary waiting time here instead.
+ *       A waiting time other transactions must see stays in tdes->wait_msecs (xlogtb_reset_wait_msecs): a
+ *       statement's LOCK_TIMEOUT hint, which its parallel workers read as well, and the waits of lock requests
+ *       that the deadlock detector and lock dumps look at. The detector reading tdes->wait_msecs alone is
+ *       enough: the overrides wrap page fixes, except the one log_rollback () sets after its callers marked the
+ *       transaction TRAN_UNACTIVE_ABORTED, and the detector never picks an inactive transaction as a victim.
+ *       Workers do not inherit an override: each one is meant for the requests of the thread that set it, and
+ *       none starts a worker before restoring it (log_rollback () undoes on its own thread). A task restores its
+ *       override before it ends; entry_manager::recycle_context () asserts that.
+ */
+int
+logtb_set_thread_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
+{
+  int old_wait_msecs;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  old_wait_msecs = thread_p->wait_msecs_override;
+  thread_p->wait_msecs_override = wait_msecs;
+
+  return old_wait_msecs;
+}
+
+/*
+ * logtb_find_current_wait_msecs - find the waiting time of the current thread
+ *
+ * return: the override of the thread (see logtb_set_thread_wait_msecs), else the waiting time of its transaction
+ *
+ *   thread_p(in): thread entry
+ *
+ * Note: The page buffer applies the same rule through its inline pgbuf_find_current_wait_msecs (); change both
+ *       together.
+ */
+int
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->wait_msecs_override != LK_WAIT_NOT_OVERRIDDEN)
+    {
+      return thread_p->wait_msecs_override;
+    }
+
+  return logtb_find_wait_msecs (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
 /*
@@ -2766,13 +2861,18 @@ logtb_interrupt_session_sleeper_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_
     }
 
   bool match = false;
+  CSS_CONN_ENTRY *conn;
+
   (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
 
+  /* tran_index_lock does not guard conn_entry: the worker sets it when it takes a request and clears it when it ends
+   * one (css_server_task::execute (), the parallel query tasks) without this lock. Read it once, so the NULL check and
+   * the session_id read see the same entry. */
+  conn = thread_ref.conn_entry;
   if (!thread_ref.is_on_current_thread ()
       && thread_ref.m_status != cubthread::entry::status::TS_DEAD
       && thread_ref.m_status != cubthread::entry::status::TS_FREE
-      && thread_ref.m_status != cubthread::entry::status::TS_CHECK
-      && thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_id == session_id)
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK && conn != NULL && conn->session_id == session_id)
     {
       match = true;
       if (thread_ref.tran_index != NULL_TRAN_INDEX && log_Gl.trantable.area != NULL)
@@ -2908,14 +3008,34 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		THREAD_ENTRY *tran_worker = logtb_find_thread_by_tran_index_except_me (tran_index);
 		if (tran_worker != NULL)
 		  {
+		    /* that worker clears its conn_entry when it ends its request, with no lock this thread holds, and the
+		     * entry then goes back to the pool for another client: read it once, with its session, before waking
+		     * the worker, which may then end its request */
+		    CSS_CONN_ENTRY *tran_conn = tran_worker->conn_entry;
+		    SESSION_ID tran_session = DB_EMPTY_SESSION;
+
+		    if (tran_conn != NULL)
+		      {
+			tran_session = tran_conn->session_id;
+			/* the client may close the connection at any time, its worker then ends the request by itself, and
+			 * the entry may already serve another client. A new client takes its client_id
+			 * (css_initialize_conn ()) before it opens its session: read the client_id after the session, and
+			 * take the session only while the entry still serves the client of this transaction */
+			std::atomic_thread_fence (std::memory_order_acquire);
+			if (tran_conn->client_id != tdes->client_id)
+			  {
+			    tran_session = DB_EMPTY_SESSION;
+			  }
+		      }
+
 		    /* single regular SQL: wake this transaction's own suspended worker */
 		    thread_check_suspend_reason_and_wakeup (tran_worker, THREAD_RESUME_DUE_TO_INTERRUPT,
 							    THREAD_SLEEP_FUNC_SUSPENDED);
-		    if (tran_worker->conn_entry != NULL)
+		    if (tran_session != DB_EMPTY_SESSION)
 		      {
 			/* parallel sibling workers, or nested SLEEP() in a PL/CSQL procedure:
 			 * wake all suspended workers of the same session */
-			logtb_interrupt_session_sleepers (thread_p, tran_worker->conn_entry->session_id);
+			logtb_interrupt_session_sleepers (thread_p, tran_session);
 		      }
 		  }
 	      }
@@ -4217,6 +4337,78 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
     }
 
   return false;
+}
+
+/*
+ * logtb_is_active_other_mvccid () - Is mvccid an in-progress write by another transaction?
+ *
+ * return: true if some other transaction under mvccid is active, or has completed its MVCC but still holds its
+ *	   self-lock: while it commits or aborts, or after COMMIT WORK RETAIN LOCK
+ *
+ *   thread_p(in): thread entry
+ *   mvccid(in): MVCC id
+ *
+ * Note: a committer clears its active mark before it appends its commit record, and releases its self-lock only
+ *	 after it. A writer that went ahead in between could commit first; restart recovery or the HA applier then
+ *	 reverses the two.
+ */
+bool
+logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
+    && (log_Gl.mvcc_table.is_active (mvccid) || lock_is_transaction_mvccid_held (thread_p, mvccid));
+}
+
+/*
+ * logtb_has_active_savepoint () - Is a savepoint declared, so a partial rollback can reach back to here?
+ *
+ * return: true if this transaction has declared a savepoint
+ *
+ *   thread_p(in): thread entry
+ */
+bool
+logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
+}
+
+/*
+ * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends
+ *
+ * return	 : NO_ERROR once that transaction has ended.  An error if the lock failed, or if the lock was granted
+ *		   while that transaction is still active -- waiting again cannot help.
+ * thread_p (in) : Thread entry.
+ * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
+ *
+ * Note: call with no page latch held.
+ */
+int
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  int error_code;
+
+  if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, mvccid, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (mvccid))
+    {
+      /* Invariant breach: no-op grant while that transaction is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
 }
 
 /*

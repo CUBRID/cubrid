@@ -71,12 +71,16 @@ namespace parallel_scan
       m_vd (nullptr),
       m_xasl_state (nullptr),
       m_scan_func_ptr (nullptr),
+      m_batch_gby (nullptr),
+      m_batch_rows (false),
+      m_drain_stop (nullptr),
       m_pre_execution_info (pre_exec_info),
       m_is_fixed (is_fixed),
       m_is_grouped (is_grouped),
       m_is_cached_scan (is_cached_scan),
       m_uses_xasl_clone (uses_xasl_clone),
       m_run_nonlinked_dptr (false),
+      m_handlers_initialized (false),
       m_worker_manager (worker_manager)
       {
       }
@@ -107,13 +111,30 @@ namespace parallel_scan
       val_descr *m_vd;
       xasl_state *m_xasl_state;
       UINTPTR *m_scan_func_ptr;
+      QEXEC_BATCH_GBY *m_batch_gby;	/* the page batch's hash GROUP BY node, kept across the worker's pages */
+      bool m_batch_rows;		/* the batch runs the filter only: the kept rows go through row_body () */
+      bool *m_drain_stop;		/* drain_slot_oids ()'s stop, for a row the rows node hands to row_body (): a reference into
+				 * that call's frame, valid only inside its page batch block -- emit_row_body () is reached from
+				 * the expr_chunk_push () of that block alone, never from a rows node consumed elsewhere */
       pre_execution_info *m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_is_cached_scan;	/* from manager, propagated to scan_open_heap_scan */
       bool m_uses_xasl_clone;
       bool m_run_nonlinked_dptr;
+      bool m_handlers_initialized;	/* write_initialize () reached; finalize () may finalize the handlers */
       TSC_TICKS m_start_tick;
+
+      struct scan_fixes
+      {
+	UINT64 fetches;
+	UINT64 ioreads;
+	UINT64 fetch_time;
+      };
+      /* trace only: the scan's own page fixes, counted around the page and slot reads the way
+       * scan_next_scan_local () counts a serial scan; the NL inner scans, dptr subqueries and result
+       * writes a worker runs per row stay outside, as they do for a serial scan */
+      scan_fixes m_scan_fixes;
 
       worker_manager *m_worker_manager;
 
@@ -122,6 +143,13 @@ namespace parallel_scan
       int clone_xasl (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
+      SCAN_CODE row_body (cubthread::entry &thread_ref, bool &stop);
+      static int emit_row (cubthread::entry *thread_p, void *arg);
+      static int emit_row_body (cubthread::entry *thread_p, void *arg);
+      static QFILE_LIST_ID *gby_list (void *arg);
+      static void gby_sync (void *arg);
+      scan_fixes read_fixes (cubthread::entry &thread_ref);
+      void add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */
       void drain_late_joiner_chains (cubthread::entry &thread_ref, bool &stop);
   };

@@ -106,30 +106,14 @@ namespace parallel_index_scan
 	return NO_ERROR;
       }
 
-    /* scan_id needs coordinator's prebuilt_midxkey_domains; scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY otherwise. */
-    if (worker_scan_id == nullptr)
+    /* the coordinator's scan, whose index information its ranges are built with */
+    if (worker_scan_id == nullptr || worker_scan_id->s.isid.indx_info == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
 	return ER_FAILED;
       }
     INDX_SCAN_ID *isidp = &worker_scan_id->s.isid;
     TP_DOMAIN *btree_domainp = m_btid_int.key_type;
-
-    /* lazy-alloc prebuilt_midxkey_domains (parallel path bypasses scan_open_index_scan); scan_dbvals_to_midxkey would NULL-deref otherwise. */
-    if (isidp->prebuilt_midxkey_domains == NULL)
-      {
-	size_t alloc_size = (size_t) key_cnt * sizeof (TP_DOMAIN *);
-	isidp->prebuilt_midxkey_domains = (TP_DOMAIN **) db_private_alloc (thread_p, alloc_size);
-	if (isidp->prebuilt_midxkey_domains == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-	    return ER_FAILED;
-	  }
-	for (int j = 0; j < key_cnt; j++)
-	  {
-	    isidp->prebuilt_midxkey_domains[j] = NULL;
-	  }
-      }
 
     m_part_key_desc = false;
     m_key_val_ranges.resize (key_cnt);
@@ -184,6 +168,20 @@ namespace parallel_index_scan
 	  }
       }
 
+    /* delegate sort + dedup/merge to scan_manager helper (R_KEYLIST: eliminate_duplicated_keys; R_RANGELIST: merge_key_ranges) so serial and parallel share the same overlap/IN-dup handling; before the DESC swap below, as scan_get_index_oidset merges before btree_prepare_bts swaps (merge_key_ranges reads key1 as the lower bound). */
+    if (m_key_val_ranges.size () > 1 && m_indx_info != nullptr)
+      {
+	int new_cnt = scan_dedup_or_merge_key_ranges (m_indx_info->range_type, m_key_val_ranges.data (),
+		      static_cast<int> (m_key_val_ranges.size ()), m_indx_info->key_ranges_compares);
+	if (new_cnt < 0)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	    m_key_val_ranges.clear ();
+	    return ER_FAILED;
+	  }
+	m_key_val_ranges.resize (new_cnt);
+      }
+
     /* part_key_desc detection from first valid range — matches btree_prepare_bts. */
     for (int i = 0; i < static_cast<int> (m_key_val_ranges.size ()); i++)
       {
@@ -217,21 +215,8 @@ namespace parallel_index_scan
 	    DB_VALUE tmp_key = m_key_val_ranges[i].key1;
 	    m_key_val_ranges[i].key1 = m_key_val_ranges[i].key2;
 	    m_key_val_ranges[i].key2 = tmp_key;
+	    std::swap (m_key_val_ranges[i].key1_bound, m_key_val_ranges[i].key2_bound);
 	  }
-      }
-
-    /* delegate sort + dedup/merge to scan_manager helper (R_KEYLIST: eliminate_duplicated_keys; R_RANGELIST: merge_key_ranges) so serial and parallel share the same overlap/IN-dup handling. */
-    if (m_key_val_ranges.size () > 1 && m_indx_info != nullptr)
-      {
-	int new_cnt = scan_dedup_or_merge_key_ranges (m_indx_info->range_type, m_key_val_ranges.data (),
-		      static_cast<int> (m_key_val_ranges.size ()));
-	if (new_cnt < 0)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
-	    m_key_val_ranges.clear ();
-	    return ER_FAILED;
-	  }
-	m_key_val_ranges.resize (new_cnt);
       }
 
     return NO_ERROR;

@@ -415,7 +415,10 @@ optimizedb: 데이터베이스 최적화.\n\
 사용법: %1$s optimizedb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n
+  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n\
+      --no-histogram           클래스 통계만 갱신함; 히스토그램은 만들지도 지우지도 않음\n\
+      --no-histogram-classes=NAME[,NAME...]\n\
+                               해당 클래스들의 히스토그램 생성을 제외함; 나머지 클래스는 그대로 갱신\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
@@ -570,7 +573,6 @@ unloaddb: 데이터베이스에서 스키마와 객체를 언로드\n\
   -C, --CS-mode               클라이언트 서버 모드 실행\n\
       --datafile-per-class    각 클래스별 오브젝트 파일 생성; 기본값:한 개의 오브젝트 파일생성\n\
       --split-schema-files    스키마 정보를 오브젝트별로 분리하여 각각의 파일로 생성; 기본값: 모든 오브젝트가 포함된 한 개의 스키마 파일 생성\n\
-      --skip-index-detail     인덱스를 생성할 때 지정된 WITH 절 옵션을 인쇄하지 않음; 기본값: 사용 안 함\n\
       --as-dba                로그인 사용자가 DBA 그룹의 구성원인 경우 DBA와 동일한 스키마 파일을 추출합니다.\n
 
 $set 14 MSGCAT_UTIL_SET_COMPACTDB
@@ -917,12 +919,14 @@ valid options:\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 출력 파일 '%1$s'을 열 수 없습니다\n
+16 에러: --drop-clone과 --drop은 함께 사용할 수 없습니다.\n
 59 plandump는 독립 모드에서 실행할 수 없습니다.\n
 60 \
 plandump: 쿼리 플랜 표시 및 관리\n\
 사용법: %1$s plandump [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
+  -c, --drop-clone             캐시된 플랜의 XASL clone 삭제(플랜은 유지); -s 와 함께 쓰면 sha1 플랜만\n\
   -d, --drop                   서버 케시에 있는 모든 플랜 삭제\n\
   -o, --output-file=FILE       출력 메시지를 재지정할 파일; 기본값: 없음\n\
   -s, --sha1=SHA1              서버 케시에 있는 sha1 플랜 삭제; 기본값: 없음\n

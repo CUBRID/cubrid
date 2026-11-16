@@ -67,17 +67,19 @@ using LOG_LSA = log_lsa;	/* Log address identifier */
 /*
  * An LSA that one thread advances under its own lock while other threads read it without that lock.
  * Every access moves the whole 64-bit word at once, so a reader never composes pageid and offset from two moments,
- * and a two-field update never exposes an intermediate value. The bit-fields are reachable only through load ()/store ().
+ * and a two-field update never exposes an intermediate value. The bit-fields are private and whole-value assignment
+ * is deleted, so the value moves only through load () and store (). A writer advances a local log_lsa under its own
+ * lock and stores it when a reader may look.
  * The layout is that of log_lsa: a struct holding it keeps its disk image and stays trivially copyable.
  */
 struct log_lsa_atomic
 {
     inline log_lsa_atomic () = default;
-    inline log_lsa_atomic (const log_lsa &lsa);
+    inline explicit log_lsa_atomic (const log_lsa &lsa);
+    log_lsa_atomic &operator= (const log_lsa_atomic &) = delete;
 
     inline log_lsa load () const;
     inline void store (const log_lsa &lsa);
-    inline void advance (int add);	/* offset += add, published as one store */
     inline operator log_lsa () const;
 
   private:
@@ -90,6 +92,25 @@ static_assert (sizeof (log_lsa_atomic) == sizeof (log_lsa), "log_lsa_atomic must
 static_assert (alignof (log_lsa_atomic) == alignof (log_lsa), "log_lsa_atomic must keep the log_lsa alignment");
 static_assert (std::is_trivially_copyable<log_lsa_atomic>::value, "log_lsa_atomic must stay trivially copyable");
 static_assert (std::is_standard_layout<log_lsa_atomic>::value, "log_lsa_atomic must stay standard layout");
+
+/*
+ * An LSA a thread rewrites and reads back at once, in a hot loop. A log_lsa there stalls: the read of its 64-bit
+ * word cannot be forwarded from the two narrower stores of its bit-fields. Plain fields keep each read on one store.
+ * For locals only; the layout is not that of log_lsa.
+ */
+struct log_lsa_unpacked
+{
+  std::int64_t pageid;
+  std::int16_t offset;
+
+  inline log_lsa_unpacked () = default;
+  inline constexpr log_lsa_unpacked (const log_lsa &lsa);
+
+  inline bool operator< (const log_lsa_unpacked &olsa) const;
+  inline explicit operator log_lsa () const;
+};
+
+using LOG_LSA_UNPACKED = log_lsa_unpacked;
 
 constexpr std::int64_t NULL_LOG_PAGEID = -1;
 constexpr std::int16_t NULL_LOG_OFFSET = -1;
@@ -196,17 +217,27 @@ log_lsa_atomic::store (const log_lsa &lsa)
   ATOMIC_STORE_64_RELEASE (&m_lsa, lsa);
 }
 
-void
-log_lsa_atomic::advance (int add)
-{
-  log_lsa lsa = load ();
-  lsa.offset += add;
-  store (lsa);
-}
-
 log_lsa_atomic::operator log_lsa () const
 {
   return load ();
+}
+
+constexpr
+log_lsa_unpacked::log_lsa_unpacked (const log_lsa &lsa)
+  : pageid (lsa.pageid)
+  , offset (lsa.offset)
+{
+}
+
+bool
+log_lsa_unpacked::operator< (const log_lsa_unpacked &olsa) const
+{
+  return (pageid < olsa.pageid) || (pageid == olsa.pageid && offset < olsa.offset);
+}
+
+log_lsa_unpacked::operator log_lsa () const
+{
+  return log_lsa (pageid, offset);
 }
 
 //

@@ -49,6 +49,7 @@ typedef struct YYLTYPE
   int last_line;
   int last_column;
   int buffer_pos; /* position in the buffer being parsed */
+  int start_line; /* line of the first token in the symbol, 0 if the symbol is empty */
 
 } YYLTYPE;
 #define YYLTYPE_IS_DECLARED 1
@@ -110,6 +111,7 @@ extern int g_msg[1024];
 extern int msg_ptr;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
+extern int expecting_trigger_plcsql_block;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
@@ -445,7 +447,7 @@ static void pt_value_set_collation_info (PARSER_CONTEXT *parser,
 					 PT_NODE *node,
 					 PT_NODE *coll_node);
 static void pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *str, const char *txt, DB_CURRENCY type);
+                   const char *str, const char *txt, PT_CURRENCY type);
 static PT_NODE * pt_create_paren_expr_list (PT_NODE * exp);
 static PT_MISC_TYPE parser_attr_type;
 
@@ -456,15 +458,6 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 					   PT_NODE *node, PT_NODE *coll_node);
 
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
-
-#define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
-   if ((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
-   {                                     \
-      PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
-                                     "Names starting with \"%s\" are reserved by CUBRID.", \
-                                     (nm)->info.name.original, DEDUPLICATE_KEY_ATTR_NAME_PREFIX);  \
-   } \
-} while(0)
 
 #define push_msg(a) _push_msg(a, __LINE__)
 
@@ -477,6 +470,8 @@ int g_query_string_len;
 int g_original_buffer_len;
 
 static int pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start, int spec_end, int end);
+static char *pt_read_input_file(int start, int end);
+static PT_NODE *pt_make_trigger_plcsql_block(PT_NODE* node, int end);
 static int g_plcsql_text_pos;
 
 /*
@@ -484,6 +479,9 @@ static int g_plcsql_text_pos;
  * take into account the context information. The left-side symbol in a rule
  * will have the same context information as the last symbol from its
  * right side
+ *
+ * An empty rule takes first_line from the symbol before it, so start_line
+ * is kept separately: the start_line of the first non-empty symbol.
  */
 #define YYLLOC_DEFAULT(Current, Rhs, N)				        \
     do									\
@@ -494,6 +492,18 @@ static int g_plcsql_text_pos;
 	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
 	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
+          (Current).start_line   = YYRHSLOC (Rhs, 1).start_line;	\
+          if ((Current).start_line == 0)				\
+          {								\
+            for (int yyi_ = 2; yyi_ <= (int) (N); yyi_++)		\
+            	{							\
+                  if (YYRHSLOC (Rhs, yyi_).start_line > 0)		\
+                    {							\
+                      (Current).start_line = YYRHSLOC (Rhs, yyi_).start_line; \
+                      break;						\
+                    }							\
+                }							\
+          }								\
 	}								\
       else								\
 	{								\
@@ -502,6 +512,7 @@ static int g_plcsql_text_pos;
 	  (Current).first_column = (Current).last_column =		\
 	    YYRHSLOC (Rhs, 0).last_column;				\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, 0).buffer_pos;	\
+	  (Current).start_line   = 0;					\
 	}								\
     while (0)
 
@@ -545,7 +556,7 @@ static int g_plcsql_text_pos;
 #if defined(__GNUC__) || defined(__clang__)
   #define BEGIN_SUPPRESS_WARNING_BISON_FLEX             \
     _Pragma("GCC diagnostic push")                      \
-    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough=\"")
+    _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
 
   #define END_SUPPRESS_WARNING_BISON_FLEX               \
     _Pragma("GCC diagnostic pop")
@@ -667,8 +678,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_analytic_ignore_nulls
 %type <number> opt_encrypt_algorithm
 %type <number> opt_access_modifier
-%type <number> deduplicate_key_mod_level
-%type <number> opt_index_with_clause_no_online
 %type <number> opt_authid
 %type <number> opt_deterministic
 %type <c3> opt_sp_option_list
@@ -826,6 +835,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> event_target
 %type <node> trigger_condition
 %type <node> trigger_action
+%type <node> create_trigger_action
 %type <node> trigger_action_in
 %type <node> trigger_spec_list
 %type <node> trace_spec
@@ -1109,8 +1119,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
-%type <c2> opt_index_with_clause
-%type <c2> index_with_item_list
+%type <number> opt_index_with_clause
+%type <number> index_with_item_list
 
 /*}}}*/
 
@@ -1948,6 +1958,12 @@ stmt
 			parser_restore_si_tran_id ();
 			parser_restore_cannot_prepare ();
 
+			if (node)
+			  {
+			    /* line_number may be past the start, e.g. the SELECT after WITH or the UNION node */
+			    node->stmt_start_line = @3.start_line;
+			  }
+
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2401,6 +2417,7 @@ session_variable_assignment
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2417,6 +2434,7 @@ session_variable_definition
 			PT_NODE* expr =
 				parser_make_expression (this_parser, PT_DEFINE_VARIABLE, $1, $3, NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2429,6 +2447,7 @@ session_variable_expression
 			expr = parser_make_expression (this_parser, PT_EVALUATE_VARIABLE, $1, NULL,
 										   NULL);
 			expr->flag.do_not_fold = 1;
+			this_parser->flag.has_session_variable = 1;
 			$$ = expr;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -2830,15 +2849,9 @@ create_stmt
 			    node->info.index.where = $12;
 			    node->info.index.column_names = col;
 
-                            node->info.index.deduplicate_level =  TO_NUMBER(CONTAINER_AT_1($13));
-                             if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
-                              {
-                                  PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
-                              }
-
 			    node->info.index.comment = $15;
 
-                            int with_online_ret = TO_NUMBER(CONTAINER_AT_0($13));  // 0 for normal, 1 for online no parallel,
+                            int with_online_ret = $13;  // 0 for normal, 1 for online no parallel,
                                                         // thread_count + 1 for parallel
                             bool is_online = with_online_ret > 0;
                             bool is_invisible = $14;
@@ -2904,11 +2917,14 @@ create_stmt
 	  event_spec 					/* 9 */
 	  opt_if_trigger_condition			/* 10 */
 	  EXECUTE					/* 11 */
-	  opt_trigger_action_time 			/* 12 */
-	  trigger_action				/* 13 */
-	  opt_comment_spec				/* 14 */
+		{ expecting_trigger_plcsql_block = 1; }	/* 12 */
+	  opt_trigger_action_time 			/* 13 */
+	  create_trigger_action				/* 14 */
+	  opt_comment_spec				/* 15 */
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_TRIGGER);
+
+			expecting_trigger_plcsql_block = 0;
 
 			if (node)
 			  {
@@ -2919,9 +2935,9 @@ create_stmt
 			    node->info.create_trigger.trigger_event = $9;
 			    node->info.create_trigger.trigger_reference = NULL;
 			    node->info.create_trigger.trigger_condition = $10;
-			    node->info.create_trigger.action_time = $12;
-			    node->info.create_trigger.trigger_action = $13;
-			    node->info.create_trigger.comment = $14;
+			    node->info.create_trigger.action_time = $13;
+			    node->info.create_trigger.trigger_action = $14;
+			    node->info.create_trigger.comment = $15;
 			  }
 
 			$$ = node;
@@ -3034,6 +3050,8 @@ create_stmt
 			    node->info.sp.ret_data_type = NULL;
 			    node->info.sp.body = $9;
 			    node->info.sp.comment = $10;
+
+			    pt_set_sp_owner_to_table_column_types (node);
 			  }
 
 			$$ = node;
@@ -3124,6 +3142,8 @@ create_stmt
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
 			    node->info.sp.body = $11;
 			    node->info.sp.comment = $12;
+
+			    pt_set_sp_owner_to_table_column_types (node);
 			  }
 
 			$$ = node;
@@ -9429,8 +9449,6 @@ foreign_key_constraint
 			    node->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    node->info.constraint.un.foreign_key.attrs = $5;
 
-                            node->info.constraint.un.foreign_key.deduplicate_level = $7;
-
 			    node->info.constraint.un.foreign_key.referenced_attrs = $10;
 			    node->info.constraint.un.foreign_key.match_type = PT_MATCH_REGULAR;
 			    node->info.constraint.un.foreign_key.delete_action = TO_NUMBER (CONTAINER_AT_0 ($11));	/* delete_action */
@@ -9913,7 +9931,6 @@ view_attr_def
 			    node->info.attr_def.attr_name = $1;
 			    node->info.attr_def.comment = $2;
 			    node->info.attr_def.attr_type = PT_NORMAL;
-                            CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			$$ = node;
@@ -10087,8 +10104,6 @@ attr_index_def
 			      }
 			  }
 
-                        node->info.index.deduplicate_level = $5;
-
 			node->info.index.column_names = col;
 			node->info.index.index_status = SM_NORMAL_INDEX;
 			if ($6)
@@ -10120,7 +10135,6 @@ attr_def_one
 				PT_NAME_INFO_SET_FLAG (node->info.attr_def.attr_name,
 						       PT_NAME_INFO_EXTERNAL);
 			      }
-                            CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			parser_save_attr_def_one (node);
@@ -10478,8 +10492,6 @@ column_other_constraint_def
 			    constraint->info.constraint.un.foreign_key.update_action = TO_NUMBER (CONTAINER_AT_1 ($7));	/* update_action */
 			    constraint->info.constraint.un.foreign_key.referenced_class = $5;
 
-                            constraint->info.constraint.un.foreign_key.deduplicate_level = $3;
-
 			    constraint->info.constraint.type = PT_CONSTRAIN_FOREIGN_KEY;
 			    constraint->info.constraint.un.foreign_key.attrs = parser_copy_tree (this_parser, node->info.attr_def.attr_name);
 
@@ -10694,7 +10706,6 @@ attr_def_comment
 				attr_node->info.attr_def.attr_name = $1;
 				attr_node->info.attr_def.comment = $3;
 				attr_node->info.attr_def.attr_type = parser_attr_type;
-                                CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
 			  }
 
 			$$ = attr_node;
@@ -11465,6 +11476,27 @@ trigger_action
 		$$ = $1;
 		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 	     }}
+	;
+
+create_trigger_action
+	: trigger_action
+	    {{
+		$$ = $1;
+		PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+	     }}
+	| plcsql_text
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_TRIGGER_ACTION);
+
+			if (node)
+			  {
+			    node->info.trigger_action.action_type = PT_PLCSQL_BLOCK;
+			    node->info.trigger_action.plcsql_block = pt_make_trigger_plcsql_block (node, @1.buffer_pos);
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	;
 
 trigger_spec_list
@@ -13452,6 +13484,8 @@ select_list
 			if (node)
 			  node->type_enum = PT_TYPE_STAR;
 
+			/* the end of "*" (see pt_record_static_sql_star ()) */
+			PARSER_SAVE_ERR_CONTEXT (node, @1.buffer_pos)
 			$$ = parser_make_link (node, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
@@ -15795,6 +15829,7 @@ reserved_func
 	| ELT '(' opt_expression_list ')'
 		{{
                     $$ = parser_make_func_with_arg_count (this_parser, F_ELT, $3, 1, 0);
+                    this_parser->flag.has_str_to_date_or_elt = 1;
                     PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| POSITION '(' expression_ IN_ expression_ ')'
@@ -16445,6 +16480,7 @@ reserved_func
 		{ pop_msg(); }
 		{{
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, $6, parser_make_date_lang (2, NULL));
+			this_parser->flag.has_str_to_date_or_elt = 1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| STR_TO_DATE
@@ -16460,6 +16496,7 @@ reserved_func
 			  }
 
 			$$ = parser_make_expression (this_parser, PT_STR_TO_DATE, $4, node, parser_make_date_lang (2, NULL));
+			this_parser->flag.has_str_to_date_or_elt = 1;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| CHARSET
@@ -20020,51 +20057,39 @@ opt_encrypt_algorithm
 
 opt_index_with_clause_no_online
         : /* empty */
-          {
-            $$ = DEDUPLICATE_OPTION_AUTO; }
+          { }
         | WITH deduplicate_key_mod_level
-           {
-	     $$ = $2; }
+          { }
         ;
 
 opt_index_with_clause
         : /* empty */
           {
-            container_2 ctn;
-            SET_CONTAINER_2(ctn, FROM_NUMBER(0), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO));
-            $$ = ctn; }
+            $$ = 0; }
         | WITH index_with_item_list
           {
              $$ = $2;
           }
         ;
 
-index_with_item_list  
+index_with_item_list
         : online_parallel
           {
-                container_2 ctn;
-                SET_CONTAINER_2(ctn, FROM_NUMBER($1), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO));
-		$$ = ctn;
+		$$ = $1;
           }
         | online_parallel ',' deduplicate_key_mod_level
           {
-                container_2 ctn;
-		SET_CONTAINER_2(ctn, FROM_NUMBER($1), FROM_NUMBER($3));
-		$$ = ctn;
+		$$ = $1;
           }
         | deduplicate_key_mod_level
           {
-                container_2 ctn;
-		SET_CONTAINER_2(ctn, FROM_NUMBER(0), FROM_NUMBER($1));
-		$$ = ctn;
+		$$ = 0;
           }
         | deduplicate_key_mod_level ',' online_parallel
           {
-                container_2 ctn;
-		SET_CONTAINER_2(ctn, FROM_NUMBER($3), FROM_NUMBER($1));
-		$$ = ctn;
+		$$ = $3;
           }
-        ;        
+        ;
 
 opt_compact_fill_factor
 	: /* empty */
@@ -20109,18 +20134,10 @@ online_parallel
 	   }}
 	;
 
+/* The DEDUPLICATE index feature was removed; the clause is accepted for backward compatibility and ignored. */
 deduplicate_key_mod_level
         : DEDUPLICATE_ '=' unsigned_integer
-               {
-                  int int_val = $3->info.value.data_value.i;
-                  if (int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
-                      {                          
-                        PT_ERRORmf2 (this_parser, $3, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
-                                     DEDUPLICATE_KEY_LEVEL_OFF, DEDUPLICATE_KEY_LEVEL_MAX);
-                      }
-
-                 $$ = int_val;
-               }
+          { }
         ;
 
 opt_comment_spec
@@ -22671,7 +22688,6 @@ dblink_column_definition
                         {
                                 node->info.attr_def.size_constraint = dt->info.data_type.precision;
                         }
-                        CHECK_DEDUPLICATE_KEY_ATTR_NAME($1);
                 }
 
                 $$ = node;
@@ -22762,6 +22778,9 @@ extern FILE *yyin;
 void
 _push_msg (int code, int line)
 {
+  /* line comes from the push_msg() macro and is only there to make the call site
+   * identifiable in a debugger. */
+  (void) line;
   g_msg[msg_ptr++] = code;
 }
 
@@ -23982,6 +24001,7 @@ parser_main (PARSER_CONTEXT * parser)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_trigger_plcsql_block = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -24099,6 +24119,7 @@ parse_one_statement (int state)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
+  expecting_trigger_plcsql_block = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -24161,6 +24182,8 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
   INIT_PT_HINT("DBLINK_NO_PUSH_DOWN_SUBQ", PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ),
+  INIT_PT_HINT("ROW_SNAPSHOT", PT_HINT_ROW_SNAPSHOT),
+  INIT_PT_HINT("NO_ROW_SNAPSHOT", PT_HINT_NO_ROW_SNAPSHOT),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
@@ -24199,6 +24222,10 @@ parser_keyword_func (const char *name, PT_NODE * args)
     return NULL;
 
   parser_function_code = key->op;
+  if (key->op == PT_STR_TO_DATE)
+    {
+      this_parser->flag.has_str_to_date_or_elt = 1;
+    }
 
   a1 = a2 = a3 = NULL;
   switch (key->op)
@@ -25700,7 +25727,7 @@ pt_value_set_collation_info (PARSER_CONTEXT *parser, PT_NODE *node,
 
 static void
 pt_value_set_monetary (PARSER_CONTEXT *parser, PT_NODE *node,
-                   const char *currency_str, const char *value, DB_CURRENCY type)
+                   const char *currency_str, const char *value, PT_CURRENCY type)
 {
   double dval;
 
@@ -26273,23 +26300,9 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start,
     // The arguments start, spec_start, spec_end, and end are got from the tokens' buffer_pos
     // but they are also actual positions in the file in these two cases.
 
-    int r, read_sz = end - start;   // texts from pos start to pos (end - 1)
-    char* buff = (char*) parser_alloc(this_parser, read_sz + 1);
-
-    int file_pos = ftell(this_parser->file);
-
-    r = fseek(this_parser->file, start, SEEK_SET);
-    if (r != 0) {
-        return -1;
-    }
-
-    r = (int) fread(buff, 1, read_sz, this_parser->file);
-    if (r != read_sz) {
-        return -1;
-    }
-
-    r = fseek(this_parser->file, file_pos, SEEK_SET);   // restore it to the original position
-    if (r != 0){
+    int read_sz = end - start;   // texts from pos start to pos (end - 1)
+    char* buff = pt_read_input_file(start, end);
+    if (buff == NULL) {
         return -1;
     }
 
@@ -26297,7 +26310,6 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start,
         return -1;
     }
 
-    buff[read_sz] = '\0';
     char* impl = buff + (spec_start - start);
 
     node->sql_user_text = buff;
@@ -26306,4 +26318,68 @@ pt_set_plcsql_body_impl(PT_NODE* node, PT_NODE* body, int start, int spec_start,
     body->info.sp_body.impl = pt_create_string_literal_node_w_charset_coll(impl, (spec_end - spec_start));
 
     return 0;
+}
+
+// Read the text from pos start to pos (end - 1) of this_parser->file, which has no original buffer.
+// Returns NULL on failure.
+static char *
+pt_read_input_file(int start, int end)
+{
+    int r, read_sz = end - start;
+    char* buff = (char*) parser_alloc(this_parser, read_sz + 1);
+
+    int file_pos = ftell(this_parser->file);
+
+    r = fseek(this_parser->file, start, SEEK_SET);
+    if (r != 0) {
+        return NULL;
+    }
+
+    r = (int) fread(buff, 1, read_sz, this_parser->file);
+
+    // restore it to the original position, also when the read fails
+    if (fseek(this_parser->file, file_pos, SEEK_SET) != 0 || r != read_sz) {
+        return NULL;
+    }
+
+    buff[read_sz] = '\0';
+
+    return buff;
+}
+
+// Make the string node holding a PL/CSQL block of a trigger action.
+// The block starts at g_plcsql_text_pos and ends right before end, a buffer position of the parser.
+// The positions, not the lengths of the tokens, give the range, so the text is exactly what the user wrote.
+static PT_NODE *
+pt_make_trigger_plcsql_block(PT_NODE* node, int end)
+{
+    const char* text;
+    int len;
+
+    assert(g_plcsql_text_pos >= 0);
+
+    end -= g_query_string_pos;
+    len = end - g_plcsql_text_pos;
+
+    if (g_query_string) {
+        text = g_query_string + g_plcsql_text_pos;
+    } else {
+        // csql -i <file> --no-single-line, or cubrid loaddb, has no original buffer.
+        // The positions are those in the input file then.
+        assert(this_parser->original_buffer == NULL);
+        assert(this_parser->file);
+
+        text = pt_read_input_file(g_plcsql_text_pos, end);
+        if (text == NULL) {
+            PT_ERROR (this_parser, node, "failed to get the user SQL from the input file");
+            return NULL;
+        }
+    }
+
+    // END of the block takes the blanks after it
+    while (len > 0 && char_isspace(text[len - 1])) {
+        len--;
+    }
+
+    return pt_create_string_literal_node_w_charset_coll(text, len);
 }

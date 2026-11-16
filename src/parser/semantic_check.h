@@ -69,6 +69,7 @@ extern int pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * att
 extern PT_NODE *pt_check_cyclic_reference_in_view_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							int *continue_walk);
 extern void pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query);
+extern bool pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query);
 
 extern STATEMENT_SET_FOLD pt_check_union_is_foldable (PARSER_CONTEXT * parser, PT_NODE * union_node);
 

@@ -140,6 +140,7 @@ static int obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
 static int obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval,
 				  DB_VALUE ** argarray);
 
+static bool find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain);
 static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode);
 static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
@@ -3338,6 +3339,30 @@ obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, 
  */
 
 /*
+ * find_unique_key_matches () - CBRD-27583: an uncompiled lookup's key must have the indexed attribute's type and, for
+ *   a string, its collation: the B-tree compares its own domain only (btree_compare_own_values), nothing casts the
+ *   key for the caller
+ *   return: true if the key compares as the index's own; otherwise ER_TP_CANT_COERCE is set
+ *   value(in): the caller's value, not NULL
+ *   domain(in): the indexed attribute's domain
+ */
+static bool
+find_unique_key_matches (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (TP_ARE_COMPARABLE_KEY_TYPES (type, TP_DOMAIN_TYPE (domain))
+      && (!TP_IS_STRING_TYPE (type) || db_get_string_collation (value) == domain->collation_id))
+    {
+      return true;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type),
+	  pr_type_name (TP_DOMAIN_TYPE (domain)));
+  return false;
+}
+
+/*
  * find_unique - Internal function called by the various flavors of functions
  *               that look for unique attribute values.
  *    return: object pointer
@@ -3434,6 +3459,11 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
 	{
 	  return NULL;
 	}
+    }
+
+  if (!find_unique_key_matches (value, att->domain))
+    {
+      return NULL;
     }
 
   /* now search the index */
@@ -4238,7 +4268,8 @@ obj_find_primary_key (MOP op, const DB_VALUE ** values, int size, AU_FETCHMODE f
   obj = obj_find_object_by_pkey (op, key, fetchmode);
 
 notfound:
-  if (obj == NULL)
+  /* a key of another type than the index's keeps its error (find_unique_key_matches) */
+  if (obj == NULL && er_errid () != ER_TP_CANT_COERCE)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
     }
@@ -4326,6 +4357,12 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 	      goto notfound;
 	    }
 	}
+    }
+
+  /* a multi-column key is a sequence of the columns' values, not a value of the first column's domain */
+  if (cons->attributes[1] == NULL && !find_unique_key_matches (key, cons->attributes[0]->domain))
+    {
+      return NULL;
     }
 
   btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);

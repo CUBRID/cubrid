@@ -654,8 +654,15 @@ vid_build_virtual_mop (MOP bmop, MOP vclass_mop)
     }
 
   vclass_updatable = mq_is_updatable (vclass_mop);
+  /* Called for its side effects; the result is unused, see below. */
+  (void) vclass_updatable;
   db_make_object (&key, bmop);
-  vmop = ws_vmop (vclass_mop, VID_NEW | vclass_updatable ? VID_UPDATABLE : 0, &key);
+  /* This used to read "VID_NEW | vclass_updatable ? VID_UPDATABLE : 0". | binds tighter
+   * than ?:, so the condition was "(VID_NEW | vclass_updatable)", which is never zero:
+   * the argument has always been plain VID_UPDATABLE. It is written out so the call says
+   * what it does. Whether VID_NEW was meant to be passed is a separate question, left
+   * alone because answering it would change behaviour. */
+  vmop = ws_vmop (vclass_mop, VID_UPDATABLE, &key);
   if (!vmop)
     {
       return NULL;
