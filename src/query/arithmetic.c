@@ -3255,6 +3255,13 @@ truncate_bigint (DB_BIGINT num, DB_BIGINT integer)
       return num;
     }
 
+  /* 10^19 does not fit a BIGINT, so a place left of the 19th digit truncates every digit. This also keeps -integer from
+   * overflowing at the smallest BIGINT, where pow () gave a divisor of 0 and the division raised SIGFPE (CBRD-28020) */
+  if (integer < -18)
+    {
+      return 0;
+    }
+
   integer = (DB_BIGINT) pow (10, (double) -integer);
   num -= num % integer;
 
