@@ -2788,6 +2788,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->page_list_sect = 0;
   hsidp->page_list_pgoffset = 0;
   VPID_SET_NULL (&hsidp->page_list_vpid);
+  hsidp->page_list_build = 0;
 
   /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
@@ -4079,6 +4080,13 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	  hsidp->scancache_inited = true;
 
+	  if (hsidp->sector_order && mvcc_snapshot != NULL && mvcc_snapshot->build_serial != hsidp->page_list_build)
+	    {
+	      /* a nested statement rebuilt the READ COMMITTED snapshot after the bitmap: pages allocated since may
+	       * hold rows it sees, so the rest of this open follows the page links (the next open collects again) */
+	      hsidp->sector_order = false;
+	      hsidp->page_list = NULL;
+	    }
 	  /* the walk starts at the bitmap's first page */
 	  hsidp->page_list_sect = 0;
 	  hsidp->page_list_pgoffset = 0;
@@ -4382,6 +4390,14 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	  if (s_id->s.hsid.batch_started)
 	    {
 	      scan_batch_rewind (thread_p, s_id);
+	    }
+	  if (s_id->s.hsid.sector_order && s_id->s.hsid.scancache_inited
+	      && s_id->s.hsid.scan_cache.mvcc_snapshot != NULL
+	      && s_id->s.hsid.scan_cache.mvcc_snapshot->build_serial != s_id->s.hsid.page_list_build)
+	    {
+	      /* the snapshot was rebuilt after the bitmap (see scan_start_scan ()): the links from here on */
+	      s_id->s.hsid.sector_order = false;
+	      s_id->s.hsid.page_list = NULL;
 	    }
 	  /* the next pass walks the same page bitmap from its start */
 	  s_id->s.hsid.page_list_sect = 0;
@@ -5404,6 +5420,17 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_heap_scan_page_list_free_one () - let one kept page bitmap go
+ */
+static void
+scan_heap_scan_page_list_free_one (THREAD_ENTRY * thread_p, FILE_FTAB_COLLECTOR * keep)
+{
+  if (keep->partsect_ftab != NULL)
+    {
+      db_private_free_and_init (thread_p, keep->partsect_ftab);
+    }
+
+/*
  * scan_heap_scan_page_list () - a heap scan's open: the statement's snapshot, then the heap's page bitmap in file
  *				  order, for the parallel heap scan and the serial sector-based scan alike
  *   return: error code
@@ -5417,17 +5444,25 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *	 A class without snapshots (the root class, an MVCC-disabled class) keeps the page links.
  *	 A scan opened again in the same execution (a correlated subquery, once per outer row) reads the bitmap the
  *	 spec kept, as long as the snapshot is the build the bitmap followed: a snapshot a nested statement rebuilt
- *	 (READ COMMITTED) sees rows on pages allocated since, so the bitmap is collected again.  Rows this transaction
+ *	 (READ COMMITTED) sees rows on pages allocated since, so the bitmap is collected again; a rewind of an open
+ *	 scan after such a rebuild follows the page links (serial) or collects again (parallel).  Rows this transaction
  *	 inserts between two opens into a page allocated after the bitmap are not read (a stored procedure called
  *	 from a statement runs no DML: CBRD-27579).
- *	 shortcut: one bitmap is kept per spec, so a partitioned class collects at every partition switch, upgrade
- *	 when a correlated subquery over many partitions shows in a profile.
+ *	 A partition's bitmap is kept in its partition_spec_node, so a partitioned class opened again collects once
+ *	 per partition and snapshot build, not at every partition switch.
  */
+  keep->npages = 0;
+  keep->nsects = 0;
+}
+
 int
 scan_heap_scan_page_list (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, const OID * cls_oid, const HFID * hfid,
 			  bool grouped, const FILE_FTAB_COLLECTOR ** page_list, int *num_data_pages)
 {
   MVCC_SNAPSHOT *snapshot;
+  FILE_FTAB_COLLECTOR *keep;
+  unsigned int *keep_snapshot;
+  int *keep_npages;
   int error_code;
   int i;
 
@@ -5446,67 +5481,90 @@ scan_heap_scan_page_list (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, cons
       return ER_MVCC_CANT_GET_SNAPSHOT;
     }
 
-  if (spec->page_list_keep.partsect_ftab == NULL || !HFID_EQ (&spec->page_list_keep_hfid, hfid)
-      || spec->page_list_keep_snapshot != snapshot->build_serial)
+  if (spec->curent != NULL && HFID_EQ (&spec->curent->hfid, hfid))
     {
-      scan_heap_scan_page_list_free (thread_p, spec);
+      /* the current partition's own bitmap */
+      keep = &spec->curent->page_list_keep;
+      keep_snapshot = &spec->curent->page_list_keep_snapshot;
+      keep_npages = &spec->curent->page_list_keep_npages;
+    }
+  else
+    {
+      keep = &spec->page_list_keep;
+      keep_snapshot = &spec->page_list_keep_snapshot;
+      keep_npages = &spec->page_list_keep_npages;
+      if (!HFID_EQ (&spec->page_list_keep_hfid, hfid))
+	{
+	  scan_heap_scan_page_list_free_one (thread_p, keep);
+	  spec->page_list_keep_hfid = *hfid;
+	}
+    }
 
-      error_code = file_get_all_data_sectors (thread_p, &hfid->vfid, &spec->page_list_keep);
+  if (keep->partsect_ftab == NULL || *keep_snapshot != snapshot->build_serial)
+    {
+      scan_heap_scan_page_list_free_one (thread_p, keep);
+
+      error_code = file_get_all_data_sectors (thread_p, &hfid->vfid, keep);
       if (error_code != NO_ERROR)
 	{
-	  scan_heap_scan_page_list_free (thread_p, spec);
+	  scan_heap_scan_page_list_free_one (thread_p, keep);
 	  return error_code;
 	}
 
       /* file order: the partial sectors come first and the full table keeps the order the sectors filled up;
        * VSID is the first member of FILE_PARTIAL_SECTOR */
-      qsort (spec->page_list_keep.partsect_ftab, spec->page_list_keep.nsects, sizeof (FILE_PARTIAL_SECTOR),
-	     disk_compare_vsids);
+      qsort (keep->partsect_ftab, keep->nsects, sizeof (FILE_PARTIAL_SECTOR), disk_compare_vsids);
 
-      spec->page_list_keep_npages = 0;
-      for (i = 0; i < spec->page_list_keep.nsects; i++)
+      *keep_npages = 0;
+      for (i = 0; i < keep->nsects; i++)
 	{
-	  spec->page_list_keep_npages += bit64_count_ones (spec->page_list_keep.partsect_ftab[i].page_bitmap);
+	  *keep_npages += bit64_count_ones (keep->partsect_ftab[i].page_bitmap);
 	}
-      spec->page_list_keep_hfid = *hfid;
-      spec->page_list_keep_snapshot = snapshot->build_serial;
+      *keep_snapshot = snapshot->build_serial;
     }
 
-  *page_list = &spec->page_list_keep;
-  *num_data_pages = spec->page_list_keep_npages;
+  *page_list = keep;
+  *num_data_pages = *keep_npages;
   return NO_ERROR;
 }
 
 /*
  * scan_heap_scan_set_page_list () - hand the page bitmap of the open to the serial heap scan just opened
  *   scan_id(in/out): the heap scan, opened by scan_open_heap_scan ()
+ *   spec(in): the access spec that keeps the bitmap
  *   page_list(in): the bitmap, the access spec's; NULL when the scan follows the page links
  */
 void
-scan_heap_scan_set_page_list (SCAN_ID * scan_id, const FILE_FTAB_COLLECTOR * page_list)
+scan_heap_scan_set_page_list (SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, const FILE_FTAB_COLLECTOR * page_list)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
 
-  assert (scan_id->type == S_HEAP_SCAN && hsidp->page_list == NULL);
+  assert (scan_id->type == S_HEAP_SCAN);
   assert (page_list == NULL || !scan_id->grouped);
   hsidp->page_list = page_list;
   hsidp->sector_order = (page_list != NULL);
+  assert (page_list == NULL || page_list == &spec->page_list_keep
+	  || (spec->curent != NULL && page_list == &spec->curent->page_list_keep));
+  hsidp->page_list_build = ((page_list == &spec->page_list_keep || spec->curent == NULL)
+			    ? spec->page_list_keep_snapshot : spec->curent->page_list_keep_snapshot);
 }
 
 /*
- * scan_heap_scan_page_list_free () - let the page bitmap the spec kept go, at the end of the execution
+ * scan_heap_scan_page_list_free () - let the page bitmaps the spec and its partitions kept go, at the end of the
+ *				      execution or before the partitions are freed
  *
  * Note: on the thread that executed the clone, whose private heap holds the bitmap, as scan_batch_keep_free ().
  */
 void
 scan_heap_scan_page_list_free (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
 {
-  if (spec->page_list_keep.partsect_ftab != NULL)
+  PARTITION_SPEC_TYPE *part;
+
+  scan_heap_scan_page_list_free_one (thread_p, &spec->page_list_keep);
+  for (part = spec->parts; part != NULL; part = part->next)
     {
-      db_private_free_and_init (thread_p, spec->page_list_keep.partsect_ftab);
+      scan_heap_scan_page_list_free_one (thread_p, &part->page_list_keep);
     }
-  spec->page_list_keep.npages = 0;
-  spec->page_list_keep.nsects = 0;
 }
 
 /*
@@ -5699,6 +5757,8 @@ scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* move backward */
 	      if (scan_id->type == S_HEAP_SCAN)
 		{
+		  /* a query heap scan never runs backward; the page bitmap has no backward walk */
+		  assert (!hsidp->sector_order);
 		  sp_scan =
 		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
 			       is_peeking);
@@ -8083,9 +8143,12 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
  *           scan_batch_collect_chunk ()), S_END past the last page, S_ERROR
  *   scan_id(in/out): the heap scan
  *
- * The pages in the order heap_next () takes them: the header page first, then the chain
- * (heap_vpid_next ()), the next page fixed before the held one is released so that it cannot
- * be deallocated in between (OLD_PAGE_PREVENT_DEALLOC, as heap_next_internal ()).  The page
+ * A scan that follows the page links takes the pages in the order heap_next () takes them: the
+ * header page first, then the chain (heap_vpid_next ()), the next page fixed before the held one
+ * is released so that it cannot be deallocated in between (OLD_PAGE_PREVENT_DEALLOC, as
+ * heap_next_internal ()).  A sector-based scan takes the pages of its page bitmap in file order:
+ * the held page is released first, the next one is fixed with OLD_PAGE_MAYBE_DEALLOCATED and a
+ * page deallocated since the bitmap is skipped (heap_page_list_fix_next ()).  Either way the page
  * stays fixed until the next step or the scan's end, whatever the scan's own fix mode: the
  * consumer that takes a batch runs nothing under it that could need the page released.
  */

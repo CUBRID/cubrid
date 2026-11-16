@@ -2060,6 +2060,25 @@ namespace parallel_scan
 
     m_trace_handler.clear();
 
+    if (ST == SCAN_TYPE::HEAP && m_page_list != nullptr && m_xasl->curr_spec != nullptr)
+      {
+	/* the bitmap of the open, or a new one when a nested statement rebuilt the snapshot since (READ COMMITTED) */
+	int num_data_pages;
+
+	err_code = scan_heap_scan_page_list (m_thread_p, m_xasl->curr_spec, &m_cls_oid, &m_hfid, false, &m_page_list,
+					     &num_data_pages);
+	if (err_code != NO_ERROR)
+	  {
+	    if (m_worker_manager != nullptr)
+	      {
+		m_worker_manager->release_workers ();
+		m_worker_manager = nullptr;
+	      }
+	    return err_code;
+	  }
+	assert (m_page_list != nullptr);
+      }
+
     /* Open and initialize */
     err_code = open ();
     if (err_code != NO_ERROR)

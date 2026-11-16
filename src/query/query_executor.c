@@ -11015,7 +11015,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		      ASSERT_ERROR ();
 		      goto exit_on_error;
 		    }
-		  scan_heap_scan_set_page_list (s_id, page_list);
+		  scan_heap_scan_set_page_list (s_id, curr_spec, page_list);
 #if SERVER_MODE && !WINDOWS
 		}
 #endif /* SERVER_MODE && !WINDOWS */
@@ -11347,6 +11347,7 @@ exit_on_error:
   if (curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->parts != NULL)
     {
       /* reset pruning info */
+      scan_heap_scan_page_list_free (thread_p, curr_spec);
       free (curr_spec->parts);
       curr_spec->parts = NULL;
       curr_spec->curent = NULL;
@@ -11596,6 +11597,22 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 
 	      COPY_OID (class_oid, &ACCESS_SPEC_CLS_OID (xasl->curr_spec));
 	      HFID_COPY (class_hfid, &ACCESS_SPEC_HFID (xasl->curr_spec));
+
+	      if (xasl->curr_spec->s_id.type == S_HEAP_SCAN)
+		{
+		  /* the page bitmap decides the pages the scan walks: the root's, not the one of the partition the
+		   * scan may have been left on (the spec's own when it already is the root's) */
+		  const FILE_FTAB_COLLECTOR *page_list;
+		  int num_data_pages;
+
+		  if (scan_heap_scan_page_list (thread_p, xasl->curr_spec, class_oid, class_hfid,
+						xasl->curr_spec->s_id.grouped, &page_list, &num_data_pages) != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return S_ERROR;
+		    }
+		  scan_heap_scan_set_page_list (&xasl->curr_spec->s_id, xasl->curr_spec, page_list);
+		}
 
 	      if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
 		{
@@ -12985,7 +13002,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		      ASSERT_ERROR ();
 		      return S_ERROR;
 		    }
-		  scan_heap_scan_set_page_list (&spec->s_id, page_list);
+		  scan_heap_scan_set_page_list (&spec->s_id, spec, page_list);
 #if SERVER_MODE && !WINDOWS
 		}
 #endif /* SERVER_MODE && !WINDOWS */
