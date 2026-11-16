@@ -1317,12 +1317,15 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
  *	   conversion reads; each term is at the factor's location (pt_fold_const_expr () carries it);
  *	 - a derived factor (PT_EXPR_INFO_OR_DERIVED) that folds to less than a disjunction is dropped:
  *	   its origin folds the same way and then holds those conjuncts itself, and a copy without the
- *	   mark would be counted and evaluated twice.
+ *	   mark would be counted and evaluated twice;
+ *	 - a factor of a join's ON condition (location > 0) that folds to false is left as it was: a false
+ *	   value there makes the rewrites cut the ON condition down to that value, and the inner scan then
+ *	   reads the whole table for each outer row instead of the index the other terms give it.
  */
 static void
 qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
-  PT_NODE *term, *next, *folded, *last, **prevp;
+  PT_NODE *term, *next, *folded, *last, *saved, **prevp;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int marks;
   bool derived, cnf_start;
@@ -1346,6 +1349,9 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
       derived = PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_OR_DERIVED) != 0;
       cnf_start = term->flag.is_cnf_start;
 
+      /* a false value in a join's ON condition drops the other terms of it; see the note above */
+      saved = (term->info.expr.location > 0) ? parser_copy_tree (parser, term) : NULL;
+
       folded = term;
       sc_info.top_node = term;
       sc_info.donot_fold = false;
@@ -1353,14 +1359,32 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	{
 	  /* the error is reported, and the statement fails before it is planned; keep what the fold left
 	   * in the list, as the term may be freed */
+	  if (saved != NULL)
+	    {
+	      parser_free_tree (parser, saved);
+	    }
 	  folded->next = next;
 	  *prevp = folded;
 	  return;
 	}
 
+      if (saved != NULL)
+	{
+	  if (folded != term && folded->node_type == PT_VALUE && pt_false_search_condition (parser, folded))
+	    {
+	      parser_free_tree (parser, folded);
+	      folded = term = saved;
+	    }
+	  else
+	    {
+	      parser_free_tree (parser, saved);
+	    }
+	}
+
       if (folded == term)
 	{
 	  term->next = next;
+	  *prevp = term;
 	  prevp = &term->next;
 	  continue;
 	}
