@@ -1867,6 +1867,9 @@ db_compile_statement_local (DB_SESSION * session)
 	}
       statement = statement_result;
 
+      /* a WITH CHECK OPTION predicate or a base class DEFAULT brought in by the translation may read the clock */
+      pt_mark_translated_si_datetime (parser, statement);
+
       /* prefetch and lock translated real classes to avoid deadlock */
       (void) pt_class_pre_fetch (parser, statement);
       if (parser->host_var_assigned_later != NULL && !pt_has_error (parser))

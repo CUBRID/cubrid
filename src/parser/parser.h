@@ -300,6 +300,8 @@ extern "C"
 					PT_NODE * o1, PT_NODE * o2, PT_NODE * o3, PT_MISC_TYPE qualifier);
   extern int pt_evaluate_function_w_args (PARSER_CONTEXT * parser, FUNC_CODE fcode, DB_VALUE * args[],
 					  const int num_args, DB_VALUE * result);
+  extern bool pt_expr_needs_sys_datetime (const PT_NODE * node);
+  extern void pt_mark_translated_si_datetime (PARSER_CONTEXT * parser, PT_NODE * statement);
 
   extern int pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_res);
 
