@@ -101,6 +101,10 @@ namespace
   thread_local std::unordered_map<oid_key, std::shared_ptr<companion>, oid_key_hash> local_classes;
   thread_local UINT64 local_generation = 0;
 
+  /* CLASSES_GENERATION + 1 while no class name ends with INNER_SUFFIX: no class has a companion, so resolving one
+   * needs no read of its class record. 0 when unknown. */
+  std::atomic<UINT64> no_companion_at { 0 };
+
   /* Inside inner_table_collect_refs, fetches return records with their references. */
   thread_local int raw_depth = 0;
 
@@ -377,6 +381,21 @@ namespace
     return c;
   }
 
+  /* The class name table is in memory, so this answer fixes no page. */
+  bool no_companion_class (THREAD_ENTRY *thread_p, UINT64 gen)
+  {
+    if (no_companion_at.load (std::memory_order_acquire) == gen + 1)
+      {
+	return true;
+      }
+    if (locator_has_class_name_ending (thread_p, INNER_SUFFIX))
+      {
+	return false;
+      }
+    no_companion_at.store (gen + 1, std::memory_order_release);
+    return true;
+  }
+
   /* Readers resolve a companion whatever the threshold: a record written with references keeps them after the
    * threshold is lowered, and a standby receives them from its active node. */
   std::shared_ptr<companion> companion_of (THREAD_ENTRY *thread_p, const OID *class_oid)
@@ -410,7 +429,8 @@ namespace
     }
     if (found == nullptr)
       {
-	std::shared_ptr<companion> c = resolve (thread_p, class_oid);
+	std::shared_ptr<companion> c = no_companion_class (thread_p, gen) ? std::make_shared<companion> () : resolve (thread_p,
+				       class_oid);
 	std::lock_guard<std::mutex> g (classes_mutex);
 	found = classes.emplace (k, c).first->second;
       }

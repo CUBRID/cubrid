@@ -146,6 +146,7 @@ static int locator_drop_class_name_entry (THREAD_ENTRY * thread_p, const char *c
 static int locator_savepoint_class_name_entry (const char *classname, LOG_LSA * savep_lsa);
 static int locator_print_class_name (THREAD_ENTRY * thread_p, FILE * outfp, const void *key, void *ent, void *args);
 static int locator_check_class_on_heap (const void *name, void *ent, void *args);
+static int locator_class_name_ends_with (const void *name, void *ent, void *args);
 static SCAN_CODE locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * assign,
 						 OID * class_oid, OID * oid, int chn, LOCK lock_mode,
 						 SCAN_OPERATION_TYPE op_type);
@@ -1862,6 +1863,44 @@ locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * class_oid)
     {
       locator_Pseudo_pageid_crt--;
     }
+}
+
+/*
+ * locator_has_class_name_ending () - Whether a name in the class name table ends with SUFFIX. Entries of uncommitted
+ *				       transactions count too.
+ *
+ * return: true when such a name exists, or when the table cannot be read
+ */
+bool
+locator_has_class_name_ending (THREAD_ENTRY * thread_p, const char *suffix)
+{
+  bool found;
+
+  if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
+    {
+      assert (false);
+      return true;
+    }
+  found = mht_map (locator_Mht_classnames, locator_class_name_ends_with, (void *) suffix) != NO_ERROR;
+  csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
+
+  return found;
+}
+
+/*
+ * locator_class_name_ends_with () - mht_map callback: stop at a name that ends with ARGS
+ */
+static int
+locator_class_name_ends_with (const void *name, void *ent, void *args)
+{
+  size_t name_len = strlen ((const char *) name);
+  size_t suffix_len = strlen ((const char *) args);
+
+  if (name_len > suffix_len && strcmp ((const char *) name + name_len - suffix_len, (const char *) args) == 0)
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
 }
 
 /*
