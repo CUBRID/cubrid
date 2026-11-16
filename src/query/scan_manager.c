@@ -5166,9 +5166,10 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
       isidp->ahead_next = 0;
       if (scan_id->single_fetch == QPROC_SINGLE_INNER || isidp->ahead_single)
 	{
-	  /* the inner scan of a NL semi/anti join and the scan of an EXISTS subquery stop at their first match: the
-	   * first OID's page is read at once and the windows start after it, so a scan that matches at once tells
-	   * the OS nothing */
+	  /* the inner scan of a NL semi/anti join and the scan of an EXISTS subquery stop at their first match, the
+	   * scan of a block with an inst_num () condition (LIMIT) when the block has its rows: the first OID's page
+	   * is read at once and the windows start after it, so a scan that stops at its first row tells the OS
+	   * nothing */
 	  isidp->ahead_next = 1;
 	  isidp->ahead_distance = 1;
 	}

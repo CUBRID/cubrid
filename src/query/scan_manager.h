@@ -402,7 +402,8 @@ struct indx_scan_id
   int ahead_next;		/* first OID of the buffer whose heap page the OS was not told about; INT_MAX: none */
   int ahead_distance;		/* OIDs of the last whole read-ahead window; 0: none yet */
   int ahead_limit;		/* OIDs a read-ahead window holds at most */
-  bool ahead_single;		/* the scan's XASL stops at its first row: the windows start after the first lookup */
+  bool ahead_single;		/* the scan's XASL may stop at its first row (EXISTS, an inst_num () condition): the
+				 * windows start after the first lookup */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
