@@ -32,6 +32,8 @@
 #include "util_func.h"
 #include "utility.h"
 
+#include <climits>
+#include <cstdarg>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -901,6 +903,98 @@ namespace cubload
   }
 
 
+  /* the arguments of the %format command: data format, format version, bit platform and byte order */
+#define LOADDB_FORMAT_ARG_COUNT (4)
+
+  /*
+   * read_format_command () - read the arguments of a %format command line as the scanner reads them
+   *   return: true when the line has its LOADDB_FORMAT_ARG_COUNT arguments, false when the scanner rejects it
+   *   line(in): the command line as read from the object file, "%format" included and the new line excluded
+   *   args(out): the arguments
+   *   rest_is_blank(out): true when only blanks, and a carriage return at the end, follow the last argument
+   *
+   * Note: see the FORMAT_ARG and BINARY_MODE rules in load_lexer.l: an argument is an unsigned integer up to INT_MAX,
+   *       blanks around it are skipped, and the line of a binary format has to end after its last argument. The line
+   *       of the text format may go on, as text rows do, so what follows is told apart rather than rejected here.
+   */
+  static bool
+  read_format_command (const std::string &line, int (&args)[LOADDB_FORMAT_ARG_COUNT], bool &rest_is_blank)
+  {
+    const char *p = line.c_str () + strlen ("%format");
+
+    for (int i = 0; i < LOADDB_FORMAT_ARG_COUNT; i++)
+      {
+	long long value = 0;
+
+	while (*p == ' ' || *p == '\t')
+	  {
+	    p++;
+	  }
+
+	if (*p < '0' || *p > '9')
+	  {
+	    return false;
+	  }
+
+	for (; *p >= '0' && *p <= '9'; p++)
+	  {
+	    value = value * 10 + (*p - '0');
+	    if (value > INT_MAX)
+	      {
+		return false;
+	      }
+	  }
+
+	args[i] = (int) value;
+      }
+
+    while (*p == ' ' || *p == '\t')
+      {
+	p++;
+      }
+
+    if (*p == '\r')
+      {
+	p++;
+      }
+
+    rest_is_blank = (*p == '\0');
+
+    return true;
+  }
+
+  /*
+   * report_format_command_error () - report a %format command line which split () cannot go on with
+   *   return: void
+   *   msg_id(in): message of the failure
+   *   lineno(in): line of the command line, from 1
+   *   ...(in): arguments of the message
+   *
+   * Note: the message is led by the line, as the scanner reports it in SA mode.
+   */
+  static void
+  report_format_command_error (MSGCAT_LOADDB_MSG msg_id, int lineno, ...)
+  {
+    const char *line_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE);
+    const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id);
+    char msg[1024];
+    int len;
+    va_list args;
+
+    len = snprintf (msg, sizeof (msg), line_format, lineno);
+    if (len < 0 || (std::size_t) len >= sizeof (msg))
+      {
+	len = 0;
+      }
+
+    va_start (args, lineno);
+    vsnprintf (msg + len, sizeof (msg) - len, msg_format, args);
+    va_end (args);
+
+    fprintf (stderr, "%s", msg);
+    util_log_write_errstr ("%s", msg);
+  }
+
   /*
    * prepend_format_command () - start a binary batch with the %format command line
    *   return: void
@@ -1052,51 +1146,62 @@ namespace cubload
 		  }
 		else if (is_format)
 		  {
-		    rtrim (line);
-		    format_string = line + "\n";
-		    /* "%format <data format> ...", the scanner checks the whole command line */
-		    const char *arg = line.c_str () + strlen ("%format");
-		    char *arg_end = NULL;
-		    long data_format = std::strtol (arg, &arg_end, 10);
+		    int args[LOADDB_FORMAT_ARG_COUNT];
+		    int data_format;
+		    bool rest_is_blank;
 
-		    if (arg_end != arg && (data_format < OBJECT_FORMAT_TEXT || data_format >= OBJECT_FORMAT_LAST))
+		    /*
+		     * The records of a section cannot be told apart unless its data format is known, so a command line
+		     * the scanner rejects before it reads the section cannot be left to the server: it is reported here,
+		     * with the message the scanner gives in SA mode.
+		     */
+		    if (!read_format_command (line, args, rest_is_blank))
 		      {
-			/*
-			 * The records of a data format this build does not know cannot be told apart, so the section
-			 * cannot be cut into batches for the server to report it. It is reported here instead, as the
-			 * scanner reports it in SA mode: led by the line of the command, lineno counting from 0.
-			 */
-			const char *line_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-						  LOADDB_MSG_LINE);
-			const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
-						 LOADDB_MSG_UNSUPPORTED_DATA_FORMAT);
-			char msg[1024];
-			int len;
-
-			len = snprintf (msg, sizeof (msg), line_format, lineno + 1);
-			if (len < 0 || (std::size_t) len >= sizeof (msg))
-			  {
-			    len = 0;
-			  }
-			snprintf (msg + len, sizeof (msg) - len, msg_format, (int) data_format);
-
-			fprintf (stderr, "%s", msg);
-			util_log_write_errstr ("%s", msg);
+			report_format_command_error (LOADDB_MSG_INVALID_FORMAT_COMMAND, lineno + 1);
 			object_file.close ();
 			return ER_FAILED;
 		      }
 
-		    if (arg_end != arg && data_format == OBJECT_FORMAT_TEXT)
+		    data_format = args[0];
+		    if (data_format == OBJECT_FORMAT_TEXT)
 		      {
 			/*
 			 * The rows which follow are text, as the scanner reads them after this command line, so the
-			 * line stays on the text path and goes to the server as a line of its batch, where the scanner
-			 * checks the rest of its arguments.
+			 * line stays on the text path and goes to the server as a line of its batch.
 			 */
 			format_string.clear ();
 		      }
 		    else
 		      {
+			/* in the order set_ldr_data_format () and the BINARY_MODE rules in load_lexer.l check them */
+			if ((args[1] != BIN_FORMAT_VERSION && args[1] != BIN_FORMAT_VERSION_PRE_11_5)
+			    || args[2] != binary_format_bit_platform () || args[3] != binary_format_endian ())
+			  {
+			    report_format_command_error (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, lineno + 1, args[1],
+							 args[2], args[3], BIN_FORMAT_VERSION_PRE_11_5,
+							 BIN_FORMAT_VERSION, binary_format_bit_platform (),
+							 binary_format_endian ());
+			    object_file.close ();
+			    return ER_FAILED;
+			  }
+
+			if (data_format != OBJECT_FORMAT_BINARY && data_format != OBJECT_FORMAT_BINARY_COMPRESSED)
+			  {
+			    report_format_command_error (LOADDB_MSG_UNSUPPORTED_DATA_FORMAT, lineno + 1, data_format);
+			    object_file.close ();
+			    return ER_FAILED;
+			  }
+
+			if (!rest_is_blank)
+			  {
+			    report_format_command_error (LOADDB_MSG_INVALID_FORMAT_COMMAND, lineno + 1);
+			    object_file.close ();
+			    return ER_FAILED;
+			  }
+
+			/* the line leads each batch of the section */
+			rtrim (line);
+			format_string = line + "\n";
 			compressed_mode = (data_format == OBJECT_FORMAT_BINARY_COMPRESSED);
 			binary_mode = true;
 			first_binary_batch = true;
