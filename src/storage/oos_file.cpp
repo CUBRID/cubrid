@@ -1120,17 +1120,6 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid)
 // OOS File operations
 // ****************************************************************************
 
-/* An internal LOB locator outlives the reading transaction, so a freed chunk address must never name another value:
- * like FILE_HEAP, its slots are not reused and its emptied pages are not returned.
- * TODO: a page emptied of a full chunk then takes only smaller pieces; reclaim that space (e.g. chunk version check). */
-static bool
-oos_file_reuses_addresses (FILE_TYPE file_type)
-{
-  /* [리뷰] 로케이터가 읽는 트랜잭션보다 오래 살아서 LOB 파일은 슬롯 재사용·빈 페이지 반납을 막는다.
-   * LOB 공간 회수는 TODO로 남긴다. 판정에 file_get_type이 페이지 할당마다 한 번 돈다. */
-  return file_type != FILE_INTERNAL_LOB;
-}
-
 struct oos_new_page_args
 {
   PAGE_TYPE ptype;
@@ -1173,9 +1162,7 @@ oos_create_file_internal (THREAD_ENTRY *thread_p, int file_type, FILE_DESCRIPTOR
   /* Allocate sticky first page for header */
   VPID hdr_vpid;
   PAGE_PTR hdr_page = NULL;
-  oos_new_page_args page_args = { PAGE_OOS, oos_file_reuses_addresses ((FILE_TYPE) file_type)
-				  ? ANCHORED : ANCHORED_DONT_REUSE_SLOTS
-				};
+  oos_new_page_args page_args = { PAGE_OOS, ANCHORED };
 
   log_sysop_start (thread_p);
 
@@ -1787,10 +1774,6 @@ oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vect
       ASSERT_ERROR ();
       return err;
     }
-  if (!oos_file_reuses_addresses (file_type))
-    {
-      return NO_ERROR;
-    }
 
   /* Dedupe: a value chain usually deletes several chunks from the same page. */
   std::sort (candidates.begin (), candidates.end (), oos_vpid_lt);
@@ -1963,11 +1946,6 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
     {
       ASSERT_ERROR ();
       return err;
-    }
-  if (!oos_file_reuses_addresses (file_type))
-    {
-      oos_reclaim_settle_lap (oos_vfid, pending_at_start, 0);
-      return NO_ERROR;
     }
 
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
@@ -3244,8 +3222,35 @@ oos_read_open (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, OOS_READER &rea
   (void) thread_p;
   reader.current = ref.head_oid;
   reader.head_identity_stamp = ref.identity_stamp;
+  reader.current_identity_stamp = ref.identity_stamp;
+  OID_SET_NULL (&reader.prev);
+  LSA_SET_NULL (&reader.prev_identity_stamp);
   reader.chunk_consumed = 0;
   reader.next_index = 0;
+  return NO_ERROR;
+}
+
+/*
+ * oos_chain_check_link () - Does chunk prev, still the incarnation read with prev_stamp, link to next?
+ *   Checked after next is read, it proves next was not freed (and its slot reused) in between: every chain delete
+ *   removes or unlinks a chunk's predecessor before the chunk.  ER_HEAP_OOS_CORRUPTED_RECORD when it does not.
+ */
+int
+oos_chain_check_link (THREAD_ENTRY *thread_p, const OID &prev, const LOG_LSA &prev_stamp, const OID &next)
+{
+  OOS_RECORD_HEADER header;
+  int payload_len = 0;
+  int err = oos_chain_read_chunk (thread_p, prev, oos_buffer (NULL, 0), payload_len, header);
+
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (!LSA_EQ (&header.identity_stamp, &prev_stamp) || !OID_EQ (&header.next_chunk_oid, &next))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
   return NO_ERROR;
 }
 
@@ -3256,105 +3261,124 @@ int
 oos_read_pull (THREAD_ENTRY *thread_p, OOS_READER &reader, oos_buffer dest, int &nread)
 {
   /* [리뷰] head OID는 CLOB/BLOB 값에서 위조될 수 있다고 보고 페이지를 검증한다.
-   * 손상은 ER_GENERIC_ERROR라 oos_chain_read_chunk와 다르다. */
+   * 없어졌거나 다른 체인 것이 된 청크는 oos_chain_read_chunk처럼 ER_HEAP_OOS_CORRUPTED_RECORD다. */
   cubbase::byte_span_writer writer (dest);
 
   nread = 0;
   while (!writer.full () && !OID_ISNULL (&reader.current))
     {
       const PGSLOTID slotid = reader.current.slotid;
-
-      /* The OID may be forged from a CLOB/BLOB value: a deallocated or non-OOS page is rejected, not fixed. */
-      PAGE_PTR page_ptr = NULL;
-      int err = oos_fix_page_if_oos (thread_p, reader.current, PGBUF_LATCH_READ, page_ptr);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-      if (page_ptr == NULL)
-	{
-	  /* Not a live OOS page: a forged or stale locator OID. Reject cleanly. */
-	  oos_error ("oos_read_pull: non-OOS page at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&reader.current));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
-	}
-      scope_exit page_unfixer ([&]()
-      {
-	pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
-      });
-
-      OOS_RECDES oos_recdes;
-      SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &oos_recdes, PEEK);
-      if (code != S_SUCCESS)
-	{
-	  oos_error ("oos_read_pull: spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}",
-		     (int) code, OID_AS_ARGS (&reader.current));
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	    }
-	  return er_errid ();
-	}
-
-      assert (oos_recdes.length >= OOS_RECORD_HEADER_SIZE);
-      if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
-	{
-	  oos_error ("oos_read_pull: OOS slot smaller than header (len=%d)", oos_recdes.length);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
-	}
-
+      /* A chunk slot may be freed and reused by another chain between pulls (a stale locator read while vacuum
+       * runs), so every chunk is proven to be the one the walk reached before its bytes are trusted. */
+      const bool first_visit = reader.chunk_consumed == 0;
       OOS_RECORD_HEADER header;
-      std::memcpy (&header, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
+      int payload_len;
 
-      if (reader.next_index == 0)
+      {
+	/* The OID may be forged from a CLOB/BLOB value: a deallocated or non-OOS page is rejected, not fixed. */
+	PAGE_PTR page_ptr = NULL;
+	int err = oos_fix_page_if_oos (thread_p, reader.current, PGBUF_LATCH_READ, page_ptr);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+	if (page_ptr == NULL)
+	  {
+	    /* Not a live OOS page: a forged or stale locator OID, or a chunk page freed since. Reject cleanly. */
+	    oos_error ("oos_read_pull: non-OOS page at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&reader.current));
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	    return ER_HEAP_OOS_CORRUPTED_RECORD;
+	  }
+	scope_exit page_unfixer ([&]()
 	{
-	  /* Head identity first, as oos_read does: the reader has no expected length, so only the stamp and
-	   * the head position are checked. */
-	  const oos_chain_ref head_ref = { reader.current, reader.head_identity_stamp };
-	  err = oos_check_head_header (header, header.total_data_length, head_ref);
+	  pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+	});
+
+	OOS_RECDES oos_recdes;
+	SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &oos_recdes, PEEK);
+	if (code != S_SUCCESS)
+	  {
+	    oos_error ("oos_read_pull: spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}",
+		       (int) code, OID_AS_ARGS (&reader.current));
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      }
+	    return er_errid ();
+	  }
+
+	if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
+	  {
+	    oos_error ("oos_read_pull: OOS slot smaller than header (len=%d)", oos_recdes.length);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	    return ER_HEAP_OOS_CORRUPTED_RECORD;
+	  }
+
+	std::memcpy (&header, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
+
+	if (reader.next_index == 0)
+	  {
+	    /* Head identity first, as oos_read does: the reader has no expected length, so only the stamp and
+	     * the head position are checked. */
+	    const oos_chain_ref head_ref = { reader.current, reader.head_identity_stamp };
+	    err = oos_check_head_header (header, header.total_data_length, head_ref);
+	    if (err != NO_ERROR)
+	      {
+		return err;
+	      }
+	  }
+
+	/* chunk_index must match the walk order; a mismatch, or another stamp on a chunk read before, is a slot
+	 * that now holds another chain's chunk */
+	if (header.chunk_index != reader.next_index
+	    || (!first_visit && !LSA_EQ (&header.identity_stamp, &reader.current_identity_stamp)))
+	  {
+	    oos_error ("oos_read_pull: chunk at oid={vol=%d,page=%d,slot=%d} is no longer chunk %d of the chain",
+		       OID_AS_ARGS (&reader.current), reader.next_index);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	    return ER_HEAP_OOS_CORRUPTED_RECORD;
+	  }
+
+	payload_len = oos_recdes.length - OOS_RECORD_HEADER_SIZE;
+	/* A 0-byte chunk would stall the cursor forever on a cyclic chain, so it is only tolerated on a
+	 * terminal chunk (no next link) - the shape an empty value's header-only chunk has. */
+	if (payload_len == 0 && !OID_ISNULL (&header.next_chunk_oid))
+	  {
+	    oos_error ("oos_read_pull: empty chunk at idx=%d", header.chunk_index);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    return ER_GENERIC_ERROR;
+	  }
+
+	/* Equal only for the terminal header-only chunk of an empty value (payload_len == 0). */
+	assert (reader.chunk_consumed <= payload_len);
+	const std::size_t avail = static_cast<std::size_t> (payload_len - reader.chunk_consumed);
+	const std::size_t to_copy = (avail < writer.remaining ()) ? avail : writer.remaining ();
+
+	if (!writer.append (oos_recdes.data + OOS_RECORD_HEADER_SIZE + reader.chunk_consumed, to_copy))
+	  {
+	    oos_error ("oos_read_pull: append overflow (to_copy=%zu, remaining=%zu)", to_copy, writer.remaining ());
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    return ER_GENERIC_ERROR;
+	  }
+	/* to_copy <= payload_len (one page chunk) so the int cast cannot overflow. */
+	reader.chunk_consumed += static_cast<int> (to_copy);
+      }
+
+      if (first_visit && reader.next_index > 0)
+	{
+	  /* after the page is released, so no two chunk pages are latched at once */
+	  int err = oos_chain_check_link (thread_p, reader.prev, reader.prev_identity_stamp, reader.current);
 	  if (err != NO_ERROR)
 	    {
 	      return err;
 	    }
 	}
-
-      /* chunk_index must match the walk order; mismatch = corrupted chain. */
-      assert (header.chunk_index == reader.next_index);
-      if (header.chunk_index != reader.next_index)
-	{
-	  oos_error ("oos_read_pull: chain inconsistency: header.chunk_index=%d expected=%d",
-		     header.chunk_index, reader.next_index);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
-	}
-
-      const int payload_len = oos_recdes.length - OOS_RECORD_HEADER_SIZE;
-      /* A 0-byte chunk would stall the cursor forever on a cyclic chain, so it is only tolerated on a
-       * terminal chunk (no next link) - the shape an empty value's header-only chunk has. */
-      if (payload_len < 0 || (payload_len == 0 && !OID_ISNULL (&header.next_chunk_oid)))
-	{
-	  oos_error ("oos_read_pull: empty chunk at idx=%d", header.chunk_index);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
-	}
-
-      /* Equal only for the terminal header-only chunk of an empty value (payload_len == 0). */
-      assert (reader.chunk_consumed <= payload_len);
-      const std::size_t avail = static_cast<std::size_t> (payload_len - reader.chunk_consumed);
-      const std::size_t to_copy = (avail < writer.remaining ()) ? avail : writer.remaining ();
-
-      if (!writer.append (oos_recdes.data + OOS_RECORD_HEADER_SIZE + reader.chunk_consumed, to_copy))
-	{
-	  oos_error ("oos_read_pull: append overflow (to_copy=%zu, remaining=%zu)", to_copy, writer.remaining ());
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
-	}
-      /* to_copy <= payload_len (one page chunk) so the int cast cannot overflow. */
-      reader.chunk_consumed += static_cast<int> (to_copy);
+      reader.current_identity_stamp = header.identity_stamp;
 
       if (reader.chunk_consumed == payload_len)
 	{
+	  reader.prev = reader.current;
+	  reader.prev_identity_stamp = header.identity_stamp;
 	  reader.current = header.next_chunk_oid;
 	  reader.chunk_consumed = 0;
 	  reader.next_index++;
@@ -3378,17 +3402,7 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 {
   int err = NO_ERROR;
   PAGE_PTR page = NULL;
-
-  FILE_TYPE file_type;
-  err = file_get_type (thread_p, &oos_vfid, &file_type);
-  if (err != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return nullptr;
-    }
-  oos_new_page_args page_args = { PAGE_OOS, oos_file_reuses_addresses (file_type)
-				  ? ANCHORED : ANCHORED_DONT_REUSE_SLOTS
-				};
+  oos_new_page_args page_args = { PAGE_OOS, ANCHORED };
 
   log_sysop_start (thread_p);
   err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_args, &vpid_out, &page);
@@ -3765,7 +3779,7 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_
 	  if (at_commit)
 	    {
 	      /* Deleted at commit (oos_rv_delete_at_commit). Undoing an in-transaction delete re-inserts each
-	       * chunk, which fails once later inserts took the space (a LOB file never reuses a slot). */
+	       * chunk, which fails once later inserts took the space or the slot. */
 	      OOS_DELETE_AT_COMMIT_DATA data = { oos_vfid, ref.head_oid, ref.identity_stamp };
 	      LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
@@ -4140,9 +4154,9 @@ oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
  *       - Transaction abort: undo records are replayed in reverse order,
  *         restoring all deleted chunks to their original slotids via
  *         spage_insert_for_recovery. The chain is fully restored, provided
- *         nothing took the freed space before the abort. An internal LOB file
- *         never reuses a slot, so its user-transaction deletes use
- *         oos_delete_at_commit instead.
+ *         nothing took the freed space before the abort. An internal LOB chain
+ *         deleted in a user transaction would need all of its space back
+ *         on abort, so it uses oos_delete_at_commit instead.
  *       - Crash recovery: same mechanism — incomplete transaction's undo
  *         records are replayed during recovery, restoring the chain.
  *       - Error mid-chain: partial deletes have undo records in the

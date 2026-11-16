@@ -271,17 +271,22 @@ extern INT64 oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 
 /* Forward-only streaming reader over an OOS chunk chain: open with oos_read_open on the chain reference, then call
  * oos_read_pull until nread == 0.  Memory stays bounded and the chain is walked once, unlike repeated oos_read.
- * A head chunk that does not carry the reference's identity stamp fails with ER_HEAP_OOS_CORRUPTED_RECORD. */
+ * A head chunk that does not carry the reference's identity stamp, or a chunk whose slot another chain took while
+ * the walk was on its way, fails with ER_HEAP_OOS_CORRUPTED_RECORD. */
 struct oos_reader
 {
   OID current;			/* chunk currently being read; NULL OID once exhausted */
   LOG_LSA head_identity_stamp;	/* the reference's identity stamp, checked when the head is read */
+  LOG_LSA current_identity_stamp;	/* stamp `current` had when first read; a resumed read must find it again */
+  OID prev;			/* the chunk before `current`, which must still link to it */
+  LOG_LSA prev_identity_stamp;
   int chunk_consumed;		/* bytes already returned from current chunk's payload */
   int next_index;		/* expected chunk_index of `current` (0 at head) */
 };
 using OOS_READER = struct oos_reader;
 
 extern int oos_read_open (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, OOS_READER &reader);
+extern int oos_chain_check_link (THREAD_ENTRY *thread_p, const OID &prev, const LOG_LSA &prev_stamp, const OID &next);
 extern int oos_read_pull (THREAD_ENTRY *thread_p, OOS_READER &reader, oos_buffer dest, int &nread);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);

@@ -165,7 +165,7 @@ vacuum_oos_delete_reference (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const
 {
   /* [리뷰] kind는 스텁에서 오므로 vacuum은 소유 클래스·스키마를 볼 필요가 없다.
    * 파일 없는 참조는 로그만 남기고 건너뛴다(bounded leak, vacuum은 멈추지 않음).
-   * LOB 삭제는 emptied_pages에 넣지 않는다. LOB 파일은 빈 페이지를 반납하지 않기 때문. */
+   * LOB 삭제는 emptied_pages에 넣지 않는다. LOB 파일의 빈 페이지는 growth-gate sweep이 반납한다. */
   if (TP_IS_LOB_TYPE (reference.type))
     {
       INTERNAL_LOB_LOCATOR locator = { reference.ref.head_oid, reference.ref.identity_stamp, 0 };

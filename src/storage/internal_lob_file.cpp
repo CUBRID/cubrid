@@ -603,9 +603,9 @@ internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE
 		    const INTERNAL_LOB_LOCATOR &source_locator, INTERNAL_LOB_LOCATOR &target_locator)
 {
   /* [리뷰] 4GiB 값이면 1패스의 OID 벡터가 약 26만 개(약 2MB)가 된다.
-   * 패스 사이에 소스가 바뀌면 chunk_index 검사로 실패한다.
+   * 패스 사이에 소스가 바뀌면 청크별 identity stamp 검사로 실패한다.
    * 호출자가 소스 클래스에 락을 잡는지 볼 것. */
-  std::vector<OID> chunk_oids;
+  std::vector<oos_chain_ref> chunks;	/* each chunk's OID and its own identity stamp */
   DB_BIGINT expected_payload_bytes;
   DB_BIGINT seen_payload_bytes = 0;
   DB_BIGINT max_chunk_count;
@@ -669,19 +669,28 @@ internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE
       OOS_RECORD_HEADER header;
       int payload_len = 0;
 
-      if ((DB_BIGINT) chunk_oids.size () >= max_chunk_count)
+      if ((DB_BIGINT) chunks.size () >= max_chunk_count)
 	{
 	  return internal_lob_set_generic_error ();
 	}
 
       error = oos_chain_read_chunk (thread_p, source_oid, oos_buffer (NULL, 0), payload_len, header);
+      if (error == NO_ERROR && expected_index == 0 && !internal_lob_head_matches (header, source_locator))
+	{
+	  return internal_lob_set_value_gone ();
+	}
+      if (error == NO_ERROR && expected_index > 0)
+	{
+	  /* the chunk read is this chain's only if the one before still links to it (a reused slot otherwise) */
+	  error = oos_chain_check_link (thread_p, chunks.back ().head_oid, chunks.back ().identity_stamp, source_oid);
+	}
+      if (error == ER_HEAP_OOS_CORRUPTED_RECORD)
+	{
+	  return internal_lob_set_value_gone ();
+	}
       if (error != NO_ERROR)
 	{
 	  return error;
-	}
-      if (expected_index == 0 && !internal_lob_head_matches (header, source_locator))
-	{
-	  return internal_lob_set_value_gone ();
 	}
       if (header.chunk_index != expected_index || payload_len < 0 || payload_len > chunk_capacity
 	  || (payload_len == 0 && expected_index != 0))
@@ -695,11 +704,11 @@ internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE
 
       try
 	{
-	  chunk_oids.push_back (source_oid);
+	  chunks.push_back (oos_chain_ref { source_oid, header.identity_stamp });
 	}
       catch (std::bad_alloc &)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (oos_chain_ref));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       seen_payload_bytes += payload_len;
@@ -712,7 +721,7 @@ internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE
       expected_index++;
     }
 
-  if (seen_payload_bytes != expected_payload_bytes || chunk_oids.empty ())
+  if (seen_payload_bytes != expected_payload_bytes || chunks.empty ())
     {
       return internal_lob_set_generic_error ();
     }
@@ -725,26 +734,22 @@ internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE
     }
 
   /* Pass 2: re-read the chunks tail-first and rebuild the chain in the target file. */
-  oos_chain_insert_begin (target_lob_vfid, expected_payload_bytes, (int) chunk_oids.size (), chain);
+  oos_chain_insert_begin (target_lob_vfid, expected_payload_bytes, (int) chunks.size (), chain);
   OID_SET_NULL (&target_next_oid);
-  for (std::size_t reverse_index = chunk_oids.size (); reverse_index > 0; reverse_index--)
+  for (std::size_t reverse_index = chunks.size (); reverse_index > 0; reverse_index--)
     {
       const std::size_t index = reverse_index - 1;
       OOS_RECORD_HEADER header;
       OID target_current_oid;
       int payload_len = 0;
 
-      error = oos_chain_read_chunk (thread_p, chunk_oids[index], oos_buffer (payload, (std::size_t) chunk_capacity),
-				    payload_len, header);
-      if (error != NO_ERROR)
+      error = oos_chain_read_chunk (thread_p, chunks[index].head_oid,
+				    oos_buffer (payload, (std::size_t) chunk_capacity), payload_len, header);
+      if (error != NO_ERROR || !LSA_EQ (&header.identity_stamp, &chunks[index].identity_stamp))
 	{
+	  /* a chunk pass 1 proved is the same one only while it carries the same stamp */
 	  free_and_init (payload);
-	  return error;
-	}
-      if (index == 0 && !internal_lob_head_matches (header, source_locator))
-	{
-	  free_and_init (payload);
-	  return internal_lob_set_value_gone ();
+	  return (error == NO_ERROR || error == ER_HEAP_OOS_CORRUPTED_RECORD) ? internal_lob_set_value_gone () : error;
 	}
       if (header.chunk_index != (int) index || payload_len < 0 || payload_len > chunk_capacity)
 	{
@@ -938,9 +943,9 @@ internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos
 
       err = oos_read_pull (thread_p, reader.oos_reader,
 			   dest.subspan ((std::size_t) nread, (std::size_t) request_size), pulled);
-      /* A value deleted before the open can be reclaimed while it is read: vacuum cuts the chain from its tail,
-       * so a chunk is gone or the chain ends early.  Report that as the vanished value it is. */
-      if (err == ER_SP_UNKNOWN_SLOTID || (err == NO_ERROR && pulled <= 0))
+      /* A value deleted before the open can be reclaimed while it is read: a chunk is gone, taken by another value,
+       * or the chain ends early.  Report that as the vanished value it is. */
+      if (err == ER_SP_UNKNOWN_SLOTID || err == ER_HEAP_OOS_CORRUPTED_RECORD || (err == NO_ERROR && pulled <= 0))
 	{
 	  return internal_lob_set_value_gone ();
 	}
