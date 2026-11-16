@@ -174,7 +174,6 @@ static int fhs_distribute_records_into_two_bucket (THREAD_ENTRY * thread_p, FHSI
 						   PAGE_PTR bucket_page_p, FHS_BUCKET_HEADER * bucket_header_p,
 						   int num_recs, PGSLOTID first_slot_id, PAGE_PTR sibling_page_p);
 static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_HASH_KEY * out_hash_key_p);
-static void fhs_dump_bucket (THREAD_ENTRY * thread_p, PAGE_PTR bucket_page_p);
 
 /* Number of pointers the first page of the directory contains */
 #define FHS_NUM_FIRST_PAGES \
@@ -444,7 +443,7 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 {
   unsigned int hash_key;
 
-  if (!DB_IS_NULL (value) && qdata_hash_number (value, &hash_key))
+  if (value != NULL && !DB_IS_NULL (value) && qdata_hash_number (value, &hash_key))
     {
       return hash_key % ht_size;
     }

@@ -210,7 +210,7 @@ extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
 
 /*
- * mht_mix_hash () - mix the bits of an FNV-1a hash by MurmurHash3's fmix32
+ * mht_mix_hash () - mix the bits of a 32-bit hash by MurmurHash3's fmix32
  *   return: hash value
  *   hash(in): the hash
  *
