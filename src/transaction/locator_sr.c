@@ -13152,9 +13152,9 @@ error:
  *	  syntax). Proper lock (SCH_M_LOCK) is assumed when this function
  *	  is reached.
  *	  The entire tuple is rewritten using the new latest representation.
- *	  With check_only, the scan reads only the tuples visible to this transaction and fails on the first one that
- *	  the latest representation rejects, such as a row that no longer fits in a page after a column gains
- *	  STORAGE FORCE_INLINE.
+ *	  With check_only, the scan reads every tuple that exists now, skipping committed deletes, and fails on the
+ *	  first one that the latest representation rejects, such as a row that no longer fits in a page after a column
+ *	  gains STORAGE FORCE_INLINE.
  */
 int
 xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int att_id, bool check_only)
@@ -13176,9 +13176,13 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   int tran_index;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
   MVCCID threshold_mvccid;
+  MVCC_SNAPSHOT dirty_snapshot;
 
   HFID_SET_NULL (&hfid);
   OID_SET_NULL (&last_oid);
+  /* SCH_M_LOCK leaves no other transaction working on the class, so the dirty snapshot sees every row that exists
+   * now, including rows committed after the snapshot of this transaction was taken */
+  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
 
   if (class_oid == NULL || OID_ISNULL (class_oid) || att_id < 0)
     {
@@ -13227,8 +13231,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
 
       error =
 	xlocator_lock_and_fetch_all (thread_p, &hfid, &oid_lock, NULL, class_oid, &class_lock, &nobjects, &nfetched,
-				     &nfailed_instances, &last_oid, &fetch_area,
-				     check_only ? logtb_get_mvcc_snapshot (thread_p) : NULL);
+				     &nfailed_instances, &last_oid, &fetch_area, check_only ? &dirty_snapshot : NULL);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

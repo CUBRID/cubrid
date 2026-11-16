@@ -337,6 +337,7 @@ static bool is_attribute_primary_key (const char *class_name, const char *attr_n
 static const char *get_hard_default_for_type (PT_TYPE_ENUM type);
 
 static int do_run_upgrade_instances_domain (PARSER_CONTEXT * parser, OID * p_class_oid, int att_id, bool check_only);
+static int do_check_rows_fit_in_hierarchy (PARSER_CONTEXT * parser, MOP class_mop, int att_id);
 
 static int do_drop_att_constraints (MOP class_mop, SM_CONSTRAINT_INFO * constr_info_list);
 
@@ -11064,17 +11065,7 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
   if (!is_srv_update_needed && attr_chg_prop.name_space == ID_ATTRIBUTE
       && is_att_prop_set (attr_chg_prop.p[P_OOS_FORCE_INLINE], ATT_CHG_PROPERTY_GAINED))
     {
-      if (has_partitions)
-	{
-	  for (i = 0; i < user_count && error == NO_ERROR; i++)
-	    {
-	      error = do_run_upgrade_instances_domain (parser, &(usr_oid_array[i]), attr_chg_prop.att_id, true);
-	    }
-	}
-      else
-	{
-	  error = do_run_upgrade_instances_domain (parser, &(class_mop->oid_info.oid), attr_chg_prop.att_id, true);
-	}
+      error = do_check_rows_fit_in_hierarchy (parser, class_mop, attr_chg_prop.att_id);
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -15064,6 +15055,43 @@ end:
   if (relevant_attrs != NULL)
     {
       parser_free_tree (parser, relevant_attrs);
+    }
+
+  return error;
+}
+
+/*
+ * do_check_rows_fit_in_hierarchy() - check that every row of a class and of every class under it still fits
+ *				      under the latest schema, without rewriting any row
+ *   return: Error code
+ *   parser(in): Parser context
+ *   class_mop(in): the class
+ *   att_id(in): attribute id of the changed attribute
+ *
+ *  Note: The users of a class are its partitions or subclasses. Each keeps its own rows and inherits the changed
+ *	  attribute.
+ */
+static int
+do_check_rows_fit_in_hierarchy (PARSER_CONTEXT * parser, MOP class_mop, int att_id)
+{
+  SM_CLASS *smclass = NULL;
+  DB_OBJLIST *user;
+  int error = NO_ERROR;
+  int au_save;
+
+  AU_SAVE_AND_DISABLE (au_save);
+  error = au_fetch_class_by_classmop (class_mop, &smclass, AU_FETCH_READ, AU_SELECT);
+  AU_RESTORE (au_save);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = do_run_upgrade_instances_domain (parser, ws_oid (class_mop), att_id, true);
+
+  for (user = smclass->users; user != NULL && error == NO_ERROR; user = user->next)
+    {
+      error = do_check_rows_fit_in_hierarchy (parser, user->op, att_id);
     }
 
   return error;

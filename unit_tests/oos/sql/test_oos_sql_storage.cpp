@@ -199,12 +199,14 @@ class OosSqlStorage : public ::testing::Test
     void SetUp () override
     {
       exec_sql ("DROP TABLE IF EXISTS t_oos_stg_like");
+      exec_sql ("DROP TABLE IF EXISTS t_oos_stg_sub");
       exec_sql ("DROP TABLE IF EXISTS t_oos_stg");
       db_commit_transaction ();
     }
     void TearDown () override
     {
       exec_sql ("DROP TABLE IF EXISTS t_oos_stg_like");
+      exec_sql ("DROP TABLE IF EXISTS t_oos_stg_sub");
       exec_sql ("DROP TABLE IF EXISTS t_oos_stg");
       db_commit_transaction ();
     }
@@ -1355,6 +1357,43 @@ TEST_F (OosSqlStorage, AlterForceInlineRejectsRowThatNoLongerFits)
   rc = get_create_table_ddl ("t_oos_stg", ddl);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_TRUE (ddl_has_force_inline (ddl)) << "after ALTER on an empty table, DDL was:\n" << ddl;
+}
+
+// A subclass inherits the policy, so its rows must fit too.
+TEST_F (OosSqlStorage, AlterForceInlineRejectsSubclassRowThatNoLongerFits)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT, n INT, a BIT VARYING)");
+  ASSERT_GE (rc, 0);
+  rc = exec_sql ("CREATE TABLE t_oos_stg_sub UNDER t_oos_stg");
+  ASSERT_GE (rc, 0);
+  rc = exec_sql (("INSERT INTO t_oos_stg_sub VALUES (1, 0, " + uncompressed_bit_varying (20000) + ")").c_str ());
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY a BIT VARYING STORAGE FORCE_INLINE");
+  int errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
+
+  rc = exec_sql ("UPDATE t_oos_stg_sub SET n = n + 1 WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("DELETE FROM t_oos_stg_sub WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY a BIT VARYING STORAGE FORCE_INLINE");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  /* the subclass inherited FORCE_INLINE, so the same value no longer fits */
+  rc = exec_sql (("INSERT INTO t_oos_stg_sub VALUES (2, 0, " + uncompressed_bit_varying (20000) + ")").c_str ());
+  errid = er_errid ();
+  EXPECT_LT (rc, 0);
+  EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
+  db_abort_transaction ();
 }
 
 TEST_F (OosSqlStorage, ForceInlineRemainsNonReservedIdentifier)
