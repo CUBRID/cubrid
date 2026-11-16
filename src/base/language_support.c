@@ -5918,8 +5918,9 @@ lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_
  *   nul_as_space(in), to_upper(in): as lang_hash_bytes takes them
  *
  * The high half of the product, XORed into the low half, brings the high bits of a step down to where the next chunk
- * lands. A plain multiply carries only into the high bits: FxHasher's step, (rotl (hash, 5) ^ chunk) * K, gives the
- * same hash to many strings of digits padded with zeros to 9, 17 or 20 bytes.
+ * lands. A 64-bit multiply drops the high half and carries only into the high bits: FxHasher's step,
+ * (rotl (hash, 5) ^ chunk) * K with the same K, brings back only the top 5 bits and gives the same hash to many
+ * strings of digits padded with zeros to 9, 17 or 20 bytes.
  */
 STATIC_INLINE UINT64
 lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upper)
