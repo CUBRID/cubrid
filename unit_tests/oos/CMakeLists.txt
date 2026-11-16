@@ -17,6 +17,18 @@
 
 project(test_oos_project)
 
+function(oos_check_test_timeouts)
+  get_property(oos_tests DIRECTORY PROPERTY TESTS)
+  foreach(oos_test IN LISTS oos_tests)
+    get_test_property(${oos_test} TIMEOUT oos_timeout)
+    if(NOT oos_timeout MATCHES "^[0-9]+([.][0-9]+)?$" OR oos_timeout LESS_EQUAL 0 OR oos_timeout GREATER 60)
+      message(FATAL_ERROR
+        "Test ${oos_test} in ${CMAKE_CURRENT_SOURCE_DIR} must have a positive TIMEOUT no greater than 60")
+    endif()
+  endforeach()
+endfunction()
+cmake_language(DEFER CALL oos_check_test_timeouts)
+
 include(FetchContent)
 FetchContent_Declare(
   googletest
@@ -91,7 +103,7 @@ add_test(NAME oos_setup_db
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_unittestdb.sh"
 )
 set_tests_properties(oos_setup_db
-  PROPERTIES FIXTURES_SETUP OOS_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY
+  PROPERTIES FIXTURES_SETUP OOS_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
 add_test(NAME oos_cleanup_db
@@ -127,7 +139,7 @@ add_test(NAME oos_setup_no_logging_db
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosnologdb
 )
 set_tests_properties(oos_setup_no_logging_db
-  PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+  PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
 add_test(NAME oos_cleanup_no_logging_db
@@ -149,7 +161,7 @@ add_test(NAME oos_setup_recovery_db
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosrecoverydb
 )
 set_tests_properties(oos_setup_recovery_db
-  PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+  PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
 add_test(NAME oos_cleanup_recovery_db
@@ -173,7 +185,7 @@ add_test(NAME oos_setup_format_guard_db
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosformatdb
 )
 set_tests_properties(oos_setup_format_guard_db
-  PROPERTIES FIXTURES_SETUP OOS_FORMAT_GUARD_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+  PROPERTIES FIXTURES_SETUP OOS_FORMAT_GUARD_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
 add_test(NAME oos_cleanup_format_guard_db
@@ -196,7 +208,7 @@ add_test(NAME test_oos_storage_format_guard
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_storage_format_guard.sh" oosformatdb
 )
 set_tests_properties(test_oos_storage_format_guard
-  PROPERTIES FIXTURES_REQUIRED OOS_FORMAT_GUARD_DB TIMEOUT 120
+  PROPERTIES FIXTURES_REQUIRED OOS_FORMAT_GUARD_DB TIMEOUT 60
 )
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -209,7 +221,7 @@ add_test(NAME oos_setup_concurrent_db
     bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosconcurdb
 )
 set_tests_properties(oos_setup_concurrent_db
-  PROPERTIES FIXTURES_SETUP OOS_CONCURRENT_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 180
+  PROPERTIES FIXTURES_SETUP OOS_CONCURRENT_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
 add_test(NAME oos_cleanup_concurrent_db
@@ -223,17 +235,19 @@ set_tests_properties(oos_cleanup_concurrent_db
   PROPERTIES FIXTURES_CLEANUP OOS_CONCURRENT_DB RESOURCE_LOCK OOS_DATABASES_REGISTRY TIMEOUT 60
 )
 
-add_test(NAME test_oos_concurrent_insert
-  COMMAND ${CMAKE_COMMAND} -E env
-    "CUBRID=$ENV{CUBRID}"
-    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
-    "PATH=$ENV{PATH}"
-    "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_concurrent_insert.py"
-    oosconcurdb "${CMAKE_CURRENT_BINARY_DIR}/concurrent-insert" --sessions 8 --rows 1500 --rounds 3
-)
-set_tests_properties(test_oos_concurrent_insert
-  PROPERTIES FIXTURES_REQUIRED OOS_CONCURRENT_DB TIMEOUT 600
-)
+foreach(round RANGE 1 3)
+  add_test(NAME test_oos_concurrent_insert_${round}
+    COMMAND ${CMAKE_COMMAND} -E env
+      "CUBRID=$ENV{CUBRID}"
+      "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+      "PATH=$ENV{PATH}"
+      "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_concurrent_insert.py"
+      oosconcurdb "${CMAKE_CURRENT_BINARY_DIR}/concurrent-insert-${round}" --sessions 8 --rows 1500 --rounds 1
+  )
+  set_tests_properties(test_oos_concurrent_insert_${round}
+    PROPERTIES FIXTURES_REQUIRED OOS_CONCURRENT_DB RESOURCE_LOCK OOS_CONCURRENT_DB TIMEOUT 60
+  )
+endforeach()
 
 add_test(NAME test_oos_concurrent_insert_driver
   COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_oos_concurrent_insert_driver.py"
@@ -255,7 +269,7 @@ add_test(NAME test_oos_eager_diagnostics COMMAND test_oos_eager_diagnostics)
 # what it writes is not recoverable.
 add_test(NAME test_oos_no_logging COMMAND test_oos_no_logging)
 set_tests_properties(test_oos_no_logging
-  PROPERTIES FIXTURES_REQUIRED OOS_NO_LOGGING_DB RUN_SERIAL TRUE TIMEOUT 120
+  PROPERTIES FIXTURES_REQUIRED OOS_NO_LOGGING_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
 add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
@@ -270,14 +284,12 @@ set_tests_properties(test_oos_reference_errors PROPERTIES TIMEOUT 30)
 add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
 # pure-logic guard that the OOS forward-delete rcvindex is TDE-gated (CBRD-26668); no DB fixture.
 add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
+set_tests_properties(test_oos_record_flags test_byte_span_writer test_oos_tde_gate PROPERTIES TIMEOUT 30)
 
 set_tests_properties(
   test_oos_delete test_oos_remove_file test_oos_bestspace test_oos_growth_sweep
   PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 30
 )
-# Error-path cases pay for an error-stack dump each in debug builds: test_oos_identity_stamp runs 22 to 39 s
-# alone and test_oos has exceeded 30 s under full-suite load. test_oos_eager_diagnostics runs real heap DML
-# with page reclaim and relocation and measured 11 to 13 s; it shares the headroom for the same reason.
 set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics
   PROPERTIES FIXTURES_REQUIRED OOS_DB RESOURCE_LOCK OOS_SHARED_UNITTESTDB TIMEOUT 60
 )
@@ -290,7 +302,25 @@ add_test(NAME test_oos_delete_server COMMAND test_oos_delete_server)
 add_test(NAME test_oos_remove_file_server COMMAND test_oos_remove_file_server)
 add_test(NAME test_oos_mock_vacuum_server COMMAND test_oos_mock_vacuum_server)
 add_test(NAME test_oos_vacuum_server COMMAND test_oos_vacuum_server)
-add_test(NAME test_oos_real_vacuum_server COMMAND test_oos_real_vacuum_server)
+string(CONCAT oos_real_vacuum_rows_filter
+  "OosRealVacuum.SingleRowDeleteDrainsCompletely:"
+  "OosRealVacuum.MultiChunkChainsDrainCompletely:"
+  "OosRealVacuum.UpdateStaleVersionDrainsNewSurvives:"
+  "OosRealVacuum.MultiVersionForwardChainDrains:"
+  "OosRealVacuum.ChunkBoundaryExactSizes:"
+  "OosRealVacuum.ReVacuumAfterDrainIsIdempotent"
+)
+add_test(NAME test_oos_real_vacuum_rows COMMAND test_oos_real_vacuum_server
+  "--gtest_filter=${oos_real_vacuum_rows_filter}")
+string(CONCAT oos_real_vacuum_snapshots_filter
+  "OosRealVacuum.SnapshotBlocksReclaimThenDrains:"
+  "OosRealVacuum.TwoReadersOldestSnapshotGatesReclaim:"
+  "OosRealVacuum.UpdateSnapshotBlocksOldVersionReclaim:"
+  "OosRealVacuum.LiveRowNeverReclaimed:"
+  "OosRealVacuum.VacuumWaitsForHeapHeaderWithoutHoldingLastPage"
+)
+add_test(NAME test_oos_real_vacuum_snapshots COMMAND test_oos_real_vacuum_server
+  "--gtest_filter=${oos_real_vacuum_snapshots_filter}")
 
 set_tests_properties(
   test_oos_server test_oos_delete_server test_oos_remove_file_server
@@ -298,11 +328,9 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 
-# Ten real-vacuum cases each allow up to 60 seconds for asynchronous reclamation, and the heap header
-# latch case allows 60 seconds twice. Cover those deadlines plus setup, teardown, and Debug diagnostic overhead.
 set_tests_properties(
-  test_oos_real_vacuum_server
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 840
+  test_oos_real_vacuum_rows test_oos_real_vacuum_snapshots
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 
 # The server reads CUBRID_<PARAMETER> at every parameter load, so these runs have a short page latch timeout and a
@@ -313,16 +341,30 @@ set_tests_properties(
 # retries the held header, so the case passes even if vacuum retries in place.
 set(OOS_HEADER_HELD_ENV
   "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000;CUBRID_FAULT_INJECTION_IDS=700000;CUBRID_VACUUM_WORKER_COUNT=1")
+string(CONCAT oos_real_vacuum_latch_timeout_filter
+  "OosRealVacuumHeaderHeld.HomeRowOosReclaimedAfterHeaderLookupFailure:"
+  "OosRealVacuumHeaderHeld.RelocatedRowOosReclaimedAfterHeaderLookupFailure:"
+  "OosRealVacuumHeaderHeld.UnrelatedHeapVacuumedWhileHeaderLookupKeepsFailing:"
+  "OosRealVacuumHeaderHeld.UnrelatedRowInSameBlockVacuumedWhileHeaderLookupKeepsFailing"
+)
 add_test(NAME test_oos_real_vacuum_latch_timeout
-  COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.*:-OosRealVacuumHeaderHeld.Shutdown*
+  COMMAND test_oos_real_vacuum_server "--gtest_filter=${oos_real_vacuum_latch_timeout_filter}"
+)
+string(CONCAT oos_real_vacuum_latch_timeout_retry_filter
+  "OosRealVacuumHeaderHeld.FailingHeapCostsOneLookupPerRun:"
+  "OosRealVacuumHeaderHeld.ImmediateFailureRerunsAtMostOncePerSecond"
+)
+add_test(NAME test_oos_real_vacuum_latch_timeout_retry
+  COMMAND test_oos_real_vacuum_server "--gtest_filter=${oos_real_vacuum_latch_timeout_retry_filter}"
 )
 # Stopping the vacuum workers ends vacuum for the rest of the process, so this case runs alone.
 add_test(NAME test_oos_real_vacuum_latch_timeout_shutdown
   COMMAND test_oos_real_vacuum_server --gtest_filter=OosRealVacuumHeaderHeld.Shutdown*
 )
 set_tests_properties(
-  test_oos_real_vacuum_latch_timeout test_oos_real_vacuum_latch_timeout_shutdown
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 600
+  test_oos_real_vacuum_latch_timeout test_oos_real_vacuum_latch_timeout_retry
+  test_oos_real_vacuum_latch_timeout_shutdown
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
     ENVIRONMENT "${OOS_HEADER_HELD_ENV}"
 )
 
@@ -335,5 +377,57 @@ add_subdirectory(sql)
 
 # Real standalone loader/workspace routes require installed utilities, like the DB fixtures.
 # Each GoogleTest case owns a private registry and database; never use shared unittestdb here.
-add_test(NAME test_oos_workspace COMMAND test_oos_workspace)
-set_tests_properties(test_oos_workspace PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)
+string(CONCAT oos_workspace_loader_filter
+  "OosWorkspaceTest.StandaloneLoaderStoresOos:"
+  "OosWorkspaceTest.LoaderRejectsOosBigoneButKeepsOrdinaryBigone:"
+  "OosWorkspaceTest.LoaderPreservesForwardAndBackwardReferences"
+)
+add_test(NAME test_oos_workspace_loader COMMAND test_oos_workspace
+  "--gtest_filter=${oos_workspace_loader_filter}")
+string(CONCAT oos_workspace_insert_filter
+  "OosWorkspaceTest.WorkspaceInsertUsesReservedOid:"
+  "OosWorkspaceTest.InsertRollbackReclaimsFlushedChain"
+)
+add_test(NAME test_oos_workspace_insert COMMAND test_oos_workspace
+  "--gtest_filter=${oos_workspace_insert_filter}")
+string(CONCAT oos_workspace_storage_policy_filter
+  "OosWorkspaceTest.PartitionsOwnSeparateOosFiles:"
+  "OosWorkspaceTest.LoaderHonorsStoragePolicy"
+)
+add_test(NAME test_oos_workspace_storage_policy COMMAND test_oos_workspace
+  "--gtest_filter=${oos_workspace_storage_policy_filter}")
+string(CONCAT oos_workspace_update_filter
+  "OosWorkspaceTest.WorkspaceUpdateRollbackCommitAndDelete:"
+  "OosWorkspaceTest.SuccessfulNoLoggingLoadStoresOos"
+)
+add_test(NAME test_oos_workspace_update COMMAND test_oos_workspace
+  "--gtest_filter=${oos_workspace_update_filter}")
+string(CONCAT oos_workspace_load_failure_filter
+  "OosWorkspaceTest.FailedUniqueLoadRollsBackWithoutOrphans:"
+  "OosWorkspaceTest.FilteredDuplicateLeavesNoOrphanAndContinues"
+)
+add_test(NAME test_oos_workspace_load_failure COMMAND test_oos_workspace
+  "--gtest_filter=${oos_workspace_load_failure_filter}")
+string(CONCAT oos_workspace_lob_filter
+  "OosWorkspaceTest.WorkspaceUpdatePreservesExternalLobFiles:"
+  "OosWorkspaceTest.PartitionMovementTransfersOwnership"
+)
+add_test(NAME test_oos_workspace_lob COMMAND test_oos_workspace
+  "--gtest_filter=${oos_workspace_lob_filter}")
+set_tests_properties(
+  test_oos_workspace_loader test_oos_workspace_insert test_oos_workspace_update
+  test_oos_workspace_storage_policy test_oos_workspace_load_failure test_oos_workspace_lob
+  PROPERTIES TIMEOUT 60
+)
+
+get_property(oos_tests DIRECTORY PROPERTY TESTS)
+foreach(oos_test IN LISTS oos_tests)
+  foreach(oos_fixture_property FIXTURES_REQUIRED FIXTURES_SETUP FIXTURES_CLEANUP)
+    get_test_property(${oos_test} ${oos_fixture_property} oos_fixture)
+    if(oos_fixture)
+      set_tests_properties(${oos_test} PROPERTIES RUN_SERIAL TRUE)
+    endif()
+  endforeach()
+endforeach()
+set_property(TEST ${oos_tests} APPEND PROPERTY ENVIRONMENT
+  "CUBRID_CALL_STACK_DUMP_ON_ERROR=no" "CUBRID_CALL_STACK_DUMP_ACTIVATION_LIST=null")

@@ -190,7 +190,8 @@ namespace memoize
 	      return true;
 	    }
 	}
-      if ((*this) (xasl->if_pred) || (*this) (xasl->after_join_pred))
+      if ((is_subquery || !XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
+	  && ((*this) (xasl->if_pred) || (*this) (xasl->after_join_pred)))
 	{
 	  return true;
 	}
@@ -355,6 +356,13 @@ namespace memoize
       ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
       PRED_EXPR *if_pred = xasl->if_pred;
       PRED_EXPR *after_join_pred = xasl->after_join_pred;
+
+      if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
+	{
+	  /* an ANTI inner evaluates these out of the memo (qexec_execute_sa_anti_survive ()) */
+	  if_pred = NULL;
+	  after_join_pred = NULL;
+	}
 
       if (spec->where_key)
 	{

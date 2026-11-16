@@ -431,4 +431,22 @@ extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *b
 extern int file_delete_target_file (const char *target_vfid_str);
 #endif
 
+/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
+extern int stream_from_init (int stream_kind, const char *config, int config_len, int flags = 0,
+			     const char *data = NULL, int data_len = 0, INT64 * count = NULL,
+			     bool * ends_unit_of_work = NULL);
+extern int stream_from_send_data (const char *data, int data_len);
+extern int stream_from_end (INT64 * count, const char *data = NULL, int data_len = 0);
+extern int stream_from_abort (void);
+extern void stream_from_set_savepoint (const char *savepoint_name);
+extern bool stream_from_is_open (void);
+extern void stream_from_reset (void);
+extern void stream_from_final (void);
+extern bool stream_from_holds_download (void);
+extern bool stream_from_holds_handle (INT64 handle);
+extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
+				  INT64 * handle, char *buf, int *nread, int *reply_flags);
+extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
+extern int stream_from_release (INT64 handle);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */
