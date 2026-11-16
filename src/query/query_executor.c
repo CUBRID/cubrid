@@ -19136,8 +19136,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 
 	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
-	  error = db_unix_timestamp (&insert_val, &insert_val);
+	  /* the epoch itself; the DATETIME clock would be read in the session time zone */
+	  db_make_int (&insert_val, (int) xasl_state->vd.sys_epochtime);
 	  break;
 
 	case DB_DEFAULT_USER:

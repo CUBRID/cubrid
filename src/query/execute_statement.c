@@ -638,7 +638,8 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
 	      {
 		assert (!DB_IS_NULL (&parser->sys_epochtime));
 		assert (!DB_IS_NULL (&parser->sys_datetime));
-		error = db_unix_timestamp (&parser->sys_datetime, &default_value);
+		/* the epoch itself; the DATETIME clock would be read in the session time zone */
+		error = db_unix_timestamp (&parser->sys_epochtime, &default_value);
 		break;
 	      }
 	    case DB_DEFAULT_USER:
