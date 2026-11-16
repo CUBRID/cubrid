@@ -64,6 +64,15 @@ qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 	      continue;
 	    }
 
+	  if (dnf_node->info.expr.op == PT_AND || dnf_node->info.expr.op == PT_OR)
+	    {
+	      /* a factor pt_cnf () keeps whole: its literals are parameterized as a CNF term's are, so
+	       * statements differing only in them share the plan cache entry */
+	      qo_auto_parameterize (parser, dnf_node->info.expr.arg1);
+	      qo_auto_parameterize (parser, dnf_node->info.expr.arg2);
+	      continue;
+	    }
+
 	  node_prior = pt_get_first_arg_ignore_prior (dnf_node);
 
 	  if (!pt_is_attr (node_prior) && !pt_is_function_index_expression (node_prior) && !pt_is_instnum (node_prior)

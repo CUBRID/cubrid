@@ -4376,7 +4376,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
   int error = NO_ERROR;
   DB_OBJLIST *cl;
   SM_CLASS *class_;
-  /* both phases report their progress against the same start */
+  /* every class reports its progress against the same start */
   INT64 run_start_msec = stats_progress_clock_msec ();
 
   /* make sure the workspace is flushed before calculating stats */
@@ -4386,10 +4386,18 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
       return er_errid ();
     }
 
-  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ , run_start_msec);
+  if (no_histogram)
+    {
+      error = stats_update_all_statistics (with_fullscan, true /* print_summary */ , run_start_msec);
+    }
+  else
+    {
+      /* one pass per class: the histogram scan updates the class statistics too, in the same mode */
+      error = update_histogram_for_all_classes (with_fullscan, random_seed, skip_histogram_mops, n_skip,
+						run_start_msec);
+    }
   if (error != NO_ERROR)
     {
-      /* do not build histograms over a failed server-side statistics update */
       return error;
     }
 
@@ -4419,15 +4427,6 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram,
 		  return error;
 		}
 	    }
-	}
-    }
-
-  if (!no_histogram)
-    {
-      error = update_histogram_for_all_classes (random_seed, skip_histogram_mops, n_skip, run_start_msec);
-      if (error != NO_ERROR)
-	{
-	  return error;
 	}
     }
 
