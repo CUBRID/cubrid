@@ -1600,12 +1600,13 @@ namespace cubload
       }
 
     /*
-     * A NUMERIC (p,s) keeps its scale within its precision. A floating one carries the scale of its value, which
-     * may be negative or above the precision (1e200 is held with precision 40 and scale -161, 1e-40 with
-     * precision 1 and scale 40), within the range its value header takes, see db_get_numeric_precision_and_scale ().
-     * A scale out of either range would be stored as it is, and is refused here as a damaged section.
+     * The scale may be negative or above the precision, of a NUMERIC (p,s) too since CBRD-26006: NUMERIC (10,-2)
+     * and NUMERIC (3,5) are columns SQL takes, and a floating one carries the scale of its value (1e200 is held with
+     * precision 40 and scale -161, 1e-40 with precision 1 and scale 40). Any scale a DB_VALUE can hold is taken, of
+     * either kind, so that no value unloaddb wrote is refused; one out of that range is refused as a damaged section.
+     * The format version of 10.0 ~ 11.4 has neither, see binary_numeric_pre_11_5 ().
      */
-    if (is_floating ? (scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE) : (scale < 0 || scale > precision))
+    if (scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE)
       {
 	return binary_corrupted (col);
       }
