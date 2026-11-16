@@ -13047,7 +13047,8 @@ internal_lob_locator_note_issued (const char *locator, int size)
       return;
     }
 
-  internal_lob_Issued.add (internal_lob_issued_locators::key (fields.volid, fields.pageid, fields.slotid));
+  internal_lob_Issued.add (internal_lob_issued_locators::key (fields.volid, fields.pageid, fields.slotid,
+							      fields.stamp));
 #endif /* CS_MODE */
 }
 
@@ -13109,7 +13110,7 @@ internal_lob_locator_check_access (const char *locator, int size)
     }
 
   {
-    std::uint64_t key = internal_lob_issued_locators::key (fields.volid, fields.pageid, fields.slotid);
+    std::uint64_t key = internal_lob_issued_locators::key (fields.volid, fields.pageid, fields.slotid, fields.stamp);
     bool found = false;
 
     if (internal_lob_Issued.has (key))

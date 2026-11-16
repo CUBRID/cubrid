@@ -143,15 +143,15 @@ internal_lob_locator_token (const INTERNAL_LOB_LOCATOR &locator, bool adopted)
   /* [리뷰] 토큰은 OID·길이·adopted로 결정적으로 계산하는 해시다. 서명 키는 없다(BFILE/CFILE 수준).
    * 로케이터처럼 생긴 사용자 문자열을 거르는 용도. CAS·클라이언트도 같은 구현을 쓴다. */
   return internal_lob_marker_locator_token (locator.oid.volid, locator.oid.pageid, locator.oid.slotid,
-	 locator.length, adopted);
+	 locator.length, oos_pack_identity_stamp (locator.identity_stamp), adopted);
 }
 
 static int
 internal_lob_format_locator_string (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size, bool adopted)
 {
   return internal_lob_marker_format_locator (buf, buf_size, locator.oid.volid, locator.oid.pageid, locator.oid.slotid,
-	 locator.length, adopted, locator.class_oid.volid, locator.class_oid.pageid,
-	 locator.class_oid.slotid);
+	 locator.length, oos_pack_identity_stamp (locator.identity_stamp), adopted,
+	 locator.class_oid.volid, locator.class_oid.pageid, locator.class_oid.slotid);
 }
 
 /*
@@ -163,7 +163,8 @@ internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, siz
   return internal_lob_format_locator_string (locator, buf, buf_size, false);
 }
 
-/* the locked class must still be a class whose LOB file holds the chain */
+/* the locked class must still be a class whose LOB file holds the chain; a value whose class or page is gone (dropped,
+ * truncated, or its page reclaimed after a delete) is reported as vanished */
 static int
 internal_lob_check_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator)
 {
@@ -180,7 +181,7 @@ internal_lob_check_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOC
    * reading its heap, so a corrupted or forged OID is refused instead of faulting heap_get_class_info (). */
   if (!heap_does_exist (thread_p, oid_Root_class_oid, &locator.class_oid))
     {
-      return internal_lob_set_generic_error ();
+      return internal_lob_set_value_gone ();
     }
 
   err = heap_get_class_info (thread_p, &locator.class_oid, &hfid, NULL, &found);
@@ -191,7 +192,7 @@ internal_lob_check_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOC
   if (!found)
     {
       /* a class without a heap has no LOB file */
-      return internal_lob_set_generic_error ();
+      return internal_lob_set_value_gone ();
     }
   if (!heap_oos_find_vfid_by_type (thread_p, &hfid, FILE_INTERNAL_LOB, &lob_vfid, false))
     {
@@ -200,7 +201,7 @@ internal_lob_check_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOC
     }
   if (VFID_ISNULL (&lob_vfid))
     {
-      return internal_lob_set_generic_error ();
+      return internal_lob_set_value_gone ();
     }
 
   /* the class was dropped and its OID reused, or truncated, since the locator was issued */
@@ -213,7 +214,7 @@ internal_lob_check_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOC
     }
   if (owned != DISK_VALID)
     {
-      return internal_lob_set_generic_error ();
+      return internal_lob_set_value_gone ();
     }
   return NO_ERROR;
 }
@@ -363,19 +364,12 @@ internal_lob_chain_ref (const INTERNAL_LOB_LOCATOR &locator)
   return oos_chain_ref { locator.oid, locator.identity_stamp };
 }
 
-/* True when a head chunk header carries the locator's identity stamp (a reused slot carries another one). Sets
- * ER_HEAP_OOS_CORRUPTED_RECORD otherwise, the error a stale OOS reference reports. A locator parsed from its
- * text carries no stamp and skips the comparison: the LOB file never reuses slots. */
+/* True when a head chunk header carries the locator's identity stamp (a reused slot carries another one).  Stamps of
+ * one slot can repeat only under SA loaddb --no-logging, the documented OOS limitation (oos_file.cpp). */
 static bool
 internal_lob_head_matches (const OOS_RECORD_HEADER &header, const INTERNAL_LOB_LOCATOR &locator)
 {
-  if (header.chunk_index != 0
-      || (!LSA_ISNULL (&locator.identity_stamp) && !LSA_EQ (&header.identity_stamp, &locator.identity_stamp)))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-      return false;
-    }
-  return true;
+  return header.chunk_index == 0 && LSA_EQ (&header.identity_stamp, &locator.identity_stamp);
 }
 
 /*
@@ -687,7 +681,7 @@ internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE
 	}
       if (expected_index == 0 && !internal_lob_head_matches (header, source_locator))
 	{
-	  return ER_HEAP_OOS_CORRUPTED_RECORD;
+	  return internal_lob_set_value_gone ();
 	}
       if (header.chunk_index != expected_index || payload_len < 0 || payload_len > chunk_capacity
 	  || (payload_len == 0 && expected_index != 0))
@@ -750,7 +744,7 @@ internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE
       if (index == 0 && !internal_lob_head_matches (header, source_locator))
 	{
 	  free_and_init (payload);
-	  return ER_HEAP_OOS_CORRUPTED_RECORD;
+	  return internal_lob_set_value_gone ();
 	}
       if (header.chunk_index != (int) index || payload_len < 0 || payload_len > chunk_capacity)
 	{
@@ -854,11 +848,12 @@ internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_
 int
 internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, INTERNAL_LOB_READER &reader)
 {
-  /* [리뷰] 로케이터 길이가 저장 바이트와 안 맞으면 열지 않는다(stale 1차 방어).
-   * BLOB 해석도 허용해 CLOB 길이를 8배 가까이 부풀려도 통과한다.
-   * 실제 방어는 12번의 클래스 OID 검증이다. 읽기는 저장 바이트를 넘지 않는다. */
+  /* [리뷰] head 청크의 identity stamp·길이가 로케이터와 다르면 열지 않는다(재사용 슬롯·stale 방어).
+   * 읽는 도중 청크 슬롯이 재사용되면 oos_read_pull의 청크별 검사가 막는다.
+   * 접근 보호는 12번의 클래스 OID 검증이다. 읽기는 저장 바이트를 넘지 않는다. */
   oos_chain_ref ref;
-  INT64 stored_bytes;
+  OOS_RECORD_HEADER header;
+  int payload_len = 0;
   int err;
 
   reader = INTERNAL_LOB_READER ();
@@ -879,51 +874,29 @@ internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &loca
       return internal_lob_set_generic_error ();
     }
 
-  /* The chain header holds the stored byte count, so the value's size comes from the same field an
-   * OOS column uses.  A head chunk that is gone (row deleted and vacuumed) or whose length disagrees
-   * with the locator (slot reused, or a forged locator) is reported as a vanished value. */
-  stored_bytes = oos_get_length (thread_p, locator.oid);
-  if (stored_bytes < 0)
-    {
-      err = er_errid ();
-      if (err != NO_ERROR && err != ER_GENERIC_ERROR && err != ER_SP_UNKNOWN_SLOTID)
-	{
-	  return err;
-	}
-    }
-  if (stored_bytes < 0 || !internal_lob_length_matches_stored (locator.length, (DB_BIGINT) stored_bytes))
+  /* The head chunk header holds the stored byte count and the identity stamp.  A head that is gone (row deleted and
+   * vacuumed), that carries another stamp (slot reused by another value) or whose length disagrees with the locator
+   * is reported as a vanished value, never read as another one. */
+  err = oos_chain_read_chunk (thread_p, locator.oid, oos_buffer (NULL, 0), payload_len, header);
+  if (err == ER_HEAP_OOS_CORRUPTED_RECORD
+      || (err == NO_ERROR && (!internal_lob_head_matches (header, locator)
+			      || !internal_lob_length_matches_stored (locator.length, header.total_data_length))))
     {
       return internal_lob_set_value_gone ();
     }
-
-  /* A locator parsed from its text carries no identity stamp: open with the head chunk's own stamp, which skips
-   * the comparison; the LOB file never reuses slots. */
-  ref = internal_lob_chain_ref (locator);
-  if (LSA_ISNULL (&ref.identity_stamp))
+  if (err != NO_ERROR)
     {
-      OOS_RECORD_HEADER header;
-      int payload_len = 0;
-
-      err = oos_chain_read_chunk (thread_p, locator.oid, oos_buffer (NULL, 0), payload_len, header);
-      if (err == ER_HEAP_OOS_CORRUPTED_RECORD)
-	{
-	  /* the head passed the length check above, so vacuum reclaimed it in between */
-	  return internal_lob_set_value_gone ();
-	}
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-      ref.identity_stamp = header.identity_stamp;
+      return err;
     }
 
+  ref = internal_lob_chain_ref (locator);
   err = oos_read_open (thread_p, ref, reader.oos_reader);
   if (err != NO_ERROR)
     {
       return err;
     }
 
-  reader.total_bytes = (DB_BIGINT) stored_bytes;
+  reader.total_bytes = (DB_BIGINT) header.total_data_length;
   reader.opened = true;
   return NO_ERROR;
 }
@@ -1182,6 +1155,7 @@ internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCA
   parsed_locator.oid.volid = (VOLID) fields.volid;
   parsed_locator.oid.pageid = (PAGEID) fields.pageid;
   parsed_locator.oid.slotid = (PGSLOTID) fields.slotid;
+  parsed_locator.identity_stamp = oos_unpack_identity_stamp (fields.stamp);
   parsed_locator.length = fields.length;
   parsed_locator.adopted = fields.adopted;
   parsed_locator.class_oid.volid = (VOLID) fields.class_volid;

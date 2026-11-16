@@ -495,7 +495,7 @@ heap_oos_read_stub (const HEAP_OOS_EXPAND_STATE *state, int value_offset, oos_ch
  * heap_oos_make_lob_image () - Build the on-record image of an Internal LOB attribute from its OOS stub.
  *   return: NO_ERROR or error code
  *   lob_type(in): DB_TYPE_BLOB or DB_TYPE_CLOB
- *   oos_oid(in): head-chunk OID parsed out of the inline stub
+ *   oos_ref(in): head-chunk OID and identity stamp parsed out of the inline stub
  *   oos_len(in): stub length field (bit length for BLOB, byte length for CLOB)
  *   class_oid(in): the record's class, carried by the locator; NULL when unknown
  *   image(out): the replacement bytes for this variable index
@@ -505,13 +505,13 @@ heap_oos_read_stub (const HEAP_OOS_EXPAND_STATE *state, int value_offset, oos_ch
  * locator disk image, without the query path's transport marker: expanded records are parsed by primitive readers.
  */
 static int
-heap_oos_make_lob_image (DB_TYPE lob_type, const OID &oos_oid, DB_BIGINT oos_len,
+heap_oos_make_lob_image (DB_TYPE lob_type, const oos_chain_ref &oos_ref, DB_BIGINT oos_len,
 			 const OID *class_oid, std::vector<char> &image)
 {
   /* [리뷰] 레코드 확장 때 LOB 슬롯은 체인 내용이 아니라 로케이터 디스크 이미지로 바꾼다.
    * 체인을 인라인하면 4GB가 서버 메모리에 올라오고 첫 바이트를 길이로 오인한다.
    * DONT_CONSUME 읽기 전용. HA 복제·로그 코드는 이 경로를 쓰지 않는다. */
-  INTERNAL_LOB_LOCATOR locator = { oos_oid, NULL_LSA, 0 };
+  INTERNAL_LOB_LOCATOR locator = { oos_ref.head_oid, oos_ref.identity_stamp, 0 };
   char locator_str[128];
   int locator_len;
   DB_VALUE value;
@@ -600,7 +600,7 @@ heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	{
 	  /* Internal LOB: store the locator, never the chunk chain. */
 	  const DB_TYPE lob_type = (stub_kind == OR_OOS_KIND_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB);
-	  int lob_err = heap_oos_make_lob_image (lob_type, oos_ref.head_oid, oos_len, state->class_oid,
+	  int lob_err = heap_oos_make_lob_image (lob_type, oos_ref, oos_len, state->class_oid,
 						 state->oos_payloads[i]);
 
 	  if (lob_err != NO_ERROR)

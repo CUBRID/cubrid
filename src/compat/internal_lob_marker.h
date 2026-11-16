@@ -152,12 +152,12 @@ internal_lob_marker_mix_u64 (unsigned long long value)
 /*
  * internal_lob_marker_locator_token () - The token a locator text carries over its own fields.
  *
- * A hash over the OID, length and adopted flag that readers recompute: prefix plus token, never the prefix alone,
- * tells a real locator from a user string shaped like one.  Kept free of DB_VALUE and the storage headers so the
- * engine, CAS and the client primitives compute it identically.
+ * A hash over the OID, length, stamp and adopted flag that readers recompute: prefix plus token, never the prefix
+ * alone, tells a real locator from a user string shaped like one.  Kept free of DB_VALUE and the storage headers so
+ * the engine, CAS and the client primitives compute it identically.
  */
 static inline unsigned long long
-internal_lob_marker_locator_token (int volid, int pageid, int slotid, DB_BIGINT length, bool adopted)
+internal_lob_marker_locator_token (int volid, int pageid, int slotid, DB_BIGINT length, DB_BIGINT stamp, bool adopted)
 {
   /* [리뷰] 비밀 없는 해시라 서명이 아니다. 위조 방지 장치로 보지 말 것.
    * 접근 보호는 로케이터 뒤 클래스 OID 검증(12번 커밋)이 맡는다. */
@@ -170,6 +170,8 @@ internal_lob_marker_locator_token (int volid, int pageid, int slotid, DB_BIGINT 
   token ^= (unsigned long long) (unsigned short) slotid;
   token = internal_lob_marker_mix_u64 (token);
   token ^= (unsigned long long) length;
+  token = internal_lob_marker_mix_u64 (token);
+  token ^= (unsigned long long) stamp;
   token = internal_lob_marker_mix_u64 (token);
   token ^= adopted ? 0xad0f7edULL : 0x10c07edULL;
   token = internal_lob_marker_mix_u64 (token);
@@ -185,24 +187,26 @@ internal_lob_marker_locator_token (int volid, int pageid, int slotid, DB_BIGINT 
 /*
  * internal_lob_marker_format_locator () - Format a locator text; class_pageid < 0 leaves the class out.
  *
- * Format "@internal_lob:[A:]volid|pageid|slotid:length:token[:class_volid|class_pageid|class_slotid]", read back
- * by the parsers below.  A client-facing locator names its class so its reader can lock it.
+ * Format "@internal_lob:[A:]volid|pageid|slotid:length:stamp:token[:class_volid|class_pageid|class_slotid]", read
+ * back by the parsers below.  stamp is the head chunk's identity stamp packed as in the OOS stub, so a slot reused by
+ * another value is told apart.  A client-facing locator names its class so its reader can lock it.
  */
 static inline int
 internal_lob_marker_format_locator (char *buf, size_t buf_size, int volid, int pageid, int slotid, DB_BIGINT length,
-				    bool adopted, int class_volid, int class_pageid, int class_slotid)
+				    DB_BIGINT stamp, bool adopted, int class_volid, int class_pageid, int class_slotid)
 {
   const char *adopt_tag = adopted ? "A:" : "";
-  unsigned long long token = internal_lob_marker_locator_token (volid, pageid, slotid, length, adopted);
+  unsigned long long token = internal_lob_marker_locator_token (volid, pageid, slotid, length, stamp, adopted);
 
   if (class_pageid >= 0)
     {
-      return snprintf (buf, buf_size, INTERNAL_LOB_LOCATOR_PREFIX "%s%d|%d|%d:%lld:%016llx:%d|%d|%d", adopt_tag, volid,
-		       pageid, slotid, (long long) length, token, class_volid, class_pageid, class_slotid);
+      return snprintf (buf, buf_size, INTERNAL_LOB_LOCATOR_PREFIX "%s%d|%d|%d:%lld:%lld:%016llx:%d|%d|%d", adopt_tag,
+		       volid, pageid, slotid, (long long) length, (long long) stamp, token, class_volid, class_pageid,
+		       class_slotid);
     }
 
-  return snprintf (buf, buf_size, INTERNAL_LOB_LOCATOR_PREFIX "%s%d|%d|%d:%lld:%016llx", adopt_tag, volid, pageid,
-		   slotid, (long long) length, token);
+  return snprintf (buf, buf_size, INTERNAL_LOB_LOCATOR_PREFIX "%s%d|%d|%d:%lld:%lld:%016llx", adopt_tag, volid,
+		   pageid, slotid, (long long) length, (long long) stamp, token);
 }
 
 typedef struct internal_lob_marker_locator_fields INTERNAL_LOB_MARKER_LOCATOR_FIELDS;
@@ -212,6 +216,7 @@ struct internal_lob_marker_locator_fields
   int pageid;
   int slotid;
   DB_BIGINT length;
+  DB_BIGINT stamp;		/* head chunk's identity stamp, packed (oos_pack_identity_stamp) */
   bool adopted;
   int class_volid;		/* class of a client-facing locator; class_pageid is -1 when the text carries none */
   int class_pageid;
@@ -234,6 +239,7 @@ internal_lob_marker_parse_locator_fields (const char *data, int size, INTERNAL_L
   const char *oid_part = NULL;
   const char *after_token = NULL;
   long long parsed_length = 0;
+  long long parsed_stamp = 0;
   unsigned long long parsed_token = 0;
   int oid_consumed = 0;
   int token_consumed = 0;
@@ -255,8 +261,8 @@ internal_lob_marker_parse_locator_fields (const char *data, int size, INTERNAL_L
       oid_part += 2;
     }
 
-  if (sscanf (oid_part, "%d|%d|%d:%lld%n", &fields->volid, &fields->pageid, &fields->slotid, &parsed_length,
-	      &oid_consumed) != 4 || parsed_length < 0)
+  if (sscanf (oid_part, "%d|%d|%d:%lld:%lld%n", &fields->volid, &fields->pageid, &fields->slotid, &parsed_length,
+	      &parsed_stamp, &oid_consumed) != 5 || parsed_length < 0)
     {
       return false;
     }
@@ -287,8 +293,9 @@ internal_lob_marker_parse_locator_fields (const char *data, int size, INTERNAL_L
 
   /* The token is what separates a locator from a user string shaped like one. */
   fields->length = (DB_BIGINT) parsed_length;
+  fields->stamp = (DB_BIGINT) parsed_stamp;
   if (parsed_token != internal_lob_marker_locator_token (fields->volid, fields->pageid, fields->slotid, fields->length,
-							 fields->adopted))
+							 fields->stamp, fields->adopted))
     {
       return false;
     }
@@ -468,15 +475,18 @@ internal_lob_marker_split_length (char lob_type, DB_BIGINT logical_length, DB_BI
 }
 
 // *INDENT-OFF*
-/* The locators (by chain OID) the server sent one client: the client's copy, and its server session's copy that the
- * CAS a client leaves fills.  Two generations in one bound: a full latest one pushes out the one before. */
+/* The locators (by chain OID and stamp) the server sent one client: the client's copy, and its server session's copy
+ * that the CAS a client leaves fills.  Two generations in one bound: a full latest one pushes out the one before. */
 class internal_lob_issued_locators
 {
   public:
-    static std::uint64_t key (int volid, int pageid, int slotid)
+    /* the stamp keeps a locator of an old value from vouching for a later value in the same reused slot */
+    static std::uint64_t key (int volid, int pageid, int slotid, DB_BIGINT stamp)
     {
-      return ((std::uint64_t) (std::uint16_t) volid << 48) | ((std::uint64_t) (std::uint32_t) pageid << 16)
-	     | (std::uint64_t) (std::uint16_t) slotid;
+      std::uint64_t oid_key = ((std::uint64_t) (std::uint16_t) volid << 48)
+			      | ((std::uint64_t) (std::uint32_t) pageid << 16) | (std::uint64_t) (std::uint16_t) slotid;
+
+      return internal_lob_marker_mix_u64 (oid_key ^ internal_lob_marker_mix_u64 ((unsigned long long) stamp));
     }
 
     void add (std::uint64_t key)

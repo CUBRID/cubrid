@@ -14993,19 +14993,6 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
 	{
 	  *locator = source_locator;
 	  locator->adopted = false;
-	  /* the locator text carries no identity stamp; the stub stores the head chunk's */
-	  if (LSA_ISNULL (&locator->identity_stamp) && !OID_ISNULL (&locator->oid))
-	    {
-	      OOS_RECORD_HEADER head_header;
-	      int payload_len = 0;
-
-	      error = oos_chain_read_chunk (thread_p, locator->oid, oos_buffer (NULL, 0), payload_len, head_header);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	      locator->identity_stamp = head_header.identity_stamp;
-	    }
 	  /* loaddb wrote the chain for the class its load file names; a row routed to a partition moves it */
 	  if (!OID_ISNULL (&source_locator.class_oid) && !OID_EQ (&source_locator.class_oid, class_oid))
 	    {
