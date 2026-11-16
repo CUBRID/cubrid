@@ -1506,6 +1506,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
 	}
     }
 
+  if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (ctxt.classes != NULL
       && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS), er_errid () != NO_ERROR))
     {
@@ -1518,11 +1523,6 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
   if (ctxt.classes != NULL && (emit_foreign_key (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR))
-    {
-      err_count++;
-    }
-
-  if (emit_grant (ctxt, schema_output_ctx, ctxt.classes) != NO_ERROR)
     {
       err_count++;
     }
@@ -6358,7 +6358,7 @@ create_schema_info (extract_context & ctxt)
   const char *loading_order[] =
     { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
     "_schema_serial", "_schema_procedure",
-    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_vclass_query_spec", "_schema_procedure_body", "_schema_grant"
+    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec", "_schema_procedure_body"
   };
 
   const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);
