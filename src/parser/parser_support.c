@@ -11939,6 +11939,24 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
    * (Default Reference), so its evaluation stays at execution time */
   node->flag.do_not_fold = 1;
 
+  if (tag == PT_CDT_TAG_FUNC)
+    {
+      /* the parser never leaves a PT_FUNCTION bare: a function call is held by a PT_FUNCTION_HOLDER expression,
+       * which evaluation and printing expect.  The stream stores the function without it, so put it back. */
+      PT_NODE *holder = parser_new_node (parser, PT_EXPR);
+
+      if (holder == NULL)
+	{
+	  return NULL;
+	}
+      holder->info.expr.op = PT_FUNCTION_HOLDER;
+      holder->info.expr.arg1 = node;
+      holder->type_enum = node->type_enum;
+      holder->data_type = parser_copy_tree (parser, node->data_type);
+      holder->flag.do_not_fold = 1;
+      node = holder;
+    }
+
   return node;
 }
 
