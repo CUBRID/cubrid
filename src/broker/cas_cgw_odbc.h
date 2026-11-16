@@ -152,6 +152,20 @@ extern int cgw_sql_prepare (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLCHAR * s
 extern int cgw_get_num_cols (SQLHSTMT hstmt, SQLSMALLINT * num_cols);
 extern int cgw_get_col_info (SQLHSTMT hstmt, int col_num, T_ODBC_COL_INFO * col_info);
 
+/* one row of the gateway schema_info (CCI_SCH_ATTRIBUTE) result */
+typedef struct
+{
+  char attr_name[COL_NAME_LEN + 1];
+  char cci_type;		/* T_CCI_U_TYPE */
+  short scale;
+  int precision;
+  int attr_order;		/* 1-based definition order, kept across the attribute filter */
+  char charset;			/* T_CCI_CHARSET of a character column */
+  char is_invisible;
+} T_CGW_SCHEMA_ATTR;
+
+extern int cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** ret_attrs, int *ret_count);
+
 // Execute funtions
 extern int cgw_set_commit_mode (SQLHDBC hdbc, bool auto_commit);
 extern int cgw_execute (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLLEN * row_count);

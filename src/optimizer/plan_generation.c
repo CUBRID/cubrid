@@ -83,6 +83,9 @@ static XASL_NODE *init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE
 static XASL_NODE *add_access_spec (QO_ENV *, XASL_NODE *, QO_PLAN *);
 static XASL_NODE *add_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * scan);
 static bool scan_chain_has_scan_blocks (XASL_NODE * xasl);
+static PT_NODE *qo_collect_memoize_key_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static void qo_set_nl_inner_memoize_key (QO_ENV * env, QO_PLAN * outer, QO_PLAN * inner, BITSET * predset,
+					 XASL_NODE * scan);
 static XASL_NODE *add_fetch_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * proc);
 static XASL_NODE *add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * sub);
 static XASL_NODE *add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET *);
@@ -1169,6 +1172,148 @@ scan_chain_has_scan_blocks (XASL_NODE * xasl)
     }
 
   return false;
+}
+
+/* CBRD-27993: what qo_collect_memoize_key_name () gathers from an NL inner's terms */
+typedef struct qo_memoize_key_arg QO_MEMOIZE_KEY_ARG;
+struct qo_memoize_key_arg
+{
+  QO_ENV *env;
+  BITSET *outer_nodes;		/* the nodes of the outer plan */
+  BITSET *key_segs;		/* out: the segments of the names */
+  PT_NODE **names;		/* out: the names of outer columns, malloc'ed */
+  int n_names;
+  int max_names;
+  bool failed;			/* out of memory */
+};
+
+/*
+ * qo_collect_memoize_key_name () - parser_walk_tree pre function: a name of an outer plan node's column, wherever it
+ *   sits in a term (inside a subquery, a PRIOR or an aggregate too), is a memoize key column
+ */
+static PT_NODE *
+qo_collect_memoize_key_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  QO_MEMOIZE_KEY_ARG *key = (QO_MEMOIZE_KEY_ARG *) arg;
+  QO_NODE *node;
+  QO_SEGMENT *seg;
+  PT_NODE *entity;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (tree->node_type != PT_NAME || key->failed)
+    {
+      return tree;
+    }
+
+  node = lookup_node (tree, key->env, &entity);
+  if (node == NULL || !BITSET_MEMBER (*key->outer_nodes, QO_NODE_IDX (node)))
+    {
+      /* the inner's own column, or a name of an enclosing query or of the subquery itself */
+      return tree;
+    }
+
+  if (key->n_names == key->max_names)
+    {
+      int max_names = key->max_names == 0 ? 8 : key->max_names * 2;
+      PT_NODE **names = (PT_NODE **) realloc (key->names, max_names * sizeof (PT_NODE *));
+      if (names == NULL)
+	{
+	  key->failed = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return tree;
+	}
+      key->names = names;
+      key->max_names = max_names;
+    }
+  key->names[key->n_names++] = tree;
+
+  seg = lookup_seg (node, tree, key->env);
+  if (seg != NULL)
+    {
+      bitset_add (key->key_segs, QO_SEG_IDX (seg));
+    }
+
+  return tree;
+}
+
+/*
+ * qo_set_nl_inner_memoize_key () - CBRD-27993: the memoize key of an NL inner is the outer plan's columns its terms
+ *   and its derived tables read (the join terms and the terms its scan evaluates; a select-list subquery attached to
+ *   it reruns for every replayed row, so it adds none); the inner is not memoized when one of them holds an
+ *   expression a reuse must not replay (pt_is_result_reuse_safe ()) or a name has no slot, and is marked when
+ *   statistics show the key hardly repeats (qo_nl_inner_memoize_is_useless ())
+ */
+static void
+qo_set_nl_inner_memoize_key (QO_ENV * env, QO_PLAN * outer, QO_PLAN * inner, BITSET * predset, XASL_NODE * scan)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  QO_MEMOIZE_KEY_ARG key;
+  BITSET terms, key_segs;
+  BITSET_ITERATOR bi;
+  bool reusable = true;
+  int i;
+
+  bitset_init (&terms, env);
+  bitset_init (&key_segs, env);
+  bitset_assign (&terms, predset);
+  qo_collect_inner_scan_terms (inner, &terms);
+
+  key.env = env;
+  key.outer_nodes = &outer->info->nodes;
+  key.key_segs = &key_segs;
+  key.names = NULL;
+  key.n_names = 0;
+  key.max_names = 0;
+  key.failed = false;
+
+  for (i = bitset_iterate (&terms, &bi); i != -1 && reusable && !key.failed; i = bitset_next_member (&bi))
+    {
+      PT_NODE *expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, i));
+      PT_NODE *next;
+
+      if (expr == NULL)
+	{
+	  continue;
+	}
+      reusable = pt_is_result_reuse_safe (parser, expr);
+      next = expr->next;
+      expr->next = NULL;
+      (void) parser_walk_tree (parser, expr, qo_collect_memoize_key_name, &key, NULL, NULL);
+      expr->next = next;
+    }
+
+  /* a derived table of the inner that reads an outer column is made again for every outer row, so its outer columns
+   * are key columns and its expressions must be safe to replay; one that reads none is made once and read alike */
+  for (i = bitset_iterate (&inner->info->nodes, &bi); i != -1 && reusable && !key.failed; i = bitset_next_member (&bi))
+    {
+      PT_NODE *derived = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, i))->info.spec.derived_table;
+      int n_names = key.n_names;
+
+      if (derived == NULL)
+	{
+	  continue;
+	}
+      (void) parser_walk_tree (parser, derived, qo_collect_memoize_key_name, &key, NULL, NULL);
+      if (key.n_names > n_names)
+	{
+	  reusable = pt_is_result_reuse_safe (parser, derived);
+	}
+    }
+
+  scan->memoize_key = NULL;
+  if (reusable && !key.failed)
+    {
+      scan->memoize_key = pt_make_memoize_key (parser, key.names, key.n_names);
+    }
+  if (scan->memoize_key != NULL && !scan_chain_has_scan_blocks (scan->scan_ptr)
+      && qo_nl_inner_memoize_is_useless (outer, inner, &key_segs))
+    {
+      XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
+    }
+
+  free_and_init (key.names);
+  bitset_delset (&terms);
+  bitset_delset (&key_segs);
 }
 
 /*
@@ -2840,12 +2985,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		    }
 		}
 
-	      /* the outer columns of the terms the inner scan evaluates are its memoize key */
-	      if (!scan_chain_has_scan_blocks (scan->scan_ptr)
-		  && qo_nl_inner_memoize_is_useless (outer, inner, &predset))
-		{
-		  XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
-		}
+	      qo_set_nl_inner_memoize_key (env, outer, inner, &predset, scan);
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
 	  make_outer_instnum (env, outer, plan);
