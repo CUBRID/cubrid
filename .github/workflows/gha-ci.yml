@@ -1865,6 +1865,8 @@ jobs:
                 tc_root="$repo/$(attr "$suite" tc_subdir)"
                 token=''
                 [ "$(attr "$suite" tc_private)" = no ] || token=' -e GHI_TOKEN'
+                # Not run_id: Re-run all jobs with force_build replaces the build under the same run_id.
+                built=$(cat "$d"/shard/*/build.read 2>/dev/null | awk -F= '$1 == "built_at" {print $2}' | sort -u | paste -sd' ' || :)
                 # A fresh clone takes only a branch, so the commits are fetched into a second checkout.
                 docker_run() {
                   echo "docker run --rm --pull always$token -v \"\$PWD/CUBRID:/home/CUBRID\" -v \"\$PWD:/repro\" -v \"\$PWD/reports:/tmp/tests\" \\"
@@ -1880,7 +1882,7 @@ jobs:
                 echo '```bash'
                 echo "mkdir -p gha-ci-$GITHUB_RUN_ID-$suite && cd gha-ci-$GITHUB_RUN_ID-$suite"
                 echo "curl -fsS $ARTIFACT_URL_BASE/builds/$BUILD_NS/$SHA/$(attr "$suite" build_mode)/CUBRID.tar.gz | tar -xz"
-                echo "grep -qx run_id=$brid CUBRID/$BUILD_META || echo 'warning: CUBRID/ is not the build run $brid made'"
+                echo "grep -qx 'built_at=$built' CUBRID/$BUILD_META || echo 'warning: CUBRID/ is not the build these failures came from'"
                 echo "curl -fsS $ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/collect/failed.$GITHUB_RUN_ATTEMPT.list | cut -f2 | sed 's#^#$repo/#' > case.list"
                 [ "$(attr "$suite" unit)" = case ] || echo "cut -d/ -f1-3 case.list | sort -u > dir.list"
                 docker_run case
