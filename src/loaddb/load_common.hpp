@@ -533,6 +533,11 @@ typedef uint32_t BIN_BLOCK_SIZE_TYPE;
 #define BIN_MAX_BLOCK_RAW_SIZE ((int64_t) 0x7E000000)
 /* the largest row a compressed section holds, which is the largest raw block with its row size field in it */
 #define BIN_MAX_COMPRESSED_RECORD_SIZE (BIN_MAX_BLOCK_RAW_SIZE - (int64_t) sizeof (BIN_REC_SIZE_TYPE))
+/*
+ * LZ4 never makes a block smaller than 1/255 of its raw bytes: a match costs a token and an offset, and a byte more
+ * for every 255 bytes of its length. A stored size below that of the raw size comes from a broken header.
+ */
+#define BIN_LZ4_MAX_RATIO (255)
 
 /*
  * A NUMERIC value is written field by field, so that the size and the layout of the in-memory buffer

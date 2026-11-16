@@ -84,7 +84,7 @@ namespace cubload
   int
   driver::parse (std::istream &iss, int line_offset)
   {
-    m_scanner->switch_streams (&iss);
+    m_scanner->set_input (iss);
     m_scanner->set_lineno (line_offset + 1);
     m_scanner->clear_binary_block ();
     m_semantic_helper.reset_after_batch ();

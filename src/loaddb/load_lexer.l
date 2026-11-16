@@ -792,10 +792,19 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
       }
     else
       {
-	/* make_string_by_reserve_size () either hands out a pooled entry or throws, it never fails */
-	string_type *row = m_semantic_helper.make_string_by_reserve_size (rec_size);
+	string_type *row = NULL;
 
-	if (read_binary (row->val, rec_size) != rec_size)
+	/*
+	 * A size field broken into one beyond the end of the input is a truncated section, and is told so
+	 * before up to 4GB is allocated for it. make_string_by_reserve_size () either hands out a pooled
+	 * entry or throws, it never fails.
+	 */
+	if (binary_input_has (rec_size))
+	  {
+	    row = m_semantic_helper.make_string_by_reserve_size (rec_size);
+	  }
+
+	if (row == NULL || read_binary (row->val, rec_size) != rec_size)
 	  {
 	    /* the row being read is counted when it is handed over, so it is on the line after yylineno */
 	    fail_binary_section_at (yylineno + 1, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
@@ -940,6 +949,43 @@ cubload::scanner::read_binary (char *buf, size_t len)
 }
 
 /*
+ * binary_input_has () - tell whether the scanner input has a number of bytes left
+ *   return: false when fewer than len bytes are left, true when as many are or the end of the input is unknown
+ *   len (in): number of bytes the caller is about to read with read_binary ()
+ *
+ * Note: the bytes left are those the scanner buffer holds past the current position and those the stream has after
+ *       its own position, up to the end set_input () found. The stream is asked only when the buffer does not hold
+ *       len bytes, which a row of ordinary size does, so the rows of a section cost no more than they did.
+ *
+ *       Once the stream has reached its end it is in a failed state, and tellg () cannot tell where it is; no byte
+ *       is left in it then. See read_binary () for the buffer members.
+ */
+bool
+cubload::scanner::binary_input_has (size_t len)
+{
+  size_t buffered = (size_t) ((YY_CURRENT_BUFFER_LVALUE->yy_ch_buf + yy_n_chars) - yy_c_buf_p);
+  std::streampos pos;
+
+  if (len <= buffered || m_input == NULL || m_input_end == std::streampos (-1))
+    {
+      return true;
+    }
+
+  if (m_input->eof ())
+    {
+      return false;
+    }
+
+  pos = m_input->tellg ();
+  if (pos == std::streampos (-1))
+    {
+      return true;
+    }
+
+  return pos <= m_input_end && len - buffered <= (size_t) (m_input_end - pos);
+}
+
+/*
  * read_binary_block () - read a block of a compressed binary section, see BIN_BLOCK_HEADER_SIZE
  *   return: true when the block is in m_block and its rows are ready to be handed over, false when the
  *           section has been reported unreadable and scanning goes on in ABORTED
@@ -975,6 +1021,24 @@ cubload::scanner::read_binary_block (BIN_BLOCK_SIZE_TYPE stored_size)
 
   /* a block is never empty and is never stored larger than its raw bytes, see binary_compress_output () */
   if (raw_size == 0 || (int64_t) raw_size > BIN_MAX_BLOCK_RAW_SIZE || stored_size > raw_size || rows == 0)
+    {
+      fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
+      BEGIN ABORTED;
+      return false;
+    }
+
+  /*
+   * Checked before the memory for the block is allocated, up to 2GB that resize () fills with zeros, so that a broken
+   * header is reported as such and does not run out of memory first. The stored bytes have to be left in the input,
+   * and a compressed block cannot hold more raw bytes than BIN_LZ4_MAX_RATIO times them.
+   */
+  if (!binary_input_has (stored_size))
+    {
+      fail_binary_section_at (lineno, LOADDB_MSG_TRUNCATED_BINARY_SECTION);
+      BEGIN ABORTED;
+      return false;
+    }
+  if (stored_size != raw_size && (uint64_t) stored_size * BIN_LZ4_MAX_RATIO < (uint64_t) raw_size)
     {
       fail_binary_section_at (lineno, LOADDB_MSG_CORRUPTED_BINARY_BLOCK);
       BEGIN ABORTED;

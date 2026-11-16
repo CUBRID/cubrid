@@ -54,11 +54,45 @@ namespace cubload
 	, m_block_stored ()
 	, m_block_pos (0)
 	, m_block_rows_left (0)
+	, m_input (NULL)
+	, m_input_end (-1)
       {
 	//
       };
 
       ~scanner () override = default;
+
+      /*
+       * Scan the stream given, and remember where it ends so that a binary record or block is checked against the
+       * bytes left in the input before its memory is allocated, see binary_input_has (). The stream an object file
+       * comes in, a file in SA mode and a batch on the server, can be told; one which cannot be leaves the end
+       * unknown, and the check off.
+       */
+      void set_input (std::istream &in)
+      {
+	std::streampos pos;
+	std::streampos end;
+
+	switch_streams (&in);
+	m_input = &in;
+	m_input_end = -1;
+
+	pos = in.tellg ();
+	if (pos == std::streampos (-1))
+	  {
+	    /* a failed stream, leave it as it is: scanning it ends at once as it did before */
+	    return;
+	  }
+	in.seekg (0, std::ios::end);
+	end = in.tellg ();
+	in.clear ();
+	in.seekg (pos);
+	if (end != std::streampos (-1) && in)
+	  {
+	    m_input_end = end;
+	  }
+	in.clear ();
+      }
 
       void set_lineno (int line_offset)
       {
@@ -166,6 +200,13 @@ namespace cubload
       std::size_t read_binary (char *buf, std::size_t len);
 
       /*
+       * Tell whether the input has len bytes left, so that a size field broken into a size beyond the end of the
+       * input is reported as a truncated section before the memory for it is allocated.
+       * See load_lexer.l file for method definition
+       */
+      bool binary_input_has (std::size_t len);
+
+      /*
        * Read a block of a compressed section into m_block and check the rows in it, and hand over the next of those
        * rows. See BIN_BLOCK_HEADER_SIZE, and load_lexer.l for the method definitions.
        */
@@ -194,6 +235,10 @@ namespace cubload
       std::vector<char> m_block_stored;
       std::size_t m_block_pos;
       BIN_BLOCK_SIZE_TYPE m_block_rows_left;
+
+      /* the stream being scanned and the position of its end, -1 when it cannot be told, see set_input () */
+      std::istream *m_input;
+      std::streampos m_input_end;
   };
 
 } // namespace cubload
