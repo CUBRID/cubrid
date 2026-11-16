@@ -33,6 +33,7 @@
 #include "language_support.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "porting.h"
 
 #include <arpa/inet.h>
@@ -77,43 +78,6 @@ static bool
 copy_date_is_valid (DB_DATE date)
 {
   return date == DB_DATE_ZERO || (date >= DB_DATE_MIN && date <= DB_DATE_MAX);
-}
-
-/* read int64 from buffer in network byte order */
-static inline int64_t
-read_int64 (const char *buf)
-{
-  uint32_t hi, lo;
-  uint64_t u;
-  int64_t v;
-
-  memcpy (&hi, buf, sizeof (hi));
-  memcpy (&lo, buf + 4, sizeof (lo));
-  /* Assembled unsigned: any BIGINT with the sign bit set shifts a value into
-   * the sign bit of an int64_t, which is signed overflow. */
-  u = ((uint64_t) ntohl (hi) << 32) | (uint64_t) ntohl (lo);
-  memcpy (&v, &u, sizeof (v));
-  return v;
-}
-
-/* read float from buffer (IEEE 754, same byte order as int32) */
-static inline float
-read_float (const char *buf)
-{
-  int32_t v = read_int32 (buf);
-  float f;
-  memcpy (&f, &v, sizeof (f));
-  return f;
-}
-
-/* read double from buffer (IEEE 754, same byte order as int64) */
-static inline double
-read_double (const char *buf)
-{
-  int64_t v = read_int64 (buf);
-  double d;
-  memcpy (&d, &v, sizeof (d));
-  return d;
 }
 
 bool
@@ -295,7 +259,11 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	{
 	  return binary_error (row, col, "BIGINT expects 8 bytes");
 	}
-      db_make_bigint (val, read_int64 (data));
+      {
+	DB_BIGINT v;
+	OR_GET_INT64 (data, &v);
+	db_make_bigint (val, v);
+      }
       break;
 
     case DB_TYPE_FLOAT:
@@ -303,7 +271,11 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	{
 	  return binary_error (row, col, "FLOAT expects 4 bytes");
 	}
-      db_make_float (val, read_float (data));
+      {
+	float v;
+	OR_GET_FLOAT (data, &v);
+	db_make_float (val, v);
+      }
       break;
 
     case DB_TYPE_DOUBLE:
@@ -311,7 +283,11 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	{
 	  return binary_error (row, col, "DOUBLE expects 8 bytes");
 	}
-      db_make_double (val, read_double (data));
+      {
+	double v;
+	OR_GET_DOUBLE (data, &v);
+	db_make_double (val, v);
+      }
       break;
 
     case DB_TYPE_SHORT:
