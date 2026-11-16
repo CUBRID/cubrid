@@ -4066,6 +4066,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   assert (vfid != NULL && !VFID_ISNULL (vfid));
 
   vsid_collector.vsids = NULL;
+  ftab_collector.partsect_ftab = NULL;
 
   if (is_temp)
     {
@@ -4082,8 +4083,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	  goto exit;
 	}
     }
-
-  ftab_collector.partsect_ftab = NULL;
 
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
@@ -12604,6 +12603,11 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
   int i, j;
   int error_code = NO_ERROR;
 
+  /* every failure return leaves the collector empty, so a caller may free it whatever it held before */
+  collector_out->npages = 0;
+  collector_out->nsects = 0;
+  collector_out->partsect_ftab = NULL;
+
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
   page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
@@ -12613,8 +12617,6 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
     }
 
   fhead = (FILE_HEADER *) page_fhead;
-  collector_out->npages = 0;
-  collector_out->nsects = 0;
   collector_out->partsect_ftab =
     (FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_sector_total * sizeof (FILE_PARTIAL_SECTOR));
 

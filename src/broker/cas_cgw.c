@@ -136,7 +136,14 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_STREAM_SEND_DATA */
+  fn_not_supported,		/* CAS_FC_STREAM_END */
+  fn_not_supported,		/* CAS_FC_STREAM_INIT */
+  fn_not_supported,		/* CAS_FC_STREAM_ABORT */
+  fn_not_supported,		/* CAS_FC_STREAM_READ_OPEN */
+  fn_not_supported,		/* CAS_FC_STREAM_READ */
+  fn_not_supported		/* CAS_FC_STREAM_RELEASE */
 };
 
 static const char *server_func_name[] = {
@@ -183,8 +190,20 @@ static const char *server_func_name[] = {
   "prepare_and_execute",
   "cursor_close",
   "get_shard_info",
-  "set_cas_change_mode"
+  "set_cas_change_mode",
+  "stream_send_data",
+  "stream_end",
+  "stream_init",
+  "stream_abort",
+  "stream_read_open",
+  "stream_read",
+  "stream_release"
 };
+
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
 
 static int cgw_cas_main (void);
 static int cgw_cas_init (void);
@@ -475,6 +494,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   int con_status_to_restore, old_con_status;
   T_SERVER_FUNC server_fn;
+  bool func_code_unknown;
   FN_RETURN fn_ret = FN_KEEP_CONN;
 
   error_info_clear ();
@@ -589,7 +609,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       return FN_CLOSE_CONN;
     }
 
-  if (func_code <= 0 || func_code >= CAS_FC_MAX)
+  if (func_code <= 0 || func_code >= CAS_FC_PROBE_MAX)
     {
       FREE_MEM (argv);
       FREE_MEM (read_msg);
@@ -597,6 +617,8 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);
       return FN_CLOSE_CONN;
     }
+  /* a code a later release adds: answered as not implemented, as cas.c does */
+  func_code_unknown = (func_code >= CAS_FC_MAX);
 
   /* PROTOCOL_V2 is used only 9.0.0 */
   if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
@@ -616,7 +638,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   con_status_to_restore = -1;
 
-  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code))
+  if (FUNC_NEEDS_RESTORING_CON_STATUS (func_code) || func_code_unknown)
     {
       if (is_first_request == true)
 	{
@@ -644,9 +666,9 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       con_status_before_check_cas = -1;
     }
 
-  strcpy (as_info->log_msg, server_func_name[func_code - 1]);
+  strcpy (as_info->log_msg, func_code_unknown ? "fn_not_supported" : server_func_name[func_code - 1]);
 
-  server_fn = server_fn_table[func_code - 1];
+  server_fn = func_code_unknown ? fn_not_supported : server_fn_table[func_code - 1];
 
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
