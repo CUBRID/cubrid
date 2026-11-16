@@ -27496,12 +27496,17 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 
       /* the derived table of a shared view reuses the XASL of its group instead of generating its own */
       if (info != NULL && info->share_views && node->info.query.shared_view_group > 0
-	  && !node->info.query.shared_view_rep && node->info.query.shared_view_group <= PT_SHARED_VIEW_MAX_GROUPS
-	  && info->shared_view_xasl[node->info.query.shared_view_group] != NULL)
+	  && node->info.query.shared_view_group <= PT_SHARED_VIEW_MAX_GROUPS)
 	{
-	  node->info.query.shared_view_used = true;
-	  *continue_walk = PT_LIST_WALK;
-	  return node;
+	  /* mq_share_multi_ref_views () chose a representative that is generated before its members */
+	  assert (node->info.query.shared_view_rep
+		  || info->shared_view_xasl[node->info.query.shared_view_group] != NULL);
+	  if (info->shared_view_xasl[node->info.query.shared_view_group] != NULL)
+	    {
+	      node->info.query.shared_view_used = true;
+	      *continue_walk = PT_LIST_WALK;
+	      return node;
+	    }
 	}
 
       (void) pt_query_set_reference (parser, node);
@@ -27601,7 +27606,8 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       pt_pop_symbol_info (parser);
 
       if (info->share_views && node->info.query.shared_view_rep && node->info.query.shared_view_group > 0
-	  && node->info.query.shared_view_group <= PT_SHARED_VIEW_MAX_GROUPS)
+	  && node->info.query.shared_view_group <= PT_SHARED_VIEW_MAX_GROUPS
+	  && info->shared_view_xasl[node->info.query.shared_view_group] == NULL)
 	{
 	  info->shared_view_xasl[node->info.query.shared_view_group] = (XASL_NODE *) node->info.query.xasl;
 

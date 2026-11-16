@@ -482,9 +482,9 @@ static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * no
 static PT_NODE *mq_count_cte_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void mq_check_cte_inline_or_materialize (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *mq_collect_shared_derived_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void mq_collect_shared_derived (PARSER_CONTEXT * parser, PT_NODE * query, struct mq_shared_view_info *info);
+static void mq_add_shared_derived (PT_NODE * spec, struct mq_shared_view_info *info);
 static PT_NODE *mq_find_unshareable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static bool mq_is_top_level_from_spec (PT_NODE * query, PT_NODE * spec);
-static bool mq_is_cached_from_spec (PT_NODE * query, PT_NODE * spec, bool is_operand);
 static bool mq_has_named_columns_first (PT_NODE * spec);
 static bool mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep);
 static void mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -9882,12 +9882,82 @@ mq_rewrite_upd_del_top_level_specs (PARSER_CONTEXT * parser, PT_NODE * statement
 
 typedef struct mq_shared_view_info
 {
-  PT_NODE *specs[MQ_SHARED_VIEW_MAX_SPECS];
+  PT_NODE *specs[MQ_SHARED_VIEW_MAX_SPECS];	/* in the order their XASL is generated */
   int n_specs;
+  PT_NODE *query;		/* the query being walked by mq_collect_shared_derived_pre () */
 } MQ_SHARED_VIEW_INFO;
 
 /*
- * mq_collect_shared_derived_pre () - collect the derived tables rewritten from a view, outside of the WITH clause
+ * mq_add_shared_derived () - add a derived table rewritten from a view to the candidates of the groups
+ *   return:
+ *   spec(in): derived spec
+ *   info(in/out):
+ */
+static void
+mq_add_shared_derived (PT_NODE * spec, MQ_SHARED_VIEW_INFO * info)
+{
+  PT_NODE *derived = spec->info.spec.derived_table;
+
+  if (PT_IS_QUERY (derived))
+    {
+      /* forget a group set by an earlier translation; the group is decided again by the caller */
+      derived->info.query.shared_view_group = 0;
+      derived->info.query.shared_view_rep = false;
+    }
+
+  if (spec->info.spec.vclass_origin != NULL && info->n_specs < MQ_SHARED_VIEW_MAX_SPECS)
+    {
+      info->specs[info->n_specs++] = spec;
+    }
+}
+
+/*
+ * mq_collect_shared_derived () - collect the derived tables rewritten from a view in a query, outside of its WITH
+ *				  clause, in the order their XASL is generated
+ *   return:
+ *   parser(in):
+ *   query(in):
+ *   info(in/out):
+ *
+ * Note: the derived tables of the FROM clause of a query are generated before the other parts of the query
+ *	 (pt_generate_ctes_and_derived_tables ())
+ */
+static void
+mq_collect_shared_derived (PARSER_CONTEXT * parser, PT_NODE * query, MQ_SHARED_VIEW_INFO * info)
+{
+  PT_NODE *spec, *saved_query;
+
+  if (query->node_type == PT_SELECT)
+    {
+      for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
+	{
+	  if (PT_SPEC_IS_DERIVED (spec) && spec->info.spec.derived_table_type == PT_IS_SUBQUERY)
+	    {
+	      if (PT_IS_QUERY (spec->info.spec.derived_table)
+		  && (spec->info.spec.derived_table->info.query.hint & PT_HINT_QUERY_CACHE))
+		{
+		  /* prepared and executed apart, before the query (do_prepare_subquery ()) */
+		  spec->info.spec.derived_table->info.query.shared_view_group = 0;
+		  spec->info.spec.derived_table->info.query.shared_view_rep = false;
+		  continue;
+		}
+	      if (PT_IS_QUERY (spec->info.spec.derived_table))
+		{
+		  mq_collect_shared_derived (parser, spec->info.spec.derived_table, info);
+		}
+	      mq_add_shared_derived (spec, info);
+	    }
+	}
+    }
+
+  saved_query = info->query;
+  info->query = query;
+  (void) parser_walk_tree (parser, query, mq_collect_shared_derived_pre, info, NULL, NULL);
+  info->query = saved_query;
+}
+
+/*
+ * mq_collect_shared_derived_pre () - collect the derived tables of the subqueries of a query
  *   return: node
  *   parser(in):
  *   node(in):
@@ -9898,33 +9968,30 @@ static PT_NODE *
 mq_collect_shared_derived_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   MQ_SHARED_VIEW_INFO *info = (MQ_SHARED_VIEW_INFO *) arg;
-  PT_NODE *derived;
 
-  if (node->node_type == PT_WITH_CLAUSE)
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == info->query)
     {
+      return node;
+    }
+
+  if (node->node_type == PT_WITH_CLAUSE || node->node_type == PT_SPEC)
+    {
+      /* the derived tables of the FROM clause were collected by mq_collect_shared_derived () */
       *continue_walk = PT_LIST_WALK;
       return node;
     }
 
-  if (node->node_type != PT_SPEC || !PT_SPEC_IS_DERIVED (node) || node->info.spec.derived_table_type != PT_IS_SUBQUERY)
+  if (PT_IS_QUERY (node))
     {
-      return node;
+      /* a subquery with QUERY_CACHE is prepared and executed apart, before the query (do_prepare_subquery ()) */
+      if (!(node->info.query.hint & PT_HINT_QUERY_CACHE))
+	{
+	  mq_collect_shared_derived (parser, node, info);
+	}
+      *continue_walk = PT_LIST_WALK;
     }
-
-  derived = node->info.spec.derived_table;
-  if (PT_IS_QUERY (derived))
-    {
-      /* forget a group set by an earlier translation; the group is decided again by the caller */
-      derived->info.query.shared_view_group = 0;
-      derived->info.query.shared_view_rep = false;
-    }
-
-  if (node->info.spec.vclass_origin == NULL || info->n_specs >= MQ_SHARED_VIEW_MAX_SPECS)
-    {
-      return node;
-    }
-
-  info->specs[info->n_specs++] = node;
 
   return node;
 }
@@ -10018,83 +10085,6 @@ mq_find_unshareable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
     }
 
   return node;
-}
-
-/*
- * mq_is_top_level_from_spec () - is spec in the FROM clause of the query or of one of its set operation operands
- *   return: true if found
- *   query(in):
- *   spec(in):
- *
- * Note: such a derived table is always executed before the scans of the query, whatever the other references do
- */
-static bool
-mq_is_top_level_from_spec (PT_NODE * query, PT_NODE * spec)
-{
-  PT_NODE *from;
-
-  if (query == NULL)
-    {
-      return false;
-    }
-
-  switch (query->node_type)
-    {
-    case PT_SELECT:
-      for (from = query->info.query.q.select.from; from != NULL; from = from->next)
-	{
-	  if (from == spec)
-	    {
-	      return true;
-	    }
-	}
-      return false;
-
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      return (mq_is_top_level_from_spec (query->info.query.q.union_.arg1, spec)
-	      || mq_is_top_level_from_spec (query->info.query.q.union_.arg2, spec));
-
-    default:
-      return false;
-    }
-}
-
-/*
- * mq_is_cached_from_spec () - is spec in the FROM clause of a set operation operand with QUERY_CACHE
- *   return: true if found
- *   query(in):
- *   spec(in):
- *   is_operand(in): query is an operand of a set operation
- *
- * Note: such an operand is executed apart before the statement, and the statement takes its result from the result
- *	 cache without executing it
- */
-static bool
-mq_is_cached_from_spec (PT_NODE * query, PT_NODE * spec, bool is_operand)
-{
-  if (query == NULL)
-    {
-      return false;
-    }
-
-  if (is_operand && (query->info.query.hint & PT_HINT_QUERY_CACHE))
-    {
-      return mq_is_top_level_from_spec (query, spec);
-    }
-
-  switch (query->node_type)
-    {
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-      return (mq_is_cached_from_spec (query->info.query.q.union_.arg1, spec, true)
-	      || mq_is_cached_from_spec (query->info.query.q.union_.arg2, spec, true));
-
-    default:
-      return false;
-    }
 }
 
 /*
@@ -10305,11 +10295,12 @@ mq_adopt_view_columns (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * rep)
  *   parser(in):
  *   statement(in/out): query statement after mq_rewrite ()
  *
- * Note: the representative of a group is the first reference in the FROM clause of the statement, so materializing
- *	 the view first adds no evaluation that would not have happened anyway. A view is not shared if a predicate
- *	 was pushed into one of its references or if it can give a different result at each evaluation. A reference
- *	 joins the group if it comes after the representative and uses only columns of the representative. A view is
- *	 not shared either if the representative is in a set operation operand with QUERY_CACHE.
+ * Note: the representative of a group is the reference whose XASL is generated first (mq_collect_shared_derived ()),
+ *	 and a reference generated after it joins the group if it uses only columns of the representative. The XASL
+ *	 of the group is executed once, by the first reference that needs its result (qexec_execute_shared_view ()),
+ *	 wherever the representative is. A view is not shared if a predicate was pushed into one of its references or
+ *	 if it can give a different result at each evaluation. A reference in a query with QUERY_CACHE is not shared,
+ *	 since the query is prepared apart (mq_collect_shared_derived_pre ()).
  */
 static void
 mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -10327,7 +10318,12 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   info.n_specs = 0;
-  (void) parser_walk_tree (parser, statement, mq_collect_shared_derived_pre, &info, pt_continue_walk, NULL);
+  info.query = NULL;
+  mq_collect_shared_derived (parser, statement, &info);
+  if (info.n_specs < 2)
+    {
+      return;
+    }
 
   memset (grouped, 0, sizeof (grouped));
   for (i = 0; i < info.n_specs && group_id < PT_SHARED_VIEW_MAX_GROUPS; i++)
@@ -10353,10 +10349,15 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  continue;
 	}
 
-      /* the references before the representative are generated before it, so they can not reuse its result */
-      for (rep_idx = 0; rep_idx < n && !mq_is_top_level_from_spec (statement, group[rep_idx]); rep_idx++)
+      /* the references before the representative are generated before it, so they can not reuse its XASL */
+      for (rep_idx = 0; rep_idx < n - 1; rep_idx++)
 	{
-	  ;
+	  derived = group[rep_idx]->info.spec.derived_table;
+	  if (PT_IS_SELECT (derived) && derived->info.query.correlation_level == 0
+	      && mq_has_named_columns_first (group[rep_idx]))
+	    {
+	      break;
+	    }
 	}
       if (rep_idx >= n - 1)
 	{
@@ -10364,17 +10365,6 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       rep = group[rep_idx];
       derived = rep->info.spec.derived_table;
-
-      /* the representative would not be executed in an operand that the result cache substitutes */
-      if (mq_is_cached_from_spec (statement, rep, false))
-	{
-	  continue;
-	}
-
-      if (!PT_IS_SELECT (derived) || derived->info.query.correlation_level != 0 || !mq_has_named_columns_first (rep))
-	{
-	  continue;
-	}
 
       found_unshareable = false;
       (void) parser_walk_tree (parser, derived, mq_find_unshareable_expr, &found_unshareable, NULL, NULL);
@@ -10387,8 +10377,11 @@ mq_share_multi_ref_views (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (j = rep_idx + 1; j < n; j++)
 	{
 	  derived = group[j]->info.spec.derived_table;
-	  if (PT_IS_SELECT (derived) && derived->info.query.correlation_level == 0
-	      && mq_adopt_view_columns (parser, group[j], rep))
+	  if (!PT_IS_SELECT (derived) || derived->info.query.correlation_level != 0)
+	    {
+	      continue;
+	    }
+	  if (mq_adopt_view_columns (parser, group[j], rep))
 	    {
 	      derived->info.query.shared_view_group = group_id + 1;
 	      has_member = true;
