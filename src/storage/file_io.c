@@ -751,14 +751,14 @@ fileio_start_writeback (int vol_fd)
  *   npages(in): number of pages just written
  *   defer(in): true to only mark the volume, so the caller does not wait on the device
  *
- * Note: Nothing synchronizes temporary volumes: DWB does not take temporary pages, and fileio_synchronize_all walks
- *       only permanent volumes (a permanent volume with temporary purpose is synchronized there). The OS then keeps
- *       the pages as dirty page cache until its own writeback starts, so a large sort or index build can leave
- *       hundreds of MB that cannot be reclaimed until written. Once temp_writeback_size worth of temporary pages are
- *       written to a volume, start writeback of that volume without waiting for it to complete (the same call
- *       PostgreSQL makes for its *_flush_after parameters, which it does not apply to temporary files). This is only
- *       a hint: no durability is required for temporary pages, so a failure is ignored and a later write or read
- *       reports any real I/O error.
+ * Note: Nothing synchronizes temporary pages: DWB does not take them, and fileio_synchronize_all walks the permanent
+ *       volumes only when DWB is not created, so a permanent volume with temporary purpose is not synchronized either
+ *       while DWB is used. The OS then keeps the pages as dirty page cache until its own writeback starts, so a large
+ *       sort or index build can leave hundreds of MB that cannot be reclaimed until written. Once temp_writeback_size
+ *       worth of temporary pages are written to a volume, start writeback of that volume without waiting for it to
+ *       complete (the same call PostgreSQL makes for its *_flush_after parameters, which it does not apply to temporary
+ *       files). This is only a hint: no durability is required for temporary pages, so a failure is ignored and a later
+ *       write or read reports any real I/O error.
  */
 bool
 fileio_writeback_temp_pages (THREAD_ENTRY * thread_p, VOLID vol_id, int npages, bool defer)
