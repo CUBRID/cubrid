@@ -594,8 +594,9 @@ check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_re
  *    db_type(out): type of the domain found, DB_TYPE_NULL for a collection of no element domain
  *    data_format(in): data format the class is to be unloaded with
  * Note:
- *    A collection declared with no element domain may hold any value, OBJECT included, and a binary
- *    section has no place for an object reference, so it is found in a format other than the text.
+ *    A collection declared with no element domain may hold any value, OBJECT included, so it is found in
+ *    every data format. A binary section has no place for an object reference, and an extractor thread
+ *    cannot print one either, as it has no thread entry that SA_MODE needs to look the object up.
  */
 static bool
 check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type, int data_format)
@@ -614,7 +615,7 @@ check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type, int data_f
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
-	  if (db_domain_set (dom) == NULL && data_format != OBJECT_FORMAT_TEXT)
+	  if (db_domain_set (dom) == NULL)
 	    {
 	      *db_type = DB_TYPE_NULL;
 	      return true;
