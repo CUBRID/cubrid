@@ -2744,7 +2744,7 @@ disk_delete_volume_extension (THREAD_ENTRY * thread_p, VOLID volid)
 
   memset (&redo_data, 0, sizeof (redo_data));
   redo_data.volid = volid;
-  strncpy (redo_data.vol_fullname, info.vol_fullname, sizeof (redo_data.vol_fullname) - 1);
+  strncpy_bufsize (redo_data.vol_fullname, info.vol_fullname);
   log_append_dboutside_redo (thread_p, RVDK_DELETE_VOLUME,
 			     (int) (offsetof (DISK_DELVOL_PENDING, vol_fullname) + strlen (redo_data.vol_fullname) + 1),
 			     &redo_data);
