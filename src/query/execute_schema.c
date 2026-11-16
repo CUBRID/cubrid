@@ -10162,6 +10162,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      error = sm_set_class_comment (class_obj, NULL);
 	    }
+	  if (error == NO_ERROR)
+	    {
+	      /* A view has no instances, so the old representations that the new definition appended are not needed.
+	       * Remove them, as the builder of the system vclasses does, so that they do not pile up in the class
+	       * record each time the view is replaced. */
+	      error = sm_destroy_representations (class_obj);
+	    }
 	  if (error != NO_ERROR)
 	    {
 	      goto error_exit;
