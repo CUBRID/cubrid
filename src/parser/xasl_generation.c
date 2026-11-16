@@ -239,10 +239,6 @@ static REGU_VARIABLE *pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, con
 static REGU_VARIABLE *pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TYPE db_type,
 					     const PT_NODE * node);
 static REGU_VARIABLE *pt_make_regu_pred (const PRED_EXPR * pred);
-static DB_TYPE pt_default_expr_value_type (const DB_DEFAULT_EXPR * expr, const TP_DOMAIN * domain);
-static PT_NODE *pt_find_insert_given_default (const PT_NODE * statement, const char *name);
-static int pt_set_insert_given_default (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert, int a,
-					PT_NODE * data_default);
 static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABLE_LIST arg_list,
 					const DB_TYPE result_type, const PT_NODE * node);
 
@@ -488,6 +484,8 @@ static int pt_serial_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_N
 					     int **lock_listp, int **tcard_listp, int *nump, int *sizep);
 static PT_NODE *parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static XASL_NODE *pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type);
+static int pt_add_insert_given_defaults (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * statement,
+					 int num_source_vals);
 static int pt_to_constraint_pred (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * spec, PT_NODE * non_null_attrs,
 				  PT_NODE * attr_list, int attr_offset);
 static XASL_NODE *pt_to_fetch_as_scan_proc (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * join_term,
@@ -23854,19 +23852,7 @@ pt_default_value_type (DB_OBJECT * class_obj, const char *name, const TP_DOMAIN 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, name);
       return DB_TYPE_NULL;
     }
-  return pt_default_expr_value_type (&att->default_value.default_expr, domain);
-}
-
-/*
- * pt_default_expr_value_type () - the type the default of a default expression is made in before the INSERT casts it
- *   into the attribute's domain: see pt_default_value_type ()
- *   return: the type
- *   expr(in): the default expression of the attribute, or the one an INSERT gives in its place
- *   domain(in): the attribute's domain
- */
-static DB_TYPE
-pt_default_expr_value_type (const DB_DEFAULT_EXPR * expr, const TP_DOMAIN * domain)
-{
+  const DB_DEFAULT_EXPR *expr = &att->default_value.default_expr;
   const DB_TYPE attr_type = TP_DOMAIN_TYPE (domain);
   DB_TYPE type;
   switch (expr->default_expr_type)
@@ -23909,86 +23895,6 @@ pt_default_expr_value_type (const DB_DEFAULT_EXPR * expr, const TP_DOMAIN * doma
       return TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (attr_type) ? attr_type : DB_TYPE_VARCHAR;
     }
   return type;
-}
-
-/*
- * pt_find_insert_given_default () - the DEFAULT an INSERT ... SELECT gives to an attribute it leaves out, in place of
- *   the attribute's own: the DEFAULT of the view it was written on
- *   return: PT_DATA_DEFAULT, or NULL if the attribute takes its own default
- *   statement(in): translated insert
- *   name(in): attribute name
- */
-static PT_NODE *
-pt_find_insert_given_default (const PT_NODE * statement, const char *name)
-{
-  PT_NODE *attr = statement->info.insert.default_attrs;
-  PT_NODE *data_default = statement->info.insert.default_values;
-
-  for (; attr != NULL && data_default != NULL; attr = attr->next, data_default = data_default->next)
-    {
-      if (attr->node_type == PT_NAME && pt_str_compare (attr->info.name.original, name, CASE_INSENSITIVE) == 0)
-	{
-	  return data_default;
-	}
-    }
-
-  return NULL;
-}
-
-/*
- * pt_set_insert_given_default () - give a default slot of an INSERT the default to make in place of the attribute's
- *   own
- *   return: error code
- *   parser(in):
- *   insert(in/out): att_domains and the arrays of the given defaults are allocated
- *   a(in): the slot
- *   data_default(in): PT_DATA_DEFAULT
- */
-static int
-pt_set_insert_given_default (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert, int a, PT_NODE * data_default)
-{
-  DB_DEFAULT_EXPR expr;
-  DB_VALUE value;
-  TP_DOMAIN_STATUS status;
-
-  pt_get_default_expression_from_data_default_node (parser, data_default, &expr);
-
-  if (expr.default_expr_type != DB_DEFAULT_NONE)
-    {
-      insert->given_default_types[a] = expr.default_expr_type;
-      insert->given_default_ops[a] = expr.default_expr_op;
-      if (expr.default_expr_format != NULL)
-	{
-	  db_make_string (insert->given_default_formats[a], expr.default_expr_format);
-	}
-      insert->default_types[a] = pt_default_expr_value_type (&expr, insert->att_domains[a]);
-      return NO_ERROR;
-    }
-
-  /* a value: it is kept in the attribute's domain, as the default value of the attribute is */
-  db_make_null (&value);
-  pt_evaluate_tree (parser, data_default->info.data_default.default_value, &value, 1);
-  if (pt_has_error (parser))
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      pr_clear_value (&value);
-      return er_errid ();
-    }
-
-  status = tp_value_cast (&value, insert->given_default_vals[a], insert->att_domains[a], false);
-  if (status != DOMAIN_COMPATIBLE)
-    {
-      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, &value, insert->att_domains[a]);
-      pr_clear_value (&value);
-      return er_errid ();
-    }
-  pr_clear_value (&value);
-
-  insert->given_default_types[a] = DB_DEFAULT_NONE;
-  insert->given_default_ops[a] = NULL_DEFAULT_EXPRESSION_OPERATOR;
-  insert->default_types[a] = TP_DOMAIN_TYPE (insert->att_domains[a]);
-
-  return NO_ERROR;
 }
 
 /*
@@ -24605,6 +24511,72 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_add_insert_given_defaults () - make an INSERT ... SELECT on a view read, with each row its source has made, the
+ *   DEFAULTs of the view for its last attributes
+ *   return: error code
+ *   parser(in):
+ *   xasl(in/out): INSERT_PROC reading the list of its source (pt_make_aptr_parent_node)
+ *   statement(in): translated insert
+ *   num_source_vals(in): the visible columns of the source
+ *
+ * Note: the scan of the list of the source evaluates the DEFAULTs after DISTINCT or a set operation has made the
+ *   rows. Their value slots follow the visible columns, as the insert reads its values in a row, before the slots of
+ *   the columns ON DUPLICATE KEY UPDATE reads, which are bound before (pt_to_odku_info).
+ */
+static int
+pt_add_insert_given_defaults (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_NODE * statement, int num_source_vals)
+{
+  PT_NODE *values = statement->info.insert.default_values;
+  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+  SYMBOL_INFO *save_symbols = parser->symbols;
+  VAL_LIST *slots;
+  REGU_VARIABLE_LIST regus = NULL;
+  QPROC_DB_VALUE_LIST *link, last;
+  int *offsets;
+  int i;
+
+  assert (spec != NULL && spec->type == TARGET_LIST && xasl->val_list != NULL);
+
+  parser->symbols = pt_symbol_info_alloc ();
+  slots = pt_make_val_list (parser, values);
+  offsets = pt_make_identity_offsets (values);
+  if (parser->symbols != NULL && slots != NULL && offsets != NULL)
+    {
+      regus = pt_to_regu_variable_list (parser, values, UNBOX_AS_VALUE, slots, offsets);
+    }
+  if (offsets != NULL)
+    {
+      free_and_init (offsets);
+    }
+  parser->symbols = save_symbols;
+  if (regus == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	}
+      return ER_FAILED;
+    }
+
+  for (link = &xasl->val_list->valp, i = 0; i < num_source_vals && *link != NULL; i++)
+    {
+      link = &(*link)->next;
+    }
+  for (last = slots->valp; last->next != NULL; last = last->next)
+    {
+      ;
+    }
+  last->next = *link;
+  *link = slots->valp;
+  xasl->val_list->val_cnt += slots->val_cnt;
+
+  /* the predicate list reads the columns by position (fetch_val_list); the DEFAULTs are the rest */
+  pt_merge_regu_var_lists (&spec->s.list_node.list_regu_list_rest, regus);
+
+  return NO_ERROR;
+}
+
+/*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
  * return	  : Xasl node.
@@ -24624,7 +24596,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *class_obj = NULL;
   SM_CLASS *smclass = NULL;
   HFID *hfid = NULL;
-  int num_vals, num_default_expr;
+  int num_vals, num_default_expr, num_given_defaults = 0;
   int a, i, has_uniques;
   int error = NO_ERROR;
   PT_NODE *hint_arg = NULL;
@@ -24698,38 +24670,13 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
+  /* an INSERT ... SELECT on a view: the DEFAULTs of the view for the last attributes (pt_add_insert_given_defaults) */
+  num_given_defaults = pt_length_of_list (statement->info.insert.default_values);
+
   error = pt_find_omitted_default_expr (parser, class_obj, attrs, &default_expr_attrs);
   if (error != NO_ERROR)
     {
       return NULL;
-    }
-
-  /* an attribute that takes the DEFAULT of a view takes a default slot, also where the class gives it none (an
-   * auto_increment attribute) */
-  for (attr = statement->info.insert.default_attrs; attr != NULL; attr = attr->next)
-    {
-      PT_NODE *slot;
-
-      assert (attr->node_type == PT_NAME);
-      for (slot = default_expr_attrs; slot != NULL; slot = slot->next)
-	{
-	  if (pt_str_compare (slot->info.name.original, attr->info.name.original, CASE_INSENSITIVE) == 0)
-	    {
-	      break;
-	    }
-	}
-      if (slot == NULL)
-	{
-	  slot = parser_new_node (parser, PT_NAME);
-	  if (slot == NULL)
-	    {
-	      PT_INTERNAL_ERROR (parser, "allocate new node");
-	      return NULL;
-	    }
-	  slot->info.name.original = attr->info.name.original;
-	  slot->next = default_expr_attrs;
-	  default_expr_attrs = slot;
-	}
     }
   num_default_expr = pt_length_of_list (default_expr_attrs);
 
@@ -24739,7 +24686,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       assert (PT_IS_QUERY (query));
 
-      num_vals = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS);
+      num_vals = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS)
+	+ num_given_defaults;
       /* also add columns referenced in assignments */
       if (PT_IS_SELECT (query) && statement->info.insert.odku_assignments != NULL)
 	{
@@ -24936,49 +24884,14 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      AU_SAVE_AND_DISABLE (save_au);
 
-	      if (statement->info.insert.default_attrs != NULL && num_default_expr > 0)
-		{
-		  insert->given_default_types = regu_int_array_alloc (num_default_expr);
-		  insert->given_default_ops = regu_int_array_alloc (num_default_expr);
-		  regu_array_alloc (&insert->given_default_vals, num_default_expr);
-		  regu_array_alloc (&insert->given_default_formats, num_default_expr);
-		  if (insert->given_default_types == NULL || insert->given_default_ops == NULL
-		      || insert->given_default_vals == NULL || insert->given_default_formats == NULL)
-		    {
-		      ASSERT_ERROR_AND_SET (error);
-		    }
-		  for (a = 0; error >= NO_ERROR && a < num_default_expr; ++a)
-		    {
-		      insert->given_default_types[a] = -1;
-		      insert->given_default_ops[a] = NULL_DEFAULT_EXPRESSION_OPERATOR;
-		      regu_alloc (insert->given_default_vals[a]);
-		      regu_alloc (insert->given_default_formats[a]);
-		      if (insert->given_default_vals[a] == NULL || insert->given_default_formats[a] == NULL)
-			{
-			  ASSERT_ERROR_AND_SET (error);
-			  break;
-			}
-		      pt_register_orphan_db_value (parser, insert->given_default_vals[a]);
-		    }
-		}
-
 	      for (attr = default_expr_attrs, a = 0; error >= NO_ERROR && a < num_default_expr; attr = attr->next, ++a)
 		{
-		  PT_NODE *given = pt_find_insert_given_default (statement, attr->info.name.original);
-
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
 		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL)
-		    {
-		      ASSERT_ERROR_AND_SET (error);
-		    }
-		  else if (given != NULL)
-		    {
-		      error = pt_set_insert_given_default (parser, insert, a, given);
-		    }
-		  else if ((insert->default_types[a] =
-			    pt_default_value_type (class_obj, attr->info.name.original,
-						   insert->att_domains[a])) == DB_TYPE_NULL)
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL
+		      || (insert->default_types[a] =
+			  pt_default_value_type (class_obj, attr->info.name.original,
+						 insert->att_domains[a])) == DB_TYPE_NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
@@ -25010,6 +24923,25 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       ASSERT_ERROR_AND_SET (error);
+    }
+
+  if (xasl && statement->info.insert.odku_assignments)
+    {
+      /* before the DEFAULTs of a view take their value slots: the assignments read the source by its select list */
+      xasl->proc.insert.odku = pt_to_odku_info (parser, statement, xasl);
+      if (xasl->proc.insert.odku == NULL)
+	{
+	  if (pt_has_error (parser))
+	    {
+	      pt_report_to_ersys (parser, PT_SEMANTIC);
+	    }
+	  return NULL;
+	}
+    }
+
+  if (xasl != NULL && error >= NO_ERROR && num_given_defaults > 0)
+    {
+      error = pt_add_insert_given_defaults (parser, xasl, statement, num_vals - num_given_defaults);
     }
 
   if (xasl != NULL && error >= NO_ERROR)
@@ -25111,19 +25043,6 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      XASL_SET_FLAG (xasl, XASL_INCLUDES_TDE_CLASS);
 	    }
-	}
-    }
-
-  if (xasl && statement->info.insert.odku_assignments)
-    {
-      xasl->proc.insert.odku = pt_to_odku_info (parser, statement, xasl);
-      if (xasl->proc.insert.odku == NULL)
-	{
-	  if (pt_has_error (parser))
-	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	    }
-	  return NULL;
 	}
     }
 
