@@ -915,6 +915,7 @@ static bool qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p,
 						   UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid);
 static bool qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p);
 static bool qexec_spec_is_for_update (THREAD_ENTRY * thread_p, const ACCESS_SPEC_TYPE * spec);
+static bool qexec_is_value_error (int error);
 static bool qexec_defer_update_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static LOCATOR_LOCK_POLICY qexec_base_lock_policy (const UPDDEL_CLASS_INSTANCE_LOCK_INFO * lock_info);
 static LOCATOR_LOCK_POLICY qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy,
@@ -1498,7 +1499,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  if ((qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd, &xasl->list_id->type_list,
 						tplrec) != NO_ERROR))
 	    {
-	      GOTO_EXIT_ON_ERROR;
+	      /* the columns after a SET-type value are computed here, not by the descriptor */
+	      if (!qexec_defer_update_row (thread_p, xasl))
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      return NO_ERROR;
 	    }
 
 	  if ((qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl) != NO_ERROR))
@@ -1550,6 +1556,18 @@ exit_on_error:
 }
 
 /*
+ * qexec_is_value_error () - may the same row computed from another version not raise this error?
+ *   return: false for no error and for an interrupt, an abort or an out-of-memory, which end the statement as before
+ *   error(in): the error a row's values raised
+ */
+static bool
+qexec_is_value_error (int error)
+{
+  return (error != NO_ERROR && error != ER_INTERRUPTED && error != ER_LK_UNILATERALLY_ABORTED
+	  && error != ER_OUT_OF_VIRTUAL_MEMORY);
+}
+
+/*
  * qexec_defer_update_row () - Put off an error the select of an UPDATE raised computing the assignments of a row
  *			       another transaction changed after the snapshot
  *   return: true when deferred: the row's tuple holds its OIDs only, and the force phase computes it from the last
@@ -1588,10 +1606,8 @@ qexec_defer_update_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       return false;
     }
 
-  /* an error not from the values themselves ends the statement as before */
   error = er_errid ();
-  if (!scan_cache->last_version_unseen || error == NO_ERROR || error == ER_INTERRUPTED
-      || error == ER_LK_UNILATERALLY_ABORTED || error == ER_OUT_OF_VIRTUAL_MEMORY)
+  if (!scan_cache->last_version_unseen || !qexec_is_value_error (error))
     {
       return false;
     }
@@ -16285,7 +16301,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		}
 	      if (rc != NO_ERROR)
 		{
-		  GOTO_EXIT_ON_ERROR;
+		  if (!reevaluates_at_force || !qexec_is_value_error (er_errid ()))
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  /* converted from the version the snapshot sees: the force phase converts the last version again */
+		  er_clear ();
+		  row_deferred = true;
 		}
 	    }
 
