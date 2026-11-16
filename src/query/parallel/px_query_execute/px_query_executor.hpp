@@ -62,6 +62,7 @@ namespace parallel_query_execute
       THREAD_ENTRY *m_root_thread_p;
       worker_manager *m_worker_manager_p;
       queue *m_job_execution_queue;
+      wake_event *m_wake_event_p;
       bool *m_is_task_running_p;
       int m_parallelism;
     public:
