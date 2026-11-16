@@ -3057,6 +3057,11 @@ disk_rv_complete_delete_volume (THREAD_ENTRY * thread_p)
 
   if (disk_Delvol_pending_count == 0)
     {
+      /* redo may have emptied the list (a new volume with the same id); free what it allocated */
+      if (disk_Delvol_pending != NULL)
+	{
+	  free_and_init (disk_Delvol_pending);
+	}
       return;
     }
 
