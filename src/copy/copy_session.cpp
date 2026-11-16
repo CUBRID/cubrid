@@ -219,9 +219,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 
   if (data_len < 0)
     {
-      int format_error = (m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR : ER_COPY_BINARY_FORMAT_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, format_error, 1, "negative chunk length");
-      return format_error;
+      return format_error ("negative chunk length");
     }
 
   /* The footer says the encoder is done. Anything after it is a stream the two
@@ -313,10 +311,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 
 	    if (m_leftover.size () + take > COPY_MAX_ROW_BYTES)
 	      {
-		int format_error = (m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR : ER_COPY_BINARY_FORMAT_ERROR;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, format_error, 1,
-			"a single row exceeds the maximum buffered size");
-		error = format_error;
+		error = format_error ("a single row exceeds the maximum buffered size");
 		goto cleanup;
 	      }
 
@@ -418,9 +413,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  {
 	    if (!m_on_error_ignore)
 	      {
-		error = copy_format_error ((m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR
-					   : ER_COPY_BINARY_FORMAT_ERROR, m_row_number, null_col,
-					   "NULL in a NOT NULL column");
+		error = format_error ("NULL in a NOT NULL column", m_row_number, null_col);
 		goto cleanup;
 	      }
 	    error = reject_row (vals, m_row_number, null_col, "NULL in a NOT NULL column");
@@ -489,6 +482,20 @@ cleanup:
     }
 
   return error;
+}
+
+/* Raise this stream's format error; a row < 0 names no position. */
+int
+copy_session::format_error (const char *reason, std::int64_t row, int col) const
+{
+  int error_code = (m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR : ER_COPY_BINARY_FORMAT_ERROR;
+
+  if (row < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, reason);
+      return error_code;
+    }
+  return copy_format_error (error_code, row, col, reason);
 }
 
 /*
@@ -661,9 +668,7 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
    * anything left after it is genuinely unfinished. */
   if (!m_leftover.empty ())
     {
-      int format_error = (m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR : ER_COPY_BINARY_FORMAT_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, format_error, 1, "the stream ended in the middle of a row");
-      return format_error;
+      return format_error ("the stream ended in the middle of a row");
     }
 
   /* A BINARY stream ends with the footer, so its absence means the encoder did
@@ -752,22 +757,8 @@ copy_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len,
       goto invalid_config;
     }
 
-  /* a newer client says so by its version, and is told which one to resend in */
+  /* the transport refused a version outside 1 .. COPY_CONFIG_VERSION before calling here */
   ptr = or_unpack_int (ptr, &version);
-  if (version > COPY_CONFIG_VERSION)
-    {
-      char msg[96];
-
-      snprintf (msg, sizeof (msg), "COPY configuration version %d is newer than %d, the highest this server accepts",
-		version, COPY_CONFIG_VERSION);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, msg);
-      *error_code = ER_STREAM_SESSION_ERROR;
-      goto exit;
-    }
-  if (version < 1)
-    {
-      goto invalid_config;
-    }
 
   name_len = OR_GET_INT (ptr);
   if (name_len <= 0 || name_len > config_end - ptr - OR_INT_SIZE)

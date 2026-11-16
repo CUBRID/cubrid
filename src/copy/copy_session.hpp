@@ -59,6 +59,7 @@ class copy_session : public stream_session
   private:
     int flush_batch (THREAD_ENTRY *thread_p);	/* flush m_recdes_collected to the heap */
     int reject_row (DB_VALUE *vals, std::int64_t row, int col, const char *reason);	/* ON_ERROR IGNORE */
+    int format_error (const char *reason, std::int64_t row = -1, int col = -1) const;
 
     OID m_class_oid;
     HFID m_hfid;
