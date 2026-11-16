@@ -1061,19 +1061,18 @@ desc_value_special_fprint_binary (TEXT_OUTPUT * tout, DB_VALUE * value)
 	}
       break;
 
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-      [[fallthrough]];
-      /* other stubs */
-    case DB_TYPE_ERROR:
-    case DB_TYPE_POINTER:
-      assert (false);
-      break;
-
     default:
-      /* the others are handled by callers or internal-use only types */
-      break;
+      /*
+       * A collection, an object and a LOB are written by process_value (), and a class with an ERROR or a
+       * POINTER column is unloaded in text, see process_class (); the rest are internal types no column holds.
+       * A type that gets here anyway has no binary form yet, and writing nothing for it would leave a row
+       * loaddb rejects with no word from unloaddb, so it fails here.
+       */
+      assert (false);
+      fprintf (stderr, "error: a value of %s type cannot be written in binary data format.\n", db_get_type_name (type));
+      fflush (stderr);
+      error = ER_FAILED;
+      goto exit_on_error;
     }
 
 exit_on_end:

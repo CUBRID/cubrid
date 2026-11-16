@@ -1577,6 +1577,7 @@ namespace cubload
   {
     int precision, scale;
     unsigned char flags;
+    bool is_floating;
     std::size_t length;
     unsigned char buf[DB_NUMERIC_BUF_SIZE] = { 0 };
 
@@ -1589,6 +1590,7 @@ namespace cubload
     std::memcpy (&scale, col.data + sizeof (int), sizeof (int));
     flags = (unsigned char) col.data[sizeof (int) << 1];
     length = (unsigned char) col.data[ (sizeof (int) << 1) + 1];
+    is_floating = (flags & UNLOAD_RAW_NUMERIC_FLOATING) != 0;
 
     /* a magnitude longer than the buffer of this build does not fit any NUMERIC it can hold */
     if (precision < 1 || precision > DB_MAX_NUMERIC_PRECISION || (flags & ~UNLOAD_RAW_NUMERIC_FLAGS) != 0
@@ -1597,10 +1599,21 @@ namespace cubload
 	return binary_corrupted (col);
       }
 
+    /*
+     * A NUMERIC (p,s) keeps its scale within its precision. A floating one carries the scale of its value, which
+     * may be negative or above the precision (1e200 is held with precision 40 and scale -161, 1e-40 with
+     * precision 1 and scale 40), within the range its value header takes, see db_get_numeric_precision_and_scale ().
+     * A scale out of either range would be stored as it is, and is refused here as a damaged section.
+     */
+    if (is_floating ? (scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE) : (scale < 0 || scale > precision))
+      {
+	return binary_corrupted (col);
+      }
+
     std::memcpy (buf + sizeof (buf) - length, col.data + UNLOAD_RAW_NUMERIC_HEADER_SIZE, length);
 
-    return binary_make_numeric (col, buf, precision, scale, (flags & UNLOAD_RAW_NUMERIC_NEGATIVE) != 0,
-				(flags & UNLOAD_RAW_NUMERIC_FLOATING) != 0, val);
+    return binary_make_numeric (col, buf, precision, scale, (flags & UNLOAD_RAW_NUMERIC_NEGATIVE) != 0, is_floating,
+				val);
   }
 
   /*
