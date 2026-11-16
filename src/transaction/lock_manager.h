@@ -257,6 +257,7 @@ extern void lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT 
 extern void lock_unlock_all (THREAD_ENTRY * thread_p);
 extern LOCK lock_get_object_lock (const OID * oid, const OID * class_oid);
 extern bool lock_has_xlock (THREAD_ENTRY * thread_p);
+extern bool lock_is_deadlock_victim (const THREAD_ENTRY * thread_p);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern bool lock_has_lock_transaction (int tran_index);
 #endif

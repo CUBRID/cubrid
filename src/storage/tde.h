@@ -128,6 +128,12 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVBT_RECORD_MODIFY_UNDOREDO \
    || (rcvindex) == RVBT_RECORD_MODIFY_NO_UNDO \
    || (rcvindex) == RVBT_RECORD_MODIFY_COMPENSATE \
+   || (rcvindex) == RVBT_MVCC_DELETE_OBJECT \
+   || (rcvindex) == RVBT_MARK_DELETED \
+   || (rcvindex) == RVBT_DELETE_OBJECT_POSTPONE \
+   || (rcvindex) == RVBT_MVCC_NOTIFY_VACUUM \
+   || (rcvindex) == RVVAC_HEAP_RECORD_VACUUM \
+   || (rcvindex) == RVPGBUF_NEW_PAGE \
    || (rcvindex) == RVREPL_DATA_INSERT \
    || (rcvindex) == RVREPL_DATA_UPDATE \
    || (rcvindex) == RVREPL_DATA_DELETE \

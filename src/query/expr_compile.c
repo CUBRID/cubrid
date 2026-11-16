@@ -370,31 +370,19 @@ expr_hostvar_domain (const REGU_VARIABLE * regu)
  ******************************************************************************/
 
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583) for a
- * value of the planned type, which the step compiler copied; a step without one coerces by the value's type */
+ * value of the planned type, which the step compiler copied (a node without one is not compiled into a kernel) */
 int
 expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
-  TP_DOMAIN_STATUS dom_status;
-
-  if (domain_p == NULL)
-    {
-      return NO_ERROR;
-    }
+  assert (domain_p != NULL && conv != NULL);
   if (DB_IS_NULL (result_p))
     {
       /* tp_value_coerce's: a NULL comes out bare */
       db_make_null (result_p);
       return NO_ERROR;
     }
-  if (conv != NULL && DB_VALUE_DOMAIN_TYPE (result_p) == planned)
-    {
-      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
-    }
-  else
-    {
-      /* no converter, or a value of another type than planned: coerce by the value's type */
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-    }
+  assert (DB_VALUE_DOMAIN_TYPE (result_p) == planned);
+  const TP_DOMAIN_STATUS dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
@@ -2071,6 +2059,17 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
 	}
       bctx->step_prologue[j] = false;
       bctx->step_exec_prologue[j] = false;
+    }
+  for (j = mark->n_cells; j < bctx->n_cells; j++)
+    {
+      /* a cell that read a filter slot was counted with it (expr_compile_node_arith ()): the count goes with the
+       * cell, or the image claims more shared cells than it carries and its reader refuses it (CBRD-27994), and the
+       * flag goes too, or the next cell built at this index passes for a computed one */
+      if (bctx->cell_shared[j])
+	{
+	  bctx->cell_shared[j] = false;
+	  bctx->n_shared--;
+	}
     }
   bctx->n_steps = mark->n_steps;
   bctx->n_cells = mark->n_cells;
@@ -5961,12 +5960,14 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * the mirror kept for a plan that names a
 	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
 	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
-	 * (they skip the per-row clear), which a coercion into a string domain would break. */
+	 * (they skip the per-row clear), which a coercion into a string domain would break.  A node
+	 * without a converter (its value needs none) is declined too: the epilogue only converts. */
 	const DB_TYPE ktype = plan->type;
 	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
 	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
 
-	if (coerce_result && !TP_IS_NUMERIC_TYPE (rtype))
+	if (coerce_result && (!TP_IS_NUMERIC_TYPE (rtype)
+			      || tp_value_find_converter (ktype, exec_domain, DOMAIN_CONVERT_IMPLICIT) == NULL))
 	  {
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
@@ -6594,11 +6595,22 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, EXP
 
   expr_prog_materialize (prog, bctx->share_pred);
 #if !defined (NDEBUG)
-  for (i = 0; i < prog->n_cells; i++)
-    {
-      /* bound from the recorded source: the address the compiler wired */
-      assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
-    }
+  {
+    int n_share_cells = 0;
+
+    for (i = 0; i < prog->n_cells; i++)
+      {
+	/* bound from the recorded source: the address the compiler wired */
+	assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
+	if (prog->cell_src[i] == EXPR_CSRC_SHARE)
+	  {
+	    n_share_cells++;
+	  }
+      }
+    /* the image carries n_shared and its reader bounds it by the cells (expr_image_get_prog ()): one per cell that
+     * reads a filter slot, whatever the build rewound on the way (expr_build_rewind ()) */
+    assert (prog->n_shared == n_share_cells);
+  }
 #endif
 
   /* a predicate tree the caller owns (a compiled scan filter) resolves its cells against the same program */

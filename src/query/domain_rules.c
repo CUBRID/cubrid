@@ -727,8 +727,8 @@ domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAI
  *   argument into its domain.
  */
 void
-domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
-				   const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan)
+domain_plan_aggregate_accumulator (int function, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
+				   DOMAIN_ACCUMULATOR_PLAN * plan)
 {
   *plan = DOMAIN_ACCUMULATOR_PLAN ();
   const bool argument_typed = argument != NULL && !domain_is_variable (argument)
@@ -737,6 +737,9 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
     {
     case PT_CUME_DIST:
     case PT_PERCENT_RANK:
+      /* the finalization writes the DOUBLE result into the accumulator */
+      plan->value_dom = &tp_Double_domain;
+      plan->value2_dom = &tp_Null_domain;
       break;
 
     case PT_JSON_ARRAYAGG:
@@ -815,9 +818,8 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      /* a number or a date keeps the accumulator unset, as its first value left it before */
-      if (!TP_IS_NUMERIC_TYPE (opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (opr_dbtype) && !domain_is_variable (domain)
-	  && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+      /* the finalization writes the result, of the function's domain, into the accumulator */
+      if (!domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
 	{
 	  plan->value_dom = domain;
 	  plan->value2_dom = &tp_Null_domain;
@@ -908,10 +910,10 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
  * holds; none for the same type.
  * SUM / AVG: the sum has one domain for the partition, the function's - the first value is converted into it
  * (first_conv) and every addition's result is coerced to it - except a sum kept floating, which keeps the argument's
- * NUMERIC as it is (value_dom NULL): an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC. Every value is
- * added with the operand coercion of (sum, argument). An argument type the resident accumulator takes
- * (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT list's
- * values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
+ * NUMERIC as it is in the floating NUMERIC domain, uncoerced: an AVG over a NUMERIC argument, a SUM whose domain is
+ * NUMERIC. Every value is added with the operand coercion of (sum, argument). An argument type the resident accumulator
+ * takes (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT
+ * list's values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
  * (the sum's type, DOUBLE).
  * STDDEV / VARIANCE accumulate in DOUBLE: [1] the conversion of the argument's type into DOUBLE (tp_value_coerce's
  * implicit mode), which runs at every value that is not a DOUBLE already; NTILE takes its bucket count into DOUBLE
@@ -971,15 +973,18 @@ domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * do
   /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value or a
    * SUM's domain is NUMERIC; XASL generation casts an argument of no number type to DOUBLE */
   assert (!TP_IS_CHAR_TYPE (argument_type));
-  const DB_TYPE kept = function == PT_AVG ? argument_type : function_type;
-  const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : domain;
-  plan->value_dom = kept == DB_TYPE_NUMERIC ? NULL : domain;
+  const bool floating = (function == PT_AVG ? argument_type : function_type) == DB_TYPE_NUMERIC;
+  const TP_DOMAIN *sum = floating ? argument : domain;
+  plan->value_dom = floating ? &tp_Numeric_domain : domain;
   const DOMAIN_OPERAND operands[2] = {
     {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, argument_type, -1, false}
   };
   domain_plan_operand_coercion (T_ADD, operands, &plan->operand_coercion);
-  domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
-  if (plan->value_dom != NULL && argument_type != function_type)
+  if (!floating)
+    {
+      domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
+    }
+  if (!floating && argument_type != function_type)
     {
       /* the first value into the sum's domain: the operand coercion's conversion where the rule converts the
        * argument, the type pair's otherwise (a FLOAT into DOUBLE) */
@@ -1421,8 +1426,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      /* keyed on the operand type (opr_dbtype), as the operator does; a number or date operand leaves value_dom unset,
-       * so the accumulator here is the function domain */
+      /* keyed on the operand type, as the operator does; the accumulator is the function domain */
       if (operand->val_type == DB_TYPE_NULL && operand->domain != NULL
 	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
 	{
@@ -2886,10 +2890,10 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, b
       conv_kind[side] = DOMAIN_HASH_KEY_AS_IS;
       if (*coerce && resolved != domain[side])
 	{
-	  /* tp_value_coerce's: a JSON value converts by its scalar, a string domain whose collation is the values'
-	   * (LEAVE, ENFORCE) takes them as they are - coerced at the row */
-	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON
-	    || TP_DOMAIN_COLLATION_FLAG (resolved) != TP_DOMAIN_COLL_NORMAL ? DOMAIN_HASH_KEY_COERCED
+	  /* tp_value_coerce's: a JSON value converts by its scalar - coerced at the row; XASL generation gives every
+	   * other key a domain of its collation */
+	  assert (TP_DOMAIN_COLLATION_FLAG (resolved) == TP_DOMAIN_COLL_NORMAL);
+	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON ? DOMAIN_HASH_KEY_COERCED
 	    : DOMAIN_HASH_KEY_CONVERTED;
 	}
       domain_compare_key_of (*coerce ? resolved : domain[side], &key[side]);
