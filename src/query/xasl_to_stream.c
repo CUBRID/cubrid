@@ -222,6 +222,7 @@ static char *xts_process_sort_list (char *ptr, const SORT_LIST * sort_list);
 static char *xts_process_connectby_proc (char *ptr, const CONNECTBY_PROC_NODE * connectby_proc);
 static char *xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list);
 static char *xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache);
+static char *xts_process_memoize_key (char *ptr, const SQ_KEY * key);
 
 static int xts_sizeof (const json_table_column & ptr);
 static int xts_sizeof (const json_table_node & ptr);
@@ -2932,6 +2933,37 @@ xts_save_key_val_array (const KEY_VAL_RANGE * key_val_array, int nelements)
   return offset;
 }
 
+/* CBRD-27993: -1 for no key, else the slot count, the slots and their domains */
+static char *
+xts_process_memoize_key (char *ptr, const SQ_KEY * key)
+{
+  int offset;
+
+  if (key == NULL)
+    {
+      return or_pack_int (ptr, -1);
+    }
+
+  ptr = or_pack_int (ptr, key->n_elements);
+  if (key->n_elements == 0)
+    {
+      return ptr;
+    }
+
+  offset = xts_save_db_value_array (key->dbv_array, key->n_elements);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+  for (int i = 0; i < key->n_elements; i++)
+    {
+      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, key->domains[i], 0, 0);
+    }
+
+  return ptr;
+}
+
 static char *
 xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 {
@@ -3429,6 +3461,12 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
 
+  ptr = xts_process_memoize_key (ptr, xasl->memoize_key);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
   ptr = or_pack_int (ptr, xasl->parallelism);
 
   return ptr;
@@ -3634,7 +3672,7 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
 
   ptr = or_pack_int (ptr, build_list_proc->g_hash_eligible);
 
-  ptr = or_pack_int (ptr, build_list_proc->g_output_first_tuple);
+  ptr = or_pack_int (ptr, build_list_proc->g_first_tuple);
   ptr = or_pack_int (ptr, build_list_proc->g_hkey_size);
 
   offset = xts_save_regu_variable_list (build_list_proc->g_hk_scan_regu_list);
@@ -3899,6 +3937,8 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
     {
       return NULL;
     }
+
+  ptr = or_pack_int (ptr, node_p->has_ineligible ? 1 : 0);
 
   return xts_pack_hash_join_keys (ptr, node_p);
 }
@@ -5796,8 +5836,13 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 {
   int offset;
 
-  /* we prepend the domain before we pack the regu_variable */
-  ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->domain, 0, 0);
+  /* the type, then the domain: a regu value list is a container of values, not a value, and carries none */
+  ptr = or_pack_int (ptr, regu_var->type);
+  assert ((regu_var->type == TYPE_REGU_VAR_LIST) == (regu_var->domain == NULL));
+  if (regu_var->type != TYPE_REGU_VAR_LIST)
+    {
+      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->domain, 0, 0);
+    }
 
   /* CBRD-27583: a value its consumer wants in another domain carries the domain it is read in and the mode */
   ptr = or_pack_int (ptr, xts_regu_converts (regu_var));
@@ -5806,8 +5851,6 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
       ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->original_domain, 0, 0);
       ptr = or_pack_int (ptr, regu_var->conv_mode);
     }
-
-  ptr = or_pack_int (ptr, regu_var->type);
 
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
@@ -6716,10 +6759,16 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + PTR_SIZE		/* next */
 	   + OR_INT_SIZE	/* sq_cache_n_elements */
 	   + PTR_SIZE		/* sq_cache */
+	   + OR_INT_SIZE	/* memoize key n_elements */
+	   + PTR_SIZE		/* memoize key slots */
 	   + OR_INT_SIZE);	/* parallelism */
   for (int i = 0; xasl->sq_cache != NULL && i < xasl->sq_cache->sq_key_struct->n_elements; i++)
     {
       size += or_packed_domain_size (xasl->sq_cache->sq_key_struct->domains[i], 0);	/* sq_cache key domains */
+    }
+  for (int i = 0; xasl->memoize_key != NULL && i < xasl->memoize_key->n_elements; i++)
+    {
+      size += or_packed_domain_size (xasl->memoize_key->domains[i], 0);	/* memoize key domains */
     }
 
   return size;
@@ -6831,7 +6880,7 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + OR_INT_SIZE	/* g_grbynum_flag */
 	   + OR_INT_SIZE	/* g_with_rollup */
 	   + OR_INT_SIZE	/* g_hash_eligible */
-	   + OR_INT_SIZE	/* g_output_first_tuple */
+	   + OR_INT_SIZE	/* g_first_tuple */
 	   + OR_INT_SIZE	/* g_hkey_size */
 	   + OR_INT_SIZE	/* g_func_count */
 	   + PTR_SIZE		/* g_agg_list */
@@ -6969,6 +7018,8 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
       return ER_FAILED;
     }
   size += tmp_size;
+
+  size += OR_INT_SIZE;		/* has_ineligible */
 
   tmp_size = xts_sizeof_hash_join_keys (node_p);
   if (tmp_size == ER_FAILED)
@@ -7965,9 +8016,8 @@ static void
 xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan)
 {
   const TP_DOMAIN *argument = xts_argument_domain (aggregate->operands != NULL ? &aggregate->operands->value : NULL);
-  domain_plan_aggregate_accumulator (aggregate->function, aggregate->opr_dbtype,
-				     domain_key_value_domain (aggregate->domain), domain_key_value_domain (argument),
-				     plan);
+  domain_plan_aggregate_accumulator (aggregate->function, domain_key_value_domain (aggregate->domain),
+				     domain_key_value_domain (argument), plan);
 }
 
 /* an analytic function's accumulator plan (domain_plan_analytic_accumulator), from its domain and its argument's */
@@ -8507,10 +8557,9 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
       return 0;
     }
 
-  /* we prepend the domain before we pack the regu_variable */
-  size += (or_packed_domain_size (regu_var->domain, 0)	/* domain */
+  size += (OR_INT_SIZE		/* type */
+	   + (regu_var->type != TYPE_REGU_VAR_LIST ? or_packed_domain_size (regu_var->domain, 0) : 0)	/* domain */
 	   + OR_INT_SIZE	/* converts */
-	   + OR_INT_SIZE	/* type */
 	   + OR_INT_SIZE	/* flags */
 	   + PTR_SIZE		/* vfetch_to */
 	   + PTR_SIZE);		/* REGU_VARIABLE_XASL */

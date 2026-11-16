@@ -28,6 +28,7 @@
 #include "heap_attrinfo.h"
 #include "query_executor.h"
 #include "query_list.h"
+#include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "xasl_predicate.hpp"
 #include "xasl_sp.hpp"
@@ -97,6 +98,9 @@ namespace cubxasl
 
       SP_TYPE *spawn (const SP_TYPE *src);
       PL_SIGNATURE_TYPE *spawn (const PL_SIGNATURE_TYPE *src);
+
+      /* (XASL_NODE *)->outptr_list */
+      OUTPTR_LIST *spawn (const OUTPTR_LIST *src);
 
       /* (XASL_NODE *)->val_list */
       VAL_LIST *spawn (const VAL_LIST *src);
@@ -301,6 +305,14 @@ namespace cubxasl
 	      {
 		delete typed_ptr[i].pe.m_eval_term.et.et_rlike.compiled_regex;
 	      }
+	  }
+      }
+    else if constexpr (std::is_same_v<T, OUTPTR_LIST>)
+      {
+	/* a worker's copy compiles its own program over the spawned values (qdata_valptr_prog_ensure ()) */
+	for (int i = 0; i < count; i++)
+	  {
+	    qdata_free_valptr_list_prog (thread_p, &typed_ptr[i]);
 	  }
       }
     else

@@ -70,7 +70,7 @@ extern int ux_cursor_update (T_SRV_HANDLE * srv_handle, int cursor_pos, int argc
 extern void ux_cursor_close (T_SRV_HANDLE * srv_handle);
 extern int ux_oid_put (int argc, void **argv, T_NET_BUF * net_buf);
 extern int make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf,
-			    char desired_type);
+			    char desired_type, bool typed_null);
 extern int ux_get_attr_type_str (char *class_name, char *attr_name, T_NET_BUF * net_buf, T_REQ_INFO *);
 extern int ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf);
 extern int ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf);
@@ -93,6 +93,24 @@ extern void ux_set_session_id (const SESSION_ID session_id);
 extern int ux_lob_new (int lob_type, T_NET_BUF * net_buf);
 extern int ux_lob_write (DB_VALUE * lob_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
 extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
+
+extern void ux_stream_reset (void);
+extern bool ux_stream_is_open (void);
+extern bool ux_stream_admits_request (int func_code);
+extern bool ux_stream_finds_no_upload (int func_code);
+extern void ux_stream_note_status_before (int con_status);
+extern void ux_stream_refused_before_server (void);
+extern int ux_stream_status_to_restore (void);
+extern int ux_stream_init (int stream_kind, char *config, int config_len, bool final, bool auto_commit, char *data,
+			   int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_end (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_read_open (int stream_kind, char *config, int config_len, int first_max, char flags,
+				T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_read (INT64 handle, int max, char flags, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_release (INT64 handle, bool auto_commit, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern void ux_stream_result_set_commit (T_REQ_INFO * req_info);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 

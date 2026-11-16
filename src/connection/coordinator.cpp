@@ -279,8 +279,7 @@ namespace cubconn::connection
     request.worker_ptr = workers[to].get ();
     request.worker_index = to;
 
-    workers[from]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[from]->notify ())
+    if (!workers[from]->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY, std::move (request)))
       {
 	assert_release (false);
       }
@@ -310,8 +309,8 @@ namespace cubconn::connection
     m_statistics[m_current_worker].m_score = 0;
 
     request.type = connection::worker::message_type::AWAKEN;
-    workers[m_current_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[m_current_worker]->notify ())
+    if (!workers[m_current_worker]->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY,
+	std::move (request)))
       {
 	assert_release (false);
       }
@@ -330,8 +329,8 @@ namespace cubconn::connection
     connection::worker::message request;
 
     request.type = connection::worker::message_type::HIBERNATE;
-    workers[m_scaling.draining_worker]->enqueue (cubconn::connection::worker::queue_type::LAZY, std::move (request));
-    if (!workers[m_scaling.draining_worker]->notify ())
+    if (!workers[m_scaling.draining_worker]->enqueue_and_notify (cubconn::connection::worker::queue_type::LAZY,
+	std::move (request)))
       {
 	assert_release (false);
       }
@@ -976,8 +975,7 @@ namespace cubconn::connection
     request.ctx->m_id = id++;
     request.conn = item.conn;
 
-    workers[worker]->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!workers[worker]->notify ())
+    if (!workers[worker]->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)))
       {
 	assert_release (false);
       }

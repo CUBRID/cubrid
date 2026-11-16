@@ -225,10 +225,15 @@ static int pt_product_sets (PARSER_CONTEXT * parser, TP_DOMAIN * domain, DB_VALU
 static PT_NODE *pt_to_false_subquery (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_recursive_expr_type (PARSER_CONTEXT * parser, PT_NODE * gl_expr);
 static PT_NODE *pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr);
 static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_is_int_value_at_least (PT_NODE * node, DB_BIGINT min_value);
+static bool pt_exists_limit_is_removable (PT_NODE * node);
+static void pt_remove_exists_limit (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_query_has_intersect_or_difference (PT_NODE * node);
 static void pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node);
 static void pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool record_bind_domain);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
@@ -5328,9 +5333,9 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
        * from the select list */
       PT_NODE *arg2_list = NULL;
 
-      /* duplicates are not relevant; order by is not relevant; */
-      expr->info.expr.arg2->info.query.all_distinct = PT_DISTINCT;
-      pt_try_remove_order_by (parser, arg2);
+      /* only the set of values matters to a range predicate.
+       * DISTINCT is set only where it keeps that set, see pt_try_set_subquery_distinct (). */
+      (void) pt_try_set_subquery_distinct (parser, arg2);
 
       arg2_list = pt_get_select_list (parser, arg2);
       if (arg2_list == NULL)
@@ -7752,7 +7757,7 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
     case PT_EXPR:
       {
-	PT_NODE *recurs_expr = node, *node_tmp = NULL;
+	PT_NODE *recurs_expr = node;
 	PT_TYPE_ENUM common_type = PT_TYPE_NONE;
 	bool has_enum = false;
 	PT_NODE **recurs_arg = NULL, **norm_arg = NULL;
@@ -7787,12 +7792,10 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    /* In order to correctly compute the common type we need to know the type of each argument and therefore we
 	     * compute it. */
-	    node_tmp = pt_semantic_type (parser, *norm_arg, (SEMANTIC_CHK_INFO *) arg);
-	    if (*norm_arg == NULL || pt_has_error (parser))
+	    if (pt_semantic_type_in_place (parser, norm_arg, (SEMANTIC_CHK_INFO *) arg) != NO_ERROR)
 	      {
 		return node;
 	      }
-	    *norm_arg = node_tmp;
 	    if ((*norm_arg)->type_enum != PT_TYPE_ENUMERATION)
 	      {
 		if (common_type == PT_TYPE_NONE)
@@ -7810,12 +7813,10 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    if (*recurs_arg == NULL || !PT_IS_RECURSIVE_EXPRESSION (*recurs_arg) || op != (*recurs_arg)->info.expr.op)
 	      {
-		node_tmp = pt_semantic_type (parser, *recurs_arg, (SEMANTIC_CHK_INFO *) arg);
-		if (node_tmp == NULL || pt_has_error (parser))
+		if (pt_semantic_type_in_place (parser, recurs_arg, (SEMANTIC_CHK_INFO *) arg) != NO_ERROR)
 		  {
 		    return node;
 		  }
-		*recurs_arg = node_tmp;
 		if ((*recurs_arg)->type_enum != PT_TYPE_ENUMERATION)
 		  {
 		    if (common_type == PT_TYPE_NONE)
@@ -7834,12 +7835,11 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      }
 	    if (recurs_expr->info.expr.arg3 != NULL)
 	      {
-		node_tmp = pt_semantic_type (parser, recurs_expr->info.expr.arg3, (SEMANTIC_CHK_INFO *) arg);
-		if (node_tmp == NULL || pt_has_error (parser))
+		if (pt_semantic_type_in_place (parser, &recurs_expr->info.expr.arg3, (SEMANTIC_CHK_INFO *) arg) !=
+		    NO_ERROR)
 		  {
 		    return node;
 		  }
-		recurs_expr->info.expr.arg3 = node_tmp;
 	      }
 	    recurs_expr = *recurs_arg;
 	  }
@@ -8488,6 +8488,138 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 }
 
 /*
+ * pt_is_int_value_at_least () - check if the node is an integer constant not less than min_value
+ *   return: true if so
+ *   node(in):
+ *   min_value(in):
+ */
+static bool
+pt_is_int_value_at_least (PT_NODE * node, DB_BIGINT min_value)
+{
+  if (node == NULL || node->node_type != PT_VALUE)
+    {
+      return false;
+    }
+
+  switch (node->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+      return node->info.value.data_value.i >= min_value;
+    case PT_TYPE_BIGINT:
+      return node->info.value.data_value.bigint >= min_value;
+    default:
+      return false;
+    }
+}
+
+/*
+ * pt_exists_limit_is_removable () - check if LIMIT and FOR ORDERBY_NUM() of an EXISTS subquery (and of its set
+ *				      operands) can be removed together with ORDER BY
+ *   return: true if removable
+ *   node(in): query
+ *
+ * Note: a query with "LIMIT n" (n >= 1) returns a row if and only if the query without ORDER BY and LIMIT does,
+ *	 so for EXISTS they can be removed. With an offset (or any other bound) they decide whether a row is
+ *	 returned, so they must be kept, and so must the select list since ORDER BY may refer to it by position.
+ */
+static bool
+pt_exists_limit_is_removable (PT_NODE * node)
+{
+  PT_NODE *orderby_for, *limit;
+
+  if (!pt_is_query (node))
+    {
+      return true;
+    }
+
+  orderby_for = node->info.query.orderby_for;
+  if (orderby_for != NULL)
+    {
+      /* only 'orderby_num() <= n' (n >= 1) or 'orderby_num() < n' (n >= 2) */
+      if (!pt_is_orderby_for_upper_bound (orderby_for))
+	{
+	  return false;
+	}
+      if (!(orderby_for->info.expr.op == PT_LE && pt_is_int_value_at_least (orderby_for->info.expr.arg2, 1))
+	  && !(orderby_for->info.expr.op == PT_LT && pt_is_int_value_at_least (orderby_for->info.expr.arg2, 2)))
+	{
+	  return false;
+	}
+    }
+
+  if (node->node_type == PT_SELECT)
+    {
+      /* LIMIT of a SELECT without FOR ORDERBY_NUM() is rewritten to INST_NUM() or GROUPBY_NUM() predicates, which do
+       * not depend on the select list */
+      return true;
+    }
+
+  /* LIMIT of a set operation without ORDER BY is not rewritten yet */
+  limit = node->info.query.limit;
+  if (orderby_for == NULL && limit != NULL && node->info.query.flag.rewrite_limit
+      && (limit->next != NULL || !pt_is_int_value_at_least (limit, 1)))
+    {
+      return false;
+    }
+
+  return (pt_exists_limit_is_removable (node->info.query.q.union_.arg1)
+	  && pt_exists_limit_is_removable (node->info.query.q.union_.arg2));
+}
+
+/*
+ * pt_query_has_intersect_or_difference () - check if the query is or has as a set operand INTERSECT or EXCEPT
+ *   return: true if found
+ *   node(in): query
+ */
+static bool
+pt_query_has_intersect_or_difference (PT_NODE * node)
+{
+  if (!pt_is_query (node) || node->node_type == PT_SELECT)
+    {
+      return false;
+    }
+
+  if (node->node_type != PT_UNION)
+    {
+      return true;
+    }
+
+  return (pt_query_has_intersect_or_difference (node->info.query.q.union_.arg1)
+	  || pt_query_has_intersect_or_difference (node->info.query.q.union_.arg2));
+}
+
+/*
+ * pt_remove_exists_limit () - remove LIMIT and FOR ORDERBY_NUM() checked by pt_exists_limit_is_removable ()
+ *   return: none
+ *   parser(in):
+ *   node(in/out): query
+ */
+static void
+pt_remove_exists_limit (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (!pt_is_query (node))
+    {
+      return;
+    }
+
+  if (node->info.query.orderby_for != NULL)
+    {
+      parser_free_tree (parser, node->info.query.orderby_for);
+      node->info.query.orderby_for = NULL;
+      parser_free_tree (parser, node->info.query.limit);
+      node->info.query.limit = NULL;
+      node->info.query.flag.rewrite_limit = 0;
+    }
+  else if (node->node_type != PT_SELECT && node->info.query.limit != NULL && node->info.query.flag.rewrite_limit)
+    {
+      parser_free_tree (parser, node->info.query.limit);
+      node->info.query.limit = NULL;
+      node->info.query.flag.rewrite_limit = 0;
+    }
+}
+
+/*
  * pt_chop_to_one_select_item () -
  *   return: none
  *   parser(in):
@@ -8498,6 +8630,29 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   if (pt_is_query (node))
     {
+      if (pt_query_has_intersect_or_difference (node))
+	{
+	  /* INTERSECT and EXCEPT compare whole rows of their operands, so neither their select lists nor LIMIT can be
+	   * changed. The select lists of the other set operands must be kept too, to match the number of columns. */
+	  return;
+	}
+
+      if (pt_has_analytic (parser, node))
+	{
+	  /* the analytic functions are evaluated with the select list, and ORDER BY may refer to them by position, so
+	   * the select list can not be chopped */
+	  return;
+	}
+
+      if (!pt_exists_limit_is_removable (node))
+	{
+	  /* LIMIT (FOR ORDERBY_NUM()) decides whether a row is returned, so ORDER BY can not be removed. Also the
+	   * select list must be kept since ORDER BY may refer to its items by position. */
+	  return;
+	}
+
+      pt_remove_exists_limit (parser, node);
+
       if (node->node_type == PT_SELECT)
 	{
 	  /* chop to one select item */
@@ -8528,7 +8683,8 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
  *  result: query with all lists updated
  *  parser(in):
  *  query(in):
- *  attrs(in): list of attributes to append to the query
+ *  attrs(in): list of attributes to append to the query; a set operation
+ *	       appends a separate copy to each of its arms
  */
 PT_NODE *
 pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * attrs)
@@ -8550,9 +8706,21 @@ pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE *
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
-      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs);
-      break;
+      {
+	/* a node can be linked into only one select list, so the second arm gets its own copy */
+	PT_NODE *attrs_copy = parser_copy_tree_list (parser, attrs);
+
+	if (attrs_copy == NULL)
+	  {
+	    PT_INTERNAL_ERROR (parser, "allocate new node");
+	    break;
+	  }
+
+	query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
+	query->info.query.q.union_.arg2 =
+	  pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs_copy);
+	break;
+      }
     default:
       break;
     }
@@ -10406,6 +10574,12 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      pt_chop_to_one_select_item (parser, arg1);
 	    }
+	}
+      else if (PT_IS_VALUE_NODE (arg1) && arg1->info.value.is_false_where)
+	{
+	  /* a subquery that returns no row, folded to a NULL value: EXISTS over it is false, never NULL. With the NULL
+	   * type the folded value 0 would print as null and share the XASL cache key of an expression that is NULL. */
+	  node->type_enum = PT_TYPE_LOGICAL;
 	}
       else if (arg1_type == PT_TYPE_NA || arg1_type == PT_TYPE_NULL)
 	{
@@ -19768,23 +19942,25 @@ end:
 }
 
 /*
- * pt_semantic_type () - sets data types for all expressions in a parse tree
- * 			 and evaluates constant sub expressions
- *   return:
+ * pt_semantic_type_in_place () - pt_semantic_type () that keeps *tree pointing to the resulting tree even on error
+ *   return: NO_ERROR or ER_FAILED
  *   parser(in):
- *   tree(in/out):
+ *   tree(in/out): replaced with the resulting tree, which may differ from the input tree; kept if the result is NULL
  *   sc_info_ptr(in):
+ *
+ * Note: pt_semantic_type () returns NULL on error, so a caller cannot get the node that replaced (and freed) the input
+ *       tree during type checking or constant folding.
  */
-
-PT_NODE *
-pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
+static int
+pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info_ptr)
 {
   PT_NODE *spec = NULL;
-  SEMANTIC_CHK_INFO sc_info = { tree, NULL, 0, 0, 0, false, false, false };
+  PT_NODE *result = NULL;
+  SEMANTIC_CHK_INFO sc_info = { *tree, NULL, 0, 0, 0, false, false, false };
 
   if (pt_has_error (parser))
     {
-      return NULL;
+      return ER_FAILED;
     }
   if (sc_info_ptr == NULL)
     {
@@ -19793,18 +19969,18 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
 
   sc_info_ptr->has_dblink = false;
 
-  if (tree)
+  if (*tree)
     {
-      switch (tree->node_type)
+      switch ((*tree)->node_type)
 	{
 	case PT_DELETE:
-	  spec = tree->info.delete_.spec;
+	  spec = (*tree)->info.delete_.spec;
 	  break;
 	case PT_INSERT:
-	  spec = tree->info.insert.spec;
+	  spec = (*tree)->info.insert.spec;
 	  break;
 	case PT_UPDATE:
-	  spec = tree->info.update.spec;
+	  spec = (*tree)->info.update.spec;
 	  break;
 	default:
 	  break;
@@ -19817,11 +19993,15 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     }
 
   /* do type checking */
-  tree = parser_walk_tree (parser, tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
+  result = parser_walk_tree (parser, *tree, pt_eval_type_pre, sc_info_ptr, pt_eval_type, sc_info_ptr);
+  if (result == NULL)
+    {
+      return ER_FAILED;
+    }
+  *tree = result;
   if (pt_has_error (parser))
     {
-      tree = NULL;
-      return tree;
+      return ER_FAILED;
     }
 
   /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
@@ -19829,11 +20009,36 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     {
       PT_NODE *spec_list = NULL;
       /* do constant folding */
-      tree = parser_walk_tree (parser, tree, pt_fold_constants_pre, &spec_list, pt_fold_constants_post, sc_info_ptr);
+      result = parser_walk_tree (parser, *tree, pt_fold_constants_pre, &spec_list, pt_fold_constants_post, sc_info_ptr);
+      if (result == NULL)
+	{
+	  return ER_FAILED;
+	}
+      *tree = result;
       if (pt_has_error (parser))
 	{
-	  tree = NULL;
+	  return ER_FAILED;
 	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_semantic_type () - sets data types for all expressions in a parse tree
+ * 			 and evaluates constant sub expressions
+ *   return:
+ *   parser(in):
+ *   tree(in/out):
+ *   sc_info_ptr(in):
+ */
+
+PT_NODE *
+pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  if (pt_semantic_type_in_place (parser, &tree, sc_info_ptr) != NO_ERROR)
+    {
+      return NULL;
     }
 
   return tree;

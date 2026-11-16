@@ -340,6 +340,8 @@ typedef struct hashjoin_context
   HASHJOIN_FETCH_INFO *probe;
 
   HASH_LIST_SCAN hash_scan;
+
+  OUTPTR_LIST *outptr_list;
   PRED_EXPR *during_join_pred;
   PRED_EXPR *after_join_pred;
   VAL_DESCR *val_descr;
@@ -353,23 +355,22 @@ typedef struct hashjoin_context
 /* HASHJOIN_MANAGER*/
 typedef struct hashjoin_manager
 {
-  /* Pointer to a member of HASHJOIN_PROC_NODE. */
+  /* Reference to members of HASHJOIN_PROC_NODE. */
   HASHJOIN_INPUT *outer;
   HASHJOIN_INPUT *inner;
   QFILE_LIST_MERGE_INFO *merge_info;
+  bool has_ineligible;
 
   /* Copy of a member of QFILE_LIST_MERGE_INFO. */
   JOIN_TYPE join_type;
   int key_cnt;
 
-  /* Pointers to members of XASL_NODE. */
-  PRED_EXPR *during_join_pred;
-  PRED_EXPR *after_join_pred;
+  /* Copy of a member of XASL_NODE (parallelism) as the requested degree, then the workers reserved, or 0 when
+   * hjoin_try_parallel () or hjoin_try_parallel_probe () decides on a serial join. */
   int num_parallel_threads;
 
-  /* Pointer to a member of XASL_STATE. */
+  /* Copy of a member of XASL_STATE. */
   QUERY_ID query_id;
-  VAL_DESCR *val_descr;
 
   /* max_hash_list_scan_size, read once per join */
   UINT64 mem_limit;
@@ -424,9 +425,9 @@ DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe
 			    PRED_EXPR * pred, VAL_DESCR * val_descr);
 
 /* Merge QFILE_LIST_ID */
-int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
-				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
-				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
+int hjoin_add_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
+				QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
+				QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
 
 void hjoin_trace_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats);
 void hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN_START_STATS * start_stats);
