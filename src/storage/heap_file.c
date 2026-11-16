@@ -27305,7 +27305,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   /* Fall through to exit. */
 
 exit:
-  if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
+  if (scan == S_SUCCESS && context->recdes_p != NULL)
     {
       /* the version may come from the heap or from a log undo image; both carry references */
       scan = inner_table_expand (thread_p, context->oid_p, context->class_oid_p, context->recdes_p, context->scan_cache,
@@ -27484,7 +27484,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   /* Fall through to exit. */
 
 exit:
-  if (scan == S_SUCCESS && context->recdes_p != NULL && inner_table_enabled ())
+  if (scan == S_SUCCESS && context->recdes_p != NULL)
     {
       scan = inner_table_expand (thread_p, context->oid_p, context->class_oid_p, context->recdes_p, context->scan_cache,
 				 context->ispeeking, NULL);

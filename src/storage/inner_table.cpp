@@ -94,6 +94,12 @@ namespace
 
   std::mutex classes_mutex;
   std::unordered_map<oid_key, std::shared_ptr<companion>, oid_key_hash> classes;
+  std::atomic<UINT64> classes_generation { 0 };
+
+  /* This thread's copy of CLASSES, valid while CLASSES_GENERATION equals LOCAL_GENERATION. A class without a companion
+   * maps to nullptr. */
+  thread_local std::unordered_map<oid_key, std::shared_ptr<companion>, oid_key_hash> local_classes;
+  thread_local UINT64 local_generation = 0;
 
   /* Inside inner_table_collect_refs, fetches return records with their references. */
   thread_local int raw_depth = 0;
@@ -371,27 +377,49 @@ namespace
     return c;
   }
 
+  /* Readers resolve a companion whatever the threshold: a record written with references keeps them after the
+   * threshold is lowered, and a standby receives them from its active node. */
   std::shared_ptr<companion> companion_of (THREAD_ENTRY *thread_p, const OID *class_oid)
   {
-    if (!inner_table_enabled () || class_oid == NULL || OID_ISNULL (class_oid) || oid_is_system_class (class_oid))
+    if (class_oid == NULL || OID_ISNULL (class_oid) || oid_is_system_class (class_oid))
       {
 	return nullptr;
       }
     oid_key k = { class_oid->pageid, class_oid->slotid, class_oid->volid };
+    /* Every scan start asks, with or without the feature, so a thread answers from its own copy of the decisions
+     * until inner_table_forget_classes () moves the generation. */
+    UINT64 gen = classes_generation.load (std::memory_order_acquire);
+    if (local_generation != gen)
+      {
+	local_classes.clear ();
+	local_generation = gen;
+      }
+    auto lit = local_classes.find (k);
+    if (lit != local_classes.end ())
+      {
+	return lit->second;
+      }
+    std::shared_ptr<companion> found;
     {
       std::lock_guard<std::mutex> g (classes_mutex);
       auto it = classes.find (k);
       if (it != classes.end ())
 	{
-	  return it->second->opted ? it->second : nullptr;
+	  found = it->second;
 	}
     }
-    std::shared_ptr<companion> c = resolve (thread_p, class_oid);
-    {
-      std::lock_guard<std::mutex> g (classes_mutex);
-      auto it = classes.emplace (k, c).first;
-      return it->second->opted ? it->second : nullptr;
-    }
+    if (found == nullptr)
+      {
+	std::shared_ptr<companion> c = resolve (thread_p, class_oid);
+	std::lock_guard<std::mutex> g (classes_mutex);
+	found = classes.emplace (k, c).first->second;
+      }
+    std::shared_ptr<companion> result = found->opted ? found : nullptr;
+    if (classes_generation.load (std::memory_order_acquire) == gen)
+      {
+	local_classes.emplace (k, result);
+      }
+    return result;
   }
 
   int next_value_id (THREAD_ENTRY *thread_p, companion &c, INT64 *value_id)
@@ -661,6 +689,10 @@ inner_table_reads_movable (THREAD_ENTRY *thread_p, const OID *class_oid, int n_a
 int
 inner_table_lock_for_load (THREAD_ENTRY *thread_p, const OID *class_oid)
 {
+  if (!inner_table_enabled ())
+    {
+      return NO_ERROR;
+    }
   std::shared_ptr<companion> c = companion_of (thread_p, class_oid);
   if (c == nullptr)
     {
@@ -688,10 +720,11 @@ inner_table_rewrite (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recde
 		     const ATTR_ID *att_id, int n_att_id, RECDES *out, bool *rewritten)
 {
   *rewritten = false;
+  int threshold = std::max (prm_get_integer_value (PRM_ID_INNER_TABLE_THRESHOLD), INNER_REF_SIZE + 1);
   if (recdes == NULL || recdes->data == NULL
-      || recdes->length < std::max (prm_get_integer_value (PRM_ID_INNER_TABLE_THRESHOLD), INNER_REF_SIZE + 1))
+      || (recdes->length < threshold && (old_refs == NULL || !may_hold_reference (recdes))))
     {
-      /* no value of a record shorter than the threshold moves, and none of OLD_REFS is kept */
+      /* no value of a record shorter than the threshold moves, and it holds none of OLD_REFS */
       return NO_ERROR;
     }
   std::shared_ptr<companion> c = companion_of (thread_p, class_oid);
@@ -706,7 +739,6 @@ inner_table_rewrite (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recde
     {
       return error;
     }
-  int threshold = std::max (prm_get_integer_value (PRM_ID_INNER_TABLE_THRESHOLD), INNER_REF_SIZE + 1);
   const char *vt = recdes->data + l.header_size;
   std::vector<std::string> refs_bytes (l.n_var);
   std::vector<std::string *> replacement (l.n_var, NULL);
@@ -715,6 +747,16 @@ inner_table_rewrite (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recde
     {
       const char *p = vt + l.off[i];
       int len = l.off[i + 1] - l.off[i];
+      if (l.string_attr[i] >= 0 && old_refs != NULL && is_reference (p, len))
+	{
+	  /* the new version carries this reference unchanged, so its chunks stay */
+	  INT64 value_id = get_reference (p, l.string_attr[i]).value_id;
+	  for (ref &o:old_refs->refs)
+	    {
+	      o.kept = o.kept || o.value_id == value_id;
+	    }
+	  continue;
+	}
       if (l.string_attr[i] < 0 || len < threshold || !is_large_string (p, len) || is_reference (p, len))
 	{
 	  continue;
@@ -1026,6 +1068,7 @@ inner_table_forget_classes (void)
 {
   std::lock_guard<std::mutex> g (classes_mutex);
   classes.clear ();
+  classes_generation.fetch_add (1, std::memory_order_acq_rel);
 }
 
 #if !defined(NDEBUG)

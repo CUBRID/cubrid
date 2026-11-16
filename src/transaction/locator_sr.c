@@ -5501,9 +5501,10 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
    * heap_insert_logical */
   recdes->type = REC_HOME;
 
-  if (inner_table_enabled ())
+  if (inner_table_enabled () && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
-      /* the heap gets the record with references; index maintenance keeps the complete record */
+      /* the heap gets the record with references; index maintenance keeps the complete record. A replicated record
+       * already has the active node's references, and its chunk rows replicate as rows of their own. */
       error_code = inner_table_rewrite (thread_p, &real_class_oid, recdes, NULL, NULL, 0, &inner_recdes,
 					&inner_rewritten);
       if (error_code != NO_ERROR)
@@ -6505,7 +6506,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      if (inner_table_enabled ())
+      if (inner_table_enabled () && !LOG_CHECK_LOG_APPLIER (thread_p))
 	{
 	  /* the heap gets the record with references; the old version's references are retired after the update */
 	  error_code = inner_table_collect_refs (thread_p, class_oid, oid, &inner_refs);
@@ -6872,7 +6873,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
       OID_SET_NULL (&class_oid);
     }
 
-  if (isold_object == true && !OID_IS_ROOTOID (&class_oid) && inner_table_enabled ())
+  if (isold_object == true && !OID_IS_ROOTOID (&class_oid) && inner_table_enabled ()
+      && !LOG_CHECK_LOG_APPLIER (thread_p))
     {
       /* collect the references before the delete; their chunks are retired after it */
       error_code = inner_table_collect_refs (thread_p, &class_oid, oid, &inner_refs);
