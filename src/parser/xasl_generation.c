@@ -16920,7 +16920,7 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
       info->level--;
       xasl = (XASL_NODE *) node->info.query.xasl;
 
-      /* subquery or cached subquery; a reused shared view XASL is executed by its group's representative */
+      /* subquery or cached subquery; a reused shared view XASL is run by the first reference that needs it */
       if (xasl && pt_is_subquery (node) && !node->info.query.shared_view_used)
 	{
 	  if (node->info.query.correlation_level == 0)
@@ -27606,10 +27606,11 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	  info->shared_view_xasl[node->info.query.shared_view_group] = (XASL_NODE *) node->info.query.xasl;
 
 	  /* the members read the result after the block of the representative ends, so keep it to the end of the
-	   * query; a regeneration from the same tree sees the correlation level pt_uncorr_post () overwrote */
+	   * query; a regeneration from the same tree sees the correlation level pt_uncorr_post () overwrote. The
+	   * result is made by the first reference that needs it (qexec_execute_shared_view ()) */
 	  if (node->info.query.xasl != NULL)
 	    {
-	      XASL_SET_FLAG ((XASL_NODE *) node->info.query.xasl, XASL_ZERO_CORR_LEVEL);
+	      XASL_SET_FLAG ((XASL_NODE *) node->info.query.xasl, XASL_ZERO_CORR_LEVEL | XASL_SHARED_VIEW_REP);
 	    }
 	}
       if (node->node_type == PT_SELECT)
