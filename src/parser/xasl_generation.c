@@ -239,6 +239,8 @@ static REGU_VARIABLE *pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, con
 static REGU_VARIABLE *pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TYPE db_type,
 					     const PT_NODE * node);
 static REGU_VARIABLE *pt_make_regu_pred (const PRED_EXPR * pred);
+static REGU_VARIABLE *pt_make_regu_rand (PARSER_CONTEXT * parser, PT_NODE * node, const REGU_VARIABLE * seed,
+					 const OPERATOR_TYPE op, const TP_DOMAIN * domain);
 static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser, int function_code, const REGU_VARIABLE_LIST arg_list,
 					const DB_TYPE result_type, const PT_NODE * node);
 
@@ -8710,6 +8712,38 @@ pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, cons
 }
 
 /*
+ * pt_make_regu_rand () - makes the regu arith of a RAND, DRAND, RANDOM or DRANDOM call
+ *   return: A NULL return indicates an error occurred
+ *   parser(in):
+ *   node(in): the call
+ *   seed(in): regu of the seed
+ *   op(in):
+ *   domain(in):
+ *
+ * Note: a seeded call gets a third operand, 1 when its seed may change from row to row so that the server reseeds on
+ *       every evaluation, 0 when the call keeps one generator (fetch_rand_reseeds ()).
+ */
+static REGU_VARIABLE *
+pt_make_regu_rand (PARSER_CONTEXT * parser, PT_NODE * node, const REGU_VARIABLE * seed, const OPERATOR_TYPE op,
+		   const TP_DOMAIN * domain)
+{
+  REGU_VARIABLE *reseeds = NULL;
+  DB_VALUE value;
+
+  if (node->info.expr.arg1 != NULL)
+    {
+      db_make_int (&value, pt_is_fixed_in_statement (parser, node->info.expr.arg1) ? 0 : 1);
+      reseeds = pt_make_regu_constant (parser, &value, DB_TYPE_INTEGER, NULL);
+      if (reseeds == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  return pt_make_regu_arith (NULL, seed, reseeds, op, domain);
+}
+
+/*
  * pt_make_regu_pred () - takes a pred expr and makes a special arith
  *			  regu variable, with T_PREDICATE as opcode,
  *			  that holds the predicate expression.
@@ -11378,19 +11412,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_RAND:
-		  regu = pt_make_regu_arith (NULL, r2, NULL, T_RAND, domain);
+		  regu = pt_make_regu_rand (parser, node, r2, T_RAND, domain);
 		  break;
 
 		case PT_DRAND:
-		  regu = pt_make_regu_arith (NULL, r2, NULL, T_DRAND, domain);
+		  regu = pt_make_regu_rand (parser, node, r2, T_DRAND, domain);
 		  break;
 
 		case PT_RANDOM:
-		  regu = pt_make_regu_arith (NULL, r2, NULL, T_RANDOM, domain);
+		  regu = pt_make_regu_rand (parser, node, r2, T_RANDOM, domain);
 		  break;
 
 		case PT_DRANDOM:
-		  regu = pt_make_regu_arith (NULL, r2, NULL, T_DRANDOM, domain);
+		  regu = pt_make_regu_rand (parser, node, r2, T_DRANDOM, domain);
 		  break;
 
 		case PT_FLOOR:

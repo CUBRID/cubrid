@@ -4309,6 +4309,14 @@ fetch_op_define_variable (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 }
 
 
+/* a seeded random call's third operand: 1 when its seed may change from row to row, so that every evaluation
+ * reseeds; 0 when the call keeps one generator (the XASL generator decides, pt_make_regu_rand ()) */
+static bool
+fetch_rand_reseeds (const FETCH_ARITH_ARGS * a)
+{
+  return a->peek_third != NULL && !DB_IS_NULL (a->peek_third) && db_get_int (a->peek_third) != 0;
+}
+
 /* T_RAND, T_RANDOM */
 static int
 fetch_op_rand (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
@@ -4339,14 +4347,9 @@ fetch_op_rand (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      /* There are two types of seed: 1) given by user (rightptr's type is TYPE_DBVAL) e.g, select rand(1) from
-       * table; 2) fetched from tuple (rightptr's type is TYPE_CONSTANT) e.g, select rand(i) from table; Regarding
-       * the former case, rand(1) will generate a sequence of pseudo-random values up to the number of rows.
-       * However, on the latter case, rand(i) generates values depending on the column i's value. If, for example,
-       * there are three tuples which include column i of 1 in a table, results of the above statements are as
-       * follows.  rand(1) rand(i) ============= ============= 89400484 89400484 976015093 89400484 1792756325
-       * 89400484 */
-      if (arithptr->rightptr->type == TYPE_CONSTANT || arithptr->rightptr->type == TYPE_ATTR_ID)
+      /* a seed fixed for the statement, e.g. rand (1), keeps one generator for this node and the rows take its
+       * sequence; a seed that may change from row to row, e.g. rand (i), reseeds on every evaluation */
+      if (fetch_rand_reseeds (a))
 	{
 	  struct drand48_data buf;
 	  long int r;
@@ -4405,7 +4408,7 @@ fetch_op_drand (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      if (arithptr->rightptr->type == TYPE_CONSTANT || arithptr->rightptr->type == TYPE_ATTR_ID)
+      if (fetch_rand_reseeds (a))
 	{
 	  struct drand48_data buf;
 	  double r;
