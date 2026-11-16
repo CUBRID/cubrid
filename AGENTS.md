@@ -28,6 +28,7 @@ Apache 2.0 license. Version 11.5.x.
 │   ├── method/          # Method/SP invocation from queries
 │   ├── thread/          # Worker pools, daemons (C++17)
 │   ├── loaddb/          # Bulk loader (bison/flex grammar)
+│   ├── copy/            # COPY FROM STDIN: stream consumer, CSV/BINARY decoders
 │   ├── monitor/         # Performance statistics
 │   ├── session/         # Per-connection session state
 │   ├── communication/   # Internal protocol (C++)
