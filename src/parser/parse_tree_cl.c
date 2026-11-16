@@ -10593,7 +10593,17 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_UNARY_MINUS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, "-");
-      q = pt_append_varchar (parser, q, r1);
+      if (r1 && r1->bytes[0] == '-')
+	{
+	  /* "--" would start a comment */
+	  q = pt_append_nulstring (parser, q, "(");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	}
+      else
+	{
+	  q = pt_append_varchar (parser, q, r1);
+	}
       break;
     case PT_BIT_NOT:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
@@ -12723,7 +12733,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r2);
 	  q = pt_append_nulstring (parser, q, ")");
 	}
-      if (p->info.expr.op == PT_RANGE)
+      else if (p->info.expr.op == PT_RANGE)
 	{
 	  q = pt_append_nulstring (parser, q, "(");
 	  q = pt_append_varchar (parser, q, r2);
