@@ -435,6 +435,13 @@ qdump_print_insert_proc_node (INSERT_PROC_NODE * node_p)
   qdump_print_hfid (node_p->class_hfid);
   qdump_print_attribute ("insert", node_p->num_vals, node_p->att_id);
 
+  for (int i = 0; i < node_p->num_default_slots; i++)
+    {
+      fprintf (foutput, "\n default[%d] %s: ", node_p->att_id[node_p->default_slots[i].att_index],
+	       PT_VOLATILITY_IS_VOLATILE_RESIDUAL (node_p->default_slots[i].volatility) ? "volatile" : "stable");
+      qdump_print_regu_type (node_p->default_slots[i].expr);
+    }
+
   return true;
 }
 
@@ -1057,19 +1064,6 @@ qdump_print_db_value (DB_VALUE * value_p)
 {
   db_value_print (value_p);
   return true;
-}
-
-const char *
-qdump_operator_type_string (OPERATOR_TYPE optype)
-{
-  switch (optype)
-    {
-    case T_TO_CHAR:
-      return "TO_CHAR";
-      /* TODO - fill */
-    default:
-      return NULL;
-    }
 }
 
 static const char *

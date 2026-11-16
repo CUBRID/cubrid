@@ -3713,8 +3713,6 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
   DB_VALUE *def = NULL;
   int err;
   char *default_value_string = NULL;
-  const char *default_value_expr_type_string = NULL, *default_expr_format = NULL;
-  const char *default_value_expr_op_string = NULL;
 
   *alloc = false;
 
@@ -3725,49 +3723,11 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return default_value_string;
     }
 
-  default_value_expr_type_string = db_default_expression_string (attr->default_value.default_expr.default_expr_type);
-  if (default_value_expr_type_string != NULL)
+  if (DB_HAS_DEFAULT_EXPR (&attr->default_value.default_expr))
     {
-      /* default expression case */
-      int len;
-
-      if (attr->default_value.default_expr.default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
-	{
-	  /* We now accept only T_TO_CHAR for attr->default_value.default_expr.default_expr_op */
-
-	  default_value_expr_op_string = "TO_CHAR";	/* FIXME - remove this hard code */
-	}
-
-      default_expr_format = attr->default_value.default_expr.default_expr_format;
-      len = ((default_value_expr_op_string ? strlen (default_value_expr_op_string) : 0)
-	     + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_value_expr_type_string)
-	     + (default_expr_format ? strlen (default_expr_format) : 0));
-
-      default_value_string = (char *) malloc (len + 1);
-      if (default_value_string == NULL)
-	{
-	  return NULL;
-	}
-      *alloc = true;
-
-      if (default_value_expr_op_string != NULL)
-	{
-	  if (default_expr_format)
-	    {
-	      snprintf (default_value_string, len + 1, "%s(%s, \'%s\')",
-			default_value_expr_op_string, default_value_expr_type_string, default_expr_format);
-	    }
-	  else
-	    {
-	      snprintf (default_value_string, len + 1, "%s(%s)",
-			default_value_expr_op_string, default_value_expr_type_string);
-	    }
-	}
-      else
-	{
-	  strcpy (default_value_string, default_value_expr_type_string);
-	}
-
+      /* an expression DEFAULT is reported as its original text, like ;schema and the catalog views */
+      default_value_string = strdup (attr->default_value.default_expr.default_expr_text);
+      *alloc = (default_value_string != NULL);
       return default_value_string;
     }
 

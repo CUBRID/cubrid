@@ -1559,6 +1559,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_USER:
       num = 0;
 
+      /* session dependent: constant within a statement, not foldable at DDL time */
+      sig.volatility = PT_VOLATILITY_STABLE;
+
       /* one overload */
 
       /* no arguments, just a return type */
@@ -3702,6 +3705,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_UNARY_MINUS:
       num = 0;
 
+      /* pure function of its argument */
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+
       /* one overload */
 
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -3716,6 +3722,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_TO_CHAR:
       num = 0;
+
+      /* NLS/format-environment dependent: re-evaluated rather than folded at DDL time */
+      sig.volatility = PT_VOLATILITY_STABLE;
 
       /* four overloads */
 
@@ -7451,6 +7460,14 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
   /* To ensure that after exit of recursive expression node the evaluation of type will continue in normal mode */
   *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->flag.is_restored_default)
+    {
+      /* a grafted DEFAULT keeps the types it was restored with, whatever the session of this statement */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
@@ -8042,26 +8059,14 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       return node;
     }
 
-  switch (node->node_type)
+  if (node->node_type == PT_FUNCTION && node->info.function.function_type == F_BENCHMARK)
     {
-    case PT_EXPR:
-      node = pt_fold_const_expr (parser, node, arg);
-      break;
-    case PT_FUNCTION:
-      if (node->info.function.function_type == F_BENCHMARK)
-	{
-	  // restore walking; I hope this was continue_walk!
-	  *continue_walk = PT_CONTINUE_WALK;
-	}
-      else
-	{
-	  node = pt_fold_const_function (parser, node);
-	}
-      break;
-    default:
-      break;
+      // restore walking; I hope this was continue_walk!
+      *continue_walk = PT_CONTINUE_WALK;
+      return node;
     }
 
+  node = pt_fold_const_node (parser, node, sc_info);
   if (node == NULL)
     {
       PT_INTERNAL_ERROR (parser, "pt_fold_constants_post");
@@ -8069,6 +8074,28 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     }
 
   return node;
+}
+
+/*
+ * pt_fold_const_node () - fold one expression or function node whose operands are already folded: the step
+ *	of the folding pass for one node, also for a root held back from that pass with do_not_fold
+ *   return: the folded node, or the node itself where it does not fold
+ *   parser(in):
+ *   node(in):
+ *   sc_info(in): the SEMANTIC_CHK_INFO of the pass, or NULL
+ */
+PT_NODE *
+pt_fold_const_node (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * sc_info)
+{
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      return pt_fold_const_expr (parser, node, sc_info);
+    case PT_FUNCTION:
+      return pt_fold_const_function (parser, node);
+    default:
+      return node;
+    }
 }
 
 /*
@@ -8088,6 +8115,12 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   PT_NODE *list;
   STATEMENT_SET_FOLD do_fold;
   PT_MISC_TYPE is_subquery;
+
+  if (node->flag.is_restored_default)
+    {
+      /* see pt_eval_type_pre */
+      return node;
+    }
 
   switch (node->node_type)
     {
@@ -12810,6 +12843,252 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_sys_clock_available () - whether the statement clock (parser->sys_datetime / sys_epochtime) has been
+ *	synchronized with the server.  Every entry that evaluates an expression on the client synchronizes it
+ *	first (do_statement, a trigger action, a stored-procedure call), so an
+ *	unsynchronized clock is a caller's bug: a debug build stops on it, a release build reports it instead of
+ *	computing a time from a NULL value.
+ *   return: true if available
+ *   parser(in): parser context
+ */
+static bool
+pt_sys_clock_available (PARSER_CONTEXT * parser)
+{
+  if (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime))
+    {
+      assert (false);
+      PT_INTERNAL_ERROR (parser, "statement clock not synchronized");
+      return false;
+    }
+  return true;
+}
+
+/*
+ * pt_op_reads_statement_clock () - whether an operator, evaluated on the client, reads the statement clock
+ *	(parser->sys_datetime / sys_epochtime): the SYS / CURRENT / UTC date-time family, TZ_OFFSET, the
+ *	argument-less UNIX_TIMESTAMP () and the time-ordered UUID (7)
+ *   return: true if so
+ *   op(in): the operator
+ *   arg1(in): its first argument node, or NULL
+ */
+bool
+pt_op_reads_statement_clock (PT_OP_TYPE op, const PT_NODE * arg1)
+{
+  switch (op)
+    {
+    case PT_SYS_DATE:
+    case PT_CURRENT_DATE:
+    case PT_UTC_DATE:
+    case PT_SYS_TIME:
+    case PT_CURRENT_TIME:
+    case PT_UTC_TIME:
+    case PT_SYS_DATETIME:
+    case PT_CURRENT_DATETIME:
+    case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
+    case PT_UTC_TIMESTAMP:
+    case PT_TZ_OFFSET:
+      return true;
+
+    case PT_UNIX_TIMESTAMP:
+      /* the one-argument form converts its argument through the session timezone instead */
+      return arg1 == NULL;
+
+    case PT_UUID:
+      /* UUID () and UUID (4) are random; a version that is not an integer literal is only known at evaluation,
+       * so the clock is required for it */
+      if (arg1 == NULL)
+	{
+	  return false;
+	}
+      if (arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_INTEGER)
+	{
+	  return arg1->info.value.data_value.i == 7;
+	}
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * pt_reads_statement_clock_walk () - parser_walk_tree pre-function of pt_expr_tree_reads_statement_clock
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): visited node
+ *   arg(out): bool, set when a statement-clock operator is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_reads_statement_clock_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *reads = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && pt_op_reads_statement_clock (node->info.expr.op, node->info.expr.arg1))
+    {
+      *reads = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_expr_tree_reads_statement_clock () - whether an expression tree contains an operator that reads the
+ *	statement clock (pt_op_reads_statement_clock): the clock must then be synchronized before the tree is
+ *	evaluated on the client
+ *   return: true if so
+ *   parser(in): parser context
+ *   tree(in): expression tree
+ */
+bool
+pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  bool reads = false;
+
+  (void) parser_walk_tree (parser, tree, pt_reads_statement_clock_walk, &reads, NULL, NULL);
+  return reads;
+}
+
+/*
+ * pt_op_reads_client_value () - whether XASL generation compiles an operator to a value of the client compiling
+ *	the statement: USER () to its host, VERSION () to its build.  The other session values it compiles as
+ *	constants (CURRENT_USER, SCHEMA (), DATABASE ()) follow the current user and the database, which the XASL
+ *	cache key tells apart already.
+ *   return: true if so
+ *   op(in): the operator
+ */
+bool
+pt_op_reads_client_value (PT_OP_TYPE op)
+{
+  return op == PT_USER || op == PT_VERSION;
+}
+
+/*
+ * pt_reads_client_value_walk () - parser_walk_tree callback of pt_expr_tree_reads_client_value
+ */
+static PT_NODE *
+pt_reads_client_value_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *reads = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && pt_op_reads_client_value (node->info.expr.op))
+    {
+      *reads = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_expr_tree_reads_client_value () - whether an expression tree contains an operator that compiles to a value
+ *	of the client (pt_op_reads_client_value)
+ *   return: true if so
+ *   parser(in): parser context
+ *   tree(in): expression tree
+ */
+bool
+pt_expr_tree_reads_client_value (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  bool reads = false;
+
+  (void) parser_walk_tree (parser, tree, pt_reads_client_value_walk, &reads, NULL, NULL);
+  return reads;
+}
+
+/*
+ * Seeded random state: while parser->rand_states is set, each seeded RAND, DRAND,
+ * RANDOM and DRANDOM call node keeps its own generator, seeded on its first
+ * evaluation and advanced on every later one, as the server keeps one per
+ * arithmetic node.  Without it every evaluation reseeds and returns the first value.
+ */
+struct pt_rand_state
+{
+  struct pt_rand_state *next;
+  const PT_NODE *node;		/* the seeded call */
+  struct drand48_data buf;
+};
+
+/*
+ * pt_evaluate_seeded_rand () - the next value of a seeded random call
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ *   parser(in):
+ *   node(in): the RAND, DRAND, RANDOM or DRANDOM call
+ *   seed(in):
+ *   is_double(in): true for DRAND and DRANDOM
+ *   result(out):
+ */
+static int
+pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, const PT_NODE * node, int seed, bool is_double, DB_VALUE * result)
+{
+  struct pt_rand_state *state = NULL;
+  struct drand48_data local, *buf = &local;
+
+  if (parser->rand_states != NULL)
+    {
+      for (state = *parser->rand_states; state != NULL && state->node != node; state = state->next)
+	{
+	  ;
+	}
+
+      if (state == NULL)
+	{
+	  state = (struct pt_rand_state *) malloc (sizeof (struct pt_rand_state));
+	  if (state == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct pt_rand_state));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  state->node = node;
+	  srand48_r ((long) seed, &state->buf);
+	  state->next = *parser->rand_states;
+	  *parser->rand_states = state;
+	}
+      buf = &state->buf;
+    }
+  else
+    {
+      /* a generator of its own, as the server seeds one, rather than the process-wide one */
+      srand48_r ((long) seed, &local);
+    }
+
+  if (is_double)
+    {
+      double d;
+
+      drand48_r (buf, &d);
+      db_make_double (result, d);
+    }
+  else
+    {
+      long int r;
+
+      lrand48_r (buf, &r);
+      db_make_int (result, r);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_free_rand_states () - free the seeded random states collected in *states
+ *   return: none
+ *   states(in/out): list head, NULL on return
+ */
+void
+pt_free_rand_states (struct pt_rand_state **states)
+{
+  struct pt_rand_state *state;
+
+  while (*states != NULL)
+    {
+      state = *states;
+      *states = state->next;
+      free_and_init (state);
+    }
+}
+
+/*
  * pt_evaluate_db_value_expr () - apply op to db_value opds & place it in result
  *   return: 1 if evaluation succeeded, 0 otherwise
  *   parser(in): handle to the parser context
@@ -12873,6 +13152,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
   typ2 = (arg2) ? DB_VALUE_TYPE (arg2) : DB_TYPE_NULL;
   cmp = 0;
   db_make_null (result);
+
+  if (pt_op_reads_statement_clock (op, o1) && !pt_sys_clock_available (parser))
+    {
+      return 0;
+    }
 
   switch (op)
     {
@@ -15539,10 +15823,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_int (result, parser->lrand);
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), false, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
-	  db_make_int (result, lrand48 ());
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
       break;
 
@@ -15551,10 +15835,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_double (result, parser->drand);
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), true, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
-	  db_make_double (result, drand48 ());
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
       break;
 
@@ -15567,12 +15851,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  struct timeval t;
 	  gettimeofday (&t, NULL);
 	  srand48 ((long) (t.tv_usec + lrand48 ()));
+	  db_make_int (result, lrand48 ());
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), false, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
-      db_make_int (result, lrand48 ());
       break;
 
     case PT_DRANDOM:
@@ -15581,12 +15866,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  struct timeval t;
 	  gettimeofday (&t, NULL);
 	  srand48 ((long) (t.tv_usec + lrand48 ()));
+	  db_make_double (result, drand48 ());
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), true, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
-      db_make_double (result, drand48 ());
       break;
 
     case PT_FLOOR:
@@ -17681,9 +17967,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else if (version == 7)
 	  {
-	    assert (!DB_IS_NULL (&parser->sys_epochtime));
-	    assert (!DB_IS_NULL (&parser->sys_datetime));
-
 	    uuid_state.last_ms = &parser->uuidv7_last_ms;
 	    uuid_state.seq = &parser->uuidv7_seq;
 	    epoch_ms = ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
@@ -18350,6 +18633,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  result = cast_expr;
 	}
 
+      /* the value keeps telling it is the DEFAULT of its own column (pt_to_insert_default_slots) */
+      result->flag.is_own_default = expr->flag.is_own_default;
       goto end;
     }
 
@@ -19760,26 +20045,41 @@ pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 }
 
 /*
- * pt_coerce_value_for_default_value () - coerce a PT_VALUE of DEFAULT into another PT_VALUE of compatible type
+ * pt_coerce_value_w_precision () - pt_coerce_value that also checks the string precision of the result
  *   return: NO_ERROR on success, non-zero for ERROR
  *   parser(in):
  *   src(in): a pointer to the original PT_VALUE
  *   dest(out): a pointer to the coerced PT_VALUE
  *   desired_type(in): the desired type of the coerced result
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
- *   default_expr_type(in): default expression identifier
+ */
+int
+pt_coerce_value_w_precision (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
+			     PT_NODE * data_type)
+{
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, true);
+}
+
+/*
+ * pt_coerce_value_for_default_value () - coerce the PT_VALUE written as a DEFAULT into another PT_VALUE of
+ *	compatible type; the explicit coercions of pt_is_explicit_coerce_allowed_for_default_value are allowed
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   src(in): a pointer to the original PT_VALUE
+ *   dest(out): a pointer to the coerced PT_VALUE
+ *   desired_type(in): the desired type of the coerced result
+ *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  *   check_string_precision(in): true, if needs to consider string precision
  */
 int
 pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type,
-				   bool check_string_precision)
+				   PT_NODE * data_type, bool check_string_precision)
 {
   bool implicit_coercion;
 
   assert (src != NULL && dest != NULL);
 
-  if (default_expr_type == DB_DEFAULT_NONE && src->node_type == PT_VALUE
+  if (src->node_type == PT_VALUE
       && pt_is_explicit_coerce_allowed_for_default_value (parser, src->type_enum, desired_type))
     {
       implicit_coercion = false;	/* explicit coercion */

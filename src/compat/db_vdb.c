@@ -1036,6 +1036,9 @@ db_compile_statement_local (DB_SESSION * session)
 	}
       statement = statement_result;
 
+      /* a view INSERT reaches the DEFAULTs of its base class only now */
+      pt_mark_translated_default_clock (parser, statement);
+
       /* prefetch and lock translated real classes to avoid deadlock */
       (void) pt_class_pre_fetch (parser, statement);
       if (pt_has_error (parser))
