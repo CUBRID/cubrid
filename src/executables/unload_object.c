@@ -587,6 +587,16 @@ check_referenced_domain (DB_DOMAIN * dom_list, bool set_cls_ref, int *num_cls_re
 }
 
 
+/*
+ * check_include_object_domain - check for a domain a class cannot be unloaded with in the data format given
+ *    return: true when the domain list holds such a domain
+ *    dom_list(in): domains of an attribute, or the element domains of a collection
+ *    db_type(out): type of the domain found, DB_TYPE_NULL for a collection of no element domain
+ *    data_format(in): data format the class is to be unloaded with
+ * Note:
+ *    A collection declared with no element domain may hold any value, OBJECT included, and a binary
+ *    section has no place for an object reference, so it is found in a format other than the text.
+ */
 static bool
 check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type, int data_format)
 {
@@ -604,6 +614,11 @@ check_include_object_domain (DB_DOMAIN * dom_list, DB_TYPE * db_type, int data_f
 	case DB_TYPE_SET:
 	case DB_TYPE_MULTISET:
 	case DB_TYPE_SEQUENCE:
+	  if (db_domain_set (dom) == NULL && data_format != OBJECT_FORMAT_TEXT)
+	    {
+	      *db_type = DB_TYPE_NULL;
+	      return true;
+	    }
 	  if (check_include_object_domain (db_domain_set (dom), db_type, data_format))
 	    {
 	      return true;
@@ -1934,9 +1949,17 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 	    case DB_TYPE_SEQUENCE:
 	      if (check_include_object_domain (class_ptr->attributes[i].domain, &db_type_in, data_format))
 		{
-		  fprintf (stderr, "warning: %s%s%s has %s type with %s type.\n",
-			   PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_get_type_name (db_type),
-			   db_get_type_name (db_type_in));
+		  if (db_type_in == DB_TYPE_NULL)
+		    {
+		      fprintf (stderr, "warning: %s%s%s has %s type of no element type.\n",
+			       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_get_type_name (db_type));
+		    }
+		  else
+		    {
+		      fprintf (stderr, "warning: %s%s%s has %s type with %s type.\n",
+			       PRINT_IDENTIFIER (sm_ch_name ((MOBJ) class_ptr)), db_get_type_name (db_type),
+			       db_get_type_name (db_type_in));
+		    }
 		  nthreads = 0;
 		  data_format = OBJECT_FORMAT_TEXT;
 		  done = true;
