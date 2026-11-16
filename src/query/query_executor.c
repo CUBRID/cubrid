@@ -605,7 +605,8 @@ static int qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 static int qexec_gby_skip_open (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool partial);
 static bool qexec_covered_visit_allowed (XASL_NODE * xasl, AGGREGATE_TYPE * agg_list);
 static bool qexec_covered_scan_visitable (ACCESS_SPEC_TYPE * spec);
-static XASL_NODE *qexec_covered_visit_scan (XASL_NODE * xasl, bool mvcc_select_lock_needed);
+static XASL_NODE *qexec_covered_visit_scan (XASL_NODE * xasl, XASL_NODE * fixed_scan_xasl,
+					    bool mvcc_select_lock_needed);
 static int qexec_covered_visit (THREAD_ENTRY * thread_p, void *arg, bool key_start, bool * stop);
 static void qexec_gby_skip_attach (XASL_NODE * xasl);
 static bool qexec_gby_skip_can_visit (XASL_NODE * xasl);
@@ -22357,8 +22358,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  /* Decide which scan will use fixed flags and which won't. There are several cases here: 1. Do not use fixed
 	   * scans if locks on objects are required. 2. If any index scan is used, only the innermost scan of the chain
-	   * may be fixed, and only when it reads the heap sequentially: it releases its page before another level of the
-	   * chain runs (heap_next () at the end of the heap, scan_handle_single_scan () on an early stop). 3. Disable
+	   * may be fixed, and only when it reads the heap sequentially or is a covered index scan: it releases its page
+	   * before another level of the chain runs (heap_next () at the end of the heap, scan_handle_single_scan () on
+	   * an early stop; the covered index scan's leaf when its range scan returns). 3. Disable
 	   * fixed scan for outer scans. Fixed cannot be allowed while new scans start which also need to fix pages. This
 	   * may lead to page deadlocks. NOTE: Only the innermost scans are allowed fixed scans. */
 	  if (COMPOSITE_LOCK (xasl->scan_op_type))
@@ -22407,7 +22409,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	  if (has_index_scan)
 	    {
-	      /* Index found: only an innermost sequential heap scan stays fixed */
+	      /* Index found: only the innermost scan may keep its page while the block takes its rows. What it keeps
+	       * goes by how it reads: a sequential heap scan its heap page, a covered index scan its B-tree leaf
+	       * (qexec_covered_visit_scan ()); an index scan that looks its rows up in the heap keeps neither */
 	      for (xptr = xasl; xptr->scan_ptr != NULL; xptr = xptr->scan_ptr)
 		{
 		  ;
@@ -22416,7 +22420,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      fixed_scan_xasl = (xptr->merge_spec == NULL && xptr->dptr_list == NULL) ? xptr : NULL;
 	      for (specp = xptr->spec_list; specp != NULL && fixed_scan_xasl != NULL; specp = specp->next)
 		{
-		  if (specp->type != TARGET_CLASS || specp->access != ACCESS_METHOD_SEQUENTIAL)
+		  if (specp->type != TARGET_CLASS
+		      || (specp->access != ACCESS_METHOD_SEQUENTIAL
+			  && (specp->access != ACCESS_METHOD_INDEX || specp->indexptr == NULL
+			      || specp->indexptr->coverage == 0)))
 		    {
 		      fixed_scan_xasl = NULL;
 		    }
@@ -22464,7 +22471,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
-		      specp->fixed_scan = (xptr == fixed_scan_xasl);
+		      /* the heap scan keeps its page through its open; the covered index scan through the visit the
+		       * block attaches below, its open is the same as any index scan's */
+		      specp->fixed_scan = (xptr == fixed_scan_xasl && !IS_ANY_INDEX_ACCESS (specp->access));
 
 		      /* Cached (copy-to-local-cache) scan is allowed on every spec_list scan that is not fixed: an
 		       * inner scan that is not fixed would otherwise fix its page for every row, and copying the page
@@ -22575,7 +22584,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      qexec_gby_skip_attach (xasl);
 	    }
-	  else if ((xptr = qexec_covered_visit_scan (xasl, mvcc_select_lock_needed)) != NULL)
+	  else if ((xptr = qexec_covered_visit_scan (xasl, fixed_scan_xasl, mvcc_select_lock_needed)) != NULL)
 	    {
 	      /* the innermost scan hands each selected key to the block; a scan opened again without the visit (the
 	       * next partition) delivers its rows as usual */
@@ -28544,39 +28553,30 @@ qexec_covered_scan_visitable (ACCESS_SPEC_TYPE * spec)
 }
 
 /*
- * qexec_covered_visit_scan () - the block's innermost scan node when its covered index scan may hand each key to the
+ * qexec_covered_visit_scan () - the block's innermost scan node when its covered index scan hands each key to the
  *				 block where the B-tree selects it, under the leaf latch; NULL otherwise
+ *   xasl(in): the block
+ *   fixed_scan_xasl(in): the scan node the block lets keep its page (qexec_execute_mainblock_internal ()), or NULL
+ *   mvcc_select_lock_needed(in): the block's scans take row locks
  *
- * Note: The rule of a fixed scan (only the innermost scan keeps its page latched, and nothing run for each of its
- *       rows fixes pages or waits: no subquery, no operator that reads storage), for a covered index scan. A scan
- *       that may not keep the latch copies its keys to the covering list as before. Left to the list as well: what
- *       the visit does not reproduce (an inst_num () stop, a first-match or outer join step, a memoized inner scan,
- *       locks taken while scanning).
+ * Note: Whether a scan may keep its page is the block's one decision, shared with the sequential heap scan. Asked
+ *       here is only what the visit does not reproduce, and such a scan copies its keys to the covering list as
+ *       before: an inst_num () stop, a first-match or outer join step, a partitioned inner scan, locks taken while
+ *       scanning.
  */
 static XASL_NODE *
-qexec_covered_visit_scan (XASL_NODE * xasl, bool mvcc_select_lock_needed)
+qexec_covered_visit_scan (XASL_NODE * xasl, XASL_NODE * fixed_scan_xasl, bool mvcc_select_lock_needed)
 {
-  XASL_NODE *inner, *xptr;
+  XASL_NODE *inner = fixed_scan_xasl, *xptr;
 
-  if ((xasl->type != BUILDLIST_PROC && xasl->type != BUILDVALUE_PROC) || mvcc_select_lock_needed
-      || xasl->scan_op_type != S_SELECT || xasl->selected_upd_list != NULL || xasl->dptr_list != NULL
+  if (inner == NULL || inner->scan_ptr != NULL || mvcc_select_lock_needed
+      || (xasl->type != BUILDLIST_PROC && xasl->type != BUILDVALUE_PROC)
+      || xasl->scan_op_type != S_SELECT || xasl->selected_upd_list != NULL
       || xasl->instnum_val != NULL || xasl->instnum_pred != NULL || xasl->max_iterations != -1 || xasl->rtf != NULL
-      || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN | XASL_HAS_CONNECT_BY | XASL_NEED_SINGLE_TUPLE_SCAN)
-      || (xasl->type == BUILDLIST_PROC
-	  && (xasl->proc.buildlist.eptr_list != NULL || xasl->proc.buildlist.gby_skip_state != NULL)))
+      || XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY | XASL_NEED_SINGLE_TUPLE_SCAN)
+      || (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.gby_skip_state != NULL))
     {
       return NULL;
-    }
-  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
-    {
-      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-	{
-	  return NULL;
-	}
-    }
-  for (inner = xasl; inner->scan_ptr != NULL; inner = inner->scan_ptr)
-    {
-      ;
     }
   for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
     {
@@ -28593,9 +28593,8 @@ qexec_covered_visit_scan (XASL_NODE * xasl, bool mvcc_select_lock_needed)
 	  return NULL;
 	}
     }
-  if (inner->bptr_list != NULL || inner->fptr_list != NULL || inner->memoize_storage != NULL
-      || (inner != xasl && inner->spec_list->parts != NULL) || !qexec_covered_scan_visitable (inner->spec_list)
-      || inner->spec_list->s_id.s.isid.need_count_only)
+  if (inner->bptr_list != NULL || inner->fptr_list != NULL || (inner != xasl && inner->spec_list->parts != NULL)
+      || !qexec_covered_scan_visitable (inner->spec_list) || inner->spec_list->s_id.s.isid.need_count_only)
     {
       return NULL;
     }
@@ -28630,6 +28629,16 @@ qexec_covered_visit (THREAD_ENTRY * thread_p, void *arg, bool key_start, bool * 
       if (ev_res != V_TRUE)
 	{
 	  return (ev_res == V_ERROR) ? ER_FAILED : NO_ERROR;
+	}
+    }
+  if (inner->memoize_storage != NULL)
+    {
+      /* a qualified row of the key memoize missed, as qexec_execute_scan () keeps it; a full storage frees itself */
+      bool memoize_put_success;
+
+      if (memoize_put (thread_p, inner, &memoize_put_success) == ER_FAILED)
+	{
+	  return ER_FAILED;
 	}
     }
   return qexec_end_one_iteration (thread_p, st->xasl, st->xasl_state, st->tplrec);
