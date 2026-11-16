@@ -78,6 +78,10 @@
 #include "network_interface_cl.h"
 #endif
 
+#if defined (SERVER_MODE)
+#include "log_impl.h"
+#endif /* SERVER_MODE */
+
 #include "storage_common.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "heap_file.h"
@@ -2897,6 +2901,17 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
  void
  css_conn_entry::set_tran_index (int tran_index)
  {
+#if defined (SERVER_MODE)
+   /* on the server this is only the index a packet claims. The
+    * connection runs under the index the server assigned (get_tran_index ()),
+    * so the claim is not stored; one that differs is logged once. */
+   if (tran_index != NULL_TRAN_INDEX && tran_index != owned_tran_index && !reported_foreign_tran_index)
+     {
+       reported_foreign_tran_index = true;
+       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CSS_TRAN_INDEX_NOT_OWNED, 2, tran_index,
+	       owned_tran_index.load ());
+     }
+#else
    // can never be system transaction index
    if (tran_index == LOG_SYSTEM_TRAN_INDEX)
      {
@@ -2904,13 +2919,91 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
        tran_index = NULL_TRAN_INDEX;
      }
    transaction_id = tran_index;
+#endif /* SERVER_MODE */
+ }
+
+ /*
+  * css_conn_entry::assign_tran_index () - the index the server gave this
+  *   connection (client registration or 2PC attach); NULL_TRAN_INDEX for none.
+  */
+ void
+ css_conn_entry::assign_tran_index (int tran_index)
+ {
+   reported_foreign_tran_index = false;
+   owned_tran_index = tran_index;
+   transaction_id = tran_index;
+ }
+
+ /*
+  * css_conn_entry::claim_tran_index () - assign the index only if the connection
+  *   has none yet, in one atomic step.
+  *   return: false if another registration on this connection got there first
+  */
+ bool
+ css_conn_entry::claim_tran_index (int tran_index)
+ {
+   int none = NULL_TRAN_INDEX;
+
+   if (!owned_tran_index.compare_exchange_strong (none, tran_index))
+     {
+       return false;
+     }
+   reported_foreign_tran_index = false;
+   transaction_id = tran_index;
+   return true;
+ }
+
+ /*
+  * css_conn_entry::release_tran_index () - forget the assigned index once it is released.
+  */
+ void
+ css_conn_entry::release_tran_index (void)
+ {
+   assign_tran_index (NULL_TRAN_INDEX);
+ }
+
+ /*
+  * css_conn_entry::get_lost_tran_index () - the index the server assigned this connection, once its
+  *   transaction has moved to another connection (2PC attach); NULL_TRAN_INDEX otherwise.
+  */
+ int
+ css_conn_entry::get_lost_tran_index (void)
+ {
+#if defined (SERVER_MODE)
+   int tran_index = owned_tran_index;
+
+   if (tran_index != NULL_TRAN_INDEX && get_tran_index () == NULL_TRAN_INDEX)
+     {
+       return tran_index;
+     }
+#endif /* SERVER_MODE */
+   return NULL_TRAN_INDEX;
  }
 
  int
  css_conn_entry::get_tran_index ()
  {
+#if defined (SERVER_MODE)
+   int tran_index = owned_tran_index;
+   LOG_TDES *tdes;
+
+   if (tran_index == NULL_TRAN_INDEX)
+     {
+       return NULL_TRAN_INDEX;
+     }
+
+   /* the index counts only while its transaction still belongs to this connection: a 2PC attach
+    * moves it to another connection, which may end it and leave the index to a new client */
+   tdes = LOG_FIND_TDES (tran_index);
+   if (tdes == NULL || tdes->client_id != client_id)
+     {
+       return NULL_TRAN_INDEX;
+     }
+   return tran_index;
+#else
    assert (transaction_id != LOG_SYSTEM_TRAN_INDEX);
    return transaction_id;
+#endif /* SERVER_MODE */
  }
 
  void
