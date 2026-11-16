@@ -2302,6 +2302,23 @@ ldr_act_elem (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 
   db_make_null (&tempval);
 
+  /*
+   * An element of a collection that came past the last attribute. ldr_act_attr () said
+   * so for the leading brace and left the context valid, so the elements behind it get
+   * here on both walks. The loading walk drops them below, having no slot to put them
+   * in; the validation walk must drop them too, before checking them. Otherwise it says
+   * more about a row that is refused anyway, and counts what the loading walk never
+   * sees: with the overflow ignored through --error-control-file, a bad date or a
+   * nested set inside it refused the whole file instead of skipping the row.
+   *
+   * Instance attributes only. A %constructor line is bounded by num_attrs + arg_count,
+   * and a class attribute line still invalidates the context on overflow.
+   */
+  if (context->act_mode == LDR_ACT_ATTR && context->next_attr >= context->num_attrs)
+    {
+      goto error_exit;
+    }
+
   if (context->validation_only)
     {
       switch (type)
