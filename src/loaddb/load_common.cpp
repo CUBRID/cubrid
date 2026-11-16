@@ -744,8 +744,6 @@ namespace cubload
 
 #define LOADDB_BUFFER_SIZE_LIMIT ((size_t)(((1024 * 1024 * 2) - 1) * 1024LL)) /* (2GB - 1K) */
 
-  /* size of the buffer for the "%format" command line of a class, which leads every batch of a binary section */
-#define LOADDB_FORMAT_LINE_SIZE (64)
   static int
   append_incomplete_row (std::string &batch_buffer, std::string &one_row_buffer, batch_handler &b_handler,
 			 class_id &clsid, batch_id &batch_id, int lineno,
@@ -783,6 +781,7 @@ namespace cubload
    *   lineno(in): line the record is counted as, from 1, for the message of a record too large
    *   class_is_ignored(in): true when the rows of the current class are not loaded
    *   compressed(in): true for a section of OBJECT_FORMAT_BINARY_COMPRESSED, whose records are blocks of rows
+   *   format_line_size(in): size of the %format command line which leads every batch of the section
    *   binary_mode(out): set to false once the end of the section has been reached
    *   rows(out): number of rows, and of lines, the record counts as: the row count of a block, one otherwise
    *   one_row_buffer(out): size field and row bytes, left untouched for an ignored class
@@ -797,7 +796,7 @@ namespace cubload
    */
   static int
   gathering_binary_record (std::ifstream &object_file, int lineno, bool class_is_ignored, bool compressed,
-			   bool &binary_mode, int64_t &rows, std::string &one_row_buffer)
+			   std::size_t format_line_size, bool &binary_mode, int64_t &rows, std::string &one_row_buffer)
   {
     BIN_REC_SIZE_TYPE binary_length = 0;
     BIN_BLOCK_SIZE_TYPE block_header[3] = { 0, 0, 0 };	/* raw size, row count and checksum of a block */
@@ -857,7 +856,8 @@ namespace cubload
      * corrupted, it is only too large for CS mode: SA mode reads the object file itself and has no such
      * limit, so the message points there.
      */
-    const std::size_t max_record_size = LOADDB_BUFFER_SIZE_LIMIT - 1 - LOADDB_FORMAT_LINE_SIZE - header_size;
+    const std::size_t overhead = 1 + format_line_size + header_size;
+    const std::size_t max_record_size = overhead < LOADDB_BUFFER_SIZE_LIMIT ? LOADDB_BUFFER_SIZE_LIMIT - overhead : 0;
     if ((std::size_t) binary_length > max_record_size)
       {
 	const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
@@ -919,7 +919,7 @@ namespace cubload
    *       rows of the batch by one line and the offset has to be pulled back to compensate.
    */
   static void
-  prepend_format_command (std::string &batch_buffer, const char *format_string, bool &first_binary_batch,
+  prepend_format_command (std::string &batch_buffer, const std::string &format_string, bool &first_binary_batch,
 			  int &batch_start_offset)
   {
     assert (batch_buffer.empty ());
@@ -951,7 +951,11 @@ namespace cubload
     bool class_is_ignored = false;
     short single_quote_checker = 0;
     bool  size_over = false;
-    char format_string[LOADDB_FORMAT_LINE_SIZE] = {0 };
+    /*
+     * The command line is kept whole, as the scanner reads it: its arguments may be padded with blanks or leading
+     * zeros, and a line the scanner rejects has to reach the server as it is to be reported as in SA mode.
+     */
+    std::string format_string;
     bool binary_mode = false;
     bool compressed_mode = false;
     bool first_binary_batch = true;
@@ -1000,7 +1004,7 @@ namespace cubload
 
 		if (is_id_line || is_class_line)
 		  {
-		    format_string[0] = '\0';
+		    format_string.clear ();
 		    binary_mode = false;
 		    if (one_row_buffer.empty() == false)
 		      {
@@ -1049,7 +1053,7 @@ namespace cubload
 		else if (is_format)
 		  {
 		    rtrim (line);
-		    snprintf (format_string, sizeof (format_string), "%s\n", line.c_str());
+		    format_string = line + "\n";
 		    /* "%format <data format> ...", the scanner checks the whole command line */
 		    const char *arg = line.c_str () + strlen ("%format");
 		    char *arg_end = NULL;
@@ -1137,8 +1141,8 @@ namespace cubload
 	  }
 	else
 	  {
-	    error_code = gathering_binary_record (object_file, lineno + 1, class_is_ignored, compressed_mode, binary_mode,
-						  unit_rows, one_row_buffer);
+	    error_code = gathering_binary_record (object_file, lineno + 1, class_is_ignored, compressed_mode,
+						  format_string.size (), binary_mode, unit_rows, one_row_buffer);
 	    if (error_code != NO_ERROR)
 	      {
 		object_file.close ();
