@@ -223,8 +223,9 @@ qdata_hash_bytes (const void *bytes, size_t size)
 }
 
 /*
- * qdata_hash_number () - the hash of a NUMERIC, FLOAT, DOUBLE or MONETARY value: values their comparison finds equal
- *			  hash alike, which mht_get_hash_number does not do for a fixed NUMERIC 1.0 and 1.00, or for 0.0 and -0.0
+ * qdata_hash_number () - the hash of a NUMERIC, FLOAT, DOUBLE or MONETARY value: values the comparison finds equal
+ *			  hash alike, which mht_get_hash_number () does not do for a fixed NUMERIC 1.0 and 1.00, or for
+ *			  0.0 and -0.0
  *   returns: false if the value is of another type or has no such hash: a NaN compares equal to every value (MR_CMP)
  *   value(in): a value, not NULL
  *   hash_key(out): its hash, its bits mixed by mht_mix_hash () as a string's are
@@ -254,7 +255,8 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
 	else
 	  {
 	    /* the digits without trailing zeros and the scale they leave (1.00 as 1 and 0, 0.10 as 1 and 1), or with a
-	     * negative scale's zeros appended up to the full precision, as mht_get_hash_number does for a float NUMERIC */
+	     * negative scale's zeros appended up to the full precision, as mht_get_hash_number () does for a float
+	     * NUMERIC */
 	    scale =
 	      float_numeric_normalize_for_hash ((DB_C_NUMERIC) db_locate_numeric (value), digits, precision, scale);
 	    bytes = digits;
@@ -271,7 +273,7 @@ qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
     case DB_TYPE_FLOAT:
     case DB_TYPE_MONETARY:
       {
-	/* MONETARY compares its amount only (mr_cmpval_money) */
+	/* MONETARY compares its amount only (mr_cmpval_money ()) */
 	double d = (type == DB_TYPE_DOUBLE) ? db_get_double (value)
 	  : (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_monetary (value)->amount;
 
@@ -430,13 +432,14 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
 
 /*
  * qdata_hash_scan_value () - the hash of a key value: values the key comparison finds equal hash alike. A NUMERIC,
- *			      FLOAT, DOUBLE or MONETARY is hashed by qdata_hash_number, others by mht_get_hash_number
+ *			      FLOAT, DOUBLE or MONETARY is hashed by qdata_hash_number (), others by
+ *			      mht_get_hash_number ()
  *   returns: hash value
  *   value(in): key value
  *   ht_size(in): hash table size (in buckets)
  *
- * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON value,
- * which hashes its text while its comparison takes a scalar's value (true as 'true', mr_cmpval_json ()).
+ * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON key,
+ * which hashes its text while its comparison takes a scalar's value (true as 'true', -0.0 as 0.0: mr_cmpval_json ()).
  */
 unsigned int
 qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)

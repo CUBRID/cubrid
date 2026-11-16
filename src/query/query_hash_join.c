@@ -2713,7 +2713,7 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
       if (fhs_create (thread_p, hash_scan->file.hash_table, list_id->tuple_cnt) == NULL)
 	{
-	  /* the FHSID has no valid files; free it so that hjoin_scan_clear does not destroy them */
+	  /* the FHSID has no valid files; free it so that hjoin_scan_clear () does not destroy them */
 	  db_private_free_and_init (thread_p, hash_scan->file.hash_table);
 	  goto error_exit;
 	}
@@ -5178,7 +5178,7 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
  *   dom(in): the column's domain in the list
  *
  * The list writes the value with its own type (qfile_tuple_put_value ()); the build reads the column back with the
- * column's domain.  With the two types the same:
+ * column's domain. With the two types the same:
  *   - INTEGER, SMALLINT, BIGINT, DATE, TIME, TIMESTAMP, DATETIME: fixed-size bits written and read back as they are;
  *     the hash is of those bits.
  *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes

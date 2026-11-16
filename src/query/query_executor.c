@@ -8216,7 +8216,7 @@ qexec_gby_aggs_follow_row_order (AGGREGATE_TYPE * agg_list)
  *
  * The merge meets two groups only when their hashes are equal (qexec_gby_mtable_find (),
  * qexec_gby_merge_part_of ()), and where the group order does not reach the result it writes them out without the
- * sort that brings equal keys together.  A JSON key hashes its text while its comparison takes a scalar's value
+ * sort that brings equal keys together. A JSON key hashes its text while its comparison takes a scalar's value
  * (true as 'true', -0.0 as 0.0: mr_cmpval_json ()); a string key without a loaded collation (lang_get_collation ())
  * has no collation hash; and keys without compiled comparisons compare by their values' own types: those keys keep
  * the sort.
