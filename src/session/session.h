@@ -37,6 +37,8 @@
 
 // forward definitions
 struct xasl_cache_ent;
+class stream_session;
+class stream_handle_table;
 
 extern int session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
@@ -90,11 +92,24 @@ extern int session_set_tran_auto_commit (THREAD_ENTRY * thread_p, bool auto_comm
 extern int session_set_load_session (THREAD_ENTRY * thread_p, load_session * load_session_p);
 extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_session_ref_ptr));
 
+extern int session_stream_client_id (THREAD_ENTRY * thread_p);
+extern int session_reserve_stream_slot (THREAD_ENTRY * thread_p, struct session_state **held);
+extern int session_set_stream_session (THREAD_ENTRY * thread_p, struct session_state *held,
+				       stream_session * stream_session_p, int kind);
+extern void session_clear_stream_session (THREAD_ENTRY * thread_p, struct session_state *held);
+extern int session_use_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr),
+				       int *kind, struct session_state **held);
+extern void session_unuse_stream_session (THREAD_ENTRY * thread_p, struct session_state *held);
+extern bool session_has_stream_session (THREAD_ENTRY * thread_p);
+extern void session_end_stream_session (THREAD_ENTRY * thread_p);
+extern int session_get_stream_handles (THREAD_ENTRY * thread_p, bool create, stream_handle_table ** handles);
+extern void session_end_tran_streams (THREAD_ENTRY * thread_p, int tran_index);
+
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
 extern void session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p);
 
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
-extern void session_destroy_load_session (THREAD_ENTRY * thread_p, void *session);
+extern void session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session, int client_id);
 #endif /* _SESSION_H_ */
