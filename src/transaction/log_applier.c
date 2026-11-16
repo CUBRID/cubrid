@@ -469,8 +469,21 @@ la_clock_ns (void)
 }
 
 /* The SQL parser keeps static globals that are not thread-safe; the coordinator (apply info) and a
- * worker (statement items) compiling at the same time trip assertions such as parser_pop_hint_node. */
+ * worker (statement items) compiling at the same time trip assertions such as parser_pop_hint_node.
+ * TODO: remove the mutex once the parser is thread-safe (CUB_THREAD_LOCAL_PSR in db_multi_threads_connections.h).
+ *
+ * The mutex is held while a statement runs, so its holder may wait for a server lock. A thread must therefore never
+ * ask for it while its transaction holds a lock that the holder may be waiting for: a worker running a replicated DDL
+ * under the mutex waits for SCH_M on the root class, and a coordinator that took IX on it with the apply info update
+ * and then waits for the mutex to store the statistics never releases it. The coordinator takes the mutex once for
+ * its whole transaction, from the first statement to the commit or abort (la_coordinator_tran_begin), and its
+ * statements take it again on the same thread (la_sql_compile_lock counts the depth). */
 static pthread_mutex_t la_sql_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
+static thread_local int la_sql_compile_depth = 0;
+
+/* Inside its transaction the coordinator holds the mutex, so a statement of it waiting for a worker's lock keeps the
+ * workers' statements waiting too: wait a bounded time, then abort and store the apply info at the next interval. */
+#define LA_COORDINATOR_WAIT_MSECS 1000
 
 /* commit LSAs the previous run marked as applied above last_committed_lsa, sorted; set at startup, read-only
  * while the workers run (see LA_APPLIED_TX_MARKER_NAME) */
@@ -586,6 +599,10 @@ static int la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDE
 static int la_apply_delete_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS * stats);
 static int la_apply_update_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS * stats);
 static int la_apply_insert_log (LA_APPLY_WORKER_CONTEXT * context, LA_ITEM * item, LA_STATS * stats);
+static void la_sql_compile_lock (void);
+static void la_sql_compile_unlock (void);
+static int la_coordinator_tran_begin (void);
+static void la_coordinator_tran_end (int save_wait_msecs);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item, LA_STATS * stats);
@@ -1231,11 +1248,16 @@ la_stop_apply_workers (void)
  *   A failed update is counted and reported but does not stop the applier unless the server is down, as
  *   in the serial applier. The positions stay at their last stored values until the next store succeeds; a
  *   restart reads that range again and skips the commits marked as applied.
+ *   The transaction runs in a coordinator section and always ends with a commit or an abort in it, so it holds no
+ *   lock when it leaves the section (see la_sql_compile_mutex).
  */
 static int
 la_coordinator_commit_apply_info (void)
 {
+  int save_wait_msecs;
   int res;
+
+  save_wait_msecs = la_coordinator_tran_begin ();
 
   res = la_update_ha_last_applied_info ();
   if (res > 0)
@@ -1263,13 +1285,16 @@ la_coordinator_commit_apply_info (void)
 	      la_Info.marker_cleanup_pending = true;
 	    }
 
+	  la_coordinator_tran_end (save_wait_msecs);
 	  return res;
 	}
-
-      /* the transaction is gone with the apply info update, so the markers stay: a restart reads that range
-       * again from the stored position and needs them to skip the commits already applied */
-      (void) db_abort_transaction ();
     }
+
+  /* The apply info update (a lock wait may have timed out) or the statistics failed. Abort also when the update
+   * failed alone, or the transaction would leave the section holding its locks. The markers stay: a restart reads
+   * that range again from the stored position and needs them to skip the commits already applied. */
+  (void) db_abort_transaction ();
+  la_coordinator_tran_end (save_wait_msecs);
 
   la_Info.fail_counter++;
   er_log_debug (ARG_FILE_LINE, "log applied but cannot update last committed LSA (%d|%d)",
@@ -3375,9 +3400,9 @@ la_load_applied_tx_markers (void)
   db_make_int (&in_value[3], la_Info.last_committed_lsa.offset);
 
   AU_SAVE_AND_DISABLE (au_save);
-  pthread_mutex_lock (&la_sql_compile_mutex);
+  la_sql_compile_lock ();
   res = db_execute_with_values (query_buf, &result, &query_error, 4, in_value);
-  pthread_mutex_unlock (&la_sql_compile_mutex);
+  la_sql_compile_unlock ();
   AU_RESTORE (au_save);
 
   db_value_clear (&in_value[0]);
@@ -6922,6 +6947,66 @@ end:
 }
 
 /*
+ * la_sql_compile_lock() - take la_sql_compile_mutex, or count one more level when this thread already holds it
+ */
+static void
+la_sql_compile_lock (void)
+{
+  if (la_sql_compile_depth == 0)
+    {
+      pthread_mutex_lock (&la_sql_compile_mutex);
+    }
+  la_sql_compile_depth++;
+}
+
+/*
+ * la_sql_compile_unlock() - release one level of la_sql_compile_lock; the outermost one releases the mutex
+ */
+static void
+la_sql_compile_unlock (void)
+{
+  assert (la_sql_compile_depth > 0);
+  la_sql_compile_depth--;
+  if (la_sql_compile_depth == 0)
+    {
+      pthread_mutex_unlock (&la_sql_compile_mutex);
+    }
+}
+
+/*
+ * la_coordinator_tran_begin() - start a coordinator transaction section
+ *   return: the lock wait of the transaction before the section, for la_coordinator_tran_end
+ *
+ * Note:
+ *   The section must cover the coordinator transaction from its first statement to its commit or abort, and the
+ *   transaction must not hold a lock before it (see la_sql_compile_mutex). Sections may nest on the same thread.
+ */
+static int
+la_coordinator_tran_begin (void)
+{
+  int save_wait_msecs;
+
+  la_sql_compile_lock ();
+
+  save_wait_msecs = TM_TRAN_WAIT_MSECS ();
+  (void) tran_reset_wait_times (LA_COORDINATOR_WAIT_MSECS);
+
+  return save_wait_msecs;
+}
+
+/*
+ * la_coordinator_tran_end() - end a coordinator transaction section
+ *   save_wait_msecs(in): the value la_coordinator_tran_begin returned
+ */
+static void
+la_coordinator_tran_end (int save_wait_msecs)
+{
+  (void) tran_reset_wait_times (save_wait_msecs);
+
+  la_sql_compile_unlock ();
+}
+
+/*
  * la_update_query_execute()
  *   returns  : error code, if execution failed
  *              number of affected objects, if a success
@@ -6942,7 +7027,7 @@ la_update_query_execute (const char *sql, bool au_disable)
       AU_SAVE_AND_DISABLE (au_save);
     }
 
-  pthread_mutex_lock (&la_sql_compile_mutex);
+  la_sql_compile_lock ();
 
   res = db_execute (sql, &result, &query_error);
   if (res >= 0)
@@ -6956,7 +7041,7 @@ la_update_query_execute (const char *sql, bool au_disable)
 	}
     }
 
-  pthread_mutex_unlock (&la_sql_compile_mutex);
+  la_sql_compile_unlock ();
 
   if (au_disable)
     {
@@ -6988,7 +7073,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
       AU_SAVE_AND_DISABLE (au_save);
     }
 
-  pthread_mutex_lock (&la_sql_compile_mutex);
+  la_sql_compile_lock ();
 
   res = db_execute_with_values (sql, &result, &query_error, arg_count, vals);
   if (res >= 0)
@@ -7002,7 +7087,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
 	}
     }
 
-  pthread_mutex_unlock (&la_sql_compile_mutex);
+  la_sql_compile_unlock ();
 
   if (au_disable)
     {
@@ -8053,8 +8138,13 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	}
       else if (la_is_repl_lists_empty ())
 	{
+	  int save_wait_msecs;
+
+	  /* the update and the commit of la_log_commit are one coordinator transaction (see la_sql_compile_mutex) */
+	  save_wait_msecs = la_coordinator_tran_begin ();
 	  (void) la_update_ha_apply_info_log_record_time (ha_server_state->at_time);
 	  error = la_log_commit (true);
+	  la_coordinator_tran_end (save_wait_msecs);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
