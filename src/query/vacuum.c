@@ -5503,7 +5503,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
   MVCCID mvccid;
   VACUUM_LOG_BLOCKID crt_blockid;
   LOG_LSA mvcc_op_log_lsa = LSA_INITIALIZER;
-  VACUUM_DATA_ENTRY current_block_data;
+  MVCCID current_block_oldest_visible_mvccid = MVCCID_NULL;
+  MVCCID current_block_newest_mvccid = MVCCID_NULL;
   bool restore_log_header = false;
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
@@ -5689,7 +5690,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
       if (data.blockid == vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.load ().pageid))
 	{
 	  /* restored to log header after the older blocks are produced */
-	  current_block_data = data;
+	  current_block_oldest_visible_mvccid = data.oldest_visible_mvccid;
+	  current_block_newest_mvccid = data.newest_mvccid;
 	  restore_log_header = true;
 	}
       else
@@ -5722,8 +5724,8 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 
   if (error_code == NO_ERROR && restore_log_header)
     {
-      log_Gl.hdr.oldest_visible_mvccid = current_block_data.oldest_visible_mvccid;
-      log_Gl.hdr.newest_block_mvccid = current_block_data.newest_mvccid;
+      log_Gl.hdr.oldest_visible_mvccid = current_block_oldest_visible_mvccid;
+      log_Gl.hdr.newest_block_mvccid = current_block_newest_mvccid;
       log_Gl.hdr.does_block_need_vacuum = true;
       log_Gl.hdr.mvcc_op_log_lsa = mvcc_op_log_lsa;
 
