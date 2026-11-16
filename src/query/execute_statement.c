@@ -23287,6 +23287,12 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
+#if !defined (CS_MODE)
+  /* the rows stream from a client to a server; refused before the statement takes its savepoint */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "COPY FROM STDIN in standalone mode");
+  return ER_COPY_NOT_SUPPORTED;
+#endif /* !CS_MODE */
+
   /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
   entity_spec = statement->info.copy.table_name;
   if (entity_spec == NULL || entity_spec->node_type != PT_SPEC || entity_spec->info.spec.entity_name == NULL)
@@ -23658,6 +23664,13 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error == NO_ERROR)
     {
       stream_from_set_savepoint (UNIQUE_SAVEPOINT_COPY);
+    }
+  else if (!ER_IS_ABORTED_DUE_TO_DEADLOCK (error) && !ER_IS_SERVER_DOWN_ERROR (error))
+    {
+      /* the transport allows a refused open to have done work in the transaction, as a failed statement does */
+      er_stack_push ();
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_COPY);
+      er_stack_pop ();
     }
 
 end:
