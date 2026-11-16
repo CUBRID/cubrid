@@ -1672,7 +1672,12 @@ typedef enum
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
-  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000	/* this spec was originally a subquery but was resolved to a table during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table
+					 * during dummy SELECT removal; invisible columns should be excluded from this spec */
+  PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000	/* the remote source spec of a DML statement, and the derived table
+					 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
+					 * asked for, so it must not hide the remote invisible columns the statement references - unlike
+					 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
 } PT_SPEC_FLAG;
 
 typedef enum
@@ -2449,7 +2454,15 @@ struct pt_expr_info
 							 * than a column-vs-constant compare; kept only when an index
 							 * adopts it */
 #define PT_EXPR_INFO_ANTI_JOIN_ON 67108864	/* 0x4000000, term in an ANTI JOIN ON condition */
+#define PT_EXPR_INFO_OR_EXTRACTED 134217728	/* 0x8000000, an OR factor qo_extract_or_restrictions () has
+						 * derived restrictions from; not a source again */
+#define PT_EXPR_INFO_OR_DERIVED_COLUMN 268435456	/* 0x10000000, an OR-derived key range on one column;
+							 * paired with its origin on its own node */
   int flag;			/* flags */
+/* the largest OR factor pt_cnf_where () keeps whole and qo_extract_or_restrictions () derives from */
+#define PT_CNF_KEEP_MAX_DISJUNCTS 8
+#define PT_CNF_KEEP_MAX_CONJUNCTS 16
+
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
 #define PT_EXPR_INFO_CLEAR_FLAG(e, f)   (e)->info.expr.flag &= (int) ~(f)
@@ -3584,6 +3597,17 @@ typedef struct pt_dblink_info
   PT_NODE *sel_list;
   PT_NODE *owner_list;
 
+  /* a referenced name could not be pinned to this table (pt_get_column_name_pre ()), so the
+   * column list is described instead of prepared.  A prediction only: without it, a name the
+   * "SELECT *" prepare does not cover is described anyway (uncertain_name_seen). */
+  bool needs_describe;
+
+  /* a gathered name may not be this table's (pt_get_column_name_pre ()): an unqualified one,
+   * or one qualified with this table's name inside a nested block.  Without one every name is
+   * this table's, so a refused prepare is the answer and nothing is described.  With one, a
+   * name outside "SELECT *" is described: a remote accepting it proves nothing (Oracle's UID). */
+  bool uncertain_name_seen;
+
   void *remote_col_list;	/* remote table's column list */
 
   /* Correlated equality push-down (single equality: count == 1).
@@ -3896,6 +3920,9 @@ struct parser_node
     unsigned use_plan_cache:1;	/* used for plan cache */
     unsigned use_query_cache:1;
     unsigned is_hidden_column:1;
+    unsigned is_remote_invisible_column:1;	/* a DBLink derived spec's as_attr_list name whose remote schema
+						 * marks it INVISIBLE: it keeps its tuple slot, but stars and
+						 * NATURAL JOIN skip it while explicit references still resolve */
     unsigned is_paren:1;
     unsigned with_rollup:1;	/* WITH ROLLUP clause for GROUP BY */
     unsigned force_auto_parameterize:1;	/* forces a call to qo_auto_parameterize (); this is a special flag used for
