@@ -453,24 +453,6 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 }
 
 /*
- * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it: folding a key's values
- *				 in key order from 0 and finishing with qdata_hash_scan_key_finish () gives
- *				 qdata_hash_scan_key ()'s hash, for a caller that has the values one at a time
- *   returns: the hash of the values so far
- *   hash_val(in): the hash of the values before this one (0 before the first)
- *   value(in): the key value
- *   ht_size(in): hash table size (in buckets)
- */
-unsigned int
-qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
-{
-  unsigned int value_hash = qdata_hash_scan_value (value, ht_size);
-
-  hash_val = ROTL32 (hash_val, 13) ^ value_hash;
-  return (hash_val != 0) ? hash_val : value_hash;
-}
-
-/*
  * qdata_hash_scan_key_finish () - qdata_hash_scan_key ()'s last step: the file hash method's own hash over it
  *   returns: hash value
  *   hash_val(in): the hash of all the key values
