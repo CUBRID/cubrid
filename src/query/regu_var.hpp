@@ -30,7 +30,7 @@
 #include "object_primitive.h"
 #include "db_function.hpp"
 #include "xasl_sp.hpp"
-#include "volatility.h"
+#include "eval_prop_def.h"
 #include "domain_rules.h"
 
 #include <functional>

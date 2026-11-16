@@ -62,7 +62,7 @@
 #include "db.h"
 #include "tz_support.h"
 #include "func_type.hpp"
-#include "volatility.h"
+#include "eval_prop_def.h"
 
 #include "dbtype.h"
 
@@ -175,7 +175,8 @@ typedef struct expression_signature
   PT_ARG_TYPE arg1_type;
   PT_ARG_TYPE arg2_type;
   PT_ARG_TYPE arg3_type;
-  PT_VOLATILITY volatility;	/* per-overload volatility; PT_VOLATILITY_UNSET unless classified */
+  PT_EVAL_PROP prop;		/* how this overload behaves when evaluated (volatility, SI requirement,
+				 * allow_default); not part of the type contract */
 } EXPRESSION_SIGNATURE;
 
 /* SQL expression definition */
@@ -302,51 +303,115 @@ static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
 static bool pt_is_dblink_related (PT_NODE * p);
 
-static PT_VOLATILITY pt_get_op_volatility (PT_OP_TYPE op);
+static PT_ALLOW_DEFAULT pt_get_op_allow_default (PT_OP_TYPE op);
 
 /*
- * pt_get_op_volatility () - volatility declared for an operator's signature
- *   return: the operator's volatility, or PT_VOLATILITY_UNSET if unclassified
+ * pt_get_op_allow_default () - whether an operator may appear in a column DEFAULT
+ *   return: the allow_default all the overloads of the operator share, UNSET if they differ or the operator has no
+ *	     signature
  *   op(in): operator
  *
- * The type checker selects the matching overload from argument types; here we
- * read a representative (overload 0), which is exact for operators whose
- * volatility does not vary across overloads (the only ones classified so far).
+ * allow_default is a rule of the code, not of an overload: the completeness gate checks that the overloads agree.
  */
-static PT_VOLATILITY
-pt_get_op_volatility (PT_OP_TYPE op)
+static PT_ALLOW_DEFAULT
+pt_get_op_allow_default (PT_OP_TYPE op)
 {
   EXPRESSION_DEFINITION def;
+  PT_ALLOW_DEFAULT allow;
+  int i;
 
   if (!pt_get_expression_definition (op, &def) || def.overloads_count <= 0)
     {
-      switch (op)
+      return PT_ALLOW_DEFAULT_UNSET;
+    }
+
+  allow = def.overloads[0].prop.allow_default;
+  for (i = 1; i < def.overloads_count; i++)
+    {
+      if (def.overloads[i].prop.allow_default != allow)
 	{
-	case PT_CAST:
-	  /* PT_CAST has no entry in the expression-definition table; a cast
-	   * itself adds no volatility (its operand's propagates over it) */
-	  return PT_VOLATILITY_IMMUTABLE;
-	default:
-	  return PT_VOLATILITY_UNSET;
+	  return PT_ALLOW_DEFAULT_UNSET;
 	}
     }
-  return def.overloads[0].volatility;
+  return allow;
+}
+
+/*
+ * pt_find_default_not_allowed () - the first node of a DEFAULT expression that may not appear in a column DEFAULT
+ *   return: the node, NULL if the whole tree is allowed
+ *   node(in): expression tree (a single value, not a list)
+ *
+ * Decided by code (pt_get_op_allow_default, pt_get_func_allow_default), so it needs no type checking and runs
+ * before it: constant folding can dissolve a node into a literal and erase the evidence.  A literal is allowed, a
+ * cast and the holder of a function call are transparent, and anything else (a name, a host variable, a query, a
+ * held-back or forbidden operator or function) is not.
+ */
+PT_NODE *
+pt_find_default_not_allowed (PT_NODE * node)
+{
+  PT_NODE *found, *arg;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+      return NULL;
+
+    case PT_EXPR:
+      if (node->info.expr.op != PT_CAST && node->info.expr.op != PT_FUNCTION_HOLDER
+	  && pt_get_op_allow_default (node->info.expr.op) != PT_DEFAULT_ALLOWED)
+	{
+	  return node;
+	}
+      found = pt_find_default_not_allowed (node->info.expr.arg1);
+      if (found == NULL)
+	{
+	  found = pt_find_default_not_allowed (node->info.expr.arg2);
+	}
+      if (found == NULL)
+	{
+	  found = pt_find_default_not_allowed (node->info.expr.arg3);
+	}
+      return found;
+
+    case PT_FUNCTION:
+      if (pt_get_func_allow_default (node->info.function.function_type) != PT_DEFAULT_ALLOWED)
+	{
+	  return node;
+	}
+      for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+	{
+	  found = pt_find_default_not_allowed (arg);
+	  if (found != NULL)
+	    {
+	      return found;
+	    }
+	}
+      return NULL;
+
+    default:
+      return node;
+    }
 }
 
 /*
  * pt_get_expr_tree_volatility () - effective volatility of an expression tree
  *   return: bottom-up MAX volatility over the tree
- *   node(in): expression tree (a single value, not a list)
+ *   node(in): expression tree (a single value, not a list), type-checked or restored from a Compact DEFAULT Tree
  *   unclassified_node(out): the first node found whose volatility is UNSET
  *			     (unclassified operator, function, or a node type this
  *			     walk does not understand); left untouched otherwise
  *
- * Literals are IMMUTABLE; an operator node is the MAX of its own volatility and
- * its operands'.  Anything not yet classified yields UNSET, which taints the
- * whole result so the caller will not fold it.  A pure query, like
- * pt_get_op_volatility and pt_get_func_volatility: no diagnosis here -- the
- * caller reports the recorded node.  Used to decide whether a column DEFAULT
- * expression is an Immutable Expression-Derived Literal.
+ * Literals are IMMUTABLE; an operator or function node is the MAX of its own volatility and its operands'.  Its own
+ * volatility is the one of the overload type checking matched for its argument types (expr_volatility), so RAND ()
+ * and RAND (seed) differ; there is no fallback to the code.  A cast is transparent.  An operator that typed as NULL
+ * without matching an overload (a NULL argument) is the constant NULL.  Anything not classified yields UNSET, which
+ * taints the whole result so the caller will not fold it.  A pure query: no diagnosis here -- the caller reports
+ * the recorded node.
  */
 PT_VOLATILITY
 pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node)
@@ -367,13 +432,17 @@ pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node)
       return PT_VOLATILITY_IMMUTABLE;
 
     case PT_EXPR:
-      if (node->info.expr.op == PT_FUNCTION_HOLDER)
+      if (node->info.expr.op == PT_FUNCTION_HOLDER || node->info.expr.op == PT_CAST)
 	{
-	  /* transparent wrapper: a function call is parsed as a PT_EXPR with a
-	   * PT_FUNCTION_HOLDER op holding the PT_FUNCTION in arg1 */
+	  /* transparent: the holder of a function call (a PT_EXPR holding the PT_FUNCTION in arg1), and a cast,
+	   * which has no signature and adds no volatility of its own */
 	  return pt_get_expr_tree_volatility (node->info.expr.arg1, unclassified_node);
 	}
-      v = pt_get_op_volatility (node->info.expr.op);
+      v = node->info.expr.expr_volatility;
+      if (v == PT_VOLATILITY_UNSET && node->type_enum == PT_TYPE_NULL)
+	{
+	  v = PT_VOLATILITY_IMMUTABLE;
+	}
       if (v == PT_VOLATILITY_UNSET && *unclassified_node == NULL)
 	{
 	  /* record the unclassified operator itself; a parent tainted only through
@@ -389,7 +458,7 @@ pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node)
       {
 	PT_NODE *arg;
 
-	v = pt_get_func_volatility (node->info.function.function_type);
+	v = node->info.function.expr_volatility;
 	if (v == PT_VOLATILITY_UNSET && *unclassified_node == NULL)
 	  {
 	    *unclassified_node = node;
@@ -441,9 +510,11 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
   sig.return_type.type = pt_arg_type::NORMAL;
   sig.return_type.val.type = PT_TYPE_NONE;
 
-  /* default: overload is not classified for volatility.  Cases that have been
-   * reviewed set sig.volatility explicitly before storing each overload. */
-  sig.volatility = PT_VOLATILITY_UNSET;
+  /* default: the overload is held back (unclassified).  A reviewed case sets sig.prop before storing each
+   * overload. */
+  sig.prop.volatility = PT_VOLATILITY_UNSET;
+  sig.prop.si_requirement = PT_SI_NONE;
+  sig.prop.allow_default = PT_ALLOW_DEFAULT_UNSET;
 
   switch (op)
     {
@@ -563,13 +634,11 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       break;
 
     case PT_RAND:
-      /* volatility left UNSET: it differs per overload (no-arg RAND() is
-       * statement-level, seeded RAND(n) is row-level), and pt_get_op_volatility
-       * reads overloads[0] only.  Classified with matched-overload stamping in
-       * CBRD-26879; until then a DEFAULT embedding RAND keeps being rejected. */
       num = 0;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
-      /* one overload */
+      /* RAND (): one value for the whole statement */
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -580,6 +649,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.val.type = PT_TYPE_INTEGER;
 
       def->overloads[num++] = sig;
+
+      /* RAND (seed): the next value of its sequence on every evaluation */
+      sig.prop.volatility = PT_VOLATILITY_VOLATILE;
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -599,7 +671,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* row-level random: both overloads (with or without a seed) recompute on
        * every evaluation, so the whole operator is VOLATILE */
-      sig.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -625,10 +698,11 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       break;
 
     case PT_DRAND:
-      /* volatility left UNSET for the same per-overload reason as PT_RAND */
       num = 0;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
-      /* one overload */
+      /* DRAND (seed): the next value of its sequence on every evaluation */
+      sig.prop.volatility = PT_VOLATILITY_VOLATILE;
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -639,6 +713,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.val.type = PT_TYPE_DOUBLE;
 
       def->overloads[num++] = sig;
+
+      /* DRAND (): one value for the whole statement */
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -658,7 +735,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* row-level random: both overloads (with or without a seed) recompute on
        * every evaluation, so the whole operator is VOLATILE */
-      sig.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* arg1 */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -1504,7 +1582,16 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_CONCAT:
     case PT_SYS_CONNECT_BY_PATH:
       num = 0;
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      if (op == PT_SYS_CONNECT_BY_PATH)
+	{
+	  /* reads the rows of a hierarchical query, which a DEFAULT has none of */
+	  sig.prop.allow_default = PT_DEFAULT_NOT_ALLOWED;
+	}
+      else
+	{
+	  sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+	  sig.prop.allow_default = PT_DEFAULT_ALLOWED;
+	}
 
       /* two overloads */
 
@@ -1548,7 +1635,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* row-determined: a fresh GUID on every evaluation */
-      sig.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* one overload: no arguments, just a return type */
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -1568,7 +1656,16 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* session dependent: constant within a statement, not foldable at DDL time */
-      sig.volatility = PT_VOLATILITY_STABLE;
+      if (op == PT_LIST_DBS)
+	{
+	  /* the client cannot evaluate it */
+	  sig.prop.allow_default = PT_DEFAULT_NOT_ALLOWED;
+	}
+      else
+	{
+	  sig.prop.volatility = PT_VOLATILITY_STABLE;
+	  sig.prop.allow_default = PT_DEFAULT_ALLOWED;
+	}
 
       /* one overload */
 
@@ -1585,7 +1682,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* row-determined: a fresh UUID on every evaluation */
-      sig.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.volatility = PT_VOLATILITY_VOLATILE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* first overload: UUID() -> BIT (defaults to UUID(4)) */
       sig.arg1_type.type = pt_arg_type::NORMAL;
@@ -1747,7 +1845,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_MOD:
       num = 0;
 
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* one overload */
 
@@ -1769,7 +1868,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_MODULUS:
       num = 0;
 
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* one overload */
 
@@ -1790,7 +1890,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_TIMES:
       num = 0;
 
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* two overloads */
 
@@ -1824,7 +1925,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       /* arithmetic/string/collection addition is a pure function of its
        * operands -- same inputs always yield the same output. */
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* number + number */
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -1872,7 +1974,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_MINUS:
       num = 0;
 
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* 4 overloads */
 
@@ -2106,7 +2209,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_UUID_FORMAT:
       num = 0;
 
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* UUID_FORMAT (STRING) */
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -2379,7 +2483,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* constant within a statement, differs across statements */
-      sig.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
+      sig.prop.si_requirement = PT_SI_SYS_DATETIME;
 
       /* one overload */
 
@@ -2396,7 +2502,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* constant within a statement, differs across statements */
-      sig.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
+      sig.prop.si_requirement = PT_SI_SYS_DATETIME;
 
       /* one overload */
 
@@ -2414,7 +2522,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* constant within a statement, differs across statements */
-      sig.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
+      sig.prop.si_requirement = PT_SI_SYS_DATETIME;
 
       /* one overload */
 
@@ -2432,7 +2542,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* constant within a statement, differs across statements */
-      sig.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
+      sig.prop.si_requirement = PT_SI_SYS_DATETIME;
 
       /* one overload */
 
@@ -3505,7 +3617,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* pure selection over the operands: no environment, session, clock, or
        * server state is read, so the operators are IMMUTABLE (an operand's own
        * volatility still propagates over them) */
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* one overload */
 
@@ -3714,7 +3827,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* pure function of its argument */
-      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.volatility = PT_VOLATILITY_IMMUTABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* one overload */
 
@@ -3732,7 +3846,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       num = 0;
 
       /* NLS/format-environment dependent: re-evaluated rather than folded at DDL time */
-      sig.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* four overloads */
 
@@ -3996,7 +4111,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       /* UNIX_TIMESTAMP () reads the statement clock; the one-argument forms
        * convert through the session timezone, so all overloads are STABLE
        * (looks-immutable-but-environment-dependent must not fold at DDL). */
-      sig.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.volatility = PT_VOLATILITY_STABLE;
+      sig.prop.allow_default = PT_DEFAULT_ALLOWED;
 
       /* three overloads */
 
@@ -4014,7 +4130,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       sig.return_type.val.type = PT_TYPE_INTEGER;
       def->overloads[num++] = sig;
 
-      /* UNIX_TIMESTAMP (void) */
+      /* UNIX_TIMESTAMP (void): the only overload that reads the statement clock */
+      sig.prop.si_requirement = PT_SI_SYS_DATETIME;
       sig.arg1_type.type = pt_arg_type::NORMAL;
       sig.arg1_type.val.type = PT_TYPE_NONE;
       sig.return_type.type = pt_arg_type::NORMAL;
@@ -6398,6 +6515,76 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
 }
 
 /*
+ * pt_eval_prop_op_allow_default () - the allow_default of an operator, for the completeness gate
+ *   return: PT_ALLOW_DEFAULT, or -1 for the two operators a DEFAULT expression is transparent through
+ *   op(in): a PT_OP_TYPE
+ */
+int
+pt_eval_prop_op_allow_default (int op)
+{
+  if (op == PT_CAST || op == PT_FUNCTION_HOLDER)
+    {
+      return -1;
+    }
+  return (int) pt_get_op_allow_default ((PT_OP_TYPE) op);
+}
+
+/*
+ * pt_eval_prop_self_check_ops () - completeness gate over the operators
+ *   return: number of violations (0: the classification is consistent)
+ *
+ * Checks every operator with signatures:
+ *   - its overloads agree on allow_default (it is read per code);
+ *   - allowed in a DEFAULT: every overload has a volatility, or a DEFAULT using it could not be stored;
+ *   - not allowed (forbidden or held back): no overload has one, since nothing reads it and so nothing verifies it.
+ * Whether a held-back operator is held back on purpose is checked by the unit test, which lists them.
+ */
+int
+pt_eval_prop_self_check_ops (void)
+{
+  int violations = 0;
+  int opcode, i;
+
+  for (opcode = PT_AND; opcode < PT_LAST_OPCODE; opcode++)
+    {
+      EXPRESSION_DEFINITION def;
+      PT_ALLOW_DEFAULT allow;
+
+      def.overloads_count = 0;
+      if (!pt_get_expression_definition ((PT_OP_TYPE) opcode, &def) || def.overloads_count <= 0)
+	{
+	  continue;
+	}
+
+      allow = def.overloads[0].prop.allow_default;
+      for (i = 0; i < def.overloads_count; i++)
+	{
+	  const PT_EVAL_PROP *prop = &def.overloads[i].prop;
+
+	  if (prop->allow_default != allow)
+	    {
+	      violations++;
+	      fprintf (stderr, "eval-prop gate: op %d allow_default differs across overloads\n", opcode);
+	    }
+	  if (prop->allow_default == PT_DEFAULT_ALLOWED && prop->volatility == PT_VOLATILITY_UNSET)
+	    {
+	      violations++;
+	      fprintf (stderr, "eval-prop gate: op %d overload %d is allowed in a DEFAULT without a volatility\n",
+		       opcode, i);
+	    }
+	  if (prop->allow_default != PT_DEFAULT_ALLOWED
+	      && (prop->volatility != PT_VOLATILITY_UNSET || prop->si_requirement != PT_SI_NONE))
+	    {
+	      violations++;
+	      fprintf (stderr, "eval-prop gate: op %d overload %d has properties nothing reads\n", opcode, i);
+	    }
+	}
+    }
+
+  return violations;
+}
+
+/*
  *  pt_apply_expressions_definition () - evaluate which expression signature
  *					 best matches the received arguments
  *					 and cast arguments to the types
@@ -6529,6 +6716,16 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     }
 
   sig = def.overloads[best_match];
+
+  /* the node behaves as the overload matched for its argument types: RAND () and RAND (seed) differ */
+  expr->info.expr.expr_volatility = sig.prop.volatility;
+  expr->info.expr.expr_si_requirement = sig.prop.si_requirement;
+  if (op == PT_UUID && pt_op_reads_statement_clock (op, arg1))
+    {
+      /* the version decides: only UUID (7), or a version known at evaluation, reads the statement clock */
+      expr->info.expr.expr_si_requirement |= PT_SI_SYS_DATETIME;
+    }
+
   if (pt_is_range_expression (op))
     {
       /* Range expressions are expressions that compare an argument with a subquery or a collection. We handle these
@@ -9829,6 +10026,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  node->info.expr.arg2 = arg2;
 	  node->type_enum = arg1_type;
+	  /* typed outside signature matching (a date or time plus or minus a number): pure date arithmetic */
+	  node->info.expr.expr_volatility = PT_VOLATILITY_IMMUTABLE;
 	  goto error;
 	}
       if (PT_IS_DATE_TIME_TYPE (arg2_type)
@@ -9846,6 +10045,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	  node->info.expr.arg1 = arg1;
 	  node->type_enum = arg2_type;
+	  /* typed outside signature matching (a date or time plus or minus a number): pure date arithmetic */
+	  node->info.expr.expr_volatility = PT_VOLATILITY_IMMUTABLE;
 	  goto error;
 	}
       break;
@@ -9879,6 +10080,8 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      node->info.expr.arg2 = arg2;
 	    }
 	  node->type_enum = arg1_type;
+	  /* typed outside signature matching (a date or time plus or minus a number): pure date arithmetic */
+	  node->info.expr.expr_volatility = PT_VOLATILITY_IMMUTABLE;
 	  goto error;
 	}
       break;
@@ -13348,7 +13551,22 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
   else
     {
       // old implementation: for aggregate function types
-      return pt_eval_function_type_aggregate (parser, node);
+      node = pt_eval_function_type_aggregate (parser, node);
+
+      /* this path matches no signature, so nothing stamps the node: each reviewed code takes the volatility its
+       * signatures declare, and any other code stays unclassified */
+      if (node != NULL && node->node_type == PT_FUNCTION)
+	{
+	  switch (node->info.function.function_type)
+	    {
+	    case F_ELT:
+	      node->info.function.expr_volatility = pt_get_func_volatility (node->info.function.function_type);
+	      break;
+	    default:
+	      break;
+	    }
+	}
+      return node;
     }
 }
 
@@ -13520,7 +13738,12 @@ pt_reads_statement_clock_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 {
   bool *reads = (bool *) arg;
 
-  if (node->node_type == PT_EXPR && pt_op_reads_statement_clock (node->info.expr.op, node->info.expr.arg1))
+  /* a type-checked or restored node carries the requirement of its matched overload; any other node is judged by
+   * its operator */
+  if (node->node_type == PT_EXPR
+      && (node->info.expr.expr_volatility != PT_VOLATILITY_UNSET
+	  ? (node->info.expr.expr_si_requirement & PT_SI_SYS_DATETIME) != 0
+	  : pt_op_reads_statement_clock (node->info.expr.op, node->info.expr.arg1)))
     {
       *reads = true;
       *continue_walk = PT_STOP_WALK;

@@ -686,12 +686,19 @@ pt_is_analytic_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 bool
 pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 {
-  FUNC_CODE function_type;
+  return node->node_type == PT_FUNCTION && pt_is_expr_wrapped_fcode (node->info.function.function_type);
+}
 
-  if (node->node_type == PT_FUNCTION)
-    {
-      function_type = node->info.function.function_type;
-      if (function_type == F_INSERT_SUBSTRING
+/*
+ * pt_is_expr_wrapped_fcode () - whether a function is one the grammar wraps in an expression, which the client can
+ *	evaluate
+ *   return: true if so
+ *   function_type(in): function code
+ */
+bool
+pt_is_expr_wrapped_fcode (FUNC_CODE function_type)
+{
+  return (function_type == F_INSERT_SUBSTRING
 	  || function_type == F_ELT
 	  || function_type == F_JSON_ARRAY
 	  || function_type == F_JSON_ARRAY_APPEND || function_type == F_JSON_ARRAY_INSERT
@@ -712,13 +719,7 @@ pt_is_expr_wrapped_function (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  || function_type == F_JSON_SET
 	  || function_type == F_JSON_TYPE || function_type == F_JSON_UNQUOTE || function_type == F_JSON_VALID
 	  || function_type == F_REGEXP_COUNT || function_type == F_REGEXP_INSTR || function_type == F_REGEXP_LIKE
-	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR)
-	{
-	  return true;
-	}
-    }
-
-  return false;
+	  || function_type == F_REGEXP_REPLACE || function_type == F_REGEXP_SUBSTR);
 }
 
 /*
@@ -11505,10 +11506,14 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  * Stream layout (all multi-byte fields via OR_BUF):
  *   version(byte = PT_CDT_VERSION)  node
  *   node := VALUE_TAG(int)  db_value(or_put_value, domain included)
- *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  result domain  arity(int)  node*arity
- *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  result domain  arity(int)
- *                          node*arity
+ *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  volatility(int)  si_requirement(int)
+ *                          result domain  arity(int)  node*arity
+ *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  volatility(int)
+ *                          si_requirement(int)  result domain  arity(int)  node*arity
  * A PT_FUNCTION_HOLDER wrapper is transparent: its held PT_FUNCTION is stored.
+ * volatility and si_requirement are those of the overload type checking matched for the node (not combined with
+ * its operands'): a rehydrated tree is not type-checked again, and the code alone does not tell RAND () from
+ * RAND (seed).
  * continued_case is an unparse hint of PT_EXPR (CONCAT/CONCAT_WS/FIELD and the
  * CASE/DECODE/COALESCE/LEAST/GREATEST chains); without it a rehydrated residual
  * prints in a different form than the original expression.
@@ -11586,7 +11591,7 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
 
   /* everything written below plus the arity int the caller writes right
    * after this header */
-  int header_ints_size = 4 * OR_INT_SIZE;	/* tag, code, qualifier, continued_case */
+  int header_ints_size = 6 * OR_INT_SIZE;	/* tag, code, qualifier, continued_case, volatility, si_requirement */
   int aligned_domain_size = DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT);
   int arity_size = OR_INT_SIZE;
 
@@ -11599,6 +11604,17 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
   or_put_int (buf, code);
   or_put_int (buf, qualifier);
   or_put_int (buf, continued_case);
+  if (node->node_type == PT_EXPR)
+    {
+      or_put_int (buf, (int) node->info.expr.expr_volatility);
+      or_put_int (buf, node->info.expr.expr_si_requirement);
+    }
+  else
+    {
+      assert (node->node_type == PT_FUNCTION);
+      or_put_int (buf, (int) node->info.function.expr_volatility);
+      or_put_int (buf, node->info.function.expr_si_requirement);
+    }
   rc = or_put_domain (buf, domain, 0, 0);
   if (rc == NO_ERROR)
     {
@@ -11801,7 +11817,8 @@ static PT_NODE *
 pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 {
   int rc = NO_ERROR;
-  int tag, code, qualifier, continued_case = 0, arity, i;
+  int tag, code, qualifier, continued_case = 0, volatility = PT_VOLATILITY_UNSET, si_requirement = PT_SI_NONE;
+  int arity, i;
   int is_null = 0;
   TP_DOMAIN *domain = NULL;
   PT_NODE *node = NULL;
@@ -11846,7 +11863,15 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     {
       continued_case = or_get_int (buf, &rc);
     }
-  if (rc != NO_ERROR)
+  if (rc == NO_ERROR)
+    {
+      volatility = or_get_int (buf, &rc);
+    }
+  if (rc == NO_ERROR)
+    {
+      si_requirement = or_get_int (buf, &rc);
+    }
+  if (rc != NO_ERROR || volatility < PT_VOLATILITY_UNSET || volatility > PT_VOLATILITY_VOLATILE)
     {
       return NULL;
     }
@@ -11893,6 +11918,8 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
       node->info.expr.op = (PT_OP_TYPE) code;
       node->info.expr.qualifier = (PT_MISC_TYPE) qualifier;
       node->info.expr.continued_case = (short) continued_case;
+      node->info.expr.expr_volatility = (PT_VOLATILITY) volatility;
+      node->info.expr.expr_si_requirement = si_requirement;
       node->info.expr.arg1 = args[0];
       node->info.expr.arg2 = args[1];
       node->info.expr.arg3 = args[2];
@@ -11917,6 +11944,8 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 	  return NULL;
 	}
       node->info.function.function_type = (FUNC_CODE) code;
+      node->info.function.expr_volatility = (PT_VOLATILITY) volatility;
+      node->info.function.expr_si_requirement = si_requirement;
       node->info.function.arg_list = arg_list;
     }
 

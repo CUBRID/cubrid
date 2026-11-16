@@ -36,7 +36,9 @@ struct func_signature
   pt_arg_type ret; //return type
   pt_group_arg_type fix; //fixed arguments types
   pt_group_arg_type rep; //repetitive arguments types
-  PT_VOLATILITY volatility = PT_VOLATILITY_UNSET; //per-overload volatility; UNSET unless classified
+  //how this overload behaves when evaluated (not part of the type contract);
+  //zero-init = {volatility UNSET, si NONE, allow_default UNSET (held back)}
+  PT_EVAL_PROP prop = {};
 
   void to_string_buffer (string_buffer &sb) const;
 };
@@ -126,5 +128,6 @@ bool pt_is_function_no_arg (FUNC_CODE fcode);
 bool pt_is_function_new_type_checking (FUNC_CODE fcode);
 
 PT_VOLATILITY pt_get_func_volatility (FUNC_CODE fcode);
+PT_ALLOW_DEFAULT pt_get_func_allow_default (FUNC_CODE fcode);
 
 #endif

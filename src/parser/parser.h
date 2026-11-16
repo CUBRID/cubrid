@@ -159,6 +159,12 @@ extern "C"
   extern PT_NODE *pt_fold_const_node (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * sc_info);
 
   extern PT_VOLATILITY pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node);
+  extern PT_NODE *pt_find_default_not_allowed (PT_NODE * node);
+  extern int pt_eval_prop_op_allow_default (int op);
+  extern int pt_eval_prop_self_check_ops (void);
+  extern int pt_eval_prop_func_allow_default (int fcode);
+  extern int pt_eval_prop_self_check_funcs (void);
+  extern bool pt_is_expr_wrapped_fcode (FUNC_CODE function_type);
   extern bool pt_op_reads_statement_clock (PT_OP_TYPE op, const PT_NODE * arg1);
   extern bool pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree);
   extern bool pt_op_reads_client_value (PT_OP_TYPE op);

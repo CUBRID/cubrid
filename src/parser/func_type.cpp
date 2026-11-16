@@ -27,7 +27,7 @@
 #include "parse_tree.h"
 #include "parser.h"
 #include "parser_message.h"
-#include "volatility.h"
+#include "eval_prop_def.h"
 
 #include <algorithm>
 
@@ -194,8 +194,8 @@ func_all_signatures sig_of_lead_lag =
 
 func_all_signatures sig_of_elt =
 {
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}, PT_VOLATILITY_IMMUTABLE}, //get_current_result() expects args to be VCHAR, not just equivalent
-  {PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}, PT_VOLATILITY_IMMUTABLE},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}, {PT_VOLATILITY_IMMUTABLE, PT_SI_NONE, PT_DEFAULT_ALLOWED}}, //get_current_result() expects args to be VCHAR, not just equivalent
+  {PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}, {PT_VOLATILITY_IMMUTABLE, PT_SI_NONE, PT_DEFAULT_ALLOWED}},
 };
 
 func_all_signatures sig_of_insert_substring =
@@ -358,10 +358,11 @@ func_all_signatures sig_of_regexp_like =
 func_all_signatures sig_of_regexp_replace =
 {
 // all signatures: src, pattern, replacement [,position [,occurrence [, match_type]]] -> STRING
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}, PT_VOLATILITY_IMMUTABLE},
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}, PT_VOLATILITY_IMMUTABLE},
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}, PT_VOLATILITY_IMMUTABLE},
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}, PT_VOLATILITY_IMMUTABLE},
+// STABLE: the match follows the collation of its arguments
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}, {PT_VOLATILITY_STABLE, PT_SI_NONE, PT_DEFAULT_ALLOWED}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}, {PT_VOLATILITY_STABLE, PT_SI_NONE, PT_DEFAULT_ALLOWED}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}, {PT_VOLATILITY_STABLE, PT_SI_NONE, PT_DEFAULT_ALLOWED}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}, {PT_VOLATILITY_STABLE, PT_SI_NONE, PT_DEFAULT_ALLOWED}},
 };
 
 func_all_signatures sig_of_regexp_substr =
@@ -519,13 +520,12 @@ get_signatures (FUNC_CODE ft)
 }
 
 /*
- * pt_get_func_volatility () - volatility declared for a function's signature
- *   return: the function's volatility, or PT_VOLATILITY_UNSET if unclassified
+ * pt_get_func_volatility () - volatility declared for a function
+ *   return: the volatility all the signatures of the function share, PT_VOLATILITY_UNSET if they differ or the
+ *	     function is unclassified
  *   fcode(in): function code
  *
- * Symmetric to pt_get_op_volatility for operators: reads a representative
- * (overload 0) from the function's signatures -- exact for functions whose
- * volatility does not vary across overloads (the only ones classified so far).
+ * For a function typed outside signature matching, whose node cannot take the volatility of a matched signature.
  */
 PT_VOLATILITY
 pt_get_func_volatility (FUNC_CODE fcode)
@@ -536,7 +536,109 @@ pt_get_func_volatility (FUNC_CODE fcode)
     {
       return PT_VOLATILITY_UNSET;
     }
-  return (*sigs)[0].volatility;
+  for (const func_signature &sig : *sigs)
+    {
+      if (sig.prop.volatility != (*sigs)[0].prop.volatility)
+	{
+	  return PT_VOLATILITY_UNSET;
+	}
+    }
+  return (*sigs)[0].prop.volatility;
+}
+
+/*
+ * pt_get_func_allow_default () - whether a function may appear in a column DEFAULT
+ *   return: the allow_default all the signatures of the function share, UNSET if they differ or the function has
+ *	     no signature
+ *   fcode(in): function code
+ */
+PT_ALLOW_DEFAULT
+pt_get_func_allow_default (FUNC_CODE fcode)
+{
+  func_all_signatures *sigs = get_signatures (fcode);
+
+  if (sigs == NULL || sigs->empty ())
+    {
+      return PT_ALLOW_DEFAULT_UNSET;
+    }
+  for (const func_signature &sig : *sigs)
+    {
+      if (sig.prop.allow_default != (*sigs)[0].prop.allow_default)
+	{
+	  return PT_ALLOW_DEFAULT_UNSET;
+	}
+    }
+  return (*sigs)[0].prop.allow_default;
+}
+
+/*
+ * pt_eval_prop_func_allow_default () - the allow_default of a function, for the completeness gate
+ *   return: PT_ALLOW_DEFAULT
+ *   fcode(in): a FUNC_CODE
+ */
+extern "C" int
+pt_eval_prop_func_allow_default (int fcode)
+{
+  return (int) pt_get_func_allow_default ((FUNC_CODE) fcode);
+}
+
+/*
+ * pt_eval_prop_self_check_funcs () - completeness gate over the functions
+ *   return: number of violations (0: the classification is consistent)
+ *
+ * The rules of pt_eval_prop_self_check_ops for every function with signatures, and one more: a function allowed
+ * in a DEFAULT is one the client can evaluate (pt_is_expr_wrapped_fcode), or admission would accept a DEFAULT the
+ * client path cannot run.
+ */
+extern "C" int
+pt_eval_prop_self_check_funcs (void)
+{
+  int violations = 0;
+
+  for (int code = PT_MIN; code <= PT_PERCENTILE_DISC; code++)
+    {
+      FUNC_CODE fcode = (FUNC_CODE) code;
+      const func_all_signatures *sigs = get_signatures (fcode);
+
+      if (sigs == nullptr || sigs->empty ())
+	{
+	  continue;
+	}
+
+      const PT_ALLOW_DEFAULT allow = (*sigs)[0].prop.allow_default;
+      int i = 0;
+
+      for (const func_signature &sig : *sigs)
+	{
+	  if (sig.prop.allow_default != allow)
+	    {
+	      violations++;
+	      fprintf (stderr, "eval-prop gate: function %d allow_default differs across signatures\n", code);
+	    }
+	  if (sig.prop.allow_default == PT_DEFAULT_ALLOWED && sig.prop.volatility == PT_VOLATILITY_UNSET)
+	    {
+	      violations++;
+	      fprintf (stderr, "eval-prop gate: function %d signature %d is allowed in a DEFAULT without a volatility\n",
+		       code, i);
+	    }
+	  if (sig.prop.allow_default != PT_DEFAULT_ALLOWED
+	      && (sig.prop.volatility != PT_VOLATILITY_UNSET || sig.prop.si_requirement != PT_SI_NONE))
+	    {
+	      violations++;
+	      fprintf (stderr, "eval-prop gate: function %d signature %d has properties nothing reads\n", code, i);
+	    }
+	  i++;
+	}
+
+      if (allow == PT_DEFAULT_ALLOWED && !pt_is_expr_wrapped_fcode (fcode))
+	{
+	  violations++;
+	  fprintf (stderr, "eval-prop gate: function %d is allowed in a DEFAULT but the client cannot evaluate it\n",
+		   code);
+	}
+    }
+
+  return violations;
 }
 
 void
@@ -835,6 +937,9 @@ namespace func_type
 	else
 	  {
 	    set_return_type (*func_sig);
+	    // the node behaves as the signature matched for its argument types
+	    m_node->info.function.expr_volatility = func_sig->prop.volatility;
+	    m_node->info.function.expr_si_requirement = func_sig->prop.si_requirement;
 	  }
       }
     else

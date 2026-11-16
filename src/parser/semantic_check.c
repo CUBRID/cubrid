@@ -4404,6 +4404,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
   char *edl_text;
   PT_NODE *unclassified_node;
   bool column_rules;
+  bool is_expr_default;
   int held_do_not_fold;
 
   if (pt_has_error (parser))
@@ -4426,6 +4427,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
       data_default->next = NULL;
       unclassified_node = NULL;
       held_do_not_fold = -1;
+      is_expr_default = false;
 
       default_value = data_default->info.data_default.default_value;
 
@@ -4457,61 +4459,49 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
 	  goto end;
 	}
 
-      /* An expression DEFAULT (not a plain literal): capture its normalized source text and effective volatility
-       * BEFORE folding, because pt_semantic_type folds an Immutable expression down to a single literal. */
+      /* An expression DEFAULT (not a plain literal): every operator and function in it must be allowed in a
+       * DEFAULT, which is decided by code before type checking, where constant folding has not dissolved any of
+       * them into a literal.  Its normalized source text is captured BEFORE folding too, because pt_semantic_type
+       * folds an Immutable expression down to a single literal. */
       if (column_rules && default_value != NULL
 	  && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION)
 	  && !pt_is_signed_numeric_literal (default_value))
 	{
-	  PT_VOLATILITY vol = pt_get_expr_tree_volatility (default_value, &unclassified_node);
+	  PT_NODE *not_allowed = pt_find_default_not_allowed (default_value);
 
-	  if (vol == PT_VOLATILITY_IMMUTABLE || PT_VOLATILITY_IS_RESIDUAL (vol))
+	  if (not_allowed != NULL)
 	    {
-	      /* An IMMUTABLE expression folds to a single literal; a residual
-	       * (STABLE or VOLATILE) survives folding (only its IMMUTABLE subtrees
-	       * fold) and is stored (text + Compact DEFAULT Tree) for
-	       * once-per-statement (STABLE) or once-per-row (VOLATILE) evaluation. */
-	      expr_vol = vol;
-	      edl_text = pt_default_expr_normalized_text (parser, default_value);
-
-	      /* the persisted text surfaces through catalog columns declared as
-	       * VARCHAR (DB_MAX_DEFAULT_EXPR_LENGTH); a longer one would be
-	       * silently truncated there, so reject it up front (the same
-	       * policy PL/CSQL applies to its parameter defaults).
-	       * NOTE: catalog_class.c appends " ON UPDATE <expr>" (at most ~28 characters,
-	       * ON UPDATE stays a pseudo-column enum) to the same cell, so a text within
-	       * the limit can still lose that suffix to the catalog truncation. */
-	      if (edl_text != NULL && strlen (edl_text) > DB_MAX_DEFAULT_EXPR_LENGTH)
-		{
-		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
-			      MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
-		  goto end;
-		}
-
-	      /* the DDL checks the type of the expression against the column, and a folded NULL carries none: hold
-	       * the root back from the folding pass, record its type once typed, then fold it below (a root the
-	       * grammar keeps from folding, such as UUID (), stays so).  Folding never reads the statement clock,
-	       * which is fetched only when the DDL executes: an operator that reads it has no constant operand or is
-	       * kept from folding */
-	      held_do_not_fold = default_value->flag.do_not_fold;
-	      default_value->flag.do_not_fold = 1;
-	    }
-	  else if (vol == PT_VOLATILITY_UNSET)
-	    {
-	      /* the expression contains an operator, function, or sub-tree whose
-	       * volatility is not classified; reject it so an unclassified DEFAULT
-	       * expression does not silently freeze to a DDL-time constant */
-	      if (unclassified_node == NULL)
-		{
-		  /* an UNSET result always records the node that caused it */
-		  assert (false);
-		  unclassified_node = default_value;
-		}
-	      PT_ERRORmf (parser, unclassified_node, MSGCAT_SET_PARSER_SEMANTIC,
-			  MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
-			  pt_default_expr_unclassified_name (parser, unclassified_node));
+	      /* held back or forbidden: rejected alike, so that an unclassified DEFAULT expression does not
+	       * silently freeze to a DDL-time constant */
+	      PT_ERRORmf (parser, not_allowed, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+			  pt_default_expr_unclassified_name (parser, not_allowed));
 	      goto end;
 	    }
+
+	  is_expr_default = true;
+	  edl_text = pt_default_expr_normalized_text (parser, default_value);
+
+	  /* the persisted text surfaces through catalog columns declared as
+	   * VARCHAR (DB_MAX_DEFAULT_EXPR_LENGTH); a longer one would be
+	   * silently truncated there, so reject it up front (the same
+	   * policy PL/CSQL applies to its parameter defaults).
+	   * NOTE: catalog_class.c appends " ON UPDATE <expr>" (at most ~28 characters,
+	   * ON UPDATE stays a pseudo-column enum) to the same cell, so a text within
+	   * the limit can still lose that suffix to the catalog truncation. */
+	  if (edl_text != NULL && strlen (edl_text) > DB_MAX_DEFAULT_EXPR_LENGTH)
+	    {
+	      PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+			  MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
+	      goto end;
+	    }
+
+	  /* the DDL checks the type of the expression against the column, and a folded NULL carries none: hold
+	   * the root back from the folding pass, record its type once typed, then fold it below (a root the
+	   * grammar keeps from folding, such as UUID (), stays so).  Folding never reads the statement clock,
+	   * which is fetched only when the DDL executes: an operator that reads it has no constant operand or is
+	   * kept from folding */
+	  held_do_not_fold = default_value->flag.do_not_fold;
+	  default_value->flag.do_not_fold = 1;
 	}
 
       result = pt_semantic_type (parser, data_default, NULL);
@@ -4543,11 +4533,22 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
 		    }
 		}
 	    }
-	  if (expr_vol != PT_VOLATILITY_UNSET)
+	  if (is_expr_default)
 	    {
-	      /* what survived folding decides: a STABLE operator over constant arguments (TO_CHAR (123)) folds to
-	       * a literal and is kept as an Expression-Derived Literal */
+	      /* type checking stamped each node with the volatility of its matched overload.  What survived folding
+	       * decides: a STABLE operator over constant arguments (TO_CHAR (123)) folds to a literal and is kept as
+	       * an Expression-Derived Literal */
 	      expr_vol = pt_get_expr_tree_volatility (default_value, &unclassified_node);
+	      if (expr_vol == PT_VOLATILITY_UNSET)
+		{
+		  /* allowed in a DEFAULT but without a volatility: a classification the completeness gate refuses */
+		  assert (false);
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+			      pt_default_expr_unclassified_name (parser, unclassified_node != NULL
+								 ? unclassified_node : default_value));
+		  goto end;
+		}
 	    }
 
 	  /* Record the original text and volatility so storage and DDL execution
