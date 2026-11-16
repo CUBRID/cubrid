@@ -234,6 +234,7 @@ struct db_value_slist
 };
 
 static int drop_class_name (const char *name, bool is_cascade_constraints);
+static int check_procedure_grantable (MOP proc_mop);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
@@ -2041,6 +2042,39 @@ error_exit:
 #define GET_STRING(n)   ((char *) (n)->info.value.data_value.str->bytes)
 
 /*
+ * check_procedure_grantable() - Refuses privileges on a procedure the engine created.
+ *   return: Error code
+ *   proc_mop(in): stored procedure object
+ *
+ * Note:
+ *    Unloading writes the privileges of every procedure but not the system generated procedures,
+ *    so a privilege on one would fail loading the schema.
+ */
+static int
+check_procedure_grantable (MOP proc_mop)
+{
+  DB_VALUE generated_val;
+  int error = NO_ERROR;
+  int au_save;
+
+  /* the grantor may not be able to read the catalog */
+  AU_SAVE_AND_DISABLE (au_save);
+  error = db_get (proc_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  AU_RESTORE (au_save);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (db_get_int (&generated_val) == 1)
+    {
+      ERROR_SET_ERROR (error, ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED);
+    }
+
+  return error;
+}
+
+/*
  * do_grant() - Grants priviledges
  *   return: Error code if grant fails
  *   parser(in): Parser context
@@ -2112,6 +2146,12 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = check_procedure_grantable (proc_mop);
+		  if (error != NO_ERROR)
+		    {
 		      goto end;
 		    }
 
@@ -2220,6 +2260,12 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = check_procedure_grantable (proc_mop);
+		  if (error != NO_ERROR)
+		    {
 		      goto end;
 		    }
 
@@ -4210,8 +4256,9 @@ error_exit:
  *   fill_factor(in): Target fill ratio in percent
  *   keys_compacted(in/out): Accumulated number of keys whose chain lost at least one page
  *   pages_freed(in/out): Accumulated number of overflow pages deallocated
- *   pairs_skipped(in/out): Accumulated number of page pairs left alone because vacuum has not removed a reused
- *			   OID's old versions yet (no OID boundary to split at)
+ *   pairs_skipped(in/out): Accumulated number of page pairs and keys left alone until vacuum catches up: a page pair
+ *			   with no OID boundary to split at (a reused OID's old versions), or a key whose leaf record
+ *			   holds no stable object (CBRD-27972)
  */
 static int
 do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor, INT64 * keys_compacted,
@@ -4336,7 +4383,7 @@ do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (error == NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "ALTER INDEX %s ON %s COMPACT (fill_factor=%d): %lld keys compacted, %lld overflow "
-		    "pages freed, %lld page pairs skipped (no OID boundary, vacuum pending)\n", index_name, class_name,
+		    "pages freed, %lld page pairs or keys skipped (vacuum pending)\n", index_name, class_name,
 		    fill_factor, (long long) keys_compacted, (long long) pages_freed, (long long) pairs_skipped);
     }
 
