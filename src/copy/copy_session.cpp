@@ -43,6 +43,7 @@
 #include "xserver_interface.h"
 
 #include <cstring>
+#include <new>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -273,9 +274,19 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	{
 	  /* skip a leading header line (HEADER option) before decoding data rows */
 	  bool skip_only = m_skip_header;
-	  error = decode_csv_row (row, row_len, m_col_types.data (), m_col_domains.data (), m_num_cols,
-				  vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, m_null_str, skip_only,
-				  &bytes_consumed, &row_error);
+	  try
+	    {
+	      error = decode_csv_row (row, row_len, m_col_types.data (), m_col_domains.data (), m_num_cols,
+				      vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, m_null_str, skip_only,
+				      &bytes_consumed, &row_error);
+	    }
+	  catch (const std::bad_alloc &)
+	    {
+	      /* the field strings grow to the longest field the client sends */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) row_len);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
 	  skipped_header = (skip_only && error == NO_ERROR);
 	}
       else
@@ -291,7 +302,11 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  if (!from_carry)
 	    {
 	      /* partial row at the tail — carry it, and only it, to the next call */
-	      m_leftover.assign (data + pos, data + data_len);
+	      error = carry (data + pos, (std::size_t) (data_len - pos));
+	      if (error != NO_ERROR)
+		{
+		  goto cleanup;
+		}
 	      pos = data_len;
 	      carry_head = m_leftover.size ();
 	      break;
@@ -313,8 +328,11 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 		goto cleanup;
 	      }
 
-	    const char *src = data + pos + carry_taken;
-	    m_leftover.insert (m_leftover.end (), src, src + take);
+	    error = carry (data + pos + carry_taken, take);
+	    if (error != NO_ERROR)
+	      {
+		goto cleanup;
+	      }
 	    carry_taken += take;
 	    carry_step *= 2;
 	  }
@@ -480,6 +498,23 @@ cleanup:
     }
 
   return error;
+}
+
+/* Append to the bytes of a row that straddles a chunk boundary. The client decides how many (up to
+ * COPY_MAX_ROW_BYTES), so running out of memory fails this COPY rather than the server. */
+int
+copy_session::carry (const char *from, std::size_t len)
+{
+  try
+    {
+      m_leftover.insert (m_leftover.end (), from, from + len);
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, m_leftover.size () + len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  return NO_ERROR;
 }
 
 /* Raise this stream's format error; a row < 0 names no position. */
