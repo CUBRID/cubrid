@@ -2397,9 +2397,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      pg_cnt += qexec_clear_xasl (thread_p, p->s.list_node.xasl_node, is_final, for_parallel_aptr);
 	    }
 	  else if (p->s.list_node.xasl_node && XASL_IS_FLAGED (p->s.list_node.xasl_node, XASL_SHARED_VIEW_REP)
-		   && p->s.list_node.xasl_node->list_id != NULL && p->s.list_node.xasl_node->list_id->is_result_cached)
+		   && p->s.list_node.xasl_node->list_id != NULL
+		   && (p->s.list_node.xasl_node->list_id->is_result_cached
+		       || p->s.list_node.xasl_node->status == XASL_FAILURE))
 	    {
-	      /* a copy of the XASL of a shared view that read the result of the original or made it
+	      /* a copy of the XASL of a shared view that read the result of the original, made it or failed to make it
 	       * (qexec_execute_shared_view ()) may be reached only from this scan */
 	      pg_cnt += qexec_clear_xasl (thread_p, p->s.list_node.xasl_node, is_final, for_parallel_aptr);
 	    }
