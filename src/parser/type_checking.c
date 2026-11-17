@@ -19068,6 +19068,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  }
 	  break;
 	case PT_LIKE:
+	case PT_NOT_LIKE:
+	  /* no ESCAPE clause: a NULL value here would be taken as ESCAPE NULL, which escapes with a backslash */
 	  arg3 = NULL;
 	  type3 = PT_TYPE_NONE;
 	  break;
