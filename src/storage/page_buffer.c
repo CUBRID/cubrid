@@ -3777,7 +3777,9 @@ pgbuf_discard_interval_open (void)
     }
   else
     {
-      /* all in use: share the most recent one. merging only widens an interval, which is still correct. */
+      /* all in use: share the most recent one. each of them starts at or after the redo point of the last
+       * checkpoint (see pgbuf_discard_redo_bound_apply), so merging only widens it after that point, which is still
+       * correct. */
       interval = 0;
       for (i = 1; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
 	{
@@ -3861,8 +3863,13 @@ pgbuf_discard_interval_close (int interval)
  *
  * return             : void
  * redo_lsa (in/out)  : redo point of the checkpoint
- * prev_redo_lsa (in) : redo point of the last recorded checkpoint. intervals ending before it are never replayed
- *                      again, so they are released.
+ * prev_redo_lsa (in) : redo point of the last recorded checkpoint. the redo point never goes below it, as the log
+ *                      before it may be removed already.
+ *
+ * note: the intervals that end before the redo point are released right away, and an interval still open forgets
+ *       the pages added so far. no recovery from this redo point or a later one replays them, and the pages a
+ *       destroy adds later start at or after it, so every interval in use starts at or after the redo point of the
+ *       last checkpoint.
  */
 void
 pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_lsa)
@@ -3876,28 +3883,6 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
 
   pthread_mutex_lock (&bound->mutex);
 
-  if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa))
-    {
-      for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
-	{
-	  iv = &bound->intervals[i];
-	  if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa) || !LSA_LT (&iv->last_lsa, prev_redo_lsa))
-	    {
-	      continue;
-	    }
-	  if (iv->nopen == 0)
-	    {
-	      iv->is_used = false;
-	    }
-	  else
-	    {
-	      /* still open: forget the pages added so far */
-	      LSA_SET_NULL (&iv->oldest_lsa);
-	      LSA_SET_NULL (&iv->last_lsa);
-	    }
-	}
-    }
-
   do
     {
       is_lowered = false;
@@ -3910,12 +3895,42 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
 	    }
 	  if (LSA_LT (&iv->oldest_lsa, redo_lsa) && LSA_GE (&iv->last_lsa, redo_lsa))
 	    {
+	      if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa) && LSA_LT (&iv->oldest_lsa, prev_redo_lsa))
+		{
+		  /* cannot happen: every interval starts at or after the last redo point (see the note above) */
+		  assert (false);
+		  if (LSA_LT (prev_redo_lsa, redo_lsa))
+		    {
+		      LSA_COPY (redo_lsa, prev_redo_lsa);
+		      is_lowered = true;
+		    }
+		  continue;
+		}
 	      LSA_COPY (redo_lsa, &iv->oldest_lsa);
 	      is_lowered = true;
 	    }
 	}
     }
   while (is_lowered);
+
+  for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
+    {
+      iv = &bound->intervals[i];
+      if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa) || !LSA_LT (&iv->last_lsa, redo_lsa))
+	{
+	  continue;
+	}
+      if (iv->nopen == 0)
+	{
+	  iv->is_used = false;
+	}
+      else
+	{
+	  /* still open: forget the pages added so far */
+	  LSA_SET_NULL (&iv->oldest_lsa);
+	  LSA_SET_NULL (&iv->last_lsa);
+	}
+    }
 
   pthread_mutex_unlock (&bound->mutex);
 }
@@ -9274,6 +9289,103 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     }
 
   return bufptr;
+}
+
+/* BCBs a read-ahead check walks in one hash chain before it gives up */
+#define PGBUF_READ_AHEAD_MAX_CHAIN_STEPS 16
+/* pages of one call remembered so that none is told twice; a call with more pages may tell the later ones again */
+#define PGBUF_READ_AHEAD_TOLD_MAX 64
+
+/*
+ * pgbuf_read_ahead () - tell the OS which pages the caller is going to fix soon
+ *   vpids(in): pages of permanent volumes; consecutive pages in ascending order are handed over as one range
+ *   count(in): number of pages
+ *
+ * Note: A hint. Pages already in the buffer are left out: hinting them would make the device read what the
+ *       buffer holds. The check does not lock the hash chain: an answer made wrong by a concurrent fix or
+ *       victimization only costs one synchronous read or one needless hint. Runs of consecutive pages go to the
+ *       OS as one range. The pages are not fixed and no state is kept: the caller fixes each page as usual, and
+ *       that read finds the page in the OS cache or on its way. The pages handed to the OS are counted
+ *       (Num_data_page_read_ahead) while somebody watches the statistics.
+ */
+void
+pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  VPID run_vpid = VPID_INITIALIZER;
+  int run_length = 0;
+  VPID told[PGBUF_READ_AHEAD_TOLD_MAX];
+  int told_count = 0;
+  int hinted = 0;
+  int steps;
+  int i, k;
+
+  for (i = 0; i <= count; i++)
+    {
+      bufptr = NULL;
+      if (i < count && !pgbuf_is_temporary_volume (vpids[i].volid))
+	{
+	  /* a page told earlier in this call is not told again and does not end the run: OIDs that alternate between
+	   * a few pages name each page many times */
+	  for (k = 0; k < told_count; k++)
+	    {
+	      if (told[k].pageid == vpids[i].pageid && told[k].volid == vpids[i].volid)
+		{
+		  break;
+		}
+	    }
+	  if (k < told_count)
+	    {
+	      continue;
+	    }
+	  /* No hash mutex: a chain changed meanwhile may give a wrong answer either way, which costs one synchronous
+	   * read or one needless hint. BCBs are never freed while the server runs, and the walk is bounded because a
+	   * BCB moved to another chain meanwhile leads the walk there; a walk cut short counts as found. */
+	  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&vpids[i])];
+	  steps = 0;
+	  for (bufptr = __atomic_load_n (&hash_anchor->hash_next, __ATOMIC_RELAXED); bufptr != NULL;
+	       bufptr = __atomic_load_n (&bufptr->hash_next, __ATOMIC_RELAXED))
+	    {
+	      if (__atomic_load_n (&bufptr->vpid.pageid, __ATOMIC_RELAXED) == vpids[i].pageid
+		  && __atomic_load_n (&bufptr->vpid.volid, __ATOMIC_RELAXED) == vpids[i].volid)
+		{
+		  break;
+		}
+	      if (++steps >= PGBUF_READ_AHEAD_MAX_CHAIN_STEPS)
+		{
+		  break;
+		}
+	    }
+	  if (bufptr == NULL && told_count < PGBUF_READ_AHEAD_TOLD_MAX)
+	    {
+	      told[told_count++] = vpids[i];
+	    }
+	  if (bufptr == NULL && run_length > 0 && vpids[i].volid == run_vpid.volid
+	      && vpids[i].pageid == run_vpid.pageid + run_length)
+	    {
+	      run_length++;
+	      continue;
+	    }
+	}
+      /* the run ends here: at the last page, at a page in the buffer or of a temporary volume, or at a gap */
+      if (run_length > 0)
+	{
+	  fileio_read_ahead_hint (fileio_get_volume_descriptor (run_vpid.volid), run_vpid.pageid, run_length,
+				  IO_PAGESIZE);
+	  hinted += run_length;
+	  run_length = 0;
+	}
+      if (i < count && bufptr == NULL && !pgbuf_is_temporary_volume (vpids[i].volid))
+	{
+	  run_vpid = vpids[i];
+	  run_length = 1;
+	}
+    }
+  if (hinted > 0)
+    {
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_READ_AHEAD, hinted);
+    }
 }
 
 /*
