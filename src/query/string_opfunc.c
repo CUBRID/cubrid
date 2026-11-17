@@ -25776,10 +25776,9 @@ error_exit:
  *       on what this function computes.
  *
  * Note: If last_safe_logical_pos is negative the lower bound of the index
- *       scan is negative infinity (equivalent to the empty string or the
- *       string ' ' for the CHAR/VARCHAR default collation) and the upper
- *       bound is positive infinity (currently approximated by a string of
- *       one character code 255).
+ *       scan is the empty string, which no string is smaller than, and the
+ *       upper bound is positive infinity (currently approximated by a string
+ *       of one character code 255).
  */
 int
 db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * bound, const bool has_escape_char,
@@ -25827,9 +25826,9 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
     {
       if (compute_lower_bound)
 	{
-	  error_code =
-	    db_value_domain_min (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
-				 codeset, collation_id, NULL);
+	  /* the empty string, not the domain minimum (a space): a VARCHAR comparison does not ignore trailing spaces,
+	   * so '' is smaller than ' ' and a pattern that matches '' ('', '%') would lose the rows of '' */
+	  error_code = db_make_varchar (bound, DB_VALUE_PRECISION (pattern), "", 0, codeset, collation_id);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
