@@ -202,8 +202,17 @@ public class CUBRIDPacker {
                 break;
 
             case DBType.DB_NUMERIC:
-                packInt(dbType);
-                packString(value.toBigDecimal().toPlainString());
+                {
+                    // a string converts to NULL with oracle_style_empty_string or
+                    // numeric_empty_string_as_null
+                    BigDecimal numeric = value.toBigDecimal();
+                    if (numeric == null) {
+                        packInt(DBType.DB_NULL);
+                        break;
+                    }
+                    packInt(dbType);
+                    packString(numeric.toPlainString());
+                }
                 break;
 
             case DBType.DB_DATE:
