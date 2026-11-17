@@ -790,12 +790,11 @@ jobs:
           done < "$list"
           [ "$left" -eq 0 ] || echo "_$left more cases failed. Their logs are in each shard's JUnit XML, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
 
-  # !cancelled(), not success(): a red verdict is what the gate exists to show. gha-ci.yml's
-  # status_cancelled speaks for a cancelled run.
+  # always(), not success(): a red verdict is what the gate exists to show.
   status:
     name: status ${{ inputs.suite }}
     needs: collect
-    if: ${{ !cancelled() && inputs.post_status == 'true' }}
+    if: ${{ always() && inputs.post_status == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

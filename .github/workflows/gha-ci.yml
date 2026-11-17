@@ -1324,11 +1324,11 @@ jobs:
       TC_APP_ID: ${{ secrets.TC_APP_ID }}
       TC_APP_PRIVATE_KEY: ${{ secrets.TC_APP_PRIVATE_KEY }}
 
-  # A run cancelled before or during the suite workflows gets no status from them.
+  # A run cancelled before the suite workflows started gets no status from them.
   status_cancelled:
     name: status (cancelled)
     needs: [gate, suite]
-    if: ${{ cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.post_status == 'true' }}
+    if: ${{ cancelled() && needs.suite.result == 'skipped' && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.post_status == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
