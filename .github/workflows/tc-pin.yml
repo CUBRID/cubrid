@@ -1,0 +1,137 @@
+# Writes the pin table on the tc-pin branch: for each engine commit of develop and feature/**,
+# the testcase commits that test it, in <engine branch>/<VERSION>.tsv with the newest line on top.
+name: TC Pin
+
+on:
+  push:
+    branches: [develop, 'feature/**']
+  # Off the hour, where scheduled runs queue longest.
+  schedule:
+    - cron: '2-59/5 * * * *'
+
+permissions: {}
+
+# A schedule run is a develop run.
+concurrency:
+  group: tc-pin-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          owner: CUBRID
+          repositories: cubrid-testcases,cubrid-testcases-private-ex,cubrid-testcases-private
+          permission-contents: read
+          permission-pull-requests: read
+
+      - name: Write the pin table
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TC_TOKEN: ${{ steps.app-token.outputs.token }}
+          ENGINE: ${{ github.repository }}
+          BRANCH: ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: |
+          set -euo pipefail
+          tcs=(cubrid-testcases cubrid-testcases-private-ex cubrid-testcases-private)
+          url() { echo "${GITHUB_SERVER_URL/#https:\/\//https://x-access-token:$1@}/$2.git"; }
+          heads() { git ls-remote --heads "$1" > "$RUNNER_TEMP/$2.heads"; }
+          has() { awk -v r="refs/heads/$2" '$2 == r {f = 1} END {exit !f}' "$RUNNER_TEMP/$1.heads"; }
+          tc_branch() { if has "$1" "$2"; then echo "$2"; else echo develop; fi; }
+          tc_tip() { awk -v r="refs/heads/$(tc_branch "$1" "$2")" '$2 == r {print $1}' "$RUNNER_TEMP/$1.heads"; }
+          top() { sed -n '2s/\t.*//p' "$1"; }
+          # set_top <file> <state> <tc> <tc> <tc>
+          set_top() {
+            awk -F '\t' -v OFS='\t' -v s="$2" -v a="$3" -v b="$4" -v c="$5" \
+              'NR == 2 {$5 = a; $6 = b; $7 = c; $8 = s} {print}' "$1" > "$1.new"
+            mv "$1.new" "$1"
+          }
+          eurl=$(url "$GH_TOKEN" "$ENGINE")
+          eng=$RUNNER_TEMP/engine pin=$RUNNER_TEMP/pin
+
+          pin_branch() {
+            local b=$1 x p v f pf pr i sq tips=() was=() frozen=()
+            git -C "$eng" fetch -q --filter=tree:0 --no-tags origin "+refs/heads/$b:refs/heads/$b"
+            for i in "${!tcs[@]}"; do tips[i]=$(tc_tip "${tcs[i]}" "$b"); done
+            for f in "$pin/$b"/*.tsv; do [ -f "$f" ] && was+=("$(top "$f")"); done
+            git -C "$eng" rev-list --first-parent -n 1000 "$b" > "$RUNNER_TEMP/fp"
+            # Engine commits after the newest line, oldest first. Only the tip when no line is on the branch's history.
+            if ! awk 'NR == FNR {t[$1]; next} $1 in t {f = 1; exit} {print} END {exit !f}' \
+                <(printf '%s\n' "${was[@]}") "$RUNNER_TEMP/fp" > "$RUNNER_TEMP/new"; then
+              [ ${#was[@]} -eq 0 ] || echo "::warning::$b: no line of its table is on its history, so it starts again at its tip"
+              head -1 "$RUNNER_TEMP/fp" > "$RUNNER_TEMP/new"
+            fi
+            for x in $(tac "$RUNNER_TEMP/new"); do
+              p=$(git -C "$eng" rev-parse "$x^")
+              v=$(git -C "$eng" show "$x:VERSION")
+              f=$pin/$b/$v.tsv
+              pr=$(gh api "repos/$ENGINE/commits/$x/pulls" --jq "[.[] | select(.merge_commit_sha == \"$x\") | .number][0] // \"-\"")
+              for pf in "$pin/$b"/*.tsv; do
+                [ -f "$pf" ] && [ "$(top "$pf")" = "$p" ] || continue
+                # The line before X freezes just before X's TC squash commit, or at the TC tip where X changed no TC.
+                for i in "${!tcs[@]}"; do
+                  sq=
+                  [ "$pr" = - ] || sq=$(GH_TOKEN=$TC_TOKEN gh pr list --repo "CUBRID/${tcs[i]}" --head "tc/pr-$pr" \
+                    --base "$(tc_branch "${tcs[i]}" "$b")" --state merged --json mergeCommit --jq '.[0].mergeCommit.oid // empty')
+                  if [ -n "$sq" ]; then
+                    frozen[i]=$(GH_TOKEN=$TC_TOKEN gh api "repos/CUBRID/${tcs[i]}/commits/$sq" --jq '.parents[0].sha')
+                  else
+                    frozen[i]=${tips[i]}
+                  fi
+                done
+                set_top "$pf" final "${frozen[@]}"
+              done
+              mkdir -p "${f%/*}"
+              [ -f "$f" ] || printf 'engine\tpr\tbuild\tmerged\t%s\t%s\t%s\tstate\n' "${tcs[@]}" > "$f"
+              {
+                head -1 "$f"
+                printf '%s\t%s\t%s.%04d\t%s\t%s\t%s\t%s\tfollow\n' "$x" "$pr" "$v" \
+                  "$(git -C "$eng" rev-list --after 2019-12-12 --count "$x")" \
+                  "$(TZ=UTC git -C "$eng" show -s --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "$x")" "${tips[@]}"
+                tail -n +2 "$f"
+              } > "$f.new"
+              mv "$f.new" "$f"
+            done
+            x=$(git -C "$eng" rev-parse "$b")
+            for f in "$pin/$b"/*.tsv; do
+              if [ -f "$f" ] && [ "$(top "$f")" = "$x" ]; then set_top "$f" follow "${tips[@]}"; fi
+            done
+          }
+
+          git clone -q --bare --filter=tree:0 --no-tags --single-branch -b develop "$eurl" "$eng"
+          # Another run may push tc-pin first: then read everything again and redo, which finds what that run wrote.
+          for try in 1 2 3 4 5; do
+            heads "$eurl" engine
+            for r in "${tcs[@]}"; do heads "$(url "$TC_TOKEN" "CUBRID/$r")" "$r"; done
+            rm -rf "$pin"
+            git init -q -b tc-pin "$pin"
+            if git -C "$pin" fetch -q "$eurl" tc-pin; then git -C "$pin" reset -q --hard FETCH_HEAD; fi
+            if [ -n "$BRANCH" ]; then
+              branches=$BRANCH
+            else
+              # The schedule keeps develop and every branch whose table a push started.
+              branches=$({ echo develop; find "$pin" -path "$pin/.git" -prune -o -name '*.tsv' -printf '%h\n' \
+                | sed "s|^$pin/||"; } | sort -u)
+            fi
+            for b in $branches; do
+              if has engine "$b"; then pin_branch "$b"; fi
+            done
+            git -C "$pin" add -A
+            if git -C "$pin" diff --cached --quiet; then exit 0; fi
+            git -C "$pin" -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "Pin from $GITHUB_SERVER_URL/$ENGINE/actions/runs/$GITHUB_RUN_ID"
+            if git -C "$pin" push -q "$eurl" HEAD:refs/heads/tc-pin; then exit 0; fi
+          done
+          echo "::error::tc-pin refused the push $try times"
+          exit 1
