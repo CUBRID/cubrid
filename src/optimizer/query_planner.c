@@ -180,6 +180,11 @@
  * (system operation, worker shortage) -- so the realized speed-up lies anywhere between 1x and
  * the degree; 2 is the geometric middle of 1x..4x, wrong by at most 2x either way. */
 #define QO_PARALLEL_COST_DIVISOR 2.0
+/* Rows a heap scan must be estimated to return to drive a parallel nested-loop chain (CBRD-28121): the
+ * workers share the chain by the rows the scan returns, each row's joins running whole in the worker that
+ * read it, and a few rows -- which also tend to sit together on one or a few pages -- leave the chain in
+ * one worker whatever the size of the table. */
+#define QO_PARALLEL_DRIVE_MIN_ROWS 256.0
 /* qo_query_serial_level (): what the executor runs serially in a query block whatever the plan */
 enum
 {
@@ -400,7 +405,6 @@ static bool qo_plan_runs_parallel (QO_PLAN * plan);
 static QO_PARALLEL_MARK qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN * child);
 static double qo_parallel_cost_divisor (QO_PLAN * join);
 static double qo_join_input_factor (QO_PLAN * input, double divisor);
-static double qo_plan_driving_rows (QO_PLAN * plan);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_parallel_drive (QO_PLAN *, QO_PLAN *, QO_PLAN_COMPARE_RESULT);
 static QO_PLAN *qo_find_best_parallel_driving_plan_on_info (QO_INFO *);
@@ -6791,7 +6795,8 @@ qo_scan_runs_parallel (QO_PLAN * scan)
  *
  * Note: the executor parallelizes a nested-loop chain by splitting its driving (outermost)
  *	 scan among workers, each running the whole chain, so the answer is inherited: a heap scan
- *	 by its own size, a nested loop by its own parallel_driven, and a hash join, merge join
+ *	 by its own size and the rows it returns (QO_PARALLEL_DRIVE_MIN_ROWS), a nested loop by its
+ *	 own parallel_driven, and a hash join, merge join
  *	 or sort -- whose result is materialized into a list file that the chain then scans -- by
  *	 the estimated size of that list.
  */
@@ -6805,7 +6810,9 @@ qo_plan_drives_parallel (QO_PLAN * plan)
 
   if (plan->plan_type == QO_PLANTYPE_SCAN)
     {
-      return qo_scan_runs_parallel (plan);
+      /* the scan itself still runs in parallel (qo_scan_runs_parallel ()), but the chain gains only if its rows
+       * spread over the workers */
+      return qo_scan_runs_parallel (plan) && plan->info->cardinality >= QO_PARALLEL_DRIVE_MIN_ROWS;
     }
 
   if (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
@@ -6815,25 +6822,6 @@ qo_plan_drives_parallel (QO_PLAN * plan)
 
   return (!(qo_plan_select_hint (plan) & PT_HINT_NO_PARALLEL_SCAN)
 	  && qo_plan_list_pages (plan) >= (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD));
-}
-
-/*
- * qo_plan_driving_rows () - rows the driving unit of a nested-loop chain hands to the workers
- *   return: the estimated cardinality of the driving scan or materialized list
- *   plan(in): the outer of a nested loop that drives in parallel (qo_plan_drives_parallel ())
- *
- * Note: a parallel-driven nested loop passes on its own driving unit, so the rows it emits are
- *	 produced, each, inside the worker that read the driving row: the walk descends the outers.
- */
-static double
-qo_plan_driving_rows (QO_PLAN * plan)
-{
-  while (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan) && plan->parallel_driven)
-    {
-      plan = plan->plan_un.join.outer;
-    }
-
-  return (plan->info != NULL) ? plan->info->cardinality : 1.0;
 }
 
 /*
@@ -7407,24 +7395,24 @@ qo_nljoin_cost (QO_PLAN * planp)
 	}
     }
 
-  /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does;
-   * then the per-row inner work is divided, and so is the driving scan when the outer is that
-   * scan itself (a nested-loop or materialized outer already carries its own discount) */
+  /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does and returns rows
+   * enough to spread over the workers (qo_plan_drives_parallel ()); then the per-row inner work is divided.
+   * The driving scan itself is divided when the outer is that scan (a nested-loop or materialized outer
+   * already carries its own discount). */
   divisor = qo_parallel_cost_divisor (planp);
   planp->parallel_driven = (divisor > 1.0 && qo_plan_drives_parallel (outer));
   if (planp->parallel_driven)
     {
-      /* the workers share the chain by the rows of the driving scan: each row's inner work runs whole in the
-       * worker that read it, so fewer rows than the divisor cannot divide that work (CBRD-28121) */
-      double inner_divisor = MAX (1.0, MIN (divisor, qo_plan_driving_rows (outer)));
+      inner_cpu_cost /= divisor;
+      inner_io_cost /= divisor;
+    }
 
-      inner_cpu_cost /= inner_divisor;
-      inner_io_cost /= inner_divisor;
-      if (outer->plan_type == QO_PLANTYPE_SCAN)
-	{
-	  outer_cpu_cost /= divisor;
-	  outer_io_cost /= divisor;
-	}
+  /* a driving heap scan the executor splits among workers runs in parallel whether or not it returns rows enough
+   * for the chain to gain (CBRD-28121), as the input scan of a hash join does (qo_join_input_factor ()) */
+  if (divisor > 1.0 && outer->plan_type == QO_PLANTYPE_SCAN && qo_scan_runs_parallel (outer))
+    {
+      outer_cpu_cost /= divisor;
+      outer_io_cost /= divisor;
     }
 
   /* CPU and IO costs which are variable according to the join plan */
