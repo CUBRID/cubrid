@@ -434,6 +434,7 @@ static PT_NODE *qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static double qo_analytic_sort_cost (QO_PLAN * plan);
 static QO_PLAN *qo_plan_top_scan (QO_PLAN * plan);
+static bool qo_plan_cmp_topn_sort_has_key_range (QO_PLAN * plan);
 static bool qo_index_keeps_asc_key_order (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp);
 static bool qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx);
 static int qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max);
@@ -8201,6 +8202,48 @@ qo_plan_top_scan (QO_PLAN * plan)
 }
 
 /*
+ * qo_plan_cmp_topn_sort_has_key_range () - does a top-N sort plan read its rows through an index key range
+ *   return: true when the plan is an ORDER BY sort of a LIMIT query (or a SORT-LIMIT) whose driving scan is an
+ *	     index scan with key range terms
+ *   plan(in): the plan compared against an ORDER BY skip plan
+ *
+ * Note: CBRD-28111. qo_plan_cmp () prefers an ORDER BY skip plan over a sort plan by rule when the costs are within
+ *   RBO_CHECK_LIMIT_RATIO, because the cost of the ordered scan does not know the LIMIT it stops at. Against a full
+ *   scan with a top-N sort the rule keeps the ordered scan (CBRD-26354). Against a top-N sort over another index's
+ *   key range the rows are already narrowed, both costs are what the plans read, and the rule only hides a cheaper
+ *   plan; the comparison then falls back to cost.
+ */
+static bool
+qo_plan_cmp_topn_sort_has_key_range (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_SORT || !QO_PLAN_HAS_LIMIT (plan)
+      || (plan->plan_un.sort.sort_type != SORT_ORDERBY && plan->plan_un.sort.sort_type != SORT_LIMIT))
+    {
+      return false;
+    }
+
+  plan = plan->plan_un.sort.subplan;
+  while (plan != NULL)
+    {
+      if (plan->plan_type == QO_PLANTYPE_SORT)
+	{
+	  plan = plan->plan_un.sort.subplan;
+	}
+      else if (plan->plan_type == QO_PLANTYPE_JOIN)
+	{
+	  plan = plan->plan_un.join.outer;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  return (plan != NULL && plan->plan_type == QO_PLANTYPE_SCAN && qo_is_interesting_order_scan (plan)
+	  && !bitset_is_empty (&(plan->plan_un.scan.terms)));
+}
+
+/*
  * qo_analytic_sort_cost () - the cost of the analytic sort that a sequential scan leaves to the analytic evaluation
  *			      and that a QO_SCANMETHOD_INDEX_ANALYTIC_SCAN plan saves
  *   return: cost of sorting the rows of the scan
@@ -8430,7 +8473,8 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip)
+      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip
+	  && !qo_plan_cmp_topn_sort_has_key_range (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -8473,7 +8517,8 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	      return PLAN_COMP_GT;
 	    }
-	  if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip)
+	  if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip
+	      && !qo_plan_cmp_topn_sort_has_key_range (a))
 	    {
 	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	      return PLAN_COMP_GT;
@@ -8547,10 +8592,10 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	}
     }
 
-  /* prefer order by skip plan over sort plan */
+  /* prefer order by skip plan over sort plan, unless the sort is a top-N over another index's key range (CBRD-28111) */
   if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer))
+      if (qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer) && !qo_plan_cmp_topn_sort_has_key_range (b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -8558,7 +8603,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else if (b->plan_type == QO_PLANTYPE_JOIN && a->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer))
+      if (qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer) && !qo_plan_cmp_topn_sort_has_key_range (a))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
