@@ -11965,6 +11965,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       AU_SAVE_AND_DISABLE (save);
 
+      /* before the delete takes the row's X lock, as in do_drop_serial () */
+      (void) serial_decache (&serial_obj_id);
       error = obj_delete (found_att->auto_increment);
 
       AU_RESTORE (save);
