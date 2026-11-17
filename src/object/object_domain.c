@@ -382,8 +382,6 @@ static TP_DOMAIN *tp_Domains[] = {
 
   /* beginning of some "padding" built-in domains that can be used as expansion space when new primitive data types are
    * added. */
-  &tp_Bfile_domain,
-  &tp_Cfile_domain,
   &tp_Blob_domain,
   &tp_Clob_domain,
   &tp_Enumeration_domain,
@@ -392,6 +390,8 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
+  &tp_Bfile_domain,
+  &tp_Cfile_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,

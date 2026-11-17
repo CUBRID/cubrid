@@ -1849,8 +1849,6 @@ const PR_TYPE *tp_Type_id_map[] = {
   &tp_Null,
   &tp_Bigint,
   &tp_Datetime,
-  &tp_Bfile,
-  &tp_Cfile,
   &tp_Blob,
   &tp_Clob,
   &tp_Enumeration,
@@ -1859,6 +1857,8 @@ const PR_TYPE *tp_Type_id_map[] = {
   &tp_Datetimetz,
   &tp_Datetimeltz,
   &tp_Json,
+  &tp_Bfile,
+  &tp_Cfile,
 };
 
 const PR_TYPE tp_ResultSet = {
