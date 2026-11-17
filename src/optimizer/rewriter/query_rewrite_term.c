@@ -5814,8 +5814,12 @@ qo_or_extract_join_keys (PARSER_CONTEXT * parser, PT_NODE ** disjuncts, int dis_
 	{
 	  /* the column of the conjunct itself, which outlives the copy */
 	  attr = conjuncts[i]->info.expr.arg1;
-	  columns[ncols++] = (attr->node_type == PT_NAME && attr->info.name.spec_id == spec_id
-			      && pt_name_equal (parser, attr, key->info.expr.arg1)) ? attr : conjuncts[i]->info.expr.arg2;
+	  if (attr->node_type != PT_NAME || attr->info.name.spec_id != spec_id
+	      || !pt_name_equal (parser, attr, key->info.expr.arg1))
+	    {
+	      attr = conjuncts[i]->info.expr.arg2;
+	    }
+	  columns[ncols++] = attr;
 	}
       parser_free_tree (parser, key);
     }
