@@ -81,7 +81,8 @@ extern int sp_check_xasl_allowed (const xasl_stmt_info &stmt_info);
  * write or lock for write. */
 extern int sp_check_object_write (DB_OBJECT *object);
 
-/* What the XASLs a procedure inside a SQL statement ran write, by XASL_ID, which names an XASL that never changes. */
+/* What the XASLs a procedure inside a SQL statement ran write, by XASL_ID. A recompiled XASL keeps the time its entry
+ * was stored, so one id can name a new XASL of the same SQL. */
 extern bool sp_find_xasl_writes (const xasl_id *xasl_id, xasl_stmt_info &stmt_info);
 extern void sp_remember_xasl_writes (const xasl_id *xasl_id, const xasl_stmt_info &stmt_info);
 
@@ -161,8 +162,8 @@ class sp_tree_frame_guard
 
 /* A frame of a trigger while it runs. A row trigger runs while the statement that fired it still runs, so that
  * statement stays compared, and the frame adds the class the trigger is defined on and its subclasses, reaching the
- * referring classes (cascades) when the event updates or deletes. Another trigger gets an empty frame, and the
- * statement that fired it is left out. */
+ * referring classes (cascades) when the event updates or deletes. Another trigger, or the part of a row trigger run
+ * deferred after that statement ends, gets an empty frame, and the statement that fired it is left out. */
 class sp_class_frame_guard
 {
   public:
