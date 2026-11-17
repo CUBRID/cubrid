@@ -24,6 +24,7 @@
 #ident "$Id$"
 
 #if defined(WINDOWS)
+#include "build_version.h"
 #include <winsock2.h>
 #include <windows.h>
 #endif /* WINDOWS */
