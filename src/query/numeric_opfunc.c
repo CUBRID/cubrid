@@ -4251,6 +4251,9 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
 		}
 	    }
 	}
+
+      /* the zeros removed come off the input scale, not off its cap: 1 at scale 40 and 10 at scale 41 leave 40 */
+      tmp_scale = scale - ((scale > DB_MAX_NUMERIC_PRECISION ? DB_MAX_NUMERIC_PRECISION : scale) - tmp_scale);
     }
   else
     {
