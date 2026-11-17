@@ -108,6 +108,7 @@ static int log_recovery_get_redo_parallel_count ();
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
+static void log_recovery_2pc_restore_prev_versions (THREAD_ENTRY * thread_p);
 static void log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
@@ -3327,6 +3328,112 @@ log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * log_recovery_2pc_restore_prev_versions - set back the prev version lsa of the rows in-doubt transactions updated
+ *
+ * return: nothing
+ *
+ * Note: An update stores that lsa without logging it, so redo leaves it null. Only a reader of an active
+ *       transaction's row follows it, and after restart the in-doubt transactions are the active ones.
+ */
+static void
+log_recovery_2pc_restore_prev_versions (THREAD_ENTRY * thread_p)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  OID undo_area[2];		/* the record type, and the forward OID of a relocated home */
+  int i;
+
+  log_page->hdr.logical_pageid = NULL_PAGEID;
+  for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+    {
+      LOG_TDES *tdes = LOG_FIND_TDES (i);
+      HEAP_RV_PREV_VERSION_STATE state;
+      LOG_LSA lsa;
+
+      if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->state != TRAN_UNACTIVE_2PC_PREPARE
+	  || !MVCCID_IS_NORMAL (tdes->mvccinfo.id))
+	{
+	  continue;
+	}
+
+      OID_SET_NULL (&state.deleted_oid);
+      for (lsa = tdes->tail_lsa; !LSA_ISNULL (&lsa);)
+	{
+	  LOG_RECORD_HEADER rec_header;
+	  LOG_LSA read_lsa = lsa;
+	  LOG_LSA next_lsa;
+	  LOG_REC_SYSOP_END *sysop_end;
+	  LOG_DATA data;
+	  VPID vpid;
+	  RECDES old_home = RECDES_INITIALIZER;
+	  bool is_mvcc = false;
+
+	  if (log_page->hdr.logical_pageid != lsa.pageid
+	      && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_2pc_restore_prev_versions");
+	      return;
+	    }
+	  rec_header = *LOG_GET_LOG_RECORD_HEADER (log_page, &lsa);
+	  next_lsa = rec_header.prev_tranlsa;
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (rec_header), &read_lsa, log_page);
+
+	  /* skip what a partial rollback undid, as rollback does: its slots may hold other rows since */
+	  switch (rec_header.type)
+	    {
+	    case LOG_COMPENSATE:
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &read_lsa, log_page);
+	      next_lsa = ((LOG_REC_COMPENSATE *) (log_page->area + read_lsa.offset))->undo_nxlsa;
+	      break;
+
+	    case LOG_SYSOP_END:
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &read_lsa, log_page);
+	      sysop_end = (LOG_REC_SYSOP_END *) (log_page->area + read_lsa.offset);
+	      if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
+		{
+		  next_lsa = sysop_end->compensate_lsa;
+		}
+	      break;
+
+	    case LOG_MVCC_UNDOREDO_DATA:
+	    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+	      is_mvcc = true;
+	      /* fall through */
+	    case LOG_UNDOREDO_DATA:
+	    case LOG_DIFF_UNDOREDO_DATA:
+	      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, is_mvcc ? sizeof (LOG_REC_MVCC_UNDOREDO)
+						: sizeof (LOG_REC_UNDOREDO), &read_lsa, log_page);
+	      /* LOG_REC_MVCC_UNDOREDO starts with LOG_REC_UNDOREDO */
+	      data = ((LOG_REC_UNDOREDO *) (log_page->area + read_lsa.offset))->data;
+	      VPID_SET (&vpid, data.volid, data.pageid);
+
+	      if (data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
+		{
+		  old_home.data = (char *) undo_area;
+		  old_home.area_size = sizeof (undo_area);
+		  /* a larger image does not fit, but its type is still read */
+		  if ((log_page->hdr.logical_pageid != lsa.pageid
+		       && logpb_fetch_page (thread_p, &lsa, LOG_CS_FORCE_USE, log_page) != NO_ERROR)
+		      || log_get_undo_record (thread_p, log_page, lsa, &old_home) == S_ERROR)
+		    {
+		      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_2pc_restore_prev_versions");
+		      return;
+		    }
+		}
+	      heap_rv_restore_prev_version (thread_p, data.rcvindex, &vpid, data.offset, &lsa,
+					    data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM ? &old_home : NULL,
+					    tdes->mvccinfo.id, &state);
+	      break;
+
+	    default:
+	      break;
+	    }
+	  lsa = next_lsa;
+	}
+    }
+}
+
+/*
  * log_recovery_refuse_no_logging_index_replay () - fail-stop a media recovery replay that reaches a record left
  *   by a no-logging index build (loaddb).  Its index pages were never WAL-logged, so replaying past it
  *   cannot reconstruct them.  A replay in which the index would survive always dispatches either the
@@ -4071,6 +4178,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   /* Must run after the last reset_start_mvccid: otherwise an in-doubt transaction's rows read as visible and checkers
    * skip the self-lock wait. */
   log_recovery_2pc_reactivate_mvccids (thread_p);
+  log_recovery_2pc_restore_prev_versions (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
