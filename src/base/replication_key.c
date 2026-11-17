@@ -402,7 +402,7 @@ repl_key_is_valid (const char *data, int length)
   const char *name;
   if (!repl_key_get_int (&r, &type) || !repl_key_type_is_supported (type)
       || !repl_key_get_name (&r, &name) || name[0] == '\0' || !repl_key_get_int (&r, &count)
-      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 9))
+      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 7))
     {
       return false;
     }
@@ -410,10 +410,9 @@ repl_key_is_valid (const char *data, int length)
   for (int i = 0; i < count; i++)
     {
       int id, desc, not_null, domain_length;
-      const char *column, *class_name;
+      const char *column;
 
       if (!repl_key_get_int (&r, &id) || id < 0 || !repl_key_get_name (&r, &column) || column[0] == '\0'
-	  || !repl_key_get_name (&r, &class_name)
 	  || !repl_key_get_int (&r, &desc) || (desc != 0 && desc != 1)
 	  || !repl_key_get_int (&r, &not_null) || (not_null != 0 && not_null != 1)
 	  || !repl_key_get_int (&r, &domain_length) || domain_length <= 0 || domain_length > r.remaining
