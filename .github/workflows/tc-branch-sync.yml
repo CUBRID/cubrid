@@ -89,6 +89,8 @@ jobs:
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
           owner: ${{ env.OWNER }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Mask token
         env:
@@ -203,7 +205,9 @@ jobs:
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: cubrid-testcases,cubrid-testcases-private-ex
           owner: ${{ env.OWNER }}
+          permission-pull-requests: read
 
       - name: Post or Update PR Comment
         env:
@@ -293,6 +297,8 @@ jobs:
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           repositories: ${{ matrix.tc-repo }}
           owner: ${{ env.OWNER }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Revert TC and Create Branch
         id: revert-tc-commit
@@ -411,7 +417,9 @@ jobs:
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: cubrid-testcases,cubrid-testcases-private-ex
           owner: ${{ env.OWNER }}
+          permission-pull-requests: read
 
       - name: Post or Update PR Comment
         env:
