@@ -1324,11 +1324,11 @@ jobs:
       TC_APP_ID: ${{ secrets.TC_APP_ID }}
       TC_APP_PRIVATE_KEY: ${{ secrets.TC_APP_PRIVATE_KEY }}
 
-  # A run cancelled before the suite workflows started gets no status from them.
+  # A suite whose workflow never started, or stopped before its status job, is left pending.
   status_cancelled:
     name: status (cancelled)
     needs: [gate, suite]
-    if: ${{ cancelled() && needs.suite.result == 'skipped' && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.post_status == 'true' }}
+    if: ${{ cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.post_status == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -1343,10 +1343,15 @@ jobs:
           SHA: ${{ needs.gate.outputs.sha }}
           SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
         run: |
+          export RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          posted=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/statuses?per_page=100" \
+            --jq '.[] | select(.target_url == env.RUN_URL and .state != "pending") | .context')
           for suite in $SUITES_RUN; do
+            ctx=$(jq -r --arg s "$suite" '.[$s].status_ctx' <<<"$SUITES")
+            if printf '%s\n' "$posted" | grep -qxF "$ctx"; then
+              continue
+            fi
             # error, not failure: the commit was not judged, and the batch takes it again.
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" --silent -f state=error \
-              -f context="$(jq -r --arg s "$suite" '.[$s].status_ctx' <<<"$SUITES")" \
-              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-              -f description="run was superseded or cancelled"
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" --silent -f state=error -f context="$ctx" \
+              -f target_url="$RUN_URL" -f description="run was superseded or cancelled"
           done
