@@ -319,7 +319,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       /* convert to CNF and tag taggable terms */
       if (*wherep)
 	{
-	  *wherep = pt_cnf (parser, *wherep);
+	  *wherep = pt_cnf_where (parser, *wherep);
 	}
       if (*havingp)
 	{

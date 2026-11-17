@@ -457,6 +457,7 @@ static XASL_NODE *pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * sele
 static XASL_NODE *pt_gen_simple_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * plan, XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static XASL_NODE *pt_to_buildschema_proc (PARSER_CONTEXT * parser, PT_NODE * select_node);
+static bool pt_buildvalue_output_reads_scan (XASL_NODE * xasl);
 static XASL_NODE *pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * qo_plan);
 static bool pt_analytic_to_metadomain (ANALYTIC_TYPE * func_p, PT_NODE * sort_list, ANALYTIC_KEY_METADOMAIN * func_meta,
 				       PT_NODE ** index, int *index_size);
@@ -661,8 +662,7 @@ static bool pt_has_reev_in_subquery (PARSER_CONTEXT * parser, PT_NODE * statemen
 
 int pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * xasl);
 static int pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type);
-static PT_NODE *pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-							  int *continue_walk);
+static PT_NODE *pt_check_reuse_unsafe_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_find_group_key_expr (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list);
 static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_list,
 				    VAL_LIST * vallist);
@@ -21438,6 +21438,57 @@ exit_on_error:
 }
 
 /*
+ * pt_buildvalue_output_reads_scan () - does the output list of a BUILDVALUE read a column of its own scans?
+ *   return: true when an output value reads a slot of the block's value list or of a scan_ptr's
+ *   xasl(in): the BUILDVALUE, its plan generated
+ *
+ * A BUILDVALUE evaluates its output list once, after its scans (qexec_end_buildvalueblock_iterations ()): its
+ * aggregates' results, constants and the outer blocks' values.  A column of its own scans there reads what the row
+ * loop last fetched into the slot, the last row that passed the filters.  A select list cannot name such a column
+ * beside an aggregate ("not single valued"), but two rewrites put one there: INSERT ... SELECT ... ON DUPLICATE KEY
+ * UPDATE appends the columns its assignments read to the SELECT's list (pt_append_assignment_references ()), and a
+ * select list of aggregates whose correlated subquery reads a column of the source becomes a derived table that
+ * carries the column (mq_rewrite_aggregate_as_derived ()).  A SELECT of aggregates without GROUP BY carries them so.
+ * The page batch (qexec_batch_eligible ()) accumulates the aggregates without fetching any row into the slots: such a
+ * block is marked XASL_OUTPUT_READS_SCAN and the page batch leaves it to the row loop, which copies the columns of each
+ * row it aggregates for the output list (qexec_keep_last_row ()).  A block that ends without the row loop, an
+ * aggregate answered from the index or the statistics or the buildvalue gather of a parallel scan, leaves the columns
+ * NULL (qexec_restore_last_row ()), as before the page batch.
+ */
+static bool
+pt_buildvalue_output_reads_scan (XASL_NODE * xasl)
+{
+  REGU_VARIABLE_LIST out;
+  bool reads = false;
+
+  for (out = xasl->outptr_list->valptrp; out != NULL && !reads; out = out->next)
+    {
+      // *INDENT-OFF*
+      out->value.map_regu ([&] (regu_variable_node & regu, bool & stop)
+	{
+	  if (regu.type != TYPE_CONSTANT)
+	    {
+	      return;
+	    }
+	  for (XASL_NODE * scan = xasl; scan != NULL && !reads; scan = scan->scan_ptr)
+	    {
+	      for (QPROC_DB_VALUE_LIST v = (scan->val_list != NULL) ? scan->val_list->valp : NULL; v != NULL;
+		   v = v->next)
+		{
+		  if (v->val == regu.value.dbvalptr)
+		    {
+		      reads = stop = true;
+		      break;
+		    }
+		}
+	    }
+	});
+      // *INDENT-ON*
+    }
+  return reads;
+}
+
+/*
  * pt_to_buildvalue_proc () - Make a buildvalue xasl proc
  *   return:
  *   parser(in):
@@ -21638,6 +21689,11 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   if (!xasl->outptr_list || !xasl->spec_list || !xasl->val_list || pt_has_error (parser))
     {
       goto exit_on_error;
+    }
+
+  if (pt_buildvalue_output_reads_scan (xasl))
+    {
+      XASL_SET_FLAG (xasl, XASL_OUTPUT_READS_SCAN);
     }
 
   /* set CONNECT BY xasl */
@@ -33914,7 +33970,6 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
   int n_elements, i;
   SQ_KEY *sq_key_struct;
   QPROC_DB_VALUE_LIST dbv_list;
-  bool cachable = true;
 
   if (XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE))
     {
@@ -33927,8 +33982,7 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
       /* it means SUBQUERY RESULT won't be cached. */
       return false;
     }
-  parser_walk_tree (parser, node, NULL, NULL, pt_check_corr_subquery_not_cachable_expr, &cachable);
-  if (!cachable)
+  if (!pt_is_result_reuse_safe (parser, node))
     {
       return false;
     }
@@ -34290,19 +34344,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    }
 	  break;
 	case TYPE_SP:
-	  /* The value of regu_src->value.sp_ptr->sig->is_deterministic is interpreted as follows
-	   * 0: PT_AUTHID_OWNER + PT_NOT_DETERMINISTIC
-	   * 1: PT_AUTHID_CALLER + PT_NOT_DETERMINISTIC
-	   * 2: PT_AUTHID_OWNER + PT_DETERMINISTIC
-	   * 3: PT_AUTHID_CALLER + PT_DETERMINISTIC
-	   */
-#if defined (CS_MODE)
-	  if (regu_src->value.sp_ptr->sig->is_deterministic == false)
-	    {
-	      return ER_FAILED;
-	    }
-#endif
-
+	  /* a stored function not DETERMINISTIC was refused before, in CS and SA alike (pt_is_result_reuse_safe ()) */
 	  regu_var_list_p = regu_src->value.sp_ptr->args;
 
 	  while (regu_var_list_p)
@@ -34390,22 +34432,22 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 }
 
 /*
- * pt_check_corr_subquery_not_cachable_expr () - Evaluates whether expressions within a node are cachable for subqueries. 
- * 
- * 
- * parser (in): PARSER_CONTEXT* - Pointer to the parser context, provides contextual information necessary for processing the node.
- * node (in): PT_NODE* - Pointer to the query node being checked. This node can represent various query elements such as expressions.
- * arg (in/out): void* - A generic pointer, which in this context is used to point to a boolean flag indicating cachability.
- * continue_walk (in/out): int* - Pointer to an integer that controls the continuation of the tree walk. Set to PT_STOP_WALK to halt further processing.
- * 
+ * pt_check_reuse_unsafe_expr () - CBRD-27993: an expression that can give another value for the same inputs within
+ *   one statement, or whose side effect a replay would skip, so a result reuse (memoize, the correlated subquery
+ *   cache) must not replay a result computed with it
+ *
+ * parser (in): parser context
+ * node (in): node visited
+ * arg (in/out): bool *, set false on such an expression
+ * continue_walk (in/out): PT_STOP_WALK once one is found
  */
 static PT_NODE *
-pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_check_reuse_unsafe_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
+  bool *reusable = (bool *) arg;
 
   if (node->node_type == PT_EXPR)
     {
-      bool *cachable = (bool *) arg;
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
@@ -34416,15 +34458,136 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
 	case PT_DRANDOM:
 	case PT_CURRENT_VALUE:
 	case PT_NEXT_VALUE:
-	  *cachable = false;
+	case PT_INCR:
+	case PT_DECR:
+	case PT_EXEC_STATS:
+	case PT_TRACE_STATS:
+	case PT_SLEEP:
+	  /* a session variable, assigned in this statement or not */
+	case PT_EVALUATE_VARIABLE:
+	case PT_DEFINE_VARIABLE:
+	  *reusable = false;
 	  *continue_walk = PT_STOP_WALK;
 	  break;
 	default:
-	  /* continue walk */
 	  break;
 	}
     }
+  else if (node->node_type == PT_METHOD_CALL && !PT_IS_METHOD (node) && !jsp_is_sp_deterministic (parser, node))
+    {
+      *reusable = false;
+      *continue_walk = PT_STOP_WALK;
+    }
+
   return node;
+}
+
+/*
+ * pt_is_result_reuse_safe () - CBRD-27993: whether a result computed from tree may be replayed for the same key
+ *   within one statement (pt_check_reuse_unsafe_expr ()); memoize and the correlated subquery cache share it
+ *   return: true when tree holds no expression that refuses the reuse
+ *   tree (in): an expression or a query; its next list is not visited
+ */
+bool
+pt_is_result_reuse_safe (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  bool reusable = true;
+  PT_NODE *next;
+
+  if (tree == NULL)
+    {
+      return true;
+    }
+
+  next = tree->next;
+  tree->next = NULL;
+  (void) parser_walk_tree (parser, tree, pt_check_reuse_unsafe_expr, &reusable, NULL, NULL);
+  tree->next = next;
+
+  return reusable;
+}
+
+/*
+ * pt_make_memoize_key () - CBRD-27993: the memoize key of an NL inner from the outer scans' column names its terms
+ *   read: each name's slot is the one pt_attribute_to_regu () points the inner's terms at (its table's value list),
+ *   with the domain the slot's producer writes (pt_list_reader_domain (), what regu_produced_domain () reads)
+ *   return: the key (n_elements 0 for no name); NULL when a name has no such slot, so the inner is not memoized
+ *   names (in): PT_NAME nodes of outer specs; a name repeated is one slot
+ *   n_names (in): their count
+ */
+SQ_KEY *
+pt_make_memoize_key (PARSER_CONTEXT * parser, PT_NODE ** names, int n_names)
+{
+  SYMBOL_INFO *symbols = parser->symbols;
+  SQ_KEY *key;
+  int i, j, n = 0;
+
+  /* shortcut: a listfile context points names at other slots; an NL inner is generated outside one
+   * (make_hashjoin_proc () restores the symbols), handle it if an inner is ever generated inside one */
+  if (symbols == NULL || symbols->current_listfile != NULL)
+    {
+      return NULL;
+    }
+
+  key = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
+  if (key == NULL)
+    {
+      return NULL;
+    }
+  key->dbv_array = NULL;
+  key->domains = NULL;
+  key->n_elements = 0;
+  if (n_names == 0)
+    {
+      return key;
+    }
+
+  key->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_names * sizeof (DB_VALUE *));
+  key->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_names * sizeof (TP_DOMAIN *));
+  if (key->dbv_array == NULL || key->domains == NULL)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < n_names; i++)
+    {
+      PT_NODE *name = names[i];
+      TABLE_INFO *table_info = pt_find_table_info (name->info.name.spec_id, symbols->table_info);
+      int index;
+      DB_VALUE *dbval;
+      TP_DOMAIN *domain;
+
+      if (table_info == NULL)
+	{
+	  return NULL;
+	}
+      index = pt_find_attribute (parser, name, table_info->attribute_list);
+      dbval = pt_index_value (table_info->value_list, index);
+      if (dbval == NULL)
+	{
+	  return NULL;
+	}
+      domain = pt_list_reader_domain (parser, table_info->class_spec, index, name);
+      /* shortcut: a CTE column NULL-typed until its producer is made gets its domain after this
+       * (pt_note_cte_null_reader ()), such an inner is not memoized; key it once the readers patch key domains */
+      if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+	{
+	  return NULL;
+	}
+
+      for (j = 0; j < n && key->dbv_array[j] != dbval; j++)
+	;
+      if (j < n)
+	{
+	  continue;
+	}
+      key->dbv_array[n] = dbval;
+      key->domains[n] = domain;
+      n++;
+    }
+  key->n_elements = n;
+
+  return key;
 }
 
 /*
@@ -34502,7 +34665,6 @@ pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * groupby_l
 
       if (key == 0 && db_list)
 	{
-	  assert (node->etc == NULL);
 	  new_node = pt_point_ref (parser, node);
 	  if (new_node == NULL)
 	    {

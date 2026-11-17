@@ -64,7 +64,7 @@ extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA log_get_append_lsa (void);
-extern LOG_LSA *log_get_eof_lsa (void);
+extern LOG_LSA log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
 extern int log_get_num_pages_for_creation (int db_npages);
@@ -305,6 +305,8 @@ extern LOG_EXTRACT_OWNER cdc_Session_owner;
 
 /* cdc functions */
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
+extern int cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+			       bool * is_dba_group, bool * is_loginable);
 extern bool cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
 			       bool * is_dba_group);
 extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
