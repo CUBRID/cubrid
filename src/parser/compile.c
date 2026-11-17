@@ -90,7 +90,7 @@ static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node,
 static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static DB_CLASS_MODIFICATION_STATUS pt_check_class_chn (MOP clsmop, SM_CLASS_TYPE type, int *chn);
+static DB_CLASS_MODIFICATION_STATUS pt_check_class_chn (MOP clsmop, int *chn);
 
 /*
  * pt_spec_to_oid_attr () - Generate an oid attribute from a resolved spec.
@@ -650,7 +650,7 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	    {
 	      continue;
 	    }
-	  is_class = db_is_class (clsmop);
+	  is_class = db_is_any_class (clsmop);
 	  if (is_class < 0)
 	    {
 	      PT_ERRORc (parser, class_, er_msg ());
@@ -729,11 +729,10 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 	      continue;
 	    }
 
-	  *status = pt_check_class_chn (clsmop, SM_CLASS_CT, &class_->info.name.db_object_chn);
+	  *status = pt_check_class_chn (clsmop, &class_->info.name.db_object_chn);
 	  if (*status == DB_CLASS_NOT_MODIFIED && class_->info.name.virt_object != NULL)
 	    {
-	      *status =
-		pt_check_class_chn (class_->info.name.virt_object, SM_VCLASS_CT, &class_->info.name.virt_object_chn);
+	      *status = pt_check_class_chn (class_->info.name.virt_object, &class_->info.name.virt_object_chn);
 	    }
 
 	  if (*status != DB_CLASS_NOT_MODIFIED)
@@ -752,11 +751,10 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
  * pt_check_class_chn () - check whether a class or a view has changed since its CHN was recorded
  *   return: DB_CLASS_NOT_MODIFIED, DB_CLASS_MODIFIED or DB_CLASS_ERROR
  *   clsmop(in):
- *   type(in): SM_CLASS_CT or SM_VCLASS_CT; an object of another type is not compared
  *   chn(in/out): the recorded CHN; recorded here if it is NULL_CHN
  */
 static DB_CLASS_MODIFICATION_STATUS
-pt_check_class_chn (MOP clsmop, SM_CLASS_TYPE type, int *chn)
+pt_check_class_chn (MOP clsmop, int *chn)
 {
   SM_CLASS *sm_class = NULL;
   int error = NO_ERROR;
@@ -773,11 +771,6 @@ pt_check_class_chn (MOP clsmop, SM_CLASS_TYPE type, int *chn)
     {
       /* the class might be dropped. */
       return (error == ER_HEAP_UNKNOWN_OBJECT) ? DB_CLASS_MODIFIED : DB_CLASS_ERROR;
-    }
-
-  if (sm_get_class_type (sm_class) != type)
-    {
-      return DB_CLASS_NOT_MODIFIED;
     }
 
   current_chn = locator_get_cache_coherency_number (clsmop);
