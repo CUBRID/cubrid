@@ -1275,10 +1275,12 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 	}
     }
 
-  if (pinfo->use_join_values && op == PO_EQ && status == MATCH_NOT_FOUND)
+  if (op == PO_EQ && status == MATCH_NOT_FOUND
+      && (pinfo->use_join_values || (!DB_IS_NULL (val) && !db_value_type_is_collection (val))))
     {
-      /* every partition was compared and none holds the value of the outer row: it joins with no row of any partition
-       * (CBRD-27866) */
+      /* every partition was compared and none holds the value: no row can match it (CBRD-28000), and the value of an
+       * outer row joins with no row of any partition (CBRD-27866). A NULL constant of <=> still reads all partitions,
+       * since partition_list_has finds no NULL with it */
       status = MATCH_OK;
     }
 
@@ -1448,6 +1450,15 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	  goto cleanup;
 	}
 
+      if (size == 0)
+	{
+	  /* no element: "= ALL" of it holds for every row, so the term does not prune */
+	  status = MATCH_NOT_FOUND;
+	  goto cleanup;
+	}
+
+      /* every element must prune: one that does not (MATCH_NOT_FOUND) leaves all partitions to read */
+      status = MATCH_OK;
       for (j = 0; j < size; j++)
 	{
 	  if (db_set_get (values, j, &col) != NO_ERROR)
@@ -1467,7 +1478,10 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	    }
 
 	  pruningset_init (&new_pruned, PARTITIONS_COUNT (pinfo));
-	  status = partition_prune_range (pinfo, &col, op, NULL, &new_pruned);
+	  if (partition_prune_range (pinfo, &col, op, NULL, &new_pruned) != MATCH_OK)
+	    {
+	      status = MATCH_NOT_FOUND;
+	    }
 	  if (j > 0)
 	    {
 	      if (op == PO_EQ)
@@ -1628,11 +1642,11 @@ cleanup:
   pr_clear_value (&min);
   pr_clear_value (&max);
 
-  if (status == MATCH_OK && added == 0
-      && !(pinfo->use_join_values && op == PO_EQ && !db_value_type_is_collection (val)))
+  if (status == MATCH_OK && added == 0 && op != PO_EQ && op != PO_IN)
     {
-      /* no partition holds the value: the term does not prune, except for the value of an outer row, which then
-       * joins with no row of any partition (CBRD-27866) */
+      /* no partition qualifies for the range: the term does not prune. For an equality every partition was compared
+       * and none holds the value, so no row can match it (CBRD-28000), and the value of an outer row joins with no
+       * row of any partition (CBRD-27866) */
       status = MATCH_NOT_FOUND;
     }
 
@@ -5045,7 +5059,7 @@ partition_prune_partition_index (PRUNING_CONTEXT * pcontext, DB_VALUE * key, OID
   status = partition_prune_db_val (pcontext, &partition_key, PO_EQ, NULL, &pruned);
   pr_clear_value (&partition_key);
 
-  if (status == MATCH_NOT_FOUND)
+  if (status == MATCH_NOT_FOUND || pruningset_popcount (&pruned) == 0)
     {
       /* No partition can hold the key value (a foreign key outside every range or list, or ON DUPLICATE KEY UPDATE of
        * a value that the insert refuses anyway): *position -1 */
