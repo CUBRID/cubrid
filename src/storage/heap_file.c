@@ -940,8 +940,8 @@ static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, REC
 static void heap_prev_version_walk_release_pages (THREAD_ENTRY * thread_p, HEAP_PREV_VERSION_WALK * walk);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
-static void heap_rv_set_null_prev_version (THREAD_ENTRY * thread_p, const OID * oid, bool from_home, MVCCID mvccid,
-					   const LOG_LSA * lsa);
+static void heap_rv_set_prev_version_if_null (THREAD_ENTRY * thread_p, const OID * oid, INT16 slot_type,
+					      MVCCID mvccid, const LOG_LSA * lsa);
 static int heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p,
 						 RECDES * recdes_p, int size);
 
@@ -27424,6 +27424,7 @@ exit:
  *       record should be prepared for this in heap_insert_adjust_recdes_header().
  *       The records are obtained using PEEK, and modified directly, without using spage_update afterwards!
  * Note: It is expected to have the home page fixed and also the forward page in case of relocation.
+ * Note: heap_rv_restore_prev_version () sets the same lsa for in-doubt transactions at restart; change both together.
  */
 static int
 heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
@@ -27521,37 +27522,44 @@ end:
 }
 
 /*
- * heap_rv_set_null_prev_version () - Set the prev version lsa of an in-doubt version that redo left null.
+ * heap_rv_set_prev_version_if_null () - Set the prev version lsa of the current version of a row, if the in-doubt
+ *					   transaction wrote that version and the lsa is null.
  *
- * oid (in)	     : Home OID of the row, or with from_home false, the slot of its forward record.
- * mvccid (in)	     : MVCCID of the in-doubt transaction; only its versions are set.
- * lsa (in)	     : LSA of the undo log record holding the replaced version.
+ * slot_type (in) : REC_HOME if oid is the home of the row, REC_NEWHOME if it is a forward record.
  */
 static void
-heap_rv_set_null_prev_version (THREAD_ENTRY * thread_p, const OID * oid, bool from_home, MVCCID mvccid,
-			       const LOG_LSA * lsa)
+heap_rv_set_prev_version_if_null (THREAD_ENTRY * thread_p, const OID * oid, INT16 slot_type, MVCCID mvccid,
+				  const LOG_LSA * lsa)
 {
   VPID vpid;
   PAGE_PTR page, fwd_page = NULL;
+  SPAGE_SLOT *slot_p;
   RECDES recdes, version;
   MVCC_REC_HEADER header;
   int error_code;
 
   VPID_GET_FROM_OID (&vpid, oid);
+  /* the address comes from the log, so the page may have been deallocated since */
   page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (page == NULL)
     {
       er_clear ();
       return;
     }
-  if (pgbuf_get_page_ptype (thread_p, page) != PAGE_HEAP
+  if (pgbuf_get_page_ptype (thread_p, page) != PAGE_HEAP)
+    {
+      goto end;
+    }
+  /* a later update of the row may have deleted the slot, which spage_get_record () reports as an error */
+  slot_p = spage_get_slot (page, oid->slotid);
+  if (slot_p == NULL || slot_p->record_type == REC_MARKDELETED || slot_p->record_type == REC_DELETED_WILL_REUSE
       || spage_get_record (thread_p, page, oid->slotid, &recdes, PEEK) != S_SUCCESS)
     {
       goto end;
     }
 
   version = recdes;
-  if (from_home && (recdes.type == REC_RELOCATION || recdes.type == REC_BIGONE))
+  if (slot_type == REC_HOME && (recdes.type == REC_RELOCATION || recdes.type == REC_BIGONE))
     {
       OID fwd_oid = *(OID *) recdes.data;
       VPID fwd_vpid;
@@ -27576,7 +27584,7 @@ heap_rv_set_null_prev_version (THREAD_ENTRY * thread_p, const OID * oid, bool fr
 	  error_code = heap_get_mvcc_rec_header_from_overflow (fwd_page, &header, &version);
 	}
     }
-  else if (recdes.type == (from_home ? REC_HOME : REC_NEWHOME))
+  else if (recdes.type == slot_type)
     {
       error_code = or_mvcc_get_header (&version, &header);
     }
@@ -27601,17 +27609,11 @@ end:
 }
 
 /*
- * heap_rv_restore_prev_version () - At restart, set back the prev version lsa that an in-doubt transaction's update
- *				      stored without logging, from one log record of that transaction.
+ * heap_rv_restore_prev_version () - Set the prev version lsa of a row an in-doubt transaction updated, from one log
+ *				      record of that transaction, as heap_update_set_prev_version () set it.
  *
- * rcvindex, vpid, offset (in) : Recovery index and address of the log record.
- * lsa (in)		       : LSA of the log record.
- * old_home (in)	       : Undo image of an RVHF_UPDATE_NOTIFY_VACUUM record; NULL for other records.
- * mvccid (in)		       : MVCCID of the in-doubt transaction.
- * state (in/out)	       : State across the records of one transaction.
- *
- * NOTE: The caller visits the records newest first. A version is set only while its lsa is null, so a row updated
- *	 more than once links to the newest update.
+ * NOTE: The caller visits the records newest first, and a version is set only while its lsa is null, so a row
+ *	 updated more than once links to its newest update.
  */
 void
 heap_rv_restore_prev_version (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, const VPID * vpid, PGLENGTH offset,
@@ -27622,7 +27624,7 @@ heap_rv_restore_prev_version (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, co
 
   oid.volid = vpid->volid;
   oid.pageid = vpid->pageid;
-  oid.slotid = offset & ~HEAP_RV_FLAG_VACUUM_STATUS_CHANGE;
+  oid.slotid = heap_rv_remove_flags_from_offset (offset);
 
   switch (rcvindex)
     {
@@ -27633,19 +27635,18 @@ heap_rv_restore_prev_version (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, co
       return;
 
     case RVHF_UPDATE:
-      /* a forward record updated in place */
-      heap_rv_set_null_prev_version (thread_p, &oid, false, mvccid, lsa);
+      heap_rv_set_prev_version_if_null (thread_p, &oid, REC_NEWHOME, mvccid, lsa);
       break;
 
     case RVHF_UPDATE_NOTIFY_VACUUM:
       assert (old_home != NULL);
       if (old_home->type == REC_HOME)
 	{
-	  heap_rv_set_null_prev_version (thread_p, &oid, true, mvccid, lsa);
+	  heap_rv_set_prev_version_if_null (thread_p, &oid, REC_HOME, mvccid, lsa);
 	}
       else if (old_home->type == REC_RELOCATION && OID_EQ ((OID *) old_home->data, &state->deleted_oid))
 	{
-	  heap_rv_set_null_prev_version (thread_p, &oid, true, mvccid, &state->deleted_lsa);
+	  heap_rv_set_prev_version_if_null (thread_p, &oid, REC_HOME, mvccid, &state->deleted_lsa);
 	}
       /* an update of a big record sets the lsa before logging the new version */
       break;
@@ -27654,6 +27655,7 @@ heap_rv_restore_prev_version (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, co
       return;
     }
 
+  /* a remembered RVHF_DELETE pairs only with the heap update visited right after it */
   OID_SET_NULL (&state->deleted_oid);
 }
 

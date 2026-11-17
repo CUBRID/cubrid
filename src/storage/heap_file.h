@@ -673,7 +673,7 @@ extern int heap_get_mvcc_rec_header_from_overflow (PAGE_PTR ovf_page, MVCC_REC_H
 extern int heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_header);
 extern int heap_rv_redo_update_and_update_chain (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
-/* the old forward record deleted by the log record visited just before, which is the newer one */
+/* the RVHF_DELETE visited last, which pairs with the home update logged just before it */
 typedef struct heap_rv_prev_version_state HEAP_RV_PREV_VERSION_STATE;
 struct heap_rv_prev_version_state
 {
