@@ -2202,10 +2202,6 @@ css_server_task::execute (context_type &thread_ref)
     {
       css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
     }
-  else
-    {
-      css_wakeup_handler (&m_conn);
-    }
 }
 
 void
