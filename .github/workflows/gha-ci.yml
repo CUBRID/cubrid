@@ -1869,7 +1869,7 @@ jobs:
                 built=$(cat "$d"/shard/*/build.read 2>/dev/null | awk -F= '$1 == "built_at" {print $2}' | sort -u | paste -sd' ' || :)
                 # A fresh clone takes only a branch, so the commits are fetched into a second checkout.
                 docker_run() {
-                  echo "docker run --rm --pull always$token -v \"\$PWD/CUBRID:/home/CUBRID\" -v \"\$PWD:/repro\" -v \"\$PWD/reports:/tmp/tests\" \\"
+                  echo "[ -d CUBRID ] && [ -s $1.list ] && docker run --rm --pull always$token -v \"\$PWD/CUBRID:/home/CUBRID\" -v \"\$PWD:/repro\" -v \"\$PWD/reports:/tmp/tests\" \\"
                   echo "  $TEST_IMAGE bash -lc '/entrypoint.sh checkout $suite &&"
                   echo "    BRANCH_TESTCASES=$tc_sha BRANCH_TESTTOOLS=$CTP_SHA /entrypoint.sh checkout $suite &&"
                   echo "    /entrypoint.sh keep $1 $WORKDIR/$tc_root /repro/$1.list && /entrypoint.sh test $suite'"
