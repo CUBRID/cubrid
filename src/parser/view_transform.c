@@ -6079,6 +6079,24 @@ mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
 }
 
 /*
+ * mq_clear_or_derived_marks () - make a term pushed into a derived table an ordinary one
+ *   return:
+ *   term(in/out): the copy pushed into the derived table
+ *
+ * Note: a restriction qo_extract_or_restrictions () derived from an OR factor is marked as an
+ *	 implied duplicate of that factor, paired with it by qo_derived_term_compensate () and kept
+ *	 only when an index takes it.  Pushed into a derived table it is the filter there, with no
+ *	 factor to pair with in that query: left marked it would count for nothing and lose its key
+ *	 range.  The distributed factor's clauses used to be pushed as ordinary terms the same way.
+ */
+static void
+mq_clear_or_derived_marks (PT_NODE * term)
+{
+  PT_EXPR_INFO_CLEAR_FLAG (term, PT_EXPR_INFO_OR_DERIVED | PT_EXPR_INFO_OR_DERIVED_EXPENSIVE
+			   | PT_EXPR_INFO_OR_DERIVED_COLUMN);
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -6235,6 +6253,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 		  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_COPYPUSH);
 		}
 	      PT_EXPR_INFO_CLEAR_FLAG (new_term, PT_EXPR_INFO_COPYPUSH);
+	      mq_clear_or_derived_marks (new_term);
 	    }
 	  push_term_list = parser_append_node (new_term, push_term_list);
 
@@ -8025,7 +8044,7 @@ mq_check_rewrite_select (PARSER_CONTEXT * parser, PT_NODE * select_statement)
   assert (!PT_SELECT_INFO_IS_FLAGED (select_statement, PT_SELECT_INFO_COLS_SCHEMA | PT_SELECT_FULL_INFO_COLS_SCHEMA));
 
   /* Convert to cnf and tag taggable terms */
-  select_statement->info.query.q.select.where = pt_cnf (parser, select_statement->info.query.q.select.where);
+  select_statement->info.query.q.select.where = pt_cnf_where (parser, select_statement->info.query.q.select.where);
   if (select_statement->info.query.q.select.having)
     {
       select_statement->info.query.q.select.having = pt_cnf (parser, select_statement->info.query.q.select.having);
@@ -8196,7 +8215,7 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		{
 		  const char *corr_col = mq_dblink_extract_col_name (parser, remote_expr);
 
-		  /* Cross-codeset guard: a character key whose remote physical codeset differs
+		  /* Cross-codeset guard: a character key whose remote-side codeset differs
 		   * from the local outer codeset must not be pushed.  The outer value is bound as
 		   * a host variable in the local codeset, so a remote comparison against a
 		   * different-codeset column does a wrong raw-byte comparison and silently drops
@@ -8206,18 +8225,27 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		  bool cross_codeset = false;
 		  if (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum))
 		    {
-		      /* Remote column's physical codeset, from the CCI column metadata.  This is
-		       * authoritative and unaffected by how the attr_def later declares the
-		       * column's codeset (e.g. redeclared with the local codeset for union/compat).
-		       * Fall back to the declared codeset, then to -1 (non-character / no type). */
+		      /* How this remote column's characters are encoded at the far end: on a
+		       * CUBRID remote the column's own codeset, on a gateway always UTF-8 - the
+		       * gateway CAS reads character data from the ODBC driver as UTF-16 and
+		       * re-encodes it to UTF-8 before it reaches the client (cgw_unicode_to_utf8 ()),
+		       * and decodes a bound value the same way.  The key value goes out as raw
+		       * local bytes, so the push is meaningful only when that encoding is the local
+		       * one; otherwise the remote compares differently encoded bytes.
+		       *
+		       * The declared codeset cannot stand in for it: remote character columns are
+		       * uniformly declared with LANG_SYS_CODESET, so it always equals outer_cs and
+		       * relying on it would disable the guard exactly when metadata is missing.
+		       *
+		       * The two "< 0" terms are defensive only.  A character column never carries a
+		       * negative codeset (a CUBRID remote reports one for every collation-bearing
+		       * type; a gateway maps every codeset-less ODBC type to CCI_U_TYPE_UNKNOWN and
+		       * refuses it in cgw_is_support_datatype ()), and outer_expr is a resolved
+		       * column reference whose collation the semantic check already matched against
+		       * the remote column. */
 		      int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
-		      if (remote_cs < 0)
-			{
-			  remote_cs =
-			    (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
-			}
 		      int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
-		      cross_codeset = (remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+		      cross_codeset = (remote_cs < 0 || outer_cs < 0 || remote_cs != outer_cs);
 		    }
 
 		  if (corr_col != NULL && !cross_codeset)

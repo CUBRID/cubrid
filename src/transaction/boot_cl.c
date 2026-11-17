@@ -1556,6 +1556,7 @@ static void
 boot_finalize_client_sub (void)
 {
   tran_free_savepoint_list ();
+  stream_from_final ();
 
   tr_final ();
   au_final ();
