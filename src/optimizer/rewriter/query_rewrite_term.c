@@ -3111,17 +3111,7 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
 	  goto fast_exit;
 	}
 
-      if (escape != NULL)
-	{
-	  pt_free_escape_char (parser, like, pattern, escape);
-	}
-
-      if (pattern_length == 0)
-	{
-	  /* Rewrite this term as equal predicate. */
-	  like->info.expr.op = PT_EQ;
-	}
-      else if (pattern_str[pattern_size - 1] == ' ')
+      if (pattern_length > 0 && pattern_str[pattern_size - 1] == ' ')
 	{
 	  /* If the rightmost character in the pattern is a space we cannot rewrite this term. */
 	  /* TODO It is not clear why this case is not handled. Clarify this issue and improve the comment. It is
@@ -3134,12 +3124,30 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
 	      /* We can perform the generic rewrite as the string contains non-space characters. */
 	      *perform_generic_rewrite = true;
 	    }
+
+	  /* the escape stays: qo_rewrite_like_for_index_scan () reads it */
+	  goto fast_exit;
 	}
-      else
+
+      if (like->info.expr.arg1->type_enum == PT_TYPE_CHAR && pattern->type_enum != PT_TYPE_CHAR
+	  && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
 	{
-	  /* Rewrite this term as equal predicate. */
-	  like->info.expr.op = PT_EQ;
+	  /* LIKE lets a CHAR end in spaces past the pattern, but "=" ignores them only between two CHAR (CBRD-23731):
+	   * c LIKE 'a' || 'b' is not c = 'ab' */
+	  if (last_safe_logical_pos >= 0)
+	    {
+	      *perform_generic_rewrite = true;
+	    }
+	  goto fast_exit;
 	}
+
+      if (escape != NULL)
+	{
+	  pt_free_escape_char (parser, like, pattern, escape);
+	}
+
+      /* Rewrite this term as equal predicate. */
+      like->info.expr.op = PT_EQ;
       goto fast_exit;
     }
 
