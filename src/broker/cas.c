@@ -384,6 +384,9 @@ static int cas_req_count = 0;
 
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
+static_assert (SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID) + SESSION_SECRET_SIZE == DRIVER_SESSION_SIZE,
+	       "server session key + session id + session secret must be exactly the driver session id size");
+
 static void
 cas_make_session_for_driver (char *out)
 {
@@ -397,7 +400,7 @@ cas_make_session_for_driver (char *out)
   session = htonl (session);
   memcpy (out + size, &session, sizeof (SESSION_ID));
   size += sizeof (SESSION_ID);
-  memset (out + size, 0, DRIVER_SESSION_SIZE - size);
+  memcpy (out + size, db_get_session_secret (), SESSION_SECRET_SIZE);
 }
 
 static void
@@ -407,9 +410,10 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
 
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
-      id = *(SESSION_ID *) (session + 8);
+      id = *(SESSION_ID *) (session + SERVER_SESSION_KEY_SIZE);
       id = ntohl (id);
       db_set_server_session_key (session);
+      db_set_session_secret (session + SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID));
       db_set_session_id (id);
       cas_log_write_and_end (0, false, "session id for connection %u", id);
     }
@@ -418,9 +422,11 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       /* always create new session for old drivers */
       char key[] =
 	{ (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
+      char secret[SESSION_SECRET_SIZE] = { 0 };
 
       cas_log_write_and_end (0, false, "session id (old protocol) for connection 0");
       db_set_server_session_key (key);
+      db_set_session_secret (secret);
       db_set_session_id (DB_EMPTY_SESSION);
     }
 }
@@ -1163,8 +1169,8 @@ cas_main (void)
 	      {
 		assert (url != NULL);
 
+		/* not NUL-terminated: the last byte is part of the session secret */
 		db_sessionid = url + SRV_CON_URL_SIZE;
-		db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
 	      }
 	    else
 	      {
@@ -1222,8 +1228,7 @@ cas_main (void)
 
 	    set_hang_check_time ();
 
-	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s " "session id %s", db_name, db_user, url,
-			   db_sessionid);
+	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s", db_name, db_user, url);
 	    if (as_info->reset_flag == TRUE)
 	      {
 		cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
