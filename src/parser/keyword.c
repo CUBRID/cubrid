@@ -728,6 +728,7 @@ static FUNCTION_MAP functions[] = {
   {0, "rtrim", PT_RTRIM},
   {0, "sec_to_time", PT_SECTOTIME},
   {0, "serial_current_value", PT_CURRENT_VALUE},
+  {0, "serial_current_value_by_oid", PT_CURRENT_VALUE_BY_OID},
   {0, "serial_next_value", PT_NEXT_VALUE},
   {0, "sign", PT_SIGN},
   {0, "sin", PT_SIN},

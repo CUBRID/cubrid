@@ -24336,6 +24336,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_QUARTERF:
     case PT_EXEC_STATS:
     case PT_CURRENT_VALUE:
+    case PT_CURRENT_VALUE_BY_OID:
     case PT_HEX:
     case PT_ASCII:
     case PT_INET_ATON:

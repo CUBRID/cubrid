@@ -384,12 +384,13 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   ATTR_ID attrid;
   DB_VALUE *cur_val;
   OID serial_class_oid;
+  OID row_class_oid = OID_INITIALIZER;
 
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
   /* get record into record desc */
-  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan = heap_get_visible_version (thread_p, serial_oidp, &row_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -401,6 +402,12 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
 	}
+      goto exit_on_error;
+    }
+
+  if (!OID_EQ (&row_class_oid, &serial_class_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
       goto exit_on_error;
     }
 
