@@ -838,6 +838,7 @@ EXPORTS
     db_set_type
     db_sqlx_debug_print_result
     db_statement_count
+    db_statement_needs_bound_values
     db_strftime
     db_string_to_date
     db_string_to_time

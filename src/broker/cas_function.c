@@ -60,6 +60,9 @@
 #include "db_session.h"
 #include "object_primitive.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* ========================================================================
  * Forward Function Declarations
  * ======================================================================== */
@@ -233,7 +236,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *effective_sql;		/* query actually prepared (original or replacement) */
   int effective_size;
   int replace_rule_idx = -1;
+  int replace_failed_err = 0;
   char *log_sql;		/* writable alias of effective_sql for the compile-end log */
+  char *app_sql = NULL;		/* copy of the client's text, handed over to a replaced handle */
 
   if (argc < 2)
     {
@@ -284,7 +289,15 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       const char *replace_query = qr_get_replace_query (replace_rule_idx);
 
-      if (replace_query == NULL)
+      /* a replaced handle must be able to go back to the client's own text (the demote in
+       * fn_execute_internal / fn_execute_array), so that text is secured before the replacement
+       * is prepared.  without it -- out of memory -- the query is simply not replaced: the
+       * rule's ORIG is a normalized matching key, not a statement to fall back to. */
+      if (replace_query != NULL)
+	{
+	  ALLOC_COPY_STRLEN (app_sql, sql_stmt);
+	}
+      if (replace_query == NULL || app_sql == NULL)
 	{
 	  replace_rule_idx = -1;
 	}
@@ -359,8 +372,9 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  snprintf (qr_reason, sizeof (qr_reason), "replacement prepare failed (err:%d)", err_info.err_number);
 	}
 
-      cas_log_write (query_seq_num_current_value (), false,
-		     "[REPLACE-FAILED] prepare err:%d, disabled, fallback to orig", err_info.err_number);
+      FREE_MEM (app_sql);	/* back to the original query: nothing to demote to */
+
+      replace_failed_err = err_info.err_number;	/* logged after the statement is masked */
 #if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "query replace [debug] prepare rejected: %s reason=%s (err:%d)\n",
 		     qr_get_rulepath (replace_rule_idx), qr_reason, err_info.err_number);
@@ -412,13 +426,22 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
+  /* hand the client's text over to the replaced handle, so a demote at execute time runs the
+   * original query.  ux_prepare always returns a fresh handle (hm_new_srv_handle). */
+  if (replace_rule_idx >= 0 && srv_handle != NULL)
+    {
+      assert (srv_handle->qr_app_sql == NULL);
+      srv_handle->qr_app_sql = app_sql;
+      app_sql = NULL;
+    }
+  FREE_MEM (app_sql);		/* any path that did not hand it over */
+
   /* when the query was rewritten, effective_sql points into the read-only (SHM_RDONLY)
    * replace rule segment, but cas_log_compile_end_write_query_string() hides passwords
    * by temporarily NUL-terminating its argument in place (hide_password.cpp) -- writing
    * through that pointer would fault.  ux_prepare() already made a writable heap copy of
    * the very same text in srv_handle->sql_stmt, so log through that instead of copying
-   * again.  the copy is skipped for CCI_PREPARE_CALL (never rewritten), whose handle
-   * text ux_prepare() trims in place. */
+   * again. */
   log_sql = (replace_rule_idx >= 0 && srv_handle != NULL) ? srv_handle->sql_stmt : effective_sql;
   effective_size = (int) strlen (log_sql) + 1;
 
@@ -431,6 +454,12 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   else
     {
       cas_log_compile_end_write_query_string (log_sql, effective_size - 1, NULL);
+    }
+
+  if (replace_failed_err != 0)
+    {
+      cas_log_write (query_seq_num_current_value (), false,
+		     "[REPLACE-FAILED] prepare err:%d, disabled, fallback to orig", replace_failed_err);
     }
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
@@ -889,23 +918,19 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
    * replace in place. */
   if (qr_demote && srv_handle->replace_rule_idx >= 0)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
-      char *orig_dup = NULL;
-
-      if (orig_query != NULL)
-	{
-	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
-	}
-      if (orig_dup != NULL)
+      /* a replaced handle always carries the client's text (fn_prepare_internal does not
+       * replace without it).  it is handed over, not copied, so a demote never allocates. */
+      assert (srv_handle->qr_app_sql != NULL);
+      if (srv_handle->qr_app_sql != NULL)
 	{
 	  FREE_MEM (srv_handle->sql_stmt);
-	  srv_handle->sql_stmt = orig_dup;	/* recompiled at next execute */
+	  srv_handle->sql_stmt = srv_handle->qr_app_sql;	/* recompiled at next execute */
+	  srv_handle->qr_app_sql = NULL;
 	  srv_handle->num_markers = srv_handle->num_orig_markers;	/* the driver already binds K_orig */
 	  srv_handle->replace_rule_idx = -1;	/* stop replace: no remap, block won't re-fire */
 	  srv_handle->is_prepared = FALSE;	/* force db_open_buffer + compile of sql_stmt */
 	  srv_handle->replace_fallback = 1;	/* adopt the recompiled original as prepared */
 	}
-      /* orig_dup == NULL (OOM): leave the handle unchanged */
     }
 
   return FN_KEEP_CONN;
@@ -1174,7 +1199,7 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (auto_commit_mode == TRUE)
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "close_req_handle srv_h_id %d", srv_h_id);
@@ -1354,7 +1379,7 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   if (auto_commit_mode == TRUE)
     {
-      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+      ux_stream_result_set_commit (req_info);
     }
 
   return FN_KEEP_CONN;
@@ -1639,7 +1664,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 
   if (value_index > 0)
     {
-      err_code = make_bind_value (1, 2, argv + value_index, &ele_val, net_buf, db_type);
+      err_code = make_bind_value (1, 2, argv + value_index, &ele_val, net_buf, db_type, false);
       if (err_code < 0)
 	{
 	  if (err_info.err_number == CAS_ER_SRV_HANDLE || err_info.err_number == CAS_ER_NUM_BIND)
@@ -1939,19 +1964,15 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
    * (same ordering rule as fn_execute_internal). */
   if (srv_handle->qr_demote_pending)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
-      char *orig_dup = NULL;
-
       srv_handle->qr_demote_pending = 0;
 
-      if (orig_query != NULL)
-	{
-	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
-	}
-      if (orig_dup != NULL)
+      /* the same hand-over as fn_execute_internal */
+      assert (srv_handle->qr_app_sql != NULL);
+      if (srv_handle->qr_app_sql != NULL)
 	{
 	  FREE_MEM (srv_handle->sql_stmt);
-	  srv_handle->sql_stmt = orig_dup;
+	  srv_handle->sql_stmt = srv_handle->qr_app_sql;
+	  srv_handle->qr_app_sql = NULL;
 	  srv_handle->num_markers = srv_handle->num_orig_markers;
 	  srv_handle->replace_rule_idx = -1;
 	  srv_handle->is_prepared = FALSE;
@@ -2449,4 +2470,238 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 			 query_timeout);
 	}
     }
+}
+
+/* an argument of any length: a byte string, which net_arg_get_str () bounds by its own size */
+#define STREAM_ARG_ANY_SIZE (-1)
+
+/*
+ * stream_args_fit () - Has each argument of a stream request the size its reader takes?
+ *   widths(in): one per argument, NET_SIZE_* or STREAM_ARG_ANY_SIZE
+ *
+ * net_arg_get_int () and the other fixed-width readers copy their width whatever size the driver sent, so a shorter
+ * argument at the end of the request would be read past.
+ */
+static bool
+stream_args_fit (int argc, void **argv, const int *widths)
+{
+  int i, size;
+
+  for (i = 0; i < argc; i++)
+    {
+      NET_ARG_GET_SIZE (size, argv[i]);
+      if (widths[i] != STREAM_ARG_ANY_SIZE && size != widths[i])
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+static FN_RETURN
+stream_refuse_args (T_NET_BUF * net_buf)
+{
+  ux_stream_refused_before_server ();
+  ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+  return FN_KEEP_CONN;
+}
+
+/* a flags byte with a bit not listed for its request is refused, so that a bit a later release adds is never ignored */
+static bool
+stream_flags_refused (char flags, char known, T_NET_BUF * net_buf)
+{
+  if ((flags & ~known) == 0)
+    {
+      return false;
+    }
+
+  (void) stream_refuse_args (net_buf);
+  return true;
+}
+
+/* SEND_DATA: data [, flags]. With CAS_STREAM_FLAG_FINAL the chunk ends the stream and the reply is END's. */
+FN_RETURN
+fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *data = NULL;
+  int data_len = 0;
+  char flags = 0;
+  static const int widths[] = { STREAM_ARG_ANY_SIZE, NET_SIZE_BYTE };
+
+  if (argc < 1 || argc > 2 || !stream_args_fit (argc, argv, widths))
+    {
+      return stream_refuse_args (net_buf);
+    }
+
+  net_arg_get_str (&data, &data_len, argv[0]);
+  if (argc > 1)
+    {
+      net_arg_get_char (flags, argv[1]);
+    }
+  if (stream_flags_refused (flags, CAS_STREAM_FLAG_FINAL, net_buf))
+    {
+      return FN_KEEP_CONN;
+    }
+
+  if (flags & CAS_STREAM_FLAG_FINAL)
+    {
+      ux_stream_end (data, data_len, net_buf, req_info);
+    }
+  else
+    {
+      ux_stream_send_data (data, data_len, net_buf, req_info);
+    }
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  if (argc != 0)
+    {
+      return stream_refuse_args (net_buf);
+    }
+
+  ux_stream_end (NULL, 0, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* INIT: kind, config, flags, data. With CAS_STREAM_FLAG_FINAL the data is the whole value, and the reply is END's. */
+FN_RETURN
+fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+  char flags = 0;
+  char *data = NULL;
+  int data_len = 0;
+  static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_BYTE, STREAM_ARG_ANY_SIZE };
+
+  if (argc != 4 || !stream_args_fit (argc, argv, widths))
+    {
+      return stream_refuse_args (net_buf);
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  net_arg_get_char (flags, argv[2]);
+  net_arg_get_str (&data, &data_len, argv[3]);
+  if (stream_flags_refused (flags, CAS_STREAM_FLAG_FINAL | CAS_STREAM_FLAG_AUTO_COMMIT, net_buf))
+    {
+      return FN_KEEP_CONN;
+    }
+
+  ux_stream_init (stream_kind, config, config_len, (flags & CAS_STREAM_FLAG_FINAL) != 0,
+		  (flags & CAS_STREAM_FLAG_AUTO_COMMIT) != 0, data, data_len, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  if (argc != 0)
+    {
+      return stream_refuse_args (net_buf);
+    }
+
+  ux_stream_abort (net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ_OPEN: kind, config, first_max, flags. The first piece comes back with the handle; first_max 0 opens only. */
+FN_RETURN
+fn_stream_read_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+  int first_max = 0;
+  char flags = 0;
+  static const int widths[] = { NET_SIZE_INT, STREAM_ARG_ANY_SIZE, NET_SIZE_INT, NET_SIZE_BYTE };
+
+  if (argc != 4 || !stream_args_fit (argc, argv, widths))
+    {
+      return stream_refuse_args (net_buf);
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  net_arg_get_int (&first_max, argv[2]);
+  net_arg_get_char (flags, argv[3]);
+  if (stream_flags_refused (flags, CAS_STREAM_FLAG_RELEASE_AT_EOF | CAS_STREAM_FLAG_AUTO_COMMIT, net_buf))
+    {
+      return FN_KEEP_CONN;
+    }
+
+  ux_stream_read_open (stream_kind, config, config_len, first_max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* READ: handle, max, flags */
+FN_RETURN
+fn_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  int max = 0;
+  char flags = 0;
+  static const int widths[] = { NET_SIZE_BIGINT, NET_SIZE_INT, NET_SIZE_BYTE };
+
+  if (argc != 3 || !stream_args_fit (argc, argv, widths))
+    {
+      return stream_refuse_args (net_buf);
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_int (&max, argv[1]);
+  net_arg_get_char (flags, argv[2]);
+  if (stream_flags_refused (flags, CAS_STREAM_FLAG_RELEASE_AT_EOF | CAS_STREAM_FLAG_AUTO_COMMIT, net_buf))
+    {
+      return FN_KEEP_CONN;
+    }
+
+  ux_stream_read ((INT64) handle, max, flags, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* RELEASE: handle, auto_commit */
+FN_RETURN
+fn_stream_release (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT handle = 0;
+  char auto_commit_mode = FALSE;
+  static const int widths[] = { NET_SIZE_BIGINT, NET_SIZE_BYTE };
+
+  if (argc != 2 || !stream_args_fit (argc, argv, widths))
+    {
+      return stream_refuse_args (net_buf);
+    }
+
+  net_arg_get_bigint (&handle, argv[0]);
+  net_arg_get_char (auto_commit_mode, argv[1]);
+
+  ux_stream_release ((INT64) handle, auto_commit_mode == TRUE, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* runs in place of a request an open stream does not admit (ux_stream_admits_request); the stream is left as it was */
+FN_RETURN
+fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
+	  "a stream session is open on this connection; end or abort it first");
+  errors_in_transaction++;
+  ERROR_INFO_SET (ER_STREAM_INVALID_USE, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+
+  return FN_KEEP_CONN;
 }

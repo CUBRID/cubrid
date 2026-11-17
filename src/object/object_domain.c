@@ -62,6 +62,9 @@
 #include "object_template.h"
 #include "dbi.h"
 #endif /* !defined (SERVER_MODE) */
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+#include "boot_cl.h"
+#endif
 
 #include "dbtype.h"
 #include "error_manager.h"
@@ -150,7 +153,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
 };
 static int db_type_rank_order[DB_TYPE_LAST + 1] = { 0, };
 
-AREA *tp_Domain_area = NULL;
+static AREA *tp_Domain_area = NULL;
 static bool tp_Initialized = false;
 
 extern unsigned int db_on_server;
@@ -548,13 +551,13 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
   NULL				/* DB_TYPE_JSON */
 };
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
 /* lock for domain list cache */
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
 
 
-#ifdef __cplusplus
+/* *INDENT-OFF* */
 /* Notice)
  * The constructor of this class is used solely to initialize global variable(db_type_rank_order).
  */
@@ -571,18 +574,7 @@ public:
   }
 };
 static volatile class type_rank_order_initializer tro_instance;
-#else
-__attribute__ ((constructor))
-     static void tp_init_db_type_rank_order (void)
-{
-  memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
-  for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
-    {
-      db_type_rank_order[db_type_rank[i]] = i;
-    }
-}
-#endif
-
+/* *INDENT-ON* */
 
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
@@ -620,6 +612,11 @@ static void fprint_domain (FILE * fp, TP_DOMAIN * domain);
 #endif
 static INLINE TP_DOMAIN **tp_domain_get_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
 static INLINE TP_DOMAIN *tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain) __attribute__ ((ALWAYS_INLINE));
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+static bool tp_domain_list_has_class_mop (const TP_DOMAIN * domain_list);
+static TP_DOMAIN **tp_sub_client_domain_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain);
+static TP_DOMAIN *tp_domain_cache_for_sub_client (TP_DOMAIN * transient);
+#endif
 
 static int tp_enumeration_match (const DB_ENUMERATION * db_enum1, const DB_ENUMERATION * db_enum2);
 static int tp_digit_number_str_to_bi (const char *start, const char *end, INTL_CODESET codeset, bool is_negative,
@@ -1897,6 +1894,159 @@ tp_domain_get_list (DB_TYPE type, TP_DOMAIN * setdomain)
   return *dlist;
 }
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * Domain lists of a sub-client.
+ *
+ * Note: A domain referring to a class (object domain, or a set/midxkey domain containing one) has the MOP of the
+ *       workspace of the thread which cached it, and the MOPs of a sub-client are freed when it is shut down.
+ *       Such domains of a sub-client are cached in these thread-local lists instead of tp_Domains/tp_Midxkey_domains
+ *       shared by all threads, and they are freed by tp_free_sub_client_domains () when the sub-client is shut down.
+ *       The shared lists are searched without a lock, so their entries cannot be freed while the process runs.
+ */
+static CUB_THREAD_LOCAL TP_DOMAIN *tp_Sub_client_domains[DB_TYPE_LAST + 1];
+static CUB_THREAD_LOCAL TP_DOMAIN *tp_Sub_client_midxkey_domains[TP_NUM_MIDXKEY_DOMAIN_LIST];
+
+/*
+ * tp_domain_list_has_class_mop - whether a domain list refers to a class MOP
+ *    return: true if any domain in the list (including its sub-domains) has a class MOP
+ *    domain_list(in): domain list linked by next
+ */
+static bool
+tp_domain_list_has_class_mop (const TP_DOMAIN * domain_list)
+{
+  const TP_DOMAIN *d;
+  DB_TYPE type;
+
+  for (d = domain_list; d != NULL; d = d->next)
+    {
+      type = TP_DOMAIN_TYPE (d);
+      if ((type == DB_TYPE_OBJECT || type == DB_TYPE_OID || type == DB_TYPE_VOBJ) && d->class_mop != NULL)
+	{
+	  return true;
+	}
+      if (d->setdomain != NULL && tp_domain_list_has_class_mop (d->setdomain))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * tp_sub_client_domain_list_ptr - get the pointer of the head of the domain list of the sub-client of this thread
+ *    return: pointer of the head of the list
+ *    type(in): type of value
+ *    setdomain(in): used to find appropriate list of MIDXKEY
+ */
+static TP_DOMAIN **
+tp_sub_client_domain_list_ptr (DB_TYPE type, TP_DOMAIN * setdomain)
+{
+  if (type == DB_TYPE_MIDXKEY)
+    {
+      return &(tp_Sub_client_midxkey_domains[tp_domain_size (setdomain) % TP_NUM_MIDXKEY_DOMAIN_LIST]);
+    }
+
+  assert (type <= DB_TYPE_LAST);
+  return &(tp_Sub_client_domains[type]);
+}
+
+/*
+ * tp_sub_client_domain_order - the key by which tp_is_domain_cached () assumes a domain list is sorted
+ *    return: number of the elements of a set/midxkey domain, or 0 for the other domains
+ *    domain(in): domain
+ */
+static int
+tp_sub_client_domain_order (const TP_DOMAIN * domain)
+{
+  switch (TP_DOMAIN_TYPE (domain))
+    {
+    case DB_TYPE_VARIABLE:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+      return tp_domain_size (domain->setdomain);
+    case DB_TYPE_MIDXKEY:
+      return tp_setdomain_size (domain);
+    default:
+      return 0;
+    }
+}
+
+/*
+ * tp_domain_cache_for_sub_client - cache a transient domain referring to a class MOP of the sub-client of this thread
+ *    return: cached domain
+ *    transient(in/out): transient domain, may be freed
+ *
+ * Note: Same as tp_domain_cache (), but with the thread-local lists, so no lock is needed.
+ */
+static TP_DOMAIN *
+tp_domain_cache_for_sub_client (TP_DOMAIN * transient)
+{
+  TP_DOMAIN **dlist, **pos, *domain, *ins_pos = NULL;
+  int order;
+
+  dlist = tp_sub_client_domain_list_ptr (TP_DOMAIN_TYPE (transient), transient->setdomain);
+  if (*dlist != NULL)
+    {
+      domain = tp_is_domain_cached (*dlist, transient, TP_EXACT_MATCH, &ins_pos);
+      if (domain != NULL)
+	{
+	  tp_domain_free (transient);
+	  return domain;
+	}
+    }
+
+  /*
+   * Unlike the shared lists, a list of a sub-client has no built-in domain at the head, so the transient domain may
+   * have to precede the head. Insert it keeping the order assumed by tp_is_domain_cached (), otherwise the search
+   * stops before the domain and the same domain is cached again and again.
+   */
+  order = tp_sub_client_domain_order (transient);
+  for (pos = dlist; *pos != NULL && tp_sub_client_domain_order (*pos) <= order; pos = &((*pos)->next_list))
+    {
+      ;
+    }
+
+  transient->is_cached = 1;
+  transient->next_list = *pos;
+  *pos = transient;
+
+  return transient;
+}
+
+/*
+ * tp_free_sub_client_domains - free the domains cached by the sub-client of this thread
+ *    return: none
+ *
+ * Note: It must be called after the workspace of the sub-client is finalized, when nothing refers to the domains.
+ */
+void
+tp_free_sub_client_domains (void)
+{
+  TP_DOMAIN **lists[] = { tp_Sub_client_domains, tp_Sub_client_midxkey_domains };
+  size_t counts[] = { DIM (tp_Sub_client_domains), DIM (tp_Sub_client_midxkey_domains) };
+  TP_DOMAIN *dom, *next;
+  size_t i, k;
+
+  for (k = 0; k < DIM (lists); k++)
+    {
+      for (i = 0; i < counts[k]; i++)
+	{
+	  for (dom = lists[k][i]; dom != NULL; dom = next)
+	    {
+	      next = dom->next_list;
+	      dom->next_list = NULL;
+	      dom->is_cached = 0;
+	      tp_domain_free (dom);
+	    }
+	  lists[k][i] = NULL;
+	}
+    }
+}
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
+
 /*
  * tp_is_domain_cached - find matching domain from domain list
  *    return: matched domain
@@ -2711,8 +2861,17 @@ tp_domain_find_object (DB_TYPE type, OID * class_oid, struct db_object * class_m
 
   /* tp_domain_find_with_classinfo */
 
+  dom = tp_domain_get_list (type, NULL);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (class_mop != NULL && boot_is_sub_client ())
+    {
+      /* the domain refers to a class MOP of this sub-client; see tp_Sub_client_domains */
+      dom = *tp_sub_client_domain_list_ptr (type, NULL);
+    }
+#endif
+
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, NULL); dom != NULL; dom = dom->next_list)
+  for (; dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
 
@@ -2778,8 +2937,17 @@ tp_domain_find_set (DB_TYPE type, TP_DOMAIN * setdomain, bool is_desc)
 
   src_dsize = tp_domain_size (setdomain);
 
+  dom = tp_domain_get_list (type, setdomain);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (boot_is_sub_client () && tp_domain_list_has_class_mop (setdomain))
+    {
+      /* the domain refers to a class MOP of this sub-client; see tp_Sub_client_domains */
+      dom = *tp_sub_client_domain_list_ptr (type, setdomain);
+    }
+#endif
+
   /* search the list for a domain that matches */
-  for (dom = tp_domain_get_list (type, setdomain); dom != NULL; dom = dom->next_list)
+  for (; dom != NULL; dom = dom->next_list)
     {
       /* we MUST perform exact matches here */
       if (dom->setdomain == setdomain)
@@ -2913,7 +3081,7 @@ tp_domain_cache (TP_DOMAIN * transient)
 {
   TP_DOMAIN *domain, **dlist;
   TP_DOMAIN *ins_pos = NULL;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   int rv;
 #endif /* SERVER_MODE */
 
@@ -2933,6 +3101,14 @@ tp_domain_cache (TP_DOMAIN * transient)
   /* see comments for tp_swizzle_oid */
   tp_swizzle_oid (transient);
 #endif /* !SERVER_MODE */
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  if (boot_is_sub_client () && tp_domain_list_has_class_mop (transient))
+    {
+      /* the domain refers to a class MOP of this sub-client; see tp_Sub_client_domains */
+      return tp_domain_cache_for_sub_client (transient);
+    }
+#endif
 
   /*
    * first search stage: NO LOCK
@@ -2959,7 +3135,7 @@ tp_domain_cache (TP_DOMAIN * transient)
   /*
    * second search stage: LOCK
    */
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   rv = pthread_mutex_lock (&tp_domain_cache_lock);	/* LOCK */
 
   /* locate the root of the cache list for domains of this type */
@@ -3009,7 +3185,7 @@ tp_domain_cache (TP_DOMAIN * transient)
 
   domain = transient;
 
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
   pthread_mutex_unlock (&tp_domain_cache_lock);
 #endif /* SERVER_MODE */
 
@@ -5639,8 +5815,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      return (status);
 	    case DB_TYPE_JSON:
-	      status =
-		tp_value_find_converter (DB_TYPE_JSON, desired_domain, DOMAIN_CONVERT_ASSIGN) (src, dest,
+	      /* into a JSON domain with a schema: the plan's converter, else the one the types give */
+	      status = (found != NULL && found->src_type == DB_TYPE_JSON && found->domain == desired_domain
+			? found->converter : tp_value_find_converter (DB_TYPE_JSON, desired_domain,
+								      DOMAIN_CONVERT_ASSIGN)) (src, dest,
 											       desired_domain,
 											       &conversion_error);
 	      pr_clear_value (&src_replacement);
@@ -5826,9 +6004,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       else
 	{
-	  status = tp_value_find_converter (DB_TYPE_NUMERIC, desired_domain, DOMAIN_CONVERT_ASSIGN) (&number, target,
-												     desired_domain,
-												     &conversion_error);
+	  status = tp_value_numeric_fit_converter ()(&number, target, desired_domain, &conversion_error);
 	}
     }
   else
@@ -5837,13 +6013,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	? DOMAIN_CONVERT_IMPLICIT : DOMAIN_CONVERT_ASSIGN;
       TP_VALUE_CONVERTER converter;
       /* the plan found a converter before any row for the type of the caller's operand and the caller's domain
-       * (tp_value_cast_with_converter, an explicit cast): a value of another type, or a domain this function
-       * selected from a domain list or made for an ENFORCE collation above, looks its converter up */
-      assert (found == NULL || mode == DOMAIN_CONVERT_ASSIGN);
+       * (tp_value_cast_with_converter, tp_value_coerce_with_converter): a value of another type, or a domain this
+       * function selected from a domain list or made for an ENFORCE collation above, looks its converter up */
       if (found != NULL && found->src_type == original_type && found->domain == desired_domain)
 	{
 	  converter = found->converter;
-	  assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
 	}
       else
 	{
@@ -5986,6 +6160,21 @@ tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DO
   const tp_cast_converter found = { src_type, desired_domain, converter };
   return tp_value_cast_internal (src, dest, desired_domain, force ? TP_FORCE_COERCION : TP_EXPLICIT_COERCION, true,
 				 false, converter != NULL ? &found : NULL);
+}
+
+/*
+ * tp_value_coerce_with_converter () - tp_value_coerce with the converter a plan found before any row for values of
+ *   type src_type into desired_domain: the coercion skips its lookup for such a value
+ *   return: as tp_value_coerce
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_IMPLICIT); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_coerce_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+				DB_TYPE src_type, TP_VALUE_CONVERTER converter)
+{
+  const tp_cast_converter found = { src_type, desired_domain, converter };
+  return tp_value_cast_internal (src, dest, desired_domain, TP_IMPLICIT_COERCION, true, false,
+				 converter != NULL ? &found : NULL);
 }
 
 /*
@@ -7238,6 +7427,20 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
 TP_DOMAIN_STATUS
 tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
+  return tp_value_auto_cast_with_precision_check_converter (src, dest, desired_domain, DB_VALUE_TYPE (src), NULL);
+}
+
+/*
+ * tp_value_auto_cast_with_precision_check_converter () - tp_value_auto_cast_with_precision_check with the converter a
+ *   plan found before any row for values of type src_type into desired_domain (tp_value_cast_with_converter)
+ *   return: TP_DOMAIN_STATUS
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_ASSIGN); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALUE * dest,
+						   const TP_DOMAIN * desired_domain, DB_TYPE src_type,
+						   TP_VALUE_CONVERTER converter)
+{
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
   static const INT64 max_value[DB_BIGINT_PRECISION] = {
     1LL,
@@ -7311,7 +7514,15 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 
   if (dom_status != DOMAIN_OVERFLOW)
     {
-      dom_status = tp_value_auto_cast (src, dest, desired_domain);
+      /* tp_value_auto_cast with the converter */
+      dom_status = tp_value_cast_with_converter (src, dest, desired_domain, false, src_type, converter);
+      if (dom_status != DOMAIN_COMPATIBLE && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  dom_status = DOMAIN_COMPATIBLE;
+	  pr_clear_value (dest);
+	  db_make_null (dest);
+	  er_clear ();
+	}
     }
 
   return dom_status;
@@ -7333,9 +7544,22 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 TP_DOMAIN_STATUS
 tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
+  return tp_value_auto_cast_with_converter (src, dest, desired_domain, DB_TYPE_NULL, NULL);
+}
+
+/*
+ * tp_value_auto_cast_with_converter () - tp_value_auto_cast with the converter a plan found before any row for values
+ *   of type src_type into desired_domain (tp_value_cast_with_converter)
+ *   return: TP_DOMAIN_STATUS
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_ASSIGN); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_auto_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+				   DB_TYPE src_type, TP_VALUE_CONVERTER converter)
+{
   TP_DOMAIN_STATUS status;
 
-  status = tp_value_cast (src, dest, desired_domain, false);
+  status = tp_value_cast_with_converter (src, dest, desired_domain, false, src_type, converter);
   if (status != DOMAIN_COMPATIBLE)
     {
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) == true)

@@ -882,6 +882,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
 {
   LF_ENTRY_DESCRIPTOR *edesc;
   UINT64 *tran_id;
+  UINT64 del_tran_id;
   int ret = NO_ERROR;
   bool local_tran = false;
 
@@ -895,10 +896,21 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
     {
       local_tran = true;
       lf_tran_start_with_mb (tran_entry, true);
+      del_tran_id = tran_entry->transaction_id;
     }
   else if (!tran_entry->did_incr)
     {
-      lf_tran_start_with_mb (tran_entry, true);
+      /* keep the published id, which may still protect what the caller holds; the entry's own id, drawn after
+       * its unlink, still covers its readers */
+      del_tran_id = ATOMIC_INC_64 (&tran_entry->tran_system->global_transaction_id, 1);
+      if (del_tran_id % tran_entry->tran_system->mati_refresh_interval == 0)
+	{
+	  lf_tran_compute_minimum_transaction_id (tran_entry->tran_system);
+	}
+    }
+  else
+    {
+      del_tran_id = tran_entry->transaction_id;
     }
 
   /* do a retired list cleanup, if possible */
@@ -912,7 +924,7 @@ lf_freelist_retire (LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist, void *en
 
   /* set transaction index of entry */
   tran_id = (UINT64 *) OF_GET_PTR (entry, edesc->of_del_tran_id);
-  *tran_id = tran_entry->transaction_id;
+  *tran_id = del_tran_id;
 
   /* push to local list */
   OF_GET_PTR_DEREF (entry, edesc->of_local_next) = tran_entry->retired_list;
@@ -1258,13 +1270,11 @@ restart_search:
 	      entry_mutex = (pthread_mutex_t *) OF_GET_PTR (curr, edesc->of_mutex);
 	      rv = pthread_mutex_lock (entry_mutex);
 
-	      /* mutex has been locked, no need to keep transaction */
-	      lf_tran_end_with_mb (tran);
-
 	      if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		{
 		  /* while waiting for lock, somebody else deleted the entry; restart the search */
 		  pthread_mutex_unlock (entry_mutex);
+		  lf_tran_end_with_mb (tran);
 
 		  if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 		    {
@@ -1276,6 +1286,10 @@ restart_search:
 		      goto restart_search;
 		    }
 		}
+
+	      /* the mark was read under the transaction: an entry deleted while we waited for its mutex can be
+	       * reclaimed and claimed for another key as soon as nothing pins it. now the mutex keeps it */
+	      lf_tran_end_with_mb (tran);
 	    }
 
 	  (*entry) = curr;
@@ -1459,13 +1473,11 @@ restart_search:
 		  /* entry has a mutex protecting it's members; lock it */
 		  LF_LOCK_ENTRY (curr);
 
-		  /* mutex has been locked, no need to keep transaction alive */
-		  LF_END_TRAN_FORCE ();
-
 		  if (ADDR_HAS_MARK (OF_GET_PTR_DEREF (curr, edesc->of_next)))
 		    {
 		      /* while waiting for lock, somebody else deleted the entry; restart the search */
 		      LF_UNLOCK_ENTRY_FORCE ();
+		      LF_END_TRAN_FORCE ();
 
 		      if (behavior_flags && (*behavior_flags & LF_LIST_BF_RETURN_ON_RESTART))
 			{
@@ -1477,6 +1489,9 @@ restart_search:
 			  goto restart_search;
 			}
 		    }
+
+		  /* not before the mark check - see lf_list_find () */
+		  LF_END_TRAN_FORCE ();
 		}
 
 	      LF_ASSERT_USE_MUTEX_OR_TRAN_STARTED ();
@@ -1940,7 +1955,7 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_s
   table->backbuffer = (void **) malloc (sizeof (void *) * hash_size);
   if (table->backbuffer == NULL)
     {
-      free (table->buckets);
+      free_and_init (table->buckets);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (void *) * hash_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -2438,7 +2453,7 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
   tran_entry = it->tran_entry;
   assert (edesc != NULL && tran_entry != NULL);
 
-  do
+  while (true)
     {
       /* save current leader as trailer */
       if (it->curr != NULL)
@@ -2496,12 +2511,11 @@ lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it)
 		  continue;
 		}
 	    }
+
+	  /* we have a valid entry */
+	  return it->curr;
 	}
     }
-  while (it->curr == NULL);
-
-  /* we have a valid entry */
-  return it->curr;
 }
 
 #if defined (UNITTEST_LF)

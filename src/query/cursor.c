@@ -117,8 +117,6 @@ cursor_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_l
 
   dest_list_id_p->tpl_descr.f_valp = NULL;
   dest_list_id_p->tpl_descr.f_len = NULL;
-  dest_list_id_p->tpl_descr.f_cast = NULL;
-  dest_list_id_p->tpl_descr.f_cast_cnt = 0;
   dest_list_id_p->tpl_descr.col_src = NULL;
   dest_list_id_p->tpl_descr.col_src_cap = 0;
   dest_list_id_p->sort_list = NULL;	/* never use sort_list in crs_ level */
@@ -1508,6 +1506,16 @@ cursor_next_tuple (CURSOR_ID * cursor_id_p)
     {
       VPID next_vpid;
 
+      if (cursor_id_p->buffer == NULL)
+	{
+	  /* The cursor's page buffer has been released due to a previous fetch failure.
+	   * Page data referenced by tuple members is no longer valid;
+	   * neither the page header nor tuple pointers must be used.
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_CRSPOS, 0);
+	  return DB_CURSOR_ERROR;
+	}
+
       if (cursor_id_p->current_tuple_no < cursor_id_p->buffer_tuple_count - 1)
 	{
 	  cursor_id_p->tuple_no++;
@@ -1574,6 +1582,16 @@ cursor_prev_tuple (CURSOR_ID * cursor_id_p)
   else if (cursor_id_p->position == C_ON)
     {
       VPID prev_vpid;
+
+      if (cursor_id_p->buffer == NULL)
+	{
+	  /* The cursor's page buffer has been released due to a previous fetch failure.
+	   * Page data referenced by tuple members is no longer valid;
+	   * neither the page header nor tuple pointers must be used.
+	   */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_CRSPOS, 0);
+	  return DB_CURSOR_ERROR;
+	}
 
       if (cursor_id_p->current_tuple_no > 0)
 	{

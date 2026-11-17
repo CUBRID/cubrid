@@ -82,7 +82,7 @@ namespace parallel_scan
        * programs live and die with the worker clones, so the coordinator's XASL -- the one
        * the SQL trace dumps -- never has any; the first worker to report keeps its listing
        * here and the scan's trace prints it (every worker compiles the same clone the same way). */
-      void add_expr_compile_dump (xasl_node *xasl);
+      void add_expr_compile_dump (xasl_node *xasl, SCAN_ID *scan_id);
       /* a worker hands over everything it counted when it ends; merge_stats () merges the sum into the leader */
       void add_px_stats (const UINT64 *worker_stats);
       /* once per scan (re)open, however the scan ends: the end path and the close path may both call it */

@@ -377,6 +377,8 @@ struct qo_node
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
   bool sort_limit_candidate;	/* whether this node is a candidate for a SORT_LIMIT plan */
+  int snapshot_card;		/* rows of the table this node's constant sargs selected, read while
+				 * planning (qo_row_snapshot_apply ()); -1 when the pass did not apply (CBRD-27478) */
 };
 
 #define QO_NODE_ENV(node)		(node)->env
@@ -406,6 +408,7 @@ struct qo_node
 #define QO_NODE_INFO_N(node)            (node)->info->n
 #define QO_NODE_NCARD(node)		(node)->ncard
 #define QO_NODE_TCARD(node)		(node)->tcard
+#define QO_NODE_SNAPSHOT_CARD(node)	(node)->snapshot_card
 #define QO_NODE_HINT(node)		(node)->hint
 #define QO_NODE_INFO_SMCLASS(node)	(node)->info[0].info->smclass
 #define QO_NODE_SORT_LIMIT_CANDIDATE(node)	(node)->sort_limit_candidate
@@ -775,6 +778,9 @@ struct qo_term
 #define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
 #define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
 #define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
+#define QO_TERM_SEL_FROM_SNAPSHOT   32768	/* join selectivity from the small side's rows (CBRD-27478) */
+#define QO_TERM_OR_DERIVED_COLUMN   65536	/* OR-derived key range on one column */
+#define QO_TERM_OR_DERIVED_ORIGIN   131072	/* OR-derived restriction an OR-derived key range is paired with */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -1004,6 +1010,10 @@ struct qo_env
    */
   bool dump_enable;
 
+  /* what the executor runs serially in this query block whatever the plan (qo_query_serial_level ()):
+   * -1 not computed yet, else a QO_SERIAL_* value */
+  int serial_level;
+
   /*
    * Controls whether the plan is dumped.  There are situations like
    * "SHOW COLUMNS" when the plan should not be dumped, even if QO_PARAM_LEVEL
@@ -1110,6 +1120,14 @@ extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 extern bool qo_is_filter_index (QO_INDEX_ENTRY *);
 extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt);
 extern bool qo_check_type_index_covering (QO_INDEX_ENTRY * ent);
+extern char *qo_print_func_index_expr (PARSER_CONTEXT * parser, PT_NODE * expr);
+extern bool qo_func_index_arg_used_raw (PARSER_CONTEXT * parser, PT_NODE * tree, const char *func_expr_str,
+					PT_NODE * col);
+extern QO_SEGMENT *qo_find_func_index_seg (QO_ENV * env, QO_NODE * nodep, const char *expr_str);
+extern bool qo_seg_used_only_in_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_entry, QO_SEGMENT * seg,
+					    BITSET * scan_terms);
+extern bool qo_is_func_index_routable (QO_ENV * env, QO_NODE * nodep);
+extern bool qo_is_func_index_key_filter_routable (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 
 extern double QO_INFINITY;
 

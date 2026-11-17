@@ -91,6 +91,17 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
+  void slot_iterator::resume_after (PGSLOTID slot)
+  {
+    OID_SET_NULL (&m_cur_oid);
+    if (slot > 0)
+      {
+	m_cur_oid.volid = m_vpid.volid;
+	m_cur_oid.pageid = m_vpid.pageid;
+	m_cur_oid.slotid = slot;
+      }
+  }
+
   SCAN_CODE slot_iterator::next_qualified_slot_with_peek (THREAD_ENTRY *thread_p)
   {
     OID retry_oid;

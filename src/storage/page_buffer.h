@@ -278,6 +278,14 @@ PAGE_PTR pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need
 void pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 int pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free);
 
+/* discard the buffered pages of a destroyed file's sectors without flushing or logging */
+extern void pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects);
+/* keep a checkpoint redo point out of the log ranges that discarded dirty pages miss on disk */
+extern void pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_lsa);
+/* crash recovery: drop the pages that redo re-created for files destroyed later in the log */
+extern void pgbuf_rv_add_unreserved_sector (const VSID * vsid, const LOG_LSA * unreserve_lsa);
+extern void pgbuf_rv_discard_unreserved_pages (THREAD_ENTRY * thread_p);
+
 #if !defined(NDEBUG)
 
 #define pgbuf_fix(thread_p, vpid, fetch_mode, requestmode, condition) \
@@ -381,6 +389,7 @@ extern void pgbuf_replace_watcher (THREAD_ENTRY * thread_p, PGBUF_WATCHER * old_
 #endif /* NDEBUG */
 extern void *pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				 bool do_fetch);
+extern void *pgbuf_copy_temp_page_to_area_and_discard (THREAD_ENTRY * thread_p, const VPID * vpid, void *area);
 extern void *pgbuf_copy_from_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset, int length, void *area,
 				   bool do_fetch, TDE_ALGORITHM tde_algo);
 

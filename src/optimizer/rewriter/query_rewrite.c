@@ -319,7 +319,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       /* convert to CNF and tag taggable terms */
       if (*wherep)
 	{
-	  *wherep = pt_cnf (parser, *wherep);
+	  *wherep = pt_cnf_where (parser, *wherep);
 	}
       if (*havingp)
 	{
@@ -523,6 +523,8 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       PROCESS_IF_EXISTS (parser, merge_del_wherep, qo_auto_parameterize);
       PROCESS_IF_EXISTS (parser, orderby_for_p, qo_auto_parameterize);
 
+      /* the constant values of the select list are pulled up when the query is rewritten again */
+      qo_auto_parameterize_constant_select_list (parser, node);
     }
   else
     {

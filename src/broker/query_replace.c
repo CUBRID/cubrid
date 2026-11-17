@@ -43,6 +43,7 @@
 #include <errno.h>
 
 #include "porting.h"
+#include "porting_inline.hpp"
 #include "query_replace.h"
 #include "error_manager.h"
 /* T_CAS_ERROR_CODE / CAS_ER_DBMS: qr_exec_error_tier must tell a CAS layer error code
@@ -103,46 +104,285 @@ qr_hash_str (const char *s)
 }
 
 /* character-class flags used by the query normalizer (qr_normalize_query) */
-#define QR_CC_WS      0x01	/* whitespace */
+#define QR_CC_WS      0x01	/* whitespace, as csql_lexer.l defines it */
 #define QR_CC_QUOTE   0x02	/* ' or "  : string-literal delimiter */
 #define QR_CC_CMT     0x04	/* / or -  : possible comment or hint opener */
+#define QR_CC_WORD    0x08	/* token body: gluing two of these merges two tokens */
+#define QR_CC_IDQ     0x10	/* [ or `  : delimited-identifier opener */
+#define QR_CC_DIGIT   0x20	/* 0-9     : can build a numeric literal across a '.' */
+#define QR_CC_IDENT   0x40	/* a byte csql_lexer.l lets continue an identifier or number;
+				 * unlike QR_CC_WORD it excludes '$' '?' and the quotes, which
+				 * always end the lexer token before them */
+
+/* highest operator id qr_norm_glue can address; id 0 means "not an operator" */
+#define QR_NORM_NOPS  15
+
+/* what the last '.' emitted was attached to, which decides whether it can be part of a
+ * number: "1." continues one, "qr_t1." does not, and a '.' with whitespace before it may
+ * still start one (".5"). */
+#define QR_DOT_SEP    0
+#define QR_DOT_IDENT  1
+#define QR_DOT_NUM    2
 
 /* qr_norm_char_class[b] = OR of the QR_CC_* flags for byte b, built once at
  * process startup so both the CAS lookup path and the broker rule-build path
  * index it directly with no per-call setup or per-character multi-compare. */
 static unsigned char qr_norm_char_class[256];
 
+/* toupper() must not be used in its place: it is locale dependent and folds bytes
+ * >= 0x80, which would corrupt UTF-8 / EUC-KR identifiers.  no supported charset puts
+ * a trail byte in 'a'..'z', so folding that range alone is safe byte-wise. */
+static unsigned char qr_norm_fold[256];
+
+static unsigned char qr_norm_id_close[256];
+
+/* qr_norm_glue[qr_norm_opid[p]] bit qr_norm_opid[c] = "p immediately followed by c
+ * lexes as one token", so the whitespace between them may not be dropped. */
+static unsigned char qr_norm_opid[256];
+static unsigned short qr_norm_glue[QR_NORM_NOPS + 1];
+
+static_assert (QR_NORM_NOPS < (int) (sizeof (qr_norm_glue[0]) * 8), "operator id must fit qr_norm_glue");
+
 static bool
 qr_build_norm_char_class (void)
 {
-  qr_norm_char_class[(unsigned char) ' '] = QR_CC_WS;
-  qr_norm_char_class[(unsigned char) '\t'] = QR_CC_WS;
-  qr_norm_char_class[(unsigned char) '\n'] = QR_CC_WS;
-  qr_norm_char_class[(unsigned char) '\r'] = QR_CC_WS;
-  qr_norm_char_class[(unsigned char) '\f'] = QR_CC_WS;
-  qr_norm_char_class[(unsigned char) '\v'] = QR_CC_WS;
-  qr_norm_char_class[(unsigned char) '\''] = QR_CC_QUOTE;
-  qr_norm_char_class[(unsigned char) '"'] = QR_CC_QUOTE;
-  qr_norm_char_class[(unsigned char) '/'] = QR_CC_CMT;
-  qr_norm_char_class[(unsigned char) '-'] = QR_CC_CMT;
+  /* the multi-character tokens of csql_lexer.l, plus the comment delimiters.  the
+   * three-byte forms ("->>", "<=>") are caught by the tail check in
+   * qr_norm_need_space (); their leading two bytes are already listed here. */
+  static const char *const glue_pairs[] = {
+    "--", "//", "/*", "*/", "->", ">>", "<<", "<>", ">=", "<=", "!=", "||", "&&", ":=", "?:", NULL
+  };
+  int i, j, nops = 0;
+
+  qr_norm_char_class[(unsigned char) ' '] |= QR_CC_WS;
+  qr_norm_char_class[(unsigned char) '\t'] |= QR_CC_WS;
+  qr_norm_char_class[(unsigned char) '\n'] |= QR_CC_WS;
+  qr_norm_char_class[(unsigned char) '\r'] |= QR_CC_WS;
+  /* '\f' and '\v' are not listed: csql_lexer.l returns them as one-byte tokens, a syntax
+   * error that would otherwise land on the key of the statement with a space there. */
+  qr_norm_char_class[(unsigned char) '\''] |= QR_CC_QUOTE;
+  qr_norm_char_class[(unsigned char) '"'] |= QR_CC_QUOTE;
+  qr_norm_char_class[(unsigned char) '/'] |= QR_CC_CMT;
+  qr_norm_char_class[(unsigned char) '-'] |= QR_CC_CMT;
+
+  for (i = '0'; i <= '9'; i++)
+    {
+      qr_norm_char_class[i] |= QR_CC_WORD | QR_CC_DIGIT | QR_CC_IDENT;
+    }
+  for (i = 'a'; i <= 'z'; i++)
+    {
+      qr_norm_char_class[i] |= QR_CC_WORD | QR_CC_IDENT;
+    }
+  for (i = 'A'; i <= 'Z'; i++)
+    {
+      qr_norm_char_class[i] |= QR_CC_WORD | QR_CC_IDENT;
+    }
+  for (i = 0x80; i <= 0xff; i++)
+    {
+      qr_norm_char_class[i] |= QR_CC_WORD | QR_CC_IDENT;
+    }
+  qr_norm_char_class[(unsigned char) '_'] |= QR_CC_WORD | QR_CC_IDENT;
+  qr_norm_char_class[(unsigned char) '$'] |= QR_CC_WORD;
+  qr_norm_char_class[(unsigned char) '#'] |= QR_CC_WORD | QR_CC_IDENT;
+  qr_norm_char_class[(unsigned char) '?'] |= QR_CC_WORD;
+  /* a string delimiter opens a whole token, so the space in "'ZZ1' AND" survives
+   * while the one in "code = 'ZZ1'" does not */
+  qr_norm_char_class[(unsigned char) '\''] |= QR_CC_WORD;
+  qr_norm_char_class[(unsigned char) '"'] |= QR_CC_WORD;
+
+  qr_norm_char_class[(unsigned char) '['] |= QR_CC_IDQ;
+  qr_norm_char_class[(unsigned char) '`'] |= QR_CC_IDQ;
+  qr_norm_id_close[(unsigned char) '['] = (unsigned char) ']';
+  qr_norm_id_close[(unsigned char) '`'] = (unsigned char) '`';
+
+  for (i = 0; i < 256; i++)
+    {
+      qr_norm_fold[i] = (unsigned char) i;
+    }
+  for (i = 'a'; i <= 'z'; i++)
+    {
+      qr_norm_fold[i] = (unsigned char) (i - 'a' + 'A');
+    }
+
+  /* every byte of every pair gets an id, so a pair can never reference id 0 -- which
+   * qr_norm_need_space reads for any byte that is not an operator at all. */
+  for (i = 0; glue_pairs[i] != NULL; i++)
+    {
+      for (j = 0; j < 2; j++)
+	{
+	  unsigned char b = (unsigned char) glue_pairs[i][j];
+
+	  if (qr_norm_opid[b] == 0)
+	    {
+	      assert (nops < QR_NORM_NOPS);
+	      qr_norm_opid[b] = (unsigned char) ++nops;
+	    }
+	}
+    }
+  for (i = 0; glue_pairs[i] != NULL; i++)
+    {
+      qr_norm_glue[qr_norm_opid[(unsigned char) glue_pairs[i][0]]] |=
+	(unsigned short) (1u << qr_norm_opid[(unsigned char) glue_pairs[i][1]]);
+    }
 
   return true;
 }
 
 static bool qr_norm_char_class_ready = qr_build_norm_char_class ();
 
+/*
+ * qr_norm_need_space () - must the run of whitespace before c survive?  every other
+ *   run is dropped, so "code = 'ZZ1'" and "code='ZZ1'" become one key.  the token
+ *   stream may not change: the normalized ORIG is parsed by qr_check_replace_policy.
+ *   return: true if one separator space has to be emitted
+ *   dst(in), len(in): output so far (len > 0)
+ *   c(in): the byte about to be emitted, already folded
+ *   num_tok(in): the token body last emitted began with a digit, so it is a number and not an
+ *     identifier -- "1 . 2" has to stay apart while "qr_t1 . code" may merge
+ *   dot_kind(in): QR_DOT_* for the last '.' emitted
+ */
+STATIC_INLINE bool qr_norm_need_space (const char *dst, int len, char c, int num_tok, int dot_kind)
+  __attribute__ ((ALWAYS_INLINE));
+
+STATIC_INLINE bool
+qr_norm_need_space (const char *dst, int len, char c, int num_tok, int dot_kind)
+{
+  unsigned char prev = (unsigned char) dst[len - 1];
+  unsigned char pid;
+
+  if ((qr_norm_char_class[prev] & QR_CC_WORD) && (qr_norm_char_class[(unsigned char) c] & QR_CC_WORD))
+    {
+      return true;
+    }
+
+  /* two backtick identifiers side by side ("`a` `b`": column a aliased b) would otherwise glue
+   * into the doubled-backtick escape of ONE identifier ("`a``b`": the column named a`b) -- two
+   * valid statements on one key.  '[' after ']' needs no space: csql_lexer.l has no "]]" escape,
+   * so "[a][b]" already reads as two names; '"' is a QR_CC_WORD and is covered above. */
+  if (prev == '`' && c == '`')
+    {
+      return true;
+    }
+
+  /* "\N" is NULL and "\USD" a currency sign, but "\ N" and "\ USD" are the won sign
+   * followed by an identifier -- a syntax error that would otherwise land on the key of
+   * the valid rule. */
+  if (prev == '\\' && (qr_norm_char_class[(unsigned char) c] & QR_CC_IDENT))
+    {
+      return true;
+    }
+
+  /* besides keeping "a - -1" from becoming "a--1", a line comment that would swallow
+   * the rest of the statement, this closes a spoofing hole: without it the invalid
+   * "a < = 1" would land on the key of the valid rule "a <= 1" and be replaced,
+   * turning the client's syntax error into a successful wrong query. */
+  pid = qr_norm_opid[prev];
+  if (pid != 0 && ((qr_norm_glue[pid] >> qr_norm_opid[(unsigned char) c]) & 1u) != 0)
+    {
+      return true;
+    }
+
+  if (c == '>' && len >= 2 && (memcmp (dst + len - 2, "->", 2) == 0 || memcmp (dst + len - 2, "<=", 2) == 0))
+    {
+      return true;
+    }
+
+  /* a '.' beside a digit builds a numeric literal out of what were three tokens: "1 . 2" is a
+   * syntax error and "1.2" is one number.  the token before the dot tells a number from an
+   * identifier, so "qr_t1 . code" keeps merging with "qr_t1.code" -- csql_lexer.l reads a
+   * dot followed by whitespace and a name as the same DOT and name. */
+  if (c == '.' && num_tok && (qr_norm_char_class[prev] & QR_CC_DIGIT))
+    {
+      return true;
+    }
+  if (prev == '.')
+    {
+      /* a dot directly followed by a digit always starts or continues a number (".5", "1.5"),
+       * while with whitespace between it is a DOT token -- even after a name: "qr_t1.2" is
+       * qr_t1 and the number .2, "qr_t1. 2" is qr_t1, DOT and 2. */
+      if (qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT)
+	{
+	  return true;
+	}
+      /* an exponent or float suffix right after the dot keeps building the number: "1.E2" is
+       * 100.0 while "1. e2" is 1.0 aliased e2 -- both parse, so a collision here does not even
+       * announce itself as a broken query. */
+      if ((c == 'E' || c == 'e' || c == 'F' || c == 'f') && dot_kind == QR_DOT_NUM)
+	{
+	  return true;
+	}
+    }
+
+  /* the sign of an exponent belongs to the number the same way: "1e+5" is one token while
+   * "1e +5" and "1e+ 5" are syntax errors.  an identifier that merely ends in a digit and an
+   * 'e' ("foo1e + 2") is not a number, so it keeps merging.  "1.e+5" counts too: the 'e'
+   * there opens a new word after the dot, so num_tok is clear and dot_kind tells instead. */
+  if ((c == '+' || c == '-') && (prev == 'e' || prev == 'E') && len >= 2
+      && ((num_tok && (qr_norm_char_class[(unsigned char) dst[len - 2]] & QR_CC_DIGIT))
+	  || (dst[len - 2] == '.' && dot_kind == QR_DOT_NUM)))
+    {
+      return true;
+    }
+  if ((qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT) && (prev == '+' || prev == '-')
+      && len >= 3 && (dst[len - 2] == 'e' || dst[len - 2] == 'E')
+      && ((num_tok && (qr_norm_char_class[(unsigned char) dst[len - 3]] & QR_CC_DIGIT))
+	  || (dst[len - 3] == '.' && dot_kind == QR_DOT_NUM)))
+    {
+      return true;
+    }
+
+  return false;
+}
+
+/*
+ * qr_norm_is_backslash_token () - is run (the letters glued to a '\') one of the fixed tokens
+ *   csql_lexer.l cuts right after those letters?  a digit glued to such a token starts a number
+ *   ("\USD1.5" is the money literal 1.5, "\USD1 .5" a syntax error), while after any other run
+ *   it only continues an identifier ("\n1" is '\' and the name n1).
+ *   return: true for "\N" (NULL) and the currency signs
+ *   run(in), n(in): the run, without the backslash
+ */
+static bool
+qr_norm_is_backslash_token (const char *run, int n)
+{
+  static const char *const toks[] = {
+    "N", "TL", "JPY", "USD", "KRW", "TRY", "KHR", "CNY", "INR", "RUB", "AUD", "CAD", "BRL",
+    "RON", "EUR", "CHF", "DKK", "NOK", "BGN", "GBP", "VND", "CZK", "PLN", "SEK", "HRK", "RSD", NULL
+  };
+  int i;
+
+  for (i = 0; toks[i] != NULL; i++)
+    {
+      if ((int) strlen (toks[i]) == n && memcmp (run, toks[i], n) == 0)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* both are <= 0, so qr_lookup's "norm_len <= 0" guard covers them unchanged;
+ * qr_parse_file tells them apart only to word its rejection message. */
+#define QR_NORM_ERR_OVERFLOW	(-1)
+#define QR_NORM_ERR_LITERAL	(-2)
+
 static int
 qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_hash, bool * unterminated)
 {
   int len = 0;
   int prev_space = 1;		/* drop leading whitespace */
+  int num_tok = 0;		/* the token body last emitted began with a digit */
+  int dot_kind = QR_DOT_SEP;	/* what the last '.' emitted was attached to */
+  int raw_ident = 0;		/* the identifier being emitted is glued to a '\' */
+  int raw_start = 0;		/* dst offset of the first byte after that '\' */
   char quote = 0;		/* current open quote char, 0 = outside literal */
   const char *s;
   unsigned int h = 5381;
 
-  /* set when a hint or block comment is not closed: the normalizer then truncates (or
-   * fabricates a closer).  rule loading rejects such text; lookup passes NULL and
-   * tolerates the fabricated closer. */
+  /* set when a hint, block comment, delimited name or string literal is not closed:
+   * csql_lexer.l fails such text with UNEXPECTED_EOF, while the normalizer truncates it
+   * (or fabricates a closer).  rule loading rejects such text, and lookup declines to
+   * replace it. */
   if (unterminated != NULL)
     {
       *unterminated = false;
@@ -153,10 +393,26 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
   do { \
     if (len >= dst_size - 1) \
       { \
-        return -1; \
+        return QR_NORM_ERR_OVERFLOW; \
       } \
     dst[len++] = (char) (ch); \
     h = ((h << 5) + h) ^ (unsigned char) (ch); \
+  } while (0)
+
+/* keywords and identifiers are case-insensitive in CUBRID (the lexer matches keywords
+ * as [aA][bB].., schema names go through sm_downcase_name / intl_identifier_casecmp),
+ * so folding makes one key out of every spelling.  string literals are excluded: they
+ * compare under the column's collation, which is case sensitive by default.  so are the
+ * few spots where csql_lexer.l itself is case sensitive: see the 0x/0b and backslash
+ * cases in the ordinary-character path below. */
+#define QR_FOLD(ch)	((char) qr_norm_fold[(unsigned char) (ch)])
+
+#define QR_PEND(ch) \
+  do { \
+    if (prev_space && len > 0 && qr_norm_need_space (dst, len, (ch), num_tok, dot_kind)) \
+      { \
+        QR_PUT (' '); \
+      } \
   } while (0)
 
   for (s = src; *s != '\0'; s++)
@@ -167,6 +423,32 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	{
 	  /* inside a string literal: copy verbatim AND hash, so the returned
 	   * hash equals qr_hash_str(dst) even when the query contains a literal. */
+	  if (c == '\\')
+	    {
+	      /* csql_lexer.l pairs a backslash with the byte after it under either setting of
+	       * no_backslash_escapes ([\\].), so "C:\\dir", "a\\nb", the LIKE escapes and an
+	       * escaped backslash "\\\\" all close the literal at the same byte; only the
+	       * literal's value differs, and the replacement is prepared in the same session.  the
+	       * one exception is a backslash before the literal's own quote: with
+	       * no_backslash_escapes=yes the quote closes the literal, with =no it is an escaped
+	       * quote and the literal goes on.  that is a session parameter, and guessing wrong
+	       * mis-tracks the quote state -- the rest of the statement would then be folded as if
+	       * it were code -- so only that case costs the query its replacement.  copying the pair
+	       * together is what tells "\\\\'" (an escaped backslash, then the closing quote) from
+	       * "\\'". */
+	      if (*(s + 1) == quote)
+		{
+		  return QR_NORM_ERR_LITERAL;
+		}
+	      QR_PUT (c);
+	      if (*(s + 1) != '\0')
+		{
+		  s++;
+		  QR_PUT (*s);
+		}
+	      prev_space = 0;
+	      continue;
+	    }
 	  QR_PUT (c);
 	  if (c == quote)
 	    {
@@ -189,13 +471,49 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 
       if (cls & QR_CC_QUOTE)
 	{
-	  /* entering a literal: emit a pending separator space first */
-	  if (prev_space && len > 0)
-	    {
-	      QR_PUT (' ');
-	    }
+	  QR_PEND (c);
 	  QR_PUT (c);
 	  quote = c;
+	  prev_space = 0;
+	  continue;
+	}
+
+      if (cls & QR_CC_IDQ)
+	{
+	  /* a delimited identifier is one token, so its inner whitespace may not be
+	   * collapsed -- "[my  col]" and "[my col]" name different columns.  its case IS
+	   * folded: CUBRID identifiers are case-insensitive however they are delimited.
+	   * '"' stays with the string handling above because whether it delimits an
+	   * identifier or a string depends on ansi_quotes. */
+	  char close = (char) qr_norm_id_close[(unsigned char) c];
+
+	  QR_PEND (c);
+	  QR_PUT (c);
+	  for (s++; *s != '\0'; s++)
+	    {
+	      if (*s != close)
+		{
+		  QR_PUT (QR_FOLD (*s));
+		  continue;
+		}
+	      QR_PUT (close);
+	      /* csql_lexer.l gives only the backtick form a doubled escape; "]]" is a
+	       * closed identifier followed by a stray ']'. */
+	      if (close != '`' || *(s + 1) != close)
+		{
+		  break;
+		}
+	      QR_PUT (close);
+	      s++;
+	    }
+	  if (*s == '\0')
+	    {
+	      if (unterminated != NULL)
+		{
+		  *unterminated = true;
+		}
+	      s--;		/* unterminated; loop s++ re-reads the terminator */
+	    }
 	  prev_space = 0;
 	  continue;
 	}
@@ -217,33 +535,67 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 		  /* HINT comment: keep opener and '+', collapse inner whitespace */
 		  int inner_prev_space = 1;
 
-		  if (prev_space && len > 0)
-		    {
-		      QR_PUT (' ');
-		    }
+		  QR_PEND (c);
 		  QR_PUT (c);
 		  QR_PUT (*(s + 1));
 		  QR_PUT ('+');
 		  s += 3;	/* skip opener and the '+' */
 
+#define QR_HINT_END(p)	(block ? ((p)[0] == '*' && (p)[1] == '/') : (p)[0] == '\n')
+		  for (; *s != '\0' && !QR_HINT_END (s); s++)
+		    {
+		      if (*s == '"' || *s == '[' || *s == '`')
+			{
+			  /* read_hint_args reads a delimited name as one token, so its inner
+			   * whitespace is kept: "[i  1]" and "[i 1]" name different indexes.  the
+			   * lexer still ends the hint at the first terminator, quoted or not. */
+			  char close = (*s == '[') ? ']' : *s;
+
+			  if (inner_prev_space && len > 0 && qr_norm_need_space (dst, len, *s, num_tok, dot_kind))
+			    {
+			      QR_PUT (' ');
+			    }
+			  QR_PUT (*s);
+			  for (s++; *s != '\0' && !QR_HINT_END (s); s++)
+			    {
+			      QR_PUT (QR_FOLD (*s));
+			      if (*s == '\\' && *(s + 1) == close)
+				{
+				  s++;	/* the hint scanner skips an escaped delimiter */
+				  QR_PUT (*s);
+				}
+			      else if (*s == close)
+				{
+				  break;
+				}
+			    }
+			  if (*s == '\0' || QR_HINT_END (s))
+			    {
+			      s--;	/* loop s++ re-reads the terminator */
+			    }
+			  inner_prev_space = 0;
+			  continue;
+			}
+		      if (qr_norm_char_class[(unsigned char) *s] & QR_CC_WS)
+			{
+			  inner_prev_space = 1;
+			}
+		      else
+			{
+			  char fc = QR_FOLD (*s);
+
+			  if (inner_prev_space && len > 0 && qr_norm_need_space (dst, len, fc, num_tok, dot_kind))
+			    {
+			      QR_PUT (' ');
+			    }
+			  QR_PUT (fc);
+			  inner_prev_space = 0;
+			}
+		    }
+#undef QR_HINT_END
+
 		  if (block)
 		    {
-		      for (; *s != '\0' && !(*s == '*' && *(s + 1) == '/'); s++)
-			{
-			  if (qr_norm_char_class[(unsigned char) *s] & QR_CC_WS)
-			    {
-			      inner_prev_space = 1;
-			    }
-			  else
-			    {
-			      if (inner_prev_space)
-				{
-				  QR_PUT (' ');
-				}
-			      QR_PUT (*s);
-			      inner_prev_space = 0;
-			    }
-			}
 		      QR_PUT ('*');
 		      QR_PUT ('/');
 		      if (*s != '\0')
@@ -261,22 +613,6 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 		    }
 		  else
 		    {
-		      for (; *s != '\0' && *s != '\n'; s++)
-			{
-			  if (qr_norm_char_class[(unsigned char) *s] & QR_CC_WS)
-			    {
-			      inner_prev_space = 1;
-			    }
-			  else
-			    {
-			      if (inner_prev_space)
-				{
-				  QR_PUT (' ');
-				}
-			      QR_PUT (*s);
-			      inner_prev_space = 0;
-			    }
-			}
 		      /* the newline terminates a line hint, so it must survive: folded into a
 		       * space it would let the hint swallow the rest of the statement, and
 		       * qr_check_replace_policy parses this text.  the key stays consistent
@@ -332,13 +668,71 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	  continue;
 	}
 
-      if (prev_space && len > 0)
-	{
-	  QR_PUT (' ');
-	}
-      prev_space = 0;
-      QR_PUT (c);
+      {
+	char fc = QR_FOLD (c);
+
+	QR_PEND (fc);
+	if (qr_norm_char_class[(unsigned char) c] & QR_CC_IDENT)
+	  {
+	    /* csql_lexer.l matches these case-sensitively, so folding would give one key
+	     * to statements it reads differently:
+	     *   "\N" (NULL), "\USD" .. : upper case only; "\n" is '\' plus identifier n
+	     *   "0x1F", "0b101"        : lower-case prefix only; "0X1F" is 0 aliased X1F */
+	    if (len == 0 || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_IDENT))
+	      {
+		raw_ident = (len > 0 && dst[len - 1] == '\\');
+		raw_start = len;
+	      }
+	    if (raw_ident)
+	      {
+		fc = c;
+	      }
+	    else if ((c == 'x' || c == 'X' || c == 'b' || c == 'B') && len > 0 && dst[len - 1] == '0'
+		     && (len == 1 || !(qr_norm_char_class[(unsigned char) dst[len - 2]] & QR_CC_IDENT)))
+	      {
+		fc = c;
+	      }
+	  }
+	if (qr_norm_char_class[(unsigned char) fc] & QR_CC_WORD)
+	  {
+	    /* a new lexer token starts here unless fc continues an identifier or number, which
+	     * QR_CC_IDENT tells: '$' and '?' are tokens of their own, so the 1 of "$1" opens a
+	     * number -- "$1 .5" (a syntax error) must not merge into the money literal "$1.5".
+	     * a "\USD"-like sign is cut after its letters the same way. */
+	    int tok_start = (len == 0
+			     || !(qr_norm_char_class[(unsigned char) fc] & QR_CC_IDENT)
+			     || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_IDENT));
+
+	    if (!tok_start && raw_ident && (qr_norm_char_class[(unsigned char) fc] & QR_CC_DIGIT))
+	      {
+		tok_start = qr_norm_is_backslash_token (dst + raw_start, len - raw_start);
+	      }
+	    if (tok_start)
+	      {
+		num_tok = (qr_norm_char_class[(unsigned char) fc] & QR_CC_DIGIT) ? 1 : 0;
+	      }
+	  }
+	else if (fc == '.')
+	  {
+	    if (prev_space || len == 0 || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_WORD))
+	      {
+		dot_kind = QR_DOT_SEP;
+	      }
+	    else
+	      {
+		dot_kind = num_tok ? QR_DOT_NUM : QR_DOT_IDENT;
+	      }
+	  }
+	prev_space = 0;
+	QR_PUT (fc);
+      }
     }
+  if (quote != 0 && unterminated != NULL)
+    {
+      *unterminated = true;	/* the string literal never closed */
+    }
+#undef QR_PEND
+#undef QR_FOLD
 #undef QR_PUT
 
   dst[len] = '\0';
@@ -610,7 +1004,7 @@ qr_parse_file (const char *path, const char *up_db, const char *up_user, T_QR_PA
   char norm[QR_MAX_QUERY_LEN];
   int has_orig = 0, has_replace = 0, has_bind_map = 0;
   int saw_end;			/* the block was terminated by END, not by EOF */
-  bool unterminated = false;	/* ORIG had an unclosed hint / block comment */
+  bool unterminated = false;	/* ORIG had an unclosed comment, delimited name or literal */
   int orig_len = 0, replace_len = 0, norm_len;
   unsigned int orig_h;
 
@@ -761,13 +1155,23 @@ qr_parse_file (const char *path, const char *up_db, const char *up_user, T_QR_PA
     {
       if (errmsg != NULL)
 	{
-	  snprintf (errmsg, errsz, "unterminated comment in ORIG query");
+	  snprintf (errmsg, errsz, "unterminated comment, quoted name or string literal in ORIG query");
+	}
+      return -1;
+    }
+  if (norm_len == QR_NORM_ERR_LITERAL)
+    {
+      if (errmsg != NULL)
+	{
+	  snprintf (errmsg, errsz,
+		    "ORIG query has a backslash inside a string literal right before its quote, "
+		    "whose meaning depends on no_backslash_escapes");
 	}
       return -1;
     }
   if (norm_len < 0)
     {
-      /* -1 = the normalized text did not fit; the empty case is handled below */
+      /* the normalized text did not fit; the empty case is handled below */
       if (errmsg != NULL)
 	{
 	  snprintf (errmsg, errsz, "ORIG query too long after normalization");
@@ -1423,6 +1827,29 @@ done:
   return rc;
 }
 
+#if !defined(WINDOWS)
+/* scandir order for the rule directory: plain byte order, so which of two duplicate rules is
+ * kept -- and which rules fall past query_replace_max_rules -- depends neither on the file
+ * system (readdir order) nor on the broker's locale (alphasort compares with strcoll). */
+static int
+qr_dirent_cmp (const struct dirent **a, const struct dirent **b)
+{
+  return strcmp ((*a)->d_name, (*b)->d_name);
+}
+
+static void
+qr_free_dirents (struct dirent **ents, int n)
+{
+  int i;
+
+  for (i = 0; i < n; i++)
+    {
+      free_and_init (ents[i]);
+    }
+  free_and_init (ents);
+}
+#endif
+
 int
 qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 {
@@ -1442,7 +1869,8 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   return 0;
 #else
   const char *dir = br_info_p->query_replace_rule;
-  DIR *dp;
+  struct dirent **ents = NULL;	/* the user@dbname entries, in qr_dirent_cmp order */
+  int n_ents, e;
   struct dirent *ent;
   T_QR_PARSED *parsed = NULL;
   int parsed_count = 0, parsed_cap = 0;
@@ -1490,8 +1918,8 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   max_rules = br_info_p->query_replace_max_rules;
   cfg_qlen = br_info_p->query_replace_max_query_len;
 
-  dp = opendir (dir);
-  if (dp == NULL)
+  n_ents = scandir (dir, &ents, NULL, qr_dirent_cmp);
+  if (n_ents < 0)
     {
       char why[BROKER_PATH_MAX + 64];
       snprintf (why, sizeof (why), "cannot open rule directory '%s' (%s), feature disabled", dir, strerror (errno));
@@ -1504,21 +1932,25 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   du = (T_QR_DBUSER *) calloc (max_rules, sizeof (T_QR_DBUSER));
   if (du == NULL)
     {
-      closedir (dp);
+      qr_free_dirents (ents, n_ents);
       return -1;
     }
 
   /* pass 1 : walk each "user@dbname" sub-directory and parse its rule files.
-   * the db/user are taken from the sub-directory name, not from the files. */
-  while ((ent = readdir (dp)) != NULL)
+   * the db/user are taken from the sub-directory name, not from the files.  both levels are
+   * walked in sorted order, so the first of two duplicates is the same on every host. */
+  for (e = 0; e < n_ents; e++)
     {
       char up_db[QR_NAME_LEN];
       char up_user[QR_NAME_LEN];
       char subdir[BROKER_PATH_MAX];
       int pathlen;
       struct stat st;
-      DIR *sub_dp;
+      struct dirent **sub_ents = NULL;
+      int n_sub, se;
       struct dirent *sub_ent;
+
+      ent = ents[e];
 
       if (ent->d_name[0] == '.')
 	{
@@ -1572,18 +2004,19 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	  }
       }
 
-      sub_dp = opendir (subdir);
-      if (sub_dp == NULL)
+      n_sub = scandir (subdir, &sub_ents, NULL, qr_dirent_cmp);
+      if (n_sub < 0)
 	{
 	  continue;
 	}
-      while ((sub_ent = readdir (sub_dp)) != NULL)
+      for (se = 0; se < n_sub; se++)
 	{
 	  T_QR_PARSED tmp;
 	  char rulepath[QR_RELPATH_LEN];
 	  char errbuf[256];
 	  char warnbuf[256];
 
+	  sub_ent = sub_ents[se];
 	  if (sub_ent->d_name[0] == '.')
 	    {
 	      continue;
@@ -1641,23 +2074,26 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	      /* the rule did load; the rule log is the only per-broker channel at startup */
 	      QR_RULE_LOG_WRITE (rulepath, warnbuf);
 	    }
-	  /* skip a duplicate (db, user, normalized orig): keep the first one so that
-	   * lookup stays deterministic regardless of directory read order. */
+	  /* skip a duplicate (db, user, normalized orig) so that a bucket never holds two rules
+	   * with one key.  the first one in sorted path order is kept; the log names it, since
+	   * rules that differ only in spacing or letter case are duplicates too. */
 	  {
-	    int d, dup = 0;
+	    int d, dup = -1;
 	    for (d = 0; d < parsed_count; d++)
 	      {
 		if (strcmp (parsed[d].db_name, tmp.db_name) == 0
 		    && strcmp (parsed[d].user_name, tmp.user_name) == 0
 		    && strcmp (parsed[d].orig_norm, tmp.orig_norm) == 0)
 		  {
-		    dup = 1;
+		    dup = d;
 		    break;
 		  }
 	      }
-	    if (dup)
+	    if (dup >= 0)
 	      {
-		QR_RULE_LOG_WRITE (rulepath, "duplicate ORIG (already loaded for this db/user)");
+		snprintf (errbuf, sizeof (errbuf), "duplicate ORIG (rule '%.200s' with the same key stays loaded)",
+			  parsed[dup].rulepath);
+		QR_RULE_LOG_WRITE (rulepath, errbuf);
 		free_and_init (tmp.orig_norm);
 		free_and_init (tmp.replace_query);
 		continue;
@@ -1691,9 +2127,9 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	    }
 	  parsed[parsed_count++] = tmp;
 	}
-      closedir (sub_dp);
+      qr_free_dirents (sub_ents, n_sub);
     }
-  closedir (dp);
+  qr_free_dirents (ents, n_ents);
 
   if (dbuser_count == 0)
     {
@@ -3132,18 +3568,19 @@ qr_lookup (const char *sql_stmt, int sql_len)
   int norm_cap;
   unsigned int h, norm_h;
   int b, idx, hops;
+  bool unterminated;
 
   if (qr_shm == NULL || qr_norm_buf == NULL || qr_conn_has_rules <= 0 || qr_shm->rule_count == 0 || sql_stmt == NULL)
     {
       return -1;
     }
 
-  /* cheap pre-filter before the O(len) normalization.  normalization can *grow* the text:
-   * a hint keeps one separator space on each side, which canonicalizes the whitespace
-   * around it so that writing the hint with or without inner spaces yields one key.  that
-   * is at most 2 bytes per hint token of >= 3 input bytes, so norm_len always stays below
-   * 2 * sql_len + 2; a query shorter than that bound cannot reach the shortest rule. */
-  if (2 * sql_len + 2 < qr_shm->min_query_len)
+  /* cheap pre-filter before the O(len) normalization.  normalization never grows the text:
+   * whitespace survives only where there was some, comments are dropped, and case folding
+   * and literals keep their length.  the one byte it can add is the newline a line hint
+   * ("--+", "//+") keeps when the statement ends without one, so norm_len <= sql_len + 1,
+   * and a query shorter than that cannot reach the shortest rule. */
+  if (sql_len + 1 < qr_shm->min_query_len)
     {
       return -1;
     }
@@ -3153,9 +3590,13 @@ qr_lookup (const char *sql_stmt, int sql_len)
    * never match any rule, so qr_normalize_query aborts early with -1 instead
    * of scanning/hashing the rest of a large statement. */
   norm_cap = MIN (qr_shm->max_query_len + 2, qr_norm_buf_size);
-  norm_len = qr_normalize_query (qr_norm_buf, norm_cap, sql_stmt, &norm_h, NULL);
-  if (norm_len <= 0)
+  norm_len = qr_normalize_query (qr_norm_buf, norm_cap, sql_stmt, &norm_h, &unterminated);
+  if (norm_len <= 0 || unterminated)
     {
+      /* an unclosed comment, delimited name or string is UNEXPECTED_EOF to the lexer.  the
+       * statement can only fail, so it is never replaced -- a truncated key could even equal
+       * the statement without it ("select 1 /" "* x" -> "SELECT 1") and turn the syntax error
+       * into a successful query. */
       return -1;
     }
   else if (norm_len < qr_shm->min_query_len || norm_len > qr_shm->max_query_len)

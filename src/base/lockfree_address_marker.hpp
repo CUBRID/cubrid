@@ -42,9 +42,7 @@ namespace lockfree
       address_marker ();
       address_marker (T *addr);
 
-      bool is_marked () const;
       T *get_address () const;
-      T *get_address_no_strip () const;
 
       static T *set_adress_mark (T *addr);
       static T *strip_address_mark (T *addr);
@@ -97,24 +95,10 @@ namespace lockfree
   }
 
   template <class T>
-  bool
-  address_marker<T>::is_marked () const
-  {
-    return is_address_marked (m_addr.load ());
-  }
-
-  template <class T>
   T *
   address_marker<T>::get_address () const
   {
     return strip_address_mark (m_addr.load ());
-  }
-
-  template <class T>
-  T *
-  address_marker<T>::get_address_no_strip () const
-  {
-    return m_addr.load ();
   }
 
   template <class T>
