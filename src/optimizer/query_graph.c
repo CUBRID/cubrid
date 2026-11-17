@@ -171,6 +171,7 @@ static PT_NODE *qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, v
 static QO_TERM *qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env);
 static void qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_segs, QO_ENV * env);
 static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node);
+static QO_NODE *qo_semi_anti_dummy_join_head (QO_ENV * env, QO_NODE * on_node);
 static void qo_analyze_term (QO_TERM * term, int term_type);
 static PT_NODE *set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset);
@@ -567,7 +568,11 @@ qo_optimize_helper (QO_ENV * env)
       /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
       if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
 	{
-	  p_node = QO_ENV_NODE (env, n - 1);
+	  p_node = QO_NODE_IS_SEMI_ANTI_JOIN (node) ? qo_semi_anti_dummy_join_head (env, node) : NULL;
+	  if (p_node == NULL)
+	    {
+	      p_node = QO_ENV_NODE (env, n - 1);
+	    }
 	  (void) qo_add_dummy_join_term (env, p_node, node);
 	}
 
@@ -2000,7 +2005,9 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
 
   QO_ASSERT (env, env->nterms < env->Nterms);
   QO_ASSERT (env, QO_NODE_IDX (p_node) >= 0);
-  QO_ASSERT (env, QO_NODE_IDX (p_node) + 1 == QO_NODE_IDX (on_node));
+  /* a SEMI or ANTI join hangs on the last node its ON reads, see qo_semi_anti_dummy_join_head () */
+  QO_ASSERT (env, QO_NODE_IDX (p_node) + 1 == QO_NODE_IDX (on_node)
+	     || (QO_NODE_IS_SEMI_ANTI_JOIN (on_node) && QO_NODE_IDX (p_node) < QO_NODE_IDX (on_node)));
   QO_ASSERT (env, QO_NODE_LOCATION (on_node) > 0);
 
   term = QO_ENV_TERM (env, env->nterms);
@@ -2067,6 +2074,43 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
   QO_ASSERT (env, QO_TERM_CAN_USE_INDEX (term) == 0);
 
   return term;
+}
+
+/*
+ * qo_semi_anti_dummy_join_head () - the node to hang the dummy join term of a SEMI or ANTI join with no join edge on
+ *   return: the last node before on_node that its ON reads, or NULL if its ON reads none
+ *   env(in): optimizer environment
+ *   on_node(in): node of the SEMI or ANTI join
+ *
+ * Note: the ON reads earlier nodes but gives no edge when an equality put a constant in the term that read the inner
+ *	 table with them, as CAST (1 AS VARCHAR) IN (SELECT i.c0 FROM i WHERE i.c0 = i.c0 OR a.c1 = a.c1) does.  Node
+ *	 n - 1 can be across a CROSS JOIN from those nodes, in a partition that the join cannot be placed in.
+ */
+static QO_NODE *
+qo_semi_anti_dummy_join_head (QO_ENV * env, QO_NODE * on_node)
+{
+  BITSET_ITERATOR iter;
+  QO_TERM *term;
+  int t, n, head = -1;
+
+  for (t = 0; t < env->nterms; t++)
+    {
+      term = QO_ENV_TERM (env, t);
+      if (QO_TERM_LOCATION (term) != QO_NODE_LOCATION (on_node))
+	{
+	  continue;
+	}
+
+      for (n = bitset_iterate (&(QO_TERM_NODES (term)), &iter); n != -1; n = bitset_next_member (&iter))
+	{
+	  if (n < QO_NODE_IDX (on_node) && n > head)
+	    {
+	      head = n;
+	    }
+	}
+    }
+
+  return (head < 0) ? NULL : QO_ENV_NODE (env, head);
 }
 
 /*
