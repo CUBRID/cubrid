@@ -9306,6 +9306,8 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_DISK_SIZE:
     case PT_SCHEMA_DEF:
     case PT_COLLECTION_TO_STRING:
+      /* EXISTS is LOGICAL whatever its subquery selects, even a host variable that has no type yet */
+    case PT_EXISTS:
       return true;
 
     default:
