@@ -5258,6 +5258,33 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   bitset_assign (&(plan->sarged_terms), sarged_terms);
   bitset_difference (&(plan->sarged_terms), &sarg_out_terms);
 
+  /* An OR-derived key range or key filter that reads two specs (qo_or_extract_join_keys (),
+   * qo_or_extract_key_filters ()) is there for an index on the inner of a nested loop, which takes it
+   * below the join.  A hash or merge join has no such index: there the term is implied by the factor it
+   * was derived from, which the join evaluates anyway, and a hash join cannot even fetch a function
+   * index expression it reads (make_hashjoin_proc ()).  Drop it there, as make_pred_from_plan () drops
+   * it from a scan no index adopted it on. */
+  if (join_method == QO_JOINMETHOD_HASH_JOIN || join_method == QO_JOINMETHOD_MERGE_JOIN)
+    {
+      BITSET derived_terms;
+      int t;
+
+      bitset_init (&derived_terms, info->env);
+      for (t = 0; t < info->env->nterms; t++)
+	{
+	  if (QO_TERM_IS_FLAGED (QO_ENV_TERM (info->env, t), QO_TERM_OR_DERIVED_EXPENSIVE)
+	      && !BITSET_MEMBER (plan->plan_un.join.hash_terms, t))
+	    {
+	      bitset_add (&derived_terms, t);
+	    }
+	}
+      bitset_difference (&(plan->sarged_terms), &derived_terms);
+      bitset_difference (&(plan->plan_un.join.join_terms), &derived_terms);
+      bitset_difference (&(plan->plan_un.join.during_join_terms), &derived_terms);
+      bitset_difference (&(plan->plan_un.join.after_join_terms), &derived_terms);
+      bitset_delset (&derived_terms);
+    }
+
   /* Make sure that the pinned subqueries and the sargs are placed on the same node: by now the pinned subqueries are
    * very likely pinned here precisely because they're used by these sargs. Separating them (so that they get evaluated
    * in some different order) will yield incorrect results.
