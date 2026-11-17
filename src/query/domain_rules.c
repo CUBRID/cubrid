@@ -2879,8 +2879,19 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, b
     {
       return error;
     }
-  *coerce = *coerce || TP_DOMAIN_TYPE (outer) != TP_DOMAIN_TYPE (inner) || outer->precision != inner->precision
-    || outer->scale != inner->scale;
+
+  if (TP_DOMAIN_TYPE (outer) != TP_DOMAIN_TYPE (inner))
+    {
+      *coerce = true;
+    }
+  else if (TP_DOMAIN_TYPE (outer) != DB_TYPE_NUMERIC && TP_DOMAIN_TYPE (outer) != DB_TYPE_VARCHAR
+	   && (outer->precision != inner->precision || outer->scale != inner->scale))
+    {
+      /* a NUMERIC hashes and compares by its value, a VARCHAR whatever its length: neither needs its pair's
+       * precision and scale */
+      *coerce = true;
+    }
+
   *common = *coerce ? resolved : NULL;
 
   const TP_DOMAIN *domain[2] = { outer, inner };

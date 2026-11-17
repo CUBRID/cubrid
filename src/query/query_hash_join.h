@@ -26,7 +26,7 @@
 #include "regu_var.hpp"		/* REGU_VARIABLE_LIST */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "memory_hash.h"	/* mht_mix_hash */
+#include "memory_hash.h"	/* mht_mixhash */
 #include "query_hash_scan.h"	/* HASH_METHOD */
 #include "system.h"		/* UINT32, UINT64 */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
@@ -487,7 +487,7 @@ STATIC_INLINE UINT32
 hjoin_get_partition_id (UINT32 hash_key, UINT32 part_cnt, bool has_null_fill_side)
 {
   UINT32 hash_part_cnt = (has_null_fill_side) ? part_cnt - 1 : part_cnt;
-  UINT32 mixed_hash = mht_mix_hash (hash_key);
+  UINT32 mixed_hash = mht_mixhash (hash_key);
 
   /* hash_part_cnt ranges of the mixed hash, one per partition: the high 32 bits of the product, without a division */
   return (UINT32) (((UINT64) mixed_hash * hash_part_cnt) >> 32);

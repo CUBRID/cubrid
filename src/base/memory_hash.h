@@ -44,12 +44,6 @@
 #define MHT_FNV_PRIME 16777619u
 
 /*
- * 2^32 / the golden ratio (2654435769): the multiplier of Knuth's multiplicative hashing (TAOCP Vol. 3, 6.4).
- * A small integer times it spreads over all the bits.
- */
-#define MHT_KNUTH_MULTIPLIER 0x9e3779b9u
-
-/*
  * round (2^64 / pi), an odd number: the multiplier of FxHasher (rustc-hash 1.x, a hash taken from Firefox). Here it is
  * the multiplier of a folded multiply, which XORs the high half of the 128-bit product into its low half.
  */
@@ -96,9 +90,6 @@ struct mht_table
   bool build_lru_list;		/* true if LRU list must be built */
 };
 
-STATIC_INLINE unsigned int mht_mix_hash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE UINT64 mht_mix_hash64 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
-
 extern unsigned int mht_2str_pseudo_key (const void *key, int key_size);
 extern unsigned int mht_1strlowerhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_1strhash (const void *key, const unsigned int ht_size);
@@ -108,9 +99,9 @@ extern unsigned int mht_4strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_5strhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 
-extern unsigned int mht_get_hash_number (const int unsigned ht_size, const DB_VALUE * val);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
+STATIC_INLINE unsigned int mht_mixhash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
@@ -210,42 +201,22 @@ extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
 
 /*
- * mht_mix_hash () - mix the bits of a 32-bit hash by MurmurHash3's fmix32
+ * mht_mixhash () - mix the bits of a 32-bit hash by MurmurHash3's fmix32
  *   return: hash value
  *   hash(in): the hash
  *
- * The multiplies of FNV-1a carry only into the high bits, so the low bits of the hash depend only on the low bits of
- * the input: a string of a part repeated an even number of times has its low bit fixed. The hash tables take the low
- * bits (hash & mask in mht_put_hls ()): such strings start probing from only half of the slots.
+ * mht_valhash () mixes the hash of every value with it once. The hash of a value keeps patterns of the value in its
+ * low bits: an integer is its own hash, and the multiplies of FNV-1a carry only into the high bits. The hash tables
+ * take the low bits (hash & mask in mht_put_hls ()), which the mix makes depend on all the bits.
  */
 STATIC_INLINE unsigned int
-mht_mix_hash (unsigned int hash)
+mht_mixhash (unsigned int hash)
 {
   hash ^= hash >> 16;
   hash *= 0x85ebca6bu;
   hash ^= hash >> 13;
   hash *= 0xc2b2ae35u;
   hash ^= hash >> 16;
-
-  return hash;
-}
-
-/*
- * mht_mix_hash64 () - mix the bits of a 64-bit hash by MurmurHash3's fmix64
- *   return: hash value
- *   hash(in): the hash
- *
- * As mht_mix_hash () does for a 32-bit hash: the callers take the low bits, which the steps of the hash leave following
- * a pattern of the input.
- */
-STATIC_INLINE UINT64
-mht_mix_hash64 (UINT64 hash)
-{
-  hash ^= hash >> 33;
-  hash *= 0xff51afd7ed558ccdULL;
-  hash ^= hash >> 33;
-  hash *= 0xc4ceb9fe1a85ec53ULL;
-  hash ^= hash >> 33;
 
   return hash;
 }

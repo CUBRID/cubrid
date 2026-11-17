@@ -7654,7 +7654,7 @@ btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size)
  * never for a CHAR (mr_cmpval_string (), mr_cmpval_char ()). The collations compared by
  * lang_fastcmp_byte () (binary, en_cs, en_ci) and euckr_bin (lang_fastcmp_ko ()) compare unit
  * by unit, a space (or the EUC-KR space 0xA1A1) as zero and any other byte by its weight, so
- * the units are mixed into the 64-bit hash. The 32-bit collation hash (mht_get_hash_number ())
+ * the units are mixed into the 64-bit hash. The 32-bit collation hash (mht_valhash ())
  * is left for the other collations: its PJW-style mixing makes strings of one fixed shape such
  * as dates collide, and each collision lowers the Duj1 estimate of a nearly unique column.
  */
@@ -7688,9 +7688,9 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
     }
   else if (coll_id != LANG_COLL_EUCKR_BINARY)
     {
-      /* mht_get_hash_number () drops the trailing ASCII spaces and stays below 2^32, so the
+      /* mht_valhash () drops the trailing ASCII spaces and stays below 2^32, so the
        * number dropped goes into the upper half where they count */
-      UINT64 str_hash = mht_get_hash_number (UINT_MAX, value);
+      UINT64 str_hash = mht_valhash (value, UINT_MAX);
       int len = size;
 
       if (trailing_counts)
@@ -7743,11 +7743,9 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  *   value(in): key element
  *
  * Note: (CBRD-27701) the Duj1 estimate counts distinct hashes, so the hash must be equal for equal
- * values and distinct for distinct ones. mht_valhash () is made for hash table buckets and folds
- * distinct values together: every fixed NUMERIC and most BIT strings hash to 0 because it stops at
- * the first zero byte, FLOAT, DOUBLE and MONETARY are truncated to integers, and ENUM hashes the
- * address of the DB_VALUE. The whole value is mixed here instead; strings follow the comparison of
- * their collation (btree_get_stats_hash_string ()).
+ * values and distinct for distinct ones. mht_valhash () is made for hash table buckets:
+ * 32 bits, and a set by its first and last elements only. The whole value is mixed here instead;
+ * strings follow the comparison of their collation (btree_get_stats_hash_string ()).
  */
 static UINT64
 btree_get_stats_prefix_value_hash (const DB_VALUE * value)
@@ -7762,59 +7760,10 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 
     case DB_TYPE_NUMERIC:
       {
-	int precision = 0, scale = 0;
-	bool is_float_numeric = false;
-	bool is_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value);
-	uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
-	DB_C_NUMERIC num = db_locate_numeric (value);
+	/* equal values have one residue whatever their scale: 1.0 and 1.00 alike, 1.5 and 15 apart */
+	UINT64 residue = numeric_hash (value);
 
-	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
-	if (is_float_numeric)
-	  {
-	    /* a float NUMERIC keeps its own scale per value: the normalization of mht_valhash ()
-	     * strips the trailing zeros so that 1.0 and 1.00 share one coefficient, but drops the
-	     * scale left over, so 1.5 and 15 would share it too. The scale left over is mixed in;
-	     * it is the original scale less the number of zeros stripped, which is the decimal
-	     * exponent of the coefficient ratio (an exact power of ten, so the rounding of the
-	     * two doubles cannot change it), or for a negative scale the scale plus the zeros
-	     * appended. */
-	    int left_scale = scale;
-	    int i;
-
-	    if (scale != 0 && !(precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
-	      {
-		float_numeric_normalize_for_hash (num, calc_buf, precision, scale);
-		num = calc_buf;
-	      }
-	    for (i = 0; i < DB_NUMERIC_BUF_SIZE && num[i] == 0; i++)
-	      {
-		;
-	      }
-	    if (i == DB_NUMERIC_BUF_SIZE)
-	      {
-		/* zero, whatever its scale */
-		left_scale = 0;
-	      }
-	    else if (scale < 0)
-	      {
-		/* the normalization multiplied a negative scale away as far as the precision allows */
-		left_scale = scale + MIN (-scale, DB_MAX_NUMERIC_PRECISION - precision);
-	      }
-	    else if (scale > 0)
-	      {
-		DB_VALUE coefficient;
-		double d_value, d_coefficient;
-
-		db_make_numeric (&coefficient, calc_buf, DB_MAX_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false,
-				 false);
-		numeric_coerce_num_to_double (value, 0, &d_value);
-		numeric_coerce_num_to_double (&coefficient, 0, &d_coefficient);
-		left_scale = scale - (int) lround (log10 (fabs (d_value) / d_coefficient));
-	      }
-	    hash = btree_get_stats_hash_bytes (hash, &left_scale, sizeof (left_scale));
-	  }
-	hash = btree_get_stats_hash_bytes (hash, &is_negative, sizeof (is_negative));
-	return btree_get_stats_hash_bytes (hash, num, DB_NUMERIC_BUF_SIZE);
+	return btree_get_stats_hash_bytes (hash, &residue, sizeof (residue));
       }
 
     case DB_TYPE_BIT:
@@ -7877,7 +7826,6 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 
     case DB_TYPE_ENUMERATION:
       {
-	/* mht_valhash () hashes the address of the DB_VALUE for this type */
 	unsigned short index = db_get_enum_short (value);
 
 	return btree_get_stats_hash_bytes (hash, &index, sizeof (index));
@@ -7917,7 +7865,7 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
       return btree_get_stats_hash_bytes (hash, db_get_timestamp (value), sizeof (DB_TIMESTAMP));
 
     default:
-      return mht_get_hash_number (UINT_MAX, value);
+      return mht_valhash (value, UINT_MAX);
     }
 }
 

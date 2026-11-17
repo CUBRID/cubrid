@@ -2980,21 +2980,6 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	      goto skip_next;
 	    }
 
-	  if (TP_DOMAIN_TYPE (coerce_domains[key_index]) == DB_TYPE_NUMERIC
-	      && TP_DOMAIN_TYPE (domains[key_index]) == DB_TYPE_NUMERIC
-	      && coerce_domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION
-	      && pre_coerce_value.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION
-	      && pre_coerce_value.domain.numeric_info.scale < 0)
-	    {
-	      /* 
-	       * for float numeric and fixed numeric, this is used to recalculate the fixed
-	       * numeric's precision later, as it must be known accurately during normalization.
-	       * 
-	       * note: A value in numeric(38,0) column does not guarantee precision 38.
-	       */
-	      pre_coerce_value.domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
-	    }
-
 	  domain_status =
 	    tp_value_convert (converters[key_index], coerce_domains[key_index], &pre_coerce_value,
 			      key->values[key_index]);
@@ -5171,7 +5156,7 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
 
 /*
  * hjoin_prehash_value_ok () - the value, read back from its column of the list, hashes as it does now
- *   return: true when qdata_hash_scan_value () gives the value and the one the build reads back from the list
+ *   return: true when mht_valhash () gives the value and the one the build reads back from the list
  *	     (qfile_slot_read_column_value () with the column's domain, hjoin_fetch_key () without coercion) the same
  *	     number; false for every other value
  *   v(in): the value the list's column was written from, after the write
@@ -5183,8 +5168,8 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
  *     the hash is of those bits.
  *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes
  *     and read back zero-filled into the same 17 bytes, with the precision and scale the write recorded (the
- *     value's) and as a fixed numeric (the column's precision); the hash is of the 17 bytes, normalized by the scale
- *     (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric (), qdata_hash_number ()).
+ *     value's) and as a fixed numeric (the column's precision); the hash is of the value those bytes and that scale
+ *     make (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric (), numeric_hash ()).
  *   - CHAR, VARCHAR with the column's collation: the bytes are written as the value holds them after the write (a
  *     CHAR is padded in the value itself first), compressed or not, and read back as those bytes with the column's
  *     collation; the hash is of those bytes, by the collation.

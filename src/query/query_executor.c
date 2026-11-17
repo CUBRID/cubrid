@@ -23365,12 +23365,12 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
       const DB_VALUE *value = &values[i];
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       sum = sum * 31 + (unsigned int) type;
-      /* the types mht_get_hash_number hashes; it aborts on another (an SA client binds an object as its MOP), which
-       * counts by its type */
+      /* the types mht_valhash hashes by value; another (an SA client binds an object as its MOP) counts by
+       * its type */
       const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
 			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
 			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
-      sum = sum * 31 + (DB_IS_NULL (value) || !hashed ? 1 : mht_get_hash_number (UINT_MAX, value));
+      sum = sum * 31 + (DB_IS_NULL (value) || !hashed ? 1 : mht_valhash (value, UINT_MAX));
     }
   return sum;
 }
@@ -25686,40 +25686,13 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD *
 static unsigned int
 qexec_connect_by_hash_column (const DB_VALUE * dbval)
 {
-  DB_VALUE zero;
-
   if (DB_IS_NULL (dbval))
     {
       return 0;
     }
 
-  /* mht_get_hash_number hashes the raw bits, so -0.0 and +0.0 must be folded first */
   switch (DB_VALUE_DOMAIN_TYPE (dbval))
     {
-    case DB_TYPE_FLOAT:
-      if (db_get_float (dbval) == 0.0f)
-	{
-	  db_make_float (&zero, 0.0f);
-	  return mht_get_hash_number (UINT_MAX, &zero);
-	}
-      break;
-
-    case DB_TYPE_DOUBLE:
-      if (db_get_double (dbval) == 0.0)
-	{
-	  db_make_double (&zero, 0.0);
-	  return mht_get_hash_number (UINT_MAX, &zero);
-	}
-      break;
-
-    case DB_TYPE_MONETARY:
-      if (db_get_monetary (dbval)->amount == 0.0)
-	{
-	  db_make_monetary (&zero, db_get_monetary (dbval)->type, 0.0);
-	  return mht_get_hash_number (UINT_MAX, &zero);
-	}
-      break;
-
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -25736,7 +25709,7 @@ qexec_connect_by_hash_column (const DB_VALUE * dbval)
       break;
     }
 
-  return mht_get_hash_number (UINT_MAX, dbval);
+  return mht_valhash (dbval, UINT_MAX);
 }
 
 /*

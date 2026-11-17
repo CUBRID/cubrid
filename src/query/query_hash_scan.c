@@ -117,8 +117,6 @@ typedef enum
   FHS_ERROR_OCCURRED
 } FHS_RESULT;
 
-static unsigned int qdata_hash_bytes (const void *bytes, size_t size);
-static bool qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key);
 
 static void inline fhs_read_tftid_from_record (char *record_p, TFTID * tftid_p);
 static void inline fhs_read_key_from_record (char *record_p, int *key);
@@ -201,101 +199,6 @@ static int fhs_get_pseudo_key (THREAD_ENTRY * thread_p, RECDES * recdes_p, FHS_H
 /****************************************************************************/
 /************************ file hash structure *******************************/
 /****************************************************************************/
-
-/*
- * qdata_hash_bytes () - the FNV-1a hash of bytes
- *   returns: hash value
- *   bytes(in):
- *   size(in): size in bytes
- */
-static unsigned int
-qdata_hash_bytes (const void *bytes, size_t size)
-{
-  const unsigned char *byte_p = (const unsigned char *) bytes;
-  unsigned int hash_key = MHT_FNV_OFFSET;
-  size_t i;
-
-  for (i = 0; i < size; i++)
-    {
-      hash_key = (hash_key ^ byte_p[i]) * MHT_FNV_PRIME;
-    }
-  return hash_key;
-}
-
-/*
- * qdata_hash_number () - the hash of a NUMERIC, FLOAT, DOUBLE or MONETARY value: values the comparison finds equal
- *			  hash alike, which mht_get_hash_number () does not do for a fixed NUMERIC 1.0 and 1.00, or for
- *			  0.0 and -0.0
- *   returns: false if the value is of another type or has no such hash: a NaN compares equal to every value (MR_CMP)
- *   value(in): a value, not NULL
- *   hash_key(out): its hash, its bits mixed by mht_mix_hash () as a string's are
- */
-static bool
-qdata_hash_number (const DB_VALUE * value, unsigned int *hash_key)
-{
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
-  unsigned int tmp_hash_key;
-
-  switch (type)
-    {
-    case DB_TYPE_NUMERIC:
-      {
-	uint8_t digits[DB_NUMERIC_BUF_SIZE];
-	const void *bytes;
-	int precision, scale;
-
-	/* a float NUMERIC keeps its scale in the value, not in its domain */
-	db_get_numeric_precision_and_scale (value, &precision, &scale, NULL);
-
-	/* already normal: no scale, or a negative scale at the full precision */
-	if (scale == 0 || (scale < 0 && precision == DB_MAX_NUMERIC_PRECISION))
-	  {
-	    bytes = db_locate_numeric (value);
-	  }
-	else
-	  {
-	    /* the digits without trailing zeros and the scale they leave (1.00 as 1 and 0, 0.10 as 1 and 1), or with a
-	     * negative scale's zeros appended up to the full precision, as mht_get_hash_number () does for a float
-	     * NUMERIC */
-	    scale =
-	      float_numeric_normalize_for_hash ((DB_C_NUMERIC) db_locate_numeric (value), digits, precision, scale);
-	    bytes = digits;
-	  }
-
-	tmp_hash_key = qdata_hash_bytes (bytes, DB_NUMERIC_BUF_SIZE);
-
-	/* the scale left tells 0.1 from 0.01, whose digits are the same 1 */
-	tmp_hash_key ^= ((unsigned int) scale * MHT_KNUTH_MULTIPLIER);
-	break;
-      }
-
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_MONETARY:
-      {
-	/* MONETARY compares its amount only (mr_cmpval_money ()) */
-	double d = (type == DB_TYPE_DOUBLE) ? db_get_double (value)
-	  : (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_monetary (value)->amount;
-
-	/* a NaN */
-	if (d != d)
-	  {
-	    return false;
-	  }
-
-	/* -0.0 compares equal to 0.0 */
-	d = (d == 0) ? 0 : d;
-	tmp_hash_key = qdata_hash_bytes (&d, sizeof (d));
-	break;
-      }
-
-    default:
-      return false;
-    }
-
-  *hash_key = mht_mix_hash (tmp_hash_key);
-  return true;
-}
 
 /*
  * qdata_hash_scan_method () - the method a hash table over a list's tuples takes within mem_limit
@@ -428,31 +331,6 @@ qdata_free_hscan_key (cubthread::entry * thread_p, HASH_SCAN_KEY * key, int val_
 
   /* free structure */
   db_private_free (thread_p, key);
-}
-
-/*
- * qdata_hash_scan_value () - the hash of a key value: values the key comparison finds equal hash alike. A NUMERIC,
- *			      FLOAT, DOUBLE or MONETARY is hashed by qdata_hash_number (), others by
- *			      mht_get_hash_number ()
- *   returns: hash value
- *   value(in): key value
- *   ht_size(in): hash table size (in buckets)
- *
- * Also the aggregate key's hash (qdata_hash_agg_hkey ()): equal keys hash alike there too, but for a JSON key,
- * which hashes its text while its comparison takes a scalar's value (true as 'true', -0.0 as 0.0: mr_cmpval_json ()).
- */
-unsigned int
-qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
-{
-  unsigned int hash_key;
-
-  if (value != NULL && !DB_IS_NULL (value) && qdata_hash_number (value, &hash_key))
-    {
-      return hash_key % ht_size;
-    }
-
-  /* NULL, a NaN, and the types other than NUMERIC, FLOAT, DOUBLE and MONETARY */
-  return mht_get_hash_number (ht_size, value);
 }
 
 /*

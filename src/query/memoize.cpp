@@ -464,7 +464,7 @@ namespace memoize
     for (DB_VALUE dbval : k->m_values)
       {
 	hash = ROTL32 (hash, 13);
-	hash ^= mht_get_hash_number (UINT_MAX, &dbval);
+	hash ^= mht_valhash (&dbval, UINT_MAX);
       }
     return hash;
   }

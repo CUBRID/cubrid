@@ -27,7 +27,7 @@
 #include "system.h"		/* HL_HEAPID */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "memory_hash.h"	/* ROTL32 */
+#include "memory_hash.h"	/* ROTL32, mht_valhash */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 #define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
@@ -144,7 +144,6 @@ void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val
 
 int qdata_build_hscan_key (THREAD_ENTRY * thread_p, VAL_DESCR * vd, REGU_VARIABLE_LIST regu_list, HASH_SCAN_KEY * key);
 unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_METHOD hash_method);
-unsigned int qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size);
 STATIC_INLINE unsigned int qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value,
 						     unsigned int ht_size) __attribute__ ((ALWAYS_INLINE));
 unsigned int qdata_hash_scan_key_finish (unsigned int hash_val, HASH_METHOD hash_method);
@@ -190,7 +189,7 @@ extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 STATIC_INLINE unsigned int
 qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)
 {
-  unsigned int value_hash = qdata_hash_scan_value (value, ht_size);
+  unsigned int value_hash = mht_valhash (value, ht_size);
 
   hash_val = ROTL32 (hash_val, 13) ^ value_hash;
   return (hash_val != 0) ? hash_val : value_hash;

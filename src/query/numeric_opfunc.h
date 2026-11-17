@@ -34,6 +34,7 @@
 #include "error_manager.h"
 #include "byte_order.h"
 #include "query_sum_accumulator.h"
+#include "porting_inline.hpp"
 
 #include <string.h>
 
@@ -115,6 +116,13 @@ typedef enum
  */
 #define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 
+/*
+ * NUMERIC_SCALE_COUNT:
+ * The number of scales a NUMERIC value can have, DB_MIN_NUMERIC_SCALE to DB_MAX_NUMERIC_SCALE.
+ *   = 252 - (-214) + 1 = 467
+ */
+#define NUMERIC_SCALE_COUNT (DB_MAX_NUMERIC_SCALE - DB_MIN_NUMERIC_SCALE + 1)
+
 #define SECONDS_OF_ONE_DAY      86400	/* 24 * 60 * 60 */
 #define MILLISECONDS_OF_ONE_DAY 86400000	/* 24 * 60 * 60 * 1000 */
 
@@ -122,6 +130,10 @@ typedef enum
 
 #define NUMERIC_VALUE_SIGN_BIT_MASK 0x80
 #define NUMERIC_HEADER_SCALE_SIGN_BIT_MASK 0x80
+
+/* the Mersenne prime 2^61 - 1 of numeric_hash (): as 2^61 is 1 mod it, a reduction takes shifts and adds,
+ * no division */
+#define NUMERIC_HASH_PRIME ((1ULL << 61) - 1)
 
 #define FIXED_TO_FLOAT_NUMERIC(value) \
   do { \
@@ -138,6 +150,16 @@ typedef enum
     (value)->data.num.header.precision = 0; \
     (value)->data.num.header.scale = 0; \
   } while(0)
+
+/* 10^-scale mod NUMERIC_HASH_PRIME for every scale, in a struct for numeric_hash_make_inverse_pow10_table () to return:
+ * a constexpr function cannot return an array */
+typedef struct numeric_hash_inverse_pow10_table NUMERIC_HASH_INVERSE_POW10_TABLE;
+struct numeric_hash_inverse_pow10_table
+{
+  uint64_t value[NUMERIC_SCALE_COUNT];
+};
+
+extern const NUMERIC_HASH_INVERSE_POW10_TABLE numeric_hash_inverse_pow10;
 
 /* Arithmetic routines */
 extern int numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
@@ -204,8 +226,15 @@ extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * d
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
-extern int float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale);
 extern int float_numeric_normalize_for_sort (DB_C_NUMERIC num, int scale, uint8_t * mantissa);
+
+/* NUMERIC hash */
+#if defined (__cplusplus)
+STATIC_INLINE constexpr uint64_t numeric_hash_mod (uint128_t value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE constexpr uint64_t numeric_hash_mul (uint64_t residue1, uint64_t residue2)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE uint64_t numeric_hash (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+#endif /* __cplusplus */
 
 /* Testing Routines */
 extern bool numeric_db_value_is_zero (const DB_VALUE * arg);
@@ -372,15 +401,95 @@ numeric_repr_write_disk (unsigned char *digits, const unsigned char *buf, int di
   memcpy (digits, buf + DB_NUMERIC_BUF_SIZE - digits_size, digits_size);
 }
 
-/* 32-bit fold of the whole buffer */
-static inline unsigned int
-numeric_repr_fold32 (const unsigned char *buf)
+#if defined (__cplusplus)
+/*
+ * numeric_hash_mod () - reduce a value mod NUMERIC_HASH_PRIME
+ *   return: the value mod 2^61 - 1
+ *   value(in): a value below 2^122, such as the product of two residues
+ *
+ * Note: each fold adds the bits above bit 61 to the bits below it. Two folds bring the value to at most
+ *       the prime + 1, and one subtraction below the prime.
+ */
+STATIC_INLINE constexpr uint64_t
+numeric_hash_mod (uint128_t value)
 {
-  unsigned int words[4];
-  unsigned int last = 0;
+  uint64_t residue = (uint64_t) (value & NUMERIC_HASH_PRIME) + (uint64_t) (value >> 61);
 
-  memcpy (words, buf, sizeof (words));
-  memcpy (&last, buf + 16, 1);
-  return words[0] ^ words[1] ^ words[2] ^ words[3] ^ last;
+  residue = (residue & NUMERIC_HASH_PRIME) + (residue >> 61);
+  return (residue >= NUMERIC_HASH_PRIME) ? residue - NUMERIC_HASH_PRIME : residue;
 }
+
+/*
+ * numeric_hash_mul () - multiply two residues mod NUMERIC_HASH_PRIME
+ *   return: residue1 x residue2 mod 2^61 - 1
+ *   residue1(in): a residue mod 2^61 - 1
+ *   residue2(in): a residue mod 2^61 - 1
+ */
+STATIC_INLINE constexpr uint64_t
+numeric_hash_mul (uint64_t residue1, uint64_t residue2)
+{
+  return numeric_hash_mod ((uint128_t) residue1 * residue2);
+}
+
+/*
+ * numeric_hash() - Hash a NUMERIC value
+ *   return: the value mod 2^61 - 1, its bits not mixed
+ *   value(in) : a NUMERIC value, fixed or float
+ *
+ * Step 1: read the scale as db_get_numeric_precision_and_scale () reads it: a float NUMERIC keeps it in the value,
+ *         a fixed one in its domain. That function cannot be called here,
+ *         as dbtype.h includes this header before dbtype_function.i defines it.
+ * Step 2: read the magnitude, a byte then two words, big end first.
+ * Step 3: reduce the magnitude mod the prime 2^61 - 1, 2^128 being 64 and 2^64 being 8 mod it (numeric_hash_mod ()).
+ * Step 4: divide by 10^scale, multiplying by 10^-scale mod the prime (numeric_hash_inverse_pow10).
+ * Step 5: negate a negative value: -x is the prime less x, so 1.5 and -1.5 hash apart and a zero keeps one hash.
+ *
+ * Note:
+ *   - The value is its magnitude x 10^-scale, and 10 has an inverse mod the prime: equivalent numeric values
+ *     (e.g., 1.5 as 15 at scale 1 and 1.50 as 150 at scale 2) give one residue,
+ *     whatever their precision and scale, with no zero stripped or appended.
+ *   - Unlike float_numeric_normalize_for_sort (), the hash keeps no order.
+ */
+STATIC_INLINE uint64_t
+numeric_hash (const DB_VALUE * value)
+{
+  const DB_C_NUMERIC num = db_locate_numeric (value);
+  uint64_t high, low, residue;
+  int scale;
+
+  /* Step 1: read the scale: a float NUMERIC keeps it in the value, a fixed one in its domain */
+  scale = (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION
+	   ? value->data.num.header.scale : value->domain.numeric_info.scale);
+  assert (scale >= DB_MIN_NUMERIC_SCALE && scale <= DB_MAX_NUMERIC_SCALE);
+
+  /* Step 2: read the magnitude, a byte then two words, big end first. The buffer (DB_NUMERIC_BUF_SIZE, 17 bytes)
+   * holds the magnitude unsigned, the sign kept in the domain (Step 5):
+   *   num[0]         bits 128 - 135
+   *   num[1 - 8]     high, bits 64 - 127
+   *   num[9 - 16]    low, bits 0 - 63
+   * so the magnitude is num[0] x 2^128 + high x 2^64 + low */
+  memcpy (&high, num + 1, sizeof (high));
+  memcpy (&low, num + 1 + sizeof (high), sizeof (low));
+  high = NUMERIC_BSWAP64 (high);
+  low = NUMERIC_BSWAP64 (low);
+
+  /* Step 3: reduce the magnitude mod the prime, 2^128 being 64 and 2^64 being 8 mod it */
+  residue = numeric_hash_mod ((uint128_t) num[0] * 64 + (uint128_t) high * 8 + low);
+
+  /* Step 4: divide by 10^scale, multiplying by 10^-scale mod the prime */
+  if (scale != 0)
+    {
+      residue = numeric_hash_mul (residue, numeric_hash_inverse_pow10.value[scale - DB_MIN_NUMERIC_SCALE]);
+    }
+
+  /* Step 5: negate a negative value */
+  if (value->domain.numeric_info.is_value_negative && residue != 0)
+    {
+      residue = NUMERIC_HASH_PRIME - residue;
+    }
+
+  return residue;
+}
+#endif /* __cplusplus */
+
 #endif /* _NUMERIC_OPFUNC_H_ */

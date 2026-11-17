@@ -38,7 +38,6 @@
 #include "expr_batch.h"
 #include "expr_compile.h"
 #include "query_executor.h"
-#include "query_hash_scan.h"	// qdata_hash_scan_value
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
@@ -3483,7 +3482,7 @@ qdata_key_sketch_estimate (const unsigned char *regs)
  *   ht_size(in): hash table size (in buckets)
  *
  * Keys the comparison finds equal hash alike, but for a JSON key: a NUMERIC 1.0 hashes as 1.00, and a FLOAT, DOUBLE
- * or MONETARY -0 as +0 (qdata_hash_scan_value ()). The hash merge of the GROUP BY leftovers (qexec_gby_hash_merge ())
+ * or MONETARY -0 as +0 (mht_valhash ()). The hash merge of the GROUP BY leftovers (qexec_gby_hash_merge ())
  * meets two groups only when their hashes are equal, and writes them out without the sort that brings equal keys
  * together. A JSON key hashes its text while its comparison takes a scalar's value (true as 'true', -0.0 as 0.0:
  * mr_cmpval_json ()), so the merge leaves the JSON keys to the sort (qexec_gby_keys_hash_as_compared ()).
@@ -3499,7 +3498,7 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
   for (i = 0; i < ckey->val_count; i++)
     {
       hash_val = ROTL32 (hash_val, 13);
-      hash_val ^= qdata_hash_scan_value (ckey->values[i], ht_size);
+      hash_val ^= mht_valhash (ckey->values[i], ht_size);
     }
 
   return hash_val;

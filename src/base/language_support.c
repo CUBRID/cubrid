@@ -305,7 +305,8 @@ static unsigned int lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, con
 static unsigned int lang_mht2str_byte (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
 static unsigned int lang_mht2str_byte_en_cs (const LANG_COLLATION * lang_coll, const unsigned char *str,
 					     const int size);
-static unsigned int lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_upper);
+STATIC_INLINE unsigned int lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_upper)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE UINT64 lang_hash_u64_add (UINT64 hash_key, UINT64 chunk, bool nul_as_space, bool to_upper)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE UINT64 lang_hash_u64_nul_as_space (UINT64 chunk) __attribute__ ((ALWAYS_INLINE));
@@ -345,8 +346,8 @@ static void lang_initloc_en_iso88591 (LANG_LOCALE_DATA * ld);
 static void lang_initloc_en_binary (LANG_LOCALE_DATA * ld);
 
 /*
- * The hash of a string key, from its collation's mht2str (by mht_get_hash_number ()): strings the collation's fastcmp
- * finds equal hash alike.
+ * The hash of a string key, from its collation's mht2str (by mht_valhash (), which mixes it): strings the collation's
+ * fastcmp finds equal hash alike.
  *
  *   collation            SQL name        fastcmp                   mht2str                    hashes
  *   -------------------  --------------  ------------------------  -------------------------  ------------------------
@@ -3297,7 +3298,6 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
  *
  * Step 1: the weight of the next code point.
  * Step 2: hash the weight, holding a weight 0 back.
- * Step 3: mix the bits (mht_mix_hash ()).
  */
 static unsigned int
 lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -3325,8 +3325,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
       lang_hash_weight (&hash_key, &zeros, weight, true);
     }
 
-  /* Step 3: mix the bits */
-  return mht_mix_hash (hash_key);
+  return hash_key;
 }
 
 /*
@@ -3343,7 +3342,6 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
  *
  * Step 1: the weight of the next contraction or code point.
  * Step 2: hash the weight, holding a weight 0 back.
- * Step 3: mix the bits (mht_mix_hash ()).
  */
 static unsigned int
 lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -3365,8 +3363,7 @@ lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char
       lang_hash_weight (&hash_key, &zeros, weight, true);
     }
 
-  /* Step 3: mix the bits */
-  return mht_mix_hash (hash_key);
+  return hash_key;
 }
 
 /*
@@ -4540,7 +4537,6 @@ lang_strmatch_utf8_uca_w_coll_data (const COLL_DATA * coll_data, bool is_match, 
  * Step 1: hash levels 1, 3 and 4, and a forward level 2, from the start.
  * Step 2: hash a backwards level 2 from the end.
  * Step 3: combine the levels' hashes.
- * Step 4: mix the bits (mht_mix_hash ()).
  */
 static unsigned int
 lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -4549,7 +4545,6 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
   const unsigned char *str_end = str + size;
   unsigned char *str_next;
   unsigned int hash_key[4] = { MHT_FNV_OFFSET, MHT_FNV_OFFSET, MHT_FNV_OFFSET, MHT_FNV_OFFSET };	/* per level */
-  unsigned int tmp_hash_key;	/* the levels' hashes combined */
   int zeros[4] = { 0, 0, 0, 0 };	/* weights 0 of spaces not hashed yet */
   bool is_space;		/* the character is a space: its weights 0 are held, not skipped */
 
@@ -4650,11 +4645,7 @@ lang_mht2str_utf8_exp (const LANG_COLLATION * lang_coll, const unsigned char *st
     }
 
   /* Step 3: combine the levels' hashes */
-  tmp_hash_key = ((((hash_key[0] ^ hash_key[1]) * MHT_FNV_PRIME ^ hash_key[2]) * MHT_FNV_PRIME) ^ hash_key[3])
-    * MHT_FNV_PRIME;
-
-  /* Step 4: mix the bits */
-  return mht_mix_hash (tmp_hash_key);
+  return ((((hash_key[0] ^ hash_key[1]) * MHT_FNV_PRIME ^ hash_key[2]) * MHT_FNV_PRIME) ^ hash_key[3]) * MHT_FNV_PRIME;
 }
 
 /*
@@ -5875,10 +5866,9 @@ lang_mht2str_byte_en_cs (const LANG_COLLATION * lang_coll, const unsigned char *
  * Step 2: hash each 8 bytes (lang_hash_u64_add ()).
  * Step 3: hash the bytes left the same way, padded with NULs to 8 bytes. Equal strings have the same size left, so
  *         their padding is the same too.
- * Step 4: mix the bits (mht_mix_hash64 ()). The low bits of Step 2 still follow a pattern of the input, and the hash
- *         returned is the low 32 bits.
+ * Step 4: fold the 64 bits into the 32 bits returned.
  */
-static unsigned int
+STATIC_INLINE unsigned int
 lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_upper)
 {
   UINT64 hash_key;
@@ -5907,8 +5897,8 @@ lang_hash_bytes (const unsigned char *str, int size, bool nul_as_space, bool to_
       hash_key = lang_hash_u64_add (hash_key, chunk, nul_as_space, to_upper);
     }
 
-  /* Step 4: mix the bits */
-  return (unsigned int) mht_mix_hash64 (hash_key);
+  /* Step 4: fold the 64 bits into the 32 bits returned */
+  return (unsigned int) (hash_key ^ (hash_key >> 32));
 }
 
 /*
@@ -6647,7 +6637,6 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigne
  *
  * Step 1: the weight of the next byte.
  * Step 2: hash the weight, holding a weight 0 back.
- * Step 3: mix the bits (mht_mix_hash ()).
  */
 static unsigned int
 lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size)
@@ -6667,8 +6656,7 @@ lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, con
       lang_hash_weight (&hash_key, &zeros, weight, true);
     }
 
-  /* Step 3: mix the bits */
-  return mht_mix_hash (hash_key);
+  return hash_key;
 }
 
 /*
