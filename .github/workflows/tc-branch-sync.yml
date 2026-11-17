@@ -115,11 +115,11 @@ jobs:
           # TC Branch Finalize deleted the branch when this PR closed, but its closed TC PR still holds the change.
           if [ "${EVENT_ACTION}" = reopened ]; then
             LAST=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${BRANCH_NAME}" --state all \
-                     --json number,state,headRefOid,isCrossRepository \
+                     --json number,state,headRefOid,baseRefName,isCrossRepository \
                      --jq '[.[] | select(.isCrossRepository | not)] | max_by(.number) // empty
-                           | select(.state == "CLOSED") | "\(.number) \(.headRefOid)"')
+                           | select(.state == "CLOSED") | "\(.number) \(.headRefOid) \(.baseRefName)"')
             if [ -n "${LAST}" ]; then
-              read -r TC_PR TC_SHA <<< "${LAST}"
+              read -r TC_PR TC_SHA TC_PR_BASE <<< "${LAST}"
               if ! REF_ERR=$(gh api "repos/${OWNER}/${TC_REPO}/git/ref/heads/${BRANCH_NAME}" --silent 2>&1); then
                 if [[ "${REF_ERR}" != *"HTTP 404"* ]]; then
                   echo "::error::Failed to check branch '${BRANCH_NAME}' in ${TC_REPO}: ${REF_ERR}"
@@ -131,7 +131,10 @@ jobs:
               if gh pr reopen "${TC_PR}" --repo "${OWNER}/${TC_REPO}"; then
                 echo "::notice::Reopened TC PR #${TC_PR} on '${BRANCH_NAME}' at ${TC_SHA}"
               else
-                echo "::warning::Could not reopen TC PR #${TC_PR} in ${TC_REPO}. A new TC PR opens on '${BRANCH_NAME}' instead."
+                # The engine base can be missing in the TC repo, so the new TC PR takes the closed one's base.
+                echo "::warning::Could not reopen TC PR #${TC_PR} in ${TC_REPO}. A new TC PR opens on '${BRANCH_NAME}' against '${TC_PR_BASE}' instead."
+                echo "tc_base_ref=${TC_PR_BASE}" >> "${GITHUB_OUTPUT}"
+                exit 0
               fi
             fi
           fi
