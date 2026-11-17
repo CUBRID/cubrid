@@ -80,6 +80,15 @@ namespace cubpl
 	  }
 	CHECK_NULL_AND_FREE (owner, arg_default_value_size);
 	CHECK_NULL_AND_FREE (owner, arg_default_value);
+	if (arg_default_expr)
+	  {
+	    for (int i = 0; i < arg_size; i++)
+	      {
+		CHECK_NULL_AND_FREE (owner, arg_default_expr[i]);
+	      }
+	  }
+	CHECK_NULL_AND_FREE (owner, arg_default_expr_size);
+	CHECK_NULL_AND_FREE (owner, arg_default_expr);
       }
   }
 
@@ -137,13 +146,18 @@ namespace cubpl
 	arg_type = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
 	arg_default_value = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
+	arg_default_expr_size = (int *) db_private_alloc (NULL, (num_args) * sizeof (int));
+	arg_default_expr = (char **) db_private_alloc (NULL, (num_args) * sizeof (char *));
 
-	if (arg_mode && arg_type && arg_default_value_size && arg_default_value)
+	if (arg_mode && arg_type && arg_default_value_size && arg_default_value && arg_default_expr_size
+	    && arg_default_expr)
 	  {
 	    memset (arg_mode, 0x00, (num_args * sizeof (int)));
 	    memset (arg_type, 0x00, (num_args * sizeof (int)));
 	    memset (arg_default_value_size, 0x00, (num_args * sizeof (int)));
 	    memset (arg_default_value, 0x00, (num_args * sizeof (char *)));
+	    memset (arg_default_expr_size, 0x00, (num_args * sizeof (int)));
+	    memset (arg_default_expr, 0x00, (num_args * sizeof (char *)));
 	  }
 	else
 	  {
@@ -157,6 +171,8 @@ namespace cubpl
 	arg_type = nullptr;
 	arg_default_value_size = nullptr;
 	arg_default_value = nullptr;
+	arg_default_expr_size = nullptr;
+	arg_default_expr = nullptr;
       }
   }
 

@@ -68,6 +68,8 @@
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
+#include "execute_schema.h"
+#include "base64.h"
 
 #define PT_NODE_SP_NAME(node) \
   (((node)->info.sp.name == NULL) ? "" : \
@@ -861,12 +863,21 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   /* call sp */
   std::vector <std::reference_wrapper <DB_VALUE>> args;
   cubpl::pl_signature sig;
+  bool reads_statement_clock = false;
   error = jsp_make_pl_signature (parser, statement, NULL, sig);
   if (error == NO_ERROR)
     {
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig);
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, &reads_statement_clock);
+      if (default_next_node_list != NULL && reads_statement_clock)
+	{
+	  // the defaults are evaluated here, and the statement did not ask for the clock itself
+	  error = db_ensure_server_info (parser, SI_SYS_DATETIME);
+	}
       statement->info.method_call.arg_list = parser_append_node (default_next_node_list,
 					     statement->info.method_call.arg_list);
+    }
+  if (error == NO_ERROR)
+    {
       error = jsp_evaluate_arguments (parser, statement, args);
       if (pt_has_error (parser))
 	{
@@ -1229,7 +1240,32 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       // default value
       // coerciable is already checked in semantic_check
       PT_NODE *default_value = p->info.sp_param.default_value;
-      if (default_value)
+      if (default_value && PT_IS_RESIDUAL_DEFAULT (default_value))
+	{
+	  // evaluated at each call: shown by its text, restored from its Compact DEFAULT Tree
+	  DB_DEFAULT_EXPR default_expr;
+	  unsigned char *encoded = NULL;
+	  int encoded_len = 0;
+
+	  err = do_build_default_expr (parser, default_value, &default_expr);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	  err = base64_encode ((const unsigned char *) default_expr.default_expr_tree_stream,
+			       default_expr.default_expr_tree_stream_size, &encoded, &encoded_len);
+	  do_free_default_expr_streams (&default_expr);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	  arg_info.default_expr.assign ((const char *) encoded, encoded_len);
+	  db_private_free_and_init (NULL, encoded);
+
+	  db_make_string (&arg_info.default_value, ws_copy_string (default_expr.default_expr_text));
+	  arg_info.is_optional = true;
+	}
+      else if (default_value)
 	{
 	  bool is_null;
 	  std::string default_value_str;
@@ -2573,6 +2609,25 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 	  {
 	    sig.arg.arg_default_value[i] = db_private_strndup (NULL, default_value_str, default_value_size);
 	  }
+
+	const DB_VALUE &default_expr = entry.vals[INDEX_SP_ARG_ATTR_DEFAULT_EXPR];
+	if (default_value_size != PL_ARG_DEFAULT_NONE && !DB_IS_NULL (&default_expr))
+	  {
+	    // the default is an expression: default_value only shows its text
+	    unsigned char *decoded = NULL;
+	    int decoded_size = 0;
+
+	    if (base64_decode ((const unsigned char *) db_get_string (&default_expr), db_get_string_size (&default_expr),
+			       &decoded, &decoded_size) != NO_ERROR || decoded_size <= 0)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1,
+			db_get_string (&entry.vals[INDEX_SP_ARG_ATTR_ARG_NAME]));
+		error = ER_SM_INVALID_DEFAULT_EXPR_STREAM;
+		goto exit_on_error;
+	      }
+	    sig.arg.arg_default_expr[i] = (char *) decoded;
+	    sig.arg.arg_default_expr_size[i] = decoded_size;
+	  }
       }
   }
 
@@ -2606,13 +2661,43 @@ check_execute_authorization (const MOP sp_obj, const DB_AUTH au_type)
   return ER_FAILED;
 }
 
+/*
+ * jsp_get_default_expr_node_list () - the arguments a call left out, from the defaults of their parameters
+ *   return: argument list, or NULL (with a parser error when it failed)
+ *   parser(in): parser context
+ *   sig(in): signature carrying the defaults (jsp_make_pl_signature)
+ *   reads_statement_clock(out): set when a default reads the statement clock; may be NULL
+ */
 PT_NODE *
-jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig)
+jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig, bool *reads_statement_clock)
 {
   PT_NODE *default_next_node_list = NULL;
-  PT_NODE *default_next_node = NULL;
+  PT_NODE *default_next_node;
   for (int i = 0; i < sig.arg.arg_size; i++)
     {
+      default_next_node = NULL;
+      if (sig.arg.arg_default_expr_size[i] > 0)
+	{
+	  // an expression, restored as it was type checked when the routine was created
+	  int si_requirement = PT_SI_NONE;
+
+	  default_next_node = pt_compact_default_tree_from_stream (parser, sig.arg.arg_default_expr[i],
+			      sig.arg.arg_default_expr_size[i]);
+	  if (default_next_node == NULL
+	      || pt_compact_default_tree_properties (sig.arg.arg_default_expr[i], sig.arg.arg_default_expr_size[i], NULL,
+		  &si_requirement) != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "restore the DEFAULT expression of a parameter");
+	      return NULL;
+	    }
+	  if (reads_statement_clock != NULL && (si_requirement & PT_SI_SYS_DATETIME) != 0)
+	    {
+	      *reads_statement_clock = true;
+	    }
+	  default_next_node_list = parser_append_node (default_next_node, default_next_node_list);
+	  continue;
+	}
+
       if (sig.arg.arg_default_value_size[i] == PL_ARG_DEFAULT_NULL)
 	{
 	  default_next_node = pt_make_string_value (parser, NULL);

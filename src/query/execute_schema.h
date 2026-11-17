@@ -103,6 +103,8 @@ extern int do_create_local (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NO
 			    DB_QUERY_TYPE * create_select_columns);
 extern int do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node);
 extern int do_check_rows_for_null (MOP class_mop, const char *att_name, bool * has_nulls);
+extern int do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest);
+extern void do_free_default_expr_streams (DB_DEFAULT_EXPR * dest);
 
 extern int do_recreate_func_index_constr (PARSER_CONTEXT * parser, SM_CONSTRAINT_INFO * constr,
 					  SM_FUNCTION_INFO * func_index_info, PT_NODE * alter, const char *src_cls_name,

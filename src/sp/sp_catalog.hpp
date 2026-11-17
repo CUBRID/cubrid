@@ -71,6 +71,7 @@ struct sp_arg_info
   DB_VALUE default_value;
   bool is_optional;
   std::string comment;
+  std::string default_expr; // Compact DEFAULT Tree in Base64; empty unless the default is evaluated at each call
 
   sp_arg_info (const std::string& s_name) 
   : sp_name {s_name}
@@ -82,6 +83,7 @@ struct sp_arg_info
   , default_value {}
   , is_optional {false}
   , comment {}
+  , default_expr {}
   {}
 
   sp_arg_info ()

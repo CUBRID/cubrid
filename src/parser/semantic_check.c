@@ -160,7 +160,19 @@ static void pt_resolve_delete_external (PARSER_CONTEXT * parser, PT_NODE * delet
 static PT_NODE *pt_make_default_value (PARSER_CONTEXT * parser, const char *class_name, const char *attr_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static void pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter);
-static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, bool class_attribute);
+/* what a DEFAULT clause is written for, which decides the rules pt_check_data_default applies */
+typedef enum
+{
+  PT_DEFAULT_OF_COLUMN,
+  PT_DEFAULT_OF_CLASS_ATTRIBUTE,	/* sets the one value of the attribute at DDL time, like a SHARED value */
+  PT_DEFAULT_OF_SP_PARAM	/* a column DEFAULT, but a bare expression is taken for the constant it folds to */
+} PT_DEFAULT_OWNER;
+
+/* the owner of the DEFAULT of an attribute definition (a) */
+#define PT_ATTR_DEFAULT_OWNER(a) \
+  ((a)->info.attr_def.attr_type == PT_META_ATTR ? PT_DEFAULT_OF_CLASS_ATTRIBUTE : PT_DEFAULT_OF_COLUMN)
+
+static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_DEFAULT_OWNER owner);
 static PT_NODE *pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
@@ -4171,6 +4183,7 @@ pt_trim_whitespace_edges (const char **str, size_t * len)
  *   return: parser-allocated normalized text (NULL on failure)
  *   parser(in): parser context
  *   node(in): the DEFAULT expression (pre-fold)
+ *   wrap(in): false to leave the text without the outer parentheses
  *
  * The parser printer parenthesizes binary operators ("1+1" prints as "(1+1)")
  * but not function calls or unary expressions, so normalize to a single
@@ -4179,7 +4192,7 @@ pt_trim_whitespace_edges (const char **str, size_t * len)
  * text is already a single fully-parenthesized group.
  */
 static char *
-pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node, bool wrap)
 {
   const char *printed;
   size_t len, i;
@@ -4247,6 +4260,12 @@ pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
   if (result == NULL)
     {
       return NULL;
+    }
+  if (!wrap)
+    {
+      memcpy (result, printed, len);
+      result[len] = '\0';
+      return result;
     }
   result[0] = '(';
   memcpy (result + 1, printed, len);
@@ -4387,16 +4406,56 @@ pt_is_bare_legacy_default_form (const PT_NODE * node)
 }
 
 /*
+ * pt_is_constant_expr_form () - whether an expression is made of operators, functions and literals only, so that
+ *	constant folding may reduce it to a literal
+ *   return: true if so
+ *   node(in): an untyped expression (a single value, not a list)
+ */
+static bool
+pt_is_constant_expr_form (const PT_NODE * node)
+{
+  const PT_NODE *arg;
+
+  if (node == NULL)
+    {
+      return true;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+      return true;
+
+    case PT_EXPR:
+      return (pt_is_constant_expr_form (node->info.expr.arg1) && pt_is_constant_expr_form (node->info.expr.arg2)
+	      && pt_is_constant_expr_form (node->info.expr.arg3));
+
+    case PT_FUNCTION:
+      for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+	{
+	  if (!pt_is_constant_expr_form (arg))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
  * pt_check_data_default () - checks data_default for semantic errors
  *
  * result	    	 : modified data_default
  * parser(in)	    	 : parser context
  * data_default_list(in) : data default node
- * class_attribute(in)	 : the DEFAULT of a class attribute, which sets the one value of the attribute at DDL time
- *			   like a SHARED value, so the column DEFAULT rules do not apply to it
+ * owner(in)		 : what the DEFAULT is written for.  The column DEFAULT rules do not apply to a class attribute.
+ *			   A stored procedure parameter follows them, except for its bare expressions.
  */
 static PT_NODE *
-pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, bool class_attribute)
+pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_DEFAULT_OWNER owner)
 {
   PT_NODE *result;
   PT_NODE *default_value;
@@ -4409,6 +4468,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
   char *edl_text;
   PT_NODE *unclassified_node;
   bool column_rules;
+  bool bare_constant;
   bool is_expr_default;
   int held_do_not_fold;
 
@@ -4451,8 +4511,20 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
        * its text and volatility set. */
       expr_vol = data_default->info.data_default.expr_volatility;
       edl_text = data_default->info.data_default.expr_text;
-      column_rules = (data_default->info.data_default.shared == PT_DEFAULT && !class_attribute
+      column_rules = (data_default->info.data_default.shared == PT_DEFAULT && owner != PT_DEFAULT_OF_CLASS_ATTRIBUTE
 		      && expr_vol == PT_VOLATILITY_UNSET);
+
+      /* The bare expression of a parameter DEFAULT, when it is neither a literal nor a legacy form, is taken for the
+       * constant it folds to, whatever its operators: what earlier versions stored, and what their dump writes.
+       * One that does not fold needs parentheses, and then follows the column rules. */
+      bare_constant = (owner == PT_DEFAULT_OF_SP_PARAM && column_rules && default_value != NULL
+		       && PT_IS_EXPR_NODE (default_value) && default_value->info.expr.paren_type == 0
+		       && !pt_is_bare_legacy_default_form (default_value)
+		       && !pt_is_signed_numeric_literal (default_value) && pt_is_constant_expr_form (default_value));
+      if (bare_constant)
+	{
+	  column_rules = false;
+	}
 
       /* a bare (non-parenthesized) column DEFAULT expression is allowed only for the legacy whitelist forms and
        * literals (a signed numeric literal included); anything else needs parentheses */
@@ -4484,7 +4556,11 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
 	    }
 
 	  is_expr_default = true;
-	  edl_text = pt_default_expr_normalized_text (parser, default_value);
+	  /* a parameter DEFAULT is shown as it was written: a bare legacy form without the parentheses */
+	  edl_text = pt_default_expr_normalized_text (parser, default_value,
+						      !(owner == PT_DEFAULT_OF_SP_PARAM
+							&& PT_IS_EXPR_NODE (default_value)
+							&& default_value->info.expr.paren_type == 0));
 
 	  /* the persisted text surfaces through catalog columns declared as
 	   * VARCHAR (DB_MAX_DEFAULT_EXPR_LENGTH); a longer one would be
@@ -4524,6 +4600,11 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, boo
 	  data_default = result;
 
 	  default_value = data_default->info.data_default.default_value;
+	  if (bare_constant && default_value->node_type != PT_VALUE)
+	    {
+	      PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_REQUIRES_PARENS);
+	      goto end;
+	    }
 	  if (held_do_not_fold >= 0)
 	    {
 	      data_default->info.data_default.expr_type = default_value->type_enum;
@@ -5433,8 +5514,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
 	{
 	  attr->info.attr_def.data_default =
-	    pt_check_data_default (parser, attr->info.attr_def.data_default,
-				   attr->info.attr_def.attr_type == PT_META_ATTR);
+	    pt_check_data_default (parser, attr->info.attr_def.data_default, PT_ATTR_DEFAULT_OWNER (attr));
 	}
       break;
 
@@ -5455,7 +5535,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       attr = alter->info.alter.alter_clause.ch_attr_def.attr_name_list;
       alter->info.alter.alter_clause.ch_attr_def.data_default_list =
 	pt_check_data_default (parser, alter->info.alter.alter_clause.ch_attr_def.data_default_list,
-			       attr != NULL && attr->info.name.meta_class == PT_META_ATTR);
+			       (attr != NULL && attr->info.name.meta_class == PT_META_ATTR
+				? PT_DEFAULT_OF_CLASS_ATTRIBUTE : PT_DEFAULT_OF_COLUMN));
 
       [[fallthrough]];
 
@@ -5494,8 +5575,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
 	  {
 	    attr->info.attr_def.data_default =
-	      pt_check_data_default (parser, attr->info.attr_def.data_default,
-				     attr->info.attr_def.attr_type == PT_META_ATTR);
+	      pt_check_data_default (parser, attr->info.attr_def.data_default, PT_ATTR_DEFAULT_OWNER (attr));
 	  }
       }
       break;
@@ -5507,8 +5587,7 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       for (attr = alter->info.alter.alter_clause.attr_mthd.attr_def_list; attr; attr = attr->next)
 	{
 	  attr->info.attr_def.data_default =
-	    pt_check_data_default (parser, attr->info.attr_def.data_default,
-				   attr->info.attr_def.attr_type == PT_META_ATTR);
+	    pt_check_data_default (parser, attr->info.attr_def.data_default, PT_ATTR_DEFAULT_OWNER (attr));
 	}
       break;
 
@@ -9344,11 +9423,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       /* a class attribute may be written in the column list */
       attr->info.attr_def.data_default =
-	pt_check_data_default (parser, attr->info.attr_def.data_default, attr->info.attr_def.attr_type == PT_META_ATTR);
+	pt_check_data_default (parser, attr->info.attr_def.data_default, PT_ATTR_DEFAULT_OWNER (attr));
     }
   for (attr = node->info.create_entity.class_attr_def_list; attr; attr = attr->next)
     {
-      attr->info.attr_def.data_default = pt_check_data_default (parser, attr->info.attr_def.data_default, true);
+      attr->info.attr_def.data_default =
+	pt_check_data_default (parser, attr->info.attr_def.data_default, PT_DEFAULT_OF_CLASS_ATTRIBUTE);
     }
 }
 
@@ -10050,7 +10130,7 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 }
 
 /*
- * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, system expressions, incoercible type
+ * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, an expression a DEFAULT may not hold, incoercible type
  *   return:  none
  *   parser(in): the parser context used to derive the statement
  *   node(in): a statement
@@ -10059,21 +10139,13 @@ static int
 pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param)
 {
   int error = NO_ERROR;
-  PT_NODE *node_ptr = NULL;
   PT_NODE *default_value_node = NULL;
   PT_NODE *default_value = NULL;
+  PT_NODE *dummy = NULL;
   const char *default_value_print = NULL;
-  DB_VALUE tmp;
-
-  /* a parameter DEFAULT is refused until it is stored as an expression, as a column DEFAULT is; the checks below
-   * are kept for that change */
-  assert (false);
-  PT_ERRORmf (parser, param->info.sp_param.default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
-	      "DEFAULT");
-  return ER_FAILED;
 
   default_value_node = param->info.sp_param.default_value =
-    pt_check_data_default (parser, param->info.sp_param.default_value, false);
+    pt_check_data_default (parser, param->info.sp_param.default_value, PT_DEFAULT_OF_SP_PARAM);
   if (pt_has_error (parser))
     {
       return ER_FAILED;
@@ -10093,38 +10165,36 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
       return ER_FAILED;
     }
 
-  /* a legacy pseudo-column form was stored by its name instead of being folded */
-  if (default_value->node_type == PT_EXPR && !pt_is_bare_legacy_default_form (default_value))
+  if (PT_IS_RESIDUAL_DEFAULT (default_value_node))
     {
-      db_make_null (&tmp);
-      pt_evaluate_tree (parser, default_value, &tmp, 1);
-      if (pt_has_error (parser))
+      /* evaluated at each call: only its type is checked here, as that of a column DEFAULT is */
+      PT_TYPE_ENUM expr_type = default_value_node->info.data_default.expr_type;
+
+      if (expr_type == PT_TYPE_NONE)
 	{
-	  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
-		      pt_short_print (parser, default_value));
-	  error = ER_FAILED;
+	  expr_type = default_value->type_enum;
 	}
-      else
+      if (!pt_is_cast_valid (expr_type, param->type_enum))
 	{
-	  parser_free_node (parser, default_value_node->info.data_default.default_value);
-	  default_value_node->info.data_default.default_value = pt_dbval_to_value (parser, &tmp);
+	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		       default_value_node->info.data_default.expr_text,
+		       pt_get_type_name (param->type_enum, param->data_type));
+	  return ER_FAILED;
 	}
-      db_value_clear (&tmp);
+      return NO_ERROR;
     }
 
-  if (error == NO_ERROR)
+  /* a literal, as written or as the expression folded to it */
+  assert (default_value->node_type == PT_VALUE);
+  dummy = parser_new_node (parser, PT_VALUE);
+  error = pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type, false);
+  parser_free_node (parser, dummy);
+  if (error != NO_ERROR)
     {
-      PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
-      error =
-	pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type, false);
-      parser_free_node (parser, dummy);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
-		       (error ==
-			ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
-	}
+      PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+		   (error ==
+		    ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		   default_value_print, pt_get_type_name (param->type_enum, param->data_type));
     }
 
   return error;

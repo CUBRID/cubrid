@@ -866,6 +866,7 @@ namespace cubschema
       {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
       {SP_ARG_ATTR_IS_OPTIONAL, "integer"}, // default_value is used only when is_optional is 1
       {SP_ARG_ATTR_COMMENT, format_varchar (1024)},
+      {SP_ARG_ATTR_DEFAULT_EXPR, format_varchar (1073741823)}, // Compact DEFAULT Tree in Base64, of a DEFAULT evaluated at each call
     },
 // constraints
     {
