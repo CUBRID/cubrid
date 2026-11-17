@@ -5719,6 +5719,13 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
   PT_NODE *b2 = NULL;
 
   op = expr->info.expr.op;
+  if (op == PT_NOT_BETWEEN)
+    {
+      /* x NOT BETWEEN a AND b is evaluated as NOT (x >= a AND x <= b) (pt_to_pred_expr_local_with_arg ()), and the
+       * NOT (x BETWEEN a AND b) of a search condition becomes one (pt_cnf ()). Decide its operand types as for
+       * BETWEEN, or a row can satisfy both x BETWEEN a AND b and its negation, or neither. */
+      op = PT_BETWEEN;
+    }
 
   arg1 = expr->info.expr.arg1;
   if (arg1)
