@@ -17,6 +17,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - develop
+      - 'feature/probe-16'
   schedule:
     - cron: '*/15 * * * *'
 
