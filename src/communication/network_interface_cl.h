@@ -42,6 +42,7 @@
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "bind_variant.h"
 #include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
@@ -251,8 +252,12 @@ extern int histogram_build_multi_by_reservoir_request (OID * class_oid, int attr
 						       INT64 * out_ndv, INT64 * out_total_rows,
 						       INT64 * out_pages_seen = NULL, INT64 * out_pages_kept = NULL);
 extern int stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv = NULL);
-extern int stats_update_all_statistics (int with_fullscan, int print_summary);
-extern int update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip);
+extern int stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_start_msec);
+extern int update_histogram_for_all_classes (int with_fullscan, int random_seed, MOP * skip_mops, int n_skip,
+					     INT64 run_start_msec);
+extern INT64 stats_progress_clock_msec (void);
+extern void stats_log_update_progress (MOP classop, int phase, int state, int seq, int total, INT64 class_start_msec,
+				       INT64 run_start_msec, int error);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk);
 extern void btree_set_no_logging_index (bool no_logging_index);
@@ -282,7 +287,9 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_all_query_plans (void);
-extern int qmgr_drop_query_plans_by_sha1 (char *sha1);
+extern int qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply);
+extern int qmgr_drop_query_plans_by_sha1 (const char *sha1);
+extern int qmgr_drop_query_clones (const char *sha1);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -349,7 +356,8 @@ extern int boot_get_server_timezone_checksum (char *timezone_checksum);
 
 /* session state API */
 extern int csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
-					    const char *db_user, const char *host, const char *program_name);
+					    char *session_secret, const char *db_user, const char *host,
+					    const char *program_name);
 extern int csession_end_session (SESSION_ID session_id, bool is_keep_session);
 extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);
@@ -422,5 +430,23 @@ extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *b
 #if !defined(NDEBUG)
 extern int file_delete_target_file (const char *target_vfid_str);
 #endif
+
+/* shared byte-stream transport, both directions (COPY, internal-LOB, ...) */
+extern int stream_from_init (int stream_kind, const char *config, int config_len, int flags = 0,
+			     const char *data = NULL, int data_len = 0, INT64 * count = NULL,
+			     bool * ends_unit_of_work = NULL);
+extern int stream_from_send_data (const char *data, int data_len);
+extern int stream_from_end (INT64 * count, const char *data = NULL, int data_len = 0);
+extern int stream_from_abort (void);
+extern void stream_from_set_savepoint (const char *savepoint_name);
+extern bool stream_from_is_open (void);
+extern void stream_from_reset (void);
+extern void stream_from_final (void);
+extern bool stream_from_holds_download (void);
+extern bool stream_from_holds_handle (INT64 handle);
+extern int stream_from_read_open (int stream_kind, const char *config, int config_len, int first_max, int flags,
+				  INT64 * handle, char *buf, int *nread, int *reply_flags);
+extern int stream_from_read (INT64 handle, char *buf, int max, int flags, int *nread, int *reply_flags);
+extern int stream_from_release (INT64 handle);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

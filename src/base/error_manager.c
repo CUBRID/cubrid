@@ -330,6 +330,15 @@ static bool er_Ignore_uninit = false;
 static context *er_Singleton_context_p;
 #endif // not SERVER_MODE
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/* error context of a sub-client thread;
+ * er_Singleton_context_p is registered only to the thread which called er_init () it is released by er_final_sub_client_context ().
+ * A raw pointer (no destructor) is used, because the thread_local destructors run before the atexit handlers in exit (),
+ * and boot_shutdown_client_at_exit () needs the context.
+ */
+static thread_local context *er_Sub_client_context_p = NULL;
+#endif
+
 static void er_event_sigpipe_handler (int sig);
 static void er_event (void);
 static int er_event_init (void);
@@ -966,6 +975,39 @@ er_init (const char *msglog_filename, int exit_ask)
 
   return status;
 }
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * er_init_sub_client_context - create and register the error context of the calling sub-client thread
+ *   return: none
+ *
+ * Note: Without it, the thread has no error context; it asserts in debug builds, and shares one emergency context
+ *       with the other threads in release builds.
+ */
+void
+er_init_sub_client_context (void)
+{
+  if (er_Sub_client_context_p == NULL)
+    {
+      // automatic registration: registered to this thread now, and deregistered when destroyed
+      er_Sub_client_context_p = new context (true, false);
+    }
+}
+
+/*
+ * er_final_sub_client_context - destroy the error context of the calling sub-client thread
+ *   return: none
+ */
+void
+er_final_sub_client_context (void)
+{
+  if (er_Sub_client_context_p != NULL)
+    {
+      delete er_Sub_client_context_p;
+      er_Sub_client_context_p = NULL;
+    }
+}
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
 
 /*
  * er_is_initialized () - return if error manager was initialized.

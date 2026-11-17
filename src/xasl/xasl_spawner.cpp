@@ -179,8 +179,12 @@ namespace cubxasl
     dest->rhs = spawner::spawn (src->rhs);
     dest->rel_op = src->rel_op;
     dest->type = src->type;
-    /* the leader's resolved comparison, as the copied operands take the leader's plan items */
-    dest->domain_compare = src->domain_compare;
+    dest->compare = src->compare;
+    dest->bound_coercion = src->bound_coercion;
+    dest->bound_conversion = src->bound_conversion;
+    dest->prune_side = src->prune_side;
+    dest->prune_domain = src->prune_domain;
+    dest->prune = src->prune;
 
     return er_errid ();
   }
@@ -198,8 +202,12 @@ namespace cubxasl
     dest->eq_flag = src->eq_flag;
     dest->rel_op = src->rel_op;
     dest->item_type = src->item_type;
-    /* the leader's element comparisons, as the copied operands take the leader's plan items */
-    dest->domain_compare = src->domain_compare;
+    dest->compare_row = src->compare_row;
+    dest->compare = src->compare;
+    dest->compare_each = src->compare_each;
+    dest->prune_domain = src->prune_domain;
+    dest->prune_element = src->prune_element;
+    dest->prune = src->prune;
 
     return er_errid ();
   }
@@ -281,8 +289,10 @@ namespace cubxasl
     dest->type = src->type;
     dest->flags = src->flags;
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker */
-    dest->plan_item = src->plan_item;
+    dest->original_domain =
+	    src->original_domain == src->domain ? dest->domain : tp_domain_copy (src->original_domain, true);
+    dest->conv = src->conv;
+    dest->conv_mode = src->conv_mode;
     dest->vfetch_to = spawn (src->vfetch_to);
 
     /* TODO: unsupported */
@@ -338,7 +348,7 @@ namespace cubxasl
 	return er_errid ();
 
       case TYPE_FUNC:
-	dest->value.funcp = spawn (dest->value.funcp);
+	dest->value.funcp = spawn (src->value.funcp);
 	break;
 
       case TYPE_REGUVAL_LIST:
@@ -403,14 +413,18 @@ namespace cubxasl
       }
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    /* the plan item carries the node's resolved comparisons, as a term's */
-    dest->plan_item = src->plan_item;
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
     dest->rightptr = spawn (src->rightptr);
     dest->thirdptr = spawn (src->thirdptr);
     dest->opcode = src->opcode;
     dest->misc_operand = src->misc_operand;
+    memcpy (dest->conv, src->conv, sizeof (dest->conv));
+    memcpy (dest->conv_type, src->conv_type, sizeof (dest->conv_type));
+    dest->fails = src->fails;
+    /* the unpack's decisions are immutable and live in the leader's unpack arena, after every worker */
+    dest->decided = src->decided;
+    dest->result_conv = src->result_conv;
 
     /* ref: stx_build_arith_type */
     switch (src->opcode)
@@ -570,7 +584,6 @@ namespace cubxasl
       }
 
     dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
-    dest->plan_item = src->plan_item;
     dest->pos_no = src->pos_no;
 
     return er_errid ();
@@ -796,7 +809,6 @@ namespace cubxasl
       }
 
     dest->sig = spawn (src->sig);
-
     dest->args = spawn (src->args);
     dest->value = spawn (src->value);
 
@@ -806,12 +818,41 @@ namespace cubxasl
   PL_SIGNATURE_TYPE *
   spawner::spawn (const PL_SIGNATURE_TYPE *src)
   {
-    /* No copy: the workers share the caller's signature. Every user reads it only
-     * (executor holds a const reference and invoke_java copies what it sends), the
-     * object is already shared across executions by the xcache clone, and only the
-     * owning thread's !for_parallel_aptr clear pass deletes it, after all spawned
-     * copies are gone. Not registered in the cache, so the spawner never frees it. */
+    /* No copy: the workers share the caller's signature. Every user only reads it (executor holds a const reference and
+     * invoke_java copies what it sends), the xcache clone already shares a non-disposable signature across executions,
+     * and only the owning thread's !for_parallel_aptr clear pass deletes it, after all spawned copies are gone. It is
+     * not registered in the cache, so the spawner never frees it. */
     return const_cast<PL_SIGNATURE_TYPE *> (src);
+  }
+
+  OUTPTR_LIST *
+  spawner::spawn (const OUTPTR_LIST *src)
+  {
+    OUTPTR_LIST *dest = nullptr;
+
+    dest = find (src);
+    if (dest != nullptr)
+      {
+	return dest;
+      }
+
+    dest = alloc (src);
+    if (dest == nullptr)
+      {
+	return nullptr;
+      }
+
+    /* ref: stx_restore_outptr_list; the copy binds its own program from the image the unpack set, which it shares */
+    dest->valptrp = spawn (src->valptrp);
+    if (src->valptrp != nullptr && dest->valptrp == nullptr)
+      {
+	return nullptr;
+      }
+    dest->valptr_cnt = src->valptr_cnt;
+    dest->eval_prog_image = src->eval_prog_image;
+    dest->eval_prog_image_size = src->eval_prog_image_size;
+
+    return dest;
   }
 
   VAL_LIST *
@@ -862,8 +903,6 @@ namespace cubxasl
     assert_release_error (i == src->val_cnt);
 
     dest->val_cnt = src->val_cnt;
-    /* the spawned nodes share the source's plan items, which number the scopes */
-    dest->domain_scope = src->domain_scope;
 
     return dest;
   }
@@ -883,14 +922,6 @@ namespace cubxasl
     return er_errid ();
   }
 
-  /* frees a worker's copy of resolve_domains state on the thread that made it */
-  static void
-  spawner_free_xasl_state (cubthread::entry *thread_p, void *ptr, int)
-  {
-    VAL_DESCR *vd = static_cast<VAL_DESCR *> (ptr);
-    qexec_free_xasl_state (thread_p, vd->xasl_state);
-  }
-
   VAL_DESCR *
   spawner::spawn (const VAL_DESCR *src)
   {
@@ -902,32 +933,6 @@ namespace cubxasl
 	return dest;
       }
 
-    if (src != nullptr && src->xasl_state != nullptr)
-      {
-	/* the worker inherits the resolved domains and values through the one PX copy: every reference value (secondary
-	 * references included) and the resolved domain table, owned and freed by this thread */
-	xasl_state *copy = qexec_deep_copy_xasl_state (&m_thread_ref, src->xasl_state, false);
-	if (copy == nullptr)
-	  {
-	    if (er_errid () == NO_ERROR)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
-	      }
-	    return nullptr;
-	  }
-	cached_entry entry;
-	entry.ptr = &copy->vd;
-	entry.count = 1;
-	entry.deleter = spawner_free_xasl_state;
-	if (!m_cached_ptrs.try_emplace (src, std::move (entry)).second)
-	  {
-	    assert_release_error (false);
-	    qexec_free_xasl_state (&m_thread_ref, copy);
-	    return nullptr;
-	  }
-	return &copy->vd;
-      }
-
     dest = alloc (src);
     if (dest == nullptr)
       {
@@ -936,15 +941,16 @@ namespace cubxasl
 
     /* ref: xqmgr_execute_query */
     assert_release_error (find (src->dbval_ptr, src->dbval_cnt) == nullptr);
-    dest->dbval_ptr = alloc (src->dbval_ptr, src->dbval_cnt);
-    if (dest->dbval_ptr != nullptr)
+    DB_VALUE *values = alloc (src->dbval_ptr, src->dbval_cnt);
+    if (values != nullptr)
       {
 	for (int i = 0; i < src->dbval_cnt; i++)
 	  {
 	    /* always returns NO_ERROR */
-	    pr_clone_value (&src->dbval_ptr[i], &dest->dbval_ptr[i]);
+	    pr_clone_value (&src->dbval_ptr[i], &values[i]);
 	  }
       }
+    dest->dbval_ptr = values;
 
     dest->dbval_cnt = src->dbval_cnt;
     dest->sys_datetime = src->sys_datetime;
@@ -952,7 +958,10 @@ namespace cubxasl
     dest->lrand = src->lrand;
     dest->drand = src->drand;
 
-    /* a descriptor no resolve_domains made (no resolved-domain state) copies its values only */
+    /* TODO: unsupported */
+#if 0
+    assert_release_error (src->xasl_state == nullptr);
+#endif
     dest->xasl_state = NULL;
 
     return dest;

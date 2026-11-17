@@ -103,7 +103,12 @@ static int rv;
 #define HEAP_GUESS_NUM_ATTRS_REFOIDS 100
 #define HEAP_GUESS_NUM_INDEXED_ATTRS 100
 
-#define HEAP_CLASSREPR_MAXCACHE	1024
+/* Number of class representations kept in the server-wide cache. One partition is one class, and a single table
+ * may have up to MAX_PARTITIONS (1024) partitions, so 1024 entries were exhausted by one partitioned table plus the
+ * system classes. Each entry costs 112 bytes plus a DEFAULT_REPR_INCREMENT (16) slot pointer array (128 bytes) and
+ * two 64-byte hash buckets up front, about 3 MB for 8192 entries; the representations themselves are allocated only
+ * for classes that are actually used. */
+#define HEAP_CLASSREPR_MAXCACHE	8192
 
 #define HEAP_DEBUG_SCANCACHE_INITPATTERN (12345)
 
@@ -421,6 +426,9 @@ static HEAP_CLASSREPR_CACHE heap_Classrepr_cache = {
   while (0)
 
 #define HEAP_CHNGUESS_FUDGE_MININDICES (100)
+/* Number of entries of the client CHN guess table. Kept apart from HEAP_CLASSREPR_MAXCACHE: heap_chnguess_clear ()
+ * walks every entry on each client disconnect, so the table should not grow with the class representation cache. */
+#define HEAP_CHNGUESS_MAXENTRIES 1024
 #define HEAP_NBITS_IN_BYTE	     (8)
 #define HEAP_NSHIFTS                   (3)	/* For multiplication/division by 8 */
 #define HEAP_BITMASK                   (HEAP_NBITS_IN_BYTE - 1)
@@ -697,6 +705,7 @@ static int heap_ovf_get_capacity (THREAD_ENTRY * thread_p, const OID * ovf_oid, 
 
 static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 					   HEAP_SCANCACHE ** scan_cache);
+STATIC_INLINE void heap_scancache_reset_insert_hint (HEAP_SCANCACHE * scan_cache) __attribute__ ((ALWAYS_INLINE));
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
 					  MVCC_SNAPSHOT * mvcc_snapshot, bool copy_to_local_cache = false);
@@ -744,8 +753,10 @@ static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRI
 static void heap_attrvalue_point_variable (const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
 					   OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
-static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-				const HEAP_REC_LAYOUT * layout);
+/* always inlined: the row path reads every column through it (heap_attrinfo_read_dbvalues () and its variants),
+ * and left to the inliner's size limit the call stays out of line once the layout wrapper below counts in */
+STATIC_INLINE int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+				       const HEAP_REC_LAYOUT * layout) __attribute__ ((ALWAYS_INLINE));
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
@@ -2833,9 +2844,10 @@ heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
- * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap yet.
+ * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap: not yet (a new page), or
+ *				  no longer (vacuum unlinked it and deallocates it when its system operation commits).
  *
- * return	  : true if page must not be exposed through bestspace yet
+ * return	  : true if page must not be exposed through bestspace
  * page_heap (in) : Heap page
  */
 bool
@@ -2857,6 +2869,38 @@ heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
     }
 
   return HEAP_PAGE_IS_NOT_IN_HEAP ((HEAP_CHAIN *) recdes.data);
+}
+
+/*
+ * heap_page_belongs_to_class () - Check, under the page latch, whether a heap page reached by a VPID remembered
+ *				   outside the page still belongs to the heap of a class.
+ *
+ * return	  : true if the page is a heap page of class_oid that is linked to its heap
+ * page_heap (in) : Page fixed by the remembered VPID
+ * class_oid (in) : Class of the rows to insert
+ *
+ * Note: A remembered VPID may name a page that was deallocated, reused by another file or class, or unlinked from its
+ *	 heap since. Every path that fixes a heap page by such a VPID to insert into it must check the page here.
+ */
+bool
+heap_page_belongs_to_class (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, const OID * class_oid)
+{
+  OID page_class_oid;
+
+  if (pgbuf_get_page_ptype (thread_p, page_heap) != PAGE_HEAP || heap_page_is_not_in_heap (thread_p, page_heap))
+    {
+      return false;
+    }
+
+  if (heap_get_class_oid_from_page (thread_p, page_heap, &page_class_oid) != NO_ERROR)
+    {
+      /* heap_page_is_not_in_heap () has just read the same record */
+      assert_release (false);
+      er_clear ();
+      return false;
+    }
+
+  return OID_EQ (&page_class_oid, class_oid);
 }
 
 /*
@@ -3322,7 +3366,7 @@ error:
  *
  * return	 : True if page was deallocated, false if not.
  * thread_p (in) : Thread entry.
- * page_ptr (in) : Pointer to page being deallocated.
+ * page_ptr (in/out) : Pointer to page being deallocated; NULL when it was deallocated, still write-latched when not.
  * hfid (in)	 : Heap file identifier.
  */
 bool
@@ -3450,17 +3494,20 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We
        * cannot deallocate it. */
       vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-			     "Candidate heap page %d|%d to remove has waiters.", page_vpid.volid, page_vpid.pageid);
+			     "Skip removing empty heap page %d|%d: a heap scan has already reached it. "
+			     "The page stays in the heap.", VPID_AS_ARGS (&page_vpid));
       goto error;
     }
 
-  /* if we are here, the page should not be accessed by any active or vacuum workers. Active workers are prevented
-   * from accessing it through heap scan, and direct references should not exist.
-   * the function would not be called if any other vacuum workers would try to access the page. */
+  /* A chain-order heap scan is kept away by the dealloc mark checked above. Two kinds of threads still reach the page
+   * without the mark and may wait for its latch: scans through the heap file's page list (parallel heap scan,
+   * statistics sampling, parallel index build, parallel SHOW HEAP CAPACITY), and inserters that took the page from
+   * bestspace, which hands out page VPIDs without the header latch. Give the page up to them; it stays in the heap. */
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
-      assert (false);
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Unexpected page waiters");
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Skip removing empty heap page %d|%d: it has latch waiters. The page stays in the heap.",
+			     VPID_AS_ARGS (&page_vpid));
       goto error;
     }
   /* all good, we can deallocate the page */
@@ -3569,6 +3616,33 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       pgbuf_set_dirty (thread_p, next_watcher.pgptr, DONT_FREE);
     }
 
+  /* The page is deallocated only when the system operation commits, after it is unfixed below. bestspace may still
+   * hand the page to an inserter in between, and a row inserted there would be deallocated with the page. Mark the
+   * page not in heap while it is latched: every bestspace consumer checks the flag under the page latch and rejects
+   * the page. */
+  copy_recdes.area_size = sizeof (chain);
+  if (spage_get_record (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &copy_recdes, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  memcpy (&chain, copy_recdes.data, sizeof (chain));
+  HEAP_PAGE_SET_NOT_IN_HEAP (&chain);
+  update_recdes.data = (char *) &chain;
+  update_recdes.length = sizeof (chain);
+  if (spage_update (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  log_append_undoredo_data2 (thread_p, RVHF_CHAIN, &hfid->vfid, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			     sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
+  pgbuf_set_dirty (thread_p, crt_watcher.pgptr, DONT_FREE);
+
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
   /* Deallocate current page. */
@@ -3625,7 +3699,12 @@ error:
 	  *page_ptr = crt_watcher.pgptr;
 	}
       assert (crt_watcher.pgptr == *page_ptr);
-      pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
+      if (crt_watcher.pgptr != NULL)
+	{
+	  /* the page goes back to the caller still latched, so that it reports the page's free space to bestspace */
+	  *page_ptr = pgbuf_fix (thread_p, &page_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  pgbuf_ordered_unfix (thread_p, &crt_watcher);
+	}
     }
   else
     {
@@ -4483,7 +4562,6 @@ exit:
     }
   return error_code;
 }
-
 
 /*
  * heap_build_bestspace () - Load and rebuild a bestspace from heap file
@@ -5469,7 +5547,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-
   return NO_ERROR;
 }
 
@@ -5511,7 +5588,6 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
     }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
-
 
   return ret;
 }
@@ -6407,6 +6483,17 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 }
 
 /*
+ * heap_scancache_reset_insert_hint () - clear the insert page hint
+ *   scan_cache (in/out): the two hint fields are always reset together
+ */
+STATIC_INLINE void
+heap_scancache_reset_insert_hint (HEAP_SCANCACHE * scan_cache)
+{
+  VPID_SET_NULL (&scan_cache->insert_hint_vpid);
+  scan_cache->insert_hint_l1_pos = -1;	/* unknown position in the bestspace L1 arrays */
+}
+
+/*
  * heap_scancache_start_internal () - Start caching information for a heap scan
  *   return: NO_ERROR
  *   scan_cache(in/out): Scan cache
@@ -6514,6 +6601,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
   if (copy_to_local_cache && is_queryscan)
     {
@@ -6548,6 +6636,7 @@ exit_on_error:
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -6701,6 +6790,9 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 {
   int ret;
 
+  /* reset before any early return, or the scan cache keeps the previous heap's hint */
+  heap_scancache_reset_insert_hint (scan_cache);
+
   ret = heap_scancache_force_modify (thread_p, scan_cache);
   if (ret != NO_ERROR)
     {
@@ -6836,6 +6928,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->partition_list = NULL;
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
+  heap_scancache_reset_insert_hint (scan_cache);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return NO_ERROR;
@@ -6946,6 +7039,70 @@ heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   int ret;
 
   ret = heap_scancache_end_internal (thread_p, scan_cache, END_SCAN);
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_scancache_switch_class () - point a query scan cache at the heap of another class
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   scan_cache(in/out): a scan cache started by heap_scancache_start () for a query scan
+ *   hfid(in): the heap of the class
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   lock_held(in): the scan already holds the IS_LOCK of the class (a partition it switched to before)
+ *
+ * Note: as heap_scancache_end () and heap_scancache_start () would, keeping what does not depend on the heap
+ *	 (the snapshot, the work area, the index statistics) (CBRD-27866).
+ */
+int
+heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
+			     const OID * class_oid, bool lock_held)
+{
+  if (scan_cache->debug_initpattern != HEAP_DEBUG_SCANCACHE_INITPATTERN || scan_cache->local_cache_handle != NULL
+      || scan_cache->partition_list != NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (scan_cache->cache_last_fix_page == true && scan_cache->page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+
+  if (!lock_held)
+    {
+      int granted;
+#if defined(SERVER_MODE)
+      THREAD_ENTRY *main_thread_p = NULL;
+      if (thread_p->m_px_orig_thread_entry != NULL)
+	{
+	  main_thread_p = thread_get_main_thread (thread_p);
+	  pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
+#if defined(SERVER_MODE)
+      if (main_thread_p != NULL)
+	{
+	  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
+	}
+#endif
+      if (granted != LK_GRANTED)
+	{
+	  ASSERT_ERROR ();
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+    }
+
+  scan_cache->node.class_oid = *class_oid;
+  scan_cache->node.hfid = *hfid;
+  scan_cache->node.classname = NULL;
+  scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (class_oid);
+  PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  heap_scancache_reset_insert_hint (scan_cache);
 
   return NO_ERROR;
 }
@@ -7502,7 +7659,6 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   /* Shouldn't be here. */
   return S_ERROR;
 }
-
 
 /*
  * heap_next_internal () - Retrieve of peek next object.
@@ -8120,7 +8276,6 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
-
       if (scan == S_SUCCESS)
 	{
 	  /*
@@ -8168,6 +8323,263 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
   return scan;
 }
 
+/* A page whose first chunk the batch collects, its lines asked for at once: heap_page_collect_visible () reads nearly
+ * every record of it -- the slot, then the record's header first, then its columns -- and a header's first load waited
+ * on memory for about a fifth of a filter scan's time (the hardware prefetchers stop at every 4 KB, four times in a
+ * page). */
+static inline void
+heap_page_prefetch (const char *pgptr)
+{
+  int offset;
+
+  for (offset = 0; offset < DB_PAGESIZE; offset += 64)
+    {
+      prefetch (pgptr + offset, PREFETCH_READ, PREFETCH_CACHE_L1);
+    }
+}
+
+/* or_mvcc_get_header () for a REC_HOME record of a page heap_page_collect_visible () collects, read inline: the same
+ * fields from the same bytes -- representation and flags, CHN, then the insert id, the delete id and the previous
+ * version's address where the flags say they are there -- without the OR_BUF and the five calls into
+ * object_representation_sr.c that every record of a filter scan paid for */
+static inline void
+heap_page_row_mvcc_header (const char *data, MVCC_REC_HEADER * header)
+{
+  const char *p = data;
+  const int repid_and_flag_bits = OR_GET_INT (p);
+
+  header->repid = repid_and_flag_bits & OR_MVCC_REPID_MASK;
+  header->mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  p += OR_INT_SIZE;
+  header->chn = OR_GET_INT (p);
+  p += OR_INT_SIZE;
+  if (header->mvcc_flag & OR_MVCC_FLAG_VALID_INSID)
+    {
+      OR_GET_BIGINT (p, &header->mvcc_ins_id);
+      p += OR_MVCCID_SIZE;
+    }
+  else
+    {
+      header->mvcc_ins_id = MVCCID_ALL_VISIBLE;
+    }
+  if (header->mvcc_flag & OR_MVCC_FLAG_VALID_DELID)
+    {
+      OR_GET_BIGINT (p, &header->mvcc_del_id);
+      p += OR_MVCCID_SIZE;
+    }
+  else
+    {
+      header->mvcc_del_id = MVCCID_NULL;
+    }
+  if (header->mvcc_flag & OR_MVCC_FLAG_VALID_PREV_VERSION)
+    {
+      header->prev_version_lsa = *(const LOG_LSA *) p;
+    }
+  else
+    {
+      LSA_SET_NULL (&header->prev_version_lsa);
+    }
+}
+
+/*
+ * heap_page_collect_visible () - the next records heap_next_1page () would return for one page, a chunk at a time
+ *   return: S_SUCCESS (the chunk ends -- cap rows, or the record after its last row is one the page does not
+ *           answer for -- and the page may have more), S_END (the page has no more: *n_rows may be below cap, even
+ *           0), S_DOESNT_FIT (nothing collected: the next record is one the page does not answer for, and the row
+ *           path takes the page from it), or S_ERROR
+ *   vpid(in): the page
+ *   class_oid(in): the class scanned (the scan cache's)
+ *   scan_cache(in/out): the scan cache; its watcher holds the page on return
+ *   slot(in/out): the walk's position: 0 before the first call for the page; on S_SUCCESS the slot
+ *                 the next call resumes after (the last row collected, or the slot before the record that
+ *                 ended the chunk)
+ *   rows(out): cap slots, peeked, in slot order
+ *   cap(in): at most so many rows
+ *   n_rows(out): the rows collected
+ *   repids(in): the representations the caller decodes (n_repids of them); a visible record of
+ *               another one ends the chunk before it.  n_repids 0: not checked
+ *   n_repids(in): their number
+ *   unknown_repid(out): NULL_REPRID on entry; receives the representation of the visible record that ended
+ *                       the walk for its representation alone (the caller may learn it before the next
+ *                       call).  NULL: not reported
+ *
+ * The walk heap_next_1page () makes, record after record, made in runs: the same slots skipped
+ * (the header, REC_NEWHOME, REC_ASSIGN_ADDRESS, REC_UNKNOWN), and for a REC_HOME record the
+ * visibility as heap_scan_get_visible_version () decides it -- an all-visible header, or
+ * scan_cache->mvcc_snapshot->snapshot_fnc () == SNAPSHOT_SATISFIED.  TOO_OLD is a deleted row
+ * (skipped), and TOO_NEW without a previous version is a row inserted after the snapshot (the
+ * log walk heap_get_visible_version_from_log () would find nothing: skipped).  What is left is a
+ * record whose answer is not in this page -- relocated or in overflow pages (the header is
+ * elsewhere), too new for the snapshot with a previous version in the log, or visible but of a
+ * representation the caller does not decode (one it has not learned yet) -- and such a record ends
+ * the walk: the rows before it make the chunk, and the next call, with nothing collected, answers
+ * S_DOESNT_FIT, so the row path takes the page from that record as heap_next () walks it, with the
+ * page held.  The rows therefore come in the heap's order -- what a SUM's overflow point, a ROWNUM
+ * or a GROUP_CONCAT depends on -- and no record is fetched again by its OID after the page was let
+ * go: a relocated or overflow record that turns out deleted is skipped by the row path on the page
+ * it holds, never looked up on a page vacuum may be removing (heap_remove_page_on_vacuum ()).
+ * A scan cache without a snapshot (an MVCC-disabled class) never gets here -- the batch refuses
+ * those scans (scan_batch_open_internal ()) -- so the snapshot == NULL branch below is defensive.
+ */
+SCAN_CODE
+heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
+			   HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap, int *n_rows,
+			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid)
+{
+  MVCC_SNAPSHOT *snapshot = NULL;
+  PAGE_PTR pgptr;
+  RECDES rec;
+  OID oid;
+  SCAN_CODE scan;
+  int n = 0;
+
+  *n_rows = 0;
+  /* A cached scan (HEAP_SCAN_IS_LOCAL_CACHE_READ) reads a copy of the page so that it holds no latch while its rows
+   * are out; the callers that pass such a scan -- the filter iterator (scan_batch_open_filter ()) and the rows node
+   * (scan_batch_open_rows (), scan_batch_rows_consume ()) -- keep that promise themselves: they copy the records of
+   * the rows they keep and let the page go before they go out. */
+  if (scan_cache->page_watcher.pgptr != NULL && !VPID_EQ (vpid, pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr)))
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+  if (scan_cache->page_watcher.pgptr == NULL)
+    {
+      scan_cache->page_watcher.pgptr =
+	heap_scan_pb_latch_and_fetch (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, scan_cache,
+				      &scan_cache->page_watcher);
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  if (er_errid () == ER_PB_BAD_PAGEID)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, vpid->volid, vpid->pageid, 0);
+	    }
+	  return S_ERROR;
+	}
+    }
+  pgptr = scan_cache->page_watcher.pgptr;
+  if (*slot == 0)
+    {
+      /* the page's first chunk, whoever fixed the page (the scan's caller, usually) */
+      heap_page_prefetch (pgptr);
+    }
+  if (heap_page_is_bestspace (thread_p, pgptr))
+    {
+      return S_END;
+    }
+  if (!scan_cache->mvcc_disabled_class && scan_cache->mvcc_snapshot != NULL
+      && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+    {
+      snapshot = scan_cache->mvcc_snapshot;
+    }
+
+  oid.volid = vpid->volid;
+  oid.pageid = vpid->pageid;
+  oid.slotid = *slot;		/* 0: the walk starts at slot 1 */
+  while (true)
+    {
+      MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+      bool is_exception = false;
+
+      scan = spage_next_record (pgptr, &oid.slotid, &rec, PEEK);
+      if (scan == S_END)
+	{
+	  *n_rows = n;
+	  return S_END;
+	}
+      if (scan != S_SUCCESS)
+	{
+	  return S_ERROR;
+	}
+      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID || rec.type == REC_NEWHOME || rec.type == REC_ASSIGN_ADDRESS
+	  || rec.type == REC_UNKNOWN)
+	{
+	  continue;
+	}
+      if (rec.type != REC_HOME)
+	{
+	  /* REC_RELOCATION, REC_BIGONE: the header is in the forward page; the row path fetches it from there */
+	  is_exception = true;
+	}
+      else
+	{
+	  assert (rec.length >= OR_MVCC_REP_SIZE);
+	  heap_page_row_mvcc_header (rec.data, &mvcc_header);
+#if !defined (NDEBUG)
+	  {
+	    MVCC_REC_HEADER check = MVCC_REC_HEADER_INITIALIZER;
+	    const int rc = or_mvcc_get_header (&rec, &check);
+
+	    assert (rc == NO_ERROR && check.repid == mvcc_header.repid && check.mvcc_flag == mvcc_header.mvcc_flag
+		    && check.chn == mvcc_header.chn && check.mvcc_ins_id == mvcc_header.mvcc_ins_id
+		    && check.mvcc_del_id == mvcc_header.mvcc_del_id
+		    && LSA_EQ (&check.prev_version_lsa, &mvcc_header.prev_version_lsa));
+	  }
+#endif
+	  if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+	    {
+	      MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
+
+	      if (res == TOO_OLD_FOR_SNAPSHOT)
+		{
+		  /* deleted for this snapshot: S_SNAPSHOT_NOT_SATISFIED, the walk goes on */
+		  continue;
+		}
+	      if (res != SNAPSHOT_SATISFIED)
+		{
+		  if (LSA_ISNULL (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header)))
+		    {
+		      /* inserted after the snapshot, nothing older to show: the row path's S_DOESNT_EXIST */
+		      continue;
+		    }
+		  /* its visible version is a previous one, in the log */
+		  is_exception = true;
+		}
+	    }
+	  if (!is_exception && n_repids > 0)
+	    {
+	      REPR_ID rec_repid = MVCC_GET_REPID (&mvcc_header);
+	      int i = 0;
+
+	      while (i < n_repids && repids[i] != rec_repid)
+		{
+		  i++;
+		}
+	      if (i == n_repids)
+		{
+		  /* a record of a representation the caller does not decode: the row path decodes it through the
+		   * class representation cache, and the caller may learn the representation for the next page */
+		  is_exception = true;
+		  if (unknown_repid != NULL && *unknown_repid == NULL_REPRID)
+		    {
+		      *unknown_repid = rec_repid;
+		    }
+		}
+	    }
+	}
+      if (class_oid != NULL && !OID_ISNULL (class_oid) && OID_IS_ROOTOID (&oid))
+	{
+	  continue;
+	}
+      if (is_exception)
+	{
+	  /* the chunk ends before this record, which the next call sees first: with rows collected they go out now,
+	   * and with none the row path takes the page from here */
+	  *slot = oid.slotid - 1;
+	  *n_rows = n;
+	  return (n > 0) ? S_SUCCESS : S_DOESNT_FIT;
+	}
+      rows[n].oid = oid;
+      rows[n].recdes = rec;
+      rows[n].hdr_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&mvcc_header)];	/* OR_HEADER_SIZE (rec.data) */
+      n++;
+      if (n == cap)
+	{
+	  *slot = oid.slotid;
+	  *n_rows = n;
+	  return S_SUCCESS;
+	}
+    }
+}
 
 /*
  * heap_first () - Retrieve or peek first object of heap
@@ -9646,9 +10058,9 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  /* allocated but not published to the heap yet (bulk load links its pages on commit postpone), so the
-	   * serial chain walk cannot reach it. This is the predicate bestspace uses, and it covers only this
-	   * direction: a page already unlinked but not yet deallocated is still counted here, not by serial. */
+	  /* not linked to the heap, so the serial chain walk cannot reach it: allocated but not published yet
+	   * (bulk load links its pages on commit postpone), or unlinked by vacuum and not deallocated yet. This is
+	   * the predicate bestspace uses. */
 	  if (heap_page_is_not_in_heap (&thread_ref, page))
 	    {
 	      pgbuf_unfix_and_init (&thread_ref, page);
@@ -10312,13 +10724,26 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
+      int max_attrs = (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs
+		       + attr_info->last_classrepr->n_class_attrs);
+
+      /* the function index result is requested on top of the class attributes */
+      for (i = 0; i < requested_num_attrs; i++)
+	{
+	  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrids[i]))
+	    {
+	      max_attrs++;
+	    }
+	}
+
+      if (requested_num_attrs > max_attrs)
+	{
 #ifndef NDEBUG
-      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
+	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
 #endif
-      requested_num_attrs =
-	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	attr_info->last_classrepr->n_class_attrs;
+	  requested_num_attrs = max_attrs;
+	}
     }
 
   if (requested_num_attrs > 0)
@@ -10446,6 +10871,19 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	{
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
+	}
+      else if (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
+	{
+	  /* no heap representation; the value is filled from the index key */
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  value->last_attrepr = NULL;
+	  value->read_attrepr = NULL;
+	  if (value->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      db_make_null (&value->dbvalue);
+	    }
+	  num_found_attrs++;
+	  continue;
 	}
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
@@ -10746,6 +11184,72 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 /*
+ * heap_attrinfo_switch_class () - point an attribute cache at another class with the same attributes
+ *   return: NO_ERROR, or error code
+ *   thread_p(in):
+ *   class_oid(in): the class, a partition of the same table as the one the cache is on
+ *   attr_info(in/out): an attribute cache started by heap_attrinfo_start ()
+ *
+ * Note: the partitions of a table have the same attributes, so the cache keeps its attribute ids and its value
+ *	 array and takes the class representation of the other partition, as heap_attrinfo_end () and
+ *	 heap_attrinfo_start () would without freeing and allocating the values (CBRD-27866).
+ */
+int
+heap_attrinfo_switch_class (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  HEAP_ATTRVALUE *value;
+  int i;
+
+  if (attr_info->num_values == -1)
+    {
+      /* an empty cache (no attributes): nothing is bound to the class */
+      return NO_ERROR;
+    }
+
+  (void) heap_attrinfo_clear_dbvalues (attr_info);
+  (void) heap_attrinfo_recache (thread_p, NULL_REPRID, attr_info);
+  if (attr_info->last_classrepr != NULL)
+    {
+      heap_classrepr_free_and_init (attr_info->last_classrepr, &attr_info->last_cacheindex);
+    }
+
+  attr_info->class_oid = *class_oid;
+  attr_info->last_cacheindex = -1;
+  attr_info->read_cacheindex = -1;
+  attr_info->read_classrepr = NULL;
+  OID_SET_NULL (&attr_info->inst_oid);
+  attr_info->inst_chn = NULL_CHN;
+  attr_info->lazy_recdes = NULL;
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+      value->state = HEAP_UNINIT_ATTRVALUE;
+      value->do_increment = 0;
+      value->last_attrepr = NULL;
+      value->read_attrepr = NULL;
+      value->rd_attrepr = NULL;
+    }
+
+  attr_info->last_classrepr =
+    heap_classrepr_get (thread_p, &attr_info->class_oid, NULL, NULL_REPRID, &attr_info->last_cacheindex);
+  if (attr_info->last_classrepr == NULL)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      ASSERT_ERROR ();
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  if (heap_attrinfo_recache_attrepr (attr_info, true) != NO_ERROR)
+    {
+      heap_attrinfo_end (thread_p, attr_info);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrinfo_clear_dbvalues () - Clear current dbvalues of attribute
  *                                 information
  *   return: NO_ERROR
@@ -10779,7 +11283,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 	       * of the object
 	       */
 	      attrepr = ((value->read_attrepr != NULL) ? value->read_attrepr : value->last_attrepr);
-	      if (attrepr != NULL)
+	      if (attrepr != NULL || IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
 		{
 		  if (pr_clear_value (&value->dbvalue) != NO_ERROR)
 		    {
@@ -10797,9 +11301,11 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
   return ret;
 }
 
-
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
- * live, derived once per record instead of once per attribute. */
+ * live, derived once per record instead of once per attribute.  The body is written out here
+ * rather than through heap_rec_layout_init_repr_hdr () (the same four lines, for a caller that holds
+ * the representation constants and not the cache: the page batch): one call less in the
+ * inliner's count for heap_attrvalue_read (), which this feeds. */
 STATIC_INLINE void
 heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info)
 {
@@ -10816,6 +11322,121 @@ heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEA
   layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (nvars, layout->offset_size);
   layout->bound_bits =
     OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + attr_info->read_classrepr->fixed_length : NULL;
+}
+
+/*
+ * heap_attrinfo_raw_locator () - where an attribute sits in records of the latest representation
+ *   return: NO_ERROR when the attribute can be decoded straight from record bytes, ER_FAILED
+ *           otherwise (no error is set: the answer is a capability, not a fault)
+ *   attr_info(in): the attribute cache (started: last_classrepr is loaded)
+ *   attrid(in): the attribute
+ *   out(out): the locator
+ *
+ * A page batch (expr_batch.c) decodes one representation's records without the attribute
+ * cache: it compares each record's representation id with the one recorded here and reads
+ * the fixed area at location, or the variable area through the offset table at location.
+ * Only the types the batch decodes qualify -- the fixed-width numbers and dates, NUMERIC,
+ * which is a variable attribute today (see heap_attrvalue_resolve_plan ()), and VARCHAR and
+ * CHAR, read from the variable area by the batch's string leaves.
+ */
+int
+heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out)
+{
+  OR_ATTRIBUTE *attrepr;
+
+  if (attr_info == NULL || attr_info->last_classrepr == NULL || out == NULL)
+    {
+      return ER_FAILED;
+    }
+  attrepr = heap_locate_last_attrepr (attrid, attr_info);
+  if (attrepr == NULL || attrepr->domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  switch (attrepr->type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_DATE:
+      if (attrepr->is_fixed == 0)
+	{
+	  return ER_FAILED;
+	}
+      break;
+    case DB_TYPE_NUMERIC:
+      if (attrepr->is_fixed != 0)
+	{
+	  return ER_FAILED;	/* a fixed NUMERIC would need the kernel this file does not have */
+	}
+      break;
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
+      if (attrepr->is_fixed != 0)
+	{
+	  return ER_FAILED;
+	}
+      break;
+    default:
+      return ER_FAILED;
+    }
+
+  out->collation = TP_DOMAIN_COLLATION (attrepr->domain);
+  out->codeset = TP_DOMAIN_CODESET (attrepr->domain);
+  out->repid = attr_info->last_classrepr->id;
+  out->n_variable = attr_info->last_classrepr->n_variable;
+  out->fixed_length = attr_info->last_classrepr->fixed_length;
+  out->is_fixed = (attrepr->is_fixed != 0);
+  out->location = attrepr->location;
+  out->position = attrepr->position;
+  out->type = attrepr->type;
+  out->precision = attrepr->domain->precision;
+  out->scale = attrepr->domain->scale;
+  return NO_ERROR;
+}
+
+/*
+ * heap_attrinfo_raw_key_locator () - where an attribute's bytes sit in records of the latest representation,
+ *				      whatever its type
+ *   return: NO_ERROR, or ER_FAILED (no error set) when the attribute is not in the representation
+ *   attr_info(in): the attribute cache (started)
+ *   attrid(in): the attribute
+ *   out(out): the locator (precision and scale as the domain has them)
+ *   disk_size(out): a fixed attribute's bytes (tp_domain_disk_size ()); 0 for a variable one
+ *
+ * For a reader that only compares a record's bytes with another record's (a page batch's GROUP BY key cache):
+ * equal bytes decode to equal values, whatever the type, so no decoding rule is needed here.
+ */
+int
+heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out, int *disk_size)
+{
+  OR_ATTRIBUTE *attrepr;
+
+  if (attr_info == NULL || attr_info->last_classrepr == NULL || out == NULL)
+    {
+      return ER_FAILED;
+    }
+  attrepr = heap_locate_last_attrepr (attrid, attr_info);
+  if (attrepr == NULL || attrepr->domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  out->repid = attr_info->last_classrepr->id;
+  out->n_variable = attr_info->last_classrepr->n_variable;
+  out->fixed_length = attr_info->last_classrepr->fixed_length;
+  out->is_fixed = (attrepr->is_fixed != 0);
+  out->location = attrepr->location;
+  out->position = attrepr->position;
+  out->type = attrepr->type;
+  out->precision = attrepr->domain->precision;
+  out->scale = attrepr->domain->scale;
+  out->collation = TP_DOMAIN_COLLATION (attrepr->domain);
+  out->codeset = TP_DOMAIN_CODESET (attrepr->domain);
+  *disk_size = out->is_fixed ? tp_domain_disk_size (attrepr->domain) : 0;
+
+  return (out->is_fixed && *disk_size <= 0) ? ER_FAILED : NO_ERROR;
 }
 
 /*
@@ -11183,13 +11804,21 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
   value->rd_attrepr = attrepr;
 }
 
-static int
+STATIC_INLINE int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
 		     const HEAP_REC_LAYOUT * layout)
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   HEAP_REC_LAYOUT own_layout;
   OR_ATTRIBUTE *attrepr;
+
+  if (unlikely (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid)))
+    {
+      /* the function result exists only in the index key; the planner must not let such a scan read the heap */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
@@ -12359,22 +12988,17 @@ exit_on_error:
 }
 
 /*
- * heap_attrinfo_set () - Set the value of given attribute
- *   return: NO_ERROR
- *   inst_oid(in): The instance oid
- *   attrid(in): The identifier of the attribute to be set
- *   attr_val(in): The memory value of the attribute
- *   attr_info(in/out): The attribute information structure which describe the
- *                      desired attributes
- *
- * Note: Set DB_VALUE of desired attribute identifier.
+ * heap_attrinfo_start_set () - the value of an attribute heap_attrinfo_set or heap_attrinfo_set_converted writes:
+ *   located, cleared and initialized in the attribute's type
+ *   return: NO_ERROR, or the error
+ *   value_p(out), pr_type_p(out): the attribute value and its primitive type
  */
-int
-heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
+static int
+heap_attrinfo_start_set (const OID * inst_oid, ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info,
+			 HEAP_ATTRVALUE ** value_p, const PR_TYPE ** pr_type_p)
 {
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   const PR_TYPE *pr_type;	/* Primitive type array function structure */
-  TP_DOMAIN_STATUS dom_status;
   int ret = NO_ERROR;
 
   /*
@@ -12418,6 +13042,62 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
       goto exit_on_error;
     }
 
+  *value_p = value;
+  *pr_type_p = pr_type;
+  return NO_ERROR;
+
+exit_on_error:
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * heap_attrinfo_check_not_null_after_coercion () - check NOT NULL again on the value after coercion
+ *   return: NO_ERROR or ER_NULL_CONSTRAINT_VIOLATION
+ *   value(in): the attribute value after coercion
+ *
+ * Note: NOT NULL is checked against the value before coercion. However, coercion can still produce NULL:
+ *       '' converted to NUMERIC with numeric_empty_string_as_null, or a failed coercion with
+ *       return_null_on_function_errors.
+ */
+static int
+heap_attrinfo_check_not_null_after_coercion (const HEAP_ATTRVALUE * value)
+{
+  if (value->last_attrepr->is_notnull && DB_IS_NULL (&value->dbvalue))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+      return ER_NULL_CONSTRAINT_VIOLATION;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_attrinfo_set () - Set the value of given attribute
+ *   return: NO_ERROR
+ *   inst_oid(in): The instance oid
+ *   attrid(in): The identifier of the attribute to be set
+ *   attr_val(in): The memory value of the attribute
+ *   attr_info(in/out): The attribute information structure which describe the
+ *                      desired attributes
+ *
+ * Note: Set DB_VALUE of desired attribute identifier.
+ */
+int
+heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  /* the catalog's writers (a serial, FK SET NULL, loaddb, XA); DML writes through heap_attrinfo_set_converted */
+  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  const PR_TYPE *pr_type;	/* Primitive type array function structure */
+  TP_DOMAIN_STATUS dom_status;
+  int ret = NO_ERROR;
+
+  ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
   /*
    * As we use "writeval" to do the writing and that function gets
    * enough domain information, we can use non-exact domain matching
@@ -12445,20 +13125,177 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 
 	  db_make_null (&value->dbvalue);
 	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
+	}
     }
 
   if (ret != NO_ERROR)
     {
-      goto exit_on_error;
+      return ret;
     }
 
   value->state = HEAP_WRITTEN_ATTRVALUE;
 
   return ret;
+}
 
-exit_on_error:
+/*
+ * heap_attrinfo_is_fixed_copy_type () - whether a value of this type converts into an attribute of the same type by a
+ *   plain copy: a fixed-size type whose domain has no precision, codeset or time zone (tp_value_cast_internal clones
+ *   a value of a non-parameterized domain's own type)
+ */
+static bool
+heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_MONETARY:
+      return true;
+    default:
+      return false;
+    }
+}
 
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+/*
+ * heap_attrinfo_can_share_string () - CBRD-27847: whether an attribute takes a string or bit string value as it is,
+ *   sharing the value's buffer: the value is of the attribute's domain - precision and collation, as the match
+ *   heap_attrinfo_set tries first (TP_EXACT_MATCH), and the codeset -, fits its precision (a CHAR or BIT fills it),
+ *   and owns no buffer. The cast would only copy such a value: the same codeset is copied as it is, and a full CHAR
+ *   or BIT is padded by neither the cast nor writing it, which pad a shorter one differently (the cast with the
+ *   codeset's pad character, writing with a space). A value that owns its buffer is cast into a copy: its holder may
+ *   clear it before the record is written (locator_mvcc_reev_cond_assigns clears it right after the assignment).
+ *   return: true to share the value's buffer
+ *   value(in): a value, not NULL, of the attribute's type
+ *   domain(in): the attribute's domain
+ */
+static bool
+heap_attrinfo_can_share_string (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  int precision;
+
+  if (!TP_IS_CHAR_BIT_TYPE (type) || DB_NEED_CLEAR (value))
+    {
+      return false;
+    }
+
+  if (TP_IS_CHAR_TYPE (type)
+      && (db_get_string_codeset (value) != TP_DOMAIN_CODESET (domain)
+	  || db_get_string_collation (value) != TP_DOMAIN_COLLATION (domain)))
+    {
+      return false;
+    }
+
+  /* the value's precision as tp_domain_resolve_value makes it - an unset variable one is the maximum -, but for an
+   * oversized one, which the shared setval refuses (ER_INVALID_PRECISION) where the cast stores the value */
+  precision = db_value_precision (value);
+  if ((type == DB_TYPE_VARCHAR || type == DB_TYPE_VARBIT)
+      && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE))
+    {
+      precision = (type == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION : DB_MAX_VARBIT_PRECISION;
+    }
+  if (precision != domain->precision)
+    {
+      return false;
+    }
+
+  /* and the value fits it, whatever its precision says. A CHAR or BIT fills it: one read from a list tuple, a record
+   * or a plan comes padded, with its precision as its length. A VARCHAR's size in bytes bounds its length in
+   * characters, which is counted only when the size does not decide; a bit string's length is in bits */
+  if (type == DB_TYPE_CHAR || type == DB_TYPE_BIT)
+    {
+      return db_get_string_length (value) == precision;
+    }
+  if (type == DB_TYPE_VARCHAR && db_get_string_size (value) <= precision)
+    {
+      return true;
+    }
+  return db_get_string_length (value) <= precision;
+}
+
+/*
+ * heap_attrinfo_set_converted () - CBRD-27583: set the value an INSERT, UPDATE or MERGE assigns to an
+ *   attribute with the converter its plan chose at unpack for the value's type into the attribute's type, as
+ *   heap_attrinfo_set's coercion does it (tp_value_auto_cast_with_precision_check) into the catalog's domain, without
+ *   the match it tries first - but for a string the attribute can share (heap_attrinfo_can_share_string), which the
+ *   cast would only copy
+ *   return: NO_ERROR, or the conversion's error
+ *   attr_val(in): the value; a string the attribute shares is borrowed, not copied: its buffer must stay as it is
+ *		   until the record is built (locator_attribute_info_force), so a value read through the scan cache that
+ *		   the force rereads the old record with is copied first
+ *   domain(in): the attribute's domain the XASL streams, of the catalog's type (a client builds a collection's,
+ *		 MONETARY's or an object's domain that tp_domain_match does not find the catalog's)
+ *   value_type(in), conv(in): the plan's - the type the value comes in and its converter into domain's type, which a
+ *			       converter depends on alone; the converter of a value of another type is looked up
+ */
+int
+heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val,
+			     HEAP_CACHE_ATTRINFO * attr_info, const TP_DOMAIN * domain, DB_TYPE value_type,
+			     TP_VALUE_CONVERTER conv)
+{
+  HEAP_ATTRVALUE *value;
+  const PR_TYPE *pr_type;
+  int ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+  const TP_DOMAIN *catalog = value->last_attrepr->domain;
+  assert (TP_DOMAIN_TYPE (catalog) == TP_DOMAIN_TYPE (domain));
+  const bool collection = TP_IS_SET_TYPE (pr_type->id) && !DB_IS_NULL (attr_val);
+  /* a compatible collection is stored as it is, as heap_attrinfo_set does */
+  if (DB_IS_NULL (attr_val) || TP_DOMAIN_TYPE (catalog) == DB_TYPE_OBJECT
+      || (collection && tp_domain_check (catalog, attr_val, TP_EXACT_MATCH) == DOMAIN_COMPATIBLE))
+    {
+      /* NULL, and an object reference, which the server takes as it is (tp_domain_check) */
+      ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
+    }
+  else if (value_type == TP_DOMAIN_TYPE (catalog)
+	   /* guard: the plan's premise; a mismatch takes the converter path */
+	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type
+	   && (heap_attrinfo_is_fixed_copy_type (value_type) || heap_attrinfo_can_share_string (attr_val, catalog)))
+    {
+      /* the plan's value of the attribute's own type that the cast would only copy: a fixed-size type (no precision,
+       * codeset or zone) is cloned; a string's buffer is shared, so the value's holder keeps it until the record is
+       * written - a list tuple, a record or a plan constant does, for the row */
+      ret = pr_type->setval (&value->dbvalue, attr_val, false);
+    }
+  else
+    {
+      /* the plan's same fixed-size type reaches here only when the guard above failed */
+      assert (value_type != TP_DOMAIN_TYPE (catalog) || !heap_attrinfo_is_fixed_copy_type (value_type));
+      const TP_DOMAIN_STATUS dom_status =
+	tp_value_auto_cast_with_precision_check_converter (attr_val, &value->dbvalue, catalog,
+							   value_type, conv);
+      if (dom_status != DOMAIN_COMPATIBLE)
+	{
+	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, catalog);
+	  assert (er_errid () != NO_ERROR);
+	  db_make_null (&value->dbvalue);
+	}
+      else
+	{
+	  ret = heap_attrinfo_check_not_null_after_coercion (value);
+	}
+    }
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  value->state = HEAP_WRITTEN_ATTRVALUE;
+  return NO_ERROR;
 }
 
 /*
@@ -13549,7 +14386,6 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
 
   return id;
 }
-
 
 /*
  * heap_attrinfo_start_with_btid () - Initialize an attribute information structure
@@ -16191,7 +17027,7 @@ heap_chnguess_initialize (void)
 
   heap_Guesschn_area.schema_change = false;
   heap_Guesschn_area.clock_hand = -1;
-  heap_Guesschn_area.num_entries = HEAP_CLASSREPR_MAXCACHE;
+  heap_Guesschn_area.num_entries = HEAP_CHNGUESS_MAXENTRIES;
 
   /*
    * Start with at least the fude factor of clients. Make sure that every
@@ -16209,7 +17045,7 @@ heap_chnguess_initialize (void)
 
   /* Build the hash table from OID to CHN */
   heap_Guesschn_area.ht =
-    mht_create ("Memory hash OID to chn at clients", HEAP_CLASSREPR_MAXCACHE, oid_hash, oid_compare_equals);
+    mht_create ("Memory hash OID to chn at clients", HEAP_CHNGUESS_MAXENTRIES, oid_hash, oid_compare_equals);
   if (heap_Guesschn_area.ht == NULL)
     {
       goto exit_on_error;
@@ -18700,9 +19536,33 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 	    }
 	}
 
-      if (!DB_IS_NULL (&orig_value))
+      if (!DB_IS_NULL (&orig_value) && DB_IS_NULL (&(value->dbvalue)))
 	{
-	  assert (!DB_IS_NULL (&(value->dbvalue)));
+	  /* '' and a whitespace-only string are NULL as NUMERIC with numeric_empty_string_as_null. */
+	  assert (prm_get_bool_value (PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL) && dest_type == DB_TYPE_NUMERIC
+		  && QSTR_IS_ANY_CHAR (src_type));
+
+	  /* For attributes that are already NOT NULL, treat values that become NULL during coercion as
+	   * conversion failures, since existing NULL values are checked only when NOT NULL is newly added. */
+	  if (value->last_attrepr->is_notnull)
+	    {
+	      if (prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT))
+		{
+		  error = ER_NOT_NULL_DOES_NOT_ALLOW_NULL_VALUE;
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  goto exit;
+		}
+
+	      error =
+		db_value_domain_default (&(value->dbvalue), dest_type, dest_prec, dest_dom->scale, dest_dom->codeset,
+					 dest_dom->collation_id, &dest_dom->enumeration);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      log_warning = true;
+	      warning_code = ER_ALTER_CHANGE_CAST_FAILED_SET_DEFAULT;
+	    }
 	}
 
       if (log_warning)
@@ -18749,7 +19609,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
     locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				  UPDATE_INPLACE_OLD_MVCCID, NULL, false);
+				  UPDATE_INPLACE_OLD_MVCCID, NULL, LOCATOR_LOCK_AT_SELECT);
   if (error != NO_ERROR)
     {
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -20005,7 +20865,6 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL);
 }
-
 
 /*
  * heap_next_record_info () - Retrieve or peek next object.
@@ -21453,11 +22312,137 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
   if (home_hint_p == NULL)
     {
+      bool hint_valid = false;
+
       assert (!HFID_IS_NULL (&context->hfid));
 
+      /* Rows of a batch INSERT mostly go to the same page,
+       * so the page of this scan's previous insert is tried before the bestspace search, in six steps:
+       *   1. the hint applies: a scan cache is given, it holds a hint, and no error is pending
+       *   2. the bestspace is looked up, and its candidate queue has no room for the row
+       *   3. the hint page is fixed without waiting
+       *   4. the page is checked like a bestspace candidate
+       *   5. hit: the row is counted and the free space is recorded; miss: the record is corrected, the hint dropped
+       *   6. a failed fix: contended keeps the hint, deallocated drops it, anything else is an error
+       * Step 1, in detail: some callers insert without a scan cache; the hint is empty before the first insert
+       * and after it is dropped; bestspace::find returns a pending error, which the er_clear () calls of
+       * step 5 and 6 would clear */
+      if (context->scan_cache_p != NULL && !VPID_ISNULL (&context->scan_cache_p->insert_hint_vpid)
+	  && er_errid_if_has_error () == NO_ERROR)
+	{
+	  // *INDENT-OFF*
+	  cubstorage::bestspace *bestspace;
+	  // *INDENT-ON*
+
+	  /* step 2: lookup only (NULL class_oid): heap_find_bestpage builds a missing bestspace */
+	  bestspace = heap_find_bestspace (thread_p, NULL, &context->hfid, NULL);
+	  if (bestspace != NULL
+	      /* the search takes reclaimed space from the candidate queue first;
+	       * the hint would skip it and fill its own page,
+	       * so a delete-and-reinsert loop would allocate new pages where the search reuses the reclaimed ones */
+	      && !bestspace->has_candidate ((std::uint16_t)
+					    bestspace->get_needed_size (context->recdes_p->length + SPAGE_SLOT_SIZE)))
+	    {
+	      VPID hint_vpid = context->scan_cache_p->insert_hint_vpid;
+
+	      /* step 3: mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is.
+	       * The watcher must be empty: pgbuf_ordered_fix puts the hint page into it */
+	      assert (PGBUF_IS_CLEAN_WATCHER (context->home_page_watcher_p));
+
+	      int save_wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	      error_code = pgbuf_ordered_fix (thread_p, &hint_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
+					      context->home_page_watcher_p);
+	      (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
+	      if (error_code == NO_ERROR)
+		{
+		  PAGE_PTR page_p = context->home_page_watcher_p->pgptr;
+		  bool page_valid = false;
+
+		  /* step 4: the page check of every path that fixes a page by a remembered VPID,
+		   * and the space rule of bestspace::find -- the hint keeps the unfill reservation */
+		  int consume_size = context->recdes_p->length + SPAGE_SLOT_SIZE;
+		  int needed_size = bestspace->get_needed_size (consume_size);
+		  int freespace = 0;
+
+		  if (heap_page_belongs_to_class (thread_p, page_p, &context->class_oid))
+		    {
+		      page_valid = true;
+		      freespace = spage_max_space_for_new_record (thread_p, page_p);
+		    }
+
+		  if (page_valid && freespace >= needed_size)
+		    {
+		      /* step 5, hit: the search counts the record in the estimates when it hands out a page,
+		       * so the hint does too; otherwise the estimates miss every row that skips the search */
+		      bestspace->add_estimates (*thread_p, 0, 1, context->recdes_p->length);
+
+		      /* the search charges its handout to the recorded free space; the hint does the same,
+		       * but only when the page changes tier, since the L2/L3 bitmaps index by tier.
+		       *
+		       * The L1 pre-filter and the candidate queue compare the exact value,
+		       * so an entry left high within its tier costs one wasted page fix,
+		       * and the searcher that fixed the page writes back the measured value */
+		      std::uint16_t freespace_after = (std::uint16_t) (freespace - consume_size);
+
+		      // *INDENT-OFF*
+		      if (cubstorage::bestspace::size_to_tier (freespace_after)
+			  != cubstorage::bestspace::size_to_tier ((std::uint16_t) freespace))
+			{
+			  bestspace->update_freespace (hint_vpid, freespace_after,
+						       context->scan_cache_p->insert_hint_l1_pos);
+			}
+		      // *INDENT-ON*
+
+		      hint_valid = true;
+		    }
+		  else
+		    {
+		      /* step 5, miss: the page is too full or no longer this class's heap page -- drop the hint */
+		      er_clear ();	/* a failed header read is already logged */
+
+		      /* correct the recorded free space once before the hint is dropped,
+		       * so the next searcher reads the measured free space */
+		      if (page_valid)
+			{
+			  // *INDENT-OFF*
+			  bestspace->update_freespace (hint_vpid, (std::uint16_t) freespace,
+						       context->scan_cache_p->insert_hint_l1_pos);
+			  // *INDENT-ON*
+			}
+		      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+		      heap_scancache_reset_insert_hint (context->scan_cache_p);
+		    }
+		}
+	      else if (error_code == ER_LK_PAGE_TIMEOUT)
+		{
+		  /* step 6, contended: the page is not gone -- keep the hint */
+		  er_clear ();
+		  error_code = NO_ERROR;
+		}
+	      else if (error_code == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
+		{
+		  /* step 6, deallocated: the hint page is gone -- drop the hint */
+		  heap_scancache_reset_insert_hint (context->scan_cache_p);
+		  er_clear ();
+		  error_code = NO_ERROR;
+		}
+	      else
+		{
+		  /* step 6, other error: interruption, I/O failure, ... -- not a hint miss */
+		  if (er_errid () == NO_ERROR)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+		    }
+		  return error_code;
+		}
+	    }
+	}
+
       /* find and fix page for insert */
-      if (heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length, true,
-			      context->home_page_watcher_p) != NO_ERROR)
+      if (!hint_valid
+	  && heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length, true,
+				 context->home_page_watcher_p) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -24235,12 +25220,24 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
 					  LOG_SUPPLEMENT_INSERT, &context->class_oid, NULL, &context->supp_redo_lsa);
     }
 
-
 error:
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
+
+  /* save the page of this insert as the hint; the next insert of this scan tries it first */
+  if (rc == NO_ERROR && context->scan_cache_p != NULL && !OID_ISNULL (&context->res_oid))
+    {
+      VPID res_vpid;
+
+      VPID_SET (&res_vpid, context->res_oid.volid, context->res_oid.pageid);
+      if (!VPID_EQ (&res_vpid, &context->scan_cache_p->insert_hint_vpid))
+	{
+	  context->scan_cache_p->insert_hint_l1_pos = -1;	/* unknown position in the bestspace L1 arrays */
+	}
+      context->scan_cache_p->insert_hint_vpid = res_vpid;
+    }
 
   /* all ok */
   heap_unfix_watchers (thread_p, context);
@@ -24327,6 +25324,16 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   else
     {
       is_mvcc_op = true;
+    }
+
+  /* a later writer waits on the deleter's MVCCID self-lock, so it must be held before the DELID stamp is seen */
+  if (is_mvcc_op)
+    {
+      rc = logtb_ensure_mvccid_self_lock (thread_p);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
     }
 #else /* SERVER_MODE */
   is_mvcc_op = false;
@@ -24422,7 +25429,6 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  LOG_SUPPLEMENT_DELETE, &context->class_oid, &context->supp_undo_lsa, NULL);
     }
 
-
 error:
 
   /* unfix or keep home page */
@@ -24462,6 +25468,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
+  SERIAL_ROW_WRITE serial_write;
+  record_descriptor serial_merged;
+  RECDES serial_merged_recdes;
+  RECDES *client_recdes_p = context->recdes_p;
 
   /*
    * Check input
@@ -24551,6 +25561,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   CUBRID_OBJ_UPDATE_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
+  serial_row_write_begin (thread_p, &context->class_oid, &serial_write);
+
   /*
    * Get location
    */
@@ -24595,6 +25607,23 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+    }
+
+  /* a _db_serial row keeps the value NEXT_VALUE wrote in place since the client read it */
+  if (serial_write.active && context->record_type == REC_HOME)
+    {
+      rc = serial_row_write_keep_value (thread_p, &serial_write, &context->oid, &context->home_recdes,
+					context->recdes_p, &serial_merged);
+      if (rc != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (serial_write.merged)
+	{
+	  serial_merged_recdes = serial_merged.get_recdes ();
+	  serial_merged_recdes.type = context->recdes_p->type;
+	  context->recdes_p = &serial_merged_recdes;
 	}
     }
 
@@ -24675,7 +25704,6 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 					  &context->supp_redo_lsa);
     }
 
-
 exit:
 
   /* unfix or cache home page */
@@ -24693,6 +25721,9 @@ exit:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+
+  context->recdes_p = client_recdes_p;
+  serial_row_write_end (thread_p, &serial_write);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));

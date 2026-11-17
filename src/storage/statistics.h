@@ -34,6 +34,12 @@
 #define STATS_WITH_FULLSCAN  true
 #define STATS_WITH_SAMPLING  false
 
+/* progress of UPDATE STATISTICS ON ALL CLASSES reported to the server event log */
+#define STATS_PROGRESS_STATISTICS 0	/* phase: class statistics */
+#define STATS_PROGRESS_HISTOGRAM  1	/* phase: histograms */
+#define STATS_PROGRESS_STARTED    0	/* state */
+#define STATS_PROGRESS_FINISHED   1	/* state */
+
 #define STATS_SAMPLING_THRESHOLD 5000	/* sampling trial count */
 #define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
 

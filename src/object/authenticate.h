@@ -73,6 +73,12 @@ class print_output;
 #define Au_user_password_sha1           au_ctx ()->user_password_sha1
 #define Au_user_password_sha2_512       au_ctx ()->user_password_sha2_512
 
+/* While start() always passes the Au_user_encrypted_password buffer with a pre-hashed password, 
+ * login() passes the input password as-is, allowing the two paths to be distinguished via pointer comparison. */
+#define Au_user_encrypted_password      au_ctx ()->user_password_sha2_512
+#define IS_USER_ENCRYPTED_PASSWORD(ptr) ((ptr) == Au_user_encrypted_password)
+
+
 #define Au_cache                        au_ctx ()->caches
 
 /* Functions */
@@ -100,7 +106,7 @@ class print_output;
 
 // FIXME: To migrate legacy
 // AU_DISABLE_PASSWORDS () is called in serveral places without calling au_init ()
-#define AU_DISABLE_PASSWORDS()          au_ctx ()->disable_passwords ();
+#define AU_DISABLE_PASSWORDS()          au_ctx ()->disable_passwords ()
 
 /* Au_disable: true skips authorization checks, false performs them.
    Pair every AU_SAVE_AND_* with AU_RESTORE on each exit path or the state leaks. */
@@ -128,6 +134,9 @@ class print_output;
   while (0)
 
 extern EXPORT_IMPORT authenticate_context *au_ctx (void);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+extern void au_ctx_destructor (void);
+#endif
 
 extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
 

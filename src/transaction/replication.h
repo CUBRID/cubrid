@@ -108,6 +108,8 @@ extern int repl_get_key_digest (const struct or_index *index, char *digest);
 extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
 			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const struct or_index *index,
 			    REPL_INFO_TYPE repl_type);
+extern int repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_oidp, DB_VALUE * key_dbvalue,
+					      const struct or_index *index, DB_VALUE * prior_dbvalue);
 extern int repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);

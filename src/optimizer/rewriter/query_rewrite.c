@@ -288,10 +288,13 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  int continue_walk;
 	  int idx = 0;
 
+	  /* the SEMI/ANTI JOIN form goes first: it lifts the subquery's own table into the FROM and leaves
+	   * the optimizer to decide whether to materialize it, where the derived table below decides that
+	   * here and always materializes.  What it declines still reaches qo_rewrite_subqueries (). */
+	  qo_rewrite_exists_semi_anti (parser, node);
+
 	  /* rewrite uncorrelated subquery to join query */
 	  qo_rewrite_subqueries (parser, node, &idx, &continue_walk);
-
-	  qo_rewrite_exists_semi_anti (parser, node);
 	}
 
       /* rewrite optimization on WHERE, HAVING clause */
@@ -316,7 +319,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       /* convert to CNF and tag taggable terms */
       if (*wherep)
 	{
-	  *wherep = pt_cnf (parser, *wherep);
+	  *wherep = pt_cnf_where (parser, *wherep);
 	}
       if (*havingp)
 	{
@@ -520,6 +523,8 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       PROCESS_IF_EXISTS (parser, merge_del_wherep, qo_auto_parameterize);
       PROCESS_IF_EXISTS (parser, orderby_for_p, qo_auto_parameterize);
 
+      /* the constant values of the select list are pulled up when the query is rewritten again */
+      qo_auto_parameterize_constant_select_list (parser, node);
     }
   else
     {

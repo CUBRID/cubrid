@@ -388,7 +388,7 @@ repl_get_key_digest (const OR_INDEX * index, char *digest)
 }
 
 /*
- * repl_log_insert - insert a replication info to the transaction descriptor
+ * repl_log_insert_internal - insert a replication info to the transaction descriptor
  *
  * return: NO_ERROR or error code
  *
@@ -397,12 +397,15 @@ repl_get_key_digest (const OR_INDEX * index, char *digest)
  *   log_type(in): log type (DATA or SCHEMA)
  *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
  *   key_dbvalue(in): Primary Key value
+ *   index(in): RK index whose digest is logged after the key value
+ *   prior_dbvalue(in): NULL, or the value packed after the key (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
-int
-repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX * index, REPL_INFO_TYPE repl_info)
+static int
+repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
+			  LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX * index,
+			  REPL_INFO_TYPE repl_info, DB_VALUE * prior_dbvalue)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -477,6 +480,8 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       int packed_key_len = 0;
       int metadata_length = REPL_KEY_DIGEST_SIZE;
       char key_digest[REPL_KEY_DIGEST_SIZE];
+      char *ptr_to_packed_prior_value_size = NULL;
+      int packed_prior_len = 0;
 
       if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR || class_name == NULL)
 	{
@@ -515,6 +520,11 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
       repl_rec->length += metadata_length + OR_INT_SIZE + MAX_ALIGNMENT;
+      if (prior_dbvalue != NULL)
+	{
+	  /* int-alignment slack, marker, packed_prior_value_size, value */
+	  repl_rec->length += INT_ALIGNMENT + OR_INT_SIZE + OR_INT_SIZE + OR_VALUE_ALIGNED_SIZE (prior_dbvalue);
+	}
 
       ptr = (char *) malloc (repl_rec->length);
       if (ptr == NULL)
@@ -525,10 +535,8 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	  return error;
 	}
 
-#if !defined (NDEBUG)
-      /* Suppress valgrind complaint. */
+      /* the alignment slack is read by an applier looking for the marker after a _db_serial key */
       memset (ptr, 0, repl_rec->length);
-#endif // DEBUG
 
       repl_rec->repl_data = ptr;
 
@@ -541,10 +549,20 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       ptr = or_pack_int (ptr, metadata_length);
       memcpy (ptr, key_digest, metadata_length);
       ptr += metadata_length;
-      repl_rec->length = CAST_BUFLEN (ptr - repl_rec->repl_data);
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
+
+      if (prior_dbvalue != NULL)
+	{
+	  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+	  ptr = or_pack_int (ptr, LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC);
+	  ptr_to_packed_prior_value_size = ptr;
+	  ptr += OR_INT_SIZE;
+	  ptr = or_pack_mem_value (ptr, prior_dbvalue, &packed_prior_len);
+	  or_pack_int (ptr_to_packed_prior_value_size, packed_prior_len);
+	}
+      repl_rec->length = CAST_BUFLEN (ptr - repl_rec->repl_data);
     }
   else
     {
@@ -577,7 +595,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
        */
       if (LSA_ISNULL (&tdes->tail_lsa))
 	{
-	  LSA_COPY (&repl_rec->lsa, &log_Gl.prior_info.prior_lsa);
+	  repl_rec->lsa = log_Gl.prior_info.prior_lsa;
 	}
       else
 	{
@@ -621,6 +639,66 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
     {
       free_and_init (class_name);
     }
+
+  return error;
+}
+
+/*
+ * repl_log_insert - insert a replication info to the transaction descriptor
+ *
+ * return: NO_ERROR or error code
+ *
+ *   class_oid(in): OID of the class
+ *   inst_oid(in): OID of the instance
+ *   log_type(in): log type (DATA or SCHEMA)
+ *   rcvindex(in): recovery index (INSERT or DELETE or UPDATE)
+ *   key_dbvalue(in): Primary Key value
+ *   index(in): RK index whose digest is logged after the key value
+ */
+int
+repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, const OR_INDEX * index, REPL_INFO_TYPE repl_info)
+{
+  return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, index, repl_info,
+				   NULL);
+}
+
+/*
+ * repl_log_insert_serial_write_back - insert the replication info of a _db_serial write-back
+ *
+ * return: NO_ERROR or error code
+ *
+ *   serial_oidp(in): OID of the serial
+ *   key_dbvalue(in): name of the serial
+ *   index(in): RK index of _db_serial, whose digest is logged after the key value
+ *   prior_dbvalue(in): the cur_val the write-back replaces (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
+ *
+ * NOTE: logged even while a DDL suppresses row replication: the DDL replicates as its statement, and the
+ *       peer replaying it has no cache to write the tail back from.
+ */
+int
+repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_oidp, DB_VALUE * key_dbvalue,
+				   const OR_INDEX * index, DB_VALUE * prior_dbvalue)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int save_suppress, error;
+
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  save_suppress = tdes->suppress_replication;
+  tdes->suppress_replication = 0;
+
+  error = repl_log_insert_internal (thread_p, oid_Serial_class_oid, serial_oidp, LOG_REPLICATION_DATA,
+				    RVREPL_DATA_UPDATE, key_dbvalue, index, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue);
+  if (error == NO_ERROR)
+    {
+      error = repl_add_update_lsa (thread_p, serial_oidp);
+    }
+
+  tdes->suppress_replication = save_suppress;
 
   return error;
 }

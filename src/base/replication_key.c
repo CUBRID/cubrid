@@ -372,8 +372,9 @@ repl_key_unpack_log (const char *data, int length, const char **class_name, cons
       return true;
     }
 
-  if (!repl_key_get_int (&r, metadata_length) || *metadata_length != r.remaining
-      || *metadata_length != REPL_KEY_DIGEST_SIZE)
+  /* a _db_serial write-back appends its prior value after the digest, so the digest need not end the log */
+  if (!repl_key_get_int (&r, metadata_length) || *metadata_length != REPL_KEY_DIGEST_SIZE
+      || *metadata_length > r.remaining)
     {
       return false;
     }

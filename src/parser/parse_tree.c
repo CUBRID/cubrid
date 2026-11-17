@@ -1269,6 +1269,46 @@ parser_free_parser (PARSER_CONTEXT * parser)
     {
       free_and_init (parser->host_var_expected_domains);
     }
+  if (parser->host_var_compiled_domains)
+    {
+      free_and_init (parser->host_var_compiled_domains);
+    }
+  if (parser->host_var_format_classes)
+    {
+      free_and_init (parser->host_var_format_classes);
+    }
+  if (parser->host_var_elt_indexes)
+    {
+      free_and_init (parser->host_var_elt_indexes);
+    }
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
+  if (parser->host_var_derived_pads)
+    {
+      free_and_init (parser->host_var_derived_pads);
+    }
+  if (parser->host_var_bind_domains)
+    {
+      free_and_init (parser->host_var_bind_domains);
+    }
+
+  if (parser->static_sql_host_vars)
+    {
+      free_and_init (parser->static_sql_host_vars);
+    }
+
+  /* INTO labels of a static SQL which have not been taken by the caller (e.g. on a compile error) */
+  if (parser->external_into_label)
+    {
+      for (i = 0; i < parser->external_into_label_cnt; i++)
+	{
+	  free_and_init (parser->external_into_label[i]);
+	}
+      free_and_init (parser->external_into_label);
+      parser->external_into_label_cnt = 0;
+    }
 
   parser_free_lcks_classes (parser);
 

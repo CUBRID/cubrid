@@ -718,7 +718,7 @@ $ LOADDB
 645 SYSTEM ERROR: State = %1$s of Transaction = %2$d (index = %3$d) \n is not the correct state to apply client postpone/undo actions... ignored
 646 SYSTEM ERROR: It seems that a compensating record is missing for logical logging rcvindex = %1$s\n. Without this compensating record crash recovery will not be done correctly
 647 Backup "%1$s" does not belong to the given database.
-648 Backup is incompatible with current "%1$s" release "%2$s".
+648 Backup (release "%3$s") is incompatible with current "%1$s" release "%2$s".
 649 Given precision of %1$d is invalid; it should be greater than %2$d and no greater than %3$d.
 650 Cannot create enough threads for 'max_clients=%1$d'.
 651 There is not virtual memory to preallocate %1$d sort buffers for each of %2$d threads.
@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 Stream session error: %1$s.
+1218 The stream is not open: %1$s.
+1219 The stream is not supported: %1$s.
+1220 Invalid use of a stream: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1492,21 +1492,38 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
+1384 Session variable @%1$s has the type %2$s in this statement, not %3$s.
 
 1385 Invalid username or password.
 
-1386 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
+1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 HA constraint violation: Changing replication option is not allowed in HA mode.
+1387 %1$s cannot be executed while %2$d sub-clients are alive.
+1388 A sub-client cannot be started, since the main client is not connected or is being restarted.
+1389 %1$s cannot be called by the main client thread.
 
-1388 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
+1390 The secret of session %1$u does not match.
+1391 Cannot end or keep session %1$u because it is not attached to this connection.
 
-1389 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
+1392 A connection used transaction index %1$d, but the server assigned it index %2$d. The assigned index was used instead.
 
-1390 HA constraint violation: The schema change on superclass '%1$s' would leave replication subclass '%2$s' without a valid replication constraint.
+1393 Altering system generated stored procedure is not allowed.
 
-1391 Last Error
+1394 Granting or revoking privileges on system generated stored procedure is not allowed.
+
+1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
+
+1396 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
+
+1397 HA constraint violation: Changing replication option is not allowed in HA mode.
+
+1398 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
+
+1399 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
+
+1400 HA constraint violation: The schema change on superclass '%1$s' would leave replication subclass '%2$s' without a valid replication constraint.
+
+1401 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2021,6 +2038,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
+344 Attribute '%1$s' has different types in classes %2$s and %3$s.
+345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 
 
 

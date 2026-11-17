@@ -570,9 +570,9 @@ au_set_password_encoded_sha1_method (MOP user, DB_VALUE *returnval, DB_VALUE *pa
 	}
 
       /* in case of SHA2, prefix is not stripped */
-      if (string != NULL && IS_ENCODED_SHA2_512 (string))
+      if (string != NULL && (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA2_512_SALT (string)))
 	{
-	  error = au_set_password_encrypt (user, string + 1 /* 1 for prefix */, 0, ENCODE_PREFIX_SHA2_512);
+	  error = au_set_password_encrypt (user, string + 1 /* 1 for prefix */, 0, string[0]);
 	}
       else
 	{

@@ -28,6 +28,7 @@
 #include "heap_file.h"
 #include "load_common.hpp"
 #include "memory_private_allocator.hpp"
+#include "partition_sr.h"
 
 #include <vector>
 
@@ -88,8 +89,18 @@ namespace cubload
 
     private:
       int process_constant (constant_type *cons, const attribute &attr);
-      int process_generic_constant (constant_type *cons, const attribute &attr);
-      int process_monetary_constant (constant_type *cons, const attribute &attr);
+
+      /*
+       * sink_heap - the heap attribute info takes the value.
+       *
+       * The server side's one destination for a converted value, named to
+       * match the two the standalone loader has (ldr_sink_instance () and
+       * ldr_sink_class_object () in load_sa_loader.cpp, where the rule the
+       * three of them share is written out).
+       */
+      int sink_heap (const attribute &attr, db_value &val);
+      bool report_value_error ();
+      int process_generic_constant (constant_type *cons, const attribute &attr, bool is_element);
       int process_collection_constant (constant_type *cons, const attribute &attr);
 
       void clear_db_values ();
@@ -116,7 +127,17 @@ namespace cubload
       bool m_scancache_started;
       heap_scancache m_scancache;
 
+      // private copy of the context of the partitioned class when the target class is one of its partitions; it is
+      // loaded for each batch (see init)
+      PRUNING_CONTEXT m_pcontext;
+      bool m_pcontext_loaded;
+      // the target class is a partitioned class, whose rows the loader cannot route to its partitions
+      bool m_is_partitioned_class;
+
       std::size_t m_rows;
+
+      /* whether the row being read has had an error reported for it */
+      bool m_row_reported;
   };
 
 } // namespace cubload

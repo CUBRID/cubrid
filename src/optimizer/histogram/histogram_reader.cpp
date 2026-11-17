@@ -162,7 +162,17 @@ namespace hist
 	  }
       }
 
-    /* cache derived aggregates */
+    /* derived aggregates: on first use (compute_aggregates) */
+    aggregates_ready_ = false;
+    return NO_ERROR;
+  }
+
+  void HistogramReader::compute_aggregates () const noexcept
+  {
+    if (aggregates_ready_)
+      {
+	return;
+      }
     nonmcv_distinct_ = 0;
     for (std::uint32_t i = 0; i < nb_; i++)
       {
@@ -173,7 +183,7 @@ namespace hist
       {
 	mcv_total_freq_ += mcv_freq (i);
       }
-    return NO_ERROR;
+    aggregates_ready_ = true;
   }
 
 // ---------- record navigation ----------
