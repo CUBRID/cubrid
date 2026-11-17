@@ -269,9 +269,9 @@ jobs:
       RUNDIR: ${{ inputs.rundir }}
       BUILD_NS: ${{ inputs.build_ns }}
       PR: ${{ inputs.pr }}
-      SUITES_RUN: ${{ inputs.suite }}
+      SUITE: ${{ inputs.suite }}
     outputs:
-      verdict: ${{ steps.verdict.outputs[format('verdict_{0}', inputs.suite)] }}
+      verdict: ${{ steps.verdict.outputs.verdict }}
 
     steps:
       - name: Check the run directory
@@ -290,7 +290,7 @@ jobs:
 
       - name: Update timings for the next split
         run: |
-          for f in "$RUNDIR/$SUITES_RUN"/shard/*/artifacts/feedback.log; do
+          for f in "$RUNDIR/$SUITE"/shard/*/artifacts/feedback.log; do
             [ -f "$f" ] || continue
             # A line is `[OK]:  <case path> <milliseconds> EnvId=...`. A log without one is grep exit 1,
             # and failing this step would skip Wall clock and Guard 3.
@@ -326,7 +326,7 @@ jobs:
         run: |
           now=$(date -u +%s)
           mkdir -p "$STAMPS"
-          printf 'start\t%s\n' "$now" > "$STAMPS/collect.tsv"
+          printf 'start\t%s\n' "$now" > "$STAMPS/collect-$SUITE.tsv"
           run_started=""
           if code=$(curl -sS -o /tmp/run.json -w '%{http_code}' \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -352,27 +352,25 @@ jobs:
           total_sec=""
           [ -n "$run_started" ] && total_sec=$((now - run_started))
 
-          for suite in $SUITES_RUN; do
-            : > /tmp/shard_dur.txt
-            for f in "$STAMPS"/shard-"$suite"-*.tsv; do
-              [ -f "$f" ] || continue
-              d=$(dur "$f"); [ -n "$d" ] && echo "$d" >> /tmp/shard_dur.txt
-            done
-            stamp_field() { { awk -F'\t' -v k="$1" '$1==k {print $2}' "$STAMPS"/shard-"$suite"-*.tsv 2>/dev/null || true; } | sort -n; }
-            first_start=$(stamp_field start | head -1)
-            last_end=$(stamp_field end | tail -1)
-            read -r sh_n sh_max sh_med <<<"$(sort -n /tmp/shard_dur.txt | awk '
-              {a[NR]=$1} END {if (NR==0) {print "0 0 0"; exit}; printf "%d %d %d\n", NR, a[NR], a[int((NR+1)/2)]}')"
-            sh_span=""
-            [ -n "$first_start" ] && [ -n "$last_end" ] && sh_span=$((last_end - first_start))
-            # Quoted: the summary step sources it.
-            {
-              echo "shard_max='$(fmt "$sh_max")'"
-              echo "shard_med='$(fmt "$sh_med")'"
-              echo "shard_span='$(fmt "$sh_span")'"
-              echo "shard_n=$sh_n"
-            } > "/tmp/clock.$suite"
+          : > /tmp/shard_dur.txt
+          for f in "$STAMPS"/shard-"$SUITE"-*.tsv; do
+            [ -f "$f" ] || continue
+            d=$(dur "$f"); [ -n "$d" ] && echo "$d" >> /tmp/shard_dur.txt
           done
+          stamp_field() { { awk -F'\t' -v k="$1" '$1==k {print $2}' "$STAMPS"/shard-"$SUITE"-*.tsv 2>/dev/null || true; } | sort -n; }
+          first_start=$(stamp_field start | head -1)
+          last_end=$(stamp_field end | tail -1)
+          read -r sh_n sh_max sh_med <<<"$(sort -n /tmp/shard_dur.txt | awk '
+            {a[NR]=$1} END {if (NR==0) {print "0 0 0"; exit}; printf "%d %d %d\n", NR, a[NR], a[int((NR+1)/2)]}')"
+          sh_span=""
+          [ -n "$first_start" ] && [ -n "$last_end" ] && sh_span=$((last_end - first_start))
+          # Quoted: the summary step sources it.
+          {
+            echo "shard_max='$(fmt "$sh_max")'"
+            echo "shard_med='$(fmt "$sh_med")'"
+            echo "shard_span='$(fmt "$sh_span")'"
+            echo "shard_n=$sh_n"
+          } > "/tmp/clock.$SUITE"
           {
             echo "queue=$(fmt "$queue_sec")"
             echo "build=$(fmt "$build_sec")"
@@ -440,316 +438,310 @@ jobs:
           rc=0
           rm -rf /tmp/failed-logs; mkdir -p /tmp/failed-logs
 
-          for suite in $SUITES_RUN; do
-            repo=$(attr "$suite" tc_repo)
-            brid=$(jq -r --arg m "$(attr "$suite" build_mode)" '.[$m] // ""' <<<"$BRIDS")
-            d="$RUNDIR/$suite"
-            . "$d/plan/split.meta"
+          repo=$(attr "$SUITE" tc_repo)
+          brid=$(jq -r --arg m "$(attr "$SUITE" build_mode)" '.[$m] // ""' <<<"$BRIDS")
+          d="$RUNDIR/$SUITE"
+          . "$d/plan/split.meta"
 
-            # find, not ls: every shard dead is exactly when guard 3 must speak.
-            planned=$(find "$d/plan/shards" -maxdepth 1 -name '*.list' 2>/dev/null | wc -l)
-            done_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name shard.done 2>/dev/null | wc -l)
-            read_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name build.read 2>/dev/null | wc -l)
-            tcread_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
+          # find, not ls: every shard dead is exactly when guard 3 must speak.
+          planned=$(find "$d/plan/shards" -maxdepth 1 -name '*.list' 2>/dev/null | wc -l)
+          done_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name shard.done 2>/dev/null | wc -l)
+          read_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name build.read 2>/dev/null | wc -l)
+          tcread_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
 
-            unrun_n=0; dead_n=0
-            : > /tmp/dead_shards.list
-            for f in "$d"/plan/shards/*.list; do
-              [ -f "$f" ] || continue
-              i=$(basename "$f" .list)
-              eval "$(count "$d/shard/$i")"
-              [ "$found" = no ] || continue
-              n=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$d/plan/plan.tsv")
-              dead_n=$((dead_n + 1))
-              unrun_n=$((unrun_n + ${n:-0}))
-              printf 'shard %s: %s cases\n' "$i" "${n:-0}" >> /tmp/dead_shards.list
-            done
+          unrun_n=0; dead_n=0
+          : > /tmp/dead_shards.list
+          for f in "$d"/plan/shards/*.list; do
+            [ -f "$f" ] || continue
+            i=$(basename "$f" .list)
+            eval "$(count "$d/shard/$i")"
+            [ "$found" = no ] || continue
+            n=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$d/plan/plan.tsv")
+            dead_n=$((dead_n + 1))
+            unrun_n=$((unrun_n + ${n:-0}))
+            printf 'shard %s: %s cases\n' "$i" "${n:-0}" >> /tmp/dead_shards.list
+          done
 
-            exec_sum=0; succ_sum=0; fail_sum=0; skip_sum=0
-            : > /tmp/failed.list
-            for r in "$d"/shard/*/; do
-              i=$(basename "$r")
-              eval "$(count "$r")"
-              [ "$found" = yes ] || continue
-              exec_sum=$((exec_sum + exec)); succ_sum=$((succ_sum + pass))
-              fail_sum=$((fail_sum + fail)); skip_sum=$((skip_sum + skip))
-              failed "$r" "/tmp/failed-logs/$suite/$i" \
-                | awk -v s="$i" '{printf "%s\t%s\n", s, $0}' >> /tmp/failed.list
-            done
-            failed_n=$(wc -l < /tmp/failed.list)
-            cp /tmp/failed.list "$d/collect/failed.list"
-            # Re-run failed jobs rewrites failed.list, and an earlier attempt's reproduce block reads its own.
-            cp /tmp/failed.list "$d/collect/failed.$GITHUB_RUN_ATTEMPT.list" \
-              || echo "::warning::$suite: could not keep this attempt's failure list for the reproduce block"
-            cp /tmp/failed.list "/tmp/failed.$suite.list"
+          exec_sum=0; succ_sum=0; fail_sum=0; skip_sum=0
+          : > /tmp/failed.list
+          for r in "$d"/shard/*/; do
+            i=$(basename "$r")
+            eval "$(count "$r")"
+            [ "$found" = yes ] || continue
+            exec_sum=$((exec_sum + exec)); succ_sum=$((succ_sum + pass))
+            fail_sum=$((fail_sum + fail)); skip_sum=$((skip_sum + skip))
+            failed "$r" "/tmp/failed-logs/$SUITE/$i" \
+              | awk -v s="$i" '{printf "%s\t%s\n", s, $0}' >> /tmp/failed.list
+          done
+          failed_n=$(wc -l < /tmp/failed.list)
+          cp /tmp/failed.list "$d/collect/failed.list"
+          # Re-run failed jobs rewrites failed.list, and an earlier attempt's reproduce block reads its own.
+          cp /tmp/failed.list "$d/collect/failed.$GITHUB_RUN_ATTEMPT.list" \
+            || echo "::warning::$SUITE: could not keep this attempt's failure list for the reproduce block"
 
-            agree() {
-              local vals
-              vals=$(cat $1 2>/dev/null | awk -F= -v k="$2" '$1 == k {print $2}' | sort -u || :)
-              local n; n=$(printf '%s' "$vals" | grep -c . || :)
-              if [ "$n" -eq 0 ]; then echo "none 0"
-              elif [ "$n" -gt 1 ]; then echo "mixed $n"
-              elif [ "$vals" != "$3" ]; then echo "mismatch 1"
-              else echo "ok 1"; fi
-            }
-            read -r reason uniq_n <<<"$(agree "$d/shard/*/build.read" run_id "$brid")"
-            read -r tc_reason tc_uniq <<<"$(agree "$d/shard/*/tc.read" tc_sha "$tc_sha")"
-            [ "$total" -gt 0 ] || { reason=no-shard; tc_reason=no-shard; }
+          agree() {
+            local vals
+            vals=$(cat $1 2>/dev/null | awk -F= -v k="$2" '$1 == k {print $2}' | sort -u || :)
+            local n; n=$(printf '%s' "$vals" | grep -c . || :)
+            if [ "$n" -eq 0 ]; then echo "none 0"
+            elif [ "$n" -gt 1 ]; then echo "mixed $n"
+            elif [ "$vals" != "$3" ]; then echo "mismatch 1"
+            else echo "ok 1"; fi
+          }
+          read -r reason uniq_n <<<"$(agree "$d/shard/*/build.read" run_id "$brid")"
+          read -r tc_reason tc_uniq <<<"$(agree "$d/shard/*/tc.read" tc_sha "$tc_sha")"
+          [ "$total" -gt 0 ] || { reason=no-shard; tc_reason=no-shard; }
 
-            covered=$((exec_sum + skip_sum))
-            v_cov="OK"; [ "$covered" -ge "$total" ] || v_cov="FAIL"
-            v_shard="OK"; [ "$done_n" -eq "$planned" ] || v_shard="FAIL"
-            v_read="OK"; [ "$read_n" -eq "$planned" ] || v_read="FAIL"
-            case "$reason" in
-              ok)       v_same="OK all the same" ;;
-              mixed)    v_same="FAIL shards differ ($uniq_n distinct)" ;;
-              mismatch) v_same="FAIL all the same, but not the build plan verified" ;;
-              no-shard) v_same="no shard, nothing to read" ;;
-              *)        v_same="FAIL nobody recorded a provenance" ;;
-            esac
-            v_this="OK"; [ "$brid" = "$GITHUB_RUN_ID" ] || v_this="reused"
-            [ -n "$brid" ] || v_this="FAIL plan found no usable $(attr "$suite" build_mode) build"
-            v_tcread="OK"; [ "$tcread_n" -eq "$planned" ] || v_tcread="FAIL"
-            case "$tc_reason" in
-              ok)       v_tcsame="OK all the same" ;;
-              mixed)    v_tcsame="FAIL shards differ ($tc_uniq distinct)" ;;
-              mismatch) v_tcsame="FAIL all the same, but not what plan chose" ;;
-              no-shard) v_tcsame="no shard, nothing to read" ;;
-              *)        v_tcsame="FAIL nobody recorded a tc provenance" ;;
-            esac
-            . "/tmp/clock.$suite"
+          covered=$((exec_sum + skip_sum))
+          v_cov="OK"; [ "$covered" -ge "$total" ] || v_cov="FAIL"
+          v_shard="OK"; [ "$done_n" -eq "$planned" ] || v_shard="FAIL"
+          v_read="OK"; [ "$read_n" -eq "$planned" ] || v_read="FAIL"
+          case "$reason" in
+            ok)       v_same="OK all the same" ;;
+            mixed)    v_same="FAIL shards differ ($uniq_n distinct)" ;;
+            mismatch) v_same="FAIL all the same, but not the build plan verified" ;;
+            no-shard) v_same="no shard, nothing to read" ;;
+            *)        v_same="FAIL nobody recorded a provenance" ;;
+          esac
+          v_this="OK"; [ "$brid" = "$GITHUB_RUN_ID" ] || v_this="reused"
+          [ -n "$brid" ] || v_this="FAIL plan found no usable $(attr "$SUITE" build_mode) build"
+          v_tcread="OK"; [ "$tcread_n" -eq "$planned" ] || v_tcread="FAIL"
+          case "$tc_reason" in
+            ok)       v_tcsame="OK all the same" ;;
+            mixed)    v_tcsame="FAIL shards differ ($tc_uniq distinct)" ;;
+            mismatch) v_tcsame="FAIL all the same, but not what plan chose" ;;
+            no-shard) v_tcsame="no shard, nothing to read" ;;
+            *)        v_tcsame="FAIL nobody recorded a tc provenance" ;;
+          esac
+          . "/tmp/clock.$SUITE"
 
-            {
-              echo "## gha-ci: $suite suite"
-              echo
-              if [ -n "$RERUN_FROM" ]; then
-                echo "> **Only what run \`$RERUN_FROM\` left unhandled, and the cases \`$tc_branch\` changed since, were taken for this re-run. This is not a full run.**"
-                echo ">"
-                if [ "$total" -gt 0 ]; then
-                  echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because their shard died whole or never started, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
-                elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
-                  nobuild=''
-                  [ -n "$brid" ] || nobuild=" This run has no usable $(attr "$suite" build_mode) build."
-                  echo "> **Nothing to re-run: no failure, no named unrun case, and no case changed since tc commit \`${rerun_since:0:10}\`.$nobuild**"
-                elif [ "${rerun_gone:-0}" -eq 0 ]; then
-                  echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
-                else
-                  echo "> **Nothing to re-run: none of the cases run \`$RERUN_FROM\` failed or never ran is in the tree now.**"
-                fi
-                [ "${rerun_short:-0}" -eq 0 ] || echo "> **$rerun_short more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
-                [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree, and \`$tc_branch\` did not delete or rename them since, so this run cannot pass.**"
-                echo ">"
-                echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
-                echo
-                if [ "${rerun_changed:-0}" -gt 0 ]; then
-                  echo "### Cases in the \`cases/\` directories changed since run \`$RERUN_FROM\` ($rerun_changed)"
-                  echo
-                  head -50 "$d/plan/changed.list" | sed "s#^$repo/##" | awk '{print "- `" $0 "`"}'
-                  [ "$rerun_changed" -le 50 ] || echo "_... and $((rerun_changed - 50)) more. The full list is [\`changed.list\`]($ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/plan/changed.list)._"
-                  echo
-                fi
-              fi
-              if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
-                echo "> **Attempt $GITHUB_RUN_ATTEMPT.** GitHub's _Re-run failed jobs_ ran only the jobs that failed, so a stage that did not run again reads \`(not measured)\` below. This is not \`/run rerun\`, which starts a new run."
-                echo
-              fi
-              echo "### Coverage"
-              echo
-              echo "| item | value |"
-              echo "|---|---|"
-              echo "| selected cases | $total |"
-              echo "| shards | planned $planned / published $done_n $v_shard |"
-              echo "| run | $exec_sum |"
-              echo "| skipped | $skip_sum |"
-              echo "| handled | $covered / $total $v_cov |"
-              s_dead=shards; [ "$dead_n" -eq 1 ] && s_dead=shard
-              how="that died whole"; [ -n "$brid" ] || how="that plan never started"
-              [ "$unrun_n" -eq 0 ] || echo "| **never run** | **$unrun_n** cases in $dead_n $s_dead $how |"
-              echo "| passed | $succ_sum |"
-              echo "| **failed** | **$fail_sum** |"
-              [ "$timed" -eq 0 ] || echo "| cases split by measured timings | $timed |"
-              echo
-              echo "### Build provenance"
-              echo
-              echo "| item | value |"
-              echo "|---|---|"
-              echo "| build SHA | \`$SHA\` |"
-              echo "| build namespace | \`$BUILD_NS\` |"
-              echo "| current run | \`$GITHUB_RUN_ID\` |"
-              echo "| built by run | \`$brid\` $v_this |"
-              echo "| shards that read the meta inside the mounted CUBRID | $read_n / $planned $v_read |"
-              echo "| did every shard read the same build | $v_same |"
-              echo
-              echo "Provenance is read through the overlay the shard actually mounted, not from the volume."
-              echo
-              echo "### Testcase provenance"
-              echo
-              echo "| item | value |"
-              echo "|---|---|"
-              echo "| tc repo | \`$repo\` |"
-              echo "| tc branch | \`$tc_branch\` |"
-              echo "| tc commit | \`$tc_sha\` |"
-              echo "| shards that recorded a tc provenance | $tcread_n / $planned $v_tcread |"
-              echo "| same commit across shards | $v_tcsame |"
-              echo
-              echo "### CTP provenance"
-              echo
-              echo "| item | value |"
-              echo "|---|---|"
-              echo "| CTP branch | \`$CTP_BRANCH\` |"
-              echo "| CTP commit | \`$CTP_SHA\` |"
-              echo
-              echo "Every shard is reset to this commit, and one that cannot reach it fails."
-              echo
-              echo "### Shards and wall clock"
-              echo
-              echo "| stage | time |"
-              echo "|---|---|"
-              echo "| queue (run start to build start) | $C_QUEUE |"
-              echo "| build | $C_BUILD |"
-              echo "| split | $C_PLAN |"
-              echo "| longest shard | $shard_max |"
-              echo "| median shard | $shard_med |"
-              echo "| shard span (first start to last end) | $shard_span |"
-              echo "| **total (run start to collect)** | **$C_TOTAL** |"
-              echo
-              if [ "$failed_n" -gt 0 ]; then
-                echo "### Failed cases ($failed_n)"
-                echo
-                echo "| shard | case |"
-                echo "|---|---|"
-                head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
-                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is [\`failed.list\`]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/collect/failed.list)._"
-                echo
+          {
+            echo "## gha-ci: $SUITE suite"
+            echo
+            if [ -n "$RERUN_FROM" ]; then
+              echo "> **Only what run \`$RERUN_FROM\` left unhandled, and the cases \`$tc_branch\` changed since, were taken for this re-run. This is not a full run.**"
+              echo ">"
+              if [ "$total" -gt 0 ]; then
+                echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because their shard died whole or never started, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\`, \`medium\` or \`sql_by_cci\` failure brings its top-level directory."
+              elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
+                nobuild=''
+                [ -n "$brid" ] || nobuild=" This run has no usable $(attr "$SUITE" build_mode) build."
+                echo "> **Nothing to re-run: no failure, no named unrun case, and no case changed since tc commit \`${rerun_since:0:10}\`.$nobuild**"
+              elif [ "${rerun_gone:-0}" -eq 0 ]; then
+                echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
               else
-                echo "### No failed cases"
+                echo "> **Nothing to re-run: none of the cases run \`$RERUN_FROM\` failed or never ran is in the tree now.**"
+              fi
+              [ "${rerun_short:-0}" -eq 0 ] || echo "> **$rerun_short more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
+              [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree, and \`$tc_branch\` did not delete or rename them since, so this run cannot pass.**"
+              echo ">"
+              echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
+              echo
+              if [ "${rerun_changed:-0}" -gt 0 ]; then
+                echo "### Cases in the \`cases/\` directories changed since run \`$RERUN_FROM\` ($rerun_changed)"
+                echo
+                head -50 "$d/plan/changed.list" | sed "s#^$repo/##" | awk '{print "- `" $0 "`"}'
+                [ "$rerun_changed" -le 50 ] || echo "_... and $((rerun_changed - 50)) more. The full list is [\`changed.list\`]($ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/plan/changed.list)._"
                 echo
               fi
-              if [ "$unrun_n" -gt 0 ]; then
-                echo "### Never run ($unrun_n)"
-                echo
-                if [ -n "$brid" ]; then
-                  echo "$dead_n $s_dead died before running a case, so these never ran and are in no failure list."
-                else
-                  echo "plan found no usable $(attr "$suite" build_mode) build, so it started none of these $dead_n $s_dead."
-                fi
-                echo
-                awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
-                echo
+            fi
+            if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+              echo "> **Attempt $GITHUB_RUN_ATTEMPT.** GitHub's _Re-run failed jobs_ ran only the jobs that failed, so a stage that did not run again reads \`(not measured)\` below. This is not \`/run rerun\`, which starts a new run."
+              echo
+            fi
+            echo "### Coverage"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| selected cases | $total |"
+            echo "| shards | planned $planned / published $done_n $v_shard |"
+            echo "| run | $exec_sum |"
+            echo "| skipped | $skip_sum |"
+            echo "| handled | $covered / $total $v_cov |"
+            s_dead=shards; [ "$dead_n" -eq 1 ] && s_dead=shard
+            how="that died whole"; [ -n "$brid" ] || how="that plan never started"
+            [ "$unrun_n" -eq 0 ] || echo "| **never run** | **$unrun_n** cases in $dead_n $s_dead $how |"
+            echo "| passed | $succ_sum |"
+            echo "| **failed** | **$fail_sum** |"
+            [ "$timed" -eq 0 ] || echo "| cases split by measured timings | $timed |"
+            echo
+            echo "### Build provenance"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| build SHA | \`$SHA\` |"
+            echo "| build namespace | \`$BUILD_NS\` |"
+            echo "| current run | \`$GITHUB_RUN_ID\` |"
+            echo "| built by run | \`$brid\` $v_this |"
+            echo "| shards that read the meta inside the mounted CUBRID | $read_n / $planned $v_read |"
+            echo "| did every shard read the same build | $v_same |"
+            echo
+            echo "Provenance is read through the overlay the shard actually mounted, not from the volume."
+            echo
+            echo "### Testcase provenance"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| tc repo | \`$repo\` |"
+            echo "| tc branch | \`$tc_branch\` |"
+            echo "| tc commit | \`$tc_sha\` |"
+            echo "| shards that recorded a tc provenance | $tcread_n / $planned $v_tcread |"
+            echo "| same commit across shards | $v_tcsame |"
+            echo
+            echo "### CTP provenance"
+            echo
+            echo "| item | value |"
+            echo "|---|---|"
+            echo "| CTP branch | \`$CTP_BRANCH\` |"
+            echo "| CTP commit | \`$CTP_SHA\` |"
+            echo
+            echo "Every shard is reset to this commit, and one that cannot reach it fails."
+            echo
+            echo "### Shards and wall clock"
+            echo
+            echo "| stage | time |"
+            echo "|---|---|"
+            echo "| queue (run start to build start) | $C_QUEUE |"
+            echo "| build | $C_BUILD |"
+            echo "| split | $C_PLAN |"
+            echo "| longest shard | $shard_max |"
+            echo "| median shard | $shard_med |"
+            echo "| shard span (first start to last end) | $shard_span |"
+            echo "| **total (run start to collect)** | **$C_TOTAL** |"
+            echo
+            if [ "$failed_n" -gt 0 ]; then
+              echo "### Failed cases ($failed_n)"
+              echo
+              echo "| shard | case |"
+              echo "|---|---|"
+              head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
+              [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is [\`failed.list\`]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/collect/failed.list)._"
+              echo
+            else
+              echo "### No failed cases"
+              echo
+            fi
+            if [ "$unrun_n" -gt 0 ]; then
+              echo "### Never run ($unrun_n)"
+              echo
+              if [ -n "$brid" ]; then
+                echo "$dead_n $s_dead died before running a case, so these never ran and are in no failure list."
+              else
+                echo "plan found no usable $(attr "$SUITE" build_mode) build, so it started none of these $dead_n $s_dead."
               fi
-              if [ -n "$PR" ]; then
-                # The CTP branch has to ride along, or the re-run silently takes develop.
-                rerun_cmd="/run rerun $GITHUB_RUN_ID"
-                [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
-                if [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; then
-                  echo "Re-run the failures, everything that never ran, and the cases changed in \`$tc_branch\` since: \`$rerun_cmd\`"
-                else
-                  echo "Added or fixed cases in \`$tc_branch\`, and the engine is unchanged? Run only those: \`$rerun_cmd\`"
-                fi
-                echo
+              echo
+              awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
+              echo
+            fi
+            if [ -n "$PR" ]; then
+              # The CTP branch has to ride along, or the re-run silently takes develop.
+              rerun_cmd="/run rerun $GITHUB_RUN_ID"
+              [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
+              if [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; then
+                echo "Re-run the failures, everything that never ran, and the cases changed in \`$tc_branch\` since: \`$rerun_cmd\`"
+              else
+                echo "Added or fixed cases in \`$tc_branch\`, and the engine is unchanged? Run only those: \`$rerun_cmd\`"
               fi
-              if [ "$failed_n" -gt 0 ]; then
-                tc_root="$repo/$(attr "$suite" tc_subdir)"
-                token=''
-                [ "$(attr "$suite" tc_private)" = no ] || token=' -e GHI_TOKEN'
-                # Not run_id: Re-run all jobs with force_build replaces the build under the same run_id.
-                built=$(cat "$d"/shard/*/build.read 2>/dev/null | awk -F= '$1 == "built_at" {print $2}' | sort -u | paste -sd' ' || :)
-                # A fresh clone takes only a branch, so the commits are fetched into a second checkout.
-                docker_run() {
-                  echo "[ -d CUBRID ] && [ -s $1.list ] && docker run --rm --pull always$token -v \"\$PWD/CUBRID:/home/CUBRID\" -v \"\$PWD:/repro\" -v \"\$PWD/reports:/tmp/tests\" \\"
-                  echo "  $TEST_IMAGE bash -lc '/entrypoint.sh checkout $suite &&"
-                  echo "    BRANCH_TESTCASES=$tc_sha BRANCH_TESTTOOLS=$CTP_SHA /entrypoint.sh checkout $suite &&"
-                  echo "    /entrypoint.sh keep $1 $WORKDIR/$tc_root /repro/$1.list && /entrypoint.sh test $suite'"
-                }
-                echo "### Reproduce the failures"
+              echo
+            fi
+            if [ "$failed_n" -gt 0 ]; then
+              tc_root="$repo/$(attr "$SUITE" tc_subdir)"
+              token=''
+              [ "$(attr "$SUITE" tc_private)" = no ] || token=' -e GHI_TOKEN'
+              # Not run_id: Re-run all jobs with force_build replaces the build under the same run_id.
+              built=$(cat "$d"/shard/*/build.read 2>/dev/null | awk -F= '$1 == "built_at" {print $2}' | sort -u | paste -sd' ' || :)
+              # A fresh clone takes only a branch, so the commits are fetched into a second checkout.
+              docker_run() {
+                echo "[ -d CUBRID ] && [ -s $1.list ] && docker run --rm --pull always$token -v \"\$PWD/CUBRID:/home/CUBRID\" -v \"\$PWD:/repro\" -v \"\$PWD/reports:/tmp/tests\" \\"
+                echo "  $TEST_IMAGE bash -lc '/entrypoint.sh checkout $SUITE &&"
+                echo "    BRANCH_TESTCASES=$tc_sha BRANCH_TESTTOOLS=$CTP_SHA /entrypoint.sh checkout $SUITE &&"
+                echo "    /entrypoint.sh keep $1 $WORKDIR/$tc_root /repro/$1.list && /entrypoint.sh test $SUITE'"
+              }
+              echo "### Reproduce the failures"
+              echo
+              echo "The build, testcases and CTP of this run, in the current \`$TEST_IMAGE\`, with Docker on the internal network."
+              [ -z "$token" ] || echo "\`GHI_TOKEN\` has to read \`CUBRID/$repo\`, e.g. \`export GHI_TOKEN=\$(gh auth token)\`."
+              echo
+              echo '```bash'
+              echo "mkdir -p gha-ci-$GITHUB_RUN_ID-$SUITE && cd gha-ci-$GITHUB_RUN_ID-$SUITE"
+              echo "curl -fsS $ARTIFACT_URL_BASE/builds/$BUILD_NS/$SHA/$(attr "$SUITE" build_mode)/CUBRID.tar.gz | tar -xz"
+              echo "grep -qx 'built_at=$built' CUBRID/$BUILD_META || echo 'warning: CUBRID/ is not the build these failures came from'"
+              echo "curl -fsS $ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/collect/failed.$GITHUB_RUN_ATTEMPT.list | cut -f2 | sed 's#^#$repo/#' > case.list"
+              [ "$(attr "$SUITE" unit)" = case ] || echo "cut -d/ -f1-3 case.list | sort -u > dir.list"
+              docker_run case
+              echo '```'
+              echo
+              if [ "$(attr "$SUITE" unit)" = dir ]; then
+                echo "Each failed case's \`cases/\` directory runs whole, so the other cases in it run too."
                 echo
-                echo "The build, testcases and CTP of this run, in the current \`$TEST_IMAGE\`, with Docker on the internal network."
-                [ -z "$token" ] || echo "\`GHI_TOKEN\` has to read \`CUBRID/$repo\`, e.g. \`export GHI_TOKEN=\$(gh auth token)\`."
+                echo "<details><summary>Not failing again? Run their top-level directories whole, as <code>/run rerun</code> does</summary>"
                 echo
                 echo '```bash'
-                echo "mkdir -p gha-ci-$GITHUB_RUN_ID-$suite && cd gha-ci-$GITHUB_RUN_ID-$suite"
-                echo "curl -fsS $ARTIFACT_URL_BASE/builds/$BUILD_NS/$SHA/$(attr "$suite" build_mode)/CUBRID.tar.gz | tar -xz"
-                echo "grep -qx 'built_at=$built' CUBRID/$BUILD_META || echo 'warning: CUBRID/ is not the build these failures came from'"
-                echo "curl -fsS $ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/collect/failed.$GITHUB_RUN_ATTEMPT.list | cut -f2 | sed 's#^#$repo/#' > case.list"
-                [ "$(attr "$suite" unit)" = case ] || echo "cut -d/ -f1-3 case.list | sort -u > dir.list"
-                docker_run case
+                docker_run dir
                 echo '```'
                 echo
-                if [ "$(attr "$suite" unit)" = dir ]; then
-                  echo "Each failed case's \`cases/\` directory runs whole, so the other cases in it run too."
-                  echo
-                  echo "<details><summary>Not failing again? Run their top-level directories whole, as <code>/run rerun</code> does</summary>"
-                  echo
-                  echo '```bash'
-                  docker_run dir
-                  echo '```'
-                  echo
-                  echo "</details>"
-                  echo
-                fi
-              fi
-              echo "[Artifacts]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/)"
-              echo
-            } >> "$GITHUB_STEP_SUMMARY"
-
-            srb=0; held=''
-            fault() { echo "::error::$suite: $1"; srb=1; }
-            # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
-            hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $suite"}}"; }
-            if [ -z "$brid" ]; then
-              echo "::error::$suite: plan found no usable $(attr "$suite" build_mode) build. See the plan job's warning"
-              rc=1
-            else
-              [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
-              [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
-              [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before recording one"
-              case "$reason" in
-                ok|no-shard) ;;
-                mixed)    hold "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
-                mismatch) hold "every shard read the same build, but not the one from the run plan verified ($brid)" ;;
-                *)        fault "no shard recorded a build provenance" ;;
-              esac
-              [ "$tcread_n" -eq "$planned" ] || fault "only $tcread_n of $planned shards recorded a tc provenance"
-              case "$tc_reason" in
-                ok|no-shard) ;;
-                mixed)    hold "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
-                mismatch) hold "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
-                *)        fault "no shard recorded a tc provenance" ;;
-              esac
-            fi
-            [ "$fail_sum" -eq 0 ] || fault "$fail_sum failed"
-            # A re-run replaces the source's status, so it must not pass over cases it did not run.
-            if [ -n "$RERUN_FROM" ]; then
-              [ "${rerun_short:-0}" -eq 0 ] || hold "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $suite"
-              [ "${rerun_gone:-0}" -eq 0 ] || hold "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree, and $tc_branch did not delete or rename them since. Use /run $suite"
-              from="$CI_ROOT/runs/$RERUN_FROM/$suite/collect"
-              if [ -f "$from/held" ]; then
-                [ ! -s "$from/held" ] || hold "run $RERUN_FROM was red for what no re-run clears: $(cat "$from/held"). Use /run $suite" "$(cat "$from/held")"
-              # A run from before held was recorded: the cause of its red is unknown, so it stands.
-              elif [ "$total" -eq 0 ]; then
-                prev=$(cat "$from/verdict" 2>/dev/null || echo none)
-                [ "$prev" = pass ] || hold "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $suite"
+                echo "</details>"
+                echo
               fi
             fi
+            echo "[Artifacts]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/)"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
-            if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
-            # Without a build the suite is not judged, unless a hold already made it red.
-            [ -n "$brid" ] || [ -n "$held" ] || v=nobuild
-            echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
-            echo "$v" > "$d/collect/verdict"
-            printf '%s' "$held" > "$d/collect/held"
-            unset total unit sha units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
-                  rerun_failed rerun_changed rerun_since shard_max shard_med shard_span shard_n
-          done
+          srb=0; held=''
+          fault() { echo "::error::$SUITE: $1"; srb=1; }
+          # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
+          hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $SUITE"}}"; }
+          if [ -z "$brid" ]; then
+            echo "::error::$SUITE: plan found no usable $(attr "$SUITE" build_mode) build. See the plan job's warning"
+            rc=1
+          else
+            [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
+            [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
+            [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before recording one"
+            case "$reason" in
+              ok|no-shard) ;;
+              mixed)    hold "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
+              mismatch) hold "every shard read the same build, but not the one from the run plan verified ($brid)" ;;
+              *)        fault "no shard recorded a build provenance" ;;
+            esac
+            [ "$tcread_n" -eq "$planned" ] || fault "only $tcread_n of $planned shards recorded a tc provenance"
+            case "$tc_reason" in
+              ok|no-shard) ;;
+              mixed)    hold "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
+              mismatch) hold "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
+              *)        fault "no shard recorded a tc provenance" ;;
+            esac
+          fi
+          [ "$fail_sum" -eq 0 ] || fault "$fail_sum failed"
+          # A re-run replaces the source's status, so it must not pass over cases it did not run.
+          if [ -n "$RERUN_FROM" ]; then
+            [ "${rerun_short:-0}" -eq 0 ] || hold "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $SUITE"
+            [ "${rerun_gone:-0}" -eq 0 ] || hold "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree, and $tc_branch did not delete or rename them since. Use /run $SUITE"
+            from="$CI_ROOT/runs/$RERUN_FROM/$SUITE/collect"
+            if [ -f "$from/held" ]; then
+              [ ! -s "$from/held" ] || hold "run $RERUN_FROM was red for what no re-run clears: $(cat "$from/held"). Use /run $SUITE" "$(cat "$from/held")"
+            # A run from before held was recorded: the cause of its red is unknown, so it stands.
+            elif [ "$total" -eq 0 ]; then
+              prev=$(cat "$from/verdict" 2>/dev/null || echo none)
+              [ "$prev" = pass ] || hold "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $SUITE"
+            fi
+          fi
+
+          if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
+          # Without a build the suite is not judged, unless a hold already made it red.
+          [ -n "$brid" ] || [ -n "$held" ] || v=nobuild
+          echo "verdict=$v" >> "$GITHUB_OUTPUT"
+          echo "$v" > "$d/collect/verdict"
+          printf '%s' "$held" > "$d/collect/held"
 
           {
             echo "### Artifacts"
             echo
             line="[Run directory]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
-            for mode in $(for s in $SUITES_RUN; do attr "$s" build_mode; done | sort -u); do
-              blog="builds/$BUILD_NS/$SHA/$mode/build.log"
-              if [ -f "$CI_ROOT/$blog" ]; then line="$line · [$mode build log]($ARTIFACT_URL_BASE/$blog)"; fi
-            done
+            mode=$(attr "$SUITE" build_mode)
+            blog="builds/$BUILD_NS/$SHA/$mode/build.log"
+            if [ -f "$CI_ROOT/$blog" ]; then line="$line · [$mode build log]($ARTIFACT_URL_BASE/$blog)"; fi
             echo "$line"
             echo
             echo "Internal network only. The run directory is pruned 30 days after the run."
@@ -760,69 +752,66 @@ jobs:
       - name: The log of each failed case
         if: always()
         run: |
-          for suite in $SUITES_RUN; do
-            list="/tmp/failed.$suite.list"
-            [ -s "$list" ] || continue
-            grep -qs . "/tmp/failed-logs/$suite"/*/xml.list || continue
-            n=$(wc -l < "$list")
-            shown=$n
-            [ "$shown" -gt 50 ] && shown=50
-            budget=900000
-            case_max=$((budget / shown - 512))
-            [ "$case_max" -gt 131072 ] && case_max=131072
-            head_b=$((case_max / 2))
-            tail_b=$((case_max - head_b))
-            esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
-            base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$suite"
-            {
-              echo "### $suite: the log of each failed case"
-              echo
-              echo "What CTP wrote in the case's \`<failure>\` or \`<error>\`, trimmed to fit. Untrimmed, it is in the XML behind the case's full log link."
-              echo
-            } >> "$GITHUB_STEP_SUMMARY"
+          list=/tmp/failed.list
+          [ -s "$list" ] || exit 0
+          grep -qs . "/tmp/failed-logs/$SUITE"/*/xml.list || exit 0
+          n=$(wc -l < "$list")
+          shown=$n
+          [ "$shown" -gt 50 ] && shown=50
+          budget=900000
+          case_max=$((budget / shown - 512))
+          [ "$case_max" -gt 131072 ] && case_max=131072
+          head_b=$((case_max / 2))
+          tail_b=$((case_max - head_b))
+          esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
+          base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$SUITE"
+          {
+            echo "### $SUITE: the log of each failed case"
+            echo
+            echo "What CTP wrote in the case's \`<failure>\` or \`<error>\`, trimmed to fit. Untrimmed, it is in the XML behind the case's full log link."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
 
-            declare -A k=()
-            used=0; i=0; left=0
-            while IFS=$'\t' read -r shard name; do
-              i=$((i + 1))
-              k[$shard]=$(( ${k[$shard]:-0} + 1 ))
-              [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
-              log_dir="/tmp/failed-logs/$suite/$shard"
-              log="$log_dir/${k[$shard]}.log"
-              rel=$(head -1 "$log_dir/xml.list")
-              {
-                echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code>${rel:+ &middot; <a href=\"$base/shard/$shard/$rel\">full log</a>}</summary>"
-                echo
-                # <pre> on its own line: a blank line in the log would end the HTML block.
-                echo "<pre>"
-              } > /tmp/block
-              if [ ! -f "$log" ]; then
-                echo "(this case left no log in the XML)" >> /tmp/block
+          declare -A k=()
+          used=0; i=0; left=0
+          while IFS=$'\t' read -r shard name; do
+            i=$((i + 1))
+            k[$shard]=$(( ${k[$shard]:-0} + 1 ))
+            [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
+            log_dir="/tmp/failed-logs/$SUITE/$shard"
+            log="$log_dir/${k[$shard]}.log"
+            rel=$(head -1 "$log_dir/xml.list")
+            {
+              echo "<details>"
+              echo "<summary>shard $shard &middot; <code>$name</code>${rel:+ &middot; <a href=\"$base/shard/$shard/$rel\">full log</a>}</summary>"
+              echo
+              # <pre> on its own line: a blank line in the log would end the HTML block.
+              echo "<pre>"
+            } > /tmp/block
+            if [ ! -f "$log" ]; then
+              echo "(this case left no log in the XML)" >> /tmp/block
+            else
+              esc "$log" > /tmp/esc
+              sz=$(wc -c < /tmp/esc)
+              if [ "$sz" -le "$case_max" ]; then
+                cat /tmp/esc >> /tmp/block
               else
-                esc "$log" > /tmp/esc
-                sz=$(wc -c < /tmp/esc)
-                if [ "$sz" -le "$case_max" ]; then
-                  cat /tmp/esc >> /tmp/block
-                else
-                  # sed drops the line the byte cut split, so no entity is left half written.
-                  head -c "$head_b" /tmp/esc | sed '$d' >> /tmp/block
-                  printf '\n... %d KB of the middle is not here ...\n\n' $(((sz - head_b - tail_b) / 1024)) >> /tmp/block
-                  tail -c "$tail_b" /tmp/esc | sed '1d' >> /tmp/block
-                fi
+                # sed drops the line the byte cut split, so no entity is left half written.
+                head -c "$head_b" /tmp/esc | sed '$d' >> /tmp/block
+                printf '\n... %d KB of the middle is not here ...\n\n' $(((sz - head_b - tail_b) / 1024)) >> /tmp/block
+                tail -c "$tail_b" /tmp/esc | sed '1d' >> /tmp/block
               fi
-              printf '</pre>\n\n</details>\n\n' >> /tmp/block
-              size=$(wc -c < /tmp/block)
-              if [ $((used + size)) -gt "$budget" ]; then
-                left=$((left + 1))
-                continue
-              fi
-              cat /tmp/block >> "$GITHUB_STEP_SUMMARY"
-              used=$((used + size))
-            done < "$list"
-            unset k
-            [ "$left" -eq 0 ] || echo "_$left more cases failed. Their logs are in each shard's JUnit XML, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
-          done
+            fi
+            printf '</pre>\n\n</details>\n\n' >> /tmp/block
+            size=$(wc -c < /tmp/block)
+            if [ $((used + size)) -gt "$budget" ]; then
+              left=$((left + 1))
+              continue
+            fi
+            cat /tmp/block >> "$GITHUB_STEP_SUMMARY"
+            used=$((used + size))
+          done < "$list"
+          [ "$left" -eq 0 ] || echo "_$left more cases failed. Their logs are in each shard's JUnit XML, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
 
   # always(), not success(): a red verdict is what the gate exists to show.
   status:
