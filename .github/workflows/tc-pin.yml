@@ -132,6 +132,7 @@ jobs:
               -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
               commit -q -m "Pin from $GITHUB_SERVER_URL/$ENGINE/actions/runs/$GITHUB_RUN_ID"
             if git -C "$pin" push -q "$eurl" HEAD:refs/heads/tc-pin; then exit 0; fi
+            echo "::notice::tc-pin moved during this run, so it reads tc-pin again"
           done
           echo "::error::tc-pin refused the push $try times"
           exit 1
