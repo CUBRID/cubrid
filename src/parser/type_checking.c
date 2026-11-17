@@ -13726,46 +13726,51 @@ pt_op_reads_statement_clock (PT_OP_TYPE op, const PT_NODE * arg1)
 }
 
 /*
- * pt_reads_statement_clock_walk () - parser_walk_tree pre-function of pt_expr_tree_reads_statement_clock
- *   return: node
- *   parser(in): parser context
- *   node(in): visited node
- *   arg(out): bool, set when a statement-clock operator is found
- *   continue_walk(in/out):
+ * pt_get_expr_tree_si_requirement () - the statement state an expression tree reads when the client evaluates it
+ *   return: the PT_SI_REQUIREMENT bits of the tree, OR-combined
+ *   node(in): expression tree (a single value, not a list)
+ *
+ * A type-checked or restored node carries the requirement of its matched overload; any other operator is judged by
+ * its code (pt_op_reads_statement_clock).
  */
-static PT_NODE *
-pt_reads_statement_clock_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+int
+pt_get_expr_tree_si_requirement (const PT_NODE * node)
 {
-  bool *reads = (bool *) arg;
+  const PT_NODE *arg;
+  int si = PT_SI_NONE;
 
-  /* a type-checked or restored node carries the requirement of its matched overload; any other node is judged by
-   * its operator */
-  if (node->node_type == PT_EXPR
-      && (node->info.expr.expr_volatility != PT_VOLATILITY_UNSET
-	  ? (node->info.expr.expr_si_requirement & PT_SI_SYS_DATETIME) != 0
-	  : pt_op_reads_statement_clock (node->info.expr.op, node->info.expr.arg1)))
+  if (node == NULL)
     {
-      *reads = true;
-      *continue_walk = PT_STOP_WALK;
+      return PT_SI_NONE;
     }
-  return node;
-}
 
-/*
- * pt_expr_tree_reads_statement_clock () - whether an expression tree contains an operator that reads the
- *	statement clock (pt_op_reads_statement_clock): the clock must then be synchronized before the tree is
- *	evaluated on the client
- *   return: true if so
- *   parser(in): parser context
- *   tree(in): expression tree
- */
-bool
-pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree)
-{
-  bool reads = false;
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      if (node->info.expr.expr_volatility != PT_VOLATILITY_UNSET)
+	{
+	  si = node->info.expr.expr_si_requirement;
+	}
+      else if (pt_op_reads_statement_clock (node->info.expr.op, node->info.expr.arg1))
+	{
+	  si = PT_SI_SYS_DATETIME;
+	}
+      si |= pt_get_expr_tree_si_requirement (node->info.expr.arg1);
+      si |= pt_get_expr_tree_si_requirement (node->info.expr.arg2);
+      si |= pt_get_expr_tree_si_requirement (node->info.expr.arg3);
+      return si;
 
-  (void) parser_walk_tree (parser, tree, pt_reads_statement_clock_walk, &reads, NULL, NULL);
-  return reads;
+    case PT_FUNCTION:
+      si = node->info.function.expr_si_requirement;
+      for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+	{
+	  si |= pt_get_expr_tree_si_requirement (arg);
+	}
+      return si;
+
+    default:
+      return PT_SI_NONE;
+    }
 }
 
 /*

@@ -166,7 +166,7 @@ extern "C"
   extern int pt_eval_prop_self_check_funcs (void);
   extern bool pt_is_expr_wrapped_fcode (FUNC_CODE function_type);
   extern bool pt_op_reads_statement_clock (PT_OP_TYPE op, const PT_NODE * arg1);
-  extern bool pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree);
+  extern int pt_get_expr_tree_si_requirement (const PT_NODE * node);
   extern bool pt_op_reads_client_value (PT_OP_TYPE op);
   extern bool pt_expr_tree_reads_client_value (PARSER_CONTEXT * parser, PT_NODE * tree);
 
@@ -781,6 +781,8 @@ extern "C"
   extern int pt_compact_default_tree_to_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream,
 						int *stream_size);
   extern PT_NODE *pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream, int stream_size);
+  extern int pt_compact_default_tree_properties (const char *stream, int stream_size, PT_VOLATILITY * volatility,
+						 int *si_requirement);
   extern PT_NODE *pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLATILITY * volatility);
   extern PT_NODE *pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * err_node,
 					     PT_VOLATILITY * volatility);

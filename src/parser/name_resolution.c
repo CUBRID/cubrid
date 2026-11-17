@@ -1898,18 +1898,17 @@ pt_set_fill_default_in_path_expression (PT_NODE * node)
 static bool
 pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt)
 {
-  PT_NODE *residual;
+  const DB_DEFAULT_EXPR *default_expr = &attr->default_value.default_expr;
+  int si_requirement = PT_SI_NONE;
 
-  /* the parser-wide CDT registry tree (pt_cdt_registry_tree): shared and read-only, so it is only walked
-   * here -- the Default References and the Local Evaluation CDT_EVAL_SET of this statement reuse the same
-   * decoding */
-  residual = pt_cdt_registry_tree (parser, attr, NULL);
-  if (residual == NULL)
+  /* the head of the stream tells; the tree is rehydrated only by a reader that evaluates or compiles it */
+  if (pt_compact_default_tree_properties (default_expr->default_expr_tree_stream,
+					  default_expr->default_expr_tree_stream_size, NULL,
+					  &si_requirement) != NO_ERROR)
     {
-      /* the registry diagnosed the failure where it happened.  This probe is the statement's first reader of
-       * the stream, so it reports it rather than leaving the error set for a later reader to mistake for its
-       * own; synchronize conservatively for the statement that is about to fail anyway. */
-      assert (er_errid () != NO_ERROR);
+      /* a stream this build does not read.  This probe is the statement's first reader of it, so it reports it;
+       * synchronize conservatively for the statement that is about to fail anyway. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, attr->header.name);
       if (!pt_has_error (parser))
 	{
 	  PT_ERRORc (parser, stmt, er_msg ());
@@ -1917,7 +1916,7 @@ pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * a
       return true;
     }
 
-  return pt_expr_tree_reads_statement_clock (parser, residual);
+  return (si_requirement & PT_SI_SYS_DATETIME) != 0;
 }
 
 /*

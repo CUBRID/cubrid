@@ -11504,16 +11504,17 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
  * stream restores the already type-checked tree (resolved result domains
  * included) deterministically.
  * Stream layout (all multi-byte fields via OR_BUF):
- *   version(byte = PT_CDT_VERSION)  node
+ *   version(byte = PT_CDT_VERSION)  volatility(int)  si_requirement(int)  node
  *   node := VALUE_TAG(int)  db_value(or_put_value, domain included)
  *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  volatility(int)  si_requirement(int)
  *                          result domain  arity(int)  node*arity
  *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  volatility(int)
  *                          si_requirement(int)  result domain  arity(int)  node*arity
  * A PT_FUNCTION_HOLDER wrapper is transparent: its held PT_FUNCTION is stored.
- * volatility and si_requirement are those of the overload type checking matched for the node (not combined with
- * its operands'): a rehydrated tree is not type-checked again, and the code alone does not tell RAND () from
- * RAND (seed).
+ * The volatility and si_requirement at the head are those of the whole tree, for a reader that needs only them
+ * (pt_compact_default_tree_properties).  Those of a node are the ones of the overload type checking matched for it
+ * (not combined with its operands'): a rehydrated tree is not type-checked again, and the code alone does not tell
+ * RAND () from RAND (seed).
  * continued_case is an unparse hint of PT_EXPR (CONCAT/CONCAT_WS/FIELD and the
  * CASE/DECODE/COALESCE/LEAST/GREATEST chains); without it a rehydrated residual
  * prints in a different form than the original expression.
@@ -11730,11 +11731,21 @@ pt_cdt_serialize (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *s
   char *data = NULL;
   OR_BUF buf;
   int rc;
+  PT_VOLATILITY volatility;
+  PT_NODE *unclassified_node = NULL;
 
   assert (parser != NULL && expr != NULL && stream != NULL && stream_size != NULL);
 
   *stream = NULL;
   *stream_size = 0;
+
+  volatility = pt_get_expr_tree_volatility (expr, &unclassified_node);
+  if (!PT_VOLATILITY_IS_RESIDUAL (volatility))
+    {
+      /* only a residual DEFAULT is stored as a tree */
+      assert (false);
+      return ER_FAILED;
+    }
 
   /* the stream is small by design; grow geometrically on overflow */
   for (; buf_size <= max_size; buf_size *= 2)
@@ -11751,6 +11762,14 @@ pt_cdt_serialize (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *s
       if (rc == NO_ERROR)
 	{
 	  rc = or_put_align32 (&buf);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_int (&buf, (int) volatility);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_int (&buf, pt_get_expr_tree_si_requirement (expr));
 	}
       if (rc == NO_ERROR)
 	{
@@ -11990,6 +12009,78 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 }
 
 /*
+ * pt_cdt_get_head () - reads the head of a Compact DEFAULT Tree stream, leaving the buffer at the root node
+ *   return: NO_ERROR, or ER_FAILED for a stream this build does not read (no error is set)
+ *   buf(in/out): buffer at the start of the stream
+ *   volatility(out): volatility of the whole tree
+ *   si_requirement(out): SI requirement of the whole tree
+ */
+static int
+pt_cdt_get_head (OR_BUF * buf, PT_VOLATILITY * volatility, int *si_requirement)
+{
+  int rc = NO_ERROR;
+  int version, vol = PT_VOLATILITY_UNSET, si = PT_SI_NONE;
+
+  version = or_get_byte (buf, &rc);
+  if (rc != NO_ERROR || version != PT_CDT_VERSION || or_get_align32 (buf) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  vol = or_get_int (buf, &rc);
+  if (rc == NO_ERROR)
+    {
+      si = or_get_int (buf, &rc);
+    }
+  /* only a residual DEFAULT is stored as a tree */
+  if (rc != NO_ERROR || (vol != PT_VOLATILITY_STABLE && vol != PT_VOLATILITY_VOLATILE)
+      || (si & ~PT_SI_SYS_DATETIME) != 0)
+    {
+      return ER_FAILED;
+    }
+
+  *volatility = (PT_VOLATILITY) vol;
+  *si_requirement = si;
+  return NO_ERROR;
+}
+
+/*
+ * pt_compact_default_tree_properties () - the evaluation properties of a whole residual DEFAULT, read from the
+ *	head of its Compact DEFAULT Tree stream without rehydrating the tree
+ *   return: NO_ERROR, or ER_FAILED for a stream this build does not read (no error is set)
+ *   stream(in): serialized Compact DEFAULT Tree
+ *   stream_size(in): stream size in bytes
+ *   volatility(out): STABLE or VOLATILE; may be NULL
+ *   si_requirement(out): PT_SI_REQUIREMENT bits; may be NULL
+ */
+int
+pt_compact_default_tree_properties (const char *stream, int stream_size, PT_VOLATILITY * volatility,
+				    int *si_requirement)
+{
+  OR_BUF buf;
+  PT_VOLATILITY head_volatility;
+  int head_si_requirement;
+
+  assert (stream != NULL && stream_size > 0);
+
+  or_init (&buf, CONST_CAST (char *, stream), stream_size);
+  if (pt_cdt_get_head (&buf, &head_volatility, &head_si_requirement) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (volatility != NULL)
+    {
+      *volatility = head_volatility;
+    }
+  if (si_requirement != NULL)
+    {
+      *si_requirement = head_si_requirement;
+    }
+  return NO_ERROR;
+}
+
+/*
  * pt_compact_default_tree_from_stream () - rehydrates a Compact DEFAULT Tree
  *	stream into a PT_NODE expression (types set from the stored domains)
  *   return: the rehydrated expression or NULL on failure
@@ -12001,20 +12092,31 @@ PT_NODE *
 pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream, int stream_size)
 {
   OR_BUF buf;
-  int rc = NO_ERROR;
-  int version;
+  PT_NODE *tree;
+  PT_VOLATILITY volatility;
+  int si_requirement;
 
   assert (parser != NULL && stream != NULL && stream_size > 0);
 
   or_init (&buf, CONST_CAST (char *, stream), stream_size);
 
-  version = or_get_byte (&buf, &rc);
-  if (rc != NO_ERROR || version != PT_CDT_VERSION || or_get_align32 (&buf) != NO_ERROR)
+  if (pt_cdt_get_head (&buf, &volatility, &si_requirement) != NO_ERROR)
     {
       return NULL;
     }
 
-  return pt_cdt_get_node (parser, &buf);
+  tree = pt_cdt_get_node (parser, &buf);
+#if !defined (NDEBUG)
+  if (tree != NULL)
+    {
+      PT_NODE *unclassified_node = NULL;
+
+      /* the head is what the nodes combine to */
+      assert (volatility == pt_get_expr_tree_volatility (tree, &unclassified_node));
+      assert (si_requirement == pt_get_expr_tree_si_requirement (tree));
+    }
+#endif
+  return tree;
 }
 
 /*
@@ -12022,7 +12124,7 @@ pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream
  *
  * Each attribute's stream is decoded once per parser (once per compile, once per
  * prepare) and the same tree is handed to every reader in the statement: the Default
- * References, the statement-clock probe and the Local Evaluation CDT_EVAL_SET.
+ * References, the DEFAULT slots and the Local Evaluation CDT_EVAL_SET.
  * Entries, stream copies and tree nodes are parser memory and go with the parser.
  * Only the DB_VALUEs inside the PT_VALUE nodes need a walk, pt_cdt_registry_free.
  *
@@ -12044,7 +12146,7 @@ struct pt_cdt_registry_entry
   const char *stream;		/* parser-owned copy of the stream the tree was decoded from (content check) */
   int stream_size;
   PT_NODE *tree;		/* the shared rehydrated tree */
-  PT_VOLATILITY volatility;	/* effective volatility of tree (pt_get_expr_tree_volatility) */
+  PT_VOLATILITY volatility;	/* volatility of tree, from the head of the stream */
 };
 
 /*
@@ -12062,7 +12164,8 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
 {
   struct pt_cdt_registry_entry *entry;
   const DB_DEFAULT_EXPR *default_expr;
-  PT_NODE *tree, *unclassified_node = NULL;
+  PT_NODE *tree;
+  PT_VOLATILITY head_volatility = PT_VOLATILITY_UNSET;
   char *stream_copy;
 
   assert (parser != NULL && att != NULL);
@@ -12132,7 +12235,9 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
   entry->stream = stream_copy;
   entry->stream_size = default_expr->default_expr_tree_stream_size;
   entry->tree = tree;
-  entry->volatility = pt_get_expr_tree_volatility (tree, &unclassified_node);
+  (void) pt_compact_default_tree_properties (default_expr->default_expr_tree_stream,
+					     default_expr->default_expr_tree_stream_size, &head_volatility, NULL);
+  entry->volatility = head_volatility;
   entry->next = parser->cdt_registry;
   parser->cdt_registry = entry;
 
@@ -12251,7 +12356,7 @@ pt_omits_client_default (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE
       tree = pt_cdt_registry_tree (parser, att, NULL);
       if (tree == NULL)
 	{
-	  /* name resolution decoded this tree already; a failure here is reported when the XASL is generated */
+	  /* a failure here is reported when the XASL is generated */
 	  return true;
 	}
       if (pt_expr_tree_reads_client_value (parser, tree))

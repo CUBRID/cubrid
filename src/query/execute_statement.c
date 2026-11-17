@@ -545,7 +545,7 @@ is_stmt_based_repl_type (const PT_NODE * node)
  * Literal is frozen to a value at DDL time and is stored without a CDT,
  * so it never appears here.  Tree and volatility come from the parser-wide CDT
  * registry (pt_cdt_registry_tree): decoded once per parser, shared with the
- * statement's Default References and its statement-clock probe, read-only parser
+ * statement's Default References and its DEFAULT slots, read-only parser
  * memory this set never frees.  The set pins, for one statement, WHICH CDTs it
  * consumes -- a column the object template already assigns a real value (an
  * explicitly listed INSERT column, a SELECT-supplied column, a Default Reference)
