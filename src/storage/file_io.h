@@ -635,7 +635,8 @@ extern int fileio_flush_control_add_tokens (THREAD_ENTRY * thread_p, INT64 diff_
 extern void fileio_page_bitmap_list_init (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
 extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_create (int vol_id, int total_pages, const char *vol_label);
 extern int fileio_restore_format_unrestored_pages (THREAD_ENTRY * thread_p,
-						   FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list);
+						   FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
+						   FILEIO_RESTORE_PAGE_BITMAP ** failed_bitmap);
 extern FILEIO_RESTORE_PAGE_BITMAP *fileio_page_bitmap_list_find (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
 								 int vol_id);
 extern void fileio_page_bitmap_list_add (FILEIO_RESTORE_PAGE_BITMAP_LIST * page_bitmap_list,
