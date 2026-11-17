@@ -107,7 +107,10 @@
 #define UNIQUE_SAVEPOINT_ALTER_TRIGGER "aLTERtRIGGER"
 #define UNIQUE_SAVEPOINT_CREATE_BLOCK_TRIGGER "cREATEbLOCKtRIGGER"
 
-#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT | PT_PRINT_DBLINK_INFO)
+/* the XASL cache key text; the parameters a compilation reads (PRM_FOR_QRY_STRING) are in it for DML too, as for
+ * SELECT, so that a plan compiled under another value is not reused (CBRD-28029) */
+#define CUSTOM_PRINT_4_SHA_COMPUTE (PT_CONVERT_RANGE | PT_PRINT_QUOTES | PT_PRINT_USER | PT_PRINT_HOST_VAR_COUNT \
+				    | PT_PRINT_DBLINK_INFO | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS)
 /*
  * Function Group:
  * Do create/alter/drop serial statement

@@ -2047,9 +2047,10 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* CBRD-28029: in the plan key, since the constant fold of LIKE reads it (pt_evaluate_db_value_expr ()) */
   {PRM_ID_NO_BACKSLASH_ESCAPES,
    PRM_NAME_NO_BACKSLASH_ESCAPES,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
