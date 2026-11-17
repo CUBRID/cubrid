@@ -9451,6 +9451,15 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
+  if (pt_is_range_expression (op) && node->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (node->info.expr.arg2)
+      && node->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row, folded to a NULL value (pt_to_false_subquery ()): the
+       * comparison is TRUE or FALSE whatever the left operand is, and pt_fold_const_expr () folds it */
+      node->type_enum = PT_TYPE_LOGICAL;
+      return node;
+    }
+
   pt_type_null_signature_binds (parser, node);
 
   arg1 = node->info.expr.arg1;
@@ -18539,6 +18548,35 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
       goto end;
     }
+
+  if (pt_is_range_expression (op) && expr->info.expr.arg2 != NULL && PT_IS_VALUE_NODE (expr->info.expr.arg2)
+      && expr->info.expr.arg2->info.value.is_false_where)
+    {
+      /* the right operand is a subquery that returns no row (pt_to_false_subquery ()): x op ALL and x NOT IN over the
+       * empty set are TRUE, x op SOME and x IN are FALSE, also for a NULL x */
+      switch (op)
+	{
+	case PT_EQ_ALL:
+	case PT_NE_ALL:
+	case PT_GE_ALL:
+	case PT_GT_ALL:
+	case PT_LT_ALL:
+	case PT_LE_ALL:
+	case PT_IS_NOT_IN:
+	  db_make_int (&dbval_res, 1);
+	  break;
+	default:
+	  db_make_int (&dbval_res, 0);
+	  break;
+	}
+      result = pt_dbval_to_value (parser, &dbval_res);
+      if (result == NULL)
+	{
+	  has_error = true;
+	}
+      goto end;
+    }
+
   /* special handling for only one range - convert to comp op */
   if (op == PT_RANGE)
     {
