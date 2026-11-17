@@ -495,6 +495,11 @@ tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_
 		{
 		  int is_system_class = 0;
 
+		  if (!ctxt.is_dba_user && !ctxt.is_dba_group_member && !ws_is_same_object (trigger->owner, Au_user))
+		    {
+		      continue;
+		    }
+
 		  if (trigger->class_mop != NULL && !is_required_trigger (trigger, classes))
 		    {
 		      continue;
