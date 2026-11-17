@@ -5634,6 +5634,10 @@ scan_heap_scan_page_list_free_one (THREAD_ENTRY * thread_p, FILE_FTAB_COLLECTOR 
       db_private_free_and_init (thread_p, keep->partsect_ftab);
     }
 
+  keep->npages = 0;
+  keep->nsects = 0;
+}
+
 /*
  * scan_heap_scan_page_list () - a heap scan's open: the statement's snapshot, then the heap's page bitmap in file
  *				  order, for the parallel heap scan and the serial sector-based scan alike
@@ -5655,10 +5659,6 @@ scan_heap_scan_page_list_free_one (THREAD_ENTRY * thread_p, FILE_FTAB_COLLECTOR 
  *	 A partition's bitmap is kept in its partition_spec_node, so a partitioned class opened again collects once
  *	 per partition and snapshot build, not at every partition switch.
  */
-  keep->npages = 0;
-  keep->nsects = 0;
-}
-
 int
 scan_heap_scan_page_list (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, const OID * cls_oid, const HFID * hfid,
 			  bool grouped, const FILE_FTAB_COLLECTOR ** page_list, int *num_data_pages)
