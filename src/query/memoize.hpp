@@ -164,6 +164,9 @@ namespace memoize
 extern "C"
 {
   int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl, bool match_only);
+#if !defined (NDEBUG)
+  void memoize_check_key (xasl_node *head, xasl_node *inner);
+#endif
   void clear_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl);
   int memoize_get (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success, bool *is_ended);
   int memoize_put (THREAD_ENTRY *thread_p, xasl_node *xasl, bool *success);

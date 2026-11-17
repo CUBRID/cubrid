@@ -180,6 +180,8 @@ extern int css_free_ip_info (IP_INFO * ip_info);
 extern int css_read_ip_info (IP_INFO ** out_ip_info, char *filename);
 extern int css_check_ip (IP_INFO * ip_info, unsigned char *address);
 
+extern void css_set_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name);
+extern bool css_consume_auth_proof (CSS_CONN_ENTRY * conn, const char *user_name);
 extern void css_set_user_access_status (const char *db_user, const char *host, const char *program_name);
 extern void css_get_user_access_status (int num_user, LAST_ACCESS_STATUS ** access_status_array);
 extern void css_free_user_access_status (void);
@@ -200,6 +202,5 @@ extern char *css_get_exec_path (void);
 extern char **css_get_argv (void);
 extern void css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, int wait_time);
 extern void css_request_release_packet (css_conn_entry * conn, void *buffer);
-extern void css_wakeup_handler (css_conn_entry * conn);
 
 #endif /* _CONNECTION_SR_H_ */

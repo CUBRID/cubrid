@@ -130,6 +130,7 @@ namespace cubquery
       mvcc_scan_reev_data *select_reev_data;	/* data for reevaluation at SELECT */
     };
     DB_LOGICAL filter_result;	/* the result of reevaluation if successful */
+    bool last_version_is_ours;	/* if successful: see locator_version_is_ours () */
 
     void set_update_reevaluation (mvcc_update_reev_data &urd);
     void set_scan_reevaluation (mvcc_scan_reev_data &scan);
