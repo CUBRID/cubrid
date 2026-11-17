@@ -1294,8 +1294,8 @@ jobs:
   suite:
     name: ${{ matrix.suite }}
     needs: [gate, build, plan]
-    # always(): collect and status still report a failed build or plan, and status a cancelled run.
-    if: ${{ always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' }}
+    # !cancelled(), not always(): a cancelled run re-evaluates it, and always() would keep every shard running.
+    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' }}
     # The most the called jobs get: collect reads this run, status posts the verdict.
     permissions:
       actions: read
