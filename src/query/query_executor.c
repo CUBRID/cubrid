@@ -167,6 +167,11 @@
 #define QEXEC_IS_MULTI_PARTITION_SPEC(specp) \
   ((specp) != NULL && (specp)->parts != NULL && (specp)->parts->next != NULL)
 
+/* a partitioned NL inner the optimizer drives per outer row (CBRD-27866): rewound without opening a partition, which
+ * waits for a memo miss (qexec_open_row_partition ()) */
+#define QEXEC_IS_DEFERRED_PARTITION_WALK(xasl) \
+  (XASL_IS_FLAGED ((xasl), XASL_NL_PER_ROW_PARTITIONS) && (xasl)->spec_list != NULL && (xasl)->spec_list->parts != NULL)
+
 #define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
     (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
@@ -296,6 +301,19 @@ struct groupby_state
   SORT_CMP_FUNC *cmp_fn;
   LK_COMPOSITE_LOCK *composite_lock;
   int upd_del_class_cnt;
+};
+
+/* the rows of a block's innermost scan, a covered index scan, taken where the B-tree selects each object
+ * (qexec_covered_visit ()) instead of from the scan's covering list; one execution's, owned by
+ * qexec_execute_mainblock_internal () */
+typedef struct covered_visit_state COVERED_VISIT_STATE;
+struct covered_visit_state
+{
+  INDX_GBY_SKIP scan;
+  XASL_NODE *xasl;		/* the block */
+  XASL_NODE *scan_xasl;		/* its innermost scan node; NULL: not attached */
+  XASL_STATE *xasl_state;
+  QFILE_TUPLE_RECORD *tplrec;
 };
 
 /* GROUP BY skip aggregated during the scan (qexec_gby_skip_open ()) */
@@ -590,6 +608,11 @@ static void qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist);
 static int qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 			  QFILE_TUPLE_RECORD * tplrec);
 static int qexec_gby_skip_open (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool partial);
+static bool qexec_covered_visit_allowed (XASL_NODE * xasl, AGGREGATE_TYPE * agg_list);
+static bool qexec_covered_scan_visitable (ACCESS_SPEC_TYPE * spec);
+static XASL_NODE *qexec_covered_visit_scan (XASL_NODE * xasl, XASL_NODE * fixed_scan_xasl,
+					    bool mvcc_select_lock_needed);
+static int qexec_covered_visit (THREAD_ENTRY * thread_p, void *arg, bool key_start, bool * stop);
 static void qexec_gby_skip_attach (XASL_NODE * xasl);
 static bool qexec_gby_skip_can_visit (XASL_NODE * xasl);
 static bool qexec_gby_skip_regu_is_local (REGU_VARIABLE * regu);
@@ -872,6 +895,9 @@ static int qexec_process_partition_unique_stats (THREAD_ENTRY * thread_p, PRUNIN
 static int qexec_process_unique_stats (THREAD_ENTRY * thread_p, const OID * class_oid,
 				       UPDDEL_CLASS_INFO_INTERNAL * class_);
 static SCAN_CODE qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static SCAN_CODE qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static bool qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl);
+static bool qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec);
 
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
@@ -2121,8 +2147,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      free (p->parts);
 	      p->parts = NULL;
 	      p->curent = NULL;
-	      p->pruned = false;
 	    }
+	  /* pruning to no partition leaves parts NULL: a cached clone must still prune again for its next values */
+	  p->pruned = false;
+	  partition_clear_spec_row_pruning (p);
+	  p->row_rewind_pending = false;
 
 	  /* free table-wide sampling pick once (all paths); idempotent */
 	}
@@ -3205,25 +3234,25 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	    }
 	}
     }
-  if (xasl->bptr_list)
+  for (XASL_NODE * xasl_p = xasl->bptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->bptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->bptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
-  if (xasl->dptr_list)
+  for (XASL_NODE * xasl_p = xasl->dptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->dptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->dptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
-  if (xasl->fptr_list)
+  for (XASL_NODE * xasl_p = xasl->fptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->fptr_list, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->fptr_list, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
-  if (xasl->scan_ptr)
+  for (XASL_NODE * xasl_p = xasl->scan_ptr; xasl_p != NULL; xasl_p = xasl_p->next)
     {
-      XASL_SET_FLAG (xasl->scan_ptr, decache_clone_flag);
-      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl->scan_ptr, is_final);
+      XASL_SET_FLAG (xasl_p, decache_clone_flag);
+      pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
     }
 
   /* clear the CONNECT BY node */
@@ -3371,10 +3400,10 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       {
 	BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
 
-	if (buildlist->eptr_list)
+	for (XASL_NODE * xasl_p = buildlist->eptr_list; xasl_p != NULL; xasl_p = xasl_p->next)
 	  {
-	    XASL_SET_FLAG (buildlist->eptr_list, decache_clone_flag);
-	    pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, buildlist->eptr_list, is_final);
+	    XASL_SET_FLAG (xasl_p, decache_clone_flag);
+	    pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, xasl_p, is_final);
 	  }
 
 
@@ -3804,40 +3833,42 @@ qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 }
 
 /*
- * qexec_clear_all_lists () -
+ * qexec_clear_all_lists () - clear the list files that an iteration of one XASL block left in the blocks under it
  *   return:
- *   xasl_list(in)      :
+ *   xasl(in)      : the XASL procedure block; its next is not cleared
+ *
+ * Note: qexec_intprt_fnc () calls it once per row for the block it runs. The next of that block belongs to the list of
+ *   its parent, not to the block: an operand of a set operation is the next of the operand before it, and a parallel
+ *   query runs the operands at the same time in different threads, so clearing the lists of the next operand freed
+ *   the list files of its correlated subqueries while another thread was writing them.
  */
 static void
-qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
+qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  XASL_NODE *xasl;
+  XASL_NODE *xptr;
 
-  for (xasl = xasl_list; xasl != NULL; xasl = xasl->next)
+  /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
+   * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
+   * possible, these empty procedure calls amounted to several percent of the cpu time. */
+  for (xptr = xasl->bptr_list; xptr != NULL; xptr = xptr->next)
     {
-      /* check for NULL pointers before doing pointless procedure calls. This procedure is called once per row, and
-       * typically will have many or all of these xasl sublists NULL. In the limiting case of scanning rows as fast as
-       * possible, these empty procedure calls amounted to several percent of the cpu time. */
-      if (xasl->bptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->bptr_list);
-	}
-      if (xasl->fptr_list)
-	{
-	  qexec_clear_all_lists (thread_p, xasl->fptr_list);
-	}
+      qexec_clear_all_lists (thread_p, xptr);
+    }
+  for (xptr = xasl->fptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      qexec_clear_all_lists (thread_p, xptr);
+    }
 
-      /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
-       * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
-      if (xasl->dptr_list)
-	{
-	  qexec_clear_head_lists (thread_p, xasl->dptr_list);
-	}
+  /* Note: Dptr lists are only procedure blocks (other than aptr_list) which can produce a LIST FILE. Therefore, we
+   * are trying to clear all the dptr_list result LIST FILES in the XASL tree per iteration. */
+  if (xasl->dptr_list)
+    {
+      qexec_clear_head_lists (thread_p, xasl->dptr_list);
+    }
 
-      if (xasl->scan_ptr)
-	{
-	  qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
-	}
+  if (xasl->scan_ptr)
+    {
+      qexec_clear_scan_all_lists (thread_p, xasl->scan_ptr);
     }
 }
 
@@ -6697,6 +6728,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
   while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
     {
       QEXEC_GBY_SLOT *s;
+      AGGREGATE_HASH_VALUE *value;
       AGGREGATE_TYPE *agg;
       unsigned int h;
       int i;
@@ -6716,10 +6748,9 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
       s = qexec_gby_mtable_find (t, rd->temp_part_key, h);
       if (s->key == NULL && rd->no_first_tuple)
 	{
-	  AGGREGATE_HASH_VALUE *added;
-
-	  /* the group's rows all went into partial entries: the entry's key makes the group */
-	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &added);
+	  /* the group's rows all went into partial entries: the entry's key makes the group.  The add can grow the
+	   * table, which frees the slots s points into: the group is read through the value it returns */
+	  rc = qexec_gby_mtable_add (thread_p, rd, t, s, h, NULL, NULL, &value);
 	  if (rc != NO_ERROR)
 	    {
 	      break;
@@ -6742,9 +6773,13 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	  rc = ER_FAILED;
 	  break;
 	}
+      else
+	{
+	  value = s->value;
+	}
       for (agg = rd->agg_template, i = 0; agg != NULL; agg = agg->next, i++)
 	{
-	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &s->value->accumulators[i],
+	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &value->accumulators[i],
 							   &agg->accumulator_domain, agg->function, agg->domain,
 							   &rd->temp_part_value->accumulators[i]);
 	  if (rc != NO_ERROR)
@@ -6756,7 +6791,7 @@ qexec_gby_merge_partials (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_
 	{
 	  break;
 	}
-      s->value->tuple_count += rd->temp_part_value->tuple_count;
+      value->tuple_count += rd->temp_part_value->tuple_count;
     }
   if (sc == S_ERROR && rc == NO_ERROR)
     {
@@ -11064,6 +11099,11 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		ASSERT_ERROR ();
 		goto exit_on_error;
 	      }
+	    /* shortcut: only the scans of the EXISTS subquery's or the inst_num () block's own XASL start their
+	     * read-ahead late, the scans of its scan_ptr blocks keep the first window; pass the flag down when a join
+	     * inside EXISTS or under LIMIT shows the cost */
+	    s_id->s.isid.ahead_single = (xasl != NULL && (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN)
+							  || xasl->instnum_pred != NULL));
 
 #if SERVER_MODE && !WINDOWS
 	    error_code = scan_open_parallel_index_scan (thread_p, s_id, vd, curr_spec,
@@ -11312,6 +11352,15 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
   if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned
       && curr_spec->parts != NULL)
     {
+      PARTITION_SPEC_TYPE *part;
+
+      /* a previous execution of the scan (a subquery run again) leaves the partitions its last pruned outer row
+       * left out marked: open from all of them, the next outer row prunes again (CBRD-27866) */
+      for (part = curr_spec->parts; part != NULL; part = part->next)
+	{
+	  part->row_pruned = false;
+	}
+
       error_code = qexec_init_next_partition (thread_p, curr_spec, xasl);
       if (error_code != S_SUCCESS)
 	{
@@ -11658,7 +11707,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  * blocks by the iterator: its partition sweep is one probe of one outer row (qexec_execute_scan,
  * CBRD-26872), so its match memo answers for all partitions and no restart invalidates it
  * (CBRD-27465). A following join after it is driven per outer row the same way, and its row
- * memo spans that partition walk (CBRD-27493).
+ * memo spans that partition walk (CBRD-27493), as does a partitioned inner join (CBRD-27866).
  */
 static SCAN_CODE
 qexec_next_scan_block_renew_memoize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
@@ -11694,8 +11743,9 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   XASL_NODE *prev_xptr;
   XASL_NODE *xptr2, *xptr3;
 
-  /* first find the last scan block to be moved */
-  for (last_xptr = xasl; last_xptr->scan_ptr && !XASL_IS_NL_SEMI_OR_ANTI (last_xptr->scan_ptr);
+  /* first find the last scan block to be moved; a scan driven per outer row walks its own partitions
+   * (qexec_execute_scan), and so do the scans after it (CBRD-27866) */
+  for (last_xptr = xasl; last_xptr->scan_ptr && !XASL_IS_PER_OUTER_ROW (last_xptr->scan_ptr);
        last_xptr = last_xptr->scan_ptr)
     {
       if (!last_xptr->next_scan_block_on
@@ -11747,7 +11797,9 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		{
 		  return S_ERROR;
 		}
-	      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
+	      /* a deferred partition walk opens its partition on the row that needs it (qexec_open_row_partition ()) */
+	      sb_next = (QEXEC_IS_DEFERRED_PARTITION_WALK (xptr2->scan_ptr) ? S_SUCCESS
+			 : qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr));
 	      if (sb_next == S_SUCCESS)
 		{
 		  xptr2->next_scan_block_on = true;
@@ -11810,7 +11862,8 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 			{
 			  return S_ERROR;
 			}
-		      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
+		      sb_next = (QEXEC_IS_DEFERRED_PARTITION_WALK (xptr2->scan_ptr) ? S_SUCCESS
+				 : qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr));
 		      if (sb_next == S_SUCCESS)
 			{
 			  xptr2->next_scan_block_on = true;
@@ -11860,6 +11913,116 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_can_switch_index_partition () - whether qexec_init_next_partition () may move an open index scan to the next
+ *					 partition without closing it
+ *   return: bool
+ *   spec(in): the partitioned spec
+ *   xasl(in): its scan proc
+ *
+ * Note: only a plain serial index scan walked per outer row (CBRD-27866). Index skip scan, loose index scan and
+ *	 multiple range optimization keep state for the index of one partition. A locking scan decides per class
+ *	 whether its row locks end with the statement, which the switch decides again (scan_set_upddel_target ()).
+ */
+static bool
+qexec_can_switch_index_partition (ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
+{
+  return (QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) && spec->type == TARGET_CLASS
+	  && spec->access == ACCESS_METHOD_INDEX && spec->indexptr != NULL && spec->s_id.type == S_INDX_SCAN
+	  && spec->s_id.status != S_CLOSED && spec->s_id.s.isid.bt_attr_ids != NULL
+	  && !spec->indexptr->use_iss && spec->indexptr->ils_prefix_len == 0 && !spec->s_id.s.isid.multi_range_opt.use);
+}
+
+/*
+ * qexec_row_partition_has_next () - whether the partition walk of an outer row has a partition after the current one
+ *   return: bool
+ *   spec(in): a partitioned spec walked per outer row
+ */
+static bool
+qexec_row_partition_has_next (const ACCESS_SPEC_TYPE * spec)
+{
+  const PARTITION_SPEC_TYPE *part;
+
+  for (part = (spec->curent != NULL) ? spec->curent->next : NULL; part != NULL; part = part->next)
+    {
+      if (spec->row_pruning == NULL || !part->row_pruned)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qexec_open_row_partition () - open the first partition an outer row walks, for a memo miss
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   xasl(in)    : a partitioned NL inner driven per outer row, rewound by qexec_reset_sa_inner_scan_block ()
+ *
+ * Note: the rewind leaves the scan where the previous row left it, so a row the memo answers switches no partition.
+ *	 A row it does not answer is pruned by its join values first (ACCESS_SPEC_FLAG_PRUNE_PER_ROW). When its first
+ *	 partition is the one still open, the scan is only reset to read it again with the row's keys, as an
+ *	 unpartitioned inner is; otherwise the walk starts over from that partition (CBRD-27866).
+ */
+static SCAN_CODE
+qexec_open_row_partition (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+  PARTITION_SPEC_TYPE *first;
+  SCAN_CODE part_scan;
+  bool put_success;
+
+  spec->row_rewind_pending = false;
+
+  if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_PRUNE_PER_ROW)
+      && partition_prune_spec_for_row (thread_p, spec->s_id.vd, xasl, spec) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  for (first = spec->parts; first != NULL && spec->row_pruning != NULL && first->row_pruned; first = first->next)
+    {
+      ;
+    }
+
+  if (first == NULL && spec->parts != NULL
+      && (spec->single_fetch == QPROC_NO_SINGLE_OUTER || XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN)))
+    {
+      /* no partition can hold the row's key, but an outer join returns its NULL row and an ANTI inner lets the
+       * row through only once a partition is scanned and comes up empty */
+      first = spec->parts;
+      first->row_pruned = false;
+    }
+
+  if (first != NULL && first == spec->curent && spec->s_id.status == S_STARTED)
+    {
+      xasl->curr_spec = spec;
+      return (scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR) ? S_ERROR : S_SUCCESS;
+    }
+
+  xasl->curr_spec = spec;
+  spec->curent = NULL;
+  part_scan = (first != NULL) ? qexec_init_next_partition (thread_p, spec, xasl) : S_END;
+  if (part_scan == S_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (part_scan == S_END)
+    {
+      /* the row's join values leave out every partition: nothing to join, and the memo keeps that for its key */
+      xasl->curr_spec = NULL;
+      if (xasl->memoize_storage != NULL && memoize_put_nullptr (thread_p, xasl, &put_success) == ER_FAILED)
+	{
+	  return S_ERROR;
+	}
+      return S_END;
+    }
+
+  spec->s_id.single_fetched = false;
+  return S_SUCCESS;
+}
+
+/*
  * qexec_reset_sa_inner_scan_block () -
  *   return: SCAN_CODE (S_SUCCESS, S_ERROR)
  *   inner(in) : candidate semi/anti inner scan
@@ -11876,6 +12039,17 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 SCAN_CODE
 qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
 {
+  if (QEXEC_IS_DEFERRED_PARTITION_WALK (inner))
+    {
+      /* the partition is opened only if the memo does not answer the row: a hit costs no partition switch, and a
+       * miss reuses the partition left open when it is the row's first one (CBRD-27866) */
+      inner->curr_spec = inner->spec_list;
+      inner->spec_list->row_rewind_pending = true;
+      inner->spec_list->s_id.single_fetched = false;
+      inner->next_scan_block_on = false;
+      return S_SUCCESS;
+    }
+
   if ((XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
       || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN)
 	  && (QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)
@@ -12256,9 +12430,25 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       memoize_scan =
 	qexec_execute_nljoin_with_memoize (thread_p, &memoize_success, xasl, xasl_state, ignore, next_scan_fnc);
 
+      if (memoize_success && xasl->spec_list != NULL)
+	{
+	  /* the memo answered the row: a re-entry for it must find the latch the answer set, not open the
+	   * partition the rewind left for a miss (CBRD-27866) */
+	  xasl->spec_list->row_rewind_pending = false;
+	}
       if (memoize_scan != S_SUCCESS || memoize_success)
 	{
 	  return memoize_scan;
+	}
+    }
+
+  if (xasl->spec_list != NULL && xasl->spec_list->row_rewind_pending)
+    {
+      SCAN_CODE open_scan = qexec_open_row_partition (thread_p, xasl);
+
+      if (open_scan != S_SUCCESS)
+	{
+	  return open_scan;
 	}
     }
 
@@ -12286,7 +12476,19 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   /* execute scan */
   do
     {
+      if (QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) && xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+	{
+	  /* an outer join walks the partitions of the row: the last one returns the NULL row when no partition
+	   * had a row (CBRD-27866) */
+	  xasl->curr_spec->s_id.single_fetch =
+	    qexec_row_partition_has_next (xasl->curr_spec) ? QPROC_NO_SINGLE_INNER : QPROC_NO_SINGLE_OUTER;
+	}
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+      if (sc_scan == S_SUCCESS && QEXEC_IS_DEFERRED_PARTITION_WALK (xasl)
+	  && xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+	{
+	  xasl->curr_spec->s_id.single_fetched = true;
+	}
       if (sc_scan == S_END && xasl->memoize_storage
 	  && !(XASL_IS_NL_SEMI_OR_ANTI (xasl)
 	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL))
@@ -12310,14 +12512,26 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec))
 	{
 	  /* a following join is driven per outer row, and the block iterator never moves it to its next
-	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493) */
-	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493). A deferred walk
+	   * stops on its last partition and leaves it open for the next row to reuse (CBRD-27866). */
+	  SCAN_CODE sb_scan = S_END;
+	  bool row_fetched = xasl->curr_spec->s_id.single_fetched;
+
+	  if (!QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) || qexec_row_partition_has_next (xasl->curr_spec))
+	    {
+	      sb_scan = qexec_next_scan_block (thread_p, xasl);
+	    }
 	  if (sb_scan == S_ERROR)
 	    {
 	      return S_ERROR;
 	    }
 	  if (sb_scan == S_SUCCESS)
 	    {
+	      /* the switch starts the scan afresh: an outer join remembers a row of an earlier partition */
+	      if (xasl->curr_spec->single_fetch == QPROC_NO_SINGLE_OUTER)
+		{
+		  xasl->curr_spec->s_id.single_fetched = row_fetched;
+		}
 	      continue;
 	    }
 
@@ -12338,7 +12552,18 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  && xasl->curr_spec->parts != NULL && !xasl->curr_spec->s_id.single_fetched)
 	{
 	  ACCESS_SPEC_TYPE *sa_curr_spec = xasl->curr_spec;
-	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	  SCAN_CODE sb_scan = S_END;
+
+	  /* a deferred walk stops on its last partition and leaves it open for the next row to reuse (CBRD-27866);
+	   * the latch keeps a re-entry for this row from scanning it again */
+	  if (!QEXEC_IS_DEFERRED_PARTITION_WALK (xasl) || qexec_row_partition_has_next (xasl->curr_spec))
+	    {
+	      sb_scan = qexec_next_scan_block (thread_p, xasl);
+	    }
+	  else
+	    {
+	      sa_curr_spec->s_id.single_fetched = true;
+	    }
 	  if (sb_scan == S_ERROR)
 	    {
 	      return S_ERROR;
@@ -12360,7 +12585,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
 	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	    {
-	      /* curr_spec is NULL now (the last partition's scan was closed); latch the spec we scanned */
+	      /* curr_spec is NULL now (the last partition's scan was closed) unless a deferred walk stopped on it;
+	       * latch the spec we scanned */
 	      sa_curr_spec->s_id.single_fetched = true;
 	      sa_curr_spec->s_id.qualified_block = true;
 	      return qexec_execute_sa_anti_survive (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
@@ -12762,6 +12988,8 @@ static SCAN_CODE
 qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XASL_NODE * xasl)
 {
   int error = NO_ERROR;
+  bool fast_switch = false;
+  bool started = false;
   OID class_oid;
   HFID class_hfid;
   BTID btid;
@@ -12777,9 +13005,16 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_END;
     }
 
+  /* an index scan walked per outer row keeps what it set up for the index and switches only its partition
+   * (scan_switch_index_partition ()); any other scan is closed and opened again on the next partition */
+  fast_switch = qexec_can_switch_index_partition (spec, xasl);
+
   /* close current scan and open a new one on the next partition */
-  scan_end_scan (thread_p, &spec->s_id);
-  scan_close_scan (thread_p, &spec->s_id);
+  if (!fast_switch)
+    {
+      scan_end_scan (thread_p, &spec->s_id);
+      scan_close_scan (thread_p, &spec->s_id);
+    }
 
   /* we also need to reset caches for attributes */
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_pred);
@@ -12787,11 +13022,18 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
   qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_key);
   qexec_reset_pred_expr (spec->where_pred);
   qexec_reset_pred_expr (spec->where_key);
+  /* the range filter a locking scan evaluates again (MVCC reevaluation) reads the range attribute cache */
+  qexec_reset_regu_variable_list (spec->s.cls_node.cls_regu_list_range);
+  qexec_reset_pred_expr (spec->where_range);
 
   if (spec->curent == NULL)
     {
       /* first partition */
       spec->curent = spec->parts;
+      while (spec->row_pruning != NULL && spec->curent != NULL && spec->curent->row_pruned)
+	{
+	  spec->curent = spec->curent->next;
+	}
     }
   else
     {
@@ -12825,16 +13067,12 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	  spec->curent->batch_why_not = spec->s_id.s.hsid.batch_why_not;
 	}
 
-      /* move to next partition */
-      if (spec->curent->next == NULL)
-	{
-	  /* no more partitions */
-	  spec->curent = NULL;
-	}
-      else
+      /* move to next partition, past the ones the outer row's join values left out (CBRD-27866) */
+      do
 	{
 	  spec->curent = spec->curent->next;
 	}
+      while (spec->row_pruning != NULL && spec->curent != NULL && spec->curent->row_pruned);
     }
 
   /* prepare to record stats for the next partition */
@@ -13030,6 +13268,26 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
 	      bool iscan_oid_order = spec->s_id.s.isid.iscan_oid_order;
 
+	      if (fast_switch && spec->curent != NULL)
+		{
+		  spec->indexptr->btid = btid;
+		  error = scan_switch_index_partition (thread_p, &spec->s_id, &class_oid, &class_hfid,
+						       &spec->curent->btid_int, &spec->curent->btid_int_cached,
+						       spec->curent->scan_locked, &started);
+		  if (error != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  break;
+		}
+	      if (fast_switch)
+		{
+		  /* back to the root class: open it as any scan */
+		  scan_end_scan (thread_p, &spec->s_id);
+		  scan_close_scan (thread_p, &spec->s_id);
+		  fast_switch = false;
+		}
+
 	      /* clear caches */
 	      if (isidp->caches_inited)
 		{
@@ -13075,6 +13333,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		{
 		  return S_ERROR;
 		}
+	      spec->s_id.s.isid.ahead_single = (xasl != NULL && (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN)
+								 || xasl->instnum_pred != NULL));
 
 #if SERVER_MODE && !WINDOWS
 	      error =
@@ -13151,10 +13411,22 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       return S_END;
     }
 
-  error = scan_start_scan (thread_p, &spec->s_id);
-  if (error != NO_ERROR)
+  if (!started)
     {
-      return S_ERROR;
+      error = scan_start_scan (thread_p, &spec->s_id);
+      if (error != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+
+  if (fast_switch)
+    {
+      spec->curent->scan_locked = true;
+      if (scan_reset_scan_block (thread_p, &spec->s_id) == S_ERROR)
+	{
+	  return S_ERROR;
+	}
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -21680,6 +21952,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
+  COVERED_VISIT_STATE covered_visit;
+
+  covered_visit.scan_xasl = NULL;
 
   /*
    * Pre_processing
@@ -22333,8 +22608,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 	  /* Decide which scan will use fixed flags and which won't. There are several cases here: 1. Do not use fixed
 	   * scans if locks on objects are required. 2. If any index scan is used, only the innermost scan of the chain
-	   * may be fixed, and only when it reads the heap sequentially: it releases its page before another level of the
-	   * chain runs (heap_next () at the end of the heap, scan_handle_single_scan () on an early stop). 3. Disable
+	   * may be fixed, and only when it reads the heap sequentially or is a covered index scan: it releases its page
+	   * before another level of the chain runs (heap_next () at the end of the heap, scan_handle_single_scan () on
+	   * an early stop; the covered index scan's leaf when its range scan returns). 3. Disable
 	   * fixed scan for outer scans. Fixed cannot be allowed while new scans start which also need to fix pages. This
 	   * may lead to page deadlocks. NOTE: Only the innermost scans are allowed fixed scans. */
 	  if (COMPOSITE_LOCK (xasl->scan_op_type))
@@ -22383,7 +22659,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	  if (has_index_scan)
 	    {
-	      /* Index found: only an innermost sequential heap scan stays fixed */
+	      /* Index found: only the innermost scan may keep its page while the block takes its rows. What it keeps
+	       * goes by how it reads: a sequential heap scan its heap page, a covered index scan its B-tree leaf
+	       * (qexec_covered_visit_scan ()); an index scan that looks its rows up in the heap keeps neither */
 	      for (xptr = xasl; xptr->scan_ptr != NULL; xptr = xptr->scan_ptr)
 		{
 		  ;
@@ -22392,7 +22670,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      fixed_scan_xasl = (xptr->merge_spec == NULL && xptr->dptr_list == NULL) ? xptr : NULL;
 	      for (specp = xptr->spec_list; specp != NULL && fixed_scan_xasl != NULL; specp = specp->next)
 		{
-		  if (specp->type != TARGET_CLASS || specp->access != ACCESS_METHOD_SEQUENTIAL)
+		  if (specp->type != TARGET_CLASS
+		      || (specp->access != ACCESS_METHOD_SEQUENTIAL
+			  && (specp->access != ACCESS_METHOD_INDEX || specp->indexptr == NULL
+			      || specp->indexptr->coverage == 0)))
 		    {
 		      fixed_scan_xasl = NULL;
 		    }
@@ -22440,7 +22721,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
-		      specp->fixed_scan = (xptr == fixed_scan_xasl);
+		      /* the heap scan keeps its page through its open; the covered index scan through the visit the
+		       * block attaches below, its open is the same as any index scan's */
+		      specp->fixed_scan = (xptr == fixed_scan_xasl && !IS_ANY_INDEX_ACCESS (specp->access));
 
 		      /* Cached (copy-to-local-cache) scan is allowed on every spec_list scan that is not fixed: an
 		       * inner scan that is not fixed would otherwise fix its page for every row, and copying the page
@@ -22542,6 +22825,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
 			    }
+#if !defined (NDEBUG)
+			  memoize_check_key (xasl, xptr);
+#endif
 			}
 		    }
 		}
@@ -22550,6 +22836,20 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.gby_skip_state != NULL)
 	    {
 	      qexec_gby_skip_attach (xasl);
+	    }
+	  else if ((xptr = qexec_covered_visit_scan (xasl, fixed_scan_xasl, mvcc_select_lock_needed)) != NULL)
+	    {
+	      /* the innermost scan hands each selected key to the block; a scan opened again without the visit (the
+	       * next partition) delivers its rows as usual */
+	      memset (&covered_visit, 0, sizeof (covered_visit));
+	      covered_visit.scan.visit = qexec_covered_visit;
+	      covered_visit.scan.visit_arg = &covered_visit;
+	      covered_visit.scan.key_start = true;
+	      covered_visit.xasl = xasl;
+	      covered_visit.scan_xasl = xptr;
+	      covered_visit.xasl_state = xasl_state;
+	      covered_visit.tplrec = &tplrec;
+	      xptr->spec_list->s_id.s.isid.gby_skip = &covered_visit.scan;
 	    }
 
 	  /* allocate xasl scan function vector */
@@ -22920,12 +23220,23 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   xasl->status = XASL_SUCCESS;
   qexec_assert_result_list_backward (xasl, xasl->list_id);
 
+  if (covered_visit.scan_xasl != NULL)
+    {
+      /* the state is this call's */
+      covered_visit.scan_xasl->spec_list->s_id.s.isid.gby_skip = NULL;
+    }
   return NO_ERROR;
 
   /*
    * Error processing
    */
 exit_on_error:
+
+  if (covered_visit.scan_xasl != NULL)
+    {
+      /* the state is this call's */
+      covered_visit.scan_xasl->spec_list->s_id.s.isid.gby_skip = NULL;
+    }
 #if defined(SERVER_MODE)
   /* query execution error must be set up before qfile_close_list(). */
   if (er_errid () < 0)
@@ -28430,25 +28741,32 @@ static bool
 qexec_gby_skip_can_visit (XASL_NODE * xasl)
 {
   BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
-  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
-  INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
-  INDX_INFO *indx_info = spec->indexptr;
 
-  if (!SCAN_IS_INDEX_COVERED (isidp) || SCAN_IS_INDEX_MRO (isidp) || SCAN_IS_INDEX_ISS (isidp)
-      || indx_info->ils_prefix_len > 0 || indx_info->use_desc_index || indx_info->key_info.key_limit_l != NULL
-      || indx_info->key_info.key_limit_u != NULL || isidp->scan_pred.pred_expr != NULL || spec->next != NULL
-      || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
+  return (buildlist->eptr_list == NULL && qexec_covered_visit_allowed (xasl, buildlist->g_agg_list)
+	  && qexec_gby_skip_regu_list_is_local (buildlist->g_scan_regu_list)
+	  && qexec_gby_skip_pred_is_local (buildlist->g_having_pred)
+	  && qexec_gby_skip_regu_list_is_local (buildlist->g_outptr_list->valptrp));
+}
+
+/*
+ * qexec_covered_visit_allowed () - may the aggregation run under the B-tree leaf latch, from the B-tree's visit of a
+ *				    covered key: every selected object reaches the aggregation, and no aggregate waits
+ *				    for anything or sorts
+ */
+static bool
+qexec_covered_visit_allowed (XASL_NODE * xasl, AGGREGATE_TYPE * agg_list)
+{
+  if (!qexec_covered_scan_visitable (xasl->spec_list))
     {
       return false;
     }
   if (xasl->bptr_list != NULL || xasl->fptr_list != NULL || xasl->dptr_list != NULL || xasl->scan_ptr != NULL
       || xasl->if_pred != NULL || xasl->after_join_pred != NULL || xasl->instnum_val != NULL
-      || xasl->max_iterations != -1 || XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY | XASL_NEED_SINGLE_TUPLE_SCAN)
-      || buildlist->eptr_list != NULL)
+      || xasl->max_iterations != -1 || XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY | XASL_NEED_SINGLE_TUPLE_SCAN))
     {
       return false;
     }
-  for (AGGREGATE_TYPE * agg = buildlist->g_agg_list; agg != NULL; agg = agg->next)
+  for (AGGREGATE_TYPE * agg = agg_list; agg != NULL; agg = agg->next)
     {
       switch (agg->function)
 	{
@@ -28467,9 +28785,116 @@ qexec_gby_skip_can_visit (XASL_NODE * xasl)
 	  return false;
 	}
     }
-  return (qexec_gby_skip_regu_list_is_local (buildlist->g_scan_regu_list)
-	  && qexec_gby_skip_pred_is_local (buildlist->g_having_pred)
-	  && qexec_gby_skip_regu_list_is_local (buildlist->g_outptr_list->valptrp));
+  return true;
+}
+
+/*
+ * qexec_covered_scan_visitable () - is the spec a covered index scan the B-tree can hand over object by object: one
+ *				     range walk forward, every key that passes the key filter a row
+ */
+static bool
+qexec_covered_scan_visitable (ACCESS_SPEC_TYPE * spec)
+{
+  INDX_SCAN_ID *isidp = &spec->s_id.s.isid;
+  INDX_INFO *indx_info = spec->indexptr;
+
+  return (spec->next == NULL && spec->s_id.type == S_INDX_SCAN && indx_info != NULL && SCAN_IS_INDEX_COVERED (isidp)
+	  && !SCAN_IS_INDEX_MRO (isidp) && !SCAN_IS_INDEX_ISS (isidp) && indx_info->ils_prefix_len == 0
+	  && !indx_info->use_desc_index && indx_info->key_info.key_limit_l == NULL
+	  && indx_info->key_info.key_limit_u == NULL && isidp->scan_pred.pred_expr == NULL
+	  && !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+}
+
+/*
+ * qexec_covered_visit_scan () - the block's innermost scan node when its covered index scan hands each key to the
+ *				 block where the B-tree selects it, under the leaf latch; NULL otherwise
+ *   xasl(in): the block
+ *   fixed_scan_xasl(in): the scan node the block lets keep its page (qexec_execute_mainblock_internal ()), or NULL
+ *   mvcc_select_lock_needed(in): the block's scans take row locks
+ *
+ * Note: Whether a scan may keep its page is the block's one decision, shared with the sequential heap scan. Asked
+ *       here is only what the visit does not reproduce, and such a scan copies its keys to the covering list as
+ *       before: an inst_num () stop, a first-match or outer join step, a partitioned inner scan, locks taken while
+ *       scanning.
+ */
+static XASL_NODE *
+qexec_covered_visit_scan (XASL_NODE * xasl, XASL_NODE * fixed_scan_xasl, bool mvcc_select_lock_needed)
+{
+  XASL_NODE *inner = fixed_scan_xasl, *xptr;
+
+  if (inner == NULL || inner->scan_ptr != NULL || mvcc_select_lock_needed
+      || (xasl->type != BUILDLIST_PROC && xasl->type != BUILDVALUE_PROC)
+      || xasl->scan_op_type != S_SELECT || xasl->selected_upd_list != NULL
+      || xasl->instnum_val != NULL || xasl->instnum_pred != NULL || xasl->max_iterations != -1 || xasl->rtf != NULL
+      || XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY | XASL_NEED_SINGLE_TUPLE_SCAN)
+      || (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.gby_skip_state != NULL))
+    {
+      return NULL;
+    }
+  for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
+    {
+      if (xptr->merge_spec != NULL || xptr->spec_list == NULL || xptr->spec_list->next != NULL
+	  || xptr->spec_list->type != TARGET_CLASS)
+	{
+	  return NULL;
+	}
+      /* an inner scan's rows are every match of a plain inner join */
+      if (xptr != xasl
+	  && (XASL_IS_NL_SEMI_OR_ANTI (xptr) || XASL_IS_FLAGED (xptr, XASL_NL_FOLLOWING_JOIN)
+	      || xptr->spec_list->single_fetch != QPROC_NO_SINGLE_INNER || xptr->dptr_list != NULL))
+	{
+	  return NULL;
+	}
+    }
+  if (inner->bptr_list != NULL || inner->fptr_list != NULL || (inner != xasl && inner->spec_list->parts != NULL)
+      || !qexec_covered_scan_visitable (inner->spec_list) || inner->spec_list->s_id.s.isid.need_count_only)
+    {
+      return NULL;
+    }
+  return inner;
+}
+
+/*
+ * qexec_covered_visit () - a selected object of the covered scan, the B-tree has its key in the scan's values: the
+ *			    row the scan would have delivered, taken through the rest of the block now
+ */
+static int
+qexec_covered_visit (THREAD_ENTRY * thread_p, void *arg, bool key_start, bool * stop)
+{
+  COVERED_VISIT_STATE *st = (COVERED_VISIT_STATE *) arg;
+  XASL_NODE *inner = st->scan_xasl;
+  DB_LOGICAL ev_res;
+
+  inner->spec_list->s_id.scan_stats.key_qualified_rows++;
+  perfmon_inc_stat (thread_p, PSTAT_BT_NUM_COVERED);
+
+  if (inner->after_join_pred != NULL)
+    {
+      ev_res = eval_pred (thread_p, inner->after_join_pred, &st->xasl_state->vd, NULL);
+      if (ev_res != V_TRUE)
+	{
+	  return (ev_res == V_ERROR) ? ER_FAILED : NO_ERROR;
+	}
+    }
+  if (inner->if_pred != NULL)
+    {
+      ev_res = eval_pred (thread_p, inner->if_pred, &st->xasl_state->vd, NULL);
+      if (ev_res != V_TRUE)
+	{
+	  return (ev_res == V_ERROR) ? ER_FAILED : NO_ERROR;
+	}
+    }
+  if (inner->memoize_storage != NULL)
+    {
+      /* a qualified row of the key memoize missed, as qexec_execute_scan () keeps it; a full storage frees itself */
+      bool memoize_put_success;
+
+      if (memoize_put (thread_p, inner, &memoize_put_success) == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+    }
+  return qexec_end_one_iteration (thread_p, st->xasl, st->xasl_state, st->tplrec);
 }
 
 /* true when regu evaluates from its operands alone: no subquery, stored procedure, serial, sleep or lock

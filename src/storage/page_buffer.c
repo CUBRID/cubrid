@@ -1133,6 +1133,7 @@ static int pgbuf_initialize_page_quota (void);
 static int pgbuf_initialize_page_monitor (void);
 static int pgbuf_initialize_thrd_holder (void);
 STATIC_INLINE PGBUF_HOLDER *pgbuf_allocate_thrd_holder_entry (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void pgbuf_clear_page_contents (PAGE_PTR pgptr) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE PGBUF_HOLDER *pgbuf_find_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int pgbuf_remove_thrd_holder (THREAD_ENTRY * thread_p, PGBUF_HOLDER * holder)
@@ -2526,6 +2527,15 @@ try_again:
 
   assert (bufptr == bufptr->iopage_buffer->bcb);
 
+  if (fetch_mode == NEW_PAGE)
+    {
+      /* a new page starts empty: the buffer may still hold what another page left in it (see
+       * pgbuf_clear_page_contents). the write latch keeps the page from being flushed meanwhile. */
+      assert (request_mode == PGBUF_LATCH_WRITE);
+      CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
+      pgbuf_clear_page_contents (pgptr);
+    }
+
   /* In case of NO_ERROR, bufptr->mutex has been released. */
 
   /* Dirty Pages Table Registration Pass */
@@ -3777,7 +3787,9 @@ pgbuf_discard_interval_open (void)
     }
   else
     {
-      /* all in use: share the most recent one. merging only widens an interval, which is still correct. */
+      /* all in use: share the most recent one. each of them starts at or after the redo point of the last
+       * checkpoint (see pgbuf_discard_redo_bound_apply), so merging only widens it after that point, which is still
+       * correct. */
       interval = 0;
       for (i = 1; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
 	{
@@ -3861,8 +3873,13 @@ pgbuf_discard_interval_close (int interval)
  *
  * return             : void
  * redo_lsa (in/out)  : redo point of the checkpoint
- * prev_redo_lsa (in) : redo point of the last recorded checkpoint. intervals ending before it are never replayed
- *                      again, so they are released.
+ * prev_redo_lsa (in) : redo point of the last recorded checkpoint. the redo point never goes below it, as the log
+ *                      before it may be removed already.
+ *
+ * note: the intervals that end before the redo point are released right away, and an interval still open forgets
+ *       the pages added so far. no recovery from this redo point or a later one replays them, and the pages a
+ *       destroy adds later start at or after it, so every interval in use starts at or after the redo point of the
+ *       last checkpoint.
  */
 void
 pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_lsa)
@@ -3876,28 +3893,6 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
 
   pthread_mutex_lock (&bound->mutex);
 
-  if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa))
-    {
-      for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
-	{
-	  iv = &bound->intervals[i];
-	  if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa) || !LSA_LT (&iv->last_lsa, prev_redo_lsa))
-	    {
-	      continue;
-	    }
-	  if (iv->nopen == 0)
-	    {
-	      iv->is_used = false;
-	    }
-	  else
-	    {
-	      /* still open: forget the pages added so far */
-	      LSA_SET_NULL (&iv->oldest_lsa);
-	      LSA_SET_NULL (&iv->last_lsa);
-	    }
-	}
-    }
-
   do
     {
       is_lowered = false;
@@ -3910,12 +3905,42 @@ pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_ls
 	    }
 	  if (LSA_LT (&iv->oldest_lsa, redo_lsa) && LSA_GE (&iv->last_lsa, redo_lsa))
 	    {
+	      if (prev_redo_lsa != NULL && !LSA_ISNULL (prev_redo_lsa) && LSA_LT (&iv->oldest_lsa, prev_redo_lsa))
+		{
+		  /* cannot happen: every interval starts at or after the last redo point (see the note above) */
+		  assert (false);
+		  if (LSA_LT (prev_redo_lsa, redo_lsa))
+		    {
+		      LSA_COPY (redo_lsa, prev_redo_lsa);
+		      is_lowered = true;
+		    }
+		  continue;
+		}
 	      LSA_COPY (redo_lsa, &iv->oldest_lsa);
 	      is_lowered = true;
 	    }
 	}
     }
   while (is_lowered);
+
+  for (i = 0; i < PGBUF_DISCARD_INTERVAL_COUNT; i++)
+    {
+      iv = &bound->intervals[i];
+      if (!iv->is_used || LSA_ISNULL (&iv->oldest_lsa) || !LSA_LT (&iv->last_lsa, redo_lsa))
+	{
+	  continue;
+	}
+      if (iv->nopen == 0)
+	{
+	  iv->is_used = false;
+	}
+      else
+	{
+	  /* still open: forget the pages added so far */
+	  LSA_SET_NULL (&iv->oldest_lsa);
+	  LSA_SET_NULL (&iv->last_lsa);
+	}
+    }
 
   pthread_mutex_unlock (&bound->mutex);
 }
@@ -5651,13 +5676,13 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
    */
   if (LSA_ISNULL (&bufptr->oldest_unflush_lsa))
     {
-      if (LSA_LT (lsa_ptr, &log_Gl.chkpt_redo_lsa))
+      if (*lsa_ptr < log_Gl.chkpt_redo_lsa.load ())
 	{
 	  LOG_LSA chkpt_redo_lsa;
 	  int rc;
 
 	  rc = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-	  LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
+	  chkpt_redo_lsa = log_Gl.chkpt_redo_lsa;
 	  pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
 	  if (LSA_LT (lsa_ptr, &chkpt_redo_lsa))
@@ -5665,7 +5690,7 @@ pgbuf_set_lsa (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const LOG_LSA * lsa_ptr)
 	      er_stack_push ();
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_SKIP_INVALID_PAGE, 6, bufptr->vpid.pageid,
 		      fileio_get_volume_label (bufptr->vpid.volid, PEEK), lsa_ptr->pageid, lsa_ptr->offset,
-		      log_Gl.chkpt_redo_lsa.pageid, log_Gl.chkpt_redo_lsa.offset);
+		      chkpt_redo_lsa.pageid, chkpt_redo_lsa.offset);
 	      er_stack_pop ();
 
 	      assert (false);
@@ -9274,6 +9299,103 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     }
 
   return bufptr;
+}
+
+/* BCBs a read-ahead check walks in one hash chain before it gives up */
+#define PGBUF_READ_AHEAD_MAX_CHAIN_STEPS 16
+/* pages of one call remembered so that none is told twice; a call with more pages may tell the later ones again */
+#define PGBUF_READ_AHEAD_TOLD_MAX 64
+
+/*
+ * pgbuf_read_ahead () - tell the OS which pages the caller is going to fix soon
+ *   vpids(in): pages of permanent volumes; consecutive pages in ascending order are handed over as one range
+ *   count(in): number of pages
+ *
+ * Note: A hint. Pages already in the buffer are left out: hinting them would make the device read what the
+ *       buffer holds. The check does not lock the hash chain: an answer made wrong by a concurrent fix or
+ *       victimization only costs one synchronous read or one needless hint. Runs of consecutive pages go to the
+ *       OS as one range. The pages are not fixed and no state is kept: the caller fixes each page as usual, and
+ *       that read finds the page in the OS cache or on its way. The pages handed to the OS are counted
+ *       (Num_data_page_read_ahead) while somebody watches the statistics.
+ */
+void
+pgbuf_read_ahead (THREAD_ENTRY * thread_p, const VPID * vpids, int count)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  VPID run_vpid = VPID_INITIALIZER;
+  int run_length = 0;
+  VPID told[PGBUF_READ_AHEAD_TOLD_MAX];
+  int told_count = 0;
+  int hinted = 0;
+  int steps;
+  int i, k;
+
+  for (i = 0; i <= count; i++)
+    {
+      bufptr = NULL;
+      if (i < count && !pgbuf_is_temporary_volume (vpids[i].volid))
+	{
+	  /* a page told earlier in this call is not told again and does not end the run: OIDs that alternate between
+	   * a few pages name each page many times */
+	  for (k = 0; k < told_count; k++)
+	    {
+	      if (told[k].pageid == vpids[i].pageid && told[k].volid == vpids[i].volid)
+		{
+		  break;
+		}
+	    }
+	  if (k < told_count)
+	    {
+	      continue;
+	    }
+	  /* No hash mutex: a chain changed meanwhile may give a wrong answer either way, which costs one synchronous
+	   * read or one needless hint. BCBs are never freed while the server runs, and the walk is bounded because a
+	   * BCB moved to another chain meanwhile leads the walk there; a walk cut short counts as found. */
+	  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&vpids[i])];
+	  steps = 0;
+	  for (bufptr = __atomic_load_n (&hash_anchor->hash_next, __ATOMIC_RELAXED); bufptr != NULL;
+	       bufptr = __atomic_load_n (&bufptr->hash_next, __ATOMIC_RELAXED))
+	    {
+	      if (__atomic_load_n (&bufptr->vpid.pageid, __ATOMIC_RELAXED) == vpids[i].pageid
+		  && __atomic_load_n (&bufptr->vpid.volid, __ATOMIC_RELAXED) == vpids[i].volid)
+		{
+		  break;
+		}
+	      if (++steps >= PGBUF_READ_AHEAD_MAX_CHAIN_STEPS)
+		{
+		  break;
+		}
+	    }
+	  if (bufptr == NULL && told_count < PGBUF_READ_AHEAD_TOLD_MAX)
+	    {
+	      told[told_count++] = vpids[i];
+	    }
+	  if (bufptr == NULL && run_length > 0 && vpids[i].volid == run_vpid.volid
+	      && vpids[i].pageid == run_vpid.pageid + run_length)
+	    {
+	      run_length++;
+	      continue;
+	    }
+	}
+      /* the run ends here: at the last page, at a page in the buffer or of a temporary volume, or at a gap */
+      if (run_length > 0)
+	{
+	  fileio_read_ahead_hint (fileio_get_volume_descriptor (run_vpid.volid), run_vpid.pageid, run_length,
+				  IO_PAGESIZE);
+	  hinted += run_length;
+	  run_length = 0;
+	}
+      if (i < count && bufptr == NULL && !pgbuf_is_temporary_volume (vpids[i].volid))
+	{
+	  run_vpid = vpids[i];
+	  run_length = 1;
+	}
+    }
+  if (hinted > 0)
+    {
+      perfmon_add_stat (thread_p, PSTAT_PB_NUM_READ_AHEAD, hinted);
+    }
 }
 
 /*
@@ -15960,14 +16082,109 @@ pgbuf_rv_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * pgbuf_clear_page_contents () - empty the body of a page and drop its tde bits
+ *
+ * return     : void
+ * pgptr (in) : page
+ *
+ * Note: the body and the tde bits of a page always go together: the tde bits say whether the body must be encrypted
+ *       when it leaves the buffer. so a page is cleared at both ends of its life, by the same function at runtime and
+ *       in recovery:
+ *       - when it is deallocated for good (pgbuf_dealloc_page with PGBUF_DEALLOC_CLEAR_CONTENTS), before it can be
+ *         written again.
+ *       - when it is fixed as a new page (pgbuf_fix with NEW_PAGE): the buffer may still hold the decrypted contents
+ *         of the page it served before, and the disk image may hold a page of a destroyed file.
+ */
+STATIC_INLINE void
+pgbuf_clear_page_contents (PAGE_PTR pgptr)
+{
+  FILEIO_PAGE *iopage = NULL;
+
+  CAST_PGPTR_TO_IOPGPTR (iopage, pgptr);
+  memset (pgptr, 0, DB_PAGESIZE);
+  iopage->prv.pflag = 0;
+}
+
+/*
+ * pgbuf_init_new_page () - start the life of a permanent or temporary page just fixed with NEW_PAGE
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * page_new (in) : page just fixed with NEW_PAGE, still empty
+ * tde_algo (in) : tde algorithm of the file
+ * is_temp (in)  : true for a page of a temporary file, which is not logged
+ *
+ * Note: recovery redoes a new page on its disk image, which may still hold the contents and the tde bits of a page of
+ *       a destroyed file. the record makes recovery start the page from the same empty state with the same tde
+ *       algorithm, before the records that fill it, so those records are already encrypted for an encrypted file.
+ *       it is an undo-redo record, as the RVPGBUF_NEW_PAGE of file_init_page_type: the overflow readers of CDC and HA
+ *       replication expect no redo-only record but the overflow records inside an overflow update.
+ */
+void
+pgbuf_init_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page_new, TDE_ALGORITHM tde_algo, bool is_temp)
+{
+  assert (page_new != NULL);
+  assert (pgbuf_get_tde_algorithm (page_new) == TDE_ALGORITHM_NONE);	/* cleared by NEW_PAGE */
+
+  if (!is_temp)
+    {
+      log_append_undoredo_data2 (thread_p, RVPGBUF_INIT_NEW_PAGE, NULL, page_new, 0, 0, sizeof (tde_algo), NULL,
+				 &tde_algo);
+    }
+  /* logged above, with the init */
+  pgbuf_set_tde_algorithm (thread_p, page_new, tde_algo, true);
+  pgbuf_set_dirty (thread_p, page_new, DONT_FREE);
+}
+
+/*
+ * pgbuf_rv_init_new_page_redo () - redo the start of a new page: empty it and set the tde algorithm of its file
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ */
+int
+pgbuf_rv_init_new_page_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  TDE_ALGORITHM tde_algo;
+
+  assert (rcv->pgptr != NULL);
+  assert (rcv->length == sizeof (tde_algo));
+
+  memcpy (&tde_algo, rcv->data, sizeof (tde_algo));
+  pgbuf_clear_page_contents (rcv->pgptr);
+  pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, tde_algo, true);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+  return NO_ERROR;
+}
+
+/*
+ * pgbuf_rv_init_new_page_undo () - nothing to undo: the page was free before its init
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * rcv (in)      : recovery data
+ *
+ * Note: rollback does not even call this, so that it does not fix the page (see RCV_IS_NOTHING_TO_UNDO). the other
+ *       records of the same system operation make the page free again.
+ */
+int
+pgbuf_rv_init_new_page_undo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return NO_ERROR;
+}
+
+/*
  * pgbuf_dealloc_page () - deallocate a page
  *
  * return        : error code
  * thread_p (in) : thread entry
  * page (in)     : page to deallocate
+ * contents (in) : PGBUF_DEALLOC_CLEAR_CONTENTS when the deallocation is final, PGBUF_DEALLOC_KEEP_CONTENTS when the
+ *                 page may come back to life with its contents (see pgbuf_clear_page_contents)
  */
 void
-pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
+pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc, int contents)
 {
   PGBUF_BCB *bcb = NULL;
   PAGE_TYPE ptype;
@@ -15993,22 +16210,21 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
   udata.ptype = prv->ptype;
   udata.pflag = prv->pflag;
 
-  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, 0, sizeof (udata), 0, &udata, NULL);
+  assert (contents == PGBUF_DEALLOC_KEEP_CONTENTS || contents == PGBUF_DEALLOC_CLEAR_CONTENTS);
+
+  /* the record offset says what is done with the contents, so that redo does the same */
+  log_append_undoredo_data2 (thread_p, RVPGBUF_DEALLOC, NULL, page_dealloc, (PGLENGTH) contents, sizeof (udata), 0,
+			     &udata, NULL);
+
+  if (contents == PGBUF_DEALLOC_CLEAR_CONTENTS)
+    {
+      pgbuf_clear_page_contents (page_dealloc);
+    }
 
   PGBUF_BCB_LOCK (bcb);
 
-#if !defined(NDEBUG)
-  if (bcb->iopage_buffer->iopage.prv.pflag & FILEIO_PAGE_FLAG_ENCRYPTED_MASK)
-    {
-      tde_er_log ("pgbuf_dealloc_page(): clear tde bit in pflag, VPID = %d|%d, tde_algorithm = %s\n",
-		  VPID_AS_ARGS (&bcb->vpid), tde_get_algorithm_name (pgbuf_get_tde_algorithm (page_dealloc)));
-    }
-#endif /* !NDEBUG */
-
-  /* set unknown type */
+  /* set unknown type. the tde bits go with the contents: cleared above, or kept with them. */
   bcb->iopage_buffer->iopage.prv.ptype = (unsigned char) PAGE_UNKNOWN;
-  /* clear page flags (now only tde algorithm) */
-  bcb->iopage_buffer->iopage.prv.pflag = (unsigned char) 0;
 
   /* set dirty and mark to move to the bottom of lru */
   pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_DIRTY_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
@@ -16032,8 +16248,12 @@ pgbuf_dealloc_page (THREAD_ENTRY * thread_p, PAGE_PTR page_dealloc)
 int
 pgbuf_rv_dealloc_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
+  /* as pgbuf_dealloc_page does; the record offset says what it did with the contents */
   pgbuf_set_page_ptype (thread_p, rcv->pgptr, PAGE_UNKNOWN);
-  pgbuf_set_tde_algorithm (thread_p, rcv->pgptr, TDE_ALGORITHM_NONE, true);
+  if (rcv->offset == PGBUF_DEALLOC_CLEAR_CONTENTS)
+    {
+      pgbuf_clear_page_contents (rcv->pgptr);
+    }
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
