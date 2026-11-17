@@ -1292,9 +1292,10 @@ jobs:
     needs: [gate, build, plan]
     # always(): collect and status still report a failed build or plan, and status a cancelled run.
     if: ${{ always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' }}
+    # The most the called jobs get: collect reads this run, status posts the verdict.
     permissions:
-      actions: read # collect reads the run's start time
-      statuses: write # status posts the verdict
+      actions: read
+      statuses: write
     strategy:
       fail-fast: false
       matrix:

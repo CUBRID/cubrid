@@ -1,5 +1,4 @@
-# One suite's shards, collect and status. gha-ci.yml calls it once per suite after plan, so a
-# suite's verdict waits only for its own shards.
+# gha-ci.yml calls this once per suite after plan.
 
 name: gha-ci suite
 
@@ -59,7 +58,8 @@ env:
       fi
     }
   OVERLAY: |
-    overlay() {   # <lower> <rw dir> <mount point>
+    # <lower> <rw dir> <mount point>
+    overlay() {
       mkdir -p "$2/upper" "$2/work" "$3"
       mount -t overlay overlay -o "lowerdir=$1,upperdir=$2/upper,workdir=$2/work" "$3"
     }
@@ -153,7 +153,8 @@ jobs:
           if [ -f "$base/CUBRID.tar.gz" ]; then
             tar -xzf "$base/CUBRID.tar.gz" -C /build-lower
           elif [ -d "$base/CUBRID" ]; then
-            cp -a "$base/CUBRID" "$lower"    # published before the archive
+            # published before the archive
+            cp -a "$base/CUBRID" "$lower"
           else
             echo "::error::no build: $base/CUBRID.tar.gz"; exit 1
           fi
@@ -418,7 +419,8 @@ jobs:
             unclosed { in_cdata = 1; next }
             tags ~ /<\/testcase>/ { cur = "" }
           '
-          failed() (   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log; the case-log step also reads <log dir>/xml.list
+          # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log; the case-log step also reads <log dir>/xml.list
+          failed() (
             mkdir -p "$2"
             cd "$1"
             find test-results -maxdepth 1 -type f -name '*.xml' ! -name summary.xml > "$2/xml.list" 2>/dev/null || :
