@@ -2634,6 +2634,7 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
   /* set by the two openers that reach a row-lock site; every other scan type leaves them off */
   scan_id->upddel_target_scan = false;
   scan_id->lock_ends_with_statement = false;
+  scan_id->click_counter_scan = false;
   scan_id->scan_op_type = scan_op_type;
   scan_id->fixed = fixed;
 
@@ -2658,18 +2659,25 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
  *   return: void
  *   thread_p(in): thread entry
  *   scan_id(in/out): the scan being opened
- *   upddel_target_scan(in): the row locks are the statement's (outermost READ COMMITTED DELETE/UPDATE target);
+ *   upddel_target_scan(in): the row locks are the statement's (a DELETE/UPDATE target, or a click counter's scan);
+ *			   kept across a partition switch
+ *   click_counter_scan(in): a click counter's scan, which changes no row: its increments decide at the statement end;
  *			   kept across a partition switch
  *   cls_oid(in): the class this scan is on -- the pruned partition, on a partition switch
  *
- * Note: decided per class, since a partition can differ from its root; see locator_class_keeps_row_locks ().
+ * Note: decided per class, since a partition can differ from its root.
  */
 static void
-scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, const OID * cls_oid)
+scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, bool click_counter_scan,
+			const OID * cls_oid)
 {
   scan_id->upddel_target_scan = upddel_target_scan;
-  scan_id->lock_ends_with_statement = (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
-				       && !locator_class_keeps_row_locks (thread_p, cls_oid));
+  scan_id->click_counter_scan = click_counter_scan;
+  scan_id->lock_ends_with_statement =
+    (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
+     && locator_can_release_row_lock_at_statement_end (thread_p, cls_oid,
+						       click_counter_scan ? STMT_ROW_NOT_CHANGED :
+						       STMT_ROW_CHANGE_UNCOMMITTED));
 }
 
 /*
@@ -2703,8 +2711,8 @@ scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_
 int
 scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     /* fields of SCAN_ID */
-		     bool mvcc_select_lock_needed, bool upddel_target_scan, SCAN_OPERATION_TYPE scan_op_type,
-		     int fixed, int grouped,
+		     bool mvcc_select_lock_needed, bool upddel_target_scan, bool click_counter_scan,
+		     SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 		     QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		     /* fields of HEAP_SCAN_ID */
 		     OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_pred, PRED_EXPR * pr,
@@ -2728,7 +2736,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch, join_dbval, val_list,
 		     vd);
-  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, click_counter_scan, cls_oid);
 
   /* initialize HEAP_SCAN_ID structure */
   hsidp = &scan_id->s.hsid;
@@ -2937,8 +2945,8 @@ scan_open_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 int
 scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		      /* fields of SCAN_ID */
-		      bool mvcc_select_lock_needed, bool upddel_target_scan, SCAN_OPERATION_TYPE scan_op_type,
-		      int fixed, int grouped,
+		      bool mvcc_select_lock_needed, bool upddel_target_scan, bool click_counter_scan,
+		      SCAN_OPERATION_TYPE scan_op_type, int fixed, int grouped,
 		      QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval, val_list_node * val_list, VAL_DESCR * vd,
 		      /* fields of INDX_SCAN_ID */
 		      indx_info * indx_info, OID * cls_oid, HFID * hfid, regu_variable_list_node * regu_list_key,
@@ -2970,7 +2978,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* initialize SCAN_ID structure */
   scan_init_scan_id (scan_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped, single_fetch, join_dbval, val_list,
 		     vd);
-  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, click_counter_scan, cls_oid);
 
   /* read Root page header info */
   btid = &indx_info->btid;
@@ -3207,6 +3215,10 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   isidp->iscan_oid_order = iscan_oid_order;
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
+  isidp->ahead_single = false;
 
   if (scan_init_indx_coverage (thread_p, coverage_enabled, output_val_list, regu_val_list, vd, query_id,
 			       root_header->node.max_key_len, func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -3355,7 +3367,7 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
   BTREE_SCAN *BTS = &isidp->bt_scan;
   struct bts_attid_idx_info attid_idxs;
   KEY_VAL_RANGE *key_vals;
-  bool upddel_target_scan;
+  bool upddel_target_scan, click_counter_scan;
   int i, error;
 
   assert (scan_id->type == S_INDX_SCAN);
@@ -3461,10 +3473,11 @@ scan_switch_index_partition (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * c
   BTS->is_btid_int_valid = true;
 
   upddel_target_scan = scan_id->upddel_target_scan;
+  click_counter_scan = scan_id->click_counter_scan;
   scan_init_scan_id (scan_id, scan_id->mvcc_select_lock_needed, scan_id->scan_op_type, scan_id->fixed,
 		     scan_id->grouped, scan_id->single_fetch, scan_id->join_dbval, scan_id->val_list, scan_id->vd);
   /* whether the row locks end with the statement is decided per class, as scan_open_index_scan () does */
-  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, cls_oid);
+  scan_set_upddel_target (thread_p, scan_id, upddel_target_scan, click_counter_scan, cls_oid);
 
   COPY_OID (&isidp->cls_oid, cls_oid);
   isidp->hfid = *hfid;		/* bitwise copy */
@@ -3630,6 +3643,10 @@ scan_open_index_key_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&isidp->scan_pred, NULL, pr, ((pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL));
 
   isidp->iscan_oid_order = iscan_oid_order;
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  isidp->ahead_limit = SCAN_INDEX_READ_AHEAD_DISTANCE;
+  isidp->ahead_single = false;
 
   if (scan_init_indx_coverage (thread_p, false, NULL, NULL, vd, query_id, root_header->node.max_key_len,
 			       func_index_col_id, &(isidp->indx_cov)) != NO_ERROR)
@@ -5365,7 +5382,106 @@ call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCA
       break;
     }
 
+  /* heap pages of the new buffer: the lookups tell the OS about them a window ahead, from the first window's size */
+  isidp->ahead_next = INT_MAX;
+  isidp->ahead_distance = 0;
+  if (oids_cnt > 1 && isidp->oid_list != NULL && !isidp->multi_range_opt.use && !isidp->need_count_only
+      && !SCAN_IS_INDEX_COVERED (isidp) && !scan_id->grouped)
+    {
+      isidp->ahead_next = 0;
+      if (scan_id->single_fetch == QPROC_SINGLE_INNER || isidp->ahead_single)
+	{
+	  /* the inner scan of a NL semi/anti join and the scan of an EXISTS subquery stop at their first match, the
+	   * scan of a block with an inst_num () condition (LIMIT) when the block has its rows: the first OID's page
+	   * is read at once and the windows start after it, so a scan that stops at its first row tells the OS
+	   * nothing */
+	  isidp->ahead_next = 1;
+	  isidp->ahead_distance = 1;
+	}
+    }
+
   return S_SUCCESS;
+}
+
+/*
+ * scan_index_alloc_oid_buffer () - give an index scan the OID buffer a covering scan goes without
+ *   return: error code
+ *   isidp(in/out): index scan
+ *
+ * Note: A parallel index scan worker drains every key's OIDs through its scan's OID buffer, covering or not.
+ */
+#if defined(SERVER_MODE)
+int
+scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp)
+{
+  int error_code;
+
+  if (isidp->oid_list != NULL)
+    {
+      return NO_ERROR;
+    }
+  error_code = scan_alloc_iscan_oid_buf_list (&isidp->oid_list);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  isidp->oid_list->max_oid_cnt = ISCAN_OID_BUFFER_COUNT;
+  isidp->oid_list->oid_cnt = 0;
+  isidp->curr_oidp = isidp->oid_list->oidp;
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * scan_index_read_ahead () - tell the OS which heap pages the OIDs of the OID buffer from the one being looked up on
+ *                            are, a window ahead
+ *   thread_p(in):
+ *   isidp(in/out): index scan; oid_list->oidp[0, oids_count) the OIDs, curr_oidno the OID about to be looked up,
+ *                  ahead_next the first OID not yet in a window (INT_MAX when every OID left was), ahead_distance
+ *                  the size of the last whole window, ahead_limit the size a window grows to
+ *   more(in): OIDs may follow the buffer's last one (a parallel index scan worker's buffer grows with the keys it
+ *             evaluates ahead)
+ *
+ * Note: The lookups stay in the order of the buffer and read one page at a time; the OS reads the pages of the
+ *       window together, so a lookup finds its page read or on its way. The caller calls it when the lookup is half a
+ *       window (ahead_distance / 2) from ahead_next. A window holds twice the OIDs of the one before it and ends
+ *       ahead_limit OIDs from the lookup at most, so no more than that many OIDs are told and not yet looked up.
+ */
+void
+scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, bool more)
+{
+  VPID vpids[SCAN_INDEX_READ_AHEAD_DISTANCE];
+  const OID *oids = isidp->oid_list->oidp;
+  const int curr = isidp->curr_oidno;
+  const int count = isidp->oids_count;
+  const int distance = SCAN_INDEX_READ_AHEAD_NEXT (isidp);
+  int start = MAX (isidp->ahead_next, curr);
+  int end = MIN (count, curr + distance);
+  int n = 0;
+  int i;
+
+  for (i = start; i < end; i++)
+    {
+      if (n == 0 || vpids[n - 1].pageid != oids[i].pageid || vpids[n - 1].volid != oids[i].volid)
+	{
+	  vpids[n].pageid = oids[i].pageid;
+	  vpids[n].volid = oids[i].volid;
+	  n++;
+	}
+    }
+  isidp->ahead_next = (end == count && !more) ? INT_MAX : end;
+  if (end == curr + distance)
+    {
+      /* a window cut short by the buffer's end does not make the next one larger */
+      isidp->ahead_distance = distance;
+    }
+
+  if (n == 0 || (n == 1 && start == curr))
+    {
+      /* the one page of a window that starts here is the page the lookup reads right now */
+      return;
+    }
+  pgbuf_read_ahead (thread_p, vpids, n);
 }
 
 /*
@@ -6500,6 +6616,11 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (thread_is_on_trace (thread_p))
 	    {
 	      tsc_getticks (&start_tick);
+	    }
+
+	  if (isidp->curr_oidno + isidp->ahead_distance / 2 >= isidp->ahead_next)
+	    {
+	      scan_index_read_ahead (thread_p, isidp, false);
 	    }
 
 	  lookup_status = scan_next_index_lookup_heap (thread_p, scan_id, isidp, &data_filter, isolation);
@@ -7791,14 +7912,16 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
     }
 
   /* a decline here is the row path, not a fault: an allocation that failed on the way leaves no error behind (a parallel
-   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before */
-  err_before = er_errid ();
+   * worker takes a set error as its initialization failing, px_scan_task.cpp) -- unless one was set before.  Errors
+   * only: NUMERIC arithmetic sets ER_IT_DATA_OVERFLOW as a warning, and a warning left before must not keep the
+   * decline's error (CBRD-28049, as expr_batch_run ()) */
+  err_before = er_errid_if_has_error ();
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
   if (hsidp->batch_plan == NULL)
     {
       /* a decline of the inputs, not an allocation that failed on the way (an error, or "out of memory"), is kept for
        * the next open of the spec from the same inputs */
-      if (spec != NULL && er_errid () == err_before && hsidp->batch_why_not != NULL
+      if (spec != NULL && er_errid_if_has_error () == err_before && hsidp->batch_why_not != NULL
 	  && strstr (hsidp->batch_why_not, "memory") == NULL)
 	{
 	  keep = scan_batch_keep_for (thread_p, spec, keep);
@@ -7808,7 +7931,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
 	      keep->declined_why = hsidp->batch_why_not;
 	    }
 	}
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
@@ -7820,7 +7943,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
@@ -7832,7 +7955,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPE
       expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
-      if (err_before == NO_ERROR)
+      if (err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
 	{
 	  er_clear ();
 	}
