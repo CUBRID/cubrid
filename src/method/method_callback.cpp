@@ -935,6 +935,10 @@ exit:
     return err;
   }
 
+  // The server sends an empty request (no question) as a barrier after CHANGE_RIGHTS, to wait for the client to
+  // finish the execution rights switch (see executor::change_exec_rights ()). It works with the clients (CAS) of any
+  // 11.4.x release, as a CAS and a cub_server of different 11.4.x releases may work together. Keep replying to an
+  // empty request at once with METHOD_RESPONSE_SUCCESS and with no access to the server.
   int
   callback_handler::get_global_semantics (packing_unpacker &unpacker)
   {
@@ -1020,20 +1024,30 @@ exit:
 	if (user == NULL)
 	  {
 	    error = ER_FAILED;
+	    if (er_errid () == NO_ERROR)
+	      {
+		// au_find_user () can return NULL without an error: when the lookup by the unique index finds nothing
+		// with no error and the query that follows finds no row either, or when the buffer for that query
+		// cannot be allocated. Without an error, the METHOD_CALL handling in net_client_request_with_callback ()
+		// and net_client_request_method_callback () (network_cl.c) fails 'assert (er_errid () != NO_ERROR)' in
+		// a debug build, and sends ER_NET_SERVER_DATA_RECEIVE in a release build. Set an error instead, which
+		// goes to the server along with METHOD_ERROR.
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, auth_user_name.c_str ());
+	      }
 	  }
 	else
 	  {
-	    error = au_perform_push_user (user);
+	    au_perform_push_user (user);
 	  }
       }
     else // POP
       {
-	error = au_perform_pop_user ();
+	au_perform_pop_user ();
       }
 
-    // reply with the outcome. The server waits for it before it goes on with the transaction, because switching
-    // the user can fetch objects from the server in the same transaction.
-    return xs_pack_and_queue (error);
+    // no response
+
+    return error;
   }
 
 //////////////////////////////////////////////////////////////////////////

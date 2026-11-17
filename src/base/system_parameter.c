@@ -777,6 +777,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATS_FULLSCAN_MAX_PAGES "stats_fullscan_max_pages"
 
+#define PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL "numeric_empty_string_as_null"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2521,6 +2523,10 @@ int PRM_STATS_FULLSCAN_MAX_PAGES = 10000;
 static int prm_stats_fullscan_max_pages_default = 10000;
 static int prm_stats_fullscan_max_pages_lower = 0;
 static unsigned int prm_stats_fullscan_max_pages_flag = 0;
+
+bool PRM_NUMERIC_EMPTY_STRING_AS_NULL = false;
+static bool prm_numeric_empty_string_as_null_default = false;
+static unsigned int prm_numeric_empty_string_as_null_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6647,6 +6653,17 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_STATS_FULLSCAN_MAX_PAGES,
    (void *) NULL,
    (void *) &prm_stats_fullscan_max_pages_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
+   PRM_NAME_NUMERIC_EMPTY_STRING_AS_NULL,
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_QRY_STRING | PRM_FOR_PL_CONTEXT | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   &prm_numeric_empty_string_as_null_flag,
+   (void *) &prm_numeric_empty_string_as_null_default,
+   (void *) &PRM_NUMERIC_EMPTY_STRING_AS_NULL,
+   (void *) NULL, (void *) NULL,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
