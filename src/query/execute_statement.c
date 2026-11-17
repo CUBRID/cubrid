@@ -579,6 +579,8 @@ typedef struct cdt_eval_set CDT_EVAL_SET;
 struct cdt_eval_set
 {
   SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
+  unsigned int schema_version;	/* sm_local_schema_version () at build time: a DDL nested in the statement (a
+				 * trigger altering the class) rebuilds the attributes of smclass in place */
   int count;			/* number of residual entries */
   CDT_EVAL_ENTRY *entries;
   struct pt_rand_state *rand_states;	/* seeded random generators of the DEFAULTs of this statement, those in
@@ -664,6 +666,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
     }
 
   eval_set->smclass = smclass;
+  eval_set->schema_version = sm_local_schema_version ();
   eval_set->count = 0;
   eval_set->entries = NULL;
   if (n == 0)
@@ -810,8 +813,9 @@ do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * 
   smclass = otemplate->class_;
 
   /* the eval set holds the residuals this statement's template consumes; it is built lazily (and rebuilt
-   * for another class, e.g. a partition) and its STABLE residuals are evaluated once, right away */
-  if (eval_set->smclass != smclass)
+   * for another class, e.g. a partition, or after a nested DDL) and its STABLE residuals are evaluated once,
+   * right away */
+  if (eval_set->smclass != smclass || eval_set->schema_version != sm_local_schema_version ())
     {
       error = do_build_cdt_eval_set (parser, smclass, otemplate, eval_set);
       if (error == NO_ERROR)
