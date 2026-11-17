@@ -2506,31 +2506,6 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 	    cls_no = *cls_no_ptr;
 	    if (!input_filename || include_references || (IS_CLASS_REQUESTED (cls_no)))
 	      {
-		if (!IS_CLASS_REFERENCED (cls_no))
-		  {
-		    /*
-		     * The rows of the class referred to are written with no instance number, see
-		     * process_object (), so loaddb could not find the row this reference names and would
-		     * insert a new one with default contents instead. A domain naming a class marks it,
-		     * and an OBJECT domain of no class marks every class, see check_referenced_domain ().
-		     * Only a collection of no element domain holding an object comes here.
-		     *
-		     * Marking every class as for an OBJECT domain of no class would write all the rows with
-		     * instance numbers and turn the binary data format off, only for a reference that a user
-		     * table rarely holds. So the unload stops here instead, even with unload_ignore_error:
-		     * writing NULL for the reference would lose it with no more than a warning. The flag is
-		     * turned off so that no caller up to extract_objects () ignores the error either.
-		     */
-		    fprintf (stderr, "error: %s%s%s has a reference to an object of %s%s%s in a collection of no "
-			     "element type, which cannot be unloaded.\n",
-			     PRINT_IDENTIFIER (sm_ch_name ((MOBJ) g_uci->class_ptr)),
-			     PRINT_IDENTIFIER (db_get_class_name (classop)));
-		    fflush (stderr);
-		    ignore_err_flag = false;
-		    error = ER_FAILED;
-		    goto exit_on_error;
-		  }
-
 		update_hash (ref_oid, &ref_class_oid, &ref_data);
 
 		int *temp;
