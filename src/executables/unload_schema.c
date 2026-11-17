@@ -4871,6 +4871,11 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	}
     }
 
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+
   return NO_ERROR;
 }
 
@@ -6084,6 +6089,11 @@ emit_grant (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST * clas
 	    }
 	  err = au_export_grants (ctxt, output_ctx, cls->op, DB_OBJECT_PROCEDURE);
 	}
+    }
+
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
     }
 
   return err;
