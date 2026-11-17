@@ -22883,7 +22883,7 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 		       "ORDERBY_NUM()", "ORDERBY_NUM()");
 	}
 
-      if (PT_IS_SERIAL(OP))
+      if (PT_IS_SERIAL(OP) || OP == PT_CURRENT_VALUE_BY_OID)
 	{
 	  parser_cannot_cache = true;
 	}

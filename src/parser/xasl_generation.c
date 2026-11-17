@@ -34478,6 +34478,7 @@ pt_check_reuse_unsafe_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	case PT_RANDOM:
 	case PT_DRANDOM:
 	case PT_CURRENT_VALUE:
+	case PT_CURRENT_VALUE_BY_OID:
 	case PT_NEXT_VALUE:
 	case PT_INCR:
 	case PT_DECR:
