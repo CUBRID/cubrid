@@ -43,7 +43,10 @@ namespace cubschema
 	switch (attr.kind)
 	  {
 	  case attribute_kind::COLUMN:
-	    error_code = smt_add_attribute (tmpl, name, type, NULL);
+	  case attribute_kind::CLASS_ATTRIBUTE:
+	    error_code = smt_add_attribute_any (tmpl, name, type, NULL,
+						attr.kind == attribute_kind::CLASS_ATTRIBUTE ? ID_CLASS_ATTRIBUTE : ID_ATTRIBUTE,
+						false, NULL, NULL);
 	    if (error_code == NO_ERROR && attr.dvalue_func)
 	      {
 		assert (tmpl->class_type == SM_CLASS_CT);
@@ -53,7 +56,8 @@ namespace cubschema
 		error_code = attr.dvalue_func (&default_value);
 		if (error_code == NO_ERROR)
 		  {
-		    error_code = smt_set_attribute_default (tmpl, name, 0, (DB_VALUE *) &default_value, NULL);
+		    error_code = smt_set_attribute_default (tmpl, name, attr.kind == attribute_kind::CLASS_ATTRIBUTE,
+							    &default_value, NULL);
 		  }
 	      }
 	    break;

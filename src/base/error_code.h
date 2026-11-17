@@ -1798,7 +1798,9 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_LAST_ERROR                               -1395
+#define ER_HA_WRITESET_KEY_BUILD_FAILED             -1395
+
+#define ER_LAST_ERROR                               -1396
 
 
 /*

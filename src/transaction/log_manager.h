@@ -170,6 +170,11 @@ extern void log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvin
 				     const VPID * rcv_vpid, int length, const void *data, const LOG_LSA * ref_lsa);
 extern int log_get_next_nested_top (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postpone_lsa,
 				    LOG_TOPOP_RANGE ** out_nxtop_range_stack);
+extern void log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
+				  int data_size, const char *data);
+extern void log_append_repl_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
+				       int data_size, const char *data, bool by_keys, size_t key_begin,
+				       LOG_LSA * sysop_end_lsa_out);
 extern void log_append_repl_info (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 
 extern void log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,

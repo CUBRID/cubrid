@@ -38,6 +38,7 @@ namespace cubschema
     COLUMN,
 
     /* for system class */
+    CLASS_ATTRIBUTE,
     CLASS_METHOD,
 
     /* for system view */
@@ -55,7 +56,8 @@ namespace cubschema
 
     // attribute_kind::COLUMN
     attribute (const std::string &name, const std::string &type, default_value_init_type dval_f = nullptr);
-    attribute (const attribute_kind kind, const std::string &name, const std::string &type = "");
+    attribute (const attribute_kind kind, const std::string &name, const std::string &type = "",
+	       default_value_init_type dval_f = nullptr);
   };
 
   // TODO: implement formatting utility function for std::string (like fmt library)
