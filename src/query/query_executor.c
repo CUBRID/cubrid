@@ -828,11 +828,14 @@ static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE 
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 
 /* the XASL of a shared view group (XASL_SHARED_VIEW_REP) and the lock under which one thread makes its result */
+#define QEXEC_SHARED_VIEW_ERROR_AREA_SIZE 1024
+
 typedef struct qexec_shared_view QEXEC_SHARED_VIEW;
 struct qexec_shared_view
 {
   XASL_NODE *xasl;
   pthread_mutex_t lock;
+  char *error_area;		/* the error of the thread that failed to make the result, for the others */
 };
 
 /* the shared view groups of a query, found in its XASL tree before it is executed */
@@ -21491,6 +21494,7 @@ qexec_create_shared_view_table (XASL_NODE * xasl)
     {
       table->views[i].xasl = found[i];
       pthread_mutex_init (&table->views[i].lock, NULL);
+      table->views[i].error_area = NULL;
     }
 
   return table;
@@ -21509,6 +21513,10 @@ qexec_destroy_shared_view_table (qexec_shared_view_table * table)
       for (int i = 0; i < table->count; i++)
 	{
 	  pthread_mutex_destroy (&table->views[i].lock);
+	  if (table->views[i].error_area != NULL)
+	    {
+	      free_and_init (table->views[i].error_area);
+	    }
 	}
       free_and_init (table->views);
       free_and_init (table);
@@ -21573,15 +21581,33 @@ qexec_execute_shared_view (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      orig->status = XASL_FAILURE;
 	    }
 	}
+      if (orig->status != XASL_SUCCESS && er_errid () != NO_ERROR)
+	{
+	  /* keep the error for the threads that read the result after this one failed to make it */
+	  int area_len = QEXEC_SHARED_VIEW_ERROR_AREA_SIZE;
+	  view->error_area = (char *) malloc (area_len);
+	  if (view->error_area != NULL)
+	    {
+	      (void) er_get_area_error (view->error_area, &area_len);
+	    }
+	}
     }
 
   if (orig->status != XASL_SUCCESS)
     {
-      pthread_mutex_unlock (&view->lock);
       if (er_errid () == NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  if (view->error_area != NULL)
+	    {
+	      /* the error of the thread that failed to make the result */
+	      (void) er_set_area_error (view->error_area);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    }
 	}
+      pthread_mutex_unlock (&view->lock);
       return er_errid ();
     }
 
