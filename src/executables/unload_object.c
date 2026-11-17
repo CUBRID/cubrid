@@ -228,13 +228,6 @@ static FILE *unloadlog_file = NULL;
 
 pthread_mutex_t g_update_hash_cs_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/*
- * The class whose values process_value () is writing, set by process_class () before anything of the class is written.
- * The values of its shared and class attributes are written before g_uci is set, see print_object_header_for_class (),
- * while g_uci is still NULL for the first class, or points to what is left of the class before on the stack.
- */
-static SM_CLASS *g_unloading_class_ptr = NULL;
-
 typedef struct _unloaddb_class_info UNLD_CLASS_PARAM;
 struct _unloaddb_class_info
 {
@@ -1984,7 +1977,6 @@ process_class (extract_context & ctxt, int cl_no, int nthreads, int data_format)
 
   class_oid = ws_oid (class_);
 
-  g_unloading_class_ptr = class_ptr;
   error = print_object_header_for_class (ctxt, class_ptr, class_oid, &(g_thr_param[0].text_output));
   if (error != NO_ERROR)
     {
@@ -2531,7 +2523,7 @@ process_value (DB_VALUE * value, TEXT_OUTPUT * obj_out)
 		     */
 		    fprintf (stderr, "error: %s%s%s has a reference to an object of %s%s%s in a collection of no "
 			     "element type, which cannot be unloaded.\n",
-			     PRINT_IDENTIFIER (sm_ch_name ((MOBJ) g_unloading_class_ptr)),
+			     PRINT_IDENTIFIER (sm_ch_name ((MOBJ) g_uci->class_ptr)),
 			     PRINT_IDENTIFIER (db_get_class_name (classop)));
 		    fflush (stderr);
 		    ignore_err_flag = false;
