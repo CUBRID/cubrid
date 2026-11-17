@@ -164,6 +164,7 @@ static char *stx_build_srlist_id (THREAD_ENTRY * thread_p, char *tmp, QFILE_SORT
 static char *stx_build_sort_list (THREAD_ENTRY * thread_p, char *tmp, SORT_LIST * ptr);
 static char *stx_build_connectby_proc (THREAD_ENTRY * thread_p, char *tmp, CONNECTBY_PROC_NODE * ptr);
 static char *stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p);
+static char *stx_build_memoize_key (THREAD_ENTRY * thread_p, char *ptr, SQ_KEY ** key_p);
 static char *stx_build_sp_type (THREAD_ENTRY * thread_p, char *tmp, SP_TYPE * ptr);
 
 static REGU_VALUE_LIST *stx_regu_value_list_alloc_and_init (THREAD_ENTRY * thread_p);
@@ -2942,6 +2943,11 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
       goto error;
     }
+  ptr = stx_build_memoize_key (thread_p, ptr, &xasl->memoize_key);
+  if (ptr == NULL)
+    {
+      goto error;
+    }
 
   ptr = or_unpack_int (ptr, &xasl->parallelism);
 
@@ -3091,6 +3097,52 @@ stx_build_sub_xasl_id (THREAD_ENTRY * thread_p, char *ptr, XASL_ID * sub_xasl_id
   sub_xasl_id->time_stored.usec = OR_GET_INT (ptr);
   ptr += OR_INT_SIZE;
 
+  return ptr;
+}
+
+/* CBRD-27993: xts_process_memoize_key; the slots unpack to the same DB_VALUEs as the outer scans' val_lists */
+static char *
+stx_build_memoize_key (THREAD_ENTRY * thread_p, char *ptr, SQ_KEY ** key_p)
+{
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+  SQ_KEY *key;
+  int n_elements, offset;
+
+  *key_p = NULL;
+  ptr = or_unpack_int (ptr, &n_elements);
+  if (n_elements < 0)
+    {
+      return ptr;
+    }
+
+  key = (SQ_KEY *) stx_alloc_struct (thread_p, sizeof (SQ_KEY));
+  if (key == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+  key->n_elements = n_elements;
+  key->dbv_array = NULL;
+  key->domains = NULL;
+
+  if (n_elements > 0)
+    {
+      ptr = or_unpack_int (ptr, &offset);
+      key->dbv_array =
+	stx_restore_db_value_array_extra (thread_p, &xasl_unpack_info->packed_xasl[offset], n_elements, n_elements);
+      key->domains = (TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * n_elements);
+      if (key->dbv_array == NULL || key->domains == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (int i = 0; i < n_elements; i++)
+	{
+	  ptr = or_unpack_domain (ptr, &key->domains[i], NULL);
+	}
+    }
+
+  *key_p = key;
   return ptr;
 }
 
