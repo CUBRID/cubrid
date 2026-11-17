@@ -65,7 +65,7 @@ jobs:
             for i in "${!tcs[@]}"; do tips[i]=$(tc_tip "${tcs[i]}" "$b"); done
             for f in "$pin/$b"/*.tsv; do [ -f "$f" ] && was+=("$(top "$f")"); done
             git -C "$eng" rev-list --first-parent -n 1000 "$b" > "$RUNNER_TEMP/fp"
-            # Engine commits after the newest line, oldest first. Only the tip when no line is on the branch's history.
+            # Engine commits after the newest line. Only the tip when no line is on the branch's history.
             if ! awk 'NR == FNR {t[$1]; next} $1 in t {f = 1; exit} {print} END {exit !f}' \
                 <(printf '%s\n' "${was[@]}") "$RUNNER_TEMP/fp" > "$RUNNER_TEMP/new"; then
               [ ${#was[@]} -eq 0 ] || echo "::warning::$b: no line of its table is on its history, so it starts again at its tip"
