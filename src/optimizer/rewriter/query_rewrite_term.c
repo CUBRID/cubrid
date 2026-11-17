@@ -1314,7 +1314,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
  *	   neither derives from it twice nor loses the restriction it derived;
  *	 - a conjunction or a single predicate becomes one term per conjunct, through pt_cnf_where ()
  *	   so that a disjunction of single predicates among them takes the or_next shape the range
- *	   conversion reads; each term is at the factor's location (pt_fold_const_expr () carries it);
+ *	   conversion reads; each term is put at the factor's location, which its operands do not carry;
  *	 - a derived factor (PT_EXPR_INFO_OR_DERIVED) that folds to less than a disjunction is dropped:
  *	   its origin folds the same way and then holds those conjuncts itself, and a copy without the
  *	   mark would be counted and evaluated twice;
@@ -1325,9 +1325,10 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 static void
 qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
-  PT_NODE *term, *next, *folded, *last, *saved, **prevp;
+  PT_NODE *term, *next, *folded, *last, *saved, *dnf, **prevp;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int marks;
+  short location;
   bool derived, cnf_start;
 
   prevp = wherep;
@@ -1348,6 +1349,7 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 					     | PT_EXPR_INFO_OR_DERIVED_COLUMN));
       derived = PT_EXPR_INFO_IS_FLAGED (term, PT_EXPR_INFO_OR_DERIVED) != 0;
       cnf_start = term->flag.is_cnf_start;
+      location = term->info.expr.location;
 
       /* a false value in a join's ON condition drops the other terms of it; see the note above */
       saved = (term->info.expr.location > 0) ? parser_copy_tree (parser, term) : NULL;
@@ -1405,8 +1407,25 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
       else
 	{
 	  folded = pt_cnf_where (parser, folded);
-	  for (last = folded; last->next != NULL; last = last->next)
+	  for (last = folded;; last = last->next)
 	    {
+	      /* a conjunct was an operand of the factor, and its own location is not the factor's: an operand
+	       * of an ON condition's factor carries 0, which makes it a WHERE term filtering the preserved side */
+	      for (dnf = last; dnf != NULL; dnf = dnf->or_next)
+		{
+		  if (dnf->node_type == PT_EXPR)
+		    {
+		      dnf->info.expr.location = location;
+		    }
+		  else if (dnf->node_type == PT_VALUE)
+		    {
+		      dnf->info.value.location = location;
+		    }
+		}
+	      if (last->next == NULL)
+		{
+		  break;
+		}
 	      last->next->flag.is_cnf_start = false;
 	    }
 	  folded->flag.is_cnf_start = cnf_start;
