@@ -194,26 +194,28 @@ typedef enum
 
   RVLOG_SYSMETA_VERSION_UPDATE = 135,
 
+  RVPGBUF_INIT_NEW_PAGE = 136,
+
   /* OOS indices always come AFTER the last develop index, keeping develop's numeric values
    * identical on this branch. When a merge from develop appends new indices, the OOS block is
    * renumbered upward (RV_fun[] in recovery.c is positionally indexed by rcvindex, so its order
    * must be updated to match). Renumbering invalidates the recovery logs of feat/oos test
    * databases created before the merge — recreate them. */
-  RVOOS_INSERT = 136,
-  RVOOS_DELETE = 137,
-  RVREPL_OOS_INSERT = 138,
-  RVREPL_OOS_DELETE = 139,
+  RVOOS_INSERT = 137,
+  RVOOS_DELETE = 138,
+  RVREPL_OOS_INSERT = 139,
+  RVREPL_OOS_DELETE = 140,
   /* TODO: RVOOS_NOTIFY_VACUUM is currently unused (no emitter); it is kept as a reserved slot
    * (no-op stub in RV_fun[]) so the OOS block stays contiguous. Either reuse it for a real
    * OOS-vacuum-notify path or retire it before the final merge to develop. */
-  RVOOS_NOTIFY_VACUUM = 140,
-  RVREPL_DUMMY_OOS_RECORD = 141,	/* multi-chunk OOS replication marker */
+  RVOOS_NOTIFY_VACUUM = 141,
+  RVREPL_DUMMY_OOS_RECORD = 142,	/* multi-chunk OOS replication marker */
   /* Tags the MVCC remove_old_forward forward REC_NEWHOME delete in heap_update_relocation
    * so vacuum's forward-walk can reclaim the old forward's OOS records from the delete's undo image.
    * Classified as an MVCC op (LOG_IS_MVCC_OPERATION) but NOT a heap op (LOG_IS_MVCC_HEAP_OPERATION):
    * its undo is logged as MVCC undo (chained for the forward-walk) yet vacuum must not "collect" the
    * already-deleted slot. Crash recovery replays the delete identically to RVHF_DELETE. */
-  RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 142,
+  RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 143,
   RV_LAST_LOGID = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
 
   RV_NOT_DEFINED = 999
@@ -294,6 +296,16 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_APPEND_PAGES_TO_HEAP \
    || (idx) == RVHF_MARK_PAGES_IN_HEAP \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
+#define RCV_IS_POSTPONE_NOT_UNDOABLE(idx) \
+  ((idx) == RVHF_LOB_REMOVE_DIR)
+
+/* records with nothing to undo: what they changed needs no restoring, or other records restore it. so rollback skips
+ * them altogether: it neither fixes their page (which may be deallocated by then) nor logs a compensation (an empty
+ * logical compensation would commit an empty system operation). */
+#define RCV_IS_NOTHING_TO_UNDO(idx) \
+  ((idx) == RVBT_MVCC_NOTIFY_VACUUM \
+   || (idx) == RVES_NOTIFY_VACUUM \
+   || (idx) == RVPGBUF_INIT_NEW_PAGE)
 
 /* TODO: the RVOOS_NOTIFY_VACUUM clause below has no emitter today; it is kept as the reserved
  * slot in the OOS block (see the enum-side TODO above). Drop it together with the enum slot. */
@@ -308,7 +320,7 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVFL_DEALLOC \
    || (idx) == RVVAC_NOTIFY_DROPPED_FILE \
    || (idx) == RVPGBUF_DEALLOC \
-   || (idx) == RVES_NOTIFY_VACUUM \
+   || RCV_IS_NOTHING_TO_UNDO (idx) \
    || (idx) == RVOOS_NOTIFY_VACUUM \
    || (idx) == RVHF_MARK_DELETED \
    || (idx) == RVFL_TRACKER_HEAP_REUSE \

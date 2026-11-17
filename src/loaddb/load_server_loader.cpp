@@ -79,8 +79,14 @@ namespace cubload
     to_lowercase_identifier (class_name, eb);
 
     const char *lower_case_class_name = eb.get_read_ptr ();
+    LC_FIND_CLASSNAME found = locate_class (lower_case_class_name, class_oid);
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    if (found == LC_CLASSNAME_ERROR)
+      {
+	// e.g. the BU lock could not be granted
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+      }
+    else if (found != LC_CLASSNAME_EXIST)
       {
 	m_error_handler.on_failure_with_line (LOADDB_MSG_UNKNOWN_CLASS, class_name);
       }
@@ -159,7 +165,7 @@ namespace cubload
 	intl_identifier_lower (user_specified_name, realname);
 
 	found = xlocator_find_class_oid (&thread_ref, realname, &class_oid, BU_LOCK);
-	if (found == LC_CLASSNAME_EXIST)
+	if (found == LC_CLASSNAME_EXIST || found == LC_CLASSNAME_ERROR)
 	  {
 	    return found;
 	  }
@@ -365,7 +371,15 @@ namespace cubload
 	return;
       }
 
-    if (locate_class (lower_case_class_name, class_oid) != LC_CLASSNAME_EXIST)
+    LC_FIND_CLASSNAME found = locate_class (lower_case_class_name, class_oid);
+    if (found == LC_CLASSNAME_ERROR)
+      {
+	// e.g. the BU lock could not be granted
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
+    if (found != LC_CLASSNAME_EXIST)
       {
 	if (is_syntax_check_only)
 	  {
@@ -617,10 +631,13 @@ namespace cubload
     , m_pruning_type (DB_NOT_PARTITIONED_CLASS)
     , m_scancache_started (false)
     , m_scancache ()
+    , m_pcontext ()
+    , m_pcontext_loaded (false)
+    , m_is_partitioned_class (false)
     , m_rows (0)
     , m_row_reported (false)
   {
-    //
+    partition_init_pruning_context (&m_pcontext);
   }
 
   void
@@ -631,12 +648,33 @@ namespace cubload
 
     assert (m_class_entry == NULL);
     m_class_entry = m_session.get_class_registry ().get_class_entry (clsid);
-    if (m_class_entry == NULL)
+    if (m_class_entry == NULL || m_class_entry->is_ignored ())
       {
 	return;
       }
 
     const OID &class_oid = m_class_entry->get_class_oid ();
+
+    if (!m_session.get_args ().syntax_check)
+      {
+	// The session holds BU on the class but no lock on its partitioned class, so the definition of the partitioned
+	// class is read again for every batch, into a private copy. While BU is held, the definition of the class itself
+	// cannot change.
+	int pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+	int error_code = partition_load_uncached_pruning_context (m_thread_ref, &class_oid, &pruning_type, &m_pcontext);
+	if (error_code != NO_ERROR)
+	  {
+	    // Fail the session even if the error code is in the error control file: the batch is not started, so it
+	    // would be skipped silently.
+	    m_error_handler.on_error_with_line (LOADDB_MSG_LOAD_FAIL);
+	    m_session.fail ();
+	    return;
+	  }
+
+	m_pcontext_loaded = (pruning_type == DB_PARTITION_CLASS);
+	m_is_partitioned_class = (pruning_type == DB_PARTITIONED_CLASS);
+      }
 
     start_scancache (class_oid);
     start_attrinfo (class_oid);
@@ -653,6 +691,14 @@ namespace cubload
 
     m_recdes_collected.clear ();
     m_retained_bytes = 0;
+
+    if (m_pcontext_loaded)
+      {
+	partition_clear_pruning_context (&m_pcontext);
+	partition_init_pruning_context (&m_pcontext);
+	m_pcontext_loaded = false;
+      }
+    m_is_partitioned_class = false;
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -730,20 +776,51 @@ namespace cubload
       }
     if (!m_session.get_args ().syntax_check)
       {
+	bool is_record_valid = true;
+	heap_pending_record record;
+
 	if (m_error_handler.current_line_has_error ())
+	  {
+	    is_record_valid = false;
+	  }
+	else if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false) != S_SUCCESS)
+	  {
+	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_is_partitioned_class)
+	  {
+	    // The record would be inserted into the heap of the partitioned class itself, where no query finds it.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED, 0);
+	    m_error_handler.on_failure ();
+	    is_record_valid = false;
+	  }
+	else if (m_pcontext_loaded)
+	  {
+	    // A row loaded into a partition must belong to that partition. The partition key may be one of the
+	    // record's out-of-row values, so the check reads them from the pending record.
+	    RECDES recdes = record.get_recdes ();
+	    const OID &class_oid = m_class_entry->get_class_oid ();
+	    if (partition_check_record_for_partition (&m_pcontext, &class_oid, &recdes, &record) != NO_ERROR)
+	      {
+		m_error_handler.on_failure ();
+		is_record_valid = false;
+	      }
+	  }
+
+	if (m_session.is_failed ())
+	  {
+	    return;
+	  }
+
+	// A failure that is filtered by the error control file is not fatal; it marks the current line, and the mark
+	// must be cleared so that the next line is not dropped as well.
+	if (!is_record_valid)
 	  {
 	    m_error_handler.set_error_on_current_line (false);
 	  }
 	else
 	  {
-	    heap_pending_record record;
-	    if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false) != S_SUCCESS)
-	      {
-		m_error_handler.on_failure ();
-		m_error_handler.set_error_on_current_line (false);
-		clear_db_values ();
-		return;
-	      }
 	    const std::size_t record_bytes = record.retained_bytes ();
 	    try
 	      {
