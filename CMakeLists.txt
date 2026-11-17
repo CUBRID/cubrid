@@ -640,8 +640,8 @@ endif(UNIX)
 
 configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
-# build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
 configure_file(cmake/version.h.cmake version.h)
+# build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
 configure_file(cmake/build_version.h.cmake build_version.h)
 
 if(MULTI_CONN_TO_A_SERVER)
