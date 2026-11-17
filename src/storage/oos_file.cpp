@@ -4013,6 +4013,21 @@ oos_reclaim_fail_stop (THREAD_ENTRY *thread_p, int error, const VFID &oos_vfid, 
       return;
     }
 #endif
+  /* A commit with postpone actions is not flushed before they run (CBRD-28046), so the record that commits this
+   * reclaim may still be in the log buffer, and logpb_fatal_error does not flush the log. Flush it first: otherwise
+   * restart recovery rolls the committing unit back instead of rerunning the reclaim. */
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes != NULL)
+    {
+      if (!LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
+	{
+	  logpb_flush_log_for_wal (thread_p, &tdes->rcv.tran_start_postpone_lsa);
+	}
+      if (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa))
+	{
+	  logpb_flush_log_for_wal (thread_p, &tdes->rcv.sysop_start_postpone_lsa);
+	}
+    }
   logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "oos_reclaim: committed reclaim failed with error %d", error);
 }
 
