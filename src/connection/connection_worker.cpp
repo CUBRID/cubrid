@@ -565,8 +565,7 @@ namespace cubconn::connection
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
-    m_notified (false),
-    m_has_retry (false)
+    m_notified (false)
   {
     std::size_t i;
 
@@ -940,9 +939,6 @@ namespace cubconn::connection
     /* this request must be handled as lazily */
     this->enqueue (queue_type::LAZY, std::move (request));
 
-    /* lazily notified */
-    m_has_retry = true;
-
     /* a timer handler stops the worker by returning false, which the queue drain never does */
     return this->eventfd_addtimer (timer_type::QUEUE, timer_latency::LOW_LATENCY, [this] ()
     {
@@ -1077,10 +1073,10 @@ namespace cubconn::connection
     /* remove and close */
 
     /* Connection workers have drained; it is now safe to destroy the load session
-     * that was interrupted at the start of the close. */
+     * that was interrupted at the start of the close, and this connection's streams. */
     if (ctx->m_conn->session_p != NULL)
       {
-	ssession_destroy_load_session (m_entry, ctx->m_conn->session_p);
+	ssession_destroy_attached_sessions (m_entry, ctx->m_conn->session_p, ctx->m_conn->client_id);
       }
 
     m_events.remove_descriptor (ctx->m_conn->fd);
@@ -1426,8 +1422,6 @@ retry:
   {
     std::size_t i;
 
-    m_has_retry = false;
-
     /* event fd */
     if (eventfds[0])
       {
@@ -1476,7 +1470,8 @@ retry:
 			   strerror (errno));
 	  }
 
-	if (!m_has_retry)
+	/* a close retry waits in the LAZY queue with no wake-up but this timer */
+	if (m_queue_size[static_cast<std::size_t> (queue_type::LAZY)].load (std::memory_order_acquire) == 0)
 	  {
 	    if (!this->eventfd_removetimer (timer_type::QUEUE))
 	      {
@@ -1506,8 +1501,7 @@ retry:
     successor = item.conn->worker;
     if (successor != nullptr)
       {
-	successor->enqueue (type, std::move (item));
-	if (!successor->notify ())
+	if (!successor->enqueue_and_notify (type, std::move (item)))
 	  {
 	    assert_release (false);
 	  }
@@ -1728,8 +1722,7 @@ retry:
     /* hand off the context */
     request.type = message_type::TAKEOVER_CLIENT;
     request.ctx = ctx;
-    item.worker_ptr->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
-    if (!item.worker_ptr->notify ())
+    if (!item.worker_ptr->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)))
       {
 	assert_release (false);
       }

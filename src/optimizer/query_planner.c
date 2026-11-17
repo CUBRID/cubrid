@@ -315,7 +315,6 @@ static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
-static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
 static bool qo_node_is_multi_class (QO_NODE * node);
 static double qo_seg_ndv (QO_SEGMENT * seg);
 static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
@@ -452,6 +451,7 @@ static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tr
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static int qo_query_serial_level (QO_ENV * env);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -5409,7 +5409,7 @@ qo_plan_semi_anti_join_type (QO_PLAN * plan)
  * An index join places the join term in the inner index scan instead of the join's terms. A sort
  * (temp list) is built once, so only the terms of the list scan over it can see the outer row.
  */
-static void
+void
 qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
 {
   while (plan != NULL)
@@ -5756,7 +5756,7 @@ qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
  *   return: true if the inner scan should not memoize
  *   outer(in): the outer plan of the NL join
  *   inner(in): the inner plan of the NL join
- *   key_terms(in): the join terms pushed into the inner scan
+ *   key_segs(in): the segments of the outer columns in the inner's memoize key
  *
  * The executor memoizes every NL inner and gives up at run time when the hit ratio stays low. At run
  * time a unique key looks the same as a key that repeats with a long period, so a unique key pays the
@@ -5777,16 +5777,15 @@ qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
  *   (plan_generation.c), since the executor then runs the outer again for every scan block of it.
  */
 bool
-qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms)
+qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_segs)
 {
   QO_ENV *env;
   QO_TERM *term;
-  BITSET scan_terms, key_segs;
   BITSET_ITERATOR bi;
   int i;
   double calls, key_ndv = 0.0;
 
-  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_terms == NULL)
+  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_segs == NULL)
     {
       return false;
     }
@@ -5810,17 +5809,8 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 	}
     }
 
-  /* the outer columns referenced by the terms the inner scan evaluates are its memoize key */
-  bitset_init (&scan_terms, env);
-  bitset_init (&key_segs, env);
-  bitset_assign (&scan_terms, key_terms);
-  qo_collect_inner_scan_terms (inner, &scan_terms);
-  for (i = bitset_iterate (&scan_terms, &bi); i != -1; i = bitset_next_member (&bi))
-    {
-      bitset_union (&key_segs, &QO_TERM_SEGS (QO_ENV_TERM (env, i)));
-    }
-
-  for (i = bitset_iterate (&key_segs, &bi); i != -1; i = bitset_next_member (&bi))
+  /* key_segs: the segments of the memoize key the inner's XASL carries (plan_generation.c, CBRD-27993) */
+  for (i = bitset_iterate (key_segs, &bi); i != -1; i = bitset_next_member (&bi))
     {
       QO_SEGMENT *seg = QO_ENV_SEG (env, i);
       QO_NODE *node = QO_SEG_HEAD (seg);
@@ -5859,9 +5849,6 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
       /* distinct values left in the rows of its table the outer holds */
       key_ndv = MAX (key_ndv, qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv));
     }
-
-  bitset_delset (&scan_terms);
-  bitset_delset (&key_segs);
 
   if (key_ndv <= 0.0)
     {
@@ -6596,6 +6583,30 @@ qo_check_serial_select_list_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 }
 
 /*
+ * qo_check_hjoin_term_expr () - qo_check_serial_block_expr () for a hash join term
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: a serial is updated under a system operation and through the serial cache,
+ *	 so the parallel probe workers may evaluate NEXT_VALUE and CURRENT_VALUE.
+ */
+static PT_NODE *
+qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  if (tree != NULL && tree->node_type == PT_EXPR
+      && (tree->info.expr.op == PT_NEXT_VALUE || tree->info.expr.op == PT_CURRENT_VALUE))
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+      return tree;
+    }
+
+  return qo_check_serial_block_expr (parser, tree, arg, continue_walk);
+}
+
+/*
  * qo_query_serial_level () - what the executor runs serially in this query block whatever the plan
  *   return: QO_SERIAL_NONE, QO_SERIAL_SCANS (no scan, so no nested-loop block, runs in parallel;
  *	     a hash join keeps its own decision) or QO_SERIAL_ALL (nothing runs in parallel)
@@ -6803,7 +6814,8 @@ static const char *
 qo_node_partition_key (QO_NODE * node, int *partitions)
 {
   SM_PARTITION *partition;
-  DB_VALUE attr_name, part_count;
+  DB_VALUE *attr_name;
+  DB_VALUE part_count;
   const char *key_name;
   int key_len;
 
@@ -6813,9 +6825,9 @@ qo_node_partition_key (QO_NODE * node, int *partitions)
     }
 
   partition = QO_NODE_INFO_SMCLASS (node)->partition;
-  if (partition->values == NULL || set_get_element_nocopy (partition->values, 0, &attr_name) != NO_ERROR
-      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (&attr_name)
-      || DB_IS_NULL (&part_count) || (key_name = db_get_string (&attr_name)) == NULL)
+  if (partition->values == NULL || setobj_get_element_ptr (partition->values->set, 0, &attr_name) != NO_ERROR
+      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (attr_name)
+      || DB_IS_NULL (&part_count) || (key_name = db_get_string (attr_name)) == NULL)
     {
       return NULL;
     }
@@ -19931,7 +19943,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
   BITSET_ITERATOR bitset_iter;
   int bitset_index;
 
-  bool has_ineligible_method_call = false;
+  bool has_ineligible_node = false;
   BITSET *term_sets[3];
   int set_index;
 
@@ -19985,7 +19997,7 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
     }
 
   /* during/after join terms become the join predicates the parallel hash join workers evaluate per row, so the terms in
-   * both sets may call only parallel-eligible methods.
+   * both sets must hold only parallel-eligible nodes.
    *
    * The plan's sarged_terms must be checked as well: for an inner join the residual (non-equi) join terms are never
    * classified as during/after join terms but stay in sarged_terms, and qo_init_projection_info () moves any of them
@@ -20025,14 +20037,14 @@ qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 		  /* keep the historical during_join_terms behavior */
 		  return PLAN_PARALLEL_OPT_CANNOT_USE;
 		}
-	      /* a term without a parse-tree expression cannot contain a method call */
+	      /* a term without a parse-tree expression cannot contain an ineligible node */
 	      continue;
 	    }
 
-	  (void) parser_walk_tree (parser, expr, qo_check_method_call_parallel_eligibility,
-				   &has_ineligible_method_call, NULL, NULL);
+	  (void) parser_walk_tree (parser, expr, qo_skip_subquery, NULL, qo_check_hjoin_term_expr,
+				   &has_ineligible_node);
 
-	  if (has_ineligible_method_call)
+	  if (has_ineligible_node)
 	    {
 	      return PLAN_PARALLEL_OPT_CANNOT_USE;
 	    }
