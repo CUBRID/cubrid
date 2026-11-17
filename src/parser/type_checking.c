@@ -5584,7 +5584,11 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* an element of no fixed length (a string literal) is the longest: cast to the length of a shorter one,
+		   * a longer literal would fail to coerce */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
@@ -5599,7 +5603,10 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
 		      keep_searching = false;
 		      break;
 		    }
-		  if (precision < temp->info.data_type.precision)
+		  /* as for VARCHAR, an element of no fixed length is the longest */
+		  if (precision != TP_FLOATING_PRECISION_VALUE
+		      && (temp->info.data_type.precision == TP_FLOATING_PRECISION_VALUE
+			  || precision < temp->info.data_type.precision))
 		    {
 		      precision = temp->info.data_type.precision;
 		    }
