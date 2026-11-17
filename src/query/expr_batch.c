@@ -4603,6 +4603,9 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   if (leaf->etype != EB_NUM && leaf->etype != EB_I64)
     {
       const double k = leaf->k.d;
+      /* a NaN value is above a constant that is not a NaN, so it fails "<" and "<=" and passes their negations: the
+       * order of the type is then one operator, with no branch on a row's compare */
+      const bool k_is_nan = isnan (k);
 
       for (j = 0; j < n_in; j++)
 	{
@@ -4636,28 +4639,55 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    {
 	      ad = ((const double *) v->data)[r];
 	    }
-	  /* in the order of the type: a NaN equals a NaN and is above every other value (expr_double_eq (),
-	   * expr_double_lt ()) */
-	  switch (leaf->rel_op)
+	  if (!k_is_nan)
 	    {
-	    case R_EQ:
-	      keep = expr_double_eq (ad, k);
-	      break;
-	    case R_NE:
-	      keep = !expr_double_eq (ad, k);
-	      break;
-	    case R_LT:
-	      keep = expr_double_lt (ad, k);
-	      break;
-	    case R_LE:
-	      keep = !expr_double_lt (k, ad);
-	      break;
-	    case R_GT:
-	      keep = expr_double_lt (k, ad);
-	      break;
-	    default:
-	      keep = !expr_double_lt (ad, k);
-	      break;
+	      switch (leaf->rel_op)
+		{
+		case R_EQ:
+		  keep = (ad == k);
+		  break;
+		case R_NE:
+		  keep = (ad != k);
+		  break;
+		case R_LT:
+		  keep = (ad < k);
+		  break;
+		case R_LE:
+		  keep = (ad <= k);
+		  break;
+		case R_GT:
+		  keep = !(ad <= k);
+		  break;
+		default:
+		  keep = !(ad < k);
+		  break;
+		}
+	    }
+	  else
+	    {
+	      /* in the order of the type: a NaN equals a NaN and is above every other value (expr_double_eq (),
+	       * expr_double_lt ()) */
+	      switch (leaf->rel_op)
+		{
+		case R_EQ:
+		  keep = expr_double_eq (ad, k);
+		  break;
+		case R_NE:
+		  keep = !expr_double_eq (ad, k);
+		  break;
+		case R_LT:
+		  keep = expr_double_lt (ad, k);
+		  break;
+		case R_LE:
+		  keep = !expr_double_lt (k, ad);
+		  break;
+		case R_GT:
+		  keep = expr_double_lt (k, ad);
+		  break;
+		default:
+		  keep = !expr_double_lt (ad, k);
+		  break;
+		}
 	    }
 	  sel[n] = r;
 	  n += keep;
