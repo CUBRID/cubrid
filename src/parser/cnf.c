@@ -73,7 +73,7 @@ static PT_NODE *pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, v
 static PT_NODE *pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static bool pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node, bool * outer_mark);
 static int pt_cnf_count_operands (const PT_NODE * node, PT_OP_TYPE op);
 static bool pt_cnf_exceeds_extract_limits (const PT_NODE * node);
 static PT_NODE *pt_cnf_internal (PARSER_CONTEXT * parser, PT_NODE * node, bool keep_or_factors);
@@ -647,13 +647,14 @@ pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *cont
  *	     predicate
  *   parser(in):
  *   node(in): a PT_OR node whose operands are CNF lists
+ *   outer_mark(out): when not NULL, whether the factor holds a (+) predicate
  *
  * Note: an Oracle style outer join predicate is moved to the ON condition by pt_bind_names ()
  *	 only as a CNF term of its own, by the (+) mark on its top node.  Kept whole, the factor would
  *	 be a fresh PT_OR without the mark, left in WHERE to reject the NULL padded rows.
  */
 static bool
-pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node, bool * outer_mark)
 {
   CNF_COLUMN_INFO info;
 
@@ -663,7 +664,34 @@ pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node)
   (void) parser_walk_tree (parser, node->info.expr.arg1, pt_cnf_column_pre, &info, NULL, NULL);
   (void) parser_walk_tree (parser, node->info.expr.arg2, pt_cnf_column_pre, &info, NULL, NULL);
 
+  if (outer_mark != NULL)
+    {
+      *outer_mark = info.outer_mark;
+    }
   return info.outer_mark || (info.column != NULL && !info.several);
+}
+
+/*
+ * pt_cnf_list_has_or_tree () - does a CNF list hold a factor already kept whole?
+ *   return: true when an element, or a disjunct on the or_next chain of one, is a PT_OR tree
+ *   list(in): a CNF list
+ */
+static bool
+pt_cnf_list_has_or_tree (PT_NODE * list)
+{
+  PT_NODE *cnf, *dnf;
+
+  for (cnf = list; cnf != NULL; cnf = cnf->next)
+    {
+      for (dnf = cnf; dnf != NULL; dnf = dnf->or_next)
+	{
+	  if (PT_IS_OR_TREE (dnf))
+	    {
+	      return true;
+	    }
+	}
+    }
+  return false;
 }
 
 /*
@@ -719,7 +747,7 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
   char *lhs_str, *rhs_str;
   SIMILARITY_CONTEXT lhs_ctx, rhs_ctx;
   PT_NODE *common_list, *lhs_prev, *rhs_prev, *arg1, *arg2;
-  bool common_found;
+  bool common_found, outer_mark = false;
   int num_markers;
   int lhs_count, rhs_count;
   PT_NODE *rest = NULL;
@@ -917,11 +945,16 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
        * A factor over one column is still distributed: its clauses are ranges of that column, which
        * qo_convert_to_range () and the range intersection fold back into one exact key range.  So
        * is a factor with a (+) predicate, and any factor outside a WHERE (pt_cnf_where ()) or beyond
-       * what the extraction takes (pt_cnf_exceeds_extract_limits ()) */
+       * what the extraction takes (pt_cnf_exceeds_extract_limits ()).  An operand holding a factor
+       * already kept whole -- ((A and B) or C) or c0 > 0, whose inner factor reads no column -- keeps the
+       * outer one whole too: distributing would chain c0 > 0 on the or_next of a PT_OR tree, a shape
+       * the passes that read a tree by arg1/arg2 lose the disjunct of (the constant folding replaces
+       * the tree node and drops its or_next) */
       if (*mode == TRANSFORM_CNF_OR_COMPACT
 	  || (*mode == TRANSFORM_CNF_AND_OR_KEEP
 	      && (lhs->next != NULL || rhs->next != NULL || PT_IS_OR_TREE (lhs) || PT_IS_OR_TREE (rhs))
-	      && !pt_cnf_over_one_column (parser, node)))
+	      && (!pt_cnf_over_one_column (parser, node, &outer_mark)
+		  || (!outer_mark && (pt_cnf_list_has_or_tree (lhs) || pt_cnf_list_has_or_tree (rhs))))))
 	{
 	  arg1 = arg2 = NULL;	/* init */
 
