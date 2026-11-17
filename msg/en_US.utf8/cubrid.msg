@@ -1513,7 +1513,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
 
-1396 Last Error
+1396 Replacing system generated stored procedure is not allowed.
+
+1397 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
