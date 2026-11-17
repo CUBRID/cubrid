@@ -11272,8 +11272,8 @@ sau_response (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reql
     {
       /* malformed */
     }
-  else if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, expected) != NO_ERROR
-	   || !cdc_auth_response_matches (expected, tag) || issued_at > now
+  else if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, expected) !=
+	   NO_ERROR || !cdc_auth_response_matches (expected, tag) || issued_at > now
 	   || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
     {
       /* not a challenge this server issued to this connection for this account, or expired */
