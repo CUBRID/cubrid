@@ -7301,8 +7301,8 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
  * key of a floating NUMERIC normalized, its values fixed or floating (qdata_hash_scan_key_float_numeric ()), since
  * such a key can hold fixed values (a CONNECT BY PRIOR column) and equal values of the two forms hash apart as
  * mht_get_hash_number () hashes them. So two NUMERICs whose common domain is floating are not converted to it, as a
- * hash join converts them: the normalized hash already takes either form, and the conversion of every key value cost
- * a scan over such a pair a tenth more instructions. An integer against a NUMERIC still converts to the NUMERIC.
+ * hash join converts them: the normalized hash already takes either form, and converting every key value would only
+ * add cost. An integer against a NUMERIC still converts to the NUMERIC.
  */
 static bool
 pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
