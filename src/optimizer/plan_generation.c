@@ -2916,7 +2916,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  if (qo_is_index_covering_scan (inner) || qo_plan_multi_range_opt (inner))
 		    {
 		      /* Coverage indexes and indexes using multi range optimization are certified to include segments
-		       * from inner node */
+		       * from inner node. A term that reads no segment of it (an ON term of the preserved side or of no
+		       * table) goes to the key filter too, which evaluates it without the key (eval_key_filter ()). */
 		      bitset_add (&(inner->plan_un.scan.kf_terms), i);
 		      bitset_difference (&predset, &(inner->plan_un.scan.kf_terms));
 		    }
