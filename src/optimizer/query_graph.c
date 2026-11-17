@@ -10140,6 +10140,14 @@ qo_derived_term_compensate (QO_ENV * env)
       j = QO_TERM_IDX (origin);
       pair[i] = j;
       bitset_add (&taken, j);
+      if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED_COLUMN)
+	  && QO_TERM_CLASS (origin) != QO_TC_SARG)
+	{
+	  /* the factor is evaluated at a join, not at this scan: a row the restriction rejects is not
+	   * joined at all, which pays for a costly conjunct as much as the clauses the factor used to
+	   * be distributed into, evaluated at the scan whatever their cost, did.  Keep it as a filter */
+	  QO_TERM_CLEAR_FLAG (derived, QO_TERM_OR_DERIVED_EXPENSIVE);
+	}
       if (QO_TERM_IS_FLAGED (derived, QO_TERM_OR_DERIVED_COLUMN) && QO_TERM_IS_FLAGED (origin, QO_TERM_OR_DERIVED))
 	{
 	  /* the division below leaves the restriction only what it rejects on top of the key range,
