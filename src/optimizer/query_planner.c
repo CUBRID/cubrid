@@ -5063,7 +5063,15 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
        */
       if (!VALID_INNER (inner))
 	{
-	  inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	  /* an outer join must not run the terms of an Object fetch inner before the NULL padding */
+	  if (IS_OUTER_JOIN_TYPE (join_type))
+	    {
+	      inner = qo_outer_join_wrap_inner_scan (inner);
+	    }
+	  else
+	    {
+	      inner = qo_sort_new (inner, inner->order, SORT_TEMP);
+	    }
 	}
       else if (IS_OUTER_JOIN_TYPE (join_type))
 	{
@@ -5772,8 +5780,8 @@ qo_outer_join_inner_scans_per_class (QO_PLAN * inner)
 }
 
 /*
- * qo_outer_join_wrap_inner_scan () - put the scan under an outer join inner into a temp list
- *   return: the inner plan with its bottom scan read from a temp list
+ * qo_outer_join_wrap_inner_scan () - put the plan under the Object fetches of an outer join inner into a temp list
+ *   return: the inner plan with the plan under its Object fetches read from a temp list
  *   inner(in): the inner plan of the NL join
  *
  * Note: an Object fetch keeps its terms above the temp list, since they may reject a row only after the join.
