@@ -4304,6 +4304,11 @@ pt_default_expr_unclassified_name (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_EXPR:
       return pt_show_binopcode (node->info.expr.op);
     case PT_FUNCTION:
+      if (node->info.function.function_type == PT_GENERIC)
+	{
+	  /* a function the parser does not know, such as a stored function, has no code to name it by */
+	  return parser_print_tree (parser, node);
+	}
       return fcode_get_lowercase_name (node->info.function.function_type);
     default:
       /* names (column refs), host vars, sub-queries: print the node itself */
