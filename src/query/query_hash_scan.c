@@ -297,7 +297,8 @@ qdata_hash_scan_value (const DB_VALUE * value, unsigned int ht_size)
 
   if (value != NULL && !DB_IS_NULL (value))
     {
-      /* mht_get_hash_number hashes the raw bits (as qexec_connect_by_hash_column folds) */
+      /* mht_get_hash_number hashes the raw bits (the CONNECT BY cycle hash, qexec_connect_by_hash_column (), folds
+       * here too) */
       switch (DB_VALUE_DOMAIN_TYPE (value))
 	{
 	case DB_TYPE_FLOAT:
