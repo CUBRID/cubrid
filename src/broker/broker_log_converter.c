@@ -300,7 +300,7 @@ log_bind_value (char *str, int bind_len, int lineno, FILE * outfp)
 	}
       else if (memcmp (p, "BLOB", 5) == 0)
 	{
-	  /* the bundled CCI (develop's) has no u_type for it: its CCI_U_TYPE_BLOB is the engine's BFILE */
+	  /* the bundled CCI (develop's) binds a BLOB only as an external-file LOB, not as an internal one */
 	  type = CCI_U_TYPE_NULL;
 	  fprintf (stderr, "%s\nBLOB type is not implemented. Replaced with NULL\n", value_p);
 	  value_p = (char *) "";

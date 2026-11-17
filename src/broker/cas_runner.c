@@ -1123,8 +1123,7 @@ process_bind (char *linebuf, int *num_bind_p, T_BIND_INFO * bind_info, int bind_
     }
   else if (bind_info[num_bind].type == CCI_U_TYPE_BLOB || bind_info[num_bind].type == CCI_U_TYPE_CLOB)
     {
-      /* the bundled CCI's (develop's) BLOB/CLOB, 23/24: the engine's BFILE/CFILE */
-      fprintf (stderr, "binding BFILE/CFILE is not implemented : %s\nreplaced with NULL value.\n", p + 1);
+      fprintf (stderr, "binding BLOB/CLOB is not implemented : %s\nreplaced with NULL value.\n", p + 1);
       bind_info[num_bind].type = CCI_U_TYPE_NULL;
     }
 

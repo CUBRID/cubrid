@@ -5122,7 +5122,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 #define DBLINK_ATTR_CLASS_NAME (11)
 
 /* the PT type of a remote column of this u_type; by name: CCI_U_TYPE_* are the bundled CCI's (cas_cci.h, develop's
- * numbers 0..34), whose BLOB/CLOB are the engine's BFILE/CFILE, so the LOBs go by the engine's SHARD_U_TYPE_* */
+ * numbers 0..34), which lacks BFILE/CFILE, so the LOBs go by the engine's SHARD_U_TYPE_* */
 static PT_TYPE_ENUM
 pt_dblink_utype_to_pt_type (int utype)
 {

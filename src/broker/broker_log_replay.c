@@ -644,7 +644,7 @@ get_cci_type (char *p)
 	}
       else if (memcmp (p, "BLOB", 5) == 0)
 	{
-	  /* the bundled CCI (develop's) has no u_type for it: its CCI_U_TYPE_BLOB is the engine's BFILE */
+	  /* the bundled CCI (develop's) binds a BLOB only as an external-file LOB, not as an internal one */
 	  type = CCI_U_TYPE_NULL;
 	}
       break;
