@@ -2493,16 +2493,17 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	  bi1 = db_get_bigint (value1);
 	}
 
-      if (FINITE (d2) && d2 == floor (d2))
+      if (d2 == floor (d2))
 	{
 	  /* an integer place rounds in integers: through a double a BIGINT loses the digits past 2^53, and a place
-	   * whose power of ten is not exact in binary moves the result by one */
+	   * whose power of ten is not exact in binary moves the result by one; floor () keeps an infinity, so an
+	   * infinite place answers as the farthest finite one (+inf keeps the value, -inf makes it 0) */
 	  overflow = round_bigint (bi1, (d2 > 0) ? 0 : (d2 < -20) ? -20 : (DB_BIGINT) d2, &bi_tmp);
 	}
       else
 	{
-	  /* a fractional, infinite or NaN place keeps the double rounding; the cast back is undefined for a NaN
-	   * or a value past the range, so they are checked first */
+	  /* a fractional or NaN place keeps the double rounding; the cast back is undefined for a NaN or a value
+	   * past the range, so they are checked first */
 	  dtmp = round_double ((double) bi1, d2);
 	  overflow = OR_CHECK_BIGINT_OVERFLOW_FROM_FP (dtmp);
 	  bi_tmp = overflow ? 0 : (DB_BIGINT) dtmp;
