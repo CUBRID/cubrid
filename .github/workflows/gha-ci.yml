@@ -194,7 +194,7 @@ jobs:
       run: ${{ steps.g.outputs.run }}
       test: ${{ steps.g.outputs.test }}
       suites: ${{ steps.g.outputs.suites }}
-      suite_table: ${{ steps.g.outputs.suite_table }}
+      ci_env: ${{ steps.g.outputs.ci_env }}
       sha: ${{ steps.g.outputs.sha }}
       pr: ${{ steps.g.outputs.pr }}
       post_status: ${{ steps.g.outputs.post_status }}
@@ -360,7 +360,11 @@ jobs:
           emit run true
           emit test "$test_run"
           emit suites "$suites"
-          emit suite_table "$(jq -c . <<<"$SUITES")"
+          # gha-ci-suite.yml reads these: a called workflow does not inherit this file's env.
+          emit ci_env "$(jq -nc --arg CI_ROOT "$CI_ROOT" --arg CI_BUILD_ROOT "$CI_BUILD_ROOT" \
+            --arg TIMINGS "$TIMINGS" --arg CTP_SEED "$CTP_SEED" --arg BUILD_META "$BUILD_META" \
+            --arg ARTIFACT_URL_BASE "$ARTIFACT_URL_BASE" --arg COUNT_RESULTS "$COUNT_RESULTS" \
+            --arg OVERLAY "$OVERLAY" --arg SUITES "$SUITES" '$ARGS.named')"
           emit sha "$sha"
           emit pr "$pr"
           emit post_status "$post_status"
@@ -1303,7 +1307,7 @@ jobs:
     uses: ./.github/workflows/gha-ci-suite.yml
     with:
       suite: ${{ matrix.suite }}
-      suite_table: ${{ needs.gate.outputs.suite_table }}
+      ci_env: ${{ needs.gate.outputs.ci_env }}
       shards: ${{ needs.plan.outputs[format('shards_{0}', matrix.suite)] }}
       sha: ${{ needs.gate.outputs.sha }}
       pr: ${{ needs.gate.outputs.pr }}

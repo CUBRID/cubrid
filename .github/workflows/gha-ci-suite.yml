@@ -6,8 +6,8 @@ on:
   workflow_call:
     inputs:
       suite: {type: string, required: true}
-      # gha-ci.yml's SUITES: plan split by it, so the shards must read the same one.
-      suite_table: {type: string, required: true}
+      # gha-ci.yml's env, from gate.
+      ci_env: {type: string, required: true}
       # This suite's share of plan's matrix: empty when plan failed.
       shards: {type: string, required: true}
       sha: {type: string, required: true}
@@ -27,43 +27,18 @@ on:
 
 permissions: {}
 
-# A called workflow does not inherit gha-ci.yml's env: these are copies, so change both together.
 env:
-  CI_ROOT: /home/ci/shared
-  CI_BUILD_ROOT: /home/ci/shared/builds
-  TIMINGS: /home/ci/shared/timings/shell.tsv
-  STAMPS: /home/ci/shared/runs/${{ github.run_id }}/stamps/${{ github.run_attempt }}
-  CTP_SEED: /home/ci/seed/test/cubrid-testtools
-  BUILD_META: .gha-ci-build.meta
-  ARTIFACT_URL_BASE: http://192.168.1.48:30080
-  COUNT_RESULTS: |
-    count() {
-      if [ -f "$1/test_status.data" ]; then
-        awk -F= '/total_executed_case_count/ {e = $2 + 0} /total_success_case_count/ {s = $2 + 0}
-          /total_fail_case_count/ {f = $2 + 0} /total_skip_case_count/ {k = $2 + 0}
-          END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", e, s, f, k}' "$1/test_status.data"
-      elif [ -f "$1/summary_info" ]; then
-        awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
-          END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
-      elif ls "$1"/test-results/*.xml > /dev/null 2>&1; then
-        # Same input layout and CDATA rule as collect's FAILED_AWK.
-        awk 'FNR == 1 {in_cdata = 0}
-          in_cdata { if (index($0, "]]></")) in_cdata = 0; next }
-          { c = index($0, "<![CDATA["); tags = c ? substr($0, 1, c - 1) : $0
-            if (c && !index($0, "]]></")) in_cdata = 1 }
-          tags ~ /<testcase/ {e++} tags ~ /<(failure|error)[ >\/]/ {f++} tags ~ /<skipped[ >\/]/ {k++}
-          END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", e - k, e - k - f, f, k}' "$1"/test-results/*.xml
-      else
-        echo "found=no exec=0 pass=0 fail=0 skip=0"
-      fi
-    }
-  OVERLAY: |
-    # <lower> <rw dir> <mount point>
-    overlay() {
-      mkdir -p "$2/upper" "$2/work" "$3"
-      mount -t overlay overlay -o "lowerdir=$1,upperdir=$2/upper,workdir=$2/work" "$3"
-    }
-  SUITES: ${{ inputs.suite_table }}
+  CI_ROOT: ${{ fromJSON(inputs.ci_env).CI_ROOT }}
+  CI_BUILD_ROOT: ${{ fromJSON(inputs.ci_env).CI_BUILD_ROOT }}
+  TIMINGS: ${{ fromJSON(inputs.ci_env).TIMINGS }}
+  # Not from gate: Re-run failed jobs reuses gate's outputs, which would name the first attempt.
+  STAMPS: ${{ inputs.rundir }}/stamps/${{ github.run_attempt }}
+  CTP_SEED: ${{ fromJSON(inputs.ci_env).CTP_SEED }}
+  BUILD_META: ${{ fromJSON(inputs.ci_env).BUILD_META }}
+  ARTIFACT_URL_BASE: ${{ fromJSON(inputs.ci_env).ARTIFACT_URL_BASE }}
+  COUNT_RESULTS: ${{ fromJSON(inputs.ci_env).COUNT_RESULTS }}
+  OVERLAY: ${{ fromJSON(inputs.ci_env).OVERLAY }}
+  SUITES: ${{ fromJSON(inputs.ci_env).SUITES }}
 
 jobs:
   shard:
