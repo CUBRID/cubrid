@@ -1344,13 +1344,14 @@ jobs:
           SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
         run: |
           export RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          posted=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/statuses?per_page=100" \
-            --jq '.[] | select(.target_url == env.RUN_URL and .state != "pending") | .context')
+          # Newest first, and only the newest: an attempt of Re-run all jobs posts pending again under the same URL.
+          latest=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/statuses?per_page=100" \
+            --jq '.[] | select(.target_url == env.RUN_URL) | [.context, .state] | @tsv' | awk -F'\t' '!seen[$1]++')
           for suite in $SUITES_RUN; do
             ctx=$(jq -r --arg s "$suite" '.[$s].status_ctx' <<<"$SUITES")
-            if printf '%s\n' "$posted" | grep -qxF "$ctx"; then
-              continue
-            fi
+            case "$(awk -F'\t' -v c="$ctx" '$1 == c {print $2}' <<<"$latest")" in
+              success|failure|error) continue ;;
+            esac
             # error, not failure: the commit was not judged, and the batch takes it again.
             gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" --silent -f state=error -f context="$ctx" \
               -f target_url="$RUN_URL" -f description="run was superseded or cancelled"
