@@ -161,15 +161,32 @@ static int rv;
 #define LOG_ISUNSAFE_TO_SKIP_RCVINDEX(RCVI) \
    ((RCVI) == RVDK_LINK_PERM_VOLEXT)
 
-#define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
-   (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
-    && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
-    && ((RCVI) != RVBT_NO_LOGGING_INDEX_DURABLE) \
-    && ((RCVI) != RVBT_NO_LOGGING_INDEX_COMMITTED) \
-    && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
-    && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
-    && ((RCVI) != RVLOG_SYSMETA_VERSION_UPDATE) \
-    && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
+/*
+ * Log records that are written without a data page (the page pointer of the address is NULL).
+ * There is no page LSA to set for them. Add an rcvindex here when it is logged without a page.
+ */
+#define LOG_IS_PAGELESS_RCVINDEX(RCVI) \
+   (((RCVI) == RVBT_MVCC_INCREMENTS_UPD) \
+    || ((RCVI) == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    || ((RCVI) == RVBT_NO_LOGGING_INDEX_DURABLE) \
+    || ((RCVI) == RVBT_NO_LOGGING_INDEX_COMMITTED) \
+    || ((RCVI) == RVBT_REMOVE_UNIQUE_STATS) \
+    || ((RCVI) == RVLOC_CLASSNAME_DUMMY) \
+    || ((RCVI) == RVLOG_SYSMETA_VERSION_UPDATE))
+
+/*
+ * The volume link is logged even on the header page of a permanent volume with temporary purpose
+ * (see LOG_ISUNSAFE_TO_SKIP_RCVINDEX), but that page keeps a temporary LSA, so its page LSA must not be set.
+ */
+#define LOG_IS_VOLUME_LINK_ON_TEMP_LSA_PAGE(RCVI, PGPTR) \
+   ((RCVI) == RVDK_LINK_PERM_VOLEXT && pgbuf_is_lsa_temporary (PGPTR))
+
+/*
+ * Whether the page LSA is set to the LSA of the log record.
+ * Use the same condition when the record is logged and when it is compensated.
+ */
+#define LOG_NEED_TO_SET_PAGE_LSA(RCVI, PGPTR) \
+   (!LOG_IS_PAGELESS_RCVINDEX (RCVI) && !LOG_IS_VOLUME_LINK_ON_TEMP_LSA_PAGE (RCVI, PGPTR))
 
 #define CDC_IS_IGNORE_LOGINFO_ERROR(ERROR) \
    (((ERROR) == ER_CDC_IGNORE_LOG_INFO) \
@@ -2262,7 +2279,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -2406,7 +2423,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (addr->pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -2543,7 +2560,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
    * Make sure that I should log. Page operational logging is not done for
    * temporary data of temporary files and volumes
    */
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -3040,7 +3057,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
        * Set the LSA on the data page of the corresponding log record for page operation logging.
        * Make sure that I should log. Page operational logging is not done for temporary data of temporary files/volumes
        */
-      if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+      if (addr->pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
 	{
 	  if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	    {
@@ -3209,9 +3226,10 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
    * Set the LSA on the data page of the corresponding log record for page
    * operation logging.
    * Make sure that I should log. Page operational logging is not done for
-   * temporary data of temporary files and volumes
+   * temporary data of temporary files and volumes. Use the same condition as when the record was logged.
    */
-  if (pgptr != NULL && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
+  if (pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, pgptr)
+      && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
     {
       assert (false);
       return;
@@ -4478,7 +4496,6 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 {
   LOG_REC_START_POSTPONE *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -4490,11 +4507,9 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
   start_posp->at_time = time (NULL);
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-
-  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -8679,6 +8694,17 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	{
 	  /* deallocated */
 	  return NO_ERROR;
+	}
+    }
+
+  if (RCV_IS_POSTPONE_NOT_UNDOABLE (rcvindex))
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      /* The log does not cover this postpone's effect, so the commit that postponed it must be on disk first. */
+      if (tdes != NULL && !LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
+	{
+	  logpb_flush_log_for_wal (thread_p, &tdes->rcv.tran_start_postpone_lsa);
 	}
     }
 
