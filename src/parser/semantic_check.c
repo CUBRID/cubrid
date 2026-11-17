@@ -40,6 +40,7 @@
 #include "schema_manager.h"
 #include "release_string.h"
 #include "dbi.h"
+#include "db.h"
 #include "xasl_generation.h"
 #include "view_transform.h"
 #include "show_meta.h"
@@ -165,7 +166,7 @@ typedef enum
 {
   PT_DEFAULT_OF_COLUMN,
   PT_DEFAULT_OF_CLASS_ATTRIBUTE,	/* sets the one value of the attribute at DDL time, like a SHARED value */
-  PT_DEFAULT_OF_SP_PARAM	/* a column DEFAULT, but a bare expression is taken for the constant it folds to */
+  PT_DEFAULT_OF_SP_PARAM	/* a column DEFAULT, but a bare expression stands for its value at creation */
 } PT_DEFAULT_OWNER;
 
 /* the owner of the DEFAULT of an attribute definition (a) */
@@ -4406,42 +4407,56 @@ pt_is_bare_legacy_default_form (const PT_NODE * node)
 }
 
 /*
- * pt_is_constant_expr_form () - whether an expression is made of operators, functions and literals only, so that
- *	constant folding may reduce it to a literal
- *   return: true if so
+ * pt_find_not_value_expr_form () - the first node of an expression that keeps it from being evaluated to a value on
+ *	its own: anything but a literal, an operator or a function the client evaluates
+ *   return: the node, NULL if there is none
+ *   parser(in): parser context
  *   node(in): an untyped expression (a single value, not a list)
  */
-static bool
-pt_is_constant_expr_form (const PT_NODE * node)
+static PT_NODE *
+pt_find_not_value_expr_form (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  const PT_NODE *arg;
+  PT_NODE *found, *arg;
 
   if (node == NULL)
     {
-      return true;
+      return NULL;
     }
 
   switch (node->node_type)
     {
     case PT_VALUE:
-      return true;
+      return NULL;
 
     case PT_EXPR:
-      return (pt_is_constant_expr_form (node->info.expr.arg1) && pt_is_constant_expr_form (node->info.expr.arg2)
-	      && pt_is_constant_expr_form (node->info.expr.arg3));
+      found = pt_find_not_value_expr_form (parser, node->info.expr.arg1);
+      if (found == NULL)
+	{
+	  found = pt_find_not_value_expr_form (parser, node->info.expr.arg2);
+	}
+      if (found == NULL)
+	{
+	  found = pt_find_not_value_expr_form (parser, node->info.expr.arg3);
+	}
+      return found;
 
     case PT_FUNCTION:
+      if (!pt_is_expr_wrapped_function (parser, node))
+	{
+	  return node;
+	}
       for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
-	  if (!pt_is_constant_expr_form (arg))
+	  found = pt_find_not_value_expr_form (parser, arg);
+	  if (found != NULL)
 	    {
-	      return false;
+	      return found;
 	    }
 	}
-      return true;
+      return NULL;
 
     default:
-      return false;
+      return node;
     }
 }
 
@@ -4468,7 +4483,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
   char *edl_text;
   PT_NODE *unclassified_node;
   bool column_rules;
-  bool bare_constant;
+  bool bare_value;
   bool is_expr_default;
   int held_do_not_fold;
 
@@ -4514,15 +4529,23 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
       column_rules = (data_default->info.data_default.shared == PT_DEFAULT && owner != PT_DEFAULT_OF_CLASS_ATTRIBUTE
 		      && expr_vol == PT_VOLATILITY_UNSET);
 
-      /* The bare expression of a parameter DEFAULT, when it is neither a literal nor a legacy form, is taken for the
-       * constant it folds to, whatever its operators: what earlier versions stored, and what their dump writes.
-       * One that does not fold needs parentheses, and then follows the column rules. */
-      bare_constant = (owner == PT_DEFAULT_OF_SP_PARAM && column_rules && default_value != NULL
-		       && PT_IS_EXPR_NODE (default_value) && default_value->info.expr.paren_type == 0
-		       && !pt_is_bare_legacy_default_form (default_value)
-		       && !pt_is_signed_numeric_literal (default_value) && pt_is_constant_expr_form (default_value));
-      if (bare_constant)
+      /* The bare expression of a parameter DEFAULT, when it is neither a literal nor a legacy form, stands for its
+       * value when the routine is created, whatever its operators: what earlier versions stored.  The dump of a
+       * PL/CSQL routine writes such an expression as it was written, so the column rules must not refuse it.  An
+       * expression to evaluate at each call is written in parentheses, and follows the column rules. */
+      bare_value = (owner == PT_DEFAULT_OF_SP_PARAM && column_rules && default_value != NULL
+		    && PT_IS_EXPR_NODE (default_value) && default_value->info.expr.paren_type == 0
+		    && !pt_is_bare_legacy_default_form (default_value)
+		    && !pt_is_signed_numeric_literal (default_value));
+      if (bare_value)
 	{
+	  node_ptr = pt_find_not_value_expr_form (parser, default_value);
+	  if (node_ptr != NULL)
+	    {
+	      PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
+			  pt_default_expr_unclassified_name (parser, node_ptr));
+	      goto end;
+	    }
 	  column_rules = false;
 	}
 
@@ -4600,10 +4623,37 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
 	  data_default = result;
 
 	  default_value = data_default->info.data_default.default_value;
-	  if (bare_constant && default_value->node_type != PT_VALUE)
+	  if (bare_value && default_value->node_type != PT_VALUE)
 	    {
-	      PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_REQUIRES_PARENS);
-	      goto end;
+	      /* constant folding left it: evaluate it once.  This is before the execution fetches the statement
+	       * clock, so an expression that reads the clock has it fetched here. */
+	      DB_VALUE value;
+
+	      if ((pt_get_expr_tree_si_requirement (default_value) & PT_SI_SYS_DATETIME) != 0
+		  && db_ensure_server_info (parser, SI_SYS_DATETIME) != NO_ERROR)
+		{
+		  PT_ERRORc (parser, default_value, er_msg ());
+		  goto end;
+		}
+
+	      db_make_null (&value);
+	      pt_evaluate_tree (parser, default_value, &value, 1);
+	      if (pt_has_error (parser))
+		{
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
+			      pt_short_print (parser, default_value));
+		  db_value_clear (&value);
+		  goto end;
+		}
+	      parser_free_tree (parser, default_value);
+	      default_value = pt_dbval_to_value (parser, &value);
+	      data_default->info.data_default.default_value = default_value;
+	      db_value_clear (&value);
+	      if (default_value == NULL)
+		{
+		  PT_ERRORm (parser, data_default, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  goto end;
+		}
 	    }
 	  if (held_do_not_fold >= 0)
 	    {
