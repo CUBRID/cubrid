@@ -6745,10 +6745,10 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI)
 	    {
-	      /* an inner join ON term that reads a node a preceding outer join fills with NULL is not a scan filter
-	       * of that node nor an edge of that outer join: evaluate it when on_node joins, after the padding */
+	      /* an inner or semi join ON term that reads a node a preceding outer join fills with NULL is not a scan
+	       * filter of that node nor an edge of that outer join: evaluate it when on_node joins, after the padding */
 	      if (QO_TERM_CLASS (term) == QO_TC_SARG || QO_TERM_CLASS (term) == QO_TC_OTHER)
 		{
 		  BITSET_CLEAR (suppliers);
@@ -6763,7 +6763,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
 	  if (QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      /* semi / anti: structurally inner, no outer-join classification */
+	      /* anti: structurally inner, qo_classify_antijoin_terms () classifies its ON terms */
 	      continue;
 	    }
 
