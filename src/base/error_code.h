@@ -1761,8 +1761,9 @@
 
 #define ER_SES_SESSION_SECRET_MISMATCH              -1372
 #define ER_SES_SESSION_NOT_ATTACHED                 -1373
+#define ER_CSS_TRAN_INDEX_NOT_OWNED                 -1374
 
-#define ER_LAST_ERROR                               -1374
+#define ER_LAST_ERROR                               -1375
 
 
 /*

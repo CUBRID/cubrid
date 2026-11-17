@@ -288,7 +288,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->fd = fd;
   conn->request_id = 0;
   conn->status = CONN_OPEN;
-  conn->set_tran_index (NULL_TRAN_INDEX);
+  conn->release_tran_index ();
   conn->init_pending_request ();
   conn->invalidate_snapshot = 1;
   conn->in_method = false;
