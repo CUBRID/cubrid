@@ -8489,8 +8489,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
 	}
-      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip
-	  && !qo_plan_cmp_topn_sort_wins (a, b))
+      if (a->plan_un.scan.index && a->plan_un.scan.index->head->orderby_skip && !qo_plan_cmp_topn_sort_wins (a, b))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -8533,8 +8532,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	      return PLAN_COMP_GT;
 	    }
-	  if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip
-	      && !qo_plan_cmp_topn_sort_wins (b, a))
+	  if (b->plan_un.scan.index && b->plan_un.scan.index->head->orderby_skip && !qo_plan_cmp_topn_sort_wins (b, a))
 	    {
 	      QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	      return PLAN_COMP_GT;
