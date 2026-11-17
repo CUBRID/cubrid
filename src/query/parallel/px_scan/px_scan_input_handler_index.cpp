@@ -39,6 +39,7 @@ namespace parallel_scan
       }
     m_leaf.init (&m_ranges);
     m_ovf.init (parallelism);
+    m_parallelism = MAX (parallelism, 1);
     return NO_ERROR;
   }
 
