@@ -11604,7 +11604,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  pt_check_method (parser, node);
 	  if (top_node != NULL)
 	    {
-	      /* a view whose query calls a procedure carries this up to the statements that read it */
+	      /* a statement that calls a procedure in an expression; a view whose query does carries this up to the
+	       * statements that read it */
 	      top_node->flag.has_sp_call = 1;
 	    }
 	}

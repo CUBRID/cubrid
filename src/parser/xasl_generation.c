@@ -9510,7 +9510,8 @@ pt_add_write_class_oids (XASL_NODE * xasl, const OID * class_oids, int count)
 }
 
 /*
- * pt_reset_subinsert_class_oids () - forget the classes the nested inserts of the insert being generated write
+ * pt_reset_subinsert_class_oids () - forget the classes the nested inserts of the INSERT or MERGE being generated
+ *				       write
  *   return: none
  */
 static void
@@ -9553,7 +9554,7 @@ pt_pop_collected_class_oids (const PT_COLLECTED_CLASS_OIDS * outer)
 }
 
 /*
- * pt_add_subinsert_class_oids () - note classes a nested insert writes, for the insert that contains it
+ * pt_add_subinsert_class_oids () - note classes a nested insert writes, for the INSERT or MERGE that contains it
  *   return: NO_ERROR or ER_FAILED
  *   class_oids(in): the classes
  *   count(in): the number of classes
@@ -9567,7 +9568,7 @@ pt_add_subinsert_class_oids (const OID * class_oids, int count)
 /*
  * pt_move_subinsert_class_oids () - add the classes the nested inserts write to the classes an XASL writes
  *   return: NO_ERROR or ER_FAILED
- *   xasl(in/out): the XASL of the insert that contains them
+ *   xasl(in/out): the XASL of the INSERT or MERGE that contains them
  */
 static int
 pt_move_subinsert_class_oids (XASL_NODE * xasl)
@@ -9678,7 +9679,8 @@ pt_add_spec_read_class_oids (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 
 /*
  * pt_add_read_class_oids () - add classes the statement reads that the class_oid_list of its XASL misses, such as
- *			       the classes of a path expression or of an ON DUPLICATE KEY UPDATE subquery
+ *			       the classes of a path expression or of an ON DUPLICATE KEY UPDATE subquery, when a stored
+ *			       procedure was called in the XASL generated (regu_has_sp_call)
  *   return: NO_ERROR or ER_FAILED
  *   parser(in): parser context
  *   statement(in): the statement

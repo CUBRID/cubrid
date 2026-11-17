@@ -6438,9 +6438,6 @@ db_get_parser (DB_SESSION * session)
  * db_get_statement() - This function returns session's statement for id
  * arguments: session (IN): compilation session
  * returns: PT_NODE
- *
- * note : This is a debugging function only.
- *
  */
 DB_NODE *
 db_get_statement (DB_SESSION * session, int id)

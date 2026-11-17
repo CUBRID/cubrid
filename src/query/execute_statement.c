@@ -3466,8 +3466,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
   unsigned save_compile_uncached = parser->flag.compile_uncached;
-  sp_tree_frame_guard dblink_dml_frame (statement != NULL && statement->flag.has_sp_call
-					&& PT_IS_DBLINK_DML_QUERY (statement), parser, statement);
+  sp_frame_guard dblink_dml_frame (statement != NULL && statement->flag.has_sp_call
+				   && PT_IS_DBLINK_DML_QUERY (statement), parser, statement);
 
   /* what compiles here is not cached: a trigger action at every firing, a statement that cannot be prepared */
   parser->flag.compile_uncached = 1;
@@ -4215,8 +4215,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
-  sp_tree_frame_guard dblink_dml_frame (statement->flag.has_sp_call && PT_IS_DBLINK_DML_QUERY (statement), parser,
-					statement);
+  sp_frame_guard dblink_dml_frame (statement->flag.has_sp_call && PT_IS_DBLINK_DML_QUERY (statement), parser,
+				   statement);
 
   assert (parser->query_id == NULL_QUERY_ID);
   /* save old read fetch instance version */
@@ -8511,7 +8511,7 @@ update_object_by_oid (PARSER_CONTEXT * parser, PT_NODE * statement, UPDATE_TYPE 
       return ER_GENERIC_ERROR;
     }
 
-  sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+  sp_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
   /* fetch classes that will be updated */
   node = statement->info.update.spec;
@@ -9040,7 +9040,7 @@ update_objs_for_list_file (PARSER_CONTEXT * parser, QFILE_LIST_ID * list_id, PT_
   bool has_delete, should_delete = false;
   bool client_check_serializable_conflict = false;
 
-  sp_tree_frame_guard frame_guard (statement != NULL && statement->flag.has_sp_call, parser, statement);
+  sp_frame_guard frame_guard (statement != NULL && statement->flag.has_sp_call, parser, statement);
 
   if (list_id == NULL || statement == NULL)
     {
@@ -9267,7 +9267,7 @@ update_class_attributes (PARSER_CONTEXT * parser, PT_NODE * statement)
   CLIENT_UPDATE_INFO *assigns = NULL, *assign = NULL;
   CLIENT_UPDATE_CLASS_INFO *cls_info = NULL, *cls = NULL;
   DB_VALUE *dbvals = NULL;
-  sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+  sp_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
   assignments =
     statement->node_type == PT_MERGE ? statement->info.merge.update.assignment : statement->info.update.assignment;
@@ -10955,7 +10955,7 @@ delete_list_by_oids (PARSER_CONTEXT * parser, PT_NODE * statement, QFILE_LIST_ID
       return NO_ERROR;
     }
 
-  sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+  sp_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
   assert (parser->query_id != NULL_QUERY_ID);
   assert (parser->query_id == list_id->query_id);
@@ -13641,7 +13641,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	    }
 	}
 
-      sp_tree_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
+      sp_frame_guard frame_guard (statement->flag.has_sp_call, parser, statement);
 
       error = do_evaluate_insert_values (parser, statement);
       if (error != NO_ERROR)
@@ -14111,7 +14111,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	}
     }
 
-  sp_tree_frame_guard frame_guard (statement->node_type == PT_INSERT && statement->flag.has_sp_call, parser, statement);
+  sp_frame_guard frame_guard (statement->node_type == PT_INSERT && statement->flag.has_sp_call, parser, statement);
 
   switch (qry->node_type)
     {
@@ -17889,9 +17889,9 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
 #else
 	  {
 	    const bool in_trigger = (sp_In_trigger_depth > 0);
-	    sp_tree_frame_guard frame_guard (statement->flag.has_sp_call
-					     || stmt->info.trigger_action.expression->flag.has_sp_call, parser,
-					     statement, in_trigger);
+	    sp_frame_guard frame_guard (statement->flag.has_sp_call
+					|| stmt->info.trigger_action.expression->flag.has_sp_call, parser,
+					statement, in_trigger);
 	    sp_trigger_call_guard call_guard (in_trigger && PT_IS_SP (stmt->info.trigger_action.expression));
 
 	    error = do_statement (parser, stmt->info.trigger_action.expression);
@@ -18351,7 +18351,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int outer_au_save = 0;
   bool insert_only = false;
   PT_NODE *copy_assigns, *save_assigns;
-  sp_tree_frame_guard merge_frame (statement->flag.has_sp_call, parser, statement);
+  sp_frame_guard merge_frame (statement->flag.has_sp_call, parser, statement);
 
   CHECK_MODIFICATION_ERROR ();
 

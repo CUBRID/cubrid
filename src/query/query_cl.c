@@ -90,7 +90,8 @@ check_sp_xasl_writes (const XASL_ID * xasl_id)
  *                         set to NULL if you want to look up the XASL cache
  *
  *   NOTE: If stream->xasl_header is not NULL, also XASL node header will be
- *	   requested from server.
+ *	   requested from server. Inside a SQL statement a stored procedure runs, it remembers what the XASL writes
+ *	   (sp_remember_xasl_writes ()), from the stream, or from the server when the XASL cache is looked up.
  */
 int
 prepare_query (COMPILE_CONTEXT * context, XASL_STREAM * stream)
@@ -265,7 +266,7 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, i
 	}
     }
 
-  sp_xasl_frame_guard frame_guard (has_sp_call, stmt_info);
+  sp_frame_guard frame_guard (has_sp_call, stmt_info);
 
   query_timeout = tran_get_query_timeout ();
   list_idptr = qmgr_prepare_and_execute_query (stream, stream_size, query_id, var_cnt, varptr, flag, query_timeout);

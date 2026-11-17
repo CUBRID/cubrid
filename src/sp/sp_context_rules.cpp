@@ -46,12 +46,18 @@ CUB_THREAD_LOCAL int sp_Trigger_call_depth = 0;
 CUB_THREAD_LOCAL bool sp_In_statement_savepoint = false;
 CUB_THREAD_LOCAL bool sp_Object_lock_only = false;
 
+enum sp_frame_type
+{
+  SP_FRAME_SELECT,
+  SP_FRAME_DML,
+  SP_FRAME_TRIGGER_ACTION,
+  SP_FRAME_ROW_TRIGGER,
+  SP_FRAME_STATEMENT_TRIGGER
+};
+
 struct sp_frame
 {
-  bool is_select = false;
-  bool is_trigger = false;
-  bool is_statement_trigger = false;
-  bool is_trigger_action = false;
+  sp_frame_type type = SP_FRAME_DML;
   int depth = 0;
   std::vector<OID> class_oids;
   std::vector<OID> cascade_class_oids;
@@ -439,7 +445,7 @@ sp_add_affected_classes (DB_OBJECT *class_mop, bool cascades, std::vector<OID> &
 }
 
 /*
- * sp_add_subclasses () - add the subclasses of a class, at every level
+ * sp_add_subclasses () - add the subclasses of a class, at every level, except the partitions of a partitioned table
  *   return: NO_ERROR, or the error set
  *   class_mop(in): the class
  *   class_oids(in/out): the classes, each once
@@ -524,13 +530,27 @@ sp_collect_frame_classes (sp_frame &frame)
 }
 
 static bool
+sp_frame_is_trigger (const sp_frame &frame)
+{
+  return frame.type == SP_FRAME_ROW_TRIGGER || frame.type == SP_FRAME_STATEMENT_TRIGGER;
+}
+
+/*
+ * sp_in_select_frame () - whether a statement running below the procedure is a query
+ *   return: true when it is
+ *
+ * Note: At a depth, the frame pushed first is the statement the callback came from. The frames above it at that
+ *       depth are parts of the same statement, such as the SELECT of an INSERT ... SELECT the client runs, until a
+ *       trigger frame starts another statement.
+ */
+static bool
 sp_in_select_frame (void)
 {
   int checked_stmt_depth = -1;
 
   for (const sp_frame &frame : sp_Frames)
     {
-      if (frame.is_trigger || frame.is_trigger_action)
+      if (sp_frame_is_trigger (frame) || frame.type == SP_FRAME_TRIGGER_ACTION)
 	{
 	  checked_stmt_depth = -1;
 	  continue;
@@ -540,7 +560,7 @@ sp_in_select_frame (void)
 	  continue;
 	}
       checked_stmt_depth = frame.depth;
-      if (frame.is_select)
+      if (frame.type == SP_FRAME_SELECT)
 	{
 	  return true;
 	}
@@ -567,10 +587,11 @@ sp_set_stmt_table_error (const OID *class_oid)
 }
 
 /*
- * sp_check_writes () - rules 2 and 3 for the writes of a statement a procedure invoked inside a SQL statement runs
+ * sp_check_writes () - rules 2 and 3 for a write a procedure invoked inside a SQL statement is about to do: the
+ *			 writes of a statement it runs, or of an object it writes
  *   return: NO_ERROR, or the error set
- *   write_class_oids(in): the classes the statement writes
- *   cascades(in): whether it updates or deletes rows
+ *   write_class_oids(in): the classes written
+ *   cascades(in): whether the write updates or deletes rows
  */
 static int
 sp_check_writes (const std::vector<OID> &write_class_oids, bool cascades)
@@ -604,6 +625,8 @@ sp_check_writes (const std::vector<OID> &write_class_oids, bool cascades)
 	}
     }
 
+  /* A STATEMENT trigger runs before or after the statement that fired it, not on its rows, so the frames below it at
+   * its depth, down to the next trigger frame, are left out. */
   std::vector<int> statement_trigger_depths;
 
   for (auto it = sp_Frames.rbegin (); it != sp_Frames.rend (); ++it)
@@ -616,7 +639,7 @@ sp_check_writes (const std::vector<OID> &write_class_oids, bool cascades)
 	}
       auto skipped = std::find (statement_trigger_depths.begin (), statement_trigger_depths.end (), frame.depth);
 
-      if (frame.is_statement_trigger)
+      if (frame.type == SP_FRAME_STATEMENT_TRIGGER)
 	{
 	  if (skipped == statement_trigger_depths.end ())
 	    {
@@ -625,7 +648,7 @@ sp_check_writes (const std::vector<OID> &write_class_oids, bool cascades)
 	}
       else if (skipped != statement_trigger_depths.end ())
 	{
-	  if (!frame.is_trigger)
+	  if (!sp_frame_is_trigger (frame))
 	    {
 	      continue;
 	    }
@@ -653,29 +676,29 @@ sp_stmt_entry_name (sp_stmt_category stmt_category, int stmt_type)
 {
   switch (stmt_type)
     {
-    case CUBRID_STMT_COMMIT_WORK:
+    case PT_COMMIT_WORK:
       return "COMMIT";
-    case CUBRID_STMT_ROLLBACK_WORK:
+    case PT_ROLLBACK_WORK:
       return "ROLLBACK";
-    case CUBRID_STMT_SAVEPOINT:
+    case PT_SAVEPOINT:
       return "SAVEPOINT";
-    case CUBRID_STMT_PREPARE:
+    case PT_PREPARE_TO_COMMIT:
       return "PREPARE TO COMMIT";
-    case CUBRID_STMT_ATTACH:
+    case PT_2PC_ATTACH:
       return "ATTACH";
     case PT_SET_XACTION:
       return "SET TRANSACTION";
-    case CUBRID_STMT_SET_SYS_PARAMS:
+    case PT_SET_SYS_PARAMS:
       return "SET SYSTEM PARAMETERS";
-    case CUBRID_STMT_SET_OPT_LVL:
+    case PT_SET_OPT_LVL:
       return "SET OPTIMIZATION";
-    case CUBRID_STMT_SET_TRIGGER:
+    case PT_SET_TRIGGER:
       return "SET TRIGGER";
-    case CUBRID_STMT_SET_NAMES:
+    case PT_SET_NAMES:
       return "SET NAMES";
-    case CUBRID_STMT_SET_TIMEZONE:
+    case PT_SET_TIMEZONE:
       return "SET TIME ZONE";
-    case CUBRID_STMT_CALL:
+    case PT_METHOD_CALL:
       return "CALL ... ON CLASS";
     default:
       return stmt_category == SP_STMT_DDL ? "DDL" : "the statement";
@@ -686,17 +709,10 @@ sp_stmt_entry_name (sp_stmt_category stmt_category, int stmt_type)
  * sp_check_statement_allowed () - apply rules 1 and 2 to a statement a stored procedure asked for
  *   return: NO_ERROR, or the error set
  *   stmt_category(in): category of the statement
- *   stmt_type(in): CUBRID_STMT_TYPE of the statement, for the error message
+ *   stmt_type(in): the value db_get_statement_type () returns for the statement, for the error message
  *
- * Note: the rules:
- *       1. transaction control or DDL inside a SQL statement or a trigger: rejected
- *       2. DML inside a query: rejected, whatever the class
- *       3. a write inside a SQL statement: rejected when it writes a class a running statement reads or writes
- *       Anything else is allowed. A procedure called alone by a CALL statement is not restricted by 2 and 3. A
- *       procedure called by a trigger action's CALL runs one level below the trigger (sp_trigger_call_guard), so
- *       2 and 3 apply to it. 1 reports the trigger for anything run while a trigger runs. Rule 3 is checked where
- *       the writes are about to be done: sp_check_xasl_allowed () for an XASL and sp_check_object_write () for an
- *       object.
+ * Note: Rule 1 reports the trigger for anything run while a trigger runs. Rule 3 is checked where the writes are
+ *       about to be done: sp_check_xasl_allowed () for an XASL and sp_check_object_write () for an object.
  */
 int
 sp_check_statement_allowed (sp_stmt_category stmt_category, int stmt_type)
@@ -730,17 +746,20 @@ sp_check_statement_allowed (sp_stmt_category stmt_category, int stmt_type)
   return NO_ERROR;
 }
 
-static bool
-sp_allowed_write_known (const OID *class_oid, bool cascades)
+static void
+sp_drop_stale_allowed_writes (void)
 {
   if (sp_Allowed_writes_version != sp_Frames_version || sp_Allowed_writes_depth != sp_In_sql_depth)
     {
       sp_Allowed_writes.clear ();
       sp_Allowed_writes_version = sp_Frames_version;
       sp_Allowed_writes_depth = sp_In_sql_depth;
-      return false;
     }
+}
 
+static bool
+sp_allowed_write_known (const OID *class_oid, bool cascades)
+{
   for (const std::pair<OID, bool> &allowed : sp_Allowed_writes)
     {
       if (OID_EQ (&allowed.first, class_oid) && (allowed.second || !cascades))
@@ -804,7 +823,13 @@ sp_check_object_write (DB_OBJECT *object)
 
   const OID *class_oid = ws_oid (class_mop);
 
-  if (class_oid == NULL || sp_allowed_write_known (class_oid, cascades))
+  if (class_oid == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  sp_drop_stale_allowed_writes ();
+  if (sp_allowed_write_known (class_oid, cascades))
     {
       return NO_ERROR;
     }
@@ -838,7 +863,8 @@ sp_push_xasl_frame (const xasl_stmt_info &stmt_info)
   sp_Frames.emplace_back ();
 
   sp_frame &frame = sp_Frames.back ();
-  frame.is_select = stmt_info.write_class_oids.empty () || (stmt_info.stmt_flags & XASL_STMT_FOR_UPDATE) != 0;
+  frame.type = (stmt_info.write_class_oids.empty () || (stmt_info.stmt_flags & XASL_STMT_FOR_UPDATE) != 0)
+	       ? SP_FRAME_SELECT : SP_FRAME_DML;
   frame.depth = sp_In_sql_depth;
   for (const OID &class_oid : stmt_info.class_oids)
     {
@@ -861,7 +887,7 @@ sp_push_tree_frame (PARSER_CONTEXT *parser, PT_NODE *statement, bool is_trigger_
   sp_Frames.emplace_back ();
 
   sp_frame &frame = sp_Frames.back ();
-  frame.is_trigger_action = is_trigger_action;
+  frame.type = is_trigger_action ? SP_FRAME_TRIGGER_ACTION : SP_FRAME_DML;
   frame.depth = sp_In_sql_depth;
 
   std::vector<DB_OBJECT *> classes;
@@ -883,8 +909,7 @@ sp_push_class_frame (DB_OBJECT *class_mop, bool cascades)
   sp_Frames.emplace_back ();
 
   sp_frame &frame = sp_Frames.back ();
-  frame.is_trigger = true;
-  frame.is_statement_trigger = (class_mop == NULL);
+  frame.type = (class_mop == NULL) ? SP_FRAME_STATEMENT_TRIGGER : SP_FRAME_ROW_TRIGGER;
   frame.depth = sp_In_sql_depth;
   if (class_mop != NULL)
     {

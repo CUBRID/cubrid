@@ -91,10 +91,11 @@ bool xasl_stream_compare (const cubxasl::json_table::node &first, const cubxasl:
 bool xasl_stream_compare (const cubxasl::json_table::spec_node &first, const cubxasl::json_table::spec_node &second);
 
 // what the stream header written by xts_map_xasl_to_stream says about the classes the statement reads and writes
+// (xasl_stream_get_stmt_info); the server sends only stmt_flags and write_class_oids (xasl_stmt_info_pack)
 struct xasl_stmt_info
 {
   int stmt_flags = 0;			// XASL_STMT_*
-  std::vector<OID> class_oids;		// class_oid_list, and read_class_oid_list
+  std::vector<OID> class_oids;		// class_oid_list, and read_class_oid_list; empty when sent by the server
   std::vector<OID> write_class_oids;	// the IX ones of class_oid_list, and write_class_oid_list
 };
 typedef struct xasl_stmt_info XASL_STMT_INFO;

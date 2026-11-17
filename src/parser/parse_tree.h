@@ -3480,7 +3480,7 @@ struct pt_execute_info
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */
   int is_click_counter;		/* INCR/DECR (click counter) */
-  int is_method_on_target;	/* method call with a target (ON CLASS or the first argument) */
+  int is_method_on_target;	/* method call with a target (ON or the first argument) */
 };
 
 struct pt_stored_proc_param_info
@@ -4223,9 +4223,13 @@ struct parser_context
     unsigned needs_bound_hostvar:1;	/* set to 1 when the compile failed because a host variable has no value yet
 					 * (UPDATE OBJECT ?, m () ON ?, TABLE (?)); see db_statement_needs_bound_values () */
     unsigned view_has_sp_call:1;	/* the current mq_translate () expanded a view that calls a stored procedure,
-					 * and mq_translate () sets cannot_prepare on the statement at its end */
-    unsigned regu_has_sp_call:1;	/* a regu variable of the statement being compiled calls a stored procedure,
-					 * so pt_add_read_class_oids () adds the classes it reads to its XASL header */
+					 * and mq_translate () sets has_sp_call and cannot_prepare on the statement at
+					 * its end; while a view cache is built, has_sp_call on the view's root */
+    unsigned regu_has_sp_call:1;	/* a stored procedure regu variable was generated since
+					 * db_compile_statement_local () cleared it, so pt_add_read_class_oids () adds
+					 * the classes the statement reads to its XASL header. A parser compiled
+					 * elsewhere, such as that of a trigger action, keeps it, which only adds
+					 * classes to an XASL that pushes no frame */
   } flag;
 };
 
