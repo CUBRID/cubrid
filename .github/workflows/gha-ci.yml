@@ -1323,3 +1323,30 @@ jobs:
     secrets:
       TC_APP_ID: ${{ secrets.TC_APP_ID }}
       TC_APP_PRIVATE_KEY: ${{ secrets.TC_APP_PRIVATE_KEY }}
+
+  # A run cancelled before or during the suite workflows gets no status from them.
+  status_cancelled:
+    name: status (cancelled)
+    needs: [gate, suite]
+    if: ${{ cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.post_status == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+    defaults:
+      run:
+        shell: bash --noprofile --norc -euo pipefail {0}
+    steps:
+      - name: Post the cancellation to the head commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
+        run: |
+          for suite in $SUITES_RUN; do
+            # error, not failure: the commit was not judged, and the batch takes it again.
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" --silent -f state=error \
+              -f context="$(jq -r --arg s "$suite" '.[$s].status_ctx' <<<"$SUITES")" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              -f description="run was superseded or cancelled"
+          done
