@@ -334,13 +334,13 @@ set_tests_properties(
 )
 
 # The server reads CUBRID_<PARAMETER> at every parameter load, so these runs have a short page latch timeout and a
-# vacuum wait for the heap header can fail. Debug builds stop at that timeout, so fault injection 700000
+# vacuum wait for the heap header can fail. Debug builds stop at that timeout, so fault injection 800000
 # (FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT) makes the wait fail at once instead. The list is set before the vacuum
 # workers exist and never changes. UnrelatedHeapVacuumedWhileHeaderLookupKeepsFailing needs one vacuum worker
 # (CUBRID_VACUUM_WORKER_COUNT=1). With ten, a second worker vacuums the unrelated heap's block while the first one
 # retries the held header, so the case passes even if vacuum retries in place.
 set(OOS_HEADER_HELD_ENV
-  "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000;CUBRID_FAULT_INJECTION_IDS=700000;CUBRID_VACUUM_WORKER_COUNT=1")
+  "CUBRID_PAGE_LATCH_TIMEOUT_IN_MSECS=2000;CUBRID_FAULT_INJECTION_IDS=800000;CUBRID_VACUUM_WORKER_COUNT=1")
 string(CONCAT oos_real_vacuum_latch_timeout_filter
   "OosRealVacuumHeaderHeld.HomeRowOosReclaimedAfterHeaderLookupFailure:"
   "OosRealVacuumHeaderHeld.RelocatedRowOosReclaimedAfterHeaderLookupFailure:"
