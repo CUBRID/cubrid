@@ -1,28 +1,33 @@
 # Workflow tokens
 
-Every token the workflows in `.github/workflows/` use, and what for.
+Every GitHub token the workflows in `.github/workflows/` use, and what for.
 A pull request that changes a workflow's token or its permissions changes this table too.
 
-Rules:
+Rules for the testcase workflows (`tc-*.yml`, `gha-ci.yml`):
 
 - Work inside `CUBRID/cubrid` (comments, check runs, commit statuses, the `tc-pin` branch) uses `GITHUB_TOKEN`,
   with only the permissions the job needs. `GITHUB_TOKEN` reaches this repository only.
 - Work in the testcase repositories uses the GitHub App `cubrid-tc-sync-bot`
   (secrets `TC_APP_ID` · `TC_APP_PRIVATE_KEY`, installed on `cubrid-testcases` · `cubrid-testcases-private-ex` ·
-  `cubrid-testcases-private`). A job names the repositories and the permissions it needs.
-  Without `permission-*` inputs the token gets all of the App's permissions.
+  `cubrid-testcases-private`), and a job names the repositories and the permissions it needs.
+  Without `permission-*` inputs the token gets all of the App's permissions: the rows that say "all" do not follow
+  this rule yet.
 
 ## `GITHUB_TOKEN`
 
 | Workflow | Job | Permissions | For |
 |---|---|---|---|
+| `check.yml` | `code-style` | repository default | suggest the style fixes on the PR (`reviewdog/action-suggester`) |
 | `check.yml` | `cppcheck` | repository default | comment on the PR |
 | `comment_trigger.yml` | `run_test` | `pull-requests: read` | read the PR |
 | `gha-ci.yml` | `gate` | `contents: read` · `pull-requests: read` · `actions: read` | read the PR, the comment and earlier runs |
 | `gha-ci.yml` | `nightly` | `actions: write` · `statuses: read` | dispatch the nightly runs |
 | `gha-ci.yml` | `status_pending` · `build_status` · `status_cancelled` | `statuses: write` (`build_status` also `actions: read`) | commit statuses `gha-ci: …` |
-| `gha-ci.yml` → `gha-ci-suite.yml` | `suite` → `collect` · `status` | `actions: read` · `statuses: write` | read the shard jobs, commit statuses |
+| `gha-ci.yml` → `gha-ci-suite.yml` | `suite` → `collect` | `actions: read` | read the shard jobs |
+| `gha-ci.yml` → `gha-ci-suite.yml` | `suite` → `status` | `statuses: write` | commit statuses `gha-ci: …` |
 | `submodule-bump-receiver.yml` | `bump` (Run CI) | `contents: write` · `pull-requests: write` · `actions: write` (workflow level) | start CI on the bump PR |
+| `tc-branch-sync.yml` | `detect-pr-type` | none (`permissions: {}`) | read the PR title and body from the event |
+| `tc-branch-sync.yml` | `sync-tc-branch` · `revert-tc-branch` | `pull-requests: write` | not used: their steps use the App token |
 | `tc-branch-sync.yml` | `comment-on-engine-pr` · `comment-on-engine-pr-revert` | `pull-requests: write` | comment on the engine PR |
 | `tc-branch-finalize.yml` | `finalize-tc-branch` | `pull-requests: write` | comment on the engine PR |
 | `tc-merge-gate.yml` | `check-tc-prs` | `actions: read` · `checks: write` · `contents: read` · `pull-requests: write` | check run `Check TC PRs`, comment |

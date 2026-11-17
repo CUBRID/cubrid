@@ -1,6 +1,5 @@
-# One step of the bot's trials on the branch tc-sync-bot-trial of a testcase repository, which a ruleset
-# guards the way develop will be guarded: does the ruleset take the App's commit status, and can the App
-# reopen a TC PR that a person closed, even after the person deleted its head branch.
+# One step of the bot's trials on the branch tc-sync-bot-trial of a testcase repository: does a ruleset there
+# take the App's commit status, and can the App reopen a PR that a person closed, also after its head branch is gone.
 name: TC Sync Bot Trial
 
 on:
@@ -50,7 +49,6 @@ jobs:
           trial=tc-sync-bot-trial
           ref() { gh api "repos/$REPO/git/ref/heads/$1" --jq .object.sha; }
           if [ "$ACTION" = open ]; then
-            ref "$trial" > /dev/null || gh api "repos/$REPO/git/refs" -f ref="refs/heads/$trial" -f sha="$(ref develop)"
             head=tc/pr-trial-$GITHUB_RUN_ID
             gh api "repos/$REPO/git/refs" -f ref="refs/heads/$head" -f sha="$(ref "$trial")"
             gh api -X PUT "repos/$REPO/contents/trial/$GITHUB_RUN_ID.txt" -f branch="$head" \

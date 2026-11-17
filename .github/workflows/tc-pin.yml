@@ -82,7 +82,8 @@ jobs:
                 for i in "${!tcs[@]}"; do
                   sq=
                   [ "$pr" = - ] || sq=$(GH_TOKEN=$TC_TOKEN gh pr list --repo "CUBRID/${tcs[i]}" --head "tc/pr-$pr" \
-                    --base "$(tc_branch "${tcs[i]}" "$b")" --state merged --json mergeCommit --jq '.[0].mergeCommit.oid // empty')
+                    --base "$(tc_branch "${tcs[i]}" "$b")" --state merged --json headRepositoryOwner,mergeCommit \
+                    --jq '[.[] | select(.headRepositoryOwner.login == "CUBRID")][0].mergeCommit.oid // empty')
                   if [ -n "$sq" ]; then
                     frozen[i]=$(GH_TOKEN=$TC_TOKEN gh api "repos/CUBRID/${tcs[i]}/commits/$sq" --jq '.parents[0].sha')
                   else
