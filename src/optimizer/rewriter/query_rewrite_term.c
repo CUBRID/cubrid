@@ -231,6 +231,35 @@ qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * qo_may_be_empty_collection () - can the right operand of IN / op SOME / op ALL be an empty collection?
+ *   return: false only for a literal collection with at least one element
+ *   arg2(in): right operand
+ */
+static bool
+qo_may_be_empty_collection (PT_NODE * arg2)
+{
+  if (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
+    {
+      arg2 = arg2->info.expr.arg1;
+    }
+
+  if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_SET_TYPE (arg2))
+    {
+      return arg2->info.value.data_value.set == NULL;
+    }
+
+  /* ENUM comparison type checking may represent a literal collection as a PT_FUNCTION */
+  if (arg2 != NULL && arg2->node_type == PT_FUNCTION
+      && (arg2->info.function.function_type == F_SET || arg2->info.function.function_type == F_MULTISET
+	  || arg2->info.function.function_type == F_SEQUENCE))
+    {
+      return arg2->info.function.arg_list == NULL;
+    }
+
+  return true;
+}
+
+/*
  * qo_check_nullable_op () - classifies whether an expression's operator can
  *   be TRUE even when one of its operands is NULL, so it must never be
  *   treated as proof that a key column is not NULL.
@@ -286,34 +315,7 @@ qo_check_nullable_op (PT_NODE * node)
     case PT_LT_ALL:
     case PT_LE_ALL:
     case PT_IS_NOT_IN:
-      {
-	PT_NODE *arg2 = node->info.expr.arg2;
-
-	if (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
-	  {
-	    /* Strip a CAST wrapper so the underlying literal collection can be
-	     * checked below. */
-	    arg2 = arg2->info.expr.arg1;
-	  }
-
-	if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_SET_TYPE (arg2))
-	  {
-	    return arg2->info.value.data_value.set == NULL;
-	  }
-
-	if (arg2 != NULL && arg2->node_type == PT_FUNCTION
-	    && (arg2->info.function.function_type == F_SET || arg2->info.function.function_type == F_MULTISET
-		|| arg2->info.function.function_type == F_SEQUENCE))
-	  {
-	    /*
-	     * ENUM comparison type checking may represent a literal collection as a
-	     * PT_FUNCTION.
-	     */
-	    return arg2->info.function.arg_list == NULL;
-	  }
-
-	return true;
-      }
+      return qo_may_be_empty_collection (node->info.expr.arg2);
 
     default:
       return false;
@@ -605,8 +607,8 @@ qo_subquery_has_result_without_spec (PARSER_CONTEXT * parser, PT_NODE * query, S
 
 /*
  * qo_is_non_null_boolean_with_spec () - is the node a boolean reading the spec that is not NULL for a NULL spec?
- *   return: true if the node is EXISTS, IN / op SOME on a subquery, IS NOT NULL, IS TRUE / IS FALSE, AND or OR
- *           and reads the spec
+ *   return: true if the node is EXISTS, IN / op SOME on a subquery or a collection that may be empty,
+ *           IS NOT NULL, IS TRUE / IS FALSE, AND or OR and reads the spec
  *   parser(in):
  *   node(in): operand to check
  *   info(in): spec to look for
@@ -645,7 +647,8 @@ qo_is_non_null_boolean_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, SPEC_
     case PT_GT_SOME:
     case PT_LT_SOME:
     case PT_LE_SOME:
-      if (node->info.expr.arg2 == NULL || !PT_IS_QUERY_NODE_TYPE (node->info.expr.arg2->node_type))
+      /* NULL IN {} is FALSE */
+      if (!qo_may_be_empty_collection (node->info.expr.arg2))
 	{
 	  return false;
 	}
