@@ -129,6 +129,17 @@ struct event_stat
   int trace_log_flush_time;
 };
 
+/* What OOS value reads (oos_read, oos_read_many) cost: their page fixes, the reads those fixes made and the time
+ * spent in them.  A thread counts its own while it traces; a scan's trace takes the difference across its own
+ * window, so a scan's figures are a part of its fetch, ioread and time. */
+typedef struct oos_read_stats OOS_READ_STATS;
+struct oos_read_stats
+{
+  struct timeval elapsed;
+  UINT64 fetches;
+  UINT64 ioreads;
+};
+
 typedef std::thread::id thread_id_t;
 
 // FIXME - move these enum to cubthread::entry
@@ -302,6 +313,7 @@ namespace cubthread
       int trace_format;
       bool on_trace;
       bool clear_trace;
+      OOS_READ_STATS oos_read_stats;	/* only while on_trace; never reset, read as differences */
       bool trace_plan_detail;	/* XASL_TRACE_PLAN_DETAIL: the trace shows the compiled expression programs */
 
       /* for lock free structures */
