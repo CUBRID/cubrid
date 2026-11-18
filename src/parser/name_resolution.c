@@ -491,7 +491,7 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
    * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
    * on any unbound name in the value clause. A target with its columns, in the derived
    * dblink table shape, is bound, so it is checked like a local one. */
-  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
+  if (PT_SPEC_IS_REMOTE_WITHOUT_COLUMNS (spec))
     {
       *continue_walk = PT_STOP_WALK;
       return node;
@@ -559,7 +559,7 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
    * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec that is
    * not in the derived dblink table shape, so this post callback must not decrement it
    * either, or *level_p underflows. */
-  if (spec->info.spec.remote_server_name && !PT_SPEC_IS_DERIVED (spec))
+  if (PT_SPEC_IS_REMOTE_WITHOUT_COLUMNS (spec))
     {
       return node;
     }
@@ -1315,66 +1315,76 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      REMOTE_COLS *remote;
 	      PT_DBLINK_INFO *dblink_table = &table->info.dblink_table;
 
-	      if (table->info.dblink_table.is_name && table->info.dblink_table.url == NULL)
+	      /* A remote DML target in this shape can have its scope bound more than once in one
+	       * statement. A MERGE binds its target for each clause and again for the whole
+	       * statement. The columns are fetched the first time only, as each fetch connects to
+	       * the remote and asks it for the columns. */
+	      if (spec->info.spec.remote_server_name == NULL || dblink_table->remote_col_list == NULL)
 		{
-		  if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
+		  if (table->info.dblink_table.is_name && table->info.dblink_table.url == NULL)
 		    {
+		      if (pt_resolve_dblink_server_name (parser, table, NULL) != NO_ERROR)
+			{
+			  return;
+			}
+		    }
+
+		  /* remote table's column list */
+		  rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
+		  if (rmt_tbl_cols == NULL)
+		    {
+		      PT_ERRORf (parser, table, "Failed to get column information for memory allocation error",
+				 ER_DBLINK);
 		      return;
 		    }
-		}
 
-	      /* remote table's column list */
-	      rmt_tbl_cols = new (std::nothrow) S_REMOTE_TBL_COLS;
-	      if (rmt_tbl_cols == NULL)
-		{
-		  PT_ERRORf (parser, table, "Failed to get column information for memory allocation error", ER_DBLINK);
-		  return;
-		}
+		  err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols,
+							 (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED) != 0);
 
-	      err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols,
-						     (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED) != 0);
+		  if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
+		    {
+		      /* error from table-name@server */
+		      if (err < 0)
+			{
+			  goto error_exit;
+			}
 
-	      if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
-		{
-		  /* error from table-name@server */
+		      if (table->info.dblink_table.cols == NULL)
+			{
+			  if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
+			    {
+			      if (!pt_has_error (parser))
+				{
+				  PT_ERROR (parser, table, "Failed to make select-list for dblink");
+				}
+			      goto error_exit;
+			    }
+			}
+		    }
+
+		  /* error from dblink(server, 'select ... from ...' */
 		  if (err < 0)
 		    {
 		      goto error_exit;
 		    }
 
-		  if (table->info.dblink_table.cols == NULL)
+		  /* save the column lists to free at end of parsing */
+		  remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
+		  if (remote == NULL)
 		    {
-		      if (pt_remake_dblink_select_list (parser, &spec->info.spec, rmt_tbl_cols) != NO_ERROR)
-			{
-			  if (!pt_has_error (parser))
-			    {
-			      PT_ERROR (parser, table, "Failed to make select-list for dblink");
-			    }
-			  goto error_exit;
-			}
+		      PT_INTERNAL_ERROR (parser, "parser_alloc");
+		      goto error_exit;
 		    }
+
+		  /* add dblink remote table's column list to Parser */
+		  remote->cols = (void *) rmt_tbl_cols;
+		  remote->next = parser->dblink_remote;
+		  parser->dblink_remote = remote;
+
+		  /* set only after the list is saved. error_exit deletes the list, and the check
+		   * above takes a set list as fetched. */
+		  dblink_table->remote_col_list = (void *) rmt_tbl_cols;
 		}
-
-	      /* error from dblink(server, 'select ... from ...' */
-	      if (err < 0)
-		{
-		  goto error_exit;
-		}
-
-	      dblink_table->remote_col_list = (void *) rmt_tbl_cols;
-
-	      /* save the column lists to free at end of parsing */
-	      remote = (REMOTE_COLS *) parser_alloc (parser, sizeof (REMOTE_COLS));
-	      if (remote == NULL)
-		{
-		  PT_INTERNAL_ERROR (parser, "parser_alloc");
-		  goto error_exit;
-		}
-
-	      /* add dblink remote table's column list to Parser */
-	      remote->cols = (void *) rmt_tbl_cols;
-	      remote->next = parser->dblink_remote;
-	      parser->dblink_remote = remote;
 
 	      table->info.dblink_table.cols =
 		parser_walk_tree (parser, table->info.dblink_table.cols, pt_bind_name_to_spec, spec, NULL, NULL);
@@ -3331,7 +3341,9 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       break;
 
     case PT_MERGE:
-      if (node->info.merge.into->info.spec.remote_server_name)
+      /* the remote resolves a remote target's names, unless the target has its columns in the
+       * derived dblink table shape. Then they are resolved here, as a local target's are. */
+      if (PT_SPEC_IS_REMOTE_WITHOUT_COLUMNS (node->info.merge.into))
 	{
 	  ;
 	}
@@ -3342,7 +3354,26 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /* resolve missing attr_list as star */
 	      if (!node->info.merge.insert.attr_list)
 		{
+		  /* A remote target here is in the derived dblink table shape (see above).
+		   * Such a spec gets its columns only when its scope is bound, so bind it
+		   * before the star is expanded. */
+		  if (node->info.merge.into->info.spec.remote_server_name)
+		    {
+		      scopestack.specs = node->info.merge.into;
+		      bind_arg->scopes = &scopestack;
+		      spec_frame.next = bind_arg->spec_frames;
+		      spec_frame.extra_specs = NULL;
+		      bind_arg->spec_frames = &spec_frame;
+		      pt_bind_scope (parser, bind_arg);
+		      if (pt_has_error (parser))
+			{
+			  node = NULL;
+			  *continue_walk = PT_STOP_WALK;
+			  break;
+			}
+		    }
 		  node->info.merge.insert.attr_list = pt_resolve_star (parser, node->info.merge.into, NULL);
+		  node->info.merge.flags |= PT_MERGE_INFO_INSERT_COLUMNS_FILLED;
 		  if (parser->flag.is_parsing_static_sql)
 		    {
 		      pt_record_static_sql_star (parser, PT_SS_MERGE_INSERT_COLUMNS, -1,
@@ -3393,7 +3424,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  break;
 	}
 
-      if (node->info.merge.into->info.spec.remote_server_name == NULL)
+      if (!PT_SPEC_IS_REMOTE_WITHOUT_COLUMNS (node->info.merge.into))
 	{
 	  parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	}
@@ -13726,6 +13757,69 @@ pt_gather_dblink_cols_in_dml (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
 
   (void) parser_walk_tree (parser, stmt, pt_gather_dblink_cols_in_dml_pre, stmt, NULL, NULL);
+}
+
+/* A SET left-hand side or the INSERT column list names this column. So it is the target's. */
+static void
+pt_gather_merge_target_col (PARSER_CONTEXT * parser, S_LINK_COLUMNS * lkcol, PT_NODE * node)
+{
+  if (node->node_type == PT_NAME && node->type_enum != PT_TYPE_STAR)
+    {
+      check_for_already_exists (parser, lkcol, node->info.name.resolved, node->info.name.original);
+    }
+  else if (node->node_type == PT_DOT_ && node->info.dot.arg1->node_type == PT_NAME
+	   && node->info.dot.arg2->node_type == PT_NAME)
+    {
+      check_for_already_exists (parser, lkcol, node->info.dot.arg1->info.name.original,
+				node->info.dot.arg2->info.name.original);
+    }
+}
+
+/*
+ * pt_gather_dblink_cols_in_merge_target () - add the columns a remote MERGE with a local source
+ *   names on its target to the target's remote select list
+ *   return:
+ *   parser(in): parser context
+ *   merge(in): the PT_MERGE, its target just given the derived dblink table shape
+ *
+ * Note: the shape starts the list with a star, which describes the visible columns only. A column
+ *   the statement names besides is described too, so an invisible one is found by its name. SET and
+ *   the INSERT column list name target columns, which pt_dml_gather_source_refs () leaves out.
+ */
+void
+pt_gather_dblink_cols_in_merge_target (PARSER_CONTEXT * parser, PT_NODE * merge)
+{
+  PT_NODE *spec = merge->info.merge.into;
+  PT_NODE *table, *assign, *attr;
+  S_LINK_COLUMNS lkcol;
+
+  if (spec == NULL || spec->info.spec.derived_table_type != PT_DERIVED_DBLINK_TABLE
+      || spec->info.spec.derived_table == NULL || spec->info.spec.derived_table->node_type != PT_DBLINK_TABLE
+      || spec->info.spec.range_var == NULL)
+    {
+      return;
+    }
+  table = spec->info.spec.derived_table;
+
+  memset (&lkcol, 0x00, sizeof (lkcol));
+  lkcol.col_list = table->info.dblink_table.sel_list;
+  lkcol.tbl_name_node = spec->info.spec.range_var;
+  /* a MERGE joins two tables, so a bare name may be the source's */
+  lkcol.multi_source = true;
+
+  pt_dml_gather_source_refs (parser, merge, &lkcol);
+  for (assign = merge->info.merge.update.assignment; assign != NULL; assign = assign->next)
+    {
+      pt_gather_merge_target_col (parser, &lkcol, assign->info.expr.arg1);
+    }
+  for (attr = merge->info.merge.insert.attr_list; attr != NULL; attr = attr->next)
+    {
+      pt_gather_merge_target_col (parser, &lkcol, attr);
+    }
+
+  table->info.dblink_table.sel_list = lkcol.col_list;
+  table->info.dblink_table.needs_describe |= lkcol.needs_describe;
+  table->info.dblink_table.uncertain_name_seen |= lkcol.uncertain_name_seen;
 }
 
 int
