@@ -4361,14 +4361,9 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
 	    {
 	      output_ctx ("NULL");
 	    }
-	  else if (arg_type == DB_TYPE_SHORT || arg_type == DB_TYPE_INTEGER || arg_type == DB_TYPE_BIGINT
-		   || arg_type == DB_TYPE_FLOAT || arg_type == DB_TYPE_DOUBLE || arg_type == DB_TYPE_NUMERIC)
-	    {
-	      /* a value, kept as the string it converts from at a call */
-	      output_ctx ("%s", db_get_string (&arg_default_val));
-	    }
 	  else
 	    {
+	      /* a value, kept as the string it converts from at a call: written as a string, of any type */
 	      desc_value_print (output_ctx, &arg_default_val);
 	    }
 	}

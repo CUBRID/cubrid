@@ -870,7 +870,9 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, &reads_statement_clock);
       if (default_next_node_list != NULL && reads_statement_clock)
 	{
-	  // the defaults are evaluated here, and the statement did not ask for the clock itself
+	  // the defaults stay in the statement: mark it as reading the clock, so that each later execution of a
+	  // prepared CALL fetches the clock as any statement does.  This execution has passed that point
+	  statement->flag.si_datetime = 1;
 	  error = db_ensure_server_info (parser, SI_SYS_DATETIME);
 	}
       statement->info.method_call.arg_list = parser_append_node (default_next_node_list,
@@ -2548,6 +2550,8 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
 
 	for (int i = 0; i < NUM_SP_ARG_ATTR; i++)
 	  {
+	    // a copy read for the previous parameter
+	    db_value_clear (&entry.vals[i]);
 	    error = obj_get (arg_mop_p, sp_args_get_entry_name (i).data (), &entry.vals[i]);
 	    if (error != NO_ERROR)
 	      {
