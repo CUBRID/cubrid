@@ -7938,8 +7938,9 @@ pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr)
 end:
   /* The thread that gave up is off the queue. When no blocked reader or writer is left, clear waiter_exists as
    * pgbuf_wakeup_reader_writer () does: a stale bit makes pgbuf_latch_bcb_upon_fix () block every later READ
-   * request on a READ-latched page, and keeps the lock-free READ path off, until a holder unlatches. The caller
-   * holds the BCB mutex, under which every waiter_exists transition is made. */
+   * request from a non-holder on a READ-latched page, and keeps the lock-free READ path off, until the last holder
+   * unlatches. The BCB mutex taken at the top of this function is still held here, and every waiter_exists
+   * transition is made under it. */
   if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
     {
       set_waiter_exists (&bufptr->atomic_latch, false);
@@ -8015,6 +8016,12 @@ try_again:
     }
   else if (r == ER_CSS_PTHREAD_COND_TIMEDOUT)
     {
+      /* thread_suspend_timeout_wakeup_and_unlock_entry () returns with th_entry_lock released. Take it again, as the
+       * interrupt branch above does: a waker grants the latch and sets THREAD_PGBUF_RESUMED under this lock
+       * (pgbuf_wakeup_reader_writer ()), so a grant must not fall between the check below and the PGBUF_NO_LATCH
+       * write, or the granted latch is left with no holder. Each path below releases the lock once. */
+      thread_lock_entry (thread_p);
+
       /* rollback operation, postpone operation, etc. */
       if (thread_p->resume_status == THREAD_PGBUF_RESUMED)
 	{
