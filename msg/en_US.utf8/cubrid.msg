@@ -2030,6 +2030,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 No options specified for ALTER SENSITIVITY LABEL.
 346 The level of a sensitivity label grade must be 1 or greater.
+347 %1$s is specified more than once for a sensitivity label.
 
 
 

@@ -114,6 +114,8 @@ extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, container_3 *ctn, container_2 info);
+static void pt_fill_sensitivity_label_component_container (PARSER_CONTEXT * parser, container_3 * ctn,
+							   container_2 component);
 /*%CODE_END%*/%}
 
 %{
@@ -1077,6 +1079,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c3> of_serial_owner_clause
 %type <c3> delete_from_using
 %type <c3> trigger_status_or_priority_or_change_owner
+%type <c3> sensitivity_label_component_list
 
 %type <c2> sp_return_type
 %type <c2> extended_table_spec_list
@@ -1103,6 +1106,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> connect_item
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
+%type <c2> sensitivity_label_component
 %type <c2> class_name_with_server_name
 %type <number> opt_index_with_clause
 %type <number> index_with_item_list
@@ -22942,6 +22946,33 @@ opt_sensitivity_label_level
 		}}
 	;
 
+sensitivity_label_component_list
+	: sensitivity_label_component_list ',' sensitivity_label_component
+		{{
+			container_3 ctn = $1;
+
+			pt_fill_sensitivity_label_component_container (this_parser, &ctn, $3);
+			$$ = ctn;
+		}}
+	| sensitivity_label_component
+		{{
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, NULL, NULL, NULL);
+
+			pt_fill_sensitivity_label_component_container (this_parser, &ctn, $1);
+			$$ = ctn;
+		}}
+	;
+
+sensitivity_label_component
+	: sensitivity_label_kind '=' sensitivity_label_name
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER ($1), $3);
+			$$ = ctn;
+		}}
+	;
+
 %%
 
 END_SUPPRESS_WARNING_BISON_FLEX
@@ -26292,6 +26323,48 @@ pt_fill_sp_option_container(PARSER_CONTEXT *parser,  int buffer_pos, container_3
 
     set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
     ctn->c3 = FROM_NUMBER(set_bits);
+}
+
+static void
+pt_fill_sensitivity_label_component_container (PARSER_CONTEXT * parser, container_3 * ctn, container_2 component)
+{
+  /* container order
+   * 1: GRADE
+   * 2: INFO_TYPE
+   * 3: SOURCE
+   */
+  PT_NODE *name = CONTAINER_AT_1 (component);
+
+  switch (TO_NUMBER (CONTAINER_AT_0 (component)))
+    {
+    case PT_SENSITIVITY_LABEL_GRADE:
+      if (ctn->c1 != NULL)
+	{
+	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_DUPLICATE_COMPONENT,
+		      "GRADE");
+	}
+      ctn->c1 = name;
+      break;
+    case PT_SENSITIVITY_LABEL_INFO_TYPE:
+      if (ctn->c2 != NULL)
+	{
+	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_DUPLICATE_COMPONENT,
+		      "INFO_TYPE");
+	}
+      ctn->c2 = name;
+      break;
+    case PT_SENSITIVITY_LABEL_SOURCE:
+      if (ctn->c3 != NULL)
+	{
+	  PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_DUPLICATE_COMPONENT,
+		      "SOURCE");
+	}
+      ctn->c3 = name;
+      break;
+    default:
+      assert (0);
+      break;
+    }
 }
 
 static bool
