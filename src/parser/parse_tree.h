@@ -1675,9 +1675,9 @@ typedef enum
   PT_SPEC_FLAG_DUMMY_REMOVED = 0x20000,	/* this spec was originally a subquery but was resolved to a table
 					 * during dummy SELECT removal; invisible columns should be excluded from this spec */
   PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000,	/* the remote source spec of a DML statement, and the derived table
-					 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
-					 * asked for, so it must not hide the remote invisible columns the statement references - unlike
-					 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
+						 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
+						 * asked for, so it must not hide the remote invisible columns the statement references - unlike
+						 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
   PT_SPEC_FLAG_FOR_UPDATE_UNLESS_REEVALUATED = 0x80000	/* a DML target left to the force-phase reevaluation; locked
 							 * at select as FOR UPDATE where the executor does not
 							 * reevaluate */
