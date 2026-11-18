@@ -4838,8 +4838,10 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
       /* callers usually expect a "deallocated" page. we need to simulate that.
        * note that maybe we can do without really deallocating. a page type update would be enough. this is however the
        * safest way to do it, even though not optimal. the case will not affect performance in any benchmark or
-       * production scenario anyway. */
-      pgbuf_dealloc_page (thread_p, page_part_ftab_first, PGBUF_DEALLOC_KEEP_CONTENTS);
+       * production scenario anyway.
+       * the caller writes the new page over the table page before this system operation ends. if the system operation
+       * is rolled back, the table page must come back with the sectors it held, so its contents are saved. */
+      pgbuf_dealloc_page (thread_p, page_part_ftab_first, PGBUF_DEALLOC_SAVE_CONTENTS);
       page_part_ftab_first = NULL;
 
       if (alloc_type == FILE_ALLOC_TABLE_PAGE_FULL_SECTOR)
