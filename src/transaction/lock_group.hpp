@@ -32,6 +32,7 @@
 #include "lock_manager.h"
 #include "thread_compat.hpp"
 
+#include <atomic>
 #include <pthread.h>
 
 /* the releases called with a page fixed, which a thread hands to the entrance owner asleep (lock_group_guard) */
@@ -53,46 +54,6 @@ struct lk_pending_release
   bool force;
 };
 
-/* the clock of LK_GROUP.cond's timed waits: a wall clock set back would stretch them */
-#if defined (WINDOWS)
-#define LK_GROUP_COND_CLOCK CLOCK_REALTIME
-#else
-#define LK_GROUP_COND_CLOCK CLOCK_MONOTONIC
-#endif
-
-/*
- * The threads of one transaction in the lock manager. While a parallel section of the transaction is open, they
- * enter it one at a time (lock_group_guard), so the transaction's lock state keeps a single writer.
- */
-typedef struct lk_group LK_GROUP;
-struct lk_group
-{
-  int tran_index;		/* the owning unit: locks its threads take belong to this transaction */
-  int sections;			/* open parallel sections (__atomic) */
-  /* written under the mutex, but owner and the depths; owner_sleeping, owner_wait_key and owner_held_row are also read
-   * only under it, guest outside it only to see the reader's own role and in debug checks. No lock is taken in it. */
-  pthread_mutex_t mutex;
-  pthread_cond_t cond;		/* the entrance freed, the owner asleep, or an abort for the waiters to see */
-  THREAD_ENTRY *owner;		/* the thread inside: taken by a CAS from NULL, given back with no mutex (__atomic) */
-  int depth;			/* the owner's re-entries; only the owner touches it */
-  THREAD_ENTRY *guest;		/* a second thread let in while the owner sleeps (lock_group_guard; __atomic) */
-  int guest_depth;		/* the guest's re-entries; only the guest touches it */
-  int waiters;			/* threads in a timed wait (__atomic: an owner leaving reads it with no mutex) */
-  bool owner_sleeping;		/* the owner waits for another transaction's lock: a guest may come in */
-  bool owner_blocked;		/* owner_sleeping, or since waiting for its guest to leave: nothing else may wait
-				 * (__atomic: the fast path reads it with no mutex) */
-  LK_RES_KEY owner_wait_key;	/* the resource it waits for, while owner_sleeping */
-  UINT64 owner_held_row;	/* the row it holds while it waits on a self-lock (deferred_wake.held_row), or 0 */
-  bool interrupted;		/* an interrupt came while sections were open; cleared when they close (__atomic) */
-  bool abort_deferred;		/* an abort waits for the section owner or a PL callback's caller; cleared when the
-				 * transaction ends (__atomic) */
-  LK_PENDING_RELEASE *pending_release;	/* run by the owner before it leaves (__atomic: read leaving with no mutex) */
-#if !defined (NDEBUG)
-  THREAD_ENTRY *solo_owner;	/* the thread inside with no section open, to catch a second one */
-  int solo_depth;
-#endif
-};
-
 typedef enum
 {
   LK_GROUP_ACQUIRE,		/* may sleep for another transaction */
@@ -100,17 +61,123 @@ typedef enum
   LK_GROUP_RELEASE		/* gives up or changes locks, however the transaction is to end */
 } LK_GROUP_REQUEST;
 
-static inline bool
-lock_group_in_section (const LK_GROUP * group)
-{
-  return __atomic_load_n (&group->sections, __ATOMIC_ACQUIRE) > 0;
-}
-
 static inline LK_GROUP_REQUEST
 lock_group_acquire_request (int cond_flag)
 {
   return (cond_flag == LK_COND_LOCK) ? LK_GROUP_ACQUIRE_COND : LK_GROUP_ACQUIRE;
 }
+
+/*
+ * The threads of one transaction in the lock manager. While a parallel section of the transaction is open, they
+ * enter it one at a time (lock_group_guard), so the transaction's lock state keeps a single writer.
+ */
+class lock_group
+{
+  public:
+    explicit lock_group (int tran_index);
+    ~lock_group ();
+
+    lock_group (const lock_group &) = delete;
+    lock_group &operator= (const lock_group &) = delete;
+
+    int get_tran_index () const
+    {
+      return m_tran_index;
+    }
+    bool in_section () const
+    {
+      return m_sections.load (std::memory_order_acquire) > 0;
+    }
+    bool is_owner (const THREAD_ENTRY *thread_p) const
+    {
+      return m_owner.load (std::memory_order_acquire) == thread_p;
+    }
+    bool is_guest (const THREAD_ENTRY *thread_p) const
+    {
+      return m_guest.load (std::memory_order_acquire) == thread_p;
+    }
+
+    /* the parallel sections and the transaction's end (lock_group_section_begin () and the rest of lock_manager.h) */
+    void section_begin ();
+    void section_end ();
+    void clear ();
+    bool defer_abort (THREAD_ENTRY *thread_p, bool to_pl_caller);
+    bool is_abort_deferred () const
+    {
+      return m_abort_deferred.load (std::memory_order_acquire);
+    }
+    void clear_abort_deferred ()
+    {
+      m_abort_deferred.store (false, std::memory_order_release);
+    }
+    int abort_reason () const;
+    bool holds_interrupt () const;
+
+    /* a lock wait of one of its threads (lock_suspend ()) */
+    void start_wait (bool in_group, INT64 stime);
+    void end_wait (bool in_group, const THREAD_ENTRY *thread_p);
+    void owner_sleeps (const LK_RES_KEY *wait_key, UINT64 held_row);
+    void wakes (bool is_owner, bool interrupted);
+    void wait_for_guest ();
+    void keep_interrupt ();
+    int step_out (THREAD_ENTRY *thread_p);
+    void step_back (THREAD_ENTRY *thread_p, int depth);
+
+#if !defined (NDEBUG)
+    int solo_step_out (THREAD_ENTRY *thread_p);
+    void solo_step_back (THREAD_ENTRY *thread_p, int depth);
+    bool is_alone (THREAD_ENTRY *thread_p) const;
+#endif
+
+  private:
+    friend class lock_group_guard;
+
+    /* the threads take turns only in a section; true here would make them take turns always */
+    bool is_gated () const
+    {
+      return in_section ();
+    }
+    bool try_own (THREAD_ENTRY *thread_p);
+    bool spin_to_own (THREAD_ENTRY *thread_p);
+    void timed_wait ();
+    bool wait_for_owner ();
+    void give_back ();
+    void leave (THREAD_ENTRY *thread_p);
+    void guest_leave ();
+    void wait_guest_locked ();
+#if !defined (NDEBUG)
+    bool solo_enter (THREAD_ENTRY *thread_p);
+    void solo_leave ();
+#endif
+
+    const int m_tran_index;	/* the owning unit: locks its threads take belong to this transaction */
+    std::atomic<int> m_sections;	/* open parallel sections */
+    /* written under the mutex, but the owner, the depths and the transaction end's m_abort_deferred; m_owner_wait_key
+     * and m_owner_held_row are also read only under it, m_guest and m_owner_sleeping outside it only to see the
+     * reader's own role and in debug checks. No lock is taken in it. A pthread cond, as its timed waits must read
+     * CLOCK_MONOTONIC on any glibc (timed_wait ()). */
+    pthread_mutex_t m_mutex;
+    pthread_cond_t m_cond;	/* the entrance freed, the owner asleep, or an abort for the waiters to see */
+    std::atomic<THREAD_ENTRY *> m_owner;	/* the thread inside: taken by a CAS from NULL, given back with no mutex */
+    int m_depth;		/* the owner's re-entries; only the owner touches it */
+    std::atomic<THREAD_ENTRY *> m_guest;	/* a second thread let in while the owner sleeps */
+    int m_guest_depth;		/* the guest's re-entries; only the guest touches it */
+    std::atomic<int> m_waiters;	/* threads in a timed wait: an owner leaving reads it with no mutex */
+    std::atomic<bool> m_owner_sleeping;	/* the owner waits for another transaction's lock: a guest may come in */
+    /* m_owner_sleeping, or since waiting for its guest to leave: nothing else may wait. The fast path reads it with
+     * no mutex. */
+    std::atomic<bool> m_owner_blocked;
+    LK_RES_KEY m_owner_wait_key;	/* the resource it waits for, while m_owner_sleeping */
+    UINT64 m_owner_held_row;	/* the row it holds while it waits on a self-lock (deferred_wake.held_row), or 0 */
+    std::atomic<bool> m_interrupted;	/* an interrupt came while sections were open; cleared when they close */
+    /* an abort waits for the section owner or a PL callback's caller; cleared when the transaction ends */
+    std::atomic<bool> m_abort_deferred;
+    std::atomic<LK_PENDING_RELEASE *> m_pending_release;	/* run by the owner before it leaves */
+#if !defined (NDEBUG)
+    std::atomic<THREAD_ENTRY *> m_solo_owner;	/* the thread inside with no section open, to catch a second one */
+    int m_solo_depth;
+#endif
+};
 
 class lock_group_guard
 {
@@ -140,36 +207,20 @@ class lock_group_guard
       ENTERED
     };
 
-    LK_GROUP *m_group;
+    lock_group *m_group;
     THREAD_ENTRY *m_thread_p;
     state m_state;
     int m_lock_result;
 };
 
-extern void lock_group_init_cond (LK_GROUP * group);
-extern int lock_group_abort_reason (const LK_GROUP * group);
 extern void lock_group_set_abort_error (int tran_index, int error);
 extern void lock_pending_release_init (LK_PENDING_RELEASE * release, LK_PENDING_RELEASE_TYPE type, const OID * oid,
 				       const OID * class_oid, LOCK lock, bool force);
 extern const LK_RES_KEY *lock_group_dir_oid_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key);
 extern const LK_RES_KEY *lock_group_row_release_key (const OID * oid, const OID * class_oid, LK_RES_KEY * key);
-extern void lock_group_keep_interrupt (LK_GROUP * group);
-extern void lock_group_wait_for_guest (LK_GROUP * group);
-extern int lock_group_step_out (LK_GROUP * group, THREAD_ENTRY * thread_p);
-extern void lock_group_step_back (LK_GROUP * group, THREAD_ENTRY * thread_p, int depth);
-extern void lock_group_start_wait (LK_GROUP * group, bool in_group, INT64 stime);
-extern void lock_group_end_wait (LK_GROUP * group, bool in_group, const THREAD_ENTRY * thread_p);
-extern bool lock_group_holds_interrupt (int tran_index);
-extern void lock_group_owner_sleeps (LK_GROUP * group, const LK_RES_KEY * wait_key, UINT64 held_row);
-extern void lock_group_wakes (LK_GROUP * group, bool is_owner, bool interrupted);
-#if !defined (NDEBUG)
-extern int lock_group_solo_step_out (LK_GROUP * group, THREAD_ENTRY * thread_p);
-extern void lock_group_solo_step_back (LK_GROUP * group, THREAD_ENTRY * thread_p, int depth);
-extern bool lock_group_is_alone (THREAD_ENTRY * thread_p, int tran_index);
-#endif
 
 /* from lock_manager.c */
-extern LK_GROUP *lock_get_tran_group (int tran_index);
+extern lock_group *lock_get_tran_group (int tran_index);
 extern bool lock_has_tran_lock (int tran_index);
 extern bool lock_is_tran_deadlock_victim (int tran_index);
 extern INT64 *lock_get_wait_stime (int tran_index);
