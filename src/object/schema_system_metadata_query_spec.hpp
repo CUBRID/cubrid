@@ -81,4 +81,15 @@
     ")" \
   ")"
 
+/* EXECUTE on a stored procedure, or on the package that has it */
+#define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_expr, pkg_of_expr) \
+  "(" \
+    AUTH_CHECK_PRIVILEGE (owner_name_expr, sp_expr, "EXECUTE") " " \
+    "OR (" pkg_of_expr " IS NOT NULL AND {" pkg_of_expr "} SUBSETEQ (" \
+      "SELECT SUM (SET {[au].[object_of]}) FROM [" CT_CLASSAUTH_NAME "] AS [au] " \
+      "WHERE {[au].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ") " \
+      "AND [au].[auth_type] = 'EXECUTE'" \
+    "))" \
+  ")"
+
 #endif // _SCHEMA_SYSTEM_METADATA_QUERY_SPEC_HPP_

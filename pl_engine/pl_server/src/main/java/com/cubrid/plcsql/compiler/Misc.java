@@ -30,9 +30,11 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.plcsql.compiler.antlrgen.PlcLexer;
 import com.cubrid.plcsql.compiler.ast.NodeList;
 import java.io.PrintStream;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -81,6 +83,7 @@ public class Misc {
     public enum RoutineType {
         FUNC,
         PROC,
+        PKG_INIT,
     }
 
     public static String peelCharString(String s) {
@@ -139,27 +142,58 @@ public class Misc {
     }
 
     public static String getNormalizedText(ParseTree ctx) {
+        return getNormalizedText(ctx, true);
+    }
+
+    public static String getNormalizedText(ParseTree ctx, boolean separate) {
         assert ctx != null;
         int children = ctx.getChildCount();
 
-        if (children <= 1) {
-            return peelId(ctx.getText().toUpperCase());
+        if (ctx instanceof TerminalNode) {
+
+            Token token = ((TerminalNode) ctx).getSymbol();
+            if (token.getType() == PlcLexer.CHAR_STRING) {
+                return ctx.getText();
+            } else {
+                return peelId(ctx.getText().toUpperCase(Locale.ROOT));
+            }
         } else {
+
             StringBuffer sbuf = new StringBuffer();
             for (int i = 0; i < children; i++) {
-                if (i > 0) {
+                if (i > 0 && separate) {
                     sbuf.append(' ');
                 }
                 ParseTree child = ctx.getChild(i);
-                sbuf.append(getNormalizedText(child));
+                sbuf.append(getNormalizedText(child, separate));
             }
             return sbuf.toString();
         }
     }
 
     public static String getNormalizedText(String s) {
-        return peelId(s.toUpperCase());
+        return peelId(s.toUpperCase(Locale.ROOT));
     }
+
+    // Key of a direct call target: its generated Java class and the method in it. There is no
+    // overloading of routines (unique_name is the catalog's primary key), so the pair identifies
+    // the method. uniqueName is <owner>.<routine> or <owner>.<package>.<routine>.
+    public static String methodKey(String targetClass, String uniqueName) {
+        int dot = uniqueName.lastIndexOf('.');
+        return targetClass + "." + (dot < 0 ? uniqueName : uniqueName.substring(dot + 1));
+    }
+
+    /*
+     * Convert case of an identifier using the DB server locale.
+     * TODO: use them
+    public static String uppercaseLikeServer(String s) {
+        return s.toUpperCase(Server.getDbLocale());
+    }
+
+    public static String lowercaseLikeServer(String s) {
+        return s.toLowerCase(Server.getDbLocale());
+    }
+     */
 
     public static void printIndent(PrintStream out, int indentLevel) {
 
@@ -206,7 +240,7 @@ public class Misc {
         nonTerminal =
                 nonTerminal.substring(
                         0, nonTerminal.length() - 7); // 7: length of trailing 'Context'
-        return nonTerminal.toLowerCase();
+        return nonTerminal.toLowerCase(Locale.ROOT);
     }
 
     private static final int SMALL_INDENT_LEVEL_BOUND = 20;

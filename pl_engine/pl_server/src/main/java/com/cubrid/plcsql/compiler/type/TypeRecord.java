@@ -69,14 +69,14 @@ public class TypeRecord extends Type {
         return String.format("%s%%ROWTYPE", name);
     }
 
-    private static String getJavaName(String name) {
-        return String.format("$Record_%s", name.replace('.', '_'));
+    private static String getJavaName(String nameAndSeq) {
+        return String.format("$Record_%s", nameAndSeq.replace('.', '_'));
     }
 
     private TypeRecord(String name, int seq, List<Misc.Pair<String, Type>> selectList) {
         super(
                 IDX_RECORD,
-                getPlcName(name + seq),
+                getPlcName(name),
                 getJavaName(name + seq),
                 null,
                 NO_DB_TYPE,

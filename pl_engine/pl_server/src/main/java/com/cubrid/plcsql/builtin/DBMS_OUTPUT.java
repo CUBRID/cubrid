@@ -36,6 +36,8 @@ import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import java.io.IOException;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -60,7 +62,7 @@ public class DBMS_OUTPUT {
         }
     }
 
-    public static void enable(int size) throws Exception {
+    public static void enable(int size) throws IOException, SQLException {
         refuseIfServerSideSqlForbidden();
         Context c = getContext();
         c.getMessageBuffer().enable(size);
@@ -76,7 +78,7 @@ public class DBMS_OUTPUT {
                                                 true))));
     }
 
-    public static void disable() throws Exception {
+    public static void disable() throws IOException, SQLException {
         refuseIfServerSideSqlForbidden();
         Context c = getContext();
         c.getMessageBuffer().disable();
@@ -125,7 +127,8 @@ public class DBMS_OUTPUT {
             }
         }
 
-        cnt[0] = strs.length;
+        // strs is null when DBMS_OUTPUT is disabled or there is no line to get
+        cnt[0] = (strs == null) ? 0 : strs.length;
         line[0] = builder.toString();
     }
 

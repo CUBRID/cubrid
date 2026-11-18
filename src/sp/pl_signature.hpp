@@ -72,6 +72,7 @@ namespace cubpl
   {
     struct pl_sp_info
     {
+      char *compile_id;
       char *target_class_name;
       char *target_method_name;
       OID code_oid; // PL/CSQL

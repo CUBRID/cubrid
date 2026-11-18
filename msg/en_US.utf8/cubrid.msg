@@ -1518,10 +1518,16 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1399 Package compile error: %1$s
 1400 The owner or a member of DBA group can %1$s a package.
 1401 Dropping a system generated package is not allowed.
-1402 Package Procedure's unique name exceeds 255 characters.
+1402 Package procedure's unique name must be shorter than 255 bytes.
 1403 Duplicate package name '%1$s' in the name list.
 
-1404 Last Error
+1404 Neither stored %1$s '%2$s' nor package %3$s '%4$s' exists.
+
+1405 %1$s cannot be applied to package routine '%2$s'.
+1406 Ambiguous: '%1$s' matches both <user>.<name> pattern and <package>.<name> pattern.
+1407 Creating a system generated package or its body is not allowed.
+
+1408 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2041,6 +2047,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 
 339 Package "%1$s" does not exist.
+346 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2340,3 +2347,4 @@ $set 17 MSGCAT_SET_GLOSSARY
 5 synonym
 6 procedure
 7 package
+8 function

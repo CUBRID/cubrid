@@ -66,7 +66,7 @@ public class DeclParamOut extends DeclParam {
 
         DeclParamOut other = (DeclParamOut) o;
         return this.name.equals(other.name)
-                && this.typeSpec.type == other.typeSpec.type
+                && this.typeSpec.isSameAs(other.typeSpec)
                 && this.alsoIn == other.alsoIn;
     }
 

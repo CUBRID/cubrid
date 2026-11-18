@@ -39,7 +39,6 @@ import com.cubrid.plcsql.compiler.ast.Decl;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.ast.UnitPkg;
 import com.cubrid.plcsql.compiler.ast.UnitSp;
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
@@ -47,8 +46,10 @@ import com.cubrid.plcsql.compiler.visitor.TypeChecker;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
@@ -73,18 +74,11 @@ public class PlcsqlCompilerMain {
         }
     }
 
-    private static synchronized long getCompileSeqNo() {
-        return compileSeqNo++;
-    }
-
-    public static CompileResponse compilePLCSQL(CompileRequest request) {
-        return compilePLCSQL(request, Long.toString(getCompileSeqNo()));
-    }
-
-    public static CompileResponse compilePLCSQL(CompileRequest request, String compileSeqNo) {
+    public static CompileResponse compilePLCSQL(
+            CompileRequest request, Set<String> referencedClasses) {
 
         try {
-            return compileInner(new InstanceStore(), compileSeqNo, request);
+            return compileInner(new InstanceStore(), request, referencedClasses);
         } catch (SyntaxError e) {
             CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
@@ -125,8 +119,6 @@ public class PlcsqlCompilerMain {
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
-
-    private static long compileSeqNo = 1;
 
     private static final String STR_EXPECTING = " expecting ";
     private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
@@ -208,7 +200,7 @@ public class PlcsqlCompilerMain {
     }
 
     private static CompileResponse compileInner(
-            InstanceStore iStore, String compileSeqNo, CompileRequest request) {
+            InstanceStore iStore, CompileRequest request, Set<String> referencedClasses) {
 
         int type = request.type;
         String code = request.code;
@@ -313,7 +305,9 @@ public class PlcsqlCompilerMain {
         Unit unit;
         UnitSp unitSp = null;
         UnitPkg unitPkg = null;
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, compileSeqNo);
+        Set<String> referencedMethods = new HashSet<>();
+        ParseTreeConverter converter =
+                new ParseTreeConverter(iStore, owner, referencedClasses, referencedMethods);
 
         if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
             unit = unitSp = (UnitSp) converter.visit(codeTree);
@@ -327,27 +321,10 @@ public class PlcsqlCompilerMain {
         }
 
         // ------------------------------------------
-        // ask server semantic infomation
-        // . signature of a global procedure/function
-        // . whether a name represent a serial or not
-        // . type of a table column
-        converter.askServerSemanticQuestions();
-
-        if (verbose) {
-            t0 = logElapsedTime(logStore, "getting global semantics information from server", t0);
-        }
-
-        // ------------------------------------------
         // typechecking
 
-        Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
         TypeChecker typeChecker =
-                new TypeChecker(
-                        iStore,
-                        converter.symbolStack,
-                        converter.dependencies,
-                        owner,
-                        sqlUsesInRecursiveCalls);
+                new TypeChecker(iStore, converter.symbolStack, converter.dependencies, owner);
         typeChecker.visit(unit);
 
         if (verbose) {
@@ -357,14 +334,31 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode;
-        if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
-            javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
-        } else {
-            // temporary code
-            javaCode =
-                    String.format("public class %s { public int i = 1; }", unitPkg.getClassName());
+        // Slots of the unit's two per-invocation caches. The numbers are meaningful only within
+        // this compilation: each field's size and every call site's index come from these maps.
+        //
+        //   authCheckedIndex - one slot per directly-referenced class, keyed by its class name.
+        //                      Indexes authChecked, ownerName and targetClass, all of which are a
+        //                      property of the class rather than of a single routine in it.
+        //   methodIndex      - one slot per directly-referenced method, keyed by
+        // "<class>.<method>".
+        //                      Indexes method. A package class holds several routines, so this is
+        //                      finer-grained than authCheckedIndex.
+        Map<String, Integer> authCheckedIndex = new HashMap<>();
+        int slot = 0;
+        for (String cls : referencedClasses) {
+            authCheckedIndex.put(cls, slot++);
         }
+
+        Map<String, Integer> methodIndex = new HashMap<>();
+        slot = 0;
+        for (String mth : referencedMethods) {
+            methodIndex.put(mth, slot++);
+        }
+
+        String javaCode =
+                new JavaCodeWriter(iStore, authCheckedIndex, methodIndex, converter.unitOwner)
+                        .buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);

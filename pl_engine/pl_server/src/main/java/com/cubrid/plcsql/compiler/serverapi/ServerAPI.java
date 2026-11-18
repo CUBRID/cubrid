@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.serverapi;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
-import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.TypeInfo;
 import com.cubrid.jsp.protocol.GlobalSemanticsRequest;
 import com.cubrid.jsp.protocol.GlobalSemanticsResponse;
 import com.cubrid.jsp.protocol.Header;
@@ -109,7 +109,11 @@ public class ServerAPI {
     public static final int QUESTION_PROCEDURE = 1;
     public static final int QUESTION_FUNCTION = 2;
     public static final int QUESTION_SERIAL = 3;
-    public static final int QUESTION_COLUMN = 4;
+    public static final int QUESTION_ID_TYPE = 4;
+
+    // kind of <qualifier>.<id> in the answer to a QUESTION_ID_TYPE question
+    public static final int QID_TABLE_COLUMN = 0;
+    public static final int QID_PKG_VAR = 1; // package variable or constant
 
     public abstract static class Question implements PackableObject, UnPackableObject {
         public int seqNo = -1;
@@ -151,6 +155,9 @@ public class ServerAPI {
         // output
         public PlParamInfo[] params;
         public int directive; // TODO package
+        public String targetClass; // generated Java class name of the resolved procedure/package
+        public String
+                uniqueName; // canonical unique_name of the resolved routine (runtime EXECUTE check)
 
         public void setAnswer(int seqNo, PlParamInfo[] params) {
             this.seqNo = seqNo;
@@ -179,6 +186,9 @@ public class ServerAPI {
                     params[i] = new PlParamInfo(unpacker);
                 }
             }
+
+            targetClass = unpacker.unpackCString();
+            uniqueName = unpacker.unpackCString();
         }
 
         @Override
@@ -200,6 +210,9 @@ public class ServerAPI {
         public PlParamInfo[] params;
         public PlParamInfo retType; // SQL type
         public int directive; // TODO package
+        public String targetClass; // generated Java class name of the resolved function/package
+        public String
+                uniqueName; // canonical unique_name of the resolved routine (runtime EXECUTE check)
 
         public void setAnswer(int seqNo, PlParamInfo[] params, PlParamInfo retType) {
             this.seqNo = seqNo;
@@ -223,6 +236,9 @@ public class ServerAPI {
                     params[i] = new PlParamInfo(unpacker);
                 }
             }
+
+            targetClass = unpacker.unpackCString();
+            uniqueName = unpacker.unpackCString();
         }
 
         @Override
@@ -263,23 +279,24 @@ public class ServerAPI {
         }
     }
 
-    public static class ColumnType extends Question {
+    public static class IdType extends Question {
 
-        public ColumnType(String table, String column) {
-            this.table = table;
-            this.column = column;
+        public IdType(String qualifier, String id) {
+            this.qualifier = qualifier;
+            this.id = id;
         }
 
         // input
-        public String table;
-        public String column;
+        public String qualifier;
+        public String id;
 
         // output
-        public ColumnInfo colType; // SQL type if the column exists, otherwise null
+        public TypeInfo typeInfo; // SQL type if the id exists, otherwise null
+        public int qidKind; // QID_TABLE_COLUMN or QID_PKG_VAR
 
-        public void setAnswer(int seqNo, ColumnInfo colType) {
+        public void setAnswer(int seqNo, TypeInfo typeInfo) {
             this.seqNo = seqNo;
-            this.colType = colType;
+            this.typeInfo = typeInfo;
         }
 
         @Override
@@ -289,19 +306,20 @@ public class ServerAPI {
                 return;
             }
 
-            colType = new ColumnInfo(unpacker);
+            typeInfo = new TypeInfo(unpacker);
+            qidKind = unpacker.unpackInt();
         }
 
         @Override
         public void pack(CUBRIDPacker packer) {
             super.pack(packer);
-            String name = table + "." + column;
+            String name = qualifier + "." + id;
             packer.packString(name);
         }
 
         @Override
         public int getType() {
-            return QUESTION_COLUMN;
+            return QUESTION_ID_TYPE;
         }
     }
 }

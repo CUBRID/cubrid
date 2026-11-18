@@ -30,7 +30,10 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.Locale;
+import java.util.Set;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclPackage extends Decl {
@@ -43,20 +46,29 @@ public class DeclPackage extends Decl {
     public NodeList<Decl> pkgItems;
     public Body initializer;
 
+    // the package initializer is treated as a top level routine in the loop optimization
+    public StmtLoop.LoopOptimizables pkgInitLoopOptimizables;
+    public Set<SqlUse> pkgInitSqlUses;
+
     public DeclPackage(
             ParserRuleContext ctx,
             String name,
             String comment,
             NodeList<Decl> pkgItems,
-            Body initializer) {
+            Body initializer,
+            StmtLoop.LoopOptimizables pkgInitLoopOptimizables,
+            Set<SqlUse> pkgInitSqlUses) {
         super(ctx, name, comment);
 
         this.pkgItems = pkgItems;
         this.initializer = initializer;
+        this.pkgInitLoopOptimizables = pkgInitLoopOptimizables;
+        this.pkgInitSqlUses = pkgInitSqlUses;
     }
 
     public String getDeclBlockName() {
-        return name.toLowerCase() + '_' + (scope.level + 1);
+        // name came from Misc.getNormalizedText (), so case-convert it back the same way
+        return name.toLowerCase(Locale.ROOT) + '_' + (scope.level + 1);
     }
 
     @Override

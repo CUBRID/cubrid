@@ -833,11 +833,12 @@ namespace cubschema
       {SP_ATTR_ARG_COUNT, "integer"},
       {SP_ATTR_ARGS, format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {SP_ATTR_LANG, "integer"},
-      {SP_ATTR_PKG_NAME, format_varchar (SP_ATTR_PKG_NAME_LEN)},
+      {SP_ATTR_PKG_OF, CT_PACKAGE_NAME},
       {SP_ATTR_IS_SYSTEM_GENERATED, "integer"},
       {SP_ATTR_DIRECTIVE, "integer"},
       {SP_ATTR_TARGET_CLASS, format_varchar (SP_ATTR_TARGET_CLASS_LEN)},
       {SP_ATTR_TARGET_METHOD, format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
+      {SP_ATTR_CODE, CT_STORED_PROC_CODE_NAME},
       {SP_ATTR_OWNER, AU_USER_CLASS_NAME},
       {SP_ATTR_SQL_DATA_ACCESS, "integer"},
       {SP_ATTR_COMMENT, format_varchar (SP_ATTR_COMMENT_LEN)},
@@ -892,7 +893,9 @@ namespace cubschema
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
     {
-      {SP_CODE_ATTR_NAME, format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
+      {SP_CODE_ATTR_NAME, format_varchar (PLCSQL_TARGET_CLASS_LEN)}, // generated Java class name (= _db_stored_procedure.target_class)
+      {SP_CODE_ATTR_COMPILE_ID, format_varchar (PLCSQL_COMPILE_ID_LEN)},
+      {SP_CODE_ATTR_SP_OF, CT_STORED_PROC_NAME},
       {SP_CODE_ATTR_CREATED_TIME, format_varchar (16)},
       {SP_CODE_ATTR_OWNER, AU_USER_CLASS_NAME},
       {SP_CODE_ATTR_IS_STATIC, "integer"},
@@ -1213,15 +1216,15 @@ namespace cubschema
       {PKG_ATTR_FLAGS, "integer"}, // bit0: system pkg or not, bit1~: reserved
       {PKG_ATTR_OWNER, AU_USER_CLASS_NAME},
       {PKG_ATTR_CODE, CT_PACKAGE_CODE_NAME},
-      {PKG_ATTR_PROCEDURES_CNT, "integer"},
+      {PKG_ATTR_PROCEDURE_COUNT, "integer"},
       {PKG_ATTR_PROCEDURES, format_sequence (CT_STORED_PROC_NAME)},
-      {PKG_ATTR_VARIABLES_CNT, "integer"},
+      {PKG_ATTR_VARIABLE_COUNT, "integer"},
       {PKG_ATTR_VARIABLES, format_sequence (CT_PACKAGE_VAR_NAME)},
-      {PKG_ATTR_EXCEPTIONS_CNT, "integer"},
+      {PKG_ATTR_EXCEPTION_COUNT, "integer"},
       {PKG_ATTR_EXCEPTIONS, format_sequence (CT_PACKAGE_EXCEPTION_NAME)},
-      {PKG_ATTR_CURSORS_CNT, "integer"},
+      {PKG_ATTR_CURSOR_COUNT, "integer"},
       {PKG_ATTR_CURSORS, format_sequence (CT_PACKAGE_CURSOR_NAME)},
-      {PKG_ATTR_RECORD_TYPES_CNT, "integer"},
+      {PKG_ATTR_RECORD_TYPE_COUNT, "integer"},
       {PKG_ATTR_RECORD_TYPES, format_sequence (CT_PACKAGE_RECORD_TYPE_NAME)},
       {PKG_ATTR_COMMENT, format_varchar (1024)},
       {PKG_ATTR_CREATED_TIME, "datetime"},
@@ -1234,7 +1237,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1249,8 +1252,14 @@ namespace cubschema
 		   CT_PACKAGE_CODE_NAME,
 		   // columns
     {
-      {PKG_CODE_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
-      {PKG_CODE_ATTR_NAME, "string"},
+      // pkg_unique_name column is necessary even with the presence of pkg_of column because
+      // package body can be defined before its package spec (CREATE PACKAGE BODY bofore CREATE PACKAGE).
+      // Then, a _db_package_code record is created without a _db_package record, and pkg_of column cannot have a value.
+      {PKG_CODE_ATTR_PKG_UNIQUE_NAME, format_varchar (PKG_CODE_ATTR_PKG_UNIQUE_NAME_LEN)},
+      {PKG_CODE_ATTR_NAME, format_varchar (PLCSQL_TARGET_CLASS_LEN)}, // generated Java class name
+      {PKG_CODE_ATTR_COMPILE_ID, format_varchar (PLCSQL_COMPILE_ID_LEN)},
+      {PKG_CODE_ATTR_PKG_OF, CT_PACKAGE_NAME},
+      {PKG_CODE_ATTR_OWNER, AU_USER_CLASS_NAME},
       {PKG_CODE_ATTR_STYPE, "integer"},
       {PKG_CODE_ATTR_SCODE_SPEC, "string"},
       {PKG_CODE_ATTR_SCODE_BODY, "string"},
@@ -1259,7 +1268,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_CODE_ATTR_PKG_UNIQUE_NAME, nullptr}}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_CODE_ATTR_PKG_UNIQUE_NAME, nullptr}},
+      {DB_CONSTRAINT_UNIQUE, "u__db_package_code_name", {PKG_CODE_ATTR_NAME, nullptr}}
     },
 // authorization
     {
@@ -1279,7 +1289,7 @@ namespace cubschema
 		   CT_PACKAGE_VAR_NAME,
 		   // columns
     {
-      {PKG_VAR_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_VAR_ATTR_PKG_OF, CT_PACKAGE_NAME},
       {PKG_VAR_ATTR_NAME, format_varchar (255)},
       {PKG_VAR_ATTR_DATA_TYPE, "integer"},
       {PKG_VAR_ATTR_PREC, "integer"},
@@ -1289,7 +1299,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_VAR_ATTR_PKG_UNIQUE_NAME, PKG_VAR_ATTR_NAME, nullptr}}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_VAR_ATTR_PKG_OF, PKG_VAR_ATTR_NAME, nullptr}}
     },
 // authorization
     {
@@ -1309,13 +1319,13 @@ namespace cubschema
 		   CT_PACKAGE_EXCEPTION_NAME,
 		   // columns
     {
-      {PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_EXCEPTION_ATTR_PKG_OF, CT_PACKAGE_NAME},
       {PKG_EXCEPTION_ATTR_NAME, format_varchar (255)},
       {PKG_EXCEPTION_ATTR_COMMENT, format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME, PKG_EXCEPTION_ATTR_NAME, nullptr}}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_EXCEPTION_ATTR_PKG_OF, PKG_EXCEPTION_ATTR_NAME, nullptr}}
     },
 // authorization
     {
@@ -1335,7 +1345,7 @@ namespace cubschema
 		   CT_PACKAGE_CURSOR_NAME,
 		   // columns
     {
-      {PKG_CURSOR_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_CURSOR_ATTR_PKG_OF, CT_PACKAGE_NAME},
       {PKG_CURSOR_ATTR_NAME, format_varchar (255)},
       {PKG_CURSOR_ATTR_RECORD_TYPE, "string"},
       {PKG_CURSOR_ATTR_PARAMETERS, format_sequence ("string")}, // sequence of 'name:type' strings
@@ -1343,7 +1353,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_CURSOR_ATTR_PKG_UNIQUE_NAME, PKG_CURSOR_ATTR_NAME, nullptr}}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_CURSOR_ATTR_PKG_OF, PKG_CURSOR_ATTR_NAME, nullptr}}
     },
 // authorization
     {
@@ -1363,14 +1373,14 @@ namespace cubschema
 		   CT_PACKAGE_RECORD_TYPE_NAME,
 		   // columns
     {
-      {PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME, format_varchar (255)},
+      {PKG_RECORD_TYPE_ATTR_PKG_OF, CT_PACKAGE_NAME},
       {PKG_RECORD_TYPE_ATTR_NAME, format_varchar (255)},
       {PKG_RECORD_TYPE_ATTR_FIELDS, format_sequence ("string")}, // sequence of 'name:type:not-null-or-nullable:init-expr' strings
       {PKG_RECORD_TYPE_ATTR_COMMENT, format_varchar (1024)}
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME, PKG_RECORD_TYPE_ATTR_NAME, nullptr}}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_RECORD_TYPE_ATTR_PKG_OF, PKG_RECORD_TYPE_ATTR_NAME, nullptr}}
     },
 // authorization
     {

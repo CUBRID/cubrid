@@ -1058,6 +1058,8 @@ au_check_authorization_method (MOP obj, DB_VALUE *returnval, DB_VALUE *class_, D
  *   sp(in):
  *   owner(in):
  */
+#define SAVEPOINT_CHANGE_SP_OWNER "CHANGESPOWNER"
+
 static void
 au_change_sp_owner_method (MOP obj, DB_VALUE *returnval, DB_VALUE *sp, DB_VALUE *owner)
 {
@@ -1070,16 +1072,22 @@ au_change_sp_owner_method (MOP obj, DB_VALUE *returnval, DB_VALUE *sp, DB_VALUE 
     {
       if (owner != NULL && DB_IS_STRING (owner) && !DB_IS_NULL (owner) && db_get_string (owner) != NULL)
 	{
-	  sp_mop = jsp_find_stored_procedure (db_get_string (sp), DB_AUTH_NONE);
-	  if (sp_mop != NULL)
+	  // the same name resolution as ALTER PROCEDURE: an ambiguous name or a package routine (whose
+	  // owner is that of its package) is refused
+	  if (jsp_find_standalone_routine (db_get_string (sp), "change_sp_owner", &sp_mop) == NO_ERROR)
 	    {
-	      user = au_find_user (db_get_string (owner));
-	      if (user != NULL)
+	      if ((user = au_find_user (db_get_string (owner))) != NULL
+		  && tran_system_savepoint (SAVEPOINT_CHANGE_SP_OWNER) == NO_ERROR)
 		{
+		  // the owner change rewrites several rows: do not leave some of them changed on a failure
 		  error = au_change_sp_owner_with_transfer_privileges (NULL, sp_mop, user);
 		  if (error == NO_ERROR)
 		    {
 		      ok = 1;
+		    }
+		  else if (error != ER_LK_UNILATERALLY_ABORTED)
+		    {
+		      (void) tran_abort_upto_system_savepoint (SAVEPOINT_CHANGE_SP_OWNER);
 		    }
 		}
 	    }

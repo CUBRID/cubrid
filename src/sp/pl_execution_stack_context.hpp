@@ -175,8 +175,10 @@ namespace cubpl
 	return xs_callback_send_no_receive (m_thread_p, m_client_header, std::forward<Args> (args)...);
       }
 
+      // check_preexisting_error: false to have func process the reply even if the transaction is interrupted
+      //                          or an error is already set
       template <typename ... Args>
-      int send_data_to_client_recv (const xs_callback_func &func, Args &&... args)
+      int send_data_to_client_recv (const xs_callback_func &func, bool check_preexisting_error, Args &&... args)
       {
 	if (is_server_side_sql_forbidden ())
 	  {
@@ -184,7 +186,8 @@ namespace cubpl
 	    return reject_client_callback (true);
 	  }
 
-	return xs_callback_send_and_receive (m_thread_p, func, m_client_header, std::forward<Args> (args)...);
+	return xs_callback_send_and_receive (m_thread_p, func, check_preexisting_error, m_client_header,
+					     std::forward<Args> (args)...);
       }
 
       template <typename ... Args>

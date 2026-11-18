@@ -92,6 +92,7 @@ static int method_invoke_builtin (packing_unpacker &unpacker, DB_VALUE &result);
 static int method_invoke_builtin_internal (DB_VALUE &result, std::vector<DB_VALUE> &args, cubpl::pl_signature &sig);
 
 static int method_dispatch_internal (packing_unpacker &unpacker);
+static bool method_is_direct_call_callback (packing_unpacker &unpacker);
 
 /* FIXME: duplicated function implementation; The following three functions are ported from the client cursor (cursor.c) */
 static bool method_has_set_vobjs (DB_SET *set);
@@ -117,7 +118,7 @@ method_dispatch (unsigned int rc, char *methoddata, int methoddata_size)
 
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
-  if (depth > METHOD_MAX_RECURSION_DEPTH)
+  if (depth > METHOD_MAX_RECURSION_DEPTH && !method_is_direct_call_callback (unpacker))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
       error = ER_SP_TOO_MANY_NESTED_CALL;
@@ -170,7 +171,7 @@ method_dispatch (packing_unpacker &unpacker)
 
   tran_begin_libcas_function ();
   int depth = tran_get_libcas_depth ();
-  if (depth > METHOD_MAX_RECURSION_DEPTH)
+  if (depth > METHOD_MAX_RECURSION_DEPTH && !method_is_direct_call_callback (unpacker))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TOO_MANY_NESTED_CALL, 0);
       error = ER_SP_TOO_MANY_NESTED_CALL;
@@ -190,6 +191,36 @@ method_dispatch (packing_unpacker &unpacker)
 #endif
 
 #if !defined (SERVER_MODE)
+/*
+ * method_is_direct_call_callback () - whether the request is one of those around running a routine or a direct call
+ *   return: true for METHOD_CALLBACK_CHANGE_EXEC_RIGHTS, METHOD_CALLBACK_CHECK_EXECUTE_AUTH and
+ *           METHOD_CALLBACK_GET_CODE_BY_NAME
+ *   unpacker(in): the request, which is not consumed
+ *
+ * Note: The server switches the execution rights before and after it runs a routine, and a PL/CSQL routine checks
+ *       the EXECUTE authorization and gets the code of the routine it calls directly. So these requests for a routine
+ *       called from a query are one level deeper than that query. They only read the catalog and run no routine,
+ *       so they do not nest any further, and the server limits the nesting of routines on its own
+ *       (cubpl::session::create_and_push_stack ()). So they are let through the recursion depth check, or the
+ *       deepest routine allowed could not run, nor call another routine directly.
+ */
+static bool
+method_is_direct_call_callback (packing_unpacker &unpacker)
+{
+  packing_unpacker peeker (unpacker.get_curr_ptr (), (size_t) (unpacker.get_buffer_end () - unpacker.get_curr_ptr ()));
+  cubmethod::header header (peeker);
+  int code;
+
+  if (header.command != METHOD_REQUEST_CALLBACK)
+    {
+      return false;
+    }
+
+  peeker.unpack_int (code);
+  return (code == METHOD_CALLBACK_CHANGE_EXEC_RIGHTS || code == METHOD_CALLBACK_CHECK_EXECUTE_AUTH
+	  || code == METHOD_CALLBACK_GET_CODE_BY_NAME);
+}
+
 /*
  * method_dispatch_internal () - Dispatch method protocol from the server
  *   return:
