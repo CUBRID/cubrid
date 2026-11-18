@@ -7273,6 +7273,10 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       q = pt_append_nulstring (parser, q, " storage force_outline ");
     }
+  else if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage force_inline ");
+    }
 
   if (p->info.attr_def.data_default)
     {

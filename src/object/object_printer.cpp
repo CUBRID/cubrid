@@ -512,13 +512,23 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
       m_buf (" INVISIBLE");
     }
 
-  if (attribute.flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+  switch (attribute.flags & SM_ATTFLAG_OOS_STORAGE_MASK)
     {
+    case SM_ATTFLAG_OOS_PREFER_INLINE:
       m_buf (" STORAGE PREFER_INLINE");
-    }
-  else if (attribute.flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
-    {
+      break;
+
+    case SM_ATTFLAG_OOS_FORCE_OUTLINE:
       m_buf (" STORAGE FORCE_OUTLINE");
+      break;
+
+    case SM_ATTFLAG_OOS_FORCE_INLINE:
+      m_buf (" STORAGE FORCE_INLINE");
+      break;
+
+    default:
+      assert ((attribute.flags & SM_ATTFLAG_OOS_STORAGE_MASK) == 0);
+      break;
     }
 
   if (attribute.header.name_space == ID_SHARED_ATTRIBUTE)
