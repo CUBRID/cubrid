@@ -142,6 +142,7 @@ static bool partition_load_context_from_cache (PRUNING_CONTEXT * pinfo, bool * i
 static int partition_cache_entry_to_pruning_context (PRUNING_CONTEXT * pinfo, PARTITION_CACHE_ENTRY * entry_p);
 static PARTITION_CACHE_ENTRY *partition_pruning_context_to_cache_entry (PRUNING_CONTEXT * pinfo);
 static PRUNING_OP partition_rel_op_to_pruning_op (REL_OP op);
+static PRUNING_OP partition_commute_pruning_op (PRUNING_OP op);
 static int partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * master);
 static void partition_free_partition_predicate (PRUNING_CONTEXT * pinfo);
 static void partition_set_specified_partition (PRUNING_CONTEXT * pinfo, const OID * partition_oid);
@@ -893,6 +894,36 @@ partition_rel_op_to_pruning_op (REL_OP op)
     }
 
   return PO_INVALID;
+}
+
+/*
+ * partition_commute_pruning_op () - the operator that compares the operands of op in the other order
+ * return : pruning operator
+ * op (in) : pruning operator of "a op b"
+ *
+ * Note: "a op b" is "b <result> a". Pruning reads a term as "key op value", so a term whose key is on the right is
+ *	 read with this operator.
+ */
+static PRUNING_OP
+partition_commute_pruning_op (PRUNING_OP op)
+{
+  switch (op)
+    {
+    case PO_LT:
+      return PO_GT;
+
+    case PO_LE:
+      return PO_GE;
+
+    case PO_GT:
+      return PO_LT;
+
+    case PO_GE:
+      return PO_LE;
+
+    default:
+      return op;
+    }
 }
 
 /*
@@ -2474,7 +2505,9 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 	      }
 	    else if (partition_do_regu_variables_match (pinfo, right, part_expr))
 	      {
-		status = partition_prune (pinfo, left, op, partition_comparison_term (comp, 1, &term), pruned);
+		/* the key is on the right: "value op key" is "key commuted op value" */
+		status = partition_prune (pinfo, left, partition_commute_pruning_op (op),
+					  partition_comparison_term (comp, 1, &term), pruned);
 	      }
 	    else if (partition_supports_pruning_op_for_function (op, part_expr))
 	      {
@@ -2485,8 +2518,9 @@ partition_match_pred_expr (PRUNING_CONTEXT * pinfo, const PRED_EXPR * pr, PRUNIN
 		  }
 		else if (partition_do_regu_variables_contain (pinfo, right, part_expr))
 		  {
-		    status = partition_prune_for_function (pinfo, right, left, part_expr, op,
-							   partition_comparison_term (comp, 1, &term), pruned);
+		    status =
+		      partition_prune_for_function (pinfo, right, left, part_expr, partition_commute_pruning_op (op),
+						    partition_comparison_term (comp, 1, &term), pruned);
 		  }
 	      }
 	    break;
