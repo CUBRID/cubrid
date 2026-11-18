@@ -161,6 +161,8 @@ extern "C"
   extern PT_VOLATILITY pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node);
   extern PT_NODE *pt_find_default_not_allowed (PT_NODE * node);
   extern int pt_eval_prop_op_allow_default (int op);
+  extern int pt_eval_prop_check_overload (const PT_EVAL_PROP * prop, PT_ALLOW_DEFAULT allow, const char *kind,
+					  int code, const char *unit, int i);
   extern int pt_eval_prop_self_check_ops (void);
   extern int pt_eval_prop_func_allow_default (int fcode);
   extern int pt_eval_prop_self_check_funcs (void);

@@ -1242,7 +1242,7 @@ jsp_create_stored_procedure_internal (PARSER_CONTEXT *parser, PT_NODE *statement
       // default value
       // coerciable is already checked in semantic_check
       PT_NODE *default_value = p->info.sp_param.default_value;
-      if (default_value && PT_IS_RESIDUAL_DEFAULT (default_value))
+      if (PT_IS_RESIDUAL_DEFAULT (default_value))
 	{
 	  // evaluated at each call: shown by its text, restored from its Compact DEFAULT Tree
 	  DB_DEFAULT_EXPR default_expr;

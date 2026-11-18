@@ -305,6 +305,10 @@ static bool pt_is_dblink_related (PT_NODE * p);
 
 static PT_ALLOW_DEFAULT pt_get_op_allow_default (PT_OP_TYPE op);
 
+/* the operators a DEFAULT expression is transparent through: a cast, and the holder of a function call; neither has
+ * a signature, and their operand decides */
+#define PT_IS_DEFAULT_TRANSPARENT_OP(op) ((op) == PT_CAST || (op) == PT_FUNCTION_HOLDER)
+
 /*
  * pt_get_op_allow_default () - whether an operator may appear in a column DEFAULT
  *   return: the allow_default all the overloads of the operator share, UNSET if they differ or the operator has no
@@ -345,6 +349,7 @@ pt_get_op_allow_default (PT_OP_TYPE op)
  * before it: constant folding can dissolve a node into a literal and erase the evidence.  A literal is allowed, a
  * cast and the holder of a function call are transparent, and anything else (a name, a host variable, a query, a
  * held-back or forbidden operator or function) is not.
+ * pt_find_not_value_expr_form walks the same shapes for a stored procedure parameter: keep the two in step.
  */
 PT_NODE *
 pt_find_default_not_allowed (PT_NODE * node)
@@ -362,7 +367,7 @@ pt_find_default_not_allowed (PT_NODE * node)
       return NULL;
 
     case PT_EXPR:
-      if (node->info.expr.op != PT_CAST && node->info.expr.op != PT_FUNCTION_HOLDER
+      if (!PT_IS_DEFAULT_TRANSPARENT_OP (node->info.expr.op)
 	  && pt_get_op_allow_default (node->info.expr.op) != PT_DEFAULT_ALLOWED)
 	{
 	  return node;
@@ -432,10 +437,9 @@ pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node)
       return PT_VOLATILITY_IMMUTABLE;
 
     case PT_EXPR:
-      if (node->info.expr.op == PT_FUNCTION_HOLDER || node->info.expr.op == PT_CAST)
+      if (PT_IS_DEFAULT_TRANSPARENT_OP (node->info.expr.op))
 	{
-	  /* transparent: the holder of a function call (a PT_EXPR holding the PT_FUNCTION in arg1), and a cast,
-	   * which has no signature and adds no volatility of its own */
+	  /* the holder keeps the PT_FUNCTION in arg1; a cast adds no volatility of its own */
 	  return pt_get_expr_tree_volatility (node->info.expr.arg1, unclassified_node);
 	}
       v = node->info.expr.expr_volatility;
@@ -6522,11 +6526,45 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
 int
 pt_eval_prop_op_allow_default (int op)
 {
-  if (op == PT_CAST || op == PT_FUNCTION_HOLDER)
+  if (PT_IS_DEFAULT_TRANSPARENT_OP (op))
     {
       return -1;
     }
   return (int) pt_get_op_allow_default ((PT_OP_TYPE) op);
+}
+
+/*
+ * pt_eval_prop_check_overload () - the rules of the completeness gates for one overload of an operator or function
+ *   return: number of violations
+ *   prop(in): the evaluation properties of the overload
+ *   allow(in): the allow_default of the code (its first overload)
+ *   kind(in), code(in), unit(in), i(in): what to name in a report: "op" or "function", its code, "overload" or
+ *	"signature", its index
+ */
+int
+pt_eval_prop_check_overload (const PT_EVAL_PROP * prop, PT_ALLOW_DEFAULT allow, const char *kind, int code,
+			     const char *unit, int i)
+{
+  int violations = 0;
+
+  if (prop->allow_default != allow)
+    {
+      violations++;
+      fprintf (stderr, "eval-prop gate: %s %d allow_default differs across %ss\n", kind, code, unit);
+    }
+  if (prop->allow_default == PT_DEFAULT_ALLOWED && prop->volatility == PT_VOLATILITY_UNSET)
+    {
+      violations++;
+      fprintf (stderr, "eval-prop gate: %s %d %s %d is allowed in a DEFAULT without a volatility\n", kind, code, unit,
+	       i);
+    }
+  if (prop->allow_default != PT_DEFAULT_ALLOWED
+      && (prop->volatility != PT_VOLATILITY_UNSET || prop->si_requirement != PT_SI_NONE))
+    {
+      violations++;
+      fprintf (stderr, "eval-prop gate: %s %d %s %d has properties nothing reads\n", kind, code, unit, i);
+    }
+  return violations;
 }
 
 /*
@@ -6553,7 +6591,6 @@ pt_eval_prop_self_check_ops (void)
       PT_ALLOW_DEFAULT allow;
       bool declares_clock = false;
 
-      def.overloads_count = 0;
       if (!pt_get_expression_definition ((PT_OP_TYPE) opcode, &def) || def.overloads_count <= 0)
 	{
 	  continue;
@@ -6564,23 +6601,7 @@ pt_eval_prop_self_check_ops (void)
 	{
 	  const PT_EVAL_PROP *prop = &def.overloads[i].prop;
 
-	  if (prop->allow_default != allow)
-	    {
-	      violations++;
-	      fprintf (stderr, "eval-prop gate: op %d allow_default differs across overloads\n", opcode);
-	    }
-	  if (prop->allow_default == PT_DEFAULT_ALLOWED && prop->volatility == PT_VOLATILITY_UNSET)
-	    {
-	      violations++;
-	      fprintf (stderr, "eval-prop gate: op %d overload %d is allowed in a DEFAULT without a volatility\n",
-		       opcode, i);
-	    }
-	  if (prop->allow_default != PT_DEFAULT_ALLOWED
-	      && (prop->volatility != PT_VOLATILITY_UNSET || prop->si_requirement != PT_SI_NONE))
-	    {
-	      violations++;
-	      fprintf (stderr, "eval-prop gate: op %d overload %d has properties nothing reads\n", opcode, i);
-	    }
+	  violations += pt_eval_prop_check_overload (prop, allow, "op", opcode, "overload", i);
 	  if ((prop->si_requirement & PT_SI_SYS_DATETIME) != 0)
 	    {
 	      declares_clock = true;

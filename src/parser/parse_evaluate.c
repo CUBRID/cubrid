@@ -939,7 +939,8 @@ pt_evaluate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values,
  * pt_evaluate_function serves constant folding and takes only PT_VALUE arguments: there a column or a host variable
  * must not be evaluated.  Here the tree is executed (a residual DEFAULT at DDL time, or its Compact DEFAULT Tree on
  * the client), where an argument that is a STABLE or VOLATILE operator is evaluated too, into temporaries: the tree
- * is not changed, so a cached DEFAULT never has an argument frozen into a constant.
+ * is not changed, so a cached DEFAULT never has an argument frozen into a constant.  The two share how the arguments
+ * are gathered and the function is called: keep them in step.
  */
 static void
 pt_evaluate_function_holder (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * db_values, bool having_serial)
@@ -949,18 +950,14 @@ pt_evaluate_function_holder (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE *
   DB_VALUE *func_args = NULL, **func_arg_ptrs = NULL;
   int func_num_args = 0, func_arg_i;
 
-  if (func == NULL || func->node_type != PT_FUNCTION || !pt_is_expr_wrapped_function (parser, func))
+  if (func == NULL || !pt_is_expr_wrapped_function (parser, func))
     {
       PT_ERRORmf (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
 		  pt_short_print (parser, tree));
       return;
     }
 
-  for (operand_node = func->info.function.arg_list; operand_node != NULL; operand_node = operand_node->next)
-    {
-      func_num_args++;
-    }
-
+  func_num_args = pt_length_of_list (func->info.function.arg_list);
   if (func_num_args > 0)
     {
       func_args = (DB_VALUE *) calloc (func_num_args, sizeof (DB_VALUE));
@@ -970,14 +967,8 @@ pt_evaluate_function_holder (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE *
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 		  func_num_args * (sizeof (DB_VALUE) + sizeof (DB_VALUE *)));
 	  PT_ERRORc (parser, tree, er_msg ());
-	  if (func_args != NULL)
-	    {
-	      free_and_init (func_args);
-	    }
-	  if (func_arg_ptrs != NULL)
-	    {
-	      free_and_init (func_arg_ptrs);
-	    }
+	  free_and_init (func_args);
+	  free_and_init (func_arg_ptrs);
 	  return;
 	}
     }
@@ -1007,14 +998,8 @@ pt_evaluate_function_holder (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE *
     {
       db_value_clear (&func_args[func_arg_i]);
     }
-  if (func_args != NULL)
-    {
-      free_and_init (func_args);
-    }
-  if (func_arg_ptrs != NULL)
-    {
-      free_and_init (func_arg_ptrs);
-    }
+  free_and_init (func_args);
+  free_and_init (func_arg_ptrs);
 }
 
 /*

@@ -31,14 +31,10 @@
 
 #include "eval_prop_def.h"
 #include "parse_tree.h"
+#include "parser.h"
 
 #include <algorithm>
 #include <iterator>
-
-extern "C" int pt_eval_prop_self_check_ops (void);
-extern "C" int pt_eval_prop_self_check_funcs (void);
-extern "C" int pt_eval_prop_op_allow_default (int op);
-extern "C" int pt_eval_prop_func_allow_default (int fcode);
 
 // operators held back from a column DEFAULT
 static const PT_OP_TYPE held_back_ops[] =

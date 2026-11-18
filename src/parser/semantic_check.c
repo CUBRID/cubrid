@@ -4410,11 +4410,12 @@ pt_is_bare_legacy_default_form (const PT_NODE * node)
  * pt_find_not_value_expr_form () - the first node of an expression that keeps it from being evaluated to a value on
  *	its own: anything but a literal, an operator or a function the client evaluates
  *   return: the node, NULL if there is none
- *   parser(in): parser context
  *   node(in): an untyped expression (a single value, not a list)
+ *
+ * pt_find_default_not_allowed walks the same shapes for a column DEFAULT: keep the two in step.
  */
 static PT_NODE *
-pt_find_not_value_expr_form (PARSER_CONTEXT * parser, PT_NODE * node)
+pt_find_not_value_expr_form (PT_NODE * node)
 {
   PT_NODE *found, *arg;
 
@@ -4429,25 +4430,25 @@ pt_find_not_value_expr_form (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
 
     case PT_EXPR:
-      found = pt_find_not_value_expr_form (parser, node->info.expr.arg1);
+      found = pt_find_not_value_expr_form (node->info.expr.arg1);
       if (found == NULL)
 	{
-	  found = pt_find_not_value_expr_form (parser, node->info.expr.arg2);
+	  found = pt_find_not_value_expr_form (node->info.expr.arg2);
 	}
       if (found == NULL)
 	{
-	  found = pt_find_not_value_expr_form (parser, node->info.expr.arg3);
+	  found = pt_find_not_value_expr_form (node->info.expr.arg3);
 	}
       return found;
 
     case PT_FUNCTION:
-      if (!pt_is_expr_wrapped_function (parser, node))
+      if (!pt_is_expr_wrapped_fcode (node->info.function.function_type))
 	{
 	  return node;
 	}
       for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
 	{
-	  found = pt_find_not_value_expr_form (parser, arg);
+	  found = pt_find_not_value_expr_form (arg);
 	  if (found != NULL)
 	    {
 	      return found;
@@ -4483,8 +4484,9 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
   char *edl_text;
   PT_NODE *unclassified_node;
   bool column_rules;
+  bool unparenthesized;
+  bool bare_expr;
   bool bare_value;
-  bool is_expr_default;
   int held_do_not_fold;
 
   if (pt_has_error (parser))
@@ -4507,7 +4509,6 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
       data_default->next = NULL;
       unclassified_node = NULL;
       held_do_not_fold = -1;
-      is_expr_default = false;
 
       default_value = data_default->info.data_default.default_value;
 
@@ -4529,17 +4530,21 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
       column_rules = (data_default->info.data_default.shared == PT_DEFAULT && owner != PT_DEFAULT_OF_CLASS_ATTRIBUTE
 		      && expr_vol == PT_VOLATILITY_UNSET);
 
-      /* The bare expression of a parameter DEFAULT, when it is neither a literal nor a legacy form, stands for its
-       * value when the routine is created, whatever its operators: what earlier versions stored.  The dump of a
-       * PL/CSQL routine writes such an expression as it was written, so the column rules must not refuse it.  An
-       * expression to evaluate at each call is written in parentheses, and follows the column rules. */
-      bare_value = (owner == PT_DEFAULT_OF_SP_PARAM && column_rules && default_value != NULL
-		    && PT_IS_EXPR_NODE (default_value) && default_value->info.expr.paren_type == 0
-		    && !pt_is_bare_legacy_default_form (default_value)
-		    && !pt_is_signed_numeric_literal (default_value));
+      /* a bare (non-parenthesized) DEFAULT expression is allowed only for the legacy whitelist forms and literals
+       * (a signed numeric literal included); anything else needs parentheses */
+      unparenthesized = (default_value != NULL && PT_IS_EXPR_NODE (default_value)
+			 && default_value->info.expr.paren_type == 0);
+      bare_expr = (column_rules && unparenthesized && !pt_is_bare_legacy_default_form (default_value)
+		   && !pt_is_signed_numeric_literal (default_value));
+
+      /* except in a parameter DEFAULT, where it stands for its value when the routine is created, whatever its
+       * operators: what earlier versions stored.  The dump of a PL/CSQL routine writes such an expression as it was
+       * written, so the column rules must not refuse it.  An expression to evaluate at each call is written in
+       * parentheses, and follows the column rules. */
+      bare_value = (bare_expr && owner == PT_DEFAULT_OF_SP_PARAM);
       if (bare_value)
 	{
-	  node_ptr = pt_find_not_value_expr_form (parser, default_value);
+	  node_ptr = pt_find_not_value_expr_form (default_value);
 	  if (node_ptr != NULL)
 	    {
 	      PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_EXPR_NOT_ALLOWED,
@@ -4548,12 +4553,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
 	    }
 	  column_rules = false;
 	}
-
-      /* a bare (non-parenthesized) column DEFAULT expression is allowed only for the legacy whitelist forms and
-       * literals (a signed numeric literal included); anything else needs parentheses */
-      if (column_rules && default_value != NULL && PT_IS_EXPR_NODE (default_value)
-	  && default_value->info.expr.paren_type == 0 && !pt_is_bare_legacy_default_form (default_value)
-	  && !pt_is_signed_numeric_literal (default_value))
+      else if (bare_expr)
 	{
 	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_REQUIRES_PARENS);
 	  goto end;
@@ -4578,12 +4578,9 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
 	      goto end;
 	    }
 
-	  is_expr_default = true;
 	  /* a parameter DEFAULT is shown as it was written: a bare legacy form without the parentheses */
 	  edl_text = pt_default_expr_normalized_text (parser, default_value,
-						      !(owner == PT_DEFAULT_OF_SP_PARAM
-							&& PT_IS_EXPR_NODE (default_value)
-							&& default_value->info.expr.paren_type == 0));
+						      !(owner == PT_DEFAULT_OF_SP_PARAM && unparenthesized));
 
 	  /* the persisted text surfaces through catalog columns declared as
 	   * VARCHAR (DB_MAX_DEFAULT_EXPR_LENGTH); a longer one would be
@@ -4668,9 +4665,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list, PT_
 		      goto end;
 		    }
 		}
-	    }
-	  if (is_expr_default)
-	    {
+
 	      /* type checking stamped each node with the volatility of its matched overload.  What survived folding
 	       * decides: a STABLE operator over constant arguments (TO_CHAR (123)) folds to a literal and is kept as
 	       * an Expression-Derived Literal */

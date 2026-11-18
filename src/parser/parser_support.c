@@ -11569,7 +11569,7 @@ pt_cdt_canonical_domain (TP_DOMAIN * domain)
 
 /*
  * pt_cdt_put_node_header () - emit the uniform OP/FUNC node header: tag,
- *	code, qualifier, continued_case, canonical result domain, 32-bit alignment
+ *	code, qualifier, continued_case, volatility, si_requirement, canonical result domain, 32-bit alignment
  *   return: NO_ERROR or error code
  *
  * On overflow this returns ER_TF_BUFFER_OVERFLOW before anything is written 
@@ -11577,7 +11577,7 @@ pt_cdt_canonical_domain (TP_DOMAIN * domain)
  */
 static int
 pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier,
-			int continued_case)
+			int continued_case, PT_VOLATILITY volatility, int si_requirement)
 {
   TP_DOMAIN *domain;
   int rc;
@@ -11605,17 +11605,8 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
   or_put_int (buf, code);
   or_put_int (buf, qualifier);
   or_put_int (buf, continued_case);
-  if (node->node_type == PT_EXPR)
-    {
-      or_put_int (buf, (int) node->info.expr.expr_volatility);
-      or_put_int (buf, node->info.expr.expr_si_requirement);
-    }
-  else
-    {
-      assert (node->node_type == PT_FUNCTION);
-      or_put_int (buf, (int) node->info.function.expr_volatility);
-      or_put_int (buf, node->info.function.expr_si_requirement);
-    }
+  or_put_int (buf, (int) volatility);
+  or_put_int (buf, si_requirement);
   rc = or_put_domain (buf, domain, 0, 0);
   if (rc == NO_ERROR)
     {
@@ -11678,7 +11669,8 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
       /* continued_case is an unparse hint (e.g. whether CONCAT prints as a function call); preserve it so a
        * rehydrated residual prints like the original expression */
       rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_OP, (int) node->info.expr.op,
-				   (int) node->info.expr.qualifier, (int) node->info.expr.continued_case);
+				   (int) node->info.expr.qualifier, (int) node->info.expr.continued_case,
+				   node->info.expr.expr_volatility, node->info.expr.expr_si_requirement);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -11703,7 +11695,8 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
       return rc;
 
     case PT_FUNCTION:
-      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0, 0);
+      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0, 0,
+				   node->info.function.expr_volatility, node->info.function.expr_si_requirement);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -11991,14 +11984,12 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     {
       /* the parser never leaves a PT_FUNCTION bare: a function call is held by a PT_FUNCTION_HOLDER expression,
        * which evaluation and printing expect.  The stream stores the function without it, so put it back. */
-      PT_NODE *holder = parser_new_node (parser, PT_EXPR);
+      PT_NODE *holder = pt_expression_1 (parser, PT_FUNCTION_HOLDER, node);
 
       if (holder == NULL)
 	{
 	  return NULL;
 	}
-      holder->info.expr.op = PT_FUNCTION_HOLDER;
-      holder->info.expr.arg1 = node;
       holder->type_enum = node->type_enum;
       holder->data_type = parser_copy_tree (parser, node->data_type);
       holder->flag.do_not_fold = 1;

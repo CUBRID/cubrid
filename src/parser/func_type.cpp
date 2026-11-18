@@ -520,6 +520,32 @@ get_signatures (FUNC_CODE ft)
 }
 
 /*
+ * func_shared_prop () - an evaluation property all the signatures of a function share
+ *   return: the value, or the unset value (0) if the signatures differ or the function has none
+ *   fcode(in): function code
+ *   field(in): the property
+ */
+template <typename T>
+static T
+func_shared_prop (FUNC_CODE fcode, T PT_EVAL_PROP::*field)
+{
+  func_all_signatures *sigs = get_signatures (fcode);
+
+  if (sigs == NULL || sigs->empty ())
+    {
+      return T {};
+    }
+  for (const func_signature &sig : *sigs)
+    {
+      if (sig.prop.*field != (*sigs)[0].prop.*field)
+	{
+	  return T {};
+	}
+    }
+  return (*sigs)[0].prop.*field;
+}
+
+/*
  * pt_get_func_volatility () - volatility declared for a function
  *   return: the volatility all the signatures of the function share, PT_VOLATILITY_UNSET if they differ or the
  *	     function is unclassified
@@ -530,20 +556,7 @@ get_signatures (FUNC_CODE ft)
 PT_VOLATILITY
 pt_get_func_volatility (FUNC_CODE fcode)
 {
-  func_all_signatures *sigs = get_signatures (fcode);
-
-  if (sigs == NULL || sigs->empty ())
-    {
-      return PT_VOLATILITY_UNSET;
-    }
-  for (const func_signature &sig : *sigs)
-    {
-      if (sig.prop.volatility != (*sigs)[0].prop.volatility)
-	{
-	  return PT_VOLATILITY_UNSET;
-	}
-    }
-  return (*sigs)[0].prop.volatility;
+  return func_shared_prop (fcode, &PT_EVAL_PROP::volatility);
 }
 
 /*
@@ -555,20 +568,7 @@ pt_get_func_volatility (FUNC_CODE fcode)
 PT_ALLOW_DEFAULT
 pt_get_func_allow_default (FUNC_CODE fcode)
 {
-  func_all_signatures *sigs = get_signatures (fcode);
-
-  if (sigs == NULL || sigs->empty ())
-    {
-      return PT_ALLOW_DEFAULT_UNSET;
-    }
-  for (const func_signature &sig : *sigs)
-    {
-      if (sig.prop.allow_default != (*sigs)[0].prop.allow_default)
-	{
-	  return PT_ALLOW_DEFAULT_UNSET;
-	}
-    }
-  return (*sigs)[0].prop.allow_default;
+  return func_shared_prop (fcode, &PT_EVAL_PROP::allow_default);
 }
 
 /*
@@ -610,24 +610,7 @@ pt_eval_prop_self_check_funcs (void)
 
       for (const func_signature &sig : *sigs)
 	{
-	  if (sig.prop.allow_default != allow)
-	    {
-	      violations++;
-	      fprintf (stderr, "eval-prop gate: function %d allow_default differs across signatures\n", code);
-	    }
-	  if (sig.prop.allow_default == PT_DEFAULT_ALLOWED && sig.prop.volatility == PT_VOLATILITY_UNSET)
-	    {
-	      violations++;
-	      fprintf (stderr, "eval-prop gate: function %d signature %d is allowed in a DEFAULT without a volatility\n",
-		       code, i);
-	    }
-	  if (sig.prop.allow_default != PT_DEFAULT_ALLOWED
-	      && (sig.prop.volatility != PT_VOLATILITY_UNSET || sig.prop.si_requirement != PT_SI_NONE))
-	    {
-	      violations++;
-	      fprintf (stderr, "eval-prop gate: function %d signature %d has properties nothing reads\n", code, i);
-	    }
-	  i++;
+	  violations += pt_eval_prop_check_overload (&sig.prop, allow, "function", code, "signature", i++);
 	}
 
       if (allow == PT_DEFAULT_ALLOWED && !pt_is_expr_wrapped_fcode (fcode))
