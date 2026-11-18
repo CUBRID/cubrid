@@ -376,8 +376,7 @@ namespace cubconn::connection
       {
 	worker::message request;
 	request.type = worker::message_type::SHUTDOWN;
-	worker->enqueue (worker::queue_type::IMMEDIATE, std::move (request));
-	if (!worker->notify ())
+	if (!worker->enqueue_and_notify (worker::queue_type::IMMEDIATE, std::move (request)))
 	  {
 	    assert_release (false);
 	  }

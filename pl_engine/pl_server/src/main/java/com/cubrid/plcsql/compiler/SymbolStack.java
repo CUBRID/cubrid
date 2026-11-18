@@ -465,6 +465,7 @@ public class SymbolStack {
                         "CHARSET",
                         "COERCIBILITY",
                         "COLLATION",
+                        "CURRENT_SCHEMA",
                         "CURRENT_USER",
                         "DATABASE",
                         "DBTIMEZONE",

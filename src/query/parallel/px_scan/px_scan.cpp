@@ -36,7 +36,7 @@
 #include "px_scan_input_handler_heap.hpp"
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
-#include "heap_file.h"				/* heap_attrinfo_end, heap_get_num_data_pages */
+#include "heap_file.h"				/* heap_attrinfo_end */
 #include "file_manager.h"			/* file_get_num_user_pages */
 #include "system_parameter.h"			/* prm_get_integer_value */
 #include "thread_manager.hpp"			/* cubthread::system_core_count */
@@ -370,9 +370,8 @@ extern "C"
   scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed,
 				SCAN_OPERATION_TYPE scan_op_type, int fixed_scan, int grouped_scan, VAL_DESCR *vd,
 				ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid, XASL_NODE *xasl,
-				QUERY_ID query_id)
+				QUERY_ID query_id, const FILE_FTAB_COLLECTOR *page_list, int num_data_pages)
   {
-    int num_data_pages = -1;
     parallel_query::worker_manager *worker_manager_p = nullptr;
     int num_parallel_threads;
     int error = NO_ERROR;
@@ -387,6 +386,9 @@ extern "C"
     assert (vd != nullptr);
 
     scan_id->type = S_HEAP_SCAN;
+    /* no page bitmap on the serial layout until scan_heap_scan_set_page_list () */
+    scan_id->s.hsid.sector_order = false;
+    scan_id->s.hsid.page_list = NULL;
 
     /* Workers do not acquire row locks, including when reopening a partition. */
     if (mvcc_select_lock_needed)
@@ -419,14 +421,13 @@ extern "C"
 
     /* try parallel-thread heap scan */
 
-    /* check if pages are enough for parallel-thread heap scan */
-    error = heap_get_num_data_pages (thread_p, class_hfid, &num_data_pages);
-    if (error != NO_ERROR)
+    if (page_list == NULL)
       {
-	assert_release_error (er_errid () != NO_ERROR);
-	return er_errid ();
+	/* no page bitmap (scan_heap_scan_page_list ()): try single-thread heap scan */
+	return NO_ERROR;
       }
 
+    /* check if pages are enough for parallel-thread heap scan: the page bitmap's count */
     assert (spec->num_parallel_threads == -1 /* auto-compute */
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
@@ -492,6 +493,7 @@ extern "C"
 				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
+	((manager_type *) scan_id->s.phsid.manager)->set_page_list (page_list);
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -525,6 +527,7 @@ extern "C"
 				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
+	((manager_type *) scan_id->s.phsid.manager)->set_page_list (page_list);
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -558,6 +561,7 @@ extern "C"
 				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
+	((manager_type *) scan_id->s.phsid.manager)->set_page_list (page_list);
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
 	if (error != NO_ERROR)
 	  {
@@ -1712,6 +1716,12 @@ namespace parallel_scan
       }
     m_input_handler = placement_new ((input_handler_t *) m_input_handler, &m_interrupt, &m_err_messages);
 
+    /* before init_on_main: its snapshot build must take m_px_lock_mutex like the workers' */
+    if (m_thread_p->m_px_orig_thread_entry == NULL)
+      {
+	m_thread_p->m_px_orig_thread_entry = m_thread_p;
+      }
+
     {
       int init_err;
       if constexpr (ST == SCAN_TYPE::LIST)
@@ -1724,7 +1734,7 @@ namespace parallel_scan
 	}
       else
 	{
-	  init_err = m_input_handler->init_on_main (m_thread_p, m_hfid, m_parallelism);
+	  init_err = m_input_handler->init_on_main (m_thread_p, m_hfid, m_parallelism, m_page_list);
 	}
       if (init_err != NO_ERROR)
 	{
@@ -1781,10 +1791,6 @@ namespace parallel_scan
 	return ER_FAILED;
       }
     m_on_trace = m_thread_p->on_trace;
-    if (m_thread_p->m_px_orig_thread_entry == NULL)
-      {
-	m_thread_p->m_px_orig_thread_entry = m_thread_p;
-      }
     if (m_on_trace)
       {
 	m_trace_handler.m_trace_storage_for_sibling_xasl.set_main_xasl_tree (m_xasl);
@@ -2053,6 +2059,25 @@ namespace parallel_scan
       }
 
     m_trace_handler.clear();
+
+    if (ST == SCAN_TYPE::HEAP && m_page_list != nullptr && m_xasl->curr_spec != nullptr)
+      {
+	/* the bitmap of the open, or a new one when a nested statement rebuilt the snapshot since (READ COMMITTED) */
+	int num_data_pages;
+
+	err_code = scan_heap_scan_page_list (m_thread_p, m_xasl->curr_spec, &m_cls_oid, &m_hfid, false, &m_page_list,
+					     &num_data_pages);
+	if (err_code != NO_ERROR)
+	  {
+	    if (m_worker_manager != nullptr)
+	      {
+		m_worker_manager->release_workers ();
+		m_worker_manager = nullptr;
+	      }
+	    return err_code;
+	  }
+	assert (m_page_list != nullptr);
+      }
 
     /* Open and initialize */
     err_code = open ();

@@ -83,6 +83,9 @@ static XASL_NODE *init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE
 static XASL_NODE *add_access_spec (QO_ENV *, XASL_NODE *, QO_PLAN *);
 static XASL_NODE *add_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * scan);
 static bool scan_chain_has_scan_blocks (XASL_NODE * xasl);
+static PT_NODE *qo_collect_memoize_key_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static void qo_set_nl_inner_memoize_key (QO_ENV * env, QO_PLAN * outer, QO_PLAN * inner, BITSET * predset,
+					 XASL_NODE * scan);
 static XASL_NODE *add_fetch_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * proc);
 static XASL_NODE *add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * sub);
 static XASL_NODE *add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET *);
@@ -1142,9 +1145,10 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
  * The executor scans such a table one scan block (partition or class) at a time and, for every block,
  * runs the scans before it again from the outer (qexec_next_scan_block_iterations ()). An inner before
  * it then sees each outer row once per block, so its key repeats even when unique, and memoize must be
- * left to the run-time check. A SEMI / ANTI inner sweeps its partitions within one probe and is not
- * split into blocks. A partitioned outer or inner does not repeat the rows: the outer's blocks hold
- * different rows, and a partitioned inner renews its memo for every block of its own.
+ * left to the run-time check. A scan driven per outer row (a SEMI / ANTI inner, a partitioned inner and
+ * the scans after them) sweeps its partitions within one probe and is not split into blocks. A
+ * partitioned outer or inner does not repeat the rows: the outer's blocks hold different rows, and a
+ * partitioned inner renews its memo for every block of its own.
  */
 static bool
 scan_chain_has_scan_blocks (XASL_NODE * xasl)
@@ -1153,7 +1157,7 @@ scan_chain_has_scan_blocks (XASL_NODE * xasl)
 
   for (; xasl != NULL; xasl = xasl->scan_ptr)
     {
-      if (XASL_IS_NL_SEMI_OR_ANTI (xasl))
+      if (XASL_IS_PER_OUTER_ROW (xasl))
 	{
 	  continue;
 	}
@@ -1168,6 +1172,148 @@ scan_chain_has_scan_blocks (XASL_NODE * xasl)
     }
 
   return false;
+}
+
+/* CBRD-27993: what qo_collect_memoize_key_name () gathers from an NL inner's terms */
+typedef struct qo_memoize_key_arg QO_MEMOIZE_KEY_ARG;
+struct qo_memoize_key_arg
+{
+  QO_ENV *env;
+  BITSET *outer_nodes;		/* the nodes of the outer plan */
+  BITSET *key_segs;		/* out: the segments of the names */
+  PT_NODE **names;		/* out: the names of outer columns, malloc'ed */
+  int n_names;
+  int max_names;
+  bool failed;			/* out of memory */
+};
+
+/*
+ * qo_collect_memoize_key_name () - parser_walk_tree pre function: a name of an outer plan node's column, wherever it
+ *   sits in a term (inside a subquery, a PRIOR or an aggregate too), is a memoize key column
+ */
+static PT_NODE *
+qo_collect_memoize_key_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  QO_MEMOIZE_KEY_ARG *key = (QO_MEMOIZE_KEY_ARG *) arg;
+  QO_NODE *node;
+  QO_SEGMENT *seg;
+  PT_NODE *entity;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (tree->node_type != PT_NAME || key->failed)
+    {
+      return tree;
+    }
+
+  node = lookup_node (tree, key->env, &entity);
+  if (node == NULL || !BITSET_MEMBER (*key->outer_nodes, QO_NODE_IDX (node)))
+    {
+      /* the inner's own column, or a name of an enclosing query or of the subquery itself */
+      return tree;
+    }
+
+  if (key->n_names == key->max_names)
+    {
+      int max_names = key->max_names == 0 ? 8 : key->max_names * 2;
+      PT_NODE **names = (PT_NODE **) realloc (key->names, max_names * sizeof (PT_NODE *));
+      if (names == NULL)
+	{
+	  key->failed = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return tree;
+	}
+      key->names = names;
+      key->max_names = max_names;
+    }
+  key->names[key->n_names++] = tree;
+
+  seg = lookup_seg (node, tree, key->env);
+  if (seg != NULL)
+    {
+      bitset_add (key->key_segs, QO_SEG_IDX (seg));
+    }
+
+  return tree;
+}
+
+/*
+ * qo_set_nl_inner_memoize_key () - CBRD-27993: the memoize key of an NL inner is the outer plan's columns its terms
+ *   and its derived tables read (the join terms and the terms its scan evaluates; a select-list subquery attached to
+ *   it reruns for every replayed row, so it adds none); the inner is not memoized when one of them holds an
+ *   expression a reuse must not replay (pt_is_result_reuse_safe ()) or a name has no slot, and is marked when
+ *   statistics show the key hardly repeats (qo_nl_inner_memoize_is_useless ())
+ */
+static void
+qo_set_nl_inner_memoize_key (QO_ENV * env, QO_PLAN * outer, QO_PLAN * inner, BITSET * predset, XASL_NODE * scan)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  QO_MEMOIZE_KEY_ARG key;
+  BITSET terms, key_segs;
+  BITSET_ITERATOR bi;
+  bool reusable = true;
+  int i;
+
+  bitset_init (&terms, env);
+  bitset_init (&key_segs, env);
+  bitset_assign (&terms, predset);
+  qo_collect_inner_scan_terms (inner, &terms);
+
+  key.env = env;
+  key.outer_nodes = &outer->info->nodes;
+  key.key_segs = &key_segs;
+  key.names = NULL;
+  key.n_names = 0;
+  key.max_names = 0;
+  key.failed = false;
+
+  for (i = bitset_iterate (&terms, &bi); i != -1 && reusable && !key.failed; i = bitset_next_member (&bi))
+    {
+      PT_NODE *expr = QO_TERM_PT_EXPR (QO_ENV_TERM (env, i));
+      PT_NODE *next;
+
+      if (expr == NULL)
+	{
+	  continue;
+	}
+      reusable = pt_is_result_reuse_safe (parser, expr);
+      next = expr->next;
+      expr->next = NULL;
+      (void) parser_walk_tree (parser, expr, qo_collect_memoize_key_name, &key, NULL, NULL);
+      expr->next = next;
+    }
+
+  /* a derived table of the inner that reads an outer column is made again for every outer row, so its outer columns
+   * are key columns and its expressions must be safe to replay; one that reads none is made once and read alike */
+  for (i = bitset_iterate (&inner->info->nodes, &bi); i != -1 && reusable && !key.failed; i = bitset_next_member (&bi))
+    {
+      PT_NODE *derived = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, i))->info.spec.derived_table;
+      int n_names = key.n_names;
+
+      if (derived == NULL)
+	{
+	  continue;
+	}
+      (void) parser_walk_tree (parser, derived, qo_collect_memoize_key_name, &key, NULL, NULL);
+      if (key.n_names > n_names)
+	{
+	  reusable = pt_is_result_reuse_safe (parser, derived);
+	}
+    }
+
+  scan->memoize_key = NULL;
+  if (reusable && !key.failed)
+    {
+      scan->memoize_key = pt_make_memoize_key (parser, key.names, key.n_names);
+    }
+  if (scan->memoize_key != NULL && !scan_chain_has_scan_blocks (scan->scan_ptr)
+      && qo_nl_inner_memoize_is_useless (outer, inner, &key_segs))
+    {
+      XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
+    }
+
+  free_and_init (key.names);
+  bitset_delset (&terms);
+  bitset_delset (&key_segs);
 }
 
 /*
@@ -1852,7 +1998,7 @@ static int
 is_follow_if_term (QO_TERM * term)
 {
   if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN	/* ? */
-      || QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+      || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
     {
       return 0;
     }
@@ -2060,8 +2206,12 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
     {
       termp = QO_ENV_TERM (env, t);
       if (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_EXPENSIVE)
-	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (termp) > 0.5))
+	  || (QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED) && !QO_TERM_IS_FLAGED (termp, QO_TERM_OR_DERIVED_ORIGIN)
+	      && QO_TERM_SELECTIVITY (termp) > 0.5))
 	{
+	  /* a restriction a key range on one column was paired with holds, as its selectivity, only
+	   * what it rejects on top of that range -- which is dropped itself unless an index takes it,
+	   * so the restriction stays */
 	  bitset_add (&drop_terms, t);
 	}
     }
@@ -2092,7 +2242,8 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 	{
 	  index_entryp = qo_index_infop->ni_entry->head;
 	  if (index_entryp && index_entryp->constraints && index_entryp->constraints->func_index_info
-	      && index_entryp->cover_segments == false)
+	      && index_entryp->cover_segments == false
+	      && !qo_is_func_index_key_filter_routable (env, plan->plan_un.scan.node, index_entryp))
 	    {
 	      /* if predicate has function index column then do not permit key-filter. so force-copy to sarg */
 	      bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
@@ -2463,6 +2614,77 @@ mark_following_joins (XASL_NODE * sa_scan)
 }
 
 /*
+ * nl_inner_can_walk_partitions_per_row () - whether a NL inner join on a partitioned table can walk its
+ *	partitions per outer row
+ *   return: bool
+ *   scan(in): the inner scan proc; the scans of the joins above it hang off its scan_ptr
+ *
+ * Note: left to the scan block iterator, a partitioned inner is one scan block per partition, and the
+ *	 iterator runs every scan before it again from the outer for each partition. Driven per outer row
+ *	 like a following join, it walks its partitions within the row instead, and its memo spans the walk
+ *	 (CBRD-27866). The scans after it are driven per outer row too, so a class hierarchy (spec->next),
+ *	 which only the iterator moves to its next class, keeps the iterator (qo_nl_inner_partitions_walk_per_row ()).
+ */
+static bool
+nl_inner_can_walk_partitions_per_row (XASL_NODE * scan)
+{
+  ACCESS_SPEC_TYPE *spec = scan->spec_list;
+  XASL_NODE *xp;
+
+  if (spec == NULL || spec->next != NULL || spec->type != TARGET_CLASS || spec->pruning_type != DB_PARTITIONED_CLASS)
+    {
+      return false;
+    }
+
+  for (xp = scan->scan_ptr; xp != NULL; xp = xp->scan_ptr)
+    {
+      for (spec = xp->spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->next != NULL)
+	    {
+	      return false;
+	    }
+	}
+    }
+
+  return true;
+}
+
+/*
+ * nl_inner_prunes_per_row () - whether a join term prunes a partitioned NL inner to its partition for each outer row
+ *   return: bool
+ *   outer(in): the outer plan of the join
+ *   inner(in): the inner plan, a scan of a partitioned table
+ *   terms(in): the join terms the inner scan evaluates besides the terms of its own plan
+ *
+ * Note: as the optimizer costs the join (qo_nl_inner_prunes_per_row ()).
+ */
+static bool
+nl_inner_prunes_per_row (QO_PLAN * outer, QO_PLAN * inner, BITSET * terms)
+{
+  BITSET scan_terms;
+  bool prunes;
+
+  if (inner->plan_type != QO_PLANTYPE_SCAN || outer->info == NULL)
+    {
+      return false;
+    }
+
+  /* an index join term is a key range of the inner plan, not one of the terms gen_inner () gets */
+  bitset_init (&scan_terms, outer->info->env);
+  bitset_assign (&scan_terms, terms);
+  bitset_union (&scan_terms, &(inner->sarged_terms));
+  bitset_union (&scan_terms, &(inner->plan_un.scan.terms));
+  bitset_union (&scan_terms, &(inner->plan_un.scan.kf_terms));
+
+  prunes = qo_nl_inner_prunes_per_row (inner->plan_un.scan.node, &(outer->info->nodes), &scan_terms);
+
+  bitset_delset (&scan_terms);
+
+  return prunes;
+}
+
+/*
  * gen_outer () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -2747,12 +2969,23 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  mark_following_joins (scan);
 		}
 
-	      /* the outer columns of the terms the inner scan evaluates are its memoize key */
-	      if (!scan_chain_has_scan_blocks (scan->scan_ptr)
-		  && qo_nl_inner_memoize_is_useless (outer, inner, &predset))
+	      if (nl_inner_can_walk_partitions_per_row (scan))
 		{
-		  XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
+		  /* a partitioned inner walks its partitions per outer row (CBRD-27866): a SEMI / ANTI inner and the
+		   * scans after it are driven per outer row already, and an outer join returns its NULL row once */
+		  if (!XASL_IS_NL_SEMI_OR_ANTI (scan))
+		    {
+		      XASL_SET_FLAG (scan, XASL_NL_FOLLOWING_JOIN);
+		      mark_following_joins (scan);
+		    }
+		  XASL_SET_FLAG (scan, XASL_NL_PER_ROW_PARTITIONS);
+		  if (nl_inner_prunes_per_row (outer, inner, &predset))
+		    {
+		      ACCESS_SPEC_SET_FLAG (scan->spec_list, ACCESS_SPEC_FLAG_PRUNE_PER_ROW);
+		    }
 		}
+
+	      qo_set_nl_inner_memoize_key (env, outer, inner, &predset, scan);
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
 	  make_outer_instnum (env, outer, plan);
@@ -6676,15 +6909,16 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
       bitset_union (&final_segs_set, &QO_TERM_SEGS (term));
     }
 
-  /* final_info */
+  /* final_info: the parent list scan builds its val_list from names only (pt_clone_val_list),
+   * so carry a function-index expression's argument columns, not the expression itself */
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &final_segs_set);
-  name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
+  name_list = make_namelist_from_bitset (env, &temp_segs_set, false);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &final_segs_set);
-  name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
+  name_list = make_namelist_from_bitset (env, &temp_segs_set, false);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
   final_info->name_count = pt_length_of_list (final_info->name_list);
