@@ -205,9 +205,15 @@ sensitivity_label_alter_component (const PT_MISC_TYPE kind, const char *name, co
     {
       return error;
     }
-  class_obj = db_get_class (component);
 
   AU_SAVE_AND_DISABLE (save);
+
+  class_obj = db_get_class (component);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
 
   if (new_name != NULL)
     {
