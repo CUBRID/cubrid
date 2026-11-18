@@ -1033,8 +1033,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (csql_execute)
 	    {
 	      /* single-line-oriented execution */
-	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL,
-				       (csql_Is_interactive || stmt_first_line_no <= 0) ? 1 : stmt_first_line_no);
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, stmt_first_line_no > 0 ? stmt_first_line_no : 1);
 	      csql_edit_contents_clear ();
 	    }
 	}
@@ -2175,8 +2174,8 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
  *   csql_arg(in)
  *   type(in)
  *   stream(in)
- *   first_line_no(in): for the single-line-oriented execution, the input line of the first token in the buffer
- *                      (1 in the interactive mode); 0 otherwise
+ *   first_line_no(in): for the single-line-oriented execution, the input line of the first token in the buffer;
+ *                      0 otherwise
  *
  * Note:
  *   If `type' is STRING_INPUT, it regards `stream' points to command string.
@@ -2214,12 +2213,19 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
   if (first_line_no > 0)
     {
-      /* the buffer holds one statement: the line of its first token is shown for an error raised before the statement
-       * is parsed into a node, e.g. by SHOW THREADS of a non-DBA user. the lines of a buffer loaded by ;read or ;edit
-       * are counted from its own first line instead. */
-      bool is_buffer_of_input = csql_Is_interactive || csql_edit_contents_get_start_line () > 0;
-
-      stmt_start_line_no = is_buffer_of_input ? first_line_no : 1;
+      /* the line shown for an error raised before any statement is parsed into a node, e.g. by SHOW THREADS of a
+       * non-DBA user. it is the line of the first token in the buffer: if the buffer holds more than one statement,
+       * it is the line of the first statement, not of the one that failed.
+       * the interactive mode shows 1, since its lines are counted over the whole session, and the lines of a buffer
+       * loaded by ;read or ;edit are counted from its own first line. */
+      if (csql_Is_interactive || csql_edit_contents_get_start_line () <= 0)
+	{
+	  stmt_start_line_no = 1;
+	}
+      else
+	{
+	  stmt_start_line_no = first_line_no;
+	}
     }
 
   if (type == FILE_INPUT)
