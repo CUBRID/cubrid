@@ -316,8 +316,6 @@ static unsigned int lang_mht2str_binary (const LANG_COLLATION * lang_coll, const
 static void lang_init_coll_en_ci (LANG_COLLATION * lang_coll);
 static void lang_init_coll_en_cs (LANG_COLLATION * lang_coll);
 static void lang_init_coll_Utf8_tr_cs (LANG_COLLATION * lang_coll);
-STATIC_INLINE unsigned char lang_next_byte_weight_ko (const unsigned char **str, const unsigned char *str_end,
-						      int *trail) __attribute__ ((ALWAYS_INLINE));
 static int lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1, int size1,
 			    const unsigned char *string2, int size2, bool ignore_trailing_space);
 static int lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigned char *str1, int size1,
@@ -3296,7 +3294,7 @@ lang_strmatch_utf8_w_contr (const LANG_COLLATION * lang_coll, bool is_match, con
  * Trailing weights 0 are not hashed: strings that differ only in them hash alike, whether the compare function finds
  * them equal or tells them apart.
  *
- * Step 1: the weight of the next code point.
+ * Step 1: read the weight of the next code point.
  * Step 2: hash the weight, holding a weight 0 back.
  */
 static unsigned int
@@ -3312,7 +3310,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
 
   while (str < str_end)
     {
-      /* Step 1: the weight of the next code point */
+      /* Step 1: read the weight of the next code point */
       cp = intl_utf8_to_cp (str, CAST_BUFLEN (str_end - str), &str_next);
       str = str_next;
       weight = cp;
@@ -3340,7 +3338,7 @@ lang_mht2str_utf8 (const LANG_COLLATION * lang_coll, const unsigned char *str, c
  * hashed: strings that differ only in them hash alike, whether the compare function finds them equal or tells them
  * apart.
  *
- * Step 1: the weight of the next contraction or code point.
+ * Step 1: read the weight of the next contraction or code point.
  * Step 2: hash the weight, holding a weight 0 back.
  */
 static unsigned int
@@ -3355,7 +3353,7 @@ lang_mht2str_utf8_w_contr (const LANG_COLLATION * lang_coll, const unsigned char
 
   while (str < str_end)
     {
-      /* Step 1: the weight of the next contraction or code point */
+      /* Step 1: read the weight of the next contraction or code point */
       weight = lang_get_w_first_el (coll_data, str, CAST_BUFLEN (str_end - str), &str_next, false);
       str = str_next;
 
@@ -6334,41 +6332,33 @@ lang_initloc_ko_euc (LANG_LOCALE_DATA * ld)
 }
 
 /*
- * lang_next_byte_weight_ko () - the weight of the next byte of an EUC-KR string, as lang_fastcmp_ko () weighs it
- *   return: weight
- *   str(in/out): the next byte; moved past the bytes weighed
+ * lang_tail_weight_ko () - the first weight that is not 0 in the rest of the longer EUC-KR string, as
+ *			    lang_fastcmp_ko () weighs it once the shorter one ends
+ *   return: weight; 0 if none
+ *   str(in): the rest of the string
  *   str_end(in):
- *   trail(in/out): the trail bytes left of the character the next byte is in, 0 at a character's start
+ *   trail(in): the trail bytes left of the current character
+ *   weight(in): the collation's weights, of which the weight of a space is read
  *
- * An ASCII space and an EUC space (0xA1 0xA1) weigh 0 only at a character's start: the second byte of a character
- * can be 0xA1. Any other byte weighs itself.
+ * A space at a character's start weighs as the collation weighs a space (0 when trailing spaces are ignored).
  */
-STATIC_INLINE unsigned char
-lang_next_byte_weight_ko (const unsigned char **str, const unsigned char *str_end, int *trail)
+static int
+lang_tail_weight_ko (const unsigned char *str, const unsigned char *str_end, int trail, const unsigned int *weight)
 {
-  unsigned char weight = *(*str)++;
-  int char_size;
+  unsigned int w = ZERO;
 
-  if (*trail > 0)
+  while (str < str_end && w == ZERO)
     {
-      (*trail)--;
-    }
-  else if (weight == ASCII_SPACE)
-    {
-      weight = ZERO;
-    }
-  else if (weight == EUC_SPACE && *str < str_end && **str == EUC_SPACE)
-    {
-      weight = ZERO;
-      (*str)++;
-    }
-  else
-    {
-      (void) intl_nextchar_euc (*str - 1, &char_size);
-      *trail = char_size - 1;
+      const unsigned char byte = *str;
+
+      w = lang_next_byte_weight_ko (&str, str_end, &trail);
+      if (w == ZERO && (byte == ASCII_SPACE || byte == EUC_SPACE))
+	{
+	  w = weight[SPACE];
+	}
     }
 
-  return weight;
+  return (int) w;
 }
 
 /*
@@ -6425,44 +6415,11 @@ lang_fastcmp_ko (const LANG_COLLATION * lang_coll, const unsigned char *string1,
       return cmp;
     }
 
-  c1 = c2 = ZERO;
   if (size1 < size2)
     {
-      assert (size1 == 0 && size2 > 0);
-
-      for (; string2 < str2_end && c2 == ZERO;)
-	{
-	  c2 = *string2++;
-	  if (c2 == ASCII_SPACE)
-	    {
-	      c2 = weight[SPACE];
-	    }
-	  else if (c2 == EUC_SPACE && string2 < str2_end && *string2 == EUC_SPACE)
-	    {
-	      c2 = weight[SPACE];
-	      string2++;
-	    }
-	}
+      return -lang_tail_weight_ko (string2, str2_end, str2_trail, weight);
     }
-  else
-    {
-      assert (size1 > 0 && size2 == 0);
-
-      for (; string1 < str1_end && c1 == ZERO;)
-	{
-	  c1 = *string1++;
-	  if (c1 == ASCII_SPACE)
-	    {
-	      c1 = weight[SPACE];
-	    }
-	  else if (c1 == EUC_SPACE && string1 < str1_end && *string1 == EUC_SPACE)
-	    {
-	      c1 = weight[SPACE];
-	      string1++;
-	    }
-	}
-    }
-  return c1 - c2;
+  return lang_tail_weight_ko (string1, str1_end, str1_trail, weight);
 }
 
 /*
@@ -6635,7 +6592,7 @@ lang_strmatch_ko (const LANG_COLLATION * lang_coll, bool is_match, const unsigne
  * A byte weighs as the compare function weighs it (lang_next_byte_weight_ko ()). Trailing weights 0 are not hashed:
  * strings that differ only in them hash alike, whether the compare function finds them equal or tells them apart.
  *
- * Step 1: the weight of the next byte.
+ * Step 1: read the weight of the next byte.
  * Step 2: hash the weight, holding a weight 0 back.
  */
 static unsigned int
@@ -6649,7 +6606,7 @@ lang_mht2str_ko (const LANG_COLLATION * lang_coll, const unsigned char *str, con
 
   while (str < str_end)
     {
-      /* Step 1: the weight of the next byte */
+      /* Step 1: read the weight of the next byte */
       weight = lang_next_byte_weight_ko (&str, str_end, &trail);
 
       /* Step 2: hash the weight, holding a weight 0 back */

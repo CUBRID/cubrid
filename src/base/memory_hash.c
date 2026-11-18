@@ -105,6 +105,8 @@ static unsigned int mht_3str_pseudo_key (const void *key, int key_size, const un
 static unsigned int mht_4str_pseudo_key (const void *key, int key_size);
 static unsigned int mht_5str_pseudo_key (const void *key, int key_size);
 
+STATIC_INLINE unsigned int mht_hash_double (double d) __attribute__ ((ALWAYS_INLINE));
+
 static int mht_rehash (MHT_TABLE * ht);
 
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
@@ -560,10 +562,34 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
 }
 
 /*
- * mht_valhash - hash a DB_VALUE key
+ * mht_hash_double () - hash a FLOAT, DOUBLE or MONETARY value by the bits of the DOUBLE it equals
  *   return: hash value
- *   key(in): pointer to DB_VALUE key to hash
- *   ht_size(in): size of hash table
+ *   d(in): the value; a FLOAT is widened to DOUBLE, a MONETARY gives its amount
+ *
+ * -0.0 compares equal to 0.0 but differs in its sign bit: adding 0.0 turns -0.0 into 0.0 before the bits are read.
+ */
+STATIC_INLINE unsigned int
+mht_hash_double (double d)
+{
+  UINT64 bits;
+
+  d += 0.0;
+  memcpy (&bits, &d, sizeof (bits));
+  return mht_mixhash64 (bits);
+}
+
+/*
+ * mht_valhash () - hash a DB_VALUE key
+ *   return: hash value mod ht_size; 0 for a NULL value
+ *   key(in): the DB_VALUE
+ *   ht_size(in): size of hash table; UINT_MAX for the whole hash
+ *
+ * Numbers a comparison finds equal hash alike within two families:
+ * the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC), by the value mod 2^61 - 1,
+ * and the floating ones (FLOAT, DOUBLE, MONETARY), by the bits of the DOUBLE the value equals.
+ * Across the families the comparison converts to DOUBLE and loses digits
+ * (BIGINT 2^53 and 2^53 + 1 both equal DOUBLE 2^53), so no hash of the exact value can follow it:
+ * a caller hashes such a pair in its common domain (domain_resolve_hash_key ()).
  */
 unsigned int
 mht_valhash (const void *key, const unsigned int ht_size)
@@ -571,7 +597,7 @@ mht_valhash (const void *key, const unsigned int ht_size)
   const DB_VALUE *val = (const DB_VALUE *) key;
   unsigned int hash = 0;
 
-  if (val == NULL || DB_IS_NULL (val) || ht_size <= 1)
+  if (unlikely (val == NULL || DB_IS_NULL (val) || ht_size <= 1))
     {
       return 0;
     }
@@ -579,55 +605,35 @@ mht_valhash (const void *key, const unsigned int ht_size)
   switch (db_value_type (val))
     {
     case DB_TYPE_INTEGER:
-      hash = db_get_int (val);
+      hash = mht_mixhash64 (numeric_hash_int64 (db_get_int (val)));
       break;
 
     case DB_TYPE_SMALLINT:
-      hash = db_get_short (val);
+      hash = mht_mixhash64 (numeric_hash_int64 (db_get_short (val)));
       break;
 
     case DB_TYPE_BIGINT:
-      {
-	const DB_BIGINT bigint = db_get_bigint (val);
-	hash = (unsigned int) (bigint >> 32) ^ (unsigned int) bigint;
-      }
+      hash = mht_mixhash64 (numeric_hash_int64 (db_get_bigint (val)));
       break;
 
     case DB_TYPE_FLOAT:
-      {
-	/* as the DOUBLE it equals; -0.0 + 0.0 is 0.0 */
-	const double d = db_get_float (val) + 0.0;
-	unsigned int words[2];
-	memcpy (words, &d, sizeof (words));
-	hash = words[0] ^ words[1];
-      }
+      /* as the DOUBLE it equals, so a FLOAT and a DOUBLE of one value hash alike */
+      hash = mht_hash_double (db_get_float (val));
       break;
 
     case DB_TYPE_DOUBLE:
-      {
-	/* -0.0 + 0.0 is 0.0 */
-	const double d = db_get_double (val) + 0.0;
-	unsigned int words[2];
-	memcpy (words, &d, sizeof (words));
-	hash = words[0] ^ words[1];
-      }
+      hash = mht_hash_double (db_get_double (val));
       break;
 
     case DB_TYPE_MONETARY:
-      {
-	/* by its amount, as mr_cmpval_money () compares; -0.0 + 0.0 is 0.0 */
-	const double d = db_get_monetary (val)->amount + 0.0;
-	unsigned int words[2];
-	memcpy (words, &d, sizeof (words));
-	hash = words[0] ^ words[1];
-      }
+      /* by its amount, as mr_cmpval_money () compares */
+      hash = mht_hash_double (db_get_monetary (val)->amount);
       break;
 
     case DB_TYPE_NUMERIC:
       {
 	/* 1.0 and 1.00, of any precision and scale, hash alike */
-	const uint64_t hash64 = numeric_hash (val);
-	hash = (unsigned int) (hash64 ^ (hash64 >> 32));
+	hash = mht_mixhash64 (numeric_db_value_hash (val));
       }
       break;
 
@@ -687,21 +693,20 @@ mht_valhash (const void *key, const unsigned int ht_size)
     case DB_TYPE_DATETIMELTZ:
       {
 	const DB_DATETIME *datetime = db_get_datetime (val);
-	hash = datetime->date ^ datetime->time;
+	hash = mht_mixhash64 (((UINT64) datetime->date << 32) | datetime->time);
       }
       break;
 
     case DB_TYPE_DATETIMETZ:
       {
 	const DB_DATETIME *datetime = &db_get_datetimetz (val)->datetime;
-	hash = datetime->date ^ datetime->time;
+	hash = mht_mixhash64 (((UINT64) datetime->date << 32) | datetime->time);
       }
       break;
 
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-    case DB_TYPE_VOBJ:
       {
 	/* by the first and last elements: equal sets hash alike whether they are packed or not */
 	DB_SET *set = db_get_set (val);
@@ -717,6 +722,21 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	if (size > 1 && set_get_element (set, size - 1, &element) == NO_ERROR)
 	  {
 	    hash += mht_valhash (&element, UINT_MAX);
+	    (void) pr_clear_value (&element);
+	  }
+      }
+      break;
+
+    case DB_TYPE_VOBJ:
+      {
+	/* by its key, the third element: setvobj_compare () does not compare the first (the view) */
+	DB_SET *set = db_get_set (val);
+	DB_VALUE element;
+
+	db_make_null (&element);
+	if (set_size (set) == 3 && set_get_element (set, 2, &element) == NO_ERROR)
+	  {
+	    hash = mht_valhash (&element, UINT_MAX);
 	    (void) pr_clear_value (&element);
 	  }
       }
@@ -771,9 +791,10 @@ mht_valhash (const void *key, const unsigned int ht_size)
       break;
     }
 
+  /* mht_mixhash () is a bijection: mixing a hash mht_mixhash64 () already mixed adds no collision */
   hash = mht_mixhash (hash);
 
-  /* ht_size UINT_MAX keeps the whole hash (the hash GROUP BY's key): hash % UINT_MAX, without the division */
+  /* ht_size UINT_MAX asks for the whole hash: hash % UINT_MAX, without the division */
   if (ht_size == UINT_MAX)
     {
       return (hash == UINT_MAX) ? 0 : hash;
@@ -865,8 +886,10 @@ mht_compare_dbvalues_are_equal (const void *key1, const void *key2)
  *   key1(in): pointer to DB_VALUE key1
  *   key2(in): pointer to DB_VALUE key2
  *
- * Note: for keys of cached results (memoize, subquery cache). Strings equal only under their collation
- *       ('A' and 'a' under a case-insensitive one) can give different results, e.g. ASCII (key).
+ * Note: callers rely on byte identity, not on equality under the collation; do not compare by collation.
+ *       Keys of cached results (memoize, subquery cache, query result cache): strings equal only
+ *       under their collation ('A' and 'a' under a case-insensitive one) can give different results,
+ *       e.g. ASCII (key).
  *       Identical bytes are also equal under the collation, so mht_valhash () still applies.
  */
 int

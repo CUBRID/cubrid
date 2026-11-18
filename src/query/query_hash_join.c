@@ -2904,13 +2904,28 @@ hjoin_fetch_val_list (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASH
   return NO_ERROR;
 }
 
-/* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion). No
- * key compares by its values: the compiler reads an OBJECT column as OID and decides no NULL or variable column
- * (xts_pack_hash_join_keys). */
+/* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion, with
+ * coercion for two numbers hashed by value). No key compares by its values: the compiler reads an OBJECT column as OID
+ * and decides no NULL or variable column (xts_pack_hash_join_keys).
+ *
+ * The comparison is decided outer first (source[0] the outer type, source[1] the inner) and takes the outer value
+ * first: it converts or coerces each side by its own source type. The build (value1) is the inner one where the inner
+ * is the smaller, and then the values are swapped. The order matters only for two numbers of one
+ * family hashed as they are (domain_decide_hash_join_key), whose types differ; every other pair is read in one type
+ * (the same type, or both converted to a common domain), source[0] == source[1], and keeps its order. Only DB_EQ is
+ * asked for, so the swapped sign of a swapped pair does not matter. */
 static inline DB_VALUE_COMPARE_RESULT
 hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
 {
   assert (compare->method != DOMAIN_COMPARE_OBJECT && compare->method != DOMAIN_COMPARE_VALUES);
+  if (DB_VALUE_DOMAIN_TYPE (value1) != compare->source[0])
+    {
+      /* the build is the inner input: the outer value goes first */
+      assert (DB_VALUE_DOMAIN_TYPE (value2) == compare->source[0]);
+      assert (DB_VALUE_DOMAIN_TYPE (value1) == compare->source[1]);
+      return domain_compare_values (compare, value2, value1, 0, NULL);
+    }
+  assert (DB_VALUE_DOMAIN_TYPE (value2) == compare->source[1]);
   return domain_compare_values (compare, value1, value2, 0, NULL);
 }
 
@@ -5166,13 +5181,16 @@ hjoin_prehash_grow (THREAD_ENTRY * thread_p, HJOIN_PREHASH * ph, void *array, IN
  * column's domain. With the two types the same:
  *   - INTEGER, SMALLINT, BIGINT, DATE, TIME, TIMESTAMP, DATETIME: fixed-size bits written and read back as they are;
  *     the hash is of those bits.
- *   - NUMERIC of the column's fixed precision and scale: the digits are written without their leading zero bytes
- *     and read back zero-filled into the same 17 bytes, with the precision and scale the write recorded (the
- *     value's) and as a fixed numeric (the column's precision); the hash is of the value those bytes and that scale
- *     make (mr_data_writeval_numeric (), mr_data_readval_numeric (), db_make_numeric (), numeric_hash ()).
  *   - CHAR, VARCHAR with the column's collation: the bytes are written as the value holds them after the write (a
  *     CHAR is padded in the value itself first), compressed or not, and read back as those bytes with the column's
  *     collation; the hash is of those bytes, by the collation.
+ *   - NUMERIC: the digits are written without their leading zero bytes and read back zero-filled into the same
+ *     17 bytes, with the precision and scale the write recorded, as a float numeric when the column is one and as
+ *     a fixed one otherwise; the hash is of the value those bytes and that scale make (mr_data_writeval_numeric (),
+ *     mr_data_readval_numeric (), db_make_numeric (), numeric_db_value_hash ()).
+ *     Read back as a fixed numeric, a value written with precision DB_DEFAULT_NUMERIC_PRECISION (40) has the
+ *     precision of a float numeric, whose scale numeric_db_value_hash () reads from the header, which the read
+ *     leaves 0.
  */
 static bool
 hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
@@ -5195,8 +5213,12 @@ hjoin_prehash_value_ok (const DB_VALUE * v, const TP_DOMAIN * dom)
       return true;
 
     case DB_TYPE_NUMERIC:
-      return dom->precision != DB_DEFAULT_NUMERIC_PRECISION && db_value_precision (v) == dom->precision
-	&& db_value_scale (v) == dom->scale;
+      {
+	int precision, scale;
+
+	db_get_numeric_precision_and_scale (v, &precision, &scale, NULL);
+	return dom->precision == DB_DEFAULT_NUMERIC_PRECISION || precision != DB_DEFAULT_NUMERIC_PRECISION;
+      }
 
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:

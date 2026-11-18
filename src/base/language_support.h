@@ -31,6 +31,7 @@
 
 #include "intl_support.h"
 #include "locale_support.h"
+#include "porting_inline.hpp"
 
 /*
  * currently built-in language names.
@@ -337,6 +338,8 @@ extern "C"
 						 const int size1, const unsigned char *str2, const int size2,
 						 const unsigned char *escape, const bool has_last_escape,
 						 int *str1_match_size, bool ignore_trailing_space);
+  STATIC_INLINE unsigned char lang_next_byte_weight_ko (const unsigned char **str, const unsigned char *str_end,
+							int *trail) __attribute__ ((ALWAYS_INLINE));
   extern int lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name, const INTL_CODESET charset);
 #if !defined (SERVER_MODE)
   extern int lang_charset_name_to_id (const char *name, INTL_CODESET * codeset);
@@ -364,7 +367,45 @@ extern "C"
   extern int lang_check_locale_compat (const LANG_LOCALE_COMPAT * loc_array, const int loc_cnt, const char *client_text,
 				       const char *server_text);
 #ifdef __cplusplus
-}
+}				// extern "C"
 #endif
 
-#endif				/* _LANGUAGE_SUPPORT_H_ */
+/*
+ * lang_next_byte_weight_ko () - the weight of the next byte of an EUC-KR string, as lang_fastcmp_ko () weighs it
+ *   return: weight
+ *   str(in/out): the next byte; moved past the bytes weighed
+ *   str_end(in):
+ *   trail(in/out): the trail bytes left of the character the next byte is in, 0 at a character's start
+ *
+ * An ASCII space and an EUC space (0xA1 0xA1) weigh 0 only at a character's start: the second byte of a character
+ * can be 0xA1. Any other byte weighs itself. Inline: lang_fastcmp_ko () calls it for every byte it compares.
+ */
+STATIC_INLINE unsigned char
+lang_next_byte_weight_ko (const unsigned char **str, const unsigned char *str_end, int *trail)
+{
+  unsigned char weight = *(*str)++;
+  int char_size;
+
+  if (*trail > 0)
+    {
+      (*trail)--;
+    }
+  else if (weight == ' ')
+    {
+      weight = 0;
+    }
+  else if (weight == 0xA1 && *str < str_end && **str == 0xA1)
+    {
+      weight = 0;
+      (*str)++;
+    }
+  else
+    {
+      (void) intl_nextchar_euc (*str - 1, &char_size);
+      *trail = char_size - 1;
+    }
+
+  return weight;
+}
+
+#endif /* _LANGUAGE_SUPPORT_H_ */

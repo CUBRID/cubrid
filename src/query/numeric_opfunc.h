@@ -131,7 +131,7 @@ typedef enum
 #define NUMERIC_VALUE_SIGN_BIT_MASK 0x80
 #define NUMERIC_HEADER_SCALE_SIGN_BIT_MASK 0x80
 
-/* the Mersenne prime 2^61 - 1 of numeric_hash (): as 2^61 is 1 mod it, a reduction takes shifts and adds,
+/* the Mersenne prime 2^61 - 1 of numeric_db_value_hash (): as 2^61 is 1 mod it, a reduction takes shifts and adds,
  * no division */
 #define NUMERIC_HASH_PRIME ((1ULL << 61) - 1)
 
@@ -233,7 +233,8 @@ extern int float_numeric_normalize_for_sort (DB_C_NUMERIC num, int scale, uint8_
 STATIC_INLINE constexpr uint64_t numeric_hash_mod (uint128_t value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE constexpr uint64_t numeric_hash_mul (uint64_t residue1, uint64_t residue2)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE uint64_t numeric_hash (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE constexpr uint64_t numeric_hash_int64 (int64_t value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE uint64_t numeric_db_value_hash (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 #endif /* __cplusplus */
 
 /* Testing Routines */
@@ -432,9 +433,30 @@ numeric_hash_mul (uint64_t residue1, uint64_t residue2)
 }
 
 /*
- * numeric_hash() - Hash a NUMERIC value
+ * numeric_hash_int64 () - hash an integer as numeric_db_value_hash () hashes the NUMERIC of its value
  *   return: the value mod 2^61 - 1, its bits not mixed
- *   value(in) : a NUMERIC value, fixed or float
+ *   value(in): an integer
+ *
+ * Note: a SMALLINT, an INTEGER, a BIGINT and a NUMERIC of one value (e.g., 5 and 5.00) give one residue.
+ */
+STATIC_INLINE constexpr uint64_t
+numeric_hash_int64 (int64_t value)
+{
+  /* the magnitude, INT64_MIN's (2^63) included */
+  const uint64_t residue = numeric_hash_mod (value < 0 ? 0 - (uint64_t) value : (uint64_t) value);
+
+  /* negate a negative value, as numeric_db_value_hash () does */
+  return (value < 0 && residue != 0) ? NUMERIC_HASH_PRIME - residue : residue;
+}
+
+static_assert (numeric_hash_int64 (-1) == NUMERIC_HASH_PRIME - 1, "-1 is the prime less 1");
+static_assert (numeric_hash_int64 ((int64_t) NUMERIC_HASH_PRIME) == 0, "the prime is 0");
+static_assert (numeric_hash_int64 (INT64_MIN) == NUMERIC_HASH_PRIME - 4, "2^63 is 4 mod 2^61 - 1");
+
+/*
+ * numeric_db_value_hash () - hash a NUMERIC value
+ *   return: the value mod 2^61 - 1, its bits not mixed
+ *   value(in): a NUMERIC value, fixed or float
  *
  * Step 1: read the scale as db_get_numeric_precision_and_scale () reads it: a float NUMERIC keeps it in the value,
  *         a fixed one in its domain. That function cannot be called here,
@@ -451,7 +473,7 @@ numeric_hash_mul (uint64_t residue1, uint64_t residue2)
  *   - Unlike float_numeric_normalize_for_sort (), the hash keeps no order.
  */
 STATIC_INLINE uint64_t
-numeric_hash (const DB_VALUE * value)
+numeric_db_value_hash (const DB_VALUE * value)
 {
   const DB_C_NUMERIC num = db_locate_numeric (value);
   uint64_t high, low, residue;

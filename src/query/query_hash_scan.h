@@ -178,13 +178,14 @@ extern void fhs_dump (THREAD_ENTRY * thread_p, FHSID * fhsid);
 /* end : FILE HASH SCAN */
 
 /*
- * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it: folding a key's values
- *				 in key order from 0 and finishing with qdata_hash_scan_key_finish () gives
- *				 qdata_hash_scan_key ()'s hash, for a caller that has the values one at a time
+ * qdata_hash_scan_key_fold () - fold one key value into the hash of the values before it
  *   returns: the hash of the values so far
  *   hash_val(in): the hash of the values before this one (0 before the first)
  *   value(in): the key value
  *   ht_size(in): hash table size (in buckets)
+ *
+ * Note: folding a key's values in key order from 0, then qdata_hash_scan_key_finish (), gives
+ *       qdata_hash_scan_key ()'s hash, for a caller that has the values one at a time.
  */
 STATIC_INLINE unsigned int
 qdata_hash_scan_key_fold (unsigned int hash_val, const DB_VALUE * value, unsigned int ht_size)

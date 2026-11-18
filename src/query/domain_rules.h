@@ -425,10 +425,19 @@ void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const 
 int domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
 
 /*
+ * domain_hash_type () - CBRD-28060: the type mht_valhash () hashes a value of the type as, so that two types of one
+ *   hash type hash their values that compare equal alike and a pair of them hashes as it is
+ *   return: NUMERIC for an exact number (SMALLINT, INTEGER, BIGINT, NUMERIC: by the value), DOUBLE for a floating
+ *	     one (FLOAT, DOUBLE, MONETARY: by the DOUBLE the value equals), the type itself for any other
+ */
+DB_TYPE domain_hash_type (DB_TYPE type);
+
+/*
  * domain_decide_hash_join_key () - CBRD-27583: a hash join's key column pair, decided by the compiler from the
  *   two inputs' column domains (unpack's fallback for a list whose column the execution fixes): the domain both
  *   values are hashed and compared in, each side's conversion into it, and the comparison of the two values then
- *   (tp_value_compare without coercion)
+ *   (tp_value_compare without coercion); two types of one hash type (domain_hash_type) are hashed
+ *   as they are and compared with coercion
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
  *   coerce(in/out): a key before this one is coerced, and so is every key after it (one hashed record)
  *   common(out): the domain; NULL for a key compared in its own domains

@@ -102,6 +102,7 @@ extern unsigned int mht_numhash (const void *key, const unsigned int ht_size);
 extern unsigned int mht_ptrhash (const void *ptr, const unsigned int ht_size);
 extern unsigned int mht_valhash (const void *key, const unsigned int ht_size);
 STATIC_INLINE unsigned int mht_mixhash (unsigned int hash) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE unsigned int mht_mixhash64 (UINT64 hash) __attribute__ ((ALWAYS_INLINE));
 extern int mht_compare_identifiers_equal (const void *key1, const void *key2);
 extern int mht_compare_strings_are_equal (const void *key1, const void *key2);
 extern int mht_compare_ints_are_equal (const void *key1, const void *key2);
@@ -205,9 +206,10 @@ extern unsigned int mht_hls_slot_count (int est_size);
  *   return: hash value
  *   hash(in): the hash
  *
- * mht_valhash () mixes the hash of every value with it once. The hash of a value keeps patterns of the value in its
- * low bits: an integer is its own hash, and the multiplies of FNV-1a carry only into the high bits. The hash tables
- * take the low bits (hash & mask in mht_put_hls ()), which the mix makes depend on all the bits.
+ * mht_valhash () mixes the hash of every value with it once, a value of 64 bits after mht_mixhash64 () cuts it to
+ * 32 bits. The hash of a value keeps patterns of the value in its low bits: a DATE is its own hash, and the
+ * multiplies of FNV-1a carry only into the high bits. The hash tables take the low bits (hash & mask in mht_put_hls ()), which the mix makes
+ * depend on all the bits.
  */
 STATIC_INLINE unsigned int
 mht_mixhash (unsigned int hash)
@@ -219,6 +221,26 @@ mht_mixhash (unsigned int hash)
   hash ^= hash >> 16;
 
   return hash;
+}
+
+/*
+ * mht_mixhash64 () - mix the bits of a 64-bit value by MurmurHash3's fmix64 and take the high 32 bits
+ *   return: hash value
+ *   hash(in): the value
+ *
+ * A value of 64 bits is mixed before it is cut to 32 bits: high ^ low would hash alike the values whose halves
+ * XOR to the same word, such as every (a << 32) | a.
+ */
+STATIC_INLINE unsigned int
+mht_mixhash64 (UINT64 hash)
+{
+  hash ^= hash >> 33;
+  hash *= 0xff51afd7ed558ccdULL;
+  hash ^= hash >> 33;
+  hash *= 0xc4ceb9fe1a85ec53ULL;
+  hash ^= hash >> 33;
+
+  return (unsigned int) (hash >> 32);
 }
 
 #endif /* _MEMORY_HASH_H_ */

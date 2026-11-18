@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <float.h>
 #include <search.h>
 
 #include "xasl_generation.h"
@@ -413,6 +414,11 @@ static int pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, 
 static int pt_decide_key_compares (INDX_INFO * indx_infop);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
+static bool pt_regu_is_pruning_value (const REGU_VARIABLE * regu);
+static bool pt_domain_takes_pruning_conversion (const TP_DOMAIN * domain);
+static TP_DOMAIN *pt_list_element_domain (const TP_DOMAIN * set);
+static bool pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element);
+static void pt_set_prune_domains (PRED_EXPR * pred);
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
 						PT_NODE * where_part, QO_PLAN * plan, QO_XASL_INDEX_INFO * index_pred);
 static ACCESS_SPEC_TYPE *pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * subquery,
@@ -7291,14 +7297,11 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
  *   so that the values the scan's predicate finds equal hash alike and none that it compares fails to hash
  *   return: false where no domain is (another type pair, a domain the execution fixes): the scan reads the list
  *   common(out): NULL to hash the values as they are - one type, strings of one collation (their hash is the
- *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
+ *		  collation's, trailing spaces ignored), numbers of one family; else the domain both convert to
  *
- * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
- * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE, an exact NUMERIC hash costing too much
- * per key: a floating NUMERIC hashes a value normalized and a fixed one its scaled digits, and a floating key can
- * hold fixed values (a CONNECT BY PRIOR column). Equal values hash alike only up to 15 digits: past 2^53 a value
- * written in two scales can round to two DOUBLEs and the scan misses the pair (CBRD-27798). Two fixed NUMERICs
- * whose common domain is floating have none.
+ * Numbers of one hash type hash as they are (domain_hash_type): the exact ones (SMALLINT, INTEGER, BIGINT, NUMERIC
+ * fixed or floating, of any scale) by value, the floating ones (FLOAT, DOUBLE, MONETARY) by the DOUBLE they equal.
+ * A pair across the families hashes in the pair's common domain (domain_resolve_hash_key, the comparison's type).
  */
 static bool
 pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
@@ -7324,27 +7327,15 @@ pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, co
     {
       return false;
     }
-  const bool floating = domain[0]->precision == DB_DEFAULT_NUMERIC_PRECISION
-    || domain[1]->precision == DB_DEFAULT_NUMERIC_PRECISION;
-  if (type[0] == type[1] && domain[0]->scale == domain[1]->scale && !floating)
+  if (domain_hash_type (type[0]) == domain_hash_type (type[1]))
     {
+      /* hashed as they are, by value; the scan's predicate compares the pair with coercion */
       return true;
     }
   if (domain_resolve_hash_key (domain[0], domain[1], common) != NO_ERROR)
     {
       er_clear ();
       return false;
-    }
-  if (TP_DOMAIN_TYPE (*common) == DB_TYPE_NUMERIC && (floating || (*common)->precision == DB_DEFAULT_NUMERIC_PRECISION))
-    {
-      if (!floating)
-	{
-	  /* two fixed NUMERICs beyond 38 digits together: a DOUBLE rounds a value twice (the coefficient, then
-	   * 10^scale), so equal values of the two scales could hash apart */
-	  *common = NULL;
-	  return false;
-	}
-      *common = tp_domain_resolve_default (DB_TYPE_DOUBLE);
     }
   return true;
 }
@@ -15920,32 +15911,66 @@ pt_list_element_domain (const TP_DOMAIN * set)
 }
 
 /*
- * pt_comparison_keeps_key () - CBRD-27583: whether a list's elements compare with a partition key as values of
- *   the key's type - the comparison the type rule module decides for the two domains converts the element alone, into
- *   the key's type. Pruning converts the elements into the key's domain; where the comparison converts the key (a
- *   BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element), the converted element
- *   would leave out a partition whose key the comparison finds equal
+ * pt_comparison_keeps_key () - CBRD-27583: whether a value (a list's elements) compares with a partition key as a
+ *   value of the key's type - the comparison the type rule module decides for the two domains converts the element
+ *   alone, into the key's type, or converts the key into a type that keeps any two keys apart. Pruning converts the
+ *   value into the key's domain; where the comparison converts the key losing digits (a BIGINT key against a DOUBLE
+ *   element compares in DOUBLE, and two keys can equal one element), the converted element would leave out a
+ *   partition whose key the comparison finds equal
  */
 static bool
 pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
 {
   const TP_DOMAIN *const domain[2] = { key, element };
+  const DB_TYPE key_type = TP_DOMAIN_TYPE (key);
   DOMAIN_COMPARE decided;
   bool by_type;
+  bool is_lossless_conversion = false;
 
   if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR || !by_type)
     {
       return false;
     }
-  return decided.conv[0] == NULL && (decided.conv[1] == NULL
-				     || TP_DOMAIN_TYPE (decided.target[1]) == TP_DOMAIN_TYPE (key));
+
+  if (decided.conv[0] == NULL)
+    {
+      /* the key compares as it is */
+      is_lossless_conversion = true;
+    }
+  else
+    {
+      /* CBRD-28060: a type keeps two keys apart only if it holds every key */
+      switch (TP_DOMAIN_TYPE (decided.target[0]))
+	{
+	case DB_TYPE_DOUBLE:
+	case DB_TYPE_MONETARY:
+	  /* a DOUBLE, a MONETARY's amount too, keeps DBL_DIG decimal digits */
+	  is_lossless_conversion = (key_type == DB_TYPE_SHORT || key_type == DB_TYPE_INTEGER
+				    || key_type == DB_TYPE_FLOAT
+				    || (key_type == DB_TYPE_NUMERIC && key->precision <= DBL_DIG));
+	  break;
+
+	case DB_TYPE_FLOAT:
+	  /* a FLOAT keeps FLT_DIG decimal digits,
+	   * and its normal range holds a NUMERIC key only with a scale in 0..precision */
+	  is_lossless_conversion = (key_type == DB_TYPE_SHORT
+				    || (key_type == DB_TYPE_NUMERIC && key->precision <= FLT_DIG
+					&& key->scale >= 0 && key->scale <= key->precision));
+	  break;
+
+	default:
+	  break;
+	}
+    }
+
+  return is_lossless_conversion && (decided.conv[1] == NULL || TP_DOMAIN_TYPE (decided.target[1]) == key_type);
 }
 
 /*
  * pt_set_prune_domains () - CBRD-27583: the domain into which a partitioned class's pruning converts a term's
  *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, not at the scan
- *   (partition_prune_hash, partition_prune_for_function); an IN list prunes only when its
- *   elements have one domain, its NULLs aside, that compares with the key in the key's type (pt_comparison_keeps_key)
+ *   (partition_prune_hash, partition_prune_for_function); a value prunes only when it compares with the key in the
+ *   key's type (pt_comparison_keeps_key), an IN list only when its elements have one domain, its NULLs aside
  */
 static void
 pt_set_prune_domains (PRED_EXPR * pred)
@@ -15968,7 +15993,8 @@ pt_set_prune_domains (PRED_EXPR * pred)
 	      TP_DOMAIN *other = values[0] ? term->rhs->domain : term->lhs->domain;
 	      /* the domain the value is read in: the unpack finds the converter from it */
 	      const TP_DOMAIN *from = value->original_domain != NULL ? value->original_domain : value->domain;
-	      if (pt_domain_takes_pruning_conversion (from) && pt_domain_takes_pruning_conversion (other))
+	      if (pt_domain_takes_pruning_conversion (from) && pt_domain_takes_pruning_conversion (other)
+		  && pt_comparison_keeps_key (other, from))
 		{
 		  term->prune_side = values[0] ? 0 : 1;
 		  term->prune_domain = other;

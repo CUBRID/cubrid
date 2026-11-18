@@ -7650,13 +7650,17 @@ btree_get_stats_hash_bytes (UINT64 hash, const void *bytes, size_t size)
  *   hash(in): hash to mix into
  *   value(in): CHAR or VARCHAR key element
  *
- * Note: (CBRD-27701) the trailing spaces count for a VARCHAR unless ignore_trailing_space, and
- * never for a CHAR (mr_cmpval_string (), mr_cmpval_char ()). The collations compared by
- * lang_fastcmp_byte () (binary, en_cs, en_ci) and euckr_bin (lang_fastcmp_ko ()) compare unit
- * by unit, a space (or the EUC-KR space 0xA1A1) as zero and any other byte by its weight, so
- * the units are mixed into the 64-bit hash. The 32-bit collation hash (mht_valhash ())
- * is left for the other collations: its PJW-style mixing makes strings of one fixed shape such
- * as dates collide, and each collision lowers the Duj1 estimate of a nearly unique column.
+ * Note: (CBRD-27701) the string is mixed in by the hash of its collation (mht2str),
+ * which leaves out the trailing weights 0, the trailing spaces among them.
+ *
+ * The trailing spaces count for a VARCHAR unless ignore_trailing_space, and never for a CHAR
+ * (mr_cmpval_string (), mr_cmpval_char ()). Where they count, 'a' and 'a ' are two values the Duj1 estimate
+ * must tell apart, so the number of trailing weights 0 is mixed in as well:
+ * a hash table allows the two to hash alike, a distinct count does not. They are counted as:
+ *   euckr_bin: the spaces and EUC spaces at a character's start (lang_next_byte_weight_ko ())
+ *   any other: the ASCII spaces and NULs, which the byte and UTF-8 comparisons weigh alike
+ * An UCA comparison does not weigh a NUL as a space: a NUL rarely ends a value, and miscounting it
+ * only shifts the estimate. The binary collation compares a space as any other byte and its hash keeps it.
  */
 static UINT64
 btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
@@ -7665,75 +7669,37 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
   int size = (str != NULL) ? db_get_string_size (value) : 0;
   int coll_id = db_get_string_collation (value);
   LANG_COLLATION *lang_coll = lang_get_collation (coll_id);
-  bool trailing_counts = (DB_VALUE_TYPE (value) == DB_TYPE_VARCHAR
-			  && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE));
-  const unsigned int *weights = NULL;
-  UINT64 kept_hash;
-  int i, units, kept_units;
+  unsigned int hash_key = lang_coll->mht2str (lang_coll, str, size);
+  int zeros = 0;		/* trailing weights 0, which mht2str leaves out */
 
-  if (coll_id == LANG_COLL_BINARY)
+  hash = btree_get_stats_hash_bytes (hash, &hash_key, sizeof (hash_key));
+
+  if (coll_id == LANG_COLL_BINARY || DB_VALUE_TYPE (value) != DB_TYPE_VARCHAR
+      || prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
     {
-      /* lang_fastcmp_binary () compares the bytes as they are and ignores trailing zero bytes */
-      while (size > 0 && str[size - 1] == 0)
-	{
-	  size--;
-	}
-      hash = btree_get_stats_hash_bytes (hash, &size, sizeof (size));
-      return btree_get_stats_hash_bytes (hash, str, size);
+      /* the trailing spaces do not count */
+      return hash;
     }
 
-  if (lang_coll != NULL && lang_coll->fastcmp == lang_get_collation (LANG_COLL_ISO_BINARY)->fastcmp)
+  if (coll_id == LANG_COLL_EUCKR_BINARY)
     {
-      weights = lang_coll->coll.weights;
+      const unsigned char *str_end = str + size;
+      int trail = 0;		/* trail bytes left of the current character */
+
+      while (str < str_end)
+	{
+	  zeros = (lang_next_byte_weight_ko (&str, str_end, &trail) == 0) ? zeros + 1 : 0;
+	}
     }
-  else if (coll_id != LANG_COLL_EUCKR_BINARY)
+  else
     {
-      /* mht_valhash () drops the trailing ASCII spaces and stays below 2^32, so the
-       * number dropped goes into the upper half where they count */
-      UINT64 str_hash = mht_valhash (value, UINT_MAX);
-      int len = size;
-
-      if (trailing_counts)
+      while (zeros < size && (str[size - 1 - zeros] == ' ' || str[size - 1 - zeros] == 0))
 	{
-	  while (len > 0 && str[len - 1] == ' ')
-	    {
-	      len--;
-	    }
-	  str_hash |= (UINT64) (size - len) << 32;
-	}
-      return str_hash;
-    }
-
-  kept_hash = hash;
-  units = kept_units = 0;
-  for (i = 0; i < size; i++)
-    {
-      unsigned int unit = str[i];
-
-      if (unit == ' ')
-	{
-	  unit = 0;
-	}
-      else if (weights != NULL)
-	{
-	  unit = weights[unit];
-	}
-      else if (unit == 0xA1 && i + 1 < size && str[i + 1] == 0xA1)
-	{
-	  unit = 0;
-	  i++;
-	}
-      hash = btree_get_stats_hash_bytes (hash, &unit, sizeof (unit));
-      units++;
-      if (unit != 0 || trailing_counts)
-	{
-	  /* trailing zero units are dropped where the trailing spaces do not count */
-	  kept_hash = hash;
-	  kept_units = units;
+	  zeros++;
 	}
     }
 
-  return btree_get_stats_hash_bytes (kept_hash, &kept_units, sizeof (kept_units));
+  return btree_get_stats_hash_bytes (hash, &zeros, sizeof (zeros));
 }
 
 /*
@@ -7743,8 +7709,8 @@ btree_get_stats_hash_string (UINT64 hash, const DB_VALUE * value)
  *   value(in): key element
  *
  * Note: (CBRD-27701) the Duj1 estimate counts distinct hashes, so the hash must be equal for equal
- * values and distinct for distinct ones. mht_valhash () is made for hash table buckets:
- * 32 bits, and a set by its first and last elements only. The whole value is mixed here instead;
+ * values and distinct for distinct ones. mht_valhash () is made for hash table buckets (32 bits,
+ * a set by its first and last elements only). The whole value is mixed here instead;
  * strings follow the comparison of their collation (btree_get_stats_hash_string ()).
  */
 static UINT64
@@ -7760,8 +7726,8 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 
     case DB_TYPE_NUMERIC:
       {
-	/* equal values have one residue whatever their scale: 1.0 and 1.00 alike, 1.5 and 15 apart */
-	UINT64 residue = numeric_hash (value);
+	/* 1.0 and 1.00, of any precision and scale, hash alike */
+	UINT64 residue = numeric_db_value_hash (value);
 
 	return btree_get_stats_hash_bytes (hash, &residue, sizeof (residue));
       }

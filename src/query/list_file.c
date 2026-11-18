@@ -6064,15 +6064,29 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
 /*
  * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
- *   equal: by the position's comparison, NULLs equal (total order)
+ *   equal: by the position's comparison, NULLs equal (total order); two strings by their bytes (CBRD-28060)
+ *
+ * Note: a result may depend on a bound string's bytes (e.g., ascii (?), or ? itself in the select list), which
+ *       the collation of the position may find equal for 'A' and 'a'.
  */
 static bool
 qfile_list_cache_values_equal (const DOMAIN_COMPARE * compares, int i, const DB_VALUE * val1, const DB_VALUE * val2)
 {
-  /* a key with values has its entry's comparisons (qfile_list_cache_key_of) */
+  if (val1 == val2)
+    {
+      return true;
+    }
+
+  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val1)) && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val2))
+      && !DB_IS_NULL (val1) && !DB_IS_NULL (val2))
+    {
+      return mht_compare_dbvalues_are_identical (val1, val2) != 0;
+    }
+
+  /* other types and NULLs: the position's comparison (set by qfile_list_cache_key_of () for a key with values) */
   assert (compares != NULL);
-  return val1 == val2
-    || eval_compare_values_resolved (thread_get_thread_entry_info (), &compares[i], NULL, val1, val2, 1, NULL) == DB_EQ;
+  return eval_compare_values_resolved (thread_get_thread_entry_info (), &compares[i], NULL, val1, val2, 1,
+				       NULL) == DB_EQ;
 }
 
 /*

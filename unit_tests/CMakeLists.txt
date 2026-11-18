@@ -43,6 +43,7 @@ option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
 option (UNIT_TEST_STREAM_SESSION "Unit testing: byte-stream transport consumer registry")
 option (UNIT_TEST_RADIX_SORT "Unit testing: radix run sorter")
+option (UNIT_TEST_VALUE_HASH "Unit testing: hash of a DB_VALUE across its types")
 
 message("  unit_tests/...")
 
@@ -129,6 +130,11 @@ if (UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
   message("    radix_sort")
   add_subdirectory(radix_sort)
 endif(UNIT_TESTS OR UNIT_TEST_RADIX_SORT)
+
+if (UNIT_TESTS OR UNIT_TEST_VALUE_HASH)
+  message("    value_hash")
+  add_subdirectory(value_hash)
+endif(UNIT_TESTS OR UNIT_TEST_VALUE_HASH)
 
 #[[
 TODO compilation fails

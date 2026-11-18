@@ -939,13 +939,13 @@ static const uint64_t _gv_numeric_sum_acc_pow10_max_prec[SUM_ACC_NUMERIC_WORDS] 
   { 0x1DULL, 0x6329F1C35CA4BFABULL, 0xB9F5610000000000ULL };
 
 /*
- * numeric_hash_make_inverse_pow10_table () - make numeric_hash_inverse_pow10 for numeric_hash ()
+ * numeric_hash_make_inverse_pow10_table () - make numeric_hash_inverse_pow10 for numeric_db_value_hash ()
  *   return: the table, made at compile time
  *
  * Step 1: find the inverse of 10, 10^(p - 2) mod p by Fermat (p = NUMERIC_HASH_PRIME),
  *         squaring 10 and multiplying the squares at the bits set in p - 2.
- * Step 2: fill scale 0 and up, each 10^-scale the one before times the inverse of 10.
- * Step 3: fill the scales below 0, each 10^-scale the one after times 10.
+ * Step 2: fill scale 0 and up, each entry the one before times the inverse of 10.
+ * Step 3: fill scale -1 and down, each entry the one after times 10.
  */
 static constexpr NUMERIC_HASH_INVERSE_POW10_TABLE
 numeric_hash_make_inverse_pow10_table (void)
@@ -973,7 +973,7 @@ numeric_hash_make_inverse_pow10_table (void)
 	numeric_hash_mul (table.value[scale - 1 - DB_MIN_NUMERIC_SCALE], inverse_10);
     }
 
-  /* Step 3: fill the scales below 0, multiplying by 10 */
+  /* Step 3: fill scale -1 and down, multiplying by 10 */
   for (scale = -1; scale >= DB_MIN_NUMERIC_SCALE; scale--)
     {
       table.value[scale - DB_MIN_NUMERIC_SCALE] = numeric_hash_mul (table.value[scale + 1 - DB_MIN_NUMERIC_SCALE], 10);
@@ -982,7 +982,8 @@ numeric_hash_make_inverse_pow10_table (void)
   return table;
 }
 
-/* look-up table : 10^-scale mod NUMERIC_HASH_PRIME for every scale; numeric_hash () divides by 10^scale with it */
+/* look-up table : 10^-scale mod NUMERIC_HASH_PRIME for every scale;
+ * numeric_db_value_hash () divides by 10^scale with it */
 extern constexpr NUMERIC_HASH_INVERSE_POW10_TABLE numeric_hash_inverse_pow10 = numeric_hash_make_inverse_pow10_table ();
 
 /*

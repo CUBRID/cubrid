@@ -3482,7 +3482,7 @@ qdata_key_sketch_estimate (const unsigned char *regs)
  *   ht_size(in): hash table size (in buckets)
  *
  * Keys the comparison finds equal hash alike, but for a JSON key: a NUMERIC 1.0 hashes as 1.00, and a FLOAT, DOUBLE
- * or MONETARY -0 as +0 (mht_valhash ()). The hash merge of the GROUP BY leftovers (qexec_gby_hash_merge ())
+ * or MONETARY -0.0 as 0.0 (mht_valhash ()). The hash merge of the GROUP BY leftovers (qexec_gby_hash_merge ())
  * meets two groups only when their hashes are equal, and writes them out without the sort that brings equal keys
  * together. A JSON key hashes its text while its comparison takes a scalar's value (true as 'true', -0.0 as 0.0:
  * mr_cmpval_json ()), so the merge leaves the JSON keys to the sort (qexec_gby_keys_hash_as_compared ()).
@@ -3552,8 +3552,8 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
-       * regu's, which types the partial list's column): they hash alike when they compare equal, but for JSON and
-       * a collation with expansions (qdata_hash_agg_hkey ()) */
+       * regu's, which types the partial list's column): they hash alike when they compare equal, but for JSON
+       * (qdata_hash_agg_hkey ()) */
       assert (ckey1->compares != NULL);
       result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)

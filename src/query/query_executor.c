@@ -23365,7 +23365,7 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
       const DB_VALUE *value = &values[i];
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       sum = sum * 31 + (unsigned int) type;
-      /* the types mht_valhash hashes by value; another (an SA client binds an object as its MOP) counts by
+      /* the types mht_valhash () hashes by value; another (an SA client binds an object as its MOP) counts by
        * its type */
       const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
 			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID

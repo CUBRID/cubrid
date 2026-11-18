@@ -2869,10 +2869,51 @@ domain_decide_comparison (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * de
   return domain_resolve_comparison (&key[0], &key[1], decided);
 }
 
+DB_TYPE
+domain_hash_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_SMALLINT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_NUMERIC:
+      return DB_TYPE_NUMERIC;
+
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_MONETARY:
+      return DB_TYPE_DOUBLE;
+
+    default:
+      return type;
+    }
+}
+
 int
 domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, bool * coerce,
 			     const TP_DOMAIN ** common, int conv_kind[2], DOMAIN_COMPARE * compare)
 {
+  if (TP_DOMAIN_TYPE (outer) != TP_DOMAIN_TYPE (inner)
+      && domain_hash_type (TP_DOMAIN_TYPE (outer)) == domain_hash_type (TP_DOMAIN_TYPE (inner)))
+    {
+      /* CBRD-28060: hashed as they are, by value; only the keys whose hashes match are compared, with coercion */
+      DOMAIN_COMPARE_KEY key[2];
+
+      *common = NULL;
+      conv_kind[0] = conv_kind[1] = DOMAIN_HASH_KEY_AS_IS;
+
+      domain_compare_key_of (outer, &key[0]);
+      domain_compare_key_of (inner, &key[1]);
+      if (domain_resolve_comparison (&key[0], &key[1], compare) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DOMAIN_COMPARE));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      return NO_ERROR;
+    }
+
   const TP_DOMAIN *resolved;
   const int error = domain_resolve_hash_key (outer, inner, &resolved);
   if (error != NO_ERROR)
