@@ -3681,6 +3681,11 @@ struct pt_sensitivity_label_info
   PT_NODE *new_name;		/* PT_VALUE */
   PT_NODE *level;		/* PT_VALUE */
   PT_NODE *comment;		/* PT_VALUE */
+  PT_NODE *target_list;		/* by kind: [schema.]table.column (PT_DOT_), [schema.]table or schema (PT_NAME) list */
+  PT_NODE *grade;		/* PT_VALUE */
+  PT_NODE *info_type;		/* PT_VALUE */
+  PT_NODE *source;		/* PT_VALUE */
+  unsigned or_replace:1;	/* OR REPLACE clause for CREATE SENSITIVITY LABEL ON COLUMN */
 };
 
 /* Info field of the basic NODE

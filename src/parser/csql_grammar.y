@@ -724,6 +724,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> opt_alter_synonym
 %type <node> sensitivity_label_name
 %type <node> opt_sensitivity_label_level
+%type <node> sensitivity_label_on_column
 %type <node> opt_identifier
 %type <node> normal_or_class_attr_list_with_commas
 %type <node> normal_or_class_attr
@@ -1047,6 +1048,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> pl_language_spec
 %type <node> opt_sp_default_value
 %type <node> table_column
+%type <node> table_column_list
 
 /*}}}*/
 
@@ -3317,6 +3319,23 @@ create_stmt
 			    node->info.sensitivity_label.kind = $4;
 			    node->info.sensitivity_label.name = $5;
 			    node->info.sensitivity_label.comment = $6;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| CREATE SENSITIVITY LABEL sensitivity_label_on_column
+		{{
+			$$ = $4;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| CREATE OR REPLACE SENSITIVITY LABEL sensitivity_label_on_column
+		{{
+			PT_NODE *node = $6;
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.or_replace = 1;
 			  }
 
 			$$ = node;
@@ -12184,6 +12203,19 @@ table_column
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
         ;
+
+table_column_list
+	: table_column_list ',' table_column
+		{{
+			$$ = parser_make_link ($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| table_column
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
 
 opt_sp_in_out
 	: opt_in_out
@@ -22943,6 +22975,31 @@ opt_sensitivity_label_level
 	| LEVEL unsigned_int32
 		{{
 			$$ = $2;
+		}}
+	;
+
+sensitivity_label_on_column
+	: ON_ COLUMN table_column_list '(' sensitivity_label_component_list ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_COLUMN;
+			    node->info.sensitivity_label.target_list = $3;
+			    node->info.sensitivity_label.grade = CONTAINER_AT_0 ($5);
+			    node->info.sensitivity_label.info_type = CONTAINER_AT_1 ($5);
+			    node->info.sensitivity_label.source = CONTAINER_AT_2 ($5);
+
+			    if (node->info.sensitivity_label.grade == NULL)
+			      {
+				PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					   MSGCAT_SEMANTIC_SENSITIVITY_LABEL_GRADE_REQUIRED);
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
 
