@@ -8876,7 +8876,10 @@ expr_scan_pred_image_unpack (const char *image, int size, const PRED_EXPR * pr)
     {
       root = expr_image_get_pred (&r, prog != NULL ? prog->n_cells : 0, prog != NULL ? prog->n_steps : 0, 0);
     }
-  n_share = expr_image_get_range (&r, 0, prog != NULL ? prog->n_cells : 0);
+  /* the registry has an entry per shareable node (expr_scan_pred_share_build ()), and two nodes of one expression that
+   * the build gave one cell (CSE: the operand and the WHEN of CASE x WHEN x ...) are two entries of that cell, so the
+   * count may exceed the program's cells; the writer bounds it by the nodes it registers (CBRD-28049) */
+  n_share = expr_image_get_range (&r, 0, prog != NULL ? EXPR_MAX_STEPS : 0);
   if (root != NULL && n_share > 0 && !r.failed)
     {
       root->share = (struct expr_share *) malloc (sizeof (struct expr_share) * n_share);
