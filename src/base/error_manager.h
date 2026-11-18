@@ -335,6 +335,7 @@ extern "C"
     int line_no;
     char *msg;			/* formatted message or NULL; owned by the mark, moved between er_stmt_fail_begin and
 				 * er_stmt_fail_end */
+    bool tran_ended;		/* the transaction ended after the error was marked; see er_stmt_fail_note_tran_end () */
   };
 
   extern void er_stmt_fail_begin (ER_STMT_FAIL_MARK * saved);
@@ -342,6 +343,8 @@ extern "C"
   extern void er_stmt_fail_next (void);
   extern int er_stmt_fail_get (void);
   extern bool er_stmt_fail_is_tran_ended (void);
+  extern void er_stmt_fail_note_tran_end (void);
+  extern bool er_stmt_fail_is_before_tran_end (void);
   extern bool er_stmt_fail_blocks_request (void);
   extern int er_stmt_fail_raise (void);
   extern bool er_stmt_fail_is_reported_by (int err_id);

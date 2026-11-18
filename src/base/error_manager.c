@@ -364,7 +364,7 @@ enum
 #define ER_STMT_FAIL_MAX_SAVED 64
 
 static thread_local int er_Stmt_fail_scope_depth = 0;
-static thread_local ER_STMT_FAIL_MARK er_Stmt_fail_mark = { NO_ERROR, ER_WARNING_SEVERITY, NULL, -1, NULL };
+static thread_local ER_STMT_FAIL_MARK er_Stmt_fail_mark = { NO_ERROR, ER_WARNING_SEVERITY, NULL, -1, NULL, false };
 
 static thread_local int er_Stmt_fail_saved_count = 0;
 static thread_local int er_Stmt_fail_saved[ER_STMT_FAIL_MAX_SAVED];	/* marked error id when a level was pushed */
@@ -2500,6 +2500,7 @@ er_stmt_fail_clear (void)
   er_Stmt_fail_mark.severity = ER_WARNING_SEVERITY;
   er_Stmt_fail_mark.file_name = NULL;
   er_Stmt_fail_mark.line_no = -1;
+  er_Stmt_fail_mark.tran_ended = false;
 }
 
 /*
@@ -2736,6 +2737,34 @@ bool
 er_stmt_fail_is_tran_ended (void)
 {
   return er_stmt_fail_get () != NO_ERROR && er_stmt_fail_is_kept ();
+}
+
+/*
+ * er_stmt_fail_note_tran_end - remember that the transaction ended after the statement failure was marked
+ *   return: none
+ *
+ * Note: called by the client transaction manager when it rolls the transaction back. What the statement did before
+ *       went with that transaction, so the next one must not be refused a commit for it; see
+ *       tran_set_rollback_required (). Once marked, the statement can change nothing more (see
+ *       er_stmt_fail_blocks_request ()), so nothing of it is left in the next transaction either.
+ */
+void
+er_stmt_fail_note_tran_end (void)
+{
+  if (er_stmt_fail_get () != NO_ERROR)
+    {
+      er_Stmt_fail_mark.tran_ended = true;
+    }
+}
+
+/*
+ * er_stmt_fail_is_before_tran_end - did the transaction end after the error was marked
+ *   return: true or false
+ */
+bool
+er_stmt_fail_is_before_tran_end (void)
+{
+  return er_stmt_fail_get () != NO_ERROR && er_Stmt_fail_mark.tran_ended;
 }
 
 /*
