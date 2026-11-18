@@ -1068,6 +1068,21 @@ qo_null_eval_expr (PARSER_CONTEXT * parser, PT_NODE * expr, QO_NULL_TARGET * tar
       return QO_NULL_EVAL_STRICT (qo_null_eval_list (parser, arg1, target, true),
 				  qo_null_eval_list (parser, arg2, target, true));
 
+    case PT_DATEDIFF:
+    case PT_TIMEDIFF:
+    case PT_STRCMP:
+    case PT_ATAN2:
+    case PT_POWER:
+    case PT_POSITION:
+    case PT_FINDINSET:
+    case PT_LOCATE:
+      /* NULL when any operand is NULL, the target column may be any of them (fetch_op_datediff (), fetch_op_locate (),
+       * db_power_dbval () and the others check every operand) */
+      values = QO_NULL_EVAL_STRICT (qo_null_eval_list (parser, arg1, target, true),
+				    qo_null_eval_list (parser, arg2, target, true));
+      return ((expr->info.expr.arg3 == NULL) ? values
+	      : QO_NULL_EVAL_STRICT (values, qo_null_eval_list (parser, expr->info.expr.arg3, target, true)));
+
     case PT_CASE:
     case PT_DECODE:
     case PT_IF:
