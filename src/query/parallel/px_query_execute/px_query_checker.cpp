@@ -94,6 +94,8 @@ namespace parallel_query_execute
     for (XASL_NODE *aptr_head_xasl: m_aptr_head_set)
       {
 	std::vector<std::set<XASL_NODE *>> aptr_set_vector;
+	/* a CTE runs before any job of its block (qexec_execute_mainblock_internal ()): reading it is no conflict */
+	std::vector<bool> aptr_is_cte;
 #if WITH_PARALLEL_DETAIL_INFO
 	_er_log_debug (ARG_FILE_LINE, "parallel_detail_info : check_xasl_recursive : aptr head : %p", aptr_head_xasl);
 #endif
@@ -104,6 +106,7 @@ namespace parallel_query_execute
 		auto child_set = get_child_xasl_set_recursive (aptr);
 		child_set.insert (aptr);
 		aptr_set_vector.push_back (child_set);
+		aptr_is_cte.push_back (aptr->type == CTE_PROC);
 	      }
 	  }
 	if (aptr_set_vector.size() > 1)
@@ -113,7 +116,7 @@ namespace parallel_query_execute
 		auto src_set = aptr_set_vector[i];
 		for (j=0; j<aptr_set_vector.size(); j++)
 		  {
-		    if (i==j)
+		    if (i==j || aptr_is_cte[j])
 		      {
 			continue;
 		      }
@@ -507,13 +510,6 @@ namespace parallel_query_execute
       }
   }
 
-  static bool
-  no_parallel_subquery_iter (XASL_NODE *xasl)
-  {
-    XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
-    return true;
-  }
-
   void xasl_checker::add_xasl_recursive (XASL_NODE *xasl)
   {
     if (!xasl)
@@ -554,7 +550,10 @@ namespace parallel_query_execute
 	add_xasl_recursive (aptr);
 	m_xasl_map.insert (std::make_pair (xasl, aptr));
 	m_aptr_head_set.insert (xasl);
-	m_aptr_set.insert (aptr);
+	if (aptr->type != CTE_PROC)
+	  {
+	    m_aptr_set.insert (aptr);
+	  }
 	if (aptr->type == HASHJOIN_PROC || aptr->type == MERGELIST_PROC)
 	  {
 	    for (XASL_NODE *aptr2 = aptr->aptr_list; aptr2 != nullptr; aptr2 = aptr2->next)
@@ -593,20 +592,42 @@ namespace parallel_query_execute
 	  }
 	/* a subquery a joined scan evaluates per row reads that row: no node inside it gets an executor, whose
 	 * jobs would clear the row's values with their predicates (make_parallel_query_executor_recursively ()
-	 * walks these lists too) */
+	 * walks these lists too). The lists it scans are this block's reads for check_xasl_recursive (). */
+	std::function<bool (XASL_NODE *)> per_row_iter = [this, xasl] (XASL_NODE *sub) -> bool
+	{
+	  XASL_SET_FLAG (sub, XASL_NO_PARALLEL_SUBQUERY);
+	  for (ACCESS_SPEC_TYPE *spec = sub->spec_list; spec != nullptr; spec = spec->next)
+	    {
+	      if (spec->type == TARGET_LIST)
+		{
+		  m_list_scan_map.insert (std::make_pair (xasl, spec->s.list_node.xasl_node));
+		}
+	    }
+	  if (sub->merge_spec && sub->merge_spec->type == TARGET_LIST)
+	    {
+	      m_list_scan_map.insert (std::make_pair (xasl, sub->merge_spec->s.list_node.xasl_node));
+	    }
+	  return true;
+	};
 	for (XASL_NODE *dptr = scan_ptr->dptr_list; dptr != nullptr; dptr = dptr->next)
 	  {
-	    cubxasl::iterate_xasl_tree<bool> (dptr, no_parallel_subquery_iter, true);
+	    cubxasl::iterate_xasl_tree (dptr, per_row_iter, true);
 	  }
 	for (XASL_NODE *fptr = scan_ptr->fptr_list; fptr != nullptr; fptr = fptr->next)
 	  {
-	    cubxasl::iterate_xasl_tree<bool> (fptr, no_parallel_subquery_iter, true);
+	    cubxasl::iterate_xasl_tree (fptr, per_row_iter, true);
 	  }
 	for (XASL_NODE *aptr = scan_ptr->aptr_list; aptr != nullptr; aptr = aptr->next)
 	  {
+	    /* a joined scan's aptr (an inner temp list, an uncorrelated subquery of the inner scan) runs as a job as
+	     * well: check its subtree as an aptr of the block's head */
+	    add_xasl_recursive (aptr);
 	    m_xasl_map.insert (std::make_pair (xasl, aptr));
 	    m_aptr_head_set.insert (xasl);
-	    m_aptr_set.insert (aptr);
+	    if (aptr->type != CTE_PROC)
+	      {
+		m_aptr_set.insert (aptr);
+	      }
 	    if (aptr->type == HASHJOIN_PROC || aptr->type == MERGELIST_PROC)
 	      {
 		for (XASL_NODE *aptr2 = aptr->aptr_list; aptr2 != nullptr; aptr2 = aptr2->next)
