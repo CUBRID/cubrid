@@ -132,13 +132,12 @@ function build_initialize ()
   minor_version=$(echo $version | cut -d . -f 2)
   patch_version=$(echo $version | cut -d . -f 3)
   extra_version=$(echo $version | cut -d . -f 4)
-  major_start_date='2019-12-12'
   if [ "x$extra_version" != "x" ]; then
     serial_number=$(echo $extra_version | cut -d - -f 1)
-  elif [ -d $source_dir/.git ]; then
-    serial_number=$(cd $source_dir && git rev-list --after $major_start_date --count HEAD | awk '{ printf "%04d", $1 }' 2> /dev/null)
-    [ $? -ne 0 ] && serial_number=$(cd $source_dir && git log --after $major_start_date --oneline | wc -l)
-    hash_tag=$(cd $source_dir && git rev-parse --short=7 HEAD)
+  elif [ -e "$source_dir/.git" ]; then
+    git_build_version=$(sh "$script_dir/cmake/git-build-version.sh" "$which_git" "$source_dir") ||
+      print_fatal "Could not get build version from Git"
+    read -r _ serial_number hash_tag _ <<< "$git_build_version"
     extra_version="$serial_number-$hash_tag"
   else
     extra_version=0000-unknown

@@ -20,6 +20,10 @@
 # To pass variables to cpack from cmake, they must be configured
 # in this file.
 
+if("@CUBRID_BUILD_TIME_VERSION@" STREQUAL "ON")
+  include("@PROJECT_BINARY_DIR@/CPackBuildVersion.cmake")
+endif()
+
 if(CPACK_COMPONENTS_ALL STREQUAL "CCI")
   set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
   set(CPACK_PACKAGE_FILE_NAME "${CCI_PACKAGE_FILE_NAME}")

@@ -100,78 +100,19 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
-# Define a function to read the actual Git directory and HEAD for Git Worktrees
-function(set_git_dir_from_worktree git_dir head_file)
-    file(READ ${CMAKE_SOURCE_DIR}/.git git_dir_content)
-    string(REGEX MATCH "gitdir: (.*)/worktrees/(.*)\n" _ ${git_dir_content})
-    set(${git_dir} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-    set(${head_file} "${CMAKE_MATCH_1}/worktrees/${CMAKE_MATCH_2}/HEAD" PARENT_SCOPE)
-endfunction()
-
-if(EXISTS "${CMAKE_SOURCE_DIR}/.git") # Regular Git project
-    if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/.git")
-        set(GIT_DIR "${CMAKE_SOURCE_DIR}/.git")
-        set(HEAD_FILE "${GIT_DIR}/HEAD")
-    else() # Git Worktree
-        set_git_dir_from_worktree(GIT_DIR HEAD_FILE)
-    endif()
-endif()
-
+set(CUBRID_BUILD_TIME_VERSION OFF)
+set(CUBRID_EXTRA_VERSION 0)
 if(VERSION_MATCHES_LENGTH GREATER 3)
   list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
   if(VERSION_MATCHES_LENGTH GREATER 4)
     list(GET VERSION_MATCHES 4 CUBRID_HASH_TAG)
-  endif(VERSION_MATCHES_LENGTH GREATER 4)
-else(VERSION_MATCHES_LENGTH GREATER 3)
+  endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "${PROJECT_SOURCE_DIR}/.git")
   find_package(Git)
-  if(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
-    set(CUBRID_MAJOR_START_DATE "2019-12-12")
-    execute_process(COMMAND ${GIT_EXECUTABLE} --version
-    COMMAND awk "{ printf \"%s\", $3 }"
-    OUTPUT_VARIABLE GIT_VERSION
-    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-    if(GIT_VERSION VERSION_GREATER 1.7.6)
-      execute_process(COMMAND ${GIT_EXECUTABLE} rev-list --count --after ${CUBRID_MAJOR_START_DATE} HEAD
-        COMMAND awk "{ printf \"%04d\", $1 }"
-        OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
-        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-    else(GIT_VERSION VERSION_GREATER 1.7.6)
-      # If you have trouble with execute_process on Windows, it is likely an issue caused by git installation.
-      # <git-installation-directory>/bin has two files, bash.exe and sh.exe, that messes up CMake's execute_process
-      #
-      # There are two possible fixes for this issue:
-      # 1. Add <git-installation-directory>/usr/bin to %PATH% environment variable
-      # 2. Remove <git-installation-directory>/bin from %PATH% environment variable
-      # You may prefer the first option if you want to use git command in command prompt.
-      #
-      # If both fixes fail, just replace execute_process(...) with set (commit_count 0). It is not a critical step to generate the project.
-      # Also you may send us a message at https://www.cubrid.org/contact
-      execute_process(COMMAND ${GIT_EXECUTABLE} log --after ${CUBRID_MAJOR_START_DATE} --oneline
-        COMMAND wc -l
-        COMMAND awk "{ printf \"%04d\", $1 }"
-        OUTPUT_VARIABLE commit_count RESULT_VARIABLE git_result
-        ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-    endif(GIT_VERSION VERSION_GREATER 1.7.6)
-    if(git_result)
-      message(FATAL_ERROR "Could not get count information from Git")
-    endif(git_result)
-    set(CUBRID_EXTRA_VERSION ${commit_count})
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=7 HEAD
-      OUTPUT_VARIABLE commit_hash RESULT_VARIABLE git_result
-      ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE
-      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-    if(git_result)
-      message(FATAL_ERROR "Could not get hash information from Git")
-    endif(git_result)
-    set(CUBRID_HASH_TAG -${commit_hash})
-    # Generate the same file in other directory to trigger cmake re-configure when the HEAD changes
-    configure_file("${HEAD_FILE}" "${CMAKE_CURRENT_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD.check_cache" COPYONLY)
-  else(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
-    set(CUBRID_EXTRA_VERSION 0)
-  endif(EXISTS "${CMAKE_SOURCE_DIR}/.git" AND GIT_FOUND)
-endif(VERSION_MATCHES_LENGTH GREATER 3)
+  if(GIT_FOUND)
+    set(CUBRID_BUILD_TIME_VERSION ON)
+  endif()
+endif()
 set(CUBRID_VERSION ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION}${CUBRID_HASH_TAG})
 
 set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
@@ -298,7 +239,11 @@ endif()
 #  check_symbol_exists("__x86_64__" "" TARGET_ARCH_X64)
 #endif(WIN32)
 
-message(STATUS "Build ${PROJECT_NAME} ${CUBRID_VERSION} ${TARGET_PLATFORM_BITS}bit ${CMAKE_BUILD_TYPE} on ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
+set(configured_version "${CUBRID_VERSION}")
+if(CUBRID_BUILD_TIME_VERSION)
+  set(configured_version "${MAJOR_RELEASE_STRING} (Git version resolved during build)")
+endif()
+message(STATUS "Build ${PROJECT_NAME} ${configured_version} ${TARGET_PLATFORM_BITS}bit ${CMAKE_BUILD_TYPE} on ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
 
 # generate parser and lexer
 set(CSQL_GRAMMAR_INPUT ${CMAKE_SOURCE_DIR}/src/parser/csql_grammar.y)
@@ -604,7 +549,22 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 # build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
-configure_file(cmake/build_version.h.cmake build_version.h)
+if(CUBRID_BUILD_TIME_VERSION)
+  add_custom_target(cubrid_build_version
+    COMMAND "${CMAKE_COMMAND}"
+      "-DGIT=${GIT_EXECUTABLE}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
+      "-DBUILD_DIR=${PROJECT_BINARY_DIR}" "-DBASE_VERSION=${MAJOR_RELEASE_STRING}"
+      -P "${PROJECT_SOURCE_DIR}/cmake/UpdateBuildVersion.cmake"
+    BYPRODUCTS "${PROJECT_BINARY_DIR}/build_version.h" "${PROJECT_BINARY_DIR}/build-version.txt"
+    VERBATIM)
+  # Record the package version only after all of its version consumers finish building.
+  add_custom_target(cubrid_package_version ALL
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different build-version.txt package-version.txt
+    BYPRODUCTS "${PROJECT_BINARY_DIR}/package-version.txt"
+    VERBATIM)
+else()
+  configure_file(cmake/build_version.h.cmake build_version.h)
+endif()
 
 if(MULTI_CONN_TO_A_SERVER)
   add_definitions(-DMULTI_CONN_TO_A_SERVER)
@@ -819,6 +779,12 @@ add_subdirectory(upgrade)
 add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
+if(CUBRID_BUILD_TIME_VERSION)
+  foreach(version_target cubrid cubridcs cubridsa)
+    add_dependencies(${version_target} cubrid_build_version)
+    add_dependencies(cubrid_package_version ${version_target})
+  endforeach()
+endif()
 add_subdirectory(util)
 if(WITH_CCI)
   add_subdirectory(cubrid-cci)
@@ -829,6 +795,10 @@ if(WITH_CCI)
   foreach(cci_target cascci cascci_static)
     if(TARGET ${cci_target})
       set(cci_target_found TRUE)
+      if(CUBRID_BUILD_TIME_VERSION)
+        add_dependencies(${cci_target} cubrid_build_version)
+        add_dependencies(cubrid_package_version ${cci_target})
+      endif()
       if(MSVC)
         target_compile_options(${cci_target} PRIVATE "/FI${CMAKE_BINARY_DIR}/build_version.h")
       else(MSVC)
@@ -951,6 +921,9 @@ set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CUBRID_VERSION}-src")
 
 set(CPACK_COMPONENTS_ALL_IN_ONE_PACKAGE ON)
 
+if(CUBRID_BUILD_TIME_VERSION)
+  configure_file(cmake/CPackBuildVersion.cmake.in CPackBuildVersion.cmake @ONLY)
+endif()
 configure_file(cmake/CPackOptions.cmake.in CPackOptions.cmake)
 set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_BINARY_DIR}/CPackOptions.cmake")
 
