@@ -153,6 +153,8 @@ static int net_client_check_stmt_fail (int request);
  *
  * Note: these requests only undo, clean up or restore what the failing statement set up, or end the connection.
  *       Blocking them would leave a savepoint not rolled back, a query or a session setting behind on the server.
+ *       NET_SERVER_LC_DELETE_CLASSNAME is left out: the partial abort of the statement drops a class name it
+ *       reserved, while a name deleted before that is taken by the abort for a class that existed.
  */
 static bool
 net_client_is_allowed_after_stmt_fail (int request)
@@ -166,6 +168,12 @@ net_client_is_allowed_after_stmt_fail (int request)
     case NET_SERVER_LOG_RESET_WAIT_MSECS:
     case NET_SERVER_LOG_RESET_ISOLATION:
     case NET_SERVER_LOG_SET_INTERRUPT:
+      /* the statement turned the replication log off on the server; turning it back on restores it */
+    case NET_SERVER_LOG_SET_SUPPRESS_REPL_ON_TRANSACTION:
+      /* an insert that failed takes back the last insert id it set in the session */
+    case NET_SERVER_SES_RESET_CUR_INSERT_ID:
+      /* a PREPARE that failed drops the earlier statement of its name, so that EXECUTE does not run that one */
+    case NET_SERVER_SES_DELETE_PREPARED_STATEMENT:
     case NET_SERVER_TDES_RESET_QUERY_START_INFO:
     case NET_SERVER_LC_DEMOTE_CLASS_LOCK:
     case NET_SERVER_HEAP_DESTROY_WHEN_NEW:
