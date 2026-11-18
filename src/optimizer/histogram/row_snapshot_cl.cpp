@@ -533,7 +533,7 @@ row_snapshot_read (MOP classop, SM_CLASS *class_, const ROW_SNAPSHOT *columns, c
   *error = NO_ERROR;
   /* Under REPEATABLE READ or above the read would take the transaction's snapshot at compile: a
    * statement prepared first in its transaction would see the rows of its prepare, not of its
-   * execution. The histograms read the last committed version without one; this read cannot. */
+   * execution. The histograms read under a snapshot of each request instead; this read cannot. */
   if (in_read || classop == NULL || class_ == NULL || columns == NULL || n_filters <= 0 || max_rows <= 0
       || TM_TRAN_ISOLATION () >= TRAN_REPEATABLE_READ)
     {
