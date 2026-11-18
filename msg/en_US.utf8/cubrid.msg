@@ -1910,7 +1910,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 224 KEYLIMIT can not be used in INDEX NONE clause.
 225 Session variable not allowed in this context.
 226 Index hint conflict between '%1$s' and '%2$s'.
-227 '%1$s' function can not be used in DEFAULT clause.
+227 '%1$s' can not be used in DEFAULT clause.
 228 Updating derived tables is not allowed.
 229 Updating class attributes and instance attributes not allowed in the same statement.
 230 Updating virtual class hierarchies is not allowed.
