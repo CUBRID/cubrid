@@ -5510,8 +5510,23 @@ eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_
 int
 expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd)
 {
+  int err_before = er_errid_if_has_error ();
   int rc = eb_run_chunk (plan, batch, thread_p, vd);
 
+  if (rc == EXPR_BATCH_FALLBACK && err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
+    {
+      /* The row path evaluates a chunk handed back to it again from its first row, and raises an error the chunk met
+       * on a row (a filter term's, eb_filter (); a string that does not decompress) when it gets to that row.  It may
+       * stop before -- a LIMIT, an EXISTS that has its row -- and the query would succeed with the error still set,
+       * which a later step of the query asserts on (CBRD-28049): the chunk's error is cleared.  An error set before
+       * the chunk is not the chunk's and stays (a warning is not one: NUMERIC arithmetic sets ER_IT_DATA_OVERFLOW as
+       * a warning, and an error the chunk raised replaced it); an interrupt is not about the rows and goes up. */
+      if (er_errid () == ER_INTERRUPTED)
+	{
+	  return ER_INTERRUPTED;
+	}
+      er_clear ();
+    }
   if (batch->page_watcher != NULL && batch->page_watcher->page_was_unfixed)
     {
       /* The rows point into the page the watcher holds.  An ordered fix on this thread let the page go and fixed
@@ -6122,7 +6137,7 @@ expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REP
   int idx_incache = -1;
   bool rejected = false;
   bool ok = true;
-  int err_before = er_errid ();
+  int err_before = er_errid_if_has_error ();
   int i;
 
   if (plan == NULL || plan->n_reprs == 0 || repid == NULL_REPRID)
@@ -6240,9 +6255,10 @@ done:
     {
       plan->rejected[plan->n_rejected++] = repid;
     }
-  if (!ok && err_before == NO_ERROR)
+  if (!ok && err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
     {
-      /* heap_classrepr_get () or an allocation set one: not learning is not a fault (the header's promise) */
+      /* heap_classrepr_get () or an allocation set one: not learning is not a fault (the header's promise).  An error
+       * set before the call stays, and a warning left before is not one (CBRD-28049, as expr_batch_run ()) */
       er_clear ();
     }
   return ok ? NO_ERROR : ER_FAILED;
