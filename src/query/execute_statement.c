@@ -152,8 +152,6 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int find_label_of_target (PT_NODE * target, MOP * class_mop, SM_CLASS ** class_, SM_ATTRIBUTE ** att,
-				 DB_OBJECT ** label);
 static int do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info);
 static int do_drop_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info);
 static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
@@ -20441,38 +20439,6 @@ do_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * find_label_of_target () - find the label of the attribute that an ON COLUMN target names
- *   return: error code
- *   target(in): an entry of the ON COLUMN target_list
- *   class_mop(out): the class
- *   class_(out): the class structure
- *   att(out): the attribute
- *   label(out): the label, or NULL when the attribute has none
- */
-static int
-find_label_of_target (PT_NODE * target, MOP * class_mop, SM_CLASS ** class_, SM_ATTRIBUTE ** att, DB_OBJECT ** label)
-{
-  int error;
-
-  assert (target->node_type == PT_DOT_);
-
-  error = sensitivity_label_find_attribute (PT_NAME_ORIGINAL (target->info.dot.arg1),
-					    PT_NAME_ORIGINAL (target->info.dot.arg2), class_mop, class_, att);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (!sensitivity_label_is_allowed (*class_))
-    {
-      ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_NOT_ALLOWED, sm_ch_name ((MOBJ) (*class_)));
-      return error;
-    }
-
-  return sensitivity_label_find (*class_mop, (*att)->id, label);
-}
-
-/*
  * do_create_sensitivity_label_on_column () - CREATE [OR REPLACE] SENSITIVITY LABEL ON COLUMN
  *   return: error code
  *   info(in): the statement
@@ -20483,11 +20449,7 @@ do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info)
   DB_OBJECT *grade;
   DB_OBJECT *info_type = NULL;
   DB_OBJECT *source = NULL;
-  DB_OBJECT *label;
   PT_NODE *column;
-  MOP class_mop;
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
   int error;
 
   assert (info->grade != NULL);
@@ -20523,26 +20485,11 @@ do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info)
 
   for (column = info->target_list; column != NULL; column = column->next)
     {
-      error = find_label_of_target (column, &class_mop, &class_, &att, &label);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      assert (column->node_type == PT_DOT_);
 
-      if (label == NULL)
-	{
-	  error = sensitivity_label_create (class_mop, att->id, grade, info_type, source);
-	}
-      else if (info->or_replace)
-	{
-	  error = sensitivity_label_replace (label, grade, info_type, source);
-	}
-      else
-	{
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_ALREADY_EXISTS, att->header.name,
-				 sm_ch_name ((MOBJ) class_));
-	}
-
+      error = sensitivity_label_create_on_attribute (PT_NAME_ORIGINAL (column->info.dot.arg1),
+						     PT_NAME_ORIGINAL (column->info.dot.arg2), grade, info_type, source,
+						     info->or_replace);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -20560,28 +20507,15 @@ do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info)
 static int
 do_drop_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info)
 {
-  DB_OBJECT *label;
   PT_NODE *column;
-  MOP class_mop;
-  SM_CLASS *class_;
-  SM_ATTRIBUTE *att;
   int error;
 
   for (column = info->target_list; column != NULL; column = column->next)
     {
-      error = find_label_of_target (column, &class_mop, &class_, &att, &label);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      assert (column->node_type == PT_DOT_);
 
-      if (label == NULL)
-	{
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NOT_FOUND, att->header.name, sm_ch_name ((MOBJ) class_));
-	  return error;
-	}
-
-      error = sensitivity_label_drop (label);
+      error = sensitivity_label_drop_on_attribute (PT_NAME_ORIGINAL (column->info.dot.arg1),
+						   PT_NAME_ORIGINAL (column->info.dot.arg2));
       if (error != NO_ERROR)
 	{
 	  return error;

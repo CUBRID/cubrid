@@ -45,5 +45,8 @@ int sensitivity_label_create (MOP class_mop, const int attr_id, DB_OBJECT *grade
 			      DB_OBJECT *source);
 int sensitivity_label_replace (DB_OBJECT *label, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
 int sensitivity_label_drop (DB_OBJECT *label);
+int sensitivity_label_create_on_attribute (const char *class_name, const char *att_name, DB_OBJECT *grade,
+    DB_OBJECT *info_type, DB_OBJECT *source, const bool or_replace);
+int sensitivity_label_drop_on_attribute (const char *class_name, const char *att_name);
 
 #endif /* _SENSITIVITY_LABEL_HPP_ */
