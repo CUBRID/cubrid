@@ -4455,6 +4455,25 @@ fileio_fsync_pending (void)
 }
 
 /*
+ * fileio_read_ahead_hint () - tell the OS that these pages of a volume are read soon
+ *   vol_fd(in): volume descriptor
+ *   page_id(in): first page
+ *   num_pages(in): number of consecutive pages
+ *   page_size(in): page size
+ *
+ * Note: A hint: nothing is read into the caller's memory and nothing is reported back. The OS reads the pages
+ *       into its cache without making the caller wait; the reads that follow copy from there.
+ */
+void
+fileio_read_ahead_hint (int vol_fd, PAGEID page_id, int num_pages, size_t page_size)
+{
+#if defined (LINUX)
+  (void) posix_fadvise (vol_fd, FILEIO_GET_FILE_SIZE (page_size, page_id), (off_t) num_pages * page_size,
+			POSIX_FADV_WILLNEED);
+#endif /* LINUX */
+}
+
+/*
  * fileio_synchronize () - Synchronize a database volume's state with that on disk
  *   return: vdes or NULL_VOLDES
  *   vol_fd(in): Volume descriptor

@@ -43,6 +43,7 @@
 static int fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+static int fi_handler_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -83,6 +84,10 @@ FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, fi_handler_exit, FI_INIT_STATE},
   {FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7, fi_handler_exit, FI_INIT_STATE},
+  {FI_TEST_CONNECTION_WORKER_NEW_CLIENT_REGISTER_FAIL, fi_handler_fail, FI_INIT_STATE},
+  {FI_TEST_CONNECTION_WORKER_TAKEOVER_REGISTER_FAIL, fi_handler_fail, FI_INIT_STATE},
+  {FI_TEST_CONNECTION_WORKER_QUEUE_TIMER_STOP_FAIL, fi_handler_fail, FI_INIT_STATE},
+  {FI_TEST_CONNECTION_WORKER_CLOSE_HOLD, fi_handler_hold, FI_INIT_STATE},
 #if defined (SERVER_MODE) || defined (SA_MODE)
   {FI_TEST_VACUUM_OOS_HEADER_WAIT_TIMEOUT, fi_handler_page_latch_timeout, FI_INIT_STATE},
 #endif /* SERVER_MODE || SA_MODE */
@@ -530,6 +535,19 @@ fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_f
     }
 
   return NO_ERROR;
+}
+
+/*
+ * fi_handler_fail - fail every call; the caller decides how often it gets here
+ *
+ * return: ER_FAILED
+ */
+static int
+fi_handler_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
+{
+  er_set (ER_NOTIFICATION_SEVERITY, caller_file, caller_line, ER_FAILED_ASSERTION, 1, "fault injection: fail");
+
+  return ER_FAILED;
 }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

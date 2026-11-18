@@ -85,6 +85,8 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
 #include "load_session.hpp"
+#include "stream_session.hpp"
+#include "stream_handle.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -146,6 +148,8 @@ static int trace_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, i
 static void event_log_many_ioreads (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time, UINT64 *diff_stats);
 static void event_log_extend_pages (THREAD_ENTRY *thread_p, EXECUTION_INFO *info);
 static void set_tdes_query_exec_info (int tran_index, char *sql_user_text);
+static bool auth_may_switch_user (THREAD_ENTRY *thread_p, const char *user_name);
+static char *cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char **out_string);
 
 /*
  * stran_server_commit_internal - commit transaction on server.
@@ -168,7 +172,17 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
-  state = xtran_server_commit (thread_p, retain_lock);
+  /* an open stream is one statement still running, and nothing commits inside it. Every client refuses first, but a
+   * client that does not wait for a reply can still get here, so this is a refusal, not an assertion */
+  if (session_has_stream_session (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "commit inside an open stream session");
+      state = TRAN_ACTIVE;
+    }
+  else
+    {
+      state = xtran_server_commit (thread_p, retain_lock);
+    }
 
   PL_SESSION *session = cubpl::get_session ();
   if (!session || session->is_sp_running () == false)
@@ -205,6 +219,9 @@ stran_server_abort_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool *sho
   bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
+
+  /* the transaction ends here, and with it any stream session opened in it */
+  session_end_stream_session (thread_p);
 
   state = xtran_server_abort (thread_p);
 
@@ -409,6 +426,16 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
     {
       /* need to hide the previous error, ER_LK_UNILATERALLY_ABORTED to rollback the current transaction. */
       er_stack_push ();
+
+      /* This is the one transaction end that does not arrive as a commit/abort request: a deadlock
+       * victim is rolled back here, on its own worker. The stream session has to go with it for the
+       * same reason as in stran_server_abort_internal () -- the next chunk would otherwise build on work
+       * that was already rolled back. Before the rollback, so the session never sees a transaction
+       * that has ended, and inside the pushed stack, because the error being reported to the client is
+       * the one that has to survive whatever the stream's abort () sets. A request of the connection
+       * still running on the session is waited for (session_take_stream_session). */
+      session_end_stream_session (thread_p);
+
       tran_state = tran_server_unilaterally_abort_tran (thread_p);
       er_stack_pop ();
     }
@@ -3580,7 +3607,18 @@ stran_server_partial_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   ptr = or_unpack_string_nocopy (request, &savept_name);
 
-  state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+  /* for the reasons stran_server_commit_internal () gives: the savepoint may predate the stream */
+  if (session_has_stream_session (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1,
+	      "rollback to a savepoint inside an open stream session");
+      state = TRAN_ACTIVE;
+      LSA_SET_NULL (&savept_lsa);
+    }
+  else
+    {
+      state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+    }
   if (state != TRAN_UNACTIVE_ABORTED)
     {
       /* Likely the abort failed.. somehow */
@@ -9690,7 +9728,7 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL, *area = NULL;
   char *db_user = NULL, *host = NULL, *program_name = NULL;
-  char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
+  char db_user_upper[CSS_AU_NAME_SIZE] = { '\0' };
   char server_session_key[SERVER_SESSION_KEY_SIZE];
   char session_secret[SESSION_SECRET_SIZE];
   SESSION_PARAM *session_params = NULL;
@@ -9782,10 +9820,38 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
       assert (host != NULL);
       assert (program_name != NULL);
 
-      intl_identifier_upper (db_user, db_user_upper);
-      css_set_user_access_status (db_user_upper, host, program_name);
+      const char *current_user = logtb_find_current_client_name (thread_p);
 
-      logtb_set_current_user_name (thread_p, db_user_upper);
+      if (strlen (db_user) < DB_MAX_USER_LENGTH)
+	{
+	  intl_identifier_upper (db_user, db_user_upper);
+	}
+
+      if (db_user_upper[0] == '\0'
+	  || (current_user != NULL && intl_identifier_casecmp (current_user, db_user_upper) == 0))
+	{
+	  /* no switch, but spend a proof made for it so none is left on the connection */
+	  (void) css_consume_auth_proof (thread_p->conn_entry, db_user_upper);
+	}
+      /* same rule as slogin_user () */
+      else if (auth_may_switch_user (thread_p, db_user_upper))
+	{
+	  logtb_set_current_user_name (thread_p, db_user_upper);
+	  current_user = db_user_upper;
+	}
+      else if (error == NO_ERROR)
+	{
+	  /* refused, and said so as slogin_user () does, so the client does not go on as
+	   * a user the server did not switch to */
+	  error = ER_AU_INVALID_PASSWORD;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  (void) return_error_to_client (thread_p, rid);
+	}
+
+      if (current_user != NULL)
+	{
+	  css_set_user_access_status (current_user, host, program_name);
+	}
     }
 
   free_and_init (db_user);
@@ -10235,11 +10301,18 @@ slogin_user (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *username = NULL;
 
-  or_unpack_string_nocopy (request, &username);
-  if (username == NULL)
+  if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &username) == NULL
+      || username == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
       err = ER_FAILED;
+    }
+  /* switch only with a proof of the new account's password, or as DBA */
+  else if (!auth_may_switch_user (thread_p, username))
+    {
+      err = ER_AU_INVALID_PASSWORD;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      (void) return_error_to_client (thread_p, rid);
     }
   else
     {
@@ -11390,9 +11463,9 @@ ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
 }
 
 void
-ssession_destroy_load_session (THREAD_ENTRY *thread_p, void *session)
+ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session, int client_id)
 {
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session, client_id);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -11755,13 +11828,22 @@ cdc_auth_init_key (void)
   cdc_Auth_key_ready = (crypt_generate_random_bytes (cdc_Auth_key, sizeof (cdc_Auth_key)) == NO_ERROR);
 }
 
+/* what a signed challenge is for: a tag issued for one purpose must not pass for
+ * another, so the CDC channel handshake and the login/user-switch proof cannot
+ * borrow each other's tags */
+#define CDC_AUTH_PURPOSE_CDC "cdc"
+#define CDC_AUTH_PURPOSE_LOGIN "login"
+
 /*
- * cdc_auth_sign () - tag that ties a challenge to this connection, account and
- *   issue time, so the server can recognise its own challenge without storing it.
+ * cdc_auth_sign () - tag that ties a challenge to its purpose, this connection,
+ *   account and issue time, so the server can recognise its own challenge
+ *   without storing it.
+ *   purpose (in): what the challenge is for (CDC channel or login proof)
  *   tag (out): CSS_CDC_AUTH_RESPONSE_SIZE bytes of hex
  */
 static int
-cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, INT64 issued_at, char *tag)
+cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *purpose, const char *user_name, const char *nonce, INT64 issued_at,
+	       char *tag)
 {
   char msg[CSS_CDC_AUTH_NONCE_SIZE + DB_MAX_USER_LENGTH + 64];
   int len;
@@ -11772,7 +11854,7 @@ cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, I
       return ER_FAILED;
     }
 
-  len = snprintf (msg, sizeof (msg), "%s|%d|%d|%s|%lld", nonce, (int) conn->fd, conn->client_id, user_name,
+  len = snprintf (msg, sizeof (msg), "%s|%s|%d|%d|%s|%lld", purpose, nonce, (int) conn->fd, conn->client_id, user_name,
 		  (long long) issued_at);
   if (len < 0 || len >= (int) sizeof (msg))
     {
@@ -11787,12 +11869,17 @@ cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, I
  *   membership, at most one lookup at a time per connection (each borrows a
  *   transaction index, so overlapping requests could otherwise hold many).
  *   return: NO_ERROR, ER_AU_AUTHORIZATION_FAILURE if a lookup is already running
- *           on this connection, or another error if the account could not be read.
+ *           on this connection, ER_AU_INVALID_USER if there is no such account,
+ *           or another error if the account could not be read.
+ *   is_loginable (out): whether the account may log in; may be NULL
+ *
+ * Shared by the CDC handshake and the login password proof.
  */
 static int
-cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba)
+cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba,
+		 bool *is_loginable)
 {
-  bool found;
+  int error;
 
   if (!ATOMIC_CAS (&thread_p->conn_entry->cdc_auth_busy, 0, 1))
     {
@@ -11800,10 +11887,10 @@ cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, in
       return ER_AU_AUTHORIZATION_FAILURE;
     }
 
-  found = cdc_get_user_info (thread_p, user_name, stored, stored_size, is_dba);
+  error = cdc_find_user_info (thread_p, user_name, stored, stored_size, is_dba, is_loginable);
   (void) ATOMIC_TAS (&thread_p->conn_entry->cdc_auth_busy, 0);
 
-  return found ? NO_ERROR : ER_FAILED;
+  return error;
 }
 
 /*
@@ -11842,7 +11929,7 @@ scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
     }
   str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
 
-  if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) == NO_ERROR)
+  if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) == NO_ERROR)
     {
       scheme = IS_ENCODED_ANY (stored) ? (int) stored[0] : 0;
     }
@@ -11853,7 +11940,7 @@ scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, in
   memset (stored, 0, sizeof (stored));
 
   issued_at = (INT64) time (NULL);
-  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, tag) != NO_ERROR)
+  if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_CDC, user_name, nonce, issued_at, tag) != NO_ERROR)
     {
       goto error;
     }
@@ -11943,12 +12030,12 @@ scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
 
   now = (INT64) time (NULL);
-  if (cdc_auth_sign (thread_p->conn_entry, user_name, nonce, issued_at, expected) != NO_ERROR
+  if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_CDC, user_name, nonce, issued_at, expected) != NO_ERROR
       || !cdc_auth_response_matches (expected, tag) || issued_at > now || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
     {
       /* not a challenge this server issued to this connection for this account, or expired */
     }
-  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba) != NO_ERROR
+  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) != NO_ERROR
 	   || cdc_auth_make_response (thread_p, nonce, stored, expected) != NO_ERROR
 	   || !cdc_auth_response_matches (expected, answer))
     {
@@ -11976,6 +12063,188 @@ scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
 
   (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * auth_may_switch_user () - may this session become user_name? It may if it
+ *   just proved that account's password, or if the session is already DBA or a
+ *   DBA group member, who may switch users without one (CALL LOGIN spec).
+ */
+static bool
+auth_may_switch_user (THREAD_ENTRY *thread_p, const char *user_name)
+{
+  char password[AU_MAX_PASSWORD_BUF + 4];
+  bool is_dba_group = false;
+  bool found;
+
+  if (css_consume_auth_proof (thread_p->conn_entry, user_name))
+    {
+      return true;
+    }
+
+  found = cdc_get_user_info (thread_p, logtb_find_current_client_name (thread_p), password, sizeof (password),
+			     &is_dba_group);
+  memset (password, 0, sizeof (password));
+
+  return (found && is_dba_group);
+}
+
+/*
+ * sau_challenge () - first half of proving a password before a client login or
+ *   user switch, signed the way the CDC handshake is.
+ *
+ * Sends a fresh nonce, the scheme the password is stored under, the issue time
+ * and a tag over them; nothing is kept on the server. Unlike the CDC channel, an
+ * unknown account is reported (ER_AU_INVALID_USER), as a client login always did,
+ * and so is an account that may not log in (ER_AU_LOGIN_DISABLED), before any
+ * password, the order perform_login () checks them in.
+ */
+void
+sau_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (CSS_AU_CHALLENGE_REPLY_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  char *user_name = NULL;
+  char stored[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  char nonce_bytes[CSS_CDC_AUTH_NONCE_SIZE / 2];
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE] = { '\0' };
+  char tag[CSS_CDC_AUTH_RESPONSE_SIZE] = { '\0' };
+  char salt[CSS_AU_SALT_SIZE] = { '\0' };
+  char stored_name[CSS_AU_NAME_SIZE] = { '\0' };
+  INT64 issued_at = 0;
+  bool is_dba = false, is_loginable = true;
+  int scheme = 0, error;
+
+  if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) == NULL
+      || user_name == NULL || strlen (user_name) >= DB_MAX_USER_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, OR_INT_SIZE, reqlen);
+      error = ER_NET_DATASIZE_MISMATCH;
+    }
+  else if (crypt_generate_random_bytes (nonce_bytes, sizeof (nonce_bytes)) != NO_ERROR)
+    {
+      error = ER_FAILED;
+    }
+  else
+    {
+      str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
+
+      error = cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, &is_loginable);
+      if (error == ER_AU_INVALID_USER)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_USER, 1, user_name);
+	}
+      else if (error == NO_ERROR && !is_loginable)
+	{
+	  error = ER_AU_LOGIN_DISABLED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, user_name);
+	}
+      else if (error == NO_ERROR)
+	{
+	  scheme = IS_ENCODED_ANY (stored) ? (int) stored[0] : 0;
+	  /* a salted password: the client needs its salt and the name as stored to build
+	   * the same stored form. Neither is secret; the salt is stored in the clear in
+	   * front of the hash. The client cannot upper-case the name itself before boot. */
+	  if (scheme == ENCODE_PREFIX_SHA2_512_SALT && strlen (stored + 1) > CSS_AU_SALT_SIZE - 1)
+	    {
+	      memcpy (salt, stored + 1, CSS_AU_SALT_SIZE - 1);
+	      salt[CSS_AU_SALT_SIZE - 1] = '\0';
+	      intl_identifier_upper (user_name, stored_name);
+	    }
+	  issued_at = (INT64) time (NULL);
+	  error = cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, tag);
+	}
+      memset (stored, 0, sizeof (stored));
+    }
+
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* the client reads a fixed-size reply; zero it so no stale stack bytes go out */
+  memset (reply, 0, OR_ALIGNED_BUF_SIZE (a_reply));
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int (ptr, scheme);
+  ptr = or_pack_string (ptr, nonce);
+  ptr = or_pack_int64 (ptr, issued_at);
+  ptr = or_pack_string (ptr, tag);
+  ptr = or_pack_string (ptr, salt);
+  ptr = or_pack_string (ptr, stored_name);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sau_response () - second half. The request carries the account,
+ *   nonce, issue time, tag and answer: a fresh tag from this server for this
+ *   connection and account plus the right answer prove the password, which the
+ *   next login or user switch then spends (css_consume_auth_proof ()).
+ */
+void
+sau_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  char *user_name = NULL, *nonce = NULL, *tag = NULL, *answer = NULL;
+  char expected[CSS_CDC_AUTH_RESPONSE_SIZE];
+  char stored[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  INT64 issued_at = 0, now;
+  bool is_dba = false;
+  int error = ER_AU_INVALID_PASSWORD;
+
+  /* a new attempt spends whatever this connection proved before */
+  css_set_auth_proof (thread_p->conn_entry, NULL);
+
+  /* request: user | nonce | issued_at | tag | answer */
+  ptr = (request != NULL) ? cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) : NULL;
+  ptr = (ptr != NULL) ? cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &nonce) : NULL;
+  /* or_unpack_int64 () aligns first, so check the room from the aligned position */
+  if (ptr != NULL && reqlen - (int) (PTR_ALIGN (ptr, MAX_ALIGNMENT) - request) >= OR_BIGINT_SIZE)
+    {
+      ptr = or_unpack_int64 (ptr, &issued_at);
+      ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &tag);
+      ptr = (ptr != NULL) ? cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &answer) : NULL;
+    }
+  else
+    {
+      ptr = NULL;
+    }
+
+  now = (INT64) time (NULL);
+  if (ptr == NULL || user_name == NULL || nonce == NULL || tag == NULL || answer == NULL
+      || strlen (user_name) >= DB_MAX_USER_LENGTH || strlen (nonce) != CSS_CDC_AUTH_NONCE_SIZE - 1)
+    {
+      /* malformed */
+    }
+  else if (cdc_auth_sign (thread_p->conn_entry, CDC_AUTH_PURPOSE_LOGIN, user_name, nonce, issued_at, expected) != NO_ERROR
+	   || !cdc_auth_response_matches (expected, tag) || issued_at > now
+	   || now - issued_at > CDC_AUTH_CHALLENGE_TTL_SEC)
+    {
+      /* not a challenge this server issued to this connection for this account, or expired */
+    }
+  else if (cdc_auth_lookup (thread_p, user_name, stored, sizeof (stored), &is_dba, NULL) != NO_ERROR
+	   || cdc_auth_make_response (thread_p, nonce, stored, expected) != NO_ERROR
+	   || !cdc_auth_response_matches (expected, answer))
+    {
+      /* unknown account, unreadable password, or a wrong answer */
+    }
+  else
+    {
+      error = NO_ERROR;
+      css_set_auth_proof (thread_p->conn_entry, user_name);
+    }
+  memset (stored, 0, sizeof (stored));
+
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_INVALID_PASSWORD, 0);
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_int (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -13460,3 +13729,562 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 #endif
+
+
+/*
+ * stream_drop_session () - Take the stream session out of the slot and free it
+ *   aborted(in): true when it did not finish, so whatever it holds is discarded first
+ */
+static void
+stream_drop_session (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, bool aborted)
+{
+  if (aborted)
+    {
+      /* the abort discards what the session had not flushed, and may set and
+       * clear errors of its own; the error that ended the stream is the one
+       * the reply has to carry */
+      er_stack_push ();
+      session->abort (thread_p);
+      er_stack_pop ();
+    }
+  delete session;
+  session_clear_stream_session (thread_p, held);
+}
+
+/*
+ * stream_check_interrupt () - ER_INTERRUPTED if the client cancelled
+ *
+ * While an upload is open the CAS does not clear a cancel at the start of a request, so one that arrived between
+ * two requests is still set here.
+ */
+static int
+stream_check_interrupt (THREAD_ENTRY *thread_p)
+{
+  bool continue_checking = true;
+
+  if (!logtb_is_interrupted (thread_p, true, &continue_checking))
+    {
+      return NO_ERROR;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+  return ER_INTERRUPTED;
+}
+
+/*
+ * stream_receive () - Hand one chunk to the open session; a chunk it cannot consume, or a cancel, ends the stream
+ */
+static int
+stream_receive (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, const char *data, int data_len)
+{
+  int error_code = stream_check_interrupt (thread_p);
+
+  if (error_code == NO_ERROR)
+    {
+      error_code = session->receive_chunk (thread_p, data, data_len);
+    }
+  if (error_code != NO_ERROR)
+    {
+      stream_drop_session (thread_p, held, session, true);
+    }
+
+  return error_code;
+}
+
+/*
+ * stream_finish () - End the stream and produce what END returns
+ *   count(out): the binding's count
+ *
+ * END, and the FINAL flag of a bundled INIT or SEND_DATA, all come here, so a
+ * bundled request and separate ones are one path the consumer cannot tell apart.
+ */
+static int
+stream_finish (THREAD_ENTRY *thread_p, session_state *held, stream_session *session, INT64 *count)
+{
+  stream_result result = { 0 };
+  int error_code;
+
+  *count = 0;
+
+  /* an END that carries no chunk still ends a cancelled stream rather than finishing it */
+  error_code = stream_check_interrupt (thread_p);
+  if (error_code == NO_ERROR)
+    {
+      error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
+    }
+  stream_drop_session (thread_p, held, session, error_code != NO_ERROR);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  *count = (INT64) result.count;
+  return NO_ERROR;
+}
+
+/*
+ * sstream_from_init () - Open a client->server byte-stream session
+ *   request format: stream_kind (int), flags (int), config_len (int), config blob, first chunk (rest, may be empty)
+ *   reply format: error_code (int), ends_unit_of_work (int), count (int64) -- with STREAM_FLAG_FINAL, END's count
+ */
+void
+sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  const int header_size = 3 * OR_INT_SIZE;
+  char *ptr = request;
+  int stream_kind = 0;
+  int flags = 0;
+  int config_len = 0;
+  int error_code = NO_ERROR;
+  INT64 count = 0;
+  const stream_kind_desc *opened = NULL;
+  stream_session *session = NULL;
+  session_state *held = NULL;
+
+  if (reqlen >= header_size)
+    {
+      ptr = or_unpack_int (ptr, &stream_kind);
+      ptr = or_unpack_int (ptr, &flags);
+      ptr = or_unpack_int (ptr, &config_len);
+    }
+  if (reqlen < header_size || config_len < 0 || config_len > reqlen - header_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      error_code = ER_STREAM_INVALID_USE;
+      goto send_reply;
+    }
+  if ((flags & ~STREAM_FLAG_FINAL) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      error_code = ER_STREAM_INVALID_USE;
+      goto send_reply;
+    }
+
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back, and a
+   * commit or rollback sent behind this request must find the open in progress */
+  error_code = session_reserve_stream_slot (thread_p, &held);
+  if (error_code != NO_ERROR)
+    {
+      goto send_reply;
+    }
+
+  /* from here on the kind's factory may put work into the transaction */
+  opened = stream_kind_find (stream_kind);
+  session = stream_session_create (thread_p, stream_kind, ptr, config_len, &error_code);
+  if (session == NULL)
+    {
+      if (error_code == NO_ERROR)
+	{
+	  /* a factory lives outside the transport and cannot be checked at compile
+	   * time; without this the client would read "opened" and start sending */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "stream session was not opened");
+	  error_code = ER_STREAM_SESSION_ERROR;
+	}
+      goto send_reply;
+    }
+
+  error_code = session_set_stream_session (thread_p, held, session, stream_kind);
+  if (error_code != NO_ERROR)
+    {
+      stream_drop_session (thread_p, held, session, true);
+      goto send_reply;
+    }
+
+  if (reqlen - header_size - config_len > 0)
+    {
+      error_code = stream_receive (thread_p, held, session, ptr + config_len, reqlen - header_size - config_len);
+    }
+  if (error_code == NO_ERROR && (flags & STREAM_FLAG_FINAL))
+    {
+      error_code = stream_finish (thread_p, held, session, &count);
+    }
+
+send_reply:
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
+
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    /* The kind's answer rides back so the CAS knows, without naming the consumer,
+     * whether this stream's END finishes a statement -- on a failure too, once the
+     * factory has run, since it or a first chunk may have put work into the transaction. */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr_reply;
+
+    ptr_reply = or_pack_int (reply, error_code);
+    ptr_reply = or_pack_int (ptr_reply, (opened != NULL && opened->ends_unit_of_work) ? 1 : 0);
+    ptr_reply = or_pack_int64 (ptr_reply, count);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}
+
+/*
+ * stream_use_session () - Hold the connection's active stream session for this request, or NULL with the error set
+ *
+ * The request lets it go with session_unuse_stream_session () before it replies.
+ */
+static stream_session *
+stream_use_session (THREAD_ENTRY *thread_p, int *kind, session_state **held, int *error_code)
+{
+  stream_session *session = NULL;
+
+  *error_code = session_use_stream_session (thread_p, session, kind, held);
+  if (*error_code == NO_ERROR && session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_OPEN, 1, "no active stream session");
+      *error_code = ER_STREAM_NOT_OPEN;
+    }
+
+  return session;
+}
+
+/*
+ * sstream_send_data () - Hand one chunk of the byte stream to the open session
+ *   request format: raw binary data
+ *   reply format: error_code (int)
+ */
+void
+sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  session_state *held = NULL;
+  stream_session *session = stream_use_session (thread_p, NULL, &held, &error_code);
+
+  if (session != NULL)
+    {
+      error_code = stream_receive (thread_p, held, session, request, reqlen);
+    }
+
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
+
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sstream_end () - End the stream and report the session's result
+ *   request format: the last chunk (raw, may be empty) -- what a FINAL SEND_DATA carries on the driver wire
+ *   reply format: error_code (int), padding (int), count (int64) -- rows for COPY and LOB DML; the binding
+ *                 interprets it
+ *
+ * The last chunk rides here rather than as a flag on SEND_DATA so that every
+ * other chunk still reaches the session as the request buffer itself.
+ */
+void
+sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  int kind = -1;
+  INT64 count = 0;
+  session_state *held = NULL;
+  stream_session *session = stream_use_session (thread_p, &kind, &held, &error_code);
+
+  if (session != NULL)
+    {
+      if (reqlen > 0)
+	{
+	  error_code = stream_receive (thread_p, held, session, request, reqlen);
+	}
+      if (error_code == NO_ERROR)
+	{
+	  error_code = stream_finish (thread_p, held, session, &count);
+	}
+    }
+
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    /* two ints ahead of the count, so or_pack_int64 () lands on its alignment */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr;
+
+    ptr = or_pack_int (reply, error_code);
+    ptr = or_pack_int (ptr, 0);
+    ptr = or_pack_int64 (ptr, count);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}
+
+/*
+ * sstream_abort () - Drop the open stream session at the client's request
+ *   request format: (empty)
+ *   reply format: error_code (int)
+ *
+ * The server already drops the session on a chunk it cannot consume. This is the
+ * other direction: the consumer's client half failed -- its encoder threw, the
+ * user cancelled -- and there is nothing left to send. Without it the session
+ * would sit in the connection until the transaction ended, refusing the next
+ * statement's open with "a stream session is already active".
+ */
+void
+sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  bool continue_checking = true;
+  session_state *held = NULL;
+  stream_session *session = stream_use_session (thread_p, NULL, &held, &error_code);
+
+  if (session != NULL)
+    {
+      /* a cancel the CAS left for the stream is answered by this abort, which must not see it */
+      (void) logtb_is_interrupted (thread_p, true, &continue_checking);
+      stream_drop_session (thread_p, held, session, true);
+    }
+
+  /* before the reply: the client's next request must find the slot free */
+  session_unuse_stream_session (thread_p, held);
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * stream_send_read_reply () - The reply of READ_OPEN and READ, with the bytes as its data
+ *   reply format: nread (int), error_code (int), flags (int) [, padding (int), handle (int64) for READ_OPEN]
+ */
+static void
+stream_send_read_reply (THREAD_ENTRY *thread_p, unsigned int rid, int error_code, char *buf, int nread,
+			int reply_flags, const INT64 *handle)
+{
+  OR_ALIGNED_BUF (4 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      nread = 0;
+    }
+
+  /* net_client_request2 () reads the first int as the size of the data that follows */
+  ptr = or_pack_int (reply, nread);
+  ptr = or_pack_int (ptr, error_code);
+  ptr = or_pack_int (ptr, reply_flags);
+  if (handle != NULL)
+    {
+      ptr = or_pack_int (ptr, 0);
+      ptr = or_pack_int64 (ptr, *handle);
+    }
+
+  auto deleter = [buf]() noexcept
+  {
+    if (buf != NULL)
+      {
+	free (buf);
+      }
+  };
+  /* css_send_reply_and_data_to_client () asserts !!buffer == !!buffer_size; the deleter frees buf either way */
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, (int) (ptr - reply), nread > 0 ? buf : NULL,
+				     nread, std::move (deleter));
+}
+
+/*
+ * stream_read_buffer () - The buffer a read fills: the core's, bounded by STREAM_READ_MAX_CHUNK
+ *   return: NULL when nothing is to be read, or on an allocation failure (with *error_code set)
+ */
+static char *
+stream_read_buffer (int max, int *error_code)
+{
+  char *buf;
+
+  if (max <= 0)
+    {
+      return NULL;
+    }
+
+  buf = (char *) malloc ((size_t) stream_read_bound (max));
+  if (buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) stream_read_bound (max));
+      *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return buf;
+}
+
+/*
+ * sstream_read_open () - Open a server->client byte stream, with its first piece in the same call
+ *   request format: stream_kind (int), first_max (int), flags (int), config blob (rest)
+ *   reply format: nread (int), error_code (int), flags (int), padding (int), handle (int64); data: the bytes
+ */
+void
+sstream_read_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  const int header_size = 3 * OR_INT_SIZE;
+  char *ptr = request;
+  int stream_kind = 0;
+  int first_max = 0;
+  int flags = 0;
+  int error_code = NO_ERROR;
+  int nread = 0;
+  int reply_flags = 0;
+  INT64 handle = 0;
+  char *buf = NULL;
+  stream_handle_table *handles;
+
+  if (reqlen < header_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, &handle);
+      return;
+    }
+
+  ptr = or_unpack_int (ptr, &stream_kind);
+  ptr = or_unpack_int (ptr, &first_max);
+  ptr = or_unpack_int (ptr, &flags);
+  if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, &handle);
+      return;
+    }
+
+  error_code = session_get_stream_handles (thread_p, true, &handles);
+  if (error_code == NO_ERROR)
+    {
+      /* Before the factory runs: a transaction's first snapshot holds vacuum back until the transaction ends, so
+       * what the source can see now stays for as long as its handle can live. */
+      (void) logtb_get_mvcc_snapshot (thread_p);
+
+      buf = stream_read_buffer (first_max, &error_code);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = stream_download_open (thread_p, *handles, stream_kind, ptr, reqlen - header_size,
+					     LOG_FIND_THREAD_TRAN_INDEX (thread_p), logtb_find_current_tranid (thread_p),
+					     session_stream_client_id (thread_p), first_max, flags, buf, &nread, &reply_flags,
+					     &handle);
+	}
+    }
+
+  stream_send_read_reply (thread_p, rid, error_code, buf, nread, reply_flags, &handle);
+}
+
+/*
+ * sstream_read () - Read the next piece of an open download
+ *   request format: handle (int64), max (int), flags (int)
+ *   reply format: nread (int), error_code (int), flags (int); data: the bytes
+ */
+void
+sstream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr = request;
+  INT64 handle = 0;
+  int max = 0;
+  int flags = 0;
+  int error_code = NO_ERROR;
+  int nread = 0;
+  int reply_flags = 0;
+  char *buf = NULL;
+  stream_handle_table *handles;
+
+  if (reqlen < OR_BIGINT_SIZE + 2 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, NULL);
+      return;
+    }
+
+  ptr = or_unpack_int64 (ptr, &handle);
+  ptr = or_unpack_int (ptr, &max);
+  ptr = or_unpack_int (ptr, &flags);
+  if ((flags & ~STREAM_FLAG_RELEASE_AT_EOF) != 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "unknown stream request flags");
+      stream_send_read_reply (thread_p, rid, ER_STREAM_INVALID_USE, NULL, 0, 0, NULL);
+      return;
+    }
+
+  error_code = session_get_stream_handles (thread_p, false, &handles);
+  if (error_code == NO_ERROR && handles == NULL)
+    {
+      /* the session never opened a download */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_NOT_OPEN, 1, "unknown stream handle");
+      error_code = ER_STREAM_NOT_OPEN;
+    }
+  else if (error_code == NO_ERROR)
+    {
+      buf = stream_read_buffer (max, &error_code);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = stream_download_read (thread_p, *handles, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p),
+					     logtb_find_current_tranid (thread_p), max, flags, buf, &nread, &reply_flags);
+	}
+    }
+
+  stream_send_read_reply (thread_p, rid, error_code, buf, nread, reply_flags, NULL);
+}
+
+/*
+ * sstream_release () - Release a download handle the client held
+ *   request format: handle (int64)
+ *   reply format: error_code (int)
+ *
+ * A handle the session no longer has is released already -- a purge may have
+ * run first -- so that is not an error, nor is one of another transaction.
+ */
+void
+sstream_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  INT64 handle = 0;
+  int error_code = NO_ERROR;
+  stream_handle_table *handles;
+
+  if (reqlen < OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_INVALID_USE, 1, "truncated stream session request");
+      error_code = ER_STREAM_INVALID_USE;
+    }
+  else
+    {
+      (void) or_unpack_int64 (request, &handle);
+
+      /* no table: the session never downloaded, and a handle that does not resolve is no error */
+      error_code = session_get_stream_handles (thread_p, false, &handles);
+      if (handles != NULL)
+	{
+	  handles->release (thread_p, handle, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+	}
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}

@@ -2060,6 +2060,17 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
       bctx->step_prologue[j] = false;
       bctx->step_exec_prologue[j] = false;
     }
+  for (j = mark->n_cells; j < bctx->n_cells; j++)
+    {
+      /* a cell that read a filter slot was counted with it (expr_compile_node_arith ()): the count goes with the
+       * cell, or the image claims more shared cells than it carries and its reader refuses it (CBRD-27994), and the
+       * flag goes too, or the next cell built at this index passes for a computed one */
+      if (bctx->cell_shared[j])
+	{
+	  bctx->cell_shared[j] = false;
+	  bctx->n_shared--;
+	}
+    }
   bctx->n_steps = mark->n_steps;
   bctx->n_cells = mark->n_cells;
   bctx->n_cse = mark->n_cse;
@@ -6584,11 +6595,22 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, EXP
 
   expr_prog_materialize (prog, bctx->share_pred);
 #if !defined (NDEBUG)
-  for (i = 0; i < prog->n_cells; i++)
-    {
-      /* bound from the recorded source: the address the compiler wired */
-      assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
-    }
+  {
+    int n_share_cells = 0;
+
+    for (i = 0; i < prog->n_cells; i++)
+      {
+	/* bound from the recorded source: the address the compiler wired */
+	assert (prog->cell_src[i] == EXPR_CSRC_STEP || prog->cells[i] == bctx->cells[i]);
+	if (prog->cell_src[i] == EXPR_CSRC_SHARE)
+	  {
+	    n_share_cells++;
+	  }
+      }
+    /* the image carries n_shared and its reader bounds it by the cells (expr_image_get_prog ()): one per cell that
+     * reads a filter slot, whatever the build rewound on the way (expr_build_rewind ()) */
+    assert (prog->n_shared == n_share_cells);
+  }
 #endif
 
   /* a predicate tree the caller owns (a compiled scan filter) resolves its cells against the same program */
@@ -8854,7 +8876,10 @@ expr_scan_pred_image_unpack (const char *image, int size, const PRED_EXPR * pr)
     {
       root = expr_image_get_pred (&r, prog != NULL ? prog->n_cells : 0, prog != NULL ? prog->n_steps : 0, 0);
     }
-  n_share = expr_image_get_range (&r, 0, prog != NULL ? prog->n_cells : 0);
+  /* the registry has an entry per shareable node (expr_scan_pred_share_build ()), and two nodes of one expression that
+   * the build gave one cell (CSE: the operand and the WHEN of CASE x WHEN x ...) are two entries of that cell, so the
+   * count may exceed the program's cells; the writer bounds it by the nodes it registers (CBRD-28049) */
+  n_share = expr_image_get_range (&r, 0, prog != NULL ? EXPR_MAX_STEPS : 0);
   if (root != NULL && n_share > 0 && !r.failed)
     {
       root->share = (struct expr_share *) malloc (sizeof (struct expr_share) * n_share);

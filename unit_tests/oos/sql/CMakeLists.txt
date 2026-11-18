@@ -17,6 +17,8 @@
 
 project(test_oos_sql_project)
 
+cmake_language(DEFER CALL oos_check_test_timeouts)
+
 # =============================================================================
 # SA_MODE tests (linked to cubridsa, in-process server)
 # =============================================================================
@@ -45,7 +47,51 @@ add_test(NAME test_oos_sql_bigone COMMAND test_oos_sql_bigone)
 add_test(NAME test_oos_sql_eager_cleanup COMMAND test_oos_sql_eager_cleanup)
 add_test(NAME test_oos_sql_storage COMMAND test_oos_sql_storage)
 add_test(NAME test_oos_sql_show COMMAND test_oos_sql_show)
-add_test(NAME test_oos_sql_deferred_write COMMAND test_oos_sql_deferred_write)
+string(CONCAT oos_sql_deferred_write_preparation_filter
+  "OosSqlDeferredWrite.Ownerless*:"
+  "OosSqlDeferredWrite.CopyArea*:"
+  "OosSqlDeferredWrite.Small*:"
+  "OosSqlDeferredWrite.Workspace*:"
+  "OosSqlDeferredWrite.InsertOwns*:"
+  "OosSqlDeferredWrite.RawClientInsert*:"
+  "OosSqlDeferredWrite.RedistributionRewrites*"
+)
+add_test(NAME test_oos_sql_deferred_write_preparation COMMAND test_oos_sql_deferred_write
+  "--gtest_filter=${oos_sql_deferred_write_preparation_filter}")
+string(CONCAT oos_sql_deferred_write_routing_filter
+  "OosSqlDeferredWrite.RawCopyArea*:"
+  "OosSqlDeferredWrite.RawClientUpdate*:"
+  "OosSqlDeferredWrite.Prefetch*:"
+  "OosSqlDeferredWrite.Pending*:"
+  "OosSqlDeferredWrite.Finalization*:"
+  "OosSqlDeferredWrite.Serialized*:"
+  "OosSqlDeferredWrite.RedistributionFailure*:"
+  "OosSqlDeferredWrite.Internal*:"
+  "OosSqlDeferredWrite.ForcedOutline*:"
+  "OosSqlDeferredWrite.RejectedDestination*:"
+  "OosSqlDeferredWrite.LobPreparation*:"
+  "OosSqlDeferredWrite.SupportedPartition*:"
+  "OosSqlPacking.*"
+)
+add_test(NAME test_oos_sql_deferred_write_routing COMMAND test_oos_sql_deferred_write
+  "--gtest_filter=${oos_sql_deferred_write_routing_filter}")
+string(CONCAT oos_sql_deferred_write_duplicates_filter
+  "OosSqlDeferredWrite.LoaderQueue*:"
+  "OosSqlDeferredWrite.AllocationAndStorage*:"
+  "OosSqlDeferredWrite.ConstraintFailure*:"
+  "OosSqlDeferredWrite.Duplicate*:"
+  "OosSqlDeferredWrite.AbandonedDuplicate*:"
+  "OosSqlDeferredWrite.ReplaceProbe*"
+)
+add_test(NAME test_oos_sql_deferred_write_duplicates COMMAND test_oos_sql_deferred_write
+  "--gtest_filter=${oos_sql_deferred_write_duplicates_filter}")
+string(CONCAT oos_sql_deferred_write_updates_filter
+  "OosSqlDeferredWrite.Update*:"
+  "OosSqlDeferredWrite.Nonpartitioned*:"
+  "OosSqlDeferredWrite.Rollback*"
+)
+add_test(NAME test_oos_sql_deferred_write_updates COMMAND test_oos_sql_deferred_write
+  "--gtest_filter=${oos_sql_deferred_write_updates_filter}")
 add_test(NAME test_oos_sql_visible_version COMMAND test_oos_sql_visible_version)
 add_test(NAME test_oos_sql_workspace_bytes COMMAND test_oos_sql_workspace_bytes)
 
@@ -56,7 +102,8 @@ set_tests_properties(
   test_oos_sql_eager_cleanup
   test_oos_sql_storage
   test_oos_sql_show
-  test_oos_sql_deferred_write
+  test_oos_sql_deferred_write_preparation test_oos_sql_deferred_write_routing
+  test_oos_sql_deferred_write_duplicates test_oos_sql_deferred_write_updates
   test_oos_sql_visible_version
   test_oos_sql_workspace_bytes
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
@@ -69,8 +116,9 @@ set_tests_properties(
 add_test(NAME test_oos_sql_crash_recovery COMMAND test_oos_sql_crash_recovery)
 set_tests_properties(
   test_oos_sql_crash_recovery
-  PROPERTIES FIXTURES_REQUIRED OOS_RECOVERY_DB RUN_SERIAL TRUE TIMEOUT 180
+  PROPERTIES FIXTURES_REQUIRED OOS_RECOVERY_DB RUN_SERIAL TRUE TIMEOUT 60
 )
 
-# Expected-error tests also collect debug stack traces at allocation, storage and export failure boundaries.
-set_tests_properties(test_oos_sql_deferred_write PROPERTIES TIMEOUT 180)
+get_property(oos_tests DIRECTORY PROPERTY TESTS)
+set_property(TEST ${oos_tests} APPEND PROPERTY ENVIRONMENT
+  "CUBRID_CALL_STACK_DUMP_ON_ERROR=no" "CUBRID_CALL_STACK_DUMP_ACTIVATION_LIST=null")
