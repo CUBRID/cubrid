@@ -531,26 +531,22 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
       return NULL;
     }
 
-  if (default_value->default_expr.default_expr_type == DB_DEFAULT_NONE)
+  if (default_value->default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
-      result = pt_dbval_to_value (parser, &default_value->value);
-      if (result == NULL)
-	{
-	  return NULL;
-	}
-    }
-  else
-    {
+      /* the type checking types the expression as what it makes (SYS_TIMESTAMP for a DATETIME attribute makes a
+       * TIMESTAMP), which the insert converts into the attribute's domain */
       result = pt_make_default_value_tree_from_default_expr (parser, &default_value->default_expr);
       if (!result)
 	{
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return NULL;
 	}
-
-      /* the type checking types the expression as what it makes (SYS_TIMESTAMP for a DATETIME attribute makes a
-       * TIMESTAMP), which the insert converts into the attribute's domain */
       return result;
+    }
+
+  result = pt_dbval_to_value (parser, &default_value->value);
+  if (result == NULL)
+    {
+      return NULL;
     }
 
   result->type_enum = pt_db_to_type_enum (sm_attr->type->id);

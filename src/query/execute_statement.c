@@ -12165,19 +12165,7 @@ static int check_for_cons (PARSER_CONTEXT * parser, int *has_unique, PT_NODE ** 
 			   const PT_NODE * attr_list, DB_OBJECT * class_obj);
 static int is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_insert_at_server (PARSER_CONTEXT * parser, PT_NODE * statement);
-/* a DEFAULT of a view that an INSERT ... SELECT on the view gives to one of its last attributes */
-typedef struct given_default GIVEN_DEFAULT;
-struct given_default
-{
-  DB_VALUE value;		/* made once for the statement, unless by_row */
-  bool by_row;			/* made for each row (DB_IS_DEFAULT_DETERMINE_BY_ROW) */
-};
-
-static PT_NODE *find_default_by_row (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static int evaluate_given_default (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * result);
-static int make_given_defaults (PARSER_CONTEXT * parser, PT_NODE * value, GIVEN_DEFAULT * given);
-static int insert_given_defaults (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE * attr, PT_NODE * value,
-				  GIVEN_DEFAULT * given);
+static int evaluate_given_defaults (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * result, bool constants);
 static int insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * values_list,
 				    PT_NODE * class_, const char **savepoint_name);
 static int is_attr_not_in_insert_list (const PARSER_CONTEXT * parser, PT_NODE * name_list, const char *name);
@@ -12240,138 +12228,38 @@ insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALU
 }
 
 /*
- * find_default_by_row () - parser_walk_tree pre function: whether a DEFAULT of a view holds a default expression
- *			    determined by row (DB_IS_DEFAULT_DETERMINE_BY_ROW), which makes a value for each row
+ * evaluate_given_defaults () - evaluate the DEFAULTs of a view that an INSERT ... SELECT on the view gives to its last
+ *				attributes: the constants once before the rows, the others for each row as the server
+ *				does
  *
- * arg (out) : bool, set true when one is found.
- */
-static PT_NODE *
-find_default_by_row (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  bool *by_row = (bool *) arg;
-  int type;
-
-  if (node->node_type != PT_EXPR)
-    {
-      return node;
-    }
-  for (type = DB_DEFAULT_SYSDATE; type <= DB_DEFAULT_UUIDV7; type++)
-    {
-      if (DB_IS_DEFAULT_DETERMINE_BY_ROW (type)
-	  && node->info.expr.op == pt_op_type_from_default_expr_type ((DB_DEFAULT_EXPR_TYPE) type))
-	{
-	  *by_row = true;
-	  *continue_walk = PT_STOP_WALK;
-	  break;
-	}
-    }
-
-  return node;
-}
-
-/*
- * evaluate_given_default () - evaluate one DEFAULT of a view that an INSERT ... SELECT on the view gives
- *
- * return     : Error code.
- * value (in) : the DEFAULT, one of default_values of the insert.
- * result (out) : its value.
+ * return	  : Error code.
+ * value (in)	  : the DEFAULTs (default_values of the insert).
+ * result (in/out) : one for each of them.
+ * constants (in) : the constants, or the others.
  */
 static int
-evaluate_given_default (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * result)
-{
-  PT_NODE *value_next = value->next;
-  int error = NO_ERROR;
-
-  value->next = NULL;
-  pt_evaluate_tree (parser, value, result, 1);
-  value->next = value_next;
-  if (pt_has_error (parser))
-    {
-      pt_report_to_ersys (parser, PT_SEMANTIC);
-      ASSERT_ERROR_AND_SET (error);
-    }
-
-  return error;
-}
-
-/*
- * make_given_defaults () - make before the rows the DEFAULTs of a view that an INSERT ... SELECT on the view gives to
- *			    its last attributes: a constant and a default expression determined by statement once,
- *			    one determined by row is left to each row (insert_given_defaults)
- *
- * return      : Error code.
- * value (in)  : the DEFAULTs (default_values of the insert).
- * given (out) : one for each of them, their values set to NULL by the caller.
- */
-static int
-make_given_defaults (PARSER_CONTEXT * parser, PT_NODE * value, GIVEN_DEFAULT * given)
+evaluate_given_defaults (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * result, bool constants)
 {
   PT_NODE *value_next;
   int error = NO_ERROR;
 
-  for (; error == NO_ERROR && value != NULL; value = value->next, given++)
+  for (; error == NO_ERROR && value != NULL; value = value->next, result++)
     {
+      if ((value->node_type == PT_VALUE) != constants)
+	{
+	  continue;
+	}
+
+      pr_clear_value (result);
       value_next = value->next;
       value->next = NULL;
-      given->by_row = false;
-      (void) parser_walk_tree (parser, value, find_default_by_row, &given->by_row, NULL, NULL);
+      pt_evaluate_tree (parser, value, result, 1);
       value->next = value_next;
-
-      if (!given->by_row)
+      if (pt_has_error (parser))
 	{
-	  error = evaluate_given_default (parser, value, &given->value);
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  ASSERT_ERROR_AND_SET (error);
 	}
-    }
-
-  return error;
-}
-
-/*
- * insert_given_defaults () - give a new object the DEFAULTs of a view that an INSERT ... SELECT on the view gives to
- *			      its last attributes
- *
- * return	  : Error code.
- * parser (in)	  : Parser context.
- * otemplate (in) : template of the object being inserted.
- * attr (in)	  : the first of those attributes.
- * value (in)	  : their DEFAULTs (default_values of the insert).
- * given (in)	  : their values made for the statement (make_given_defaults); the ones made by row are made here.
- */
-static int
-insert_given_defaults (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, PT_NODE * attr, PT_NODE * value,
-		       GIVEN_DEFAULT * given)
-{
-  DB_VALUE row_value, *put;
-  int error = NO_ERROR;
-
-  for (; error == NO_ERROR && attr != NULL && value != NULL; attr = attr->next, value = value->next, given++)
-    {
-      if (attr->node_type != PT_NAME)
-	{
-	  /* the view translation has made the attributes names of the real class */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-	  return ER_OBJ_INVALID_ARGUMENTS;
-	}
-
-      db_make_null (&row_value);
-      put = &given->value;
-      if (given->by_row)
-	{
-	  error = evaluate_given_default (parser, value, &row_value);
-	  put = &row_value;
-	}
-
-      if (error == NO_ERROR && attr->info.name.db_object != NULL && db_is_vclass (attr->info.name.db_object) > 0)
-	{
-	  /* a shared attribute of the view, as insert_object_attr puts it */
-	  error = obj_set_shared (attr->info.name.db_object, attr->info.name.original, put);
-	}
-      else if (error == NO_ERROR)
-	{
-	  error = dbt_put_internal (otemplate, attr->info.name.original, put);
-	}
-      pr_clear_value (&row_value);
     }
 
   return error;
@@ -14207,7 +14095,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
-  GIVEN_DEFAULT *given = NULL;
+  PT_NODE *given = NULL;
   int num_given = 0;
 
   assert (parser != NULL);
@@ -14292,27 +14180,12 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	    }
 	}
 
-      if (statement->node_type == PT_INSERT && statement->info.insert.default_values != NULL)
+      if (statement->node_type == PT_INSERT)
 	{
-	  num_given = pt_length_of_list (statement->info.insert.default_values);
-	  given = (GIVEN_DEFAULT *) malloc (num_given * sizeof (GIVEN_DEFAULT));
-	  if (given == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      num_given * sizeof (GIVEN_DEFAULT));
-	      cnt = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto cleanup;
-	    }
-	  for (i = 0; i < num_given; i++)
-	    {
-	      db_make_null (&given[i].value);
-	    }
-	  error = make_given_defaults (parser, statement->info.insert.default_values, given);
-	  if (error != NO_ERROR)
-	    {
-	      cnt = error;
-	      goto cleanup;
-	    }
+	  /* the DEFAULTs of a view the insert gives to its last attributes take the slots after the columns of the
+	   * source, and are put as the columns are */
+	  given = statement->info.insert.default_values;
+	  num_given = pt_length_of_list (given);
 	}
 
       /* insert subquery results into target class */
@@ -14320,31 +14193,40 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	{
 	  cursor_id.query_id = parser->query_id;
 
-	  vals = (DB_VALUE *) malloc (degree * sizeof (DB_VALUE));
+	  vals = (DB_VALUE *) malloc ((degree + num_given) * sizeof (DB_VALUE));
 	  if (vals == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, degree * sizeof (DB_VALUE));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (degree + num_given) * sizeof (DB_VALUE));
 	      cnt = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto cleanup;
 	    }
 
-	  for (i = 0; i < degree; i++)
+	  for (i = 0; i < degree + num_given; i++)
 	    {
 	      db_make_null (&vals[i]);
+	    }
+
+	  error = evaluate_given_defaults (parser, given, vals + degree, true);
+	  if (error != NO_ERROR)
+	    {
+	      cursor_close (&cursor_id);
+	      cnt = error;
+	      goto cleanup;
 	    }
 
 	  /* allocate attribute descriptor array */
 	  if (degree)
 	    {
-	      attr_descs = (DB_ATTDESC **) malloc ((degree) * sizeof (DB_ATTDESC *));
+	      attr_descs = (DB_ATTDESC **) malloc ((degree + num_given) * sizeof (DB_ATTDESC *));
 	      if (attr_descs == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  degree * sizeof (DB_ATTDESC *));
+			  (degree + num_given) * sizeof (DB_ATTDESC *));
 		  cnt = ER_OUT_OF_VIRTUAL_MEMORY;
 		  goto cleanup;
 		}
-	      for (i = 0; i < degree; i++)
+	      for (i = 0; i < degree + num_given; i++)
 		{
 		  attr_descs[i] = NULL;
 		}
@@ -14371,6 +14253,14 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		      break;
 		    }
 
+		  error = evaluate_given_defaults (parser, given, vals + degree, false);
+		  if (error != NO_ERROR)
+		    {
+		      cursor_close (&cursor_id);
+		      cnt = error;
+		      goto cleanup;
+		    }
+
 		  /* create an instance of the target class using templates */
 		  otemplate = dbt_create_object_internal (class_->info.name.db_object, false);
 		  if (otemplate == NULL)
@@ -14383,10 +14273,18 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		      obt_set_force_flush (otemplate);
 		    }
 		  /* update new instance with current tuple of subquery result */
-		  for (attr = attrs, val = vals, k = 0; attr != NULL && k < degree; attr = attr->next, val++, k++)
+		  for (attr = attrs, val = vals, k = 0; attr != NULL && k < degree + num_given;
+		       attr = attr->next, val++, k++)
 		    {
+		      if (attr->node_type != PT_NAME)
+			{
+			  /* the view translation has made the attributes names of the real class */
+			  assert (false);
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+			  error = ER_OBJ_INVALID_ARGUMENTS;
+			}
 		      /* if this is the first tuple, get the attr descriptor */
-		      if (attr_descs != NULL)
+		      else if (attr_descs != NULL)
 			{
 			  if (attr_descs[k] == NULL)
 			    {
@@ -14427,12 +14325,6 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		    }
 
 		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
-		  if (error == NO_ERROR && given != NULL)
-		    {
-		      /* attr is the first attribute after the columns of the source */
-		      error =
-			insert_given_defaults (parser, otemplate, attr, statement->info.insert.default_values, given);
-		    }
 		  if (error != NO_ERROR)
 		    {
 		      cursor_close (&cursor_id);
@@ -14594,7 +14486,7 @@ cleanup:
     }
   if (vals != NULL)
     {
-      for (val = vals, k = 0; k < degree; val++, k++)
+      for (val = vals, k = 0; k < degree + num_given; val++, k++)
 	{
 	  db_value_clear (val);
 	}
@@ -14603,7 +14495,7 @@ cleanup:
 
   if (attr_descs != NULL)
     {
-      for (i = 0; i < degree; i++)
+      for (i = 0; i < degree + num_given; i++)
 	{
 	  if (attr_descs[i] != NULL)
 	    {
@@ -14611,15 +14503,6 @@ cleanup:
 	    }
 	}
       free_and_init (attr_descs);
-    }
-
-  if (given != NULL)
-    {
-      for (i = 0; i < num_given; i++)
-	{
-	  pr_clear_value (&given[i].value);
-	}
-      free_and_init (given);
     }
 
   if (cnt < 0 && seq != NULL)
