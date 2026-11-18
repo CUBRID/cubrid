@@ -4478,6 +4478,35 @@ logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_get_catalog_read_snapshot () - build into local a snapshot for one catalog read request
+ *
+ * Whatever the isolation level, the transaction snapshot is neither built nor changed, so reading the catalog does
+ * not fix the point in time a transaction's queries see. Like that snapshot, it holds vacuum back from the versions
+ * it may read until the transaction ends.
+ *
+ * return: local, or NULL for a system transaction
+ *
+ *   thread_p(in): thread entry
+ *   local(out): snapshot owned by the caller for the duration of the request
+ */
+MVCC_SNAPSHOT *
+logtb_get_catalog_read_snapshot (THREAD_ENTRY * thread_p, MVCC_SNAPSHOT * local)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (!tdes->is_active_worker_transaction ())
+    {
+      return NULL;
+    }
+
+  /* no parallel worker reads the catalog this way, so the main thread's snapshot mutex is not needed */
+  assert (thread_p->m_px_orig_thread_entry == NULL);
+
+  log_Gl.mvcc_table.build_snapshot (tdes->tran_index, *local, false);
+  return local;
+}
+
+/*
  * logtb_complete_mvcc () - Called at commit or rollback, completes MVCC info
  *			    for current transaction.
  *
