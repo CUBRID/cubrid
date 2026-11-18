@@ -2351,6 +2351,112 @@ dblink_dml_build_update_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 }
 
 /*
+ * dblink_dml_build_merge_sql () - Build the MERGE the sink sends once per source row:
+ *     MERGE INTO <table> <target alias> USING (SELECT <p1> AS c1, ...) <source alias> <clauses>
+ *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
+ *           db_private_free), error code on failure.
+ *   thread_p(in)  : thread entry
+ *   table_name(in): remote table name
+ *   merge(in)     : the plan's MERGE fields -- aliases, the clause text, and a cast per column
+ *   is_cubrid(in) : the remote is CUBRID, not a vendor gateway
+ *   sql_out(out)  : set to the built SQL text on success
+ *
+ * Each placeholder is cast so the remote reads the value as the source declared it. A CUBRID
+ * remote casts to the source column's type. A gateway remote casts only a CHAR, to its length,
+ * as its bind already carries the other types. A gateway one-row SELECT also needs FROM dual,
+ * which Oracle requires. The identifiers are appended unquoted, as the DELETE builder appends
+ * its key column. See the TODO there.
+ */
+static int
+dblink_dml_build_merge_sql (THREAD_ENTRY * thread_p, const char *table_name, const MERGE_PROC_NODE * merge,
+			    bool is_cubrid, char **sql_out)
+{
+  char *sql, *p;
+  size_t sql_len;
+  int i, ret, remaining;
+
+  *sql_out = NULL;
+
+  if (merge == NULL || merge->remote_target_alias == NULL || merge->remote_source_alias == NULL
+      || merge->remote_clause_text == NULL || merge->remote_num_binds <= 0 || merge->remote_bind_cast == NULL
+      || merge->remote_bind_char_len == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote MERGE: the plan carries no statement");
+      return ER_DBLINK;
+    }
+
+  sql_len = (strlen (table_name) + strlen (merge->remote_target_alias) + strlen (merge->remote_source_alias)
+	     + strlen (merge->remote_clause_text) + 128);
+  for (i = 0; i < merge->remote_num_binds; i++)
+    {
+      /* "CAST(? AS <type>) AS c<n>, ". 64 covers the fixed text, the numbers
+       * and a gateway CHAR(n). */
+      sql_len += 64 + (merge->remote_bind_cast[i] != NULL ? strlen (merge->remote_bind_cast[i]) : 0);
+    }
+
+  sql = (char *) db_private_alloc (thread_p, sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  p = sql;
+  remaining = (int) sql_len;
+
+// *INDENT-OFF*
+#define DBLINK_MERGE_SQL_APPEND(...) \
+  do \
+    { \
+      ret = snprintf (p, remaining, __VA_ARGS__); \
+      if (ret < 0 || ret >= remaining) \
+        { \
+          goto sql_build_error; \
+        } \
+      p += ret; \
+      remaining -= ret; \
+    } \
+  while (0)
+// *INDENT-ON*
+
+  /* the clause text writes the source columns as <source alias>.c<n>, as MERGE_PROC_NODE states */
+  DBLINK_MERGE_SQL_APPEND ("/* DBLINK MERGE */ MERGE INTO %s %s USING (SELECT ", table_name,
+			   merge->remote_target_alias);
+  for (i = 0; i < merge->remote_num_binds; i++)
+    {
+      if (i > 0)
+	{
+	  DBLINK_MERGE_SQL_APPEND (", ");
+	}
+
+      if (is_cubrid && merge->remote_bind_cast[i] != NULL)
+	{
+	  DBLINK_MERGE_SQL_APPEND ("CAST(? AS %s) AS c%d", merge->remote_bind_cast[i], i + 1);
+	}
+      else if (!is_cubrid && merge->remote_bind_char_len[i] > 0)
+	{
+	  DBLINK_MERGE_SQL_APPEND ("CAST(? AS CHAR(%d)) AS c%d", merge->remote_bind_char_len[i], i + 1);
+	}
+      else
+	{
+	  DBLINK_MERGE_SQL_APPEND ("? AS c%d", i + 1);
+	}
+    }
+  DBLINK_MERGE_SQL_APPEND ("%s) %s %s", is_cubrid ? "" : " FROM dual", merge->remote_source_alias,
+			   merge->remote_clause_text);
+
+#undef DBLINK_MERGE_SQL_APPEND
+
+  *sql_out = sql;
+  return NO_ERROR;
+
+sql_build_error:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote MERGE: SQL assembly truncated");
+  db_private_free (thread_p, sql);
+  return ER_DBLINK;
+}
+
+/*
  * dblink_dml_reprepare_with_key_cast () - Replace the prepared statement with one whose WHERE key placeholder
  *   carries the restored type. Used when the marker's domain turned out to differ from the source type,
  *   which is only knowable after the first prepare.
@@ -2416,24 +2522,29 @@ dblink_dml_reprepare_with_key_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * 
 }
 
 /*
- * dblink_dml_open () - Connect to remote server and prepare the statement the DBLink remote push-sink
- *   sends (INSERT or REPLACE ... SELECT ... FROM local, DELETE or UPDATE with a local subquery).
+ * dblink_dml_open () - Connect to remote server and prepare the statement the DBLink remote
+ *   push-sink sends (INSERT or REPLACE ... SELECT ... FROM local, DELETE or UPDATE with a local
+ *   subquery, MERGE with a local source).
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)    : thread entry
- *   kind(in)        : DBLINK_DML_INSERT, DBLINK_DML_REPLACE, DBLINK_DML_DELETE or DBLINK_DML_UPDATE
- *   sink(in)        : the plan's sink fields -- connection, target table, and the remote WHERE column and
- *                     operator when the statement sends a WHERE
- *   attr_names(in)  : INSERT and REPLACE only -- explicit column names (NULL for positional INSERT)
- *   num_attrs(in)   : INSERT and REPLACE only -- length of attr_names (0 when positional)
- *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders in VALUES (= INSERT column count)
- *   set_text(in)    : UPDATE only -- the SET clause, with a placeholder per bound value
- *   num_set(in)     : UPDATE only -- number of placeholders in set_text. The WHERE key's placeholder comes
- *                     after them
- *   odku(in)        : INSERT only -- ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means
- *                     no clause. REPLACE is refused when it carries any
- *   src_dom(in)     : DELETE, and UPDATE with a WHERE -- domain of the local subquery's source column (NULL
- *                     otherwise). Used to restore the WHERE key's declared type; see the policy comment above
- *                     dblink_dml_unresolved_fallback_casts()
+ *   kind(in)        : DBLINK_DML_INSERT, DBLINK_DML_REPLACE, DBLINK_DML_DELETE,
+ *                     DBLINK_DML_UPDATE or DBLINK_DML_MERGE
+ *   sink(in)        : the plan's sink fields. They are the connection, the target table, and the
+ *                     remote WHERE column and operator when the statement sends a WHERE.
+ *   attr_names(in)  : INSERT and REPLACE only. Explicit column names, NULL for positional INSERT.
+ *   num_attrs(in)   : INSERT and REPLACE only. Length of attr_names, 0 when positional.
+ *   num_bind(in)    : INSERT and REPLACE only. Number of ? placeholders in VALUES, which is the
+ *                     INSERT column count. The other kinds do not read it. MERGE takes its count
+ *                     from merge.
+ *   set_text(in)    : UPDATE only. The SET clause, with a placeholder per bound value.
+ *   num_set(in)     : UPDATE only. Number of placeholders in set_text. The WHERE key's placeholder
+ *                     comes after them.
+ *   odku(in)        : INSERT only. ON DUPLICATE KEY UPDATE assignments. NULL or a zero count means
+ *                     no clause. REPLACE is refused when it carries any.
+ *   src_dom(in)     : DELETE, and UPDATE with a WHERE. Domain of the local subquery's source
+ *                     column, NULL otherwise. It restores the WHERE key's declared type. See the
+ *                     policy comment above dblink_dml_unresolved_fallback_casts ().
+ *   merge(in)       : MERGE only. The plan's MERGE fields the statement is built from.
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, every kind ALWAYS:
@@ -2446,22 +2557,22 @@ dblink_dml_reprepare_with_key_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * 
  *   when the local transaction commits or aborts (explicit COMMIT/ROLLBACK,
  *   session AUTOCOMMIT, or EXECUTE_QUERY_WITH_COMMIT).
  *
- *   When the remote supports savepoints, the statement also takes one (state->savepoint_set) so that
+ *   When the remote supports savepoints, the statement also takes one (state->savepoint_set), so
  *   dblink_dml_stmt_abort() can roll back just this statement's remote work. A remote without
- *   savepoint support (gateway) still opens successfully, with savepoint_set left false; a failure
- *   there rolls the whole remote transaction back, which only loses something if the connection was
- *   already carrying uncommitted work of this transaction (the connection's has_uncommitted_dml mark,
- *   which this statement does not set until it succeeds).
+ *   savepoint support (gateway) still opens successfully, with savepoint_set left false. A failure
+ *   there rolls the whole remote transaction back. That only loses something if the connection
+ *   already carried uncommitted work of this transaction. The connection's has_uncommitted_dml
+ *   mark says so, and this statement does not set it until it succeeds.
  *
- *   Every failure return past the point where the connection is acquired clears state->conn_handle:
- *   the statement has written nothing on the remote yet, so its error path must not roll back or tear
- *   down the connection that earlier statements of the same transaction are still using. The
- *   connection stays in the pool either way.
+ *   Every failure return past the point where the connection is acquired clears
+ *   state->conn_handle. The statement has written nothing on the remote yet. So its error path
+ *   must not roll back or tear down the connection that earlier statements of the same
+ *   transaction are still using. The connection stays in the pool either way.
  */
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink, char **attr_names,
 		 int num_attrs, int num_bind, const char *set_text, int num_set, const DBLINK_ODKU_ASSIGNS * odku,
-		 TP_DOMAIN * src_dom, DBLINK_DML_STATE * state)
+		 TP_DOMAIN * src_dom, const MERGE_PROC_NODE * merge, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -2503,6 +2614,9 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
       break;
     case DBLINK_DML_UPDATE:
       errctx = "remote UPDATE";
+      break;
+    case DBLINK_DML_MERGE:
+      errctx = "remote MERGE";
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -2549,6 +2663,10 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
       key_pos = num_set + 1;
       ret = dblink_dml_build_update_sql (thread_p, sink->table_name, set_text, sink->remote_key_col, sink->remote_op,
 					 NULL, sink->remote_using_index, &sql);
+      break;
+    case DBLINK_DML_MERGE:
+      ret = dblink_dml_build_merge_sql (thread_p, sink->table_name, merge, dblink_remote_is_cubrid (state->conn_handle),
+					&sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -2605,22 +2723,22 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
 }
 
 /*
- * dblink_dml_execute_row () - Bind values and execute one row of the remote statement this sink sends
- *   (INSERT, REPLACE, DELETE or UPDATE).
+ * dblink_dml_execute_row () - Bind values and execute one row of the remote statement this sink
+ *   sends (INSERT, REPLACE, DELETE, UPDATE or MERGE).
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)      : thread entry
  *   state(in)         : open DML sink state (conn_handle, stmt_handle)
- *   vals(in)          : array of DB_VALUE*, one per "?" -- for an INSERT, the INSERT values and then the bound
- *                       ON DUPLICATE KEY UPDATE values
+ *   vals(in)          : array of DB_VALUE*, one per "?". For an INSERT, they are the INSERT values
+ *                       and then the bound ON DUPLICATE KEY UPDATE values.
  *   num_vals(in)      : length of vals
  *   affected_rows(out): remote-reported affected row count for this execute (cci_execute's return
- *                        value); NULL when the caller does not use the count.
+ *                        value). NULL when the caller does not use the count.
  *
  * Remote transaction behavior (distinct from local session AUTOCOMMIT and DBLINK_AUTO_COMMIT):
  *   dblink_dml_open always sets CCI_AUTOCOMMIT_FALSE on the remote connection.
  *   All-or-nothing semantics:
- *     - On error: dblink_dml_stmt_abort() undoes this statement's remote rows, back to the savepoint
- *       where one was taken, or by rolling back the whole remote transaction otherwise.
+ *     - On error: dblink_dml_stmt_abort() undoes this statement's remote rows, back to the
+ *       savepoint where one was taken, or by rolling back the whole remote transaction otherwise.
  *     - On success: qmgr_check_dblink_trans() commits the remote txn when the
  *       local transaction commits.
  */
