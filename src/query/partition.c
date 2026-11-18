@@ -952,6 +952,10 @@ pruningset_to_spec_list (PRUNING_CONTEXT * pinfo, const PRUNING_BITSET * pruned)
     {
       COPY_OID (&spec[i].oid, &pinfo->partitions[pos + 1].class_oid);
       HFID_COPY (&spec[i].hfid, &pinfo->partitions[pos + 1].class_hfid);
+      /* no page bitmap kept yet (scan_heap_scan_page_list ()) */
+      spec[i].page_list_keep.partsect_ftab = NULL;
+      spec[i].page_list_keep.npages = 0;
+      spec[i].page_list_keep.nsects = 0;
       spec[i].pos = pos;
       spec[i].row_pruned = false;
       spec[i].btid_int_cached = false;
