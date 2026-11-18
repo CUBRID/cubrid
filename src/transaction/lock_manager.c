@@ -8838,7 +8838,9 @@ void
 lock_reset_request_state (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
-  thread_p->deferred_wake.request = lk_thread_deferred_wake::request_state ();
+  thread_p->deferred_wake.request.recheck = lk_thread_deferred_wake::recheck_record ();
+  /* a pool thread may hand its epoch to this one at any time (lock_deferred_wake_hand_over ()) */
+  __atomic_store_n (&thread_p->deferred_wake.request.epoch_seen, (UINT64) 0, __ATOMIC_RELAXED);
 #endif /* SERVER_MODE */
 }
 
@@ -8882,12 +8884,14 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes;
+  UINT64 none = 0;
 
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
     }
-  if (thread_p->deferred_wake.request.epoch_seen != 0)
+  /* a pool thread may hand its epoch to this one at any time (lock_deferred_wake_hand_over ()) */
+  if (__atomic_load_n (&thread_p->deferred_wake.request.epoch_seen, __ATOMIC_RELAXED) != 0)
     {
       return;
     }
@@ -8896,7 +8900,9 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
     {
       return;
     }
-  thread_p->deferred_wake.request.epoch_seen = lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake.due_epoch ();
+  (void) __atomic_compare_exchange_n (&thread_p->deferred_wake.request.epoch_seen, &none,
+				      lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake.due_epoch (), false,
+				      __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
 #endif /* SERVER_MODE */
 }
 
@@ -8910,19 +8916,45 @@ void
 lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
-  UINT64 epoch = thread_p->deferred_wake.request.epoch_seen;
+  UINT64 epoch = __atomic_exchange_n (&thread_p->deferred_wake.request.epoch_seen, (UINT64) 0, __ATOMIC_SEQ_CST);
   LOG_TDES *tdes;
 
   if (epoch == 0)
     {
       return;
     }
-  thread_p->deferred_wake.request.epoch_seen = 0;
   tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   if (tdes != NULL)
     {
       (void) lock_deferred_wake_send (thread_p, tdes->tran_index, tdes->mvccinfo.id, epoch);
     }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_deferred_wake_hand_over - a parallel task ends: the wake due at a row write of its pool thread goes out at the
+ *				   end of the request of the thread that reserved the pool, as a pool thread ends none
+ *
+ *   owner_p(in): the thread that reserved the pool; it waits for this task to retire
+ */
+void
+lock_deferred_wake_hand_over (THREAD_ENTRY * thread_p, THREAD_ENTRY * owner_p)
+{
+#if defined (SERVER_MODE)
+  UINT64 epoch, none = 0;
+
+  if (owner_p == thread_p)
+    {
+      return;
+    }
+  epoch = __atomic_exchange_n (&thread_p->deferred_wake.request.epoch_seen, (UINT64) 0, __ATOMIC_SEQ_CST);
+  if (epoch == 0)
+    {
+      return;
+    }
+  /* an epoch the owner already saw stays: a request keeps the first it sees */
+  (void) __atomic_compare_exchange_n (&owner_p->deferred_wake.request.epoch_seen, &none, epoch, false,
+				      __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);
 #endif /* SERVER_MODE */
 }
 
