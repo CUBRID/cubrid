@@ -1265,12 +1265,18 @@ tran_abort_upto_user_savepoint (const char *savepoint_name)
 {
   int error_code;
 
+  error_code = tran_internal_abort_upto_savepoint (savepoint_name, USER_SAVEPOINT, false);
+  if (error_code != NO_ERROR)
+    {
+      /* the server keeps the savepoints after a failed rollback, so the client keeps its copy of their names too:
+       * the commit refusal below is decided by them */
+      return error_code;
+    }
+
   /* delete client's local copy of savepoint names back to here */
   tran_free_list_upto_savepoint (savepoint_name);
 
-  error_code = tran_internal_abort_upto_savepoint (savepoint_name, USER_SAVEPOINT, false);
-  if (error_code == NO_ERROR && tm_Tran_rollback_required_by != NO_ERROR
-      && tran_count_user_savepoints () <= tm_Tran_rollback_required_savepoints)
+  if (tm_Tran_rollback_required_by != NO_ERROR && tran_count_user_savepoints () <= tm_Tran_rollback_required_savepoints)
     {
       /* the savepoint was there when the statement failed, so its changes are undone. A savepoint taken after the
        * failure, also one of the same name, leaves more savepoints than that. */
