@@ -29,17 +29,16 @@
 #include "schema_manager.h"
 #include "schema_system_catalog_constants.h"
 
-static const char *sensitivity_label_get_component_class_name (const PT_MISC_TYPE kind);
-static const char *sensitivity_label_get_component_kind_name (const PT_MISC_TYPE kind);
+static const char *get_component_class_name (const PT_MISC_TYPE kind);
+static const char *get_component_kind_name (const PT_MISC_TYPE kind);
 
 /*
- * sensitivity_label_get_component_class_name () - the catalog class that holds the grades, the info_types or
- *                                                 the sources
+ * get_component_class_name () - the catalog class that holds the grades, the info_types or the sources
  *   return: the class name
  *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
  */
 static const char *
-sensitivity_label_get_component_class_name (const PT_MISC_TYPE kind)
+get_component_class_name (const PT_MISC_TYPE kind)
 {
   switch (kind)
     {
@@ -56,12 +55,12 @@ sensitivity_label_get_component_class_name (const PT_MISC_TYPE kind)
 }
 
 /*
- * sensitivity_label_get_component_kind_name () - the kind name an error message shows
+ * get_component_kind_name () - the kind name an error message shows
  *   return: "grade", "info_type" or "source"
  *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
  */
 static const char *
-sensitivity_label_get_component_kind_name (const PT_MISC_TYPE kind)
+get_component_kind_name (const PT_MISC_TYPE kind)
 {
   switch (kind)
     {
@@ -100,7 +99,7 @@ sensitivity_label_create_component (const PT_MISC_TYPE kind, const char *name, c
 
   AU_SAVE_AND_DISABLE (save);
 
-  class_obj = db_find_class (sensitivity_label_get_component_class_name (kind));
+  class_obj = db_find_class (get_component_class_name (kind));
   if (class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -111,7 +110,7 @@ sensitivity_label_create_component (const PT_MISC_TYPE kind, const char *name, c
   if (db_find_unique (class_obj, "name", &value) != NULL)
     {
       ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS,
-			     sensitivity_label_get_component_kind_name (kind), lower_name);
+			     get_component_kind_name (kind), lower_name);
       goto end;
     }
 
@@ -246,7 +245,7 @@ sensitivity_label_alter_component (const PT_MISC_TYPE kind, const char *name, co
       if (db_find_unique (class_obj, "name", &value) != NULL)
 	{
 	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS,
-				 sensitivity_label_get_component_kind_name (kind), lower_new_name);
+				 get_component_kind_name (kind), lower_new_name);
 	  goto end;
 	}
 
@@ -423,8 +422,7 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
   if (error > 0)
     {
       sm_downcase_name (name, lower_name, DB_MAX_IDENTIFIER_LENGTH);
-      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_IN_USE, sensitivity_label_get_component_kind_name (kind),
-			     lower_name);
+      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_IN_USE, get_component_kind_name (kind), lower_name);
     }
   if (error != NO_ERROR)
     {
@@ -479,7 +477,7 @@ sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, con
 
   AU_SAVE_AND_DISABLE (save);
 
-  class_obj = db_find_class (sensitivity_label_get_component_class_name (kind));
+  class_obj = db_find_class (get_component_class_name (kind));
   if (class_obj == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -494,7 +492,7 @@ sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, con
       if (error == ER_OBJ_OBJECT_NOT_FOUND)
 	{
 	  er_clear ();
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_NOT_FOUND, sensitivity_label_get_component_kind_name (kind),
+	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_NOT_FOUND, get_component_kind_name (kind),
 				 lower_name);
 	}
     }
