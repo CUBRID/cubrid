@@ -53,7 +53,6 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
-#include "numeric_opfunc.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

@@ -2925,11 +2925,11 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, b
     {
       *coerce = true;
     }
-  else if (TP_DOMAIN_TYPE (outer) != DB_TYPE_NUMERIC && TP_DOMAIN_TYPE (outer) != DB_TYPE_VARCHAR
+  else if (TP_DOMAIN_TYPE (outer) != DB_TYPE_NUMERIC && !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (outer))
 	   && (outer->precision != inner->precision || outer->scale != inner->scale))
     {
-      /* a NUMERIC hashes and compares by its value, a VARCHAR whatever its length: neither needs its pair's
-       * precision and scale */
+      /* a NUMERIC hashes and compares by its value, a string with its trailing spaces left out whatever its
+       * length: neither needs its pair's precision and scale */
       *coerce = true;
     }
 

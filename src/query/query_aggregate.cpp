@@ -3421,12 +3421,7 @@ qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h)
   unsigned int w;
   unsigned char rank;
 
-  /* the key's hash mixed again: an integer key's is little more than the integer */
-  h ^= h >> 16;
-  h *= 0x7feb352du;
-  h ^= h >> 15;
-  h *= 0x846ca68bu;
-  h ^= h >> 16;
+  /* h needs no mixing: mht_valhash () mixes every value of the key */
   w = h << 10;
   /* 1 + the leading zeros of the 22 bits after the prefix, 23 when all are zero */
   rank = (w == 0) ? 23 : (unsigned char) (__builtin_clz (w) + 1);

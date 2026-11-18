@@ -751,12 +751,12 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	DB_VALUE element;
 
 	db_make_null (&element);
-	if (midxkey->size > 0 && pr_midxkey_get_element_nocopy (midxkey, 0, &element, NULL, NULL) == NO_ERROR)
+	if (midxkey->ncolumns > 0 && pr_midxkey_get_element_nocopy (midxkey, 0, &element, NULL, NULL) == NO_ERROR)
 	  {
 	    hash = mht_valhash (&element, UINT_MAX);
 	  }
-	if (midxkey->size > 1
-	    && pr_midxkey_get_element_nocopy (midxkey, midxkey->size - 1, &element, NULL, NULL) == NO_ERROR)
+	if (midxkey->ncolumns > 1
+	    && pr_midxkey_get_element_nocopy (midxkey, midxkey->ncolumns - 1, &element, NULL, NULL) == NO_ERROR)
 	  {
 	    hash += mht_valhash (&element, UINT_MAX);
 	  }

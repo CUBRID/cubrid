@@ -37,7 +37,6 @@
 #include "environment_variable.h"
 #include "memory_hash.h"
 #include "object_primitive.h"
-#include "porting_inline.hpp"
 #include "util_func.h"
 #if !defined(WINDOWS)
 #include <dlfcn.h>

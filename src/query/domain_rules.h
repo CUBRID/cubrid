@@ -439,7 +439,8 @@ DB_TYPE domain_hash_type (DB_TYPE type);
  *   (tp_value_compare without coercion); two types of one hash type (domain_hash_type) are hashed
  *   as they are and compared with coercion
  *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
- *   coerce(in/out): a key before this one is coerced, and so is every key after it (one hashed record)
+ *   coerce(in/out): a key before this one is coerced, and so is every key after it (one hashed record);
+ *		     a pair of one hash type is hashed as it is either way and leaves coerce as it is
  *   common(out): the domain; NULL for a key compared in its own domains
  *   conv_kind(out): per side, DOMAIN_HASH_KEY_AS_IS, _CONVERTED (the IMPLICIT converter into common) or _COERCED
  *		     (tp_value_coerce at the row: a JSON value, a common string domain whose collation is the values')
