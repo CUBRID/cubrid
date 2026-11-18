@@ -24,6 +24,7 @@
 #include "px_sp_eligibility.hpp"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xasl_iteration.hpp"
 #include "xasl_predicate.hpp"
 #include <set>
 
@@ -505,6 +506,14 @@ namespace parallel_query_execute
 	break;
       }
   }
+
+  static bool
+  no_parallel_subquery_iter (XASL_NODE *xasl)
+  {
+    XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
+    return true;
+  }
+
   void xasl_checker::add_xasl_recursive (XASL_NODE *xasl)
   {
     if (!xasl)
@@ -581,6 +590,17 @@ namespace parallel_query_execute
 	if (scan_ptr ->spec_list && scan_ptr ->spec_list->type == TARGET_LIST)
 	  {
 	    m_list_scan_map.insert (std::make_pair (xasl, scan_ptr->spec_list->s.list_node.xasl_node));
+	  }
+	/* a subquery a joined scan evaluates per row reads that row: no node inside it gets an executor, whose
+	 * jobs would clear the row's values with their predicates (make_parallel_query_executor_recursively ()
+	 * walks these lists too) */
+	for (XASL_NODE *dptr = scan_ptr->dptr_list; dptr != nullptr; dptr = dptr->next)
+	  {
+	    cubxasl::iterate_xasl_tree<bool> (dptr, no_parallel_subquery_iter, true);
+	  }
+	for (XASL_NODE *fptr = scan_ptr->fptr_list; fptr != nullptr; fptr = fptr->next)
+	  {
+	    cubxasl::iterate_xasl_tree<bool> (fptr, no_parallel_subquery_iter, true);
 	  }
 	for (XASL_NODE *aptr = scan_ptr->aptr_list; aptr != nullptr; aptr = aptr->next)
 	  {

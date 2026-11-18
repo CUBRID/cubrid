@@ -54,7 +54,8 @@ namespace parallel_query_execute
      m_is_root_executor (true),
      m_job (),
      m_has_job (false),
-     m_on_trace (on_trace)
+     m_on_trace (on_trace),
+     m_ran_after_workers (false)
   {
     assert (m_xasl_state != nullptr);
     m_stats = {{0, 0}, 0, 0, 0};
@@ -76,7 +77,8 @@ namespace parallel_query_execute
      m_is_root_executor (false),
      m_job (),
      m_has_job (false),
-     m_on_trace (parent_executor_p->m_on_trace)
+     m_on_trace (parent_executor_p->m_on_trace),
+     m_ran_after_workers (false)
   {
     assert (m_xasl_state != nullptr);
     m_stats = {{0, 0}, 0, 0, 0};
@@ -139,6 +141,8 @@ namespace parallel_query_execute
       {
 	tsc_getticks (&start_tick);
       }
+
+    m_ran_after_workers = m_wake_event_p->is_workers_stopped();
 
     /* 2. if no task is running, create a new task */
     if (!*m_is_task_running_p)

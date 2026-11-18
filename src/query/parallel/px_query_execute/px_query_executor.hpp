@@ -49,9 +49,10 @@ namespace parallel_query_execute
       ~query_executor();
       bool add_job (THREAD_ENTRY *thread_p, xasl_node *xasl, xasl_state *xasl_state);
       int run_jobs (THREAD_ENTRY *thread_p);
-      inline int get_parallelism() const
+      /* the threads that could run this executor's jobs: its own alone when it ran after the root's workers stopped */
+      inline int get_executed_parallelism() const
       {
-	return m_parallelism;
+	return m_ran_after_workers ? 1 : m_parallelism + 1;
       }
       inline query_executor_stats get_stats() const
       {
@@ -78,6 +79,7 @@ namespace parallel_query_execute
       job m_job;
       bool m_has_job;
       bool m_on_trace;
+      bool m_ran_after_workers;
   };
 
 }
