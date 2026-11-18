@@ -64,6 +64,8 @@
 #include "object_print.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
+#include "connection_defs.h"
+#include "authenticate_password.hpp"
 #include "printer.hpp"
 #include "authenticate_access_auth.hpp"
 #include "authenticate_cache.hpp"
@@ -90,6 +92,62 @@ int
 au_login (const char *name, const char *password, bool ignore_dba_privilege)
 {
   return au_ctx ()->login (name, password, ignore_dba_privilege);
+}
+
+/*
+ * au_prove_password () - prove a password to the server by answering a one-time
+ *   challenge. The password never leaves the client.
+ *   return: NO_ERROR, or the error the server returned
+ *   user_name (in)      : account to prove
+ *   des/sha1/sha2 (in)  : the password in each form it may be stored in
+ */
+int
+au_prove_password (const char *user_name, const char *des, const char *sha1, const char *sha2)
+{
+#if defined (CS_MODE)
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE];
+  char tag[CSS_CDC_AUTH_RESPONSE_SIZE];
+  char buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
+  const char *form;
+  char *digest = NULL;
+  INT64 issued_at = 0;
+  int scheme, digest_len, error;
+
+  error = cau_challenge (user_name, &scheme, nonce, sizeof (nonce), &issued_at, tag, sizeof (tag));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  switch (scheme)
+    {
+    case ENCODE_PREFIX_DES:
+      form = des;
+      break;
+    case ENCODE_PREFIX_SHA1:
+      form = sha1;
+      break;
+    case ENCODE_PREFIX_SHA2_512:
+      form = sha2;
+      break;
+    default:
+      form = "";		/* the account has no password */
+      break;
+    }
+
+  snprintf (buffer, sizeof (buffer), "%s%s", nonce, form);
+  if (crypt_sha_two (NULL, buffer, (int) strlen (buffer), 256, &digest, &digest_len) != NO_ERROR || digest == NULL)
+    {
+      return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+    }
+
+  error = cau_response (user_name, nonce, issued_at, tag, digest);
+  db_private_free_and_init (NULL, digest);
+
+  return error;
+#else
+  return NO_ERROR;
+#endif
 }
 
 authenticate_context *

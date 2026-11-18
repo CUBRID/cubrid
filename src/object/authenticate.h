@@ -140,6 +140,7 @@ class print_output;
 extern EXPORT_IMPORT authenticate_context *au_ctx (void);
 
 extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
+extern int au_prove_password (const char *user_name, const char *des, const char *sha1, const char *sha2);
 
 /*
  * GRANT/REVOKE OPERATIONS (authenticate_grant.cpp)
