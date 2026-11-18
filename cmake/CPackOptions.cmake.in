@@ -20,14 +20,31 @@
 # To pass variables to cpack from cmake, they must be configured
 # in this file.
 
-if("@CUBRID_BUILD_TIME_VERSION@" STREQUAL "ON")
-  include("@PROJECT_BINARY_DIR@/BuildVersion.cmake")
+if("@CMAKE_SYSTEM_NAME@" STREQUAL "Linux")
+  execute_process(
+    COMMAND "@CUBRID_BASH_EXECUTABLE@" "@CUBRID_BUILD_VERSION_SCRIPT@" resolve "@PROJECT_SOURCE_DIR@"
+    OUTPUT_VARIABLE CPACK_PACKAGE_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
+  string(REPLACE "-@CUBRID_VERSION@-" "-${CPACK_PACKAGE_VERSION}-"
+    CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
+
+  # CPackSourceConfig.cmake sets this flag for every source generator.
+  if(CPACK_RPM_PACKAGE_SOURCES)
+    set(CPACK_SOURCE_PACKAGE_FILE_NAME "${CPACK_PACKAGE_FILE_NAME}")
+    set(CPACK_INSTALLED_DIRECTORIES "")
+    list(PREPEND CPACK_INSTALL_SCRIPTS "@PROJECT_BINARY_DIR@/CPackExportSource.cmake")
+    return()
+  endif()
+
+  include("@PROJECT_BINARY_DIR@/CPackCheckVersion.cmake")
+  # Unix Makefiles can rebuild in preinstall after CPack reads the version.
+  list(APPEND CPACK_PRE_BUILD_SCRIPTS "@PROJECT_BINARY_DIR@/CPackCheckVersion.cmake")
 endif()
 
 if(CPACK_COMPONENTS_ALL STREQUAL "CCI")
   set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
-  set(CPACK_PACKAGE_FILE_NAME "${CCI_PACKAGE_FILE_NAME}")
-  set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-CCI-${CCI_VERSION}-src")
+  set(CPACK_PACKAGE_FILE_NAME "@CCI_PACKAGE_FILE_NAME@")
+  set(CPACK_SOURCE_PACKAGE_FILE_NAME "@PROJECT_NAME@-CCI-@CCI_VERSION@-src")
   set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
   set(CPACK_COMPONENT_INCLUDE_TOPLEVEL_DIRECTORY ON)
 elseif (CPACK_GENERATOR MATCHES "^TGZ|ZIP")
@@ -41,11 +58,11 @@ elseif(CPACK_GENERATOR STREQUAL "RPM")
   set(CPACK_RPM_PACKAGE_GROUP "Applications/Databases")
   set(CPACK_RPM_PACKAGE_URL "http://www.cubrid.org")
   set(CPACK_RPM_PACKAGE_REQUIRES "ncurses libstdc++ coreutils /sbin/chkconfig /usr/sbin/useradd /usr/sbin/groupadd")
-  set(CPACK_RPM_PACKAGE_ARCHITECTURE "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+  set(CPACK_RPM_PACKAGE_ARCHITECTURE "@CMAKE_HOST_SYSTEM_PROCESSOR@")
   set(CPACK_RPM_PACKAGE_RELOCATABLE FALSE)
-  set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_preinstall.sh.in")
-  set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_postinstall.sh.in")
-  set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/cmake/CPack_preuninstall.sh.in")
+  set(CPACK_RPM_PRE_INSTALL_SCRIPT_FILE "@CMAKE_SOURCE_DIR@/cmake/CPack_preinstall.sh.in")
+  set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "@CMAKE_SOURCE_DIR@/cmake/CPack_postinstall.sh.in")
+  set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE "@CMAKE_SOURCE_DIR@/cmake/CPack_preuninstall.sh.in")
   set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/etc/profile.d/cubrid.csh /etc/profile.d/cubrid.sh /etc/init.d/cubrid /etc/init.d/cubrid-ha")
   # the SSL key and certificate are not shipped but created by the first start of a broker with SSL=ON; as ghost
   # config files an upgrade leaves them where they are, instead of moving those an earlier package shipped to .rpmsave.
@@ -67,15 +84,15 @@ endif()
 
 # TODO: for windows package
 if(CPACK_GENERATOR STREQUAL "WIX")
-  set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/src/win_tools/cubridtray/RES/cubrid_icon.ico")
+  set(CPACK_PACKAGE_ICON "@CMAKE_SOURCE_DIR@/src/win_tools/cubridtray/RES/cubrid_icon.ico")
   set(CPACK_WIX_PRODUCT_GUID "4BD68AC1-ADE8-4CBE-85E8-8FCD42C33327")
   set(CPACK_WIX_UPGRADE_GUID "9F39B147-9FA2-48BE-AB0E-43EC0EF46343")
-  set(CPACK_PACKAGE_VERSION "${RELEASE_STRING}")
+  set(CPACK_PACKAGE_VERSION "@RELEASE_STRING@")
   set(CPACK_PACKAGE_INSTALL_DIRECTORY "CUBRID")
   # CMake 3.5 or higher version is required for below variables
-  set(CPACK_WIX_PATCH_FILE "${CMAKE_BINARY_DIR}/wix_patch.xml")
+  set(CPACK_WIX_PATCH_FILE "@CMAKE_BINARY_DIR@/wix_patch.xml")
   set(CPACK_WIX_UI_REF "WixUI_CUBRIDInstall")
   set(CPACK_WIX_EXTENSIONS "WixUtilExtension")
   set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "http://cubrid.org")
-  set(CPACK_WIX_PRODUCT_ICON "${CMAKE_SOURCE_DIR}/src/win_tools/cubridtray/RES/cubrid_icon.ico")
+  set(CPACK_WIX_PRODUCT_ICON "@CMAKE_SOURCE_DIR@/src/win_tools/cubridtray/RES/cubrid_icon.ico")
 endif(CPACK_GENERATOR STREQUAL "WIX")

@@ -44,6 +44,16 @@ endif()
 
 project(CUBRID)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(CUBRID_VERSION_DIR "${PROJECT_BINARY_DIR}")
+  if(PROJECT_BINARY_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(CUBRID_VERSION_DIR "${PROJECT_BINARY_DIR}/CMakeFiles")
+  endif()
+  file(REMOVE "${CUBRID_VERSION_DIR}/package-ready")
+  find_program(CUBRID_BASH_EXECUTABLE NAMES bash REQUIRED)
+  set(CUBRID_BUILD_VERSION_SCRIPT "${PROJECT_SOURCE_DIR}/cmake/build-version.sh")
+endif()
+
 #TODO: see why the lines below have no effect
 #list(APPEND CMAKE_CXX_SOURCE_FILE_EXTENSIONS "c")
 #list(REMOVE_ITEM CMAKE_C_SOURCE_FILE_EXTENSIONS "c")
@@ -100,28 +110,24 @@ else()
   message(FATAL_ERROR "Failed to parse a version string from ${VERSION_FILE} file")
 endif()
 
-set(CUBRID_BUILD_TIME_VERSION OFF)
-set(CUBRID_EXTRA_VERSION 0)
-if(VERSION_MATCHES_LENGTH GREATER 3)
-  list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
-  if(VERSION_MATCHES_LENGTH GREATER 4)
-    list(GET VERSION_MATCHES 4 CUBRID_HASH_TAG)
-  endif()
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND EXISTS "${PROJECT_SOURCE_DIR}/.git")
-  find_package(Git)
-  if(GIT_FOUND)
-    set(CUBRID_BUILD_TIME_VERSION ON)
-  endif()
-endif()
-set(CUBRID_VERSION ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION}${CUBRID_HASH_TAG})
-
 set(MAJOR_RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
+set(CUBRID_VERSION ${MAJOR_RELEASE_STRING})
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(CUBRID_EXTRA_VERSION 0)
+  if(VERSION_MATCHES_LENGTH GREATER 3)
+    list(GET VERSION_MATCHES 3 CUBRID_EXTRA_VERSION)
+    if(VERSION_MATCHES_LENGTH GREATER 4)
+      list(GET VERSION_MATCHES 4 CUBRID_HASH_TAG)
+    endif()
+  endif()
+  set(BUILD_NUMBER ${MAJOR_RELEASE_STRING}.${CUBRID_EXTRA_VERSION})
+  set(CUBRID_VERSION ${BUILD_NUMBER}${CUBRID_HASH_TAG})
+endif()
+
 set(PACKAGE_STRING "${PROJECT_NAME} ${MAJOR_RELEASE_STRING}")
 set(PRODUCT_STRING "${MAJOR_RELEASE_STRING}")
 # TODO: change to string type for RELEASE_STRING, BUILD_NUMBER, BUILD_OS
 set(RELEASE_STRING ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION})
-# BUILD_NUMBER (digital only version string) for legacy codes
-set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_VERSION}.${CUBRID_EXTRA_VERSION})
 set(BUILD_OS ${CMAKE_SYSTEM_NAME})
 
 # BUILD_TYPE
@@ -240,8 +246,8 @@ endif()
 #endif(WIN32)
 
 set(configured_version "${CUBRID_VERSION}")
-if(CUBRID_BUILD_TIME_VERSION)
-  set(configured_version "${MAJOR_RELEASE_STRING} (Git version resolved during build)")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(configured_version "${MAJOR_RELEASE_STRING} (full version resolved during build)")
 endif()
 message(STATUS "Build ${PROJECT_NAME} ${configured_version} ${TARGET_PLATFORM_BITS}bit ${CMAKE_BUILD_TYPE} on ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_PROCESSOR}")
 
@@ -549,15 +555,15 @@ configure_file(cmake/config.h.cmake config.h)
 # TODO: merge version.h into config.h ?
 configure_file(cmake/version.h.cmake version.h)
 # build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
-if(CUBRID_BUILD_TIME_VERSION)
-  configure_file(cmake/BuildVersion.cmake.in "${PROJECT_BINARY_DIR}/BuildVersion.cmake" @ONLY)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_custom_target(cubrid_build_version
-    COMMAND "${CMAKE_COMMAND}" -DCUBRID_UPDATE_BUILD_VERSION=ON -P "${PROJECT_BINARY_DIR}/BuildVersion.cmake"
-    BYPRODUCTS "${PROJECT_BINARY_DIR}/build_version.h" "${PROJECT_BINARY_DIR}/build-version.txt"
+    COMMAND "${CUBRID_BASH_EXECUTABLE}" "${CUBRID_BUILD_VERSION_SCRIPT}"
+      prepare "${PROJECT_SOURCE_DIR}" "${PROJECT_BINARY_DIR}" "${CUBRID_VERSION_DIR}"
+    BYPRODUCTS "${PROJECT_BINARY_DIR}/build_version.h" "${CUBRID_VERSION_DIR}/VERSION-DIST"
     VERBATIM)
-  add_custom_target(cubrid_package_version ALL
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different build-version.txt package-version.txt
-    BYPRODUCTS "${PROJECT_BINARY_DIR}/package-version.txt"
+  add_custom_target(cubrid_package_ready ALL
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CUBRID_VERSION_DIR}/package-ready"
+    BYPRODUCTS "${CUBRID_VERSION_DIR}/package-ready"
     VERBATIM)
 else()
   configure_file(cmake/build_version.h.cmake build_version.h)
@@ -797,10 +803,10 @@ if(WITH_CCI)
     message(FATAL_ERROR "No CCI library target (cascci or cascci_static) to force-include build_version.h into")
   endif(NOT cci_targets)
 endif(WITH_CCI)
-if(CUBRID_BUILD_TIME_VERSION)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   foreach(version_target cubrid cubridcs cubridsa ${cci_targets})
     add_dependencies(${version_target} cubrid_build_version)
-    add_dependencies(cubrid_package_version ${version_target})
+    add_dependencies(cubrid_package_ready ${version_target})
   endforeach()
 endif()
 add_subdirectory(broker)
@@ -914,7 +920,11 @@ set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CUBRID_VERSION}-src")
 
 set(CPACK_COMPONENTS_ALL_IN_ONE_PACKAGE ON)
 
-configure_file(cmake/CPackOptions.cmake.in CPackOptions.cmake)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  configure_file(cmake/CPackCheckVersion.cmake.in CPackCheckVersion.cmake @ONLY)
+  configure_file(cmake/CPackExportSource.cmake.in CPackExportSource.cmake @ONLY)
+endif()
+configure_file(cmake/CPackOptions.cmake.in CPackOptions.cmake @ONLY)
 set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_BINARY_DIR}/CPackOptions.cmake")
 
 if(WIN32)

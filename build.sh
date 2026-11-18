@@ -24,7 +24,8 @@
 # - Utils - GNU tar, git, ...
 
 # scrtip directory
-script_dir=$(dirname $(readlink -f $0))
+script_dir=$(dirname "$(readlink -f "$0")")
+version_script="$script_dir/cmake/build-version.sh"
 
 # variables for options
 build_target="x86_64"
@@ -53,9 +54,6 @@ print_version_only=0
 # variables
 product_name="CUBRID"
 product_name_lower=$(echo $product_name | tr '[:upper:]' '[:lower:]')
-typeset -i major_version
-typeset -i minor_version
-typeset -i patch_version
 version=""
 last_checking_msg=""
 output_packages=""
@@ -107,49 +105,17 @@ function build_initialize ()
 {
   # check for source dir
   print_check "Checking for root source path [$source_dir]"
-  if [ -d $source_dir -a -d $source_dir/src ]
+  if [ -d "$source_dir/src" ]
   then
     print_result "OK"
   else
     print_fatal "Root path for source is not valid"
   fi
 
-  # check Git
-  print_check "Checking for Git"
-  which_git=$(which git)
-  [ $? -eq 0 ] && print_info "$which_git" || print_fatal "Git not found"
-  print_result "OK"
-
-  # check version
-  print_check "Checking VERSION"
-  if [ -f $source_dir/VERSION ]; then
-    version_file=VERSION
-  elif [ -f $source_dir/VERSION-DIST ]; then
-    version_file=VERSION-DIST
+  if [ "$print_version_only" -eq 1 ]; then
+    bash "$version_script" resolve "$source_dir"
+    exit $?
   fi
-  version=$(cat $source_dir/$version_file)
-  major_version=$(echo $version | cut -d . -f 1)
-  minor_version=$(echo $version | cut -d . -f 2)
-  patch_version=$(echo $version | cut -d . -f 3)
-  extra_version=$(echo $version | cut -d . -f 4)
-  if [ -z "$extra_version" ] && [ -e "$source_dir/.git" ]; then
-    local git_build_version commit_count hash_tag
-    git_build_version=$(sh "$script_dir/cmake/git-build-version.sh" "$which_git" "$source_dir") ||
-      print_fatal "Could not get build version from Git"
-    read -r _ commit_count hash_tag _ <<< "$git_build_version"
-    extra_version="$commit_count-$hash_tag"
-  fi
-  extra_version="${extra_version:-0000-unknown}"
-
-  print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
-  version="$major_version.$minor_version.$patch_version.$extra_version"
-
-  if [ $print_version_only -eq 1 ]; then
-    echo $version
-    exit 0
-  fi
-
-  print_result "OK"
 }
 
 
@@ -381,8 +347,8 @@ function build_package ()
     with_cci="true"
   fi
 
-  if [ ! -d $output_dir ]; then
-    mkdir -p $output_dir
+  if [ ! -d "$output_dir" ]; then
+    mkdir -p "$output_dir"
   fi
   
   print_result "OK"
@@ -391,55 +357,42 @@ function build_package ()
     print_check "Packing package for $package"
     case $package in
       src|zip_src)
+	version=$(bash "$version_script" resolve "$source_dir") ||
+	  print_fatal "Could not resolve the source package version"
 	src_package_name="$product_name_lower-$version"
 	if [ "$package" = "src" ]; then
 	  package_name="$src_package_name.tar.gz"
-	  archive_cmd="tar czf $build_dir/$package_name -T -"
 	else
 	  package_name="$src_package_name.zip"
-	  archive_cmd="zip -q $build_dir/$package_name -@"
 	fi
-	# add VERSION-DIST instead of VERSION file for full version string
-  if [ -d $source_dir/.git -a -f $source_dir/VERSION ]; then
-	  (cd $source_dir && echo "$version" > VERSION-DIST && ln -sfT . cubrid-$version &&
-	    (git ls-files -o VERSION-DIST ; git ls-files &&
-	      (cd $source_dir/cubridmanager && git ls-files) | sed -e "s|^|cubridmanager/|" &&
-	      ([ "$without_jdbc" = "true" ] || (cd $source_dir/cubrid-jdbc  && git ls-files -o output/VERSION-DIST; git ls-files) | sed -e "/^VERSION$/d" | sed -e "s|^|cubrid-jdbc/|") &&
-	      ([ "$with_cci" = "false" ] || (cd $source_dir/cubrid-cci  && git ls-files -o CCI-VERSION-DIST; git ls-files) | sed -e "/^BUILD_NUMBER$/d" | sed -e "s|^|cubrid-cci/|")) |
-              sed -e "/^VERSION$/d" -e "/^cubrid-jdbc$/d" -e "/^cubrid-cci$/d" -e "s|^|cubrid-$version/|" | $archive_cmd &&
-	      rm cubrid-$version VERSION-DIST)
-  else
-    #Only handles packaging process when build to packaging file.
-    if [ "$package" = "src" ]; then
-      echo "-- Packaging Source to tar.gz"
-      (cd $source_dir && tar czf $build_dir/$package_name --exclude build_${build_target}_${build_mode} -C ${source_dir%/*} ${source_dir##*/})
-    else
-      echo "-- Packaging Source to ZIP"
-      (cd ${source_dir%/*} && zip --symlinks -rq $build_dir/$package_name ${source_dir##*/} -x \*build_${build_target}_${build_mode}\* && cd $source_dir)
-    fi
-  fi
 
-	if [ $? -eq 0 ]; then
-	  output_packages="$output_packages $package_name"
-	  [ $build_dir -ef $output_dir ] || mv -f $build_dir/$package_name $output_dir
-	else
-	  false
-	fi
-      ;;
+	(
+	  source_stage=$(mktemp -d) || exit 1
+	  trap 'rm -rf -- "${source_stage:?}"' EXIT
+	  bash "$version_script" export "$source_dir" "$source_stage/$src_package_name" "$version" "$build_dir" ||
+	    exit 1
+	  cd "$source_stage" || exit 1
+	  if [ "$package" = "src" ]; then
+	    tar -czf "$package_name" "$src_package_name"
+	  else
+	    zip -qyr "$package_name" "$src_package_name"
+	  fi &&
+	    mv -f -- "$package_name" "$output_dir/"
+	) && output_packages="$output_packages $package_name"
+	;;
       tarball|shell|cci|rpm)
-	if [ ! -d "$prefix_dir" ]; then
-	  print_fatal "Prefix directory not found"
+	if [ ! -f "$version_dir/VERSION-DIST" ]; then
+	  print_fatal "Build CUBRID before packaging"
+	fi
+	version=$(< "$version_dir/VERSION-DIST")
+	if [ "$package" = "cci" ]; then
+	  [ "$with_cci" = "true" ] || continue
+	  cci_version=$(cat "$source_dir/cubrid-cci/CCI-VERSION-DIST")
+	  package_basename="$product_name-CCI-$cci_version-Linux.$build_target"
+	else
+	  package_basename="$product_name-$version-Linux.$build_target"
 	fi
 
-	if [ "$package" = "cci" ]; then
-	  if [ "$with_cci" = "true" ]; then
-	    cci_version=$(cat $source_dir/cubrid-cci/CCI-VERSION-DIST)
-            package_basename="$product_name-CCI-$cci_version-Linux.$build_target"
-	  fi
-  else
-    package_basename="$product_name-$version-Linux.$build_target"
-  fi
-  
 	# The optdebug build masquerades as a debug package so CTP and other tooling
 	# handle it exactly like debug. This must match CPACK_PACKAGE_FILE_SUFFIX
 	# (-debug) set in CMakeLists.txt, otherwise the package summary below cannot
@@ -451,27 +404,24 @@ function build_package ()
 	fi
 	if [ "$package" = "tarball" ]; then
 	  package_name="$package_basename.tar.gz"
-	  (cd $build_dir && cpack -G TGZ -B $output_dir)
+	  (cd "$build_dir" && cpack -G TGZ -B "$output_dir")
 	elif [ "$package" = "shell" ]; then
 	  package_name="$package_basename.sh"
-	  (cd $build_dir && cpack -G STGZ -B $output_dir)
+	  (cd "$build_dir" && cpack -G STGZ -B "$output_dir")
 	elif [ "$package" = "cci" ]; then
-	  if [ "$with_cci" = "true" ]; then
-	    package_name="$package_basename.tar.gz"
-	    (cd $build_dir && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B $output_dir)
-	  fi
+	  package_name="$package_basename.tar.gz"
+	  (cd "$build_dir" && cpack -G TGZ -D CPACK_COMPONENTS_ALL="CCI" -B "$output_dir")
 	elif [ "$package" = "rpm" ]; then
 	  package_name="$package_basename.rpm"
-	  (cd $build_dir && cpack -G RPM -B $output_dir)
+	  (cd "$build_dir" && cpack -G RPM -B "$output_dir")
 	fi
 	if [ $? -eq 0 ]; then
 	  output_packages="$output_packages $package_name"
-	  # clean temp directory for pack
-	  rm -rf $output_dir/_CPack_Packages
+	  rm -rf -- "${output_dir:?}/_CPack_Packages"
 	else
 	  false
 	fi
-      ;;
+	;;
       jdbc)
         if [ "$without_jdbc" = "false" ]; then
           jar_files=$(ls $source_dir/cubrid-jdbc/cubrid-jdbc-*.jar)
@@ -489,6 +439,9 @@ function build_package ()
 
 function build_post ()
 {
+  if [ -z "$version" ] && [ -f "$version_dir/VERSION-DIST" ]; then
+    version=$(< "$version_dir/VERSION-DIST")
+  fi
   # post job
   echo "[`date +'%F %T'`] Completed"
   echo ""
@@ -502,7 +455,7 @@ function build_post ()
   if [ -n "$output_packages" ]; then
     echo "  Generated packages in [$output_dir]"
     for pkg in $(echo $output_packages|tr " " "\n"|sort -u|tr "\n" " "); do
-      echo "    -" $(cd $output_dir && md5sum $pkg)
+      echo "    -" $(cd "$output_dir" && md5sum "$pkg")
     done
   fi
   echo ""
@@ -601,19 +554,24 @@ function get_options ()
     build_dir="$source_dir/build_${build_target}_${build_mode}"
   fi
   # convert paths to absolute path
-  [ ! -d "$build_dir" ] && mkdir -p $build_dir
-  build_dir=$(readlink -f $build_dir)
+  [ ! -d "$build_dir" ] && mkdir -p "$build_dir"
+  build_dir=$(readlink -f "$build_dir")
 
   if [ "x$prefix_dir" = "x" ]; then
     prefix_dir="$build_dir/_install/$product_name"
   else
-    [ ! -d "$prefix_dir" ] && mkdir -p $prefix_dir
-    prefix_dir=$(readlink -f $prefix_dir)
+    [ ! -d "$prefix_dir" ] && mkdir -p "$prefix_dir"
+    prefix_dir=$(readlink -f "$prefix_dir")
   fi
 
-  source_dir=$(readlink -f $source_dir)
+  source_dir=$(readlink -f "$source_dir")
   if [ ! -d "$source_dir" ]; then
     print_fatal "Source path [$source_dir] does not exist"
+  fi
+
+  version_dir="$build_dir"
+  if [ "$build_dir" -ef "$source_dir" ]; then
+    version_dir="$build_dir/CMakeFiles"
   fi
 
   [ "x$packages" = "x" ] && packages=$default_packages
@@ -637,8 +595,8 @@ function get_options ()
   if [ "x$output_dir" = "x" ]; then
     output_dir="$build_dir"
   fi
-  [ ! -d "$output_dir" ] && mkdir -p $output_dir
-  output_dir=$(readlink -f $output_dir)
+  [ ! -d "$output_dir" ] && mkdir -p "$output_dir"
+  output_dir=$(readlink -f "$output_dir")
 
   if [ $# -gt 0 ]; then
     build_args="$@"
