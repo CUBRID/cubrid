@@ -4877,9 +4877,9 @@ numeric_make_from_u128 (DB_VALUE * result, uint128_t coefficient, int precision,
  *
  * Note: Gives what db_round_dbval () and db_trunc_dbval () build on the decimal string: the
  *       scale - place lowest coefficient digits become zero, ROUND adds one unit at that place
- *       when the first dropped digit is 5 or more, the precision and scale of the value are
- *       kept, and a negative place count past the scale returns the value itself. Taken only
- *       for coefficients below 2^128 and a scale of 0 or more, where the result cannot reach
+ *       when the first dropped digit is 5 or more, the scale of the value is kept with the digits
+ *       of the result as its precision, and a negative place count past the scale returns the
+ *       value itself. Taken only for coefficients below 2^128 and a scale of 0 or more, where the result cannot reach
  *       the 41 digits the string code rescales.
  */
 bool
@@ -4920,7 +4920,7 @@ numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool h
 	}
     }
 
-  numeric_make_from_u128 (result, coefficient, precision, scale, v.is_negative);
+  numeric_make_from_u128 (result, coefficient, numeric_digits_u128 (coefficient), scale, v.is_negative);
   return true;
 }
 
@@ -4933,8 +4933,7 @@ numeric_db_value_round_to_place (const DB_VALUE * value, DB_BIGINT place, bool h
  *
  * Note: Gives what db_floor_dbval () and db_ceil_dbval () build on the decimal string: the
  *       fraction digits become zero and the scale is kept; moving away from zero adds one at
- *       the units digit, and when that carry runs past the 10^(precision - 1) digit the
- *       precision becomes the carried digit's position + 1 (at most 40). Taken only for
+ *       the units digit, and the precision is the digits of the result. Taken only for
  *       coefficients below 2^128 and a scale from 1 to 38.
  */
 bool
@@ -4954,26 +4953,13 @@ numeric_db_value_floor_ceil (const DB_VALUE * value, bool is_floor, DB_VALUE * r
   integral = v.coefficient / unit;
   coefficient = integral * unit;
 
-  if (coefficient != v.coefficient && v.is_negative == is_floor)
+  if (coefficient != v.coefficient && v.is_negative == is_floor
+      && __builtin_add_overflow (coefficient, unit, &coefficient))
     {
-      /* the carry stops at the first integral digit below 9 */
-      int carried = scale;
-
-      for (; integral % 10 == 9; integral /= 10)
-	{
-	  carried++;
-	}
-      if (__builtin_add_overflow (coefficient, unit, &coefficient))
-	{
-	  return false;
-	}
-      if (carried >= precision)
-	{
-	  precision = MIN (carried + 1, DB_MAX_NUMERIC_PRECISION);
-	}
+      return false;
     }
 
-  numeric_make_from_u128 (result, coefficient, precision, scale, v.is_negative);
+  numeric_make_from_u128 (result, coefficient, numeric_digits_u128 (coefficient), scale, v.is_negative);
   return true;
 }
 
@@ -7134,7 +7120,10 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
       bool src_is_float_numeric = false;
       db_get_numeric_precision_and_scale (src, &precision, &scale, &src_is_float_numeric);
 
-      if (!src_is_float_numeric && precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED)
+      /* a fixed value converted to a float one takes its digits as its precision */
+      if (!src_is_float_numeric
+	  && (precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED
+	      || desired_precision == DB_DEFAULT_NUMERIC_PRECISION))
 	{
 	  precision = numeric_get_precision_digits (db_locate_numeric (src));
 	}

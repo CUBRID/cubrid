@@ -185,9 +185,6 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 	      {
 		/* To decrement a negative value, the absolute value (the digits) actually has to be incremented. */
 
-		char *num_str_digits = num_str + num_str_len - p;
-		bool carry = true;
-
 		num_str_p = num_str + num_str_len - s;
 		while (*num_str_p == '9')
 		  {
@@ -202,17 +199,6 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		else
 		  {
 		    (*num_str_p)++;
-		    carry = false;
-		  }
-
-		if (carry || num_str_p <= num_str_digits)
-		  {
-		    p = strlen (num_str_p);
-
-		    if (p > DB_MAX_NUMERIC_PRECISION)
-		      {
-			p = DB_MAX_NUMERIC_PRECISION;
-		      }
 		  }
 
 		if (num_str[0])
@@ -225,20 +211,22 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		  }
 
 		numeric_coerce_dec_str_to_num (num_str_p, num, &is_value_negative);
-		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
+				 is_value_negative, true);
 	      }
 	    else
 	      {
 		/* given numeric is positive or already rounded */
 		numeric_coerce_dec_str_to_num (num_str + 1, num, &is_value_negative);
-		db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
+				 is_value_negative, true);
 	      }
 	  }
 	else
 	  {
 	    /* given numeric number is already of integral type */
-	    db_make_numeric (result, db_get_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE,
-			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
+	    db_make_numeric (result, db_get_numeric (value), numeric_get_precision_digits (db_locate_numeric (value)),
+			     0, DB_NUMERIC_BUF_SIZE, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
 	  }
 
 	break;
@@ -366,7 +354,8 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		  {
 		    /* CEIL(-3.1) is -3.0, as opposed to CEIL(+3.1) which is 4 */
 		    numeric_coerce_dec_str_to_num (num_str + 1, num, &is_value_negative);
-		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		    db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
+				     is_value_negative, true);
 		  }
 		else
 		  {
@@ -394,13 +383,6 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 			  {
 			    *num_str_p = '1';
 			  }
-
-			p = strlen (num_str_p);
-
-			if (p > DB_MAX_NUMERIC_PRECISION)
-			  {
-			    p = DB_MAX_NUMERIC_PRECISION;
-			  }
 		      }
 		    else
 		      {
@@ -408,20 +390,23 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		      }
 
 		    numeric_coerce_dec_str_to_num (num_str_p, num, &is_value_negative);
-		    db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+		    db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
+				     is_value_negative, true);
 		  }
 	      }
 	    else
 	      {
 		/* the given numeric value is already an integer */
-		db_make_numeric (result, db_locate_numeric (value), p, s, DB_NUMERIC_BUF_SIZE,
+		db_make_numeric (result, db_locate_numeric (value),
+				 numeric_get_precision_digits (db_locate_numeric (value)), s, DB_NUMERIC_BUF_SIZE,
 				 DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
 	      }
 	  }
 	else
 	  {
 	    /* the given numeric value has a scale of 0 */
-	    db_make_numeric (result, db_locate_numeric (value), p, 0, DB_NUMERIC_BUF_SIZE,
+	    db_make_numeric (result, db_locate_numeric (value),
+			     numeric_get_precision_digits (db_locate_numeric (value)), 0, DB_NUMERIC_BUF_SIZE,
 			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (value), true);
 	  }
 
@@ -2607,7 +2592,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 			  assert (length == DB_MAX_NUMERIC_PRECISION + 1 && end[-1] == '0');
 
 			  s--;
-			  p = DB_MAX_NUMERIC_PRECISION;
 
 			  end--;
 			  *end = '\0';
@@ -2636,7 +2620,8 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
 
       numeric_coerce_dec_str_to_num (num_string, num, &is_value_negative);
-      db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+      db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE, is_value_negative,
+		       true);
       break;
     case DB_TYPE_MONETARY:
       d1 = (db_get_monetary (value1))->amount;
@@ -3610,7 +3595,8 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	      }
 	  }
 	numeric_coerce_dec_str_to_num (num_string, num, &is_value_negative);
-	db_make_numeric (result, num, p, s, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+	db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE, is_value_negative,
+			 true);
       }
       break;
     case DB_TYPE_MONETARY:
