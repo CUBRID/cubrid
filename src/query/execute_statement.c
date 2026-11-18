@@ -15652,8 +15652,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
 
-  PT_NODE_PRINT_TO_ALIAS (parser, statement,
-			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
+  PT_NODE_PRINT_TO_ALIAS (parser, statement, (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
   err = do_append_bind_variant_key (parser, contextp, statement);
