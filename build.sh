@@ -132,17 +132,14 @@ function build_initialize ()
   minor_version=$(echo $version | cut -d . -f 2)
   patch_version=$(echo $version | cut -d . -f 3)
   extra_version=$(echo $version | cut -d . -f 4)
-  if [ "x$extra_version" != "x" ]; then
-    serial_number=$(echo $extra_version | cut -d - -f 1)
-  elif [ -e "$source_dir/.git" ]; then
+  if [ -z "$extra_version" ] && [ -e "$source_dir/.git" ]; then
+    local git_build_version commit_count hash_tag
     git_build_version=$(sh "$script_dir/cmake/git-build-version.sh" "$which_git" "$source_dir") ||
       print_fatal "Could not get build version from Git"
-    read -r _ serial_number hash_tag _ <<< "$git_build_version"
-    extra_version="$serial_number-$hash_tag"
-  else
-    extra_version=0000-unknown
-    serial_number=0000
+    read -r _ commit_count hash_tag _ <<< "$git_build_version"
+    extra_version="$commit_count-$hash_tag"
   fi
+  extra_version="${extra_version:-0000-unknown}"
 
   print_info "version: $version ($major_version.$minor_version.$patch_version.$extra_version)"
   version="$major_version.$minor_version.$patch_version.$extra_version"
@@ -152,8 +149,6 @@ function build_initialize ()
     exit 0
   fi
 
-  # old style version string (digital only version string) for legacy codes
-  build_number="$major_version.$minor_version.$patch_version.$serial_number"
   print_result "OK"
 }
 

@@ -21,7 +21,7 @@
 # in this file.
 
 if("@CUBRID_BUILD_TIME_VERSION@" STREQUAL "ON")
-  include("@PROJECT_BINARY_DIR@/CPackBuildVersion.cmake")
+  include("@PROJECT_BINARY_DIR@/BuildVersion.cmake")
 endif()
 
 if(CPACK_COMPONENTS_ALL STREQUAL "CCI")

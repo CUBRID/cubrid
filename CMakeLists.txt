@@ -550,14 +550,11 @@ configure_file(cmake/config.h.cmake config.h)
 configure_file(cmake/version.h.cmake version.h)
 # build_version.h has the per-commit version: never include it from config.h or version.h (see CBRD-27124).
 if(CUBRID_BUILD_TIME_VERSION)
+  configure_file(cmake/BuildVersion.cmake.in "${PROJECT_BINARY_DIR}/BuildVersion.cmake" @ONLY)
   add_custom_target(cubrid_build_version
-    COMMAND "${CMAKE_COMMAND}"
-      "-DGIT=${GIT_EXECUTABLE}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
-      "-DBUILD_DIR=${PROJECT_BINARY_DIR}" "-DBASE_VERSION=${MAJOR_RELEASE_STRING}"
-      -P "${PROJECT_SOURCE_DIR}/cmake/UpdateBuildVersion.cmake"
+    COMMAND "${CMAKE_COMMAND}" -DCUBRID_UPDATE_BUILD_VERSION=ON -P "${PROJECT_BINARY_DIR}/BuildVersion.cmake"
     BYPRODUCTS "${PROJECT_BINARY_DIR}/build_version.h" "${PROJECT_BINARY_DIR}/build-version.txt"
     VERBATIM)
-  # Record the package version only after all of its version consumers finish building.
   add_custom_target(cubrid_package_version ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different build-version.txt package-version.txt
     BYPRODUCTS "${PROJECT_BINARY_DIR}/package-version.txt"
@@ -779,26 +776,16 @@ add_subdirectory(upgrade)
 add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
-if(CUBRID_BUILD_TIME_VERSION)
-  foreach(version_target cubrid cubridcs cubridsa)
-    add_dependencies(${version_target} cubrid_build_version)
-    add_dependencies(cubrid_package_version ${version_target})
-  endforeach()
-endif()
 add_subdirectory(util)
+set(cci_targets "")
 if(WITH_CCI)
   add_subdirectory(cubrid-cci)
   # CCI sources got the version macros from config.h (cci_network.c sends BUILD_NUMBER to the broker as the
   # driver version). They are in build_version.h now, so force-include it into the CCI library without changing
   # the cubrid-cci submodule. Otherwise MAKE_STR (BUILD_NUMBER) silently becomes "BUILD_NUMBER".
-  set(cci_target_found FALSE)
   foreach(cci_target cascci cascci_static)
     if(TARGET ${cci_target})
-      set(cci_target_found TRUE)
-      if(CUBRID_BUILD_TIME_VERSION)
-        add_dependencies(${cci_target} cubrid_build_version)
-        add_dependencies(cubrid_package_version ${cci_target})
-      endif()
+      list(APPEND cci_targets ${cci_target})
       if(MSVC)
         target_compile_options(${cci_target} PRIVATE "/FI${CMAKE_BINARY_DIR}/build_version.h")
       else(MSVC)
@@ -806,10 +793,16 @@ if(WITH_CCI)
       endif(MSVC)
     endif(TARGET ${cci_target})
   endforeach(cci_target)
-  if(NOT cci_target_found)
+  if(NOT cci_targets)
     message(FATAL_ERROR "No CCI library target (cascci or cascci_static) to force-include build_version.h into")
-  endif(NOT cci_target_found)
+  endif(NOT cci_targets)
 endif(WITH_CCI)
+if(CUBRID_BUILD_TIME_VERSION)
+  foreach(version_target cubrid cubridcs cubridsa ${cci_targets})
+    add_dependencies(${version_target} cubrid_build_version)
+    add_dependencies(cubrid_package_version ${version_target})
+  endforeach()
+endif()
 add_subdirectory(broker)
 add_subdirectory(cm_common)
 add_subdirectory(conf)
@@ -921,9 +914,6 @@ set(CPACK_SOURCE_PACKAGE_FILE_NAME "${PROJECT_NAME}-${CUBRID_VERSION}-src")
 
 set(CPACK_COMPONENTS_ALL_IN_ONE_PACKAGE ON)
 
-if(CUBRID_BUILD_TIME_VERSION)
-  configure_file(cmake/CPackBuildVersion.cmake.in CPackBuildVersion.cmake @ONLY)
-endif()
 configure_file(cmake/CPackOptions.cmake.in CPackOptions.cmake)
 set(CPACK_PROJECT_CONFIG_FILE "${CMAKE_BINARY_DIR}/CPackOptions.cmake")
 
