@@ -270,6 +270,14 @@ struct btree_scan
 
   bool key_range_max_value_equal;
 
+  /* CBRD-28141: in leaf upper_key_page_vpid, fixed since it was decided (at LSA upper_key_page_lsa), every key up to
+   * slot upper_key_end_slot in scan order is before the upper key, so btree_apply_key_range_and_filter does not compare
+   * those keys with it */
+  VPID upper_key_page_vpid;
+  LOG_LSA upper_key_page_lsa;
+  INT16 upper_key_end_slot;
+  int upper_key_keys_to_check;	/* keys of the current leaf still compared one by one before it is decided */
+
   /*
    * cur_leaf_lsa
    */
