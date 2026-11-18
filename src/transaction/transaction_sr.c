@@ -45,6 +45,39 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+static bool xtran_end_is_held_by_parallel_section (THREAD_ENTRY * thread_p, int tran_index, TRAN_STATE * state);
+
+/*
+ * xtran_end_is_held_by_parallel_section () - a commit or 2PC prepare the transaction's parallel section holds back
+ *   return: true with *state the request's result: the section is still open, or it closed with an abort deferred
+ *	     (lock_group_defer_abort ()), which is done here instead
+ *
+ * Note: an open section's owner is still joining its workers, so the caller is another thread of the transaction.
+ *	 It may not end the transaction under them, nor can it wait: a commit is not deferred, as the caller goes on
+ *	 as if it were done.
+ */
+static bool
+xtran_end_is_held_by_parallel_section (THREAD_ENTRY * thread_p, int tran_index, TRAN_STATE * state)
+{
+  const char *prog_name, *user_name, *host_name;
+  int pid;
+
+  if (lock_group_has_open_section (tran_index))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TM_END_IN_PARALLEL_SECTION, 0);
+      *state = logtb_find_state (tran_index);
+      return true;
+    }
+  if (lock_group_is_abort_deferred (tran_index))
+    {
+      (void) logtb_find_client_name_host_pid (tran_index, &prog_name, &user_name, &host_name, &pid);
+      *state = xtran_server_abort (thread_p);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_UNILATERALLY_ABORTED, 4, tran_index, user_name, host_name, pid);
+      return true;
+    }
+  return false;
+}
+
 /*
  * xtran_server_commit - Commit the current transaction
  *
@@ -80,6 +113,11 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (xtran_end_is_held_by_parallel_section (thread_p, tran_index, &state))
+    {
+      return state;
+    }
 
   /* while the transaction is still there for a stream to roll back and a source to close in */
   session_end_tran_streams (thread_p, tran_index);
@@ -135,6 +173,12 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (lock_group_defer_abort (thread_p, tran_index))
+    {
+      /* the section owner aborts once its workers are joined; the requester sees the transaction aborted */
+      return TRAN_UNACTIVE_ABORTED;
+    }
 
   session_end_tran_streams (thread_p, tran_index);
 
@@ -489,6 +533,13 @@ xtran_server_2pc_start (THREAD_ENTRY * thread_p)
 TRAN_STATE
 xtran_server_2pc_prepare (THREAD_ENTRY * thread_p)
 {
+  TRAN_STATE state;
+
+  if (xtran_end_is_held_by_parallel_section (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), &state))
+    {
+      return state;
+    }
+
   /* Make the transient classname entries permanent; If transaction aborted after this point, these operations will
    * also be undone, just like previous operations of the transaction.  */
   (void) locator_drop_transient_class_name_entries (thread_p, NULL);
@@ -563,6 +614,13 @@ xtran_server_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 TRAN_STATE
 xtran_server_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int global_tranid)
 {
+  TRAN_STATE state;
+
+  if (xtran_end_is_held_by_parallel_section (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), &state))
+    {
+      return state;
+    }
+
   /* Make the transient classname entries permanent; If transaction aborted after this point, these operations will
    * also be undone, just like previous operations of the transaction. */
   (void) locator_drop_transient_class_name_entries (thread_p, NULL);

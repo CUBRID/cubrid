@@ -311,6 +311,10 @@ extern const char *lock_wait_state_to_string (int state);
 extern void lock_force_thread_timeout_lock (THREAD_ENTRY * thread_p);
 extern void lock_group_section_begin (int tran_index);
 extern void lock_group_section_end (int tran_index);
+extern void lock_group_clear (int tran_index);
+extern bool lock_group_has_open_section (int tran_index);
+extern bool lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index);
+extern bool lock_group_is_abort_deferred (int tran_index);
 
 #if defined (SERVER_MODE)
 extern void lock_deadlock_detect_daemon_get_stats (UINT64 * statsp);

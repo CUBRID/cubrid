@@ -1312,6 +1312,8 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tran_index != LOG_SYSTEM_TRAN_INDEX)
     {
+      lock_group_clear (tran_index);
+
       TR_TABLE_CS_ENTER (thread_p);
       tdes->trid = NULL_TRANID;
       tdes->client_id = -1;

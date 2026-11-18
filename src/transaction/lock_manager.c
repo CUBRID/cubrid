@@ -512,6 +512,7 @@ struct lk_group
   LK_RES_KEY owner_wait_key;	/* the resource it waits for, while owner_sleeping */
   UINT64 owner_held_row;	/* the row it holds while it waits on a self-lock (deferred_wake.held_row), or 0 */
   bool interrupted;		/* an interrupt came while sections were open; cleared when they close (__atomic) */
+  bool abort_deferred;		/* an abort waits for the section owner; cleared when the transaction ends (__atomic) */
   LK_PENDING_RELEASE *pending_release;	/* run by the owner before it leaves (__atomic: read leaving with no mutex) */
 };
 
@@ -2678,7 +2679,8 @@ lock_group_abort_reason (const LK_GROUP * group)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (group->tran_index);
 
-  if (lk_Gl.TWFG_node[group->tran_index].DL_victim || (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL))
+  if (lk_Gl.TWFG_node[group->tran_index].DL_victim || __atomic_load_n (&group->abort_deferred, __ATOMIC_ACQUIRE)
+      || (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL))
     {
       return ER_LK_UNILATERALLY_ABORTED;
     }
@@ -3242,11 +3244,21 @@ lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_G
 
   /*
    * The entrance free: taken with no mutex. Owner NULL implies no guest, the owner neither asleep nor blocked, and no
-   * release handed over, as only a blocked owner is handed one and every way out drains them first.
+   * release handed over, as only a blocked owner is handed one and every way out drains them first. An acquisition
+   * checks for an abort again once it is the owner: a deferred abort can land between the check and the CAS, the spin
+   * widening that window, and lock_group_defer_abort () has returned by then.
    */
   if ((request == LK_GROUP_RELEASE || lock_group_abort_reason (m_group) == NO_ERROR)
       && (lock_group_try_own (m_group, m_thread_p) || lock_group_spin_to_own (m_group, m_thread_p)))
     {
+      error = (request == LK_GROUP_RELEASE) ? NO_ERROR : lock_group_abort_reason (m_group);
+      if (error != NO_ERROR)
+	{
+	  lock_group_give_back (m_group);
+	  lock_group_set_abort_error (tran_index, error);
+	  m_lock_result = (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
+	  return;
+	}
       m_group->depth = 1;
       m_state = ENTERED;
       return;
@@ -3402,6 +3414,123 @@ lock_group_section_end (int tran_index)
       __atomic_store_n (&group->interrupted, false, __ATOMIC_RELEASE);
     }
   pthread_mutex_unlock (&group->mutex);
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_group_clear () - no thread of the transaction index is left: its client unregisters, or the index is given
+ *			 back. A section still open is leaked, as no owner is left to close it: it would defer the
+ *			 client's abort, and make the next transaction of the index take turns for good.
+ */
+void
+lock_group_clear (int tran_index)
+{
+#if defined (SERVER_MODE)
+  LK_GROUP *group;
+  THREAD_ENTRY *owner, *guest;
+  LK_PENDING_RELEASE *release, *next;
+  int sections;
+
+  if (tran_index <= LOG_SYSTEM_TRAN_INDEX || !lk_Gl.init_state.tran_lock_table_initialized
+      || tran_index >= lk_Gl.init_state.tran_lock_table_initialized_count)
+    {
+      return;
+    }
+  group = &lk_Gl.tran_lock_table[tran_index].group;
+
+  pthread_mutex_lock (&group->mutex);
+  sections = __atomic_exchange_n (&group->sections, 0, __ATOMIC_SEQ_CST);
+  owner = __atomic_exchange_n (&group->owner, (THREAD_ENTRY *) NULL, __ATOMIC_SEQ_CST);
+  guest = __atomic_exchange_n (&group->guest, (THREAD_ENTRY *) NULL, __ATOMIC_SEQ_CST);
+  group->depth = 0;
+  group->guest_depth = 0;
+  group->owner_sleeping = false;
+  __atomic_store_n (&group->owner_blocked, false, __ATOMIC_RELEASE);
+  __atomic_store_n (&group->interrupted, false, __ATOMIC_RELEASE);
+  __atomic_store_n (&group->abort_deferred, false, __ATOMIC_RELEASE);
+  release = __atomic_exchange_n (&group->pending_release, (LK_PENDING_RELEASE *) NULL, __ATOMIC_ACQ_REL);
+  pthread_mutex_unlock (&group->mutex);
+
+  for (; release != NULL; release = next)
+    {
+      next = release->next;
+      free (release);
+    }
+  if (sections != 0 || owner != NULL || guest != NULL)
+    {
+      _er_log_debug (ARG_FILE_LINE, "lock_group: transaction index %d is cleared with %d parallel sections open%s\n",
+		     tran_index, sections, (owner != NULL || guest != NULL) ? " and a thread inside" : "");
+      assert (false);
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_group_has_open_section () - whether a parallel section of the transaction is open: then only its owner ends
+ *				    the transaction, after the section closes
+ */
+bool
+lock_group_has_open_section (int tran_index)
+{
+#if defined (SERVER_MODE)
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_group_in_section (&lk_Gl.tran_lock_table[tran_index].group);
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_group_defer_abort () - leave the abort of a transaction with a parallel section open to the section owner
+ *   return: true if deferred: the transaction stays active, its lock requests in the section and its next interrupt
+ *	     check fail, and its next end is an abort (lock_group_is_abort_deferred ())
+ *
+ * Note: the caller is not the section owner, which joins its workers before it ends the transaction. That an owner
+ *	 is still there is not checked: a section left open by a client gone is cleared by lock_group_clear () when the
+ *	 client unregisters or the index is freed, and the abort then runs.
+ */
+bool
+lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  LK_GROUP *group;
+
+  if (tran_index <= LOG_SYSTEM_TRAN_INDEX)
+    {
+      return false;
+    }
+  group = &lk_Gl.tran_lock_table[tran_index].group;
+
+  /* under the mutex lock_group_section_end () takes, so a section closing meanwhile keeps no stale interrupt */
+  pthread_mutex_lock (&group->mutex);
+  if (!lock_group_in_section (group))
+    {
+      pthread_mutex_unlock (&group->mutex);
+      return false;
+    }
+  __atomic_store_n (&group->abort_deferred, true, __ATOMIC_RELEASE);
+  __atomic_store_n (&group->interrupted, true, __ATOMIC_RELEASE);
+  pthread_cond_broadcast (&group->cond);
+  pthread_mutex_unlock (&group->mutex);
+
+  /* the owner's query stops at its next row even if it asks for no lock */
+  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  return true;
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_group_is_abort_deferred () - whether an abort of the transaction waits for it to end (lock_group_defer_abort ())
+ */
+bool
+lock_group_is_abort_deferred (int tran_index)
+{
+#if defined (SERVER_MODE)
+  return (tran_index > LOG_SYSTEM_TRAN_INDEX
+	  && __atomic_load_n (&lk_Gl.tran_lock_table[tran_index].group.abort_deferred, __ATOMIC_ACQUIRE));
+#else /* SERVER_MODE */
+  return false;
 #endif /* SERVER_MODE */
 }
 
@@ -10147,6 +10276,7 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
     }
 
   lock_clear_deadlock_victim (tran_index);
+  __atomic_store_n (&tran_lock->group.abort_deferred, false, __ATOMIC_RELEASE);
 
   pgbuf_unfix_all (thread_p);
 #endif /* !SERVER_MODE */
