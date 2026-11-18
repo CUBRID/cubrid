@@ -3129,11 +3129,12 @@ qo_rewrite_one_like_term (PARSER_CONTEXT * const parser, PT_NODE * const like, P
 	  goto fast_exit;
 	}
 
-      if (like->info.expr.arg1->type_enum == PT_TYPE_CHAR && pattern->type_enum != PT_TYPE_CHAR
+      if ((like->info.expr.arg1->type_enum != PT_TYPE_CHAR || pattern->type_enum != PT_TYPE_CHAR)
 	  && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
 	{
-	  /* LIKE lets a CHAR end in spaces past the pattern, but "=" ignores them only between two CHAR (CBRD-23731):
-	   * c LIKE 'a' || 'b' is not c = 'ab' */
+	  /* LIKE lets the compared string end in spaces past the pattern (qstr_eval_like ()), but "=" ignores them
+	   * only between two CHAR (CBRD-23731): v LIKE 'ab' is not v = 'ab' on a VARCHAR, nor c LIKE 'a' || 'b' on a
+	   * CHAR.  Keep LIKE, with the generic rewrite for an index scan */
 	  if (last_safe_logical_pos >= 0)
 	    {
 	      *perform_generic_rewrite = true;
