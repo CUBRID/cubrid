@@ -327,7 +327,6 @@ cas_apply_stmt_fail (int func_code, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       /* the server committed the statement at the end of its execution (auto commit). A failure after that cannot
        * undo it, so the reply stands; the error is only logged. See er_stmt_fail_forget_committed (). */
-      cas_log_write (0, false, "error %d after the server commit is not reported", mark);
       (void) er_stmt_fail_forget_committed ();
       return;
     }

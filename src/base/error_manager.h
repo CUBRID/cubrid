@@ -346,6 +346,7 @@ extern "C"
   extern int er_stmt_fail_raise (void);
   extern bool er_stmt_fail_is_reported_by (int err_id);
   extern int er_stmt_fail_resolve (int error);
+  extern void er_stmt_fail_log (const char *reason);
   extern int er_stmt_fail_forget_committed (void);
 #endif				/* !SERVER_MODE */
   extern void *db_default_malloc_handler (void *arg, const char *filename, int line_no, size_t size);

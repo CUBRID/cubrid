@@ -2829,6 +2829,28 @@ er_stmt_fail_resolve (int error)
 }
 
 /*
+ * er_stmt_fail_log - log the error marked on the current statement, where it was set and its message
+ *   return: none
+ *   reason(in): what the marked error leads to
+ *
+ * Note: written only while the er_log_debug parameter is on. An error from the server is marked without its place.
+ */
+void
+er_stmt_fail_log (const char *reason)
+{
+  int err_id = er_stmt_fail_get ();
+
+  if (err_id == NO_ERROR)
+    {
+      return;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "statement failure mark: error %d (%s:%d) %s: %s\n", err_id,
+		er_Stmt_fail_mark.file_name != NULL ? er_Stmt_fail_mark.file_name : "", er_Stmt_fail_mark.line_no,
+		reason, er_Stmt_fail_mark.msg != NULL ? er_Stmt_fail_mark.msg : "");
+}
+
+/*
  * er_stmt_fail_forget_committed - forget the failure of a statement the server has already committed
  *   return: the forgotten error, or NO_ERROR
  *
@@ -2847,9 +2869,7 @@ er_stmt_fail_forget_committed (void)
       return NO_ERROR;
     }
 
-  er_log_debug (ARG_FILE_LINE, "er_stmt_fail_forget_committed: error %d (%s:%d) after the server commit: %s\n", err_id,
-		er_Stmt_fail_mark.file_name != NULL ? er_Stmt_fail_mark.file_name : "", er_Stmt_fail_mark.line_no,
-		er_Stmt_fail_mark.msg != NULL ? er_Stmt_fail_mark.msg : "");
+  er_stmt_fail_log ("after the server commit");
   er_stmt_fail_clear ();
 
   return err_id;
