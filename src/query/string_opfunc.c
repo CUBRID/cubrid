@@ -26761,11 +26761,10 @@ coerce_pos:
   else if (TP_IS_NUMERIC_TYPE (param_type))
     {
       DB_VALUE param_db_bigint;
-      TP_DOMAIN *domain, *param_domain;
+      TP_DOMAIN *domain;
       UINT64 param_bigint;
 
       /* try to convert to bigint */
-      param_domain = tp_domain_resolve_default (param_type);
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       /* don't mind error code here, we need to know if param is out of range */
       (void) tp_value_auto_cast_with_converter (param, &param_db_bigint, domain, param_conv_type, param_conv);
