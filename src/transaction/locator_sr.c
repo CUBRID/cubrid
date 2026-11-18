@@ -5347,6 +5347,203 @@ locator_wait_out_collected_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, L
 }
 
 /*
+ * locator_start_referenced_key () - find the primary key of a class if a foreign key refers to it and the statement
+ *				     changes it, and get ready to build its keys for the statement
+ *
+ * return: NO_ERROR or error code
+ *   att_id(in): the attributes an UPDATE assigns, NULL for a DELETE
+ *   rk(out): rk->pk_i is -1 when no such key; locator_end_referenced_key () ends it either way
+ */
+int
+locator_start_referenced_key (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * att_id, int n_att_id,
+			      LOCATOR_REFERENCED_KEY * rk)
+{
+  HEAP_IDX_ELEMENTS_INFO idx_info;
+  OR_INDEX *index;
+  int num_found, i, error_code;
+
+  rk->pk_i = -1;
+  rk->index_attrinfo.num_values = -1;
+  rk->key_attrinfo.num_values = -1;
+  if (locator_Dont_check_foreign_key)
+    {
+      return NO_ERROR;
+    }
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &rk->index_attrinfo, &idx_info);
+  if (num_found <= 0)
+    {
+      return num_found < 0 ? ER_FAILED : NO_ERROR;
+    }
+  for (i = 0; i < idx_info.num_btids; i++)
+    {
+      index = &rk->index_attrinfo.last_classrepr->indexes[i];
+      if (index->type == BTREE_PRIMARY_KEY && index->fk != NULL && locator_index_has_attr (index, att_id, n_att_id))
+	{
+	  break;
+	}
+    }
+  if (i == idx_info.num_btids)
+    {
+      return NO_ERROR;
+    }
+  rk->pk_i = i;
+
+  /* index_attrinfo holds no attribute of a multi-column key: an UPDATE compares the key's own */
+  if (att_id != NULL && heap_attrinfo_start_with_btid (thread_p, class_oid, &index->btid, &rk->key_attrinfo) < 0)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * locator_end_referenced_key () - end what locator_start_referenced_key () started
+ */
+void
+locator_end_referenced_key (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk)
+{
+  heap_attrinfo_end (thread_p, &rk->key_attrinfo);
+  heap_attrinfo_end (thread_p, &rk->index_attrinfo);
+  rk->pk_i = -1;
+}
+
+/*
+ * locator_key_changes () - does an UPDATE give a row another referenced primary key?
+ *
+ * return: NO_ERROR or error code
+ *   recdes(in): the row's last version
+ *   new_values(in): the values the UPDATE assigns
+ *   changes(out): an assigned key attribute differs from the row's, so ON UPDATE actions will run for the row
+ */
+int
+locator_key_changes (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, OID * oid, RECDES * recdes,
+		     HEAP_CACHE_ATTRINFO * new_values, bool * changes)
+{
+  OR_INDEX *index = &rk->index_attrinfo.last_classrepr->indexes[rk->pk_i];
+  HEAP_ATTRVALUE *new_value;
+  int k, error_code;
+
+  *changes = false;
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, recdes, &rk->key_attrinfo);
+  for (k = 0; error_code == NO_ERROR && k < index->n_atts && !*changes; k++)
+    {
+      new_value = heap_attrvalue_locate (index->atts[k]->id, new_values);
+      *changes = (new_value != NULL && new_value->state == HEAP_WRITTEN_ATTRVALUE
+		  && tp_value_compare (heap_attrinfo_access (index->atts[k]->id, &rk->key_attrinfo),
+				       &new_value->dbvalue, 0, 1) != DB_EQ);
+    }
+  return error_code;
+}
+
+/*
+ * locator_children_may_be_written () - does another transaction hold IX or stronger on a class whose foreign key
+ *					 refers to the key?
+ */
+static bool
+locator_children_may_be_written (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk)
+{
+  OR_FOREIGN_KEY *fkref;
+
+  for (fkref = rk->index_attrinfo.last_classrepr->indexes[rk->pk_i].fk; fkref != NULL; fkref = fkref->next)
+    {
+      if (lock_class_has_other_writer (thread_p, &fkref->self_oid))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * locator_wait_for_row_child_writers () - locator_wait_for_child_writers () for one row
+ */
+static int
+locator_wait_for_row_child_writers (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, const OID * row_oid,
+				    const OID * class_oid, HEAP_SCANCACHE * scan_cache, bool on_update)
+{
+  LOCATOR_KEPT_CHILDREN *collected = NULL;
+  RECDES recdes = RECDES_INITIALIZER;
+  OID oid, locked_class_oid;
+  BTID btid;
+  DB_VALUE dbvalue, *key = NULL;
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT], *aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
+  SCAN_CODE scan;
+  int n_fk = 0, fails_fk, error_code;
+
+  COPY_OID (&oid, row_oid);
+  COPY_OID (&locked_class_oid, class_oid);
+  scan = locator_get_last_version_locked_at_select (thread_p, &oid, &locked_class_oid, &recdes, scan_cache);
+  if (scan == S_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  if (scan != S_SUCCESS)
+    {
+      /* a row that is gone has no key to mark */
+      return NO_ERROR;
+    }
+  error_code = heap_attrinfo_read_dbvalues (thread_p, &oid, &recdes, &rk->index_attrinfo);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  db_make_null (&dbvalue);
+  key = heap_attrvalue_get_key (thread_p, rk->pk_i, &rk->index_attrinfo, &recdes, &btid, &dbvalue, aligned_buf, NULL,
+				NULL);
+  if (key == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  error_code =
+    locator_collect_children_of_key (thread_p, &rk->index_attrinfo.last_classrepr->indexes[rk->pk_i], key, on_update,
+				     &collected, &n_fk, &fails_fk);
+  locator_collected_free (thread_p, collected, n_fk);
+  if (key == &dbvalue)
+    {
+      pr_clear_value (&dbvalue);
+    }
+  return error_code;
+}
+
+/*
+ * locator_wait_for_child_writers () - phases 1 and 2 of deleting parent rows or changing their keys, before any key
+ *				       is delete-marked
+ *
+ * return: NO_ERROR or error code
+ *   oids(in): rows of the class this transaction holds X on
+ *   on_update(in): the keys change rather than go
+ *
+ * Note: a statement that runs this before it writes any row waits here holding no child of any key. With no other
+ *	 writer in any child class there is no such writer, and no key is read. The lists are dropped: the write
+ *	 collects again after its mark, for the writers that came in between.
+ */
+int
+locator_wait_for_child_writers (THREAD_ENTRY * thread_p, LOCATOR_REFERENCED_KEY * rk, const OID * oids, int n_oids,
+				const OID * class_oid, HEAP_SCANCACHE * scan_cache, bool on_update)
+{
+  int i, error_code = NO_ERROR;
+
+  if (n_oids == 0 || !locator_children_may_be_written (thread_p, rk))
+    {
+      return NO_ERROR;
+    }
+  /* as in locator_check_primary_key_delete (): hold vacuum back while the children are scanned */
+  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  for (i = 0; i < n_oids && error_code == NO_ERROR; i++)
+    {
+      error_code = locator_wait_for_row_child_writers (thread_p, rk, &oids[i], class_oid, scan_cache, on_update);
+    }
+  return error_code;
+}
+
+/*
  * locator_check_primary_key_delete () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
