@@ -43,6 +43,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 
 #include "memory_hash.h"
 #include "chartype.h"
@@ -567,13 +568,14 @@ mht_ptrhash (const void *key, const unsigned int ht_size)
  *   d(in): the value; a FLOAT is widened to DOUBLE, a MONETARY gives its amount
  *
  * -0.0 compares equal to 0.0 but differs in its sign bit: adding 0.0 turns -0.0 into 0.0 before the bits are read.
+ * A NaN equals every other NaN, whatever its sign and bits (MR_CMP_FLOATING ()): every NaN hashes as the one NAN.
  */
 STATIC_INLINE unsigned int
 mht_hash_double (double d)
 {
   UINT64 bits;
 
-  d += 0.0;
+  d = isnan (d) ? NAN : d + 0.0;
   memcpy (&bits, &d, sizeof (bits));
   return mht_mixhash64 (bits);
 }

@@ -757,6 +757,27 @@ fixed_key_word (RADIX_KEY_FORMAT format, const unsigned char *key)
   return word;
 }
 
+/* whether IEEE 754 bits, as big_endian_to_host () reads a radix word, are a NaN: every exponent bit set and a fraction
+ * that is not 0. No IEEE key is two bytes. */
+static inline bool
+ieee_bits_are_nan (UINT16 bits)
+{
+  (void) bits;
+  return false;
+}
+
+static inline bool
+ieee_bits_are_nan (UINT32 bits)
+{
+  return (bits & 0x7fffffffU) > 0x7f800000U;
+}
+
+static inline bool
+ieee_bits_are_nan (UINT64 bits)
+{
+  return (bits & 0x7fffffffffffffffULL) > 0x7ff0000000000000ULL;
+}
+
 /*
  * ieee_to_order () - Puts a big-endian IEEE 754 value in unsigned byte order
  *   return: the radix word in order
@@ -767,6 +788,13 @@ template <typename RADIX_WORD>
 static inline RADIX_WORD
 ieee_to_order (RADIX_WORD word, RADIX_WORD sign_bit)
 {
+  /* a NaN of either sign: above every other value and equal to the other NaNs, as the comparator orders FLOAT, DOUBLE
+   * and MONETARY (MR_CMP_FLOATING () in object_primitive.c). Its bits would put a negative NaN below -inf. */
+  if (ieee_bits_are_nan (big_endian_to_host (word)))
+    {
+      return (RADIX_WORD) ~0ULL;
+    }
+
   /* a positive value: flipping the first bit puts it above every negative value */
   if ((word & sign_bit) == 0)
     {
