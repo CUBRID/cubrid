@@ -72,7 +72,6 @@ static int count_and_or (PARSER_CONTEXT * parser, const PT_NODE * node);
 static PT_NODE *pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node);
-static void pt_cnf_tag_list_operand (PT_NODE * operand);
 static PT_NODE *pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node);
 static int pt_cnf_count_operands (const PT_NODE * node, PT_OP_TYPE op);
@@ -1080,10 +1079,6 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       break;
 
     default:
-      /* the walk converted its operands already: see pt_cnf_tag_list_operand () */
-      pt_cnf_tag_list_operand (node->info.expr.arg1);
-      pt_cnf_tag_list_operand (node->info.expr.arg2);
-      pt_cnf_tag_list_operand (node->info.expr.arg3);
       list = node;
       break;
     }				/* switch (node->info.expr.op) */
@@ -1095,25 +1090,6 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 
   /* return CNF/DNF list */
   return list;
-}
-
-/*
- * pt_cnf_tag_list_operand () - tag the head of an operand that the CNF walk made a list
- *   return: none
- *   operand(in): an operand of an operator other than AND and OR (IS, NOT, XOR, CAST, CASE, IF, ...)
- *
- * Note: pt_print_bytes () prints a list from a head tagged is_cnf_start, and the common factors of an OR are found by
- *	 such prints.  pt_tag_start_of_cnf_post () tags the heads when the whole conversion is over, so until then an
- *	 operand list printed as its first node: (p AND q1) IS TRUE and (p AND q2) IS TRUE looked the same (CBRD-28027).
- *	 A list of arguments that are not logical (FIELD) is no CNF list.
- */
-static void
-pt_cnf_tag_list_operand (PT_NODE * operand)
-{
-  if (operand != NULL && operand->next != NULL && pt_list_has_logical_nodes (operand))
-    {
-      operand->flag.is_cnf_start = true;
-    }
 }
 
 /*
