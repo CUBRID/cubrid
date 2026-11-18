@@ -85,6 +85,11 @@ typedef enum
   R_NULLSAFE_EQ
 } REL_OP;
 
+/* the OR term a scan filters a page of rows by (expr_pred_or_raw_leaves ()): its disjuncts, and the leaves of all of
+ * them; xasl_generation.c builds the disjunctive normal form of a factor within the same bounds */
+#define PRED_OR_RAW_MAX_DISJUNCTS 16
+#define PRED_OR_RAW_MAX_LEAVES 32
+
 typedef enum
 {
   F_ALL = 1,

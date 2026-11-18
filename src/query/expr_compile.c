@@ -4340,8 +4340,8 @@ int
 expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap, int *n_disj,
 			 int disj_cap)
 {
-  const PRED_EXPR *disj[16];
-  const PRED_EXPR *terms[32];
+  const PRED_EXPR *disj[PRED_OR_RAW_MAX_DISJUNCTS];
+  const PRED_EXPR *terms[PRED_OR_RAW_MAX_LEAVES];
   int nd, d, i, nt, n = 0;
 
   if (or_src == NULL || ((const PRED_EXPR *) or_src)->type != T_PRED

@@ -2312,8 +2312,8 @@ error:
 }
 
 /* the disjunctive normal form pt_to_pred_expr_factor_dnf () builds a factor in, as an array of disjuncts */
-#define PT_FACTOR_DNF_MAX_DISJUNCTS 16
-#define PT_FACTOR_DNF_MAX_CONJUNCTS 32
+#define PT_FACTOR_DNF_MAX_DISJUNCTS PRED_OR_RAW_MAX_DISJUNCTS
+#define PT_FACTOR_DNF_MAX_CONJUNCTS PRED_OR_RAW_MAX_LEAVES
 typedef struct pt_factor_dnf_term PT_FACTOR_DNF_TERM;
 struct pt_factor_dnf_term
 {
@@ -2384,6 +2384,86 @@ pt_factor_dnf_is_unsafe (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       *continue_walk = PT_STOP_WALK;
     }
   return node;
+}
+
+/*
+ * pt_factor_dnf_operand_is_raw () - a constant a column of the type compares with without converting the column
+ */
+static bool
+pt_factor_dnf_operand_is_raw (PT_NODE * operand, PT_TYPE_ENUM col_type)
+{
+  if (operand == NULL || (operand->node_type != PT_VALUE && operand->node_type != PT_HOST_VAR))
+    {
+      return false;
+    }
+  return ((PT_IS_NUMERIC_TYPE (col_type) && PT_IS_NUMERIC_TYPE (operand->type_enum))
+	  || (PT_IS_CHAR_STRING_TYPE (col_type) && PT_IS_CHAR_STRING_TYPE (operand->type_enum)));
+}
+
+/*
+ * pt_factor_dnf_leaf_is_raw () - a leaf the page path filters by (expr_pred_term_raw_info ()): a column compared with
+ *				  a constant of its kind, or a column in a list of such constants
+ *
+ * Note: such a leaf cannot fail for a row, so evaluating it where the written order would have skipped it -- the
+ *	 guard of (b = 0 or 10 / b > 1) and a = 1 is lost once the OR is distributed -- returns no new error.
+ */
+static bool
+pt_factor_dnf_leaf_is_raw (PT_NODE * leaf)
+{
+  PT_NODE *col, *other, *elem;
+
+  if (leaf == NULL || leaf->node_type != PT_EXPR || leaf->or_next != NULL)
+    {
+      return false;
+    }
+
+  col = leaf->info.expr.arg1;
+  other = leaf->info.expr.arg2;
+  switch (leaf->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GT:
+    case PT_GE:
+    case PT_LT:
+    case PT_LE:
+      if (other != NULL && other->node_type == PT_NAME)
+	{
+	  col = leaf->info.expr.arg2;
+	  other = leaf->info.expr.arg1;
+	}
+      return (col != NULL && col->node_type == PT_NAME && col->info.name.meta_class != PT_PARAMETER
+	      && pt_factor_dnf_operand_is_raw (other, col->type_enum));
+
+    case PT_IS_IN:
+      if (col == NULL || col->node_type != PT_NAME || col->info.name.meta_class == PT_PARAMETER || other == NULL)
+	{
+	  return false;
+	}
+      if (other->node_type == PT_VALUE && PT_IS_COLLECTION_TYPE (other->type_enum))
+	{
+	  elem = other->info.value.data_value.set;
+	}
+      else if (other->node_type == PT_FUNCTION && other->info.function.function_type == F_SEQUENCE)
+	{
+	  elem = other->info.function.arg_list;
+	}
+      else
+	{
+	  return false;
+	}
+      for (; elem != NULL; elem = elem->next)
+	{
+	  if (!pt_factor_dnf_operand_is_raw (elem, col->type_enum))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+
+    default:
+      return false;
+    }
 }
 
 static int pt_factor_dnf_list (PT_NODE * list, PT_FACTOR_DNF_TERM * out, int max);
@@ -2595,10 +2675,14 @@ pt_factor_dnf_top_list (PT_NODE * list)
  *	 runs such a filter over a page of rows at once (expr_pred_or_raw_leaves ()).  A disjunct holding a further
  *	 OR, (A and (B or D)) or C, leaves that path, and the filter is evaluated row by row, several times slower than
  *	 the clauses it used to be distributed into.  Evaluate (A and B) or (A and D) or C instead: AND distributes
- *	 over OR in the three-valued logic as well, so the result is the same, and a leaf is evaluated more than once
- *	 only when it is safe to.  An operand is read as pt_to_pred_expr () reads it, a CNF list: the restrictions
- *	 qo_extract_or_restrictions () derives hold or_next chains under their ORs.  The form is bounded as the page
- *	 path bounds it, and taken for a factor over the columns of one spec, the filters that path runs.
+ *	 over OR in the three-valued logic as well, so the result is the same.  An operand is read as
+ *	 pt_to_pred_expr () reads it, a CNF list: the restrictions qo_extract_or_restrictions () derives hold or_next
+ *	 chains under their ORs.  The form is taken only where the page path takes it: the data filter of a heap
+ *	 scan, not an index scan, a join or a list scan, which evaluate it row by row and would only repeat the
+ *	 common conjuncts; a factor over the columns of one spec; within the bounds of the path
+ *	 (PRED_OR_RAW_MAX_DISJUNCTS, PRED_OR_RAW_MAX_LEAVES); and every leaf a column compared with a constant
+ *	 (pt_factor_dnf_leaf_is_raw ()).  Such a leaf cannot fail, so evaluating it where the order as written would
+ *	 have skipped it, as a disjunct guarding the next one does, returns no error the written factor would not.
  */
 static PRED_EXPR *
 pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp)
@@ -2607,9 +2691,10 @@ pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp
   PRED_EXPR *pred = NULL, *conj, *leaf;
   PT_NODE *save_next;
   PT_FACTOR_DNF_CHECK check = { 0, false };
-  int n, top, d, i;
+  int n, top, d, i, leaves;
 
-  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (factor, PT_OR) || factor->or_next != NULL)
+  if (!PT_IS_EXPR_NODE_WITH_OPERATOR (factor, PT_OR) || factor->or_next != NULL || parser->symbols == NULL
+      || !parser->symbols->heap_scan_filter)
     {
       return NULL;
     }
@@ -2632,6 +2717,26 @@ pt_to_pred_expr_factor_dnf (PARSER_CONTEXT * parser, PT_NODE * factor, int *argp
   n = pt_factor_dnf_node (factor, dnf, PT_FACTOR_DNF_MAX_DISJUNCTS);
   top = (n > 0) ? pt_factor_dnf_top (factor) : 0;
   if (n <= 0 || n == top)
+    {
+      free_and_init (dnf);
+      return NULL;
+    }
+
+  /* the form is for the page path alone: every leaf one it filters by, and no more of them than it takes */
+  leaves = 0;
+  for (d = 0; d < n; d++)
+    {
+      leaves += dnf[d].n;
+      for (i = 0; i < dnf[d].n; i++)
+	{
+	  if (!pt_factor_dnf_leaf_is_raw (dnf[d].leaf[i]))
+	    {
+	      free_and_init (dnf);
+	      return NULL;
+	    }
+	}
+    }
+  if (leaves > PRED_OR_RAW_MAX_LEAVES)
     {
       free_and_init (dnf);
       return NULL;
@@ -4132,6 +4237,7 @@ pt_symbol_info_alloc (void)
       symbols->query_node = NULL;
       symbols->func_idx_cover_list = NULL;
       symbols->func_idx_routed_list = NULL;
+      symbols->heap_scan_filter = false;
     }
 
   return symbols;
@@ -16491,7 +16597,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      symbols->cache_attrinfo = cache_pred;
 	      symbols->reserved_values = db_values_array_p;
 
+	      /* a heap scan filters a page of rows at once (pt_to_pred_expr_factor_dnf ()) */
+	      symbols->heap_scan_filter = (access_method == ACCESS_METHOD_SEQUENTIAL);
 	      where = pt_to_pred_expr (parser, where_part);
+	      symbols->heap_scan_filter = false;
 
 	      if (scan_type == TARGET_CLASS_ATTR)
 		{
