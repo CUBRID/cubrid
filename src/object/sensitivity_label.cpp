@@ -392,6 +392,10 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
 
   AU_SAVE_AND_DISABLE (save);
 
+  /* the lookup above took the snapshot before it waited for the lock: take a new one, so that the check sees a
+   * label committed during the wait */
+  db_invalidate_mvcc_snapshot_before_statement ();
+
   /* the object value needs a host variable, which db_compile_and_execute_local cannot take */
   session = db_open_buffer_local (sql);
   if (session == NULL)
