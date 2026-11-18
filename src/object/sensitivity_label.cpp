@@ -839,3 +839,27 @@ end:
 
   return error;
 }
+
+/*
+ * sensitivity_label_drop () - drop the label of an attribute
+ *   return: error code
+ *   label(in): the label
+ */
+int
+sensitivity_label_drop (DB_OBJECT *label)
+{
+  int error;
+  int save;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  error = db_drop (label);
+  if (error == NO_ERROR)
+    {
+      error = locator_flush_instance (label);
+    }
+
+  AU_RESTORE (save);
+
+  return error;
+}

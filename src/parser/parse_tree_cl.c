@@ -21352,6 +21352,7 @@ static PT_NODE *
 pt_apply_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.target_list, arg);
   return p;
 }
 
@@ -21457,7 +21458,15 @@ pt_print_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
 
-  r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
+  if (p->info.sensitivity_label.target_list != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, p->info.sensitivity_label.target_list);
+    }
+  else
+    {
+      r1 = pt_print_bytes (parser, p->info.sensitivity_label.name);
+    }
+
   q = pt_append_nulstring (parser, q, "drop sensitivity label ");
   q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sensitivity_label.kind));
   q = pt_append_nulstring (parser, q, " ");
