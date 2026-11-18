@@ -21,6 +21,7 @@
 #include "pl_comm.h"
 #include "pl_query_cursor.hpp"
 #include "pl_sr.h"
+#include "log_impl.h"
 #include "query_manager.h"
 #include "session.h"
 #include "xserver_interface.h"
@@ -255,9 +256,19 @@ namespace cubpl
       }
 
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    bool yielded = false;
 
     // Guaranteed to be removed from the topmost element
-    m_cond_target_stack_at_top.wait (ulock, target_stack_is_at_top);
+    if (!target_stack_is_at_top ())
+      {
+	/* the stacks above belong to other requests of the transaction: let them have its execution token, and not
+	 * from under this mutex, which they take */
+	ulock.unlock ();
+	yielded = logtb_exec_yield (thread_p);
+	ulock.lock ();
+	m_cond_target_stack_at_top.wait (ulock, target_stack_is_at_top);
+      }
 
     assert (m_stack_idx >= 0);
     m_exec_stack[m_stack_idx] = -1;
@@ -275,6 +286,9 @@ namespace cubpl
       {
 	assert (m_stack_idx >= -1);
       }
+
+    ulock.unlock ();
+    logtb_exec_resume (thread_p, yielded);
   }
 
   execution_stack *
@@ -474,7 +488,22 @@ namespace cubpl
     };
 
     std::unique_lock<std::mutex> ulock (m_mutex_stack);
+    cubthread::entry *thread_p;
+    bool yielded;
+
+    if (pl_session_is_not_running ())
+      {
+	return;
+      }
+
+    /* the session-ending request holds the execution token the requests popping the stacks need */
+    ulock.unlock ();
+    thread_p = thread_get_thread_entry_info ();
+    yielded = logtb_exec_yield (thread_p);
+    ulock.lock ();
     m_cond_pl_session_done.wait (ulock, pl_session_is_not_running);
+    ulock.unlock ();
+    logtb_exec_resume (thread_p, yielded);
   }
 
   SESSION_ID
