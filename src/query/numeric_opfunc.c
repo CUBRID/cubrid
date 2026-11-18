@@ -7779,18 +7779,19 @@ numeric_get_precision_digits (uint8_t * calc_buf)
 }
 
 /*
- * numeric_db_value_to_float_domain () - a fixed NUMERIC value made the float one of the same value, when the domain
- *                                       it is declared in is a float NUMERIC
+ * numeric_db_value_fixed_to_float_domain () - a fixed NUMERIC value made the float one of the same value, when the
+ *                                             domain it is declared in is a float NUMERIC
  *   return: void
- *   value(in/out):
+ *   value(in/out): a fixed NUMERIC value that is not NULL
  *   domain(in): the domain the value is declared in
  */
 void
-numeric_db_value_to_float_domain (DB_VALUE * value, const DB_DOMAIN * domain)
+numeric_db_value_fixed_to_float_domain (DB_VALUE * value, const DB_DOMAIN * domain)
 {
-  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_NUMERIC || domain->precision != DB_DEFAULT_NUMERIC_PRECISION
-      || DB_IS_NULL (value) || DB_VALUE_TYPE (value) != DB_TYPE_NUMERIC
-      || value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+  assert (!DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_NUMERIC
+	  && value->domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION);
+
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_NUMERIC || domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
     {
       return;
     }
