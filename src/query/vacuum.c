@@ -707,6 +707,8 @@ static int vacuum_compare_heap_object (const void *a, const void *b);
 static int vacuum_collect_heap_objects (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, OID * oid, VFID * vfid);
 static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid);
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
+static bool vacuum_heap_skip_failed_page (THREAD_ENTRY * thread_p, int error_code, int *skipped_page_error);
+static int vacuum_heap_pop_skipped_error (int error_code, int skipped_page_error);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
@@ -1558,45 +1560,74 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Vacuum heap page %d|%d, error_code=%d.",
 			       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
 
-#if defined (NDEBUG)
-	  if (!thread_p->shutdown)
+	  if (!vacuum_heap_skip_failed_page (thread_p, error_code, &skipped_page_error))
 	    {
-	      /* Unexpected error; debug crashes above. Retrying the page here would repeat the error as long as it
-	       * lasts, so skip it and clean the rest of the block. The first error leaves the block unfinished, and
-	       * the skipped page is vacuumed again when the block is run again. */
-	      if (skipped_page_error == NO_ERROR)
-		{
-		  er_stack_push ();
-		  skipped_page_error = error_code;
-		}
-	      else
-		{
-		  er_clear ();
-		}
-	      error_code = NO_ERROR;
-	      page_ptr = obj_ptr;
-	      continue;
+	      break;
 	    }
-#endif // not DEBUG
-
-	  break;
+	  error_code = NO_ERROR;
 	}
       /* Advance to next page. */
       page_ptr = obj_ptr;
     }
 
-  if (skipped_page_error != NO_ERROR)
+  return vacuum_heap_pop_skipped_error (error_code, skipped_page_error);
+}
+
+/*
+ * vacuum_heap_skip_failed_page () - Decide whether vacuum_heap skips a failed page and goes on with the block.
+ *
+ * return		       : True to skip the page, false to stop vacuuming the block.
+ * thread_p (in)	       : Thread entry.
+ * error_code (in)	       : Error of the failed page.
+ * skipped_page_error (in/out) : First error of the skipped pages. It stays on the error stack until
+ *				 vacuum_heap_pop_skipped_error.
+ */
+static bool
+vacuum_heap_skip_failed_page (THREAD_ENTRY * thread_p, int error_code, int *skipped_page_error)
+{
+#if defined (NDEBUG)
+  /* Retrying the page would repeat a lasting error. The first error leaves the block unfinished, so the skipped page
+   * is vacuumed again when the block runs again. Debug stops earlier, in vacuum_check_shutdown_interruption. */
+  if (!thread_p->shutdown)
     {
-      if (error_code == NO_ERROR)
+      if (*skipped_page_error == NO_ERROR)
 	{
-	  er_stack_pop ();
-	  error_code = skipped_page_error;
+	  er_stack_push ();
+	  *skipped_page_error = error_code;
 	}
       else
 	{
-	  er_stack_pop_and_keep_error ();
+	  er_clear ();
 	}
+      return true;
     }
+#endif /* NDEBUG */
+
+  return false;
+}
+
+/*
+ * vacuum_heap_pop_skipped_error () - Pop the error pushed by vacuum_heap_skip_failed_page.
+ *
+ * return		   : The error that stopped the block if any, otherwise the first error of the skipped pages.
+ * error_code (in)	   : Error that stopped the block, or NO_ERROR.
+ * skipped_page_error (in) : First error of the skipped pages, or NO_ERROR.
+ */
+static int
+vacuum_heap_pop_skipped_error (int error_code, int skipped_page_error)
+{
+  if (skipped_page_error == NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (error_code == NO_ERROR)
+    {
+      er_stack_pop ();
+      return skipped_page_error;
+    }
+
+  er_stack_pop_and_keep_error ();
   return error_code;
 }
 
