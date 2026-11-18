@@ -1106,6 +1106,53 @@ sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, S
 }
 
 /*
+ * sensitivity_label_drop_of_dropped_class () - drop the label of every attribute of a class that is being dropped
+ *   return: error code
+ *   class_mop(in): the class
+ *   class_(in): the class structure
+ *
+ * Note: the caller holds SCH-M on the class, so no other transaction is creating a label of it: one query drops
+ *       them all, without the lookup of each attribute that sensitivity_label_drop_all () makes.
+ */
+int
+sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
+{
+  DB_SESSION *session = NULL;
+  DB_QUERY_RESULT *result = NULL;
+  int error;
+  int save;
+
+  /* a class that cannot have labels has none: do not execute the query */
+  if (!sensitivity_label_is_allowed (class_))
+    {
+      return NO_ERROR;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+
+  error = execute_query_with_object ("DELETE FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [class_of] = ?", class_mop,
+				     &session, &result);
+  if (error > 0)
+    {
+      error = NO_ERROR;
+    }
+
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
  * find_label_by_name () - find the label of an attribute by the class name and the attribute name in a statement
  *   return: error code
  *   class_name(in): the class name

@@ -13950,6 +13950,12 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
       goto end;
     }
 
+  error = sensitivity_label_drop_of_dropped_class (op, class_);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   /* This to be maintained as long as the class is cached in the workspace, dirty or not. When the deleted class is
    * flushed, the name is removed. Assuming this doesn't cause problems, remove this comment */
   /* ws_drop_classname((MOBJ) class); */
