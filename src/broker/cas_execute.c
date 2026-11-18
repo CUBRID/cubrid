@@ -76,6 +76,8 @@
 #include "object_primitive.h"
 #include "db_session.h"
 #include "method_callback.hpp"
+#include "jsp_cl.h"
+#include "sp_catalog.hpp"
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
@@ -1829,8 +1831,6 @@ execute_all_error:
 }
 
 extern DB_VALUE *db_get_hostvars (DB_SESSION * session);
-extern void jsp_set_prepare_call ();
-extern void jsp_unset_prepare_call ();
 
 int
 ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
@@ -3596,6 +3596,56 @@ ux_get_query_info (int srv_h_id, char info_type, T_NET_BUF * net_buf)
   return 0;
 }
 
+typedef struct t_call_param_slot T_CALL_PARAM_SLOT;
+struct t_call_param_slot
+{
+  char mode;
+  DB_TYPE type;
+  // *INDENT-OFF*
+  std::string name;
+  // *INDENT-ON*
+};
+
+static bool
+call_param_slots (T_SRV_HANDLE * srv_handle, int num_markers, std::vector < T_CALL_PARAM_SLOT > &slots)
+{
+  DB_SESSION *session = (DB_SESSION *) srv_handle->session;
+  std::vector < sp_arg_info > params;
+  PT_NODE *statement, *arg;
+  int is_first_out = (srv_handle->prepare_call_info != NULL) ? srv_handle->prepare_call_info->is_first_out : 0;
+  DB_TYPE return_type;
+  int pos, slot;
+
+  if (session == NULL || session->statements == NULL)
+    {
+      return false;
+    }
+  statement = session->statements[0];
+  if (!PT_IS_SP (statement) || !jsp_get_call_params (session->parser, statement, return_type, params))
+    {
+      return false;
+    }
+
+  // *INDENT-OFF*
+  slots.assign (num_markers, T_CALL_PARAM_SLOT { CCI_PARAM_MODE_IN, DB_TYPE_NULL, "" });
+  if (is_first_out && num_markers > 0)
+    {
+      slots[0] = T_CALL_PARAM_SLOT { CCI_PARAM_MODE_OUT, return_type, "" };
+    }
+  for (arg = statement->info.method_call.arg_list, pos = 0; arg != NULL; arg = arg->next, pos++)
+    {
+      slot = PT_IS_INPUT_HOSTVAR (arg) ? arg->info.host_var.index + is_first_out : -1;
+      if (slot < 0 || slot >= num_markers || pos >= (int) params.size ())
+	{
+	  continue;
+	}
+      slots[slot] = T_CALL_PARAM_SLOT { (char) params[pos].mode, params[pos].data_type, params[pos].arg_name };
+    }
+  // *INDENT-ON*
+
+  return true;
+}
+
 int
 ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 {
@@ -3612,6 +3662,8 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
   short scale;
   int i;
   DB_DOMAIN *domain;
+  std::vector < T_CALL_PARAM_SLOT > call_slots;
+  bool is_call;
 
   srv_handle = hm_find_srv_handle (srv_h_id);
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
@@ -3644,6 +3696,8 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
       param = db_get_input_markers (session, stmt_id);
     }
 
+  is_call = (srv_handle->prepare_flag & CCI_PREPARE_CALL) && call_param_slots (srv_handle, num_markers, call_slots);
+
   net_buf_cp_int (net_buf, num_markers, NULL);	/* result code */
 
   for (i = 0; i < num_markers; i++)
@@ -3671,7 +3725,17 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 	  param = db_marker_next (param);
 	}
 
-      if (TP_IS_SET_TYPE (db_type))
+      if (is_call)
+	{
+	  domain = NULL;
+	  param_mode = call_slots[i].mode;
+	  db_type = call_slots[i].type;
+	  precision = 0;
+	  scale = 0;
+	  charset = 0;
+	}
+
+      if (TP_IS_SET_TYPE (db_type) && domain != NULL)
 	{
 	  char set_type;
 	  set_type = get_set_domain (domain, NULL, NULL, NULL, &charset);
@@ -3684,9 +3748,8 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
 	}
 
       net_buf_cp_byte (net_buf, param_mode);
-      net_buf_cp_cas_type_and_charset (net_buf, cas_type, charset);
-      net_buf_cp_short (net_buf, scale);
-      net_buf_cp_int (net_buf, precision, NULL);
+      net_buf_column_info_set (net_buf, cas_type, scale, precision, charset,
+			       is_call ? call_slots[i].name.c_str () : NULL);
     }
 
   return 0;
