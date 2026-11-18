@@ -811,6 +811,9 @@ extern "C"
   extern PT_DBLINK_VALUE_CLASS pt_dblink_dml_classify_value (PT_NODE * expr, PT_DBLINK_LEAF_FN leaf_fn, void *arg);
   extern PT_DBLINK_LEAF_KIND pt_dblink_update_set_leaf (PT_NODE * node, void *arg);
 
+  /* Remote MERGE with a local source (parser_support.c). The ON key type check. */
+  extern int pt_dblink_merge_check_key_types (PARSER_CONTEXT * parser, PT_NODE * merge);
+
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }

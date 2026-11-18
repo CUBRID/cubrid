@@ -12070,6 +12070,18 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      PT_ERRORm (parser, t_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MERGE_CANT_AFFECT_SOURCE_TABLE);
 	      break;
 	    }
+	  /* A remote target's ENUM column is here without its elements, as DBLink cannot read the
+	   * type. Type checking fails with an internal error when it turns a literal into such an
+	   * ENUM. Any other value passes it, and the remote takes it into the ENUM. So does a
+	   * NULL. */
+	  if (entity->info.spec.remote_server_name != NULL && t_node->type_enum == PT_TYPE_ENUMERATION
+	      && ea.rhs != NULL && ea.rhs->node_type == PT_VALUE && ea.rhs->type_enum != PT_TYPE_NULL)
+	    {
+	      PT_ERRORf (parser, ea.rhs,
+			 "dblink: remote MERGE with a local source cannot set an ENUM target column to a literal, as "
+			 "the ENUM's elements are not known here; %s", pt_short_print (parser, ea.assignment));
+	      break;
+	    }
 	}
       if (pt_has_error (parser))
 	{
@@ -13145,6 +13157,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   SEMANTIC_CHK_INFO *sc_info_ptr = info;
   bool save_donot_fold = false;
+  /* A copy of the USING of a remote MERGE with a local source, taken before name resolution. It
+   * is set only on the statement's first check, so the steps it guards run once. */
+  PT_NODE *merge_src_from = NULL;
 
   assert (parser != NULL);
 
@@ -13413,6 +13428,13 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			  break;
 			}
 		      pt_gather_dblink_cols_in_merge_target (parser, node);
+
+		      merge_src_from = parser_copy_tree (parser, node->info.merge.using_clause);
+		      if (merge_src_from == NULL)
+			{
+			  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+			  break;
+			}
 		    }
 		  resolve_whole = true;
 		}
@@ -13496,6 +13518,13 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
 		  node = parser_walk_tree (parser, node, pt_expand_isnull_preds, node, NULL, NULL);
 		}
+	    }
+
+	  if (merge_src_from != NULL && node != NULL && !pt_has_error (parser))
+	    {
+	      /* A remote MERGE with a local source. The keys are checked on the statement, where
+	       * type checking marks a key that compares with a conversion. */
+	      (void) pt_dblink_merge_check_key_types (parser, node);
 	    }
 	}
 
