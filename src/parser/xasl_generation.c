@@ -6862,6 +6862,22 @@ pt_note_cte_null_reader (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos,
   pt_Cte_null_readers = reader;
 }
 
+/* CBRD-28066: whether a domain and each of its element domains, nested included, fix the type and the collation of
+ * their values - what the plan's load check asks of them (stx_domain_is_decided) */
+static bool
+pt_domain_is_decided (const TP_DOMAIN * domain)
+{
+  for (; domain != NULL; domain = domain->next)
+    {
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || domain->collation_flag != TP_DOMAIN_COLL_NORMAL
+	  || !pt_domain_is_decided (domain->setdomain))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
 /* CBRD-27583: a string domain whose collation type checking left to the values (LEAVE), in the collation decided
  * (collation); NULL for a domain that has its collation, or a decided one without */
 static TP_DOMAIN *
@@ -6898,6 +6914,12 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
   if (TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
       || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
 	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
+    {
+      return producer;
+    }
+  /* CBRD-28066: so does a collection whose elements type checking left to the values (pt_add_type_to_set) */
+  if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (parse_tree)) && TP_DOMAIN_TYPE (producer) == TP_DOMAIN_TYPE (parse_tree)
+      && !pt_domain_is_decided (parse_tree) && pt_domain_is_decided (producer))
     {
       return producer;
     }
@@ -9165,6 +9187,78 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
   return NO_ERROR;
 }
 
+/*
+ * pt_decide_collection_domain () - CBRD-28066: a collection constructor (SET{}, an IN list, = ANY {}, a row value)
+ *   whose element domains type checking left to the values - an ENFORCE cast around a bind, a LEAVE default,
+ *   copied from the elements' data types (pt_add_type_to_set) - lists the domains of its operands instead, which
+ *   XASL generation has decided by now (pt_decide_function_collation and its siblings; a nested constructor is made
+ *   before the one it is an operand of); an operand left undecided is left out, as type checking leaves out a MAYBE
+ *   element, and so is one alike an earlier one. A decided domain stays as it is.
+ *   return: NO_ERROR, ER_FAILED when a domain cannot be made
+ *   regu(in/out): the constructor's regu variable
+ */
+static int
+pt_decide_collection_domain (REGU_VARIABLE * regu)
+{
+  if (regu == NULL || regu->type != TYPE_FUNC || regu->domain == NULL || regu->value.funcp == NULL
+      || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (regu->domain)) || pt_domain_is_decided (regu->domain))
+    {
+      return NO_ERROR;
+    }
+
+  TP_DOMAIN *elements = NULL, *last = NULL;
+  for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+    {
+      const TP_DOMAIN *domain = op->value.domain;
+      if (domain == NULL || domain->next != NULL || !pt_domain_is_decided (domain))
+	{
+	  continue;
+	}
+      const TP_DOMAIN *e = elements;
+      for (; e != NULL && !tp_domain_match (e, domain, TP_EXACT_MATCH); e = e->next)
+	;
+      if (e != NULL)
+	{
+	  continue;
+	}
+      /* a list of its own: a cached domain is shared and must not be linked */
+      TP_DOMAIN *copy = tp_domain_copy (domain, false);
+      if (copy == NULL)
+	{
+	  goto error;
+	}
+      if (last == NULL)
+	{
+	  elements = copy;
+	}
+      else
+	{
+	  last->next = copy;
+	}
+      last = copy;
+    }
+
+  {
+    TP_DOMAIN *decided = tp_domain_construct (TP_DOMAIN_TYPE (regu->domain), NULL, 0, 0, elements);
+    if (decided == NULL)
+      {
+	goto error;
+      }
+    decided->is_desc = regu->domain->is_desc;
+    regu->domain = tp_domain_cache (decided);
+  }
+  return NO_ERROR;
+
+error:
+  while (elements != NULL)
+    {
+      TP_DOMAIN *next = elements->next;
+      tp_domain_free (elements);
+      elements = next;
+    }
+  return ER_FAILED;
+}
+
 static REGU_VARIABLE *
 pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 {
@@ -9305,6 +9399,11 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	    {
 	      return NULL;
 	    }
+	  if (TP_IS_SET_TYPE (result_type) && pt_decide_collection_domain (regu) != NO_ERROR)
+	    {
+	      PT_INTERNAL_ERROR (parser, "collection domain");
+	      return NULL;
+	    }
 	  if (DB_TYPE_VOBJ == pt_node_to_db_type (function) && function->info.function.function_type != F_VID)
 	    {
 	      regu = pt_make_vid (parser, function->data_type, regu);
@@ -9379,9 +9478,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
       else
 	{
 	  /* CBRD-27583: a list a type checking left variable, or whose collation it left to an enforced or bound one,
-	   * reads as its first column, as a single tuple does */
-	  if (regu->domain != NULL && (TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
-				       || TP_DOMAIN_COLLATION_FLAG (regu->domain) != TP_DOMAIN_COLL_NORMAL))
+	   * reads as its first column, as a single tuple does; CBRD-28066: so does a collection whose elements it left */
+	  if (regu->domain != NULL && !pt_domain_is_decided (regu->domain))
 	    {
 	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	    }
