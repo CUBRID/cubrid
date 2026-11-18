@@ -39,7 +39,8 @@ namespace parallel_query
   worker_manager::worker_manager()
     : m_active_tasks (0),
       m_reserved_workers (0),
-      m_owner (nullptr)
+      m_owner (nullptr),
+      m_tran_index (NULL_TRAN_INDEX)
   {
   }
 
@@ -74,7 +75,10 @@ namespace parallel_query
     manager->m_reserved_workers = reserved;
     assert (manager->m_active_tasks.load () == 0);
 
+    /* before any task: no worker of it can have entered the lock manager unchecked */
     manager->m_owner = thread_p;
+    manager->m_tran_index = thread_p->tran_index;
+    lock_group_section_begin (manager->m_tran_index);
 
     return manager;
   }
@@ -87,6 +91,7 @@ namespace parallel_query
       }
 
     wait_workers ();
+    lock_group_section_end (m_tran_index);
 
     worker_manager_global::get_manager().release_workers (m_reserved_workers);
     m_reserved_workers = 0;
