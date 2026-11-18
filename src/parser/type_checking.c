@@ -17937,7 +17937,9 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    DB_VALUE slash_char;
 	    char const *slash_str = "\\";
 
-	    if (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false && DB_IS_NULL (esc_char))
+	    /* with no ESCAPE clause the backslash escapes only under require_like_escape_character, as when the term is
+	     * evaluated (pt_to_pred_expr_local_with_arg ()); no_backslash_escapes concerns string literals only */
+	    if (prm_get_bool_value (PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER) && DB_IS_NULL (esc_char))
 	      {
 		INTL_CODESET arg1_cs = DB_IS_NULL (arg1) ? LANG_SYS_CODESET : db_get_string_codeset (arg1);
 		int arg1_coll = DB_IS_NULL (arg1) ? LANG_SYS_COLLATION : db_get_string_collation (arg1);
