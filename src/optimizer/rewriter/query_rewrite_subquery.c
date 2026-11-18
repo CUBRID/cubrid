@@ -843,6 +843,7 @@ qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
 {
   PT_NODE *subq, *on_cond, *expr;
   short location = 0;
+  int max_pred_order;
 
   subq = spec->info.spec.derived_table;
   if (subq == NULL || subq->node_type != PT_SELECT
@@ -863,6 +864,11 @@ qo_make_semi_anti_exists_cond (PARSER_CONTEXT * parser, PT_NODE * spec)
   /* replace the columns of the spec with the select list items, as pt_copypush_terms () does */
   on_cond = mq_lambda (parser, on_cond, spec->info.spec.as_attr_list, subq->info.query.q.select.list);
   (void) parser_walk_tree (parser, on_cond, pt_mark_location, &location, NULL, NULL);
+
+  /* Set predicates to be evaluated first, as pt_copypush_terms () does (CBRD-24668): the select list items of an IN
+   * form were computed only on the rows its WHERE kept */
+  max_pred_order = pt_get_max_pred_order (parser, on_cond);
+  pt_set_pred_order (parser, subq->info.query.q.select.where, max_pred_order + 1);
   subq->info.query.q.select.where = parser_append_node (on_cond, subq->info.query.q.select.where);
 
   subq->info.query.all_distinct = PT_ALL;
