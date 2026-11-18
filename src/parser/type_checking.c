@@ -20597,6 +20597,9 @@ pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func)
  *   parser(in): parser global context info for reentrancy
  *   func(in): a parse tree representation of a possibly constant function
  *   dbval_res(in/out): the result DB_VALUE of evaluation
+ *
+ * pt_evaluate_function_holder gathers the arguments and calls the function the same way for a DEFAULT tree, where
+ * an argument need not be a literal: keep the two in step.
  */
 int
 pt_evaluate_function (PARSER_CONTEXT * parser, PT_NODE * func, DB_VALUE * dbval_res)
