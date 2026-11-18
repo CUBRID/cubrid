@@ -24598,7 +24598,7 @@ pt_to_variable_size_type (PT_TYPE_ENUM type_enum)
  *
  * Note: keep in step with pt_evaluate_db_value_expr () and pt_evaluate_tree_having_serial ().
  */
-bool
+static bool
 pt_expr_needs_sys_datetime (const PT_NODE * node)
 {
   const PT_NODE *arg1;
