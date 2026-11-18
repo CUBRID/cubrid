@@ -26,9 +26,10 @@
 #include <algorithm>
 
 #include "memory_monitor_sr.hpp"
+#include "scope_exit.hpp"
 
 bool mmon_disabled = true;
-THREAD_LOCAL_TRIVIAL bool mmon_in_add_stat = false;
+THREAD_LOCAL_TRIVIAL bool mmon_untracked = false;
 
 namespace cubmem
 {
@@ -277,6 +278,10 @@ retry:
 
   void memory_monitor::aggregate_server_info (MMON_SERVER_INFO &server_info)
   {
+    // stat_info is not counted: it grows after the total is read, so only the entries would include it
+    mmon_untracked = true;
+    auto track_again = make_scope_exit ([] { mmon_untracked = false; });
+
     strncpy (server_info.server_name, m_server_name.c_str (), m_server_name.size () + 1);
     server_info.total_mem_usage = get_total_mem_usage ();
     server_info.total_metainfo_mem_usage = get_meta_alloc_count () * MMON_METAINFO_SIZE;
