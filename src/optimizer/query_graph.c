@@ -1206,6 +1206,10 @@ build_query_graph_function_index (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 		      if (expr_str != NULL
 			  && !intl_identifier_casecmp (expr_str, constraints->func_index_info->expr_str))
 			{
+			  /* name resolution marks the expression only over the class itself; one over a view
+			   * reaches here unmarked, and the hash join, which finds the column a segment is fetched
+			   * into by the mark (pt_find_attribute_with_func_index_expr ()), would not find it */
+			  PT_EXPR_INFO_SET_FLAG (tree, PT_EXPR_INFO_FUNCTION_INDEX);
 			  for (i = 0; i < env->nsegs; i++)
 			    {
 			      seg_fi = QO_ENV_SEG (env, i);
