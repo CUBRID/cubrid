@@ -1546,8 +1546,10 @@ expr_k_nested_prog (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  * A step that owns a slot (expr_compile_generic ()) computes once per execution, as the interpreter keeps such a node
  * (FETCH_ALL_CONST): on the first row of an execution that reaches it, it copies the value into the slot its cell was
  * wired to, and on the later rows it returns at once -- clearing the mark of a '?' check, which skips the same operands
- * on every row of the execution.  It copies because the node's slot does not last the execution: a correlated subquery
- * that runs again clears its output list (qexec_start_mainblock_iterations ()). */
+ * on every row of the execution.  It copies because the node's slot is the interpreter's: an interpreted evaluation of
+ * the same node rewrites it, and a clear of the XASL node empties it (qexec_clear_arith_list () -- at the end of the
+ * execution, and at the start of every run of a BUILD_SCHEMA_PROC's iterations), while a step that returns at once
+ * reads nothing again.  The slot is the program's and keeps the value until expr_prog_reset (). */
 static int
 expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
@@ -8828,8 +8830,8 @@ expr_image_get_prog (EXPR_IMAGE_READER * r)
     {
       if (prog->steps[i].alias_of >= 0 && prog->steps[i].out != NULL)
 	{
-	  /* a step that writes another step's slot owns none (a lazy check may alias a generic step, which owns
-	   * none either: its value is the node's own) */
+	  /* a step that writes another step's slot owns none (a lazy check aliases a generic step, which owns a slot
+	   * only when it computes once per execution -- expr_compile_generic ()) */
 	  r->failed = true;
 	}
     }

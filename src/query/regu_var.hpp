@@ -399,8 +399,9 @@ is_argument_wrapped_with_cast_op (const regu_variable_node *regu_var)
 /* whether an arithmetic node over constant operands keeps its value for the rest of the execution by its operator
  * alone (fetch.c's fetch_arith_caches () adds the predicate): not an operator whose value changes without its operands
  * (a serial, a variable, a random number, a statistic, another tuple of the CONNECT BY list), and not the branch
- * operators CASE, DECODE, IF and PREDICATE, whose predicate the fetch does not analyze.  The expression compiler hoists
- * a step out of the row loop by the same rule (expr_compile_generic ()), on the server and at XASL generation */
+ * operators CASE, DECODE, IF and PREDICATE, whose predicate the fetch does not analyze.  The expression compiler
+ * computes a generic step once per execution by the same rule (expr_compile_generic ()), on the server and at XASL
+ * generation */
 bool
 fetch_opcode_caches (OPERATOR_TYPE opcode)
 {

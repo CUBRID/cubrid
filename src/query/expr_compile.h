@@ -116,6 +116,9 @@ struct expr_step
   EXPR_KERNEL_FN kernel;
   unsigned char kernel_id;	/* the kernel by id (expr_compile.c, EXPR_KERNEL_LIST): what the compiler decides; kernel is
 				 * its function */
+  int once_exec;		/* a generic step that computes once per execution (it owns out): the execution of its
+				 * program (EXPR_PROG.n_executions) that computed out, 0 before the first; a runtime mark,
+				 * not in the image (here, in the hole after kernel_id, the step keeps its size) */
 
   /* argument cells: dereferenced at evaluation time; wired at compile time either to a
    * stable value (constant, host variable) or to a producer step's cell */
@@ -144,9 +147,6 @@ struct expr_step
 				 * check of a deep row (expr_run_range_checked) and the frames a body's interpreted calls see */
   int skip;			/* a generic step's operands the row did not fetch (bit 2 right, 4 third), set by the lazy
 				 * check that jumped over their steps; the step reads it as NULL operands and clears it */
-  int once_exec;		/* a generic step that computes once per execution (it owns out): the execution of its
-				 * program (EXPR_PROG.n_executions) that computed out, 0 before the first; a runtime mark,
-				 * not in the image */
 
   /* Conditional evaluation is expressed with JUMPS, the steps staying one flat sequence
    * the row loop walks forward.  A right operand the interpreter fetches only under a
