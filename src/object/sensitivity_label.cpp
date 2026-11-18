@@ -867,6 +867,61 @@ sensitivity_label_drop (DB_OBJECT *label)
 }
 
 /*
+ * sensitivity_label_drop_all () - drop the label of every attribute of a class
+ *   return: error code
+ *   class_mop(in): the class
+ *   class_(in): the class structure
+ *   dropped(in/out): the names of the attributes whose label is dropped are appended, to be freed with
+ *                    nlist_free () even on error; NULL when the caller does not want them
+ *
+ * Note: each attribute is looked up by its key: a scan by the snapshot would miss a label committed after it.
+ */
+int
+sensitivity_label_drop_all (MOP class_mop, SM_CLASS *class_, DB_NAMELIST **dropped)
+{
+  SM_ATTRIBUTE *att;
+  DB_OBJECT *label;
+  int error;
+
+  /* a class that cannot have labels has none: do not look up each attribute */
+  if (!sensitivity_label_is_allowed (class_))
+    {
+      return NO_ERROR;
+    }
+
+  for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      error = sensitivity_label_find (class_mop, att->id, &label);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (label == NULL)
+	{
+	  continue;
+	}
+
+      error = sensitivity_label_drop (label);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (dropped != NULL)
+	{
+	  error = nlist_append (dropped, att->header.name, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * find_label_by_name () - find the label of an attribute by the class name and the attribute name in a statement
  *   return: error code
  *   class_name(in): the class name

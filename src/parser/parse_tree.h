@@ -3682,6 +3682,7 @@ struct pt_sensitivity_label_info
   PT_NODE *level;		/* PT_VALUE */
   PT_NODE *comment;		/* PT_VALUE */
   PT_NODE *target_list;		/* by kind: [schema.]table.column (PT_DOT_), [schema.]table or schema (PT_NAME) list */
+  PT_NODE *dropped_columns;	/* PT_DOT_ (table.column) list: what a DROP ... IN TABLE dropped */
   PT_NODE *grade;		/* PT_VALUE */
   PT_NODE *info_type;		/* PT_VALUE */
   PT_NODE *source;		/* PT_VALUE */

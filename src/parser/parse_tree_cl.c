@@ -21353,6 +21353,7 @@ pt_apply_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p, void *arg
 {
   PT_APPLY_WALK (parser, p->info.sensitivity_label.name, arg);
   PT_APPLY_WALK (parser, p->info.sensitivity_label.target_list, arg);
+  PT_APPLY_WALK (parser, p->info.sensitivity_label.dropped_columns, arg);
   return p;
 }
 
@@ -21457,8 +21458,15 @@ static PARSER_VARCHAR *
 pt_print_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+  PT_MISC_TYPE kind = p->info.sensitivity_label.kind;
 
-  if (p->info.sensitivity_label.target_list != NULL)
+  if (p->info.sensitivity_label.dropped_columns != NULL)
+    {
+      /* after execution, print what it dropped as DROP ... ON COLUMN: HA replicates this text */
+      kind = PT_SENSITIVITY_LABEL_COLUMN;
+      r1 = pt_print_bytes_l (parser, p->info.sensitivity_label.dropped_columns);
+    }
+  else if (p->info.sensitivity_label.target_list != NULL)
     {
       r1 = pt_print_bytes_l (parser, p->info.sensitivity_label.target_list);
     }
@@ -21468,7 +21476,7 @@ pt_print_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * p)
     }
 
   q = pt_append_nulstring (parser, q, "drop sensitivity label ");
-  q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sensitivity_label.kind));
+  q = pt_append_nulstring (parser, q, pt_show_misc_type (kind));
   q = pt_append_nulstring (parser, q, " ");
   q = pt_append_varchar (parser, q, r1);
 
