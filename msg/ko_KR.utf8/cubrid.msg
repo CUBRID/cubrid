@@ -1510,7 +1510,9 @@ $ LOADDB
 
 1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
 
-1395 마지막 에러
+1395 CS 모드에서는 분할 테이블에 행을 로딩할 수 없습니다. 각 분할에 로딩하십시오.
+
+1396 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2027,6 +2029,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
 345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
+346 %2$s의 %1$d번째 인자는 %3$s 매개변수에 넘기므로 바인드 변수(? 또는 :name)여야 합니다.
 
 
 
