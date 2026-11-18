@@ -37,15 +37,7 @@ int sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name,
 				      DB_OBJECT **component);
 
 int sensitivity_label_find_class (const char *name, MOP *class_mop, SM_CLASS **class_);
-int sensitivity_label_find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
-				      SM_ATTRIBUTE **att);
 int sensitivity_label_find_classes_in_schema (const char *schema_name, DB_OBJLIST **class_list);
-bool sensitivity_label_is_allowed (SM_CLASS *class_);
-int sensitivity_label_find (MOP class_mop, const int attr_id, DB_OBJECT **label);
-int sensitivity_label_create (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type,
-			      DB_OBJECT *source);
-int sensitivity_label_replace (DB_OBJECT *label, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
-int sensitivity_label_drop (DB_OBJECT *label);
 int sensitivity_label_drop_all (MOP class_mop, SM_CLASS *class_, DB_NAMELIST **dropped);
 int sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, SM_TEMPLATE *flat);
 int sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_);

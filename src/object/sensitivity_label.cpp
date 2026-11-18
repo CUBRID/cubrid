@@ -31,10 +31,17 @@
 
 static const char *get_component_class_name (const PT_MISC_TYPE kind);
 static const char *get_component_kind_name (const PT_MISC_TYPE kind);
-static int put_components (DB_OTMPL *obj_tmpl, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
-static int put_labeled_by (DB_OTMPL *obj_tmpl);
 static int execute_query_with_object (const char *sql, DB_OBJECT *object, DB_SESSION **session,
 				      DB_QUERY_RESULT **result);
+static int find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
+			   SM_ATTRIBUTE **att);
+static bool is_label_allowed (SM_CLASS *class_);
+static int find_label (MOP class_mop, const int attr_id, DB_OBJECT **label);
+static int put_components (DB_OTMPL *obj_tmpl, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
+static int put_labeled_by (DB_OTMPL *obj_tmpl);
+static int create_label (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
+static int replace_label (DB_OBJECT *label, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
+static int drop_label (DB_OBJECT *label);
 static bool has_attribute_id (SM_ATTRIBUTE *att_list, const int attr_id);
 static int find_label_by_name (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
 			       SM_ATTRIBUTE **att, DB_OBJECT **label);
@@ -561,7 +568,7 @@ sensitivity_label_find_class (const char *name, MOP *class_mop, SM_CLASS **class
 }
 
 /*
- * sensitivity_label_find_attribute () - find an attribute by the class name and the attribute name in a statement
+ * find_attribute () - find an attribute by the class name and the attribute name in a statement
  *   return: error code
  *   class_name(in): the class name
  *   att_name(in): the attribute name
@@ -569,9 +576,9 @@ sensitivity_label_find_class (const char *name, MOP *class_mop, SM_CLASS **class
  *   class_(out): the class structure
  *   att(out): the attribute
  */
-int
-sensitivity_label_find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
-				  SM_ATTRIBUTE **att)
+static int
+find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
+		SM_ATTRIBUTE **att)
 {
   int error;
 
@@ -685,19 +692,19 @@ end:
 }
 
 /*
- * sensitivity_label_is_allowed () - tell whether the attributes of a class can have sensitivity labels
+ * is_label_allowed () - tell whether the attributes of a class can have sensitivity labels
  *   return: true when the class is neither a view, a system class nor a partition
  *   class_(in): the class structure
  */
-bool
-sensitivity_label_is_allowed (SM_CLASS *class_)
+static bool
+is_label_allowed (SM_CLASS *class_)
 {
   return class_->class_type == SM_CLASS_CT && ! (class_->flags & SM_CLASSFLAG_SYSTEM)
 	 && (class_->partition == NULL || class_->partition->pname == NULL);
 }
 
 /*
- * sensitivity_label_find () - find the label of an attribute to replace or drop it
+ * find_label () - find the label of an attribute to replace or drop it
  *   return: error code
  *   class_mop(in): the class
  *   attr_id(in): the attribute id
@@ -705,8 +712,8 @@ sensitivity_label_is_allowed (SM_CLASS *class_)
  *
  * Note: the lookup X-locks the label and ignores the snapshot: it waits for an uncommitted create or drop.
  */
-int
-sensitivity_label_find (MOP class_mop, const int attr_id, DB_OBJECT **label)
+static int
+find_label (MOP class_mop, const int attr_id, DB_OBJECT **label)
 {
   DB_OBJECT *label_class;
   DB_VALUE value[2];
@@ -803,7 +810,7 @@ put_labeled_by (DB_OTMPL *obj_tmpl)
 }
 
 /*
- * sensitivity_label_create () - create the label of an attribute
+ * create_label () - create the label of an attribute
  *   return: error code
  *   class_mop(in): the class
  *   attr_id(in): the attribute id
@@ -811,9 +818,9 @@ put_labeled_by (DB_OTMPL *obj_tmpl)
  *   info_type(in): the info_type, or NULL
  *   source(in): the source, or NULL
  */
-int
-sensitivity_label_create (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type,
-			  DB_OBJECT *source)
+static int
+create_label (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type,
+	      DB_OBJECT *source)
 {
   DB_OBJECT *label_class;
   DB_OBJECT *label;
@@ -892,15 +899,15 @@ end:
 }
 
 /*
- * sensitivity_label_replace () - replace the whole label of an attribute
+ * replace_label () - replace the whole label of an attribute
  *   return: error code
  *   label(in): the label
  *   grade(in): the grade
  *   info_type(in): the info_type, or NULL
  *   source(in): the source, or NULL
  */
-int
-sensitivity_label_replace (DB_OBJECT *label, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source)
+static int
+replace_label (DB_OBJECT *label, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source)
 {
   DB_OTMPL *obj_tmpl;
   int error;
@@ -955,12 +962,12 @@ end:
 }
 
 /*
- * sensitivity_label_drop () - drop the label of an attribute
+ * drop_label () - drop the label of an attribute
  *   return: error code
  *   label(in): the label
  */
-int
-sensitivity_label_drop (DB_OBJECT *label)
+static int
+drop_label (DB_OBJECT *label)
 {
   int error;
   int save;
@@ -996,14 +1003,14 @@ sensitivity_label_drop_all (MOP class_mop, SM_CLASS *class_, DB_NAMELIST **dropp
   int error;
 
   /* a class that cannot have labels has none: do not look up each attribute */
-  if (!sensitivity_label_is_allowed (class_))
+  if (!is_label_allowed (class_))
     {
       return NO_ERROR;
     }
 
   for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      error = sensitivity_label_find (class_mop, att->id, &label);
+      error = find_label (class_mop, att->id, &label);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1014,7 +1021,7 @@ sensitivity_label_drop_all (MOP class_mop, SM_CLASS *class_, DB_NAMELIST **dropp
 	  continue;
 	}
 
-      error = sensitivity_label_drop (label);
+      error = drop_label (label);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1072,7 +1079,7 @@ sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, S
   int error;
 
   /* a class that cannot have labels has none: do not look up each attribute */
-  if (!sensitivity_label_is_allowed (class_))
+  if (!is_label_allowed (class_))
     {
       return NO_ERROR;
     }
@@ -1084,7 +1091,7 @@ sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, S
 	  continue;
 	}
 
-      error = sensitivity_label_find (class_mop, att->id, &label);
+      error = find_label (class_mop, att->id, &label);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1095,7 +1102,7 @@ sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, S
 	  continue;
 	}
 
-      error = sensitivity_label_drop (label);
+      error = drop_label (label);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1123,7 +1130,7 @@ sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
   int save;
 
   /* a class that cannot have labels has none: do not execute the query */
-  if (!sensitivity_label_is_allowed (class_))
+  if (!is_label_allowed (class_))
     {
       return NO_ERROR;
     }
@@ -1168,13 +1175,13 @@ find_label_by_name (const char *class_name, const char *att_name, MOP *class_mop
 {
   int error;
 
-  error = sensitivity_label_find_attribute (class_name, att_name, class_mop, class_, att);
+  error = find_attribute (class_name, att_name, class_mop, class_, att);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  return sensitivity_label_find (*class_mop, (*att)->id, label);
+  return find_label (*class_mop, (*att)->id, label);
 }
 
 /*
@@ -1205,18 +1212,18 @@ sensitivity_label_create_on_attribute (const char *class_name, const char *att_n
 
   if (label == NULL)
     {
-      if (!sensitivity_label_is_allowed (class_))
+      if (!is_label_allowed (class_))
 	{
 	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_NOT_ALLOWED, sm_ch_name ((MOBJ) class_));
 	  return error;
 	}
 
-      return sensitivity_label_create (class_mop, att->id, grade, info_type, source);
+      return create_label (class_mop, att->id, grade, info_type, source);
     }
 
   if (or_replace)
     {
-      return sensitivity_label_replace (label, grade, info_type, source);
+      return replace_label (label, grade, info_type, source);
     }
 
   ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_ALREADY_EXISTS, att->header.name, sm_ch_name ((MOBJ) class_));
@@ -1250,5 +1257,5 @@ sensitivity_label_drop_on_attribute (const char *class_name, const char *att_nam
       return error;
     }
 
-  return sensitivity_label_drop (label);
+  return drop_label (label);
 }
