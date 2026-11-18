@@ -2345,6 +2345,13 @@ sort_by_word (const midxkey_sort &ms, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *s
       subarray_word = rec_word;
       for (end = start + 1; end < record_count; end++)
 	{
+	  /* the sorted slots point all over the buffer, and the column often lies on the record's second cache line */
+	  if (end + RADIX_PREFETCH_AHEAD < record_count)
+	    {
+	      prefetch (ms.rec_base + slots[end + RADIX_PREFETCH_AHEAD], PREFETCH_READ, PREFETCH_CACHE_L1);
+	      prefetch (ms.rec_base + slots[end + RADIX_PREFETCH_AHEAD] + 32, PREFETCH_READ, PREFETCH_CACHE_L1);
+	    }
+
 	  rec_word = column_word_of<WORD_WIDTH> (ms, slots[end], column_index, word_index);
 	  if (rec_word != subarray_word)
 	    {
