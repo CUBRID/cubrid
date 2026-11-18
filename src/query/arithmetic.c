@@ -73,6 +73,7 @@ static int db_mod_double (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2
 static int db_mod_string (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_numeric (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
 static int db_mod_monetary (DB_VALUE * value, DB_VALUE * value1, DB_VALUE * value2);
+static void db_make_floor_ceil_numeric (DB_VALUE * result, char *num_str, int scale);
 static double round_double (double num, double integer);
 static int move_n_days (int *monthp, int *dayp, int *yearp, const int interval);
 static int round_date (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2);
@@ -85,6 +86,36 @@ static int db_width_bucket_calculate_numeric (double *result, const DB_VALUE * v
 					      const DB_VALUE * value3, const DB_VALUE * value4);
 static int is_str_find_all (DB_VALUE * val, bool & find_all);
 static bool is_any_arg_null (DB_VALUE * const *args, int num_args);
+
+/*
+ * db_make_floor_ceil_numeric () - make the float NUMERIC result of FLOOR or CEIL from its decimal string
+ *   return: none
+ *   result(out)    : resultant db_value
+ *   num_str(in/out): the decimal digits of the result with its sign, the last scale digits zeros
+ *   scale(in)      : scale of the result
+ *
+ * Note: A carry that grew the value past 40 digits drops its last fraction digit, a zero, from the scale,
+ *       as ROUND does.
+ */
+static void
+db_make_floor_ceil_numeric (DB_VALUE * result, char *num_str, int scale)
+{
+  unsigned char num[DB_NUMERIC_BUF_SIZE];
+  bool is_value_negative = false;
+  int precision;
+
+  numeric_coerce_dec_str_to_num (num_str, num, &is_value_negative);
+  precision = numeric_get_precision_digits (num);
+  if (precision > DB_MAX_NUMERIC_PRECISION)
+    {
+      num_str[strlen (num_str) - 1] = '\0';
+      scale--;
+      numeric_coerce_dec_str_to_num (num_str, num, &is_value_negative);
+      precision = DB_MAX_NUMERIC_PRECISION;
+    }
+
+  db_make_numeric (result, num, precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative, true);
+}
 
 /*
  * db_floor_dbval () - take floor of db_value
@@ -148,12 +179,10 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 
 	if (s)
 	  {
-	    unsigned char num[DB_NUMERIC_BUF_SIZE];
 	    char num_str[NUMERIC_MAX_STRING_SIZE] = { '\0' };
 	    char *num_str_p;
 	    int num_str_len;
 	    bool decrement = false;
-	    bool is_value_negative = false;
 
 	    if (numeric_db_value_floor_ceil (value, true, result))
 	      {
@@ -210,16 +239,12 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
 		    num_str_p = num_str + 1;
 		  }
 
-		numeric_coerce_dec_str_to_num (num_str_p, num, &is_value_negative);
-		db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
-				 is_value_negative, true);
+		db_make_floor_ceil_numeric (result, num_str_p, s);
 	      }
 	    else
 	      {
 		/* given numeric is positive or already rounded */
-		numeric_coerce_dec_str_to_num (num_str + 1, num, &is_value_negative);
-		db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
-				 is_value_negative, true);
+		db_make_floor_ceil_numeric (result, num_str + 1, s);
 	      }
 	  }
 	else
@@ -314,7 +339,6 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 	    char *num_str_p;
 	    int num_str_len = 0;
 	    bool increment = false;
-	    bool is_value_negative = false;
 
 	    if (numeric_db_value_floor_ceil (value, false, result))
 	      {
@@ -349,13 +373,10 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 
 	    if (increment)
 	      {
-		unsigned char num[DB_NUMERIC_BUF_SIZE];
 		if (num_str[1] == '-')
 		  {
 		    /* CEIL(-3.1) is -3.0, as opposed to CEIL(+3.1) which is 4 */
-		    numeric_coerce_dec_str_to_num (num_str + 1, num, &is_value_negative);
-		    db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
-				     is_value_negative, true);
+		    db_make_floor_ceil_numeric (result, num_str + 1, s);
 		  }
 		else
 		  {
@@ -389,9 +410,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 			num_str_p = num_str + 1;
 		      }
 
-		    numeric_coerce_dec_str_to_num (num_str_p, num, &is_value_negative);
-		    db_make_numeric (result, num, numeric_get_precision_digits (num), s, DB_NUMERIC_BUF_SIZE,
-				     is_value_negative, true);
+		    db_make_floor_ceil_numeric (result, num_str_p, s);
 		  }
 	      }
 	    else
