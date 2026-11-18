@@ -478,6 +478,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/client_credentials.cpp
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_sr.c
+  ${TRANSACTION_DIR}/lock_group.cpp
   ${TRANSACTION_DIR}/lock_manager.c
   ${TRANSACTION_DIR}/lock_table.c
   ${TRANSACTION_DIR}/log_2pc.c
@@ -509,6 +510,7 @@ set(TRANSACTION_SOURCES
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/lock_deferred_wake.hpp
+  ${TRANSACTION_DIR}/lock_group.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
