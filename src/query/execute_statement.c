@@ -20371,8 +20371,7 @@ do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name,
     }
   er_clear ();
 
-  /* only a grade has a level: the semantic check rejects LEVEL on INFO_TYPE and SOURCE */
-  if (level > 0)
+  if (kind == PT_SENSITIVITY_LABEL_GRADE)
     {
       db_make_int (&value, level);
       if (db_find_unique (class_obj, "grade_level", &value) != NULL)
@@ -20411,7 +20410,7 @@ do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name,
       goto end;
     }
 
-  if (level > 0)
+  if (kind == PT_SENSITIVITY_LABEL_GRADE)
     {
       db_make_int (&value, level);
       error = dbt_put_internal (obj_tmpl, "grade_level", &value);
@@ -20580,9 +20579,11 @@ do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, 
       er_clear ();
     }
 
-  /* only a grade has a level: the semantic check rejects LEVEL on INFO_TYPE and SOURCE */
+  /* only a grade has a level: the grammar does not take LEVEL for INFO_TYPE and SOURCE */
   if (level > 0)
     {
+      assert (kind == PT_SENSITIVITY_LABEL_GRADE);
+
       db_make_int (&value, level);
       level_obj = db_find_unique (class_obj, "grade_level", &value);
       if (level_obj == NULL)

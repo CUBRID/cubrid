@@ -9565,20 +9565,10 @@ pt_check_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_SENSITIVITY_LABEL_INFO *info = &node->info.sensitivity_label;
 
-  if (info->level != NULL)
+  if (info->level != NULL && info->level->info.value.data_value.i < 1)
     {
-      if (info->kind != PT_SENSITIVITY_LABEL_GRADE)
-	{
-	  PT_ERRORm (parser, info->level, MSGCAT_SET_PARSER_SEMANTIC,
-		     MSGCAT_SEMANTIC_SENSITIVITY_LABEL_LEVEL_NOT_GRADE);
-	  return;
-	}
-
-      if (info->level->info.value.data_value.i < 1)
-	{
-	  PT_ERRORm (parser, info->level, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_INVALID_LEVEL);
-	  return;
-	}
+      PT_ERRORm (parser, info->level, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SENSITIVITY_LABEL_INVALID_LEVEL);
+      return;
     }
 
   if (node->node_type == PT_ALTER_SENSITIVITY_LABEL && info->new_name == NULL && info->level == NULL
