@@ -4033,6 +4033,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
   new_xasl_state->vd.lrand = xasl_state_p->vd.lrand;
   new_xasl_state->vd.sys_datetime = xasl_state_p->vd.sys_datetime;
   new_xasl_state->vd.sys_epochtime = xasl_state_p->vd.sys_epochtime;
+  new_xasl_state->vd.evaluating_default = xasl_state_p->vd.evaluating_default;
   DB_VALUE *values = NULL;
   if (new_xasl_state->vd.dbval_cnt > 0)
     {
@@ -18653,8 +18654,11 @@ qexec_eval_default_expr (THREAD_ENTRY * thread_p, REGU_VARIABLE * expr, XASL_STA
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
   int error = NO_ERROR;
+  bool save_evaluating_default = xasl_state->vd.evaluating_default;
 
+  xasl_state->vd.evaluating_default = true;
   error = fetch_copy_dbval (thread_p, expr, &xasl_state->vd, NULL, NULL, NULL, result);
+  xasl_state->vd.evaluating_default = save_evaluating_default;
   if (error != NO_ERROR)
     {
       return error;
