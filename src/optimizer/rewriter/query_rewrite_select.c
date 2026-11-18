@@ -5283,6 +5283,8 @@ qo_gbp_check_expr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	case PT_CONNECT_BY_ISCYCLE:
 	case PT_DEFINE_VARIABLE:
 	case PT_EVALUATE_VARIABLE:
+	case PT_SLEEP:
+	  /* an argument copied into two partial aggregates (AVG) runs twice per row */
 	  walk->bad = true;
 	  break;
 	default:
@@ -5506,6 +5508,17 @@ qo_gbp_check_output_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
        * differently; over integers the sum is exact */
       if (function == PT_AVG && agg_arg->type_enum != PT_TYPE_SMALLINT && agg_arg->type_enum != PT_TYPE_INTEGER
 	  && agg_arg->type_enum != PT_TYPE_BIGINT)
+	{
+	  walk->bad = true;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      /* SUM over FLOAT adds in DOUBLE and casts the total: a partial sum cast to FLOAT would round, or overflow
+       * where the total does not */
+      if (function == PT_SUM && agg_arg->type_enum != PT_TYPE_SMALLINT && agg_arg->type_enum != PT_TYPE_INTEGER
+	  && agg_arg->type_enum != PT_TYPE_BIGINT && agg_arg->type_enum != PT_TYPE_NUMERIC
+	  && agg_arg->type_enum != PT_TYPE_DOUBLE)
 	{
 	  walk->bad = true;
 	  *continue_walk = PT_STOP_WALK;
