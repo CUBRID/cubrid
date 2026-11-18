@@ -44,6 +44,12 @@ namespace parallel_scan
     UINT64 qualified_rows;
     struct timeval elapsed_time;
 
+    /* heap scan only: the worker's page batch (expr_batch.h) -- its pages taken and handed back to the row path, and
+     * why it declined (a static string) when it took none */
+    UINT64 batch_pages;
+    UINT64 batch_pages_rowpath;
+    const char *batch_why_not;
+
     /* index scan only */
     UINT64 read_keys;
     UINT64 qualified_keys;
@@ -81,7 +87,8 @@ namespace parallel_scan
       /* the EXPR_COMPILE listing of a worker's XASL clone (expr_compile.h).  The compiled
        * programs live and die with the worker clones, so the coordinator's XASL -- the one
        * the SQL trace dumps -- never has any; the first worker to report keeps its listing
-       * here and the scan's trace prints it (every worker compiles the same clone the same way). */
+       * here and the trace's plan section prints it under the scan (qdump_print_plan_detail_text ():
+       * every worker compiles the same clone the same way). */
       void add_expr_compile_dump (xasl_node *xasl, SCAN_ID *scan_id);
       /* a worker hands over everything it counted when it ends; merge_stats () merges the sum into the leader */
       void add_px_stats (const UINT64 *worker_stats);
@@ -121,7 +128,15 @@ namespace parallel_scan
       void dump_stats_text (FILE *fp, int indent, char *class_name);
       void dump_stats_json (trace_json_t *scan, char *class_name);
       void set_last_partition_stats (SCAN_STATS *partition_stats);
+      /* the workers' EXPR_COMPILE listing for the trace's plan section, or an empty string */
+      const std::string &get_expr_compile_dump () const
+      {
+	return m_expr_compile_dump;
+      }
     private:
+      void batch_ranges (UINT64 &min_pages, UINT64 &max_pages, UINT64 &min_rowpath, UINT64 &max_rowpath,
+			 const char *&why_not) const;
+      void dump_batch_text (FILE *fp);
       std::vector<child_stats> m_stats;
       child_stats m_stats_last;
       RESULT_TYPE m_result_type;

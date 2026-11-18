@@ -3427,11 +3427,16 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	      PARTITION_SPEC_TYPE *curr_part = NULL, *prev_part = NULL;
 	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
 	      SCAN_STATS save_stats;
+	      const char *save_why_not = NULL;
 
 	      scan_stats = &spec->s_id.scan_stats;
 
 	      /* save */
 	      memcpy (&save_stats, &spec->s_id.scan_stats, sizeof (SCAN_STATS));
+	      if (spec->s_id.type == S_HEAP_SCAN)
+		{
+		  save_why_not = spec->s_id.s.hsid.batch_why_not;
+		}
 
 	      part_scan_array = trace_json_array ();
 
@@ -3501,6 +3506,11 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 		  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
 		  assert (scan_stats->agl == NULL);
 
+		  if (spec->s_id.type == S_HEAP_SCAN)
+		    {
+		      /* the batch's reason on this partition, as the text trace shows it */
+		      spec->s_id.s.hsid.batch_why_not = curr_part->batch_why_not;
+		    }
 		  scan_print_stats_json (&spec->s_id, part_scan);
 
 		  trace_json_array_append_new (part_scan_array, part_scan);
@@ -3518,6 +3528,10 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 
 	      /* restore */
 	      memcpy (&spec->s_id.scan_stats, &save_stats, sizeof (SCAN_STATS));
+	      if (spec->s_id.type == S_HEAP_SCAN)
+		{
+		  spec->s_id.s.hsid.batch_why_not = save_why_not;
+		}
 	    }
 	}
       else if (type == TARGET_LIST)
@@ -3873,9 +3887,21 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 					 trace_json_string (gstats->groupby_hash_merge_why));
 	    }
 	}
-      if (gstats->groupby_hash_groups > 0)
+      else if (gstats->groupby_hash_merge_skip != NULL)
 	{
-	  trace_json_object_set_new (groupby, "groups_est", trace_json_integer (gstats->groupby_hash_groups));
+	  trace_json_object_set_new (groupby, "hash_merge_skipped",
+				     trace_json_string (gstats->groupby_hash_merge_skip));
+	}
+      if (gstats->batch_rows > 0)
+	{
+	  trace_json_object_set_new (groupby, "batch_rows", trace_json_integer (gstats->batch_rows));
+	  trace_json_object_set_new (groupby, "batch_rows_cached",
+				     trace_json_integer (gstats->batch_rows - gstats->batch_rows_rowpath));
+	  trace_json_object_set_new (groupby, "batch_rows_rowpath", trace_json_integer (gstats->batch_rows_rowpath));
+	  trace_json_object_set_new (groupby, "batch_groups", trace_json_integer (gstats->batch_groups_cached));
+	  trace_json_object_set_new (groupby, "batch_flushes", trace_json_integer (gstats->batch_flushes));
+	  trace_json_object_set_new (groupby, "batch_clears", trace_json_integer (gstats->batch_clears));
+	  trace_json_object_set_new (groupby, "batch_time", trace_json_integer (TO_MSEC (gstats->batch_time)));
 	}
 
       trace_json_object_set_new (groupby, "rows", trace_json_integer (gstats->rows));
@@ -4256,44 +4282,120 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 }
 
 /*
- * qdump_print_expr_compile_text () - compiled expression-program section of the SQL
- *				      trace (see expr_compile.h): one summary line per
- *				      program (is it active, what does it cover) and its
- *				      per-step listing (kernels, cells, domains, prologue
- *				      marks, jump targets), only for a session that shows its
- *				      plans in detail (csql ;plan detail, XASL_TRACE_PLAN_DETAIL)
- *				      -- it is the plan's execution shape, not something a user
- *				      reading a plain trace needs, and the default trace stays
- *				      what a build without this feature prints
+ * The EXPR_COMPILE lines of the SQL trace's plan section (see expr_compile.h): one summary line per program (is it
+ * active, what does it cover, does the page batch run it) and its per-step listing (kernels, cells, domains,
+ * prologue marks, jump targets).  They are the plan's execution shape, decided as the statement runs on the server
+ * (the compiler at XASL generation or on the first evaluation, the page batch when the scan opens), so the server
+ * writes them after the client's plan (qdump_print_plan_detail_text (), session_get_trace_stats ()), only for a
+ * session that shows its plans in detail (csql ;plan detail, XASL_TRACE_PLAN_DETAIL) -- they are not runtime
+ * statistics, and the trace statistics carry none of them.
  */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-void
-qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag)
-{
-  cubxasl::aggregate_list_node * agg_list = NULL, *agg;
-  OUTPTR_LIST *outs[2] = { NULL, NULL };
-  const char *out_names[2] = { "output list", "group output list" };
-  const char *sfx = (tag != NULL) ? tag : "";
-  int i, k;
 
-  /* Nothing of this section is in the default trace: it is the compiler's coverage state
-   * (which lists compiled, how many columns a program covers, who owns an accumulator), and
-   * a user has no knob to act on it -- there is no hint and no parameter that turns the
-   * compiler on or off for a statement.  Printing it by default made every trace-carrying
-   * test answer depend on the coverage of the day and re-blessed again with each coverage
-   * commit.  A session that asks for its plans in detail (csql ;plan detail: the client sends
-   * XASL_TRACE_PLAN_DETAIL with the trace) gets the summary lines and the step listings
-   * together; the default trace stays byte-identical to a build without this feature. */
-  if (!thread_get_thread_entry_info ()->trace_plan_detail)
+/* what a program's line says of the page batch (expr_batch.h) */
+enum qdump_expr_batch_kind
+{
+  QDUMP_EXPR_BATCH_FILTER,	/* a data filter: the batch's terms */
+  QDUMP_EXPR_BATCH_OUTPUT,	/* an output list: the batch's vectors */
+  QDUMP_EXPR_BATCH_AGGREGATE	/* aggregate operands: the batch's accumulators */
+};
+
+/*
+ * qdump_print_expr_batch_text () - ", batch: ..." of a program's line: whether the page batch runs it
+ *   fp(in):
+ *   spec(in): the scan that feeds the program, or NULL (then nothing is printed)
+ *   gstats(in): the GROUP BY's statistics of the node, or NULL
+ *   kind(in): what the program is
+ *
+ * The batch's shape was kept on the scan when its plan went (scan_batch_park ()), or read from the live plan of a
+ * parallel worker (trace_handler::add_expr_compile_dump ()).  "kernel" and "vectors" are the batch's, "row path" is
+ * the row-at-a-time evaluation, with the reason when one is known.
+ */
+static void
+qdump_print_expr_batch_text (FILE * fp, ACCESS_SPEC_TYPE * spec, const GROUPBY_STATS * gstats,
+			     enum qdump_expr_batch_kind kind)
+{
+  const SCAN_ID *s_id;
+  const SCAN_BATCH_SHAPE *shape;
+  const char *why;
+
+  if (spec == NULL)
     {
       return;
     }
+  s_id = &spec->s_id;
+  switch (s_id->type)
+    {
+    case S_HEAP_SCAN:
+      break;
+    case S_INDX_SCAN:
+    case S_PARALLEL_INDEX_SCAN:
+      fprintf (fp, ", batch: row path (index scan)");
+      return;
+    case S_PARALLEL_HEAP_SCAN:
+      /* the workers run the scan: their listing says it */
+      return;
+    default:
+      fprintf (fp, ", batch: row path (not a heap scan)");
+      return;
+    }
 
-  outs[0] = xasl_p->outptr_list;
+  shape = &s_id->s.hsid.batch_shape;
+  why = s_id->s.hsid.batch_why_not;
+  if (why == NULL && !shape->built && (s_id->mvcc_select_lock_needed || s_id->scan_op_type != S_SELECT))
+    {
+      /* a consumer does not try the batch on such a scan, so the scan has no reason of its own: the one
+       * scan_batch_open_internal () would give */
+      why = "a scan the batch does not take (it locks, or not a SELECT)";
+    }
+  if (!shape->built || s_id->scan_stats.batch_pages == 0)
+    {
+      fprintf (fp, ", batch: row path (%s)", (why != NULL) ? why : shape->built ? "no page taken" : "not tried");
+      return;
+    }
+
+  switch (kind)
+    {
+    case QDUMP_EXPR_BATCH_FILTER:
+      fprintf (fp, ", batch: kernel (filter terms raw %d / row %d)", shape->filter_raw, shape->filter_row);
+      break;
+    case QDUMP_EXPR_BATCH_OUTPUT:
+      if (shape->proj_vec + shape->proj_rows > 0)
+	{
+	  fprintf (fp, ", batch: vectors %d / row path %d%s%s%s", shape->proj_vec, shape->proj_rows,
+		   (shape->proj_why != NULL) ? " (program on the row path: " : "",
+		   (shape->proj_why != NULL) ? shape->proj_why : "", (shape->proj_why != NULL) ? ")" : "");
+	}
+      else
+	{
+	  fprintf (fp, ", batch: row path (%s)",
+		   (shape->proj_why != NULL) ? shape->proj_why : "the batch does not compute this list");
+	}
+      break;
+    case QDUMP_EXPR_BATCH_AGGREGATE:
+      if (shape->aggs > 0 || (gstats != NULL && gstats->batch_rows > 0))
+	{
+	  fprintf (fp, ", batch: kernel");
+	}
+      else
+	{
+	  fprintf (fp, ", batch: row path (the batch does not accumulate these aggregates)");
+	}
+      break;
+    }
+}
+
+/*
+ * qdump_print_expr_compile_aggregate_text () - the EXPR_COMPILE line of a node's aggregate operands
+ */
+static void
+qdump_print_expr_compile_aggregate_text (FILE * fp, xasl_node * xasl_p, int indent, const char *sfx)
+{
+  cubxasl::aggregate_list_node * agg_list = NULL, *agg;
+  int i;
+
   if (xasl_p->type == BUILDLIST_PROC)
     {
       agg_list = xasl_p->proc.buildlist.g_agg_list;
-      outs[1] = xasl_p->proc.buildlist.g_outptr_list;
     }
   else if (xasl_p->type == BUILDVALUE_PROC)
     {
@@ -4304,8 +4406,9 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
     {
       /* every candidate operand is a plain column or a wired constant: no program is
        * needed, the accumulator's fast path reads such an operand in place */
-      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)%s\n", indent,
-	       ' ', sfx);
+      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)", indent, ' ');
+      qdump_print_expr_batch_text (fp, xasl_p->spec_list, &xasl_p->groupby_stats, QDUMP_EXPR_BATCH_AGGREGATE);
+      fprintf (fp, "%s\n", sfx);
     }
   else if (agg_list != NULL && agg_list->operand_prog_state != 0)
     {
@@ -4328,12 +4431,16 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	    }
 	  if (had_candidates)
 	    {
-	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)%s\n", indent, ' ', sfx);
+	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)", indent, ' ');
+	      qdump_print_expr_batch_text (fp, xasl_p->spec_list, &xasl_p->groupby_stats, QDUMP_EXPR_BATCH_AGGREGATE);
+	      fprintf (fp, "%s\n", sfx);
 	    }
 	}
       else
 	{
-	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): active%s\n", indent, ' ', sfx);
+	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): active", indent, ' ');
+	  qdump_print_expr_batch_text (fp, xasl_p->spec_list, &xasl_p->groupby_stats, QDUMP_EXPR_BATCH_AGGREGATE);
+	  fprintf (fp, "%s\n", sfx);
 	  for (agg = agg_list, i = 0; agg != NULL; agg = agg->next, i++)
 	    {
 	      if (agg->operand_prog_base >= 0)
@@ -4356,54 +4463,308 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
 	}
     }
+}
 
-  /* data filters of this node's access specs (compiled scan predicates) */
-  {
-    ACCESS_SPEC_TYPE *spec;
+/*
+ * qdump_print_expr_compile_filter_text () - the EXPR_COMPILE line of a scan's data filter (compiled scan predicate)
+ *   return: whether it printed one
+ */
+static bool
+qdump_print_expr_compile_filter_text (FILE * fp, ACCESS_SPEC_TYPE * spec, int indent, const char *sfx)
+{
+  if (spec->where_pred == NULL || spec->where_pred->scan_prog_state == 0)
+    {
+      return false;
+    }
+  fprintf (fp, "%*cEXPR_COMPILE (data filter): %s", indent, ' ',
+	   (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)");
+  qdump_print_expr_batch_text (fp, spec, NULL, QDUMP_EXPR_BATCH_FILTER);
+  fprintf (fp, "%s\n", sfx);
+  if (spec->where_pred->scan_prog_state == 1)
+    {
+      /* the operand program, when the filter's comparisons carry compiled arithmetic */
+      expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
+    }
+  return true;
+}
 
-    for (spec = xasl_p->spec_list; spec != NULL; spec = spec->next)
-      {
-	if (spec->where_pred == NULL || spec->where_pred->scan_prog_state == 0)
-	  {
-	    continue;
-	  }
-	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
-		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
-	if (spec->where_pred->scan_prog_state == 1)
-	  {
-	    /* the operand program, when the filter's comparisons carry compiled arithmetic */
-	    expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
-	  }
-      }
-  }
+/*
+ * qdump_print_expr_compile_output_text () - the EXPR_COMPILE lines of a node's output lists
+ */
+static void
+qdump_print_expr_compile_output_text (FILE * fp, xasl_node * xasl_p, int indent, const char *sfx)
+{
+  OUTPTR_LIST *outs[2] = { NULL, NULL };
+  const char *out_names[2] = { "output list", "group output list" };
+  int i, k;
+
+  outs[0] = xasl_p->outptr_list;
+  if (xasl_p->type == BUILDLIST_PROC)
+    {
+      outs[1] = xasl_p->proc.buildlist.g_outptr_list;
+    }
 
   for (k = 0; k < 2; k++)
     {
       OUTPTR_LIST *out = outs[k];
+      int covered = 0;
 
       /* Only an active program is reported. A list that was never tried (0) or that the
-       * compiler declined (2) runs entirely on the interpreted path, so its trace must stay
-       * byte-identical to a build without this feature -- printing a line for it would make
-       * every such statement's trace differ. */
+       * compiler declined (2) runs entirely on the interpreted path, so printing a line for
+       * it would make every such statement's plan section differ. */
       if (out == NULL || out->eval_prog_state != 1)
 	{
 	  continue;
 	}
+
+      for (i = 0; i < out->valptr_cnt; i++)
+	{
+	  covered += (out->eval_prog_idx[i] >= 0) ? 1 : 0;
+	}
+      fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d", indent, ' ', out_names[k], covered,
+	       out->valptr_cnt);
+      if (k == 0)
+	{
+	  /* the group output list runs once a group, after the scan: the batch has no part in it */
+	  qdump_print_expr_batch_text (fp, xasl_p->spec_list, NULL, QDUMP_EXPR_BATCH_OUTPUT);
+	}
+      fprintf (fp, "%s\n", sfx);
+      expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
+    }
+}
+
+/*
+ * qdump_print_expr_compile_text () - the EXPR_COMPILE lines of one XASL node, its scans' data filters included
+ *   tag(in): appended to every summary line (may be NULL), e.g. " [px worker]"
+ *
+ * A parallel worker lists its clone with it (trace_handler::add_expr_compile_dump ()); the plan section places the
+ * listing under the scan it ran (qdump_print_plan_detail_text ()).
+ */
+void
+qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag)
+{
+  const char *sfx = (tag != NULL) ? tag : "";
+  ACCESS_SPEC_TYPE *spec;
+
+  qdump_print_expr_compile_aggregate_text (fp, xasl_p, indent, sfx);
+  for (spec = xasl_p->spec_list; spec != NULL; spec = spec->next)
+    {
+      (void) qdump_print_expr_compile_filter_text (fp, spec, indent, sfx);
+    }
+  qdump_print_expr_compile_output_text (fp, xasl_p, indent, sfx);
+}
+
+/*
+ * qdump_print_plan_detail_spec_text () - a scan of the plan section: its label and, under it, its data filter's
+ *					  program or the program listing its parallel workers left
+ */
+static void
+qdump_print_plan_detail_spec_text (FILE * fp, ACCESS_SPEC_TYPE * spec, int indent)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  char *class_name = NULL, *index_name = NULL;
+  const char *px_dump = NULL;
+  size_t px_len = 0;
+  bool has_filter;
+
+  has_filter = (spec->where_pred != NULL && spec->where_pred->scan_prog_state != 0);
+#if !WINDOWS
+  {
+    parallel_scan::accumulative_trace_storage * storage = NULL;
+
+    /* the storage the statistics dump right after this (qdump_print_access_spec_stats_text ()) */
+    if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
+      {
+	storage = spec->s_id.s.phsid.trace_storage;
+      }
+    else if (spec->s_id.type == S_PARALLEL_INDEX_SCAN || spec->s_id.type == S_INDX_SCAN)
+      {
+	storage = spec->s_id.s.pisid.trace_storage;
+      }
+    else if (spec->s_id.type == S_PARALLEL_LIST_SCAN)
+      {
+	storage = spec->s_id.s.pllsid_parallel.trace_storage;
+      }
+    if (storage != NULL && !storage->get_expr_compile_dump ().empty ())
+      {
+	px_dump = storage->get_expr_compile_dump ().c_str ();
+	px_len = storage->get_expr_compile_dump ().size ();
+      }
+  }
+#endif
+  if (!has_filter && px_dump == NULL)
+    {
+      return;
+    }
+
+  fprintf (fp, "%*cSCAN ", indent, ' ');
+  if (spec->type == TARGET_CLASS)
+    {
+      CLS_SPEC_TYPE *cls_node = &ACCESS_SPEC_CLS_SPEC (spec);
+
+      if (heap_get_class_name (thread_p, &cls_node->cls_oid, &class_name) != NO_ERROR)
+	{
+	  if (er_errid () != ER_INTERRUPTED)
+	    {
+	      er_clear ();
+	    }
+	}
+      if (spec->access == ACCESS_METHOD_INDEX
+	  && heap_get_indexinfo_of_btid (thread_p, &cls_node->cls_oid, &spec->indexptr->btid, NULL, NULL, NULL, NULL,
+					 &index_name, NULL) == NO_ERROR && class_name != NULL && index_name != NULL)
+	{
+	  fprintf (fp, "(index: %s.%s)\n", class_name, index_name);
+	}
       else
 	{
-	  int covered = 0;
+	  fprintf (fp, "(table: %s)\n", (class_name != NULL) ? class_name : "unknown");
+	}
+      if (class_name != NULL)
+	{
+	  free_and_init (class_name);
+	}
+      if (index_name != NULL)
+	{
+	  free_and_init (index_name);
+	}
+    }
+  else if (spec->type == TARGET_LIST)
+    {
+      fprintf (fp, "(temp)\n");
+    }
+  else
+    {
+      fprintf (fp, "(%s)\n", "other");
+    }
 
-	  for (i = 0; i < out->valptr_cnt; i++)
+  if (has_filter)
+    {
+      (void) qdump_print_expr_compile_filter_text (fp, spec, indent + 2, "");
+    }
+  if (px_dump != NULL)
+    {
+      /* the workers' listing was rendered with indent 2 (trace_handler::add_expr_compile_dump ()): one line at a
+       * time under this scan, those 2 taken off */
+      size_t pos = 0;
+
+      while (pos < px_len)
+	{
+	  const char *nl = (const char *) memchr (px_dump + pos, '\n', px_len - pos);
+	  size_t end = (nl == NULL) ? px_len : (size_t) (nl - px_dump);
+
+	  if (end - pos >= 2 && px_dump[pos] == ' ' && px_dump[pos + 1] == ' ')
 	    {
-	      covered += (out->eval_prog_idx[i] >= 0) ? 1 : 0;
+	      pos += 2;
 	    }
-	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d%s\n", indent, ' ', out_names[k], covered,
-		   out->valptr_cnt, sfx);
-	  expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
+
+	  fprintf (fp, "%*c%.*s\n", indent + 2, ' ', (int) (end - pos), px_dump + pos);
+	  pos = end + 1;
 	}
     }
 }
-#endif /* SERVER_MODE || SA_MODE */
+
+/*
+ * qdump_print_plan_detail_text () - the server's part of the SQL trace's plan section: the XASL tree's nodes in the
+ *				     order of the trace statistics, each with the EXPR_COMPILE lines of what it
+ *				     evaluates -- its aggregate operands and output lists under the node, a data filter
+ *				     under its scan.  A node without such lines is left out, its label too.
+ *   fp(in):
+ *   xasl_p(in):
+ *   indent(in):
+ *
+ * Written before the statistics (qexec_set_xasl_trace_to_session ()): those free the parallel scans' trace storage,
+ * which holds the workers' listings.
+ */
+void
+qdump_print_plan_detail_text (FILE * fp, xasl_node * xasl_p, int indent)
+{
+  char *body = NULL;
+  size_t size = 0;
+  FILE *bfp;
+  xasl_node *xptr;
+  ACCESS_SPEC_TYPE *spec;
+  int in;
+  bool labeled;
+
+  if (xasl_p == NULL)
+    {
+      return;
+    }
+
+  /* a scan node (the inner side of a join) has no line of its own in the statistics either: its scans stand at the
+   * node's indent */
+  labeled = (xasl_p->type != SCAN_PROC);
+  in = labeled ? indent + 2 : indent;
+
+  bfp = port_open_memstream (&body, &size);
+  if (bfp == NULL)
+    {
+      return;
+    }
+
+  qdump_print_expr_compile_aggregate_text (bfp, xasl_p, in, "");
+  qdump_print_expr_compile_output_text (bfp, xasl_p, in, "");
+  for (spec = xasl_p->spec_list; spec != NULL; spec = spec->next)
+    {
+      qdump_print_plan_detail_spec_text (bfp, spec, in);
+    }
+  for (spec = xasl_p->merge_spec; spec != NULL; spec = spec->next)
+    {
+      qdump_print_plan_detail_spec_text (bfp, spec, in);
+    }
+
+  switch (xasl_p->type)
+    {
+    case UNION_PROC:
+    case DIFFERENCE_PROC:
+    case INTERSECTION_PROC:
+      /* the operands are the aptr list (qdump_print_stats_text ()) */
+      break;
+    case MERGELIST_PROC:
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.mergelist.outer_xasl, in);
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.mergelist.inner_xasl, in);
+      break;
+    case HASHJOIN_PROC:
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.hashjoin.outer.xasl, in);
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.hashjoin.inner.xasl, in);
+      break;
+    case MERGE_PROC:
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.merge.update_xasl, in);
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.merge.insert_xasl, in);
+      break;
+    case CTE_PROC:
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.cte.non_recursive_part, in);
+      qdump_print_plan_detail_text (bfp, xasl_p->proc.cte.recursive_part, in);
+      break;
+    default:
+      break;
+    }
+
+  qdump_print_plan_detail_text (bfp, xasl_p->scan_ptr, in);
+  qdump_print_plan_detail_text (bfp, xasl_p->connect_by_ptr, in);
+  for (xptr = xasl_p->aptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      qdump_print_plan_detail_text (bfp, xptr, in);
+    }
+  for (xptr = xasl_p->dptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      qdump_print_plan_detail_text (bfp, xptr, in);
+    }
+
+  port_close_memstream (bfp, &body, &size);
+  if (body != NULL)
+    {
+      if (body[0] != '\0')
+	{
+	  if (labeled)
+	    {
+	      fprintf (fp, "%*c%s\n", indent, ' ', qdump_xasl_type_string (xasl_p));
+	    }
+	  fputs (body, fp);
+	}
+      free (body);
+    }
+}
 
 /*
  * qdump_print_stats_text () -
@@ -4456,9 +4817,6 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   (long long int) xasl_p->func_stats.time, (long long int) xasl_p->func_stats.fetches,
 		   (long long int) xasl_p->func_stats.ioreads, (long long int) xasl_p->func_stats.calls);
 	}
-#if defined (SERVER_MODE) || defined (SA_MODE)
-      qdump_print_expr_compile_text (fp, xasl_p, indent, NULL);
-#endif
       break;
 
     case UNION_PROC:
@@ -4666,14 +5024,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	      fprintf (fp, " (workers: none, %s)", gstats->groupby_hash_merge_why);
 	    }
 	}
-      if (gstats->groupby_hash_groups > 0)
+      else if (gstats->groupby_hash_merge_skip != NULL)
 	{
-	  fprintf (fp, ", groups (est.): %lld", (long long) gstats->groupby_hash_groups);
+	  /* what the merge's estimate of the groups decided: the leftovers went to the sort as they were */
+	  fprintf (fp, ", hash merge: no (%s)", gstats->groupby_hash_merge_skip);
 	}
-      if (gstats->batch_rows > 0 && thread_get_thread_entry_info ()->trace_plan_detail)
+      if (gstats->batch_rows > 0)
 	{
-	  /* the page batch's node of the serial scan, with the plan details as the scan's batch pages are: the rows
-	   * it accumulated from its cache, the ones the row path's table call took (their time is the GROUP BY's) */
+	  /* the page batch's node of the serial scan, counted as it runs like the scan's batch pages: the rows it
+	   * accumulated from its cache, the ones the row path's table call took (their time is the GROUP BY's) */
 	  fprintf (fp,
 		   ", batch: rows %lld (cached %lld, row path %lld), groups %lld, flushes %lld, clears %lld, time %d",
 		   (long long) gstats->batch_rows, (long long) (gstats->batch_rows - gstats->batch_rows_rowpath),

@@ -1160,15 +1160,15 @@ struct groupby_stat
   int groupby_hash_merge_parts;	/* partitions of the hash merge of the leftovers (qexec_gby_hash_merge ()), or 0 */
   int groupby_hash_merge_levels;	/* 2 when a partition of the merge was split once more, else 1 */
   int groupby_hash_merge_sorted;	/* the partitions of the merge left to the sort as they were */
-  INT64 groupby_hash_groups;	/* the groups the hash merge estimated (its distinct-key sketch), or 0 */
+  const char *groupby_hash_merge_skip;	/* why the hash merge left the leftovers to the sort (qexec_gby_hash_merge ():
+					 * the decision its estimate of the groups made), or NULL -- a static string */
   int groupby_hash_merge_workers;	/* the workers that merged the partitions (qexec_gby_px_merge ()), or 0: printed
 					 * with the partition count; parallel_num counts the same workers then */
   const char *groupby_hash_merge_why;	/* why no worker merged them, when they were to */
   struct timeval groupby_hash_merge_finish_time;	/* the leader's finish of the groups the workers merged (HAVING,
 							 * the output list: qexec_gby_px_finish ()), after their rounds */
   INT64 groupby_hash_merge_finish_groups;	/* those groups */
-  /* the page batch's hash GROUP BY node of the serial scan (qexec_batch_gby_consume ()), shown with the plan
-   * details: the rows it took, of which it handed some to the row path's table call (the rest it accumulated from
+  /* the page batch's hash GROUP BY node of the serial scan (qexec_batch_gby_consume ()): the rows it took, of which it handed some to the row path's table call (the rest it accumulated from
    * its cache of groups), the groups the cache took in, its flushes and clears, and its own time -- the row path's
    * calls are in groupby_time */
   INT64 batch_rows;

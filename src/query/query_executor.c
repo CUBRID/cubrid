@@ -8363,10 +8363,10 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   if (list_id->tuple_cnt == 0)
     {
       /* no row left to sort (no first rows kept, none passed the table): the partial entries are the groups and
-       * nothing is merged, but the trace reports their estimate as when rows are left */
-      if (thread_is_on_trace (thread_p) && !ctx->key_sketch_partial && ctx->state != HS_REJECT_ALL)
+       * nothing is merged */
+      if (thread_is_on_trace (thread_p))
 	{
-	  xasl->groupby_stats.groupby_hash_groups = (INT64) qdata_key_sketch_estimate (ctx->key_sketch);
+	  xasl->groupby_stats.groupby_hash_merge_skip = "no rows left";
 	}
       return NO_ERROR;
     }
@@ -8386,10 +8386,6 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     {
       groups = qdata_key_sketch_estimate (ctx->key_sketch);
     }
-  if (thread_is_on_trace (thread_p))
-    {
-      xasl->groupby_stats.groupby_hash_groups = (INT64) groups;
-    }
   /* many groups whose order does not reach the result: workers merge the partitions (qexec_gby_px_merge ()), as
    * many as the sort of these lists would take */
 #if defined (SERVER_MODE)
@@ -8406,12 +8402,21 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     {
       /* the merge would run on the leader alone, where the sort of these lists takes workers: the sort keeps them
        * (a merge that has workers of its own goes on below) */
+      if (thread_is_on_trace (thread_p))
+	{
+	  /* the trace says what the estimate decided, not the estimate itself */
+	  xasl->groupby_stats.groupby_hash_merge_skip = "the sort takes workers";
+	}
       return NO_ERROR;
     }
   if (groups * (parallel ? QEXEC_GBY_MERGE_MIN_FOLD_PX : QEXEC_GBY_MERGE_MIN_FOLD)
       > (double) (list_id->tuple_cnt + partials->tuple_cnt))
     {
       /* the lists fold little: the sort runs in parallel, where a table would build every group one by one */
+      if (thread_is_on_trace (thread_p))
+	{
+	  xasl->groupby_stats.groupby_hash_merge_skip = "the groups fold little";
+	}
       return NO_ERROR;
     }
 
@@ -36526,9 +36531,27 @@ static void
 qexec_set_xasl_trace_to_session (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   size_t sizeloc;
-  char *trace_str = NULL;
+  char *trace_str = NULL, *plan_detail = NULL;
   FILE *fp;
   trace_json_t *trace;
+
+  /* the plan section's server part first: the statistics below free the parallel scans' trace storage, which holds
+   * the workers' expression listings.  Only for a session that shows its plans in detail (csql ;plan detail); every
+   * traced statement sets it, NULL included, so the block of the statement before does not stay */
+  if (thread_p->trace_plan_detail)
+    {
+      fp = port_open_memstream (&plan_detail, &sizeloc);
+      if (fp)
+	{
+	  qdump_print_plan_detail_text (fp, xasl, 4);
+	  port_close_memstream (fp, &plan_detail, &sizeloc);
+	}
+      if (plan_detail != NULL && plan_detail[0] == '\0')
+	{
+	  free_and_init (plan_detail);
+	}
+    }
+  (void) session_set_trace_plan_detail (thread_p, plan_detail);
 
   if (thread_p->trace_format == QUERY_TRACE_TEXT)
     {

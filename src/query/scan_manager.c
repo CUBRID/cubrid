@@ -2781,6 +2781,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->batch_started = false;
   hsidp->batch_rowmode = false;
   hsidp->batch_why_not = NULL;
+  memset (&hsidp->batch_shape, 0, sizeof (hsidp->batch_shape));
   hsidp->batch_iter = false;
   hsidp->batch_page_more = false;
   hsidp->batch_off_page = false;
@@ -8336,6 +8337,12 @@ scan_batch_park (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp)
 {
   SCAN_BATCH_KEEP *keep = (hsidp->batch_spec != NULL) ? hsidp->batch_spec->batch_keep : NULL;
 
+  if (hsidp->batch_plan != NULL && thread_is_on_trace (thread_p))
+    {
+      /* the trace is written after the scan ends, when the plan is parked or freed: its shape stays on the scan for
+       * the plan section (qdump_print_plan_detail_text ()) */
+      expr_batch_plan_shape (hsidp->batch_plan, &hsidp->batch_shape);
+    }
   if (keep != NULL && hsidp->batch_plan != NULL)
     {
       assert (keep->plan == NULL);
@@ -9637,6 +9644,33 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 	      free (agl_index);
 	    }
 
+	  if (scan_id->type == S_HEAP_SCAN
+	      && (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0
+		  || scan_id->s.hsid.batch_why_not != NULL))
+	    {
+	      /* the page batch, as the text trace shows it (scan_print_stats_text ()) */
+	      if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
+		{
+		  trace_json_object_set_new (scan, "batch_pages", trace_json_integer (scan_id->scan_stats.batch_pages));
+		  trace_json_object_set_new (scan, "batch_pages_rowpath",
+					     trace_json_integer (scan_id->scan_stats.batch_pages_rowpath));
+		  if (scan_id->scan_stats.batch_pages_offpage > 0)
+		    {
+		      trace_json_object_set_new (scan, "batch_pages_offpage",
+						 trace_json_integer (scan_id->scan_stats.batch_pages_offpage));
+		    }
+		  if (scan_id->s.hsid.batch_why_not != NULL && scan_id->scan_stats.batch_pages_rowpath > 0)
+		    {
+		      trace_json_object_set_new (scan, "batch_rowpath_last",
+						 trace_json_string (scan_id->s.hsid.batch_why_not));
+		    }
+		}
+	      else
+		{
+		  trace_json_object_set_new (scan, "batch_why_not", trace_json_string (scan_id->s.hsid.batch_why_not));
+		}
+	    }
+
 	  if (scan_id->scan_stats.noscan)
 	    {
 	      trace_json_object_set_new (scan_stats, "noscan", scan);
@@ -9823,14 +9857,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	    }
 	}
       fprintf (fp, ")");
-      if (thread_get_thread_entry_info ()->trace_plan_detail && scan_id->type == S_HEAP_SCAN
+      if (scan_id->type == S_HEAP_SCAN
 	  && (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0
 	      || scan_id->s.hsid.batch_why_not != NULL))
 	{
-	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections, in a group
-	   * of its own after the scan's -- the scan's own figures end the line as they do without it.  A parallel
-	   * scan's workers show theirs in their own dump (px_scan_trace_handler: expr_batch_dump ()); the parent's
-	   * counters stay 0 */
+	  /* the page batch (expr_batch.h): the pages it took and handed back are counted as the scan runs, so they are
+	   * in the default trace, in a group of their own after the scan's -- the scan's own figures end the line as
+	   * they do without it.  A parallel scan's workers count theirs on their own line, per worker
+	   * (accumulative_trace_storage::dump_stats_text ()); the parent's counters stay 0 */
 	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
 	    {
 	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */

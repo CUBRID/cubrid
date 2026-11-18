@@ -101,6 +101,9 @@ namespace parallel_scan
     thread_ref.conn_entry = m_parent_thread_p->conn_entry;
     thread_ref.tran_index = m_parent_thread_p->tran_index;
     thread_ref.on_trace = m_parent_thread_p->on_trace;
+    /* with on_trace, as every task sets it: the worker's expression listing is for a session that shows its plans in
+     * detail (trace_handler::add_expr_compile_dump ()) -- without the flag it never had one */
+    thread_ref.trace_plan_detail = m_parent_thread_p->trace_plan_detail;
 
     /* the worker keeps its own statistics whenever anyone reads them, trace or not; finalize () hands them over */
     if (perfmon_parallel_stats_needed (&thread_ref))

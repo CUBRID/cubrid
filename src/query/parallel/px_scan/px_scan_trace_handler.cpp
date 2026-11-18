@@ -44,6 +44,12 @@ namespace parallel_scan
     cs.read_rows = scan_id->scan_stats.read_rows;
     cs.qualified_rows = scan_id->scan_stats.qualified_rows;
     cs.elapsed_time = elapsed_time;
+    if (scan_id->type == S_HEAP_SCAN)
+      {
+	cs.batch_pages = scan_id->scan_stats.batch_pages;
+	cs.batch_pages_rowpath = scan_id->scan_stats.batch_pages_rowpath;
+	cs.batch_why_not = scan_id->s.hsid.batch_why_not;
+      }
     if (scan_id->type == S_INDX_SCAN)
       {
 	cs.read_keys = scan_id->scan_stats.read_keys;
@@ -126,12 +132,11 @@ namespace parallel_scan
     FILE *fp;
 
     /* Only for a session that shows its plans in detail (;plan detail, the worker inherits the
-     * flag with on_trace), never in the default trace.  Two reasons.  The serial section already says whether this plan compiled, so a
-     * worker clone repeating it is noise.  And what a worker has to report depends on how far it
-     * got: the first worker to finalize claims this slot, and one that finished before its
-     * aggregate operands were compiled reports fewer sections than one that ran rows.  That makes
-     * the default trace differ between runs of the same statement, which a test answer cannot
-     * carry. */
+     * flag with on_trace): the listing goes to the trace's plan section, never to the statistics.
+     * What a worker has to report depends on how far it got: the first worker to finalize claims
+     * this slot, and one that finished before its aggregate operands were compiled reports fewer
+     * sections than one that ran rows -- a plan section a test answer carries only with the
+     * details asked for. */
     if (!thread_get_thread_entry_info ()->trace_plan_detail)
       {
 	return;
@@ -144,20 +149,25 @@ namespace parallel_scan
 	  return;
 	}
     }
-    /* rendered with indent 0; the scan's dump re-indents every line under its own entry */
+    /* rendered with indent 2 (a "%*c" of width 0 still prints a space, so 0 would put the summary lines one column off
+     * their step lines); the plan section takes the 2 off and re-indents every line under the scan */
     fp = open_memstream (&buf, &len);
     if (fp == nullptr)
       {
 	return;
       }
-    qdump_print_expr_compile_text (fp, xasl, 0, " [px worker]");
+    if (scan_id != NULL && scan_id->type == S_HEAP_SCAN && scan_id->s.hsid.batch_plan != NULL)
+      {
+	/* the worker's plan is still alive (its scan has not ended): its shape for the expression lines */
+	expr_batch_plan_shape (scan_id->s.hsid.batch_plan, &scan_id->s.hsid.batch_shape);
+      }
+    qdump_print_expr_compile_text (fp, xasl, 2, " [px worker]");
     if (scan_id != NULL && scan_id->type == S_HEAP_SCAN
 	&& (scan_id->s.hsid.batch_plan != NULL || scan_id->s.hsid.batch_why_not != NULL))
       {
-	/* the page batch of this worker's scan (expr_batch.h), beside the compiler's sections: the dump is the first
-	 * worker's to finish (see above), so its page counts are that worker's share, not the scan's, and say so */
-	fprintf (fp, "EXPR_BATCH [px worker]: the counts below are one worker's pages, not the whole scan's\n");
-	expr_batch_dump (fp, scan_id->s.hsid.batch_plan, scan_id->s.hsid.batch_why_not, 0);
+	/* the page batch's shape on this worker's scan (expr_batch.h), beside the compiler's sections; its page
+	 * counts are on the scan's statistics line, per worker */
+	expr_batch_dump (fp, scan_id->s.hsid.batch_plan, scan_id->s.hsid.batch_why_not, 2);
       }
     fclose (fp);
     if (buf != nullptr)
@@ -235,6 +245,12 @@ namespace parallel_scan
 	    m_stats[i].read_rows += trace_handler.m_stats[i].read_rows;
 	    m_stats[i].qualified_rows += trace_handler.m_stats[i].qualified_rows;
 	    TSC_ADD_TIMEVAL (m_stats[i].elapsed_time, trace_handler.m_stats[i].elapsed_time);
+	    m_stats[i].batch_pages += trace_handler.m_stats[i].batch_pages;
+	    m_stats[i].batch_pages_rowpath += trace_handler.m_stats[i].batch_pages_rowpath;
+	    if (trace_handler.m_stats[i].batch_why_not != NULL)
+	      {
+		m_stats[i].batch_why_not = trace_handler.m_stats[i].batch_why_not;
+	      }
 	    m_stats[i].read_keys += trace_handler.m_stats[i].read_keys;
 	    m_stats[i].qualified_keys += trace_handler.m_stats[i].qualified_keys;
 	    m_stats[i].key_qualified_rows += trace_handler.m_stats[i].key_qualified_rows;
@@ -401,17 +417,48 @@ namespace parallel_scan
 	  }
 	fprintf (fp, ", gather: %s", result_type_str);
 	fprintf (fp, ")");
+	dump_batch_text (fp);
       }
+  }
 
-    /* the compiled expression programs of the worker clones, one line at a time under the
-     * same indent as the parallel line above (the listing was rendered with indent 0) */
-    for (size_t pos = 0; pos < m_expr_compile_dump.size ();)
+  /* the workers' page batch, per worker as the line's other counts are, in a group of its own after them -- the
+   * serial scan's form (scan_print_stats_text ()) with ranges */
+  void accumulative_trace_storage::batch_ranges (UINT64 &min_pages, UINT64 &max_pages, UINT64 &min_rowpath,
+      UINT64 &max_rowpath, const char *&why_not) const
+  {
+    min_pages = min_rowpath = std::numeric_limits<UINT64>::max();
+    max_pages = max_rowpath = 0;
+    why_not = NULL;
+    for (size_t i = 0; i < m_stats.size(); i++)
       {
-	size_t nl = m_expr_compile_dump.find ('\n', pos);
-	size_t end = (nl == std::string::npos) ? m_expr_compile_dump.size () : nl;
+	min_pages = std::min (min_pages, m_stats[i].batch_pages);
+	max_pages = std::max (max_pages, m_stats[i].batch_pages);
+	min_rowpath = std::min (min_rowpath, m_stats[i].batch_pages_rowpath);
+	max_rowpath = std::max (max_rowpath, m_stats[i].batch_pages_rowpath);
+	if (why_not == NULL)
+	  {
+	    why_not = m_stats[i].batch_why_not;
+	  }
+      }
+  }
 
-	fprintf (fp, "\n%*c%.*s", indent, ' ', (int) (end - pos), m_expr_compile_dump.c_str () + pos);
-	pos = end + 1;
+  void accumulative_trace_storage::dump_batch_text (FILE *fp)
+  {
+    UINT64 min_pages, max_pages, min_rowpath, max_rowpath;
+    const char *why_not;
+
+    if (m_scan_type != SCAN_TYPE::HEAP || m_stats.empty ())
+      {
+	return;
+      }
+    batch_ranges (min_pages, max_pages, min_rowpath, max_rowpath, why_not);
+    if (max_pages > 0 || max_rowpath > 0)
+      {
+	fprintf (fp, " (batch pages: %lu..%lu (row path: %lu..%lu))", min_pages, max_pages, min_rowpath, max_rowpath);
+      }
+    else if (why_not != NULL)
+      {
+	fprintf (fp, " (batch: no (%s))", why_not);
       }
   }
 
@@ -556,10 +603,27 @@ namespace parallel_scan
 	  {
 	    trace_json_object_set_new (parallel_obj, "topnsort", trace_json_true ());
 	  }
-      }
-    if (!m_expr_compile_dump.empty ())
-      {
-	trace_json_object_set_new (parallel_obj, "expr_compile", trace_json_string (m_expr_compile_dump.c_str ()));
+	if (m_scan_type == SCAN_TYPE::HEAP)
+	  {
+	    /* the workers' page batch, as the text trace shows it (dump_batch_text ()) */
+	    UINT64 min_pages, max_pages, min_rowpath, max_rowpath;
+	    const char *why_not;
+
+	    batch_ranges (min_pages, max_pages, min_rowpath, max_rowpath, why_not);
+	    if (max_pages > 0 || max_rowpath > 0)
+	      {
+		char pages_buf[64], rowpath_buf[64];
+
+		snprintf (pages_buf, sizeof (pages_buf), "%lu..%lu", min_pages, max_pages);
+		snprintf (rowpath_buf, sizeof (rowpath_buf), "%lu..%lu", min_rowpath, max_rowpath);
+		trace_json_object_set_new (parallel_obj, "batch_pages", trace_json_string (pages_buf));
+		trace_json_object_set_new (parallel_obj, "batch_pages_rowpath", trace_json_string (rowpath_buf));
+	      }
+	    else if (why_not != NULL)
+	      {
+		trace_json_object_set_new (parallel_obj, "batch_why_not", trace_json_string (why_not));
+	      }
+	  }
       }
     trace_json_object_set_new (scan, scan_type_label, parallel_obj);
   }

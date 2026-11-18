@@ -143,6 +143,7 @@ struct session_state
   SESSION_PARAM *session_parameters;
   char *trace_stats;
   char *plan_string;
+  char *plan_detail;		/* the server's part of the trace's plan section (qdump_print_plan_detail_text ()) */
   int trace_format;
   int ref_count;
   TZ_REGION session_tz_region;
@@ -349,6 +350,7 @@ session_state_init (void *st)
   session_p->session_parameters = NULL;
   session_p->trace_stats = NULL;
   session_p->plan_string = NULL;
+  session_p->plan_detail = NULL;
   session_p->ref_count = 0;
   session_p->trace_format = QUERY_TRACE_TEXT;
   session_p->private_lru_index = -1;
@@ -464,6 +466,11 @@ session_state_uninit (void *st)
   if (session->plan_string != NULL)
     {
       free_and_init (session->plan_string);
+    }
+
+  if (session->plan_detail != NULL)
+    {
+      free_and_init (session->plan_detail);
     }
 
   return NO_ERROR;
@@ -3007,7 +3014,7 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
       return ER_FAILED;
     }
 
-  if (state_p->plan_string == NULL && state_p->trace_stats == NULL)
+  if (state_p->plan_string == NULL && state_p->plan_detail == NULL && state_p->trace_stats == NULL)
     {
       db_make_null (result);
       return NO_ERROR;
@@ -3021,6 +3028,16 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 	  if (state_p->plan_string != NULL)
 	    {
 	      fprintf (fp, "\nQuery Plan:\n%s", state_p->plan_string);
+	    }
+
+	  if (state_p->plan_detail != NULL)
+	    {
+	      /* what the server's execution decided of the plan: after the client's plan, under the same title */
+	      if (state_p->plan_string == NULL)
+		{
+		  fprintf (fp, "\nQuery Plan:\n");
+		}
+	      fprintf (fp, "\n  expression programs:\n%s", state_p->plan_detail);
 	    }
 
 	  if (state_p->trace_stats != NULL)
@@ -3042,6 +3059,37 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
 	    {
 	      trace_json_object_set_new (stats, "Query Plan", plan);
 	    }
+	}
+
+      if (state_p->plan_detail != NULL)
+	{
+	  /* the text block's lines, indent kept: the listing is a tree of lines, not of objects */
+	  trace_json_t *lines = trace_json_array ();
+	  const char *line = state_p->plan_detail, *nl;
+
+	  while (*line != '\0')
+	    {
+	      /* the text's indent under the plan section's title (qexec_set_xasl_trace_to_session ()) is not the tree's */
+	      line += (strncmp (line, "    ", 4) == 0) ? 4 : 0;
+	      nl = strchr (line, '\n');
+	      if (nl == NULL)
+		{
+		  trace_json_array_append_new (lines, trace_json_string (line));
+		  break;
+		}
+	      {
+		char *one = strndup (line, nl - line);
+
+		if (one == NULL)
+		  {
+		    break;	/* statistics only: the rest of the lines are left out */
+		  }
+		trace_json_array_append_new (lines, trace_json_string (one));
+		free (one);
+	      }
+	      line = nl + 1;
+	    }
+	  trace_json_object_set_new (stats, "Expression Programs", lines);
 	}
 
       if (state_p->trace_stats != NULL)
@@ -3103,6 +3151,38 @@ session_set_trace_stats (THREAD_ENTRY * thread_p, char *stats, int format)
 }
 
 /*
+ * session_set_trace_plan_detail () - save the server's part of the trace's plan section to session
+ *   return  : NO_ERROR or ER_FAILED (no session; the block is freed)
+ *   plan_detail(in) : the block (the session owns it from here), or NULL: the statement has none
+ *
+ * Called for every traced statement before its statistics (qexec_set_xasl_trace_to_session ()), so that a statement
+ * without the block does not show the one of the statement before it.
+ */
+int
+session_set_trace_plan_detail (THREAD_ENTRY * thread_p, char *plan_detail)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      if (plan_detail != NULL)
+	{
+	  free (plan_detail);
+	}
+      return ER_FAILED;
+    }
+
+  if (state_p->plan_detail != NULL)
+    {
+      free_and_init (state_p->plan_detail);
+    }
+  state_p->plan_detail = plan_detail;
+
+  return NO_ERROR;
+}
+
+/*
  * session_clear_trace_stats () - clear query trace result from session
  *   return  :
  *   stats(in) :
@@ -3124,6 +3204,11 @@ session_clear_trace_stats (THREAD_ENTRY * thread_p)
   if (state_p->plan_string != NULL)
     {
       free_and_init (state_p->plan_string);
+    }
+
+  if (state_p->plan_detail != NULL)
+    {
+      free_and_init (state_p->plan_detail);
     }
 
   if (state_p->trace_stats != NULL)

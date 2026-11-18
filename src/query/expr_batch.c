@@ -6299,7 +6299,7 @@ done:
 void
 expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent)
 {
-  char reprs[64] = "", off_page[64] = "";
+  char reprs[64] = "";
   int i, n_pointed = 0;
 
   if (plan == NULL)
@@ -6316,23 +6316,44 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
       /* more than the representation the plan was built from: the ones it learned from the scan's records */
       snprintf (reprs, sizeof (reprs), ", representations %d", plan->n_reprs);
     }
-  if (plan->pages_off_page > 0)
-    {
-      snprintf (off_page, sizeof (off_page), ", at records off the page %lld", (long long) plan->pages_off_page);
-    }
 
+  /* the plan's shape only, for the trace's plan section: the pages it took and handed back are the scan's
+   * runtime counts and go on the scan's own trace line (the parallel scan's, summed per worker) */
   fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d%s, "
-	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld%s%s%s%s)\n",
+	   "shared values %d, vector steps %d, aggregates %d%s\n",
 	   indent, ' ', plan->n_cols, n_pointed, plan->cap, plan->n_raw_kids, plan->n_row_kids,
-	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs,
-	   (long long) plan->pages, (long long) plan->pages_fallback, off_page, reprs,
-	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
+	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs, reprs);
   if (plan->n_proj > 0)
     {
       fprintf (fp, "%*cEXPR_BATCH: output columns as vectors %d / on the row path %d%s%s\n", indent, ' ',
 	       plan->n_proj_vec, plan->n_proj_rows, (plan->proj_why_not != NULL) ? ", program on the row path: " : "",
 	       (plan->proj_why_not != NULL) ? plan->proj_why_not : "");
     }
+}
+
+/*
+ * expr_batch_plan_shape () - the plan's shape for the trace's plan section (SCAN_BATCH_SHAPE, scan_manager.h)
+ *   plan(in): a built plan
+ *   shape(out): its filter terms, output columns and aggregates as the batch runs them
+ *
+ * Read while the plan is alive -- the scan keeps the numbers when the plan is parked or freed (scan_batch_park ()),
+ * a parallel worker's dump reads them from its own plan before its scan ends.
+ */
+void
+expr_batch_plan_shape (const EXPR_BATCH_PLAN * plan, SCAN_BATCH_SHAPE * shape)
+{
+  memset (shape, 0, sizeof (*shape));
+  if (plan == NULL)
+    {
+      return;
+    }
+  shape->built = true;
+  shape->filter_raw = plan->n_raw_kids;
+  shape->filter_row = plan->n_row_kids;
+  shape->proj_vec = plan->n_proj_vec;
+  shape->proj_rows = plan->n_proj_rows;
+  shape->aggs = plan->n_aggs;
+  shape->proj_why = plan->proj_why_not;
 }
 
 /* ---------------------------------------------------------------------------------------- */

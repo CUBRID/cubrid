@@ -274,6 +274,8 @@ extern bool expr_batch_plan_gave_up (const EXPR_BATCH_PLAN * plan);
 /* why the last chunk went to the row path, or NULL */
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);
+/* the plan's shape for the trace's plan section (SCAN_BATCH_SHAPE, scan_manager.h) */
+extern void expr_batch_plan_shape (const EXPR_BATCH_PLAN * plan, struct scan_batch_shape *shape);
 
 /* A plan kept between two opens of the same scan (SCAN_BATCH_KEEP, scan_manager.h).  reset: the chunk's per-scan
  * state (its lines stay); reset_scan: the plan's per-scan state -- the trace's page counts, the give-up, the last

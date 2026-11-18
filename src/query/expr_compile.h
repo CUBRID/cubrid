@@ -215,7 +215,8 @@ struct expr_prog
    * execution of the same clone, on any thread, re-runs the prologues (host variable
    * cells are rebound) and reuses the steps.  The
    * program is freed only when the clone itself is released (XASL_DECACHE_CLONE).
-   * n_executions counts the executions that entered this program (;trace shows it). */
+   * n_executions counts the executions that entered this program (a runtime count: the
+   * plan section's listing, expr_prog_dump (), leaves it out). */
   int n_executions;
 
   /* consumers that read a scan filter's result slots (n_shared > 0) record the filter
