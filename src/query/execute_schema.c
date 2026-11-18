@@ -14446,6 +14446,11 @@ do_check_kept_default_expr (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, P
       return er_errid ();
     }
 
+  /* the rebuilt tree has no source position: report its errors at the column */
+  expr->buffer_pos = attribute->buffer_pos;
+  expr->line_number = attribute->line_number;
+  expr->column_number = attribute->column_number;
+
   data_default = pt_make_data_default_expr_node (parser, expr);
   if (data_default == NULL)
     {
