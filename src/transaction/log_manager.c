@@ -161,15 +161,32 @@ static int rv;
 #define LOG_ISUNSAFE_TO_SKIP_RCVINDEX(RCVI) \
    ((RCVI) == RVDK_LINK_PERM_VOLEXT)
 
-#define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
-   (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
-    && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
-    && ((RCVI) != RVBT_NO_LOGGING_INDEX_DURABLE) \
-    && ((RCVI) != RVBT_NO_LOGGING_INDEX_COMMITTED) \
-    && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
-    && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
-    && ((RCVI) != RVLOG_SYSMETA_VERSION_UPDATE) \
-    && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
+/*
+ * Log records that are written without a data page (the page pointer of the address is NULL).
+ * There is no page LSA to set for them. Add an rcvindex here when it is logged without a page.
+ */
+#define LOG_IS_PAGELESS_RCVINDEX(RCVI) \
+   (((RCVI) == RVBT_MVCC_INCREMENTS_UPD) \
+    || ((RCVI) == RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    || ((RCVI) == RVBT_NO_LOGGING_INDEX_DURABLE) \
+    || ((RCVI) == RVBT_NO_LOGGING_INDEX_COMMITTED) \
+    || ((RCVI) == RVBT_REMOVE_UNIQUE_STATS) \
+    || ((RCVI) == RVLOC_CLASSNAME_DUMMY) \
+    || ((RCVI) == RVLOG_SYSMETA_VERSION_UPDATE))
+
+/*
+ * The volume link is logged even on the header page of a permanent volume with temporary purpose
+ * (see LOG_ISUNSAFE_TO_SKIP_RCVINDEX), but that page keeps a temporary LSA, so its page LSA must not be set.
+ */
+#define LOG_IS_VOLUME_LINK_ON_TEMP_LSA_PAGE(RCVI, PGPTR) \
+   ((RCVI) == RVDK_LINK_PERM_VOLEXT && pgbuf_is_lsa_temporary (PGPTR))
+
+/*
+ * Whether the page LSA is set to the LSA of the log record.
+ * Use the same condition when the record is logged and when it is compensated.
+ */
+#define LOG_NEED_TO_SET_PAGE_LSA(RCVI, PGPTR) \
+   (!LOG_IS_PAGELESS_RCVINDEX (RCVI) && !LOG_IS_VOLUME_LINK_ON_TEMP_LSA_PAGE (RCVI, PGPTR))
 
 #define CDC_IS_IGNORE_LOGINFO_ERROR(ERROR) \
    (((ERROR) == ER_CDC_IGNORE_LOG_INFO) \
@@ -2262,7 +2279,7 @@ log_append_undoredo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -2406,7 +2423,7 @@ log_append_undo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (addr->pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -2543,7 +2560,7 @@ log_append_redo_crumbs (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DATA
    * Make sure that I should log. Page operational logging is not done for
    * temporary data of temporary files and volumes
    */
-  if (LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+  if (LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
     {
       if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	{
@@ -3040,7 +3057,7 @@ log_append_run_postpone (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, LOG_DAT
        * Set the LSA on the data page of the corresponding log record for page operation logging.
        * Make sure that I should log. Page operational logging is not done for temporary data of temporary files/volumes
        */
-      if (addr->pgptr != NULL && LOG_NEED_TO_SET_LSA (rcvindex, addr->pgptr))
+      if (addr->pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, addr->pgptr))
 	{
 	  if (pgbuf_set_lsa (thread_p, addr->pgptr, &start_lsa) == NULL)
 	    {
@@ -3209,9 +3226,10 @@ log_append_compensate_internal (THREAD_ENTRY * thread_p, LOG_RCVINDEX rcvindex, 
    * Set the LSA on the data page of the corresponding log record for page
    * operation logging.
    * Make sure that I should log. Page operational logging is not done for
-   * temporary data of temporary files and volumes
+   * temporary data of temporary files and volumes. Use the same condition as when the record was logged.
    */
-  if (pgptr != NULL && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
+  if (pgptr != NULL && LOG_NEED_TO_SET_PAGE_LSA (rcvindex, pgptr)
+      && pgbuf_set_lsa (thread_p, pgptr, &start_lsa) == NULL)
     {
       assert (false);
       return;
@@ -4478,7 +4496,6 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
 {
   LOG_REC_START_POSTPONE *start_posp;	/* Start postpone actions */
   LOG_PRIOR_NODE *node;
-  LOG_LSA start_lsa;
 
   node = prior_lsa_alloc_and_copy_data (thread_p, LOG_COMMIT_WITH_POSTPONE, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
   if (node == NULL)
@@ -4490,11 +4507,9 @@ log_append_commit_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * 
   LSA_COPY (&start_posp->posp_lsa, start_postpone_lsa);
   start_posp->at_time = time (NULL);
 
-  start_lsa = prior_lsa_next_record (thread_p, node, tdes);
+  (void) prior_lsa_next_record (thread_p, node, tdes);
 
   tdes->state = TRAN_UNACTIVE_COMMITTED_WITH_POSTPONE;
-
-  logpb_flush_pages (thread_p, &start_lsa);
 }
 
 /*
@@ -8381,7 +8396,10 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 	  nxtop_count--;
 	  nxtop_range = &(nxtop_stack[nxtop_count]);
 
-	  if (LSA_LT (&start_seek_lsa, &(nxtop_range->start_lsa)))
+	  /* The range starts at the system operation's last parent, the record just before the operation, which
+	   * belongs to the outer level. A postpone at that LSA, such as one appended right before the system
+	   * operation started, must run here, so equality is not inside the range. */
+	  if (LSA_LE (&start_seek_lsa, &(nxtop_range->start_lsa)))
 	    {
 	      end_seek_lsa = &(nxtop_range->start_lsa);
 	      LSA_COPY (&next_start_seek_lsa, &(nxtop_range->end_lsa));
@@ -8679,6 +8697,17 @@ log_execute_run_postpone (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_REC_RE
 	{
 	  /* deallocated */
 	  return NO_ERROR;
+	}
+    }
+
+  if (RCV_IS_POSTPONE_NOT_UNDOABLE (rcvindex))
+    {
+      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+      /* The log does not cover this postpone's effect, so the commit that postponed it must be on disk first. */
+      if (tdes != NULL && !LSA_ISNULL (&tdes->rcv.tran_start_postpone_lsa))
+	{
+	  logpb_flush_log_for_wal (thread_p, &tdes->rcv.tran_start_postpone_lsa);
 	}
     }
 
@@ -14780,6 +14809,7 @@ cdc_wakeup_consumer ()
  */
 static int cdc_User_attr_password = -1;
 static int cdc_User_attr_groups = -1;
+static int cdc_User_attr_is_loginable = -1;	/* -2 when the catalog has no such attribute */
 
 /*
  * cdc_load_user_attr_ids () - resolve the db_user attribute ids read below.
@@ -14797,10 +14827,10 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
   char *attr_name;
   int alloced;
   int i, error = NO_ERROR;
-  int password_id = -1, groups_id = -1;
+  int password_id = -1, groups_id = -1, is_loginable_id = -1;
   bool scan_started = false, attrinfo_started = false;
 
-  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1)
+  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1 && cdc_User_attr_is_loginable != -1)
     {
       return NO_ERROR;
     }
@@ -14845,6 +14875,10 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
 	{
 	  groups_id = attr_info.values[i].attrid;
 	}
+      else if (strcmp (attr_name, "is_loginable") == 0)
+	{
+	  is_loginable_id = attr_info.values[i].attrid;
+	}
 
       if (alloced)
 	{
@@ -14858,6 +14892,7 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
       goto end;
     }
 
+  cdc_User_attr_is_loginable = (is_loginable_id != -1) ? is_loginable_id : -2;
   cdc_User_attr_password = password_id;
   cdc_User_attr_groups = groups_id;
 
@@ -14962,7 +14997,8 @@ end:
 
 /*
  * cdc_find_user_oid () - locate a db_user instance by account name.
- *   return: true if the account exists.
+ *   return: NO_ERROR if found, ER_AU_INVALID_USER if there is no such account,
+ *           ER_FAILED if the lookup itself failed.
  *   thread_p (in):
  *   user_name (in): account name
  *   user_oid (out): the instance oid
@@ -14974,7 +15010,7 @@ end:
  * release/11.4, _db_user on develop) */
 #define CDC_USER_NAME_INDEX ("u_" CT_USER_NAME "_name")
 
-static bool
+static int
 cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oid)
 {
   BTID btid;
@@ -14986,7 +15022,7 @@ cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oi
   /* the same limit au_login () applies; longer can be no account */
   if (user_name == NULL || *user_name == '\0' || strlen (user_name) >= DB_MAX_USER_LENGTH)
     {
-      return false;
+      return ER_AU_INVALID_USER;
     }
 
   /* account names are stored upper-cased */
@@ -14995,14 +15031,18 @@ cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oi
   if (heap_get_index_with_name (thread_p, oid_User_class_oid, CDC_USER_NAME_INDEX, &btid) != NO_ERROR
       || BTID_IS_NULL (&btid))
     {
-      return false;
+      return ER_FAILED;
     }
 
   db_make_string (&key, upper_name);
   search = xbtree_find_unique (thread_p, &btid, S_SELECT, &key, oid_User_class_oid, user_oid, false);
   pr_clear_value (&key);
 
-  return (search == BTREE_KEY_FOUND);
+  if (search == BTREE_KEY_FOUND)
+    {
+      return NO_ERROR;
+    }
+  return (search == BTREE_ERROR_OCCURRED) ? ER_FAILED : ER_AU_INVALID_USER;
 }
 
 /*
@@ -15139,21 +15179,25 @@ cdc_set_contains_oid (DB_VALUE * set_value, const OID * oid)
 }
 
 /*
- * cdc_get_user_info () - read an account's stored password and DBA group
+ * cdc_find_user_info () - read an account's stored password and DBA group
  *   membership straight from the catalog.
- *   return: true if the account exists and could be read.
+ *   return: NO_ERROR if the account was read, ER_AU_INVALID_USER if there is no
+ *           such account, another error if it exists but could not be read.
  *   thread_p (in):
  *   user_name (in)     : account name declared by the client
  *   password (out)     : the stored (already encrypted) password, empty if none
  *   password_size (in) : size of the password buffer
  *   is_dba_group (out) : whether the account is DBA or a member of the DBA group
+ *   is_loginable (out) : whether the account may log in (NOLOGIN clears it); may be
+ *                        NULL. Reported true when the catalog has no such attribute.
+ *                        When false, the password and groups are not read.
  *
  * "groups" is the flattened membership set, so nested groups need no extra walk.
  * The CDC thread has no transaction index of its own; one is borrowed here.
  */
-bool
-cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
-		   bool * is_dba_group)
+int
+cdc_find_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+		    bool * is_dba_group, bool * is_loginable)
 {
   HEAP_SCANCACHE scan;
   RECDES recdes;
@@ -15162,29 +15206,41 @@ cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwor
   OID user_oid, dba_oid;
   int saved_tran_index = thread_p->tran_index;
   bool dba_found, borrowed_tran = false;
-  bool found = false, scan_started = false, attrinfo_started = false;
+  bool scan_started = false, attrinfo_started = false;
+  int result = ER_FAILED;
 
   assert (password != NULL && password_size > 0 && is_dba_group != NULL);
 
   password[0] = '\0';
   *is_dba_group = false;
+  if (is_loginable != NULL)
+    {
+      *is_loginable = true;
+    }
 
   if (saved_tran_index == NULL_TRAN_INDEX)
     {
       if (logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
 				   TRAN_DEFAULT_ISOLATION_LEVEL ()) == NULL_TRAN_INDEX)
 	{
-	  return false;
+	  return ER_FAILED;
 	}
       borrowed_tran = true;
     }
 
-  if (cdc_load_user_attr_ids (thread_p) != NO_ERROR || !cdc_find_user_oid (thread_p, user_name, &user_oid))
+  if (cdc_load_user_attr_ids (thread_p) != NO_ERROR)
     {
       goto end;
     }
 
-  dba_found = cdc_find_user_oid (thread_p, "DBA", &dba_oid);
+  result = cdc_find_user_oid (thread_p, user_name, &user_oid);
+  if (result != NO_ERROR)
+    {
+      goto end;
+    }
+  result = ER_FAILED;
+
+  dba_found = (cdc_find_user_oid (thread_p, "DBA", &dba_oid) == NO_ERROR);
   if (dba_found && OID_EQ (&user_oid, &dba_oid))
     {
       *is_dba_group = true;
@@ -15215,6 +15271,21 @@ cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwor
       goto end;
     }
 
+  if (is_loginable != NULL && cdc_User_attr_is_loginable >= 0)
+    {
+      /* as is_loginable_user () on the client: only an integer 1 allows the login */
+      value = heap_attrinfo_access (cdc_User_attr_is_loginable, &attr_info);
+      *is_loginable = (value != NULL && !DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_INTEGER
+		       && db_get_int (value) == 1);
+      if (!*is_loginable)
+	{
+	  /* refused before its password is looked at, as perform_login () does */
+	  *is_dba_group = false;
+	  result = NO_ERROR;
+	  goto end;
+	}
+    }
+
   /* "password" references a db_password instance, it is not the string itself. A
    * NULL/absent reference is a genuinely passwordless account (empty password is
    * fine); an object we cannot read is a failure and must not pass as empty. */
@@ -15225,7 +15296,6 @@ cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwor
 	{
 	  /* the account has a password but it could not be read -- fail closed */
 	  *is_dba_group = false;
-	  found = false;
 	  goto end;
 	}
     }
@@ -15239,7 +15309,7 @@ cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwor
 	}
     }
 
-  found = true;
+  result = NO_ERROR;
 
 end:
   if (attrinfo_started)
@@ -15257,7 +15327,19 @@ end:
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, saved_tran_index);
     }
 
-  return found;
+  return result;
+}
+
+/*
+ * cdc_get_user_info () - cdc_find_user_info () for callers that only need to
+ *   know whether the account could be read.
+ *   return: true if the account exists and was read.
+ */
+bool
+cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+		   bool * is_dba_group)
+{
+  return cdc_find_user_info (thread_p, user_name, password, password_size, is_dba_group, NULL) == NO_ERROR;
 }
 
 /*
