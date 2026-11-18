@@ -13590,6 +13590,26 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   else if (value_clauses->info.node_list.list_type == PT_IS_SUBQUERY
 	   && (vc = value_clauses->info.node_list.list) != NULL)
     {
+      /* the rows are inserted one by one on the client, so the LOCK_TIMEOUT hint must cover them as for VALUES */
+      hint_arg = statement->info.insert.waitsecs_hint;
+      if (statement->info.insert.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
+	{
+	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	  if (hint_waitsecs > 0)
+	    {
+	      wait_msecs = (int) (hint_waitsecs * 1000);
+	    }
+	  else
+	    {
+	      wait_msecs = (int) hint_waitsecs;
+	    }
+	  if (wait_msecs >= -1)
+	    {
+	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	      (void) tran_reset_wait_times (wait_msecs);
+	    }
+	}
+
       /* execute sub-query & insert its results into target class */
       row_count = insert_subquery_results (parser, statement, value_clauses, class_, savepoint_name);
       error = (row_count < 0) ? row_count : NO_ERROR;
@@ -13975,7 +13995,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
-  /* an error above skips the restore after the row */
+  /* the only restore of INSERT ... SELECT, and of a VALUES row that ended in an error */
   if (old_wait_msecs >= -1)
     {
       (void) tran_reset_wait_times (old_wait_msecs);
