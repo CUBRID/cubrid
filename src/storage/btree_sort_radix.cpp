@@ -94,6 +94,9 @@
 /* below this a counting pass costs more than a few compares; 64 measured best of 16/24/32/48/64/96/128 */
 #define RADIX_MSD_CUTOFF 64
 
+/* a walk of the slots fetches the record this many slots ahead */
+#define RADIX_PREFETCH_AHEAD 16
+
 /* the radix key of a NUMERIC without a precision: a byte for the sign, two of decimal exponent, then the mantissa
  * of DB_MAX_NUMERIC_PRECISION digits, padded to the word, see float_numeric_word () */
 #define FLOAT_NUMERIC_KEY_LENGTH DB_ALIGN (OR_BYTE_SIZE + OR_SHORT_SIZE + DB_NUMERIC_BUF_SIZE, OR_BIGINT_SIZE)
@@ -344,6 +347,12 @@ btsort_radix_sorter_next (BTSORT_RUN *run)
   if (run->cursor >= run->readrecs)
     {
       return NULL;
+    }
+
+  /* the sorted slots point all over the buffer */
+  if (run->cursor + RADIX_PREFETCH_AHEAD < run->readrecs)
+    {
+      prefetch (run->base + slots[run->cursor + RADIX_PREFETCH_AHEAD], PREFETCH_READ, PREFETCH_CACHE_L1);
     }
 
   return run->base + slots[run->cursor++];
