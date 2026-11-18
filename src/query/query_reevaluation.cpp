@@ -34,6 +34,7 @@ namespace cubquery
     type = REEV_DATA_UPDDEL;
     upddel_reev_data = &urd;
     filter_result = V_TRUE;
+    last_version_is_ours = false;
   }
 
   void
@@ -42,6 +43,7 @@ namespace cubquery
     type = REEV_DATA_SCAN;
     select_reev_data = &scan;
     filter_result = V_TRUE;
+    last_version_is_ours = false;
   }
 
   void
