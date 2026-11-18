@@ -317,6 +317,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/schema_system_metadata_builder.cpp
   ${OBJECT_DIR}/schema_system_metadata_definition.cpp
   ${OBJECT_DIR}/schema_template.c
+  ${OBJECT_DIR}/sensitivity_label.cpp
   ${OBJECT_DIR}/set_object.c
   ${OBJECT_DIR}/transform.c
   ${OBJECT_DIR}/transform_cl.c

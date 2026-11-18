@@ -73,6 +73,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "sensitivity_label.hpp"
 #include "trigger_manager.h"
 #include "release_string.h"
 #include "object_accessor.h"
@@ -151,11 +152,6 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
-static int do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int *level,
-						 const char *comment);
-static int do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const char *new_name,
-						const int level, const char *comment);
-static int do_drop_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name);
 static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -17534,13 +17530,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       repl_stmt.stmt_text = sbr_text;
     }
 
-  /* outside the host variable branch: host_var_count counts every statement of the parser */
-  if (statement->node_type == PT_CREATE_SENSITIVITY_LABEL && statement->info.sensitivity_label.assigned_level > 0)
-    {
-      PARSER_VARCHAR *label_str = pt_print_bytes (parser, statement);
-      repl_stmt.stmt_text = (char *) pt_get_varchar_bytes (label_str);
-    }
-
   repl_stmt.db_user = db_get_user_name ();
 
   if (pt_is_ddl_statement (statement) != 0)
@@ -20299,8 +20288,6 @@ int
 do_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_SENSITIVITY_LABEL_INFO *info = &statement->info.sensitivity_label;
-  const char *comment = (const char *) PT_VALUE_GET_BYTES (info->comment);
-  char name[DB_MAX_IDENTIFIER_LENGTH];
   int level = 0;
   int error;
 
@@ -20312,228 +20299,35 @@ do_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
-  sm_downcase_name ((const char *) PT_VALUE_GET_BYTES (info->name), name, DB_MAX_IDENTIFIER_LENGTH);
-
-  if (info->level != NULL)
-    {
-      level = info->level->info.value.data_value.i;
-    }
-
-  error = do_create_sensitivity_label_internal (info->kind, name, &level, comment);
-  if (error == NO_ERROR && info->level == NULL)
-    {
-      /* HA replicates this level: a replica would compute MAX + 1 again in its own commit order */
-      info->assigned_level = level;
-    }
-
-  return error;
-}
-
-/*
- * do_get_next_sensitivity_label_grade_level () - the level of a grade created without LEVEL
- *   return: error code
- *   level(out): one above the highest grade_level, or 1 for the first grade
- */
-static int
-do_get_next_sensitivity_label_grade_level (int *level)
-{
-  DB_QUERY_RESULT *query_result = NULL;
-  DB_VALUE value;
-  int max_level;
-  int error;
-
-  error =
-    db_compile_and_execute_local ("SELECT MAX ([grade_level]) FROM [" CT_SENSITIVITY_LABEL_GRADE_NAME "]",
-				  &query_result, NULL);
-  if (error < NO_ERROR)
-    {
-      goto end;
-    }
-
-  error = db_query_first_tuple (query_result);
-  if (error != DB_CURSOR_SUCCESS)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  error = db_query_get_tuple_value (query_result, 0, &value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  max_level = DB_IS_NULL (&value) ? 0 : db_get_int (&value);
-  if (max_level == DB_INT32_MAX)
-    {
-      ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_OVERFLOW, DB_INT32_MAX);
-    }
-  else
-    {
-      *level = max_level + 1;
-    }
-
-end:
-  if (query_result != NULL)
-    {
-      db_query_end (query_result);
-    }
-
-  return error;
-}
-
-/*
- * do_create_sensitivity_label_internal () - insert a grade, info_type or source row
- *   return: error code
- *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
- *   name(in): the lowercased name
- *   level(in/out): the grade_level, or 0 to assign the next one to a grade; the level given on return
- *   comment(in): the comment, or NULL
- */
-static int
-do_create_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, int *level, const char *comment)
-{
-  DB_OBJECT *class_obj;
-  DB_OBJECT *instance_obj;
-  DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE value;
-  const char *class_name;
-  bool has_savepoint = false;
-  int error;
-  int save;
-
-  switch (kind)
-    {
-    case PT_SENSITIVITY_LABEL_GRADE:
-      class_name = CT_SENSITIVITY_LABEL_GRADE_NAME;
-      break;
-    case PT_SENSITIVITY_LABEL_INFO_TYPE:
-      class_name = CT_SENSITIVITY_LABEL_INFO_TYPE_NAME;
-      break;
-    default:
-      class_name = CT_SENSITIVITY_LABEL_SOURCE_NAME;
-      break;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-
-  class_obj = db_find_class (class_name);
-  if (class_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  db_make_string (&value, name);
-  if (db_find_unique (class_obj, "name", &value) != NULL)
-    {
-      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS, pt_show_misc_type (kind), name);
-      goto end;
-    }
-
-  ASSERT_ERROR_AND_SET (error);
-  if (error != ER_OBJ_OBJECT_NOT_FOUND)
-    {
-      goto end;
-    }
-  er_clear ();
-
-  /* only a grade has a level: the semantic check rejects LEVEL on INFO_TYPE and SOURCE */
-  if (*level > 0)
-    {
-      db_make_int (&value, *level);
-      if (db_find_unique (class_obj, "grade_level", &value) != NULL)
-	{
-	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS, *level);
-	  goto end;
-	}
-
-      ASSERT_ERROR_AND_SET (error);
-      if (error != ER_OBJ_OBJECT_NOT_FOUND)
-	{
-	  goto end;
-	}
-      er_clear ();
-    }
-  else if (kind == PT_SENSITIVITY_LABEL_GRADE)
-    {
-      error = do_get_next_sensitivity_label_grade_level (level);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
   /* a failed flush leaves the row dirty in the workspace */
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
   if (error != NO_ERROR)
     {
-      goto end;
+      return error;
     }
-  has_savepoint = true;
 
-  obj_tmpl = dbt_create_object (class_obj);
-  if (obj_tmpl == NULL)
+  switch (info->kind)
     {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
+    case PT_SENSITIVITY_LABEL_GRADE:
+      assert (info->level != NULL);
+      level = info->level->info.value.data_value.i;
+      [[fallthrough]];
+    case PT_SENSITIVITY_LABEL_INFO_TYPE:
+    case PT_SENSITIVITY_LABEL_SOURCE:
+      error = sensitivity_label_create_component (info->kind, (const char *) PT_VALUE_GET_BYTES (info->name), level,
+						  (const char *) PT_VALUE_GET_BYTES (info->comment));
+      break;
+
+    default:
+      assert (false);
+      error = ER_FAILED;
+      break;
     }
 
-  db_make_string (&value, name);
-  error = dbt_put_internal (obj_tmpl, "name", &value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  if (*level > 0)
-    {
-      db_make_int (&value, *level);
-      error = dbt_put_internal (obj_tmpl, "grade_level", &value);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-  if (comment != NULL)
-    {
-      db_make_string (&value, comment);
-      error = dbt_put_internal (obj_tmpl, "comment", &value);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-  error = db_set_otmpl_timestamps (obj_tmpl);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  instance_obj = dbt_finish_object (obj_tmpl);
-  if (instance_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-  obj_tmpl = NULL;
-
-  error = locator_flush_instance (instance_obj);
-
-end:
-  if (obj_tmpl != NULL)
-    {
-      dbt_abort_object (obj_tmpl);
-    }
-
-  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+  if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
     }
-
-  AU_RESTORE (save);
 
   return error;
 }
@@ -20548,10 +20342,6 @@ int
 do_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_SENSITIVITY_LABEL_INFO *info = &statement->info.sensitivity_label;
-  const char *comment = (const char *) PT_VALUE_GET_BYTES (info->comment);
-  const char *new_name = NULL;
-  char name[DB_MAX_IDENTIFIER_LENGTH];
-  char new_name_buf[DB_MAX_IDENTIFIER_LENGTH];
   int level = 0;
   int error;
 
@@ -20563,192 +20353,28 @@ do_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
-  sm_downcase_name ((const char *) PT_VALUE_GET_BYTES (info->name), name, DB_MAX_IDENTIFIER_LENGTH);
-
-  if (info->new_name != NULL)
-    {
-      sm_downcase_name ((const char *) PT_VALUE_GET_BYTES (info->new_name), new_name_buf, DB_MAX_IDENTIFIER_LENGTH);
-      new_name = new_name_buf;
-    }
-
-  if (info->level != NULL)
-    {
-      level = info->level->info.value.data_value.i;
-    }
-
-  return do_alter_sensitivity_label_internal (info->kind, name, new_name, level, comment);
-}
-
-/*
- * do_alter_sensitivity_label_internal () - update a grade, info_type or source row
- *   return: error code
- *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
- *   name(in): the lowercased name
- *   new_name(in): the lowercased new name, or NULL to keep the name
- *   level(in): the new grade_level, or 0 to keep it
- *   comment(in): the new comment, or NULL to keep it
- */
-static int
-do_alter_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name, const char *new_name, const int level,
-				     const char *comment)
-{
-  DB_OBJECT *class_obj;
-  DB_OBJECT *instance_obj;
-  DB_OBJECT *level_obj;
-  DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE value;
-  const char *class_name;
-  bool has_savepoint = false;
-  int error;
-  int save;
-
-  switch (kind)
-    {
-    case PT_SENSITIVITY_LABEL_GRADE:
-      class_name = CT_SENSITIVITY_LABEL_GRADE_NAME;
-      break;
-    case PT_SENSITIVITY_LABEL_INFO_TYPE:
-      class_name = CT_SENSITIVITY_LABEL_INFO_TYPE_NAME;
-      break;
-    default:
-      class_name = CT_SENSITIVITY_LABEL_SOURCE_NAME;
-      break;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-
-  class_obj = db_find_class (class_name);
-  if (class_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  /* X-lock the row now: an S lock upgraded at the update can deadlock with another ALTER of the row */
-  db_make_string (&value, name);
-  instance_obj = obj_find_unique (class_obj, "name", &value, AU_FETCH_WRITE);
-  if (instance_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      if (error == ER_OBJ_OBJECT_NOT_FOUND)
-	{
-	  er_clear ();
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_NOT_FOUND, pt_show_misc_type (kind), name);
-	}
-      goto end;
-    }
-
-  if (new_name != NULL)
-    {
-      db_make_string (&value, new_name);
-      if (db_find_unique (class_obj, "name", &value) != NULL)
-	{
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS, pt_show_misc_type (kind), new_name);
-	  goto end;
-	}
-
-      ASSERT_ERROR_AND_SET (error);
-      if (error != ER_OBJ_OBJECT_NOT_FOUND)
-	{
-	  goto end;
-	}
-      er_clear ();
-    }
-
-  /* only a grade has a level: the semantic check rejects LEVEL on INFO_TYPE and SOURCE */
-  if (level > 0)
-    {
-      db_make_int (&value, level);
-      level_obj = db_find_unique (class_obj, "grade_level", &value);
-      if (level_obj == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error);
-	  if (error != ER_OBJ_OBJECT_NOT_FOUND)
-	    {
-	      goto end;
-	    }
-	  er_clear ();
-	}
-      else if (level_obj != instance_obj)
-	{
-	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS, level);
-	  goto end;
-	}
-    }
-
   /* a failed flush leaves the row dirty in the workspace */
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
   if (error != NO_ERROR)
     {
-      goto end;
+      return error;
     }
-  has_savepoint = true;
 
-  obj_tmpl = dbt_edit_object (instance_obj);
-  if (obj_tmpl == NULL)
+  if (info->level != NULL)
     {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
+      assert (info->kind == PT_SENSITIVITY_LABEL_GRADE);
+
+      level = info->level->info.value.data_value.i;
     }
 
-  if (new_name != NULL)
-    {
-      db_make_string (&value, new_name);
-      error = dbt_put_internal (obj_tmpl, "name", &value);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
+  error = sensitivity_label_alter_component (info->kind, (const char *) PT_VALUE_GET_BYTES (info->name),
+					     (const char *) PT_VALUE_GET_BYTES (info->new_name), level,
+					     (const char *) PT_VALUE_GET_BYTES (info->comment));
 
-  if (level > 0)
-    {
-      db_make_int (&value, level);
-      error = dbt_put_internal (obj_tmpl, "grade_level", &value);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-  if (comment != NULL)
-    {
-      db_make_string (&value, comment);
-      error = dbt_put_internal (obj_tmpl, "comment", &value);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-    }
-
-  error = db_update_otmpl_timestamp (obj_tmpl);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  instance_obj = dbt_finish_object (obj_tmpl);
-  if (instance_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-  obj_tmpl = NULL;
-
-  error = locator_flush_instance (instance_obj);
-
-end:
-  if (obj_tmpl != NULL)
-    {
-      dbt_abort_object (obj_tmpl);
-    }
-
-  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+  if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
     }
-
-  AU_RESTORE (save);
 
   return error;
 }
@@ -20763,7 +20389,6 @@ int
 do_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_SENSITIVITY_LABEL_INFO *info = &statement->info.sensitivity_label;
-  char name[DB_MAX_IDENTIFIER_LENGTH];
   int error;
 
   CHECK_MODIFICATION_ERROR ();
@@ -20774,143 +20399,31 @@ do_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
-  sm_downcase_name ((const char *) PT_VALUE_GET_BYTES (info->name), name, DB_MAX_IDENTIFIER_LENGTH);
-
-  return do_drop_sensitivity_label_internal (info->kind, name);
-}
-
-/*
- * do_drop_sensitivity_label_internal () - delete a grade, info_type or source row no label references
- *   return: error code
- *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
- *   name(in): the lowercased name
- */
-static int
-do_drop_sensitivity_label_internal (const PT_MISC_TYPE kind, const char *name)
-{
-  DB_OBJECT *class_obj;
-  DB_OBJECT *instance_obj;
-  DB_SESSION *session = NULL;
-  DB_QUERY_RESULT *result = NULL;
-  DB_VALUE value;
-  STATEMENT_ID stmt_id;
-  const char *class_name;
-  const char *sql;
-  bool has_savepoint = false;
-  int error;
-  int save;
-
-  switch (kind)
-    {
-    case PT_SENSITIVITY_LABEL_GRADE:
-      class_name = CT_SENSITIVITY_LABEL_GRADE_NAME;
-      sql = "SELECT 1 FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [grade] = ? LIMIT 1";
-      break;
-    case PT_SENSITIVITY_LABEL_INFO_TYPE:
-      class_name = CT_SENSITIVITY_LABEL_INFO_TYPE_NAME;
-      sql = "SELECT 1 FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [info_type] = ? LIMIT 1";
-      break;
-    default:
-      class_name = CT_SENSITIVITY_LABEL_SOURCE_NAME;
-      sql = "SELECT 1 FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [source] = ? LIMIT 1";
-      break;
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-
-  class_obj = db_find_class (class_name);
-  if (class_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  /* X-lock the row before the reference check: a label statement S-locks the row it uses to the end of its
-   * transaction, so the check and a label created on the row at the same time wait for each other */
-  db_make_string (&value, name);
-  instance_obj = obj_find_unique (class_obj, "name", &value, AU_FETCH_WRITE);
-  if (instance_obj == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      if (error == ER_OBJ_OBJECT_NOT_FOUND)
-	{
-	  er_clear ();
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_NOT_FOUND, pt_show_misc_type (kind), name);
-	}
-      goto end;
-    }
-
-  /* the object value needs a host variable, which db_compile_and_execute_local cannot take */
-  session = db_open_buffer_local (sql);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  db_make_object (&value, instance_obj);
-  error = db_push_values (session, 1, &value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
-  if (error > 0)
-    {
-      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_IN_USE, pt_show_misc_type (kind), name);
-    }
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
   /* a failed flush leaves the row dirty in the workspace */
   error = tran_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
   if (error != NO_ERROR)
     {
-      goto end;
+      return error;
     }
-  has_savepoint = true;
 
-  error = db_drop (instance_obj);
-  if (error != NO_ERROR)
+  switch (info->kind)
     {
-      goto end;
+    case PT_SENSITIVITY_LABEL_GRADE:
+    case PT_SENSITIVITY_LABEL_INFO_TYPE:
+    case PT_SENSITIVITY_LABEL_SOURCE:
+      error = sensitivity_label_drop_component (info->kind, (const char *) PT_VALUE_GET_BYTES (info->name));
+      break;
+
+    default:
+      assert (false);
+      error = ER_FAILED;
+      break;
     }
 
-  error = locator_flush_instance (instance_obj);
-
-end:
-  if (result != NULL)
-    {
-      db_query_end (result);
-    }
-
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
-  if (has_savepoint && error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
+  if (error != NO_ERROR && error != ER_LK_UNILATERALLY_ABORTED)
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_SENSITIVITY_LABEL);
     }
-
-  AU_RESTORE (save);
 
   return error;
 }

@@ -1508,9 +1508,8 @@ $ LOADDB
 1393 Sensitivity label %1$s "%2$s"이(가) 존재하지 않습니다.
 1394 Sensitivity label %1$s "%2$s"을(를) 참조하는 라벨이 있습니다.
 1395 Sensitivity label grade level %1$d이(가) 이미 존재합니다.
-1396 다음 sensitivity label grade level을 정할 수 없습니다. 가장 높은 level이 이미 %1$d입니다.
 
-1397 마지막 에러
+1396 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2027,9 +2026,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
-345 LEVEL은 sensitivity label grade에만 지정할 수 있습니다.
-346 ALTER SENSITIVITY LABEL에 대해 지정된 옵션이 없습니다.
-347 sensitivity label grade의 level은 1 이상이어야 합니다.
+345 ALTER SENSITIVITY LABEL에 대해 지정된 옵션이 없습니다.
+346 sensitivity label grade의 level은 1 이상이어야 합니다.
 
 
 

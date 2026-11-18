@@ -663,6 +663,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_authid
 %type <number> opt_deterministic
 %type <number> sensitivity_label_kind
+%type <number> sensitivity_label_info_type_or_source
 %type <c3> opt_sp_option_list
 %type <c3> sp_option_list
 %type <c2> sp_option_item
@@ -3288,8 +3289,22 @@ create_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| CREATE SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name opt_sensitivity_label_level
-	  opt_comment_spec
+	| CREATE SENSITIVITY LABEL GRADE sensitivity_label_name LEVEL unsigned_int32 opt_comment_spec
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_GRADE;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.level = $7;
+			    node->info.sensitivity_label.comment = $8;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| CREATE SENSITIVITY LABEL sensitivity_label_info_type_or_source sensitivity_label_name opt_comment_spec
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_CREATE_SENSITIVITY_LABEL);
 
@@ -3297,8 +3312,7 @@ create_stmt
 			  {
 			    node->info.sensitivity_label.kind = $4;
 			    node->info.sensitivity_label.name = $5;
-			    node->info.sensitivity_label.level = $6;
-			    node->info.sensitivity_label.comment = $7;
+			    node->info.sensitivity_label.comment = $6;
 			  }
 
 			$$ = node;
@@ -4292,14 +4306,13 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| ALTER SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name opt_sensitivity_label_level
-	  opt_comment_spec
+	| ALTER SENSITIVITY LABEL GRADE sensitivity_label_name opt_sensitivity_label_level opt_comment_spec
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
 
 			if (node)
 			  {
-			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_GRADE;
 			    node->info.sensitivity_label.name = $5;
 			    node->info.sensitivity_label.level = $6;
 			    node->info.sensitivity_label.comment = $7;
@@ -4308,7 +4321,36 @@ alter_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| ALTER SENSITIVITY LABEL sensitivity_label_kind sensitivity_label_name RENAME AS sensitivity_label_name
+	| ALTER SENSITIVITY LABEL sensitivity_label_info_type_or_source sensitivity_label_name opt_comment_spec
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = $4;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.comment = $6;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER SENSITIVITY LABEL GRADE sensitivity_label_name RENAME AS sensitivity_label_name
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_GRADE;
+			    node->info.sensitivity_label.name = $5;
+			    node->info.sensitivity_label.new_name = $8;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER SENSITIVITY LABEL sensitivity_label_info_type_or_source sensitivity_label_name
+	  RENAME AS sensitivity_label_name
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_ALTER_SENSITIVITY_LABEL);
 
@@ -22845,7 +22887,14 @@ sensitivity_label_kind
 		{{
 			$$ = PT_SENSITIVITY_LABEL_GRADE;
 		}}
-	| INFO_TYPE
+	| sensitivity_label_info_type_or_source
+		{{
+			$$ = $1;
+		}}
+	;
+
+sensitivity_label_info_type_or_source
+	: INFO_TYPE
 		{{
 			$$ = PT_SENSITIVITY_LABEL_INFO_TYPE;
 		}}
@@ -22891,6 +22940,7 @@ opt_sensitivity_label_level
 		{{
 			$$ = $2;
 		}}
+	;
 
 %%
 
