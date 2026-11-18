@@ -308,6 +308,8 @@ extern int lock_demote_class_lock (THREAD_ENTRY * thread_p, const OID * oid, LOC
 extern void lock_demote_read_class_lock_for_checksumdb (THREAD_ENTRY * thread_p, int tran_index, const OID * class_oid);
 extern const char *lock_wait_state_to_string (int state);
 extern void lock_force_thread_timeout_lock (THREAD_ENTRY * thread_p);
+extern void lock_group_section_begin (int tran_index);
+extern void lock_group_section_end (int tran_index);
 
 #if defined (SERVER_MODE)
 extern void lock_deadlock_detect_daemon_get_stats (UINT64 * statsp);

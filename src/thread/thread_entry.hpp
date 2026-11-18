@@ -550,6 +550,13 @@ thread_get_main_thread (cubthread::entry *thread_p)
   return thread_p;
 }
 
+/* a parallel query pool thread running a task for another thread; a leader marks itself, which is not one */
+inline bool
+thread_is_px_worker (const cubthread::entry *thread_p)
+{
+  return thread_p->m_px_orig_thread_entry != nullptr && thread_p->m_px_orig_thread_entry != thread_p;
+}
+
 inline void
 thread_lock_entry (cubthread::entry *thread_p)
 {
