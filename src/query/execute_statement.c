@@ -15500,11 +15500,14 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
 	{
 	  pt_report_to_ersys (parser, PT_SEMANTIC);
 	  pt_reset_error (parser);
-	  /* the error is in the error manager now: has_internal_error left set would make the caller report the
-	   * parser again, with no message left, as "Internal error- reporting semantic error." */
-	  parser->flag.has_internal_error = 0;
-
 	  error = er_errid ();
+	}
+      /* the error is in the error manager now, reported here or by a callee that reset the messages (the error_exit of
+       * the hash join generation): has_internal_error left set would make the caller report the parser again, with
+       * no message left, as "Internal error- reporting semantic error." */
+      if (parser->error_msgs == NULL)
+	{
+	  parser->flag.has_internal_error = 0;
 	}
 
       assert (er_errid () != NO_ERROR);
@@ -15780,11 +15783,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
 	      pt_reset_error (parser);
-	      /* the error is in the error manager now: has_internal_error left set would make the caller report the
-	       * parser again, with no message left, as "Internal error- reporting semantic error." */
-	      parser->flag.has_internal_error = 0;
-
 	      err = er_errid ();
+	    }
+	  /* the error is in the error manager now, reported here or by a callee that reset the messages (the error_exit
+	   * of the hash join generation): has_internal_error left set would make the caller report the parser again,
+	   * with no message left, as "Internal error- reporting semantic error." */
+	  if (parser->error_msgs == NULL)
+	    {
+	      parser->flag.has_internal_error = 0;
 	    }
 
 	  assert (er_errid () != NO_ERROR);
