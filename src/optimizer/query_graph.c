@@ -171,7 +171,8 @@ static PT_NODE *qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, v
 static QO_TERM *qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env);
 static void qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_segs, QO_ENV * env);
 static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node);
-static QO_NODE *qo_semi_anti_dummy_join_head (QO_ENV * env, QO_NODE * on_node);
+static QO_NODE *qo_dummy_join_head (QO_ENV * env, QO_NODE * on_node);
+static bool qo_cross_join_needs_edge (QO_ENV * env, QO_NODE * node);
 static void qo_analyze_term (QO_TERM * term, int term_type);
 static PT_NODE *set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset);
@@ -565,10 +566,13 @@ qo_optimize_helper (QO_ENV * env)
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
-      /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
-      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
+      /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join.  A CROSS JOIN
+       * gets an always true inner one when a later ON clause of its chain reads a node before it. */
+      if ((QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
+	  || (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_CROSS && qo_cross_join_needs_edge (env, node)))
 	{
-	  p_node = QO_NODE_IS_SEMI_ANTI_JOIN (node) ? qo_semi_anti_dummy_join_head (env, node) : NULL;
+	  p_node = ((QO_NODE_IS_SEMI_ANTI_JOIN (node) || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_LEFT_OUTER)
+		    ? qo_dummy_join_head (env, node) : NULL);
 	  if (p_node == NULL)
 	    {
 	      p_node = QO_ENV_NODE (env, n - 1);
@@ -1001,6 +1005,10 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
     case PT_JOIN_RIGHT_OUTER:
     case PT_JOIN_FULL_OUTER:
       /* reserve dummy outer join term */
+      env->nterms++;
+      break;
+    case PT_JOIN_CROSS:
+      /* reserve dummy inner join term, see qo_cross_join_needs_edge () */
       env->nterms++;
       break;
     default:
@@ -2005,9 +2013,10 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
 
   QO_ASSERT (env, env->nterms < env->Nterms);
   QO_ASSERT (env, QO_NODE_IDX (p_node) >= 0);
-  /* a SEMI or ANTI join hangs on the last node its ON reads, see qo_semi_anti_dummy_join_head () */
+  /* a LEFT OUTER, SEMI or ANTI join hangs on the last node its ON reads, see qo_dummy_join_head () */
   QO_ASSERT (env, QO_NODE_IDX (p_node) + 1 == QO_NODE_IDX (on_node)
-	     || (QO_NODE_IS_SEMI_ANTI_JOIN (on_node) && QO_NODE_IDX (p_node) < QO_NODE_IDX (on_node)));
+	     || ((QO_NODE_IS_SEMI_ANTI_JOIN (on_node) || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_LEFT_OUTER)
+		 && QO_NODE_IDX (p_node) < QO_NODE_IDX (on_node)));
   QO_ASSERT (env, QO_NODE_LOCATION (on_node) > 0);
 
   term = QO_ENV_TERM (env, env->nterms);
@@ -2026,6 +2035,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
   switch (QO_NODE_PT_JOIN_TYPE (on_node))
     {
     case PT_JOIN_INNER:
+    case PT_JOIN_CROSS:	/* see qo_cross_join_needs_edge () */
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
       break;
     case PT_JOIN_LEFT_OUTER:
@@ -2077,17 +2087,19 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
 }
 
 /*
- * qo_semi_anti_dummy_join_head () - the node to hang the dummy join term of a SEMI or ANTI join with no join edge on
+ * qo_dummy_join_head () - the node to hang the dummy join term of a LEFT OUTER, SEMI or ANTI join with no join edge on
  *   return: the last node before on_node that its ON reads, or NULL if its ON reads none
  *   env(in): optimizer environment
- *   on_node(in): node of the SEMI or ANTI join
+ *   on_node(in): node of the LEFT OUTER, SEMI or ANTI join
  *
- * Note: the ON reads earlier nodes but gives no edge when an equality put a constant in the term that read the inner
- *	 table with them, as CAST (1 AS VARCHAR) IN (SELECT i.c0 FROM i WHERE i.c0 = i.c0 OR a.c1 = a.c1) does.  Node
- *	 n - 1 can be across a CROSS JOIN from those nodes, in a partition that the join cannot be placed in.
+ * Note: such a join is placed after every node its ON reads (qo_analyze_term ()).  The ON gives no edge when it has no
+ *	 join term, as a.c1 = 1 AND c.c0 = '1' in a CROSS JOIN b LEFT JOIN c, or when an equality put a constant in the
+ *	 term that read the inner table with them, as CAST (1 AS VARCHAR) IN (SELECT i.c0 FROM i WHERE i.c0 = i.c0 OR
+ *	 a.c1 = a.c1) does.  Node n - 1 can be across a CROSS JOIN from those nodes, in a partition that the join cannot
+ *	 be placed in.
  */
 static QO_NODE *
-qo_semi_anti_dummy_join_head (QO_ENV * env, QO_NODE * on_node)
+qo_dummy_join_head (QO_ENV * env, QO_NODE * on_node)
 {
   BITSET_ITERATOR iter;
   QO_TERM *term;
@@ -2111,6 +2123,67 @@ qo_semi_anti_dummy_join_head (QO_ENV * env, QO_NODE * on_node)
     }
 
   return (head < 0) ? NULL : QO_ENV_NODE (env, head);
+}
+
+/*
+ * qo_cross_join_needs_edge () - does a CROSS JOIN need an always true inner join term with the node before it?
+ *   return: true if an ON clause later in its join chain reads a node before it
+ *   env(in): optimizer environment
+ *   node(in): node of the CROSS JOIN
+ *
+ * Note: a CROSS JOIN gives no join edge, so qo_discover_partitions () separates the nodes before it from the nodes
+ *	 after it, and the planner joins only along the edges of a partition.  A later join whose ON reads nodes on both
+ *	 sides, as a CROSS JOIN b LEFT JOIN c ON CAST (a.c0 AS VARCHAR) = c.c0 AND b.c0 = c.c0, must follow nodes of both
+ *	 partitions (qo_analyze_term ()).  Not when a RIGHT OUTER JOIN follows in the chain: qo_optimize_helper () stops
+ *	 its dependencies at a CROSS JOIN, and the nodes before could then join before it and be padded with NULL by it.
+ */
+static bool
+qo_cross_join_needs_edge (QO_ENV * env, QO_NODE * node)
+{
+  QO_NODE *later;
+  QO_TERM *term;
+  int n, t, first;
+
+  for (n = QO_NODE_IDX (node) + 1; n < env->nnodes; n++)
+    {
+      later = QO_ENV_NODE (env, n);
+      if (!QO_NODE_IS_ANSI_JOIN (later))
+	{
+	  break;
+	}
+
+      if (QO_NODE_PT_JOIN_TYPE (later) == PT_JOIN_RIGHT_OUTER)
+	{
+	  return false;
+	}
+    }
+
+  for (n = QO_NODE_IDX (node) + 1; n < env->nnodes; n++)
+    {
+      later = QO_ENV_NODE (env, n);
+      if (QO_NODE_PT_JOIN_TYPE (later) == PT_JOIN_NONE)
+	{
+	  /* an ON clause does not read across a comma */
+	  break;
+	}
+
+      for (t = 0; t < env->nterms; t++)
+	{
+	  term = QO_ENV_TERM (env, t);
+	  if (QO_TERM_LOCATION (term) != QO_NODE_LOCATION (later))
+	    {
+	      continue;
+	    }
+
+	  first = bitset_first_member (&(QO_TERM_NODES (term)));
+	  if (first != -1 && first < QO_NODE_IDX (node))
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -6745,10 +6818,12 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI)
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI
+	      || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_CROSS)
 	    {
 	      /* an inner or semi join ON term that reads a node a preceding outer join fills with NULL is not a scan
-	       * filter of that node nor an edge of that outer join: evaluate it when on_node joins, after the padding */
+	       * filter of that node nor an edge of that outer join: evaluate it when on_node joins, after the padding.
+	       * A CROSS JOIN has no term here but its dummy join term (qo_cross_join_needs_edge ()) */
 	      if (QO_TERM_CLASS (term) == QO_TC_SARG || QO_TERM_CLASS (term) == QO_TC_OTHER)
 		{
 		  BITSET_CLEAR (suppliers);
