@@ -8483,6 +8483,11 @@ heap_page_check_word_decision (THREAD_ENTRY * thread_p, const RECDES * rec, MVCC
   MVCC_SATISFIES_SNAPSHOT_RESULT res = SNAPSHOT_SATISFIED;
   int i = 0;
 
+  if (perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_MVCC_SNAPSHOT))
+    {
+      /* snapshot_fnc () would count the record in Num_mvcc_snapshot_ext, which the release build does not */
+      return;
+    }
   heap_page_row_mvcc_header (rec->data, OR_GET_INT (rec->data), &header);
   if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&header))
     {
@@ -8557,6 +8562,7 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
   PAGE_PTR pgptr;
   RECDES rec;
   RECDES chain_recdes;
+  const HEAP_CHAIN *chain;
   OID oid;
   SCAN_CODE scan;
   int n = 0;
@@ -8596,7 +8602,14 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
       /* the page's first chunk, whoever fixed the page (the scan's caller, usually) */
       heap_page_prefetch (pgptr);
     }
-  if (heap_page_is_bestspace (thread_p, pgptr))
+  /* slot 0 holds the page's chain, or HEAP_HDR_STATS on the heap header page (as heap_page_is_bestspace () reads it) */
+  if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &chain_recdes, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      chain_recdes.length = 0;
+    }
+  chain = (chain_recdes.length == sizeof (HEAP_CHAIN)) ? (const HEAP_CHAIN *) chain_recdes.data : NULL;
+  if (chain != NULL && HEAP_PAGE_IS_BESTSPACE (chain))
     {
       return S_END;
     }
@@ -8605,11 +8618,9 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
     {
       snapshot = scan_cache->mvcc_snapshot;
     }
-  /* the heap header page keeps HEAP_HDR_STATS in slot 0, not a chain: never judged */
-  if (snapshot != NULL && snapshot->snapshot_fnc == mvcc_satisfies_snapshot
-      && spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &chain_recdes, PEEK) == S_SUCCESS
-      && chain_recdes.length == sizeof (HEAP_CHAIN)
-      && MVCC_ID_PRECEDES (((const HEAP_CHAIN *) chain_recdes.data)->max_mvccid, snapshot->lowest_active_mvccid))
+  /* the heap header page has no chain: never judged */
+  if (snapshot != NULL && snapshot->snapshot_fnc == mvcc_satisfies_snapshot && chain != NULL
+      && MVCC_ID_PRECEDES (chain->max_mvccid, snapshot->lowest_active_mvccid))
     {
       page_precedes_snapshot = true;
       word_mask = delid_bit | repid_bits;
