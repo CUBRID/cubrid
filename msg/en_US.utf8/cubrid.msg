@@ -1511,23 +1511,25 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Package "%1$s" already exists.
-1396 Package Body "%1$s" already exists.
-1397 Package "%1$s" does not exist.
-1398 Package Body "%1$s" does not exist.
-1399 Package compile error: %1$s
-1400 The owner or a member of DBA group can %1$s a package.
-1401 Dropping a system generated package is not allowed.
-1402 Package procedure's unique name must be shorter than 255 bytes.
-1403 Duplicate package name '%1$s' in the name list.
+1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
 
-1404 Neither stored %1$s '%2$s' nor package %3$s '%4$s' exists.
+1396 Package "%1$s" already exists.
+1397 Package Body "%1$s" already exists.
+1398 Package "%1$s" does not exist.
+1399 Package Body "%1$s" does not exist.
+1400 Package compile error: %1$s
+1401 The owner or a member of DBA group can %1$s a package.
+1402 Dropping a system generated package is not allowed.
+1403 Package procedure's unique name must be shorter than 255 bytes.
+1404 Duplicate package name '%1$s' in the name list.
 
-1405 %1$s cannot be applied to package routine '%2$s'.
-1406 Ambiguous: '%1$s' matches both <user>.<name> pattern and <package>.<name> pattern.
-1407 Creating a system generated package or its body is not allowed.
+1405 Neither stored %1$s '%2$s' nor package %3$s '%4$s' exists.
 
-1408 Last Error
+1406 %1$s cannot be applied to package routine '%2$s'.
+1407 Ambiguous: '%1$s' matches both <user>.<name> pattern and <package>.<name> pattern.
+1408 Creating a system generated package or its body is not allowed.
+
+1409 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2045,6 +2047,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
+346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
 
 339 Package "%1$s" does not exist.
 346 Invalid %1$s name "%2$s".\n  The system class/vclass name cannot be a %1$s name.

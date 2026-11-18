@@ -55,6 +55,7 @@ extern int jsp_drop_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * stateme
 extern int jsp_call_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 extern int jsp_check_return_type_supported (DB_TYPE type);
+extern int jsp_check_out_args_of_call (PARSER_CONTEXT * parser, PT_NODE * node);
 
 extern int jsp_make_pl_signature (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * subquery_as_attr_list,
 				  cubpl::pl_signature & signature);
@@ -75,6 +76,7 @@ extern int jsp_is_system_generated_sp (MOP sp_mop, bool * is_system);
 extern int jsp_find_standalone_routine (const char *name, const char *op_name, MOP * sp_mop_p);
 extern MOP jsp_find_package (const char *name);
 extern bool jsp_is_sp_parallel_eligible (const char *name);
+extern bool jsp_is_sp_deterministic (PARSER_CONTEXT * parser, PT_NODE * node);
 extern MOP jsp_find_stored_procedure_code (const char *name);
 extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);
 

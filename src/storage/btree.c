@@ -30287,6 +30287,12 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
    * raised again below and returned with, for the caller to start over. */
   bts->force_restart_from_root = false;
 
+  /* A start reads its first key from the leaf record on, so a key left partially processed by an earlier iteration
+   * of this scan has nothing to resume here. The rewinds of an inner scan (BTREE_RESET_SCAN) and of an index MIN/MAX
+   * scan turning around (bts_reset_scan) keep the mark; left set, the first key found here would skip its leaf record
+   * objects and resume in its overflow chain from a position saved for another scan of it, or for another key. */
+  bts->is_key_partially_processed = false;
+
   /* Find starting key. */
   /* Starting key must be checked and pass filters first. */
   bts->key_status = BTS_KEY_IS_NOT_VERIFIED;

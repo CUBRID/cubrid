@@ -202,6 +202,7 @@ class EXPORT_IMPORT authenticate_context
 
   private:
     int perform_login (const char *name, const char *password, bool ignore_dba_privilege);
+    void store_password (const char *password);
 
     void reset (void);
 

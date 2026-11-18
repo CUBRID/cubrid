@@ -315,7 +315,6 @@ static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
-static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
 static bool qo_node_is_multi_class (QO_NODE * node);
 static double qo_seg_ndv (QO_SEGMENT * seg);
 static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
@@ -452,6 +451,8 @@ static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tr
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_serial_block_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_session_state_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_serial_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static int qo_query_serial_level (QO_ENV * env);
@@ -5410,7 +5411,7 @@ qo_plan_semi_anti_join_type (QO_PLAN * plan)
  * An index join places the join term in the inner index scan instead of the join's terms. A sort
  * (temp list) is built once, so only the terms of the list scan over it can see the outer row.
  */
-static void
+void
 qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
 {
   while (plan != NULL)
@@ -5757,7 +5758,7 @@ qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
  *   return: true if the inner scan should not memoize
  *   outer(in): the outer plan of the NL join
  *   inner(in): the inner plan of the NL join
- *   key_terms(in): the join terms pushed into the inner scan
+ *   key_segs(in): the segments of the outer columns in the inner's memoize key
  *
  * The executor memoizes every NL inner and gives up at run time when the hit ratio stays low. At run
  * time a unique key looks the same as a key that repeats with a long period, so a unique key pays the
@@ -5778,16 +5779,15 @@ qo_nl_inner_partitions_walk_per_row (QO_NODE * node)
  *   (plan_generation.c), since the executor then runs the outer again for every scan block of it.
  */
 bool
-qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms)
+qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_segs)
 {
   QO_ENV *env;
   QO_TERM *term;
-  BITSET scan_terms, key_segs;
   BITSET_ITERATOR bi;
   int i;
   double calls, key_ndv = 0.0;
 
-  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_terms == NULL)
+  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_segs == NULL)
     {
       return false;
     }
@@ -5811,17 +5811,8 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 	}
     }
 
-  /* the outer columns referenced by the terms the inner scan evaluates are its memoize key */
-  bitset_init (&scan_terms, env);
-  bitset_init (&key_segs, env);
-  bitset_assign (&scan_terms, key_terms);
-  qo_collect_inner_scan_terms (inner, &scan_terms);
-  for (i = bitset_iterate (&scan_terms, &bi); i != -1; i = bitset_next_member (&bi))
-    {
-      bitset_union (&key_segs, &QO_TERM_SEGS (QO_ENV_TERM (env, i)));
-    }
-
-  for (i = bitset_iterate (&key_segs, &bi); i != -1; i = bitset_next_member (&bi))
+  /* key_segs: the segments of the memoize key the inner's XASL carries (plan_generation.c, CBRD-27993) */
+  for (i = bitset_iterate (key_segs, &bi); i != -1; i = bitset_next_member (&bi))
     {
       QO_SEGMENT *seg = QO_ENV_SEG (env, i);
       QO_NODE *node = QO_SEG_HEAD (seg);
@@ -5860,9 +5851,6 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
       /* distinct values left in the rows of its table the outer holds */
       key_ndv = MAX (key_ndv, qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv));
     }
-
-  bitset_delset (&scan_terms);
-  bitset_delset (&key_segs);
 
   if (key_ndv <= 0.0)
     {
@@ -6501,6 +6489,62 @@ qo_skip_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *conti
 }
 
 /*
+ * qo_check_session_state_expr () - parser_walk_tree callback looking for a session variable
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_check_session_state_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (tree != NULL && tree->node_type == PT_EXPR)
+    {
+      switch (tree->info.expr.op)
+	{
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  *found = true;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  return tree;
+}
+
+/*
+ * qo_check_serial_subquery () - parser_walk_tree pre-function that does not descend into a subquery
+ *   but looks for a session variable anywhere in it
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when such a node is found
+ *   continue_walk(in/out):
+ *
+ * Note: the executor keeps the scan serial for these in a subquery (SESSION_STATE_ACCESS,
+ *	 px_scan_checker.cpp), not for the other expressions of qo_check_serial_block_expr ().
+ */
+static PT_NODE *
+qo_check_serial_subquery (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (tree != NULL && PT_IS_QUERY (tree))
+    {
+      (void) parser_walk_leaves (parser, tree, NULL, NULL, qo_check_session_state_expr, found);
+      *continue_walk = *found ? PT_STOP_WALK : PT_LIST_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * qo_check_serial_block_expr () - parser_walk_tree callback looking for an expression of the
  *   select list or WHERE clause that keeps the executor from running the block in parallel
  *   return:
@@ -6641,10 +6685,13 @@ qo_check_hjoin_term_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, in
  *	 - a select list or WHERE clause holding one of the expressions of
  *	   qo_check_serial_block_expr () (T_EVALUATE_VARIABLE, T_DEFINE_VARIABLE, T_NEXT_VALUE,
  *	   T_CURRENT_VALUE, an attribute of DB_TYPE_OBJECT), a WHERE clause holding a method or a
- *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression.
+ *	   stored procedure without PARALLEL_ENABLE (TYPE_SP), or a path expression;
+ *	 - a subquery of the select list or WHERE clause holding a session variable anywhere
+ *	   (SESSION_STATE_ACCESS).
  *	 Rarer cases stay costed as parallel: an uncorrelated scalar subquery used as is in a
- *	 select list, a derived table inside the recursive part of a CTE (planned with its own
- *	 environment before the part), an ALL superclass scan, a system catalog scan.
+ *	 select list, a session variable in a subquery of another clause (HAVING, GROUP BY,
+ *	 ORDER BY, a join condition), a derived table inside the recursive part of a CTE (planned
+ *	 with its own environment before the part), an ALL superclass scan, a system catalog scan.
  */
 static int
 qo_query_serial_level (QO_ENV * env)
@@ -6697,12 +6744,12 @@ qo_query_serial_level (QO_ENV * env)
 
 	  if (!found)
 	    {
-	      (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_skip_subquery, NULL,
+	      (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_check_serial_subquery, &found,
 				       qo_check_serial_select_list_expr, &found);
 	    }
 	  if (!found)
 	    {
-	      (void) parser_walk_tree (parser, tree->info.query.q.select.where, qo_skip_subquery, NULL,
+	      (void) parser_walk_tree (parser, tree->info.query.q.select.where, qo_check_serial_subquery, &found,
 				       qo_check_serial_block_expr, &found);
 	    }
 
@@ -6828,7 +6875,8 @@ static const char *
 qo_node_partition_key (QO_NODE * node, int *partitions)
 {
   SM_PARTITION *partition;
-  DB_VALUE attr_name, part_count;
+  DB_VALUE *attr_name;
+  DB_VALUE part_count;
   const char *key_name;
   int key_len;
 
@@ -6838,9 +6886,9 @@ qo_node_partition_key (QO_NODE * node, int *partitions)
     }
 
   partition = QO_NODE_INFO_SMCLASS (node)->partition;
-  if (partition->values == NULL || set_get_element_nocopy (partition->values, 0, &attr_name) != NO_ERROR
-      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (&attr_name)
-      || DB_IS_NULL (&part_count) || (key_name = db_get_string (&attr_name)) == NULL)
+  if (partition->values == NULL || setobj_get_element_ptr (partition->values->set, 0, &attr_name) != NO_ERROR
+      || set_get_element_nocopy (partition->values, 1, &part_count) != NO_ERROR || DB_IS_NULL (attr_name)
+      || DB_IS_NULL (&part_count) || (key_name = db_get_string (attr_name)) == NULL)
     {
       return NULL;
     }
