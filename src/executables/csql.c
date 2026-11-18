@@ -714,6 +714,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   bool read_whole_line = false;
   char *prompt;
   int stmt_first_line_no = 0;	/* input line of the first token in the buffer, 0 if none yet */
+  bool is_line_continued = false;	/* true if the last read did not reach the end of the line */
+  bool is_rest_of_line;
 
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
@@ -945,7 +947,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	}
 
-      if (CSQL_SESSION_COMMAND_PREFIX (line_read[0]) && (csql_Is_interactive || (is_in_block == false)))
+      /* a piece of a line longer than LINE_BUFFER_SIZE after its first piece is not the start of a line */
+      is_rest_of_line = is_line_continued;
+      is_line_continued = !read_whole_line;
+
+      if (!is_rest_of_line && CSQL_SESSION_COMMAND_PREFIX (line_read[0])
+	  && (csql_Is_interactive || (is_in_block == false)))
 	{
 	  int ret;
 	  ret = csql_do_session_cmd (line_read, csql_arg);
@@ -1003,10 +1010,12 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 		  stmt_first_line_no = line_no;
 		}
 	    }
-	  else
+	  else if (read_whole_line)
 	    {
-	      /* the statement starts in the first line that has a token, not in a blank or comment line before it */
-	      if (csql_walk_statement (line_read) && stmt_first_line_no == 0)
+	      /* a line longer than LINE_BUFFER_SIZE is walked as a whole after its last piece is read, so that a comment
+	       * or a token across the pieces is not taken apart.
+	       * the statement starts in the first line that has a token, not in a blank or comment line before it */
+	      if (csql_edit_contents_walk_line () && stmt_first_line_no == 0)
 		{
 		  stmt_first_line_no = line_no;
 		}
@@ -1014,10 +1023,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      /* because we don't want to execute session commands in string block or comment block or identifier block */
 	      is_in_block = csql_is_statement_in_block ();
 
-	      if (csql_arg->single_line_execution
-		  /* read_whole_line == false means that fgets couldn't read whole line (exceeds buffer size) so we
-		   * should concat next line before execute it. */
-		  && read_whole_line == true && csql_is_statement_complete ())
+	      if (csql_arg->single_line_execution && csql_is_statement_complete ())
 		{
 		  /* if eof is not reached, execute it only on single line execution mode with complete statement */
 		  csql_execute = true;
