@@ -251,8 +251,6 @@ static int pt_coerce_3args (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * a
 static PT_NODE *pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg);
-static PT_NODE *pt_fold_cnf_operand (PARSER_CONTEXT * parser, PT_NODE * list);
-static PT_NODE *pt_fold_null_disjunct (PARSER_CONTEXT * parser, PT_NODE * null_value, PT_NODE * others);
 static PT_NODE *pt_fold_const_function (PARSER_CONTEXT * parser, PT_NODE * func);
 static const char *pt_class_name (const PT_NODE * type);
 static int pt_set_default_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM type, PT_NODE ** dtp);
@@ -18470,124 +18468,6 @@ pt_is_dblink_related (PT_NODE * p)
 }
 
 /*
- * pt_fold_cnf_operand () - fold the constants of a list that pt_cnf () made of an AND under an operator
- *   return: the operand
- *   parser(in):
- *   list(in): an operand, conjuncts linked by next, each one folded already
- *
- * Note: pt_cnf () converts an AND under IS, NOT, XOR, CAST, CASE or IF too, to a list on next.  pt_fold_const_expr ()
- *	 folds an operand by its first node, and an equality substitution can fold any conjunct to a constant.  In
- *	 three-valued logic, TRUE is dropped, FALSE makes the operand FALSE and one NULL is kept behind the other
- *	 conjuncts: the list starts with a constant only when it is that constant alone.  The original conjuncts are
- *	 unlinked, not freed.
- */
-static PT_NODE *
-pt_fold_cnf_operand (PARSER_CONTEXT * parser, PT_NODE * list)
-{
-  PT_NODE *head = NULL, **tail = &head, *null_value = NULL, *true_value = NULL, *node, *next;
-
-  if (list == NULL || list->next == NULL)
-    {
-      return list;
-    }
-
-  for (node = list; node != NULL; node = node->next)
-    {
-      if (node->type_enum != PT_TYPE_LOGICAL && !(node->node_type == PT_VALUE && node->type_enum == PT_TYPE_NULL))
-	{
-	  /* not a CNF list: arguments, as of FIELD */
-	  return list;
-	}
-    }
-
-  for (node = list; node != NULL; node = next)
-    {
-      next = node->next;
-      node->next = NULL;
-
-      if (node->node_type != PT_VALUE || node->or_next != NULL)
-	{
-	  *tail = node;
-	  tail = &node->next;
-	}
-      else if (node->type_enum == PT_TYPE_NULL)
-	{
-	  /* NULL AND x is UNKNOWN, or FALSE when x is FALSE */
-	  null_value = (null_value != NULL) ? null_value : node;
-	}
-      else if (node->info.value.data_value.i == 0)
-	{
-	  /* FALSE AND x is FALSE */
-	  return node;
-	}
-      else
-	{
-	  /* TRUE AND x is x */
-	  true_value = (true_value != NULL) ? true_value : node;
-	}
-    }
-
-  if (head == NULL && null_value == NULL)
-    {
-      /* TRUE only */
-      return true_value;
-    }
-
-  *tail = null_value;
-  if (head->next != NULL)
-    {
-      /* pt_print_bytes () prints the whole list from a head tagged so, as XASL cache keys need */
-      head->flag.is_cnf_start = true;
-    }
-
-  return head;
-}
-
-/*
- * pt_fold_null_disjunct () - the or_next chain left when its first disjunct folded to NULL, where the chain is not a
- *			      term of a filter
- *   return: what takes the place of the folded disjunct and the ones after it, for the caller to copy
- *   parser(in):
- *   null_value(in): the NULL the first disjunct folded to
- *   others(in): the disjuncts after it, folded already
- *
- * Note: pt_cnf () converts an OR under IS, NOT, XOR, CAST, CASE or IF too, to an or_next chain, where NULL OR x is
- *	 UNKNOWN when x is FALSE, not x as in a filter.  A TRUE disjunct makes the chain TRUE, constants only (NULL,
- *	 FALSE) make it NULL, and otherwise the NULL is kept behind the other disjuncts.
- */
-static PT_NODE *
-pt_fold_null_disjunct (PARSER_CONTEXT * parser, PT_NODE * null_value, PT_NODE * others)
-{
-  PT_NODE *node, *last = NULL, *save_or_next, *true_value;
-  bool has_expr = false;
-
-  for (node = others; node != NULL; node = node->or_next)
-    {
-      if (node->node_type == PT_VALUE && node->type_enum == PT_TYPE_LOGICAL && node->info.value.data_value.i != 0)
-	{
-	  /* NULL OR TRUE is TRUE */
-	  save_or_next = node->or_next;
-	  node->or_next = NULL;
-	  true_value = parser_copy_tree (parser, node);
-	  node->or_next = save_or_next;
-	  return true_value;
-	}
-
-      has_expr = has_expr || node->node_type != PT_VALUE;
-      last = node;
-    }
-
-  if (!has_expr)
-    {
-      /* NULL OR NULL, NULL OR FALSE */
-      return null_value;
-    }
-
-  last->or_next = null_value;
-  return others;
-}
-
-/*
  * pt_fold_const_expr () - evaluate constant expression
  *   return: the evaluated expression, if successful,
  *           unchanged expr, if not successful.
@@ -18628,11 +18508,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
     {
       return expr;
     }
-
-  /* an operand pt_cnf () made a list of: see pt_fold_cnf_operand () */
-  expr->info.expr.arg1 = pt_fold_cnf_operand (parser, expr->info.expr.arg1);
-  expr->info.expr.arg2 = pt_fold_cnf_operand (parser, expr->info.expr.arg2);
-  expr->info.expr.arg3 = pt_fold_cnf_operand (parser, expr->info.expr.arg3);
 
   save_set_host_var = parser->flag.set_host_var;
   parser->flag.set_host_var = (prm_get_bool_value (PRM_ID_HOSTVAR_PEEKING)
@@ -19503,15 +19378,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	      /* i.e., op == PT_OR */
 	      db_value = pt_value_to_db (parser, result);	/* opd1 */
 	      other = expr->or_next;	/* opd2 */
-	      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL
-		  && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE))
+	      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
 		{
-		  /* a chain under an operator, not a term of a filter (pt_cnf () marks those CNF_DONE) */
-		  result = pt_fold_null_disjunct (parser, result, other);
-		}
-	      else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
-		{
-		  /* a term of a filter, which rejects NULL as FALSE */
 		  result = other;
 		}
 	      else if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_INTEGER && db_get_int (db_value) == 1)
@@ -19530,12 +19398,6 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 		  pr_clear_value (&dbval_res);
 		  has_error = true;
 		  goto end;
-		}
-
-	      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE) && result->node_type == PT_EXPR)
-		{
-		  /* the disjunct that heads the term now */
-		  PT_EXPR_INFO_SET_FLAG (result, PT_EXPR_INFO_CNF_DONE);
 		}
 	    }
 	}
