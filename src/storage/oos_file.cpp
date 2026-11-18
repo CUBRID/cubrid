@@ -3936,7 +3936,7 @@ oos_vacuum_delete_chunk (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID
  *   be reused first.  An old locator reads the original leading bytes, then a short chain, never skipped bytes.
  *   The head is checked against ref like oos_delete_chain (CBRD-26950): a head that is gone or carries another
  *   identity stamp leaves nothing to trim; a stamp-matching continuation chunk is a malformed reference.
- *   with_head: also delete the head, last. Not vacuum: the commit-time delete of oos_delete_at_commit owns the chain.
+ *   with_head: also delete the head, last, when no record holds it (oos_delete_at_commit, vacuum forward walk).
  */
 int
 oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref, bool with_head,

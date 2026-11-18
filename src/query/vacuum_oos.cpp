@@ -202,10 +202,8 @@ vacuum_oos_delete_reference (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const
  *   can rotate (swap out) the log page that the caller's original undo_data points into, so we must
  *   work from a copy that does not live in that buffer.
  *
- *   All the deletes run inside one "sysop" (system operation) - the engine's unit of
- *   all-or-nothing work for crash recovery - so the whole multi-chunk delete either fully happens
- *   or fully rolls back. (Contrast vacuum_heap_oos_delete_within_sysop: that one runs inside the caller's
- *   existing sysop and must NOT open its own.)
+ *   The deletes are redo-only (no sysop to roll back): a partly deleted chain keeps its head, so a re-run
+ *   of the block finishes it.
  *
  *   The only caller is vacuum_forward_walk_reclaim_oos, which vacuum.c calls for RVHF_UPDATE_NOTIFY_VACUUM
  *   and RVHF_DELETE_NEWHOME_NOTIFY_VACUUM only. Other heap log records stay out: for example
@@ -229,22 +227,32 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
     return oid_compare (&a.ref.head_oid, &b.ref.head_oid) < 0;
   });
 
-  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The references above are
+  /* TODO(perf): oos_vacuum_delete_chain fixes and unfixes the OOS page on every chunk. The references above are
    * already sorted into page order, so one day we should group the ones that share a page and
    * delete them under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
   VACUUM_OOS_EMPTIED_PAGES emptied_pages;
 
-  log_sysop_start (thread_p);
   for (const HEAP_OOS_REFERENCE &reference : references)
     {
       /* This has to be safe to run twice. If the whole block is retried, an earlier forward-walk in
        * this block may have already committed its deletes, so a chunk can already be gone, or its
        * slot can already hold ANOTHER live chain (OOS OIDs are physical addresses and freed slots
-       * are reused). oos_delete tells these apart from the stub's identity stamp and no-ops on
+       * are reused). oos_vacuum_delete_chain tells these apart from the stub's identity stamp and no-ops on
        * both, so a retry can never destroy the reusing chain (CBRD-26950). An occupancy probe
        * cannot make that distinction and must not be used here. We still report a real failure
        * (I/O error, interrupt, etc.) as an error. */
-      error_code = vacuum_oos_delete_reference (thread_p, oos_vfid, internal_lob_vfid, reference, &emptied_pages);
+      bool is_lob = TP_IS_LOB_TYPE (reference.type);
+      const VFID *vfid = is_lob ? internal_lob_vfid : oos_vfid;
+      if (vfid == NULL || VFID_ISNULL (vfid))
+	{
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "OOS reference %d|%d|%d without its file; skipped (bounded leak)",
+			       OID_AS_ARGS (&reference.ref.head_oid));
+	  continue;
+	}
+
+      /* Redo-only, head last: an undo re-insert after a crash could hit a slot another chain reused meanwhile.
+       * internal LOB pages are left to the growth-gate sweep. */
+      error_code = oos_vacuum_delete_chain (thread_p, *vfid, reference.ref, true, is_lob ? NULL : &emptied_pages);
       if (error_code != NO_ERROR)
 	{
 	  break;
@@ -252,10 +260,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
     }
   if (error_code == NO_ERROR)
     {
-      log_sysop_commit (thread_p);
-
-      /* Must run after the commit: an aborted sysop would restore the chunks, and undo cannot
-       * re-insert into a deallocated page. Only oos_delete on the ordinary OOS file records emptied pages. */
+      /* Only the ordinary OOS file records emptied pages. */
       int reclaim_err = has_oos_file ? vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &emptied_pages) : NO_ERROR;
       if (reclaim_err != NO_ERROR)
 	{
@@ -266,10 +271,6 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 				 VFID_AS_ARGS (oos_vfid));
 	  error_code = reclaim_err;
 	}
-    }
-  else
-    {
-      log_sysop_abort (thread_p);
     }
   return error_code;
 }
@@ -412,8 +413,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 	    }
 	  else
 	    {
-	      /* vacuum_forward_walk_oos_delete_atomic already aborted its own sysop, so any partial deletes
-	       * were rolled back. What leaks is only the OOS records we never got to delete. */
+	      /* Deletes already done stay (redo-only). What leaks is only the OOS records we never got to delete. */
 	      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 				   "forward-walk oos cleanup failed; leaving OOS unreclaimed "
 				   "(bounded leak) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
@@ -521,9 +521,8 @@ vacuum_oos_report_missing_oos_file (const HFID *hfid, const RECDES *record, PGSL
  *   crash between them cannot leave the heap slot vacuumed while its OOS chunks still look referenced
  *   (or the reverse). The only caller, vacuum_heap_record, opens that sysop and commits/aborts it.
  *
- *   Contrast vacuum_forward_walk_oos_delete_atomic, which runs with no enclosing sysop and therefore
- *   opens and commits its own. Same rule ("OOS deletes happen in exactly one sysop"), different
- *   nesting level - so one must start a sysop and the other must not.
+ *   Contrast vacuum_forward_walk_oos_delete_atomic, which has no heap slot to pair with and deletes
+ *   redo-only without a sysop.
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
