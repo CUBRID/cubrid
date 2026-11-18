@@ -1108,6 +1108,10 @@ db_open_buffer_local (const char *buffer)
 	{
 	  session->parser->flag.is_parsing_static_sql = 1;
 	}
+      if (g_open_buffer_control_flags & PARSER_FOR_IN_ONLY_BIND)
+	{
+	  session->parser->flag.is_in_only_bind = 1;
+	}
 
       session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)
@@ -1146,6 +1150,10 @@ db_open_buffer_copy_local (const char *text, size_t len)
   if (g_open_buffer_control_flags & PARSER_FOR_PLCSQL_STATIC_SQL)
     {
       session->parser->flag.is_parsing_static_sql = 1;
+    }
+  if (g_open_buffer_control_flags & PARSER_FOR_IN_ONLY_BIND)
+    {
+      session->parser->flag.is_in_only_bind = 1;
     }
   session->statements = parser_parse_string_with_escapes (session->parser, copy, false);
   return session->statements != NULL ? initialize_session (session) : session;

@@ -97,6 +97,12 @@ namespace cubmethod
     return m_user;
   }
 
+  bool
+  query_handler::is_in_only_bind () const
+  {
+    return (m_prepare_flag & PREPARE_IN_ONLY_BIND) != 0;
+  }
+
   std::string
   query_handler::get_sql_stmt () const
   {
@@ -796,6 +802,11 @@ namespace cubmethod
     if (flag & PREPARE_STATIC_SQL)
       {
 	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
+      }
+
+    if (flag & PREPARE_IN_ONLY_BIND)
+      {
+	g_open_buffer_control_flags |= PARSER_FOR_IN_ONLY_BIND;
       }
 
     db_init_lexer_lineno();

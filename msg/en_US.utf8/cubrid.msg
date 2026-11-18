@@ -2032,6 +2032,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
 346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
+347 Argument %1$d of %2$s is bound as an IN value by the USING clause of EXECUTE IMMEDIATE but is passed to an %3$s parameter.
 
 
 

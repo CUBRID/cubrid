@@ -342,6 +342,8 @@ jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mod
  *   node(in): a PT_METHOD_CALL node of a CALL statement that calls a stored procedure or function
  *
  * Note: An argument for an OUT or IN OUT parameter must be a bind variable, a ? or a csql :name.
+ *       A ? is rejected too when the binds of the statement are IN values only.
+ *       PL/CSQL marks EXECUTE IMMEDIATE so. It binds the USING values as IN.
  *       This runs in the semantic check so that CREATE TRIGGER and PREPARE fail early,
  *       and before hostvar_late_binding turns a ? into a value.
  *       A statement already prepared or a trigger action already compiled is not checked again
@@ -419,7 +421,17 @@ jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
 	    }
 
 	  int mode = db_get_int (&mode_val);
-	  if (mode == SP_MODE_IN || PT_IS_HOSTVAR (arg) || PT_IS_PARAMETER (arg))
+	  if (mode == SP_MODE_IN)
+	    {
+	      continue;
+	    }
+
+	  bool in_only_bind = false;
+	  if (PT_IS_HOSTVAR (arg) && parser->flag.is_in_only_bind)
+	    {
+	      in_only_bind = true;
+	    }
+	  else if (PT_IS_HOSTVAR (arg) || PT_IS_PARAMETER (arg))
 	    {
 	      continue;
 	    }
@@ -433,8 +445,13 @@ jsp_check_out_args_of_call (PARSER_CONTEXT *parser, PT_NODE *node)
 	      shown_name = name;
 	    }
 
-	  PT_ERRORmf3 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_OUT_ARG_NOT_BIND_VARIABLE, i + 1,
-		       shown_name, (mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
+	  int msg_no = MSGCAT_SEMANTIC_SP_OUT_ARG_NOT_BIND_VARIABLE;
+	  if (in_only_bind)
+	    {
+	      msg_no = MSGCAT_SEMANTIC_SP_IN_BIND_TO_OUT_PARAM;
+	    }
+	  PT_ERRORmf3 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, msg_no, i + 1, shown_name,
+		       (mode == SP_MODE_OUT) ? "OUT" : "IN OUT");
 	  error = ER_PT_SEMANTIC;
 	  break;
 	}
