@@ -255,6 +255,8 @@ static void log_append_sysop_start_postpone (THREAD_ENTRY * thread_p, LOG_TDES *
 static void log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
 				  int data_size, const char *data);
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
+static void log_append_supplemental_info_internal (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,
+						   const void *data, TDE_ALGORITHM tde_algo);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
@@ -4946,6 +4948,24 @@ log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_
 void
 log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length, const void *data)
 {
+  log_append_supplemental_info_internal (thread_p, rec_type, length, data, TDE_ALGORITHM_NONE);
+}
+
+/*
+ * log_append_supplemental_info_internal - append supplemental log record
+ *
+ * return: nothing
+ *
+ *   rec_type (in): type of supplemental log record .
+ *   length (in) : length of supplemental data length.
+ *   data (in) : supplemental data
+ *   tde_algo (in) : TDE algorithm of the table the data comes from. The log record is encrypted unless it is
+ *                   TDE_ALGORITHM_NONE.
+ */
+static void
+log_append_supplemental_info_internal (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_type, int length,
+				       const void *data, TDE_ALGORITHM tde_algo)
+{
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
 
   LOG_PRIOR_NODE *node;
@@ -4982,6 +5002,15 @@ log_append_supplemental_info (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_t
   if (node == NULL)
     {
       return;
+    }
+
+  if (tde_algo != TDE_ALGORITHM_NONE)
+    {
+      if (prior_set_tde_encrypted (node, RV_NOT_DEFINED) != NO_ERROR)
+	{
+	  assert (false);
+	  return;
+	}
     }
 
   supplement = (LOG_REC_SUPPLEMENT *) node->data_header;
@@ -5053,8 +5082,16 @@ log_append_supplemental_lsa (THREAD_ENTRY * thread_p, SUPPLEMENT_REC_TYPE rec_ty
   return NO_ERROR;
 }
 
+/*
+ * log_append_supplemental_undo_record - append the image of a record as a supplemental log record
+ *
+ * return: error code
+ *
+ *   undo_recdes (in) : record image
+ *   tde_algo (in) : TDE algorithm of the heap page the record comes from
+ */
 int
-log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes)
+log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recdes, TDE_ALGORITHM tde_algo)
 {
   assert (undo_recdes != NULL);
   assert (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0);
@@ -5071,7 +5108,7 @@ log_append_supplemental_undo_record (THREAD_ENTRY * thread_p, RECDES * undo_recd
   memcpy (data, &undo_recdes->type, sizeof (undo_recdes->type));
   memcpy (data + sizeof (undo_recdes->type), undo_recdes->data, undo_recdes->length);
 
-  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data);
+  log_append_supplemental_info_internal (thread_p, LOG_SUPPLEMENT_UNDO_RECORD, length, data, tde_algo);
 
   free_and_init (data);
 
