@@ -697,8 +697,12 @@ static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_
 					      LK_ENTRY * class_entry, bool ahead_of_waiters = false,
 					      bool outlives_statement = true);
 static bool lock_res_held_only_by_writers (LK_RES * res_ptr);
+static bool lock_internal_unlock_entry (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
+					bool move_to_non2pl);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 						 bool move_to_non2pl);
+static void lock_unlock_all_hold_list (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY ** list, int count,
+				       const char *name);
 static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
 					     const OID * class_oid, const OID * oid);
 static void lock_unlock_inst_locks_of_class_by_isolation (THREAD_ENTRY * thread_p, int tran_index,
@@ -4886,6 +4890,26 @@ static void
 lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 				     bool move_to_non2pl)
 {
+  if (entry_ptr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_internal_unlock_object",
+	      "NULL entry pointer");
+      return;
+    }
+
+  if (!lock_internal_unlock_entry (thread_p, entry_ptr, release_flag, move_to_non2pl))
+    {
+      assert (false);
+    }
+}
+
+/*
+ * lock_internal_unlock_entry () - lock_internal_perform_unlock_object () that tells a lost entry to its caller
+ *   return: false if the entry is not the transaction's or its resource does not hold it
+ */
+static bool
+lock_internal_unlock_entry (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag, bool move_to_non2pl)
+{
   LF_TRAN_ENTRY *t_entry = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   int tran_index;
   LK_RES *res_ptr;
@@ -4907,18 +4931,10 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
     }
 #endif /* LK_DUMP */
 
-  if (entry_ptr == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_BAD_ARGUMENT, 2, "lk_internal_unlock_object",
-	      "NULL entry pointer");
-      return;
-    }
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (entry_ptr->tran_index != tran_index)
     {
-      assert (false);
-      return;
+      return false;
     }
 
   if (release_flag == false)
@@ -4926,7 +4942,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       entry_ptr->count--;
       if (entry_ptr->blocked_mode == NULL_LOCK && entry_ptr->count > 0)
 	{
-	  return;
+	  return true;
 	}
     }
 
@@ -4999,7 +5015,6 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 	}
       else
 	{
-	  assert (false);
 	  /* The transaction is neither the lock holder nor the lock waiter */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_LOST_TRANSACTION, 4, tran_index, res_ptr->key.oid.volid,
 		  res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
@@ -5007,7 +5022,7 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
 
       pthread_mutex_unlock (&res_ptr->res_mutex);
 
-      return;
+      return curr != NULL;
     }
 
   /* The transaction is in the holder list. Consult the holder list. */
@@ -5077,6 +5092,8 @@ lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_p
       (void) lock_grant_blocked_waiter (thread_p, res_ptr);
       pthread_mutex_unlock (&res_ptr->res_mutex);
     }
+
+  return true;
 }
 #endif /* SERVER_MODE */
 
@@ -9293,6 +9310,78 @@ lock_unlock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #endif /* !SERVER_MODE */
 }
 
+#if defined (SERVER_MODE)
+/*
+ * lock_unlock_all_hold_list () - Release the entries of a transaction's hold list at its end
+ *   return: void
+ *   list(in/out): the list, or root_class_hold
+ *   count(in): its hold count
+ *   name(in): the list's name, for the report
+ *
+ * Each release takes the head off the list, so a head that stays or outlasts the count means a corrupt list. Walking
+ * it never ends, and skipping it leaves a lock the next user of the transaction index finds as its own, so stop.
+ */
+static void
+lock_unlock_all_hold_list (THREAD_ENTRY * thread_p, int tran_index, LK_ENTRY ** list, int count, const char *name)
+{
+  int left = count;
+
+  while (*list != NULL)
+    {
+      LK_ENTRY *entry_ptr = *list;
+      const char *corrupt = NULL;
+      const char *key_note = "";
+
+      /* copied before the release, which may free the entry */
+      int entry_tran_index = entry_ptr->tran_index;
+      LOCK mode = entry_ptr->granted_mode;
+      LK_RES *res_ptr = entry_ptr->res_head;
+
+      if (entry_tran_index != tran_index)
+	{
+	  corrupt = "an entry of another transaction";
+	}
+      else if (left-- <= 0)
+	{
+	  corrupt = "more entries than the hold count";
+	}
+      else if (!lock_internal_unlock_entry (thread_p, entry_ptr, true, false))
+	{
+	  corrupt = "an entry its resource does not hold";
+	}
+      else if (*list == entry_ptr)
+	{
+	  corrupt = "an entry the release left in the list";
+	  key_note = " (read after the release)";
+	}
+
+      if (corrupt != NULL)
+	{
+	  /* not read before every release: reading the resource there slows a commit of many locks by about 4% */
+	  LK_RES_KEY key = res_ptr != NULL ? res_ptr->key : LK_RES_KEY ();
+	  char key_str[80];
+	  const char *mode_name = (mode >= NULL_LOCK && mode < LOCK_COUNT) ? lock_to_lockmode_string (mode) : "?";
+
+	  if (key.type == LOCK_RESOURCE_TRANSACTION)
+	    {
+	      snprintf (key_str, sizeof (key_str), "mvccid %llu", (unsigned long long) key.mvccid);
+	    }
+	  else
+	    {
+	      snprintf (key_str, sizeof (key_str), "oid %d|%d|%d, class oid %d|%d|%d", key.oid.volid, key.oid.pageid,
+			key.oid.slotid, key.class_oid.volid, key.class_oid.pageid, key.class_oid.slotid);
+	    }
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "lock_unlock_all: %s in the %s hold list of transaction %d: entry %p, tran_index %d,"
+			     " lock %s (%d), key type %d, %s%s, hold count %d at the start", corrupt, name, tran_index,
+			     (void *) entry_ptr, entry_tran_index, mode_name, (int) mode, (int) key.type, key_str,
+			     key_note, count);
+	  return;
+	}
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * lock_unlock_all - Release all locks of current transaction
  *
@@ -9326,34 +9415,9 @@ lock_unlock_all (THREAD_ENTRY * thread_p)
   /* releasing the self-lock grants its waiters; a deferred wake is no longer due */
   lock_deferred_wake_clear (thread_p, tran_index);
 
-  /* remove all instance locks */
-  entry_ptr = tran_lock->inst_hold_list;
-  while (entry_ptr != NULL)
-    {
-      assert (tran_index == entry_ptr->tran_index);
-
-      lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
-      entry_ptr = tran_lock->inst_hold_list;
-    }
-
-  /* remove all class locks */
-  entry_ptr = tran_lock->class_hold_list;
-  while (entry_ptr != NULL)
-    {
-      assert (tran_index == entry_ptr->tran_index);
-
-      lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
-      entry_ptr = tran_lock->class_hold_list;
-    }
-
-  /* remove root class lock */
-  entry_ptr = tran_lock->root_class_hold;
-  if (entry_ptr != NULL)
-    {
-      assert (tran_index == entry_ptr->tran_index);
-
-      lock_internal_perform_unlock_object (thread_p, entry_ptr, true, false);
-    }
+  lock_unlock_all_hold_list (thread_p, tran_index, &tran_lock->inst_hold_list, tran_lock->inst_hold_count, "instance");
+  lock_unlock_all_hold_list (thread_p, tran_index, &tran_lock->class_hold_list, tran_lock->class_hold_count, "class");
+  lock_unlock_all_hold_list (thread_p, tran_index, &tran_lock->root_class_hold, 1, "root class");
 
   /* remove non2pl locks */
   while (tran_lock->non2pl_list != NULL)
