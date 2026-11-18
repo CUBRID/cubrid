@@ -65,6 +65,7 @@
 #include "network_interface_cl.h"
 #include "parser.h"
 #include "trigger_manager.h"
+#include "sensitivity_label.hpp"
 #include "oid.h"
 #include "storage_common.h"
 #include "transform.h"
@@ -12423,6 +12424,13 @@ install_new_representation (MOP classop, SM_CLASS * class_, SM_TEMPLATE * flat)
   for (m = flat->class_methods; m != NULL; m = (SM_METHOD *) m->header.next)
     {
       assign_method_id (class_, m, 1);
+    }
+
+  /* the attribute ids are final now and nothing is installed yet: an error here leaves the class as it was */
+  error = sensitivity_label_drop_of_removed_attributes (classop, class_, flat);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   /* if the representation changed but there have been no objects created with the previous representation, don't

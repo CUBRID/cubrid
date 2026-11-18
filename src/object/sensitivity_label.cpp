@@ -35,6 +35,7 @@ static int put_components (DB_OTMPL *obj_tmpl, DB_OBJECT *grade, DB_OBJECT *info
 static int put_labeled_by (DB_OTMPL *obj_tmpl);
 static int execute_query_with_object (const char *sql, DB_OBJECT *object, DB_SESSION **session,
 				      DB_QUERY_RESULT **result);
+static bool has_attribute_id (SM_ATTRIBUTE *att_list, const int attr_id);
 static int find_label_by_name (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
 			       SM_ATTRIBUTE **att, DB_OBJECT **label);
 
@@ -1026,6 +1027,78 @@ sensitivity_label_drop_all (MOP class_mop, SM_CLASS *class_, DB_NAMELIST **dropp
 	    {
 	      return error;
 	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * has_attribute_id () - tell whether a list of attributes has an attribute of an id
+ *   return: true when it has
+ *   att_list(in): the list
+ *   attr_id(in): the id
+ */
+static bool
+has_attribute_id (SM_ATTRIBUTE *att_list, const int attr_id)
+{
+  SM_ATTRIBUTE *att;
+
+  for (att = att_list; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (att->id == attr_id)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * sensitivity_label_drop_of_removed_attributes () - drop the label of each attribute a schema change removes
+ *   return: error code
+ *   class_mop(in): the class
+ *   class_(in): the class structure before the change
+ *   flat(in): the flattened template of the change
+ *
+ * Note: a subclass loses the label of an inherited attribute this way too.
+ */
+int
+sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, SM_TEMPLATE *flat)
+{
+  SM_ATTRIBUTE *att;
+  DB_OBJECT *label;
+  int error;
+
+  /* a class that cannot have labels has none: do not look up each attribute */
+  if (!sensitivity_label_is_allowed (class_))
+    {
+      return NO_ERROR;
+    }
+
+  for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (has_attribute_id (flat->instance_attributes, att->id))
+	{
+	  continue;
+	}
+
+      error = sensitivity_label_find (class_mop, att->id, &label);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (label == NULL)
+	{
+	  continue;
+	}
+
+      error = sensitivity_label_drop (label);
+      if (error != NO_ERROR)
+	{
+	  return error;
 	}
     }
 
