@@ -366,7 +366,7 @@ need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid)
    *  below block means ER_LK_UNILATERALLY_ABORTED occurs but another error
    *  set after that.
    *  So, re-set that error to rollback in client side.
-   *  An abort left to the parallel section owner (lock_group_defer_abort ()) is done here too.
+   *  An abort left to a section owner or to a PL callback's caller (lock_group_is_abort_deferred ()) is done here too.
    */
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes != NULL && flag_abort == false

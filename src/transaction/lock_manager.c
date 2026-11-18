@@ -62,6 +62,7 @@
 #endif /* ENABLE_SYSTEMTAP */
 #include "query_manager.h"
 #include "server_support.h"
+#include "session.h"
 #include "storage_common.h"
 #include "system_parameter.h"
 #if defined (SERVER_MODE)
@@ -512,7 +513,8 @@ struct lk_group
   LK_RES_KEY owner_wait_key;	/* the resource it waits for, while owner_sleeping */
   UINT64 owner_held_row;	/* the row it holds while it waits on a self-lock (deferred_wake.held_row), or 0 */
   bool interrupted;		/* an interrupt came while sections were open; cleared when they close (__atomic) */
-  bool abort_deferred;		/* an abort waits for the section owner; cleared when the transaction ends (__atomic) */
+  bool abort_deferred;		/* an abort waits for the section owner or a PL callback's caller; cleared when the
+				 * transaction ends (__atomic) */
   LK_PENDING_RELEASE *pending_release;	/* run by the owner before it leaves (__atomic: read leaving with no mutex) */
 #if !defined (NDEBUG)
   THREAD_ENTRY *solo_owner;	/* the thread inside with no section open, to catch a second one */
@@ -3561,6 +3563,47 @@ lock_group_has_open_section (int tran_index)
 #endif /* SERVER_MODE */
 }
 
+#if defined (SERVER_MODE)
+/*
+ * lock_group_defer_abort_internal () - leave the abort of a transaction to a request that ends it later
+ *   to_pl_caller(in): also with no section open, for a deadlock victim's abort (lock_group_defer_abort_to_pl_caller ())
+ *
+ * Note: under the mutex lock_group_section_end () takes, so a section closing meanwhile keeps no stale interrupt.
+ *	 With no section, no interrupt: the PL calls would report it as ER_INTERRUPTED over the deadlock error. Their
+ *	 statements fail as they return instead (lock_group_fail_if_abort_deferred ()).
+ */
+static bool
+lock_group_defer_abort_internal (THREAD_ENTRY * thread_p, int tran_index, bool to_pl_caller)
+{
+  LK_GROUP *group = &lk_Gl.tran_lock_table[tran_index].group;
+  bool in_section;
+
+  pthread_mutex_lock (&group->mutex);
+  in_section = lock_group_in_section (group);
+  /* with no section, only a deadlock victim's abort: not that of a transaction a COMMIT under the PL has just
+   * ended and restarted (xtran_end_is_held_by_parallel_section ()) */
+  if (!in_section && !(to_pl_caller && (lk_Gl.TWFG_node[tran_index].DL_victim
+					|| __atomic_load_n (&group->abort_deferred, __ATOMIC_ACQUIRE))))
+    {
+      pthread_mutex_unlock (&group->mutex);
+      return false;
+    }
+  __atomic_store_n (&group->abort_deferred, true, __ATOMIC_RELEASE);
+  if (!in_section)
+    {
+      pthread_mutex_unlock (&group->mutex);
+      return true;
+    }
+  __atomic_store_n (&group->interrupted, true, __ATOMIC_RELEASE);
+  pthread_cond_broadcast (&group->cond);
+  pthread_mutex_unlock (&group->mutex);
+
+  /* the owner's query stops at its next row even if it asks for no lock */
+  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
+  return true;
+}
+#endif /* SERVER_MODE */
+
 /*
  * lock_group_defer_abort () - leave the abort of a transaction with a parallel section open to the section owner
  *   return: true if deferred: the transaction stays active, its lock requests in the section and its next interrupt
@@ -3574,36 +3617,46 @@ bool
 lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
-  LK_GROUP *group;
-
-  if (tran_index <= LOG_SYSTEM_TRAN_INDEX)
-    {
-      return false;
-    }
-  group = &lk_Gl.tran_lock_table[tran_index].group;
-
-  /* under the mutex lock_group_section_end () takes, so a section closing meanwhile keeps no stale interrupt */
-  pthread_mutex_lock (&group->mutex);
-  if (!lock_group_in_section (group))
-    {
-      pthread_mutex_unlock (&group->mutex);
-      return false;
-    }
-  __atomic_store_n (&group->abort_deferred, true, __ATOMIC_RELEASE);
-  __atomic_store_n (&group->interrupted, true, __ATOMIC_RELEASE);
-  pthread_cond_broadcast (&group->cond);
-  pthread_mutex_unlock (&group->mutex);
-
-  /* the owner's query stops at its next row even if it asks for no lock */
-  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-  return true;
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_group_defer_abort_internal (thread_p, tran_index, false);
 #else /* SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
 }
 
 /*
- * lock_group_is_abort_deferred () - whether an abort of the transaction waits for it to end (lock_group_defer_abort ())
+ * lock_group_defer_abort_to_pl_caller () - leave the abort of a transaction to the request a PL callback returns to
+ *   return: true if deferred, as lock_group_defer_abort (); with no section open, only a deadlock victim's abort is
+ */
+bool
+lock_group_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index)
+{
+#if defined (SERVER_MODE)
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_group_defer_abort_internal (thread_p, tran_index, true);
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * lock_group_fail_if_abort_deferred () - fail a statement whose transaction's abort is left to a request that ends it
+ *   return: ER_LK_UNILATERALLY_ABORTED (set) or NO_ERROR
+ */
+int
+lock_group_fail_if_abort_deferred (int tran_index)
+{
+#if defined (SERVER_MODE)
+  if (lock_group_is_abort_deferred (tran_index))
+    {
+      lock_set_error_for_aborted (tran_index);
+      return ER_LK_UNILATERALLY_ABORTED;
+    }
+#endif /* SERVER_MODE */
+  return NO_ERROR;
+}
+
+/*
+ * lock_group_is_abort_deferred () - whether an abort of the transaction waits for it to end (lock_group_defer_abort (),
+ *   lock_group_defer_abort_to_pl_caller ())
  */
 bool
 lock_group_is_abort_deferred (int tran_index)
@@ -3662,7 +3715,8 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
     }
   else if (logtb_is_current_active (thread_p) && lock_group_abort_reason (group) == ER_LK_UNILATERALLY_ABORTED)
     {
-      /* a sibling request run while the first victim waits for it to end: its wait would be left out of the graph */
+      /* a sibling request run while the first victim waits for it to end, or a PL's further SQL while its abort is
+       * deferred: its wait would be left out of the graph */
       thread_unlock_entry (entry_ptr->thrd_entry);
       lock_set_error_for_aborted (entry_ptr->tran_index);
       return LOCK_RESUMED_ABORTED;
@@ -3795,8 +3849,10 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
 
 	  /* wait until other threads finish their works A css_server_thread is always running for this transaction.
 	   * so, wait until css_count_transaction_worker_threads () becomes 1 (except me).
-	   * Not a parallel pool thread: the leader it would wait for is joining it, and aborts only after that. */
-	  if (!thread_is_px_worker (thread_p)
+	   * Not a parallel pool thread, whose leader joins it before aborting, nor a PL callback, whose caller waits
+	   * for its reply and so is left the abort (tran_server_unilaterally_abort_tran ()): woken by the interrupt,
+	   * the caller would abort under this thread's open statement. */
+	  if (!thread_is_px_worker (thread_p) && !session_is_pl_callback (thread_p)
 	      && css_count_transaction_worker_threads (thread_p, entry_ptr->tran_index,
 						       css_get_client_id (thread_p)) >= 1)
 	    {

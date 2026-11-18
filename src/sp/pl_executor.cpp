@@ -35,6 +35,7 @@
 #include "pl_query_cursor.hpp"
 #include "sp_code.hpp"
 #include "xserver_interface.h"
+#include "log_impl.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -338,6 +339,12 @@ exit:
     if (change_rights && change_exec_rights (NULL) != NO_ERROR)
       {
 	error = er_errid ();
+      }
+
+    /* a PL that caught the deadlock error of its SQL must not make the statement succeed: its abort is left here */
+    if (error == NO_ERROR)
+      {
+	error = lock_group_fail_if_abort_deferred (logtb_get_current_tran_index ());
       }
     return error;
   }

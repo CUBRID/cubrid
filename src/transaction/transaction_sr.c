@@ -50,8 +50,8 @@ static bool xtran_end_is_held_by_parallel_section (THREAD_ENTRY * thread_p, int 
 
 /*
  * xtran_end_is_held_by_parallel_section () - a commit or 2PC prepare the transaction's parallel section holds back
- *   return: true with *state the request's result: the section is still open, or it closed with an abort deferred
- *	     (lock_group_defer_abort ()), which is done here instead
+ *   return: true with *state the request's result: the section is still open, or an abort is deferred
+ *	     (lock_group_is_abort_deferred ()), which is done here instead
  *   stmt_name(in): the statement, for the error message
  *
  * Note: an open section's owner is still joining its workers, so the caller is another thread of the transaction,
@@ -259,6 +259,13 @@ tran_server_unilaterally_abort_tran (THREAD_ENTRY * thread_p)
       thread_p = thread_get_thread_entry_info ();
     }
 
+  /* a PL callback leaves the abort to its caller, which waits inside its statement for this reply. Not in
+   * xtran_server_abort (): a ROLLBACK the PL issues still undoes at once */
+  if (session_is_pl_callback (thread_p)
+      && lock_group_defer_abort_to_pl_caller (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p)))
+    {
+      return TRAN_UNACTIVE_ABORTED;
+    }
   return xtran_server_abort (thread_p);
 }
 #endif /* SERVER_MODE */

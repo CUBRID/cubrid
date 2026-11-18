@@ -314,6 +314,8 @@ extern void lock_group_section_end (int tran_index);
 extern void lock_group_clear (int tran_index);
 extern bool lock_group_has_open_section (int tran_index);
 extern bool lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index);
+extern bool lock_group_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index);
+extern int lock_group_fail_if_abort_deferred (int tran_index);
 extern bool lock_group_is_abort_deferred (int tran_index);
 
 #if defined (SERVER_MODE)
