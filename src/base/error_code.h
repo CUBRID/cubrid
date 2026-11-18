@@ -1799,7 +1799,8 @@
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
 #define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
-#define ER_TM_END_IN_PARALLEL_SECTION               -1396
+
+#define ER_SP_TCL_DDL_IN_QUERY                      -1396
 
 #define ER_LAST_ERROR                               -1397
 

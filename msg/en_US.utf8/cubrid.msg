@@ -1513,7 +1513,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
 
-1396 The transaction cannot be committed or prepared while a parallel query of it is running.
+1396 Cannot perform %1$s inside a query or DML statement.
 
 1397 Last Error
 
