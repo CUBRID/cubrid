@@ -6620,21 +6620,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	   * during the scan of the heap. This can happen in transaction isolation
 	   * levels that release the locks of the class when the class is read.
 	   */
-#if defined(SERVER_MODE)
-	  THREAD_ENTRY *main_thread_p = NULL;
-	  if (thread_p->m_px_orig_thread_entry != NULL)
-	    {
-	      main_thread_p = thread_get_main_thread (thread_p);
-	      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
-	    }
-#endif
 	  granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
-#if defined(SERVER_MODE)
-	  if (main_thread_p != NULL)
-	    {
-	      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
-	    }
-#endif
 	  if (granted != LK_GRANTED)
 	    {
 	      goto exit_on_error;
@@ -7167,21 +7153,7 @@ heap_scancache_switch_class (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
   if (!lock_held)
     {
       int granted;
-#if defined(SERVER_MODE)
-      THREAD_ENTRY *main_thread_p = NULL;
-      if (thread_p->m_px_orig_thread_entry != NULL)
-	{
-	  main_thread_p = thread_get_main_thread (thread_p);
-	  pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
-	}
-#endif
       granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
-#if defined(SERVER_MODE)
-      if (main_thread_p != NULL)
-	{
-	  pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
-	}
-#endif
       if (granted != LK_GRANTED)
 	{
 	  ASSERT_ERROR ();
