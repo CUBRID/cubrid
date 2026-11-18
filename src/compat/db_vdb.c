@@ -79,6 +79,9 @@ enum
 static struct timeb base_server_timeb = { 0, 0, 0, 0 };
 static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 
+/* base_server_timeb is the server's local time read in the client's time zone; this is the server's own epoch */
+static time_t base_server_epoch = 0;
+
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
@@ -1411,7 +1414,8 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
 			      c_time_struct->tm_sec, curr_server_timeb.millitm);
 
 	  db_make_datetime (&parser->sys_datetime, &datetime);
-	  db_make_timestamp (&parser->sys_epochtime, (DB_TIMESTAMP) curr_server_timeb.time);
+	  db_make_timestamp (&parser->sys_epochtime,
+			     (DB_TIMESTAMP) (base_server_epoch + (curr_server_timeb.time - base_server_timeb.time)));
 	}
     }
 }
@@ -1419,14 +1423,16 @@ db_calculate_current_server_time (PARSER_CONTEXT * parser)
 /*
  * db_set_base_server_time() -
  * return:
- * server_info(in) :
+ * datetime_val(in) : the server's local time
+ * epoch_val(in) : the server's epoch at the same moment
  */
 static void
-db_set_base_server_time (DB_VALUE * db_val)
+db_set_base_server_time (DB_VALUE * datetime_val, DB_VALUE * epoch_val)
 {
   struct tm c_time_struct;
   DB_TIME time_val;
-  DB_DATETIME *dt = db_get_datetime (db_val);
+  DB_DATETIME *dt = db_get_datetime (datetime_val);
+  DB_TIMESTAMP *epoch = db_get_timestamp (epoch_val);
 
   time_val = dt->time / 1000;	/* milliseconds to seconds */
   db_tm_encode (&c_time_struct, &dt->date, &time_val);
@@ -1434,6 +1440,7 @@ db_set_base_server_time (DB_VALUE * db_val)
   base_server_timeb.millitm = dt->time % 1000;	/* set milliseconds */
 
   base_server_timeb.time = mktime (&c_time_struct);
+  base_server_epoch = (time_t) (*epoch);
   db_calculate_current_time (&base_client_timeb);
 }
 
@@ -1471,7 +1478,7 @@ db_ensure_server_info (PARSER_CONTEXT * parser, int server_info_bits)
       err = qp_get_server_info (parser, server_info_bits);
       if (err == NO_ERROR && (server_info_bits & SI_SYS_DATETIME))
 	{
-	  db_set_base_server_time (&parser->sys_datetime);
+	  db_set_base_server_time (&parser->sys_datetime, &parser->sys_epochtime);
 	}
     }
 
