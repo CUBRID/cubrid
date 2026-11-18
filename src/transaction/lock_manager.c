@@ -3178,6 +3178,30 @@ lock_group_solo_leave (LK_GROUP * group)
     }
 }
 
+/* a victim waiting for its siblings lets them in (lock_suspend_internal ()) */
+static int
+lock_group_solo_step_out (LK_GROUP * group, THREAD_ENTRY * thread_p)
+{
+  int depth = 0;
+
+  if (__atomic_load_n (&group->solo_owner, __ATOMIC_ACQUIRE) == thread_p)
+    {
+      depth = group->solo_depth;
+      group->solo_depth = 0;
+      __atomic_store_n (&group->solo_owner, (THREAD_ENTRY *) NULL, __ATOMIC_RELEASE);
+    }
+  return depth;
+}
+
+static void
+lock_group_solo_step_back (LK_GROUP * group, THREAD_ENTRY * thread_p, int depth)
+{
+  if (depth > 0 && lock_group_solo_enter (group, thread_p))
+    {
+      group->solo_depth = depth;
+    }
+}
+
 /* nothing else of the transaction is in the lock manager: a walk of its hold lists needs no hold_mutex */
 static bool
 lock_group_is_alone (THREAD_ENTRY * thread_p, int tran_index)
@@ -3612,6 +3636,10 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
   bool is_group_owner = (__atomic_load_n (&group->owner, __ATOMIC_ACQUIRE) == thread_p);
   bool is_group_guest = (__atomic_load_n (&group->guest, __ATOMIC_ACQUIRE) == thread_p);
   int abort_error, group_depth;
+  bool exec_yielded;
+#if !defined (NDEBUG)
+  int solo_depth;
+#endif
 
   /* The threads must not hold a page latch to be blocked on a lock request. */
   assert (lock_is_safe_lock_with_page (thread_p, entry_ptr) || !pgbuf_has_perm_pages_fixed (thread_p));
@@ -3631,6 +3659,13 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
 	  lock_group_set_abort_error (entry_ptr->tran_index, abort_error);
 	  return (abort_error == ER_INTERRUPTED) ? LOCK_RESUMED_INTERRUPT : LOCK_RESUMED_ABORTED;
 	}
+    }
+  else if (logtb_is_current_active (thread_p) && lock_group_abort_reason (group) == ER_LK_UNILATERALLY_ABORTED)
+    {
+      /* a sibling request run while the first victim waits for it to end: its wait would be left out of the graph */
+      thread_unlock_entry (entry_ptr->thrd_entry);
+      lock_set_error_for_aborted (entry_ptr->tran_index);
+      return LOCK_RESUMED_ABORTED;
     }
 
   if (lk_Gl.config.verbose_mode)
@@ -3765,12 +3800,16 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
 	      && css_count_transaction_worker_threads (thread_p, entry_ptr->tran_index,
 						       css_get_client_id (thread_p)) >= 1)
 	    {
-	      /* the threads waited for may need the entrance to fail and end their requests: leave it meanwhile, and
-	       * come back in whatever role is free, as the victim only cleans up. The interrupt first: a guest is
-	       * waited for to leave on the way out. */
+	      /* the threads waited for may need the entrance or the execution token to fail and end their requests:
+	       * leave both meanwhile, and come back in whatever role is free, as the victim only cleans up. The
+	       * interrupt first: a guest is waited for to leave on the way out. */
 	      logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, true);
 	      lock_group_keep_interrupt (group);
 	      group_depth = lock_group_step_out (group, thread_p);
+#if !defined (NDEBUG)
+	      solo_depth = lock_group_solo_step_out (group, thread_p);
+#endif
+	      exec_yielded = logtb_exec_yield (thread_p);
 	      while (true)
 		{
 		  thread_sleep (10);	/* sleep 10 msec */
@@ -3783,6 +3822,10 @@ lock_suspend_internal (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, int wait_m
 		    }
 		}
 	      logtb_set_tran_index_interrupt (thread_p, entry_ptr->tran_index, false);
+	      logtb_exec_resume (thread_p, exec_yielded);
+#if !defined (NDEBUG)
+	      lock_group_solo_step_back (group, thread_p, solo_depth);
+#endif
 	      lock_group_step_back (group, thread_p, group_depth);
 	    }
 	}

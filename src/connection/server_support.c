@@ -1164,12 +1164,17 @@ css_receive_data_from_client_with_timeout (CSS_CONN_ENTRY * conn, unsigned int e
 					   int timeout)
 {
   int rc = 0;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  bool yielded;
 
   assert (conn != NULL);
 
   *size = 0;
 
+  /* a callback's reply waits for the requests the client sends meanwhile, which need the execution token */
+  yielded = logtb_exec_yield (thread_p);
   rc = css_receive_data (conn, CSS_RID_FROM_EID (eid), buffer, size, timeout);
+  logtb_exec_resume (thread_p, yielded);
   if (rc == NO_ERRORS || rc == RECORD_TRUNCATED)
     {
       css_test_for_client_errors (conn, eid);

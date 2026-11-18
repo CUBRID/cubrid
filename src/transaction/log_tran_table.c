@@ -1572,6 +1572,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   DB_VALUE *dbval;
   HL_HEAPID save_heap_id;
 
+  /* the execution token is not cleared: the request that ends the transaction still runs it */
   tdes->isloose_end = false;
   tdes->state = TRAN_ACTIVE;
   LSA_SET_NULL (&tdes->head_lsa);
@@ -1778,6 +1779,15 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
   LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
+
+#if defined (SERVER_MODE)
+  tdes->exec_owner = NULL;
+  tdes->exec_waiters = 0;
+  r = pthread_mutex_init (&tdes->exec_mutex, NULL);
+  assert (r == 0);
+  r = pthread_cond_init (&tdes->exec_cond, NULL);
+  assert (r == 0);
+#endif
 }
 
 /*
@@ -1799,6 +1809,10 @@ logtb_finalize_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 
   r = rmutex_finalize (&tdes->rmutex_topop);
   assert (r == NO_ERROR);
+#if defined (SERVER_MODE)
+  (void) pthread_cond_destroy (&tdes->exec_cond);
+  (void) pthread_mutex_destroy (&tdes->exec_mutex);
+#endif
 
   if (tdes->topops.max != 0)
     {
@@ -3363,6 +3377,170 @@ logtb_is_current_active (THREAD_ENTRY * thread_p)
       assert (tdes == NULL || tdes->is_active_worker_transaction ());
       return false;
     }
+}
+
+/*
+ * The execution token: one request at a time runs a transaction, in a parallel section or out of one. A request takes
+ * it at its start and gives it back at its end. It gives it up while it waits for what only another request of the
+ * transaction can produce (the client's reply to a callback, a PL stack above its own to be popped), and takes it
+ * back with no other mutex held. The requests a client sends while one of its requests runs take none
+ * (net_server_request ()).
+ */
+#if defined (SERVER_MODE)
+static bool
+logtb_exec_try_own (LOG_TDES * tdes, THREAD_ENTRY * thread_p)
+{
+  THREAD_ENTRY *expected = NULL;
+
+  return __atomic_compare_exchange_n (&tdes->exec_owner, &expected, thread_p, false, __ATOMIC_ACQ_REL,
+				      __ATOMIC_ACQUIRE);
+}
+
+/* the waiter counts itself and then reads exec_owner, the giver the other way round: no wakeup is lost */
+static void
+logtb_exec_own (LOG_TDES * tdes, THREAD_ENTRY * thread_p)
+{
+  cubthread::entry::status status;
+  void *holder;
+
+  if (logtb_exec_try_own (tdes, thread_p))
+    {
+      return;
+    }
+
+  /* the slot is left for the whole wait and taken back only once the token is free, as its owner may wait for one */
+  thread_slot_wait_begin (thread_p, status, holder);
+  while (true)
+    {
+      pthread_mutex_lock (&tdes->exec_mutex);
+      __atomic_add_fetch (&tdes->exec_waiters, 1, __ATOMIC_SEQ_CST);
+      while (__atomic_load_n (&tdes->exec_owner, __ATOMIC_SEQ_CST) != NULL)
+	{
+	  pthread_cond_wait (&tdes->exec_cond, &tdes->exec_mutex);
+	}
+      __atomic_sub_fetch (&tdes->exec_waiters, 1, __ATOMIC_SEQ_CST);
+      pthread_mutex_unlock (&tdes->exec_mutex);
+
+      thread_slot_wait_end (thread_p, status, holder);
+      if (logtb_exec_try_own (tdes, thread_p))
+	{
+	  return;
+	}
+      thread_slot_wait_begin (thread_p, status, holder);
+    }
+}
+
+static bool
+logtb_exec_give_back (LOG_TDES * tdes, THREAD_ENTRY * thread_p)
+{
+  THREAD_ENTRY *expected = thread_p;
+
+  if (!__atomic_compare_exchange_n (&tdes->exec_owner, &expected, (THREAD_ENTRY *) NULL, false, __ATOMIC_SEQ_CST,
+				    __ATOMIC_RELAXED))
+    {
+      return false;
+    }
+  if (__atomic_load_n (&tdes->exec_waiters, __ATOMIC_SEQ_CST) > 0)
+    {
+      pthread_mutex_lock (&tdes->exec_mutex);
+      pthread_cond_broadcast (&tdes->exec_cond);
+      pthread_mutex_unlock (&tdes->exec_mutex);
+    }
+  return true;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * logtb_exec_begin () - take the execution token of the request's transaction, if it has one
+ *
+ * Note: the descriptor is remembered in the thread entry, as a 2PC attach changes the request's transaction midway.
+ */
+void
+logtb_exec_begin (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes;
+
+  assert (thread_p->exec_tdes == NULL);
+  if (thread_p->tran_index <= LOG_SYSTEM_TRAN_INDEX)
+    {
+      /* a client registering, or the system transaction */
+      return;
+    }
+  tdes = LOG_FIND_TDES (thread_p->tran_index);
+  assert (tdes != NULL);
+  logtb_exec_own (tdes, thread_p);
+  thread_p->exec_tdes = tdes;
+#endif /* SERVER_MODE */
+}
+
+void
+logtb_exec_end (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p->exec_tdes != NULL)
+    {
+      (void) logtb_exec_give_back (thread_p->exec_tdes, thread_p);
+      thread_p->exec_tdes = NULL;
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * logtb_exec_yield () - give up the execution token before a wait on another request of the transaction
+ *   return: whether it was given up, for logtb_exec_resume ()
+ */
+bool
+logtb_exec_yield (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  if (thread_p == NULL || thread_p->exec_tdes == NULL)
+    {
+      return false;
+    }
+  return logtb_exec_give_back (thread_p->exec_tdes, thread_p);
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+void
+logtb_exec_resume (THREAD_ENTRY * thread_p, bool yielded)
+{
+#if defined (SERVER_MODE)
+  if (yielded)
+    {
+      logtb_exec_own (thread_p->exec_tdes, thread_p);
+    }
+#endif /* SERVER_MODE */
+}
+
+/*
+ * logtb_exec_try_take () - take, with no wait, the execution token of the transaction a 2PC attach moves the request
+ *   to, keeping its own until logtb_exec_switch ()
+ *   return: false if another request runs that transaction
+ */
+bool
+logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+#if defined (SERVER_MODE)
+  return thread_p->exec_tdes == NULL || logtb_exec_try_own (tdes, thread_p);
+#else /* SERVER_MODE */
+  return true;
+#endif /* SERVER_MODE */
+}
+
+/* the request now runs tdes: give back the token of the transaction it left */
+void
+logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+#if defined (SERVER_MODE)
+  if (thread_p->exec_tdes != NULL)
+    {
+      (void) logtb_exec_give_back (thread_p->exec_tdes, thread_p);
+      thread_p->exec_tdes = tdes;
+    }
+#endif /* SERVER_MODE */
 }
 
 /*

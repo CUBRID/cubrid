@@ -56,6 +56,8 @@ struct fi_test_item;
 class log_system_tdes;
 // from log_compress.h
 struct log_zip;
+// from log_impl.h
+struct log_tdes;
 // from vacuum.h
 struct vacuum_worker;
 // from xasl_unpack_info.hpp
@@ -290,6 +292,7 @@ namespace cubthread
       bool no_logging;
 
       int net_request_index;	/* request index of net server functions */
+      log_tdes *exec_tdes;	/* the transaction whose execution token this request took (logtb_exec_begin ()) */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 
@@ -578,6 +581,8 @@ void thread_check_suspend_reason_and_wakeup (cubthread::entry *thread_p, thread_
 void thread_wakeup_already_had_mutex (cubthread::entry *p, thread_resume_suspend_status resume_reason);
 int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutexp, int timeout, struct timespec *to,
 				     thread_resume_suspend_status suspended_reason);
+void thread_slot_wait_begin (cubthread::entry *p, cubthread::entry::status &status, void *&holder);
+void thread_slot_wait_end (cubthread::entry *p, cubthread::entry::status status, void *holder);
 
 const char *thread_type_to_string (thread_type type);
 const char *thread_status_to_string (cubthread::entry::status status);

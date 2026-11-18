@@ -569,6 +569,14 @@ struct log_tdes
 
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
+#if defined (SERVER_MODE)
+  /* the execution token (logtb_exec_begin ()); kept when the transaction ends, as its request still runs */
+  THREAD_ENTRY *exec_owner;	/* taken by a CAS from NULL, given back with no mutex (__atomic) */
+  int exec_waiters;		/* requests waiting on exec_cond (__atomic: a giver reads it with no mutex) */
+  pthread_mutex_t exec_mutex;
+  pthread_cond_t exec_cond;
+#endif
+
   // *INDENT-OFF*
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 
@@ -1162,6 +1170,12 @@ extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * co
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
+extern void logtb_exec_begin (THREAD_ENTRY * thread_p);
+extern void logtb_exec_end (THREAD_ENTRY * thread_p);
+extern bool logtb_exec_yield (THREAD_ENTRY * thread_p);
+extern void logtb_exec_resume (THREAD_ENTRY * thread_p, bool yielded);
+extern bool logtb_exec_try_take (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+extern void logtb_exec_switch (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern bool logtb_istran_finished (THREAD_ENTRY * thread_p, TRANID trid);
 extern void logtb_disable_update (THREAD_ENTRY * thread_p);
 extern void logtb_enable_update (THREAD_ENTRY * thread_p);

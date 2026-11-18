@@ -128,6 +128,7 @@ namespace cubthread
     , log_data_length (0)
     , no_logging (false)
     , net_request_index (-1)
+    , exec_tdes (NULL)
     , vacuum_worker (NULL)
     , sort_stats_active (false)
     , event_stats ()
@@ -887,6 +888,50 @@ thread_suspend_with_other_mutex (cubthread::entry *thread_p, pthread_mutex_t *mu
   assert (error == NO_ERROR || error == ER_CSS_PTHREAD_COND_TIMEDOUT);
 
   return error;
+}
+
+/*
+ * thread_slot_wait_begin (), thread_slot_wait_end () - around a wait on another module's condition variable: the
+ *   concurrency slot is left to the slot daemon as in a lock wait, and taken back after
+ *
+ * Note: the daemon takes slots only from TS_WAIT entries, under the entry lock, so m_slot is read under it too.
+ */
+void
+thread_slot_wait_begin (cubthread::entry *thread_p, cubthread::entry::status &status, void *&holder)
+{
+  holder = nullptr;
+  thread_p->lock ();
+  status = thread_p->m_status;
+  thread_p->m_status = cubthread::entry::status::TS_WAIT;
+#if defined (SERVER_MODE)
+  if (thread_p->m_slot)
+    {
+      holder = static_cast<void *> (thread_p->m_slot->get_holder_pool ());
+      thread_p->start_waiting ();
+    }
+#endif
+  thread_p->unlock ();
+}
+
+void
+thread_slot_wait_end (cubthread::entry *thread_p, cubthread::entry::status status, void *holder)
+{
+  thread_p->lock ();
+#if defined (SERVER_MODE)
+  if (holder != nullptr)
+    {
+      if (thread_p->m_slot)
+	{
+	  thread_p->stop_waiting ();
+	}
+      else
+	{
+	  static_cast<cubthread::concurrency_slot_pool *> (holder)->acquire_slot (thread_p);
+	}
+    }
+#endif
+  thread_p->m_status = status;
+  thread_p->unlock ();
 }
 
 /*
