@@ -58,6 +58,7 @@
 #include "tde.h"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
+#include "transaction_exec_token.hpp"
 #include "transaction_transient.hpp"
 #include "lockfree_circular_queue.hpp"
 
@@ -570,11 +571,7 @@ struct log_tdes
   char *ddl_sql_user_text;	/* SQL user text for the transaction */
 
 #if defined (SERVER_MODE)
-  /* the execution token (logtb_exec_begin ()); kept when the transaction ends, as its request still runs */
-  THREAD_ENTRY *exec_owner;	/* taken by a CAS from NULL, given back with no mutex (__atomic) */
-  int exec_waiters;		/* requests waiting on exec_cond (__atomic: a giver reads it with no mutex) */
-  pthread_mutex_t exec_mutex;
-  pthread_cond_t exec_cond;
+  tx_exec_token exec_token;	/* one request at a time runs the transaction (logtb_exec_begin ()) */
 #endif
 
   // *INDENT-OFF*

@@ -56,8 +56,8 @@ struct fi_test_item;
 class log_system_tdes;
 // from log_compress.h
 struct log_zip;
-// from log_impl.h
-struct log_tdes;
+// from transaction_exec_token.hpp
+class tx_exec_token;
 // from vacuum.h
 struct vacuum_worker;
 // from xasl_unpack_info.hpp
@@ -292,7 +292,7 @@ namespace cubthread
       bool no_logging;
 
       int net_request_index;	/* request index of net server functions */
-      log_tdes *exec_tdes;	/* the transaction whose execution token this request took (logtb_exec_begin ()) */
+      tx_exec_token *exec_token;	/* the execution token this request took (logtb_exec_begin ()) */
 
       struct vacuum_worker *vacuum_worker;	/* Vacuum worker info */
 

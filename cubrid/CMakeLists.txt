@@ -503,6 +503,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/recovery.c
   ${TRANSACTION_DIR}/replication.c
   ${TRANSACTION_DIR}/transaction_sr.c
+  ${TRANSACTION_DIR}/transaction_exec_token.cpp
   ${TRANSACTION_DIR}/transaction_transient.cpp
   ${TRANSACTION_DIR}/wait_for_graph.c
   ${TRANSACTION_DIR}/flashback.c
@@ -532,6 +533,7 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp
   ${TRANSACTION_DIR}/transaction_global.hpp
+  ${TRANSACTION_DIR}/transaction_exec_token.hpp
   ${TRANSACTION_DIR}/transaction_transient.hpp
   ${TRANSACTION_DIR}/flashback.h
   )
