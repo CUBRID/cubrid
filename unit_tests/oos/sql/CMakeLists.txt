@@ -93,6 +93,7 @@ string(CONCAT oos_sql_deferred_write_updates_filter
 add_test(NAME test_oos_sql_deferred_write_updates COMMAND test_oos_sql_deferred_write
   "--gtest_filter=${oos_sql_deferred_write_updates_filter}")
 add_test(NAME test_oos_sql_visible_version COMMAND test_oos_sql_visible_version)
+add_test(NAME test_oos_sql_ownership COMMAND test_oos_sql_ownership)
 add_test(NAME test_oos_sql_workspace_bytes COMMAND test_oos_sql_workspace_bytes)
 
 set_tests_properties(
@@ -105,6 +106,7 @@ set_tests_properties(
   test_oos_sql_deferred_write_preparation test_oos_sql_deferred_write_routing
   test_oos_sql_deferred_write_duplicates test_oos_sql_deferred_write_updates
   test_oos_sql_visible_version
+  test_oos_sql_ownership
   test_oos_sql_workspace_bytes
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )

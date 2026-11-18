@@ -26,6 +26,7 @@
 #include "xserver_interface.h"
 
 #include "test_oos_server_common.hpp"
+#include "log_system_tran.hpp"
 
 #include <vector>
 
@@ -283,6 +284,117 @@ TEST (OosFileDestroyServerTest, OosFileDestroyMultipleFiles)
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_STREQ (rec_out.data, "File 2 data");
   recdes_free_data_area (&rec_out);
+}
+
+// A matching chain identity authorizes the chunk delete, but its empty page remains an undo
+// destination until the real system-worker sysop ends. This exercises the system-tdes horizon,
+// separately from the ordinary transaction gate above, without manufacturing an LSA.
+TEST (OosFileDestroyServerTest, SystemWorkerUndoDefersPageReturnAndAbortRestoresTheChain)
+{
+  ::testing::GTEST_FLAG (break_on_failure) = false;
+  VFID vfid;
+  ASSERT_EQ (oos_create_file (thread_p, vfid), NO_ERROR);
+  struct file_cleanup
+  {
+    VFID &vfid;
+    ~file_cleanup ()
+    {
+      EXPECT_EQ (oos_remove_file (thread_p, vfid), NO_ERROR);
+      EXPECT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+    }
+  } cleanup {vfid};
+  std::string payload = "system-worker undo must restore these exact bytes and the original stamp";
+  OID oid = OID_INITIALIZER;
+  LOG_LSA stamp = NULL_LSA;
+  ASSERT_EQ (oos_insert (thread_p, vfid, oos_buffer (payload.data (), payload.size ()), oid, &stamp), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  const oos_chain_ref ref = {oid, stamp};
+  VPID page = {oid.pageid, oid.volid};
+  const int regular_index = thread_p->tran_index;
+  {
+    struct system_worker_scope
+    {
+      THREAD_ENTRY *thread;
+      int saved_index;
+      system_worker_scope (THREAD_ENTRY *entry) : thread (entry), saved_index (entry->tran_index)
+      {
+	thread->claim_system_worker ();
+      }
+      ~system_worker_scope ()
+      {
+	thread->tran_index = LOG_SYSTEM_TRAN_INDEX;
+	LOG_TDES *tdes = thread->get_system_tdes ()->get_tdes ();
+	if (tdes->topops.last >= 0)
+	  {
+	    log_sysop_abort (thread);
+	  }
+	thread->retire_system_worker ();
+	thread->tran_index = saved_index;
+      }
+    } worker (thread_p);
+    log_sysop_start (thread_p);
+    std::vector<VPID> emptied;
+    ASSERT_EQ (oos_delete (thread_p, vfid, ref, &emptied), NO_ERROR);
+    ASSERT_EQ (emptied.size (), 1U);
+    ASSERT_TRUE (VPID_EQ (&emptied.front (), &page));
+    LOG_TDES *system_tdes = thread_p->get_system_tdes ()->get_tdes ();
+    ASSERT_FALSE (LSA_ISNULL (&system_tdes->head_lsa));
+    PAGE_PTR fixed = pgbuf_fix (thread_p, &page, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+    ASSERT_NE (fixed, nullptr);
+    const LOG_LSA page_lsa = *pgbuf_get_lsa (fixed);
+    EXPECT_EQ (spage_number_of_records (fixed), 0);
+    EXPECT_TRUE (LSA_LE (&system_tdes->head_lsa, &page_lsa));
+    printf ("system undo candidate=%d|%d page_lsa=%lld|%d system_head=%lld|%d\n",
+	    page.volid, page.pageid, (long long) page_lsa.pageid, page_lsa.offset,
+	    (long long) system_tdes->head_lsa.pageid, system_tdes->head_lsa.offset);
+    pgbuf_unfix (thread_p, fixed);
+
+    // Run reclaim as the ordinary caller while the system undo source stays registered.
+    thread_p->tran_index = regular_index;
+    ASSERT_EQ (oos_reclaim_empty_pages (thread_p, vfid, emptied), NO_ERROR);
+    ASSERT_EQ (pgbuf_fix_if_not_deallocated (thread_p, &page, PGBUF_LATCH_READ,
+	       PGBUF_UNCONDITIONAL_LATCH, &fixed), NO_ERROR);
+    ASSERT_NE (fixed, nullptr);
+    pgbuf_unfix (thread_p, fixed);
+    thread_p->tran_index = LOG_SYSTEM_TRAN_INDEX;
+    log_sysop_abort (thread_p);
+    EXPECT_TRUE (LSA_ISNULL (&system_tdes->head_lsa));
+  }
+  std::string restored (payload.size (), '?');
+  ASSERT_EQ (oos_read (thread_p, ref, oos_buffer (restored.data (), restored.size ())), NO_ERROR);
+  EXPECT_EQ (restored, payload);
+  LOG_LSA restored_stamp;
+  ASSERT_EQ (oos_get_identity_stamp (thread_p, oid, &restored_stamp), NO_ERROR);
+  EXPECT_TRUE (LSA_EQ (&restored_stamp, &stamp));
+
+  std::vector<VPID> emptied;
+  ASSERT_EQ (oos_delete (thread_p, vfid, ref, &emptied), NO_ERROR);
+  ASSERT_EQ (xtran_server_commit (thread_p, false), TRAN_UNACTIVE_COMMITTED);
+  PAGE_PTR fixed = pgbuf_fix (thread_p, &page, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  ASSERT_NE (fixed, nullptr);
+  const LOG_LSA page_lsa = *pgbuf_get_lsa (fixed);
+  EXPECT_EQ (spage_number_of_records (fixed), 0);
+  pgbuf_unfix (thread_p, fixed);
+  LOG_LSA regular_horizon = NULL_LSA;
+  logtb_find_smallest_lsa (thread_p, &regular_horizon);
+  EXPECT_TRUE (LSA_ISNULL (&regular_horizon) || LSA_LT (&page_lsa, &regular_horizon));
+  log_system_tdes::map_all_tdes ([&page_lsa] (log_tdes &tdes)
+  {
+    EXPECT_TRUE (LSA_ISNULL (&tdes.head_lsa) || LSA_LT (&page_lsa, &tdes.head_lsa));
+  });
+  const LOG_LSA append = log_get_append_lsa ();
+  EXPECT_TRUE (LSA_LT (&page_lsa, &append));
+  printf ("committed empty candidate=%d|%d page_lsa=%lld|%d regular_horizon=%lld|%d append=%lld|%d\n",
+	  page.volid, page.pageid, (long long) page_lsa.pageid, page_lsa.offset,
+	  (long long) regular_horizon.pageid, regular_horizon.offset, (long long) append.pageid, append.offset);
+  ASSERT_EQ (oos_reclaim_empty_pages (thread_p, vfid, emptied), NO_ERROR);
+  ASSERT_EQ (pgbuf_fix_if_not_deallocated (thread_p, &page, PGBUF_LATCH_READ,
+	     PGBUF_UNCONDITIONAL_LATCH, &fixed), NO_ERROR);
+  EXPECT_EQ (fixed, nullptr);
+  if (fixed != nullptr)
+    {
+      pgbuf_unfix (thread_p, fixed);
+    }
 }
 
 int
