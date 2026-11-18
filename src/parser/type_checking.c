@@ -7150,6 +7150,23 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 
     case PT_SELECT:
 
+      /* the ORDER BY ... FOR filter takes the rows out after the aggregation */
+      if (node->info.query.orderby_for)
+	{
+	  where = node->info.query.orderby_for;
+	  if (pt_false_search_condition (parser, where) == true)
+	    {
+	      return true;
+	    }
+	}
+
+      /* an aggregate with no GROUP BY gives one row even over no row: a false START WITH or hierarchical WHERE,
+       * which take the rows out before the aggregation, does not empty it (CBRD-28029) */
+      if (pt_is_single_tuple (parser, node))
+	{
+	  return false;
+	}
+
       /* If the "connect by" condition is false the query still has to return all the "start with" tuples. Therefore we
        * do not check that "connect by" is false. */
       if (node->info.query.q.select.start_with)
@@ -7167,20 +7184,6 @@ pt_false_where (PARSER_CONTEXT * parser, PT_NODE * node)
 	    {
 	      return true;
 	    }
-	}
-
-      if (node->info.query.orderby_for)
-	{
-	  where = node->info.query.orderby_for;
-	  if (pt_false_search_condition (parser, where) == true)
-	    {
-	      return true;
-	    }
-	}
-
-      if (pt_is_single_tuple (parser, node))
-	{
-	  return false;
 	}
 
       if (node->info.query.q.select.group_by)
