@@ -44,7 +44,8 @@ namespace parallel_scan
 	  m_err_messages_p (err_messages_p),
 	  m_ranges (),
 	  m_leaf (),
-	  m_ovf ()
+	  m_ovf (),
+	  m_parallelism (1)
       {
       }
       int init_on_main (THREAD_ENTRY *thread_p, INDX_INFO *indx_info, SCAN_ID *scan_id, val_descr *vd, int parallelism);
@@ -76,6 +77,11 @@ namespace parallel_scan
       {
 	return m_ranges.get_btid_int ();
       }
+      int get_parallelism () const
+      {
+	return m_parallelism;
+      }
+
       INDX_INFO *get_indx_info ()
       {
 	return m_ranges.get_indx_info ();
@@ -141,6 +147,7 @@ namespace parallel_scan
       parallel_index_scan::leaf_page_dispatcher m_leaf;
       /* (A) shared overflow pool: per-slot active-chains vector + helpers/wait. */
       parallel_index_scan::overflow_chain_pool m_ovf;
+      int m_parallelism;                              /* workers of the scan. */
   };
 }
 

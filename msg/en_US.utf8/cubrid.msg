@@ -1511,7 +1511,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Last Error
+1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
+
+1396 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -2029,6 +2031,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 345 SELECT INTO is not allowed in an operand of UNION, INTERSECT or EXCEPT in Static SQL.
+346 Argument %1$d of %2$s must be a bind variable (? or :name) because it is passed to an %3$s parameter.
 
 
 
