@@ -1,0 +1,38 @@
+/*
+ *
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * sensitivity_label.hpp - Sensitivity labels and their components in the catalog
+ */
+
+#ifndef _SENSITIVITY_LABEL_HPP_
+#define _SENSITIVITY_LABEL_HPP_
+
+#include "dbtype_def.h"
+#include "misctype_def.h"
+#include "object_fetch.h"
+
+int sensitivity_label_create_component (const PT_MISC_TYPE kind, const char *name, const int level,
+					const char *comment);
+int sensitivity_label_alter_component (const PT_MISC_TYPE kind, const char *name, const char *new_name,
+				       const int level, const char *comment);
+int sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name);
+int sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, const AU_FETCHMODE fetchmode,
+				      DB_OBJECT **component);
+
+#endif /* _SENSITIVITY_LABEL_HPP_ */
