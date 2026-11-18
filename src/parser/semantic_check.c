@@ -19559,9 +19559,13 @@ pt_fold_union_unwrap (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   PT_NODE *spec, *operand;
 
+  /* the SELECT pt_fold_union_as_derived () made has no clause but its select list and FROM: one that took any other,
+   * the ORDER BY, LIMIT or WITH of the set operation or a condition a later rewrite put on it, is kept */
   if (query == NULL || query->node_type != PT_SELECT || !query->info.query.flag.folded_distinct
       || query->info.query.order_by != NULL || query->info.query.orderby_for != NULL
-      || query->info.query.limit != NULL || query->info.query.with != NULL)
+      || query->info.query.limit != NULL || query->info.query.with != NULL
+      || query->info.query.q.select.where != NULL || query->info.query.q.select.group_by != NULL
+      || query->info.query.q.select.having != NULL || query->info.query.q.select.connect_by != NULL)
     {
       return query;
     }
