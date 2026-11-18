@@ -26,11 +26,11 @@
 #include "dbtype.h"
 #include "locator_cl.h"
 #include "object_accessor.h"
-#include "parser.h"
 #include "schema_manager.h"
 #include "schema_system_catalog_constants.h"
 
 static const char *sensitivity_label_get_component_class_name (const PT_MISC_TYPE kind);
+static const char *sensitivity_label_get_component_kind_name (const PT_MISC_TYPE kind);
 
 /*
  * sensitivity_label_get_component_class_name () - the catalog class that holds the grades, the info_types or
@@ -49,6 +49,28 @@ sensitivity_label_get_component_class_name (const PT_MISC_TYPE kind)
       return CT_SENSITIVITY_LABEL_INFO_TYPE_NAME;
     case PT_SENSITIVITY_LABEL_SOURCE:
       return CT_SENSITIVITY_LABEL_SOURCE_NAME;
+    default:
+      assert (false);
+      return NULL;
+    }
+}
+
+/*
+ * sensitivity_label_get_component_kind_name () - the kind name an error message shows
+ *   return: "grade", "info_type" or "source"
+ *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
+ */
+static const char *
+sensitivity_label_get_component_kind_name (const PT_MISC_TYPE kind)
+{
+  switch (kind)
+    {
+    case PT_SENSITIVITY_LABEL_GRADE:
+      return "grade";
+    case PT_SENSITIVITY_LABEL_INFO_TYPE:
+      return "info_type";
+    case PT_SENSITIVITY_LABEL_SOURCE:
+      return "source";
     default:
       assert (false);
       return NULL;
@@ -88,7 +110,8 @@ sensitivity_label_create_component (const PT_MISC_TYPE kind, const char *name, c
   db_make_string (&value, lower_name);
   if (db_find_unique (class_obj, "name", &value) != NULL)
     {
-      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS, pt_show_misc_type (kind), lower_name);
+      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS,
+			     sensitivity_label_get_component_kind_name (kind), lower_name);
       goto end;
     }
 
@@ -222,8 +245,8 @@ sensitivity_label_alter_component (const PT_MISC_TYPE kind, const char *name, co
       db_make_string (&value, lower_new_name);
       if (db_find_unique (class_obj, "name", &value) != NULL)
 	{
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS, pt_show_misc_type (kind),
-				 lower_new_name);
+	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_ALREADY_EXISTS,
+				 sensitivity_label_get_component_kind_name (kind), lower_new_name);
 	  goto end;
 	}
 
@@ -400,7 +423,8 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
   if (error > 0)
     {
       sm_downcase_name (name, lower_name, DB_MAX_IDENTIFIER_LENGTH);
-      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_IN_USE, pt_show_misc_type (kind), lower_name);
+      ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_IN_USE, sensitivity_label_get_component_kind_name (kind),
+			     lower_name);
     }
   if (error != NO_ERROR)
     {
@@ -470,7 +494,8 @@ sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, con
       if (error == ER_OBJ_OBJECT_NOT_FOUND)
 	{
 	  er_clear ();
-	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_NOT_FOUND, pt_show_misc_type (kind), lower_name);
+	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_NAME_NOT_FOUND, sensitivity_label_get_component_kind_name (kind),
+				 lower_name);
 	}
     }
 
