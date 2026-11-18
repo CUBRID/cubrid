@@ -10538,6 +10538,29 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  continue;		/* continue to next UPDATE statement */
 	}
 
+      /* a client-side UPDATE locks its target rows in the SELECT below, so the LOCK_TIMEOUT hint must cover it */
+      if (!statement->info.update.server_update)
+	{
+	  hint_arg = statement->info.update.waitsecs_hint;
+	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
+	    {
+	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	      if (hint_waitsecs > 0)
+		{
+		  wait_msecs = (int) (hint_waitsecs * 1000);
+		}
+	      else
+		{
+		  wait_msecs = (int) hint_waitsecs;
+		}
+	      if (wait_msecs >= -1)
+		{
+		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+		  (void) tran_reset_wait_times (wait_msecs);
+		}
+	    }
+	}
+
       /*
        * Server-side update or OID list update case:
        *  execute the prepared(stored) XASL (UPDATE_PROC or SELECT statement)
@@ -10627,24 +10650,6 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (!statement->info.update.server_update)
 	{
-	  hint_arg = statement->info.update.waitsecs_hint;
-	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	    {
-	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (hint_waitsecs > 0)
-		{
-		  wait_msecs = (int) (hint_waitsecs * 1000);
-		}
-	      else
-		{
-		  wait_msecs = (int) hint_waitsecs;
-		}
-	      if (wait_msecs >= -1)
-		{
-		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-		  (void) tran_reset_wait_times (wait_msecs);
-		}
-	    }
 	  AU_SAVE_AND_DISABLE (au_save);	/* this prevents authorization checking during execution */
 	  if (statement->info.update.do_class_attrs)
 	    {
@@ -10661,6 +10666,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (old_wait_msecs >= -1)
 	    {
 	      (void) tran_reset_wait_times (old_wait_msecs);
+	      old_wait_msecs = -2;
 	    }
 	}
 
@@ -10735,6 +10741,12 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
 			   er_msg (), NULL);
 	}
+    }
+
+  /* a break above skips the restore after the update step */
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
     }
 
   /* If error and a savepoint was created, rollback to savepoint. No need to rollback if the TM aborted the
@@ -18391,6 +18403,26 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  /* the LOCK_TIMEOUT hint covers every query below, including the SELECT that locks the target rows to update */
+  hint_arg = statement->info.merge.waitsecs_hint;
+  if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT) && PT_IS_HINT_NODE (hint_arg))
+    {
+      hint_waitsecs = (float) atof (hint_arg->info.name.original);
+      if (hint_waitsecs > 0)
+	{
+	  wait_msecs = (int) (hint_waitsecs * 1000);
+	}
+      else
+	{
+	  wait_msecs = (int) hint_waitsecs;
+	}
+      if (wait_msecs >= -1)
+	{
+	  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	  (void) tran_reset_wait_times (wait_msecs);
+	}
+    }
+
   /* check insert part */
   if (statement->info.merge.insert.value_clauses)
     {
@@ -18518,25 +18550,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  hint_arg = statement->info.merge.waitsecs_hint;
-  if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT) && PT_IS_HINT_NODE (hint_arg))
-    {
-      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-      if (hint_waitsecs > 0)
-	{
-	  wait_msecs = (int) (hint_waitsecs * 1000);
-	}
-      else
-	{
-	  wait_msecs = (int) hint_waitsecs;
-	}
-      if (wait_msecs >= -1)
-	{
-	  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-	  (void) tran_reset_wait_times (wait_msecs);
-	}
-    }
-
   /* do update part */
   if (statement->info.merge.update.assignment && !insert_only)
     {
@@ -18602,11 +18615,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* pt_end_query() already called by insert_subquery_results() */
     }
 
-  if (old_wait_msecs >= -1)
-    {
-      (void) tran_reset_wait_times (old_wait_msecs);
-    }
-
   if (err >= NO_ERROR)
     {
       err = db_is_vclass (class_obj);
@@ -18617,6 +18625,11 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 exit:
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
+    }
+
   if (upd_select_stmt != NULL)
     {
       parser_free_tree (parser, upd_select_stmt);
@@ -19273,6 +19286,26 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       /* client side execution */
 
+      /* the LOCK_TIMEOUT hint covers every query below, including the SELECT that locks the target rows to update */
+      hint_arg = statement->info.merge.waitsecs_hint;
+      if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT) && PT_IS_HINT_NODE (hint_arg))
+	{
+	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+	  if (hint_waitsecs > 0)
+	    {
+	      wait_msecs = (int) (hint_waitsecs * 1000);
+	    }
+	  else
+	    {
+	      wait_msecs = (int) hint_waitsecs;
+	    }
+	  if (wait_msecs >= -1)
+	    {
+	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+	      (void) tran_reset_wait_times (wait_msecs);
+	    }
+	}
+
       if (statement->info.merge.update.assignment && !insert_only && !statement->info.merge.update.do_class_attrs)
 	{
 	  int query_flag = DEFAULT_EXEC_MODE;
@@ -19356,25 +19389,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  err = ER_GENERIC_ERROR;
 		}
 	      goto exit;
-	    }
-	}
-
-      hint_arg = statement->info.merge.waitsecs_hint;
-      if ((statement->info.merge.hint & PT_HINT_LK_TIMEOUT) && PT_IS_HINT_NODE (hint_arg))
-	{
-	  hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	  if (hint_waitsecs > 0)
-	    {
-	      wait_msecs = (int) (hint_waitsecs * 1000);
-	    }
-	  else
-	    {
-	      wait_msecs = (int) hint_waitsecs;
-	    }
-	  if (wait_msecs >= -1)
-	    {
-	      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-	      (void) tran_reset_wait_times (wait_msecs);
 	    }
 	}
 
@@ -19465,11 +19479,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ins_select_stmt = NULL;
 	}
 
-      if (old_wait_msecs >= -1)
-	{
-	  (void) tran_reset_wait_times (old_wait_msecs);
-	}
-
       if (err >= NO_ERROR)
 	{
 	  err = db_is_vclass (class_obj);
@@ -19481,6 +19490,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 exit:
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
+    }
+
   if (ins_select_stmt != NULL)
     {
       if (ins_select_stmt->etc != NULL)
