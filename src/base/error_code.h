@@ -1798,12 +1798,14 @@
 #define ER_SP_ALTER_NOT_ALLOWED_SYSTEM_GENERATED    -1393
 #define ER_SP_GRANT_NOT_ALLOWED_SYSTEM_GENERATED    -1394
 
-#define ER_SP_TCL_DDL_IN_QUERY                      -1395
-#define ER_SP_TCL_DDL_IN_TRIGGER                    -1396
-#define ER_SP_DML_IN_QUERY                          -1397
-#define ER_SP_TABLE_REFERENCED                      -1398
+#define ER_LDR_PARTITIONED_CLASS_NOT_SUPPORTED      -1395
 
-#define ER_LAST_ERROR                               -1399
+#define ER_SP_TCL_DDL_IN_QUERY                      -1396
+#define ER_SP_TCL_DDL_IN_TRIGGER                    -1397
+#define ER_SP_DML_IN_QUERY                          -1398
+#define ER_SP_TABLE_REFERENCED                      -1399
+
+#define ER_LAST_ERROR                               -1400
 
 
 /*

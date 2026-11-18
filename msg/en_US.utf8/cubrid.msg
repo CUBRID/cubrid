@@ -1510,12 +1510,14 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1394 Granting or revoking privileges on system generated stored procedure is not allowed.
 
-1395 Cannot perform %1$s inside a query or DML statement.
-1396 Cannot perform %1$s in a trigger.
-1397 Cannot perform a DML operation inside a query.
-1398 The stored procedure cannot modify table "%1$s" because the statement references it.
+1395 Loading rows into a partitioned class is not supported in CS mode. Load them into its partitions instead.
 
-1399 Last Error
+1396 Cannot perform %1$s inside a query or DML statement.
+1397 Cannot perform %1$s in a trigger.
+1398 Cannot perform a DML operation inside a query.
+1399 The stored procedure cannot modify table "%1$s" because the statement references it.
+
+1400 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
