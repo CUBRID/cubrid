@@ -2055,8 +2055,8 @@ tp_free_sub_client_domains (void)
  *    return: true when the flags match
  *    dom1(in): a domain
  *    dom2(in): a domain alike
- * Note: an unordered collection's elements are compared in list order; elements alike in another order only miss
- *   the cache entry.
+ * Note: element domains are paired in list order; a pair of another type is no match, so elements of an unordered
+ *   collection alike in another order only miss the cache entry, and are never taken for a domain whose flags differ.
  */
 static bool
 tp_domain_coll_flags_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2)
@@ -2071,7 +2071,8 @@ tp_domain_coll_flags_match (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2)
     {
       return false;
     }
-  if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (dom1)) && dom1->collation_flag != dom2->collation_flag)
+  if (TP_DOMAIN_TYPE (dom1) != TP_DOMAIN_TYPE (dom2)
+      || (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (dom1)) && dom1->collation_flag != dom2->collation_flag))
     {
       return false;
     }
