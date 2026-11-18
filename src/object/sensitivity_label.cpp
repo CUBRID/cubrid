@@ -31,8 +31,9 @@
 
 static const char *get_component_class_name (const PT_MISC_TYPE kind);
 static const char *get_component_kind_name (const PT_MISC_TYPE kind);
-static int execute_query_with_object (const char *sql, DB_OBJECT *object, DB_SESSION **session,
-				      DB_QUERY_RESULT **result);
+static int execute_query_with_object (const char *sql, DB_OBJECT *object, DB_QUERY_RESULT **result);
+static int find_component (const PT_MISC_TYPE kind, const char *name, const AU_FETCHMODE fetchmode,
+			   DB_OBJECT **component);
 static int find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
 			   SM_ATTRIBUTE **att);
 static bool is_label_allowed (SM_CLASS *class_);
@@ -236,7 +237,7 @@ sensitivity_label_alter_component (const PT_MISC_TYPE kind, const char *name, co
   int save;
 
   /* X-lock the component now: an S lock upgraded at the update can deadlock with another ALTER of it */
-  error = sensitivity_label_find_component (kind, name, AU_FETCH_WRITE, &component);
+  error = find_component (kind, name, AU_FETCH_WRITE, &component);
   if (error != NO_ERROR)
     {
       return error;
@@ -360,49 +361,63 @@ end:
 }
 
 /*
- * execute_query_with_object () - execute a query whose only host variable is an object
+ * execute_query_with_object () - execute a query whose only host variable is an object, and close its session
  *   return: the number of rows of the result, or an error code
  *   sql(in): the query
  *   object(in): the value of the host variable
- *   session(out): the session of the query, to be closed with db_close_session () unless NULL
- *   result(out): the result of the query, to be ended with db_query_end () unless NULL
+ *   result(out): the result for the caller to end with db_query_end (), or NULL to end it here
  */
 static int
-execute_query_with_object (const char *sql, DB_OBJECT *object, DB_SESSION **session, DB_QUERY_RESULT **result)
+execute_query_with_object (const char *sql, DB_OBJECT *object, DB_QUERY_RESULT **result)
 {
+  DB_SESSION *session;
+  DB_QUERY_RESULT *query_result = NULL;
   DB_VALUE value;
   STATEMENT_ID stmt_id;
   int error;
 
   /* the object value needs a host variable, which db_compile_and_execute_local cannot take */
-  *session = db_open_buffer_local (sql);
-  if (*session == NULL)
+  session = db_open_buffer_local (sql);
+  if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  error = db_set_system_generated_statement (*session);
+  error = db_set_system_generated_statement (session);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
-  stmt_id = db_compile_statement_local (*session);
+  stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
       ASSERT_ERROR_AND_SET (error);
-      return error;
+      goto end;
     }
 
   db_make_object (&value, object);
-  error = db_push_values (*session, 1, &value);
+  error = db_push_values (session, 1, &value);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
-  return db_execute_statement_local (*session, stmt_id, result);
+  error = db_execute_statement_local (session, stmt_id, &query_result);
+  if (result != NULL)
+    {
+      *result = query_result;
+    }
+  else if (error >= 0)
+    {
+      db_query_end (query_result);
+    }
+
+end:
+  db_close_session (session);
+
+  return error;
 }
 
 /*
@@ -415,8 +430,6 @@ int
 sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
 {
   DB_OBJECT *component;
-  DB_SESSION *session = NULL;
-  DB_QUERY_RESULT *result = NULL;
   const char *sql;
   char lower_name[DB_MAX_IDENTIFIER_LENGTH];
   int error;
@@ -440,7 +453,7 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
 
   /* X-lock the component before the reference check: a label S-locks the components it refers to until the end of
    * its transaction, so the check and a label created on the component at the same time wait for each other */
-  error = sensitivity_label_find_component (kind, name, AU_FETCH_WRITE, &component);
+  error = find_component (kind, name, AU_FETCH_WRITE, &component);
   if (error != NO_ERROR)
     {
       return error;
@@ -452,7 +465,7 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
    * label committed during the wait */
   db_invalidate_mvcc_snapshot_before_statement ();
 
-  error = execute_query_with_object (sql, component, &session, &result);
+  error = execute_query_with_object (sql, component, NULL);
   if (error > 0)
     {
       sm_downcase_name (name, lower_name, DB_MAX_IDENTIFIER_LENGTH);
@@ -472,32 +485,21 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
   error = locator_flush_instance (component);
 
 end:
-  if (result != NULL)
-    {
-      db_query_end (result);
-    }
-
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
   AU_RESTORE (save);
 
   return error;
 }
 
 /*
- * sensitivity_label_find_component () - find a grade, an info_type or a source by its name
+ * find_component () - find a grade, an info_type or a source by its name
  *   return: error code
  *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
  *   name(in): the name
  *   fetchmode(in): AU_FETCH_READ to S-lock the component, AU_FETCH_WRITE to X-lock it
  *   component(out): the component
  */
-int
-sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, const AU_FETCHMODE fetchmode,
-				  DB_OBJECT **component)
+static int
+find_component (const PT_MISC_TYPE kind, const char *name, const AU_FETCHMODE fetchmode, DB_OBJECT **component)
 {
   DB_OBJECT *class_obj;
   DB_VALUE value;
@@ -540,6 +542,54 @@ end:
 }
 
 /*
+ * sensitivity_label_find_components () - find the grade, the info_type and the source that a label is to refer to
+ *   return: error code
+ *   grade_name(in): the name of the grade
+ *   info_type_name(in): the name of the info_type, or NULL
+ *   source_name(in): the name of the source, or NULL
+ *   grade(out): the grade
+ *   info_type(out): the info_type, or NULL
+ *   source(out): the source, or NULL
+ *
+ * Note: each component stays S-locked to the end of the transaction, so a DROP of it waits for the label.
+ */
+int
+sensitivity_label_find_components (const char *grade_name, const char *info_type_name, const char *source_name,
+				   DB_OBJECT **grade, DB_OBJECT **info_type, DB_OBJECT **source)
+{
+  int error;
+
+  *info_type = NULL;
+  *source = NULL;
+
+  error = find_component (PT_SENSITIVITY_LABEL_GRADE, grade_name, AU_FETCH_READ, grade);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (info_type_name != NULL)
+    {
+      error = find_component (PT_SENSITIVITY_LABEL_INFO_TYPE, info_type_name, AU_FETCH_READ, info_type);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (source_name != NULL)
+    {
+      error = find_component (PT_SENSITIVITY_LABEL_SOURCE, source_name, AU_FETCH_READ, source);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * sensitivity_label_find_class () - find the class that a name in a statement refers to
  *   return: error code
  *   name(in): the class name
@@ -577,8 +627,7 @@ sensitivity_label_find_class (const char *name, MOP *class_mop, SM_CLASS **class
  *   att(out): the attribute
  */
 static int
-find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
-		SM_ATTRIBUTE **att)
+find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_, SM_ATTRIBUTE **att)
 {
   int error;
 
@@ -609,7 +658,6 @@ find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM
 int
 sensitivity_label_find_classes_in_schema (const char *schema_name, DB_OBJLIST **class_list)
 {
-  DB_SESSION *session = NULL;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE value;
   MOP owner;
@@ -628,8 +676,7 @@ sensitivity_label_find_classes_in_schema (const char *schema_name, DB_OBJLIST **
 
   AU_SAVE_AND_DISABLE (save);
 
-  error = execute_query_with_object ("SELECT [class_of] FROM [" CT_CLASS_NAME "] WHERE [owner] = ?", owner, &session,
-				     &result);
+  error = execute_query_with_object ("SELECT [class_of] FROM [" CT_CLASS_NAME "] WHERE [owner] = ?", owner, &result);
   if (error < NO_ERROR)
     {
       goto end;
@@ -681,11 +728,6 @@ end:
       db_query_end (result);
     }
 
-  if (session != NULL)
-    {
-      db_close_session (session);
-    }
-
   AU_RESTORE (save);
 
   return error;
@@ -704,7 +746,7 @@ is_label_allowed (SM_CLASS *class_)
 }
 
 /*
- * find_label () - find the label of an attribute to replace or drop it
+ * find_label () - find the label of an attribute to create, replace or drop it
  *   return: error code
  *   class_mop(in): the class
  *   attr_id(in): the attribute id
@@ -819,8 +861,7 @@ put_labeled_by (DB_OTMPL *obj_tmpl)
  *   source(in): the source, or NULL
  */
 static int
-create_label (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type,
-	      DB_OBJECT *source)
+create_label (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source)
 {
   DB_OBJECT *label_class;
   DB_OBJECT *label;
@@ -1124,8 +1165,6 @@ sensitivity_label_drop_of_removed_attributes (MOP class_mop, SM_CLASS *class_, S
 int
 sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
 {
-  DB_SESSION *session = NULL;
-  DB_QUERY_RESULT *result = NULL;
   int error;
   int save;
 
@@ -1138,20 +1177,10 @@ sensitivity_label_drop_of_dropped_class (MOP class_mop, SM_CLASS *class_)
   AU_SAVE_AND_DISABLE (save);
 
   error = execute_query_with_object ("DELETE FROM [" CT_SENSITIVITY_LABEL_NAME "] WHERE [class_of] = ?", class_mop,
-				     &session, &result);
+				     NULL);
   if (error > 0)
     {
       error = NO_ERROR;
-    }
-
-  if (result != NULL)
-    {
-      db_query_end (result);
-    }
-
-  if (session != NULL)
-    {
-      db_close_session (session);
     }
 
   AU_RESTORE (save);

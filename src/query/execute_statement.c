@@ -20476,40 +20476,20 @@ static int
 do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info)
 {
   DB_OBJECT *grade;
-  DB_OBJECT *info_type = NULL;
-  DB_OBJECT *source = NULL;
+  DB_OBJECT *info_type;
+  DB_OBJECT *source;
   PT_NODE *column;
   int error;
 
   assert (info->grade != NULL);
 
-  error = sensitivity_label_find_component (PT_SENSITIVITY_LABEL_GRADE,
-					    (const char *) PT_VALUE_GET_BYTES (info->grade), AU_FETCH_READ, &grade);
+  error = sensitivity_label_find_components ((const char *) PT_VALUE_GET_BYTES (info->grade),
+					     (const char *) PT_VALUE_GET_BYTES (info->info_type),
+					     (const char *) PT_VALUE_GET_BYTES (info->source), &grade, &info_type,
+					     &source);
   if (error != NO_ERROR)
     {
       return error;
-    }
-
-  if (info->info_type != NULL)
-    {
-      error = sensitivity_label_find_component (PT_SENSITIVITY_LABEL_INFO_TYPE,
-						(const char *) PT_VALUE_GET_BYTES (info->info_type), AU_FETCH_READ,
-						&info_type);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  if (info->source != NULL)
-    {
-      error = sensitivity_label_find_component (PT_SENSITIVITY_LABEL_SOURCE,
-						(const char *) PT_VALUE_GET_BYTES (info->source), AU_FETCH_READ,
-						&source);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
     }
 
   for (column = info->target_list; column != NULL; column = column->next)

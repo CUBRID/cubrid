@@ -26,15 +26,14 @@
 #include "class_object.h"
 #include "dbtype_def.h"
 #include "misctype_def.h"
-#include "object_fetch.h"
 
 int sensitivity_label_create_component (const PT_MISC_TYPE kind, const char *name, const int level,
 					const char *comment);
 int sensitivity_label_alter_component (const PT_MISC_TYPE kind, const char *name, const char *new_name,
 				       const int level, const char *comment);
 int sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name);
-int sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, const AU_FETCHMODE fetchmode,
-				      DB_OBJECT **component);
+int sensitivity_label_find_components (const char *grade_name, const char *info_type_name, const char *source_name,
+				       DB_OBJECT **grade, DB_OBJECT **info_type, DB_OBJECT **source);
 
 int sensitivity_label_find_class (const char *name, MOP *class_mop, SM_CLASS **class_);
 int sensitivity_label_find_classes_in_schema (const char *schema_name, DB_OBJLIST **class_list);
