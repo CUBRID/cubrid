@@ -72,6 +72,7 @@ static int count_and_or (PARSER_CONTEXT * parser, const PT_NODE * node);
 static PT_NODE *pt_transform_cnf_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node);
+static PT_NODE *pt_cnf_distribute_kept (PARSER_CONTEXT * parser, PT_NODE * list);
 static PT_NODE *pt_cnf_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool pt_cnf_over_one_column (PARSER_CONTEXT * parser, PT_NODE * node, bool * outer_mark);
 static int pt_cnf_count_operands (const PT_NODE * node, PT_OP_TYPE op);
@@ -745,6 +746,38 @@ pt_cnf_or_list_to_tree (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_cnf_distribute_kept () - distribute the factors a CNF list keeps whole
+ *   return: the CNF list, with every factor kept whole distributed into clauses
+ *   parser(in):
+ *   list(in): a CNF list, the operand of a factor to be distributed
+ *
+ * Note: a factor with a (+) predicate is distributed, and an operand of it may hold a factor the walk kept whole
+ *	 before it met the (+) above.  Distributing the outer factor over that operand would chain the rest of its
+ *	 disjuncts on the or_next of a PT_OR tree, which the constant folding drops with the tree node it replaces;
+ *	 so the operand is distributed too, as all of it was before factors were kept whole.
+ */
+static PT_NODE *
+pt_cnf_distribute_kept (PARSER_CONTEXT * parser, PT_NODE * list)
+{
+  PT_NODE *cnf, *next, *result = NULL;
+  CNF_MODE mode = TRANSFORM_CNF_AND_OR;
+
+  for (cnf = list; cnf != NULL; cnf = next)
+    {
+      next = cnf->next;
+      cnf->next = NULL;
+      if (pt_cnf_list_has_or_tree (cnf))
+	{
+	  cnf = pt_cnf_or_list_to_tree (parser, cnf);
+	  cnf = parser_walk_tree (parser, cnf, pt_transform_cnf_pre, &mode, pt_transform_cnf_post, &mode);
+	}
+      result = parser_append_node (cnf, result);
+    }
+
+  return result;
+}
+
+/*
  * pt_transform_cnf_post () -
  *   return: CNF/DNF list
  *   parser(in):
@@ -962,7 +995,8 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
        * already kept whole -- ((A and B) or C) or c0 > 0, whose inner factor reads no column -- keeps the
        * outer one whole too: distributing would chain c0 > 0 on the or_next of a PT_OR tree, a shape
        * the passes that read a tree by arg1/arg2 lose the disjunct of (the constant folding replaces
-       * the tree node and drops its or_next) */
+       * the tree node and drops its or_next).  A factor with a (+) predicate is distributed with the
+       * factors its operands keep whole (below) */
       if (*mode == TRANSFORM_CNF_OR_COMPACT
 	  || (*mode == TRANSFORM_CNF_AND_OR_KEEP
 	      && (lhs->next != NULL || rhs->next != NULL || PT_IS_OR_TREE (lhs) || PT_IS_OR_TREE (rhs))
@@ -1038,7 +1072,14 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  break;
 	}
 
-      /* redo cnf transformation */
+      /* redo cnf transformation; an operand of a factor distributed for its (+) predicate may hold a factor kept
+       * whole, distributed with it (pt_cnf_distribute_kept ()) */
+      if (*mode == TRANSFORM_CNF_AND_OR_KEEP
+	  && (pt_cnf_list_has_or_tree (node->info.expr.arg1) || pt_cnf_list_has_or_tree (node->info.expr.arg2)))
+	{
+	  node->info.expr.arg1 = pt_cnf_distribute_kept (parser, node->info.expr.arg1);
+	  node->info.expr.arg2 = pt_cnf_distribute_kept (parser, node->info.expr.arg2);
+	}
       lhs = node->info.expr.arg1;
       rhs = node->info.expr.arg2;
 
