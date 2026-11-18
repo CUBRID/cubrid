@@ -514,6 +514,10 @@ struct lk_group
   bool interrupted;		/* an interrupt came while sections were open; cleared when they close (__atomic) */
   bool abort_deferred;		/* an abort waits for the section owner; cleared when the transaction ends (__atomic) */
   LK_PENDING_RELEASE *pending_release;	/* run by the owner before it leaves (__atomic: read leaving with no mutex) */
+#if !defined (NDEBUG)
+  THREAD_ENTRY *solo_owner;	/* the thread inside with no section open, to catch a second one */
+  int solo_depth;
+#endif
 };
 
 /*
@@ -3134,6 +3138,46 @@ lock_group_wakes (LK_GROUP * group, bool is_owner, bool interrupted)
 }
 
 #if !defined (NDEBUG)
+/* outside its sections the threads of a transaction enter unchecked; a second one inside at once is a bug */
+static bool
+lock_group_solo_enter (LK_GROUP * group, THREAD_ENTRY * thread_p)
+{
+  THREAD_ENTRY *expected = NULL;
+  THREAD_ENTRY *owner = __atomic_load_n (&group->owner, __ATOMIC_ACQUIRE);
+  THREAD_ENTRY *guest = __atomic_load_n (&group->guest, __ATOMIC_ACQUIRE);
+  THREAD_ENTRY *inside = (owner != NULL && owner != thread_p) ? owner : ((guest != thread_p) ? guest : NULL);
+
+  /* a pool thread runs only while its leader's section is open */
+  assert (!thread_is_px_worker (thread_p));
+
+  if (__atomic_load_n (&group->solo_owner, __ATOMIC_ACQUIRE) == thread_p)
+    {
+      group->solo_depth++;
+      return true;
+    }
+  if (inside != NULL
+      || !__atomic_compare_exchange_n (&group->solo_owner, &expected, thread_p, false, __ATOMIC_ACQ_REL,
+				       __ATOMIC_ACQUIRE))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "lock_group: thread %d of transaction %d enters the lock manager while thread %d is in it\n",
+		     thread_p->index, group->tran_index, (inside != NULL) ? inside->index : expected->index);
+      assert (false);
+      return false;
+    }
+  group->solo_depth = 1;
+  return true;
+}
+
+static void
+lock_group_solo_leave (LK_GROUP * group)
+{
+  if (--group->solo_depth == 0)
+    {
+      __atomic_store_n (&group->solo_owner, (THREAD_ENTRY *) NULL, __ATOMIC_RELEASE);
+    }
+}
+
 /* nothing else of the transaction is in the lock manager: a walk of its hold lists needs no hold_mutex */
 static bool
 lock_group_is_alone (THREAD_ENTRY * thread_p, int tran_index)
@@ -3195,6 +3239,7 @@ class lock_group_guard
     enum state
     {
       NOT_NEEDED,
+      SOLO,
       ENTERED
     };
 
@@ -3227,6 +3272,12 @@ lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_G
 
   if (!lock_group_is_gated (m_group))
     {
+#if !defined (NDEBUG)
+      if (lock_group_solo_enter (m_group, m_thread_p))
+	{
+	  m_state = SOLO;
+	}
+#endif
       return;
     }
   if (__atomic_load_n (&m_group->owner, __ATOMIC_ACQUIRE) == m_thread_p)
@@ -3341,6 +3392,13 @@ lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_G
 
 lock_group_guard::~lock_group_guard ()
 {
+#if !defined (NDEBUG)
+  if (m_state == SOLO)
+    {
+      lock_group_solo_leave (m_group);
+      return;
+    }
+#endif
   if (m_state != ENTERED)
     {
       return;

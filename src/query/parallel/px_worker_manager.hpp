@@ -54,6 +54,7 @@ namespace parallel_query
       std::atomic<int> m_active_tasks;
       int m_reserved_workers;
       cubthread::entry *m_owner;	/* the reserving thread */
+      int m_tran_index;		/* the reserving thread's: its parallel section is open while workers are reserved */
 
       worker_manager (const worker_manager &) = delete;
       worker_manager &operator= (const worker_manager &) = delete;
