@@ -162,6 +162,7 @@ namespace cubmem
       // Entries of m_stat_name_map will not be deleted and the monitor is created once in a process,
       // so a stat id in mmon_stat_id_cache stays valid
       tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
+      std::atomic <int> m_next_stat_id;
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       tbb::concurrent_unordered_map <intptr_t, MMON_DEBUG_INFO> m_error_tracking_map;
 #endif
