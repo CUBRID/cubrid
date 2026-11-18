@@ -17,31 +17,18 @@
  */
 
 /*
- * test_oos_tde_gate.cpp - regression guard for the TDE encryption gate over the
- * heap recovery indexes that carry a full record body (CBRD-26668).
+ * test_oos_tde_gate.cpp - regression guard for the TDE encryption gate over the heap and OOS recovery
+ * indexes (CBRD-26668, ADR-0008).
  *
- * Background (the bug this guards against):
- *   The MVCC remove-old-forward path in heap_update_relocation
- *   (src/storage/heap_file.c) tags an OOS-bearing forward delete with the
- *   recovery index RVHF_DELETE_NEWHOME_NOTIFY_VACUUM instead of plain
- *   RVHF_DELETE, so vacuum's forward-walk can reclaim the old OOS records from
- *   the undo image. That delete still logs the FULL old REC_NEWHOME body (user
- *   column values + OOS OIDs) via heap_log_delete_physical ->
- *   log_append_undoredo_recdes.
+ * The TDE encryption gate in the log append functions (src/transaction/log_manager.c) marks a log record
+ * for encryption only when LOG_MAY_CONTAIN_USER_DATA(rcvindex) is true. A record that carries a full
+ * heap record body must be gated, or a TDE-encrypted heap writes its rows to the WAL in plaintext. The
+ * CBRD-26668 leak was a forward delete logged under an index missing from the gate; since ADR-0008 that
+ * delete is a plain RVHF_DELETE again.
  *
- *   The TDE encryption gate in log_append_undoredo_crumbs
- *   (src/transaction/log_manager.c) only marks a log record for encryption when
- *   LOG_MAY_CONTAIN_USER_DATA(rcvindex) is true. RVHF_DELETE is in that macro,
- *   but RVHF_DELETE_NEWHOME_NOTIFY_VACUUM was originally missed -- so on a
- *   TDE-encrypted heap the old row image was written to the WAL in plaintext, a
- *   confidentiality regression versus the pre-OOS-vacuum RVHF_DELETE behavior.
- *
- * A full end-to-end "scan the WAL for the plaintext marker" test would need a
- * live TDE keystore and a TDE-flagged page, which the OOS unit-test harness
- * does not set up. The bug, however, is exactly a missing allowlist entry, so
- * the precise and deterministic regression guard is to assert the invariant
- * directly: LOG_MAY_CONTAIN_USER_DATA is a compile-time predicate over the
- * LOG_RCVINDEX enum, needing no server, page buffer, or DB fixture.
+ * The OOS reclaim records of ADR-0008 carry no user data and are logged without a page, so they must stay
+ * out of the gate. The invariant is a compile-time predicate over the LOG_RCVINDEX enum, needing no
+ * server, page buffer, or DB fixture.
  */
 
 #include "gtest/gtest.h"
@@ -49,19 +36,20 @@
 #include "recovery.h"		/* LOG_RCVINDEX, RVHF_* */
 #include "tde.h"			/* LOG_MAY_CONTAIN_USER_DATA */
 
-TEST (TdeUserDataGate, OosForwardDeleteIsEncryptedRcvindex)
+TEST (TdeUserDataGate, OosReclaimRecordsCarryNoUserData)
 {
-  /* The headline invariant / the exact fix for CBRD-26668. If anyone removes
-   * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM from LOG_MAY_CONTAIN_USER_DATA in
-   * src/storage/tde.h, this fails -- which is precisely the plaintext-leak
-   * regression. */
-  EXPECT_TRUE (LOG_MAY_CONTAIN_USER_DATA (RVHF_DELETE_NEWHOME_NOTIFY_VACUUM));
+  /* ADR-0008: the reclaim postpones and the UPDATE notification carry only OOS OIDs, identity stamps,
+   * file ids and an MVCCID, and are logged without a page. log_append_postpone reads the page's TDE
+   * algorithm for a gated index, so gating one of them would also dereference a NULL page. The relocated
+   * forward delete of an MVCC UPDATE is a plain RVHF_DELETE again, gated below. */
+  EXPECT_FALSE (LOG_MAY_CONTAIN_USER_DATA (RVOOS_NOTIFY_VACUUM));
+  EXPECT_FALSE (LOG_MAY_CONTAIN_USER_DATA (RVOOS_RECLAIM_POSTPONE));
+  EXPECT_FALSE (LOG_MAY_CONTAIN_USER_DATA (RVOOS_UPDATE_DROP_POSTPONE));
 }
 
 TEST (TdeUserDataGate, SiblingAndBaselineDeletePathsAreGated)
 {
-  /* Pre-PR baseline: the plain RVHF_DELETE path (non-OOS forward deletes) was
-   * always gated; the OOS path above must match it. */
+  /* The relocated forward delete of an UPDATE, OOS-bearing or not, is a plain RVHF_DELETE. */
   EXPECT_TRUE (LOG_MAY_CONTAIN_USER_DATA (RVHF_DELETE));
 
   /* Sibling on the UPDATE side: RVHF_UPDATE_NOTIFY_VACUUM carries the same kind
