@@ -33,7 +33,7 @@ static void qo_rewrite_like_in_factor (PARSER_CONTEXT * parser, PT_NODE * node);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
-static void qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep);
+static bool qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -1346,12 +1346,18 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
     }
 
-  qo_fold_or_factors (parser, orgp);
+  if (qo_fold_or_factors (parser, orgp))
+    {
+      /* a factor folded to a conjunction with an equality of its own: reduce with it as with the others, while the
+       * constant is still a literal; a later rewrite of the statement (the SELECT an UPDATE builds) would substitute
+       * the host variable the auto-parameterization makes of it, which other terms then read in another type */
+      qo_reduce_equality_terms (parser, node, orgp);
+    }
 }
 
 /*
  * qo_fold_or_factors () - fold the factors pt_cnf_where () kept whole and keep the CNF list shape
- *   return:
+ *   return: true when a factor folded to a conjunction that holds an equality of a column with a constant
  *   parser(in):
  *   wherep(in/out): CNF list
  *
@@ -1377,10 +1383,11 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
  *	   value there makes the rewrites cut the ON condition down to that value, and the inner scan then
  *	   reads the whole table for each outer row instead of the index the other terms give it.
  */
-static void
+static bool
 qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 {
   PT_NODE *term, *next, *folded, *last, *saved, *dnf, **prevp;
+  bool new_equality = false;
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int marks;
   short location;
@@ -1423,7 +1430,7 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  folded->next = next;
 	  *prevp = folded;
-	  return;
+	  return false;
 	}
 
       if (saved != NULL)
@@ -1478,6 +1485,12 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 		      dnf->info.value.location = location;
 		    }
 		}
+	      if (PT_IS_EXPR_NODE_WITH_OPERATOR (last, PT_EQ) && last->or_next == NULL
+		  && ((pt_is_attr (last->info.expr.arg1) && qo_is_reduceable_const (last->info.expr.arg2))
+		      || (pt_is_attr (last->info.expr.arg2) && qo_is_reduceable_const (last->info.expr.arg1))))
+		{
+		  new_equality = true;
+		}
 	      if (last->next == NULL)
 		{
 		  break;
@@ -1490,6 +1503,8 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	  prevp = &last->next;
 	}
     }
+
+  return new_equality;
 }
 
 /*
