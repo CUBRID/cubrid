@@ -278,6 +278,9 @@ sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignment
 /*
  * sl_print_sql_midxkey - print midxkey in the following format.
  *    key1=value1 AND key2=value2 AND ...
+ *
+ * Note: a NULL key value is printed as "key IS NULL", since "key=NULL" matches no row. An RK of a UNIQUE index needs
+ *       only one NOT NULL key column, so its other key columns can be NULL.
  */
 static void
 sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
@@ -294,6 +297,12 @@ sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_M
 	}
 
       pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index, &prev_i_ptr);
+      if (DB_IS_NULL (&value))
+	{
+	  strbuf ("\"%s\" IS NULL", attributes[i]->header.name);
+	  continue;
+	}
+
       strbuf ("\"%s\"=", attributes[i]->header.name);
       db_value_printer printer (strbuf);
 
