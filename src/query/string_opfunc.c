@@ -28221,9 +28221,9 @@ db_string_index_prefix (const DB_VALUE * string1, const DB_VALUE * string2, cons
   int cmp_res;
 
   assert (string1 != (DB_VALUE *) NULL);
-  assert (string2 != (DB_VALUE *) NULL);
-  assert (index_type != (DB_VALUE *) NULL);
 
+  /* the evaluation does not fetch the other operands of a NULL string1 (fetch_peek_arith ()): they come as NULL
+   * pointers, which DB_IS_NULL () takes as NULL */
   if (DB_IS_NULL (string1) || DB_IS_NULL (string2) || DB_IS_NULL (index_type))
     {
       if (QSTR_IS_BIT (DB_VALUE_DOMAIN_TYPE (string1)))
