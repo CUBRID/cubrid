@@ -521,6 +521,7 @@ enum param_id
   PRM_ID_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
   PRM_ID_PARALLEL_MERGE_JOIN,
   PRM_ID_INDEX_SORT_METHOD,
+  PRM_ID_INDEX_BUILD_MERGE_FANIN,
 
   PRM_ID_TCP_KEEPALIVE_IDLE,
   PRM_ID_TCP_KEEPALIVE_INTERVAL,
@@ -579,6 +580,8 @@ enum param_id
   /* hash join: the runtime filter one input's keys make for the other input's outermost scan */
   PRM_ID_HASH_JOIN_RUNTIME_FILTER,
   PRM_ID_ROW_SNAPSHOT_MAX_ROWS,
+
+  PRM_ID_NUMERIC_EMPTY_STRING_AS_NULL,
   PRM_ID_ALLOW_LOGIN_METHOD_ON_BROKER,
 
   /* change PRM_LAST_ID when adding new system parameters */
