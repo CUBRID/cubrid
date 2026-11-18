@@ -8263,6 +8263,7 @@ delete_stmt
 			if (del)
 			  {
 			    PT_NODE *node = NULL;
+			    PT_NODE *paren_spec = NULL;
 			    del->info.delete_.target_classes = CONTAINER_AT_0 ($4);
 			    del->info.delete_.spec = CONTAINER_AT_1 ($4);
 
@@ -8285,8 +8286,23 @@ delete_stmt
 			    del->info.delete_.limit = $7;
 			    del->info.delete_.rewrite_limit = 1;
 
+			    for (paren_spec = del->info.delete_.spec; paren_spec; paren_spec = paren_spec->next)
+			      {
+				/* "(t1, t2)" leaves a PT_SPEC list as entity_name, which the code below takes for a PT_NAME */
+				if (paren_spec->info.spec.entity_name
+				    && paren_spec->info.spec.entity_name->node_type == PT_SPEC)
+				  {
+				    break;
+				  }
+			      }
+
+			    if (paren_spec)
+			      {
+				PT_ERRORmf (this_parser, paren_spec, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "Parenthesized table list");
+			      }
 			    /* In a multi-table case the LIMIT clauses is not allowed. */
-   			    if (del->info.delete_.spec->next)
+			    else if (del->info.delete_.spec->next)
    			      {
    				if (del->info.delete_.limit)
    				  {
