@@ -1210,6 +1210,8 @@ encode_byte_string_words (const RADIX_KEY_ENCODING *encoding, const char *rec_ba
 {
   const radix_word<WORD_WIDTH> desc_flip = encoding->is_desc ? (radix_word<WORD_WIDTH>) ~0ULL : 0;
   const int from = word_index * WORD_WIDTH;
+  /* past the first word the slots are in bucket order, all over the buffer */
+  const int prefetch_end = (word_index > 0) ? record_count - RADIX_PREFETCH_AHEAD : 0;
   const char *rec;
   byte_string value;
   radix_word<WORD_WIDTH> word, any_set = 0, all_set = (radix_word<WORD_WIDTH>) ~0ULL;
@@ -1219,6 +1221,11 @@ encode_byte_string_words (const RADIX_KEY_ENCODING *encoding, const char *rec_ba
 
   for (rec_index = 0; rec_index < record_count; rec_index++)
     {
+      if (rec_index < prefetch_end)
+	{
+	  prefetch (rec_base + slots[rec_index + RADIX_PREFETCH_AHEAD], PREFETCH_READ, PREFETCH_CACHE_L1);
+	}
+
       rec = rec_base + slots[rec_index];
 
       assert (!BTSORT_REC_HDR (rec)->is_bigone && !BTSORT_REC_HDR (rec)->has_null);
