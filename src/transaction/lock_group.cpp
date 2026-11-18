@@ -47,77 +47,12 @@
  * leave. A thread already inside only re-enters.
  */
 
-/* LK_GROUP.cond, whose timed waits read LK_GROUP_COND_CLOCK */
-void
-lock_group_init_cond (LK_GROUP * group)
-{
+/* the clock of m_cond's timed waits: a wall clock set back would stretch them */
 #if defined (WINDOWS)
-  pthread_cond_init (&group->cond, NULL);
+#define LK_GROUP_COND_CLOCK CLOCK_REALTIME
 #else
-  pthread_condattr_t attr;
-
-  pthread_condattr_init (&attr);
-  pthread_condattr_setclock (&attr, LK_GROUP_COND_CLOCK);
-  pthread_cond_init (&group->cond, &attr);
-  pthread_condattr_destroy (&attr);
+#define LK_GROUP_COND_CLOCK CLOCK_MONOTONIC
 #endif
-}
-
-/* the threads take turns only in a section; true here would make them take turns always */
-static inline bool
-lock_group_is_gated (const LK_GROUP * group)
-{
-  return lock_group_in_section (group);
-}
-
-/*
- * lock_group_abort_reason () - why the transaction in a section may not wait for, or take, another lock
- *   return: ER_LK_UNILATERALLY_ABORTED, ER_INTERRUPTED or NO_ERROR
- *
- * Note: reads, takes no lock. The transaction's interrupt is read as it is, not through logtb_is_interrupted_tran (),
- *	 which looks up the PL session: lock_suspend () asks with the thread entry locked.
- */
-int
-lock_group_abort_reason (const LK_GROUP * group)
-{
-  LOG_TDES *tdes = LOG_FIND_TDES (group->tran_index);
-
-  if (lock_is_tran_deadlock_victim (group->tran_index) || __atomic_load_n (&group->abort_deferred, __ATOMIC_ACQUIRE)
-      || (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL))
-    {
-      return ER_LK_UNILATERALLY_ABORTED;
-    }
-  if (__atomic_load_n (&group->interrupted, __ATOMIC_ACQUIRE) || (tdes != NULL && tdes->interrupt))
-    {
-      return ER_INTERRUPTED;
-    }
-  return NO_ERROR;
-}
-
-void
-lock_group_set_abort_error (int tran_index, int error)
-{
-  if (error == ER_INTERRUPTED)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-    }
-  else
-    {
-      lock_set_error_for_aborted (tran_index);
-    }
-}
-
-/*
- * the entrance taken as the owner: only a CAS from NULL, so a thread that finds the owner gone takes it with no mutex
- * (lock_group_guard), and every other taker, holding the mutex or not, competes the same way
- */
-static inline bool
-lock_group_try_own (LK_GROUP * group, THREAD_ENTRY * thread_p)
-{
-  THREAD_ENTRY *expected = NULL;
-
-  return __atomic_compare_exchange_n (&group->owner, &expected, thread_p, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
-}
 
 #if defined (WINDOWS)
 #define LK_GROUP_CPU_PAUSE() YieldProcessor ()
@@ -130,23 +65,96 @@ lock_group_try_own (LK_GROUP * group, THREAD_ENTRY * thread_p)
 #endif
 #define LK_GROUP_OWN_SPINS 64
 
+lock_group::lock_group (int tran_index)
+  : m_tran_index (tran_index)
+  , m_sections (0)
+  , m_owner (NULL)
+  , m_depth (0)
+  , m_guest (NULL)
+  , m_guest_depth (0)
+  , m_waiters (0)
+  , m_owner_sleeping (false)
+  , m_owner_blocked (false)
+  , m_owner_wait_key ()
+  , m_owner_held_row (0)
+  , m_interrupted (false)
+  , m_abort_deferred (false)
+  , m_pending_release (NULL)
+#if !defined (NDEBUG)
+  , m_solo_owner (NULL)
+  , m_solo_depth (0)
+#endif
+{
+  pthread_mutex_init (&m_mutex, NULL);
+#if defined (WINDOWS)
+  pthread_cond_init (&m_cond, NULL);
+#else
+  pthread_condattr_t attr;
+
+  pthread_condattr_init (&attr);
+  pthread_condattr_setclock (&attr, LK_GROUP_COND_CLOCK);
+  pthread_cond_init (&m_cond, &attr);
+  pthread_condattr_destroy (&attr);
+#endif
+}
+
+lock_group::~lock_group ()
+{
+  pthread_mutex_destroy (&m_mutex);
+  pthread_cond_destroy (&m_cond);
+}
+
+/*
+ * abort_reason () - why the transaction in a section may not wait for, or take, another lock
+ *   return: ER_LK_UNILATERALLY_ABORTED, ER_INTERRUPTED or NO_ERROR
+ *
+ * Note: reads, takes no lock. The transaction's interrupt is read as it is, not through logtb_is_interrupted_tran (),
+ *	 which looks up the PL session: lock_suspend () asks with the thread entry locked.
+ */
+int
+lock_group::abort_reason () const
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (m_tran_index);
+
+  if (lock_is_tran_deadlock_victim (m_tran_index) || m_abort_deferred.load (std::memory_order_acquire)
+      || (tdes != NULL && tdes->tran_abort_reason != TRAN_NORMAL))
+    {
+      return ER_LK_UNILATERALLY_ABORTED;
+    }
+  if (m_interrupted.load (std::memory_order_acquire) || (tdes != NULL && tdes->interrupt))
+    {
+      return ER_INTERRUPTED;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * the entrance taken as the owner: only a CAS from NULL, so a thread that finds the owner gone takes it with no mutex
+ * (lock_group_guard), and every other taker, holding the mutex or not, competes the same way
+ */
+inline bool
+lock_group::try_own (THREAD_ENTRY *thread_p)
+{
+  THREAD_ENTRY *expected = NULL;
+
+  return m_owner.compare_exchange_strong (expected, thread_p, std::memory_order_acq_rel, std::memory_order_acquire);
+}
+
 /*
  * An owner awake leaves within a lock call, much sooner than the mutex and a timed wait take: spin a little for it.
  * Not for an owner blocked, which waits for another transaction.
  */
-static bool
-lock_group_spin_to_own (LK_GROUP * group, THREAD_ENTRY * thread_p)
+inline bool
+lock_group::spin_to_own (THREAD_ENTRY *thread_p)
 {
-  int i;
-
-  for (i = 0; i < LK_GROUP_OWN_SPINS; i++)
+  for (int i = 0; i < LK_GROUP_OWN_SPINS; i++)
     {
-      if (__atomic_load_n (&group->owner_blocked, __ATOMIC_ACQUIRE))
+      if (m_owner_blocked.load (std::memory_order_acquire))
 	{
 	  return false;
 	}
       LK_GROUP_CPU_PAUSE ();
-      if (__atomic_load_n (&group->owner, __ATOMIC_RELAXED) == NULL && lock_group_try_own (group, thread_p))
+      if (m_owner.load (std::memory_order_relaxed) == NULL && try_own (thread_p))
 	{
 	  return true;
 	}
@@ -154,9 +162,9 @@ lock_group_spin_to_own (LK_GROUP * group, THREAD_ENTRY * thread_p)
   return false;
 }
 
-/* at most 10 ms: no one signals an abort reason found by the deadlock detector */
-static void
-lock_group_timed_wait (LK_GROUP * group)
+/* at most 10 ms, with m_mutex held: no one signals an abort reason found by the deadlock detector */
+void
+lock_group::timed_wait ()
 {
   struct timespec until;
 
@@ -167,69 +175,69 @@ lock_group_timed_wait (LK_GROUP * group)
       until.tv_sec++;
       until.tv_nsec -= 1000 * 1000 * 1000;
     }
-  (void) pthread_cond_timedwait (&group->cond, &group->mutex, &until);
+  (void) pthread_cond_timedwait (&m_cond, &m_mutex, &until);
 }
 
 /*
- * A timed wait for the owner to leave, with group->mutex held: the owner leaves with no mutex, storing NULL and then
- * reading waiters, while a waiter counts itself and then reads owner. Both seq_cst, so one of the two sees the other:
- * the waiter does not wait, or the owner broadcasts, which it can do only once the waiter is in the wait, as the
- * waiter holds the mutex until pthread_cond_timedwait () releases it.
+ * A timed wait for the owner to leave, with m_mutex held: the owner leaves with no mutex, storing NULL and then
+ * reading m_waiters, while a waiter counts itself and then reads m_owner. Both seq_cst, so one of the two sees the
+ * other: the waiter does not wait, or the owner broadcasts, which it can do only once the waiter is in the wait, as
+ * the waiter holds the mutex until pthread_cond_timedwait () releases it.
  *   return: false if the owner was found gone instead
  */
-static bool
-lock_group_wait_for_owner (LK_GROUP * group)
+bool
+lock_group::wait_for_owner ()
 {
-  __atomic_add_fetch (&group->waiters, 1, __ATOMIC_SEQ_CST);
-  if (__atomic_load_n (&group->owner, __ATOMIC_SEQ_CST) == NULL)
+  m_waiters.fetch_add (1, std::memory_order_seq_cst);
+  if (m_owner.load (std::memory_order_seq_cst) == NULL)
     {
-      __atomic_sub_fetch (&group->waiters, 1, __ATOMIC_SEQ_CST);
+      m_waiters.fetch_sub (1, std::memory_order_seq_cst);
       return false;
     }
-  lock_group_timed_wait (group);
-  __atomic_sub_fetch (&group->waiters, 1, __ATOMIC_SEQ_CST);
+  timed_wait ();
+  m_waiters.fetch_sub (1, std::memory_order_seq_cst);
   return true;
 }
 
 /* the owner, with no guest and no release handed to it, gives the entrance back with no mutex */
-static void
-lock_group_give_back (LK_GROUP * group)
+inline void
+lock_group::give_back ()
 {
-  assert (__atomic_load_n (&group->guest, __ATOMIC_ACQUIRE) == NULL);
-  assert (__atomic_load_n (&group->pending_release, __ATOMIC_ACQUIRE) == NULL);
-  __atomic_store_n (&group->owner, (THREAD_ENTRY *) NULL, __ATOMIC_SEQ_CST);
-  /* see lock_group_wait_for_owner () */
-  if (__atomic_load_n (&group->waiters, __ATOMIC_SEQ_CST) > 0)
+  assert (m_guest.load (std::memory_order_acquire) == NULL);
+  assert (m_pending_release.load (std::memory_order_acquire) == NULL);
+  m_owner.store (NULL, std::memory_order_seq_cst);
+  /* see wait_for_owner () */
+  if (m_waiters.load (std::memory_order_seq_cst) > 0)
     {
-      pthread_mutex_lock (&group->mutex);
-      pthread_cond_broadcast (&group->cond);
-      pthread_mutex_unlock (&group->mutex);
+      pthread_mutex_lock (&m_mutex);
+      pthread_cond_broadcast (&m_cond);
+      pthread_mutex_unlock (&m_mutex);
     }
 }
 
 /* a release handed over under the mutex is taken before the owner is cleared under it, so none is left behind */
-static void
-lock_group_leave (LK_GROUP * group, THREAD_ENTRY * thread_p)
+void
+lock_group::leave (THREAD_ENTRY *thread_p)
 {
   LK_PENDING_RELEASE *release, *next;
 
   while (true)
     {
-      pthread_mutex_lock (&group->mutex);
-      release = __atomic_exchange_n (&group->pending_release, (LK_PENDING_RELEASE *) NULL, __ATOMIC_ACQ_REL);
+      pthread_mutex_lock (&m_mutex);
+      release = m_pending_release.exchange (NULL, std::memory_order_acq_rel);
       if (release == NULL)
 	{
-	  assert (group->guest == NULL);
-	  __atomic_store_n (&group->owner, (THREAD_ENTRY *) NULL, __ATOMIC_SEQ_CST);
+	  assert (m_guest.load (std::memory_order_relaxed) == NULL);
+	  m_owner.store (NULL, std::memory_order_seq_cst);
 	  /* all: a waiter woken alone could return on an abort without passing the entrance on */
-	  pthread_cond_broadcast (&group->cond);
-	  pthread_mutex_unlock (&group->mutex);
+	  pthread_cond_broadcast (&m_cond);
+	  pthread_mutex_unlock (&m_mutex);
 	  return;
 	}
-      pthread_mutex_unlock (&group->mutex);
+      pthread_mutex_unlock (&m_mutex);
 
       /* each re-enters as the owner */
-      group->depth = 1;
+      m_depth = 1;
       for (; release != NULL; release = next)
 	{
 	  next = release->next;
@@ -249,7 +257,592 @@ lock_group_leave (LK_GROUP * group, THREAD_ENTRY * thread_p)
 	    }
 	  free (release);
 	}
-      group->depth = 0;
+      m_depth = 0;
+    }
+}
+
+/* the owner, or a page-fixed sibling, may wait for the guest */
+void
+lock_group::guest_leave ()
+{
+  pthread_mutex_lock (&m_mutex);
+  m_guest.store (NULL, std::memory_order_release);
+  pthread_cond_broadcast (&m_cond);
+  pthread_mutex_unlock (&m_mutex);
+}
+
+/*
+ * wait, with m_mutex held, until the guest has left. Once the transaction is to abort the guest's lock wait is ended
+ * here: the deadlock detector reads the victim's waiters before it marks the victim, so a guest that goes to sleep in
+ * between is woken by no one else.
+ */
+void
+lock_group::wait_guest_locked ()
+{
+  THREAD_ENTRY *guest;
+
+  while ((guest = m_guest.load (std::memory_order_relaxed)) != NULL)
+    {
+      if (abort_reason () != NO_ERROR)
+	{
+	  /* the guest's thread mutex is not taken under the group mutex */
+	  pthread_mutex_unlock (&m_mutex);
+	  lock_interrupt_lockwait (guest, m_tran_index);
+	  pthread_mutex_lock (&m_mutex);
+	  if (m_guest.load (std::memory_order_relaxed) != guest)
+	    {
+	      continue;
+	    }
+	}
+      m_waiters.fetch_add (1, std::memory_order_seq_cst);
+      timed_wait ();
+      m_waiters.fetch_sub (1, std::memory_order_seq_cst);
+    }
+}
+
+/* an interrupt for the siblings that the transaction's own may no longer show; kept until the sections close */
+void
+lock_group::keep_interrupt ()
+{
+  pthread_mutex_lock (&m_mutex);
+  if (in_section ())
+    {
+      m_interrupted.store (true, std::memory_order_release);
+      pthread_cond_broadcast (&m_cond);
+    }
+  pthread_mutex_unlock (&m_mutex);
+}
+
+/*
+ * the owner wakes to the transaction's state only once the guest has left. This wait closes no cycle: the guest never
+ * waits for the owner, and the only page it may fix in here, the root class heap page it reads for a lock timeout
+ * message (lock_set_error_for_timeout ()), it reads with a read latch released before it returns; the owner holds no
+ * page here but one safe to hold in a lock wait (lock_suspend ()).
+ */
+void
+lock_group::wait_for_guest ()
+{
+  pthread_mutex_lock (&m_mutex);
+  wait_guest_locked ();
+  m_owner_blocked.store (false, std::memory_order_release);
+  pthread_mutex_unlock (&m_mutex);
+}
+
+/*
+ * step_out () - a thread leaves the entrance it holds as owner or guest, keeping its depth to come back with
+ *   return: the depth, or 0 if it held none
+ *
+ * Note: an owner lets its guest leave first, so no one finds the owner gone while a guest stays.
+ */
+int
+lock_group::step_out (THREAD_ENTRY *thread_p)
+{
+  int depth = 0;
+
+  pthread_mutex_lock (&m_mutex);
+  if (m_owner.load (std::memory_order_acquire) == thread_p)
+    {
+      wait_guest_locked ();
+      m_owner_blocked.store (false, std::memory_order_release);
+      depth = m_depth;
+      pthread_mutex_unlock (&m_mutex);
+      /* the releases handed to it go with it, not to whoever enters next */
+      leave (thread_p);
+      return depth;
+    }
+  else if (m_guest.load (std::memory_order_relaxed) == thread_p)
+    {
+      depth = m_guest_depth;
+      m_guest_depth = 0;
+      m_guest.store (NULL, std::memory_order_release);
+      pthread_cond_broadcast (&m_cond);
+    }
+  pthread_mutex_unlock (&m_mutex);
+  return depth;
+}
+
+/* back in after step_out (), as owner or guest, whichever is free first; no abort check, as it cleans up */
+void
+lock_group::step_back (THREAD_ENTRY *thread_p, int depth)
+{
+  if (depth == 0)
+    {
+      return;
+    }
+  pthread_mutex_lock (&m_mutex);
+  while (true)
+    {
+      if (try_own (thread_p))
+	{
+	  m_depth = depth;
+	  break;
+	}
+      if (m_owner_sleeping.load (std::memory_order_relaxed) && m_guest.load (std::memory_order_relaxed) == NULL)
+	{
+	  m_guest.store (thread_p, std::memory_order_release);
+	  m_guest_depth = depth;
+	  break;
+	}
+      (void) wait_for_owner ();
+    }
+  pthread_mutex_unlock (&m_mutex);
+}
+
+/*
+ * The transaction's one wait start in the WFG, while its owner and its guest may both sleep: the earlier start, as the
+ * deadlock detector skips an edge older than the node's wait, and 0 only once neither waits. A thread of the group
+ * updates it under the group mutex, as the two can sleep or wake at once; a waker clears a thread's lockwait before
+ * that thread's end_wait (), and leaves the slot to it (lock_wake_mvccid_waiters ()).
+ */
+void
+lock_group::start_wait (bool in_group, INT64 stime)
+{
+  INT64 *node_stime = lock_get_wait_stime (m_tran_index);
+
+  if (in_group)
+    {
+      pthread_mutex_lock (&m_mutex);
+    }
+  if (*node_stime == 0 || *node_stime > stime)
+    {
+      *node_stime = stime;
+    }
+  if (in_group)
+    {
+      pthread_mutex_unlock (&m_mutex);
+    }
+}
+
+void
+lock_group::end_wait (bool in_group, const THREAD_ENTRY *thread_p)
+{
+  const THREAD_ENTRY *owner, *guest, *sibling;
+  INT64 *node_stime = lock_get_wait_stime (m_tran_index);
+
+  if (!in_group)
+    {
+      *node_stime = 0;
+      return;
+    }
+  pthread_mutex_lock (&m_mutex);
+  owner = m_owner.load (std::memory_order_acquire);
+  guest = m_guest.load (std::memory_order_relaxed);
+  sibling = (owner == thread_p) ? guest : owner;
+  *node_stime = (sibling != NULL && sibling->lockwait != NULL) ? sibling->lockwait_stime : 0;
+  pthread_mutex_unlock (&m_mutex);
+}
+
+/* an interrupt one sleeping thread of the transaction consumed, for the deadlock detector to wake the other with */
+bool
+lock_group::holds_interrupt () const
+{
+  return in_section () && m_interrupted.load (std::memory_order_acquire);
+}
+
+/* the owner sleeps for another transaction: a conditional request no longer waits for it */
+void
+lock_group::owner_sleeps (const LK_RES_KEY *wait_key, UINT64 held_row)
+{
+  pthread_mutex_lock (&m_mutex);
+  m_owner_sleeping.store (true, std::memory_order_relaxed);
+  m_owner_blocked.store (true, std::memory_order_release);
+  m_owner_wait_key = *wait_key;
+  m_owner_held_row = held_row;
+  if (m_waiters.load (std::memory_order_seq_cst) > 0)
+    {
+      pthread_cond_broadcast (&m_cond);
+    }
+  pthread_mutex_unlock (&m_mutex);
+}
+
+/*
+ * back from a lock wait: no guest is let in once the owner is awake, and an interrupt that ended the wait stays for the
+ * siblings, as the deadlock detector cleared the transaction's own
+ */
+void
+lock_group::wakes (bool is_owner, bool interrupted)
+{
+  if (is_owner)
+    {
+      pthread_mutex_lock (&m_mutex);
+      m_owner_sleeping.store (false, std::memory_order_relaxed);
+      /* still blocked only by a guest let in while it slept; none comes in from now */
+      m_owner_blocked.store (m_guest.load (std::memory_order_relaxed) != NULL, std::memory_order_release);
+      pthread_mutex_unlock (&m_mutex);
+    }
+  if (interrupted)
+    {
+      keep_interrupt ();
+    }
+}
+
+#if !defined (NDEBUG)
+/* outside its sections the threads of a transaction enter unchecked; a second one inside at once is a bug */
+bool
+lock_group::solo_enter (THREAD_ENTRY *thread_p)
+{
+  THREAD_ENTRY *expected = NULL;
+  THREAD_ENTRY *owner = m_owner.load (std::memory_order_acquire);
+  THREAD_ENTRY *guest = m_guest.load (std::memory_order_acquire);
+  THREAD_ENTRY *inside = (owner != NULL && owner != thread_p) ? owner : ((guest != thread_p) ? guest : NULL);
+
+  /* a pool thread runs only while its leader's section is open */
+  assert (!thread_is_px_worker (thread_p));
+
+  if (m_solo_owner.load (std::memory_order_acquire) == thread_p)
+    {
+      m_solo_depth++;
+      return true;
+    }
+  if (inside != NULL
+      || !m_solo_owner.compare_exchange_strong (expected, thread_p, std::memory_order_acq_rel,
+	  std::memory_order_acquire))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "lock_group: thread %d of transaction %d enters the lock manager while thread %d is in it\n",
+		     thread_p->index, m_tran_index, (inside != NULL) ? inside->index : expected->index);
+      assert (false);
+      return false;
+    }
+  m_solo_depth = 1;
+  return true;
+}
+
+void
+lock_group::solo_leave ()
+{
+  if (--m_solo_depth == 0)
+    {
+      m_solo_owner.store (NULL, std::memory_order_release);
+    }
+}
+
+/* a victim waiting for its siblings lets them in (lock_suspend_internal ()) */
+int
+lock_group::solo_step_out (THREAD_ENTRY *thread_p)
+{
+  int depth = 0;
+
+  if (m_solo_owner.load (std::memory_order_acquire) == thread_p)
+    {
+      depth = m_solo_depth;
+      m_solo_depth = 0;
+      m_solo_owner.store (NULL, std::memory_order_release);
+    }
+  return depth;
+}
+
+void
+lock_group::solo_step_back (THREAD_ENTRY *thread_p, int depth)
+{
+  if (depth > 0 && solo_enter (thread_p))
+    {
+      m_solo_depth = depth;
+    }
+}
+
+/* nothing else of the transaction is in the lock manager: a walk of its hold lists needs no hold_mutex */
+bool
+lock_group::is_alone (THREAD_ENTRY *thread_p) const
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+  if (!in_section ())
+    {
+      return true;
+    }
+  if (m_owner.load (std::memory_order_acquire) == thread_p)
+    {
+      return m_guest.load (std::memory_order_acquire) == NULL;
+    }
+  return m_guest.load (std::memory_order_acquire) == thread_p && m_owner_sleeping.load (std::memory_order_acquire);
+}
+#endif /* !NDEBUG */
+
+void
+lock_group::section_begin ()
+{
+  m_sections.fetch_add (1, std::memory_order_seq_cst);
+}
+
+void
+lock_group::section_end ()
+{
+  int sections;
+
+  pthread_mutex_lock (&m_mutex);
+  sections = m_sections.fetch_sub (1, std::memory_order_seq_cst) - 1;
+  assert (sections >= 0);
+  if (sections == 0)
+    {
+      m_interrupted.store (false, std::memory_order_release);
+    }
+  pthread_mutex_unlock (&m_mutex);
+}
+
+void
+lock_group::clear ()
+{
+  THREAD_ENTRY *owner, *guest;
+  LK_PENDING_RELEASE *release, *next;
+  int sections;
+
+  pthread_mutex_lock (&m_mutex);
+  sections = m_sections.exchange (0, std::memory_order_seq_cst);
+  owner = m_owner.exchange (NULL, std::memory_order_seq_cst);
+  guest = m_guest.exchange (NULL, std::memory_order_seq_cst);
+  m_depth = 0;
+  m_guest_depth = 0;
+  m_owner_sleeping.store (false, std::memory_order_relaxed);
+  m_owner_blocked.store (false, std::memory_order_release);
+  m_interrupted.store (false, std::memory_order_release);
+  m_abort_deferred.store (false, std::memory_order_release);
+  release = m_pending_release.exchange (NULL, std::memory_order_acq_rel);
+  pthread_mutex_unlock (&m_mutex);
+
+  for (; release != NULL; release = next)
+    {
+      next = release->next;
+      free (release);
+    }
+  if (sections != 0 || owner != NULL || guest != NULL)
+    {
+      _er_log_debug (ARG_FILE_LINE, "lock_group: transaction index %d is cleared with %d parallel sections open%s\n",
+		     m_tran_index, sections, (owner != NULL || guest != NULL) ? " and a thread inside" : "");
+      assert (false);
+    }
+}
+
+/*
+ * defer_abort () - leave the abort of the transaction to a request that ends it later
+ *   to_pl_caller(in): also with no section open, for a deadlock victim's abort (lock_group_defer_abort_to_pl_caller ())
+ *
+ * Note: under the mutex section_end () takes, so a section closing meanwhile keeps no stale interrupt. With no
+ *	 section, no interrupt: the PL calls would report it as ER_INTERRUPTED over the deadlock error. Their statements
+ *	 fail as they return instead (lock_group_fail_if_abort_deferred ()).
+ */
+bool
+lock_group::defer_abort (THREAD_ENTRY *thread_p, bool to_pl_caller)
+{
+  bool section;
+
+  pthread_mutex_lock (&m_mutex);
+  section = in_section ();
+  /* with no section, only a deadlock victim's abort: not that of a transaction a COMMIT under the PL has just
+   * ended and restarted (xtran_end_is_held_by_parallel_section ()) */
+  if (!section && ! (to_pl_caller && (lock_is_tran_deadlock_victim (m_tran_index) || is_abort_deferred ())))
+    {
+      pthread_mutex_unlock (&m_mutex);
+      return false;
+    }
+  m_abort_deferred.store (true, std::memory_order_release);
+  if (!section)
+    {
+      pthread_mutex_unlock (&m_mutex);
+      return true;
+    }
+  m_interrupted.store (true, std::memory_order_release);
+  pthread_cond_broadcast (&m_cond);
+  pthread_mutex_unlock (&m_mutex);
+
+  /* the owner's query stops at its next row even if it asks for no lock */
+  logtb_set_tran_index_interrupt (thread_p, m_tran_index, true);
+  return true;
+}
+
+lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_GROUP_REQUEST request,
+				    const LK_RES_KEY *guest_key, const LK_PENDING_RELEASE *release)
+  : m_group (NULL)
+  , m_thread_p (thread_p)
+  , m_state (NOT_NEEDED)
+  , m_lock_result (LK_GRANTED)
+{
+  LK_PENDING_RELEASE *handed = NULL;
+  int error;
+
+  if (tran_index <= LOG_SYSTEM_TRAN_INDEX)
+    {
+      /* the system transaction is many threads' and opens no section */
+      return;
+    }
+  if (m_thread_p == NULL)
+    {
+      m_thread_p = thread_get_thread_entry_info ();
+    }
+  m_group = lock_get_tran_group (tran_index);
+
+  if (!m_group->is_gated ())
+    {
+#if !defined (NDEBUG)
+      if (m_group->solo_enter (m_thread_p))
+	{
+	  m_state = SOLO;
+	}
+#endif
+      return;
+    }
+  if (m_group->is_owner (m_thread_p))
+    {
+      m_group->m_depth++;
+      m_state = ENTERED;
+      return;
+    }
+  if (m_group->is_guest (m_thread_p))
+    {
+      m_group->m_guest_depth++;
+      m_state = ENTERED;
+      return;
+    }
+
+  /*
+   * The entrance free: taken with no mutex. Owner NULL implies no guest, the owner neither asleep nor blocked, and no
+   * release handed over, as only a blocked owner is handed one and every way out drains them first. An acquisition
+   * checks for an abort again once it is the owner: a deferred abort can land between the check and the CAS, the spin
+   * widening that window, and lock_group_defer_abort () has returned by then.
+   */
+  if ((request == LK_GROUP_RELEASE || m_group->abort_reason () == NO_ERROR)
+      && (m_group->try_own (m_thread_p) || m_group->spin_to_own (m_thread_p)))
+    {
+      error = (request == LK_GROUP_RELEASE) ? NO_ERROR : m_group->abort_reason ();
+      if (error != NO_ERROR)
+	{
+	  m_group->give_back ();
+	  lock_group_set_abort_error (tran_index, error);
+	  m_lock_result = (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
+	  return;
+	}
+      m_group->m_depth = 1;
+      m_state = ENTERED;
+      return;
+    }
+
+  if (release != NULL && pgbuf_has_perm_pages_fixed (m_thread_p))
+    {
+      /* allocated before the mutex, under which no other lock is taken */
+      handed = (LK_PENDING_RELEASE *) malloc (sizeof (LK_PENDING_RELEASE));
+      if (handed != NULL)
+	{
+	  *handed = *release;
+	}
+    }
+
+  pthread_mutex_lock (&m_group->m_mutex);
+  while (true)
+    {
+      if (request != LK_GROUP_RELEASE && m_group->in_section ())
+	{
+	  /* also when nothing was waited for: a sibling may have left the entrance as a victim */
+	  error = m_group->abort_reason ();
+	  if (error != NO_ERROR)
+	    {
+	      pthread_mutex_unlock (&m_group->m_mutex);
+	      lock_group_set_abort_error (tran_index, error);
+	      m_lock_result = (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
+	      return;
+	    }
+	}
+      if (m_group->try_own (m_thread_p))
+	{
+	  m_group->m_depth = 1;
+	  break;
+	}
+      if (m_group->m_owner_sleeping.load (std::memory_order_relaxed) && guest_key != NULL
+	  && m_group->m_guest.load (std::memory_order_relaxed) == NULL
+	  && lock_res_key_compare ((void *) guest_key, &m_group->m_owner_wait_key) != 0
+	  && (guest_key->type != LOCK_RESOURCE_INSTANCE
+	      || lock_pack_row_oid (&guest_key->oid) != m_group->m_owner_held_row))
+	{
+	  m_group->m_guest.store (m_thread_p, std::memory_order_release);
+	  m_group->m_guest_depth = 1;
+	  break;
+	}
+      /* the owner awake but waiting for a guest asleep behind a catalog updater is no shorter a wait */
+      if (m_group->m_owner_blocked.load (std::memory_order_acquire))
+	{
+	  if (request == LK_GROUP_ACQUIRE_COND)
+	    {
+	      /* the owner's sleep is another transaction's to end; a conditional request does not share it */
+	      pthread_mutex_unlock (&m_group->m_mutex);
+	      m_lock_result = LK_NOTGRANTED_DUE_TIMEOUT;
+	      free (handed);
+#if !defined (NDEBUG)
+	      er_print_callstack (ARG_FILE_LINE, "lock_group: tran %d: conditional request met the owner asleep\n",
+				  tran_index);
+#endif
+	      return;
+	    }
+	  /* the deadlock detector would not see a page fixed while waiting for an owner asleep */
+	  if (handed != NULL)
+	    {
+	      handed->next = m_group->m_pending_release.load (std::memory_order_relaxed);
+	      m_group->m_pending_release.store (handed, std::memory_order_release);
+	      pthread_mutex_unlock (&m_group->m_mutex);
+	      m_lock_result = LK_NOTGRANTED;
+	      return;
+	    }
+	  /* a guest-family request waits behind the guest, or the owner on its own resource: a catalog updater that
+	   * needs no user page, as lock_is_safe_lock_with_page () assumes */
+	  assert (request == LK_GROUP_RELEASE || guest_key != NULL || !pgbuf_has_perm_pages_fixed (m_thread_p));
+	}
+      (void) m_group->wait_for_owner ();
+    }
+  assert (m_group->m_guest.load (std::memory_order_relaxed) == NULL
+	  || m_group->m_owner.load (std::memory_order_acquire) != NULL);
+  pthread_mutex_unlock (&m_group->m_mutex);
+  m_state = ENTERED;
+  free (handed);
+}
+
+lock_group_guard::~lock_group_guard ()
+{
+#if !defined (NDEBUG)
+  if (m_state == SOLO)
+    {
+      m_group->solo_leave ();
+      return;
+    }
+#endif
+  if (m_state != ENTERED)
+    {
+      return;
+    }
+  /* by the role held now: a deadlock victim may come back in the other one (lock_suspend_internal ()) */
+  if (m_group->is_owner (m_thread_p))
+    {
+      if (--m_group->m_depth > 0)
+	{
+	  return;
+	}
+      /* no release can be handed over from here on: the owner is awake with no guest, so not blocked */
+      if (m_group->m_pending_release.load (std::memory_order_acquire) != NULL)
+	{
+	  m_group->leave (m_thread_p);
+	  return;
+	}
+      m_group->give_back ();
+    }
+  else
+    {
+      assert (m_group->is_guest (m_thread_p));
+      if (--m_group->m_guest_depth == 0)
+	{
+	  m_group->guest_leave ();
+	}
+    }
+}
+
+void
+lock_group_set_abort_error (int tran_index, int error)
+{
+  if (error == ER_INTERRUPTED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+    }
+  else
+    {
+      lock_set_error_for_aborted (tran_index);
     }
 }
 
@@ -298,495 +891,6 @@ lock_group_row_release_key (const OID * oid, const OID * class_oid, LK_RES_KEY *
   *key = lock_create_search_key (oid, class_oid);
   return key;
 }
-
-/* the owner, or a page-fixed sibling, may wait for the guest */
-static void
-lock_group_guest_leave (LK_GROUP * group)
-{
-  pthread_mutex_lock (&group->mutex);
-  __atomic_store_n (&group->guest, (THREAD_ENTRY *) NULL, __ATOMIC_RELEASE);
-  pthread_cond_broadcast (&group->cond);
-  pthread_mutex_unlock (&group->mutex);
-}
-
-/*
- * wait, with group->mutex held, until the guest has left. Once the transaction is to abort the guest's lock wait is
- * ended here: the deadlock detector reads the victim's waiters before it marks the victim, so a guest that goes to
- * sleep in between is woken by no one else.
- */
-static void
-lock_group_wait_guest_locked (LK_GROUP * group)
-{
-  THREAD_ENTRY *guest;
-
-  while ((guest = group->guest) != NULL)
-    {
-      if (lock_group_abort_reason (group) != NO_ERROR)
-	{
-	  /* the guest's thread mutex is not taken under the group mutex */
-	  pthread_mutex_unlock (&group->mutex);
-	  lock_interrupt_lockwait (guest, group->tran_index);
-	  pthread_mutex_lock (&group->mutex);
-	  if (group->guest != guest)
-	    {
-	      continue;
-	    }
-	}
-      __atomic_add_fetch (&group->waiters, 1, __ATOMIC_SEQ_CST);
-      lock_group_timed_wait (group);
-      __atomic_sub_fetch (&group->waiters, 1, __ATOMIC_SEQ_CST);
-    }
-}
-
-/* an interrupt for the siblings that the transaction's own may no longer show; kept until the sections close */
-void
-lock_group_keep_interrupt (LK_GROUP * group)
-{
-  pthread_mutex_lock (&group->mutex);
-  if (lock_group_in_section (group))
-    {
-      __atomic_store_n (&group->interrupted, true, __ATOMIC_RELEASE);
-      pthread_cond_broadcast (&group->cond);
-    }
-  pthread_mutex_unlock (&group->mutex);
-}
-
-/*
- * the owner wakes to the transaction's state only once the guest has left. This wait closes no cycle: the guest never
- * waits for the owner, and the only page it may fix in here, the root class heap page it reads for a lock timeout
- * message (lock_set_error_for_timeout ()), it reads with a read latch released before it returns; the owner holds no
- * page here but one safe to hold in a lock wait (lock_suspend ()).
- */
-void
-lock_group_wait_for_guest (LK_GROUP * group)
-{
-  pthread_mutex_lock (&group->mutex);
-  lock_group_wait_guest_locked (group);
-  __atomic_store_n (&group->owner_blocked, false, __ATOMIC_RELEASE);
-  pthread_mutex_unlock (&group->mutex);
-}
-
-/*
- * lock_group_step_out () - a thread leaves the entrance it holds as owner or guest, keeping its depth to come back with
- *   return: the depth, or 0 if it held none
- *
- * Note: an owner lets its guest leave first, so no one finds the owner gone while a guest stays.
- */
-int
-lock_group_step_out (LK_GROUP * group, THREAD_ENTRY * thread_p)
-{
-  int depth = 0;
-
-  pthread_mutex_lock (&group->mutex);
-  if (__atomic_load_n (&group->owner, __ATOMIC_ACQUIRE) == thread_p)
-    {
-      lock_group_wait_guest_locked (group);
-      __atomic_store_n (&group->owner_blocked, false, __ATOMIC_RELEASE);
-      depth = group->depth;
-      pthread_mutex_unlock (&group->mutex);
-      /* the releases handed to it go with it, not to whoever enters next */
-      lock_group_leave (group, thread_p);
-      return depth;
-    }
-  else if (group->guest == thread_p)
-    {
-      depth = group->guest_depth;
-      group->guest_depth = 0;
-      __atomic_store_n (&group->guest, (THREAD_ENTRY *) NULL, __ATOMIC_RELEASE);
-      pthread_cond_broadcast (&group->cond);
-    }
-  pthread_mutex_unlock (&group->mutex);
-  return depth;
-}
-
-/* back in after lock_group_step_out (), as owner or guest, whichever is free first; no abort check, as it cleans up */
-void
-lock_group_step_back (LK_GROUP * group, THREAD_ENTRY * thread_p, int depth)
-{
-  if (depth == 0)
-    {
-      return;
-    }
-  pthread_mutex_lock (&group->mutex);
-  while (true)
-    {
-      if (lock_group_try_own (group, thread_p))
-	{
-	  group->depth = depth;
-	  break;
-	}
-      if (group->owner_sleeping && group->guest == NULL)
-	{
-	  __atomic_store_n (&group->guest, thread_p, __ATOMIC_RELEASE);
-	  group->guest_depth = depth;
-	  break;
-	}
-      (void) lock_group_wait_for_owner (group);
-    }
-  pthread_mutex_unlock (&group->mutex);
-}
-
-/*
- * The transaction's one wait start in the WFG, while its owner and its guest may both sleep: the earlier start, as the
- * deadlock detector skips an edge older than the node's wait, and 0 only once neither waits. A thread of the group
- * updates it under the group mutex, as the two can sleep or wake at once; a waker clears a thread's lockwait before
- * that thread's lock_group_end_wait (), and leaves the slot to it (lock_wake_mvccid_waiters ()).
- */
-void
-lock_group_start_wait (LK_GROUP * group, bool in_group, INT64 stime)
-{
-  INT64 *node_stime = lock_get_wait_stime (group->tran_index);
-
-  if (in_group)
-    {
-      pthread_mutex_lock (&group->mutex);
-    }
-  if (*node_stime == 0 || *node_stime > stime)
-    {
-      *node_stime = stime;
-    }
-  if (in_group)
-    {
-      pthread_mutex_unlock (&group->mutex);
-    }
-}
-
-void
-lock_group_end_wait (LK_GROUP * group, bool in_group, const THREAD_ENTRY * thread_p)
-{
-  const THREAD_ENTRY *owner, *guest, *sibling;
-  INT64 *node_stime = lock_get_wait_stime (group->tran_index);
-
-  if (!in_group)
-    {
-      *node_stime = 0;
-      return;
-    }
-  pthread_mutex_lock (&group->mutex);
-  owner = __atomic_load_n (&group->owner, __ATOMIC_ACQUIRE);
-  guest = group->guest;
-  sibling = (owner == thread_p) ? guest : owner;
-  *node_stime = (sibling != NULL && sibling->lockwait != NULL) ? sibling->lockwait_stime : 0;
-  pthread_mutex_unlock (&group->mutex);
-}
-
-/* an interrupt one sleeping thread of the transaction consumed, for the deadlock detector to wake the other with */
-bool
-lock_group_holds_interrupt (int tran_index)
-{
-  const LK_GROUP *group;
-
-  if (tran_index <= LOG_SYSTEM_TRAN_INDEX)
-    {
-      return false;
-    }
-  group = lock_get_tran_group (tran_index);
-  return lock_group_in_section (group) && __atomic_load_n (&group->interrupted, __ATOMIC_ACQUIRE);
-}
-
-/* the owner sleeps for another transaction: a conditional request no longer waits for it */
-void
-lock_group_owner_sleeps (LK_GROUP * group, const LK_RES_KEY * wait_key, UINT64 held_row)
-{
-  pthread_mutex_lock (&group->mutex);
-  group->owner_sleeping = true;
-  __atomic_store_n (&group->owner_blocked, true, __ATOMIC_RELEASE);
-  group->owner_wait_key = *wait_key;
-  group->owner_held_row = held_row;
-  if (__atomic_load_n (&group->waiters, __ATOMIC_SEQ_CST) > 0)
-    {
-      pthread_cond_broadcast (&group->cond);
-    }
-  pthread_mutex_unlock (&group->mutex);
-}
-
-/*
- * back from a lock wait: no guest is let in once the owner is awake, and an interrupt that ended the wait stays for the
- * siblings, as the deadlock detector cleared the transaction's own
- */
-void
-lock_group_wakes (LK_GROUP * group, bool is_owner, bool interrupted)
-{
-  if (is_owner)
-    {
-      pthread_mutex_lock (&group->mutex);
-      group->owner_sleeping = false;
-      /* still blocked only by a guest let in while it slept; none comes in from now */
-      __atomic_store_n (&group->owner_blocked, group->guest != NULL, __ATOMIC_RELEASE);
-      pthread_mutex_unlock (&group->mutex);
-    }
-  if (interrupted)
-    {
-      lock_group_keep_interrupt (group);
-    }
-}
-
-#if !defined (NDEBUG)
-/* outside its sections the threads of a transaction enter unchecked; a second one inside at once is a bug */
-static bool
-lock_group_solo_enter (LK_GROUP * group, THREAD_ENTRY * thread_p)
-{
-  THREAD_ENTRY *expected = NULL;
-  THREAD_ENTRY *owner = __atomic_load_n (&group->owner, __ATOMIC_ACQUIRE);
-  THREAD_ENTRY *guest = __atomic_load_n (&group->guest, __ATOMIC_ACQUIRE);
-  THREAD_ENTRY *inside = (owner != NULL && owner != thread_p) ? owner : ((guest != thread_p) ? guest : NULL);
-
-  /* a pool thread runs only while its leader's section is open */
-  assert (!thread_is_px_worker (thread_p));
-
-  if (__atomic_load_n (&group->solo_owner, __ATOMIC_ACQUIRE) == thread_p)
-    {
-      group->solo_depth++;
-      return true;
-    }
-  if (inside != NULL
-      || !__atomic_compare_exchange_n (&group->solo_owner, &expected, thread_p, false, __ATOMIC_ACQ_REL,
-				       __ATOMIC_ACQUIRE))
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "lock_group: thread %d of transaction %d enters the lock manager while thread %d is in it\n",
-		     thread_p->index, group->tran_index, (inside != NULL) ? inside->index : expected->index);
-      assert (false);
-      return false;
-    }
-  group->solo_depth = 1;
-  return true;
-}
-
-static void
-lock_group_solo_leave (LK_GROUP * group)
-{
-  if (--group->solo_depth == 0)
-    {
-      __atomic_store_n (&group->solo_owner, (THREAD_ENTRY *) NULL, __ATOMIC_RELEASE);
-    }
-}
-
-/* a victim waiting for its siblings lets them in (lock_suspend_internal ()) */
-int
-lock_group_solo_step_out (LK_GROUP * group, THREAD_ENTRY * thread_p)
-{
-  int depth = 0;
-
-  if (__atomic_load_n (&group->solo_owner, __ATOMIC_ACQUIRE) == thread_p)
-    {
-      depth = group->solo_depth;
-      group->solo_depth = 0;
-      __atomic_store_n (&group->solo_owner, (THREAD_ENTRY *) NULL, __ATOMIC_RELEASE);
-    }
-  return depth;
-}
-
-void
-lock_group_solo_step_back (LK_GROUP * group, THREAD_ENTRY * thread_p, int depth)
-{
-  if (depth > 0 && lock_group_solo_enter (group, thread_p))
-    {
-      group->solo_depth = depth;
-    }
-}
-
-/* nothing else of the transaction is in the lock manager: a walk of its hold lists needs no hold_mutex */
-bool
-lock_group_is_alone (THREAD_ENTRY * thread_p, int tran_index)
-{
-  const LK_GROUP *group = lock_get_tran_group (tran_index);
-
-  if (thread_p == NULL)
-    {
-      thread_p = thread_get_thread_entry_info ();
-    }
-  if (!lock_group_in_section (group))
-    {
-      return true;
-    }
-  if (__atomic_load_n (&group->owner, __ATOMIC_ACQUIRE) == thread_p)
-    {
-      return __atomic_load_n (&group->guest, __ATOMIC_ACQUIRE) == NULL;
-    }
-  return (__atomic_load_n (&group->guest, __ATOMIC_ACQUIRE) == thread_p
-	  && __atomic_load_n (&group->owner_sleeping, __ATOMIC_ACQUIRE));
-}
-#endif /* !NDEBUG */
-
-lock_group_guard::lock_group_guard (THREAD_ENTRY *thread_p, int tran_index, LK_GROUP_REQUEST request,
-				    const LK_RES_KEY *guest_key, const LK_PENDING_RELEASE *release)
-  : m_group (NULL)
-  , m_thread_p (thread_p)
-  , m_state (NOT_NEEDED)
-  , m_lock_result (LK_GRANTED)
-{
-  LK_PENDING_RELEASE *handed = NULL;
-  int error;
-
-  if (tran_index <= LOG_SYSTEM_TRAN_INDEX)
-    {
-      /* the system transaction is many threads' and opens no section */
-      return;
-    }
-  if (m_thread_p == NULL)
-    {
-      m_thread_p = thread_get_thread_entry_info ();
-    }
-  m_group = lock_get_tran_group (tran_index);
-
-  if (!lock_group_is_gated (m_group))
-    {
-#if !defined (NDEBUG)
-      if (lock_group_solo_enter (m_group, m_thread_p))
-	{
-	  m_state = SOLO;
-	}
-#endif
-      return;
-    }
-  if (__atomic_load_n (&m_group->owner, __ATOMIC_ACQUIRE) == m_thread_p)
-    {
-      m_group->depth++;
-      m_state = ENTERED;
-      return;
-    }
-  if (__atomic_load_n (&m_group->guest, __ATOMIC_ACQUIRE) == m_thread_p)
-    {
-      m_group->guest_depth++;
-      m_state = ENTERED;
-      return;
-    }
-
-  /*
-   * The entrance free: taken with no mutex. Owner NULL implies no guest, the owner neither asleep nor blocked, and no
-   * release handed over, as only a blocked owner is handed one and every way out drains them first. An acquisition
-   * checks for an abort again once it is the owner: a deferred abort can land between the check and the CAS, the spin
-   * widening that window, and lock_group_defer_abort () has returned by then.
-   */
-  if ((request == LK_GROUP_RELEASE || lock_group_abort_reason (m_group) == NO_ERROR)
-      && (lock_group_try_own (m_group, m_thread_p) || lock_group_spin_to_own (m_group, m_thread_p)))
-    {
-      error = (request == LK_GROUP_RELEASE) ? NO_ERROR : lock_group_abort_reason (m_group);
-      if (error != NO_ERROR)
-	{
-	  lock_group_give_back (m_group);
-	  lock_group_set_abort_error (tran_index, error);
-	  m_lock_result = (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
-	  return;
-	}
-      m_group->depth = 1;
-      m_state = ENTERED;
-      return;
-    }
-
-  if (release != NULL && pgbuf_has_perm_pages_fixed (m_thread_p))
-    {
-      /* allocated before the mutex, under which no other lock is taken */
-      handed = (LK_PENDING_RELEASE *) malloc (sizeof (LK_PENDING_RELEASE));
-      if (handed != NULL)
-	{
-	  *handed = *release;
-	}
-    }
-
-  pthread_mutex_lock (&m_group->mutex);
-  while (true)
-    {
-      if (request != LK_GROUP_RELEASE && lock_group_in_section (m_group))
-	{
-	  /* also when nothing was waited for: a sibling may have left the entrance as a victim */
-	  error = lock_group_abort_reason (m_group);
-	  if (error != NO_ERROR)
-	    {
-	      pthread_mutex_unlock (&m_group->mutex);
-	      lock_group_set_abort_error (tran_index, error);
-	      m_lock_result = (error == ER_INTERRUPTED) ? LK_NOTGRANTED_DUE_ERROR : LK_NOTGRANTED_DUE_ABORTED;
-	      return;
-	    }
-	}
-      if (lock_group_try_own (m_group, m_thread_p))
-	{
-	  m_group->depth = 1;
-	  break;
-	}
-      if (m_group->owner_sleeping && guest_key != NULL && m_group->guest == NULL
-	  && lock_res_key_compare ((void *) guest_key, &m_group->owner_wait_key) != 0
-	  && (guest_key->type != LOCK_RESOURCE_INSTANCE
-	      || lock_pack_row_oid (&guest_key->oid) != m_group->owner_held_row))
-	{
-	  __atomic_store_n (&m_group->guest, m_thread_p, __ATOMIC_RELEASE);
-	  m_group->guest_depth = 1;
-	  break;
-	}
-      /* the owner awake but waiting for a guest asleep behind a catalog updater is no shorter a wait */
-      if (__atomic_load_n (&m_group->owner_blocked, __ATOMIC_ACQUIRE))
-	{
-	  if (request == LK_GROUP_ACQUIRE_COND)
-	    {
-	      /* the owner's sleep is another transaction's to end; a conditional request does not share it */
-	      pthread_mutex_unlock (&m_group->mutex);
-	      m_lock_result = LK_NOTGRANTED_DUE_TIMEOUT;
-	      free (handed);
-#if !defined (NDEBUG)
-	      er_print_callstack (ARG_FILE_LINE, "lock_group: tran %d: conditional request met the owner asleep\n",
-				  tran_index);
-#endif
-	      return;
-	    }
-	  /* the deadlock detector would not see a page fixed while waiting for an owner asleep */
-	  if (handed != NULL)
-	    {
-	      handed->next = __atomic_load_n (&m_group->pending_release, __ATOMIC_RELAXED);
-	      __atomic_store_n (&m_group->pending_release, handed, __ATOMIC_RELEASE);
-	      pthread_mutex_unlock (&m_group->mutex);
-	      m_lock_result = LK_NOTGRANTED;
-	      return;
-	    }
-	  /* a guest-family request waits behind the guest, or the owner on its own resource: a catalog updater that
-	   * needs no user page, as lock_is_safe_lock_with_page () assumes */
-	  assert (request == LK_GROUP_RELEASE || guest_key != NULL || !pgbuf_has_perm_pages_fixed (m_thread_p));
-	}
-      (void) lock_group_wait_for_owner (m_group);
-    }
-  assert (m_group->guest == NULL || __atomic_load_n (&m_group->owner, __ATOMIC_ACQUIRE) != NULL);
-  pthread_mutex_unlock (&m_group->mutex);
-  m_state = ENTERED;
-  free (handed);
-}
-
-lock_group_guard::~lock_group_guard ()
-{
-#if !defined (NDEBUG)
-  if (m_state == SOLO)
-    {
-      lock_group_solo_leave (m_group);
-      return;
-    }
-#endif
-  if (m_state != ENTERED)
-    {
-      return;
-    }
-  /* by the role held now: a deadlock victim may come back in the other one (lock_suspend_internal ()) */
-  if (__atomic_load_n (&m_group->owner, __ATOMIC_ACQUIRE) == m_thread_p)
-    {
-      if (--m_group->depth > 0)
-	{
-	  return;
-	}
-      /* no release can be handed over from here on: the owner is awake with no guest, so not blocked */
-      if (__atomic_load_n (&m_group->pending_release, __ATOMIC_ACQUIRE) != NULL)
-	{
-	  lock_group_leave (m_group, m_thread_p);
-	  return;
-	}
-      lock_group_give_back (m_group);
-    }
-  else
-    {
-      assert (__atomic_load_n (&m_group->guest, __ATOMIC_ACQUIRE) == m_thread_p);
-      if (--m_group->guest_depth == 0)
-	{
-	  lock_group_guest_leave (m_group);
-	}
-    }
-}
 #endif /* SERVER_MODE */
 
 /*
@@ -802,7 +906,7 @@ lock_group_section_begin (int tran_index)
 #if defined (SERVER_MODE)
   if (tran_index > LOG_SYSTEM_TRAN_INDEX)
     {
-      __atomic_add_fetch (&lock_get_tran_group (tran_index)->sections, 1, __ATOMIC_SEQ_CST);
+      lock_get_tran_group (tran_index)->section_begin ();
     }
 #endif /* SERVER_MODE */
 }
@@ -815,22 +919,10 @@ void
 lock_group_section_end (int tran_index)
 {
 #if defined (SERVER_MODE)
-  LK_GROUP *group;
-  int sections;
-
-  if (tran_index <= LOG_SYSTEM_TRAN_INDEX)
+  if (tran_index > LOG_SYSTEM_TRAN_INDEX)
     {
-      return;
+      lock_get_tran_group (tran_index)->section_end ();
     }
-  group = lock_get_tran_group (tran_index);
-  pthread_mutex_lock (&group->mutex);
-  sections = __atomic_sub_fetch (&group->sections, 1, __ATOMIC_SEQ_CST);
-  assert (sections >= 0);
-  if (sections == 0)
-    {
-      __atomic_store_n (&group->interrupted, false, __ATOMIC_RELEASE);
-    }
-  pthread_mutex_unlock (&group->mutex);
 #endif /* SERVER_MODE */
 }
 
@@ -843,40 +935,9 @@ void
 lock_group_clear (int tran_index)
 {
 #if defined (SERVER_MODE)
-  LK_GROUP *group;
-  THREAD_ENTRY *owner, *guest;
-  LK_PENDING_RELEASE *release, *next;
-  int sections;
-
-  if (tran_index <= LOG_SYSTEM_TRAN_INDEX || !lock_has_tran_lock (tran_index))
+  if (tran_index > LOG_SYSTEM_TRAN_INDEX && lock_has_tran_lock (tran_index))
     {
-      return;
-    }
-  group = lock_get_tran_group (tran_index);
-
-  pthread_mutex_lock (&group->mutex);
-  sections = __atomic_exchange_n (&group->sections, 0, __ATOMIC_SEQ_CST);
-  owner = __atomic_exchange_n (&group->owner, (THREAD_ENTRY *) NULL, __ATOMIC_SEQ_CST);
-  guest = __atomic_exchange_n (&group->guest, (THREAD_ENTRY *) NULL, __ATOMIC_SEQ_CST);
-  group->depth = 0;
-  group->guest_depth = 0;
-  group->owner_sleeping = false;
-  __atomic_store_n (&group->owner_blocked, false, __ATOMIC_RELEASE);
-  __atomic_store_n (&group->interrupted, false, __ATOMIC_RELEASE);
-  __atomic_store_n (&group->abort_deferred, false, __ATOMIC_RELEASE);
-  release = __atomic_exchange_n (&group->pending_release, (LK_PENDING_RELEASE *) NULL, __ATOMIC_ACQ_REL);
-  pthread_mutex_unlock (&group->mutex);
-
-  for (; release != NULL; release = next)
-    {
-      next = release->next;
-      free (release);
-    }
-  if (sections != 0 || owner != NULL || guest != NULL)
-    {
-      _er_log_debug (ARG_FILE_LINE, "lock_group: transaction index %d is cleared with %d parallel sections open%s\n",
-		     tran_index, sections, (owner != NULL || guest != NULL) ? " and a thread inside" : "");
-      assert (false);
+      lock_get_tran_group (tran_index)->clear ();
     }
 #endif /* SERVER_MODE */
 }
@@ -889,52 +950,11 @@ bool
 lock_group_has_open_section (int tran_index)
 {
 #if defined (SERVER_MODE)
-  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_group_in_section (lock_get_tran_group (tran_index));
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->in_section ();
 #else /* SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
 }
-
-#if defined (SERVER_MODE)
-/*
- * lock_group_defer_abort_internal () - leave the abort of a transaction to a request that ends it later
- *   to_pl_caller(in): also with no section open, for a deadlock victim's abort (lock_group_defer_abort_to_pl_caller ())
- *
- * Note: under the mutex lock_group_section_end () takes, so a section closing meanwhile keeps no stale interrupt.
- *	 With no section, no interrupt: the PL calls would report it as ER_INTERRUPTED over the deadlock error. Their
- *	 statements fail as they return instead (lock_group_fail_if_abort_deferred ()).
- */
-static bool
-lock_group_defer_abort_internal (THREAD_ENTRY * thread_p, int tran_index, bool to_pl_caller)
-{
-  LK_GROUP *group = lock_get_tran_group (tran_index);
-  bool in_section;
-
-  pthread_mutex_lock (&group->mutex);
-  in_section = lock_group_in_section (group);
-  /* with no section, only a deadlock victim's abort: not that of a transaction a COMMIT under the PL has just
-   * ended and restarted (xtran_end_is_held_by_parallel_section ()) */
-  if (!in_section && ! (to_pl_caller && (lock_is_tran_deadlock_victim (tran_index)
-					 || __atomic_load_n (&group->abort_deferred, __ATOMIC_ACQUIRE))))
-    {
-      pthread_mutex_unlock (&group->mutex);
-      return false;
-    }
-  __atomic_store_n (&group->abort_deferred, true, __ATOMIC_RELEASE);
-  if (!in_section)
-    {
-      pthread_mutex_unlock (&group->mutex);
-      return true;
-    }
-  __atomic_store_n (&group->interrupted, true, __ATOMIC_RELEASE);
-  pthread_cond_broadcast (&group->cond);
-  pthread_mutex_unlock (&group->mutex);
-
-  /* the owner's query stops at its next row even if it asks for no lock */
-  logtb_set_tran_index_interrupt (thread_p, tran_index, true);
-  return true;
-}
-#endif /* SERVER_MODE */
 
 /*
  * lock_group_defer_abort () - leave the abort of a transaction with a parallel section open to the section owner
@@ -949,7 +969,7 @@ bool
 lock_group_defer_abort (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
-  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_group_defer_abort_internal (thread_p, tran_index, false);
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->defer_abort (thread_p, false);
 #else /* SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
@@ -963,7 +983,7 @@ bool
 lock_group_defer_abort_to_pl_caller (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
-  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_group_defer_abort_internal (thread_p, tran_index, true);
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->defer_abort (thread_p, true);
 #else /* SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
@@ -994,8 +1014,7 @@ bool
 lock_group_is_abort_deferred (int tran_index)
 {
 #if defined (SERVER_MODE)
-  return (tran_index > LOG_SYSTEM_TRAN_INDEX
-	  && __atomic_load_n (&lock_get_tran_group (tran_index)->abort_deferred, __ATOMIC_ACQUIRE));
+  return tran_index > LOG_SYSTEM_TRAN_INDEX && lock_get_tran_group (tran_index)->is_abort_deferred ();
 #else /* SERVER_MODE */
   return false;
 #endif /* SERVER_MODE */
