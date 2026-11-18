@@ -19002,10 +19002,8 @@ qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 
 /*
  * qexec_remote_merge_key_text () - Write the ON key of a source row into buf, for the duplicate
- *   key error. The values are the ones the check compared. So a key read from a hidden column
- *   shows in the type the remote compares it in. pr_valstring () prints a DOUBLE or FLOAT in
- *   short form, so 9007199254740992 and 9007199254740993 both show as 9.007199e+15. A key of more
- *   than one column is written in parentheses. A text that does not fit ends in "...".
+ *   key error. The values are the ones the check compared. A key of more than one column is
+ *   written in parentheses. A text that does not fit ends in "...".
  *   return: NO_ERROR, or ER_FAILED if a key value cannot be read
  *   merge(in)  : MERGE_PROC with the key positions
  *   tplrec(in) : the source row, read from a list with the source's columns
@@ -19071,8 +19069,9 @@ qexec_remote_merge_key_text (THREAD_ENTRY * thread_p, const MERGE_PROC_NODE * me
  *   sent. It also rejects two rows on a key the target does not have, which a local MERGE inserts
  *   twice. The sink cannot tell the two cases apart without asking the remote. A copy of the
  *   source is sorted on the keys, so rows with the same key are adjacent. The source itself keeps
- *   its order. A key with a NULL in it matches no target row, so it is skipped. A key the remote
- *   compares in another type is read from a hidden column in that type (remote_key_pos).
+ *   its order. A key with a NULL in it matches no target row, so it is skipped. The remote
+ *   compares a key in the type the source row has it in, as the statement is taken only when
+ *   the two columns of each key have one type.
  */
 static int
 qexec_check_remote_merge_duplicate_keys (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)

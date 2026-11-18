@@ -13154,7 +13154,6 @@ typedef struct pt_dblink_merge_select_cols PT_DBLINK_MERGE_SELECT_COLS;
 struct pt_dblink_merge_select_cols
 {
   PT_NODE *list;
-  PT_NODE *keys;		/* the source columns of the ON keys, in ON order */
   bool out_of_memory;
 };
 
@@ -13166,87 +13165,13 @@ pt_dblink_merge_add_select_col (PARSER_CONTEXT * parser, PT_NODE * value, bool i
 {
   PT_DBLINK_MERGE_SELECT_COLS *cols = (PT_DBLINK_MERGE_SELECT_COLS *) arg;
   PT_NODE *name = pt_name (parser, value->info.name.original);
-  PT_NODE *key = NULL;
 
-  if (is_key)
-    {
-      key = pt_name (parser, value->info.name.original);
-    }
-  if (name == NULL || (is_key && key == NULL))
+  if (name == NULL)
     {
       cols->out_of_memory = true;
       return;
     }
   cols->list = parser_append_node (name, cols->list);
-  if (key != NULL)
-    {
-      cols->keys = parser_append_node (key, cols->keys);
-    }
-}
-
-/*
- * pt_dblink_merge_add_key_cols () - When the remote compares any ON key in another type, append a
- *   hidden column per key for the duplicate key check, cast where needed. The bound columns stay
- *   first.
- *   return: NO_ERROR, or an error code with the parser error set
- *   parser(in): parser context
- *   checked(in): the type-checked statement, which has the key types
- *   cols(in/out): the list built so far, and the ON keys' source columns. The keys are used up.
- *                 On an error the caller frees what is left in both lists.
- */
-static int
-pt_dblink_merge_add_key_cols (PARSER_CONTEXT * parser, PT_NODE * checked, PT_DBLINK_MERGE_SELECT_COLS * cols)
-{
-  PT_TYPE_ENUM *types;
-  PT_NODE *key, *col;
-  bool any = false;
-  int num_keys = pt_length_of_list (cols->keys);
-  int i;
-
-  if (num_keys == 0)
-    {
-      return NO_ERROR;
-    }
-
-  types = (PT_TYPE_ENUM *) parser_alloc (parser, sizeof (PT_TYPE_ENUM) * num_keys);
-  if (types == NULL)
-    {
-      PT_ERRORm (parser, checked, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-      return ER_FAILED;
-    }
-  if (pt_dblink_merge_key_compare_types (parser, checked, types, num_keys, &any) != num_keys)
-    {
-      PT_INTERNAL_ERROR (parser, "remote MERGE: the checked statement and its clauses have different keys");
-      return ER_FAILED;
-    }
-  if (!any)
-    {
-      parser_free_tree (parser, cols->keys);
-      cols->keys = NULL;
-      return NO_ERROR;
-    }
-
-  for (i = 0; cols->keys != NULL; i++)
-    {
-      key = cols->keys;
-      cols->keys = key->next;
-      key->next = NULL;
-      col = key;
-      if (types[i] != PT_TYPE_NONE)
-	{
-	  col = pt_wrap_with_cast_op (parser, key, types[i], 0, 0, NULL);
-	  if (col == NULL)
-	    {
-	      parser_free_tree (parser, key);
-	      PT_ERRORm (parser, checked, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return ER_FAILED;
-	    }
-	}
-      col->flag.is_hidden_column = 1;
-      cols->list = parser_append_node (col, cols->list);
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -13257,19 +13182,16 @@ pt_dblink_merge_add_key_cols (PARSER_CONTEXT * parser, PT_NODE * checked, PT_DBL
  *   parser(in): parser context
  *   merge(in): the statement's remote_stmt_as_written
  *   from(in): the copy of the USING spec
- *   checked(in): the type-checked statement, for the types its keys are compared in
  *   sc_info_ptr(in/out): semantic check info, passed through to pt_bind_remote_dml_subq
  *
  * Note: The source alone is in the SELECT's FROM, so a column found by its name is the source's.
  *   A column the walk reports was resolved to the source, so the name is found there again.
- *   Hidden columns for the duplicate key check may follow the bound ones
- *   (pt_dblink_merge_add_key_cols ()).
  */
 static PT_NODE *
-pt_dblink_merge_source_select (PARSER_CONTEXT * parser, PT_NODE * merge, PT_NODE * from, PT_NODE * checked,
+pt_dblink_merge_source_select (PARSER_CONTEXT * parser, PT_NODE * merge, PT_NODE * from,
 			       SEMANTIC_CHK_INFO * sc_info_ptr)
 {
-  PT_DBLINK_MERGE_SELECT_COLS cols = { NULL, NULL, false };
+  PT_DBLINK_MERGE_SELECT_COLS cols = { NULL, false };
   PT_NODE *select;
 
   (void) pt_dblink_merge_walk_binds (parser, merge, pt_dblink_merge_add_select_col, &cols);
@@ -13287,11 +13209,6 @@ pt_dblink_merge_source_select (PARSER_CONTEXT * parser, PT_NODE * merge, PT_NODE
       PT_INTERNAL_ERROR (parser, "remote MERGE: no value to bind from the source");
       goto error_exit;
     }
-  if (pt_dblink_merge_add_key_cols (parser, checked, &cols) != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
   select = parser_new_node (parser, PT_SELECT);
   if (select == NULL)
     {
@@ -13304,9 +13221,8 @@ pt_dblink_merge_source_select (PARSER_CONTEXT * parser, PT_NODE * merge, PT_NODE
   return pt_bind_remote_dml_subq (parser, select, sc_info_ptr, "remote MERGE: failed to translate the source");
 
 error_exit:
-  /* the lists are not in a SELECT yet. from stays the caller's. */
+  /* the list is not in a SELECT yet. from stays the caller's. */
   parser_free_tree (parser, cols.list);
-  parser_free_tree (parser, cols.keys);
   return NULL;
 }
 
@@ -13713,7 +13629,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		{
 		  node->info.merge.remote_source_select =
 		    pt_dblink_merge_source_select (parser, node->info.merge.remote_stmt_as_written, merge_src_from,
-						   node, sc_info_ptr);
+						   sc_info_ptr);
 		}
 	    }
 	}

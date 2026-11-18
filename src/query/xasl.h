@@ -545,8 +545,7 @@ struct merge_proc_node
   int *remote_bind_char_len;	/* per column: a CHAR source's length, 0 otherwise. Gateway only */
   int remote_num_keys;		/* number of ON keys */
   int *remote_key_pos;		/* per key: 0-based column of the source row the duplicate check
-				 * reads. A hidden column after the bound ones when the remote
-				 * compares the key in another type. */
+				 * reads */
 };
 
 typedef struct cte_proc_node CTE_PROC_NODE;

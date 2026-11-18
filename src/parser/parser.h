@@ -812,13 +812,11 @@ extern "C"
   extern PT_DBLINK_LEAF_KIND pt_dblink_update_set_leaf (PT_NODE * node, void *arg);
 
   /* Remote MERGE with a local source (parser_support.c). The walk over the source columns it
-   * binds, the ON key type check, the types the keys are compared in and the shape gate. */
+   * binds, the ON key type check and the shape gate. */
   typedef void (*PT_DBLINK_MERGE_BIND_FN) (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg);
   extern int pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn,
 					 void *arg);
   extern int pt_dblink_merge_check_key_types (PARSER_CONTEXT * parser, PT_NODE * merge);
-  extern int pt_dblink_merge_key_compare_types (PARSER_CONTEXT * parser, PT_NODE * merge, PT_TYPE_ENUM * types,
-						int max_keys, bool * any);
   extern bool pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * merge);
 
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);

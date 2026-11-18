@@ -32127,8 +32127,7 @@ pt_dblink_merge_count_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_ke
 /* pt_dblink_merge_walk_binds callback over a copy of the clauses. The source column becomes the
  * USING column that carries it, so s.x turns into s.c<n>. The server names the USING columns the
  * same way (dblink_dml_build_merge_sql). The position of a key is kept too, 0-based, so key k is
- * the USING column c<key_pos[k] + 1>. The caller points a key at its hidden column afterwards,
- * when the source SELECT has them. */
+ * the USING column c<key_pos[k] + 1>. */
 static void
 pt_dblink_merge_rename_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
 {
@@ -32408,7 +32407,7 @@ pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_DBLINK_MERGE_TARGET_QUAL qual;
   const char *target_alias, *source_alias;
   unsigned int save_custom_print;
-  int num_cols, num_hidden, i;
+  int num_cols, i;
 
   assert (parser != NULL && statement != NULL);
 
@@ -32559,22 +32558,6 @@ pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       parser_free_tree (parser, copy);
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-      return NULL;
-    }
-
-  /* the duplicate key check reads the hidden key columns, if any (pt_dblink_merge_add_key_cols) */
-  num_hidden = pt_length_of_select_list (pt_get_select_list (parser, src_query), INCLUDE_HIDDEN_COLUMNS) - num_cols;
-  if (num_hidden == merge->remote_num_keys)
-    {
-      for (i = 0; i < merge->remote_num_keys; i++)
-	{
-	  merge->remote_key_pos[i] = num_cols + i;
-	}
-    }
-  else if (num_hidden != 0)
-    {
-      parser_free_tree (parser, copy);
-      PT_INTERNAL_ERROR (parser, "remote MERGE: the source query has hidden columns that are not its keys");
       return NULL;
     }
 

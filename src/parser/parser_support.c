@@ -13251,6 +13251,29 @@ pt_dblink_merge_unwrap_cast (PT_NODE * node)
   return node;
 }
 
+/* Do the two columns of a key have one type? The scale of a NUMERIC is part of its type. A length
+ * or a precision is not, as a value that does not fit fails at the remote. A source column with
+ * no type yet, as one that selects a host variable, has no type the target column has. */
+static bool
+pt_dblink_merge_key_is_one_type (PT_NODE * target_col, PT_NODE * source_col)
+{
+  if (target_col->type_enum != source_col->type_enum)
+    {
+      return false;
+    }
+  if (target_col->type_enum == PT_TYPE_NUMERIC)
+    {
+      return target_col->data_type != NULL && source_col->data_type != NULL
+	&& (target_col->data_type->info.data_type.dec_precision == source_col->data_type->info.data_type.dec_precision);
+    }
+  return true;
+}
+
+/* the message for a key whose two columns do not have one type */
+#define PT_DBLINK_MERGE_KEY_TYPE_MSG \
+  "dblink: remote MERGE with a local source needs each ON key's source column to have the type of its target " \
+  "column; cast the source column to the target column's type in the USING; %s = %s"
+
 /* A pt_dblink_merge_walk_on callback. It stops at the first key the sink cannot take. */
 static bool
 pt_dblink_merge_check_key_type (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
@@ -13271,16 +13294,10 @@ pt_dblink_merge_check_key_type (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE
 		      "column; %s = %s", pt_short_print (parser, target_col), pt_short_print (parser, source_col));
 	  return false;
 	}
-      if (source_col->type_enum == PT_TYPE_MAYBE)
+      if (!pt_dblink_merge_key_is_one_type (target_col, source_col))
 	{
-	  /* The source column has no type until its values come, as when the USING selects a
-	   * host variable. Type checking wraps no CAST then, so the test below would see no
-	   * conversion. The sink would look for duplicate keys in the bound value's type, and
-	   * the remote would match them in the target column's. */
-	  PT_ERRORf2 (parser, check->merge,
-		      "dblink: remote MERGE with a local source needs the type of each ON key's source column known "
-		      "when the statement is compiled; cast the source column to the target column's type in the "
-		      "USING; %s = %s", pt_short_print (parser, target_col), pt_short_print (parser, source_col));
+	  PT_ERRORf2 (parser, check->merge, PT_DBLINK_MERGE_KEY_TYPE_MSG, pt_short_print (parser, target_col),
+		      pt_short_print (parser, source_col));
 	  return false;
 	}
       return true;
@@ -13303,10 +13320,10 @@ pt_dblink_merge_check_key_type (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE
   if ((leaf1 == PT_DBLINK_LEAF_REMOTE && leaf2 == PT_DBLINK_LEAF_LOCAL)
       || (leaf1 == PT_DBLINK_LEAF_LOCAL && leaf2 == PT_DBLINK_LEAF_REMOTE))
     {
-      PT_ERRORf2 (parser, check->merge,
-		  "dblink: remote MERGE with a local source needs the two columns of each ON key to compare without "
-		  "a conversion; cast the source column to the target column's type in the USING; %s = %s",
-		  pt_short_print (parser, arg1), pt_short_print (parser, arg2));
+      /* Two columns of one type that still compare with a conversion, as two strings of
+       * different collations do. */
+      PT_ERRORf2 (parser, check->merge, PT_DBLINK_MERGE_KEY_TYPE_MSG, pt_short_print (parser, arg1),
+		  pt_short_print (parser, arg2));
       return false;
     }
 
@@ -13314,13 +13331,13 @@ pt_dblink_merge_check_key_type (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE
 }
 
 /*
- * pt_dblink_merge_check_key_types () - Reject an ON key of a remote MERGE with a local source that
- *   the sink cannot take for a key. The sink looks for duplicate keys in the source column's type,
- *   and the remote matches them in the target column's. The two agree when the columns compare
- *   without a conversion. Type checking wraps one side in a CAST otherwise. '1' and '01' are two
- *   strings but one INTEGER, so they could update one target row twice. A source column with no
- *   type at compile time, as one that selects a host variable, gets no CAST and is rejected too.
- *   So is a key whose target column has a type DBLink does not map.
+ * pt_dblink_merge_check_key_types () - Reject an ON key of a remote MERGE with a local source
+ *   whose two columns do not have one type. A source row's key has to be the same value in three
+ *   places. The sink looks for duplicate keys in the source column's type. The remote matches a
+ *   key in the target column's type. An INSERT stores it in the target column's type. '1' and '01'
+ *   are two strings but one INTEGER, so they could update one target row twice. 1.2345 is stored
+ *   as 1.23 in a NUMERIC(5,2), where a later source row with 1.23 would update it. A key whose
+ *   target column has a type DBLink does not map is rejected too.
  *   return: NO_ERROR, or ER_FAILED with the parser error set
  *   parser(in): parser context
  *   merge(in): a type-checked PT_MERGE whose target is in the derived dblink table shape
@@ -13340,80 +13357,6 @@ pt_dblink_merge_check_key_types (PARSER_CONTEXT * parser, PT_NODE * merge)
     }
 
   return NO_ERROR;
-}
-
-/* what pt_dblink_merge_key_compare_types carries over the walk */
-typedef struct pt_dblink_merge_key_compare PT_DBLINK_MERGE_KEY_COMPARE;
-struct pt_dblink_merge_key_compare
-{
-  PT_TYPE_ENUM *types;
-  int max_keys;
-  int num_keys;
-  bool any;
-};
-
-/* A pt_dblink_merge_walk_on callback. It gives the type a key's values are compared in, when it
- * is not the source column's. */
-static bool
-pt_dblink_merge_key_compare_type (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
-				  PT_NODE * source_col, void *arg)
-{
-  PT_DBLINK_MERGE_KEY_COMPARE *cmp = (PT_DBLINK_MERGE_KEY_COMPARE *) arg;
-  PT_TYPE_ENUM type = PT_TYPE_NONE;
-
-  if (source_col == NULL)
-    {
-      return true;
-    }
-  if (PT_IS_NUMERIC_TYPE (source_col->type_enum) && source_col->type_enum != PT_TYPE_FLOAT
-      && source_col->type_enum != PT_TYPE_DOUBLE && source_col->type_enum != PT_TYPE_MONETARY)
-    {
-      if (target_col->type_enum == PT_TYPE_DOUBLE || target_col->type_enum == PT_TYPE_MONETARY)
-	{
-	  type = PT_TYPE_DOUBLE;
-	}
-      else if (target_col->type_enum == PT_TYPE_FLOAT)
-	{
-	  type = PT_TYPE_FLOAT;
-	}
-    }
-
-  if (cmp->num_keys >= cmp->max_keys)
-    {
-      return false;
-    }
-  cmp->types[cmp->num_keys++] = type;
-  cmp->any |= (type != PT_TYPE_NONE);
-  return true;
-}
-
-/*
- * pt_dblink_merge_key_compare_types () - The type the remote compares each ON key in, when it is
- *   not the source column's. A number meets a number of another type in the more approximate of
- *   the two, where 9007199254740992 and 9007199254740993 are one DOUBLE.
- *   return: the number of keys, or -1 when there are more than max_keys
- *   parser(in): parser context
- *   merge(in): a type-checked PT_MERGE whose target is in the derived dblink table shape
- *   types(out): per key, in ON order, PT_TYPE_DOUBLE or PT_TYPE_FLOAT, or PT_TYPE_NONE for the
- *               source column's own type
- *   max_keys(in): the size of types
- *   any(out): whether any key has a type of its own
- */
-int
-pt_dblink_merge_key_compare_types (PARSER_CONTEXT * parser, PT_NODE * merge, PT_TYPE_ENUM * types, int max_keys,
-				   bool * any)
-{
-  PT_DBLINK_MERGE_REFS refs;
-  PT_DBLINK_MERGE_KEY_COMPARE cmp = { types, max_keys, 0, false };
-
-  pt_dblink_merge_init_refs (merge, &refs);
-  if (!pt_dblink_merge_walk_on (parser, merge->info.merge.search_cond, &refs, pt_dblink_merge_key_compare_type, &cmp))
-    {
-      return -1;
-    }
-
-  *any = cmp.any;
-  return cmp.num_keys;
 }
 
 /* The shape gate. A value may only be columns of either side, literals and + - * / over them
