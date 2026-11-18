@@ -5387,6 +5387,8 @@ locator_start_referenced_key (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID 
       return NO_ERROR;
     }
   rk->pk_i = i;
+  /* set on every path to its use below, which -O2 cannot see through the loop */
+  index = &rk->index_attrinfo.last_classrepr->indexes[rk->pk_i];
 
   /* index_attrinfo holds no attribute of a multi-column key: an UPDATE compares the key's own */
   if (att_id != NULL && heap_attrinfo_start_with_btid (thread_p, class_oid, &index->btid, &rk->key_attrinfo) < 0)
