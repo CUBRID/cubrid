@@ -6064,7 +6064,7 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
 
 /*
  * qfile_list_cache_values_equal () - CBRD-27583: whether two values bound to position i of cached results are
- *   equal: by the position's comparison, NULLs equal (total order); two strings by their bytes (CBRD-28060)
+ *   equal: by the position's comparison, NULLs equal (total order); two strings by their bytes
  *
  * Note: a result may depend on a bound string's bytes (e.g., ascii (?), or ? itself in the select list), which
  *       the collation of the position may find equal for 'A' and 'a'.

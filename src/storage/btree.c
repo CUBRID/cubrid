@@ -7784,25 +7784,28 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 	return btree_get_stats_hash_bytes (hash, db_get_string (value), size);
       }
 
+      /* FLOAT, DOUBLE and MONETARY: -0.0 equals 0.0, and a NaN every other NaN (MR_CMP_FLOATING ()) */
     case DB_TYPE_FLOAT:
       {
-	/* -0.0 equals 0.0 */
-	float f = db_get_float (value) + 0.0f;
+	float f = db_get_float (value);
 
+	f = isnan (f) ? NAN : f + 0.0f;
 	return btree_get_stats_hash_bytes (hash, &f, sizeof (f));
       }
 
     case DB_TYPE_DOUBLE:
       {
-	double d = db_get_double (value) + 0.0;
+	double d = db_get_double (value);
 
+	d = isnan (d) ? NAN : d + 0.0;
 	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
       }
 
     case DB_TYPE_MONETARY:
       {
-	double d = db_get_monetary (value)->amount + 0.0;
+	double d = db_get_monetary (value)->amount;
 
+	d = isnan (d) ? NAN : d + 0.0;
 	return btree_get_stats_hash_bytes (hash, &d, sizeof (d));
       }
 

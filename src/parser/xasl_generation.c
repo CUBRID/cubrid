@@ -15939,7 +15939,7 @@ pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
     }
   else
     {
-      /* CBRD-28060: a type keeps two keys apart only if it holds every key */
+      /* a type keeps two keys apart only if it holds every key */
       switch (TP_DOMAIN_TYPE (decided.target[0]))
 	{
 	case DB_TYPE_DOUBLE:

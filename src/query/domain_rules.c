@@ -2897,7 +2897,7 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, b
   if (TP_DOMAIN_TYPE (outer) != TP_DOMAIN_TYPE (inner)
       && domain_hash_type (TP_DOMAIN_TYPE (outer)) == domain_hash_type (TP_DOMAIN_TYPE (inner)))
     {
-      /* CBRD-28060: hashed as they are, by value; only the keys whose hashes match are compared, with coercion */
+      /* hashed as they are, by value; only the keys whose hashes match are compared, with coercion */
       DOMAIN_COMPARE_KEY key[2];
 
       *common = NULL;
