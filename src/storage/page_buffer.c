@@ -2608,6 +2608,10 @@ fast_path:
 	   * it is not deallocated. However, if it is deallocated, no error is required. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_PB_BAD_PAGEID, 2, vpid->pageid,
 		  fileio_get_volume_label (vpid->volid, PEEK));
+	  /* a deallocated page, read from disk only to learn that or still in the buffer: nobody reads it again, so
+	   * it does not take a place in the caller's LRU list (as pgbuf_dealloc_page () leaves the page it
+	   * deallocates) */
+	  pgbuf_mark_page_for_lru_bottom (thread_p, pgptr);
 	  /* fall through to unfix */
 	  PGBUF_BCB_CHECK_MUTEX_LEAKS ();
 	  pgbuf_unfix (thread_p, pgptr);
@@ -13135,6 +13139,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
   int er_status_get_hfid = NO_ERROR;
   VPID req_page_groupid;
   bool has_dealloc_prevent_flag = false;
+  bool req_page_gone = false;
   PGBUF_LATCH_CONDITION latch_condition;
   PGBUF_BCB *bufptr = NULL;
 #if defined(PGBUF_ORDERED_DEBUG)
@@ -13730,6 +13735,10 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 		  er_log_debug (ARG_FILE_LINE,
 				"pgbuf_ordered_fix: page %d|%d was deallocated (OLD_PAGE_MAYBE_DEALLOCATED mode).\n",
 				VPID_AS_ARGS (&ordered_holders_info[i].vpid));
+		  /* the pages unfixed for it are fixed again all the same: their watchers' owners still read them */
+		  req_page_gone = true;
+		  er_status = NO_ERROR;
+		  continue;
 		}
 	      else
 		{
@@ -13752,8 +13761,9 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
       if (VPID_EQ (req_vpid, &(ordered_holders_info[i].vpid))
 	  && pgbuf_ordered_unfix_reused_page (thread_p, req_vpid, fetch_mode, &pgptr))
 	{
-	  er_status = ER_PB_BAD_PAGEID;
-	  goto exit;
+	  /* gone as well (the warning is set); the pages unfixed for it are fixed again all the same */
+	  req_page_gone = true;
+	  continue;
 	}
 
       /* get holder of last fix: last fixed pages is in top of holder list, we use parse code just for safety */
@@ -13871,6 +13881,11 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
     }
 
 exit:
+  if (req_page_gone && er_status == NO_ERROR)
+    {
+      /* the warning the fix set is still the last error */
+      er_status = ER_PB_BAD_PAGEID;
+    }
   if (er_status_get_hfid != NO_ERROR && er_status == NO_ERROR)
     {
       er_status = er_status_get_hfid;

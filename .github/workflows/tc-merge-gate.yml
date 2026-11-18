@@ -1,5 +1,8 @@
 # The job name "Check TC PRs" is the required check on develop.
 #
+# The gate keeps TC and CI isolated per PR: the TC PRs of an engine PR are merged
+# if and only if the engine PR is merged, together with it as the last step.
+#
 # Branch content counts, not just an open TC PR: TC Branch Finalize deletes
 # tc/pr-<N> when the engine PR merges, and what it held is lost (#7964).
 # Anything the gate cannot confirm blocks: a lost TC change costs more than a re-run.
@@ -64,7 +67,7 @@ env:
       if [ -n "${OPEN_PR}" ]; then
         URL=$(jq -r '.url' <<< "${OPEN_PR}")
         STATE=$( [ "$(jq -r '.isDraft' <<< "${OPEN_PR}")" = true ] && echo 'open (draft)' || echo open )
-        DETAIL+="- ❌ **${TC_REPO}**: TC PR [\`${BRANCH}\`](${URL}) is ${STATE} — merge it, or close it if it carries no change"$'\n'
+        DETAIL+="- ❌ **${TC_REPO}**: TC PR [\`${BRANCH}\`](${URL}) is ${STATE} — merge it (or close it if it carries no change) only together with this engine PR, right before merging it"$'\n'
         VERDICT=BLOCK
         continue
       fi
@@ -241,9 +244,23 @@ jobs:
           TC changes for this PR are not on TC develop yet.
 
           ${DETAIL}
-          **Steps to unblock:**
-          1. Merge the TC PRs listed above. Close one only when it carries no change.
-          2. Re-run **TC Merge Gate / Check TC PRs** (Actions tab → TC Merge Gate → Re-run failed jobs). Re-running any other workflow does not judge again."
+          The merge block and this gate keep TC and CI isolated per PR, so the merge must be atomic with this PR.
+          The TC PRs listed above are merged if and only if this engine PR is merged, together with it.
+          Do not merge or close a TC PR while this engine PR still waits for review or other CI:
+          the TC develop then runs against an engine that does not have this change, and other PRs break.
+
+          If this PR's gate run is older than 30 days, push to this PR before merging or closing any TC PR.
+          GitHub refuses to re-run a gate run older than 30 days. Complete the other CI checks triggered by that push first.
+
+          **Steps to merge (do them together, as the last step):**
+
+          1. Wait until this engine PR is approved and all CI checks other than TC Merge Gate pass.
+          2. Merge the TC PRs listed above. Close one only when it carries no change.
+          3. Re-run **TC Merge Gate / Check TC PRs** for this PR's latest run (Actions tab → TC Merge Gate → Re-run failed jobs).
+             Wait for **Check TC PRs** to succeed. Re-running any other workflow does not judge again.
+          4. Merge this engine PR right away. The state where a TC PR is merged and this engine PR is not must not last.
+
+          The scheduled sweep does not clear this block. Re-run the gate yourself."
           else
             COMMENT_BODY="## ✅ TC Merge Gate — Merge Allowed
 

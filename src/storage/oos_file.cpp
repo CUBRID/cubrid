@@ -4235,8 +4235,8 @@ oos_rv_update_drop_on_postpone (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   {
     /* A system operation commit that runs this postpone would publish the drop while the transaction can still roll
      * the UPDATE back, and vacuum would reclaim chains the restored record references. The exception is an UPDATE
-     * under the system operation's own subtransaction MVCCID (SELECT INCR in instant lock mode): that commit is
-     * final. */
+     * under the system operation's own subtransaction MVCCID (SELECT INCR on a row that is not the transaction's
+     * own): that commit is final. */
     const LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
     assert (tdes == NULL || tdes->state != TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE
 	    || prefix.mvccid != tdes->mvccinfo.id);
