@@ -199,6 +199,7 @@ extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
 extern int numeric_get_precision_digits (uint8_t * calc_buf);
+extern void numeric_db_value_to_float_domain (DB_VALUE * value, const DB_DOMAIN * domain);
 extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);

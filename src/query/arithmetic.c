@@ -174,8 +174,7 @@ db_floor_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	int p = 0, s = 0;
-	db_get_numeric_precision_and_scale (value, &p, &s, NULL);
+	int s = db_get_numeric_scale (value, NULL);
 
 	if (s)
 	  {
@@ -330,8 +329,7 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
       break;
     case DB_TYPE_NUMERIC:
       {
-	int p = 0, s = 0;
-	db_get_numeric_precision_and_scale (value, &p, &s, NULL);
+	int s = db_get_numeric_scale (value, NULL);
 
 	if (s)
 	  {
@@ -380,9 +378,6 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		  }
 		else
 		  {
-		    bool carry = true;
-		    char *num_str_digits = num_str + 1 + num_str_len - p;
-
 		    /* position num_str_p one digit in front of the decimal point */
 		    num_str_p = num_str;
 		    num_str_p += num_str_len - s;
@@ -395,19 +390,12 @@ db_ceil_dbval (DB_VALUE * result, DB_VALUE * value)
 		    if (*num_str_p)
 		      {
 			(*num_str_p)++;
-			carry = false;
-		      }
-
-		    if (carry || num_str_p < num_str_digits)
-		      {
-			if (carry)
-			  {
-			    *num_str_p = '1';
-			  }
+			num_str_p = num_str + 1;
 		      }
 		    else
 		      {
-			num_str_p = num_str + 1;
+			/* the carry ran past every digit: the 1 goes in front of them */
+			*num_str_p = '1';
 		      }
 
 		    db_make_floor_ceil_numeric (result, num_str_p, s);
@@ -2375,7 +2363,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
   bool is_value_negative = false;
   char *ptr, *end;
   int need_round = 0;
-  int p, s;
+  int s;
   DB_VALUE cast_value, cast_format;
   int er_status = NO_ERROR;
   TP_DOMAIN *domain = NULL;
@@ -2557,7 +2545,7 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       memset (num_string, 0, sizeof (num_string));
       numeric_coerce_num_to_dec_str (value1, num_string);
 
-      db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
+      s = db_get_numeric_scale (value1, NULL);
       end = num_string + strlen (num_string);
       ptr = end - s + bi2;
 
@@ -3580,7 +3568,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	unsigned char num[DB_NUMERIC_BUF_SIZE];
 	char num_string[NUMERIC_MAX_STRING_SIZE];
 	char *ptr, *end;
-	int p, s;
+	int s;
 	bool is_value_negative = false;
 
 	if (numeric_db_value_round_to_place (value1, bi2, false, result))
@@ -3591,7 +3579,7 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	memset (num_string, 0, sizeof (num_string));
 	numeric_coerce_num_to_dec_str (value1, num_string);
 
-	db_get_numeric_precision_and_scale (value1, &p, &s, NULL);
+	s = db_get_numeric_scale (value1, NULL);
 	end = num_string + strlen (num_string);
 	ptr = end - s + bi2;
 

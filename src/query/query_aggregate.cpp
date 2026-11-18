@@ -2691,6 +2691,12 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      return ER_FAILED;
 	    }
 	}
+
+      /* the only distinct value is not converted through addition */
+      if (agg_p->function == PT_SUM)
+	{
+	  numeric_db_value_to_float_domain (agg_p->accumulator.value, agg_domain);
+	}
     }
 
 exit:
