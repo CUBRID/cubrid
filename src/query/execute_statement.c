@@ -3365,6 +3365,15 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   serial_object = do_get_serial_obj_id (&serial_obj_id, serial_class, name);
   if (serial_object == NULL)
     {
+      error = er_errid ();
+      if (ER_IS_SERVER_DOWN_ERROR (error) || ER_IS_LOCK_TIMEOUT_ERROR (error) || error == ER_LK_PAGE_TIMEOUT
+	  || error == ER_INTERRUPTED)
+	{
+	  /* the lookup failed; it does not tell the serial is missing */
+	  goto end;
+	}
+      error = NO_ERROR;
+
       if (statement->info.serial.if_exists)
 	{
 	  return NO_ERROR;
