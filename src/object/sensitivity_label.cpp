@@ -31,6 +31,8 @@
 
 static const char *get_component_class_name (const PT_MISC_TYPE kind);
 static const char *get_component_kind_name (const PT_MISC_TYPE kind);
+static int put_components (DB_OTMPL *obj_tmpl, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
+static int put_labeled_by (DB_OTMPL *obj_tmpl);
 
 /*
  * get_component_class_name () - the catalog class that holds the grades, the info_types or the sources
@@ -498,6 +500,264 @@ sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, con
     }
 
 end:
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * sensitivity_label_find () - find the label of a column to replace or drop it
+ *   return: error code
+ *   class_mop(in): the table of the column
+ *   attr_id(in): the attribute id of the column
+ *   label(out): the label, or NULL when the column has none
+ *
+ * Note: the lookup X-locks the label and ignores the snapshot: it waits for an uncommitted create or drop.
+ */
+int
+sensitivity_label_find (MOP class_mop, const int attr_id, DB_OBJECT **label)
+{
+  DB_OBJECT *label_class;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "attr_id" };
+  int error = NO_ERROR;
+  int save;
+
+  *label = NULL;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  label_class = db_find_class (CT_SENSITIVITY_LABEL_NAME);
+  if (label_class == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  db_make_object (&value[0], class_mop);
+  db_make_int (&value[1], attr_id);
+
+  *label = db_find_multi_unique_for_update (label_class, 2, (char **) search_attrs, value_ptrs);
+  if (*label == NULL)
+    {
+      /* no error is left when the column has no label */
+      error = er_errid ();
+    }
+
+end:
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * put_components () - put the grade, the info_type and the source into a label
+ *   return: error code
+ *   obj_tmpl(in): the template of the label
+ *   grade(in): the grade
+ *   info_type(in): the info_type, or NULL
+ *   source(in): the source, or NULL
+ */
+static int
+put_components (DB_OTMPL *obj_tmpl, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source)
+{
+  DB_VALUE value;
+  int error;
+
+  assert (grade != NULL);
+
+  db_make_object (&value, grade);
+  error = dbt_put_internal (obj_tmpl, "grade", &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  db_make_object (&value, info_type);
+  error = dbt_put_internal (obj_tmpl, "info_type", &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  db_make_object (&value, source);
+  return dbt_put_internal (obj_tmpl, "source", &value);
+}
+
+/*
+ * put_labeled_by () - put the current user into a label as the one who labeled the column
+ *   return: error code
+ *   obj_tmpl(in): the template of the label
+ */
+static int
+put_labeled_by (DB_OTMPL *obj_tmpl)
+{
+  DB_VALUE value;
+  char *user_name;
+  int error;
+
+  user_name = db_get_user_name ();
+  if (user_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  db_make_string (&value, user_name);
+  error = dbt_put_internal (obj_tmpl, "labeled_by", &value);
+  db_string_free (user_name);
+
+  return error;
+}
+
+/*
+ * sensitivity_label_create () - create the label of a column
+ *   return: error code
+ *   class_mop(in): the table of the column
+ *   attr_id(in): the attribute id of the column
+ *   grade(in): the grade
+ *   info_type(in): the info_type, or NULL
+ *   source(in): the source, or NULL
+ */
+int
+sensitivity_label_create (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type,
+			  DB_OBJECT *source)
+{
+  DB_OBJECT *label_class;
+  DB_OBJECT *label;
+  DB_OTMPL *obj_tmpl = NULL;
+  DB_VALUE value;
+  int error;
+  int save;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  label_class = db_find_class (CT_SENSITIVITY_LABEL_NAME);
+  if (label_class == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  obj_tmpl = dbt_create_object (label_class);
+  if (obj_tmpl == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  db_make_object (&value, class_mop);
+  error = dbt_put_internal (obj_tmpl, "class_of", &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  db_make_int (&value, attr_id);
+  error = dbt_put_internal (obj_tmpl, "attr_id", &value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = put_components (obj_tmpl, grade, info_type, source);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = put_labeled_by (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  label = dbt_finish_object (obj_tmpl);
+  if (label == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (label);
+
+end:
+  if (obj_tmpl != NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * sensitivity_label_replace () - replace the whole label of a column
+ *   return: error code
+ *   label(in): the label
+ *   grade(in): the grade
+ *   info_type(in): the info_type, or NULL
+ *   source(in): the source, or NULL
+ */
+int
+sensitivity_label_replace (DB_OBJECT *label, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source)
+{
+  DB_OTMPL *obj_tmpl;
+  int error;
+  int save;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  obj_tmpl = dbt_edit_object (label);
+  if (obj_tmpl == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = put_components (obj_tmpl, grade, info_type, source);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = put_labeled_by (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  label = dbt_finish_object (obj_tmpl);
+  if (label == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+  obj_tmpl = NULL;
+
+  error = locator_flush_instance (label);
+
+end:
+  if (obj_tmpl != NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+
   AU_RESTORE (save);
 
   return error;
