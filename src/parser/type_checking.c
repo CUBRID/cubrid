@@ -13212,7 +13212,7 @@ pt_fixed_in_statement_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
       /* a subquery that reads no outer row runs once for the statement, whatever it computes */
-      if (node->info.query.correlation_level != 0)
+      if (PT_IS_CORRELATED_SUBQUERY (node))
 	{
 	  *varies = true;
 	}
@@ -13223,8 +13223,8 @@ pt_fixed_in_statement_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       break;
 
     case PT_FUNCTION:
-      /* a value per group or row, or code the parser cannot see */
-      if (pt_is_aggregate_function (parser, node) || pt_is_analytic_function (parser, node) || PT_IS_GROUPBYNUM (node)
+      /* a value per group or row (GROUPBY_NUM is an aggregate or analytic one), or code the parser cannot see */
+      if (pt_is_aggregate_function (parser, node) || pt_is_analytic_function (parser, node)
 	  || node->info.function.function_type == PT_GENERIC || node->info.function.function_type == F_GENERIC)
 	{
 	  *varies = true;
@@ -13241,13 +13241,6 @@ pt_fixed_in_statement_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
     case PT_EXPR:
       op = node->info.expr.op;
-
-      /* a row number, a value of the hierarchy row, or a serial */
-      if (PT_IS_NUMBERING_AFTER_EXECUTION (op) || PT_REQUIRES_HIERARCHICAL_QUERY (op) || PT_IS_SERIAL (op))
-	{
-	  *varies = true;
-	  break;
-	}
 
       switch (op)
 	{
@@ -13280,6 +13273,11 @@ pt_fixed_in_statement_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 	  break;
 
 	default:
+	  /* a row number, a value of the hierarchy row, or a serial */
+	  if (PT_IS_NUMBERING_AFTER_EXECUTION (op) || PT_REQUIRES_HIERARCHICAL_QUERY (op) || PT_IS_SERIAL (op))
+	    {
+	      *varies = true;
+	    }
 	  break;
 	}
       break;
@@ -13362,21 +13360,22 @@ pt_end_rand_execution (PARSER_CONTEXT * parser, UINT64 outer)
 static void
 pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, PT_NODE * expr, int seed, bool is_double, DB_VALUE * result)
 {
-  struct drand48_data local, *buf = &local;
+  struct drand48_data local;
+  struct drand48_data *buf = &expr->info.expr.rand_buf;
 
-  if (pt_is_fixed_in_statement (parser, expr->info.expr.arg1))
+  /* only a fixed seed stamps the call, so a call stamped with this execution goes on with its sequence */
+  if (expr->info.expr.rand_execution != parser->rand_execution)
     {
-      /* the call keeps its generator for the rest of the statement execution */
-      buf = &expr->info.expr.rand_buf;
-      if (expr->info.expr.rand_execution != parser->rand_execution)
+      if (pt_is_fixed_in_statement (parser, expr->info.expr.arg1))
 	{
-	  srand48_r ((long) seed, buf);
+	  /* the call keeps its generator for the rest of the statement execution */
 	  expr->info.expr.rand_execution = parser->rand_execution;
 	}
-    }
-  else
-    {
-      srand48_r ((long) seed, &local);
+      else
+	{
+	  buf = &local;
+	}
+      srand48_r ((long) seed, buf);
     }
 
   if (is_double)
