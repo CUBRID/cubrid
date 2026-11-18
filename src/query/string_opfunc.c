@@ -25826,9 +25826,20 @@ db_get_like_optimization_bounds (const DB_VALUE * const pattern, DB_VALUE * boun
     {
       if (compute_lower_bound)
 	{
-	  /* the empty string, not the domain minimum (a space): a VARCHAR comparison does not ignore trailing spaces,
-	   * so '' is smaller than ' ' and a pattern that matches '' ('', '%') would lose the rows of '' */
-	  error_code = db_make_varchar (bound, DB_VALUE_PRECISION (pattern), "", 0, codeset, collation_id);
+	  if (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
+	    {
+	      /* '' is NULL here (db_make_db_char ()) and no row holds it: the domain minimum, as a NULL bound would
+	       * make the range empty */
+	      error_code =
+		db_value_domain_min (bound, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (pattern), DB_VALUE_SCALE (pattern),
+				     codeset, collation_id, NULL);
+	    }
+	  else
+	    {
+	      /* the empty string, not the domain minimum (a space): a VARCHAR comparison does not ignore trailing
+	       * spaces, so '' is smaller than ' ' and a pattern that matches '' ('', '%') would lose the rows of '' */
+	      error_code = db_make_varchar (bound, DB_VALUE_PRECISION (pattern), "", 0, codeset, collation_id);
+	    }
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error_exit;
