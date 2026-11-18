@@ -3753,6 +3753,9 @@ get_expr_fcode_rank (FUNC_CODE fcode)
     case F_REGEXP_REPLACE:
     case F_REGEXP_SUBSTR:
       return RANK_EXPR_MEDIUM;
+    case F_BENCHMARK:
+      /* evaluates its expression many times: after the other terms, as the default ranked it */
+      return RANK_EXPR_FUNCTION;
     default:
       /* each function must fill its rank */
       assert (false);
