@@ -754,6 +754,109 @@ TEST_F (OosUpdateReuse, ReplicatesAReusedColumnAsAMarkerInAttributeOrder)
   EXPECT_EQ (items_since (first), expected_long);
 }
 
+/* A rollback to a savepoint drops the markers of an UPDATE after it with the UPDATE's row: a marker has no LSA to
+ * compare with the savepoint's, and written alone at commit it would stop the replica (CBRD-27230). The OOS items
+ * of an UPDATE before the savepoint stay with their row. */
+TEST_F (OosUpdateReuse, SavepointRollbackDropsTheMarkersWithTheirRow)
+{
+  open_table ("dba.t_reuse_repl_savepoint");
+  OID oid = insert_row (1);
+  commit_current_tran ();
+
+  replication_tracking_guard tracking;
+  ASSERT_EQ (tracking.error (), NO_ERROR);
+  ASSERT_TRUE (log_does_allow_replication ());
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  ASSERT_NE (tdes, nullptr);
+  scope_exit rollback ([&] () noexcept
+  {
+    (void) xtran_server_abort (thread_p);
+  });
+
+  const int kept_first = tdes->cur_repl_record;
+  ASSERT_EQ (update_row (oid, nullptr, &NEW_C1_VALUE, nullptr), NO_ERROR);
+  const int kept_end = tdes->cur_repl_record;
+
+  LOG_LSA savepoint_lsa;
+  ASSERT_EQ (xtran_server_savepoint (thread_p, "repl_sp", &savepoint_lsa), NO_ERROR);
+  const int k = 1;
+  ASSERT_EQ (update_row (oid, &k, nullptr, nullptr), NO_ERROR);
+  const int dropped_end = tdes->cur_repl_record;
+  ASSERT_EQ (dropped_end - kept_end, 3) << "two markers and the row";
+  ASSERT_EQ (xtran_server_partial_abort (thread_p, "repl_sp", &savepoint_lsa), TRAN_UNACTIVE_ABORTED);
+  ASSERT_EQ (tdes->cur_repl_record, dropped_end);
+
+  for (int i = kept_first; i < kept_end; i++)
+    {
+      EXPECT_EQ (tdes->repl_records[i].must_flush, LOG_REPL_COMMIT_NEED_FLUSH)
+	  << "record " << i << " (rcvindex " << tdes->repl_records[i].rcvindex << ") before the savepoint";
+    }
+  for (int i = kept_end; i < dropped_end; i++)
+    {
+      EXPECT_EQ (tdes->repl_records[i].must_flush, LOG_REPL_DONT_NEED_FLUSH)
+	  << "record " << i << " (rcvindex " << tdes->repl_records[i].rcvindex << ") after the savepoint";
+    }
+}
+
+/* Under a flush mark, which SELECT ... INCR sets, each OOS item of a row takes the row's decision: written with the
+ * row when the row is, and deferred to commit with it when an earlier change of the same row defers it. An earlier
+ * marker or boundary item, whose OID is null like theirs, must not decide it (CBRD-27230). */
+TEST_F (OosUpdateReuse, FlushMarkWritesTheOosItemsWithTheirRow)
+{
+  open_table ("dba.t_reuse_repl_flush_mark");
+  OID oid_a = insert_row (1);
+  OID oid_b = insert_row (2);
+  commit_current_tran ();
+
+  replication_tracking_guard tracking;
+  ASSERT_EQ (tracking.error (), NO_ERROR);
+  ASSERT_TRUE (log_does_allow_replication ());
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  ASSERT_NE (tdes, nullptr);
+  bool mark_started = false;
+  scope_exit rollback ([&] () noexcept
+  {
+    if (mark_started)
+      {
+	repl_end_flush_mark (thread_p, false);
+      }
+    (void) xtran_server_abort (thread_p);
+  });
+
+  /* before the mark: row A's markers and row, all written at commit */
+  const int k = 1;
+  ASSERT_EQ (update_row (oid_a, &k, nullptr, nullptr), NO_ERROR);
+
+  repl_start_flush_mark (thread_p);
+  mark_started = true;
+
+  /* row B has no earlier change, so it and its markers are written before commit, together */
+  const int b_first = tdes->cur_repl_record;
+  ASSERT_EQ (update_row (oid_b, &k, nullptr, nullptr), NO_ERROR);
+  const int b_end = tdes->cur_repl_record;
+  ASSERT_EQ (b_end - b_first, 3) << "two markers and the row";
+
+  /* row A changed before the mark, so its row and every OOS item, a new chain among them, wait for commit */
+  const std::string long_c1 (3 * DB_PAGESIZE, '\xE5');
+  ASSERT_EQ (update_row (oid_a, nullptr, &long_c1, nullptr), NO_ERROR);
+  const int a_end = tdes->cur_repl_record;
+  ASSERT_EQ (a_end - b_end, 4) << "a boundary item, a new chain, a marker and the row";
+
+  /* a system operation the UPDATE commits may already have written them, leaving DONT_NEED_FLUSH */
+  const LOG_REPL_FLUSH row_b_flush = tdes->repl_records[b_end - 1].must_flush;
+  EXPECT_NE (row_b_flush, LOG_REPL_COMMIT_NEED_FLUSH) << "row B waits for commit";
+  for (int i = b_first; i < b_end; i++)
+    {
+      EXPECT_EQ (tdes->repl_records[i].must_flush, row_b_flush)
+	  << "record " << i << " (rcvindex " << tdes->repl_records[i].rcvindex << ") of row B";
+    }
+  for (int i = b_end; i < a_end; i++)
+    {
+      EXPECT_EQ (tdes->repl_records[i].must_flush, LOG_REPL_COMMIT_NEED_FLUSH)
+	  << "record " << i << " (rcvindex " << tdes->repl_records[i].rcvindex << ") of row A";
+    }
+}
+
 /* An in-place UPDATE, the style ALTER ... CHANGE rewrites rows with, reclaims what it drops at commit without
  * waiting for snapshots, so it writes new chains instead of sharing the old ones. */
 TEST_F (OosUpdateReuse, InPlaceUpdateWritesNewChains)

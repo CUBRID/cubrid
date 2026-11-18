@@ -50,6 +50,8 @@ static const int REPL_LOG_INFO_ALLOC_SIZE = 100;
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
 static int repl_log_info_alloc (LOG_TDES * tdes, int arr_size, bool need_realloc);
+static bool repl_is_oos_item (LOG_RCVINDEX rcvindex);
+static void repl_oos_items_follow_row (LOG_TDES * tdes, int row_idx);
 #endif /* SERVER_MODE || SA_MODE */
 
 #if defined(SERVER_MODE) || defined(SA_MODE)
@@ -495,8 +497,8 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
   tdes->cur_repl_record++;
 
   /* if flush marking is started, mark "must_flush" at current log except the log conflicts with previous logs due to
-   * same instance update */
-  if (tdes->fl_mark_repl_recidx != -1)
+   * same instance update. An OOS item takes the decision of its row instead (see repl_oos_items_follow_row ()). */
+  if (tdes->fl_mark_repl_recidx != -1 && !repl_is_oos_item (rcvindex))
     {
       LOG_REPL_RECORD *recsp = tdes->repl_records;
       int i;
@@ -520,6 +522,11 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
 	{
 	  repl_rec->must_flush = LOG_REPL_NEED_FLUSH;
 	}
+    }
+
+  if (!repl_is_oos_item (rcvindex))
+    {
+      repl_oos_items_follow_row (tdes, tdes->cur_repl_record - 1);
     }
 
   if (class_name != NULL)
@@ -774,7 +781,59 @@ repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa)
 	}
     }
 
+  /* An OOS item follows its row, whatever its own LSA: a reuse marker has none. OOS items left without a row, by a
+   * statement that failed before logging the row, are never written. */
+  for (i = tdes->cur_repl_record - 1; i >= 0 && repl_is_oos_item (repl_rec_arr[i].rcvindex); i--)
+    {
+      repl_rec_arr[i].must_flush = LOG_REPL_DONT_NEED_FLUSH;
+    }
+  for (; i >= 0; i--)
+    {
+      if (!repl_is_oos_item (repl_rec_arr[i].rcvindex))
+	{
+	  repl_oos_items_follow_row (tdes, i);
+	}
+    }
+
   return NO_ERROR;
+}
+
+/*
+ * repl_is_oos_item - whether the replication record is an OOS item of a heap row
+ *
+ * return: true for RVREPL_OOS_INSERT, RVREPL_DUMMY_OOS_RECORD and RVREPL_OOS_REUSE
+ *
+ *   rcvindex(in):
+ */
+static bool
+repl_is_oos_item (LOG_RCVINDEX rcvindex)
+{
+  return rcvindex == RVREPL_OOS_INSERT || rcvindex == RVREPL_DUMMY_OOS_RECORD || rcvindex == RVREPL_OOS_REUSE;
+}
+
+/*
+ * repl_oos_items_follow_row - give the OOS items of a row the "must_flush" of the row
+ *
+ * return: nothing
+ *
+ *   tdes(in):
+ *   row_idx(in): index of the row's record, which its OOS items immediately precede
+ *
+ * NOTE: The replica applies a row's OOS items together with the row (xlocator_repl_force), so they must be written
+ *	 when the row is written and dropped when the row is dropped. A record's own LSA and OID cannot decide that for
+ *	 them: a reuse marker (CBRD-27230) carries neither, a multi-chunk boundary item has no OID, and the OID of a
+ *	 new chain is not the row's.
+ */
+static void
+repl_oos_items_follow_row (LOG_TDES * tdes, int row_idx)
+{
+  LOG_REPL_RECORD *repl_rec_arr = tdes->repl_records;
+  int i;
+
+  for (i = row_idx - 1; i >= 0 && repl_is_oos_item (repl_rec_arr[i].rcvindex); i--)
+    {
+      repl_rec_arr[i].must_flush = repl_rec_arr[row_idx].must_flush;
+    }
 }
 
 #if defined(CUBRID_DEBUG)

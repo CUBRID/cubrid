@@ -412,6 +412,7 @@ set_tests_properties(oos_setup_update_reuse_tables
 string(CONCAT oos_update_reuse_write_filter
   "OosUpdateReuse.UnassignedChainsAreReusedNotRewritten:"
   "OosUpdateReuse.ReplicatesAReusedColumnAsAMarkerInAttributeOrder:"
+  "OosUpdateReuse.FlushMarkWritesTheOosItemsWithTheirRow:"
   "OosUpdateReuse.InPlaceUpdateWritesNewChains:"
   "OosUpdateReuse.IncrementReusesTheOtherColumnsChains:"
   "OosUpdateReuseSetupRow.*"
@@ -429,6 +430,7 @@ add_test(NAME test_oos_update_reuse_reclaim COMMAND test_oos_update_reuse_server
   "--gtest_filter=${oos_update_reuse_reclaim_filter}")
 string(CONCAT oos_update_reuse_rollback_filter
   "OosUpdateReuse.PartialRollbackCancelsOnlyTheLaterDrop:"
+  "OosUpdateReuse.SavepointRollbackDropsTheMarkersWithTheirRow:"
   "OosUpdateReuse.TransactionRollbackKeepsTheChains"
 )
 add_test(NAME test_oos_update_reuse_rollback COMMAND test_oos_update_reuse_server
