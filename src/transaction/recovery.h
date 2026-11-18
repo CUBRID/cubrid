@@ -276,6 +276,8 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_APPEND_PAGES_TO_HEAP \
    || (idx) == RVHF_MARK_PAGES_IN_HEAP \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
+#define RCV_IS_POSTPONE_NOT_UNDOABLE(idx) \
+  ((idx) == RVHF_LOB_REMOVE_DIR)
 
 /* records with nothing to undo: what they changed needs no restoring, or other records restore it. so rollback skips
  * them altogether: it neither fixes their page (which may be deallocated by then) nor logs a compensation (an empty
