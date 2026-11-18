@@ -888,12 +888,6 @@ find_label_by_name (const char *class_name, const char *att_name, MOP *class_mop
       return error;
     }
 
-  if (!sensitivity_label_is_allowed (*class_))
-    {
-      ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_NOT_ALLOWED, sm_ch_name ((MOBJ) (*class_)));
-      return error;
-    }
-
   return sensitivity_label_find (*class_mop, (*att)->id, label);
 }
 
@@ -925,6 +919,12 @@ sensitivity_label_create_on_attribute (const char *class_name, const char *att_n
 
   if (label == NULL)
     {
+      if (!sensitivity_label_is_allowed (class_))
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_NOT_ALLOWED, sm_ch_name ((MOBJ) class_));
+	  return error;
+	}
+
       return sensitivity_label_create (class_mop, att->id, grade, info_type, source);
     }
 
