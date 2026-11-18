@@ -61,6 +61,7 @@
 #include "cas_cgw_execute.h"
 
 #include "cas_ssl.h"
+#include "release_string.h"
 
 /* ========================================================================
  * Type Definitions
@@ -101,7 +102,7 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_cgw_close_req_handle,	/* CAS_FC_CLOSE_REQ_HANDLE */
   fn_cgw_cursor,		/* CAS_FC_CURSOR */
   fn_cgw_get_fetch,		/* CAS_FC_FETCH */
-  fn_not_supported,		/* CAS_FC_SCHEMA_INFO */
+  fn_cgw_schema_info,		/* CAS_FC_SCHEMA_INFO */
   fn_not_supported,		/* CAS_FC_OID_GET */
   fn_not_supported,		/* CAS_FC_OID_SET */
   fn_not_supported,		/* CAS_FC_DEPRECATED1 */
@@ -250,7 +251,7 @@ main (int argc, char *argv[])
   program_name = argv[0];
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
-      printf ("%s\n", makestring (BUILD_NUMBER));
+      printf ("%s\n", rel_build_number ());
       return 0;
     }
 #else /* !WINDOWS */

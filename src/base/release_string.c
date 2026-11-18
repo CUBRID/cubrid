@@ -30,6 +30,7 @@
 #include <string.h>
 
 #include "config.h"
+#include "build_version.h"
 #include "porting.h"
 #include "release_string.h"
 #include "message_catalog.h"
@@ -91,9 +92,7 @@ static const char *package_string = PACKAGE_STRING;
 static const char *build_os = makestring (BUILD_OS);
 static const char *build_type = makestring (BUILD_TYPE);
 
-#if defined (VERSION_STRING)
 static const char *version_string = VERSION_STRING;
-#endif /* VERSION_STRING */
 static const int bit_platform = __WORDSIZE;
 
 static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, const char *apply_rel_str,
@@ -115,13 +114,8 @@ rel_copy_version_string (char *buf, size_t len)
   snprintf (buf, len, "%s (%s) (%dbit owfs %s build for %s) (%s %s)", rel_name (), rel_build_number (),
 	    rel_bit_platform (), rel_build_type (), rel_build_os (), __DATE__, __TIME__);
 #else /* CUBRID_OWFS */
-#if defined (VERSION_STRING)
   snprintf (buf, len, "%s (%s) (%dbit %s build for %s) (%s %s)", rel_name (), rel_version_string (),
 	    rel_bit_platform (), rel_build_type (), rel_build_os (), __DATE__, __TIME__);
-#else /* VERSION_STRING */
-  snprintf (buf, len, "%s (%s) (%dbit %s build for %s) (%s %s)", rel_name (), rel_build_number (),
-	    rel_bit_platform (), rel_build_type (), rel_build_os (), __DATE__, __TIME__);
-#endif /* VERSION_STRING */
 #endif /* CUBRID_OWFS */
 }
 
@@ -186,7 +180,6 @@ rel_build_type (void)
   return build_type;
 }
 
-#if defined (VERSION_STRING)
 /*
  * rel_version_string - Full version string of the product
  *   return: static char string
@@ -196,7 +189,6 @@ rel_version_string (void)
 {
   return version_string;
 }
-#endif /* VERSION_STRING */
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*

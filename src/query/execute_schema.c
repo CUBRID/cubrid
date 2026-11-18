@@ -10339,6 +10339,17 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+  if (tde_algo != TDE_ALGORITHM_NONE)
+    {
+      /* Apply TDE before CREATE ... AS SELECT inserts the rows, so that their pages and log records are encrypted.
+       * Files created after this, such as the indexes below, get the algorithm of the class when they are created. */
+      error = file_apply_tde_to_class_files (&class_obj->oid_info.oid);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   if (create_select)
     {
       error =
@@ -10378,15 +10389,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       create_index->next = save_next;
 
       error = do_create_index (parser, create_index);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-    }
-
-  if (tde_algo != TDE_ALGORITHM_NONE)
-    {
-      error = file_apply_tde_to_class_files (&class_obj->oid_info.oid);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

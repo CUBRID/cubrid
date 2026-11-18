@@ -166,6 +166,7 @@ struct t_attr_table
   short attr_order;
   void *default_val;
   unsigned char domain;
+  short codeset;		/* physical codeset of a character column, -1 otherwise */
   char indexed;
   char non_null;
   char shared;
@@ -518,7 +519,16 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
 	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
 	}
-      (void) db_find_or_create_session (db_user, program_name);
+
+      /* the server switches the session to db_user here; if it refuses, reconnect as the
+       * failed au_login () does rather than go on as a user the server did not switch to */
+      err_code = db_find_or_create_session (db_user, program_name);
+      if (err_code < 0)
+	{
+	  ux_database_shutdown_for_reconnect ();
+
+	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
+	}
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
@@ -5988,6 +5998,17 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  add_res_data_string (net_buf, p, strlen (p), 0, CAS_SCHEMA_DEFAULT_CHARSET, NULL);
 	}
 
+      if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V13))
+	{
+	  /* 15. is invisible */
+	  add_res_data_short (net_buf, (short) (db_attribute_is_invisible_column (db_attr) ? 1 : 0), 0, NULL);
+	  /* 16. ext domain - the extended type before encode_ext_type_to_short () splits it,
+	   * so the collection bits survive; CCI only strips them from column 2 */
+	  add_res_data_short (net_buf, (short) attr_info.domain, 0, NULL);
+	  /* 17. codeset */
+	  add_res_data_short (net_buf, attr_info.codeset, 0, NULL);
+	}
+
       db_value_clear (&val_class);
       db_value_clear (&val_attr);
 
@@ -8797,6 +8818,17 @@ class_attr_info (const char *class_name, DB_ATTRIBUTE * attr, char *attr_pattern
       precision = db_domain_precision (domain);
       scale = (short) db_domain_scale (domain);
     }
+
+  /* The codeset a character column's values are stored and compared in - what a DBLink
+   * client needs to decide whether a predicate on this column can be pushed down, and
+   * something the DOMAIN column cannot express.  -1 says "not applicable" so the client
+   * never has to guess.
+   *
+   * Reported only for a collation-bearing type.  Other domains do carry a codeset field
+   * (BIT/VARBIT hold INTL_CODESET_RAW_BITS, JSON holds INTL_CODESET_UTF8), but it is a
+   * fixed property of the type rather than of the column, so the client reconstructs it
+   * from the type instead of spending a column on it here. */
+  attr_table->codeset = TP_TYPE_HAS_COLLATION (db_type) ? (short) db_domain_codeset (domain) : (short) -1;
 
   attr_table->scale = scale;
   attr_table->precision = precision;
