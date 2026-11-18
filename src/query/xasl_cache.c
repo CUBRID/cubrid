@@ -108,9 +108,10 @@ struct xcache_stats
 
 /* The statistics one thread counts. Only the thread that owns the thread entry of the slot writes it, so counting is a
  * plain load and store instead of an atomic read-modify-write on a line that every thread writes; the dump sums the
- * slots. A slot takes whole cache lines so that two threads never write the same line. */
+ * slots. A slot takes a whole 128-byte pair of cache lines (the unit the adjacent-line prefetcher pulls) so that two
+ * threads never write the same line or the same pair. */
 typedef struct xcache_stats_slot XCACHE_STATS_SLOT;
-struct alignas (64) xcache_stats_slot
+struct alignas (128) xcache_stats_slot
 {
   XCACHE_STATS stats;
 };
@@ -506,7 +507,7 @@ xcache_stats_slots_alloc (void)
       return;
     }
   memset (xcache_Global.stats_slots, 0, n_slots * sizeof (XCACHE_STATS_SLOT));
-  /* counting starts to use the slots once the count is set */
+  /* boot runs this before any worker takes a request, so no thread counts before the slots are ready */
   xcache_Global.n_stats_slots = n_slots;
 #endif /* SERVER_MODE */
 }
