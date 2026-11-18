@@ -157,6 +157,7 @@ extern "C"
 
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info);
   extern int pt_semantic_type_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
+  extern int pt_semantic_type_term_in_place (PARSER_CONTEXT * parser, PT_NODE ** tree, SEMANTIC_CHK_INFO * sc_info);
 
   extern void pt_report_to_ersys (const PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_type);
 

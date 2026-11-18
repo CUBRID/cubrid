@@ -1357,7 +1357,8 @@ qo_fold_or_factors (PARSER_CONTEXT * parser, PT_NODE ** wherep)
       folded = term;
       sc_info.top_node = term;
       sc_info.donot_fold = false;
-      if (pt_semantic_type_in_place (parser, &folded, &sc_info) != NO_ERROR)
+      /* a subquery in the factor is left as it is: in the middle of its own rewrite, see the function */
+      if (pt_semantic_type_term_in_place (parser, &folded, &sc_info) != NO_ERROR)
 	{
 	  /* the error is reported, and the statement fails before it is planned; keep what the fold left
 	   * in the list, as the term may be freed */
