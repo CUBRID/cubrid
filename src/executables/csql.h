@@ -359,6 +359,10 @@ extern "C"
 
   extern char *csql_edit_contents_get (void);
   extern int csql_edit_contents_append (const char *str, bool flag_append_new_line);
+  extern void csql_edit_contents_set_start_line (int line_no);
+  extern int csql_edit_contents_get_start_line (void);
+  extern void csql_edit_contents_skip_input_line (void);
+  extern int csql_edit_contents_get_input_line (int line_no);
   extern bool csql_walk_statement (const char *str);
   extern bool csql_is_statement_complete (void);
   extern bool csql_is_statement_in_block (void);

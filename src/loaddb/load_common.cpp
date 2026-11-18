@@ -453,6 +453,86 @@ namespace cubload
     //
   }
 
+  text_token::text_token (const constant_type *cons)
+    : m_text (NULL)
+    , m_size (0)
+    , m_heap (NULL)
+  {
+    if (cons == NULL)
+      {
+	return;
+      }
+
+    switch (cons->type)
+      {
+      case LDR_MONETARY:
+      {
+	/*
+	 * The grammar keeps the currency and the amount apart and the
+	 * converters want them together, so the text has to be assembled.
+	 */
+	const monetary_type *mon = static_cast<const monetary_type *> (cons->val);
+	const string_type *amount = mon->amount;
+	const char *currency = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
+	size_t total = amount->size + std::strlen (currency);
+	char *out = m_buf;
+
+	if (total >= sizeof (m_buf))
+	  {
+	    /*
+	     * malloc, not new. This file is built for the server too, where
+	     * memory_wrapper.hpp turns new into an allocator that returns NULL
+	     * instead of throwing - but it does that with a macro, so the
+	     * nothrow form cannot be spelled here. malloc behaves the same way
+	     * in every build and needs no exception to reach the C error model.
+	     */
+	    m_heap = (char *) malloc (total + 1);
+	    if (m_heap == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+		return;			/* an empty token; the conversion fails and reports */
+	      }
+	    out = m_heap;
+	  }
+
+	std::strcpy (out, currency);
+	std::strcat (out, amount->val);
+
+	m_text = out;
+	m_size = total;
+      }
+      break;
+
+      case LDR_COLLECTION:
+      case LDR_OID:
+      case LDR_CLASS_OID:
+      case LDR_NULL:
+	/* not text */
+	break;
+
+      default:
+      {
+	const string_type *str = static_cast<const string_type *> (cons->val);
+
+	if (str != NULL)
+	  {
+	    m_text = str->val;
+	    m_size = str->size;
+	  }
+      }
+      break;
+      }
+  }
+
+  text_token::~text_token ()
+  {
+    if (m_heap != NULL)
+      {
+	free (m_heap);
+      }
+  }
+
+
   stats::stats ()
     : rows_committed (0)
     , current_line {0}
