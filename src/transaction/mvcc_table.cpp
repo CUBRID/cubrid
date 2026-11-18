@@ -333,6 +333,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   tdes.mvccinfo.snapshot.lowest_active_mvccid = crt_status_lowest_active;
   tdes.mvccinfo.snapshot.highest_completed_mvccid = highest_completed_mvccid;
   tdes.mvccinfo.snapshot.valid = true;
+  tdes.mvccinfo.snapshot.build_serial++;
 
   if (is_perf_tracking)
     {
