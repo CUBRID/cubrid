@@ -13856,6 +13856,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = NULL, *r1, *r2;
   PT_NODE *crt_list = NULL;
+  PT_NODE *named_last = NULL, *defaulted = NULL;
   bool is_first_list = true, multiple_values_insert = false;
   PT_PRINT_BUFFER print_buf = PT_PRINT_BUFFER_INITIALIZER;
 
@@ -13865,6 +13866,27 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
+    }
+
+  if (p->info.insert.default_values != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) == 0)
+    {
+      /* a text parsed again (the action of a trigger) names only the attributes the statement named: parsing it
+       * gives the DEFAULTs of the view to the last attributes again */
+      int num_named = pt_length_of_list (p->info.insert.attr_list) - pt_length_of_list (p->info.insert.default_values);
+
+      for (named_last = p->info.insert.attr_list; named_last != NULL && num_named > 1; num_named--)
+	{
+	  named_last = named_last->next;
+	}
+      if (named_last != NULL && num_named == 1)
+	{
+	  defaulted = named_last->next;
+	  named_last->next = NULL;
+	}
+      else
+	{
+	  named_last = NULL;
+	}
     }
 
   r1 = pt_print_bytes (parser, p->info.insert.spec);
@@ -13953,6 +13975,10 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       b = pt_append_nulstring (parser, b, " ");
     }
+  if (named_last != NULL)
+    {
+      named_last->next = defaulted;
+    }
 
   for (crt_list = p->info.insert.value_clauses, is_first_list = true,
        multiple_values_insert = (crt_list != NULL && crt_list->next != NULL);
@@ -14022,11 +14048,11 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.insert.default_values != NULL && (parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
     {
       /* the cache key text: the plan holds the DEFAULTs of the view the statement was written on, which no other
-       * part of the translated statement shows */
+       * part of the translated statement shows; a comment, as the text is shown with the plan */
       r1 = pt_print_bytes_l (parser, p->info.insert.default_values);
-      b = pt_append_nulstring (parser, b, " (");
+      b = pt_append_nulstring (parser, b, " /* view defaults (");
       b = pt_append_varchar (parser, b, r1);
-      b = pt_append_nulstring (parser, b, ")");
+      b = pt_append_nulstring (parser, b, ") */");
     }
 
   if (p->info.insert.into_var)

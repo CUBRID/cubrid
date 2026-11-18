@@ -547,12 +547,16 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
 	  PT_INTERNAL_ERROR (parser, "allocate new node");
 	  return NULL;
 	}
+
+      /* the type checking types the expression as what it makes (SYS_TIMESTAMP for a DATETIME attribute makes a
+       * TIMESTAMP), which the insert converts into the attribute's domain */
+      return result;
     }
 
   result->type_enum = pt_db_to_type_enum (sm_attr->type->id);
   if (result->data_type == NULL)
     {
-      /* the value carries no domain (enumeration, default expression, empty collection): take the attribute's */
+      /* the value carries no domain (enumeration, empty collection): take the attribute's */
       if (PT_IS_COLLECTION_TYPE (result->type_enum) && db_domain_set (sm_attr->domain) == NULL)
 	{
 	  /* a collection declared without element types has no domain to take */
