@@ -22940,6 +22940,7 @@ opt_sensitivity_label_level
 		{{
 			$$ = $2;
 		}}
+	;
 
 %%
 
