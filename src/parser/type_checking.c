@@ -6536,7 +6536,9 @@ pt_eval_prop_op_allow_default (int op)
  * Checks every operator with signatures:
  *   - its overloads agree on allow_default (it is read per code);
  *   - allowed in a DEFAULT: every overload has a volatility, or a DEFAULT using it could not be stored;
- *   - not allowed (forbidden or held back): no overload has one, since nothing reads it and so nothing verifies it.
+ *   - not allowed (forbidden or held back): no overload has one, since nothing reads it and so nothing verifies it;
+ *   - allowed in a DEFAULT: an overload declares the statement clock exactly when the operator reads it without an
+ *     argument (pt_op_reads_statement_clock), or a stamped node would be evaluated on the client without the clock.
  * Whether a held-back operator is held back on purpose is checked by the unit test, which lists them.
  */
 int
@@ -6549,6 +6551,7 @@ pt_eval_prop_self_check_ops (void)
     {
       EXPRESSION_DEFINITION def;
       PT_ALLOW_DEFAULT allow;
+      bool declares_clock = false;
 
       def.overloads_count = 0;
       if (!pt_get_expression_definition ((PT_OP_TYPE) opcode, &def) || def.overloads_count <= 0)
@@ -6578,6 +6581,15 @@ pt_eval_prop_self_check_ops (void)
 	      violations++;
 	      fprintf (stderr, "eval-prop gate: op %d overload %d has properties nothing reads\n", opcode, i);
 	    }
+	  if ((prop->si_requirement & PT_SI_SYS_DATETIME) != 0)
+	    {
+	      declares_clock = true;
+	    }
+	}
+      if (allow == PT_DEFAULT_ALLOWED && declares_clock != pt_op_reads_statement_clock ((PT_OP_TYPE) opcode, NULL))
+	{
+	  violations++;
+	  fprintf (stderr, "eval-prop gate: op %d declares the statement clock differently from its code\n", opcode);
 	}
     }
 
@@ -13553,18 +13565,11 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       // old implementation: for aggregate function types
       node = pt_eval_function_type_aggregate (parser, node);
 
-      /* this path matches no signature, so nothing stamps the node: each reviewed code takes the volatility its
-       * signatures declare, and any other code stays unclassified */
+      /* this path matches no signature, so nothing stamps the node: it takes the volatility its signatures declare,
+       * which is none for a code not classified */
       if (node != NULL && node->node_type == PT_FUNCTION)
 	{
-	  switch (node->info.function.function_type)
-	    {
-	    case F_ELT:
-	      node->info.function.expr_volatility = pt_get_func_volatility (node->info.function.function_type);
-	      break;
-	    default:
-	      break;
-	    }
+	  node->info.function.expr_volatility = pt_get_func_volatility (node->info.function.function_type);
 	}
       return node;
     }
