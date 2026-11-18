@@ -3917,12 +3917,10 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
   work_buf[1] = NUMERIC_BSWAP64 (work_buf[1]);
   work_buf[2] = NUMERIC_BSWAP64 (work_buf[2]);
 
-  /* 2. perform scale adjustment if scale > 0 (divide by 10^scale) */
   if (scale > 0)
     {
+      /* 2-1. divide by 10^scale */
       rounding_digit = float_numeric_div_normalize (work_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, scale);
-
-      /* 3. round up if the fractional remainder is >= 5 */
       if (rounding_digit >= ROUND_HALF_UP_DIGIT)
 	{
 	  float_numeric_increment (work_buf, NUMERIC_AS_WORDS, 1);
@@ -3930,7 +3928,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
     }
   else if (scale < 0 && work_buf[0] == 0 && work_buf[1] == 0 && work_buf[2] != 0)
     {
-      /* multiply by 10^-scale if scale < 0 */
+      /* 2-2. multiply by 10^-scale, a coefficient >= 2^64 is left to step 3 */
       int exponent = -scale;
       uint128_t product;
 
@@ -3947,13 +3945,13 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
       work_buf[2] = (uint64_t) product;
     }
 
-  /* 4. check if the value fits within 64 bits (upper words must be zero) */
+  /* 3. check if the value fits within 64 bits (upper words must be zero) */
   if (work_buf[0] != 0 || work_buf[1] != 0)
     {
       return ER_IT_DATA_OVERFLOW;
     }
 
-  /* 5. BIGINT range check considering the sign
+  /* 4. BIGINT range check considering the sign
    *    positive range: [0, 2^63 - 1] (0x7FFFFFFFFFFFFFFF)
    *    negative range: [0, 2^63] (0x8000000000000000)
    */
@@ -3963,7 +3961,7 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
       return ER_IT_DATA_OVERFLOW;
     }
 
-  /* 6. form final signed BIGINT result
+  /* 5. form final signed BIGINT result
    *    INT64_MIN (magnitude == 0x8000000000000000) is a special case:
    *    negating (DB_BIGINT)INT64_MIN is signed-overflow UB in C.
    *    Since the stored value is already the absolute magnitude,
