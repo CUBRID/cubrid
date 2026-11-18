@@ -139,6 +139,7 @@ namespace cubpl
 
       /* thread */
       bool is_thread_involved (thread_id_t id);
+      bool is_callback_thread (cubthread::entry *thread_p);
 
       /* getter */
       SESSION_ID get_id ();
