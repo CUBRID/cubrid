@@ -19258,6 +19258,14 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	}
 
       db_value = pt_value_to_db (parser, val);
+      if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL && !PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CNF_DONE))
+	{
+	  /* NULL AND x is FALSE when x is, and NULL OR x is UNKNOWN when x is FALSE: only a term of a filter (pt_cnf ()
+	   * marks those CNF_DONE), where UNKNOWN rejects the row as FALSE does, takes NULL for the AND and the other
+	   * operand for the OR.  Under IS, NOT, XOR, CAST or CASE the node stays */
+	  goto end;
+	}
+
       if (op == PT_AND)
 	{
 	  if (db_value && DB_VALUE_TYPE (db_value) == DB_TYPE_NULL)
