@@ -2169,6 +2169,15 @@ session_get_variable (THREAD_ENTRY * thread_p, const DB_VALUE * name, DB_VALUE *
       var = var->next;
     }
 
+  if (var == NULL && intl_identifier_casecmp (name_str, SESSION_CAS_RESTORE_VARIABLE) == 0)
+    {
+      /* The CAS reads this variable each time a client reconnects to its session, and it is not there while the
+       * client has changed nothing: give a NULL value, which the CAS reads as nothing kept, instead of an error that
+       * would be logged for each reconnection. SQL cannot read it (see SESSION_CAS_RESTORE_VARIABLE). */
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
   if (var == NULL)
     {
       /* we didn't find it, set error and exit */
