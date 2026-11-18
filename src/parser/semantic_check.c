@@ -19532,6 +19532,12 @@ pt_fold_union_as_derived (PARSER_CONTEXT * parser, PT_NODE * active, PT_NODE * s
 	}
     }
 
+  /* the derived table holds a copy of the active node (mq_rewrite_query_as_derived ()), and the set operation it was
+   * taken out of no longer frees it: free it here, or it stays in the parser memory each time the statement is
+   * folded (each execution of a statement typed again at execution). Only the strings the names above point to stay,
+   * in the parser's string blocks. */
+  parser_free_tree (parser, active);
+
   return derived;
 }
 
