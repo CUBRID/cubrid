@@ -112,7 +112,14 @@ public class CUBRIDServerSideStatement implements Statement {
          * prepareFlag |= CUBRIDServerSideConstants.PREPARE_HOLDABLE; }
          */
 
+        prepareFlag |= getExtraPrepareFlag();
+
         statementHandler = connection.getSUConnection().prepare(sql, prepareFlag, false);
+    }
+
+    // a subclass adds its own prepare flags here
+    protected byte getExtraPrepareFlag() {
+        return (byte) 0;
     }
 
     protected void executeInternal() throws IOException, SQLException {
