@@ -473,6 +473,8 @@ sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, con
   int error = NO_ERROR;
   int save;
 
+  assert (name != NULL);
+
   *component = NULL;
 
   sm_downcase_name (name, lower_name, DB_MAX_IDENTIFIER_LENGTH);
@@ -503,6 +505,77 @@ end:
   AU_RESTORE (save);
 
   return error;
+}
+
+/*
+ * sensitivity_label_find_class () - find the class that a name in a statement refers to
+ *   return: error code
+ *   name(in): the class name
+ *   class_mop(out): the class
+ *   class_(out): the class structure
+ *
+ * Note: unlike sm_find_class (), a synonym is not followed. The class stays SCH-S locked to the end of the
+ *       transaction, so a DDL statement on the class and this statement wait for each other.
+ */
+int
+sensitivity_label_find_class (const char *name, MOP *class_mop, SM_CLASS **class_)
+{
+  char class_name[DB_MAX_IDENTIFIER_LENGTH];
+  int error = NO_ERROR;
+
+  sm_user_specified_name (name, class_name, DB_MAX_IDENTIFIER_LENGTH);
+
+  *class_mop = locator_find_class_with_purpose (class_name, false);
+  if (*class_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  return au_fetch_class_force (*class_mop, class_, AU_FETCH_READ);
+}
+
+/*
+ * sensitivity_label_find_attribute () - find an attribute by the class name and the attribute name in a statement
+ *   return: error code
+ *   class_name(in): the class name
+ *   att_name(in): the attribute name
+ *   class_mop(out): the class
+ *   class_(out): the class structure
+ *   att(out): the attribute
+ */
+int
+sensitivity_label_find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
+				  SM_ATTRIBUTE **att)
+{
+  int error;
+
+  error = sensitivity_label_find_class (class_name, class_mop, class_);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* unlike classobj_find_attribute (), a shared attribute is not found: its value is in the class, not in a row */
+  *att = (SM_ATTRIBUTE *) SM_FIND_NAME_IN_COMPONENT_LIST ((*class_)->attributes, att_name);
+  if (*att == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_SM_ATTRIBUTE_NOT_FOUND, att_name);
+    }
+
+  return error;
+}
+
+/*
+ * sensitivity_label_is_allowed () - tell whether the columns of a class can have sensitivity labels
+ *   return: true when the class is a table that is neither a system class nor a partition
+ *   class_(in): the class structure
+ */
+bool
+sensitivity_label_is_allowed (SM_CLASS *class_)
+{
+  return class_->class_type == SM_CLASS_CT && ! (class_->flags & SM_CLASSFLAG_SYSTEM)
+	 && (class_->partition == NULL || class_->partition->pname == NULL);
 }
 
 /*

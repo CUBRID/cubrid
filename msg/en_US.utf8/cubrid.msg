@@ -1509,8 +1509,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1393 Sensitivity label %1$s "%2$s" does not exist.
 1394 Sensitivity label %1$s "%2$s" is referenced by a label.
 1395 Sensitivity label grade level %1$d already exists.
+1396 Column "%1$s" of "%2$s" already has a sensitivity label.
+1397 Column "%1$s" of "%2$s" has no sensitivity label.
+1398 "%1$s" cannot have sensitivity labels: it is a system class, a view or a partition.
 
-1396 Last Error
+1399 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

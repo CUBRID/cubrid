@@ -1799,8 +1799,11 @@
 #define ER_SENSITIVITY_LABEL_NAME_NOT_FOUND         -1393
 #define ER_SENSITIVITY_LABEL_NAME_IN_USE            -1394
 #define ER_SENSITIVITY_LABEL_LEVEL_ALREADY_EXISTS   -1395
+#define ER_SENSITIVITY_LABEL_ALREADY_EXISTS         -1396
+#define ER_SENSITIVITY_LABEL_NOT_FOUND              -1397
+#define ER_SENSITIVITY_LABEL_NOT_ALLOWED            -1398
 
-#define ER_LAST_ERROR                               -1396
+#define ER_LAST_ERROR                               -1399
 
 
 /*

@@ -23,6 +23,7 @@
 #ifndef _SENSITIVITY_LABEL_HPP_
 #define _SENSITIVITY_LABEL_HPP_
 
+#include "class_object.h"
 #include "dbtype_def.h"
 #include "misctype_def.h"
 #include "object_fetch.h"
@@ -35,6 +36,10 @@ int sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
 int sensitivity_label_find_component (const PT_MISC_TYPE kind, const char *name, const AU_FETCHMODE fetchmode,
 				      DB_OBJECT **component);
 
+int sensitivity_label_find_class (const char *name, MOP *class_mop, SM_CLASS **class_);
+int sensitivity_label_find_attribute (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
+				      SM_ATTRIBUTE **att);
+bool sensitivity_label_is_allowed (SM_CLASS *class_);
 int sensitivity_label_find (MOP class_mop, const int attr_id, DB_OBJECT **label);
 int sensitivity_label_create (MOP class_mop, const int attr_id, DB_OBJECT *grade, DB_OBJECT *info_type,
 			      DB_OBJECT *source);

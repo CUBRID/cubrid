@@ -152,6 +152,7 @@ static int do_create_synonym_internal (const char *synonym_name, DB_OBJECT * syn
 static int do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym, const int if_exists,
 				     DB_OBJECT * synonym_class_obj, DB_OBJECT * synonym_obj);
 static int do_rename_synonym_internal (const char *old_synonym_name, const char *new_synonym_name);
+static int do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info);
 static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -20279,7 +20280,7 @@ end:
 }
 
 /*
- * do_create_sensitivity_label () - CREATE SENSITIVITY LABEL GRADE/INFO_TYPE/SOURCE
+ * do_create_sensitivity_label () - CREATE SENSITIVITY LABEL GRADE/INFO_TYPE/SOURCE and ON COLUMN
  *   return: error code
  *   parser(in): parser context
  *   statement(in): the statement
@@ -20316,6 +20317,10 @@ do_create_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_SENSITIVITY_LABEL_SOURCE:
       error = sensitivity_label_create_component (info->kind, (const char *) PT_VALUE_GET_BYTES (info->name), level,
 						  (const char *) PT_VALUE_GET_BYTES (info->comment));
+      break;
+
+    case PT_SENSITIVITY_LABEL_COLUMN:
+      error = do_create_sensitivity_label_on_column (info);
       break;
 
     default:
@@ -20426,6 +20431,101 @@ do_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   return error;
+}
+
+/*
+ * do_create_sensitivity_label_on_column () - CREATE [OR REPLACE] SENSITIVITY LABEL ON COLUMN
+ *   return: error code
+ *   info(in): the statement
+ */
+static int
+do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info)
+{
+  DB_OBJECT *grade;
+  DB_OBJECT *info_type = NULL;
+  DB_OBJECT *source = NULL;
+  DB_OBJECT *label;
+  PT_NODE *column;
+  MOP class_mop;
+  SM_CLASS *class_;
+  SM_ATTRIBUTE *att;
+  int error;
+
+  assert (info->grade != NULL);
+
+  error = sensitivity_label_find_component (PT_SENSITIVITY_LABEL_GRADE,
+					    (const char *) PT_VALUE_GET_BYTES (info->grade), AU_FETCH_READ, &grade);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (info->info_type != NULL)
+    {
+      error = sensitivity_label_find_component (PT_SENSITIVITY_LABEL_INFO_TYPE,
+						(const char *) PT_VALUE_GET_BYTES (info->info_type), AU_FETCH_READ,
+						&info_type);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (info->source != NULL)
+    {
+      error = sensitivity_label_find_component (PT_SENSITIVITY_LABEL_SOURCE,
+						(const char *) PT_VALUE_GET_BYTES (info->source), AU_FETCH_READ,
+						&source);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  for (column = info->target_list; column != NULL; column = column->next)
+    {
+      assert (column->node_type == PT_DOT_);
+
+      error = sensitivity_label_find_attribute (PT_NAME_ORIGINAL (column->info.dot.arg1),
+						PT_NAME_ORIGINAL (column->info.dot.arg2), &class_mop, &class_, &att);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (!sensitivity_label_is_allowed (class_))
+	{
+	  ERROR_SET_ERROR_1ARG (error, ER_SENSITIVITY_LABEL_NOT_ALLOWED, sm_ch_name ((MOBJ) class_));
+	  return error;
+	}
+
+      error = sensitivity_label_find (class_mop, att->id, &label);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (label == NULL)
+	{
+	  error = sensitivity_label_create (class_mop, att->id, grade, info_type, source);
+	}
+      else if (info->or_replace)
+	{
+	  error = sensitivity_label_replace (label, grade, info_type, source);
+	}
+      else
+	{
+	  ERROR_SET_ERROR_2ARGS (error, ER_SENSITIVITY_LABEL_ALREADY_EXISTS, att->header.name,
+				 sm_ch_name ((MOBJ) class_));
+	}
+
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
