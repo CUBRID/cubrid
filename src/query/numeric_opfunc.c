@@ -3894,8 +3894,8 @@ numeric_coerce_num_to_int (DB_C_NUMERIC arg, int *answer, const bool is_value_ne
  *   answer(out)     : Pointer to the resulting DB_BIGINT
  *   is_value_negative(in): Sign of the input value
  *
- * Note: Performs scale adjustment (division by 10^scale and rounding) and 
- *       converts the resulting value into a signed 64-bit integer.
+ * Note: Performs scale adjustment (division by 10^scale and rounding, or for a negative scale multiplication by
+ *       10^-scale) and converts the resulting value into a signed 64-bit integer.
  *       If the value exceeds the 64-bit BIGINT range, ER_IT_DATA_OVERFLOW 
  *       is returned.
  */
@@ -3927,6 +3927,24 @@ numeric_coerce_num_to_bigint (DB_C_NUMERIC arg, int scale, DB_BIGINT * answer, c
 	{
 	  float_numeric_increment (work_buf, NUMERIC_AS_WORDS, 1);
 	}
+    }
+  else if (scale < 0 && work_buf[0] == 0 && work_buf[1] == 0 && work_buf[2] != 0)
+    {
+      /* multiply by 10^-scale if scale < 0 */
+      int exponent = -scale;
+      uint128_t product;
+
+      if (exponent > 18)
+	{
+	  return ER_IT_DATA_OVERFLOW;
+	}
+
+      product = (uint128_t) work_buf[2] * _gv_mul_normalize_pow10_lookup[exponent - 1];
+      if ((product >> 64) != 0)
+	{
+	  return ER_IT_DATA_OVERFLOW;
+	}
+      work_buf[2] = (uint64_t) product;
     }
 
   /* 4. check if the value fits within 64 bits (upper words must be zero) */
