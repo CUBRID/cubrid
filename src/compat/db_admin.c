@@ -1518,6 +1518,12 @@ db_commit_transaction (void)
   CHECK_CONNECT_ERROR ();
   /* CHECK_MODIFICATION_ERROR (); */
 
+  retval = sp_check_statement_allowed (SP_STMT_TCL, PT_COMMIT_WORK);
+  if (retval != NO_ERROR)
+    {
+      return retval;
+    }
+
   /* API does not support RETAIN LOCK */
   retval = tran_commit (false);
 
@@ -1542,6 +1548,12 @@ db_abort_transaction (void)
 
   CHECK_CONNECT_ERROR ();
   /* CHECK_MODIFICATION_ERROR (); */
+
+  error = sp_check_statement_allowed (SP_STMT_TCL, PT_ROLLBACK_WORK);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   error = tran_abort ();
 
@@ -1627,6 +1639,12 @@ db_savepoint_transaction (const char *savepoint_name)
   int retval;
 
   CHECK_CONNECT_ERROR ();
+
+  retval = sp_check_statement_allowed (SP_STMT_TCL, PT_SAVEPOINT);
+  if (retval != NO_ERROR)
+    {
+      return retval;
+    }
 
   retval = db_savepoint_transaction_internal (savepoint_name);
 

@@ -603,7 +603,7 @@ sp_check_writes (const std::vector<OID> &write_class_oids, bool cascades)
       return NO_ERROR;
     }
 
-  assert (!sp_Frames.empty () && sp_Frames.front ().depth < sp_In_sql_depth);
+  assert ((!sp_Frames.empty () && sp_Frames.front ().depth < sp_In_sql_depth) || db_Disable_modifications > 0);
   if (sp_Frames.empty () || sp_Frames.front ().depth >= sp_In_sql_depth)
     {
       return NO_ERROR;
@@ -706,7 +706,7 @@ sp_stmt_entry_name (sp_stmt_category stmt_category, int stmt_type)
 }
 
 /*
- * sp_check_statement_allowed () - apply rules 1 and 2 to a statement a stored procedure asked for
+ * sp_check_statement_allowed () - apply rules 1 and 2 to a statement a stored procedure or a C method asked for
  *   return: NO_ERROR, or the error set
  *   stmt_category(in): category of the statement
  *   stmt_type(in): the value db_get_statement_type () returns for the statement, for the error message
@@ -785,7 +785,7 @@ sp_check_object_write (DB_OBJECT *object)
       return NO_ERROR;
     }
 
-  assert (!sp_Frames.empty () && sp_Frames.front ().depth < sp_In_sql_depth);
+  assert ((!sp_Frames.empty () && sp_Frames.front ().depth < sp_In_sql_depth) || db_Disable_modifications > 0);
   if (sp_Frames.empty () || sp_Frames.front ().depth >= sp_In_sql_depth)
     {
       return NO_ERROR;

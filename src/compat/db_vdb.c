@@ -3263,6 +3263,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   DB_VALUE *val;
   int err = NO_ERROR;
   int server_info_bits;
+  int stmt_type;
 
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_CLASS_MODIFICATION_STATUS cls_status = DB_CLASS_NOT_MODIFIED;
@@ -3354,6 +3355,16 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
   /* forget about any previous compilation errors, if any */
   pt_reset_error (parser);
+
+  stmt_type = db_get_statement_type (session, stmt_ndx + 1);
+  if (sp_stmt_category_of (statement, (PT_NODE_TYPE) stmt_type) == SP_STMT_TCL)
+    {
+      err = sp_check_statement_allowed (SP_STMT_TCL, stmt_type);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
 
   /* get sys_date, sys_time, sys_timestamp, sys_datetime values from the server */
   server_info_bits = 0;		/* init */

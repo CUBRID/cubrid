@@ -29,6 +29,9 @@
  *
  * Anything else is allowed. A procedure called alone by a CALL statement is not restricted by 2 and 3. A procedure
  * called by a trigger action's CALL runs one level below the trigger (sp_trigger_call_guard), so 2 and 3 apply to it.
+ * A C method called in a query runs inside the SQL statement too, with database modifications disabled
+ * (db_disable_modification ()), so only its transaction control is left to rule 1, checked by
+ * db_commit_transaction (), db_abort_transaction (), db_savepoint_transaction () and db_execute_statement ().
  *
  *   sp_In_sql_depth            the SQL statements the procedure runs inside. It is raised while a callback that arrived
  *                              during a query execution request is handled (network_cl.c in CS, query_method.cpp in

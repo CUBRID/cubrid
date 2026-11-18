@@ -42,7 +42,6 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
-#include "sp_context_rules.hpp"
 
 using namespace cubpl;
 
@@ -229,13 +228,6 @@ namespace cubmethod
     int error_code = NO_ERROR;
     int command; // commit : 1, abort : 2
     unpacker.unpack_all (command);
-
-    if (sp_check_statement_allowed (SP_STMT_TCL, command == 1 ? CUBRID_STMT_COMMIT_WORK : CUBRID_STMT_ROLLBACK_WORK)
-	!= NO_ERROR)
-      {
-	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
-      }
 
     if (command == 1)
       {
