@@ -33,6 +33,8 @@ static const char *get_component_class_name (const PT_MISC_TYPE kind);
 static const char *get_component_kind_name (const PT_MISC_TYPE kind);
 static int put_components (DB_OTMPL *obj_tmpl, DB_OBJECT *grade, DB_OBJECT *info_type, DB_OBJECT *source);
 static int put_labeled_by (DB_OTMPL *obj_tmpl);
+static int execute_query_with_object (const char *sql, DB_OBJECT *object, DB_SESSION **session,
+				      DB_QUERY_RESULT **result);
 static int find_label_by_name (const char *class_name, const char *att_name, MOP *class_mop, SM_CLASS **class_,
 			       SM_ATTRIBUTE **att, DB_OBJECT **label);
 
@@ -350,6 +352,52 @@ end:
 }
 
 /*
+ * execute_query_with_object () - execute a query whose only host variable is an object
+ *   return: the number of rows of the result, or an error code
+ *   sql(in): the query
+ *   object(in): the value of the host variable
+ *   session(out): the session of the query, to be closed with db_close_session () unless NULL
+ *   result(out): the result of the query, to be ended with db_query_end () unless NULL
+ */
+static int
+execute_query_with_object (const char *sql, DB_OBJECT *object, DB_SESSION **session, DB_QUERY_RESULT **result)
+{
+  DB_VALUE value;
+  STATEMENT_ID stmt_id;
+  int error;
+
+  /* the object value needs a host variable, which db_compile_and_execute_local cannot take */
+  *session = db_open_buffer_local (sql);
+  if (*session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  error = db_set_system_generated_statement (*session);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  stmt_id = db_compile_statement_local (*session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  db_make_object (&value, object);
+  error = db_push_values (*session, 1, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return db_execute_statement_local (*session, stmt_id, result);
+}
+
+/*
  * sensitivity_label_drop_component () - drop a grade, an info_type or a source no label refers to
  *   return: error code
  *   kind(in): PT_SENSITIVITY_LABEL_GRADE, PT_SENSITIVITY_LABEL_INFO_TYPE or PT_SENSITIVITY_LABEL_SOURCE
@@ -361,8 +409,6 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
   DB_OBJECT *component;
   DB_SESSION *session = NULL;
   DB_QUERY_RESULT *result = NULL;
-  DB_VALUE value;
-  STATEMENT_ID stmt_id;
   const char *sql;
   char lower_name[DB_MAX_IDENTIFIER_LENGTH];
   int error;
@@ -398,35 +444,7 @@ sensitivity_label_drop_component (const PT_MISC_TYPE kind, const char *name)
    * label committed during the wait */
   db_invalidate_mvcc_snapshot_before_statement ();
 
-  /* the object value needs a host variable, which db_compile_and_execute_local cannot take */
-  session = db_open_buffer_local (sql);
-  if (session == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  stmt_id = db_compile_statement_local (session);
-  if (stmt_id < 0)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto end;
-    }
-
-  db_make_object (&value, component);
-  error = db_push_values (session, 1, &value);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  error = db_execute_statement_local (session, stmt_id, &result);
+  error = execute_query_with_object (sql, component, &session, &result);
   if (error > 0)
     {
       sm_downcase_name (name, lower_name, DB_MAX_IDENTIFIER_LENGTH);
@@ -568,6 +586,99 @@ sensitivity_label_find_attribute (const char *class_name, const char *att_name, 
     {
       ERROR_SET_ERROR_1ARG (error, ER_SM_ATTRIBUTE_NOT_FOUND, att_name);
     }
+
+  return error;
+}
+
+/*
+ * sensitivity_label_find_classes_in_schema () - add the classes of a schema to a list
+ *   return: error code
+ *   schema_name(in): the name of the schema, that is, of the user that owns the classes
+ *   class_list(in/out): the list, to be freed with ml_ext_free ()
+ *
+ * Note: each class stays SCH-S locked to the end of the transaction, so it keeps its owner until then.
+ */
+int
+sensitivity_label_find_classes_in_schema (const char *schema_name, DB_OBJLIST **class_list)
+{
+  DB_SESSION *session = NULL;
+  DB_QUERY_RESULT *result = NULL;
+  DB_VALUE value;
+  MOP owner;
+  MOP class_mop;
+  SM_CLASS *class_;
+  int cursor;
+  int error;
+  int save;
+
+  owner = au_find_user (schema_name);
+  if (owner == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  AU_SAVE_AND_DISABLE (save);
+
+  error = execute_query_with_object ("SELECT [class_of] FROM [" CT_CLASS_NAME "] WHERE [owner] = ?", owner, &session,
+				     &result);
+  if (error < NO_ERROR)
+    {
+      goto end;
+    }
+  error = NO_ERROR;
+
+  for (cursor = db_query_first_tuple (result); cursor == DB_CURSOR_SUCCESS; cursor = db_query_next_tuple (result))
+    {
+      error = db_query_get_tuple_value (result, 0, &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      class_mop = db_get_object (&value);
+
+      /* a DDL statement the fetch waits for may have dropped the class or changed its owner since the query read it */
+      error = au_fetch_class_force (class_mop, &class_, AU_FETCH_READ);
+      if (error == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  er_clear ();
+	  error = NO_ERROR;
+	  continue;
+	}
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (!ws_is_same_object (class_->owner, owner))
+	{
+	  continue;
+	}
+
+      error = ml_ext_add (class_list, class_mop, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (cursor != DB_CURSOR_END)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+
+end:
+  if (result != NULL)
+    {
+      db_query_end (result);
+    }
+
+  if (session != NULL)
+    {
+      db_close_session (session);
+    }
+
+  AU_RESTORE (save);
 
   return error;
 }

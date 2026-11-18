@@ -4870,6 +4870,19 @@ drop_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| DROP SENSITIVITY LABEL ON_ ALL COLUMNS IN_ SCHEMA identifier_list
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_DROP_SENSITIVITY_LABEL);
+
+			if (node)
+			  {
+			    node->info.sensitivity_label.kind = PT_SENSITIVITY_LABEL_SCHEMA;
+			    node->info.sensitivity_label.target_list = $9;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| deallocate_or_drop PREPARE identifier
 		{{
 			PT_NODE *node = parser_new_node (this_parser, PT_DEALLOCATE_PREPARE);

@@ -156,7 +156,9 @@ static int do_create_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INF
 static int do_drop_sensitivity_label_on_column (const PT_SENSITIVITY_LABEL_INFO * info);
 static int append_dropped_columns (PARSER_CONTEXT * parser, SM_CLASS * class_, DB_NAMELIST * att_names,
 				   PT_NODE ** dropped_columns);
+static int drop_labels_in_class (PARSER_CONTEXT * parser, MOP class_mop, SM_CLASS * class_, PT_NODE ** dropped_columns);
 static int do_drop_sensitivity_label_in_table (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABEL_INFO * info);
+static int do_drop_sensitivity_label_in_schema (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABEL_INFO * info);
 static PT_NODE *do_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 #define MAX_SERIAL_INVARIANT	8
 typedef struct serial_invariant SERIAL_INVARIANT;
@@ -17358,8 +17360,9 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
 
     case PT_DROP_SENSITIVITY_LABEL:
-      /* No replication log will be written when a DROP ... IN TABLE dropped no label */
-      if (statement->info.sensitivity_label.kind == PT_SENSITIVITY_LABEL_TABLE
+      /* No replication log will be written when a DROP ... IN TABLE or IN SCHEMA dropped no label */
+      if ((statement->info.sensitivity_label.kind == PT_SENSITIVITY_LABEL_TABLE
+	   || statement->info.sensitivity_label.kind == PT_SENSITIVITY_LABEL_SCHEMA)
 	  && statement->info.sensitivity_label.dropped_columns == NULL)
 	{
 	  return NO_ERROR;
@@ -20405,9 +20408,9 @@ do_alter_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
  * do_drop_sensitivity_label () - DROP SENSITIVITY LABEL GRADE/INFO_TYPE/SOURCE, ON COLUMN and ON ALL COLUMNS
  *   return: error code
  *   parser(in): parser context
- *   statement(in/out): the statement. With HA, a DROP ... IN TABLE leaves the attributes whose label it
- *                      dropped in dropped_columns: those are replicated, because a replica would look the
- *                      classes up again in its own commit order and drop a label created there in between
+ *   statement(in/out): the statement. With HA, a DROP ... IN TABLE or IN SCHEMA leaves the attributes whose
+ *                      label it dropped in dropped_columns: those are replicated, because a replica would look
+ *                      the classes up again in its own commit order and drop a label created there in between
  */
 int
 do_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -20444,6 +20447,10 @@ do_drop_sensitivity_label (PARSER_CONTEXT * parser, PT_NODE * statement)
 
     case PT_SENSITIVITY_LABEL_TABLE:
       error = do_drop_sensitivity_label_in_table (parser, info);
+      break;
+
+    case PT_SENSITIVITY_LABEL_SCHEMA:
+      error = do_drop_sensitivity_label_in_schema (parser, info);
       break;
 
     default:
@@ -20586,6 +20593,31 @@ append_dropped_columns (PARSER_CONTEXT * parser, SM_CLASS * class_, DB_NAMELIST 
 }
 
 /*
+ * drop_labels_in_class () - drop the label of every attribute of a class for a DROP ... IN TABLE or IN SCHEMA
+ *   return: error code
+ *   parser(in): where the nodes of dropped_columns are allocated
+ *   class_mop(in): the class
+ *   class_(in): the class structure
+ *   dropped_columns(in/out): with HA, the PT_DOT_ (table.column) of each attribute whose label is dropped is appended
+ */
+static int
+drop_labels_in_class (PARSER_CONTEXT * parser, MOP class_mop, SM_CLASS * class_, PT_NODE ** dropped_columns)
+{
+  DB_NAMELIST *dropped = NULL;
+  int error;
+
+  error = sensitivity_label_drop_all (class_mop, class_, HA_DISABLED ()? NULL : &dropped);
+  if (error == NO_ERROR)
+    {
+      error = append_dropped_columns (parser, class_, dropped, dropped_columns);
+    }
+
+  nlist_free (dropped);
+
+  return error;
+}
+
+/*
  * do_drop_sensitivity_label_in_table () - DROP SENSITIVITY LABEL ON ALL COLUMNS IN TABLE
  *   return: error code
  *   parser(in): parser context
@@ -20597,7 +20629,6 @@ do_drop_sensitivity_label_in_table (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABE
   PT_NODE *table;
   MOP class_mop;
   SM_CLASS *class_;
-  DB_NAMELIST *dropped;
   int error;
 
   /* a prepared statement is executed again on this tree: discard what its last execution left */
@@ -20614,15 +20645,7 @@ do_drop_sensitivity_label_in_table (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABE
 	  return error;
 	}
 
-      dropped = NULL;
-      error = sensitivity_label_drop_all (class_mop, class_, HA_DISABLED ()? NULL : &dropped);
-      if (error == NO_ERROR)
-	{
-	  error = append_dropped_columns (parser, class_, dropped, &info->dropped_columns);
-	}
-
-      nlist_free (dropped);
-
+      error = drop_labels_in_class (parser, class_mop, class_, &info->dropped_columns);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -20630,6 +20653,57 @@ do_drop_sensitivity_label_in_table (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABE
     }
 
   return NO_ERROR;
+}
+
+/*
+ * do_drop_sensitivity_label_in_schema () - DROP SENSITIVITY LABEL ON ALL COLUMNS IN SCHEMA
+ *   return: error code
+ *   parser(in): parser context
+ *   info(in/out): the statement
+ */
+static int
+do_drop_sensitivity_label_in_schema (PARSER_CONTEXT * parser, PT_SENSITIVITY_LABEL_INFO * info)
+{
+  PT_NODE *schema;
+  DB_OBJLIST *class_list = NULL;
+  DB_OBJLIST *cl;
+  SM_CLASS *class_;
+  int error = NO_ERROR;
+
+  /* a prepared statement is executed again on this tree: discard what its last execution left */
+  parser_free_tree (parser, info->dropped_columns);
+  info->dropped_columns = NULL;
+
+  for (schema = info->target_list; schema != NULL; schema = schema->next)
+    {
+      assert (schema->node_type == PT_NAME);
+
+      error = sensitivity_label_find_classes_in_schema (PT_NAME_ORIGINAL (schema), &class_list);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  for (cl = class_list; cl != NULL; cl = cl->next)
+    {
+      error = au_fetch_class_force (cl->op, &class_, AU_FETCH_READ);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      error = drop_labels_in_class (parser, cl->op, class_, &info->dropped_columns);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+end:
+  ml_ext_free (class_list);
+
+  return error;
 }
 
 /*
