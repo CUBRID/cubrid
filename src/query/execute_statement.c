@@ -9777,24 +9777,6 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
 
-	  hint_arg = statement->info.update.waitsecs_hint;
-	  if (statement->info.update.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
-	    {
-	      hint_waitsecs = (float) atof (hint_arg->info.name.original);
-	      if (hint_waitsecs > 0)
-		{
-		  wait_msecs = (int) (hint_waitsecs * 1000);
-		}
-	      else
-		{
-		  wait_msecs = (int) hint_waitsecs;
-		}
-	      if (wait_msecs >= -1)
-		{
-		  old_wait_msecs = TM_TRAN_WAIT_MSECS ();
-		  (void) tran_reset_wait_times (wait_msecs);
-		}
-	    }
 	  if (error == NO_ERROR)
 	    {
 	      error =
@@ -9804,6 +9786,26 @@ update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_
 		{
 		  goto exit_on_error;
 		}
+
+	      hint_arg = statement->info.update.waitsecs_hint;
+	      if (statement->info.update.hint & PT_HINT_LK_TIMEOUT && PT_IS_HINT_NODE (hint_arg))
+		{
+		  hint_waitsecs = (float) atof (hint_arg->info.name.original);
+		  if (hint_waitsecs > 0)
+		    {
+		      wait_msecs = (int) (hint_waitsecs * 1000);
+		    }
+		  else
+		    {
+		      wait_msecs = (int) hint_waitsecs;
+		    }
+		  if (wait_msecs >= -1)
+		    {
+		      old_wait_msecs = TM_TRAN_WAIT_MSECS ();
+		      (void) tran_reset_wait_times (wait_msecs);
+		    }
+		}
+
 	      /* get the oid's and new values */
 	      oid_list =
 		get_select_list_to_update (parser, statement->info.update.spec, select_names, select_values,
@@ -13895,6 +13897,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	  if (old_wait_msecs >= -1)
 	    {
 	      (void) tran_reset_wait_times (old_wait_msecs);
+	      old_wait_msecs = -2;
 	    }
 	}
     }
@@ -13972,6 +13975,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
     }
 
 cleanup:
+  /* an error above skips the restore after the row */
+  if (old_wait_msecs >= -1)
+    {
+      (void) tran_reset_wait_times (old_wait_msecs);
+    }
+
   /* free attribute descriptors */
   if (attr_descs)
     {
