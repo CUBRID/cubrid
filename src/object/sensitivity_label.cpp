@@ -567,8 +567,8 @@ sensitivity_label_find_attribute (const char *class_name, const char *att_name, 
 }
 
 /*
- * sensitivity_label_is_allowed () - tell whether the columns of a class can have sensitivity labels
- *   return: true when the class is a table that is neither a system class nor a partition
+ * sensitivity_label_is_allowed () - tell whether the attributes of a class can have sensitivity labels
+ *   return: true when the class is neither a view, a system class nor a partition
  *   class_(in): the class structure
  */
 bool
@@ -579,11 +579,11 @@ sensitivity_label_is_allowed (SM_CLASS *class_)
 }
 
 /*
- * sensitivity_label_find () - find the label of a column to replace or drop it
+ * sensitivity_label_find () - find the label of an attribute to replace or drop it
  *   return: error code
- *   class_mop(in): the table of the column
- *   attr_id(in): the attribute id of the column
- *   label(out): the label, or NULL when the column has none
+ *   class_mop(in): the class
+ *   attr_id(in): the attribute id
+ *   label(out): the label, or NULL when the attribute has none
  *
  * Note: the lookup X-locks the label and ignores the snapshot: it waits for an uncommitted create or drop.
  */
@@ -614,7 +614,7 @@ sensitivity_label_find (MOP class_mop, const int attr_id, DB_OBJECT **label)
   *label = db_find_multi_unique_for_update (label_class, 2, (char **) search_attrs, value_ptrs);
   if (*label == NULL)
     {
-      /* no error is left when the column has no label */
+      /* no error is left when the attribute has no label */
       error = er_errid ();
     }
 
@@ -659,7 +659,7 @@ put_components (DB_OTMPL *obj_tmpl, DB_OBJECT *grade, DB_OBJECT *info_type, DB_O
 }
 
 /*
- * put_labeled_by () - put the current user into a label as the one who labeled the column
+ * put_labeled_by () - put the current user into a label as the one who labeled the attribute
  *   return: error code
  *   obj_tmpl(in): the template of the label
  */
@@ -685,10 +685,10 @@ put_labeled_by (DB_OTMPL *obj_tmpl)
 }
 
 /*
- * sensitivity_label_create () - create the label of a column
+ * sensitivity_label_create () - create the label of an attribute
  *   return: error code
- *   class_mop(in): the table of the column
- *   attr_id(in): the attribute id of the column
+ *   class_mop(in): the class
+ *   attr_id(in): the attribute id
  *   grade(in): the grade
  *   info_type(in): the info_type, or NULL
  *   source(in): the source, or NULL
@@ -774,7 +774,7 @@ end:
 }
 
 /*
- * sensitivity_label_replace () - replace the whole label of a column
+ * sensitivity_label_replace () - replace the whole label of an attribute
  *   return: error code
  *   label(in): the label
  *   grade(in): the grade
