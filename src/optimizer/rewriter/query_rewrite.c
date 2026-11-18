@@ -733,6 +733,12 @@ qo_rewrite_queries_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int
 	}
     }
 
+  /* every other rewrite of the block is done, and its ON is back on its spec: the planner can cost it as it is */
+  if (tree->node_type == PT_SELECT)
+    {
+      qo_rewrite_group_by_placement (parser, tree);
+    }
+
   return tree;
 }
 
