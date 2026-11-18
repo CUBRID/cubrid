@@ -25,7 +25,9 @@
 
 #ident "$Id$"
 
-/* Enumerated Misc Types */
+/* Enumerated Misc Types
+ * A value is stored in the catalog, in the tree of a DEFAULT expression, as the qualifier of an operator. Keep the
+ * order: add a new value at the end, and do not remove or move an existing one. */
 typedef enum
 {
   PT_MISC_NONE = 0,

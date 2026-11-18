@@ -11907,7 +11907,7 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 
   /* a code outside its enumeration is a damaged stream, or one written by a build whose enumeration differs */
   if ((tag == PT_CDT_TAG_OP && (code < PT_AND || code >= PT_LAST_OPCODE))
-      || (tag == PT_CDT_TAG_FUNC && (code < PT_MIN || code > PT_PERCENTILE_DISC)))
+      || (tag == PT_CDT_TAG_FUNC && (code < PT_MIN || code >= PT_LAST_FUNC_CODE)))
     {
       return NULL;
     }

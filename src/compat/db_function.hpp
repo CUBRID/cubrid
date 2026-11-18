@@ -23,6 +23,8 @@
 #ifndef _DB_FUNCTION_HPP_
 #define _DB_FUNCTION_HPP_
 
+/* The codes are stored in the catalog, in the tree of a DEFAULT expression. Keep the order: add a new code right
+ * before PT_LAST_FUNC_CODE, and do not remove or move an existing one. */
 typedef enum
 {
   /* aggregate functions */
@@ -73,7 +75,10 @@ typedef enum
   PT_CUME_DIST,
   PT_PERCENT_RANK,
   PT_PERCENTILE_CONT,
-  PT_PERCENTILE_DISC
+  PT_PERCENTILE_DISC,
+
+  /* This is the last entry. Please add a new one before it. */
+  PT_LAST_FUNC_CODE
 } FUNC_CODE;
 
 # ifdef  __cplusplus

@@ -118,7 +118,7 @@ TEST_CASE ("an operator is held back exactly when it is listed", "[eval_prop]")
 
 TEST_CASE ("a function is held back exactly when it is listed", "[eval_prop]")
 {
-  for (int fcode = PT_MIN; fcode <= PT_PERCENTILE_DISC; fcode++)
+  for (int fcode = PT_MIN; fcode < PT_LAST_FUNC_CODE; fcode++)
     {
       const bool listed = std::find (std::begin (held_back_funcs), std::end (held_back_funcs), (FUNC_CODE) fcode)
 			  != std::end (held_back_funcs);

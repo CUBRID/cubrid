@@ -1464,6 +1464,8 @@ typedef enum
   PT_TABLE_OPTION_DONT_REUSE_OID
 } PT_TABLE_OPTION_TYPE;
 
+/* The codes are stored in the catalog, in the tree of a DEFAULT expression. Keep the order: add a new code right
+ * before PT_LAST_OPCODE, and do not remove or move an existing one. */
 typedef enum
 {
   PT_AND = 400, PT_OR, PT_NOT,

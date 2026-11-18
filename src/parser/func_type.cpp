@@ -595,7 +595,7 @@ pt_eval_prop_self_check_funcs (void)
 {
   int violations = 0;
 
-  for (int code = PT_MIN; code <= PT_PERCENTILE_DISC; code++)
+  for (int code = PT_MIN; code < PT_LAST_FUNC_CODE; code++)
     {
       FUNC_CODE fcode = (FUNC_CODE) code;
       const func_all_signatures *sigs = get_signatures (fcode);
