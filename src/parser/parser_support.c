@@ -12998,7 +12998,7 @@ pt_convert_dblink_synonym (PARSER_CONTEXT * parser, PT_NODE * spec, void *is_ins
  * pt_check_with_info () calls two checks here, after the statement's semantic check:
  *   - pt_dblink_merge_check_key_types () on the type-checked statement
  *   - pt_dblink_merge_is_inscope (), the shape gate, on the copy from before type checking
- * The walk over the ON below serves both.
+ * The walks over the ON and over the bound columns below serve both, and the source SELECT.
  * ============================================================================================= */
 
 /* The two specs of a remote MERGE with a local source */
@@ -13120,6 +13120,116 @@ pt_dblink_merge_init_refs (PT_NODE * merge, PT_DBLINK_MERGE_REFS * refs)
   refs->source_id = merge->info.merge.using_clause->info.spec.id;
 }
 
+/* The source columns a statement binds, in the order of its one-row USING. Each occurrence of a
+ * source column is one bound value. Everything else is sent as written. A value is sent only when
+ * it is columns, literals, + - * / and conditions over them. So only an expression's operands are
+ * looked into. */
+typedef struct pt_dblink_merge_binds PT_DBLINK_MERGE_BINDS;
+struct pt_dblink_merge_binds
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_DBLINK_MERGE_BIND_FN fn;
+  void *arg;
+  int count;
+};
+
+/* expr alone, not the list it heads */
+static void
+pt_dblink_merge_bind_expr (PARSER_CONTEXT * parser, PT_NODE * expr, bool is_key, PT_DBLINK_MERGE_BINDS * binds)
+{
+  if (expr == NULL)
+    {
+      return;
+    }
+
+  switch (pt_dblink_merge_value_leaf (expr, &binds->refs))
+    {
+    case PT_DBLINK_LEAF_LOCAL:
+      binds->fn (parser, expr, is_key, binds->arg);
+      binds->count++;
+      return;
+    case PT_DBLINK_LEAF_REMOTE:
+      return;
+    default:
+      break;
+    }
+
+  if (expr->node_type == PT_EXPR)
+    {
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg1, is_key, binds);
+      pt_dblink_merge_bind_expr (parser, expr->info.expr.arg2, is_key, binds);
+    }
+}
+
+/* the same over a list. The list is a VALUES row or a search condition (an implicit AND). */
+static void
+pt_dblink_merge_bind_list (PARSER_CONTEXT * parser, PT_NODE * list, PT_DBLINK_MERGE_BINDS * binds)
+{
+  for (; list != NULL; list = list->next)
+    {
+      pt_dblink_merge_bind_expr (parser, list, false, binds);
+    }
+}
+
+/* A pt_dblink_merge_walk_on callback. The source column of a key is bound as a key. Any other
+ * term reads no source column. */
+static bool
+pt_dblink_merge_bind_on_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col, PT_NODE * source_col,
+			      void *arg)
+{
+  if (source_col != NULL)
+    {
+      pt_dblink_merge_bind_expr (parser, source_col, true, (PT_DBLINK_MERGE_BINDS *) arg);
+    }
+  return true;
+}
+
+/*
+ * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source
+ *   binds. The order is that of the one-row USING's columns: ON, SET, UPDATE WHERE, DELETE WHERE,
+ *   VALUES and INSERT WHERE. The source SELECT is laid out from this walk over the statement's copy
+ *   from before type checking.
+ *   return: the number of values
+ *   parser(in): parser context
+ *   merge(in): a name-resolved PT_MERGE whose target is in the derived dblink table shape
+ *   fn(in): called with each source column and whether it is the source side of an ON key
+ *   arg(in): passed to fn
+ *
+ * Note: A source column is reported as an ON key's source side, or under arg1 and arg2 of the
+ *   expressions in the other clauses. One in an ON term that is not a key, under arg3, or in a
+ *   function or a subquery is not reported. The caller refuses those shapes before it walks.
+ */
+int
+pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn, void *arg)
+{
+  PT_MERGE_INFO *info = &merge->info.merge;
+  PT_DBLINK_MERGE_BINDS binds;
+  PT_NODE *assign;
+
+  memset (&binds, 0, sizeof (binds));
+  pt_dblink_merge_init_refs (merge, &binds.refs);
+  binds.fn = fn;
+  binds.arg = arg;
+
+  pt_dblink_merge_walk_on (parser, info->search_cond, &binds.refs, pt_dblink_merge_bind_on_term, &binds);
+
+  for (assign = info->update.assignment; assign != NULL; assign = assign->next)
+    {
+      /* the LHS is a target column, sent as written */
+      pt_dblink_merge_bind_expr (parser, assign->info.expr.arg2, false, &binds);
+    }
+  pt_dblink_merge_bind_list (parser, info->update.search_cond, &binds);
+  pt_dblink_merge_bind_list (parser, info->update.del_search_cond, &binds);
+
+  if (info->insert.value_clauses != NULL)
+    {
+      pt_dblink_merge_bind_list (parser, info->insert.value_clauses->info.node_list.list, &binds);
+    }
+  pt_dblink_merge_bind_list (parser, info->insert.search_cond, &binds);
+
+  return binds.count;
+}
+
 /* what pt_dblink_merge_check_key_types carries over the walk */
 typedef struct pt_dblink_merge_key_type_check PT_DBLINK_MERGE_KEY_TYPE_CHECK;
 struct pt_dblink_merge_key_type_check
@@ -13229,6 +13339,80 @@ pt_dblink_merge_check_key_types (PARSER_CONTEXT * parser, PT_NODE * merge)
     }
 
   return NO_ERROR;
+}
+
+/* what pt_dblink_merge_key_compare_types carries over the walk */
+typedef struct pt_dblink_merge_key_compare PT_DBLINK_MERGE_KEY_COMPARE;
+struct pt_dblink_merge_key_compare
+{
+  PT_TYPE_ENUM *types;
+  int max_keys;
+  int num_keys;
+  bool any;
+};
+
+/* A pt_dblink_merge_walk_on callback. It gives the type a key's values are compared in, when it
+ * is not the source column's. */
+static bool
+pt_dblink_merge_key_compare_type (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * target_col,
+				  PT_NODE * source_col, void *arg)
+{
+  PT_DBLINK_MERGE_KEY_COMPARE *cmp = (PT_DBLINK_MERGE_KEY_COMPARE *) arg;
+  PT_TYPE_ENUM type = PT_TYPE_NONE;
+
+  if (source_col == NULL)
+    {
+      return true;
+    }
+  if (PT_IS_NUMERIC_TYPE (source_col->type_enum) && source_col->type_enum != PT_TYPE_FLOAT
+      && source_col->type_enum != PT_TYPE_DOUBLE && source_col->type_enum != PT_TYPE_MONETARY)
+    {
+      if (target_col->type_enum == PT_TYPE_DOUBLE || target_col->type_enum == PT_TYPE_MONETARY)
+	{
+	  type = PT_TYPE_DOUBLE;
+	}
+      else if (target_col->type_enum == PT_TYPE_FLOAT)
+	{
+	  type = PT_TYPE_FLOAT;
+	}
+    }
+
+  if (cmp->num_keys >= cmp->max_keys)
+    {
+      return false;
+    }
+  cmp->types[cmp->num_keys++] = type;
+  cmp->any |= (type != PT_TYPE_NONE);
+  return true;
+}
+
+/*
+ * pt_dblink_merge_key_compare_types () - The type the remote compares each ON key in, when it is
+ *   not the source column's. A number meets a number of another type in the more approximate of
+ *   the two, where 9007199254740992 and 9007199254740993 are one DOUBLE.
+ *   return: the number of keys, or -1 when there are more than max_keys
+ *   parser(in): parser context
+ *   merge(in): a type-checked PT_MERGE whose target is in the derived dblink table shape
+ *   types(out): per key, in ON order, PT_TYPE_DOUBLE or PT_TYPE_FLOAT, or PT_TYPE_NONE for the
+ *               source column's own type
+ *   max_keys(in): the size of types
+ *   any(out): whether any key has a type of its own
+ */
+int
+pt_dblink_merge_key_compare_types (PARSER_CONTEXT * parser, PT_NODE * merge, PT_TYPE_ENUM * types, int max_keys,
+				   bool * any)
+{
+  PT_DBLINK_MERGE_REFS refs;
+  PT_DBLINK_MERGE_KEY_COMPARE cmp = { types, max_keys, 0, false };
+
+  pt_dblink_merge_init_refs (merge, &refs);
+  if (!pt_dblink_merge_walk_on (parser, merge->info.merge.search_cond, &refs, pt_dblink_merge_key_compare_type, &cmp))
+    {
+      return -1;
+    }
+
+  *any = cmp.any;
+  return cmp.num_keys;
 }
 
 /* The shape gate. A value may only be columns of either side, literals and + - * / over them

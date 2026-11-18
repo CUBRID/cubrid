@@ -13142,6 +13142,167 @@ pt_dblink_update_fold_driving_values (PARSER_CONTEXT * parser, PT_NODE * subq)
   return wrapped;
 }
 
+/* the SELECT list pt_dblink_merge_add_select_col builds */
+typedef struct pt_dblink_merge_select_cols PT_DBLINK_MERGE_SELECT_COLS;
+struct pt_dblink_merge_select_cols
+{
+  PT_NODE *list;
+  PT_NODE *keys;		/* the source columns of the ON keys, in ON order */
+  bool out_of_memory;
+};
+
+/* A pt_dblink_merge_walk_binds callback. It appends the source column to the SELECT list being
+ * built, by its name alone. The list is bound over a copy of the source, so the column's own
+ * resolution does not carry over. */
+static void
+pt_dblink_merge_add_select_col (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_DBLINK_MERGE_SELECT_COLS *cols = (PT_DBLINK_MERGE_SELECT_COLS *) arg;
+  PT_NODE *name = pt_name (parser, value->info.name.original);
+  PT_NODE *key = NULL;
+
+  if (is_key)
+    {
+      key = pt_name (parser, value->info.name.original);
+    }
+  if (name == NULL || (is_key && key == NULL))
+    {
+      cols->out_of_memory = true;
+      return;
+    }
+  cols->list = parser_append_node (name, cols->list);
+  if (key != NULL)
+    {
+      cols->keys = parser_append_node (key, cols->keys);
+    }
+}
+
+/*
+ * pt_dblink_merge_add_key_cols () - When the remote compares any ON key in another type, append a
+ *   hidden column per key for the duplicate key check, cast where needed. The bound columns stay
+ *   first.
+ *   return: NO_ERROR, or an error code with the parser error set
+ *   parser(in): parser context
+ *   checked(in): the type-checked statement, which has the key types
+ *   cols(in/out): the list built so far, and the ON keys' source columns. The keys are used up.
+ *                 On an error the caller frees what is left in both lists.
+ */
+static int
+pt_dblink_merge_add_key_cols (PARSER_CONTEXT * parser, PT_NODE * checked, PT_DBLINK_MERGE_SELECT_COLS * cols)
+{
+  PT_TYPE_ENUM *types;
+  PT_NODE *key, *col;
+  bool any = false;
+  int num_keys = pt_length_of_list (cols->keys);
+  int i;
+
+  if (num_keys == 0)
+    {
+      return NO_ERROR;
+    }
+
+  types = (PT_TYPE_ENUM *) parser_alloc (parser, sizeof (PT_TYPE_ENUM) * num_keys);
+  if (types == NULL)
+    {
+      PT_ERRORm (parser, checked, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_FAILED;
+    }
+  if (pt_dblink_merge_key_compare_types (parser, checked, types, num_keys, &any) != num_keys)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: the checked statement and its clauses have different keys");
+      return ER_FAILED;
+    }
+  if (!any)
+    {
+      parser_free_tree (parser, cols->keys);
+      cols->keys = NULL;
+      return NO_ERROR;
+    }
+
+  for (i = 0; cols->keys != NULL; i++)
+    {
+      key = cols->keys;
+      cols->keys = key->next;
+      key->next = NULL;
+      col = key;
+      if (types[i] != PT_TYPE_NONE)
+	{
+	  col = pt_wrap_with_cast_op (parser, key, types[i], 0, 0, NULL);
+	  if (col == NULL)
+	    {
+	      parser_free_tree (parser, key);
+	      PT_ERRORm (parser, checked, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return ER_FAILED;
+	    }
+	}
+      col->flag.is_hidden_column = 1;
+      cols->list = parser_append_node (col, cols->list);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_dblink_merge_source_select () - Build and bind the SELECT a remote MERGE with a local source
+ *   scans. It reads FROM a copy of the USING source taken before name resolution. It has one column
+ *   per bound source column, in pt_dblink_merge_walk_binds () order.
+ *   return: the bound SELECT, or NULL on failure (parser error set)
+ *   parser(in): parser context
+ *   merge(in): the statement's remote_stmt_as_written
+ *   from(in): the copy of the USING spec
+ *   checked(in): the type-checked statement, for the types its keys are compared in
+ *   sc_info_ptr(in/out): semantic check info, passed through to pt_bind_remote_dml_subq
+ *
+ * Note: The source alone is in the SELECT's FROM, so a column found by its name is the source's.
+ *   A column the walk reports was resolved to the source, so the name is found there again.
+ *   Hidden columns for the duplicate key check may follow the bound ones
+ *   (pt_dblink_merge_add_key_cols ()).
+ */
+static PT_NODE *
+pt_dblink_merge_source_select (PARSER_CONTEXT * parser, PT_NODE * merge, PT_NODE * from, PT_NODE * checked,
+			       SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  PT_DBLINK_MERGE_SELECT_COLS cols = { NULL, NULL, false };
+  PT_NODE *select;
+
+  (void) pt_dblink_merge_walk_binds (parser, merge, pt_dblink_merge_add_select_col, &cols);
+  if (pt_has_error (parser))
+    {
+      goto error_exit;
+    }
+  if (cols.out_of_memory)
+    {
+      PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      goto error_exit;
+    }
+  if (cols.list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no value to bind from the source");
+      goto error_exit;
+    }
+  if (pt_dblink_merge_add_key_cols (parser, checked, &cols) != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  select = parser_new_node (parser, PT_SELECT);
+  if (select == NULL)
+    {
+      PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      goto error_exit;
+    }
+  select->info.query.q.select.list = cols.list;
+  select->info.query.q.select.from = from;
+
+  return pt_bind_remote_dml_subq (parser, select, sc_info_ptr, "remote MERGE: failed to translate the source");
+
+error_exit:
+  /* the lists are not in a SELECT yet. from stays the caller's. */
+  parser_free_tree (parser, cols.list);
+  parser_free_tree (parser, cols.keys);
+  return NULL;
+}
+
 /*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
@@ -13157,8 +13318,9 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   SEMANTIC_CHK_INFO *sc_info_ptr = info;
   bool save_donot_fold = false;
-  /* A copy of the USING of a remote MERGE with a local source, taken before name resolution. It
-   * is set only on the statement's first check, so the steps it guards run once. */
+  /* The copy of the USING that the source SELECT of a remote MERGE with a local source reads,
+   * taken before name resolution. It is set only on the statement's first check, so the steps it
+   * guards run once. */
   PT_NODE *merge_src_from = NULL;
 
   assert (parser != NULL);
@@ -13536,10 +13698,14 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	    {
 	      /* A remote MERGE with a local source. The keys are checked on the statement, where
 	       * type checking marks a key that compares with a conversion. The gate reads the
-	       * clauses as they are sent. */
-	      if (pt_dblink_merge_check_key_types (parser, node) == NO_ERROR)
+	       * clauses as they are sent, and the source SELECT is laid out from them too. So the
+	       * bound columns are the ones those clauses name. */
+	      if (pt_dblink_merge_check_key_types (parser, node) == NO_ERROR
+		  && pt_dblink_merge_is_inscope (parser, node->info.merge.remote_stmt_as_written))
 		{
-		  (void) pt_dblink_merge_is_inscope (parser, node->info.merge.remote_stmt_as_written);
+		  node->info.merge.remote_source_select =
+		    pt_dblink_merge_source_select (parser, node->info.merge.remote_stmt_as_written, merge_src_from,
+						   node, sc_info_ptr);
 		}
 	    }
 	}
