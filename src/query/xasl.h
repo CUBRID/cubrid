@@ -945,8 +945,10 @@ typedef enum
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
   ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
-  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6	/* a partitioned NL inner walked per outer row prunes its partitions
+  ACCESS_SPEC_FLAG_PRUNE_PER_ROW = 0x1 << 6,	/* a partitioned NL inner walked per outer row prunes its partitions
 						 * by the outer row's join values (CBRD-27866) */
+  ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN = 0x1 << 7	/* an index scan reads its heap rows in file order, through a bitmap
+						 * of the rows the index found (CBRD-28032) */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)

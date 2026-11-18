@@ -9589,8 +9589,10 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
       return;
     }
 
-  scan = trace_json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
-			  scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
+  /* the heap step of a scan through a bitmap is shown as a scan of its own ("bitmap heap") */
+  scan = trace_json_pack ("{s:i, s:I, s:I}", "time",
+			  TO_MSEC (scan_id->scan_stats.elapsed_scan) - TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
+			  "fetch", scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
 
   switch (scan_id->type)
     {
@@ -9663,6 +9665,17 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 	{
 	  trace_json_object_set_new (scan_stats, "covered", trace_json_true ());
 	}
+      else if (scan_id->scan_stats.bitmap_heap != 0)
+	{
+	  trace_json_t *heap;
+
+	  heap = trace_json_pack ("{s:i, s:I, s:I, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
+				  "fetch", scan_id->scan_stats.bitmap_heap_fetches,
+				  "ioread", scan_id->scan_stats.bitmap_heap_ioreads,
+				  "pages", scan_id->scan_stats.bitmap_heap_pages,
+				  "rows", scan_id->scan_stats.data_qualified_rows);
+	  trace_json_object_set_new (scan_stats, "bitmap heap", heap);
+	}
       else
 	{
 	  lookup = trace_json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
@@ -9711,6 +9724,25 @@ scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
       trace_json_object_set_new (scan_stats, "noscan", scan);
       break;
     }
+}
+
+/*
+ * scan_print_bitmap_heap_stats_text () - the heap step of an index scan that read the heap through a bitmap of the
+ *					  rows the index found: the second scan of the two the trace shows
+ *   return: void
+ *   fp(in):
+ *   scan_id(in): the index scan
+ */
+void
+scan_print_bitmap_heap_stats_text (FILE * fp, SCAN_ID * scan_id)
+{
+  fprintf (fp, "(heap time: %d, fetch: %llu, ioread: %llu, pages: %llu, rows: %llu",
+	   TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
+	   (unsigned long long int) scan_id->scan_stats.bitmap_heap_fetches,
+	   (unsigned long long int) scan_id->scan_stats.bitmap_heap_ioreads,
+	   (unsigned long long int) scan_id->scan_stats.bitmap_heap_pages,
+	   (unsigned long long int) scan_id->scan_stats.data_qualified_rows);
+  fprintf (fp, ")");
 }
 
 /*
@@ -9796,7 +9828,8 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
     }
 
-  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu", TO_MSEC (scan_id->scan_stats.elapsed_scan),
+  fprintf (fp, " time: %d, fetch: %llu, ioread: %llu",
+	   TO_MSEC (scan_id->scan_stats.elapsed_scan) - TO_MSEC (scan_id->scan_stats.bitmap_heap_time),
 	   (unsigned long long int) scan_id->scan_stats.num_fetches,
 	   (unsigned long long int) scan_id->scan_stats.num_ioreads);
 
@@ -9893,7 +9926,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	}
       fprintf (fp, ")");
 
-      if (scan_id->scan_stats.covered_index == false)
+      if (scan_id->scan_stats.covered_index == false && scan_id->scan_stats.bitmap_heap == 0)
 	{
 	  fprintf (fp, " (lookup time: %d, rows: %llu)", TO_MSEC (scan_id->scan_stats.elapsed_lookup),
 		   (unsigned long long int) scan_id->scan_stats.data_qualified_rows);

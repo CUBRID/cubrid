@@ -517,6 +517,10 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
     {
       fprintf (foutput, ",no_parallel_scan");
     }
+  if (spec_list_p->flags & ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN)
+    {
+      fprintf (foutput, ",bitmap_heap_scan");
+    }
 
   if (IS_ANY_INDEX_ACCESS (spec_list_p->access))
     {
@@ -4108,6 +4112,15 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  if (!spec->s_id.scan_stats.noscan)
 		    {
 		      spec->s_id.s.pisid.trace_storage->dump_stats_text (fp, multi_spec_indent, class_name);
+		    }
+		  if (spec->s_id.scan_stats.bitmap_heap != 0)
+		    {
+		      /* the heap was read through a bitmap of the rows the index found: a second scan, under the
+		       * index scan */
+		      fprintf (fp, "\n%*cSCAN (bitmap heap: %s), ", indent + 2, ' ',
+			       class_name != NULL ? class_name : "unknown");
+		      scan_print_bitmap_heap_stats_text (fp, &spec->s_id);
+		      spec->s_id.s.pisid.trace_storage->dump_bitmap_heap_stats_text (fp, multi_spec_indent + 2);
 		    }
 		  spec->s_id.s.pisid.trace_storage->~accumulative_trace_storage ();
 		  free (spec->s_id.s.pisid.trace_storage);

@@ -52,6 +52,11 @@ namespace parallel_scan
     struct timeval elapsed_lookup;
     bool covered_index;
     bool multi_range_opt;
+    int bitmap_heap;
+    struct timeval bitmap_time;	/* the heap step of a scan through a bitmap */
+    UINT64 bitmap_fetches;
+    UINT64 bitmap_ioreads;
+    UINT64 bitmap_pages;
     bool index_skip_scan;
     bool loose_index_scan;
     bool need_count_only;
@@ -119,6 +124,7 @@ namespace parallel_scan
 
       void add_stats (trace_handler &trace_handler);
       void dump_stats_text (FILE *fp, int indent, char *class_name);
+      void dump_bitmap_heap_stats_text (FILE *fp, int indent);
       void dump_stats_json (trace_json_t *scan, char *class_name);
       void set_last_partition_stats (SCAN_STATS *partition_stats);
     private:

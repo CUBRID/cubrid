@@ -40,6 +40,7 @@
 #include "query_hash_join.h"
 #include "query_opfunc.h"
 #include "scope_exit.hpp"
+#include "page_buffer.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1208,6 +1209,11 @@ namespace parallel_scan
       {
 	m_input_handler->enter_worker ();
 	worker_guard.handler = m_input_handler;
+	if (m_input_handler->bitmap_on ())
+	  {
+	    m_slot_iterator.begin_bitmap_index_step (m_input_handler->bitmap_claim_worker ());
+	    m_scan_id->scan_stats.bitmap_heap = 1;
+	  }
       }
 
     while (!stop)
@@ -1269,6 +1275,11 @@ namespace parallel_scan
 		/* drain_late_joiner_chains calls leave_worker itself; disarm the RAII guard first. */
 		worker_guard.handler = nullptr;
 		drain_late_joiner_chains (thread_ref, stop);
+		if (m_input_handler->bitmap_on ())
+		  {
+		    /* every OID this worker found is recorded: read the heap once the other workers are there too */
+		    bitmap_heap_step (thread_ref, stop);
+		  }
 	      }
 	    m_xasl->curr_spec->s_id.position = S_AFTER;
 	    break;
@@ -1325,6 +1336,175 @@ namespace parallel_scan
 	  }
 	/* drain_slot_oids returns S_END at completion or S_ERROR with stop=true on terminal failure. */
 	(void) drain_slot_oids (thread_ref, stop);
+      }
+  }
+
+  /* INDEX-only, bitmap heap scan: the heap step of one worker. It starts when no worker records any more, takes the
+   * partitions of the heap one by one and reads the recorded pages of each in file order; the rows leave through
+   * drain_slot_oids. */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::bitmap_heap_step (cubthread::entry &thread_ref, bool &stop)
+  {
+    if constexpr (ST == SCAN_TYPE::INDEX)
+      {
+	bitmap_worker *const worker = m_slot_iterator.bitmap_worker_of ();
+	bool dummy = false;
+	int error_code = NO_ERROR;
+	auto raise = [&] ()
+	{
+	  if (m_interrupt->get_code () == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	    {
+	      int err_code = m_err_messages->move_top_error_message_to_this ();
+
+	      m_interrupt->set_code (err_code == ER_INTERRUPTED
+				     ? parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD
+				     : parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    }
+	  stop = true;
+	};
+
+	if (!stop && m_input_handler->bitmap_end_marks (&thread_ref, worker) != NO_ERROR)
+	  {
+	    raise ();
+	  }
+	m_slot_iterator.end_bitmap_index_step (&thread_ref);
+	m_input_handler->bitmap_leave_index_step ();
+	if (stop || !m_input_handler->bitmap_wait_index_step ())
+	  {
+	    return;
+	  }
+
+	/* the heap step is shown as a scan of its own: its time, page fixes and reads are counted apart */
+	scan_fixes since = {};
+	TSC_TICKS heap_start_tick;
+	UINT64 heap_pages = 0;
+
+	if (thread_ref.on_trace)
+	  {
+	    since = read_fixes (thread_ref);
+	    tsc_getticks (&heap_start_tick);
+	  }
+
+	auto interrupted = [&] () -> bool
+	{
+	  if (m_interrupt->get_code () != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	    {
+	      return true;
+	    }
+	  if (logtb_get_check_interrupt (&thread_ref)
+	      && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      m_err_messages->move_top_error_message_to_this ();
+	      m_interrupt->set_code (parallel_query::interrupt::interrupt_code::USER_INTERRUPTED_FROM_WORKER_THREAD);
+	      return true;
+	    }
+	  return false;
+	};
+	auto read_page = [&] (const VPID &vpid, const std::uint64_t *words, int single_slot)
+	{
+	  if (m_slot_iterator.set_bitmap_page (&thread_ref, &vpid, words, single_slot) != NO_ERROR)
+	    {
+	      raise ();
+	      return;
+	    }
+	  (void) drain_slot_oids (thread_ref, stop);
+	};
+
+	const std::uint32_t parts_of_partition = m_input_handler->bitmap_parts_of_partition ();
+	std::uint32_t part;
+
+	while (!stop && m_input_handler->bitmap_take_partition (&part))
+	  {
+	    for (std::uint32_t sub = 0; sub < parts_of_partition && !stop; sub++)
+	      {
+		if (m_input_handler->bitmap_load (&thread_ref, worker, part, sub) != NO_ERROR)
+		  {
+		    raise ();
+		    break;
+		  }
+
+		const bitmap_table &table = worker->heap_tbl;
+		const std::vector<std::uint32_t> &order = worker->order;
+
+		for (size_t i = 0; i < order.size () && !stop; i++)
+		  {
+		    VPID vpid;
+
+		    if ((i & (DISK_SECTOR_NPAGES - 1)) == 0)
+		      {
+			/* the next pages are told to the OS together, wherever they lie */
+			VPID vpids[DISK_SECTOR_NPAGES];
+			int count = 0;
+
+			if (interrupted ())
+			  {
+			    stop = true;
+			    break;
+			  }
+			for (size_t k = i; k < order.size () && count < DISK_SECTOR_NPAGES; k++)
+			  {
+			    m_input_handler->bitmap_page_vpid (table.e[order[k]].page, &vpids[count++]);
+			  }
+			(void) pgbuf_read_ahead (&thread_ref, vpids, count);
+		      }
+		    m_input_handler->bitmap_page_vpid (table.e[order[i]].page, &vpid);
+		    heap_pages++;
+		    read_page (vpid, table.e[order[i]].w, -1);
+		  }
+	      }
+	  }
+
+	/* the rows whose slot is beyond an entry's width, by the one worker that gets them */
+	if (!stop && m_input_handler->bitmap_take_over (&thread_ref, worker, &error_code))
+	  {
+	    OID oid;
+	    SCAN_CODE scan;
+	    UINT64 rows = 0;
+	    VPID last_vpid = VPID_INITIALIZER;
+
+	    while (!stop && (scan = m_input_handler->bitmap_next_over (&thread_ref, &oid)) == S_SUCCESS)
+	      {
+		VPID vpid;
+
+		if ((rows++ & 1023) == 0 && interrupted ())
+		  {
+		    stop = true;
+		    break;
+		  }
+		vpid.volid = oid.volid;
+		vpid.pageid = oid.pageid;
+		if (!VPID_EQ (&vpid, &last_vpid))
+		  {
+		    /* the list is in OID order: a page's rows follow each other */
+		    heap_pages++;
+		    last_vpid = vpid;
+		  }
+		read_page (vpid, nullptr, oid.slotid);
+	      }
+	    if (!stop && scan == S_ERROR)
+	      {
+		raise ();
+	      }
+	  }
+	else if (error_code != NO_ERROR)
+	  {
+	    raise ();
+	  }
+
+	if (thread_ref.on_trace)
+	  {
+	    const scan_fixes now = read_fixes (thread_ref);
+	    TSC_TICKS heap_end_tick;
+	    TSCTIMEVAL tv_diff;
+
+	    tsc_getticks (&heap_end_tick);
+	    tsc_elapsed_time_usec (&tv_diff, heap_end_tick, heap_start_tick);
+	    TSC_ADD_TIMEVAL (m_scan_id->scan_stats.bitmap_heap_time, tv_diff);
+	    m_scan_id->scan_stats.bitmap_heap_fetches += now.fetches - since.fetches;
+	    m_scan_id->scan_stats.bitmap_heap_ioreads += now.ioreads - since.ioreads;
+	    m_scan_id->scan_stats.bitmap_heap_pages += heap_pages;
+	  }
       }
   }
 

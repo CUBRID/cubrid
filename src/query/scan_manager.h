@@ -624,6 +624,11 @@ struct scan_stats
   UINT64 data_qualified_rows;	/* # of rows qualified by data filter */
   struct timeval elapsed_lookup;
   bool covered_index;
+  int bitmap_heap;		/* 1: the heap was read through a bitmap of the rows the index found */
+  struct timeval bitmap_heap_time;	/* ... the heap step of that scan: the time of the worker that took longest */
+  UINT64 bitmap_heap_fetches;
+  UINT64 bitmap_heap_ioreads;
+  UINT64 bitmap_heap_pages;	/* recorded pages it read */
   bool multi_range_opt;
   bool index_skip_scan;
   bool loose_index_scan;
@@ -889,6 +894,7 @@ extern void scan_index_read_ahead (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp
 extern void scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * stats);
 extern void scan_print_stats_text (FILE * fp, SCAN_ID * scan_id);
 extern int scan_index_alloc_oid_buffer (INDX_SCAN_ID * isidp);
+extern void scan_print_bitmap_heap_stats_text (FILE * fp, SCAN_ID * scan_id);
 #endif /* SERVER_MODE */
 
 #endif /* _SCAN_MANAGER_H_ */

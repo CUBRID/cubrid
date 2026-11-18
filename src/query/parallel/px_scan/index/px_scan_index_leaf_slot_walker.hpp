@@ -34,6 +34,7 @@
 namespace parallel_scan
 {
   class input_handler_index;
+  struct bitmap_worker;
 }
 
 namespace parallel_index_scan
@@ -93,6 +94,20 @@ namespace parallel_index_scan
 
       /* Process a single OID (covering / non-covering paths). Used by FSM during drain. */
       SCAN_CODE process_oid (THREAD_ENTRY *thread_p, OID *oid);
+
+      /* bitmap heap scan, index step: while set, process_oid records the OID with the worker's marks instead of
+       * reading the heap */
+      void set_bitmap_worker (parallel_scan::bitmap_worker *worker)
+      {
+	m_bm_worker = worker;
+      }
+
+      /* bitmap heap scan, heap step: fix a recorded page before its rows are read; false: the page is gone */
+      int fix_bitmap_page (THREAD_ENTRY *thread_p, const VPID *vpid, bool *is_fixed);
+      /* ... a row recorded on that page: its heap lookup on the page held, without one more fix of it per row */
+      SCAN_CODE process_bitmap_row (THREAD_ENTRY *thread_p, OID *oid);
+      /* ... and let the page go: a scan that does not keep its last page fixed ends with none */
+      void release_bitmap_page (THREAD_ENTRY *thread_p);
 
       /* a key record starts (a new slot, or a helper session on another key's overflow chain): a group by skip scan
        * compares its group key only here (CBRD-27664), and the covered key is decoded again */
@@ -160,6 +175,11 @@ namespace parallel_index_scan
       slot_result stop_at_error (THREAD_ENTRY *thread_p, bool ahead);
       bool evaluate_ahead (THREAD_ENTRY *thread_p);
 
+      /* the heap row of a non-covering lookup, as the snapshot sees it, through finish_heap_row */
+      SCAN_CODE lookup_heap_row (THREAD_ENTRY *thread_p, OID *oid);
+      /* data filter and the rest of the columns of a heap row the snapshot sees; S_END: filtered out */
+      SCAN_CODE finish_heap_row (THREAD_ENTRY *thread_p, OID *oid, RECDES *heap_recdes);
+
       /* btree_key_process_objects callback (leaf-side gather). */
       static int collect_oid_callback (THREAD_ENTRY *thread_p, BTID_INT *btid_int, RECDES *record,
 				       char *object_ptr, OID *oid, OID *class_oid,
@@ -191,6 +211,8 @@ namespace parallel_index_scan
       bool m_ahead_end;                               /* evaluate_ahead found no more key to queue on m_page. */
       int m_ahead_skipped_keys;                       /* read_keys of the slots skipped before that stop. */
       bool m_ahead_interrupted;                       /* evaluate_ahead took the query's interrupt. */
+      parallel_scan::bitmap_worker *m_bm_worker;      /* bitmap heap scan, index step: OIDs are recorded here. */
+      int m_bm_sector_hint;                           /* sector of the last mark. */
   };
 }
 

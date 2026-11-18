@@ -1730,6 +1730,9 @@ namespace parallel_scan
 	}
       else if constexpr (ST == SCAN_TYPE::INDEX)
 	{
+	  m_input_handler->set_bitmap_heap_scan (m_xasl->curr_spec != nullptr
+						 && ACCESS_SPEC_IS_FLAGED (m_xasl->curr_spec,
+						     ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN), m_query_id);
 	  init_err = m_input_handler->init_on_main (m_thread_p, m_indx_info, m_scan_id, m_vd, m_parallelism);
 	}
       else

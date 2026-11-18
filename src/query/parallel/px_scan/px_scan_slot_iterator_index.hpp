@@ -29,9 +29,12 @@
 #include "scan_manager.h"
 #include "storage_common.h"
 
+#include <cstdint>
+
 namespace parallel_scan
 {
   class input_handler_index;
+  struct bitmap_worker;
 
   /* facade: composes leaf_slot_walker (slot loop) + overflow_drain_fsm (drain state machine). */
   class slot_iterator_index
@@ -68,6 +71,28 @@ namespace parallel_scan
 	m_slot_walker.set_input_handler (handler);
       }
 
+      /* bitmap heap scan: this worker's tables and files; from here on the walker records OIDs with them (index
+       * step) ... */
+      void begin_bitmap_index_step (bitmap_worker *worker)
+      {
+	m_bm_worker = worker;
+	m_slot_walker.set_bitmap_worker (worker);
+      }
+      /* ... the index step is over: the last leaf is let go before any heap page is read */
+      void end_bitmap_index_step (THREAD_ENTRY *thread_p)
+      {
+	m_drain_fsm.cleanup_on_reset (thread_p);
+	m_slot_walker.cleanup_on_reset (thread_p);
+	m_slot_walker.set_bitmap_worker (nullptr);
+      }
+      bitmap_worker *bitmap_worker_of () const
+      {
+	return m_bm_worker;
+      }
+      /* ... heap step: the recorded rows of one heap page become the rows next_qualified_slot_with_peek returns.
+       * words: the page's slot bits; nullptr: the one row at single_slot (an OID of the lists) */
+      int set_bitmap_page (THREAD_ENTRY *thread_p, const VPID *vpid, const std::uint64_t *words, int single_slot);
+
       /* Sole resetter of walker's m_current_range_idx — called by task wiring only when fetch returns range_idx >= 0 (descent branch). */
       void set_range_idx (int idx)
       {
@@ -75,9 +100,20 @@ namespace parallel_scan
       }
 
     private:
+      SCAN_CODE next_bitmap_row (THREAD_ENTRY *thread_p);
+
       input_handler_index *m_input_handler;
       parallel_index_scan::leaf_slot_walker      m_slot_walker;   /* (D) per-page slot loop + process_oid. */
       parallel_index_scan::overflow_drain_fsm    m_drain_fsm;     /* (E) drain state machine; pokes walker via friend. */
+
+      /* bitmap heap scan */
+      bitmap_worker *m_bm_worker;
+      bool m_bm_heap_step;	/* set_bitmap_page was called: the leaf walk is over */
+      bool m_bm_page_on;	/* the page being read is fixed */
+      int m_bm_next_slot;	/* its rows before this slot are looked up */
+      VPID m_bm_vpid;
+      const std::uint64_t *m_bm_words;
+      int m_bm_single;
   };
 }
 

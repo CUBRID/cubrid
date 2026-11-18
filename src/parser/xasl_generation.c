@@ -16451,6 +16451,11 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		    {
 		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 		    }
+		  if (access->access == ACCESS_METHOD_INDEX
+		      && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_BITMAP_HEAP_SCAN))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+		    }
 		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
 		    {
 		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
