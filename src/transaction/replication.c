@@ -528,6 +528,9 @@ repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const 
     {
       repl_oos_items_follow_row (tdes, tdes->cur_repl_record - 1);
     }
+#if !defined (NDEBUG)
+  repl_assert_oos_items_follow_row (tdes, tdes->cur_repl_record - 1, true);
+#endif
 
   if (class_name != NULL)
     {
@@ -751,6 +754,9 @@ repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo)
 	  free_and_init (recsp[i].repl_data);
 	}
       tdes->cur_repl_record = tdes->fl_mark_repl_recidx;
+#if !defined (NDEBUG)
+      repl_assert_oos_items_follow_row (tdes, tdes->cur_repl_record - 1, true);
+#endif
     }
   tdes->fl_mark_repl_recidx = -1;
 
@@ -794,6 +800,9 @@ repl_log_abort_after_lsa (LOG_TDES * tdes, LOG_LSA * start_lsa)
 	  repl_oos_items_follow_row (tdes, i);
 	}
     }
+#if !defined (NDEBUG)
+  repl_assert_oos_items_follow_row (tdes, 0, false);
+#endif
 
   return NO_ERROR;
 }
@@ -835,6 +844,50 @@ repl_oos_items_follow_row (LOG_TDES * tdes, int row_idx)
       repl_rec_arr[i].must_flush = repl_rec_arr[row_idx].must_flush;
     }
 }
+
+#if !defined (NDEBUG)
+/*
+ * repl_assert_oos_items_follow_row - assert that every OOS item is written or dropped with its row
+ *
+ * return: nothing
+ *
+ *   tdes(in):
+ *   from(in): index of the first record to check; the OOS items of the row at or after it are checked too
+ *   row_may_follow(in): whether the row of the last OOS items may still be logged
+ *
+ * NOTE: A run of OOS items is immediately followed by its row, an RVREPL_DATA_INSERT or RVREPL_DATA_UPDATE record,
+ *	 and every item has the row's "must_flush" (see repl_oos_items_follow_row ()). Only the last items can lack
+ *	 their row: while it is being logged, they are never written before commit; otherwise they must be dropped.
+ */
+void
+repl_assert_oos_items_follow_row (const LOG_TDES * tdes, int from, bool row_may_follow)
+{
+  const LOG_REPL_RECORD *repl_rec_arr = tdes->repl_records;
+  int row_idx = tdes->cur_repl_record;
+  int i;
+
+  for (i = tdes->cur_repl_record - 1; i >= 0 && (i >= from || repl_is_oos_item (repl_rec_arr[i].rcvindex)); i--)
+    {
+      if (!repl_is_oos_item (repl_rec_arr[i].rcvindex))
+	{
+	  row_idx = i;
+	}
+      else if (row_idx < tdes->cur_repl_record)
+	{
+	  assert (repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_INSERT
+		  || repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_UPDATE
+		  || repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_UPDATE_START
+		  || repl_rec_arr[row_idx].rcvindex == RVREPL_DATA_UPDATE_END);
+	  assert (repl_rec_arr[i].must_flush == repl_rec_arr[row_idx].must_flush);
+	}
+      else
+	{
+	  assert (row_may_follow ? repl_rec_arr[i].must_flush != LOG_REPL_NEED_FLUSH
+		  : repl_rec_arr[i].must_flush == LOG_REPL_DONT_NEED_FLUSH);
+	}
+    }
+}
+#endif /* !NDEBUG */
 
 #if defined(CUBRID_DEBUG)
 /*

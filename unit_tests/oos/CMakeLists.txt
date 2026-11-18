@@ -415,6 +415,7 @@ string(CONCAT oos_update_reuse_write_filter
   "OosUpdateReuse.FlushMarkWritesTheOosItemsWithTheirRow:"
   "OosUpdateReuse.InPlaceUpdateWritesNewChains:"
   "OosUpdateReuse.IncrementReusesTheOtherColumnsChains:"
+  "OosUpdateReuse.IncrementReusesTheOtherColumnsChainsUnderReplication:"
   "OosUpdateReuseSetupRow.*"
 )
 add_test(NAME test_oos_update_reuse_write COMMAND test_oos_update_reuse_server
@@ -430,6 +431,7 @@ add_test(NAME test_oos_update_reuse_reclaim COMMAND test_oos_update_reuse_server
   "--gtest_filter=${oos_update_reuse_reclaim_filter}")
 string(CONCAT oos_update_reuse_rollback_filter
   "OosUpdateReuse.PartialRollbackCancelsOnlyTheLaterDrop:"
+  "OosUpdateReuse.PartialRollbackCancelsOnlyTheLaterDropUnderReplication:"
   "OosUpdateReuse.SavepointRollbackDropsTheMarkersWithTheirRow:"
   "OosUpdateReuse.TransactionRollbackKeepsTheChains"
 )

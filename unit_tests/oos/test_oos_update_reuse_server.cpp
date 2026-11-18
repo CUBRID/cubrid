@@ -493,6 +493,92 @@ class OosUpdateReuse : public ::testing::Test
       seen.error = er_errid ();
       LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
     }
+
+    /* The body of PartialRollbackCancelsOnlyTheLaterDrop, run on table. */
+    void partial_rollback_cancels_only_the_later_drop (const char *table)
+    {
+      open_table (table);
+      OID oid = insert_row (1);
+      commit_current_tran ();
+      const std::string original = latest_record (oid);
+      const oos_column old_c1 = oos_column_of (original, attr_c1);
+      const oos_column old_c2 = oos_column_of (original, attr_c2);
+
+      ASSERT_EQ (update_row (oid, nullptr, &NEW_C1_VALUE, nullptr), NO_ERROR);
+      const std::string before_savepoint = latest_record (oid);
+      LOG_LSA savepoint_lsa;
+      ASSERT_EQ (xtran_server_savepoint (thread_p, "reuse_sp", &savepoint_lsa), NO_ERROR);
+      const int k = 5;
+      ASSERT_EQ (update_row (oid, &k, nullptr, nullptr), NO_ERROR);
+      ASSERT_EQ (update_row (oid, nullptr, nullptr, &NEW_C2_VALUE), NO_ERROR);
+      const oos_column rolled_back_c2 = oos_column_of (latest_record (oid), attr_c2);
+      ASSERT_EQ (xtran_server_partial_abort (thread_p, "reuse_sp", &savepoint_lsa), TRAN_UNACTIVE_ABORTED);
+      const VACUUM_LOG_BLOCKID commit_block = current_log_blockid ();
+      commit_current_tran ();
+
+      const std::string latest = latest_record (oid);
+      EXPECT_EQ (latest, before_savepoint) << "the rollback did not restore the version before the savepoint";
+      EXPECT_FALSE (chain_live (rolled_back_c2)) << "the rolled-back insert left its chain";
+
+      close_log_block (commit_block);
+      ASSERT_TRUE (wait_for_vacuum ([&] { return !chain_live (old_c1); }, 50))
+	  << "the drop before the savepoint was not reclaimed";
+      EXPECT_TRUE (chain_live (old_c2)) << "the drop after the savepoint survived its rollback";
+      EXPECT_EQ (value_of (oid, latest, attr_k), "0");
+      EXPECT_EQ (value_of (oid, latest, attr_c1), NEW_C1_VALUE);
+      EXPECT_EQ (value_of (oid, latest, attr_c2), C2_VALUE);
+    }
+
+    /* The body of IncrementReusesTheOtherColumnsChains, run on table; as_select_incr runs the increment as
+     * SELECT ... INCR does. */
+    void increment_reuses_the_other_columns_chains (const char *table, bool as_select_incr)
+    {
+      open_table (table);
+      OID oid = insert_row (1);
+      commit_current_tran ();
+      const std::string before = latest_record (oid);
+
+      lock_class ();
+      ASSERT_EQ (heap_attrinfo_clear_dbvalues (&attr_info), NO_ERROR);
+      HEAP_ATTRVALUE *k_value = heap_attrvalue_locate (attr_k, &attr_info);
+      ASSERT_NE (k_value, nullptr);
+      k_value->do_increment = 1;
+      scope_exit reset_increment ([&] () noexcept
+      {
+	k_value->do_increment = 0;
+      });
+      ATTR_ID incremented = attr_k;
+      if (!as_select_incr)
+	{
+	  ASSERT_EQ (force (oid, LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &incremented, 1), NO_ERROR);
+	}
+      else
+	{
+	  /* as qexec_execute_selupd_list does: a system operation with its own MVCCID, under a flush mark */
+	  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+	  log_sysop_start (thread_p);
+	  repl_start_flush_mark (thread_p);
+	  logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
+	  const int error = force (oid, LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &incremented, 1);
+	  repl_end_flush_mark (thread_p, error != NO_ERROR);
+	  if (error == NO_ERROR)
+	    {
+	      log_sysop_commit (thread_p);
+	    }
+	  else
+	    {
+	      log_sysop_abort (thread_p);
+	    }
+	  logtb_complete_sub_mvcc (thread_p, tdes);
+	  ASSERT_EQ (error, NO_ERROR);
+	}
+      commit_current_tran ();
+
+      const std::string after = latest_record (oid);
+      EXPECT_EQ (value_of (oid, after, attr_k), "1");
+      EXPECT_EQ (oos_column_of (after, attr_c1).stub, oos_column_of (before, attr_c1).stub);
+      EXPECT_EQ (oos_column_of (after, attr_c2).stub, oos_column_of (before, attr_c2).stub);
+    }
 };
 
 /* An UPDATE that assigns only an inline column keeps every OOS stub byte for byte, inserts no chain, and the
@@ -636,36 +722,17 @@ TEST_F (OosUpdateReuse, SnapshotOfTheReusingVersionHoldsTheReclaim)
  * UPDATE after the savepoint and keeps the one appended before it. */
 TEST_F (OosUpdateReuse, PartialRollbackCancelsOnlyTheLaterDrop)
 {
-  open_table ("dba.t_reuse_savepoint");
-  OID oid = insert_row (1);
-  commit_current_tran ();
-  const std::string original = latest_record (oid);
-  const oos_column old_c1 = oos_column_of (original, attr_c1);
-  const oos_column old_c2 = oos_column_of (original, attr_c2);
+  partial_rollback_cancels_only_the_later_drop ("dba.t_reuse_savepoint");
+}
 
-  ASSERT_EQ (update_row (oid, nullptr, &NEW_C1_VALUE, nullptr), NO_ERROR);
-  const std::string before_savepoint = latest_record (oid);
-  LOG_LSA savepoint_lsa;
-  ASSERT_EQ (xtran_server_savepoint (thread_p, "reuse_sp", &savepoint_lsa), NO_ERROR);
-  const int k = 5;
-  ASSERT_EQ (update_row (oid, &k, nullptr, nullptr), NO_ERROR);
-  ASSERT_EQ (update_row (oid, nullptr, nullptr, &NEW_C2_VALUE), NO_ERROR);
-  const oos_column rolled_back_c2 = oos_column_of (latest_record (oid), attr_c2);
-  ASSERT_EQ (xtran_server_partial_abort (thread_p, "reuse_sp", &savepoint_lsa), TRAN_UNACTIVE_ABORTED);
-  const VACUUM_LOG_BLOCKID commit_block = current_log_blockid ();
-  commit_current_tran ();
-
-  const std::string latest = latest_record (oid);
-  EXPECT_EQ (latest, before_savepoint) << "the rollback did not restore the version before the savepoint";
-  EXPECT_FALSE (chain_live (rolled_back_c2)) << "the rolled-back insert left its chain";
-
-  close_log_block (commit_block);
-  ASSERT_TRUE (wait_for_vacuum ([&] { return !chain_live (old_c1); }, 50))
-      << "the drop before the savepoint was not reclaimed";
-  EXPECT_TRUE (chain_live (old_c2)) << "the drop after the savepoint survived its rollback";
-  EXPECT_EQ (value_of (oid, latest, attr_k), "0");
-  EXPECT_EQ (value_of (oid, latest, attr_c1), NEW_C1_VALUE);
-  EXPECT_EQ (value_of (oid, latest, attr_c2), C2_VALUE);
+/* The same rollback with replication on, where a debug build checks that each OOS item is written or dropped with its
+ * row (repl_assert_oos_items_follow_row). */
+TEST_F (OosUpdateReuse, PartialRollbackCancelsOnlyTheLaterDropUnderReplication)
+{
+  replication_tracking_guard tracking;
+  ASSERT_EQ (tracking.error (), NO_ERROR);
+  ASSERT_TRUE (log_does_allow_replication ());
+  partial_rollback_cancels_only_the_later_drop ("dba.t_reuse_savepoint_repl");
 }
 
 /* A transaction rollback restores the row with the chains its versions shared and publishes nothing. */
@@ -940,28 +1007,17 @@ TEST_F (OosUpdateReuse, OldSnapshotReadsTheReusedChainAfterTheRowIsDeleted)
 /* An increment recomputes only its own column; the OOS columns the statement does not assign keep their chains. */
 TEST_F (OosUpdateReuse, IncrementReusesTheOtherColumnsChains)
 {
-  open_table ("dba.t_reuse_incr");
-  OID oid = insert_row (1);
-  commit_current_tran ();
-  const std::string before = latest_record (oid);
+  increment_reuses_the_other_columns_chains ("dba.t_reuse_incr", false);
+}
 
-  lock_class ();
-  ASSERT_EQ (heap_attrinfo_clear_dbvalues (&attr_info), NO_ERROR);
-  HEAP_ATTRVALUE *k_value = heap_attrvalue_locate (attr_k, &attr_info);
-  ASSERT_NE (k_value, nullptr);
-  k_value->do_increment = 1;
-  scope_exit reset_increment ([&] () noexcept
-  {
-    k_value->do_increment = 0;
-  });
-  ATTR_ID incremented = attr_k;
-  ASSERT_EQ (force (oid, LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &incremented, 1), NO_ERROR);
-  commit_current_tran ();
-
-  const std::string after = latest_record (oid);
-  EXPECT_EQ (value_of (oid, after, attr_k), "1");
-  EXPECT_EQ (oos_column_of (after, attr_c1).stub, oos_column_of (before, attr_c1).stub);
-  EXPECT_EQ (oos_column_of (after, attr_c2).stub, oos_column_of (before, attr_c2).stub);
+/* The same increment run as SELECT ... INCR runs it, with replication on, where a debug build checks that each OOS
+ * item is written or dropped with its row under the flush mark (repl_assert_oos_items_follow_row). */
+TEST_F (OosUpdateReuse, IncrementReusesTheOtherColumnsChainsUnderReplication)
+{
+  replication_tracking_guard tracking;
+  ASSERT_EQ (tracking.error (), NO_ERROR);
+  ASSERT_TRUE (log_does_allow_replication ());
+  increment_reuses_the_other_columns_chains ("dba.t_reuse_incr_repl", true);
 }
 
 class OosUpdateReuseSetupRow : public OosUpdateReuse

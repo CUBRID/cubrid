@@ -4740,6 +4740,10 @@ log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is
     {
       tdes->append_repl_recidx = 0;
     }
+#if !defined (NDEBUG)
+  /* no OOS item is written apart from its row */
+  repl_assert_oos_items_follow_row (tdes, tdes->append_repl_recidx, false);
+#endif
 
   /* there is any replication info */
   while (tdes->append_repl_recidx < tdes->cur_repl_record)
