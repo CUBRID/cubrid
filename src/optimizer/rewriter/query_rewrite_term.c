@@ -705,6 +705,60 @@ qo_bind_copy_domain (PARSER_CONTEXT * parser, PT_NODE * column, PT_NODE * hv)
 }
 
 /*
+ * qo_find_column_pre () - whether a tree reads a column
+ */
+static PT_NODE *
+qo_find_column_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_NAME && node->info.name.meta_class != PT_PARAMETER)
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  else if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+    }
+  return node;
+}
+
+/*
+ * qo_unmark_constant_function_index () - clear the function index mark of an expression the equality substitution
+ *					   left without a column
+ *
+ * Note: nvl (x.b, -1) under an index on nvl (b, -1) is marked as the index expression (PT_EXPR_INFO_FUNCTION_INDEX),
+ *	 and the planner looks up the node of its column by the mark (qo_index_cardinality ()).  Once x.b = ?:1 puts
+ *	 the host variable in place of x.b, nvl (?:1, -1) reads no column, and the lookup gave up the plan: the
+ *	 statement then ran with the predicate the optimizer had begun to take apart.
+ */
+static PT_NODE *
+qo_unmark_constant_function_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *save_next;
+  bool found = false;
+
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+  if (node->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_FUNCTION_INDEX))
+    {
+      save_next = node->next;
+      node->next = NULL;
+      (void) parser_walk_tree (parser, node, qo_find_column_pre, &found, NULL, NULL);
+      node->next = save_next;
+      if (!found)
+	{
+	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_FUNCTION_INDEX);
+	}
+    }
+  return node;
+}
+
+/*
  * qo_reduce_equality_terms () -
  *   return:
  *   parser(in):
@@ -1217,6 +1271,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 	}
       *wherep = pt_lambda_with_arg (parser, *wherep, arg1, arg2, (temp->info.name.location > 0 ? true : false), 1,
 				    false /* dont_replace: DEFAULT */ );
+      (void) parser_walk_tree (parser, *wherep, qo_unmark_constant_function_index, NULL, NULL, NULL);
 
       /* Leave "wherep" pointing at the begining of the rest of the predicate. We still gurantee loop termination
        * because we have removed a term. future iterations which do not fall into this case will advance to the next
