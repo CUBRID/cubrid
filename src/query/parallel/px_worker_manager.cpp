@@ -27,6 +27,7 @@
 #include "px_worker_manager.hpp"
 #include "px_worker_manager_global.hpp"
 
+#include "lock_manager.h"
 #include "memory_alloc.h"
 #include "thread_manager.hpp"
 
@@ -37,7 +38,8 @@ namespace parallel_query
 {
   worker_manager::worker_manager()
     : m_active_tasks (0),
-      m_reserved_workers (0)
+      m_reserved_workers (0),
+      m_owner (nullptr)
   {
   }
 
@@ -71,6 +73,8 @@ namespace parallel_query
     assert (manager->m_reserved_workers == 0);
     manager->m_reserved_workers = reserved;
     assert (manager->m_active_tasks.load () == 0);
+
+    manager->m_owner = thread_p;
 
     return manager;
   }
@@ -110,5 +114,13 @@ namespace parallel_query
     assert (m_active_tasks.load () < m_reserved_workers);
     m_active_tasks.fetch_add (1, std::memory_order_release);
     worker_manager_global::get_manager().push_task (task);
+  }
+
+  /* every task's retire () calls this */
+  void worker_manager::pop_task ()
+  {
+    /* before the count drops: then the owner may end its request, and the deferred wake goes out with it */
+    lock_deferred_wake_hand_over (thread_get_thread_entry_info (), m_owner);
+    m_active_tasks.fetch_sub (1, std::memory_order_release);
   }
 }
