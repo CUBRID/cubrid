@@ -4863,6 +4863,10 @@ file_table_move_partial_sectors_to_header (THREAD_ENTRY * thread_p, PAGE_PTR pag
 
 	  log_append_undoredo_data2 (thread_p, RVFL_FHEAD_CONVERT_FTAB_TO_USER, NULL, page_fhead, NULL_OFFSET, 0, 0,
 				     NULL, NULL);
+
+	  /* arm the faults that file_alloc injects into this allocation */
+	  FI_SET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL, 1);
+	  FI_SET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD, 1);
 	}
     }
 
@@ -5469,6 +5473,28 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
 	  goto exit;
 	}
 
+      /* the new page is written over the reused table page: a test stops or fails the allocation here */
+#if !defined (NDEBUG)
+      if (fi_state (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD) == 1)
+	{
+	  int hold_seconds = 120;
+
+	  /* the test kills the server in the hold, and the restart must find the allocation in the log */
+	  logpb_force_flush_pages (thread_p);
+	  er_log_debug (ARG_FILE_LINE, "file_alloc: hold the allocation of page %d|%d, which reused the first "
+			"partial table page\n", VPID_AS_ARGS (vpid_out));
+	  (void) FI_TEST_ARG (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD, &hold_seconds, 1);
+	}
+#endif /* !NDEBUG */
+      if (FI_TEST (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL, 1) != NO_ERROR)
+	{
+	  /* the fault only logs a notification, so set the error that a failed init leaves */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	  pgbuf_unfix (thread_p, page_alloc);
+	  goto exit;
+	}
+
       assert (pgbuf_get_page_ptype (thread_p, page_alloc) != PAGE_UNKNOWN);
 
       if (page_out != NULL)
@@ -5498,6 +5524,10 @@ file_alloc (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_in
   assert (error_code == NO_ERROR);
 
 exit:
+  /* the faults act on the allocation that armed them only */
+  FI_RESET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_FAIL);
+  FI_RESET (thread_p, FI_TEST_FILE_MANAGER_REUSED_FTAB_PAGE_HOLD);
+
   if (is_sysop_started)
     {
       if (error_code != NO_ERROR)
