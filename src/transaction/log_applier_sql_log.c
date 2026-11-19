@@ -72,7 +72,7 @@ static char sql_catalog_path[PATH_MAX];
 static int sl_write_sql (string_buffer & query, string_buffer * select);
 static void sl_print_insert_att_names (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 static void sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
-static int sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key);
+static int sl_print_repl_key (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key);
 static void sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey);
 static void sl_print_update_att_set (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignments, int num_assignments);
 static void sl_print_att_value (string_buffer & strbuf, const char *att_name, OBJ_TEMPASSIGN ** assignments,
@@ -102,7 +102,7 @@ sl_print_select (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
   strbuf ("SELECT * FROM [%s] WHERE ", sm_ch_name ((MOBJ) sm_class));
 
-  if (sl_print_pk (strbuf, sm_class, key) != NO_ERROR)
+  if (sl_print_repl_key (strbuf, sm_class, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -218,13 +218,13 @@ sl_init (const char *db_name, const char *repl_log_path)
 }
 
 static int
-sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
+sl_print_repl_key (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
 {
   DB_MIDXKEY *midxkey;
-  SM_ATTRIBUTE *pk_att;
-  SM_CLASS_CONSTRAINT *pk_cons = classobj_find_class_primary_key (sm_class);
+  SM_ATTRIBUTE *key_att;
+  SM_CLASS_CONSTRAINT *key_cons = classobj_find_cons_replication_key (sm_class->constraints);
 
-  if (pk_cons == NULL || pk_cons->attributes == NULL || pk_cons->attributes[0] == NULL)
+  if (key_cons == NULL || key_cons->attributes == NULL || key_cons->attributes[0] == NULL)
     {
       return ER_FAILED;
     }
@@ -232,12 +232,12 @@ sl_print_pk (string_buffer & strbuf, SM_CLASS * sm_class, DB_VALUE * key)
   if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
     {
       midxkey = db_get_midxkey (key);
-      sl_print_midxkey (strbuf, pk_cons->attributes, midxkey);
+      sl_print_midxkey (strbuf, key_cons->attributes, midxkey);
     }
   else
     {
-      pk_att = pk_cons->attributes[0];
-      strbuf ("\"%s\"=", pk_att->header.name);
+      key_att = key_cons->attributes[0];
+      strbuf ("\"%s\"=", key_att->header.name);
       db_value_printer printer (strbuf);
       printer.describe_value (key);
     }
@@ -278,6 +278,9 @@ sl_print_insert_att_values (string_buffer & strbuf, OBJ_TEMPASSIGN ** assignment
 /*
  * sl_print_sql_midxkey - print midxkey in the following format.
  *    key1=value1 AND key2=value2 AND ...
+ *
+ * Note: a NULL key value is printed as "key IS NULL", since "key=NULL" matches no row. An RK of a UNIQUE index needs
+ *       only one NOT NULL key column, so its other key columns can be NULL.
  */
 static void
 sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_MIDXKEY * midxkey)
@@ -294,6 +297,12 @@ sl_print_midxkey (string_buffer & strbuf, SM_ATTRIBUTE ** attributes, const DB_M
 	}
 
       pr_midxkey_get_element_nocopy (midxkey, i, &value, &prev_i_index, &prev_i_ptr);
+      if (DB_IS_NULL (&value))
+	{
+	  strbuf ("\"%s\" IS NULL", attributes[i]->header.name);
+	  continue;
+	}
+
       strbuf ("\"%s\"=", attributes[i]->header.name);
       db_value_printer printer (strbuf);
 
@@ -382,7 +391,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
       update_strbuf ("UPDATE [%s] SET ", sm_ch_name ((MOBJ) (inst_tp->class_)));
       sl_print_update_att_set (update_strbuf, inst_tp->assignments, inst_tp->nassigns);
       update_strbuf (" WHERE ");
-      if (sl_print_pk (update_strbuf, inst_tp->class_, key) != NO_ERROR)
+      if (sl_print_repl_key (update_strbuf, inst_tp->class_, key) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -438,7 +447,7 @@ sl_write_delete_sql (char *class_name, MOBJ mclass, DB_VALUE * key)
   string_buffer delete_strbuf;
 
   delete_strbuf ("DELETE FROM [%s] WHERE ", class_name);
-  if (sl_print_pk (delete_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
+  if (sl_print_repl_key (delete_strbuf, (SM_CLASS *) mclass, key) != NO_ERROR)
     {
       return ER_FAILED;
     }
