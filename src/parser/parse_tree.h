@@ -2792,7 +2792,7 @@ struct pt_name_info
   DB_OBJECT *db_object;		/* the object, if this is a class or instance */
   int db_object_chn;
   DB_OBJECT *virt_object;	/* the top level view this this class is being viewed through. */
-  int virt_object_chn;
+  int virt_object_chn;		/* CHN of virt_object, recorded at compile to detect a later change of the view */
   SM_PARTITION *partition;	/* partition info reference */
   PT_NODE *path_correlation;	/* as in a.b.c [path_correlation].d.e.f */
   PT_TYPE_ENUM virt_type_enum;	/* type of oid's in ldb for proxies. */
