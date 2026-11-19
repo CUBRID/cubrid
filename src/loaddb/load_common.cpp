@@ -61,6 +61,11 @@ namespace cubload
 		    int64_t line_offset, int64_t &rows);
 
   /*
+   * Report a failure of split () with the message the scanner gives it in SA mode, led by the line
+   */
+  static void report_split_error (MSGCAT_LOADDB_MSG msg_id, int lineno, ...);
+
+  /*
    * Check if a given string starts with a given prefix, ignoring the case of ASCII letters
    */
   bool starts_with_ignore_case (const std::string &str, const char *prefix);
@@ -777,8 +782,9 @@ namespace cubload
 
   /*
    * gathering_binary_record () - read one record of a binary section into one_row_buffer
-   *   return: NO_ERROR, ER_LDR_CORRUPTED_BINARY_RECORD when the section is malformed, or ER_FAILED when
-   *           the record is too large to be sent to the server
+   *   return: NO_ERROR, or ER_FAILED when the section is truncated or a block header is damaged, or the record is too
+   *           large to be sent to the server, which are reported here; ER_LDR_CORRUPTED_BINARY_RECORD when the end of
+   *           records marker is not followed by its new line
    *   object_file(in/out): object file positioned on a record size field
    *   file_end(in): size of the object file, or -1 when it is unknown
    *   lineno(in): line the record is counted as, from 1, for the message of a record too large
@@ -800,6 +806,9 @@ namespace cubload
    *       The size field is checked against the bytes left in the file before one_row_buffer is sized after it, as
    *       binary_input_has () in load_lexer.l does in SA mode, so that the size field of a truncated or damaged file is
    *       reported as such and does not make loaddb allocate up to LOADDB_BUFFER_SIZE_LIMIT first.
+   *
+   *       A truncated section and a block header the scanner refuses are reported with the messages and the line the
+   *       scanner gives them in SA mode, see the BINARY_BLOCK rules and read_binary_block () in load_lexer.l.
    */
   static int
   gathering_binary_record (std::ifstream &object_file, std::streampos file_end, int lineno, bool class_is_ignored,
@@ -818,8 +827,9 @@ namespace cubload
     object_file.read ((char *)&binary_length, sizeof (binary_length));
     if (object_file.gcount() != sizeof (binary_length))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
-	return ER_LDR_CORRUPTED_BINARY_RECORD;
+	/* the end of records marker is missing, or a size field is cut */
+	report_split_error (LOADDB_MSG_TRUNCATED_BINARY_SECTION, lineno);
+	return ER_FAILED;
       }
 
     if (binary_length == BIN_END_OF_RECORDS)
@@ -837,10 +847,16 @@ namespace cubload
     else if (compressed)
       {
 	object_file.read ((char *) block_header, sizeof (block_header));
-	if (object_file.gcount() != sizeof (block_header) || block_header[1] == 0)
+	if (object_file.gcount() != sizeof (block_header))
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
-	    return ER_LDR_CORRUPTED_BINARY_RECORD;
+	    report_split_error (LOADDB_MSG_TRUNCATED_BINARY_SECTION, lineno);
+	    return ER_FAILED;
+	  }
+	if (block_header[1] == 0)
+	  {
+	    /* a block is never empty */
+	    report_split_error (LOADDB_MSG_CORRUPTED_BINARY_BLOCK, lineno);
+	    return ER_FAILED;
 	  }
 
 	rows = block_header[1];
@@ -882,8 +898,8 @@ namespace cubload
 
 	if (pos == std::streampos (-1) || pos > file_end || (std::streamoff) binary_length > file_end - pos)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
-	    return ER_LDR_CORRUPTED_BINARY_RECORD;
+	    report_split_error (LOADDB_MSG_TRUNCATED_BINARY_SECTION, lineno);
+	    return ER_FAILED;
 	  }
       }
 
@@ -911,8 +927,8 @@ namespace cubload
 	object_file.read (&one_row_buffer[header_size], binary_length);
 	if (object_file.gcount() != binary_length)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_CORRUPTED_BINARY_RECORD, 1, (long long) record_offset);
-	    return ER_LDR_CORRUPTED_BINARY_RECORD;
+	    report_split_error (LOADDB_MSG_TRUNCATED_BINARY_SECTION, lineno);
+	    return ER_FAILED;
 	  }
       }
 
@@ -981,16 +997,16 @@ namespace cubload
   }
 
   /*
-   * report_format_command_error () - report a %format command line which split () cannot go on with
+   * report_split_error () - report a %format command line, or a binary section, which split () cannot go on with
    *   return: void
    *   msg_id(in): message of the failure
-   *   lineno(in): line of the command line, from 1
+   *   lineno(in): line of the command line, or the line the record that failed is counted as, from 1
    *   ...(in): arguments of the message
    *
    * Note: the message is led by the line, as the scanner reports it in SA mode.
    */
   static void
-  report_format_command_error (MSGCAT_LOADDB_MSG msg_id, int lineno, ...)
+  report_split_error (MSGCAT_LOADDB_MSG msg_id, int lineno, ...)
   {
     const char *line_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_LINE);
     const char *msg_format = msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, msg_id);
@@ -1183,7 +1199,7 @@ namespace cubload
 		     */
 		    if (!read_format_command (line, args, rest_is_blank))
 		      {
-			report_format_command_error (LOADDB_MSG_INVALID_FORMAT_COMMAND, lineno + 1);
+			report_split_error (LOADDB_MSG_INVALID_FORMAT_COMMAND, lineno + 1);
 			object_file.close ();
 			return ER_FAILED;
 		      }
@@ -1203,7 +1219,7 @@ namespace cubload
 			if ((args[1] != BIN_FORMAT_VERSION && args[1] != BIN_FORMAT_VERSION_PRE_11_5)
 			    || args[2] != binary_format_bit_platform () || args[3] != binary_format_endian ())
 			  {
-			    report_format_command_error (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, lineno + 1, args[1],
+			    report_split_error (LOADDB_MSG_INCOMPATIBLE_BINARY_FORMAT, lineno + 1, args[1],
 							 args[2], args[3], BIN_FORMAT_VERSION_PRE_11_5,
 							 BIN_FORMAT_VERSION, binary_format_bit_platform (),
 							 binary_format_endian ());
@@ -1213,14 +1229,14 @@ namespace cubload
 
 			if (data_format != OBJECT_FORMAT_BINARY && data_format != OBJECT_FORMAT_BINARY_COMPRESSED)
 			  {
-			    report_format_command_error (LOADDB_MSG_UNSUPPORTED_DATA_FORMAT, lineno + 1, data_format);
+			    report_split_error (LOADDB_MSG_UNSUPPORTED_DATA_FORMAT, lineno + 1, data_format);
 			    object_file.close ();
 			    return ER_FAILED;
 			  }
 
 			if (!rest_is_blank)
 			  {
-			    report_format_command_error (LOADDB_MSG_INVALID_FORMAT_COMMAND, lineno + 1);
+			    report_split_error (LOADDB_MSG_INVALID_FORMAT_COMMAND, lineno + 1);
 			    object_file.close ();
 			    return ER_FAILED;
 			  }
