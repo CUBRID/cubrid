@@ -732,6 +732,8 @@ static INT64 lock_monotonic_msecs (void);
 static int lock_find_self_lock_owner (THREAD_ENTRY * thread_p, MVCCID mvccid);
 static int lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs,
 				   INT64 * waited_msecs);
+static void lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs,
+				     INT64 waited_msecs, INT64 start_msecs);
 static int lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
 				int *owner_tran_index);
 static bool lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid, UINT64 epoch);
@@ -7617,6 +7619,22 @@ lock_recheck_wait_left (const THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, 
     }
   return (*waited_msecs > 0) ? (int) MAX (wait_msecs - *waited_msecs, 0) : wait_msecs;
 }
+
+/*
+ * lock_recheck_add_waited - a wait on mvccid's owner since start_msecs is over: with waited_msecs before it, that is
+ *			     how long this request has waited on the owner, for lock_recheck_wait_left ()
+ */
+static void
+lock_recheck_add_waited (THREAD_ENTRY * thread_p, MVCCID mvccid, int trid, int wait_msecs, INT64 waited_msecs,
+			 INT64 start_msecs)
+{
+  lk_thread_deferred_wake::recheck_record & rec = thread_p->deferred_wake.request.recheck;
+
+  rec.mvccid = mvccid;
+  rec.trid = trid;
+  rec.wait_msecs = wait_msecs;
+  rec.waited_msecs = waited_msecs + lock_monotonic_msecs () - start_msecs;
+}
 #endif /* SERVER_MODE */
 
 /*
@@ -7643,7 +7661,7 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wak
   const OID *held_row = (held != NULL) ? held->oid : NULL;
   UINT64 packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
   INT64 start_msecs, waited_msecs;
-  int trid, wait_msecs, wait_left, granted, hand;
+  int trid, wait_msecs, wait_left, granted, decision, hand;
   int owner_tran_index = NULL_TRAN_INDEX;
 
   if (thread_p == NULL)
@@ -7654,7 +7672,7 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wak
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
   wait_msecs = logtb_find_current_wait_msecs (thread_p);
-  while (true)
+  do
     {
       wait_left = lock_recheck_wait_left (thread_p, mvccid, trid, wait_msecs, &waited_msecs);
       thread_p->deferred_wake.request.recheck.mvccid = MVCCID_NULL;
@@ -7668,16 +7686,11 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wak
 	{
 	  return granted;
 	}
+      lock_recheck_add_waited (thread_p, mvccid, trid, wait_msecs, waited_msecs, start_msecs);
 
-      thread_p->deferred_wake.request.recheck.mvccid = mvccid;
-      thread_p->deferred_wake.request.recheck.trid = trid;
-      thread_p->deferred_wake.request.recheck.wait_msecs = wait_msecs;
-      thread_p->deferred_wake.request.recheck.waited_msecs = waited_msecs + lock_monotonic_msecs () - start_msecs;
-      switch (lock_recheck_decide (thread_p, mvccid, held_row, &wake_gen, &owner_tran_index))
+      decision = lock_recheck_decide (thread_p, mvccid, held_row, &wake_gen, &owner_tran_index);
+      if (decision == LK_RECHECK_HAND)
 	{
-	case LK_RECHECK_REWAIT:
-	  continue;
-	case LK_RECHECK_HAND:
 	  hand =
 	    lock_hand_row_to_owner (thread_p, held->oid, held->class_oid, owner_tran_index, mvccid, held->transient);
 	  if (hand == LK_HANDED_LOST)
@@ -7686,16 +7699,13 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wak
 	      return LK_NOTGRANTED_DUE_ERROR;
 	    }
 	  /* the owner no longer asks for the row: wait again while its wake is deferred */
-	  if (hand == LK_NOT_HANDED_STALE
-	      && lock_recheck_decide (thread_p, mvccid, NULL, &wake_gen, &owner_tran_index) == LK_RECHECK_REWAIT)
-	    {
-	      continue;
-	    }
-	  return LK_NOTGRANTED_DUE_RECHECK;
-	default:
-	  return LK_NOTGRANTED_DUE_RECHECK;
+	  decision = (hand == LK_NOT_HANDED_STALE)
+	    ? lock_recheck_decide (thread_p, mvccid, NULL, &wake_gen, &owner_tran_index) : LK_RECHECK_READ;
 	}
     }
+  while (decision == LK_RECHECK_REWAIT);
+
+  return LK_NOTGRANTED_DUE_RECHECK;
 #endif /* !SERVER_MODE */
 }
 
@@ -8063,7 +8073,7 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   LK_ENTRY *class_entry;
   LOCK mode;
   bool stale;
-  int wait_msecs, ret;
+  int wait_msecs, wait_left, ret;
   INT64 waited_msecs, start_msecs;
 
   assert (thread_p->deferred_wake.prequeued == NULL);
@@ -8129,9 +8139,9 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   res_ptr->waiter = entry_ptr;
   lock_recompute_total_waiters_mode (res_ptr);
 
-  wait_msecs = lock_recheck_wait_left (thread_p, owner_mvccid, trid, logtb_find_current_wait_msecs (thread_p),
-				       &waited_msecs);
-  if (wait_msecs == 0)
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
+  wait_left = lock_recheck_wait_left (thread_p, owner_mvccid, trid, wait_msecs, &waited_msecs);
+  if (wait_left == 0)
     {
       /* no time left: time out at once, as a zero wait does */
       pthread_mutex_unlock (&res_ptr->res_mutex);
@@ -8143,13 +8153,9 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   start_msecs = lock_monotonic_msecs ();
   thread_lock_entry (thread_p);
   pthread_mutex_unlock (&res_ptr->res_mutex);
-  ret = lock_suspend (thread_p, entry_ptr, wait_msecs);
-  if (thread_p->deferred_wake.request.recheck.mvccid == owner_mvccid
-      && thread_p->deferred_wake.request.recheck.trid == trid)
-    {
-      /* the wait counts toward the timeout of the next wait on the owner */
-      thread_p->deferred_wake.request.recheck.waited_msecs += lock_monotonic_msecs () - start_msecs;
-    }
+  ret = lock_suspend (thread_p, entry_ptr, wait_left);
+  /* the wait counts toward the timeout of the next wait on the owner */
+  lock_recheck_add_waited (thread_p, owner_mvccid, trid, wait_msecs, waited_msecs, start_msecs);
 
   if (ret == LOCK_RESUMED)
     {
