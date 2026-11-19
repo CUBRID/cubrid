@@ -22711,6 +22711,7 @@ pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
       spec = pt_find_entity (parser, select_node->info.query.q.select.from, specs[i].spec_id);
       if (spec == NULL)
 	{
+	  PT_INTERNAL_ERROR (parser, "generate xasl");
 	  return false;
 	}
 
@@ -22768,37 +22769,20 @@ pt_plan_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node)
 {
   SEMI_ANTI_SPEC specs[SEMI_ANTI_MAX_SPECS];
   SEMI_ANTI_SPEC *cur;
-  PT_NODE *prev_spec, *spec, *expr, *subq, *query, *with;
+  PT_NODE *prev_spec, *spec, *subq, *query, *with;
   TABLE_INFO *table_info;
   QO_PLAN *plan;
   double cost, best_cost = 0.0;
   int n_specs = 0, n_plans = 1, plan_id, best_plan_id = -1;
-  bool can_distinct_inner, is_merge_hinted;
+  bool has_summary, can_distinct_inner, is_merge_hinted;
 
   for (prev_spec = NULL, spec = select_node->info.query.q.select.from; spec != NULL && !pt_has_error (parser);
        prev_spec = spec, spec = spec->next)
     {
       /* the plan of a copy reads the rows of a derived table unnested from a subquery from its summary
-       * (qo_add_node ()), and costs its [NOT] EXISTS from the summary of the subquery */
-      expr = NULL;
-      if ((spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
-	  && pt_plan_query_summary (parser, spec->info.spec.derived_table))
-	{
-	  expr = qo_make_semi_anti_exists_cond (parser, spec);
-	  if (expr != NULL)
-	    {
-	      /* the subquery of EXISTS, one level down under the NOT of NOT EXISTS */
-	      subq = expr->info.expr.arg1;
-	      if (expr->info.expr.op == PT_NOT)
-		{
-		  subq = subq->info.expr.arg1;
-		}
-	      if (!pt_plan_query_summary (parser, subq))
-		{
-		  expr = NULL;
-		}
-	    }
-	}
+       * (qo_add_node ()), also when the spec is not compared */
+      has_summary = ((spec->info.spec.flag & PT_SPEC_FLAG_UNNESTED_SUBQUERY)
+		     && pt_plan_query_summary (parser, spec->info.spec.derived_table));
 
       if ((spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
 	  || n_specs == SEMI_ANTI_MAX_SPECS)
@@ -22808,7 +22792,7 @@ pt_plan_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node)
 
       cur = &specs[n_specs];
       cur->spec_id = spec->info.spec.id;
-      cur->expr = expr;
+      cur->expr = NULL;
       cur->n_types = 0;
       can_distinct_inner = qo_is_distinct_semi_inner (parser, select_node, spec, &is_merge_hinted);
       if (!is_merge_hinted)
@@ -22819,12 +22803,40 @@ pt_plan_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  cur->types[cur->n_types++] = SEMI_ANTI_DISTINCT;
 	}
-      if (!is_merge_hinted && cur->expr != NULL && prev_spec != NULL)
+      if (!is_merge_hinted && has_summary && prev_spec != NULL)
 	{
 	  cur->types[cur->n_types++] = SEMI_ANTI_EXISTS;
 	}
 
-      if ((cur->n_types == 1 && cur->types[0] == SEMI_ANTI_JOIN) || n_plans * cur->n_types > SEMI_ANTI_MAX_PLANS)
+      if (n_plans * cur->n_types > SEMI_ANTI_MAX_PLANS)
+	{
+	  continue;
+	}
+
+      /* the [NOT] EXISTS of a spec compared, costed from the summary of its subquery */
+      if (cur->types[cur->n_types - 1] == SEMI_ANTI_EXISTS)
+	{
+	  cur->expr = qo_make_semi_anti_exists_cond (parser, spec);
+	  if (cur->expr != NULL)
+	    {
+	      /* the subquery of EXISTS, one level down under the NOT of NOT EXISTS */
+	      subq = cur->expr->info.expr.arg1;
+	      if (cur->expr->info.expr.op == PT_NOT)
+		{
+		  subq = subq->info.expr.arg1;
+		}
+	      if (!pt_plan_query_summary (parser, subq))
+		{
+		  cur->expr = NULL;
+		}
+	    }
+	  if (cur->expr == NULL)
+	    {
+	      cur->n_types--;
+	    }
+	}
+
+      if (cur->n_types == 1 && cur->types[0] == SEMI_ANTI_JOIN)
 	{
 	  continue;
 	}
