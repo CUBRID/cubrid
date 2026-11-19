@@ -1819,6 +1819,50 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	  emit_class_meta (output_ctx, cl->op);
 	}
     }
+
+  /*
+   * Emit the columns here, with the shells, before the superclasses, the methods and the query specs.
+   * A package spec may refer to the columns of a view, and the query spec of a view may call the package,
+   * so the package specs are emitted between the two (CBRD-26487). The columns of the classes are emitted
+   * here too, in the same way.
+   */
+  for (cl = ctxt.classes; cl != NULL; cl = cl->next)
+    {
+      is_vclass = db_is_vclass (cl->op);
+      if (extract_class == EXTRACT_CLASS_ALL)
+	{
+	  class_type = (is_vclass > 0) ? "VCLASS" : "CLASS";
+	}
+      else
+	{
+	  if (is_vclass == TRUE && extract_class == EXTRACT_VCLASS)
+	    {
+	      class_type = "VCLASS";
+	    }
+	  else if (is_vclass == FALSE && extract_class == EXTRACT_CLASS)
+	    {
+	      class_type = "CLASS";
+	    }
+	  else
+	    {
+	      continue;
+	    }
+	}
+
+      name = db_get_class_name (cl->op);
+      if (do_is_partitioned_subclass (&is_partitioned, name, NULL))
+	{
+	  continue;
+	}
+
+      output_ctx ("\n");
+      (void) emit_all_attributes (ctxt, output_ctx, cl->op, class_type, &ctxt.has_indexes, ctxt.storage_order);
+    }
+
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
 }
 
 static void
@@ -1892,13 +1936,7 @@ emit_class_query_spec (extract_context & ctxt, print_output & output_ctx, EXTRAC
 	  continue;
 	}
 
-      output_ctx ("\n");
-
-      if (emit_all_attributes (ctxt, output_ctx, cl->op, class_type, &ctxt.has_indexes, ctxt.storage_order))
-	{
-	  found = true;
-	}
-
+      /* the columns are emitted with the shells by emit_schema () */
       if (emit_methods (ctxt, output_ctx, cl->op, class_type))
 	{
 	  found = true;
