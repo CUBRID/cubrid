@@ -1563,7 +1563,7 @@ static int btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p
 static int btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
 				  PAGE_PTR * overflow_page, OID * oid, OID * class_oid, LOCK lock_mode,
 				  BTREE_SEARCH_KEY_HELPER * search_key, bool try_cond_lock, bool * restart,
-				  bool * was_page_refixed);
+				  bool * was_page_refixed, bool owner_bypass_ok, bool * passed);
 #endif /* SERVER_MODE */
 
 static int btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
@@ -28989,6 +28989,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
   /* Next variables are not required for stand-alone mode. */
   bool try_cond_lock = false;	/* Try conditional lock. */
   bool was_page_refixed = false;	/* Set to true if conditional lock failed and page had to be re-fixed. */
+  bool passed = false;		/* Set to true if the object was passed as ours instead of locked. */
 #endif /* SERVER_MODE */
 
   /* Assert expected arguments. */
@@ -29067,6 +29068,10 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 						   find_unique_helper->lock_mode);
 	  OID_SET_NULL (&find_unique_helper->locked_oid);
 	}
+      if (!OID_ISNULL (&find_unique_helper->passed_oid) && !OID_EQ (&find_unique_helper->passed_oid, &unique_oid))
+	{
+	  OID_SET_NULL (&find_unique_helper->passed_oid);
+	}
 #endif /* SERVER_MODE */
 
       /* Check whether object can be locked. */
@@ -29109,11 +29114,12 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	      return NO_ERROR;
 	    }
 	  /* Must lock object. */
-	  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+	  if (!OID_ISNULL (&find_unique_helper->locked_oid) || !OID_ISNULL (&find_unique_helper->passed_oid))
 	    {
-	      /* Object already locked. */
+	      /* Object already locked, or passed as ours. */
 	      /* Safe guard. */
-	      assert (OID_EQ (&find_unique_helper->locked_oid, &unique_oid));
+	      assert (OID_EQ (&find_unique_helper->locked_oid, &unique_oid)
+		      || OID_EQ (&find_unique_helper->passed_oid, &unique_oid));
 	      assert (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 
 	      /* Return result. */
@@ -29125,19 +29131,26 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	   * fail. */
 	  try_cond_lock = (satisfies_delete == DELETE_RECORD_CAN_DELETE);
 	  /* Lock object. */
+	  passed = false;
 	  error_code =
 	    btree_key_lock_object (thread_p, btid_int, key, leaf_page, NULL, &unique_oid, &unique_class_oid,
 				   find_unique_helper->lock_mode, search_key, try_cond_lock, restart,
-				   &was_page_refixed);
+				   &was_page_refixed, find_unique_helper->owner_bypass_ok, &passed);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error_or_not_found;
 	    }
-	  /* Object locked. */
-	  assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode) > 0);
-	  COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
-	  COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
+	  if (passed)
+	    {
+	      COPY_OID (&find_unique_helper->passed_oid, &unique_oid);
+	    }
+	  else
+	    {
+	      assert (lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode) > 0);
+	      COPY_OID (&find_unique_helper->locked_oid, &unique_oid);
+	      COPY_OID (&find_unique_helper->locked_class_oid, &unique_class_oid);
+	    }
 	  if (*restart)
 	    {
 	      /* Need to restart from top. */
@@ -29195,6 +29208,7 @@ error_or_not_found:
 					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
+  OID_SET_NULL (&find_unique_helper->passed_oid);
 #endif
 
   PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_LEAF);
@@ -29467,7 +29481,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  error_code =
 	    btree_key_lock_object (thread_p, btid_int, key, leaf_page, &overflow_page, &unique_oid, &unique_class_oid,
 				   find_unique_helper->lock_mode, search_key, try_cond_lock, restart,
-				   &was_page_refixed);
+				   &was_page_refixed, false, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -29579,6 +29593,8 @@ error_or_not_found:
  * try_cond_lock (in)	  : True to try conditional lock first. If false, page is unfixed directly.
  * restart (out)	  : Outputs true when page had to be unfixed and was not considered valid to be reused.
  * was_page_refixed (out) : Outputs true if page had to be unfixed.
+ * owner_bypass_ok (in)	  : Pass an object we stamped instead of waiting for it; see locator_lock_object_unless_ours ().
+ * passed (out)		  : Set to true when the object was passed that way, without a lock.
  *
  * TODO: Extend this function to handle overflow OID's page too.
  */
@@ -29586,7 +29602,7 @@ static int
 btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
 		       PAGE_PTR * overflow_page, OID * oid, OID * class_oid, LOCK lock_mode,
 		       BTREE_SEARCH_KEY_HELPER * search_key, bool try_cond_lock, bool * restart,
-		       bool * was_page_refixed)
+		       bool * was_page_refixed, bool owner_bypass_ok, bool * passed)
 {
   VPID leaf_vpid;		/* VPID of leaf page. */
   int lock_result;		/* Result of tried locks. */
@@ -29641,14 +29657,25 @@ btree_key_lock_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * 
 
   /* Lock object. */
   PERF_UTIME_TRACKER_START (thread_p, &lock_time_track);
-  lock_result = lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
+  if (owner_bypass_ok)
+    {
+      HEAP_GET_CONTEXT context;
+
+      heap_init_get_context (thread_p, &context, oid, class_oid, NULL, NULL, PEEK, NULL_CHN);
+      lock_result = locator_lock_object_unless_ours (thread_p, &context, lock_mode, false, true);
+      *passed = (lock_result == LK_NOTGRANTED_HELD_BY_WRITERS);
+    }
+  else
+    {
+      lock_result = lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK);
+    }
   btree_perf_unique_lock_time (thread_p, &lock_time_track, lock_mode);
-  if (lock_result != LK_GRANTED)
+  if (lock_result != LK_GRANTED && lock_result != LK_NOTGRANTED_HELD_BY_WRITERS)
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  /* Lock granted. */
+  /* Lock granted, or passed as the object's owner. */
 
   /* Try to re-fix page. */
   error_code = pgbuf_fix_if_not_deallocated (thread_p, &leaf_vpid, latch_mode, PGBUF_UNCONDITIONAL_LATCH, leaf_page);
@@ -29726,7 +29753,10 @@ error:
   assert (error_code != NO_ERROR);
   ASSERT_ERROR ();
 
-  lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+  if (passed == NULL || !*passed)
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, oid, class_oid, lock_mode);
+    }
   return error_code;
 }
 #endif /* SERVER_MODE */
@@ -34047,6 +34077,10 @@ btree_key_lock_and_append_object_unique (THREAD_ENTRY * thread_p, BTID_INT * bti
 #endif /* SERVER_MODE */
 
   find_unique_helper.lock_mode = X_LOCK;
+#if defined (SERVER_MODE)
+  /* a writer parked on our stamp holds the row's X: pass a row we stamped instead of queuing behind it */
+  find_unique_helper.owner_bypass_ok = true;
+#endif /* SERVER_MODE */
   error_code =
     btree_key_find_and_lock_unique_of_unique (thread_p, btid_int, key, leaf, search_key, restart, &find_unique_helper);
 #if defined (SERVER_MODE)
