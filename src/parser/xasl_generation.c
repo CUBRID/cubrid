@@ -22706,8 +22706,8 @@ pt_plan_semi_anti_exists_conds (PARSER_CONTEXT * parser, PT_NODE * select_node)
  *   combination(in): the form of each spec, digit i of it in base specs[i].n_forms
  *   is_copy(in): select_node is a copy of the query, sharing the exists_cond of its specs with it
  *
- * Note: the derived table of a spec joined INNER is planned for its rows and its cost, which the plan of the query
- *   reads from its summary before its XASL is made (qo_add_node (), qo_sscan_cost ()).
+ * Note: in a copy, the derived table of a spec joined INNER is planned for its rows and its cost, which the plan of
+ *   the copy reads from its summary (qo_add_node (), qo_sscan_cost ()).
  */
 static bool
 pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI_ANTI_FORMS * specs, int n_specs,
@@ -22716,6 +22716,7 @@ pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
   PT_NODE *prev_spec, *spec;
   SEMI_ANTI_FORM form;
   int i;
+  bool is_distinct;
 
   for (i = 0; i < n_specs; i++)
     {
@@ -22752,8 +22753,17 @@ pt_rewrite_semi_anti_forms (PARSER_CONTEXT * parser, PT_NODE * select_node, SEMI
 	  continue;
 	}
 
+      is_distinct = (spec->info.spec.derived_table != NULL
+		     && spec->info.spec.derived_table->info.query.all_distinct == PT_DISTINCT);
       spec = qo_rewrite_distinct_semi_inner (parser, select_node, spec);
-      if (spec == NULL || !pt_plan_query_summary (parser, spec->info.spec.derived_table))
+      if (spec == NULL)
+	{
+	  return false;
+	}
+
+      /* the query itself has the summary made with the XASL of the derived table, and a derived table already
+       * DISTINCT keeps the one pt_plan_semi_anti_exists_conds () made, copied with the query */
+      if (is_copy && !is_distinct && !pt_plan_query_summary (parser, spec->info.spec.derived_table))
 	{
 	  return false;
 	}
