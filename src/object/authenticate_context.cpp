@@ -220,6 +220,35 @@ authenticate_context::start (void)
 *       bo_restart is called.
 */
 
+/*
+ * encode_password () - the password in each form the server may store it in;
+ *   all empty for no password.
+ */
+static void
+encode_password (const char *password, char *des, char *sha1, char *sha2)
+{
+  if (password == NULL || strlen (password) == 0)
+    {
+      des[0] = sha1[0] = sha2[0] = '\0';
+    }
+  else
+    {
+      encrypt_password (password, 1, des);
+      encrypt_password_sha1 (password, 1, sha1);
+      encrypt_password_sha2_512 (password, sha2);
+    }
+}
+
+/*
+ * store_password () - keep the password only in its encrypted forms, so no
+ *   buffer holds it in plain text.
+ */
+void
+authenticate_context::store_password (const char *password)
+{
+  encode_password (password, user_password_des_oldstyle, user_password_sha1, user_password_sha2_512);
+}
+
 int
 authenticate_context::login (const char *name, const char *password, bool ignore_dba_privilege)
 {
@@ -254,27 +283,37 @@ authenticate_context::login (const char *name, const char *password, bool ignore
 	  user_name[0] = '\0';
 	}
 
-      if (password == NULL || strlen (password) == 0)
-	{
-	  strcpy (user_password_des_oldstyle, "");
-	  strcpy (user_password_sha1, "");
-	  strcpy (user_password_sha2_512, "");
-	}
-      else
-	{
-	  /* store the password encrypted(DES and SHA1 both) so we don't have buffers lying around with the obvious
-	   * passwords in it. */
-	  encrypt_password (password, 1, user_password_des_oldstyle);
-	  encrypt_password_sha1 (password, 1, user_password_sha1);
-	  encrypt_password_sha2_512 (password, user_password_sha2_512);
-	}
+      store_password (password);
     }
   else
     {
-      /* Change users within an active database. */
+      /* Change users within an active database. Prove the new
+       * password to the server wherever perform_login () checks it (a DBA group
+       * member may switch without one), and keep its forms only once it holds. */
+      bool needs_password = !ignore_passwords && (!au_is_dba_group_member (current_user) || ignore_dba_privilege);
+
+#if defined (CS_MODE)
+      if (needs_password && name != NULL && name[0] != '\0')
+	{
+	  char des[AU_MAX_PASSWORD_BUF + 4], sha1[AU_MAX_PASSWORD_BUF + 4], sha2[AU_MAX_PASSWORD_BUF + 4];
+
+	  encode_password (password, des, sha1, sha2);
+	  error = au_prove_password (name, des, sha1, sha2);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+#endif /* CS_MODE */
+
       AU_SAVE_AND_DISABLE (save);
       error = perform_login (name, password, ignore_dba_privilege);
       AU_RESTORE (save);
+
+      if (error == NO_ERROR)
+	{
+	  store_password (password);
+	}
     }
   return (error);
 }
