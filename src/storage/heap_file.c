@@ -2844,9 +2844,10 @@ heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
- * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap yet.
+ * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap: not yet (a new page), or
+ *				  no longer (vacuum unlinked it and deallocates it when its system operation commits).
  *
- * return	  : true if page must not be exposed through bestspace yet
+ * return	  : true if page must not be exposed through bestspace
  * page_heap (in) : Heap page
  */
 bool
@@ -2868,6 +2869,129 @@ heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
     }
 
   return HEAP_PAGE_IS_NOT_IN_HEAP ((HEAP_CHAIN *) recdes.data);
+}
+
+/*
+ * heap_page_list_fix_next () - fix the next page of one sector of a page bitmap taken at scan start
+ *   return: S_SUCCESS (the page is held in watcher), S_END past the sector's last page (the held page is kept),
+ *	     S_ERROR
+ *   hfid(in): the heap
+ *   sector(in): the sector and its page bitmap
+ *   pgoffset(in/out): the page offset in the sector to look from; past the page returned
+ *   watcher(in/out): the held page, let go before the next one is fixed
+ *   vpid_out(out): the page fixed
+ *
+ * Note: a listed page may be deallocated since, or deallocated and allocated again as the file's table page
+ *	 (file_perm_dealloc); the fix reports both as ER_PB_BAD_PAGEID (pgbuf_ordered_unfix_reused_page ()) and the
+ *	 page is skipped.  Shared by the parallel heap scan and the serial sector-based heap scan.
+ */
+SCAN_CODE
+heap_page_list_fix_next (THREAD_ENTRY * thread_p, const HFID * hfid, const FILE_PARTIAL_SECTOR * sector,
+			 size_t * pgoffset, PGBUF_WATCHER * watcher, VPID * vpid_out)
+{
+  VPID vpid;
+  int error_code;
+
+  vpid.volid = sector->vsid.volid;
+  for (; *pgoffset < DISK_SECTOR_NPAGES; (*pgoffset)++)
+    {
+      /* straight to the next listed page: a sector of a small or thinned-out heap is mostly unset bits */
+      UINT64 rest = sector->page_bitmap >> *pgoffset;
+
+      if (rest == 0)
+	{
+	  *pgoffset = DISK_SECTOR_NPAGES;
+	  break;
+	}
+      *pgoffset += bit64_count_trailing_zeros (rest);
+      vpid.pageid = SECTOR_FIRST_PAGEID (sector->vsid.sectid) + (PAGEID) * pgoffset;
+      if (vpid.volid == hfid->vfid.volid && vpid.pageid == hfid->vfid.fileid)
+	{
+	  /* the file header page */
+	  continue;
+	}
+
+      /* release the held page first: the next page comes from the bitmap, not from this page's link, and holding
+       * this page while waiting deadlocks with vacuum deallocating an empty page */
+      if (watcher->pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	}
+
+      error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, watcher);
+      if (watcher->pgptr == NULL)
+	{
+	  if (error_code != NO_ERROR && error_code != ER_PB_BAD_PAGEID)
+	    {
+	      /* e.g. ER_INTERRUPTED */
+	      return S_ERROR;
+	    }
+	  /* deallocated since the bitmap was taken */
+	  er_clear ();
+	  continue;
+	}
+
+      if (error_code != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      if (pgbuf_get_page_ptype (thread_p, watcher->pgptr) != PAGE_HEAP)
+	{
+	  /* the ordered fix lets a heap file's overflow page through too; a sector stays with its file, so a listed
+	   * page comes back as no other type, but a page that is not a heap page is never read as one */
+	  assert (false);
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  continue;
+	}
+
+      if (heap_page_is_bestspace (thread_p, watcher->pgptr))
+	{
+	  /* heap metadata, no rows */
+	  pgbuf_ordered_unfix (thread_p, watcher);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  continue;
+	}
+
+      *vpid_out = vpid;
+      (*pgoffset)++;
+      return S_SUCCESS;
+    }
+
+  return S_END;
+}
+
+/*
+ * heap_page_belongs_to_class () - Check, under the page latch, whether a heap page reached by a VPID remembered
+ *				   outside the page still belongs to the heap of a class.
+ *
+ * return	  : true if the page is a heap page of class_oid that is linked to its heap
+ * page_heap (in) : Page fixed by the remembered VPID
+ * class_oid (in) : Class of the rows to insert
+ *
+ * Note: A remembered VPID may name a page that was deallocated, reused by another file or class, or unlinked from its
+ *	 heap since. Every path that fixes a heap page by such a VPID to insert into it must check the page here.
+ */
+bool
+heap_page_belongs_to_class (THREAD_ENTRY * thread_p, PAGE_PTR page_heap, const OID * class_oid)
+{
+  OID page_class_oid;
+
+  if (pgbuf_get_page_ptype (thread_p, page_heap) != PAGE_HEAP || heap_page_is_not_in_heap (thread_p, page_heap))
+    {
+      return false;
+    }
+
+  if (heap_get_class_oid_from_page (thread_p, page_heap, &page_class_oid) != NO_ERROR)
+    {
+      /* heap_page_is_not_in_heap () has just read the same record */
+      assert_release (false);
+      er_clear ();
+      return false;
+    }
+
+  return OID_EQ (&page_class_oid, class_oid);
 }
 
 /*
@@ -3461,18 +3585,20 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       /* Even though we have fixed all required pages, somebody was doing a heap scan, and already reached our page. We
        * cannot deallocate it. */
       vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-			     "Candidate heap page %d|%d to remove has waiters.", page_vpid.volid, page_vpid.pageid);
+			     "Skip removing empty heap page %d|%d: a heap scan has already reached it. "
+			     "The page stays in the heap.", VPID_AS_ARGS (&page_vpid));
       goto error;
     }
 
-  /* A chain-order heap scan is kept away by the dealloc mark checked above, but scans that reach pages through the
-   * heap file's page list (parallel heap scan, statistics sampling, parallel index build, parallel SHOW HEAP
-   * CAPACITY) wait without the mark; give the page up to them. */
+  /* A chain-order heap scan is kept away by the dealloc mark checked above. Two kinds of threads still reach the page
+   * without the mark and may wait for its latch: scans through the heap file's page list (parallel heap scan,
+   * statistics sampling, parallel index build, parallel SHOW HEAP CAPACITY), and inserters that took the page from
+   * bestspace, which hands out page VPIDs without the header latch. Give the page up to them; it stays in the heap. */
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
       vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
-			     "Candidate heap page %d|%d to remove has waiters without dealloc mark.", page_vpid.volid,
-			     page_vpid.pageid);
+			     "Skip removing empty heap page %d|%d: it has latch waiters. The page stays in the heap.",
+			     VPID_AS_ARGS (&page_vpid));
       goto error;
     }
   /* all good, we can deallocate the page */
@@ -3580,6 +3706,33 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 				 sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
       pgbuf_set_dirty (thread_p, next_watcher.pgptr, DONT_FREE);
     }
+
+  /* The page is deallocated only when the system operation commits, after it is unfixed below. bestspace may still
+   * hand the page to an inserter in between, and a row inserted there would be deallocated with the page. Mark the
+   * page not in heap while it is latched: every bestspace consumer checks the flag under the page latch and rejects
+   * the page. */
+  copy_recdes.area_size = sizeof (chain);
+  if (spage_get_record (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &copy_recdes, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  memcpy (&chain, copy_recdes.data, sizeof (chain));
+  HEAP_PAGE_SET_NOT_IN_HEAP (&chain);
+  update_recdes.data = (char *) &chain;
+  update_recdes.length = sizeof (chain);
+  if (spage_update (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  log_append_undoredo_data2 (thread_p, RVHF_CHAIN, &hfid->vfid, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			     sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
+  pgbuf_set_dirty (thread_p, crt_watcher.pgptr, DONT_FREE);
 
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
@@ -9996,9 +10149,9 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  /* allocated but not published to the heap yet (bulk load links its pages on commit postpone), so the
-	   * serial chain walk cannot reach it. This is the predicate bestspace uses, and it covers only this
-	   * direction: a page already unlinked but not yet deallocated is still counted here, not by serial. */
+	  /* not linked to the heap, so the serial chain walk cannot reach it: allocated but not published yet
+	   * (bulk load links its pages on commit postpone), or unlinked by vacuum and not deallocated yet. This is
+	   * the predicate bestspace uses. */
 	  if (heap_page_is_not_in_heap (&thread_ref, page))
 	    {
 	      pgbuf_unfix_and_init (&thread_ref, page);
@@ -22251,19 +22404,15 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      if (error_code == NO_ERROR)
 		{
 		  PAGE_PTR page_p = context->home_page_watcher_p->pgptr;
-		  OID page_class_oid;
 		  bool page_valid = false;
 
-		  /* step 4: mirrors the candidate checks of bestspace::shard::L1_find
+		  /* step 4: the page check of every path that fixes a page by a remembered VPID,
 		   * and the space rule of bestspace::find -- the hint keeps the unfill reservation */
 		  int consume_size = context->recdes_p->length + SPAGE_SLOT_SIZE;
 		  int needed_size = bestspace->get_needed_size (consume_size);
 		  int freespace = 0;
 
-		  if (pgbuf_get_page_ptype (thread_p, page_p) == PAGE_HEAP
-		      && !heap_page_is_not_in_heap (thread_p, page_p)
-		      && heap_get_class_oid_from_page (thread_p, page_p, &page_class_oid) == NO_ERROR
-		      && OID_EQ (&page_class_oid, &context->class_oid))
+		  if (heap_page_belongs_to_class (thread_p, page_p, &context->class_oid))
 		    {
 		      page_valid = true;
 		      freespace = spage_max_space_for_new_record (thread_p, page_p);
@@ -22892,7 +23041,8 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  return rc;
 	}
 
-      log_append_supplemental_undo_record (thread_p, &ovf_recdes);
+      log_append_supplemental_undo_record (thread_p, &ovf_recdes,
+					   pgbuf_get_tde_algorithm (context->home_page_watcher_p->pgptr));
 
       LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
     }
@@ -23375,7 +23525,8 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  if (context->do_supplemental_log)
 	    {
 	      /* relocation -> relocation case does not have any undo image to refer */
-	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes);
+	      log_append_supplemental_undo_record (thread_p, &new_forward_recdes,
+						   pgbuf_get_tde_algorithm (context->forward_page_watcher_p->pgptr));
 
 	      /* SUPPLEMENT_DELETE UNDO LSA */
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
@@ -23799,7 +23950,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  /* undo lsa for SUPPLEMENT_DELETE : when REC_HOME is not changed  */
 	  if (context->do_supplemental_log)
 	    {
-	      log_append_supplemental_undo_record (thread_p, &built_recdes);
+	      log_append_supplemental_undo_record (thread_p, &built_recdes,
+						   pgbuf_get_tde_algorithm (context->home_page_watcher_p->pgptr));
 	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	    }
 

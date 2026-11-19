@@ -4477,7 +4477,8 @@ eb_raw_kid_or (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 }
 
 /* a leaf comparing two columns of the row, as the fast kernel compares two values of their one type
- * (EXPR_PRED_CMP_LEAF in expr_compile.c: the operator itself on the two values); a NULL on either side is UNKNOWN */
+ * (expr_compile.c: the operator itself on two integers, EXPR_PRED_DOUBLE_LEAF on two doubles); a NULL on either side
+ * is UNKNOWN */
 static int
 eb_raw_kid_cols (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 {
@@ -4530,27 +4531,27 @@ eb_raw_kid_cols (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * lea
 	}
       else
 	{
-	  /* the operator on the two doubles, not a three-way order: a NaN on either side is neither equal nor ordered,
-	   * so only "<>" holds, as for the fast kernel */
+	  /* the two doubles in the order of their type, as the compiled leaf and the fast kernel compare them: a NaN
+	   * equals a NaN and is above every other value (expr_double_eq (), expr_double_lt ()) */
 	  switch (leaf->rel_op)
 	    {
 	    case R_EQ:
-	      keep = (ad == bd);
+	      keep = expr_double_eq (ad, bd);
 	      break;
 	    case R_NE:
-	      keep = (ad != bd);
+	      keep = !expr_double_eq (ad, bd);
 	      break;
 	    case R_LT:
-	      keep = (ad < bd);
+	      keep = expr_double_lt (ad, bd);
 	      break;
 	    case R_LE:
-	      keep = (ad <= bd);
+	      keep = !expr_double_lt (bd, ad);
 	      break;
 	    case R_GT:
-	      keep = (ad > bd);
+	      keep = expr_double_lt (bd, ad);
 	      break;
 	    default:
-	      keep = (ad >= bd);
+	      keep = !expr_double_lt (ad, bd);
 	      break;
 	    }
 	}
@@ -4602,6 +4603,9 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   if (leaf->etype != EB_NUM && leaf->etype != EB_I64)
     {
       const double k = leaf->k.d;
+      /* a NaN value is above a constant that is not a NaN, so it fails "<" and "<=" and passes their negations: the
+       * order of the type is then one operator, with no branch on a row's compare */
+      const bool k_is_nan = isnan (k);
 
       for (j = 0; j < n_in; j++)
 	{
@@ -4635,27 +4639,55 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    {
 	      ad = ((const double *) v->data)[r];
 	    }
-	  /* a NaN is unequal to everything, so the operator's own comparison decides it */
-	  switch (leaf->rel_op)
+	  if (!k_is_nan)
 	    {
-	    case R_EQ:
-	      keep = (ad == k);
-	      break;
-	    case R_NE:
-	      keep = (ad != k);
-	      break;
-	    case R_LT:
-	      keep = (ad < k);
-	      break;
-	    case R_LE:
-	      keep = (ad <= k);
-	      break;
-	    case R_GT:
-	      keep = (ad > k);
-	      break;
-	    default:
-	      keep = (ad >= k);
-	      break;
+	      switch (leaf->rel_op)
+		{
+		case R_EQ:
+		  keep = (ad == k);
+		  break;
+		case R_NE:
+		  keep = (ad != k);
+		  break;
+		case R_LT:
+		  keep = (ad < k);
+		  break;
+		case R_LE:
+		  keep = (ad <= k);
+		  break;
+		case R_GT:
+		  keep = !(ad <= k);
+		  break;
+		default:
+		  keep = !(ad < k);
+		  break;
+		}
+	    }
+	  else
+	    {
+	      /* in the order of the type: a NaN equals a NaN and is above every other value (expr_double_eq (),
+	       * expr_double_lt ()) */
+	      switch (leaf->rel_op)
+		{
+		case R_EQ:
+		  keep = expr_double_eq (ad, k);
+		  break;
+		case R_NE:
+		  keep = !expr_double_eq (ad, k);
+		  break;
+		case R_LT:
+		  keep = expr_double_lt (ad, k);
+		  break;
+		case R_LE:
+		  keep = !expr_double_lt (k, ad);
+		  break;
+		case R_GT:
+		  keep = expr_double_lt (k, ad);
+		  break;
+		default:
+		  keep = !expr_double_lt (ad, k);
+		  break;
+		}
 	    }
 	  sel[n] = r;
 	  n += keep;
@@ -5510,8 +5542,23 @@ eb_run_chunk (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_
 int
 expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd)
 {
+  int err_before = er_errid_if_has_error ();
   int rc = eb_run_chunk (plan, batch, thread_p, vd);
 
+  if (rc == EXPR_BATCH_FALLBACK && err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
+    {
+      /* The row path evaluates a chunk handed back to it again from its first row, and raises an error the chunk met
+       * on a row (a filter term's, eb_filter (); a string that does not decompress) when it gets to that row.  It may
+       * stop before -- a LIMIT, an EXISTS that has its row -- and the query would succeed with the error still set,
+       * which a later step of the query asserts on (CBRD-28049): the chunk's error is cleared.  An error set before
+       * the chunk is not the chunk's and stays (a warning is not one: NUMERIC arithmetic sets ER_IT_DATA_OVERFLOW as
+       * a warning, and an error the chunk raised replaced it); an interrupt is not about the rows and goes up. */
+      if (er_errid () == ER_INTERRUPTED)
+	{
+	  return ER_INTERRUPTED;
+	}
+      er_clear ();
+    }
   if (batch->page_watcher != NULL && batch->page_watcher->page_was_unfixed)
     {
       /* The rows point into the page the watcher holds.  An ordered fix on this thread let the page go and fixed
@@ -6122,7 +6169,7 @@ expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REP
   int idx_incache = -1;
   bool rejected = false;
   bool ok = true;
-  int err_before = er_errid ();
+  int err_before = er_errid_if_has_error ();
   int i;
 
   if (plan == NULL || plan->n_reprs == 0 || repid == NULL_REPRID)
@@ -6240,9 +6287,10 @@ done:
     {
       plan->rejected[plan->n_rejected++] = repid;
     }
-  if (!ok && err_before == NO_ERROR)
+  if (!ok && err_before == NO_ERROR && er_errid_if_has_error () != NO_ERROR)
     {
-      /* heap_classrepr_get () or an allocation set one: not learning is not a fault (the header's promise) */
+      /* heap_classrepr_get () or an allocation set one: not learning is not a fault (the header's promise).  An error
+       * set before the call stays, and a warning left before is not one (CBRD-28049, as expr_batch_run ()) */
       er_clear ();
     }
   return ok ? NO_ERROR : ER_FAILED;
