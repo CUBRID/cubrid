@@ -24,8 +24,43 @@
 
 #include "test_oos_sql_common.hpp"
 
+#include <random>
+#include <string>
+
+#include "network_interface_cl.h"
+#include "server_interface.h"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+// Random alphanumeric text. LZ4 cannot shrink it, so its length on disk stays above the OOS inline target.
+static std::string
+incompressible_text (size_t length, unsigned int seed)
+{
+  static const char alphabet[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  std::mt19937 rng (seed);
+  std::uniform_int_distribution<size_t> pick (0, sizeof (alphabet) - 2);
+  std::string text (length, ' ');
+  for (char &c : text)
+    {
+      c = alphabet[pick (rng)];
+    }
+  return text;
+}
+
+// Run checkdb (all checks except the previous-link check) on one table: heap, B-tree, and the
+// heap-to-B-tree entry check that rebuilds every row's key. Returns NO_ERROR if the table is consistent.
+static int
+checkdb_table (const char *table_name)
+{
+  DB_OBJECT *cls = db_find_class (table_name);
+  if (cls == NULL)
+    {
+      return ER_FAILED;
+    }
+  OID class_oid = *db_identifier (cls);
+  return boot_check_db_consistency (CHECKDB_ALL_CHECK_EXCEPT_PREV_LINK, &class_oid, 1, NULL);
+}
 
 class OosSqlDdl : public ::testing::Test
 {
@@ -262,6 +297,123 @@ TEST_F (OosSqlDdl, DropCreateCycles)
   rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_ddl", &count);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (count, 1);
+}
+
+// ============================================================================
+// CBRD-28254: multi-column key of a row written before DROP COLUMN
+//
+// A composite index key is built in a buffer sized from recdes->length plus the length of each OOS
+// key value. The OOS lengths must be read through the representation the row was written with. The
+// index attributes locate a column in the current representation's variable offset table, and a row
+// written before DROP COLUMN can keep that column at another position. Reading the wrong field
+// undersized the buffer, and the full OOS value then overflowed the caller's stack buffer (one OOS
+// column) or a too-small heap buffer (two OOS columns).
+//
+// The dropped column must precede the indexed OOS column in the old row's variable offset table.
+// With this engine that holds when the dropped column is declared after the indexed one:
+// (id, c, v) with v dropped. The order (id, v, c) leaves c at the same position and does not
+// reproduce the defect.
+// ============================================================================
+class OosSqlDdlDropColumnKey : public ::testing::Test
+{
+  protected:
+    void SetUp () override
+    {
+      exec_sql ("DROP TABLE IF EXISTS t_oos_ddl_key");
+      db_commit_transaction ();
+    }
+    void TearDown () override
+    {
+      exec_sql ("DROP TABLE IF EXISTS t_oos_ddl_key");
+      db_commit_transaction ();
+    }
+
+    // Create the table and index, insert row id = 1 with the given values (an OOS key column), and
+    // drop column v. The row keeps the representation it was written with.
+    void make_old_representation_row (const char *create_sql, const char *index_sql, const std::string &values)
+    {
+      ASSERT_GE (exec_sql (create_sql), 0);
+      ASSERT_GE (exec_sql (index_sql), 0);
+      db_commit_transaction ();
+
+      std::string insert_sql = "INSERT INTO t_oos_ddl_key VALUES (1, " + values + ", 'small')";
+      ASSERT_EQ (exec_sql (insert_sql.c_str ()), 1);
+      db_commit_transaction ();
+      ASSERT_GT (get_oos_page_count ("t_oos_ddl_key"), 0);
+
+      ASSERT_GE (exec_sql ("ALTER TABLE t_oos_ddl_key DROP COLUMN v"), 0);
+      db_commit_transaction ();
+
+      // checkdb rebuilds the old row's key: it reported a false inconsistency (-544) before the fix.
+      ASSERT_EQ (checkdb_table ("t_oos_ddl_key"), NO_ERROR);
+    }
+
+    void expect_deleted_and_consistent ()
+    {
+      ASSERT_EQ (exec_sql ("DELETE FROM t_oos_ddl_key WHERE id = 1"), 1);
+      db_commit_transaction ();
+
+      int count = -1;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_ddl_key", &count), NO_ERROR);
+      EXPECT_EQ (count, 0);
+      EXPECT_EQ (checkdb_table ("t_oos_ddl_key"), NO_ERROR);
+    }
+};
+
+TEST_F (OosSqlDdlDropColumnKey, DeleteCompositeIndexKey)
+{
+  const std::string c = incompressible_text (5000, 1);
+  const char *create_sql = "CREATE TABLE t_oos_ddl_key (id INT, c VARCHAR(8000), v VARCHAR(100))";
+  const char *index_sql = "CREATE INDEX i_oos_ddl_key ON t_oos_ddl_key (c, id)";
+  ASSERT_NO_FATAL_FAILURE (make_old_representation_row (create_sql, index_sql, "'" + c + "'"));
+  ASSERT_NO_FATAL_FAILURE (expect_deleted_and_consistent ());
+}
+
+TEST_F (OosSqlDdlDropColumnKey, UpdateCompositeIndexKey)
+{
+  const std::string c = incompressible_text (5000, 2);
+  const char *create_sql = "CREATE TABLE t_oos_ddl_key (id INT, c VARCHAR(8000), v VARCHAR(100))";
+  const char *index_sql = "CREATE INDEX i_oos_ddl_key ON t_oos_ddl_key (c, id)";
+  ASSERT_NO_FATAL_FAILURE (make_old_representation_row (create_sql, index_sql, "'" + c + "'"));
+
+  // The update removes the old row's key and inserts the new one.
+  ASSERT_EQ (exec_sql ("UPDATE t_oos_ddl_key SET id = 2 WHERE id = 1"), 1);
+  db_commit_transaction ();
+
+  int len = -1;
+  ASSERT_EQ (fetch_single_int ("SELECT LENGTH(c) FROM t_oos_ddl_key WHERE id = 2", &len), NO_ERROR);
+  EXPECT_EQ (len, 5000);
+
+  int count = -1;
+  std::string by_key = "SELECT COUNT(*) FROM t_oos_ddl_key WHERE c = '" + c + "' AND id = 2";
+  ASSERT_EQ (fetch_single_int (by_key.c_str (), &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  EXPECT_EQ (checkdb_table ("t_oos_ddl_key"), NO_ERROR);
+
+  ASSERT_EQ (exec_sql ("DELETE FROM t_oos_ddl_key WHERE id = 2"), 1);
+  db_commit_transaction ();
+  EXPECT_EQ (checkdb_table ("t_oos_ddl_key"), NO_ERROR);
+}
+
+TEST_F (OosSqlDdlDropColumnKey, DeleteUniqueCompositeIndexKey)
+{
+  const std::string c = incompressible_text (5000, 3);
+  const char *create_sql = "CREATE TABLE t_oos_ddl_key (id INT, c VARCHAR(8000), v VARCHAR(100))";
+  const char *index_sql = "CREATE UNIQUE INDEX u_oos_ddl_key ON t_oos_ddl_key (c, id)";
+  ASSERT_NO_FATAL_FAILURE (make_old_representation_row (create_sql, index_sql, "'" + c + "'"));
+  ASSERT_NO_FATAL_FAILURE (expect_deleted_and_consistent ());
+}
+
+// Two OOS columns: the estimate read b's stub instead of c's and allocated a heap buffer for 5000
+// bytes, then wrote the 15000-byte key into it.
+TEST_F (OosSqlDdlDropColumnKey, DeleteCompositeIndexKeyHeapBuffer)
+{
+  const std::string c = incompressible_text (15000, 4);
+  const std::string b = incompressible_text (5000, 5);
+  const char *create_sql = "CREATE TABLE t_oos_ddl_key (id INT, c VARCHAR(30000), b VARCHAR(8000), v VARCHAR(100))";
+  const char *index_sql = "CREATE INDEX i_oos_ddl_key ON t_oos_ddl_key (c, id)";
+  ASSERT_NO_FATAL_FAILURE (make_old_representation_row (create_sql, index_sql, "'" + c + "', '" + b + "'"));
+  ASSERT_NO_FATAL_FAILURE (expect_deleted_and_consistent ());
 }
 
 int

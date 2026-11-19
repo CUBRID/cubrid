@@ -794,6 +794,8 @@ static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record *pending = nullptr);
 static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
+static OR_ATTRIBUTE *heap_midxkey_locate_record_attr (RECDES * recdes, OR_ATTRIBUTE * att,
+						      HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att,
                                 const heap_pending_record *pending = nullptr);
 
@@ -12460,7 +12462,6 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
   /* Stack scratch for OOS inline-reference reads up to one I/O page on the hot index-key path. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
-  int i;
   int error = NO_ERROR;
 
   /* Initialize disk value information */
@@ -12468,18 +12469,14 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 
   if (recdes != NULL && recdes->data != NULL && att != NULL)
     {
-      if (or_rep_id (recdes) != attr_info->last_classrepr->id)
+      OR_ATTRIBUTE *record_att = heap_midxkey_locate_record_attr (recdes, att, attr_info);
+      if (record_att != NULL)
+	{
+	  att = record_att;
+	}
+      else
 	{
 	  found = false;
-	  for (i = 0; i < attr_info->read_classrepr->n_attributes; i++)
-	    {
-	      if (attr_info->read_classrepr->attributes[i].id == att->id)
-		{
-		  att = &attr_info->read_classrepr->attributes[i];
-		  found = true;
-		  break;
-		}
-	    }
 	}
 
       if (found == false)
@@ -12537,6 +12534,39 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
     }
 
   return error;
+}
+
+/*
+ * heap_midxkey_locate_record_attr () - Find an index attribute in the representation the record was written with.
+ *
+ *   return: the attribute of the record's representation, or NULL if that representation does not have it
+ *           (the attribute was added after the record was written).
+ *   recdes(in): record descriptor
+ *   att(in): attribute of the current (last) representation, for example from OR_INDEX::atts
+ *   attr_info(in): attribute cache already recached to the record's representation
+ *
+ *   Note: att->location is a position in the current representation's variable offset table. A record written
+ *         with an older representation can keep the same attribute at another position, for example after a
+ *         preceding variable attribute is dropped. Every reader of the record's variable table must use the
+ *         attribute returned here.
+ */
+static OR_ATTRIBUTE *
+heap_midxkey_locate_record_attr (RECDES * recdes, OR_ATTRIBUTE * att, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  if (or_rep_id (recdes) == attr_info->last_classrepr->id)
+    {
+      return att;
+    }
+
+  for (int i = 0; i < attr_info->read_classrepr->n_attributes; i++)
+    {
+      if (attr_info->read_classrepr->attributes[i].id == att->id)
+	{
+	  return &attr_info->read_classrepr->attributes[i];
+	}
+    }
+
+  return NULL;
 }
 
 /*
@@ -16420,8 +16450,14 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
        * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
       for (int oos_i = 0; oos_i < n_atts; oos_i++)
 	{
-	  /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i], pending);
+	  /* index->atts locate the attribute in the current representation; the record can be older. */
+	  OR_ATTRIBUTE *oos_att = heap_midxkey_locate_record_attr (recdes, index->atts[oos_i], idx_attrinfo);
+	  if (oos_att != NULL)
+	    {
+	      /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
+	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, oos_att, pending);
+	    }
+	  /* else: attribute added after this record was written; its default value is not OOS */
 	}
 
       /* Allocate storage for the buf of midxkey */
