@@ -1140,6 +1140,9 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
   int tran_lock_wait_msecs;
   TRAN_STATE transtate;
   int error_code = NO_ERROR;
+#if defined (CS_MODE)
+  bool admin_proof_rejected = false;
+#endif /* CS_MODE */
 
   if (!is_sub_client)
     {
@@ -1178,12 +1181,21 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 		client_credential->process_id);
 
 #if defined (CS_MODE)
-  /* the server registers the user only after its password is proven */
-  if (BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_credential->client_type))
+  /* the server registers the user only after its password is proven. An admin client may go without it from
+   * the server's own host or an HA node, which only the server can tell: it proves a password it was given up
+   * front, as any other client does, and otherwise only when the server asks for one below */
+  if (BOOT_PASSWORD_PROOF_CLIENT_TYPE (client_credential->client_type)
+      || (BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type) && Au_user_password_sha2_512[0] != '\0'))
     {
       error_code = au_prove_password (client_credential->get_db_user (), Au_user_password_des_oldstyle,
 				      Au_user_password_sha1, Au_user_password_sha2_512);
-      if (error_code != NO_ERROR)
+      if (error_code == ER_AU_REJECT_LOGIN && BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type))
+	{
+	  /* a wrong password may still be let in from this host */
+	  admin_proof_rejected = true;
+	  er_clear ();
+	}
+      else if (error_code != NO_ERROR)
 	{
 	  /* not registered yet: nothing else closes the main connection. A sub-client's connection is closed by
 	   * boot_restart_client_sub (), and net_client_final () would also reset the process-wide state */
@@ -1198,6 +1210,37 @@ boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool 
 
   tran_index =
     boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
+
+#if defined (CS_MODE)
+  if (tran_index == NULL_TRAN_INDEX && BOOT_ADMIN_CLIENT_TYPE (client_credential->client_type)
+      && er_errid () == ER_AU_INVALID_PASSWORD)
+    {
+      /* the server wants the password from this host: report the one it was given as wrong, or prove the empty
+       * one and register again */
+      if (admin_proof_rejected)
+	{
+	  error_code = ER_AU_REJECT_LOGIN;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      else
+	{
+	  er_clear ();
+	  error_code = au_prove_password (client_credential->get_db_user (), Au_user_password_des_oldstyle,
+					  Au_user_password_sha1, Au_user_password_sha2_512);
+	}
+      if (error_code != NO_ERROR)
+	{
+	  if (!is_sub_client)
+	    {
+	      (void) net_client_final (false);
+	    }
+	  goto error;
+	}
+      tran_index =
+	boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate,
+			      &boot_Server_credential);
+    }
+#endif /* CS_MODE */
 
   if (tran_index == NULL_TRAN_INDEX)
     {

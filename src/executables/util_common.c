@@ -26,7 +26,9 @@
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <fcntl.h>
-#endif /* !defined(WINDOWS) */
+#else /* WINDOWS */
+#include <io.h>
+#endif /* WINDOWS */
 
 #include "config.h"
 
@@ -48,6 +50,7 @@
 #include "error_manager.h"
 #if !defined (SERVER_MODE)
 #include "db.h"
+#include "authenticate.h"
 #endif /* !SERVER_MODE */
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1427,3 +1430,63 @@ util_get_table_list_from_file (char *fname, dynamic_array * darray)
 
   return NO_ERROR;
 }
+
+#if !defined (SERVER_MODE)
+/*
+ * util_restart_as_dba () - log in as DBA and restart the client of an admin utility
+ *   return: NO_ERROR, or the error the restart ended with
+ *   program_name(in): the utility's name
+ *   db_name(in): the database, as db@host for a server on another host
+ *   dba_password(in): the DBA password the utility was given, or NULL
+ *   client_type(in): the admin client type to register as
+ *
+ * Note: a server on another host takes an admin utility only with the DBA
+ *   password. When none was given, it is asked for on the terminal, once per
+ *   process; with no terminal, the error is returned at once.
+ */
+int
+util_restart_as_dba (const char *program_name, const char *db_name, const char *dba_password, int client_type)
+{
+  static char typed_password[AU_MAX_PASSWORD_BUF + 1] = { '\0' };
+  static bool password_typed = false;
+  const char *password;
+  int error;
+
+  if (dba_password != NULL && dba_password[0] == '\0')
+    {
+      dba_password = NULL;
+    }
+  if (dba_password == NULL && password_typed)
+    {
+      /* a utility that connects again, such as applyinfo -i, does not ask twice */
+      dba_password = typed_password;
+    }
+
+  AU_DISABLE_PASSWORDS ();
+  db_set_client_type (client_type);
+
+  error = db_login ("DBA", dba_password);
+  if (error == NO_ERROR)
+    {
+      error = db_restart (program_name, TRUE, db_name);
+    }
+
+  if (error == ER_AU_REJECT_LOGIN && use_console_password && dba_password == NULL && isatty (fileno (stdin)))
+    {
+      password = getpass (utility_get_generic_message (MSGCAT_UTIL_GENERIC_DBA_PASSWORD));
+      if (password != NULL && password[0] != '\0')
+	{
+	  strncpy_bufsize (typed_password, password);
+	  password_typed = true;
+	  dba_password = typed_password;
+	}
+      error = db_login ("DBA", dba_password);
+      if (error == NO_ERROR)
+	{
+	  error = db_restart (program_name, TRUE, db_name);
+	}
+    }
+
+  return error;
+}
+#endif /* !SERVER_MODE */

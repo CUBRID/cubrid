@@ -2103,6 +2103,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
   HA_SERVER_STATE ha_state = HA_SERVER_STATE_NA;
   int error = NO_ERROR;
   int i = 0;
+  const char *dba_password = NULL;
 
   memset (&chksum_arg, 0, sizeof (CHKSUM_ARG));
 
@@ -2122,6 +2123,7 @@ checksumdb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
+  dba_password = utility_get_option_string_value (arg_map, CHECKSUM_DBA_PASSWORD_S, 0);
   checksum_table = utility_get_option_string_value (arg_map, CHECKSUM_TABLE_NAME_S, 0);
   if (sm_check_name (checksum_table) > 0)
     {
@@ -2265,15 +2267,6 @@ begin:
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, arg->command_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  AU_DISABLE_PASSWORDS ();
-
-  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
-  if (db_login ("DBA", NULL) != NO_ERROR)
-    {
-      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      goto error_exit;
-    }
-
   /* initialize system parameters */
   if (sysprm_load_and_init (database_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
     {
@@ -2282,7 +2275,7 @@ begin:
       goto error_exit;
     }
 
-  error = db_restart (arg->command_name, TRUE, database_name);
+  error = util_restart_as_dba (arg->command_name, database_name, dba_password, DB_CLIENT_TYPE_ADMIN_UTILITY);
   if (error != NO_ERROR)
     {
       fprintf (stderr, "%s\n", db_error_string (3));

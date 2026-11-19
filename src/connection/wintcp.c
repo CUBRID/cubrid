@@ -811,6 +811,52 @@ css_get_sock_name (SOCKET sockfd, char *hostname, size_t len)
 }
 
 /*
+ * css_is_local_socket() - do both ends of the socket sit on this host?
+ *   return: true for a loopback peer, or a peer whose address is the socket's
+ *           own address
+ *   sockfd(in): a connected socket
+ *
+ * Note: both ends of one connection see the same two addresses, swapped, so a
+ *   client and the server it is connected to get the same answer.
+ */
+bool
+css_is_local_socket (SOCKET sockfd)
+{
+  struct sockaddr_in peer, self;
+  int peer_len = sizeof (peer), self_len = sizeof (self);
+
+  if (getpeername (sockfd, (struct sockaddr *) &peer, &peer_len) != 0 || peer.sin_family != AF_INET
+      || getsockname (sockfd, (struct sockaddr *) &self, &self_len) != 0 || self.sin_family != AF_INET)
+    {
+      return false;
+    }
+
+  /* a loopback address on either end means the other end is on this host too */
+  return ((ntohl (peer.sin_addr.s_addr) >> 24) == 127
+	  || (ntohl (self.sin_addr.s_addr) >> 24) == 127 || peer.sin_addr.s_addr == self.sin_addr.s_addr);
+}
+
+/*
+ * css_get_peer_ipv4() - the IPv4 address of the peer of a socket
+ *   return: NO_ERROR, or ER_FAILED when the peer is not an IPv4 address
+ *   sockfd(in): a connected socket
+ *   ip_addr(out): the peer address, in network byte order
+ */
+int
+css_get_peer_ipv4 (SOCKET sockfd, unsigned char *ip_addr)
+{
+  struct sockaddr_in peer;
+  int peer_len = sizeof (peer);
+
+  if (getpeername (sockfd, (struct sockaddr *) &peer, &peer_len) != 0 || peer.sin_family != AF_INET)
+    {
+      return ER_FAILED;
+    }
+  memcpy (ip_addr, &peer.sin_addr, sizeof (peer.sin_addr));
+  return NO_ERROR;
+}
+
+/*
  * css_hostname_to_ip()
  *   return:
  *   host(in):
