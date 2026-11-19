@@ -9193,12 +9193,17 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
  *   copied from the elements' data types (pt_add_type_to_set) - lists the domains of its operands instead, which
  *   XASL generation has decided by now (pt_decide_function_collation and its siblings; a nested constructor is made
  *   before the one it is an operand of); an operand left undecided is left out, as type checking leaves out a MAYBE
- *   element, and so is one alike an earlier one. A decided domain stays as it is.
+ *   element, and so is one alike an earlier one. A table function (SET, MULTISET or LIST of a subquery) takes the
+ *   values of every output column of its one operand (qdata_convert_table_to_set), so it lists the domains of those
+ *   columns, and stays as it is when one of them is undecided: a list of fewer domains than the values it holds
+ *   would read a value in another's type. A decided domain stays as it is.
  *   return: NO_ERROR, ER_FAILED when a domain cannot be made
+ *   parser(in): parser context
+ *   function(in): the constructor's parse tree node
  *   regu(in/out): the constructor's regu variable
  */
 static int
-pt_decide_collection_domain (REGU_VARIABLE * regu)
+pt_decide_collection_domain (PARSER_CONTEXT * parser, const PT_NODE * function, REGU_VARIABLE * regu)
 {
   if (regu == NULL || regu->type != TYPE_FUNC || regu->domain == NULL || regu->value.funcp == NULL
       || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (regu->domain)) || pt_domain_is_decided (regu->domain))
@@ -9206,12 +9211,36 @@ pt_decide_collection_domain (REGU_VARIABLE * regu)
       return NO_ERROR;
     }
 
-  TP_DOMAIN *elements = NULL, *last = NULL;
-  for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+  const FUNC_CODE code = regu->value.funcp->ftype;
+  const bool table = (code == F_TABLE_SET || code == F_TABLE_MULTISET || code == F_TABLE_SEQUENCE);
+  const XASL_NODE *subquery = NULL;
+  int n_columns = 0;
+  if (table)
     {
-      const TP_DOMAIN *domain = op->value.domain;
+      const REGU_VARIABLE_LIST op = regu->value.funcp->operand;
+      PT_NODE *query = function != NULL ? function->info.function.arg_list : NULL;
+      subquery = op != NULL && op->next == NULL ? op->value.xasl : NULL;
+      if (subquery == NULL || query == NULL || !PT_IS_QUERY_NODE_TYPE (query->node_type))
+	{
+	  return NO_ERROR;
+	}
+      n_columns = pt_length_of_select_list (pt_get_select_list (parser, query), EXCLUDE_HIDDEN_COLUMNS);
+    }
+
+  int status = ER_FAILED;
+  TP_DOMAIN *elements = NULL, *last = NULL;
+  REGU_VARIABLE_LIST op = table ? NULL : regu->value.funcp->operand;
+  for (int pos = 0; table ? pos < n_columns : op != NULL; pos++, op = op != NULL ? op->next : NULL)
+    {
+      const TP_DOMAIN *domain = table ? domain_list_column_of (subquery, pos) : op->value.domain;
       if (domain == NULL || domain->next != NULL || !pt_domain_is_decided (domain))
 	{
+	  if (table)
+	    {
+	      /* every column's values go into the collection */
+	      status = NO_ERROR;
+	      goto cleanup;
+	    }
 	  continue;
 	}
       const TP_DOMAIN *e = elements;
@@ -9225,7 +9254,7 @@ pt_decide_collection_domain (REGU_VARIABLE * regu)
       TP_DOMAIN *copy = tp_domain_copy (domain, false);
       if (copy == NULL)
 	{
-	  goto error;
+	  goto cleanup;
 	}
       if (last == NULL)
 	{
@@ -9242,21 +9271,21 @@ pt_decide_collection_domain (REGU_VARIABLE * regu)
     TP_DOMAIN *decided = tp_domain_construct (TP_DOMAIN_TYPE (regu->domain), NULL, 0, 0, elements);
     if (decided == NULL)
       {
-	goto error;
+	goto cleanup;
       }
     decided->is_desc = regu->domain->is_desc;
     regu->domain = tp_domain_cache (decided);
   }
   return NO_ERROR;
 
-error:
+cleanup:
   while (elements != NULL)
     {
       TP_DOMAIN *next = elements->next;
       tp_domain_free (elements);
       elements = next;
     }
-  return ER_FAILED;
+  return status;
 }
 
 static REGU_VARIABLE *
@@ -9399,7 +9428,7 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	    {
 	      return NULL;
 	    }
-	  if (TP_IS_SET_TYPE (result_type) && pt_decide_collection_domain (regu) != NO_ERROR)
+	  if (TP_IS_SET_TYPE (result_type) && pt_decide_collection_domain (parser, function, regu) != NO_ERROR)
 	    {
 	      PT_INTERNAL_ERROR (parser, "collection domain");
 	      return NULL;
