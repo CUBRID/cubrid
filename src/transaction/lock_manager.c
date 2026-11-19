@@ -401,6 +401,63 @@ struct lk_nested_transient
   int scope;			/* the transient_scope depth that took it */
 };
 
+// *INDENT-OFF*
+/*
+ * the wake of a transaction's self-lock waiters that an undo deferred (lock_deferred_wake_mark ()), and the row the
+ * transaction asks to be handed meanwhile (lock_ask_row_hand ()); other transactions read both
+ *
+ * Note: no constructor, so the memset of the lock table zeroes it.
+ */
+class lk_tran_deferred_wake
+{
+  public:
+    /* the epoch of the undo whose wake is due, or 0 */
+    UINT64 due_epoch () const
+    {
+      return __atomic_load_n (&m_epoch, __ATOMIC_ACQUIRE);
+    }
+
+    /* an undo of ours is done; only our own thread marks */
+    void mark ()
+    {
+      __atomic_store_n (&m_epoch, ++m_last_epoch, __ATOMIC_RELEASE);
+    }
+
+    /* clear the wake if epoch is still the one due: whether it was */
+    bool take (UINT64 epoch)
+    {
+      UINT64 expected = epoch;
+
+      return epoch != 0 && __atomic_compare_exchange_n (&m_epoch, &expected, (UINT64) 0, false, __ATOMIC_SEQ_CST,
+							__ATOMIC_RELAXED);
+    }
+
+    /* the transaction ends: nothing is due and no row is asked for */
+    void clear ()
+    {
+      __atomic_store_n (&m_epoch, (UINT64) 0, __ATOMIC_RELAXED);
+      ask_row (0);
+    }
+
+    /* packed OID of the row we ask to be handed while the wake is deferred, or 0 */
+    UINT64 asked_row () const
+    {
+      return __atomic_load_n (&m_asked_row, __ATOMIC_RELAXED);
+    }
+
+    void ask_row (UINT64 packed_row)
+    {
+      __atomic_store_n (&m_asked_row, packed_row, __ATOMIC_RELAXED);
+    }
+
+  private:
+    UINT64 m_epoch;
+    UINT64 m_last_epoch;	/* never reset: an epoch cleared and taken again would let a late take of the old wake
+				 * drop the new one */
+    UINT64 m_asked_row;
+};
+// *INDENT-ON*
+
 /*
  * Transaction Lock Entry Structure
  */
@@ -426,10 +483,7 @@ struct lk_tran_lock
 
   LK_ENTRY *waiting;		/* waiting lock entry */
 
-  /* the wake of our self-lock waiters an undo deferred (lock_deferred_wake_mark ()); __atomic access */
-  UINT64 deferred_wake_epoch;	/* the epoch of the undo whose wake is due, or 0 */
-  UINT64 deferred_wake_last_epoch;
-  UINT64 hand_row;		/* packed OID of the row we ask to be handed while the wake is deferred, or 0 */
+  lk_tran_deferred_wake deferred_wake;
 
   /* non two phase lock list */
   pthread_mutex_t non2pl_mutex;	/* mutex for non2pl_list */
@@ -3758,7 +3812,7 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
  *
  * return: true if granted meanwhile (the resource mutex is released); false to sleep as usual (still held)
  *   conversion(in): a holder converting is not handed the row; the deadlock detector's wake resolves its cycle
- *   asked(out): set once hand_row is published, for the caller to clear when the request ends
+ *   asked(out): set once the row is asked for (deferred_wake.ask_row ()), for the caller to clear when the request ends
  *
  * Note: until the owner sleeps its entry is flagged queued: the common grant stops at it, and the waiter holding the
  *	 row grants it (lock_hand_row_to_owner ()). lockwait_stime 0 keeps our edges from the deadlock detector.
@@ -3774,18 +3828,18 @@ lock_ask_row_hand (THREAD_ENTRY * thread_p, int tran_index, LK_RES * res_ptr, LK
   bool granted;
 
   tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL || __atomic_load_n (&tran_lock->deferred_wake_epoch, __ATOMIC_ACQUIRE) == 0 || conversion)
+  if (tdes == NULL || tran_lock->deferred_wake.due_epoch () == 0 || conversion)
     {
       return false;
     }
   assert (entry_ptr->thrd_entry == thread_p && thread_p->deferred_wake.prequeued == NULL);
   /* one thread of a transaction takes row locks (parallel query workers do not) */
-  assert (__atomic_load_n (&tran_lock->hand_row, __ATOMIC_RELAXED) == 0);
+  assert (tran_lock->deferred_wake.asked_row () == 0);
 
   thread_p->deferred_wake.prequeued = entry_ptr;
   thread_p->lockwait_stime = 0;
   packed_row = lock_pack_row_oid (&res_ptr->key.oid);
-  __atomic_store_n (&tran_lock->hand_row, packed_row, __ATOMIC_RELAXED);
+  tran_lock->deferred_wake.ask_row (packed_row);
   *asked = true;
   pthread_mutex_unlock (&res_ptr->res_mutex);
 
@@ -4538,7 +4592,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   if (hand_row_asked)
     {
       /* however the request ended, it no longer waits on that row */
-      __atomic_store_n (&lk_Gl.tran_lock_table[tran_index].hand_row, (UINT64) 0, __ATOMIC_RELAXED);
+      lk_Gl.tran_lock_table[tran_index].deferred_wake.ask_row (0);
     }
 
   if (entry_ptr != NULL && ret_val == LK_GRANTED)
@@ -5454,7 +5508,7 @@ lock_resolve_cycle_by_wake (int s, int t)
   for (v = s;; v = TWFG_node[v].ancestor)
     {
       tdes = LOG_FIND_TDES (v);
-      epoch = (tdes != NULL) ? __atomic_load_n (&lk_Gl.tran_lock_table[v].deferred_wake_epoch, __ATOMIC_ACQUIRE) : 0;
+      epoch = (tdes != NULL) ? lk_Gl.tran_lock_table[v].deferred_wake.due_epoch () : 0;
       if (epoch != 0)
 	{
 	  found = true;
@@ -7122,7 +7176,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 
   /* no request of ours is queued but not asleep (lock_ask_row_hand ()): its grant would add to the hold list this
    * walks without hold_mutex */
-  assert (__atomic_load_n (&tran_lock->hand_row, __ATOMIC_RELAXED) == 0);
+  assert (tran_lock->deferred_wake.asked_row () == 0);
 
   left = tran_lock->transient_total;
   for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL && left > 0; entry_ptr = next_ptr)
@@ -7629,13 +7683,13 @@ lock_wait_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 wak
  * lock_recheck_decide - a self-lock wait came back to read again: LK_RECHECK_READ, LK_RECHECK_REWAIT while the
  *			 owner's wake is deferred (with *wake_gen), or LK_RECHECK_HAND when it asks for held_row
  *
- * Note: the generation is read before the owner's hand_row and epoch; a wake writes those before its bump.
+ * Note: the generation is read before the owner's asked row and epoch; a wake writes those before its bump.
  */
 static int
 lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_row, UINT64 * wake_gen,
 		     int *owner_tran_index)
 {
-  UINT64 gen, packed_held, hand_row, epoch;
+  UINT64 gen, packed_held, asked_row, epoch;
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr;
@@ -7665,11 +7719,11 @@ lock_recheck_decide (THREAD_ENTRY * thread_p, MVCCID mvccid, const OID * held_ro
     {
       return LK_RECHECK_READ;
     }
-  hand_row = __atomic_load_n (&lk_Gl.tran_lock_table[owner].hand_row, __ATOMIC_RELAXED);
-  epoch = __atomic_load_n (&lk_Gl.tran_lock_table[owner].deferred_wake_epoch, __ATOMIC_RELAXED);
+  asked_row = lk_Gl.tran_lock_table[owner].deferred_wake.asked_row ();
+  epoch = lk_Gl.tran_lock_table[owner].deferred_wake.due_epoch ();
 
   packed_held = (held_row != NULL) ? lock_pack_row_oid (held_row) : 0;
-  if (packed_held != 0 && hand_row == packed_held)
+  if (packed_held != 0 && asked_row == packed_held)
     {
       *owner_tran_index = owner;
       return LK_RECHECK_HAND;
@@ -7698,25 +7752,18 @@ lock_reset_request_state (THREAD_ENTRY * thread_p)
 /*
  * lock_deferred_wake_mark - an undo of ours is done: the waiters on our self-lock are woken at the end of our next
  *			      request that writes a row
- *
- * Note: deferred_wake_last_epoch is never reset: an epoch cleared and taken again would let a late clear of the old
- *	 wake drop the new one.
  */
 void
 lock_deferred_wake_mark (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-  LK_TRAN_LOCK *tran_lock;
-  UINT64 epoch;
 
   if (tdes == NULL || !MVCCID_IS_NORMAL (tdes->mvccinfo.id))
     {
       return;
     }
-  tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  epoch = ++tran_lock->deferred_wake_last_epoch;
-  __atomic_store_n (&tran_lock->deferred_wake_epoch, epoch, __ATOMIC_RELEASE);
+  lk_Gl.tran_lock_table[tran_index].deferred_wake.mark ();
 #endif /* SERVER_MODE */
 }
 
@@ -7727,8 +7774,7 @@ void
 lock_deferred_wake_clear (THREAD_ENTRY * thread_p, int tran_index)
 {
 #if defined (SERVER_MODE)
-  __atomic_store_n (&lk_Gl.tran_lock_table[tran_index].deferred_wake_epoch, (UINT64) 0, __ATOMIC_RELAXED);
-  __atomic_store_n (&lk_Gl.tran_lock_table[tran_index].hand_row, (UINT64) 0, __ATOMIC_RELAXED);
+  lk_Gl.tran_lock_table[tran_index].deferred_wake.clear ();
 #endif /* SERVER_MODE */
 }
 
@@ -7755,8 +7801,7 @@ lock_deferred_wake_on_row_write (THREAD_ENTRY * thread_p)
     {
       return;
     }
-  thread_p->deferred_wake.request.epoch_seen =
-    __atomic_load_n (&lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake_epoch, __ATOMIC_ACQUIRE);
+  thread_p->deferred_wake.request.epoch_seen = lk_Gl.tran_lock_table[tdes->tran_index].deferred_wake.due_epoch ();
 #endif /* SERVER_MODE */
 }
 
@@ -7795,11 +7840,7 @@ lock_deferred_wake_on_request_end (THREAD_ENTRY * thread_p)
 static bool
 lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid, UINT64 epoch)
 {
-  UINT64 expected = epoch;
-
-  if (epoch == 0
-      || !__atomic_compare_exchange_n (&lk_Gl.tran_lock_table[tran_index].deferred_wake_epoch, &expected, (UINT64) 0,
-				       false, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED))
+  if (!lk_Gl.tran_lock_table[tran_index].deferred_wake.take (epoch))
     {
       return false;
     }
@@ -7812,7 +7853,7 @@ lock_deferred_wake_send (THREAD_ENTRY * thread_p, int tran_index, MVCCID mvccid,
  *
  *   packed_row(in): 0 wakes all of them; otherwise only those holding that row X (deferred_wake.held_row)
  *
- * Note: the generation bump publishes what the caller wrote for the woken (the cleared epoch, hand_row). A woken
+ * Note: the generation bump publishes what the caller wrote for the woken (the cleared epoch, the asked row). A woken
  *	 entry leaves the waiters here, as at a grant, so the deadlock detector sees no wait that is over.
  */
 static void
@@ -7875,7 +7916,7 @@ lock_wake_mvccid_waiters (THREAD_ENTRY * thread_p, MVCCID mvccid, UINT64 packed_
   pthread_mutex_unlock (&res_ptr->res_mutex);
 }
 
-/* a row's OID in one word, for hand_row and deferred_wake.held_row */
+/* a row's OID in one word, for the asked row and the held row of deferred_wake */
 static UINT64
 lock_pack_row_oid (const OID * oid)
 {
