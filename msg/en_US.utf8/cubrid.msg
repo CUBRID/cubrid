@@ -2327,6 +2327,10 @@ including those from the current backup level and higher.\n
 30 Number of active log archives has been exceeded the max desired number.
 
 31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
+32 An error occurred during a database restore, while formatting the pages that no backup level holds\n\
+   Database Volume: %1$s\n\
+    Database Volid: %2$d\n\
+** WARNING: Do not use the database until an error-free restore is achieved.\n
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger
