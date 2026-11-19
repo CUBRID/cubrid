@@ -1709,6 +1709,7 @@ typedef struct parser_varchar PARSER_VARCHAR;
 typedef struct parser_context PARSER_CONTEXT;
 typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
 typedef struct pt_static_sql_star PT_STATIC_SQL_STAR;
+typedef struct pt_static_sql_host_var PT_STATIC_SQL_HOST_VAR;
 
 typedef struct parser_node PT_NODE;
 
@@ -2992,6 +2993,9 @@ struct pt_select_info
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
 #define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
 							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
+#define PT_SELECT_INFO_LENIENT_JOIN_HINT  0x040000	/* retry of an optimization that failed with the join method
+							 * hints: ignore one that cannot be applied to a join for
+							 * that join only (CBRD-28089) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -4032,6 +4036,13 @@ typedef enum
   PT_SS_MERGE_INSERT_COLUMNS	/* INSERT of MERGE without a column list; pos is not used */
 } PT_STATIC_SQL_STAR_KIND;
 
+/* a PL/CSQL variable of a static SQL statement replaced with a host variable (see pt_parameterize_for_static_sql ()) */
+struct pt_static_sql_host_var
+{
+  int end;			/* end of the name or the path expression in the original text, -1 if unknown */
+  const char *label;		/* the name or the path expression, NULL if unknown */
+};
+
 struct pt_static_sql_star
 {
   PT_STATIC_SQL_STAR_KIND kind;
@@ -4163,7 +4174,7 @@ struct parser_context
   PT_STATIC_SQL_EDIT *static_sql_edits;
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
-  int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
+  PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;	/* each PL/CSQL variable replaced with a host variable */
   PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
