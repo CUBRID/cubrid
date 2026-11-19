@@ -877,6 +877,12 @@ struct rvfun RV_fun[] = {
    log_rv_undoredo_sysmeta_version,
    NULL,
    NULL},
+  {RVPGBUF_INIT_NEW_PAGE,
+   "RVPGBUF_INIT_NEW_PAGE",
+   pgbuf_rv_init_new_page_undo,
+   pgbuf_rv_init_new_page_redo,
+   NULL,
+   NULL},
 };
 
 /*

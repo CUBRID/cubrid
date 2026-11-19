@@ -1256,6 +1256,10 @@ struct partition_spec_node
   BTID_INT btid_int;		/* the B+tree header of btid, for an index scan switched to this partition */
   SCAN_STATS scan_stats;
   const char *batch_why_not;	/* the page batch's last reason on this partition's heap scan (trace) */
+  /* this partition's page bitmap between its scan's opens of one execution, as the access spec's page_list_keep */
+  FILE_FTAB_COLLECTOR page_list_keep;
+  unsigned int page_list_keep_snapshot;
+  int page_list_keep_npages;
 };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -1278,6 +1282,12 @@ struct access_spec_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
   SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
+  /* the heap's page bitmap between the scan's opens of one execution (scan_heap_scan_page_list ()): a scan opened
+   * again under the same snapshot (a correlated subquery, once per outer row) reads it instead of the file table */
+  FILE_FTAB_COLLECTOR page_list_keep;	/* partsect_ftab is NULL when nothing is kept */
+  HFID page_list_keep_hfid;	/* the heap it lists (a partition's bitmap is kept in its partition_spec_node) */
+  unsigned int page_list_keep_snapshot;	/* the snapshot build it follows (MVCC_SNAPSHOT.build_serial) */
+  int page_list_keep_npages;	/* its pages: the parallel decision's count */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   struct pruning_context *row_pruning;	/* pruning by the outer row's join values, loaded on its first row, or NULL */
