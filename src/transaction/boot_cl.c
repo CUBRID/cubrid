@@ -1615,6 +1615,8 @@ boot_finalize_client_sub (void)
 int
 boot_shutdown_client (bool is_er_final)
 {
+  internal_lob_locator_forget_issued ();
+
   return boot_shutdown_client_internal (is_er_final, true);
 }
 

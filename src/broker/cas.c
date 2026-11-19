@@ -62,6 +62,7 @@
 #include "cas_net_buf.h"
 #include "query_replace.h"
 #include "cas_execute.h"
+#include "network_interface_cl.h"
 #include "connection_support.hpp"
 #include "broker_process_size.h"
 #include "cas_ssl.h"
@@ -127,7 +128,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_stream_abort,		/* CAS_FC_STREAM_ABORT */
   fn_stream_read_open,		/* CAS_FC_STREAM_READ_OPEN */
   fn_stream_read,		/* CAS_FC_STREAM_READ */
-  fn_stream_release		/* CAS_FC_STREAM_RELEASE */
+  fn_stream_release,		/* CAS_FC_STREAM_RELEASE */
+  fn_stream_upload_release,	/* CAS_FC_STREAM_UPLOAD_RELEASE */
+  fn_stream_upload_hold		/* CAS_FC_STREAM_UPLOAD_HOLD */
 };
 
 static const char *server_func_name[] = {
@@ -181,7 +184,9 @@ static const char *server_func_name[] = {
   "fn_stream_abort",
   "fn_stream_read_open",
   "fn_stream_read",
-  "fn_stream_release"
+  "fn_stream_release",
+  "fn_stream_upload_release",
+  "fn_stream_upload_hold"
 };
 
 static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
@@ -481,6 +486,12 @@ cas_cleanup_session (void)
 	{
 	  as_info->reset_flag = TRUE;
 	}
+    }
+
+  if (cas_shutdown_signo || cas_main_fn_ret == FN_KEEP_SESS)
+    {
+      /* the client may go on in another CAS: its session keeps the locators this CAS gave it */
+      (void) internal_lob_locator_hand_over_issued ();
     }
 
   if (cas_shutdown_signo)

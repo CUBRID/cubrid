@@ -43,6 +43,7 @@
 #include "string_opfunc.h"
 #include "set_object.h"
 #include "intl_support.h"
+#include "internal_lob_marker.h"
 #include "virtual_object.h"
 #include "object_primitive.h"
 #include "object_template.h"
@@ -1184,6 +1185,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
   if (value->node_type == PT_HOST_VAR && value->info.host_var.var_type == PT_HOST_IN)
     {
       DB_DOMAIN *hv_dom;
+      int internal_lob_marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
 
       db_value = pt_host_var_db_value (parser, value);
 
@@ -1200,6 +1202,7 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	  const DB_TYPE bound_type = DB_VALUE_DOMAIN_TYPE (db_value);
 	  char name[256];
 
+	  internal_lob_marker = db_value_get_internal_lob_marker (db_value);
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE
 	      && value->type_enum != PT_TYPE_NUMERIC
 	      && value->type_enum != PT_TYPE_CHAR && value->type_enum != PT_TYPE_VARCHAR
@@ -1308,6 +1311,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	  return NULL;
 	}
 
+      if (internal_lob_marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (db_value, internal_lob_marker);
+	}
       return db_value;
     }
   else if (value->node_type == PT_NAME && value->info.name.meta_class == PT_PARAMETER)
@@ -3483,6 +3490,30 @@ pt_host_var_format_differs (const PARSER_CONTEXT * parser, int index, const DB_V
  * 	Its purpose is to hide the internal structure for portability and
  * 	maintainability of applications.
  */
+/*
+ * pt_host_var_is_internal_lob_transport () - Is this BLOB/CLOB host value still a transport envelope?
+ *   return: true for an upload token, a pending client stream, a file source, a DML slot or a scalar stream
+ *   value(in): bound host variable value
+ *
+ * Such a value has no content yet; only a LOB-typed target knows how to consume the envelope.
+ */
+static bool
+pt_host_var_is_internal_lob_transport (const DB_VALUE * value)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return false;
+    }
+  type = DB_VALUE_TYPE (value);
+  if (type != DB_TYPE_BLOB && type != DB_TYPE_CLOB)
+    {
+      return false;
+    }
+  return internal_lob_marker_is_unresolved_transport (db_value_get_internal_lob_marker (value));
+}
+
 void
 pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 {
@@ -3544,6 +3575,15 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	   * another one (the caller recompiles); the value is not cast into this plan's domain */
 	  parser->flag.bind_signature_changed = 1;
 	  pr_clone_value (val, hv);
+	}
+      else if (pt_host_var_is_internal_lob_transport (val) && !TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (hv_dom)))
+	{
+	  /* A host value that is still an Internal LOB transport envelope carries no content: outside a LOB-typed
+	   * target it cannot be streamed and the cast below would take the envelope text for the value. */
+	  typ = TP_DOMAIN_TYPE (hv_dom);
+	  PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+		       pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
+	  return;
 	}
       else if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
@@ -4212,12 +4252,25 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 
 	if (s == NULL)
 	  {
+	    /* keep the BLOB type as the CLOB case below does: db_make_null () would retype the value to NULL */
 	    db_value_domain_init (db_value, DB_TYPE_BLOB, DB_MAX_LOB_PRECISION, 0);
-	    db_make_null (db_value);
+	    db_value->domain.general_info.is_null = 1;
 	    value->info.value.db_value_is_in_workspace = false;
 	    *more_type_info_needed = (value->data_type == NULL);
 	    break;
 	  }
+
+	/* a literal holds at most DB_MAX_LOB_PRECISION bits; larger values come from a file (BLOB_FROM_FILE etc.) */
+	{
+	  DB_BIGINT literal_bits = (value->info.value.string_type == 'B') ? (DB_BIGINT) s->length
+	    : (value->info.value.string_type == 'X') ? (DB_BIGINT) s->length * 4 : (DB_BIGINT) s->length * 8;
+
+	  if (literal_bits > (DB_BIGINT) DB_MAX_LOB_PRECISION)
+	    {
+	      PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_BLOB_LITERAL_TOO_LONG);
+	      return NULL;
+	    }
+	}
 
 	if (value->info.value.string_type == 'B')
 	  {
@@ -4299,6 +4352,13 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	    value->info.value.db_value_is_in_workspace = false;
 	    *more_type_info_needed = (value->data_type == NULL);
 	    break;
+	  }
+
+	/* a literal holds at most DB_MAX_LOB_PRECISION bytes; larger values come from a file (CLOB_FROM_FILE etc.) */
+	if (s->length > DB_MAX_LOB_PRECISION)
+	  {
+	    PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLOB_LITERAL_TOO_LONG);
+	    return NULL;
 	  }
 
 	int len = s->length;

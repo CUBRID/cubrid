@@ -89,6 +89,7 @@ arith_cast_value (const ARITH_TYPE * arith, int i, const DB_VALUE * value, DB_VA
  * domains, then its result slot cleared and a variable domain left to the values. */
 extern void fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a);
 extern int fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a);
+extern int fetch_arith_reject_stream_operands (const FETCH_ARITH_ARGS * a);
 
 /* an interpreter's operand rule the generic step's emitter mirrors (fetch.c): WIDTH_BUCKET's two bounds out of its
  * PT_BETWEEN operand (the other one, a cast operand's error, is is_argument_wrapped_with_cast_op () in regu_var.hpp) */

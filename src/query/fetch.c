@@ -60,6 +60,7 @@
 #include "pl_executor.hpp"
 
 #include "dbtype.h"
+#include "internal_lob_marker.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -837,6 +838,37 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
  *   tplrec(in): tuple slot (record + layout descriptor)
  *   peek_dbval(out): Set to the value resulting from the fetch operation
  */
+/*
+ * fetch_arith_reject_stream_operands () - Error out if an operand carries a scalar stream marker.
+ *   return: NO_ERROR, or ER_QPROC_STRING_SIZE_TOO_BIG
+ *   a(in): the node's operands (left, right, third), each may be NULL
+ */
+int
+fetch_arith_reject_stream_operands (const FETCH_ARITH_ARGS * a)
+{
+  /* [리뷰] 마커는 값이 아니라 봉투다. 연산 피연산자로 오면 길이 초과 오류로 거부한다.
+   * heap_attrinfo_set도 막아 봉투 텍스트가 저장되지 않게 한다. */
+  const DB_VALUE *operands[3] = { a->peek_left, a->peek_right, a->peek_third };
+  DB_BIGINT length = 0;
+  int i;
+
+  for (i = 0; i < 3; i++)
+    {
+      const DB_VALUE *value = operands[i];
+
+      if (value == NULL || !db_value_has_internal_lob_marker (value, DB_VALUE_INTERNAL_LOB_MARKER_STREAM))
+	{
+	  continue;
+	}
+      (void) internal_lob_marker_parse_scalar_stream (db_get_string (value), db_get_string_size (value), NULL,
+						      &length, NULL, NULL);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2,
+	      (int) ((length > INT_MAX) ? INT_MAX : length), (int) DB_MAX_LOB_PRECISION);
+      return ER_QPROC_STRING_SIZE_TOO_BIG;
+    }
+  return NO_ERROR;
+}
+
 static int
 fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 		  QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval)
@@ -1552,6 +1584,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	args.peek_right = peek_right;
 	args.peek_third = peek_third;
 	args.peek_fourth = peek_fourth;
+	/* A scalar stream marker (csql-only CLOB_TO_CHAR () of a value too large for VARCHAR) is a transport envelope,
+	 * not a value, so as an operand it is refused with the same error every other client gets for that size. */
+	if (fetch_arith_reject_stream_operands (&args) != NO_ERROR)
+	  {
+	    goto error;
+	  }
 	status = op (thread_p, &args);
 	if (status != NO_ERROR)
 	  {

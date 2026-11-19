@@ -483,11 +483,12 @@ TEST (OosIdentityStampPureTest, PackedStubStampRoundTripsEveryValue)
   EXPECT_FALSE (LSA_ISNULL (&zero));
 }
 
-TEST (OosIdentityStampPureTest, ChunkHeaderAndStubAreEachTwentyFourBytes)
+TEST (OosIdentityStampPureTest, ChunkHeaderIsThirtyTwoAndStubTwentyFourBytes)
 {
-  /* The chunk header grew by the raw LOG_LSA; every per-page capacity computation follows this constant. */
-  EXPECT_EQ (OOS_RECORD_HEADER_SIZE, 24);
-  EXPECT_EQ (OOS_RECORD_HEADER_SIZE, (int) (2 * sizeof (int) + sizeof (OID) + sizeof (LOG_LSA)));
+  /* The chunk header grew by the raw LOG_LSA (and a 64-bit total length, which leaves 4 padding bytes before it);
+   * every per-page capacity computation follows this constant. */
+  EXPECT_EQ (OOS_RECORD_HEADER_SIZE, 32);
+  EXPECT_EQ (OOS_RECORD_HEADER_SIZE, (int) (sizeof (INT64) + sizeof (int) + sizeof (OID) + 4 + sizeof (LOG_LSA)));
   /* The stub packs the stamp into one bigint and stays 8-byte aligned. */
   EXPECT_EQ (OR_OOS_INLINE_SIZE, 24);
   EXPECT_EQ (OR_OOS_INLINE_SIZE, OR_OID_SIZE + OR_BIGINT_SIZE + OR_OOS_IDENTITY_STAMP_SIZE);

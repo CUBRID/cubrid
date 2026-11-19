@@ -197,7 +197,7 @@ TEST (OosReferenceErrors, VacuumReturnsOomWithoutChangingCommittedPageList)
   // Collection fails before thread, page, or sysop access. An enclosing live sysop is not exercised here.
   expect_allocation_error (1, [&]
   {
-    return vacuum_heap_oos_delete_within_sysop (nullptr, &vfid, &record, &emptied_pages);
+    return vacuum_heap_oos_delete_within_sysop (nullptr, &vfid, nullptr /* internal_lob_vfid */, &record, &emptied_pages);
   });
   ASSERT_EQ (emptied_pages.size (), 1u);
   EXPECT_TRUE (VPID_EQ (&emptied_pages[0], &page));

@@ -1428,6 +1428,9 @@ db_end_session (void)
 {
   int retval;
 
+  /* the locators this session was given go with it, also when the server is gone: a CAS serves another client next */
+  internal_lob_locator_forget_issued ();
+
   CHECK_CONNECT_ERROR ();
 
   if (db_get_session_id () == DB_EMPTY_SESSION)

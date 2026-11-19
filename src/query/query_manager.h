@@ -155,6 +155,13 @@ extern void qmgr_dump (void);
 extern int qmgr_initialize (THREAD_ENTRY * thread_p);
 extern void qmgr_finalize (THREAD_ENTRY * thread_p);
 extern void qmgr_clear_trans_wakeup (THREAD_ENTRY * thread_p, int tran_index, bool tran_died, bool is_abort);
+extern int qmgr_fix_xasl_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
+				      XASL_CACHE_ENTRY ** xasl_cache_entry_p, XASL_CLONE * xclone_p);
+extern QFILE_LIST_ID *qmgr_execute_fixed_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p,
+						XASL_CACHE_ENTRY * xasl_cache_entry_p, XASL_CLONE * xclone_p,
+						QUERY_ID * query_id_p, int dbval_count, void *dbval_p,
+						QUERY_FLAG * flag_p, CACHE_TIME * client_cache_time_p,
+						CACHE_TIME * server_cache_time_p, int query_timeout);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern QMGR_TRAN_STATUS qmgr_get_tran_status (THREAD_ENTRY * thread_p, int tran_index);
 extern void qmgr_set_tran_status (THREAD_ENTRY * thread_p, int tran_index, QMGR_TRAN_STATUS trans_status);

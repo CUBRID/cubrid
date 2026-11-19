@@ -63,16 +63,16 @@ static char cas_u_type[] = { 0,	/* 0 */
   0, 0,				/* 29 - 30 */
   CCI_U_TYPE_BIGINT,		/* 31 */
   CCI_U_TYPE_DATETIME,		/* 32 */
-  CCI_U_TYPE_BFILE,		/* 33 */
-  CCI_U_TYPE_CFILE,		/* 34 */
-  CCI_U_TYPE_BLOB,		/* 35 */
-  CCI_U_TYPE_CLOB,		/* 36 */
-  CCI_U_TYPE_ENUM,		/* 37 */
-  CCI_U_TYPE_TIMESTAMPTZ,	/* 38 */
-  CCI_U_TYPE_TIMESTAMPLTZ,	/* 39 */
-  CCI_U_TYPE_DATETIMETZ,	/* 40 */
-  CCI_U_TYPE_DATETIMELTZ,	/* 41 */
-  CCI_U_TYPE_JSON,		/* 42 */
+  CCI_U_TYPE_BLOB,		/* 33 */
+  CCI_U_TYPE_CLOB,		/* 34 */
+  CCI_U_TYPE_ENUM,		/* 35 */
+  CCI_U_TYPE_TIMESTAMPTZ,	/* 36 */
+  CCI_U_TYPE_TIMESTAMPLTZ,	/* 37 */
+  CCI_U_TYPE_DATETIMETZ,	/* 38 */
+  CCI_U_TYPE_DATETIMELTZ,	/* 39 */
+  CCI_U_TYPE_JSON,		/* 40 */
+  CCI_U_TYPE_BFILE,		/* 41 */
+  CCI_U_TYPE_CFILE,		/* 42 */
 };
 
 static CAS_ERROR_LOG_HANDLE_CONTEXT *cas_EHCTX = NULL;
@@ -346,6 +346,8 @@ ux_end_tran_cleanup (int tran_type)
 {
   if (!as_info->cur_statement_pooling)
     {
+      /* the driver will not run these statements again: their uploads go with them */
+      hm_srv_handle_release_uploads_for_free_all (tran_type != CCI_TRAN_COMMIT);
       if (tran_type == CCI_TRAN_COMMIT)
 	{
 	  hm_srv_handle_free_all (false);

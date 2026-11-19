@@ -86,6 +86,10 @@ extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_
  * (CBRD-26950). */
 extern int heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oos_ref,
 				      DB_BIGINT *oos_len);
+/* The same parse for a stub of kind expect_kind (or OR_OOS_KIND_ANY), returning the kind and its length:
+ * bytes for OOS and CLOB, BITS for BLOB. */
+extern int heap_oos_parse_inline_stub (const RECDES *recdes, int location, int expect_kind, oos_chain_ref *oos_ref,
+				       int *kind, DB_BIGINT *length);
 
 /* Prefetch requested OOS-marked attributes of an OOS-bearing record through a single oos_read_many()
  * when grouped Resolve applies. The caller filters non-OOS records before entering this helper.

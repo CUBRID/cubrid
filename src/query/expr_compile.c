@@ -1566,6 +1566,11 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return rc;
     }
+  /* a scalar stream marker is no operand (fetch_peek_arith () refuses it the same way) */
+  if (fetch_arith_reject_stream_operands (&a) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
   expr_frames_add (ctx, step->level);
   rc = ((FETCH_ARITH_OP) step->fn) (ctx->thread_p, &a);
   expr_frames_add (ctx, -step->level);

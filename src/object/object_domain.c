@@ -382,8 +382,6 @@ static TP_DOMAIN *tp_Domains[] = {
 
   /* beginning of some "padding" built-in domains that can be used as expansion space when new primitive data types are
    * added. */
-  &tp_Bfile_domain,
-  &tp_Cfile_domain,
   &tp_Blob_domain,
   &tp_Clob_domain,
   &tp_Enumeration_domain,
@@ -392,6 +390,8 @@ static TP_DOMAIN *tp_Domains[] = {
   &tp_Datetimetz_domain,
   &tp_Datetimeltz_domain,
   &tp_Json_domain,
+  &tp_Bfile_domain,
+  &tp_Cfile_domain,
   &tp_Null_domain,
   &tp_Null_domain,
   &tp_Null_domain,
@@ -727,8 +727,6 @@ tp_apply_sys_charset (void)
     }
 
   /* update string domains with current codeset */
-  /* tp_Clob_domain / tp_Blob_domain carry no codeset/collation slot — mirrors BFILE/CFILE.
-   * Server uses LANG_SYS_CODESET (createdb codeset) for byte->char views at runtime. */
   tp_String_domain.codeset = LANG_SYS_CODESET;
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
   tp_Char_domain.codeset = LANG_SYS_CODESET;
@@ -6074,13 +6072,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
    */
   db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
-  /* CLOB is character-shaped storage, but its value/domain does not carry
-   * per-value codeset/collation; keep it out of generic string collation setup. */
-  if (TP_IS_CHAR_TYPE (desired_type))
+  if (TP_IS_CHAR_TYPE (desired_type) || desired_type == DB_TYPE_CLOB)
     {
       if (desired_domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
-	  if (TP_IS_CHAR_TYPE (original_type))
+	  if (TP_IS_CHAR_TYPE (original_type) || desired_type == DB_TYPE_CLOB)
 	    {
 	      db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
 					      TP_DOMAIN_COLLATION (desired_domain));
@@ -6232,8 +6228,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	  status = DOMAIN_INCOMPATIBLE;
 	}
-      else if (original_type == DB_TYPE_CLOB && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR)
-	       && src == dest)
+      else if ((original_type == DB_TYPE_CLOB || original_type == DB_TYPE_CFILE)
+	       && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR) && src == dest)
 	{
 	  /* The legacy nested CLOB cast wrote dest, then its outer alias
 	   * handling replaced it with the untouched typed NULL temporary.
@@ -6254,7 +6250,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
       if ((desired_type == DB_TYPE_BIT || desired_type == DB_TYPE_VARBIT) && original_type != DB_TYPE_CHAR
 	  && original_type != DB_TYPE_VARCHAR && original_type != DB_TYPE_ENUMERATION && original_type != DB_TYPE_BIT
-	  && original_type != DB_TYPE_VARBIT && original_type != DB_TYPE_BLOB)
+	  && original_type != DB_TYPE_VARBIT && original_type != DB_TYPE_BLOB && original_type != DB_TYPE_BFILE)
 	{
 	  /* any other source is coerced as a bit string for the error that coercion sets */
 	  (void) db_bit_string_coerce (src, target, &data_stat);

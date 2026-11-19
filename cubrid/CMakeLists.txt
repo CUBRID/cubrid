@@ -561,6 +561,11 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/heap_oos.cpp
   ${STORAGE_DIR}/heap_oos_value_ref.cpp
   ${STORAGE_DIR}/heap_pending_record.cpp
+  ${STORAGE_DIR}/internal_lob_file.cpp
+  ${STORAGE_DIR}/internal_lob_upload.cpp
+  ${STORAGE_DIR}/internal_lob_stream_session.cpp
+  ${STORAGE_DIR}/internal_lob_dml_session.cpp
+  ${STORAGE_DIR}/internal_lob_dml_executor.cpp
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
   ${STORAGE_DIR}/oos_util.cpp
@@ -619,6 +624,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
+  ${LOADDB_DIR}/load_internal_lob.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
   ${LOADDB_DIR}/load_server_loader.cpp
   ${LOADDB_DIR}/load_session.cpp
@@ -632,10 +638,12 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_db_value_converter.hpp
   ${LOADDB_DIR}/load_driver.hpp
   ${LOADDB_DIR}/load_error_handler.hpp
+  ${LOADDB_DIR}/load_internal_lob.hpp
   ${LOADDB_DIR}/load_semantic_helper.hpp
   ${LOADDB_DIR}/load_server_loader.hpp
   ${LOADDB_DIR}/load_session.hpp
   ${LOADDB_DIR}/load_worker_manager.hpp
+  ${LOADDB_DIR}/internal_lob_stream_kind.h
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
