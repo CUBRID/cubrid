@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <assert.h>
+#include <algorithm>
 
 #include "db.h"
 #include "extract_schema.hpp"
@@ -73,6 +74,8 @@
 #define PK_SUFFIX             "_pk"
 #define PROCEDURE_SUFFIX      "_procedure"
 #define PROCEDURE_BODY_SUFFIX "_procedure_body"
+#define PACKAGE_SUFFIX        "_package"
+#define PACKAGE_BODY_SUFFIX   "_package_body"
 #define SERIAL_SUFFIX         "_serial"
 #define SERVER_SUFFIX         "_server"
 #define SYNONYM_SUFFIX        "_synonym"
@@ -236,6 +239,8 @@ static void emit_partition_info (extract_context & ctxt, print_output & output_c
 static int emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg_set);
+static int emit_package_specs (extract_context & ctxt, print_output & output_ctx);
+static int emit_package_bodies (extract_context & ctxt, print_output & output_ctx);
 static int emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, const char *code_name,
 				       const char *owner_name, DB_VALUE * comment);
 
@@ -257,6 +262,8 @@ static int extract_serial (extract_context & ctxt);
 static int extract_synonym (extract_context & ctxt);
 static int extract_procedure (extract_context & ctxt);
 static int extract_procedure_body (extract_context & ctxt);
+static int extract_package (extract_context & ctxt);
+static int extract_package_body (extract_context & ctxt);
 static int extract_server (extract_context & ctxt);
 static int extract_class (extract_context & ctxt);
 static int extract_vclass (extract_context & ctxt);
@@ -1511,6 +1518,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
       err_count++;
     }
 
+  if (required_class_only == false && emit_package_specs (ctxt, schema_output_ctx) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (ctxt.classes != NULL
       && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_VCLASS), er_errid () != NO_ERROR))
     {
@@ -1518,6 +1530,11 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
   if (required_class_only == false && emit_stored_procedure_post (ctxt, schema_output_ctx) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (required_class_only == false && emit_package_bodies (ctxt, schema_output_ctx) != NO_ERROR)
     {
       err_count++;
     }
@@ -4814,6 +4831,317 @@ exit:
 }
 
 /*
+ * unload_package - a package to emit, with the values to sort the packages by
+ */
+struct unload_package
+{
+  MOP pkg;
+  DB_DATETIME created_time;
+  std::string unique_name;
+};
+
+/*
+ * get_packages - get the packages to emit in the order of their created time
+ *    return: 0 if success, error count otherwise
+ *    pkg_list(out): all the _db_package objects. It keeps the MOPs in packages, and is freed by db_objlist_free ()
+ *    packages(out): the packages to emit
+ *
+ * Note: The created time of a package is kept by CREATE OR REPLACE, so a package referred to by another one
+ *       usually comes first. The system generated packages and, for a non-DBA user, the packages of the other
+ *       users are not emitted.
+ */
+static int
+get_packages (extract_context & ctxt, DB_OBJLIST ** pkg_list, std::vector < unload_package > &packages)
+{
+  MOP cls;
+  DB_OBJLIST *cur;
+  DB_VALUE flags_val, owner_val, owner_name_val, unique_name_val, created_time_val;
+  int save;
+  int err_count = 0;
+
+  *pkg_list = NULL;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  cls = db_find_class (CT_PACKAGE_NAME);
+  if (cls == NULL)
+    {
+      AU_RESTORE (save);
+      return 1;
+    }
+
+  *pkg_list = db_get_all_objects (cls);
+  for (cur = *pkg_list; cur != NULL; cur = cur->next)
+    {
+      if (db_get (cur->op, PKG_ATTR_FLAGS, &flags_val) != NO_ERROR
+	  || db_get (cur->op, PKG_ATTR_OWNER, &owner_val) != NO_ERROR
+	  || db_get (cur->op, PKG_ATTR_UNIQUE_NAME, &unique_name_val) != NO_ERROR)
+	{
+	  err_count++;
+	  continue;
+	}
+
+      if (!DB_IS_NULL (&flags_val) && (db_get_int (&flags_val) & PKG_FLAGS_SYSTEM_GENERATED))
+	{
+	  db_value_clear (&unique_name_val);
+	  continue;
+	}
+
+      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	{
+	  if (db_get (db_get_object (&owner_val), "name", &owner_name_val) != NO_ERROR)
+	    {
+	      db_value_clear (&unique_name_val);
+	      err_count++;
+	      continue;
+	    }
+
+	  bool is_mine = (strcasecmp (ctxt.login_user, db_get_string (&owner_name_val)) == 0);
+	  db_value_clear (&owner_name_val);
+	  if (!is_mine)
+	    {
+	      db_value_clear (&unique_name_val);
+	      continue;
+	    }
+	}
+
+      if (db_get (cur->op, PKG_ATTR_CREATED_TIME, &created_time_val) != NO_ERROR)
+	{
+	  db_value_clear (&unique_name_val);
+	  err_count++;
+	  continue;
+	}
+
+      unload_package p;
+      p.pkg = cur->op;
+      if (DB_IS_NULL (&created_time_val))
+	{
+	  p.created_time.date = p.created_time.time = 0;
+	}
+      else
+	{
+	  p.created_time = *db_get_datetime (&created_time_val);
+	}
+      p.unique_name = db_get_string (&unique_name_val);
+      packages.push_back (p);
+
+      db_value_clear (&unique_name_val);
+    }
+
+  AU_RESTORE (save);
+
+  std::sort (packages.begin (), packages.end (), [] (const unload_package & a, const unload_package & b)
+  {
+    if (a.created_time.date != b.created_time.date)
+      {
+	return a.created_time.date < b.created_time.date;
+      }
+    if (a.created_time.time != b.created_time.time)
+      {
+	return a.created_time.time < b.created_time.time;
+      }
+    return a.unique_name < b.unique_name;
+  });
+
+  return err_count;
+}
+
+/*
+ * emit_package_code - emit the spec or the body of a package
+ *    return: NO_ERROR if success, error code otherwise
+ *    pkg(in): _db_package object
+ *    for_body(in): true for the body, false for the spec
+ *
+ * Note: The saved code is CREATE OR REPLACE PACKAGE [BODY] without the owner name and the comment (jsp_cl.cpp).
+ *       As for stored procedures (emit_stored_procedure_code ()), it is parsed and printed again with the owner name,
+ *       and the comment of the catalog is added to the spec. Nothing is emitted for the body of a package without one.
+ */
+static int
+emit_package_code (extract_context & ctxt, print_output & output_ctx, MOP pkg, bool for_body)
+{
+  MOP code_obj, owner;
+  DB_VALUE code_val, scode_val, owner_val, owner_name_val, comment_val;
+  PARSER_CONTEXT *parser = NULL;
+  PT_NODE **scode_ptr;
+  const char *scode;
+  char *result = NULL;
+  char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  int save, err = NO_ERROR;
+
+  db_make_null (&scode_val);
+  db_make_null (&owner_name_val);
+  db_make_null (&comment_val);
+
+  AU_SAVE_AND_DISABLE (save);
+
+  if ((err = db_get (pkg, PKG_ATTR_CODE, &code_val)) != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (DB_IS_NULL (&code_val))
+    {
+      err = ER_FAILED;
+      goto exit;
+    }
+  code_obj = db_get_object (&code_val);
+
+  if ((err = db_get (code_obj, for_body ? PKG_CODE_ATTR_SCODE_BODY : PKG_CODE_ATTR_SCODE_SPEC, &scode_val)) != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (DB_IS_NULL (&scode_val))
+    {
+      /* a package without a body */
+      goto exit;
+    }
+  scode = db_get_string (&scode_val);
+
+  if ((err = db_get (pkg, PKG_ATTR_OWNER, &owner_val)) != NO_ERROR)
+    {
+      goto exit;
+    }
+  owner = db_get_object (&owner_val);
+  if ((err = db_get (owner, "name", &owner_name_val)) != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  parser = parser_create_parser ();
+  if (parser == NULL)
+    {
+      err = ER_FAILED;
+      goto exit;
+    }
+
+  scode_ptr = parser_parse_string (parser, scode);
+  if (scode_ptr != NULL && *scode_ptr != NULL && (*scode_ptr)->node_type == PT_CREATE_PACKAGE)
+    {
+      if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
+	{
+	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	}
+      else
+	{
+	  PT_NODE *pkg_name = (*scode_ptr)->info.pkg.name;
+	  if (pkg_name->info.name.resolved == NULL)
+	    {
+	      sm_downcase_name (db_get_string (&owner_name_val), downcase_owner_name, DB_MAX_USER_LENGTH);
+	      pkg_name->info.name.resolved = pt_append_string (parser, NULL, downcase_owner_name);
+	    }
+	}
+
+      /* CREATE OR REPLACE PACKAGE [BODY], without the comment */
+      parser->flag.is_unloading_plcsql_def = 1;
+      result = parser_print_tree_with_quotes (parser, *scode_ptr);
+    }
+
+  if (result == NULL)
+    {
+      output_ctx ("\n/* error occurs: %s \n\n %s; \n*/\n", parser->error_buffer ? parser->error_buffer : "", scode);
+      err = ER_FAILED;
+      goto exit;
+    }
+
+  output_ctx ("\n%s", result);
+  if (!for_body)
+    {
+      if ((err = db_get (pkg, PKG_ATTR_COMMENT, &comment_val)) != NO_ERROR)
+	{
+	  output_ctx (";\n");
+	  goto exit;
+	}
+      if (!DB_IS_NULL (&comment_val))
+	{
+	  output_ctx (" COMMENT ");
+	  desc_value_print (output_ctx, &comment_val);
+	}
+    }
+  output_ctx (";\n");
+
+exit:
+  if (parser)
+    {
+      parser_free_parser (parser);
+    }
+
+  db_value_clear (&scode_val);
+  db_value_clear (&owner_name_val);
+  db_value_clear (&comment_val);
+  AU_RESTORE (save);
+
+  return err;
+}
+
+/*
+ * emit_package_specs - emit the spec of each package, and right after it the grants on the package
+ *    return: 0 if success, error count otherwise
+ *    output_ctx(in/out): output context
+ *
+ * Note: A spec is compiled with the privileges of its owner, and may refer to another package of another user.
+ *       So the grants on a package come right after its spec, before the spec of the next package.
+ */
+static int
+emit_package_specs (extract_context & ctxt, print_output & output_ctx)
+{
+  DB_OBJLIST *pkg_list = NULL;
+  std::vector < unload_package > packages;
+  int err_count;
+
+  err_count = get_packages (ctxt, &pkg_list, packages);
+
+  for (const unload_package & p:packages)
+    {
+      if (emit_package_code (ctxt, output_ctx, p.pkg, false) != NO_ERROR)
+	{
+	  err_count++;
+	  continue;
+	}
+
+      if (ctxt.do_auth && au_export_grants (ctxt, output_ctx, p.pkg, DB_OBJECT_PACKAGE) != NO_ERROR)
+	{
+	  err_count++;
+	}
+    }
+
+  db_objlist_free (pkg_list);
+
+  /* extract_schema () checks er_errid () after the next step, emit_class_query_spec () */
+  if (er_errid () == ER_OBJ_NO_COMPONENTS)
+    {
+      er_clear ();
+    }
+
+  return err_count;
+}
+
+/*
+ * emit_package_bodies - emit the body of each package
+ *    return: 0 if success, error count otherwise
+ *    output_ctx(in/out): output context
+ */
+static int
+emit_package_bodies (extract_context & ctxt, print_output & output_ctx)
+{
+  DB_OBJLIST *pkg_list = NULL;
+  std::vector < unload_package > packages;
+  int err_count;
+
+  err_count = get_packages (ctxt, &pkg_list, packages);
+
+  for (const unload_package & p:packages)
+    {
+      if (emit_package_code (ctxt, output_ctx, p.pkg, true) != NO_ERROR)
+	{
+	  err_count++;
+	}
+    }
+
+  db_objlist_free (pkg_list);
+
+  return err_count;
+}
+
+/*
  * emit_foreign_key - emit foreign key
  *    return: NO_ERROR if successful, error code otherwise
  *    output_ctx(in/out): output context
@@ -5469,6 +5797,128 @@ extract_procedure_body (extract_context & ctxt)
   if (ftell (output_file) == 0)
     {
       /* file is empty (database has no procedure body to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_package (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PACKAGE_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       PACKAGE_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (required_class_only == false)
+    {
+      err = emit_package_specs (ctxt, output_ctx);
+    }
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no package to be emitted) */
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      /* not empty */
+      if (err == NO_ERROR)
+	{
+	  output_ctx ("\n");
+	  output_ctx ("COMMIT WORK;\n");
+	}
+      fclose (output_file);
+      output_file = NULL;
+    }
+
+  return err;
+}
+
+static int
+extract_package_body (extract_context & ctxt)
+{
+  FILE *output_file = NULL;
+  int err = NO_ERROR;
+  char output_filename[PATH_MAX * 2] = { '\0' };
+  char output_schema_info[PATH_MAX * 2] = { '\0' };
+
+  if (create_filename
+      (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PACKAGE_BODY_SUFFIX, output_filename,
+       sizeof (output_filename)) != 0)
+    {
+      util_log_write_errid (MSGCAT_UTIL_GENERIC_INVALID_ARGUMENT);
+      return ER_FAILED;
+    }
+
+  if (snprintf
+      (output_schema_info, sizeof (output_schema_info) - 1, "%s%s%s", ctxt.output_prefix, SCHEMA_NAME,
+       PACKAGE_BODY_SUFFIX) > 0)
+    {
+      ctxt.schema_file_list.push_back (output_schema_info);
+    }
+
+  output_file = fopen_ex (output_filename, "w");
+  if (output_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      return ER_FAILED;
+    }
+
+  file_print_output output_ctx (output_file);
+
+  if (required_class_only == false)
+    {
+      err = emit_package_bodies (ctxt, output_ctx);
+    }
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      /* file is empty (database has no package body to be emitted) */
       fclose (output_file);
       output_file = NULL;
       remove (output_filename);
@@ -6274,6 +6724,16 @@ extract_split_schema_files (extract_context & ctxt)
       err_count++;
     }
 
+  if (extract_package (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
+  if (extract_package_body (ctxt) != NO_ERROR)
+    {
+      err_count++;
+    }
+
   if (extract_pk (ctxt) != NO_ERROR)
     {
       err_count++;
@@ -6411,7 +6871,8 @@ create_schema_info (extract_context & ctxt)
   const char *loading_order[] =
     { "_schema_user", "_schema_class", "_schema_vclass", "_schema_server", "_schema_synonym",
     "_schema_serial", "_schema_procedure",
-    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_vclass_query_spec", "_schema_procedure_body"
+    "_schema_pk", "_schema_fk", "_schema_uk", "_schema_grant", "_schema_package", "_schema_vclass_query_spec",
+    "_schema_procedure_body", "_schema_package_body"
   };
 
   const size_t len = sizeof (loading_order) / sizeof (loading_order[0]);
