@@ -27182,11 +27182,12 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       if (FI_INSERTED (FI_TEST_HEAP_PREV_VERSION_WALK_HOLD) && LSA_EQ (&process_lsa, previous_version_lsa)
 	  && scan_cache->mvcc_snapshot != &LOG_FIND_CURRENT_TDES (thread_p)->mvccinfo.snapshot)
 	{
-	  /* lets a test commit the writer of the newer versions between two judgments of one catalog read */
+	  /* holds every walk under a snapshot other than the transaction snapshot, catalog reads among them, so that
+	   * a test can commit the writer of the newer versions between two judgments of one walk */
 	  int hold_seconds = 2;
 
 	  heap_prev_version_walk_release_pages (thread_p, &walk);
-	  er_log_debug (ARG_FILE_LINE, "fault injection: hold a catalog read at version %lld|%d",
+	  er_log_debug (ARG_FILE_LINE, "fault injection: hold a non-transaction snapshot read at version %lld|%d",
 			LSA_AS_ARGS (&process_lsa));
 	  (void) FI_TEST_ARG (thread_p, FI_TEST_HEAP_PREV_VERSION_WALK_HOLD, &hold_seconds, FI_INIT_STATE);
 	}
