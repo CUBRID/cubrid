@@ -4087,7 +4087,6 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
   int max_wait_time_in_msec = 1000;
   bool need_wakeup_LFT, need_wait;
   bool async_commit, group_commit;
-  LOG_LSA nxio_lsa;
   LOG_GROUP_COMMIT_INFO *group_commit_info = &log_Gl.group_commit_info;
 
   assert (flush_lsa != NULL && !LSA_ISNULL (flush_lsa));
@@ -4153,22 +4152,19 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
     }
   else if (need_wait == true)
     {
-      nxio_lsa = log_Gl.append.get_nxio_lsa ();
-
       if (need_wakeup_LFT == false && pgbuf_has_perm_pages_fixed (thread_p))
 	{
 	  need_wakeup_LFT = true;
 	}
 
-      while (LSA_LT (&nxio_lsa, flush_lsa))
+      while (logpb_need_wal (flush_lsa))
 	{
 	  gettimeofday (&start_time, NULL);
 	  (void) timeval_add_msec (&tmp_timeval, &start_time, max_wait_time_in_msec);
 	  (void) timeval_to_timespec (&to, &tmp_timeval);
 
 	  rv = pthread_mutex_lock (&group_commit_info->gc_mutex);
-	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
-	  if (LSA_GE (&nxio_lsa, flush_lsa))
+	  if (!logpb_need_wal (flush_lsa))
 	    {
 	      pthread_mutex_unlock (&group_commit_info->gc_mutex);
 	      break;
@@ -4182,7 +4178,6 @@ logpb_flush_pages (THREAD_ENTRY * thread_p, LOG_LSA * flush_lsa)
 	  pthread_mutex_unlock (&group_commit_info->gc_mutex);
 
 	  need_wakeup_LFT = true;
-	  nxio_lsa = log_Gl.append.get_nxio_lsa ();
 	}
     }
 #endif /* SERVER_MODE */
