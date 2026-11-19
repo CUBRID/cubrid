@@ -120,6 +120,16 @@ namespace cubpl
     // the arrays of the previous size are released before arg_size changes
     if (set_arg_size (num_args) != NO_ERROR)
       {
+	// left without arguments: read past the two arrays, so that the fields after them are read where they are
+	for (int a = 0; a < 2; a++)
+	  {
+	    int cnt = 0, skipped;
+	    deserializator.unpack_int (cnt);
+	    for (int i = 0; i < cnt; i++)
+	      {
+		deserializator.unpack_int (skipped);
+	      }
+	  }
 	return;
       }
 
