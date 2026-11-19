@@ -12519,9 +12519,11 @@ qexec_nl_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * outer, XASL_NODE * inne
   inner->nl_batch = batch;
   batch->outer = outer;
 
-  if (XASL_IS_PER_OUTER_ROW (inner) || spec == NULL
-      || spec->type != TARGET_CLASS || spec->access != ACCESS_METHOD_INDEX
-      || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)
+  /* a semi or anti join step is batched as any other; a partitioned one and the steps after it are driven a row at
+   * a time by their partition walk */
+  if (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN) || spec == NULL
+      || (XASL_IS_NL_SEMI_OR_ANTI (inner) && spec->parts != NULL) || spec->type != TARGET_CLASS
+      || spec->access != ACCESS_METHOD_INDEX || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_FOR_UPDATE)
       || outer->val_list == NULL || outer->dptr_list != NULL || outer->bptr_list != NULL || outer->fptr_list != NULL
       || outer->spec_list == NULL || (outer->spec_list->type != TARGET_CLASS && outer->spec_list->type != TARGET_LIST))
     {
@@ -12750,6 +12752,13 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
 	{
 	  row->oid_cnt = n_oids;
 	  batch->n_oids += n_oids;
+	}
+      else if (XASL_IS_NL_SEMI_OR_ANTI (xasl))
+	{
+	  /* the step stops at its first match: the OIDs of this one buffer are kept for their pages to be named, and
+	   * the row path reads the index again */
+	  batch->n_oids += n_oids;
+	  s_id->scan_stats.nl_batch_rows++;
 	}
       else
 	{
@@ -13451,10 +13460,7 @@ qexec_execute_scan_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      qexec_nl_batch_drop_rows (thread_p, batch);
 	      return S_END;
 	    }
-	  if (batch->rows[batch->next_row].oid_cnt > 0)
-	    {
-	      qexec_nl_batch_read_ahead (thread_p, xasl, batch, batch->rows[batch->next_row].oid_start);
-	    }
+	  qexec_nl_batch_read_ahead (thread_p, xasl, batch, batch->rows[batch->next_row].oid_start);
 	  if (qexec_nl_batch_open_row (thread_p, xasl, batch) != NO_ERROR)
 	    {
 	      return S_ERROR;

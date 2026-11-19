@@ -6627,7 +6627,7 @@ scan_index_nl_batch_ok (const SCAN_ID * scan_id)
 
   return (scan_id->type == S_INDX_SCAN && !scan_id->grouped && scan_id->position == S_BEFORE
 	  && scan_id->direction == S_FORWARD && !scan_id->mvcc_select_lock_needed && scan_id->scan_op_type == S_SELECT
-	  && scan_id->single_fetch != QPROC_SINGLE_INNER && !scan_id->scan_immediately_stop
+	  && !scan_id->single_fetched && !scan_id->scan_immediately_stop
 	  && isidp->oid_list != NULL && !SCAN_IS_INDEX_COVERED (isidp) && !isidp->multi_range_opt.use
 	  && !isidp->iss.use && !isidp->need_count_only && isidp->gby_skip == NULL
 	  && isidp->key_limit_upper == -1 && isidp->key_limit_lower == -1 && isidp->indx_info != NULL
@@ -6699,16 +6699,16 @@ scan_index_nl_batch_collect (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, OID * o
     {
       return S_ERROR;
     }
-  if (!BTREE_END_OF_SCAN (&isidp->bt_scan))
-    {
-      return S_SUCCESS;
-    }
   if (ret == S_SUCCESS)
     {
       /* the caller takes a row while half of its array, one OID buffer, is free */
       assert (isidp->oids_count <= room);
       memcpy (oids, isidp->oid_list->oidp, isidp->oids_count * sizeof (OID));
       *n_oids = isidp->oids_count;
+    }
+  if (!BTREE_END_OF_SCAN (&isidp->bt_scan))
+    {
+      return S_SUCCESS;
     }
   scan_id->scan_stats.nl_batch_rows++;
   *complete = true;
