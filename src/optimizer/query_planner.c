@@ -2372,7 +2372,15 @@ qo_top_plan_new (QO_PLAN * plan)
 		}
 	      else
 		{
+		  /* a GROUP BY skipped by a backward scan (qo_check_groupby_skip_descending ()) keeps the direction
+		   * at the top, as the ORDER BY skip above, so that qo_planner_search () applies qo_set_use_desc (). */
+		  bool save_use_iscan_descending = plan->use_iscan_descending;
+
 		  plan = qo_sort_new (plan, QO_UNORDERED, all_distinct == PT_DISTINCT ? SORT_DISTINCT : SORT_ORDERBY);
+		  if (plan != NULL)
+		    {
+		      plan->use_iscan_descending = save_use_iscan_descending;
+		    }
 		}
 	    }
 	}
