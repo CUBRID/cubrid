@@ -92,6 +92,8 @@ namespace memoize
       result_code get ();
       /* is the key of the current outer row stored? Nothing is replayed and no hit or miss is counted */
       bool has_key ();
+      /* the hash of the current outer row's key */
+      size_t key_hash ();
       result_code put();
       void start_timer();
       void stop_timer();

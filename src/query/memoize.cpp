@@ -711,6 +711,23 @@ namespace memoize
     return found;
   }
 
+  size_t storage::key_hash ()
+  {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    key *k = get_key();
+    size_t h = 0;
+
+    if (k != nullptr)
+      {
+	h = key::hash () (k);
+	k->~key();
+	m_key_fixed_allocator.deallocate (k);
+      }
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+
+    return h;
+  }
+
   result_code storage::put()
   {
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);

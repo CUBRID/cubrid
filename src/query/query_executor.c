@@ -12463,6 +12463,10 @@ struct qexec_nl_batch
   int ahead_distance;		/* OIDs of the last read-ahead window; grows as an index scan's does */
   int hinted;			/* pages of this batch named to the OS */
   INT64 bytes;			/* memory of the held outer rows */
+  unsigned int *seen;		/* hashes of the keys of the held rows, for a step whose answers are kept by key
+				 * (memoize, the subquery's result cache): open addressing, 0 is an empty slot */
+  int seen_cap;
+  int seen_cnt;
   struct qexec_sq_batch *sq;	/* rows this scan holds for its correlated subquery (owned); NULL: none */
   bool sq_armed;		/* ... decided */
 };
@@ -12484,6 +12488,7 @@ struct qexec_sq_batch
 };
 
 static void qexec_nl_batch_read_ahead (THREAD_ENTRY * thread_p, XASL_NODE * inner, QEXEC_NL_BATCH * batch, int pos);
+static bool qexec_nl_batch_seen (QEXEC_NL_BATCH * batch, unsigned int hash);
 static int qexec_nl_batch_copy_lists (THREAD_ENTRY * thread_p, VAL_LIST ** lists, int n_lists, DB_VALUE * vals,
 				      bool to_lists, INT64 * bytes);
 static QEXEC_SQ_BATCH *qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
@@ -12634,6 +12639,11 @@ qexec_nl_batch_drop_rows (THREAD_ENTRY * thread_p, QEXEC_NL_BATCH * batch)
 	}
       (void) db_change_private_heap (thread_p, save_heapid);
     }
+  if (batch->seen_cnt > 0)
+    {
+      memset (batch->seen, 0, batch->seen_cap * sizeof (unsigned int));
+      batch->seen_cnt = 0;
+    }
   batch->n_rows = 0;
   batch->n_oids = 0;
   batch->bytes = 0;
@@ -12673,6 +12683,10 @@ qexec_nl_batch_free (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       free (batch->oids);
     }
+  if (batch->seen != NULL)
+    {
+      free (batch->seen);
+    }
   if (batch->saved != NULL)
     {
       HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
@@ -12687,6 +12701,66 @@ qexec_nl_batch_free (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
   free (batch);
   xasl->nl_batch = NULL;
+}
+
+/*
+ * qexec_nl_batch_seen () - does the batch hold a row of this key already?
+ *   return: true when a held row had the same key hash; otherwise false, and the hash is remembered
+ *   hash(in): of the key by which the step's answers are kept
+ *
+ * Note: The row path answers a repeated key from what the first row of the key stored, so the index is read for the
+ *	 first one only, as the join taken a row at a time reads it. Two keys of one hash cost the second its
+ *	 read-ahead, nothing else: its row is held without OIDs and the row path reads the index.
+ */
+static bool
+qexec_nl_batch_seen (QEXEC_NL_BATCH * batch, unsigned int hash)
+{
+  unsigned int i;
+
+  if (hash == 0)
+    {
+      hash = 1;
+    }
+  if (batch->seen_cnt * 2 >= batch->seen_cap)
+    {
+      int new_cap = MAX (256, batch->seen_cap * 2);
+      unsigned int *new_seen = (unsigned int *) calloc (new_cap, sizeof (unsigned int));
+      int k;
+
+      if (new_seen == NULL)
+	{
+	  /* not remembered: the index is read for the row */
+	  return false;
+	}
+      for (k = 0; k < batch->seen_cap; k++)
+	{
+	  if (batch->seen[k] != 0)
+	    {
+	      for (i = batch->seen[k] & (new_cap - 1); new_seen[i] != 0; i = (i + 1) & (new_cap - 1))
+		{
+		  ;
+		}
+	      new_seen[i] = batch->seen[k];
+	    }
+	}
+      if (batch->seen != NULL)
+	{
+	  free (batch->seen);
+	}
+      batch->seen = new_seen;
+      batch->seen_cap = new_cap;
+    }
+  for (i = hash & (batch->seen_cap - 1); batch->seen[i] != 0; i = (i + 1) & (batch->seen_cap - 1))
+    {
+      if (batch->seen[i] == hash)
+	{
+	  return true;
+	}
+    }
+  batch->seen[i] = hash;
+  batch->seen_cnt++;
+
+  return false;
 }
 
 /*
@@ -12770,10 +12844,12 @@ qexec_nl_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QEXEC_NL_BATCH * 
       return S_ERROR;
     }
 
-  /* its OIDs. Not for a key memoize holds (the row path replays it), nor for a join value the scan knows to be
-   * null (the row path answers without a search) */
+  /* its OIDs. Not for a key memoize holds or will hold when an earlier row of the batch is joined (the row path
+   * replays it), nor for a join value the scan knows to be null (the row path answers without a search) */
   if (scan_ok && !(s_id->join_dbval != NULL && DB_IS_NULL (s_id->join_dbval))
-      && !(xasl->memoize_storage != NULL && xasl->memoize_storage->has_key ()))
+      && !(xasl->memoize_storage != NULL && !xasl->memoize_storage->is_disabled ()
+	   && (xasl->memoize_storage->has_key ()
+	       || qexec_nl_batch_seen (batch, (unsigned int) xasl->memoize_storage->key_hash ()))))
     {
       int n_oids;
       bool complete;
@@ -13672,6 +13748,10 @@ qexec_sq_batch_free (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
     {
       free (sq->b.oids);
     }
+  if (sq->b.seen != NULL)
+    {
+      free (sq->b.seen);
+    }
   if (sq->sq_xasl != NULL)
     {
       sq->sq_xasl->nl_sq_batch = NULL;
@@ -13765,6 +13845,19 @@ qexec_sq_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   /* a row whose result the subquery's cache holds is held with no OIDs: its execution reads the cache */
   cached = (XASL_IS_FLAGED (sq_xasl, XASL_USES_SQ_CACHE) && sq_xasl->sq_cache != NULL && SQ_CACHE_HT (sq_xasl) != NULL
 	    && SQ_CACHE_ENABLED (sq_xasl) && mht_get (SQ_CACHE_HT (sq_xasl), SQ_CACHE_KEY_STRUCT (sq_xasl)) != NULL);
+  if (!cached && XASL_IS_FLAGED (sq_xasl, XASL_USES_SQ_CACHE) && sq_xasl->sq_cache != NULL
+      && !(SQ_CACHE_HT (sq_xasl) != NULL && !SQ_CACHE_ENABLED (sq_xasl)))
+    {
+      /* ... and so is a row whose key an earlier row of the batch has: that one's execution fills the cache */
+      SQ_KEY *key = SQ_CACHE_KEY_STRUCT (sq_xasl);
+      unsigned int hash = 0;
+
+      for (i = 0; i < key->n_elements; i++)
+	{
+	  hash = ROTL32 (hash, 13) ^ mht_get_hash_number (UINT_MAX, key->dbv_array[i]);
+	}
+      cached = qexec_nl_batch_seen (b, hash);
+    }
   if (cached)
     {
       goto hold;
