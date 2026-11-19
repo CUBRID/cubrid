@@ -5646,6 +5646,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   LOCATOR_KEPT_CHILDREN kept;
   LOCATOR_CHILD_CONFLICT conflict;
   int n_restart = 0;		/* phase 3 restarts of the current key */
+  bool restart_key;		/* phase 3 waited out a conflict: read the key's children again */
   int n_buffered = 0;
   LOCATOR_KEPT_CHILDREN *collected = NULL;
   int n_fk = 0, fk_i, fails_fk;
@@ -5768,9 +5769,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  n_buffered = 0;
 	  n_restart = 0;
 
-	retry_delete_children:
 	  do
 	    {
+	      restart_key = false;
 	      error_code = locator_kept_read (thread_p, &collected[fk_i], oid_list.oidp, oid_list.capacity, &oid_cnt);
 	      if (error_code != NO_ERROR)
 		{
@@ -5852,7 +5853,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      goto error1;
 		    }
 		  n_buffered = 0;
-		  goto retry_delete_children;
+		  restart_key = true;
+		  continue;
 		}
 
 	      if (kept.n_held > 0 || more_batches)
@@ -5866,7 +5868,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  n_buffered = 0;
 		}
 	    }
-	  while (more_batches);
+	  while (restart_key || more_batches);
 	  locator_log_child_restarts (fkref, n_restart);
 
 	  /* every child of the key is decided before any is acted on: an action's cascade must not decide a sibling */
@@ -6046,6 +6048,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   LOCATOR_KEPT_CHILDREN kept;
   LOCATOR_CHILD_CONFLICT conflict;
   int n_restart = 0;		/* phase 3 restarts of the current key */
+  bool restart_key;		/* phase 3 waited out a conflict: read the key's children again */
   int n_buffered = 0;
   LOCATOR_KEPT_CHILDREN *collected = NULL;
   int n_fk = 0, fk_i, fails_fk;
@@ -6166,9 +6169,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  n_buffered = 0;
 	  n_restart = 0;
 
-	retry_update_children:
 	  do
 	    {
+	      restart_key = false;
 	      error_code = locator_kept_read (thread_p, &collected[fk_i], oid_list.oidp, oid_list.capacity, &oid_cnt);
 	      if (error_code != NO_ERROR)
 		{
@@ -6224,7 +6227,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      goto error1;
 		    }
 		  n_buffered = 0;
-		  goto retry_update_children;
+		  restart_key = true;
+		  continue;
 		}
 
 	      if (kept.n_held > 0 || more_batches)
@@ -6238,7 +6242,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  n_buffered = 0;
 		}
 	    }
-	  while (more_batches);
+	  while (restart_key || more_batches);
 	  locator_log_child_restarts (fkref, n_restart);
 
 	  /* every child of the key is decided before any is acted on: an action's cascade must not decide a sibling */
