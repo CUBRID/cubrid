@@ -12426,6 +12426,9 @@ struct qexec_nl_batch_row
 {
   int oid_start;		/* the row's OIDs in the batch's OID array */
   int oid_cnt;			/* -1: not read (a memoized key, more OIDs than one buffer): the row path reads the index */
+  bool key_first;		/* a row held for a subquery, of a step that memoizes: the first row of its outer row */
+  bool key_last;		/* ... the last one: every row of the outer row is in the batch */
+  bool no_put;			/* ... of an outer row whose rows are not all in the batch: memoize does not store them */
 };
 
 typedef struct qexec_nl_batch QEXEC_NL_BATCH;
@@ -12483,6 +12486,16 @@ struct qexec_sq_batch
   QEXEC_NL_BATCH b;		/* rows, values, OIDs, read-ahead window and back-off, as a join's batch */
   XASL_NODE *sq_xasl;		/* the subquery */
   bool close_now;		/* the batch reached its target: replay before the next row is scanned */
+  /* A step that memoizes stores the rows of an outer row's key as they pass its predicates. Held rows pass them when
+   * the batch is replayed, so their key is stored then, and only when every row of the outer row is in that batch:
+   * the storage has no mark for a key stored in part. */
+  bool close_pending;		/* ... but the rows of the current outer row are held first */
+  bool early;			/* replaying because the next outer row has the key of held rows: its lookup follows */
+  bool taint;			/* the rows of the current outer row are in more than one batch: its key is not stored */
+  bool group_live;		/* the rows of the current outer row are not held */
+  bool replay_put;		/* the rows being replayed are stored */
+  bool replay_last;		/* ... and the one replayed last ends its outer row */
+  int group_held;		/* rows of the current outer row in the batch */
   int slice_start;		/* the OIDs of the row being replayed, for the subquery's next execution */
   int slice_cnt;		/* -1: none */
 };
@@ -12961,6 +12974,7 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   SCAN_OPERATION_TYPE scan_operation_type;
   int memoize_err_code;
   bool memoize_success = true, memoize_key_ended, memoize_put_success;
+  bool memoize_held = false;
   QEXEC_SQ_BATCH *sq = (xasl->nl_batch != NULL) ? xasl->nl_batch->sq : NULL;
 
   /* check if further scan procedure are still active */
@@ -12982,7 +12996,19 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       return S_END;
     }
 
-  if (xasl->memoize_storage)
+  if (sq != NULL && sq->b.on && !sq->early && !sq->b.replaying && xasl->memoize_storage != NULL
+      && !xasl->memoize_storage->is_disabled () && xasl->memoize_storage->is_key_changed ()
+      && qexec_nl_batch_seen (&sq->b, (unsigned int) xasl->memoize_storage->key_hash () ^ 0x9e3779b9U)
+      && sq->b.n_rows > 0)
+    {
+      /* a new outer row with the key of rows held for the subquery: they are joined first, so that their key is
+       * stored when it is looked up, as it is in the join taken a row at a time */
+      sq->close_now = true;
+      sq->early = true;
+    }
+
+memoize_lookup:
+  if (xasl->memoize_storage && !(sq != NULL && sq->early))
     {
       memoize_scan =
 	qexec_execute_nljoin_with_memoize (thread_p, &memoize_success, xasl, xasl_state, ignore, next_scan_fnc);
@@ -13040,24 +13066,62 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	    {
 	      return S_ERROR;
 	    }
+	  if (sq->replay_last)
+	    {
+	      /* the outer row replayed last is through: a key none of whose rows was stored is stored as empty */
+	      sq->replay_last = false;
+	      if (sq->replay_put && xasl->memoize_storage != NULL
+		  && memoize_put_nullptr (thread_p, xasl, &memoize_put_success) == ER_FAILED)
+		{
+		  return S_ERROR;
+		}
+	    }
 	  if (sq->b.next_row == sq->b.n_rows)
 	    {
 	      bool flush = sq->b.flush;
+	      bool early = sq->early;
 
 	      if (qexec_sq_batch_end (thread_p, sq) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
+	      sq->early = false;
 	      if (flush)
 		{
 		  /* the scan's rows had ended before */
 		  return S_END;
+		}
+	      if (xasl->memoize_storage != NULL)
+		{
+		  /* the batch forgot its keys: the current outer row's is one of the next batch's */
+		  (void) qexec_nl_batch_seen (&sq->b, (unsigned int) xasl->memoize_storage->key_hash () ^ 0x9e3779b9U);
+		  if (early)
+		    {
+		      xasl->memoize_storage->set_key_changed ();
+		      goto memoize_lookup;
+		    }
+		  /* the rows put next are the current outer row's again */
+		  (void) xasl->memoize_storage->begin_key ();
+		}
+	      else if (early)
+		{
+		  goto memoize_lookup;
 		}
 	      continue;
 	    }
 	  if (qexec_sq_batch_open_row (thread_p, sq) != NO_ERROR)
 	    {
 	      return S_ERROR;
+	    }
+	  if (xasl->memoize_storage != NULL)
+	    {
+	      QEXEC_NL_BATCH_ROW *held_row = &sq->b.rows[sq->b.next_row - 1];
+
+	      if (held_row->key_first)
+		{
+		  sq->replay_put = !held_row->no_put && !xasl->memoize_storage->begin_key ();
+		}
+	      sq->replay_last = held_row->key_last;
 	    }
 	  qualified = true;
 	  goto sq_row_held;
@@ -13081,7 +13145,23 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	{
 	  xasl->curr_spec->s_id.single_fetched = true;
 	}
-      if (sc_scan == S_END && xasl->memoize_storage
+      if (sc_scan == S_END && sq != NULL)
+	{
+	  /* the outer row's rows held for the subquery are stored when they are replayed, not as "no row" now */
+	  memoize_held = (sq->group_held > 0 || sq->taint);
+	  if (sq->group_held > 0)
+	    {
+	      sq->b.rows[sq->b.n_rows - 1].key_last = true;
+	    }
+	  sq->group_held = 0;
+	  sq->taint = false;
+	  sq->group_live = false;
+	  if (sq->close_pending)
+	    {
+	      sq->close_now = true;
+	    }
+	}
+      if (sc_scan == S_END && xasl->memoize_storage && !memoize_held
 	  && !(XASL_IS_NL_SEMI_OR_ANTI (xasl)
 	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL))
 	  && !(XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN) && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec)))
@@ -13238,7 +13318,16 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	    }
 	  if (held == S_END)
 	    {
-	      sq->close_now = true;
+	      /* a step that memoizes closes the batch after the last row of the outer row, while the batch has room */
+	      if (xasl->memoize_storage != NULL && sq->b.n_oids < sq->b.oid_cap / 2
+		  && sq->b.bytes < (INT64) (sq->b.oid_cap / 2) * (INT64) sizeof (OID))
+		{
+		  sq->close_pending = true;
+		}
+	      else
+		{
+		  sq->close_now = true;
+		}
 	    }
 	  if (held != S_DOESNT_EXIST)
 	    {
@@ -13343,7 +13432,7 @@ qexec_execute_scan_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 		}
 	      return S_END;
 	    }
-	  if (xasl->memoize_storage)
+	  if (xasl->memoize_storage && !(sq != NULL && (sq->b.replaying ? !sq->replay_put : sq->taint)))
 	    {
 	      memoize_err_code = memoize_put (thread_p, xasl, &memoize_put_success);
 	      if (memoize_err_code == ER_FAILED)
@@ -13656,12 +13745,6 @@ qexec_sq_batch_arm (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       return (batch->sq != NULL && batch->sq->b.on) ? batch->sq : NULL;
     }
-  if (xasl->memoize_storage != NULL)
-    {
-      /* memoize keeps the step's rows by key as they come: no row is held while it does. It frees itself when its
-       * keys do not repeat, and the step is judged then */
-      return NULL;
-    }
   batch->sq_armed = true;
 
   if (sq_xasl == NULL || sq_xasl->next != NULL || !XASL_IS_FLAGED (sq_xasl, XASL_LINK_TO_REGU_VARIABLE)
@@ -13836,9 +13919,15 @@ qexec_sq_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   int n_oids = 0;
   int i;
 
+  if (sq->group_live && xasl->memoize_storage != NULL)
+    {
+      /* memoize is storing the rows of this outer row as they come */
+      return S_DOESNT_EXIST;
+    }
   if (b->skip > 0 && b->n_rows == 0)
     {
       b->skip--;
+      sq->group_live = true;
       return S_DOESNT_EXIST;
     }
 
@@ -13902,6 +13991,7 @@ qexec_sq_batch_add (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
     {
       /* this scan is not one to read ahead: the rows go on as they always did */
       b->on = false;
+      sq->group_live = true;
       return S_DOESNT_EXIST;
     }
 
@@ -13936,6 +14026,10 @@ hold:
   row = &b->rows[b->n_rows];
   row->oid_start = b->n_oids;
   row->oid_cnt = -1;
+  row->key_first = (sq->group_held == 0 && !sq->taint);
+  row->key_last = false;
+  row->no_put = false;
+  sq->group_held++;
   b->n_rows++;
   if (qexec_nl_batch_copy_lists
       (thread_p, sq->b.lists, sq->b.n_lists, &b->vals[(b->n_rows - 1) * b->n_vals], false, &b->bytes) != NO_ERROR)
@@ -13973,6 +14067,16 @@ qexec_sq_batch_close (THREAD_ENTRY * thread_p, QEXEC_SQ_BATCH * sq)
     {
       return ER_FAILED;
     }
+  if (sq->group_held > 0)
+    {
+      /* the batch closes inside an outer row: its key is not stored */
+      b->rows[b->n_rows - sq->group_held].no_put = true;
+      sq->taint = true;
+      sq->group_held = 0;
+    }
+  sq->replay_put = false;
+  sq->replay_last = false;
+  sq->close_pending = false;
   b->ahead_next = 0;
   b->hinted = 0;
   qexec_nl_batch_read_ahead (thread_p, sq->sq_xasl, b, 0);

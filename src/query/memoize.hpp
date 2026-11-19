@@ -94,6 +94,13 @@ namespace memoize
       bool has_key ();
       /* the hash of the current outer row's key */
       size_t key_hash ();
+      /* the rows put next are those of the current outer row's key, with no lookup counted (a row joined later
+       * than its key was looked up); true when the key is stored already */
+      bool begin_key ();
+      bool is_key_changed () const
+      {
+	return key_changed;
+      }
       result_code put();
       void start_timer();
       void stop_timer();

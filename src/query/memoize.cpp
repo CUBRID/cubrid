@@ -728,6 +728,30 @@ namespace memoize
     return h;
   }
 
+  bool storage::begin_key ()
+  {
+    HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
+    bool found = false;
+
+    if (m_last_key != nullptr)
+      {
+	m_last_key->~key();
+	m_key_fixed_allocator.deallocate (m_last_key);
+	m_current_value_list.clear();
+      }
+    m_last_key = get_key();
+    key_changed = false;
+    has_range = false;
+    current_key_joined = false;
+    if (m_last_key != nullptr)
+      {
+	found = m_key_value_map.find (m_last_key) != m_key_value_map.end ();
+      }
+    db_change_private_heap (thread_get_thread_entry_info(), heap_id);
+
+    return found;
+  }
+
   result_code storage::put()
   {
     HL_HEAPID heap_id = db_change_private_heap (thread_get_thread_entry_info(), 0);
