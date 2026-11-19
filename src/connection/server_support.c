@@ -1986,8 +1986,9 @@ css_ip_in_ha_list (const char *list, const unsigned char *ip_addr)
  *
  * Note: the server loads the lists once, while cubrid heartbeat reload lets
  *   the nodes take a node added to or removed from the HA configuration file
- *   later, so the file is what counts. The lists loaded at startup are used
- *   only when it cannot be read.
+ *   later, so the file is what counts. When it cannot be read, no peer is
+ *   taken for a node: the lists loaded at startup may still have a node
+ *   removed since.
  */
 bool
 css_is_ha_node_address (SOCKET fd)
@@ -2000,13 +2001,12 @@ css_is_ha_node_address (SOCKET fd)
       return false;
     }
 
-  if (sysprm_read_ha_node_lists (node_list, sizeof (node_list), replica_list, sizeof (replica_list)) == NO_ERROR)
+  if (sysprm_read_ha_node_lists (node_list, sizeof (node_list), replica_list, sizeof (replica_list)) != NO_ERROR)
     {
-      return css_ip_in_ha_list (node_list, peer_ip) || css_ip_in_ha_list (replica_list, peer_ip);
+      return false;
     }
 
-  return (css_ip_in_ha_list (prm_get_string_value (PRM_ID_HA_NODE_LIST), peer_ip)
-	  || css_ip_in_ha_list (prm_get_string_value (PRM_ID_HA_REPLICA_LIST), peer_ip));
+  return css_ip_in_ha_list (node_list, peer_ip) || css_ip_in_ha_list (replica_list, peer_ip);
 }
 
 int
