@@ -11116,7 +11116,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    /* shortcut: only the scans of the EXISTS subquery's or the inst_num () block's own XASL start their
 	     * read-ahead late, the scans of its scan_ptr blocks keep the first window; pass the flag down when a join
 	     * inside EXISTS or under LIMIT shows the cost */
-	    s_id->s.isid.bitmap_planned = ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+	    /* an index MIN/MAX scan stops at the first key of an end: it reads in key order */
+	    s_id->s.isid.bitmap_planned = (ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN)
+					   && !ACCESS_SPEC_IS_FLAGED (curr_spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
 	    s_id->s.isid.ahead_single = (xasl != NULL && (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN)
 							  || xasl->instnum_pred != NULL));
 
@@ -13381,7 +13383,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		{
 		  return S_ERROR;
 		}
-	      spec->s_id.s.isid.bitmap_planned = ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN);
+	      spec->s_id.s.isid.bitmap_planned = (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_BITMAP_HEAP_SCAN)
+						  && !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
 	      spec->s_id.s.isid.bitmap_keep_page = keep_page;
 	      spec->s_id.s.isid.ahead_single = (xasl != NULL && (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN)
 								 || xasl->instnum_pred != NULL));
