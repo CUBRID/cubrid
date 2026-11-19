@@ -1800,15 +1800,14 @@ error:
 static int
 drop_stored_procedure_code (MOP sp_mop)
 {
-  MOP code_mop, owner;
-  DB_VALUE owner_val, generated_val, lang_val, target_cls_val;
+  MOP code_mop;
+  DB_VALUE lang_val, target_cls_val;
   const char *target_cls;
   int save, lang;
   int err;
 
   AU_DISABLE (save);
 
-  db_make_null (&owner_val);
   db_make_null (&target_cls_val);
 
   err = db_get (sp_mop, SP_ATTR_LANG, &lang_val);
@@ -1842,33 +1841,6 @@ drop_stored_procedure_code (MOP sp_mop)
 	  goto error;
 	}
 
-      err = db_get (code_mop, SP_ATTR_OWNER, &owner_val);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
-      owner = db_get_object (&owner_val);
-
-      if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DDL_NOT_ALLOWED_PRIVILEGES, 1, "drop");
-	  err = er_errid ();
-	  goto error;
-	}
-
-      err = db_get (code_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
-      if (err != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      if (!DB_IS_NULL (&generated_val) && 1 == db_get_int (&generated_val))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DROP_NOT_ALLOWED_SYSTEM_GENERATED, 0);
-	  err = er_errid ();
-	  goto error;
-	}
-
       // TODO: If a unreloadable SP is deleted, mark a flag in PL server to block calling the deleted SP
       err = obj_delete (code_mop);
     }
@@ -1876,7 +1848,6 @@ drop_stored_procedure_code (MOP sp_mop)
 error:
   AU_ENABLE (save);
 
-  pr_clear_value (&owner_val);
   pr_clear_value (&target_cls_val);
 
   return err;
