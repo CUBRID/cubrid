@@ -745,6 +745,8 @@ static void lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, L
 				    bool transient);
 static LK_HAND_RESULT lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid,
 					      int owner_tran_index, MVCCID owner_mvccid, bool transient);
+static LK_HAND_RESULT lock_wait_handed_row_back (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr,
+						 LK_ENTRY * class_entry, MVCCID owner_mvccid, bool transient);
 #endif /* SERVER_MODE */
 
 static LK_ENTRY *lock_get_new_entry (int tran_index, LF_TRAN_ENTRY * tran_entry, LF_FREELIST * freelist);
@@ -8052,7 +8054,7 @@ lock_remove_row_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * mi
 
 /*
  * lock_hand_row_to_owner - a waiter back from a recheck hands the row it holds to the owner asking for it, and waits
- *			    again right behind the owner
+ *			    again right behind the owner (lock_wait_handed_row_back ())
  *
  * return: LK_NOT_HANDED (read the row again), LK_NOT_HANDED_STALE (the owner no longer asks: look at its wake
  *	   again), LK_HANDED_REGAINED (the row is ours again) or LK_HANDED_LOST (timeout or interrupt)
@@ -8067,17 +8069,12 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
 {
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  LK_TRAN_LOCK *tran_lock = &lk_Gl.tran_lock_table[tran_index];
-  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-  TRANID trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *mine, *owner, *e, *prev, *entry_ptr = NULL;
   LK_ENTRY *class_entry;
   LOCK mode;
   bool stale;
-  int wait_msecs, wait_left, ret;
-  INT64 waited_msecs, start_msecs;
 
   assert (thread_p->deferred_wake.prequeued == NULL);
 
@@ -8142,6 +8139,30 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
   res_ptr->waiter = entry_ptr;
   lock_recompute_total_waiters_mode (res_ptr);
 
+  return lock_wait_handed_row_back (thread_p, res_ptr, entry_ptr, class_entry, owner_mvccid, transient);
+}
+
+/*
+ * lock_wait_handed_row_back - wait, first among the row's waiters, to have back the row lock_hand_row_to_owner ()
+ *			       handed over; on the grant, finish the request as LK_S_POST_GRANT does for a new one
+ *
+ * return: LK_HANDED_REGAINED, or LK_HANDED_LOST (timeout or interrupt)
+ *   res_ptr(in): the row's resource; its mutex is held, and released here
+ *   entry_ptr(in): our new entry, first among the waiters
+ *   class_entry(in): the class entry of the request handed over
+ *   owner_mvccid(in): the owner we handed the row to; the wait counts toward the timeout of waits on it
+ *   transient(in): whether the request handed over was counted transient
+ */
+static LK_HAND_RESULT
+lock_wait_handed_row_back (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * entry_ptr, LK_ENTRY * class_entry,
+			   MVCCID owner_mvccid, bool transient)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  TRANID trid = (tdes != NULL) ? tdes->trid : NULL_TRANID;
+  int wait_msecs, wait_left, ret;
+  INT64 waited_msecs, start_msecs;
+
   wait_msecs = logtb_find_current_wait_msecs (thread_p);
   wait_left = lock_recheck_wait_left (thread_p, owner_mvccid, trid, wait_msecs, &waited_msecs);
   if (wait_left == 0)
@@ -8168,7 +8189,7 @@ lock_hand_row_to_owner (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
       if (transient)
 	{
 	  entry_ptr->transient_count = 1;
-	  tran_lock->transient_total++;
+	  lk_Gl.tran_lock_table[tran_index].transient_total++;
 	}
       lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
       return LK_HANDED_REGAINED;
