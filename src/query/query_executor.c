@@ -25738,40 +25738,13 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE_RECORD *
 static unsigned int
 qexec_connect_by_hash_column (const DB_VALUE * dbval)
 {
-  DB_VALUE zero;
-
   if (DB_IS_NULL (dbval))
     {
       return 0;
     }
 
-  /* mht_get_hash_number hashes the raw bits, so -0.0 and +0.0 must be folded first */
   switch (DB_VALUE_DOMAIN_TYPE (dbval))
     {
-    case DB_TYPE_FLOAT:
-      if (db_get_float (dbval) == 0.0f)
-	{
-	  db_make_float (&zero, 0.0f);
-	  return mht_get_hash_number (UINT_MAX, &zero);
-	}
-      break;
-
-    case DB_TYPE_DOUBLE:
-      if (db_get_double (dbval) == 0.0)
-	{
-	  db_make_double (&zero, 0.0);
-	  return mht_get_hash_number (UINT_MAX, &zero);
-	}
-      break;
-
-    case DB_TYPE_MONETARY:
-      if (db_get_monetary (dbval)->amount == 0.0)
-	{
-	  db_make_monetary (&zero, db_get_monetary (dbval)->type, 0.0);
-	  return mht_get_hash_number (UINT_MAX, &zero);
-	}
-      break;
-
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
@@ -25788,7 +25761,9 @@ qexec_connect_by_hash_column (const DB_VALUE * dbval)
       break;
     }
 
-  return mht_get_hash_number (UINT_MAX, dbval);
+  /* mht_get_hash_number hashes the raw bits, so a zero and a NaN are folded first, as a hash join folds them:
+   * the cycle compare finds -0.0 equal to +0.0 and a NaN equal to every other NaN */
+  return qdata_hash_scan_value (dbval, UINT_MAX);
 }
 
 /*
@@ -32058,7 +32033,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
 	{
 	  if (func_p->from_last)
 	    {
-	      target_idx = group_tuple_count - target_idx;
+	      target_idx = group_tuple_count - 1 - target_idx;
 	    }
 	}
       else

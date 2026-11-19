@@ -82,7 +82,7 @@ extern void ux_record_session_restore (void);
 extern bool ux_is_resent_tran_setting (int param_name, int value);
 extern void ux_keep_tran_setting (int param_name, int value);
 extern int ux_check_object (DB_OBJECT * obj, T_NET_BUF * net_buf);
-extern int ux_schema_info (int schema_type, char *arg1, char *arg2, char flag, T_NET_BUF * net_buf,
+extern int ux_schema_info (int schema_type, char *arg1, char *arg2, char *arg3, char flag, T_NET_BUF * net_buf,
 			   T_REQ_INFO * req_info, unsigned int query_seq_num);
 extern int ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row, int argc, void **argv,
 			    T_NET_BUF * net_buf, T_REQ_INFO * req_info, CACHE_TIME * clt_cache_time,
