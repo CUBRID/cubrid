@@ -21335,24 +21335,69 @@ pt_print_create_package (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
 
-  q = pt_append_nulstring (parser, q, "create ");
-  if (p->info.pkg.or_replace)
+  if (parser->flag.is_unloading_plcsql_def)
     {
-      q = pt_append_nulstring (parser, q, "or replace ");
+      q = pt_append_nulstring (parser, q, p->info.pkg.for_body ? "CREATE OR REPLACE PACKAGE BODY " :
+			       "CREATE OR REPLACE PACKAGE ");
     }
-  q = pt_append_nulstring (parser, q, "package ");
-  if (p->info.pkg.for_body)
+  else
     {
-      q = pt_append_nulstring (parser, q, "body ");
+      q = pt_append_nulstring (parser, q, "create ");
+      if (p->info.pkg.or_replace)
+	{
+	  q = pt_append_nulstring (parser, q, "or replace ");
+	}
+      q = pt_append_nulstring (parser, q, "package ");
+      if (p->info.pkg.for_body)
+	{
+	  q = pt_append_nulstring (parser, q, "body ");
+	}
     }
 
   r1 = pt_print_bytes (parser, p->info.pkg.name);
   q = pt_append_varchar (parser, q, r1);
 
-  r1 = pt_print_bytes (parser, p->info.pkg.block);
-  q = pt_append_varchar (parser, q, r1);
+  if (parser->flag.is_unloading_plcsql_def && p->info.pkg.block != NULL
+      && p->info.pkg.block->info.sp_body.impl != NULL)
+    {
+      /*
+       * The block of a package keeps the white spaces after AS/IS and before the end of the statement.
+       * Drop the blank lines at the start and the white spaces at the end, so that the text does not grow
+       * with each print, which is saved and then unloaded and loaded again. The indentation of the first line is kept.
+       */
+      PARSER_VARCHAR *impl = p->info.pkg.block->info.sp_body.impl->info.value.data_value.str;
+      const char *start = (const char *) impl->bytes;
+      const char *end = start + impl->length;
+      const char *s;
 
-  if (p->info.pkg.comment)
+      for (s = start; s < end && (*s == ' ' || *s == '\t' || *s == '\r' || *s == '\n'); s++)
+	{
+	  if (*s == '\n')
+	    {
+	      start = s + 1;
+	    }
+	}
+      if (s == end || start == (const char *) impl->bytes)
+	{
+	  /* no line break before the first text: AS is printed with one below */
+	  start = s;
+	}
+      while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' || end[-1] == '\n'))
+	{
+	  end--;
+	}
+
+      q = pt_append_nulstring (parser, q, " AS\n");
+      q = pt_append_bytes (parser, q, start, (int) (end - start));
+    }
+  else
+    {
+      r1 = pt_print_bytes (parser, p->info.pkg.block);
+      q = pt_append_varchar (parser, q, r1);
+    }
+
+  /* do not print the comment when unloading the PL/CSQL definition, as for stored procedures (CBRD-26513) */
+  if (p->info.pkg.comment && !parser->flag.is_unloading_plcsql_def)
     {
       r1 = pt_print_bytes (parser, p->info.pkg.comment);
       q = pt_append_nulstring (parser, q, " comment ");
