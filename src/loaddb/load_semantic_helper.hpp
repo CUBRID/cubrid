@@ -81,6 +81,7 @@ namespace cubload
       string_type *make_string_by_buffer ();
       string_type *make_string_by_yytext (const char *text, int text_size);
       string_type *make_string_by_reserve_size (std::size_t str_size);
+      string_type *make_string_by_reference (char *val, std::size_t str_size);
 
       constant_type *make_constant (int type, void *val);
       constant_type *make_real (string_type *str);

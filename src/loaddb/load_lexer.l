@@ -1149,9 +1149,12 @@ cubload::scanner::next_block_row (cubload::parser::semantic_type *yylval)
   memcpy (&rec_size, m_block.data () + m_block_pos, sizeof (rec_size));
   m_block_pos += sizeof (rec_size);
 
-  /* make_string_by_reserve_size () either hands out a pooled entry or throws, it never fails */
-  row = m_semantic_helper.make_string_by_reserve_size (rec_size);
-  memcpy (row->val, m_block.data () + m_block_pos, rec_size);
+  /*
+   * The row points into the block and is not copied. The grammar loads a row as soon as it gets it, without reading
+   * a look ahead token (see binary_row in load_grammar.yy), so the row is done with before the next one is handed
+   * over, and the block is replaced only once all its rows have been. Nothing that reads a row writes to it.
+   */
+  row = m_semantic_helper.make_string_by_reference (m_block.data () + m_block_pos, rec_size);
   m_block_pos += rec_size;
   m_block_rows_left--;
 

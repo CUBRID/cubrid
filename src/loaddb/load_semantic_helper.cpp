@@ -291,6 +291,18 @@ namespace cubload
     return make_string_by_size (str_size);
   }
 
+  /*
+   * make_string_by_reference () - make a string of bytes the caller holds, without copying them
+   *   return: the string, which is not null terminated and does not free val
+   *   val(in): the bytes, which have to outlive the line the string is used in
+   *   str_size(in): number of bytes
+   */
+  string_type *
+  semantic_helper::make_string_by_reference (char *val, std::size_t str_size)
+  {
+    return make_string (val, str_size, false);
+  }
+
   string_type *
   semantic_helper::make_string_by_size (std::size_t str_size)
   {
