@@ -341,6 +341,7 @@ extern "C"
 
   extern PT_NODE *pt_lambda_with_arg (PARSER_CONTEXT * parser_ptr, PT_NODE * expression, PT_NODE * name,
 				      PT_NODE * named_expression, bool loc_check, int type, bool dont_replace);
+  extern bool pt_reduce_eq_keeps_cast (PARSER_CONTEXT * parser, PT_TYPE_ENUM tree_type, PT_NODE * name, PT_NODE * cast);
   extern PT_NODE *pt_lambda (PARSER_CONTEXT * parser_ptr, PT_NODE * expression, PT_NODE * name,
 			     PT_NODE * named_expression);
 
