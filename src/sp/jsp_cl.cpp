@@ -2482,7 +2482,11 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 
 	sig.ext.method.class_name = (dt->info.data_type.virt_object) ? (char *) db_get_class_name (
 					    dt->info.data_type.virt_object) : (char *) dt->info.data_type.entity->info.name.original;
-	sig.arg.set_arg_size (pt_length_of_list (node->info.method_call.arg_list) + 1);
+	error = sig.arg.set_arg_size (pt_length_of_list (node->info.method_call.arg_list) + 1);
+	if (error != NO_ERROR)
+	  {
+	    goto exit;
+	  }
 	sig.ext.method.arg_pos = pt_to_method_arglist (parser, node->info.method_call.on_call_target,
 				 node->info.method_call.arg_list, subquery_as_attr_list);
       }
@@ -2523,7 +2527,11 @@ jsp_make_pl_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, DB_SET 
   db_make_null (&temp);
 
   {
-    sig.arg.set_arg_size (num_params);
+    error = sig.arg.set_arg_size (num_params);
+    if (error != NO_ERROR)
+      {
+	goto exit_on_error;
+      }
 
     // check default arguments
     int num_args = pt_length_of_list (node->info.method_call.arg_list);

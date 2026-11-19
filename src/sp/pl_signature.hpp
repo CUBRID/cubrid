@@ -66,7 +66,7 @@ namespace cubpl
     pl_arg (int num_args);
     ~pl_arg () override;
 
-    void set_arg_size (int num_args);
+    int set_arg_size (int num_args);
     void clear ();
   };
 
