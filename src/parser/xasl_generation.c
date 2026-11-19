@@ -12036,6 +12036,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		  /* not the real cached_num (the serial varies per row): any value > 1 reads the cache entry first */
 		  regu_alloc (val);
+		  if (val == NULL)
+		    {
+		      break;
+		    }
 		  db_make_int (val, 2);
 		  r2 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
 
