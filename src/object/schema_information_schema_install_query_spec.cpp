@@ -913,15 +913,17 @@ sm_define_view_tables_spec (void)
       "estimated_data_free ([cls].[unique_name]) AS [data_free], "
       /* numeric -> numeric(38,0) */
       "CAST (CASE "
-        "WHEN serial_current_value_by_oid ([serial]) IS NULL THEN NULL "
         "WHEN [serial].[started] = 0 THEN serial_current_value_by_oid ([serial]) "
-        /* Check overflow: increment_val > 0 and current_val > max_val - increment_val */
-        "WHEN [serial].[increment_val] > 0 "
-          "AND serial_current_value_by_oid ([serial]) > [serial].[max_val] - [serial].[increment_val] THEN NULL "
-        /* Check underflow: increment_val < 0 and current_val < min_val - increment_val */
-        "WHEN [serial].[increment_val] < 0 "
-          "AND serial_current_value_by_oid ([serial]) < [serial].[min_val] - [serial].[increment_val] THEN NULL "
-        "ELSE serial_current_value_by_oid ([serial]) + [serial].[increment_val] "
+        /* Check overflow: LEAST caps current_val at max_val - increment_val + 1, which NULLIF turns into NULL */
+        "WHEN [serial].[increment_val] > 0 THEN "
+          "NULLIF (LEAST (serial_current_value_by_oid ([serial]), "
+                         "[serial].[max_val] - [serial].[increment_val] + 1), "
+                  "[serial].[max_val] - [serial].[increment_val] + 1) + [serial].[increment_val] "
+        /* Check underflow: GREATEST caps current_val at min_val - increment_val - 1, which NULLIF turns into NULL */
+        "ELSE "
+          "NULLIF (GREATEST (serial_current_value_by_oid ([serial]), "
+                            "[serial].[min_val] - [serial].[increment_val] - 1), "
+                  "[serial].[min_val] - [serial].[increment_val] - 1) + [serial].[increment_val] "
       "END AS NUMERIC (38, 0)) AS [auto_increment], "
       "[coll].[coll_name] AS [table_collation], "
       /* SM_CLASSFLAG_REUSE_OID */
