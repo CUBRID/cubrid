@@ -1287,10 +1287,10 @@ $ LOADDB
 1214 Reserved error for JSON.
 1215 No more data to read from stream %1$s at position %2$lld, amount %3$zu.
 1216 Invalid object id %1$d when trying to unpack.
-1217 Reserved error for stream/replication.
-1218 Reserved error for stream/replication.
-1219 Reserved error for stream/replication.
-1220 Reserved error for stream/replication.
+1217 스트림 세션 오류: %1$s.
+1218 스트림이 열려 있지 않음: %1$s.
+1219 지원하지 않는 스트림: %1$s.
+1220 잘못된 스트림 사용: %1$s.
 1221 Reserved error for stream/replication.
 1222 Reserved error for stream/replication.
 1223 Reserved error for stream/replication.
@@ -1504,7 +1504,15 @@ $ LOADDB
 1390 세션 %1$u의 비밀값이 일치하지 않습니다.
 1391 세션 %1$u은(는) 이 연결의 세션이 아니므로 종료하거나 유지할 수 없습니다.
 
-1392 마지막 에러
+1392 연결이 트랜잭션 인덱스 %1$d 를 사용했으나, 서버가 이 연결에 할당한 인덱스는 %2$d 입니다. 할당된 인덱스를 사용했습니다.
+
+1393 시스템 생성 stored procedure를 변경(alter)할 수 없습니다.
+
+1394 시스템 생성 stored procedure에는 권한을 부여(grant)하거나 회수(revoke)할 수 없습니다.
+
+1395 CS 모드에서는 분할 테이블에 행을 로딩할 수 없습니다. 각 분할에 로딩하십시오.
+
+1396 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -2020,6 +2028,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 344 속성 '%1$s'의 타입이 클래스 %2$s와 %3$s에서 서로 다릅니다.
+345 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
+346 %2$s의 %1$d번째 인자는 %3$s 매개변수에 넘기므로 바인드 변수(? 또는 :name)여야 합니다.
 
 
 
@@ -2312,6 +2322,10 @@ $set 16 MSGCAT_SET_LOG
 30 보관 로그의 개수가 허용 최대치를 초과했습니다.
 
 31 이 백업과 로그 체인은 loaddb의 no-logging 인덱스 빌드 구간을 포함하여 그 지점을 넘는 재생 복원이 불가능합니다. loaddb 이후에 받은 백업으로 복원하거나, 시점 복원으로 그 이전 시점까지만 복원하십시오.
+32 데이터베이스를 복구하는 도중, 어느 백업 레벨에도 없는 페이지를 포맷하다가 에러가 발생하였습니다\n\
+   Database Volume: %1$s\n\
+    Database Volid: %2$d\n\
+** 경고: 에러 없이 데이터베이스가 복구되기 전까지는 데이터베이스를 사용하지 마시오.\n
 $set 17 MSGCAT_SET_GLOSSARY
 1 클래스
 2 트리거

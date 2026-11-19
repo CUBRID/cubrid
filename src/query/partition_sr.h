@@ -32,6 +32,7 @@
 
 // forward definition
 struct access_spec_node;
+struct xasl_node;
 struct func_pred;
 struct func_pred_unpack_info;
 struct val_descr;
@@ -90,6 +91,11 @@ struct pruning_context
 				 * DB_PARTITION_CLASS */
   bool is_attr_info_inited;
   bool is_from_cache;		/* true if this context is cached */
+  bool use_join_values;		/* a join term's outer value (TYPE_CONSTANT) prunes: partition_prune_spec_for_row () */
+  bool key_value_cached;	/* the partition expression's attribute holds the value it is evaluated on
+				 * (partition_prune_for_function ()) */
+  xasl_node *row_xasl;		/* the scan pruned per outer row: its values and those of the scans after it are
+				 * not read yet for the row (partition_prune_spec_for_row ()) */
 };
 
 extern void partition_init_pruning_context (PRUNING_CONTEXT * pinfo);
@@ -111,9 +117,18 @@ extern PRUNING_SCAN_CACHE *partition_new_scancache (PRUNING_CONTEXT * pcontext);
 
 extern int partition_prune_spec (THREAD_ENTRY * thread_p, val_descr * vd, access_spec_node * access_spec);
 
+extern int partition_prune_spec_for_row (THREAD_ENTRY * thread_p, val_descr * vd, xasl_node * xasl,
+					 access_spec_node * spec);
+
+extern void partition_clear_spec_row_pruning (access_spec_node * spec);
+
 extern int partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   HEAP_SCANCACHE * scan_cache, PRUNING_CONTEXT * pcontext, int op_type,
 				   OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid);
+
+extern int partition_load_uncached_pruning_context (THREAD_ENTRY * thread_p, const OID * class_oid,
+						    int *pruning_type, PRUNING_CONTEXT * pinfo);
+extern int partition_check_record_for_partition (PRUNING_CONTEXT * pcontext, const OID * class_oid, RECDES * recdes);
 
 extern int partition_prune_update (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid,

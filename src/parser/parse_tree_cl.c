@@ -2549,6 +2549,7 @@ parser_reinit_node (PT_NODE * node)
       int sql_user_text_len = node->sql_user_text_len;
       int line_number = node->line_number;
       int column_number = node->column_number;
+      int stmt_start_line = node->stmt_start_line;
       CACHE_TIME cache_time = node->cache_time;
 
       memset (node, 0x00, sizeof (PT_NODE));
@@ -2562,6 +2563,7 @@ parser_reinit_node (PT_NODE * node)
       node->sql_user_text_len = sql_user_text_len;
       node->line_number = line_number;
       node->column_number = column_number;
+      node->stmt_start_line = stmt_start_line;
       node->cache_time = cache_time;
 
       if (pt_init_f[node->node_type])
@@ -9274,9 +9276,9 @@ pt_init_delete (PT_NODE * p)
 static PARSER_VARCHAR *
 pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 {
-  PARSER_VARCHAR *q = 0, *r1, *r2;
+  PARSER_VARCHAR *q = 0, *r1, *r2, *target;
 
-  r1 = pt_print_bytes_l (parser, p->info.delete_.target_classes);
+  target = pt_print_bytes_l (parser, p->info.delete_.target_classes);
   r2 = pt_print_bytes_spec_list (parser, p->info.delete_.spec);
 
   if (p->info.delete_.with != NULL)
@@ -9466,7 +9468,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 
       q = pt_append_nulstring (parser, q, " */");
     }
-  if (r1)
+  if (target)
     {
       /* DELETE without target FROM ... for dblink's other DBMS */
       if (parser->custom_print & PT_PRINT_SUPPRESS_FOR_DBLINK)
@@ -9474,13 +9476,13 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.delete_.spec->next)
 	    {
 	      q = pt_append_nulstring (parser, q, " ");
-	      q = pt_append_varchar (parser, q, r1);
+	      q = pt_append_varchar (parser, q, target);
 	    }
 	}
       else
 	{
 	  q = pt_append_nulstring (parser, q, " ");
-	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_varchar (parser, q, target);
 	}
     }
   q = pt_append_nulstring (parser, q, " from ");
@@ -12242,7 +12244,11 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 	      r2 = r1 = pt_print_bytes (parser, arg3);
 	    }
 	  r3 = pt_print_bytes (parser, p->info.expr.arg1);
-	  r4 = (p->info.expr.arg2->type_enum == PT_TYPE_NULL) ? NULL : pt_print_bytes (parser, p->info.expr.arg2);
+	  /* the ELSE is NULL when name resolution failed for it (a dotted name or a function that does not exist, a
+	   * subquery that failed to bind), and the error is reported with the statement printed (CBRD-28028). The
+	   * searched CASE and DECODE check it the same way */
+	  r4 = ((p->info.expr.arg2 == NULL || p->info.expr.arg2->type_enum == PT_TYPE_NULL)
+		? NULL : pt_print_bytes (parser, p->info.expr.arg2));
 
 	  if (!p->info.expr.continued_case)
 	    {
@@ -13235,6 +13241,11 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.function.arg_list);
       q = pt_append_nulstring (parser, q, fcode_get_lowercase_name (code));
       q = pt_append_nulstring (parser, q, "(");
+      /* the printed text is the XASL cache key and the stored view definition */
+      if (code == PT_MEDIAN && p->info.function.all_or_distinct == PT_DISTINCT)
+	{
+	  q = pt_append_nulstring (parser, q, "distinct ");
+	}
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
     }
@@ -16345,6 +16356,7 @@ pt_apply_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.trigger_action.expression, arg);
   PT_APPLY_WALK (parser, p->info.trigger_action.string, arg);
+  PT_APPLY_WALK (parser, p->info.trigger_action.plcsql_block, arg);
   return p;
 }
 
@@ -16374,6 +16386,13 @@ pt_print_trigger_action (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_EXPRESSION:
       r1 = pt_print_bytes (parser, p->info.trigger_action.expression);
       b = pt_append_varchar (parser, b, r1);
+      break;
+    case PT_PLCSQL_BLOCK:
+      /* the block as the user wrote it, without quotes */
+      if (p->info.trigger_action.plcsql_block != NULL)
+	{
+	  b = pt_append_varchar (parser, b, p->info.trigger_action.plcsql_block->info.value.data_value.str);
+	}
       break;
     default:
       break;
