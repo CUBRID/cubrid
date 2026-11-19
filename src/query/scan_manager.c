@@ -5703,6 +5703,20 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		scan_id->scan_stats.data_qualified_rows - old_scan_stats.data_qualified_rows;
 	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_lookup, &old_scan_stats.elapsed_lookup,
 				   &scan_id->scan_stats.elapsed_lookup);
+	      if (scan_id->type == S_INDX_SCAN && scan_id->scan_stats.bitmap_heap != 0)
+		{
+		  /* a serial bitmap heap scan's heap step; a parallel scan's reaches the partition through its trace
+		   * storage */
+		  scan_id->partition_stats->bitmap_heap = 1;
+		  perfmon_add_timeval (&scan_id->partition_stats->bitmap_heap_time, &old_scan_stats.bitmap_heap_time,
+				       &scan_id->scan_stats.bitmap_heap_time);
+		  scan_id->partition_stats->bitmap_heap_fetches +=
+		    scan_id->scan_stats.bitmap_heap_fetches - old_scan_stats.bitmap_heap_fetches;
+		  scan_id->partition_stats->bitmap_heap_ioreads +=
+		    scan_id->scan_stats.bitmap_heap_ioreads - old_scan_stats.bitmap_heap_ioreads;
+		  scan_id->partition_stats->bitmap_heap_pages +=
+		    scan_id->scan_stats.bitmap_heap_pages - old_scan_stats.bitmap_heap_pages;
+		}
 	      break;
 
 	    default:
