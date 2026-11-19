@@ -12196,6 +12196,7 @@ static int do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * 
 static int is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed);
 static PT_NODE *pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *do_check_insert_server_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *do_find_insert_id_reader (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
 						  int *continue_walk);
 /*
@@ -12790,8 +12791,22 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  if (do_Trigger_involved)
+    {
+      /* the client reads LAST_INSERT_ID () before the action runs, when the session still hands out the id of an
+       * earlier statement; the server reads it inside the trigger, when the session does not */
+      bool reads_insert_id = false;
+
+      (void) parser_walk_tree (parser, statement, do_find_insert_id_reader, &reads_insert_id, NULL, NULL);
+      if (reads_insert_id)
+	{
+	  goto end;
+	}
+    }
+
   /* Even if unique indexes are defined on the class, the operation could be performed on server. */
-  if (!trigger_involved && !do_Trigger_involved)
+  /* an action of a statement that defers its unique check cannot flush that statement's rows: stay on the client */
+  if (!trigger_involved && !(do_Trigger_involved && do_Unique_check_deferred > 0))
     {
       statement->info.insert.server_allowed = SERVER_INSERT_IS_ALLOWED;
     }
@@ -12841,6 +12856,22 @@ do_check_insert_server_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void *a
       *server_allowed = 0;
       *continue_walk = PT_STOP_WALK;
     }
+  return node;
+}
+
+/*
+ * do_find_insert_id_reader () - parser_walk_tree function: sets *arg when the tree reads LAST_INSERT_ID (), directly
+ *				 or possibly through a stored procedure or function
+ */
+static PT_NODE *
+do_find_insert_id_reader (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_SP (node) || (node->node_type == PT_EXPR && node->info.expr.op == PT_LAST_INSERT_ID))
+    {
+      *(bool *) arg = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
   return node;
 }
 
