@@ -11,7 +11,7 @@ on:
 
 permissions: {}
 
-# A schedule run is a develop run.
+# A schedule run's ref is develop.
 concurrency:
   group: tc-pin-${{ github.ref_name }}
   cancel-in-progress: false
@@ -65,10 +65,10 @@ jobs:
             for i in "${!tcs[@]}"; do tips[i]=$(tc_tip "${tcs[i]}" "$b"); done
             for f in "$pin/$b"/*.tsv; do [ -f "$f" ] && was+=("$(top "$f")"); done
             git -C "$eng" rev-list --first-parent -n 1000 "$b" > "$RUNNER_TEMP/fp"
-            # Engine commits after the newest line. Only the tip when no line is on the branch's history.
+            # Engine commits after the newest line.
             if ! awk 'NR == FNR {t[$1]; next} $1 in t {f = 1; exit} {print} END {exit !f}' \
                 <(printf '%s\n' "${was[@]}") "$RUNNER_TEMP/fp" > "$RUNNER_TEMP/new"; then
-              [ ${#was[@]} -eq 0 ] || echo "::warning::$b: no line of its table is on its history, so it starts again at its tip"
+              [ ${#was[@]} -eq 0 ] || echo "::warning::$b: no table's newest line is on its history, so it starts again at its tip"
               head -1 "$RUNNER_TEMP/fp" > "$RUNNER_TEMP/new"
             fi
             for x in $(tac "$RUNNER_TEMP/new"); do
@@ -78,7 +78,7 @@ jobs:
               pr=$(gh api "repos/$ENGINE/commits/$x/pulls" --jq "[.[] | select(.merge_commit_sha == \"$x\") | .number][0] // \"-\"")
               for pf in "$pin/$b"/*.tsv; do
                 [ -f "$pf" ] && [ "$(top "$pf")" = "$p" ] || continue
-                # The line before X freezes just before X's TC squash commit, or at the TC tip where X changed no TC.
+                # The line before X freezes just before X's merged TC squash commit, or at the TC tip without one.
                 for i in "${!tcs[@]}"; do
                   sq=
                   [ "$pr" = - ] || sq=$(GH_TOKEN=$TC_TOKEN gh pr list --repo "CUBRID/${tcs[i]}" --head "tc/pr-$pr" \

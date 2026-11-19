@@ -44,3 +44,4 @@ Rules for `tc-*.yml` and `gha-ci*.yml`:
 | `tc-merge-gate.yml` | `check-tc-prs` | `actions: read` · `checks: write` · `contents: read` · `pull-requests: write` | check run `Check TC PRs`, comment |
 | `tc-merge-gate.yml` | `resweep` | `actions: write` · `checks: write` · `pull-requests: read` | the scheduled sweep of open engine PRs |
 | `tc-pin.yml` | `pin` | `contents: write` · `pull-requests: read` | push the `tc-pin` branch, find the PR of an engine commit |
+| `tc-sync-bot-trial.yml` | `try` | none (`permissions: {}`) | not used: its steps use the App token |
