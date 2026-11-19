@@ -549,6 +549,15 @@ struct trace_json_t;
 	&& (n->info.dot.arg2->info.function.function_type == PT_GENERIC) \
         && (strchr (n->info.dot.arg2->info.function.generic_name, '.') == NULL))
 
+/* <user>.<package>.<routine> (...) */
+#define PT_IS_TWO_DOT_GENERIC_FUNCTION(n) \
+	((n->info.dot.arg1->node_type == PT_DOT_) \
+	&& (n->info.dot.arg1->info.dot.arg1->node_type == PT_NAME) \
+	&& (n->info.dot.arg1->info.dot.arg2->node_type == PT_NAME) \
+	&& (n->info.dot.arg2->node_type == PT_FUNCTION) \
+	&& (n->info.dot.arg2->info.function.function_type == PT_GENERIC) \
+	&& (strchr (n->info.dot.arg2->info.function.generic_name, '.') == NULL))
+
 #if !defined (SERVER_MODE)
 /* the following defines support host variable binding for internal statements.
    internal statements can be generated on TEXT handling, and these statements

@@ -3693,6 +3693,51 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 		*continue_walk = PT_LIST_WALK;
 	      }
 	  }
+	else if (PT_IS_TWO_DOT_GENERIC_FUNCTION (node))
+	  {
+	    /* <user>.<package>.<routine> (...), parsed as ((<user>.<package>).<routine> (...)) */
+	    PT_NODE *qualifier = node->info.dot.arg1;
+	    char *generic_name = pt_append_string (parser, qualifier->info.dot.arg1->info.name.original, ".");
+
+	    generic_name = pt_append_string (parser, generic_name, qualifier->info.dot.arg2->info.name.original);
+	    generic_name = pt_append_string (parser, generic_name, ".");
+	    generic_name = pt_append_string (parser, generic_name, node->info.dot.arg2->info.function.generic_name);
+
+	    sp_mop = NULL;
+	    (void) jsp_resolve_routine (generic_name, true, &sp_mop);
+	    er_clear ();
+
+	    if (sp_mop == NULL)
+	      {
+		/* not a routine: report the error of binding the path */
+		if (pt_has_error (parser))
+		  {
+		    return NULL;
+		  }
+	      }
+	    else
+	      {
+		/* pt_bind_name_or_path_in_scope () failed to bind the path */
+		pt_reset_error (parser);
+
+		node->info.dot.arg2->info.function.generic_name =
+		  pt_routine_name_for_lookup (parser, generic_name, sp_mop);
+
+		node1 = pt_resolve_stored_procedure (parser, node->info.dot.arg2, bind_arg);
+		if (node1 == NULL)
+		  {
+		    *continue_walk = PT_STOP_WALK;
+		    return node;
+		  }
+		PT_NODE_COPY_NUMBER_OUTERLINK (node1, node);
+
+		PT_NODE_INIT_OUTERLINK (node);
+		parser_free_tree (parser, node);
+		node = node1;	/* return the new node */
+		/* don't revisit leaves */
+		*continue_walk = PT_LIST_WALK;
+	      }
+	  }
 	else if (pt_has_error (parser))
 	  {
 	    return NULL;
