@@ -61,9 +61,9 @@ namespace cubload
 		    int64_t line_offset, int64_t &rows);
 
   /*
-   * Check if a given string starts with a given prefix
+   * Check if a given string starts with a given prefix, ignoring the case of ASCII letters
    */
-  bool starts_with (const std::string &str, const std::string &prefix);
+  bool starts_with_ignore_case (const std::string &str, const char *prefix);
 
   /*
    * Check if a given string ends with a given suffix
@@ -1092,9 +1092,10 @@ namespace cubload
 
 	    if (single_quote_checker == 0)
 	      {
-		bool is_id_line = starts_with (line, "%id") || starts_with (line, "%ID");
-		bool is_class_line = starts_with (line, "%class") || starts_with (line, "%CLASS");
-		bool is_format = starts_with (line, "%format") || starts_with (line, "%FORMAT");
+		/* the scanner takes these commands in any case, see load_lexer.l */
+		bool is_id_line = starts_with_ignore_case (line, "%id");
+		bool is_class_line = starts_with_ignore_case (line, "%class");
+		bool is_format = starts_with_ignore_case (line, "%format");
 
 		if (is_id_line || is_class_line)
 		  {
@@ -1376,9 +1377,11 @@ namespace cubload
   }
 
   inline bool
-  starts_with (const std::string &str, const std::string &prefix)
+  starts_with_ignore_case (const std::string &str, const char *prefix)
   {
-    return str.size () >= prefix.size () && 0 == str.compare (0, prefix.size (), prefix);
+    size_t len = strlen (prefix);
+
+    return str.size () >= len && strncasecmp (str.c_str (), prefix, len) == 0;
   }
 
   inline bool
