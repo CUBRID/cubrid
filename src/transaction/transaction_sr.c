@@ -32,7 +32,6 @@
 #include "log_2pc.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
-#include "lock_manager.h"
 #if defined(SERVER_MODE)
 #endif
 #include "xserver_interface.h"
@@ -270,7 +269,6 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 {
   TRAN_STATE state;
   bool drop_transient_class = false;
-  bool logged = false;
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
   assert (result == LOG_RESULT_TOPOP_ABORT || result == LOG_RESULT_TOPOP_ATTACH_TO_OUTER);
@@ -303,9 +301,8 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
 	}
       else
 	{
-	  /* before the abort appends its own records: did the operation write anything (a heap stamp among them)? */
-	  logged = LSA_LT (topop_lsa, &tdes->tail_lsa);
-	  log_sysop_abort (thread_p);
+	  /* the operation's undo may erase heap stamps */
+	  log_sysop_abort_and_defer_wake (thread_p, topop_lsa);
 	  state = TRAN_UNACTIVE_ABORTED;
 	}
       if (drop_transient_class)
@@ -315,11 +312,6 @@ xtran_server_end_topop (THREAD_ENTRY * thread_p, LOG_RESULT_TOPOP result, LOG_LS
       if (result == LOG_RESULT_TOPOP_ABORT)
 	{
 	  tx_lob_locator_clear (thread_p, tdes, false, topop_lsa);
-	  if (logged)
-	    {
-	      /* the undo may have erased stamps others wait on, as a rollback to a savepoint does */
-	      lock_deferred_wake_mark (thread_p, tdes->tran_index);
-	    }
 	}
       break;
 

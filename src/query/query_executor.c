@@ -20922,16 +20922,16 @@ exit_on_error:
 
   if (sysop_started)
     {
-      /* before the abort appends its own records: did increments that carry the transaction's MVCCID write anything? */
-      bool logged = joins_transaction && LSA_LT (&sysop_start_lsa, &tdes->tail_lsa);
-
-      log_sysop_abort (thread_p);
-      sysop_started = false;
-      if (logged)
+      if (joins_transaction)
 	{
-	  /* the undo may have erased stamps others wait on, as a failed statement's does */
-	  lock_deferred_wake_mark (thread_p, tdes->tran_index);
+	  /* the increments carry the transaction's MVCCID: their undo may erase heap stamps */
+	  log_sysop_abort_and_defer_wake (thread_p, &sysop_start_lsa);
 	}
+      else
+	{
+	  log_sysop_abort (thread_p);
+	}
+      sysop_started = false;
     }
 
   /* clear some kinds of error code; it's click counter! */

@@ -4200,6 +4200,31 @@ log_sysop_abort (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * log_sysop_abort_and_defer_wake () - log_sysop_abort () for a system operation whose changes may carry the
+ *				        transaction's MVCCID
+ *
+ * return	  : Void.
+ * thread_p (in)  : Thread entry.
+ * start_lsa (in) : The transaction's tail LSA when the operation started.
+ *
+ * Note: when the operation logged anything, its undo may have erased stamps other writers wait on, so their wake
+ *	 is deferred as after a rollback to a savepoint (lock_deferred_wake_mark ()).
+ */
+void
+log_sysop_abort_and_defer_wake (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  /* before the abort appends its own records */
+  bool logged = tdes != NULL && LSA_LT (start_lsa, &tdes->tail_lsa);
+
+  log_sysop_abort (thread_p);
+  if (logged)
+    {
+      lock_deferred_wake_mark (thread_p, tdes->tran_index);
+    }
+}
+
+/*
  * log_sysop_attach_to_outer () - Attach system operation to its immediate parent (another system operation or, if this
  *				  is top system operation, to transaction descriptor).
  *
