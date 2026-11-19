@@ -28,6 +28,7 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 #include "error_context.hpp"
+#include "lock_deferred_wake.hpp"
 #include "lockfree_transaction_def.hpp"
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
@@ -275,6 +276,7 @@ namespace cubthread
       INT64 lockwait_stime;		/* time in milliseconds */
       int lockwait_msecs;		/* time in milliseconds */
       int lockwait_state;
+      lk_thread_deferred_wake deferred_wake;
       void *query_entry;
       entry *tran_next_wait;
       entry *worker_thrd_list;	/* worker thread on job queue */
