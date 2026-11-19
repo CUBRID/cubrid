@@ -11977,22 +11977,22 @@ fileio_page_check_corruption (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, bo
 }
 
 bool
-fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page)
+fileio_is_formatted_page (THREAD_ENTRY * thread_p, const char *io_page, PGLENGTH page_size)
 {
   char *ref_page;
   bool is_formatted = false;
 
-  ref_page = (char *) malloc (IO_PAGESIZE);
+  ref_page = (char *) malloc (page_size);
   if (ref_page == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, IO_PAGESIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) page_size);
       return false;
     }
 
-  memset ((char *) ref_page, 0, IO_PAGESIZE);
-  (void) fileio_initialize_res (thread_p, (FILEIO_PAGE *) ref_page, IO_PAGESIZE);
+  memset ((char *) ref_page, 0, page_size);
+  (void) fileio_initialize_res (thread_p, (FILEIO_PAGE *) ref_page, page_size);
 
-  if (memcmp (io_page, ref_page, IO_PAGESIZE) == 0)
+  if (memcmp (io_page, ref_page, page_size) == 0)
     {
       is_formatted = true;
     }

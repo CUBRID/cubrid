@@ -266,7 +266,7 @@ logwr_fetch_header_page (LOG_PAGE * log_pgptr, int vol_fd, HEADER_FETCH_MODE mod
     {
       if (log_pgptr->hdr.logical_pageid != pageid)
 	{
-	  if (mode == CHECK_FORMATTED_PAGE && fileio_is_formatted_page (NULL, (char *) log_pgptr))
+	  if (mode == CHECK_FORMATTED_PAGE && fileio_is_formatted_page (NULL, (char *) log_pgptr, LOG_PAGESIZE))
 	    {
 	      /* set error outside this function */
 	      return ER_DISK_INCONSISTENT_VOL_HEADER;
