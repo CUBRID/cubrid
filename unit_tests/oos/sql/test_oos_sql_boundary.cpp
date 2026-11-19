@@ -393,9 +393,9 @@ TEST_F (OosSqlBoundary, PhysicalFourRecordTargetIgnoresUnfill)
   const float original_unfill = prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR);
 
   prm_set_float_value (PRM_ID_HF_UNFILL_FACTOR, 0.0f);
-  const int target_without_unfill = heap_oos_inline_target_size ();
+  const int target_without_unfill = heap_oos_auto_inline_target_size ();
   prm_set_float_value (PRM_ID_HF_UNFILL_FACTOR, 0.10f);
-  const int target_with_default_unfill = heap_oos_inline_target_size ();
+  const int target_with_default_unfill = heap_oos_auto_inline_target_size ();
   prm_set_float_value (PRM_ID_HF_UNFILL_FACTOR, original_unfill);
 
   const int page_capacity = heap_nonheader_page_capacity ();
