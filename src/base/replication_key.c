@@ -402,7 +402,7 @@ repl_key_is_valid (const char *data, int length)
   const char *name;
   if (!repl_key_get_int (&r, &type) || !repl_key_type_is_supported (type)
       || !repl_key_get_name (&r, &name) || name[0] == '\0' || !repl_key_get_int (&r, &count)
-      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 9))
+      || count <= 0 || count > r.remaining / (OR_INT_SIZE * 7))
     {
       return false;
     }
@@ -410,10 +410,9 @@ repl_key_is_valid (const char *data, int length)
   for (int i = 0; i < count; i++)
     {
       int id, desc, not_null, domain_length;
-      const char *column, *class_name;
+      const char *column;
 
       if (!repl_key_get_int (&r, &id) || id < 0 || !repl_key_get_name (&r, &column) || column[0] == '\0'
-	  || !repl_key_get_name (&r, &class_name)
 	  || !repl_key_get_int (&r, &desc) || (desc != 0 && desc != 1)
 	  || !repl_key_get_int (&r, &not_null) || (not_null != 0 && not_null != 1)
 	  || !repl_key_get_int (&r, &domain_length) || domain_length <= 0 || domain_length > r.remaining
@@ -516,7 +515,7 @@ int
 repl_key_from_class (struct db_object *class_obj, char **data, int *length)
 {
   SM_CLASS *class_ = NULL;
-  SM_CLASS_CONSTRAINT *chosen = NULL;
+  SM_CLASS_CONSTRAINT *chosen;
   REPL_KEY_COLUMN *columns = NULL;
   int error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
   *data = NULL;
@@ -527,28 +526,14 @@ repl_key_from_class (struct db_object *class_obj, char **data, int *length)
       return error;
     }
 
-  SM_CONSTRAINT_TYPE types[] = { SM_CONSTRAINT_PRIMARY_KEY, SM_CONSTRAINT_UNIQUE, SM_CONSTRAINT_REVERSE_UNIQUE };
-  BTREE_TYPE index_types[] = { BTREE_PRIMARY_KEY, BTREE_UNIQUE, BTREE_REVERSE_UNIQUE };
-  int kind = BTREE_UNIQUE;
-
-  for (int i = 0; i < 3 && chosen == NULL; i++)
-    {
-      for (SM_CLASS_CONSTRAINT * c = class_->constraints; c != NULL; c = c->next)
-	{
-	  if (c->type == types[i] && c->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS
-	      && (c->type == SM_CONSTRAINT_PRIMARY_KEY || sm_has_non_null_attribute (c->attributes)))
-	    {
-	      chosen = c;
-	      kind = index_types[i];
-	      break;
-	    }
-	}
-    }
-
+  chosen = classobj_find_cons_replication_key (class_->constraints);
   if (chosen == NULL)
     {
       return NO_ERROR;
     }
+
+  int kind = chosen->type == SM_CONSTRAINT_PRIMARY_KEY ? BTREE_PRIMARY_KEY
+    : chosen->type == SM_CONSTRAINT_REVERSE_UNIQUE ? BTREE_REVERSE_UNIQUE : BTREE_UNIQUE;
 
   int count = 0;
   while (chosen->attributes[count] != NULL)

@@ -3968,24 +3968,37 @@ classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list)
 }
 
 /*
- * classobj_find_cons_replication_key()
- *   return: constraint
- *   cons_list(in):
+ * classobj_find_cons_replication_key() - find the replication key (RK) of a class
+ *   return: the RK constraint, or NULL if the class has none
+ *   cons_list(in): constraint list of the class
+ *
+ * Note: a PRIMARY KEY is preferred, then a UNIQUE, then a REVERSE UNIQUE that has a NOT NULL key column; an index
+ *       still being built online is skipped. The server picks the first candidate of its representation in the same
+ *       way (or_is_replication_candidate_key), and both lists keep the same order, so the client and the server
+ *       choose the same RK.
  */
 SM_CLASS_CONSTRAINT *
 classobj_find_cons_replication_key (SM_CLASS_CONSTRAINT * cons_list)
 {
-  SM_CLASS_CONSTRAINT *cons = NULL;
+  SM_CONSTRAINT_TYPE types[] = {
+    SM_CONSTRAINT_PRIMARY_KEY,
+    SM_CONSTRAINT_UNIQUE,
+    SM_CONSTRAINT_REVERSE_UNIQUE
+  };
 
-  for (cons = cons_list; cons; cons = cons->next)
+  for (size_t i = 0; i < sizeof (types) / sizeof (types[0]); i++)
     {
-      if (IS_HA_REPLICATION_KEY_CONSTRAINT (cons))
+      for (SM_CLASS_CONSTRAINT * cons = cons_list; cons != NULL; cons = cons->next)
 	{
-	  break;
+	  if (cons->type == types[i]
+	      && cons->index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && IS_HA_REPLICATION_KEY_CONSTRAINT (cons))
+	    {
+	      return cons;
+	    }
 	}
     }
 
-  return cons;
+  return NULL;
 }
 
 /*
