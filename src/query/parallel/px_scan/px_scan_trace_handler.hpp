@@ -44,10 +44,12 @@ namespace parallel_scan
     UINT64 qualified_rows;
     struct timeval elapsed_time;
 
-    /* heap scan only: the worker's page batch (expr_batch.h) -- its pages taken and handed back to the row path, and
-     * why it declined (a static string) when it took none */
+    /* heap scan only: the worker's page batch (expr_batch.h) -- its pages taken, handed back to the row path and, of
+     * those, handed back at a record off the page; and a static string: why it declined when it took no page, else
+     * the last cause it handed a page back for (the serial scan's s.hsid.batch_why_not) */
     UINT64 batch_pages;
     UINT64 batch_pages_rowpath;
+    UINT64 batch_pages_offpage;
     const char *batch_why_not;
 
     /* index scan only */
@@ -110,6 +112,7 @@ namespace parallel_scan
       bool m_merged = false;
       trace_storage_for_sibling_xasl m_trace_storage_for_sibling_xasl;
       std::string m_expr_compile_dump;	/* guarded by m_stats_mutex */
+      bool m_expr_compile_dump_paged = false;	/* its worker took a page: guarded by m_stats_mutex */
     private:
       std::atomic<bool> m_topnsort_used {false};
   };
@@ -134,8 +137,15 @@ namespace parallel_scan
 	return m_expr_compile_dump;
       }
     private:
-      void batch_ranges (UINT64 &min_pages, UINT64 &max_pages, UINT64 &min_rowpath, UINT64 &max_rowpath,
-			 const char *&why_not) const;
+      struct batch_range
+      {
+	UINT64 min_pages, max_pages;
+	UINT64 min_rowpath, max_rowpath;
+	UINT64 min_offpage, max_offpage;
+	const char *why_not;		/* a worker's reason for taking no page */
+	const char *rowpath_last;	/* a worker's last cause for handing a page back */
+      };
+      void batch_ranges (batch_range &r) const;
       void dump_batch_text (FILE *fp);
       std::vector<child_stats> m_stats;
       child_stats m_stats_last;
@@ -144,6 +154,7 @@ namespace parallel_scan
       bool m_is_initialized;
       bool m_topnsort_used = false;
       std::string m_expr_compile_dump;	/* one worker's EXPR_COMPILE listing, see trace_handler */
+      bool m_expr_compile_dump_paged = false;
   };
 }
 

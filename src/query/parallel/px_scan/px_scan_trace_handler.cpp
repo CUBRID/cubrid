@@ -48,6 +48,7 @@ namespace parallel_scan
       {
 	cs.batch_pages = scan_id->scan_stats.batch_pages;
 	cs.batch_pages_rowpath = scan_id->scan_stats.batch_pages_rowpath;
+	cs.batch_pages_offpage = scan_id->scan_stats.batch_pages_offpage;
 	cs.batch_why_not = scan_id->s.hsid.batch_why_not;
       }
     if (scan_id->type == S_INDX_SCAN)
@@ -130,13 +131,17 @@ namespace parallel_scan
     char *buf = nullptr;
     size_t len = 0;
     FILE *fp;
+    /* the expression lines' batch decision is this worker's (qdump_print_expr_batch_text ()): one that took no page
+     * -- an empty share of the pages, which also ends first -- would show the row path for a scan that ran the
+     * batch */
+    bool paged = (scan_id != NULL && scan_id->type == S_HEAP_SCAN && scan_id->scan_stats.batch_pages > 0);
 
     /* Only for a session that shows its plans in detail (;plan detail, the worker inherits the
      * flag with on_trace): the listing goes to the trace's plan section, never to the statistics.
      * What a worker has to report depends on how far it got: the first worker to finalize claims
      * this slot, and one that finished before its aggregate operands were compiled reports fewer
      * sections than one that ran rows -- a plan section a test answer carries only with the
-     * details asked for. */
+     * details asked for.  A worker that took a page takes the slot over from one that took none. */
     if (!thread_get_thread_entry_info ()->trace_plan_detail)
       {
 	return;
@@ -144,7 +149,7 @@ namespace parallel_scan
 
     {
       std::lock_guard<std::mutex> lock (m_stats_mutex);
-      if (!m_expr_compile_dump.empty ())
+      if (!m_expr_compile_dump.empty () && (m_expr_compile_dump_paged || !paged))
 	{
 	  return;
 	}
@@ -175,9 +180,10 @@ namespace parallel_scan
 	if (len > 0)
 	  {
 	    std::lock_guard<std::mutex> lock (m_stats_mutex);
-	    if (m_expr_compile_dump.empty ())
+	    if (m_expr_compile_dump.empty () || (!m_expr_compile_dump_paged && paged))
 	      {
 		m_expr_compile_dump.assign (buf, len);
+		m_expr_compile_dump_paged = paged;
 	      }
 	  }
 	free (buf);
@@ -189,6 +195,7 @@ namespace parallel_scan
     std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.clear();
     m_expr_compile_dump.clear();
+    m_expr_compile_dump_paged = false;
     m_merged = false;
     m_topnsort_used.store (false, std::memory_order_relaxed);   // per-reopen reset, matches m_stats.clear()
   }
@@ -197,9 +204,12 @@ namespace parallel_scan
   {
     // accumulative m_topnsort_used: no in-place reset; storage freed+realloc'd per top-level exec in qexec_clear_access_spec_list. worker per-reopen reset = trace_handler::clear().
     m_topnsort_used = m_topnsort_used || trace_handler.is_topnsort_used();
-    if (m_expr_compile_dump.empty ())
+    if (m_expr_compile_dump.empty ()
+	|| (!m_expr_compile_dump_paged && trace_handler.m_expr_compile_dump_paged))
       {
+	/* the same preference as trace_handler::add_expr_compile_dump (): a listing of a worker that took a page */
 	m_expr_compile_dump = trace_handler.m_expr_compile_dump;
+	m_expr_compile_dump_paged = trace_handler.m_expr_compile_dump_paged;
       }
     if (!m_is_initialized)
       {
@@ -247,6 +257,7 @@ namespace parallel_scan
 	    TSC_ADD_TIMEVAL (m_stats[i].elapsed_time, trace_handler.m_stats[i].elapsed_time);
 	    m_stats[i].batch_pages += trace_handler.m_stats[i].batch_pages;
 	    m_stats[i].batch_pages_rowpath += trace_handler.m_stats[i].batch_pages_rowpath;
+	    m_stats[i].batch_pages_offpage += trace_handler.m_stats[i].batch_pages_offpage;
 	    if (trace_handler.m_stats[i].batch_why_not != NULL)
 	      {
 		m_stats[i].batch_why_not = trace_handler.m_stats[i].batch_why_not;
@@ -423,42 +434,61 @@ namespace parallel_scan
 
   /* the workers' page batch, per worker as the line's other counts are, in a group of its own after them -- the
    * serial scan's form (scan_print_stats_text ()) with ranges */
-  void accumulative_trace_storage::batch_ranges (UINT64 &min_pages, UINT64 &max_pages, UINT64 &min_rowpath,
-      UINT64 &max_rowpath, const char *&why_not) const
+  void accumulative_trace_storage::batch_ranges (batch_range &r) const
   {
-    min_pages = min_rowpath = std::numeric_limits<UINT64>::max();
-    max_pages = max_rowpath = 0;
-    why_not = NULL;
+    r.min_pages = r.min_rowpath = r.min_offpage = std::numeric_limits<UINT64>::max();
+    r.max_pages = r.max_rowpath = r.max_offpage = 0;
+    r.why_not = NULL;
+    r.rowpath_last = NULL;
     for (size_t i = 0; i < m_stats.size(); i++)
       {
-	min_pages = std::min (min_pages, m_stats[i].batch_pages);
-	max_pages = std::max (max_pages, m_stats[i].batch_pages);
-	min_rowpath = std::min (min_rowpath, m_stats[i].batch_pages_rowpath);
-	max_rowpath = std::max (max_rowpath, m_stats[i].batch_pages_rowpath);
-	if (why_not == NULL)
+	r.min_pages = std::min (r.min_pages, m_stats[i].batch_pages);
+	r.max_pages = std::max (r.max_pages, m_stats[i].batch_pages);
+	r.min_rowpath = std::min (r.min_rowpath, m_stats[i].batch_pages_rowpath);
+	r.max_rowpath = std::max (r.max_rowpath, m_stats[i].batch_pages_rowpath);
+	r.min_offpage = std::min (r.min_offpage, m_stats[i].batch_pages_offpage);
+	r.max_offpage = std::max (r.max_offpage, m_stats[i].batch_pages_offpage);
+	if (m_stats[i].batch_pages_rowpath > 0)
 	  {
-	    why_not = m_stats[i].batch_why_not;
+	    /* the serial scan's "last" (scan_print_stats_text ()): a worker that handed pages back, the first one */
+	    if (r.rowpath_last == NULL)
+	      {
+		r.rowpath_last = m_stats[i].batch_why_not;
+	      }
+	  }
+	else if (r.why_not == NULL && m_stats[i].batch_pages == 0)
+	  {
+	    r.why_not = m_stats[i].batch_why_not;
 	  }
       }
   }
 
   void accumulative_trace_storage::dump_batch_text (FILE *fp)
   {
-    UINT64 min_pages, max_pages, min_rowpath, max_rowpath;
-    const char *why_not;
+    batch_range r;
 
     if (m_scan_type != SCAN_TYPE::HEAP || m_stats.empty ())
       {
 	return;
       }
-    batch_ranges (min_pages, max_pages, min_rowpath, max_rowpath, why_not);
-    if (max_pages > 0 || max_rowpath > 0)
+    batch_ranges (r);
+    if (r.max_pages > 0 || r.max_rowpath > 0)
       {
-	fprintf (fp, " (batch pages: %lu..%lu (row path: %lu..%lu))", min_pages, max_pages, min_rowpath, max_rowpath);
+	fprintf (fp, " (batch pages: %lu..%lu (row path: %lu..%lu", r.min_pages, r.max_pages, r.min_rowpath,
+		 r.max_rowpath);
+	if (r.max_offpage > 0)
+	  {
+	    fprintf (fp, ", at records off the page: %lu..%lu", r.min_offpage, r.max_offpage);
+	  }
+	if (r.rowpath_last != NULL)
+	  {
+	    fprintf (fp, ", last: %s", r.rowpath_last);
+	  }
+	fprintf (fp, "))");
       }
-    else if (why_not != NULL)
+    else if (r.why_not != NULL)
       {
-	fprintf (fp, " (batch: no (%s))", why_not);
+	fprintf (fp, " (batch: no (%s))", r.why_not);
       }
   }
 
@@ -606,22 +636,30 @@ namespace parallel_scan
 	if (m_scan_type == SCAN_TYPE::HEAP)
 	  {
 	    /* the workers' page batch, as the text trace shows it (dump_batch_text ()) */
-	    UINT64 min_pages, max_pages, min_rowpath, max_rowpath;
-	    const char *why_not;
+	    batch_range r;
 
-	    batch_ranges (min_pages, max_pages, min_rowpath, max_rowpath, why_not);
-	    if (max_pages > 0 || max_rowpath > 0)
+	    batch_ranges (r);
+	    if (r.max_pages > 0 || r.max_rowpath > 0)
 	      {
-		char pages_buf[64], rowpath_buf[64];
+		char pages_buf[64], rowpath_buf[64], offpage_buf[64];
 
-		snprintf (pages_buf, sizeof (pages_buf), "%lu..%lu", min_pages, max_pages);
-		snprintf (rowpath_buf, sizeof (rowpath_buf), "%lu..%lu", min_rowpath, max_rowpath);
+		snprintf (pages_buf, sizeof (pages_buf), "%lu..%lu", r.min_pages, r.max_pages);
+		snprintf (rowpath_buf, sizeof (rowpath_buf), "%lu..%lu", r.min_rowpath, r.max_rowpath);
 		trace_json_object_set_new (parallel_obj, "batch_pages", trace_json_string (pages_buf));
 		trace_json_object_set_new (parallel_obj, "batch_pages_rowpath", trace_json_string (rowpath_buf));
+		if (r.max_offpage > 0)
+		  {
+		    snprintf (offpage_buf, sizeof (offpage_buf), "%lu..%lu", r.min_offpage, r.max_offpage);
+		    trace_json_object_set_new (parallel_obj, "batch_pages_offpage", trace_json_string (offpage_buf));
+		  }
+		if (r.rowpath_last != NULL)
+		  {
+		    trace_json_object_set_new (parallel_obj, "batch_rowpath_last", trace_json_string (r.rowpath_last));
+		  }
 	      }
-	    else if (why_not != NULL)
+	    else if (r.why_not != NULL)
 	      {
-		trace_json_object_set_new (parallel_obj, "batch_why_not", trace_json_string (why_not));
+		trace_json_object_set_new (parallel_obj, "batch_why_not", trace_json_string (r.why_not));
 	      }
 	  }
       }

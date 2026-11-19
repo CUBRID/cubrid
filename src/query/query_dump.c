@@ -5026,7 +5026,8 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
       else if (gstats->groupby_hash_merge_skip != NULL)
 	{
-	  /* what the merge's estimate of the groups decided: the leftovers went to the sort as they were */
+	  /* why the merge did not run -- no rows were left, the sort takes workers, or the groups' estimate says they
+	   * fold little (qexec_gby_hash_merge ()): the leftovers went to the sort as they were */
 	  fprintf (fp, ", hash merge: no (%s)", gstats->groupby_hash_merge_skip);
 	}
       if (gstats->batch_rows > 0)

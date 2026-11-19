@@ -13165,6 +13165,18 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
 	      const FILE_FTAB_COLLECTOR *page_list;
 	      int num_data_pages;
+	      /* the batch plan's shape for the trace's plan section, kept past the reopen: scan_open_heap_scan () clears
+	       * it, and a partition that builds no plan -- or the root class reopened at the end -- would otherwise
+	       * leave the plan section a shape of none beside the pages the partitions took (scan_stats sums them) */
+	      SCAN_BATCH_SHAPE batch_shape;
+	      bool keep_shape = (thread_is_on_trace (thread_p) && spec->s_id.type == S_HEAP_SCAN
+				 && hsidp->batch_shape.built);
+
+	      memset (&batch_shape, 0, sizeof (batch_shape));
+	      if (keep_shape)
+		{
+		  batch_shape = hsidp->batch_shape;
+		}
 
 	      /* clear caches */
 	      if (hsidp->caches_inited)
@@ -13244,6 +13256,11 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		}
 #endif /* SERVER_MODE && !WINDOWS */
 
+	      if (keep_shape && spec->s_id.type == S_HEAP_SCAN && !hsidp->batch_shape.built)
+		{
+		  /* a later partition that builds a plan replaces it when its scan ends (scan_batch_park ()) */
+		  hsidp->batch_shape = batch_shape;
+		}
 	      break;
 	    }			/* case ACCESS_METHOD_SEQUENTIAL */
 

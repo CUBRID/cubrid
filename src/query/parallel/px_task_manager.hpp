@@ -93,6 +93,8 @@ namespace parallel_query
 	m_thread_ref.conn_entry = main_thread_ref.conn_entry;
 	m_thread_ref.tran_index = main_thread_ref.tran_index;
 	m_thread_ref.on_trace = main_thread_ref.on_trace;
+	/* with on_trace: a pool thread a parallel scan worker ran on keeps the flag it inherited (px_scan_task.cpp) */
+	m_thread_ref.trace_plan_detail = main_thread_ref.trace_plan_detail;
 
 	assert (m_thread_ref.conn_entry != nullptr);
 	assert (m_thread_ref.tran_index != NULL_TRAN_INDEX);
@@ -104,6 +106,7 @@ namespace parallel_query
       {
 	m_thread_ref.conn_entry = nullptr;
 	m_thread_ref.on_trace = false;
+	m_thread_ref.trace_plan_detail = false;
 
 	m_thread_ref.pop_resource_tracks ();
       }
